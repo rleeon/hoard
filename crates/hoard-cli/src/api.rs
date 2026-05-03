@@ -36,7 +36,10 @@ impl ApiError {
             StatusCode::PAYLOAD_TOO_LARGE => ApiError::TooLarge,
             StatusCode::CONFLICT => ApiError::Conflict(extract_message(&body)),
             StatusCode::BAD_REQUEST => ApiError::BadRequest(extract_message(&body)),
-            _ => ApiError::Server { status: status.as_u16(), body },
+            _ => ApiError::Server {
+                status: status.as_u16(),
+                body,
+            },
         }
     }
 }
@@ -177,7 +180,11 @@ impl ApiClient {
         Ok(())
     }
 
-    pub async fn list_snapshots(&self, save_id: &str, include_deleted: bool) -> Result<Vec<Snapshot>> {
+    pub async fn list_snapshots(
+        &self,
+        save_id: &str,
+        include_deleted: bool,
+    ) -> Result<Vec<Snapshot>> {
         let mut req = self
             .http
             .get(self.url(&format!("/v1/saves/{}/snapshots", save_id)))
@@ -223,10 +230,7 @@ impl ApiClient {
     pub async fn snapshot_delete(&self, save_id: &str, version: i64) -> Result<()> {
         let resp = self
             .http
-            .delete(self.url(&format!(
-                "/v1/saves/{}/snapshots/{}",
-                save_id, version
-            )))
+            .delete(self.url(&format!("/v1/saves/{}/snapshots/{}", save_id, version)))
             .header("authorization", self.auth_header())
             .send()
             .await?;

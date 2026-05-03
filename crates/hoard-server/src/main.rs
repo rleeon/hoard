@@ -1,4 +1,3 @@
-use hoard_server::{config::{Config, LogFormat}, db};
 use anyhow::Result;
 use axum::{
     middleware,
@@ -6,6 +5,10 @@ use axum::{
     Router,
 };
 use clap::Parser;
+use hoard_server::{
+    config::{Config, LogFormat},
+    db,
+};
 use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 use tracing::info;
 
@@ -59,7 +62,10 @@ async fn main() -> Result<()> {
         .route("/v1/games", get(game_routes::list))
         .route("/v1/games/:slug", get(game_routes::get_one))
         // Saves
-        .route("/v1/saves", get(save_routes::list).post(save_routes::create))
+        .route(
+            "/v1/saves",
+            get(save_routes::list).post(save_routes::create),
+        )
         .route(
             "/v1/saves/:id",
             get(save_routes::get_one)

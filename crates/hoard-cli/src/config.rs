@@ -50,10 +50,10 @@ impl CliConfig {
         if !path.exists() {
             return Ok(Self::default());
         }
-        let text = std::fs::read_to_string(path)
-            .with_context(|| format!("reading {}", path.display()))?;
-        let cfg: CliConfig = toml::from_str(&text)
-            .with_context(|| format!("parsing {}", path.display()))?;
+        let text =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        let cfg: CliConfig =
+            toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
         Ok(cfg)
     }
 
@@ -69,8 +69,7 @@ impl CliConfig {
                 .with_context(|| format!("creating {}", parent.display()))?;
         }
         let text = toml::to_string_pretty(self).context("serializing config")?;
-        std::fs::write(path, text)
-            .with_context(|| format!("writing {}", path.display()))?;
+        std::fs::write(path, text).with_context(|| format!("writing {}", path.display()))?;
 
         #[cfg(unix)]
         {

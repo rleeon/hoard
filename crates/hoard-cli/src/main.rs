@@ -95,10 +95,7 @@ enum SnapshotCommand {
         yes: bool,
     },
     /// Restore a soft-deleted snapshot back to active state
-    Undelete {
-        save_id: String,
-        version: i64,
-    },
+    Undelete { save_id: String, version: i64 },
 }
 
 #[tokio::main]
@@ -128,12 +125,18 @@ async fn dispatch(cli: Cli) -> Result<()> {
         Commands::Games { action } => commands::games::run(action).await,
         Commands::Save { action } => commands::saves::run(action).await,
         Commands::Snapshots { action } => snapshots_dispatch(action).await,
-        Commands::Backup { save_id, from, remember } => {
-            commands::backup::run(save_id, from, remember).await
-        }
-        Commands::Restore { save_id, version, to, no_verify, force } => {
-            commands::restore::apply(save_id, version, to, no_verify, force).await
-        }
+        Commands::Backup {
+            save_id,
+            from,
+            remember,
+        } => commands::backup::run(save_id, from, remember).await,
+        Commands::Restore {
+            save_id,
+            version,
+            to,
+            no_verify,
+            force,
+        } => commands::restore::apply(save_id, version, to, no_verify, force).await,
     }
 }
 
@@ -143,7 +146,11 @@ async fn snapshots_dispatch(cmd: SnapshotCommand) -> Result<()> {
     let client = api::ApiClient::new(cfg.server.url.clone(), token)?;
     match cmd {
         SnapshotCommand::List { save_id, all } => list_snapshots(&client, save_id, all).await,
-        SnapshotCommand::Delete { save_id, version, yes } => {
+        SnapshotCommand::Delete {
+            save_id,
+            version,
+            yes,
+        } => {
             if !yes {
                 use std::io::Write;
                 print!("soft-delete v{} of save {}? [y/N] ", version, save_id);
@@ -167,7 +174,11 @@ async fn snapshots_dispatch(cmd: SnapshotCommand) -> Result<()> {
     }
 }
 
-async fn list_snapshots(client: &api::ApiClient, save_id: String, include_deleted: bool) -> Result<()> {
+async fn list_snapshots(
+    client: &api::ApiClient,
+    save_id: String,
+    include_deleted: bool,
+) -> Result<()> {
     let snaps = client.list_snapshots(&save_id, include_deleted).await?;
     if snaps.is_empty() {
         println!("(no snapshots)");

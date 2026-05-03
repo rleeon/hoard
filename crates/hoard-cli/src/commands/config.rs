@@ -17,10 +17,7 @@ pub enum ConfigCommand {
     /// Print the resolved config
     Show,
     /// Set a config field. Currently supported: server.url
-    Set {
-        key: String,
-        value: String,
-    },
+    Set { key: String, value: String },
     /// Print the path of the config file (whether it exists or not)
     Path,
 }

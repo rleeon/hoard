@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
+
+permissions:
+  contents: write   # needed to create the GitHub Release
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: linux-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: System deps
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Build release binaries
+        run: |
+          cargo build --release --target ${{ matrix.target }} \
+            -p hoard-server -p hoard-admin -p hoard-cli
+
+      - name: Package
+        id: package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARTIFACT="hoard-${VERSION}-${{ matrix.artifact }}"
+          mkdir -p "dist/$ARTIFACT"
+          cp target/${{ matrix.target }}/release/hoard-server "dist/$ARTIFACT/"
+          cp target/${{ matrix.target }}/release/hoard-admin  "dist/$ARTIFACT/"
+          cp target/${{ matrix.target }}/release/hoard        "dist/$ARTIFACT/"
+          cp README.md CHANGELOG.md LICENSE                   "dist/$ARTIFACT/"
+          cp deploy/config.toml.example                       "dist/$ARTIFACT/"
+          tar -C dist -czf "dist/$ARTIFACT.tar.gz" "$ARTIFACT"
+          ( cd dist && sha256sum "$ARTIFACT.tar.gz" > "$ARTIFACT.tar.gz.sha256" )
+          echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.artifact }}
+          path: |
+            dist/${{ steps.package.outputs.artifact }}.tar.gz
+            dist/${{ steps.package.outputs.artifact }}.tar.gz.sha256
+
+  release:
+    name: GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: List artifacts
+        run: ls -la dist/
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: |
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md) for the full list of changes.
+
+            ## Verifying downloads
+
+            ```sh
+            sha256sum -c hoard-*.tar.gz.sha256
+            ```
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256

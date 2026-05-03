@@ -21,14 +21,14 @@ pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Re
             .saves
             .get(&save_id)
             .map(|s| s.local_path.clone())
-            .ok_or_else(|| anyhow!(
-                "no remembered local path for save {save_id}; pass --from <PATH>"
-            ))?,
+            .ok_or_else(|| {
+                anyhow!("no remembered local path for save {save_id}; pass --from <PATH>")
+            })?,
     };
 
-    let source = source.canonicalize().with_context(|| {
-        format!("source path does not exist: {}", source.display())
-    })?;
+    let source = source
+        .canonicalize()
+        .with_context(|| format!("source path does not exist: {}", source.display()))?;
     if !source.is_dir() {
         bail!("source must be a directory: {}", source.display());
     }
@@ -60,7 +60,8 @@ pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Re
     );
 
     for (rel, abs, _sz) in &files {
-        let bytes = tokio::fs::read(abs).await
+        let bytes = tokio::fs::read(abs)
+            .await
             .with_context(|| format!("reading {}", abs.display()))?;
         let len = bytes.len() as u64;
         let part = multipart::Part::bytes(bytes)
@@ -73,7 +74,9 @@ pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Re
     }
     pb.finish_with_message("uploaded");
 
-    let snap = client.snapshot_upload(&save_id, form).await
+    let snap = client
+        .snapshot_upload(&save_id, form)
+        .await
         .context("uploading snapshot")?;
     println!(
         "snapshot v{} created ({} files, {})",
@@ -117,8 +120,8 @@ fn walk(root: &Path) -> Result<Vec<(String, PathBuf, u64)>> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        for entry in std::fs::read_dir(&dir)
-            .with_context(|| format!("reading dir {}", dir.display()))?
+        for entry in
+            std::fs::read_dir(&dir).with_context(|| format!("reading dir {}", dir.display()))?
         {
             let entry = entry?;
             let path = entry.path();

@@ -41,7 +41,9 @@ pub async fn apply(
                 .saves
                 .get(&save_id)
                 .map(|s| s.local_path.clone())
-                .ok_or_else(|| anyhow!("no remembered local path for save {save_id}; pass --to <PATH>"))?
+                .ok_or_else(|| {
+                    anyhow!("no remembered local path for save {save_id}; pass --to <PATH>")
+                })?
         }
     };
 
@@ -63,8 +65,7 @@ pub async fn apply(
             );
         }
     } else {
-        std::fs::create_dir_all(&dest)
-            .with_context(|| format!("creating {}", dest.display()))?;
+        std::fs::create_dir_all(&dest).with_context(|| format!("creating {}", dest.display()))?;
     }
 
     println!(
@@ -124,9 +125,9 @@ pub async fn apply(
             continue;
         }
         if let Some(parent) = dest_path.parent() {
-            tokio::fs::create_dir_all(parent).await.with_context(|| {
-                format!("creating parent {}", parent.display())
-            })?;
+            tokio::fs::create_dir_all(parent)
+                .await
+                .with_context(|| format!("creating parent {}", parent.display()))?;
         }
 
         let key = safe_rel.to_string_lossy().replace('\\', "/");
@@ -136,7 +137,9 @@ pub async fn apply(
         // For very large files we could pipe through a hasher writer; this is
         // simpler and matches the upload-side full-read approach.
         let mut bytes = Vec::with_capacity(entry.header().size().unwrap_or(0) as usize);
-        entry.read_to_end(&mut bytes).await
+        entry
+            .read_to_end(&mut bytes)
+            .await
             .with_context(|| format!("reading entry {key}"))?;
 
         if !no_verify {
@@ -163,7 +166,8 @@ pub async fn apply(
             // can't verify (shouldn't happen for snapshots from this server).
         }
 
-        tokio::fs::write(&dest_path, &bytes).await
+        tokio::fs::write(&dest_path, &bytes)
+            .await
             .with_context(|| format!("writing {}", dest_path.display()))?;
         extracted += 1;
     }

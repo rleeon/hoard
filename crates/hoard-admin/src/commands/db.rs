@@ -27,21 +27,24 @@ pub async fn run(cmd: DbCommand, cfg: &Config) -> Result<()> {
             .await
             .unwrap_or(None);
 
-            let users: i64 =
-                sqlx::query_scalar("SELECT COUNT(*) FROM users").fetch_one(&pool).await?;
-            let snapshots: i64 =
-                sqlx::query_scalar("SELECT COUNT(*) FROM snapshots").fetch_one(&pool).await?;
-            let storage: i64 = sqlx::query_scalar(
-                "SELECT COALESCE(SUM(storage_used_bytes),0) FROM users",
-            )
-            .fetch_one(&pool)
-            .await?;
+            let users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+                .fetch_one(&pool)
+                .await?;
+            let snapshots: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM snapshots")
+                .fetch_one(&pool)
+                .await?;
+            let storage: i64 =
+                sqlx::query_scalar("SELECT COALESCE(SUM(storage_used_bytes),0) FROM users")
+                    .fetch_one(&pool)
+                    .await?;
 
             // SQLite page size * page count ≈ file size
-            let page_size: i64 =
-                sqlx::query_scalar("PRAGMA page_size").fetch_one(&pool).await?;
-            let page_count: i64 =
-                sqlx::query_scalar("PRAGMA page_count").fetch_one(&pool).await?;
+            let page_size: i64 = sqlx::query_scalar("PRAGMA page_size")
+                .fetch_one(&pool)
+                .await?;
+            let page_count: i64 = sqlx::query_scalar("PRAGMA page_count")
+                .fetch_one(&pool)
+                .await?;
             let db_bytes = page_size * page_count;
 
             println!("DB migration version : {}", version.unwrap_or(0));

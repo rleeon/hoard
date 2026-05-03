@@ -221,7 +221,10 @@ pub async fn create(
 
             if total_size > max_per_snapshot {
                 cleanup_tmp();
-                return Err(err(StatusCode::PAYLOAD_TOO_LARGE, "snapshot exceeds size limit"));
+                return Err(err(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "snapshot exceeds size limit",
+                ));
             }
             if used + total_size > quota {
                 cleanup_tmp();
@@ -253,17 +256,14 @@ pub async fn create(
         internal()
     })?;
 
-    let new_version: i64 = sqlx::query!(
-        "SELECT latest_version_num FROM saves WHERE id=?",
-        save_id
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .map(|r| r.latest_version_num + 1)
-    .map_err(|_| {
-        cleanup_tmp();
-        internal()
-    })?;
+    let new_version: i64 = sqlx::query!("SELECT latest_version_num FROM saves WHERE id=?", save_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map(|r| r.latest_version_num + 1)
+        .map_err(|_| {
+            cleanup_tmp();
+            internal()
+        })?;
 
     let file_count = files.len() as i64;
     sqlx::query!(
@@ -587,11 +587,15 @@ pub async fn download(
         .join(format!("v{}", version));
 
     if !dir.exists() {
-        return Err(err(StatusCode::INTERNAL_SERVER_ERROR, "snapshot data missing"));
+        return Err(err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "snapshot data missing",
+        ));
     }
 
     // Build a tar.zst stream in a background task and pipe it to the response body.
-    let (tx_bytes, rx_bytes) = tokio::sync::mpsc::channel::<Result<bytes::Bytes, std::io::Error>>(8);
+    let (tx_bytes, rx_bytes) =
+        tokio::sync::mpsc::channel::<Result<bytes::Bytes, std::io::Error>>(8);
     let dir_clone = dir.clone();
 
     tokio::spawn(async move {
@@ -636,7 +640,9 @@ pub async fn download(
             }
         }
 
-        let writer = ChannelWriter { tx: tx_bytes.clone() };
+        let writer = ChannelWriter {
+            tx: tx_bytes.clone(),
+        };
         let zstd = ZstdEncoder::new(writer);
         let mut tar = tokio_tar::Builder::new(zstd);
 
@@ -665,10 +671,7 @@ pub async fn download(
 
     let filename = format!("{}-{}-v{}.tar.zst", game_slug, label, version);
     let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        "application/zstd".parse().unwrap(),
-    );
+    headers.insert(header::CONTENT_TYPE, "application/zstd".parse().unwrap());
     headers.insert(
         header::CONTENT_DISPOSITION,
         format!("attachment; filename=\"{}\"", filename)

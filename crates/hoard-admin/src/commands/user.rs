@@ -30,7 +30,11 @@ pub async fn run(cmd: UserCommand, cfg: &Config) -> Result<()> {
     db::run_migrations(&pool).await?;
 
     match cmd {
-        UserCommand::Create { username, admin, password: pw_flag } => {
+        UserCommand::Create {
+            username,
+            admin,
+            password: pw_flag,
+        } => {
             use hoard_core::hashing::hash_password;
 
             let password = if let Some(p) = pw_flag {
@@ -73,15 +77,20 @@ pub async fn run(cmd: UserCommand, cfg: &Config) -> Result<()> {
                 return Ok(());
             }
 
-            println!("{:<38} {:<20} {:<6} {:<12} {}", "ID", "Username", "Admin", "Storage MiB", "Created");
+            println!(
+                "{:<38} {:<20} {:<6} {:<12} Created",
+                "ID", "Username", "Admin", "Storage MiB"
+            );
             for row in rows {
                 let id: String = row.get("id");
                 let username: String = row.get("username");
                 let is_admin: i64 = row.get("is_admin");
                 let storage: i64 = row.get("storage_used_bytes");
                 let created_at: String = row.get("created_at");
-                println!("{:<38} {:<20} {:<6} {:<12} {}",
-                    id, username,
+                println!(
+                    "{:<38} {:<20} {:<6} {:<12} {}",
+                    id,
+                    username,
                     if is_admin != 0 { "yes" } else { "no" },
                     storage / 1024 / 1024,
                     created_at

@@ -70,7 +70,10 @@ pub async fn run(cmd: TokenCommand, cfg: &Config) -> Result<()> {
 
             println!("\n⚠  Save this token NOW — it cannot be recovered later!\n");
             println!("Token: {}", token);
-            println!("\nSet it in your CLI: hoard config set server <url> && hoard login --token {}", token);
+            println!(
+                "\nSet it in your CLI: hoard config set server <url> && hoard login --token {}",
+                token
+            );
         }
         TokenCommand::List { username } => {
             let rows = sqlx::query(
@@ -89,7 +92,10 @@ pub async fn run(cmd: TokenCommand, cfg: &Config) -> Result<()> {
                 return Ok(());
             }
 
-            println!("{:<12} {:<20} {:<26} {:<26} {}", "Prefix", "Device", "Last used", "Created", "Status");
+            println!(
+                "{:<12} {:<20} {:<26} {:<26} Status",
+                "Prefix", "Device", "Last used", "Created"
+            );
             for row in rows {
                 let hash: String = row.get("token_hash");
                 let prefix = &hash[..16.min(hash.len())];
@@ -97,8 +103,13 @@ pub async fn run(cmd: TokenCommand, cfg: &Config) -> Result<()> {
                 let last_used: Option<String> = row.get("last_used_at");
                 let revoked: Option<String> = row.get("revoked_at");
                 let created: String = row.get("created_at");
-                let status = if revoked.is_some() { "REVOKED" } else { "active" };
-                println!("{:<12} {:<20} {:<26} {:<26} {}",
+                let status = if revoked.is_some() {
+                    "REVOKED"
+                } else {
+                    "active"
+                };
+                println!(
+                    "{:<12} {:<20} {:<26} {:<26} {}",
                     prefix,
                     device.unwrap_or_else(|| "-".into()),
                     last_used.unwrap_or_else(|| "never".into()),

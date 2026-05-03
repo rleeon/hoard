@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest something new or a change to existing behavior.
+title: "[feat] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening, search existing issues — odds are someone got there first.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the use case, not the solution. We can workshop the solution together.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution (optional)
+      description: If you already have a design in mind, sketch it here. CLI commands, API shape, config keys, etc.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds exist today? Why aren't they good enough?
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This is in scope for a self-hosted save-sync server (i.e., not a generic file-sync tool, not a game library manager)
+          required: true

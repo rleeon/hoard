@@ -6,7 +6,11 @@ use hoard_server::config::Config;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "hoard-admin", version, about = "Hoard server administration CLI")]
+#[command(
+    name = "hoard-admin",
+    version,
+    about = "Hoard server administration CLI"
+)]
 struct Cli {
     /// Path to server configuration file
     #[arg(long, default_value = "/etc/hoard/config.toml")]

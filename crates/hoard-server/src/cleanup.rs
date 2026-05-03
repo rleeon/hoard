@@ -1,7 +1,7 @@
 //! Background cleanup task: purges old tmp uploads and trashed snapshots.
 
 use sqlx::SqlitePool;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use tracing::{info, warn};
 
@@ -25,7 +25,7 @@ pub async fn run_periodic(
 
 pub async fn run_once(
     pool: &SqlitePool,
-    data_dir: &PathBuf,
+    data_dir: &Path,
     tmp_cleanup_hours: u64,
     trash_retention_days: u64,
 ) -> anyhow::Result<()> {
@@ -34,7 +34,7 @@ pub async fn run_once(
     Ok(())
 }
 
-async fn purge_tmp(data_dir: &PathBuf, max_age_hours: u64) -> anyhow::Result<()> {
+async fn purge_tmp(data_dir: &Path, max_age_hours: u64) -> anyhow::Result<()> {
     let tmp_dir = data_dir.join("tmp");
     if !tmp_dir.exists() {
         return Ok(());
@@ -62,7 +62,7 @@ async fn purge_tmp(data_dir: &PathBuf, max_age_hours: u64) -> anyhow::Result<()>
 
 async fn purge_trash(
     pool: &SqlitePool,
-    data_dir: &PathBuf,
+    data_dir: &Path,
     retention_days: u64,
 ) -> anyhow::Result<()> {
     let cutoff = time::OffsetDateTime::now_utc() - time::Duration::days(retention_days as i64);

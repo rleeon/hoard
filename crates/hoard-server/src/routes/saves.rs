@@ -220,7 +220,10 @@ pub async fn patch(
     .map_err(|_| internal_err())?;
 
     if count == 0 {
-        return Err((StatusCode::NOT_FOUND, Json(serde_json::json!({"error":"not found"}))));
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error":"not found"})),
+        ));
     }
 
     if let Some(label) = &body.label {
@@ -229,17 +232,24 @@ pub async fn patch(
             .await
             .map_err(|e| {
                 if e.to_string().contains("UNIQUE") {
-                    (StatusCode::CONFLICT, Json(serde_json::json!({"error":"label collision"})))
+                    (
+                        StatusCode::CONFLICT,
+                        Json(serde_json::json!({"error":"label collision"})),
+                    )
                 } else {
                     internal_err()
                 }
             })?;
     }
     if let Some(hint) = &body.local_path_hint {
-        sqlx::query!("UPDATE saves SET local_path_hint=? WHERE id=?", hint, save_id)
-            .execute(&state.pool)
-            .await
-            .map_err(|_| internal_err())?;
+        sqlx::query!(
+            "UPDATE saves SET local_path_hint=? WHERE id=?",
+            hint,
+            save_id
+        )
+        .execute(&state.pool)
+        .await
+        .map_err(|_| internal_err())?;
     }
     if let Some(os) = &body.client_os {
         sqlx::query!("UPDATE saves SET client_os=? WHERE id=?", os, save_id)
@@ -251,7 +261,12 @@ pub async fn patch(
     fetch_save(&state.pool, &save_id, &user_id)
         .await
         .map_err(|_| internal_err())?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(serde_json::json!({"error":"not found"}))))
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error":"not found"})),
+            )
+        })
         .map(Json)
 }
 

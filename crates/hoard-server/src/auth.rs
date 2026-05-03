@@ -25,7 +25,9 @@ struct ErrorBody {
 fn unauthorized() -> Response {
     (
         StatusCode::UNAUTHORIZED,
-        Json(ErrorBody { error: "invalid or missing token" }),
+        Json(ErrorBody {
+            error: "invalid or missing token",
+        }),
     )
         .into_response()
 }

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/USER/hoard/tree/master/docs
+    about: Install, quickstart, API reference, and ADRs
+  - name: Security report
+    url: mailto:raileonoliva@gmail.com
+    about: For vulnerabilities, email instead of opening a public issue.

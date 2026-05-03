@@ -49,14 +49,12 @@ pub async fn run(cmd: GameCommand, cfg: &Config) -> Result<()> {
                     slug
                 );
             }
-            sqlx::query(
-                "INSERT INTO games (slug, display_name, engine) VALUES (?,?,?)",
-            )
-            .bind(&slug)
-            .bind(&name)
-            .bind(&engine)
-            .execute(&pool)
-            .await?;
+            sqlx::query("INSERT INTO games (slug, display_name, engine) VALUES (?,?,?)")
+                .bind(&slug)
+                .bind(&name)
+                .bind(&engine)
+                .execute(&pool)
+                .await?;
             println!("Added game '{}' ({}).", name, slug);
         }
         GameCommand::List { search } => {
@@ -81,12 +79,17 @@ pub async fn run(cmd: GameCommand, cfg: &Config) -> Result<()> {
                 println!("No games.");
                 return Ok(());
             }
-            println!("{:<30} {:<30} {}", "Slug", "Display Name", "Engine");
+            println!("{:<30} {:<30} Engine", "Slug", "Display Name");
             for row in rows {
                 let slug: String = row.get("slug");
                 let name: String = row.get("display_name");
                 let engine: Option<String> = row.get("engine");
-                println!("{:<30} {:<30} {}", slug, name, engine.unwrap_or_else(|| "-".into()));
+                println!(
+                    "{:<30} {:<30} {}",
+                    slug,
+                    name,
+                    engine.unwrap_or_else(|| "-".into())
+                );
             }
         }
         GameCommand::Remove { slug, force } => {
