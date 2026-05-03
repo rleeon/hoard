@@ -56,7 +56,7 @@ async-compression = { version = "0.4", features = ["tokio", "zstd"] }
 tokio-tar = "0.3"
 
 # Time
-time = { version = "0.3", features = ["serde"] }
+time = { version = "0.3", features = ["serde", "serde-well-known", "formatting", "parsing", "macros"] }
 
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }

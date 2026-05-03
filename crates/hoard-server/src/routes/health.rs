@@ -1,7 +1,6 @@
 use axum::{extract::State, http::StatusCode, response::Json};
 use serde::Serialize;
 use sqlx::SqlitePool;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 

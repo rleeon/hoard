@@ -30,4 +30,5 @@ tokio-tar = { workspace = true }
 tokio-util = { workspace = true }
 futures = { workspace = true }
 bytes = { workspace = true }
-sqlx = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
