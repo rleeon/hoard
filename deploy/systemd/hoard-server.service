@@ -1,0 +1,60 @@
+[Unit]
+Description=Hoard save-sync server
+Documentation=https://github.com/insider/hoard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hoard
+Group=hoard
+
+# Binary + config locations are fixed by the install script.
+ExecStart=/usr/local/bin/hoard-server --config /etc/hoard/config.toml
+
+# Working directory must be writable by the hoard user (data lives under it).
+WorkingDirectory=/var/lib/hoard
+
+# Allow operators to drop env-var overrides (HOARD__*) without editing the unit.
+# The file is optional; missing file is not an error (note the leading dash).
+EnvironmentFile=-/etc/hoard/hoard.env
+
+# Reasonable defaults for a long-running web service.
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+LimitNOFILE=65536
+
+# ---- Security hardening ----------------------------------------------------
+# These are conservative defaults that are still compatible with writing to
+# /var/lib/hoard. If you need to relax them (e.g. to expose another path),
+# create a drop-in override under /etc/systemd/system/hoard-server.service.d/.
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+# The service writes only to its data dir; everything else is read-only.
+ReadWritePaths=/var/lib/hoard
+ReadOnlyPaths=/etc/hoard
+
+# Restrict syscalls to the common safe set.
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Network: keep it simple; if you front this with a reverse proxy you can
+# tighten with IPAddressAllow/Deny in a drop-in.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

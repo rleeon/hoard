@@ -1,0 +1,46 @@
+# Hoard server — single-node deployment.
+#
+# Usage:
+#   cd deploy/docker
+#   docker compose up -d            # start
+#   docker compose logs -f          # follow logs
+#   docker compose exec server hoard-admin user create alice --password 'SECRET'
+#   docker compose down             # stop (volumes preserved)
+#
+# Mount your own config.toml under ./config/ to avoid the auto-bootstrap.
+
+services:
+  server:
+    image: hoard:latest
+    build:
+      # Build context is the repo root so the Cargo workspace is visible.
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    container_name: hoard-server
+    restart: unless-stopped
+    ports:
+      - "${HOARD_PORT:-8080}:8080"
+    environment:
+      # Override TOML keys without rebuilding/remounting:
+      # HOARD__SERVER__PORT must stay 8080 inside the container — change the
+      # host-side mapping above instead.
+      HOARD__LOGGING__LEVEL: ${HOARD_LOG_LEVEL:-info}
+      HOARD__LOGGING__FORMAT: ${HOARD_LOG_FORMAT:-json}
+    volumes:
+      # Persistent data (SQLite DB, snapshots, tmp, trash).
+      - hoard-data:/var/lib/hoard
+      # Drop your own config.toml here; the entrypoint will use it.
+      - ./config:/etc/hoard:ro
+    healthcheck:
+      # Compose-side healthcheck (the Dockerfile one is intentionally shallow).
+      # Uses wget which we install via a tiny addition below; if you'd rather
+      # not, comment this out and rely on Docker's TCP-restart fallback.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/v1/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  hoard-data:
+    name: hoard-data
