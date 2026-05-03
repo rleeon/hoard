@@ -16,7 +16,7 @@ Either way, you need:
 ## Path A — systemd
 
 ```sh
-git clone https://github.com/USER/hoard.git
+git clone https://github.com/rleeon/hoard.git
 cd hoard
 sudo ./deploy/scripts/install.sh
 ```
@@ -92,7 +92,7 @@ editing the upstream unit, drop a file under
 ## Path B — Docker / Compose
 
 ```sh
-git clone https://github.com/USER/hoard.git
+git clone https://github.com/rleeon/hoard.git
 cd hoard
 mkdir -p deploy/docker/config
 cp deploy/config.toml.example deploy/docker/config/config.toml

@@ -59,5 +59,5 @@ least once before 1.0.**
 - No rate limiting; put a reverse proxy in front for that.
 - Single SQLite database; no replication. Back up the file.
 
-[Unreleased]: https://github.com/USER/hoard/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/USER/hoard/releases/tag/v0.1.0
+[Unreleased]: https://github.com/rleeon/hoard/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/rleeon/hoard/releases/tag/v0.1.0

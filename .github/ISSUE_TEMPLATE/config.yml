@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Documentation
-    url: https://github.com/USER/hoard/tree/master/docs
+    url: https://github.com/rleeon/hoard/tree/master/docs
     about: Install, quickstart, API reference, and ADRs
   - name: Security report
     url: mailto:raileonoliva@gmail.com

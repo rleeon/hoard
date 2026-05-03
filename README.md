@@ -3,7 +3,7 @@
 > Self-hosted cloud sync for game saves — keep your own server, your own data,
 > your own version history.
 
-[![CI](https://github.com/USER/hoard/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/hoard/actions/workflows/ci.yml)
+[![CI](https://github.com/rleeon/hoard/actions/workflows/ci.yml/badge.svg)](https://github.com/rleeon/hoard/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 Hoard runs on your own box (Linux, Docker, or whatever) and gives you a small
@@ -36,7 +36,7 @@ own the server.
 ## Quickstart (Docker)
 
 ```sh
-git clone https://github.com/USER/hoard.git && cd hoard
+git clone https://github.com/rleeon/hoard.git && cd hoard
 mkdir -p deploy/docker/config
 cp deploy/config.toml.example deploy/docker/config/config.toml
 $EDITOR deploy/docker/config/config.toml   # set public_url at minimum
@@ -71,7 +71,7 @@ hoard restore <SAVE_ID>                    # uses --remember'd path
 ## Quickstart (bare metal Linux + systemd)
 
 ```sh
-git clone https://github.com/USER/hoard.git && cd hoard
+git clone https://github.com/rleeon/hoard.git && cd hoard
 sudo ./deploy/scripts/install.sh
 sudo $EDITOR /etc/hoard/config.toml
 sudo -u hoard hoard-admin --config /etc/hoard/config.toml db migrate
