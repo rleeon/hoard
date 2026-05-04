@@ -11,6 +11,8 @@ pub mod api;
 pub mod backup;
 pub mod config;
 pub mod credentials;
+pub mod manifest;
+pub mod pathexpand;
 pub mod restore;
 pub mod state;
 

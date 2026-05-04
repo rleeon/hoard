@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT source, manifest_version, imported_at,\n                games_inserted, games_updated, games_pruned\n         FROM manifest_imports ORDER BY id DESC LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "source",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "manifest_version",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "imported_at",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "games_inserted",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "games_updated",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "games_pruned",
+        "ordinal": 5,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "316fc6d32f44418626cde202e801e82cfc9d7e52f9513c6ad22ea7ff9faeb20a"
+}

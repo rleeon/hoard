@@ -44,9 +44,11 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/v1/auth/whoami
 ```sh
 GET /v1/games?search=stardew&limit=20
 GET /v1/games/:slug
+GET /v1/games/:slug/known-paths
+GET /v1/manifest/version
 ```
 
-Response is `Game[]` / `Game`:
+`GET /v1/games` and `GET /v1/games/:slug` return `Game[]` / `Game`:
 
 ```json
 {
@@ -54,6 +56,48 @@ Response is `Game[]` / `Game`:
   "display_name": "Stardew Valley",
   "engine": "monogame",
   "save_paths_json": "..."
+}
+```
+
+`GET /v1/games/:slug/known-paths` returns the structured save-path manifest
+the desktop client uses to decide where to look on disk:
+
+```json
+{
+  "slug": "stardew-valley",
+  "display_name": "Stardew Valley",
+  "steam_app_id": 413150,
+  "cloud_steam": true,
+  "cloud_gog": false,
+  "manifest_version": "2025-01-15",
+  "paths": {
+    "windows": [
+      {
+        "path": "<winAppData>/StardewValley/Saves",
+        "constraints": [{ "store": "any" }],
+        "tags": ["save"]
+      }
+    ],
+    "linux": [
+      { "path": "<xdgData>/StardewValley/Saves",
+        "constraints": [{ "store": "any" }], "tags": ["save"] }
+    ],
+    "mac": []
+  }
+}
+```
+
+`GET /v1/manifest/version` returns the most recent manifest import metadata
+(or 404 if no import has happened on this server):
+
+```json
+{
+  "source": "ludusavi-manifest",
+  "manifest_version": "2025-01-15T12:34:56Z",
+  "imported_at": "2025-01-15T12:34:58Z",
+  "games_inserted": 11432,
+  "games_updated": 56,
+  "games_pruned": 12
 }
 ```
 

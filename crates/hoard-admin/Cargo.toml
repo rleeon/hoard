@@ -26,4 +26,7 @@ figment = { workspace = true }
 time = { version = "0.3", features = ["serde", "formatting", "macros"] }
 uuid = { workspace = true }
 rpassword = "7"
-regex = "1"
+regex = { workspace = true }
+reqwest = { workspace = true }
+serde_yaml = { workspace = true }
+indicatif = { workspace = true }

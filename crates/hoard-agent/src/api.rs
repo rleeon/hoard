@@ -93,6 +93,19 @@ impl ApiClient {
         }
     }
 
+    /// Issue an authenticated GET to `path` (e.g. `/v1/manifest/version`) and
+    /// return the response object on success. Other modules use this when
+    /// their only interaction with the API is "GET this URL, decode JSON".
+    pub async fn http_get(&self, path: &str) -> Result<reqwest::Response> {
+        let resp = self
+            .http
+            .get(self.url(path))
+            .header("authorization", self.auth_header())
+            .send()
+            .await?;
+        Ok(Self::ok_or_err(resp).await?)
+    }
+
     pub async fn whoami(&self) -> Result<Whoami> {
         let resp = self
             .http

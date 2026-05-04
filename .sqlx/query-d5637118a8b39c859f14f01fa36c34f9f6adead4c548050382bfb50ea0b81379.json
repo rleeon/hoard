@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT slug, display_name, save_paths_json,\n                steam_app_id, cloud_steam, cloud_gog, manifest_version\n         FROM games WHERE slug = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "slug",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "display_name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "save_paths_json",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "steam_app_id",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "cloud_steam",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "cloud_gog",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "manifest_version",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "d5637118a8b39c859f14f01fa36c34f9f6adead4c548050382bfb50ea0b81379"
+}

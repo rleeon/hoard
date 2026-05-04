@@ -42,6 +42,11 @@ enum Commands {
         #[command(subcommand)]
         action: commands::game::GameCommand,
     },
+    /// Manifest import/refresh from Ludusavi
+    Manifest {
+        #[command(subcommand)]
+        action: commands::manifest::ManifestCommand,
+    },
 }
 
 #[tokio::main]
@@ -61,5 +66,6 @@ async fn main() -> Result<()> {
         Commands::User { action } => commands::user::run(action, &cfg).await,
         Commands::Token { action } => commands::token::run(action, &cfg).await,
         Commands::Game { action } => commands::game::run(action, &cfg).await,
+        Commands::Manifest { action } => commands::manifest::run(action, &cfg).await,
     }
 }

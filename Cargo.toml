@@ -63,6 +63,9 @@ time = { version = "0.3", features = ["serde", "serde-well-known", "formatting",
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }
 
+# YAML (Ludusavi manifest)
+serde_yaml = "0.9"
+
 # Misc
 tokio-stream = "0.1"
 figment = { version = "0.10", features = ["toml", "env"] }
@@ -71,3 +74,4 @@ indicatif = "0.17"
 tokio-util = { version = "0.7", features = ["io"] }
 futures = "0.3"
 bytes = "1"
+regex = "1"
