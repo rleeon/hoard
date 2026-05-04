@@ -8,6 +8,7 @@
    * they can't be hit by reflex.
    */
   import { onMount } from "svelte";
+  import { push } from "svelte-spa-router";
   import {
     Power,
     BellRing,
@@ -17,6 +18,8 @@
     LogOut,
     Trash2,
     Info,
+    FileText,
+    ChevronRight,
   } from "lucide-svelte";
 
   import Card from "../lib/components/Card.svelte";
@@ -229,6 +232,30 @@
               Sign out
             </Button>
           </div>
+        </Card>
+      </section>
+
+      <section>
+        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+          Advanced
+        </h2>
+        <Card>
+          <button
+            type="button"
+            onclick={() => push("/logs")}
+            class="-m-6 flex w-[calc(100%+3rem)] items-center justify-between gap-4 rounded-xl px-6 py-5 text-left transition-colors hover:bg-zinc-900/60"
+          >
+            <div class="flex items-start gap-3">
+              <FileText size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+              <div>
+                <p class="text-sm font-medium text-zinc-100">View logs</p>
+                <p class="mt-0.5 text-xs text-zinc-500">
+                  Inspect the agent's activity log. Handy for bug reports.
+                </p>
+              </div>
+            </div>
+            <ChevronRight size={16} class="shrink-0 text-zinc-500" />
+          </button>
         </Card>
       </section>
 

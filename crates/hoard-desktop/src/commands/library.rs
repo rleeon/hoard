@@ -53,6 +53,12 @@ pub struct TrackedSave {
     pub local_path: String,
     pub last_version_num: Option<i64>,
     pub last_backup_at: Option<String>,
+    /// `true` if the user has paused tracking for this save. Paused saves
+    /// stay in the list but the agent ignores them — useful when the user
+    /// is reorganising files or doesn't want chatty backups during a
+    /// modding session.
+    #[serde(default)]
+    pub paused: bool,
 }
 
 /// Run a full auto-detection sweep. Emits `library://scan-progress` events
@@ -133,6 +139,7 @@ pub async fn add_game_to_tracking(
             label: save.label.clone(),
             last_backup_at: None,
             last_version_num: None,
+            paused: false,
         },
     );
     cli_state.save(&path).map_err(|e| e.to_string())?;
@@ -154,6 +161,7 @@ pub async fn add_game_to_tracking(
         local_path: local_path.to_string_lossy().into_owned(),
         last_version_num: None,
         last_backup_at: None,
+        paused: false,
     })
 }
 
@@ -168,11 +176,11 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
 
     let mut out = Vec::with_capacity(saves.len());
     for s in saves {
-        let local = cli_state
-            .saves
-            .get(&s.id)
+        let st = cli_state.saves.get(&s.id);
+        let local = st
             .map(|st| st.local_path.to_string_lossy().into_owned())
             .unwrap_or_else(|| "(not on this machine)".to_string());
+        let paused = st.map(|st| st.paused).unwrap_or(false);
         out.push(TrackedSave {
             save_id: s.id,
             game_slug: s.game_slug,
@@ -180,6 +188,7 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
             local_path: local,
             last_version_num: s.latest_version_num,
             last_backup_at: format_optional_time(Some(s.updated_at)),
+            paused,
         });
     }
     Ok(out)

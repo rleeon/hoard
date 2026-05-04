@@ -46,6 +46,18 @@ impl CliConfig {
         Ok(pd.data_local_dir().to_path_buf())
     }
 
+    /// Where rotating log files live. Distinct from `state_dir` so the user
+    /// (or a packager's `clean cache` step) can wipe logs without nuking
+    /// their tracked-saves mapping.
+    pub fn cache_dir() -> Result<PathBuf> {
+        let pd = Self::project_dirs()?;
+        Ok(pd.cache_dir().to_path_buf())
+    }
+
+    pub fn logs_dir() -> Result<PathBuf> {
+        Ok(Self::cache_dir()?.join("logs"))
+    }
+
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() {
             return Ok(Self::default());

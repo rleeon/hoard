@@ -13,6 +13,12 @@ pub struct SaveState {
     #[serde(with = "time::serde::rfc3339::option", default)]
     pub last_backup_at: Option<OffsetDateTime>,
     pub last_version_num: Option<i64>,
+    /// User-toggled pause. When true the agent skips this save (no process
+    /// matching, no FS watch) but the row stays in `state.json` so flipping
+    /// it back on doesn't lose the path mapping. `default` lets us read
+    /// older state files without migration.
+    #[serde(default)]
+    pub paused: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

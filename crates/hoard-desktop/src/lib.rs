@@ -8,21 +8,66 @@ mod commands;
 mod state;
 mod tray;
 
+use hoard_agent::config::CliConfig;
 use hoard_agent::prefs::Prefs;
 use tauri::{Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::state::AppState;
 use crate::tray::{TrayController, TrayState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,hoard=debug")),
-        )
-        .init();
+    // Set up tracing with two layers: stdout (for `RUST_LOG=...` development
+    // and journald/Console capture in production) and a daily-rotating file
+    // under the user's cache dir. The file layer is what the in-app Logs
+    // viewer reads.
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,hoard=debug"));
+
+    let registry = tracing_subscriber::registry()
+        .with(env_filter)
+        .with(tracing_subscriber::fmt::layer().with_target(true));
+
+    // We deliberately let log-init failures fall through to "stdout-only" —
+    // a corrupt cache_dir shouldn't keep the app from starting.
+    let _file_guard = match CliConfig::logs_dir() {
+        Ok(dir) => match std::fs::create_dir_all(&dir) {
+            Ok(()) => {
+                let appender = tracing_appender::rolling::daily(&dir, "agent.log");
+                let (nb_writer, guard) = tracing_appender::non_blocking(appender);
+                let _ = registry
+                    .with(
+                        tracing_subscriber::fmt::layer()
+                            .with_target(true)
+                            .with_ansi(false)
+                            .with_writer(nb_writer),
+                    )
+                    .try_init();
+                Some(guard)
+            }
+            Err(e) => {
+                eprintln!("hoard: couldn't create logs dir ({e}); logging to stdout only");
+                let _ = registry.try_init();
+                None
+            }
+        },
+        Err(e) => {
+            eprintln!("hoard: couldn't resolve logs dir ({e}); logging to stdout only");
+            let _ = registry.try_init();
+            None
+        }
+    };
+    // Hold the non-blocking guard for the lifetime of the process — when it
+    // drops the writer thread is joined and any buffered lines flushed.
+    // We park it on a `Box::leak` because Tauri's event loop is the actual
+    // main loop and we can't easily thread the guard through it. Leaking is
+    // cheap (~one Arc) and equivalent semantically to "live forever".
+    if let Some(g) = _file_guard {
+        Box::leak(Box::new(g));
+    }
 
     let app = tauri::Builder::default()
         // Single instance: clicking the launcher again brings the existing
@@ -68,6 +113,15 @@ pub fn run() {
             commands::prefs::set_autostart,
             commands::prefs::is_autostart_enabled,
             commands::prefs::set_tray_state,
+            commands::history::list_save_snapshots,
+            commands::history::save_snapshot_detail,
+            commands::history::delete_snapshot,
+            commands::history::undelete_snapshot,
+            commands::history::restore_snapshot,
+            commands::history::set_save_paused,
+            commands::history::set_save_local_path,
+            commands::history::tail_logs,
+            commands::history::logs_path,
         ])
         .setup(|app| {
             // Build the tray as soon as we have an AppHandle. Failures here

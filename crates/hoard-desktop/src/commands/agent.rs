@@ -142,6 +142,12 @@ fn hydrate_watched_saves(_state: &State<'_, AppState>) -> anyhow::Result<Vec<Wat
 
     let mut out = Vec::with_capacity(cli_state.saves.len());
     for (save_id, save_state) in cli_state.saves {
+        if save_state.paused {
+            // The user has explicitly told us to leave this save alone.
+            // Skipping it here keeps the agent unaware of it entirely —
+            // no process matching, no FS watch, no backups.
+            continue;
+        }
         let steam_install_dir = steam_apps
             .iter()
             .find(|a| name_matches(&a.name, &save_state.game_slug))

@@ -144,6 +144,9 @@ pub async fn remember_save(
 ) -> Result<()> {
     if remember {
         let save = client.get_save(save_id).await?;
+        // Preserve any user-set pause flag if the entry already existed —
+        // re-fetching from the server shouldn't silently un-pause it.
+        let was_paused = state.saves.get(save_id).map(|s| s.paused).unwrap_or(false);
         state.saves.insert(
             save_id.to_string(),
             SaveState {
@@ -152,6 +155,7 @@ pub async fn remember_save(
                 label: save.label,
                 last_backup_at: Some(OffsetDateTime::now_utc()),
                 last_version_num: Some(last_version_num),
+                paused: was_paused,
             },
         );
     } else if let Some(existing) = state.saves.get(save_id).cloned() {

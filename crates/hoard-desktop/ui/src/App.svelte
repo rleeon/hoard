@@ -10,6 +10,8 @@
   import Dashboard from "./routes/Dashboard.svelte";
   import LibraryRoute from "./routes/Library.svelte";
   import SettingsRoute from "./routes/Settings.svelte";
+  import HistoryRoute from "./routes/History.svelte";
+  import LogsRoute from "./routes/Logs.svelte";
 
   import Toaster from "./lib/components/Toaster.svelte";
   import { auth, hydrateAuth } from "./lib/stores/auth";
@@ -34,6 +36,8 @@
     "/dashboard": Dashboard,
     "/library": LibraryRoute,
     "/settings": SettingsRoute,
+    "/history/:saveId": HistoryRoute,
+    "/logs": LogsRoute,
   };
 
   let booted = $state(false);
@@ -58,7 +62,13 @@
 
   // App-shell routes share the persistent sidebar; wizard routes own the
   // viewport. Keep this list in sync with `sidebarItems` above.
-  const APP_ROUTE_PREFIXES = ["/dashboard", "/library", "/settings"];
+  const APP_ROUTE_PREFIXES = [
+    "/dashboard",
+    "/library",
+    "/settings",
+    "/history",
+    "/logs",
+  ];
   const isAppRoute = $derived(
     APP_ROUTE_PREFIXES.some((p) => $location.startsWith(p)),
   );

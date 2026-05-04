@@ -89,6 +89,7 @@ export type TrackedSave = {
   local_path: string;
   last_version_num: number | null;
   last_backup_at: string | null;
+  paused: boolean;
 };
 
 /** Run a full auto-detection sweep. Subscribe to `library://scan-progress`
@@ -223,4 +224,114 @@ export function isAutostartEnabled(): Promise<boolean> {
  * activity store and pushes it here. */
 export function setTrayState(state: TrayStateName): Promise<void> {
   return invoke<void>("set_tray_state", { state });
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot history, restore, manual override, logs
+// ---------------------------------------------------------------------------
+
+export type SnapshotEntry = {
+  version_num: number;
+  file_count: number;
+  total_size_bytes: number;
+  is_pinned: boolean;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+export type SnapshotFile = {
+  relative_path: string;
+  size_bytes: number;
+  sha256: string;
+};
+
+export type SnapshotDetail = SnapshotEntry & {
+  files: SnapshotFile[];
+};
+
+export type RestorePhase = "pre_backup" | "downloading" | "done";
+
+export type RestoreProgress = {
+  save_id: string;
+  version: number;
+  phase: RestorePhase;
+  downloaded: number;
+  total: number;
+};
+
+export type RestoreOutcome = {
+  files_extracted: number;
+  bytes_extracted: number;
+  destination: string;
+  /** If `backup_first` was set on the call, this is the version number of
+   *  the safety backup the user can restore to undo this restore. */
+  safety_version: number | null;
+};
+
+export type LogLine = {
+  timestamp: string;
+  level: string;
+  message: string;
+};
+
+export function listSaveSnapshots(
+  saveId: string,
+  includeDeleted: boolean,
+): Promise<SnapshotEntry[]> {
+  return invoke<SnapshotEntry[]>("list_save_snapshots", {
+    saveId,
+    includeDeleted,
+  });
+}
+
+export function saveSnapshotDetail(
+  saveId: string,
+  version: number,
+): Promise<SnapshotDetail> {
+  return invoke<SnapshotDetail>("save_snapshot_detail", {
+    saveId,
+    version,
+  });
+}
+
+export function deleteSnapshot(saveId: string, version: number): Promise<void> {
+  return invoke<void>("delete_snapshot", { saveId, version });
+}
+
+export function undeleteSnapshot(
+  saveId: string,
+  version: number,
+): Promise<void> {
+  return invoke<void>("undelete_snapshot", { saveId, version });
+}
+
+export function restoreSnapshot(args: {
+  save_id: string;
+  version: number;
+  backup_first: boolean;
+}): Promise<RestoreOutcome> {
+  return invoke<RestoreOutcome>("restore_snapshot", {
+    saveId: args.save_id,
+    version: args.version,
+    backupFirst: args.backup_first,
+  });
+}
+
+export function setSavePaused(saveId: string, paused: boolean): Promise<void> {
+  return invoke<void>("set_save_paused", { saveId, paused });
+}
+
+export function setSaveLocalPath(
+  saveId: string,
+  newPath: string,
+): Promise<void> {
+  return invoke<void>("set_save_local_path", { saveId, newPath });
+}
+
+export function tailLogs(maxLines?: number): Promise<LogLine[]> {
+  return invoke<LogLine[]>("tail_logs", { maxLines: maxLines ?? null });
+}
+
+export function logsPath(): Promise<string> {
+  return invoke<string>("logs_path");
 }

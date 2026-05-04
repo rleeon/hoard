@@ -7,6 +7,7 @@
    * `agent://*` events at boot time).
    */
   import { onMount } from "svelte";
+  import { push } from "svelte-spa-router";
   import {
     LogOut,
     PlayCircle,
@@ -16,6 +17,8 @@
     AlertTriangle,
     CircleDot,
     RefreshCw,
+    History,
+    PauseCircle,
   } from "lucide-svelte";
 
   import Button from "../lib/components/Button.svelte";
@@ -184,6 +187,13 @@
               <span class="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
                 {save.label}
               </span>
+              {#if save.paused}
+                <span
+                  class="inline-flex items-center gap-1 rounded bg-amber-500/10 px-2 py-0.5 text-xs text-amber-400 ring-1 ring-amber-500/30"
+                >
+                  <PauseCircle size={12} /> Paused
+                </span>
+              {/if}
             </div>
             <p
               class="mt-1 truncate font-mono text-xs text-zinc-500"
@@ -199,13 +209,24 @@
             <span class="whitespace-nowrap">{pill.label}</span>
           </div>
           <Button
+            variant="ghost"
+            size="md"
+            onclick={() => push(`/history/${save.save_id}`)}
+            title="View snapshots & restore"
+          >
+            <History size={14} />
+            History
+          </Button>
+          <Button
             variant="secondary"
             size="md"
             onclick={() => backupNow(save.save_id)}
-            disabled={!$status.running}
-            title={!$status.running
-              ? "Start the agent first"
-              : "Force a backup now"}
+            disabled={!$status.running || save.paused}
+            title={save.paused
+              ? "This save is paused — open History to resume"
+              : !$status.running
+                ? "Start the agent first"
+                : "Force a backup now"}
           >
             <UploadCloud size={14} />
             Back up
