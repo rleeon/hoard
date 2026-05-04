@@ -10,9 +10,11 @@
 pub mod api;
 pub mod backup;
 pub mod config;
+pub mod credentials;
 pub mod restore;
 pub mod state;
 
 pub use api::{ApiClient, ApiError};
 pub use config::CliConfig;
+pub use credentials::{Credentials, TokenStorage, UserSection};
 pub use state::{CliState, SaveState};

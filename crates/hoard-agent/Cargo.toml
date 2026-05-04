@@ -30,3 +30,14 @@ futures = { workspace = true }
 bytes = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
+
+# OS-native credential storage. Linux uses libsecret via sync-secret-service
+# (no async runtime in the way), Windows uses Credential Manager, macOS uses
+# the Keychain. When none of these are available the desktop client falls
+# back to a 0600 file — see `credentials.rs`.
+keyring = { version = "3", default-features = false, features = [
+    "apple-native",
+    "windows-native",
+    "sync-secret-service",
+    "crypto-rust",
+] }

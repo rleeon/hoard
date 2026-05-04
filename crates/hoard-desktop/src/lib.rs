@@ -5,9 +5,12 @@
 //! we're desktop-only.
 
 mod commands;
+mod state;
 
 use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
+
+use crate::state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -35,7 +38,18 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![commands::greet])
+        // Persistent KV store for the frontend (wizard step, UI prefs).
+        // We don't read it from Rust today; later phases probably will.
+        .plugin(tauri_plugin_store::Builder::default().build())
+        .manage(AppState::from_disk())
+        .invoke_handler(tauri::generate_handler![
+            commands::misc::greet,
+            commands::auth::health_check,
+            commands::auth::login,
+            commands::auth::logout,
+            commands::auth::is_logged_in,
+            commands::auth::current_user,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

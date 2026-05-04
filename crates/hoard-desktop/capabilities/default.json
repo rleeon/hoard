@@ -8,6 +8,7 @@
     "shell:allow-open",
     "dialog:default",
     "notification:default",
-    "os:default"
+    "os:default",
+    "store:default"
   ]
 }
