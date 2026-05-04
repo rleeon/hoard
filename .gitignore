@@ -6,3 +6,11 @@
 .env.local
 deploy/config.toml
 /dist
+
+# Tauri build artifacts
+crates/hoard-desktop/gen/
+
+# Frontend build artifacts
+crates/hoard-desktop/ui/node_modules/
+crates/hoard-desktop/ui/dist/
+crates/hoard-desktop/ui/.vite/
