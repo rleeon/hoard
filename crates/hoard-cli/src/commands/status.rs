@@ -1,7 +1,7 @@
 use anyhow::Result;
 
-use crate::api::ApiClient;
-use crate::config::CliConfig;
+use hoard_agent::api::ApiClient;
+use hoard_agent::config::CliConfig;
 
 pub async fn run() -> Result<()> {
     let (cfg, _) = CliConfig::load_default()?;

@@ -5,6 +5,7 @@ members = [
     "crates/hoard-server",
     "crates/hoard-cli",
     "crates/hoard-admin",
+    "crates/hoard-agent",
 ]
 
 [workspace.package]

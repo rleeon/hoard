@@ -1,7 +1,7 @@
 use anyhow::Result;
 
-use crate::api::ApiClient;
-use crate::config::CliConfig;
+use hoard_agent::api::ApiClient;
+use hoard_agent::config::CliConfig;
 
 pub async fn login(token: String) -> Result<()> {
     let path = CliConfig::default_path()?;

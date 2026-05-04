@@ -66,7 +66,7 @@ pub struct ApiClient {
 impl ApiClient {
     pub fn new(base_url: impl Into<String>, token: impl Into<String>) -> Result<Self> {
         let http = Client::builder()
-            .user_agent(concat!("hoard-cli/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("hoard-agent/", env!("CARGO_PKG_VERSION")))
             .timeout(Duration::from_secs(60))
             // Long-lived stream uploads/downloads handle their own timeouts via streaming
             .build()?;

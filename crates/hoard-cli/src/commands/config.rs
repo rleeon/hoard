@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use clap::Subcommand;
 
-use crate::config::CliConfig;
+use hoard_agent::config::CliConfig;
 
 #[derive(Subcommand)]
 pub enum ConfigCommand {
@@ -33,7 +33,7 @@ pub fn run(cmd: ConfigCommand) -> Result<()> {
                 );
             }
             let cfg = CliConfig {
-                server: crate::config::ServerSection { url: server },
+                server: hoard_agent::config::ServerSection { url: server },
                 auth: Default::default(),
             };
             cfg.save(&path)?;

@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::Subcommand;
 
-use crate::api::ApiClient;
-use crate::config::CliConfig;
+use hoard_agent::api::ApiClient;
+use hoard_agent::config::CliConfig;
 
 #[derive(Subcommand)]
 pub enum SaveCommand {

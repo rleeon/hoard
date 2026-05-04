@@ -1,10 +1,8 @@
-mod api;
 mod commands;
-mod config;
-mod state;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use hoard_agent::{api, config};
 use std::path::PathBuf;
 
 #[derive(Parser)]
