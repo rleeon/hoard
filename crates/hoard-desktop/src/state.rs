@@ -6,12 +6,16 @@
 use std::sync::Mutex;
 
 use crate::commands::auth::UserInfo;
+use crate::commands::library::DetectionCache;
 
 #[derive(Default)]
 pub struct AppState {
     /// Cached identity from `whoami`. `None` means "not logged in" or "the
     /// session file was malformed/wiped".
     pub user: Mutex<Option<UserInfo>>,
+    /// Last successful auto-detection report. Lets the Library page render
+    /// immediately on revisit without forcing another disk sweep.
+    pub detection_cache: DetectionCache,
 }
 
 impl AppState {
@@ -34,6 +38,7 @@ impl AppState {
         };
         Self {
             user: Mutex::new(user),
+            detection_cache: DetectionCache::default(),
         }
     }
 }

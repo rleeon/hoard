@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT slug, display_name, engine, save_paths_json FROM games\n             ORDER BY slug LIMIT ?",
+  "query": "SELECT slug, display_name, engine, save_paths_json FROM games\n             WHERE slug LIKE ? OR display_name LIKE ?\n             ORDER BY slug LIMIT ? OFFSET ?",
   "describe": {
     "columns": [
       {
@@ -25,7 +25,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 4
     },
     "nullable": [
       false,
@@ -34,5 +34,5 @@
       true
     ]
   },
-  "hash": "5c78f0134df7514e1c1a5e8dc9b705fd2e40252883e0b1880a2c45c72e78e0ae"
+  "hash": "ea167948dfc585e258d9e1c7f502763c575592c4b1f502cbdb132356b7662d64"
 }

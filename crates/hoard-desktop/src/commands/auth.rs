@@ -132,7 +132,7 @@ fn validate_url(url: &str) -> Result<(), String> {
 /// Translate an `anyhow::Error` from the agent into a sentence a non-developer
 /// can act on. Falls through to the raw message for shapes we don't recognise
 /// — the frontend logs those to the console for bug reports.
-fn pretty_error(err: anyhow::Error) -> String {
+pub(crate) fn pretty_error(err: anyhow::Error) -> String {
     if let Some(api) = err.downcast_ref::<ApiError>() {
         return match api {
             ApiError::Unauthorized => {

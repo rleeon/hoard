@@ -11,10 +11,12 @@ pub mod api;
 pub mod backup;
 pub mod config;
 pub mod credentials;
+pub mod detection;
 pub mod manifest;
 pub mod pathexpand;
 pub mod restore;
 pub mod state;
+pub mod steam;
 
 pub use api::{ApiClient, ApiError};
 pub use config::CliConfig;

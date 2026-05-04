@@ -8,6 +8,7 @@
   import TokenSetup from "./routes/TokenSetup.svelte";
   import OnboardingDone from "./routes/OnboardingDone.svelte";
   import Dashboard from "./routes/Dashboard.svelte";
+  import LibraryRoute from "./routes/Library.svelte";
 
   import Toaster from "./lib/components/Toaster.svelte";
   import { auth, hydrateAuth } from "./lib/stores/auth";
@@ -30,6 +31,7 @@
     "/onboarding/token": TokenSetup,
     "/onboarding/done": OnboardingDone,
     "/dashboard": Dashboard,
+    "/library": LibraryRoute,
   };
 
   let booted = $state(false);
@@ -52,7 +54,12 @@
     { label: "Settings", icon: SettingsIcon, route: "/settings" },
   ];
 
-  const isAppRoute = $derived($location.startsWith("/dashboard"));
+  // App-shell routes share the persistent sidebar; wizard routes own the
+  // viewport. Keep this list in sync with `sidebarItems` above.
+  const APP_ROUTE_PREFIXES = ["/dashboard", "/library"];
+  const isAppRoute = $derived(
+    APP_ROUTE_PREFIXES.some((p) => $location.startsWith(p)),
+  );
 </script>
 
 {#if !booted}
@@ -85,16 +92,18 @@
       <nav class="flex-1 space-y-1 px-3 py-2">
         {#each sidebarItems as item (item.label)}
           {@const active = $location === item.route}
+          {@const enabled =
+            item.route === "/dashboard" || item.route === "/library"}
           <button
             type="button"
-            disabled={item.route !== "/dashboard"}
+            disabled={!enabled}
             onclick={() => push(item.route)}
             class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors
               {active
               ? 'bg-zinc-800 text-zinc-50'
               : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100'}
               disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-400"
-            title={item.route === "/dashboard" ? undefined : "Coming in a later phase"}
+            title={enabled ? undefined : "Coming in a later phase"}
           >
             <item.icon size={18} />
             <span>{item.label}</span>

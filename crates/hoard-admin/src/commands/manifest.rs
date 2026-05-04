@@ -17,7 +17,8 @@ use sqlx::SqlitePool;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-const DEFAULT_URL: &str = "https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/manifest.yaml";
+const DEFAULT_URL: &str =
+    "https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/manifest.yaml";
 
 #[derive(Subcommand)]
 pub enum ManifestCommand {
@@ -210,10 +211,11 @@ async fn do_import(
 
         if dry_run {
             // Don't write; just count by checking if the row exists.
-            let exists: Option<String> = sqlx::query_scalar("SELECT slug FROM games WHERE slug = ?")
-                .bind(&slug)
-                .fetch_optional(&mut *tx)
-                .await?;
+            let exists: Option<String> =
+                sqlx::query_scalar("SELECT slug FROM games WHERE slug = ?")
+                    .bind(&slug)
+                    .fetch_optional(&mut *tx)
+                    .await?;
             if exists.is_some() {
                 updated += 1;
             } else {
@@ -328,7 +330,10 @@ async fn do_import(
     }
 
     println!();
-    println!("Manifest import {}:", if dry_run { "(dry-run)" } else { "complete" });
+    println!(
+        "Manifest import {}:",
+        if dry_run { "(dry-run)" } else { "complete" }
+    );
     println!("  inserted:        {inserted}");
     println!("  updated:         {updated}");
     println!("  pruned:          {pruned}");
@@ -459,7 +464,10 @@ mod tests {
     #[test]
     fn slugify_basic() {
         assert_eq!(slugify("Stardew Valley"), "stardew-valley");
-        assert_eq!(slugify("The Witcher 3: Wild Hunt"), "the-witcher-3-wild-hunt");
+        assert_eq!(
+            slugify("The Witcher 3: Wild Hunt"),
+            "the-witcher-3-wild-hunt"
+        );
         assert_eq!(slugify("  spaced  "), "spaced");
         assert_eq!(slugify(""), "game");
         assert_eq!(slugify("123 Numbers"), "123-numbers");

@@ -13,6 +13,8 @@ pub struct SearchQuery {
     search: Option<String>,
     #[serde(default = "default_limit")]
     limit: i64,
+    #[serde(default)]
+    offset: i64,
 }
 
 fn default_limit() -> i64 {
@@ -31,7 +33,11 @@ pub async fn list(
     State(state): State<Arc<ServerState>>,
     Query(q): Query<SearchQuery>,
 ) -> Result<Json<Vec<GameResponse>>, StatusCode> {
-    let limit = q.limit.clamp(1, 100);
+    // We allow up to 1000 per page so the desktop client can sweep the full
+    // catalog (~11k entries) in a handful of round-trips during auto-detection.
+    // Smaller callers (the search bar) keep the default 20.
+    let limit = q.limit.clamp(1, 1000);
+    let offset = q.offset.max(0);
 
     let rows = if let Some(search) = q.search {
         let pattern = format!("%{}%", search);
@@ -39,10 +45,11 @@ pub async fn list(
             GameRow,
             "SELECT slug, display_name, engine, save_paths_json FROM games
              WHERE slug LIKE ? OR display_name LIKE ?
-             ORDER BY slug LIMIT ?",
+             ORDER BY slug LIMIT ? OFFSET ?",
             pattern,
             pattern,
-            limit
+            limit,
+            offset
         )
         .fetch_all(&state.pool)
         .await
@@ -51,8 +58,9 @@ pub async fn list(
         sqlx::query_as!(
             GameRow,
             "SELECT slug, display_name, engine, save_paths_json FROM games
-             ORDER BY slug LIMIT ?",
-            limit
+             ORDER BY slug LIMIT ? OFFSET ?",
+            limit,
+            offset
         )
         .fetch_all(&state.pool)
         .await

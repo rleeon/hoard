@@ -61,10 +61,7 @@ async fn main() -> Result<()> {
         // Games
         .route("/v1/games", get(game_routes::list))
         .route("/v1/games/:slug", get(game_routes::get_one))
-        .route(
-            "/v1/games/:slug/known-paths",
-            get(game_routes::known_paths),
-        )
+        .route("/v1/games/:slug/known-paths", get(game_routes::known_paths))
         .route("/v1/manifest/version", get(game_routes::manifest_version))
         // Saves
         .route(

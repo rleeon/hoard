@@ -75,16 +75,24 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
             // Best-effort: %USERPROFILE%\Documents. The real Documents path
             // can be redirected via Known Folders, but the env-based fallback
             // is what 99% of installs use.
-            home_dir().map(|h| vec![h.join("Documents")]).unwrap_or_default()
+            home_dir()
+                .map(|h| vec![h.join("Documents")])
+                .unwrap_or_default()
         }
         (Os::Windows, "winPublic") => env_dir("PUBLIC"),
         (Os::Windows, "winProgramData") => env_dir("PROGRAMDATA"),
         (Os::Windows, "winDir") => env_dir("WINDIR"),
 
         // -------- Linux / XDG
-        (Os::Linux, "xdgData") => xdg_or(home_dir().map(|h| h.join(".local/share")), "XDG_DATA_HOME"),
-        (Os::Linux, "xdgConfig") => xdg_or(home_dir().map(|h| h.join(".config")), "XDG_CONFIG_HOME"),
-        (Os::Linux, "xdgState") => xdg_or(home_dir().map(|h| h.join(".local/state")), "XDG_STATE_HOME"),
+        (Os::Linux, "xdgData") => {
+            xdg_or(home_dir().map(|h| h.join(".local/share")), "XDG_DATA_HOME")
+        }
+        (Os::Linux, "xdgConfig") => {
+            xdg_or(home_dir().map(|h| h.join(".config")), "XDG_CONFIG_HOME")
+        }
+        (Os::Linux, "xdgState") => {
+            xdg_or(home_dir().map(|h| h.join(".local/state")), "XDG_STATE_HOME")
+        }
         (Os::Linux, "xdgCache") => xdg_or(home_dir().map(|h| h.join(".cache")), "XDG_CACHE_HOME"),
 
         // -------- macOS

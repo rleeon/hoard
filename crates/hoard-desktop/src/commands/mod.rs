@@ -5,4 +5,5 @@
 //! which translate library errors into messages suitable for end users.
 
 pub mod auth;
+pub mod library;
 pub mod misc;

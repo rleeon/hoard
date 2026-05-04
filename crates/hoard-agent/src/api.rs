@@ -135,6 +135,21 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
+    /// Paginated catalog fetch. Used by detection to walk the full ~11k-entry
+    /// games table without blowing the per-request size budget. The server
+    /// caps `limit` at 1000.
+    pub async fn list_games_paged(&self, limit: u32, offset: u32) -> Result<Vec<Game>> {
+        let resp = self
+            .http
+            .get(self.url("/v1/games"))
+            .header("authorization", self.auth_header())
+            .query(&[("limit", limit.to_string()), ("offset", offset.to_string())])
+            .send()
+            .await?;
+        let resp = Self::ok_or_err(resp).await?;
+        Ok(resp.json().await?)
+    }
+
     pub async fn get_game(&self, slug: &str) -> Result<Game> {
         let resp = self
             .http

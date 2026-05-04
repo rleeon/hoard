@@ -49,6 +49,11 @@ pub fn run() {
             commands::auth::logout,
             commands::auth::is_logged_in,
             commands::auth::current_user,
+            commands::library::scan_library,
+            commands::library::cached_detection,
+            commands::library::add_game_to_tracking,
+            commands::library::list_tracked_saves,
+            commands::library::untrack_save,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
