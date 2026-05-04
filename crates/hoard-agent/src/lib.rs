@@ -15,6 +15,7 @@ pub mod credentials;
 pub mod detection;
 pub mod manifest;
 pub mod pathexpand;
+pub mod prefs;
 pub mod restore;
 pub mod state;
 pub mod steam;

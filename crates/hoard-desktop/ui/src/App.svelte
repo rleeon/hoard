@@ -9,6 +9,7 @@
   import OnboardingDone from "./routes/OnboardingDone.svelte";
   import Dashboard from "./routes/Dashboard.svelte";
   import LibraryRoute from "./routes/Library.svelte";
+  import SettingsRoute from "./routes/Settings.svelte";
 
   import Toaster from "./lib/components/Toaster.svelte";
   import { auth, hydrateAuth } from "./lib/stores/auth";
@@ -32,6 +33,7 @@
     "/onboarding/done": OnboardingDone,
     "/dashboard": Dashboard,
     "/library": LibraryRoute,
+    "/settings": SettingsRoute,
   };
 
   let booted = $state(false);
@@ -56,7 +58,7 @@
 
   // App-shell routes share the persistent sidebar; wizard routes own the
   // viewport. Keep this list in sync with `sidebarItems` above.
-  const APP_ROUTE_PREFIXES = ["/dashboard", "/library"];
+  const APP_ROUTE_PREFIXES = ["/dashboard", "/library", "/settings"];
   const isAppRoute = $derived(
     APP_ROUTE_PREFIXES.some((p) => $location.startsWith(p)),
   );
@@ -93,7 +95,9 @@
         {#each sidebarItems as item (item.label)}
           {@const active = $location === item.route}
           {@const enabled =
-            item.route === "/dashboard" || item.route === "/library"}
+            item.route === "/dashboard" ||
+            item.route === "/library" ||
+            item.route === "/settings"}
           <button
             type="button"
             disabled={!enabled}

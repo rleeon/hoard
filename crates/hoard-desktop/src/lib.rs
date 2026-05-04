@@ -6,11 +6,14 @@
 
 mod commands;
 mod state;
+mod tray;
 
-use tauri::Manager;
+use hoard_agent::prefs::Prefs;
+use tauri::{Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 
 use crate::state::AppState;
+use crate::tray::{TrayController, TrayState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,18 +24,19 @@ pub fn run() {
         )
         .init();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         // Single instance: clicking the launcher again brings the existing
         // window to the front instead of spawning a second copy.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
                 let _ = window.show();
                 let _ = window.set_focus();
             }
         }))
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
-            None,
+            Some(vec!["--silent"]),
         ))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
@@ -42,6 +46,7 @@ pub fn run() {
         // We don't read it from Rust today; later phases probably will.
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(AppState::from_disk())
+        .manage(TrayController::default())
         .invoke_handler(tauri::generate_handler![
             commands::misc::greet,
             commands::auth::health_check,
@@ -58,7 +63,72 @@ pub fn run() {
             commands::agent::stop_agent,
             commands::agent::backup_now,
             commands::agent::agent_status,
+            commands::prefs::get_prefs,
+            commands::prefs::save_prefs,
+            commands::prefs::set_autostart,
+            commands::prefs::is_autostart_enabled,
+            commands::prefs::set_tray_state,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .setup(|app| {
+            // Build the tray as soon as we have an AppHandle. Failures here
+            // shouldn't kill the app — Linux desktops without an AppIndicator
+            // host (some minimal Wayland sessions) will reject our tray and
+            // we want to keep running with just the window visible.
+            if let Err(e) = tray::install(&app.handle().clone()) {
+                tracing::warn!(error = %e, "couldn't install tray icon");
+            } else {
+                // Apply offline as the initial state — the agent forwarder
+                // will recolour to idle as soon as it boots.
+                app.state::<TrayController>().set_state(TrayState::Offline);
+            }
+
+            // If prefs say "start minimised", hide the main window before it
+            // ever paints. Combined with autostart, this gives users a quiet
+            // launch — Hoard appears only as a tray icon.
+            if let Ok((prefs, _)) = Prefs::load_default() {
+                if prefs.start_minimised {
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.hide();
+                    }
+                }
+            }
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    // RunEvent loop — we hijack `WindowEvent::CloseRequested` so the X button
+    // hides the window instead of quitting (when the user has opted into
+    // close-to-tray, which is the default). Quitting goes through the tray's
+    // Quit menu item or `app.exit(0)`.
+    app.run(|app_handle, event| {
+        if let RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::CloseRequested { api, .. },
+            ..
+        } = event
+        {
+            if label != "main" {
+                return;
+            }
+            // Read prefs lazily — the user may have toggled close-to-tray
+            // between launches. If reading fails for any reason, fall back
+            // to the safe default of "hide the window" so a backup in flight
+            // isn't dropped.
+            let close_to_tray = Prefs::load_default()
+                .map(|(p, _)| p.close_to_tray)
+                .unwrap_or(true);
+
+            if close_to_tray {
+                api.prevent_close();
+                if let Some(window) = app_handle.get_webview_window(&label) {
+                    let _ = window.hide();
+                }
+                // The frontend pops a one-time toast explaining we're still
+                // running. That's gated by `Prefs::seen_tray_hint` so power
+                // users don't see it after they've understood the deal.
+                let _ = tauri::Emitter::emit(app_handle, "tray://hidden-to-tray", ());
+            }
+        }
+    });
 }

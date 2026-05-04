@@ -8,3 +8,4 @@ pub mod agent;
 pub mod auth;
 pub mod library;
 pub mod misc;
+pub mod prefs;

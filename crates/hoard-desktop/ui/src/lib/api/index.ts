@@ -176,3 +176,51 @@ export function backupNow(save_id: string): Promise<void> {
 export function agentStatus(): Promise<AgentStatus> {
   return invoke<AgentStatus>("agent_status");
 }
+
+// ---------------------------------------------------------------------------
+// Preferences + tray
+// ---------------------------------------------------------------------------
+
+/** Mirrors `hoard_agent::prefs::Prefs`. Persisted to `prefs.json`. */
+export type Prefs = {
+  close_to_tray: boolean;
+  notify_on_success: boolean;
+  notify_on_failure: boolean;
+  autostart: boolean;
+  start_minimised: boolean;
+  seen_tray_hint: boolean;
+};
+
+export type TrayStateName =
+  | "idle"
+  | "running"
+  | "uploading"
+  | "ok"
+  | "error"
+  | "offline";
+
+/** Read the prefs file from disk. */
+export function getPrefs(): Promise<Prefs> {
+  return invoke<Prefs>("get_prefs");
+}
+
+/** Persist prefs. Returns the saved object so the caller can hydrate stores. */
+export function savePrefs(prefs: Prefs): Promise<Prefs> {
+  return invoke<Prefs>("save_prefs", { prefs });
+}
+
+/** Toggle the launcher autostart entry. Returns the resulting state. */
+export function setAutostart(enabled: boolean): Promise<boolean> {
+  return invoke<boolean>("set_autostart", { enabled });
+}
+
+/** Read the autostart entry's current state from the OS. */
+export function isAutostartEnabled(): Promise<boolean> {
+  return invoke<boolean>("is_autostart_enabled");
+}
+
+/** Recolour the tray icon. The frontend derives the global state from the
+ * activity store and pushes it here. */
+export function setTrayState(state: TrayStateName): Promise<void> {
+  return invoke<void>("set_tray_state", { state });
+}

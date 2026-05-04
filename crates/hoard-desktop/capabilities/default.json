@@ -9,6 +9,7 @@
     "dialog:default",
     "notification:default",
     "os:default",
-    "store:default"
+    "store:default",
+    "autostart:default"
   ]
 }
