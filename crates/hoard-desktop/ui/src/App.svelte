@@ -97,7 +97,7 @@
         </div>
         <div>
           <div class="text-base font-semibold tracking-tight">Hoard</div>
-          <div class="text-xs text-zinc-500">v0.2.0-dev</div>
+          <div class="text-xs text-zinc-500">v0.2.0</div>
         </div>
       </div>
 

@@ -50,6 +50,18 @@ pub struct Prefs {
     /// the tray" first-time toast. Suppresses subsequent toasts.
     #[serde(default)]
     pub seen_tray_hint: bool,
+
+    /// When `true`, the desktop app may send anonymous usage pings to the
+    /// project's telemetry endpoint (currently: an aggregate counter for
+    /// "successful backup" + "restore" + "first-run completed" — never the
+    /// game name, save path, file content, or token).
+    ///
+    /// Defaults to `false`. We only ever look at this flag if the user
+    /// explicitly turned it on. The actual sender is not implemented yet
+    /// (v0.2 ships with the toggle as a no-op so we can roll it out without
+    /// a settings migration); see `docs/privacy.md`.
+    #[serde(default)]
+    pub anonymous_telemetry: bool,
 }
 
 fn default_true() -> bool {
@@ -65,6 +77,7 @@ impl Default for Prefs {
             autostart: false,
             start_minimised: false,
             seen_tray_hint: false,
+            anonymous_telemetry: false,
         }
     }
 }

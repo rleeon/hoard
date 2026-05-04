@@ -20,6 +20,7 @@
     Info,
     FileText,
     ChevronRight,
+    BarChart3,
   } from "lucide-svelte";
 
   import Card from "../lib/components/Card.svelte";
@@ -116,6 +117,16 @@
     },
   ];
 
+  const privacyRows: Row[] = [
+    {
+      field: "anonymous_telemetry",
+      label: "Send anonymous usage pings",
+      description:
+        "Help us see how many people are using Hoard. We only count events (successful backup, restore, first-run completed) — never your username, game names, save paths, file contents, or tokens. Off by default.",
+      icon: BarChart3,
+    },
+  ];
+
   const notifyRows: Row[] = [
     {
       field: "notify_on_success",
@@ -205,6 +216,24 @@
 
       <section>
         <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+          Privacy
+        </h2>
+        <Card>
+          <div class="divide-y divide-zinc-800">
+            {#each privacyRows as row (row.field)}
+              <SettingsRow
+                {row}
+                value={$prefs[row.field] as boolean}
+                disabled={saving === row.field}
+                onChange={(v) => toggle(row.field, v)}
+              />
+            {/each}
+          </div>
+        </Card>
+      </section>
+
+      <section>
+        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
           Account
         </h2>
         <Card>
@@ -267,7 +296,7 @@
           <div class="flex items-start gap-3 text-sm text-zinc-300">
             <Info size={16} class="mt-0.5 shrink-0 text-zinc-500" />
             <div>
-              <p>Hoard 0.2.0-dev — self-hosted save sync.</p>
+              <p>Hoard 0.2.0 — self-hosted save sync.</p>
               <p class="mt-1 text-xs text-zinc-500">
                 Your server, your data. Source code & docs at hoard.dev.
               </p>

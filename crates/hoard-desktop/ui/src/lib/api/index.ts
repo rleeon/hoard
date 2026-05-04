@@ -190,6 +190,7 @@ export type Prefs = {
   autostart: boolean;
   start_minimised: boolean;
   seen_tray_hint: boolean;
+  anonymous_telemetry: boolean;
 };
 
 export type TrayStateName =
