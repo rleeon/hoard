@@ -1,0 +1,164 @@
+name: Release (desktop)
+
+# Runs alongside `release.yml` on the same `v*.*.*` tag. The server release
+# workflow handles the headless tarball; this one packages the Tauri desktop
+# app into native installers and uploads them as additional release assets.
+#
+# Code signing isn't wired in for v0.2 — Linux/Windows/macOS users will see
+# their OS's "unverified developer" warning on first run. See
+# `docs/install-client.md` for the workaround. Once we have signing certs
+# we'll set the relevant env vars (TAURI_SIGNING_*, APPLE_*, WINDOWS_*) as
+# repository secrets and the Tauri Action will pick them up automatically.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            label: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+            args: ""
+          - os: windows-latest
+            label: windows-x86_64
+            target: x86_64-pc-windows-msvc
+            args: ""
+          - os: macos-13
+            label: macos-x86_64
+            target: x86_64-apple-darwin
+            args: "--target x86_64-apple-darwin"
+          - os: macos-14
+            label: macos-aarch64
+            target: aarch64-apple-darwin
+            args: "--target aarch64-apple-darwin"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: crates/hoard-desktop/ui/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Tauri's `target/` lives under `crates/hoard-desktop/`-adjacent
+          # paths in our setup — but the workspace target is the canonical
+          # one, so default cache key works.
+          shared-key: desktop-${{ matrix.label }}
+
+      - name: System deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install frontend deps
+        run: pnpm --dir crates/hoard-desktop/ui install --frozen-lockfile
+
+      - name: Build desktop bundle
+        uses: tauri-apps/tauri-action@v0
+        env:
+          # When we set up code signing, these are the env vars the Tauri
+          # action picks up:
+          #   TAURI_SIGNING_PRIVATE_KEY        — for the auto-updater
+          #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          #   APPLE_CERTIFICATE                — macOS code-signing
+          #   APPLE_CERTIFICATE_PASSWORD
+          #   APPLE_SIGNING_IDENTITY
+          #   APPLE_ID
+          #   APPLE_TEAM_ID
+          #   APPLE_PASSWORD                   — app-specific notarization pwd
+          # Until they're populated, the action falls back to unsigned bundles.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: crates/hoard-desktop
+          args: ${{ matrix.args }}
+          # We don't let tauri-action create the GitHub release itself —
+          # `release.yml` is the source of truth for the release object.
+          # We only want it to build, then we upload bundles below.
+          tagName: ""
+          releaseName: ""
+
+      - name: Collect bundles
+        id: collect
+        shell: bash
+        run: |
+          set -e
+          mkdir -p dist
+          # Tauri spits everything into target/<triple>/release/bundle/<format>/
+          BUNDLE_ROOT="target/${{ matrix.target }}/release/bundle"
+          # Linux bundles can also live under target/release/bundle when no
+          # explicit target was passed.
+          if [ ! -d "$BUNDLE_ROOT" ]; then
+            BUNDLE_ROOT="target/release/bundle"
+          fi
+          echo "Looking under $BUNDLE_ROOT"
+          find "$BUNDLE_ROOT" -type f \
+            \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \
+               -o -name '*.msi' -o -name '*.exe' \
+               -o -name '*.dmg' -o -name '*.app.tar.gz' \) \
+            -exec cp -v {} dist/ \; || true
+          ls -la dist/
+          ( cd dist && for f in *; do sha256sum "$f" > "$f.sha256"; done )
+          echo "label=${{ matrix.label }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hoard-desktop-${{ matrix.label }}
+          path: dist/*
+
+  publish:
+    name: Attach to release
+    needs: build
+    runs-on: ubuntu-latest
+    # When triggered manually we don't have a release to attach to — skip.
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: List
+        run: ls -la dist/
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          # Don't recreate the release; just upload more files into it.
+          files: |
+            dist/*
+          fail_on_unmatched_files: false

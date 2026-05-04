@@ -27,7 +27,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "appimage", "nsis"],
+    "targets": ["deb", "rpm", "appimage", "nsis", "msi", "app", "dmg"],
+    "publisher": "Hoard",
+    "homepage": "https://github.com/hoarddev/hoard",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -37,6 +39,26 @@
     ],
     "category": "Utility",
     "shortDescription": "Self-hosted cloud sync for game saves",
-    "longDescription": "Hoard syncs your game saves to your own server. Auto-detect games, auto-backup when you stop playing, restore previous versions any time."
+    "longDescription": "Hoard syncs your game saves to your own server. Auto-detect games, auto-backup when you stop playing, restore previous versions any time.",
+    "linux": {
+      "deb": {
+        "section": "utils",
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "installMode": "perMachine",
+        "languages": ["English"]
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "exceptionDomain": ""
+    }
   }
 }
