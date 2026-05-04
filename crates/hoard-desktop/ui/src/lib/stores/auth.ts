@@ -10,6 +10,7 @@
 import { writable, derived, type Readable } from "svelte/store";
 import * as api from "../api";
 import type { UserInfo } from "../api";
+import { bootAgent, shutdownAgent } from "./agent";
 
 type AuthState = {
   /** `null` while we haven't asked Rust yet; after that it's a concrete value. */
@@ -34,6 +35,14 @@ export async function hydrateAuth(): Promise<void> {
   try {
     const user = await api.currentUser();
     internal.set({ user, hydrated: true });
+    if (user) {
+      // Resume background watching for an already-logged-in session.
+      // Failures here shouldn't block the UI — the user can hit Settings →
+      // "Restart agent" later if it didn't come up.
+      bootAgent().catch((e) =>
+        console.warn("agent boot failed on hydrate:", e),
+      );
+    }
   } catch (e) {
     // currentUser shouldn't throw, but if Tauri is broken we still want the
     // UI to show *something* rather than spin forever.
@@ -46,11 +55,13 @@ export async function hydrateAuth(): Promise<void> {
 export async function signIn(url: string, token: string): Promise<UserInfo> {
   const user = await api.login(url, token);
   internal.set({ user, hydrated: true });
+  bootAgent().catch((e) => console.warn("agent boot failed on signIn:", e));
   return user;
 }
 
 /** Wipe credentials and put the wizard back on screen. */
 export async function signOut(): Promise<void> {
+  await shutdownAgent();
   await api.logout();
   internal.set({ user: null, hydrated: true });
 }

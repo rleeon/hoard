@@ -7,6 +7,7 @@
 //! Higher-level features (game detection, process watching, scheduling) will
 //! land here in later phases. Today the surface is intentionally small.
 
+pub mod agent;
 pub mod api;
 pub mod backup;
 pub mod config;

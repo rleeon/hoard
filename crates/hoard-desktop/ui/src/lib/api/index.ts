@@ -120,3 +120,59 @@ export function listTrackedSaves(): Promise<TrackedSave[]> {
 export function untrackSave(save_id: string): Promise<void> {
   return invoke<void>("untrack_save", { saveId: save_id });
 }
+
+// ---------------------------------------------------------------------------
+// Live agent (process + filesystem watcher)
+// ---------------------------------------------------------------------------
+
+export type AgentStatus = {
+  running: boolean;
+  watched_count: number;
+};
+
+export type BackupReason = "filesystem_settled" | "game_stopped" | "manual";
+
+/** Tagged union mirroring `hoard_agent::agent::AgentEvent`. The `type`
+ * discriminator is what `serde(tag = "type")` emits on the Rust side. */
+export type AgentEvent =
+  | { type: "game_started"; save_id: string; game_slug: string }
+  | { type: "game_stopped"; save_id: string; game_slug: string }
+  | {
+      type: "backup_scheduled";
+      save_id: string;
+      delay_ms: number;
+      reason: BackupReason;
+    }
+  | { type: "backup_started"; save_id: string }
+  | {
+      type: "backup_success";
+      save_id: string;
+      version_num: number;
+      total_bytes: number;
+    }
+  | {
+      type: "backup_failed";
+      save_id: string;
+      error: string;
+      will_retry: boolean;
+    };
+
+/** Boot the live agent and start emitting `agent://*` events. */
+export function startAgent(): Promise<AgentStatus> {
+  return invoke<AgentStatus>("start_agent");
+}
+
+/** Cleanly stop the agent (logout, app exit). */
+export function stopAgent(): Promise<void> {
+  return invoke<void>("stop_agent");
+}
+
+/** Force a backup right now, bypassing debounce. */
+export function backupNow(save_id: string): Promise<void> {
+  return invoke<void>("backup_now", { saveId: save_id });
+}
+
+/** Lightweight status accessor. */
+export function agentStatus(): Promise<AgentStatus> {
+  return invoke<AgentStatus>("agent_status");
+}

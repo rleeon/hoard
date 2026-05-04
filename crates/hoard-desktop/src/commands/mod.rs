@@ -4,6 +4,7 @@
 //! `hoard-agent` or `hoard-core` directly — it goes through these handlers,
 //! which translate library errors into messages suitable for end users.
 
+pub mod agent;
 pub mod auth;
 pub mod library;
 pub mod misc;

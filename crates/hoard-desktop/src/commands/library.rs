@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use time::OffsetDateTime;
 
+use super::agent::{attach_save_if_running, detach_save_if_running, watched_save_from};
 use super::auth::pretty_error;
 use crate::state::AppState;
 
@@ -136,6 +137,16 @@ pub async fn add_game_to_tracking(
     );
     cli_state.save(&path).map_err(|e| e.to_string())?;
 
+    // Attach to the running agent so it starts watching immediately.
+    let watched = watched_save_from(
+        save.id.clone(),
+        save.game_slug.clone(),
+        args.game_slug.clone(),
+        save.label.clone(),
+        local_path.clone(),
+    );
+    attach_save_if_running(&state, watched).await;
+
     Ok(TrackedSave {
         save_id: save.id,
         game_slug: save.game_slug,
@@ -177,10 +188,11 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
 /// Stop tracking a save. Removes the local-state row but leaves server data
 /// intact (delete from the History view if you want that gone too).
 #[tauri::command]
-pub fn untrack_save(save_id: String) -> Result<(), String> {
+pub async fn untrack_save(save_id: String, state: State<'_, AppState>) -> Result<(), String> {
     let (mut cli_state, path) = CliState::load_default().map_err(|e| e.to_string())?;
     cli_state.saves.remove(&save_id);
     cli_state.save(&path).map_err(|e| e.to_string())?;
+    detach_save_if_running(&state, save_id).await;
     Ok(())
 }
 

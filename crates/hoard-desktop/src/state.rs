@@ -5,6 +5,8 @@
 
 use std::sync::Mutex;
 
+use hoard_agent::agent::AgentHandle;
+
 use crate::commands::auth::UserInfo;
 use crate::commands::library::DetectionCache;
 
@@ -16,6 +18,9 @@ pub struct AppState {
     /// Last successful auto-detection report. Lets the Library page render
     /// immediately on revisit without forcing another disk sweep.
     pub detection_cache: DetectionCache,
+    /// Live agent handle. Populated lazily by the agent bootstrapper; tests
+    /// and the logged-out state both leave it `None`.
+    pub agent: Mutex<Option<AgentHandle>>,
 }
 
 impl AppState {
@@ -39,6 +44,7 @@ impl AppState {
         Self {
             user: Mutex::new(user),
             detection_cache: DetectionCache::default(),
+            agent: Mutex::new(None),
         }
     }
 }
