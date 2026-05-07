@@ -215,11 +215,8 @@ pub async fn restore_snapshot(
             let app_for_progress = app.clone();
             let save_id_for_progress = save_id.clone();
             emit_phase(&app, &save_id, version, RestorePhase::PreBackup, 0, 0);
-            let outcome = backup::upload_directory(
-                &client,
-                &save_id,
-                &local_path,
-                move |uploaded, total| {
+            let outcome =
+                backup::upload_directory(&client, &save_id, &local_path, move |uploaded, total| {
                     let _ = app_for_progress.emit(
                         "restore://progress",
                         RestoreProgress {
@@ -230,10 +227,9 @@ pub async fn restore_snapshot(
                             total,
                         },
                     );
-                },
-            )
-            .await
-            .map_err(pretty_error)?;
+                })
+                .await
+                .map_err(pretty_error)?;
             safety_version = Some(outcome.snapshot.version_num);
         }
     }
@@ -309,9 +305,10 @@ pub async fn set_save_paused(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let (mut cli_state, path) = CliState::load_default().map_err(|e| e.to_string())?;
-    let entry = cli_state.saves.get_mut(&save_id).ok_or_else(|| {
-        "That save isn't tracked on this machine — nothing to pause.".to_string()
-    })?;
+    let entry = cli_state
+        .saves
+        .get_mut(&save_id)
+        .ok_or_else(|| "That save isn't tracked on this machine — nothing to pause.".to_string())?;
     entry.paused = paused;
     let snapshot = entry.clone();
     cli_state.save(&path).map_err(|e| e.to_string())?;
@@ -408,11 +405,7 @@ pub fn tail_logs(max_lines: Option<usize>) -> Result<Vec<LogLine>, String> {
     let mut entries: Vec<_> = std::fs::read_dir(&dir)
         .map_err(|e| format!("reading {}: {e}", dir.display()))?
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .starts_with("agent.log")
-        })
+        .filter(|e| e.file_name().to_string_lossy().starts_with("agent.log"))
         .map(|e| e.path())
         .collect();
     entries.sort();
@@ -424,7 +417,10 @@ pub fn tail_logs(max_lines: Option<usize>) -> Result<Vec<LogLine>, String> {
         .map_err(|e| format!("reading {}: {e}", latest.display()))?;
     let lines: Vec<&str> = text.lines().collect();
     let start = lines.len().saturating_sub(cap);
-    Ok(lines[start..].iter().map(|raw| parse_log_line(raw)).collect())
+    Ok(lines[start..]
+        .iter()
+        .map(|raw| parse_log_line(raw))
+        .collect())
 }
 
 /// Best-effort parse of a tracing pretty-format line into (timestamp, level,
@@ -472,4 +468,3 @@ pub fn logs_path() -> Result<String, String> {
     let dir = CliConfig::logs_dir().map_err(|e| e.to_string())?;
     Ok(dir.join("agent.log").to_string_lossy().into_owned())
 }
-

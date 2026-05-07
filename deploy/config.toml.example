@@ -7,7 +7,7 @@
 # Listen address. Use 0.0.0.0 to bind on all interfaces.
 host = "0.0.0.0"
 # TCP port to listen on.
-port = 8080
+port = 8082
 # Public URL for CORS and self-referencing links.
 public_url = "https://hoard.example.com"
 
