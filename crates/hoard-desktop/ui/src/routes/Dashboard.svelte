@@ -23,9 +23,10 @@
 
   import Button from "../lib/components/Button.svelte";
   import Card from "../lib/components/Card.svelte";
+  import QuotaBar from "../lib/components/QuotaBar.svelte";
   import * as api from "../lib/api";
   import type { TrackedSave } from "../lib/api";
-  import { auth, signOut } from "../lib/stores/auth";
+  import { auth, refreshQuota, signOut } from "../lib/stores/auth";
   import { activity, status } from "../lib/stores/agent";
   import { toastError, toastSuccess } from "../lib/stores/toasts";
 
@@ -37,6 +38,16 @@
   // Tick once a second so "next backup in 28s" countdowns animate.
   $effect(() => {
     const id = setInterval(() => (now = Date.now()), 1000);
+    return () => clearInterval(id);
+  });
+
+  // Poll the storage quota every 30s while the dashboard is open so the
+  // QuotaBar tracks reality after backups land. The first poll runs
+  // immediately on mount via `hydrateAuth`, so this just keeps it warm.
+  $effect(() => {
+    const id = setInterval(() => {
+      refreshQuota().catch(() => {});
+    }, 30_000);
     return () => clearInterval(id);
   });
 
@@ -150,6 +161,12 @@
       Sign out
     </Button>
   </header>
+
+  {#if $auth.user}
+    <div class="mb-4">
+      <QuotaBar user={$auth.user} />
+    </div>
+  {/if}
 
   {#if loading}
     <Card>

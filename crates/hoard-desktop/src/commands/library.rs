@@ -59,6 +59,12 @@ pub struct TrackedSave {
     /// modding session.
     #[serde(default)]
     pub paused: bool,
+    /// Total bytes this save occupies on the server, summed across every
+    /// non-deleted snapshot. The server fills this in on `/v1/saves`; we
+    /// surface it so the Library page can show "23.4 MB" next to each
+    /// game.
+    #[serde(default)]
+    pub total_size_bytes: i64,
 }
 
 /// Run a full auto-detection sweep. Emits `library://scan-progress` events
@@ -162,6 +168,8 @@ pub async fn add_game_to_tracking(
         last_version_num: None,
         last_backup_at: None,
         paused: false,
+        // Brand-new save — nothing uploaded yet.
+        total_size_bytes: 0,
     })
 }
 
@@ -189,6 +197,7 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
             last_version_num: s.latest_version_num,
             last_backup_at: format_optional_time(Some(s.updated_at)),
             paused,
+            total_size_bytes: s.total_size_bytes.unwrap_or(0),
         });
     }
     Ok(out)

@@ -29,12 +29,21 @@ pub struct HealthInfo {
 }
 
 /// Verified user identity returned by `login` and `current_user`.
+///
+/// Quota fields come from the server's `whoami` response (extended in
+/// v0.3, see `hoard-server/src/routes/auth.rs`). `is_local_server` is a
+/// client-side classification used by the UI to pick MB display
+/// (self-hosted at home) vs % display (external SaaS server) — see
+/// [`classify_server`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
     pub user_id: String,
     pub username: String,
     pub is_admin: bool,
     pub server_url: String,
+    pub storage_used_bytes: i64,
+    pub storage_quota_bytes: i64,
+    pub is_local_server: bool,
 }
 
 /// Probe `/v1/health` without auth. Frontend uses this in the wizard to give
@@ -83,6 +92,9 @@ pub async fn login(
         username: who.username.clone(),
         is_admin: who.is_admin,
         server_url: url.clone(),
+        storage_used_bytes: who.storage_used_bytes,
+        storage_quota_bytes: who.storage_quota_bytes,
+        is_local_server: classify_server(&url),
     };
 
     credentials::save(&Credentials {
@@ -115,6 +127,74 @@ pub fn logout(state: State<'_, AppState>) -> Result<(), String> {
     credentials::clear().map_err(|e| format!("Couldn't clear credentials: {e}"))?;
     *state.user.lock().unwrap() = None;
     Ok(())
+}
+
+/// Re-fetch quota from the server. Cheap (one HTTP round-trip, no body)
+/// — the dashboard polls this every ~30s while open so the % bar tracks
+/// reality without forcing a full re-login. Updates the cached
+/// `UserInfo` in place and returns the new copy for convenience.
+#[tauri::command]
+pub async fn refresh_quota(state: State<'_, AppState>) -> Result<UserInfo, String> {
+    let snapshot = state.user.lock().unwrap().clone();
+    let Some(current) = snapshot else {
+        return Err("Not logged in.".into());
+    };
+    let creds = credentials::load()
+        .map_err(|e| format!("Couldn't load credentials: {e}"))?
+        .ok_or_else(|| "Not logged in.".to_string())?;
+    let client = ApiClient::new(creds.url, creds.token).map_err(pretty_error)?;
+    let who = client.whoami().await.map_err(pretty_error)?;
+
+    let updated = UserInfo {
+        storage_used_bytes: who.storage_used_bytes,
+        storage_quota_bytes: who.storage_quota_bytes,
+        ..current
+    };
+    *state.user.lock().unwrap() = Some(updated.clone());
+    Ok(updated)
+}
+
+/// Decide whether `url` points at a server we should treat as
+/// "self-hosted at home" (display sizes in MB) or "external SaaS"
+/// (display as % of quota).
+///
+/// Heuristic: anything on localhost, an RFC1918 private IP, or an
+/// `.local` mDNS hostname is treated as local. Everything else —
+/// including a publicly-routable IP behind a home dynamic-DNS — is
+/// treated as external. Worst case the user sees % when they wanted
+/// MB; both views show the same data.
+pub(crate) fn classify_server(url: &str) -> bool {
+    let host = match url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+    {
+        Some(rest) => rest,
+        None => return false,
+    };
+    // Trim trailing path / port.
+    let host = host
+        .split('/')
+        .next()
+        .unwrap_or(host)
+        .split(':')
+        .next()
+        .unwrap_or(host)
+        .trim_end_matches('.')
+        .to_lowercase();
+
+    if host == "localhost" || host == "127.0.0.1" || host == "::1" || host.ends_with(".local") {
+        return true;
+    }
+    // RFC1918 IPv4 private ranges. We accept v4 only; an IPv6 ULA
+    // (`fc00::/7`) check could go here later if needed.
+    if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
+        let octs = ip.octets();
+        let private = octs[0] == 10
+            || (octs[0] == 172 && (16..=31).contains(&octs[1]))
+            || (octs[0] == 192 && octs[1] == 168);
+        return private;
+    }
+    false
 }
 
 // ---- helpers ----------------------------------------------------------

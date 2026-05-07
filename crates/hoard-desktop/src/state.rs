@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use hoard_agent::agent::AgentHandle;
 
-use crate::commands::auth::UserInfo;
+use crate::commands::auth::{classify_server, UserInfo};
 use crate::commands::library::DetectionCache;
 
 #[derive(Default)]
@@ -29,12 +29,20 @@ impl AppState {
     /// goes back through the onboarding wizard.
     pub fn from_disk() -> Self {
         let user = match hoard_agent::credentials::load() {
-            Ok(Some(creds)) => creds.user.map(|u| UserInfo {
-                user_id: u.user_id,
-                username: u.username,
-                is_admin: u.is_admin,
-                server_url: creds.url,
-            }),
+            Ok(Some(creds)) => {
+                let server_url = creds.url.clone();
+                creds.user.map(|u| UserInfo {
+                    user_id: u.user_id,
+                    username: u.username,
+                    is_admin: u.is_admin,
+                    is_local_server: classify_server(&server_url),
+                    // Quota isn't cached on disk — the UI calls
+                    // `refresh_quota` shortly after boot to fill it in.
+                    storage_used_bytes: 0,
+                    storage_quota_bytes: 0,
+                    server_url,
+                })
+            }
             Ok(None) => None,
             Err(e) => {
                 tracing::warn!(error = %e, "couldn't load saved credentials; starting fresh");

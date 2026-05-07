@@ -19,6 +19,14 @@ export type UserInfo = {
   username: string;
   is_admin: boolean;
   server_url: string;
+  /** Bytes the user is currently using on the server. Returned by `whoami`. */
+  storage_used_bytes: number;
+  /** Quota cap in bytes (0 = unlimited). */
+  storage_quota_bytes: number;
+  /** True when the URL points at a self-hosted server (localhost / RFC1918 /
+   *  `.local`). The dashboard uses this to show MB ("23 MB used") instead of
+   *  "% of quota" — for a server you own at home a quota bar is meaningless. */
+  is_local_server: boolean;
 };
 
 /** Anonymous probe — used by the wizard to validate the server URL. */
@@ -44,6 +52,13 @@ export function currentUser(): Promise<UserInfo | null> {
 /** Wipe stored credentials and the in-memory cache. */
 export function logout(): Promise<void> {
   return invoke<void>("logout");
+}
+
+/** Re-fetch quota from the server. Cheap (one round-trip, no body) — call
+ *  this on dashboard mount and every ~30s while it's open. Returns the
+ *  updated `UserInfo` for stores to swap in. */
+export function refreshQuota(): Promise<UserInfo> {
+  return invoke<UserInfo>("refresh_quota");
 }
 
 /** Phase 0 sanity-check command, kept for the dev "ping Rust" widget. */
@@ -90,6 +105,8 @@ export type TrackedSave = {
   last_version_num: number | null;
   last_backup_at: string | null;
   paused: boolean;
+  /** Bytes occupied on the server (sum of non-deleted snapshots). */
+  total_size_bytes: number;
 };
 
 /** Run a full auto-detection sweep. Subscribe to `library://scan-progress`

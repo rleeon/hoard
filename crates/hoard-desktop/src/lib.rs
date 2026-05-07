@@ -99,6 +99,7 @@ pub fn run() {
             commands::auth::logout,
             commands::auth::is_logged_in,
             commands::auth::current_user,
+            commands::auth::refresh_quota,
             commands::library::scan_library,
             commands::library::cached_detection,
             commands::library::add_game_to_tracking,

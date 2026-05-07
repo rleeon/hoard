@@ -34,6 +34,7 @@ export async function hydratePrefs(): Promise<void> {
       autostart: false,
       start_minimised: false,
       seen_tray_hint: false,
+      anonymous_telemetry: false,
     });
   }
 }

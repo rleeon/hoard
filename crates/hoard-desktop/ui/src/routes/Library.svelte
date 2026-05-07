@@ -151,6 +151,29 @@
     if (!progress || progress.total === 0) return 0;
     return Math.min(100, Math.round((progress.done / progress.total) * 100));
   });
+
+  // Same byte-formatter as QuotaBar; cheap enough to duplicate rather than
+  // pull a util module for two callers.
+  function fmtBytes(n: number): string {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+
+  // Sum the on-server disk usage of every tracked save so the section
+  // header can show "3 games · 142 MB" at a glance.
+  const trackedTotalBytes = $derived(
+    tracked.reduce((acc, s) => acc + (s.total_size_bytes ?? 0), 0),
+  );
+
+  // Map slug → tracked entry so the detection cards can show a tiny size
+  // pill on already-tracked games without an extra render pass.
+  const trackedBySlug = $derived.by(() => {
+    const m = new Map<string, TrackedSave>();
+    for (const s of tracked) m.set(s.game_slug, s);
+    return m;
+  });
 </script>
 
 <div class="mx-auto max-w-6xl px-8 py-8">
@@ -175,6 +198,53 @@
       {scanning ? "Scanning…" : report ? "Rescan" : "Scan now"}
     </Button>
   </header>
+
+  {#if tracked.length > 0}
+    <!-- Per-game disk-usage strip. Shows what Hoard is actively backing up
+         on this account and how much space each game occupies on the
+         server. Sits above the detection results so the user always sees
+         their commitment first. -->
+    <section class="mb-6">
+      <div
+        class="mb-2 flex items-center justify-between gap-3 text-xs uppercase tracking-wide text-zinc-500"
+      >
+        <span>Tracked games</span>
+        <span class="tabular-nums normal-case tracking-normal text-zinc-400">
+          {tracked.length} game{tracked.length === 1 ? "" : "s"} ·
+          {fmtBytes(trackedTotalBytes)}
+        </span>
+      </div>
+      <div
+        class="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
+      >
+        {#each tracked as save (save.save_id)}
+          <div
+            class="flex items-center justify-between gap-2 rounded-md border border-zinc-800 bg-zinc-900/40 p-3"
+          >
+            <div class="min-w-0">
+              <p
+                class="truncate text-sm font-medium text-zinc-100"
+                title={save.game_slug}
+              >
+                {save.game_slug}
+              </p>
+              <p class="truncate text-[11px] text-zinc-500">
+                {save.label}
+              </p>
+            </div>
+            <span
+              class="shrink-0 rounded bg-zinc-800 px-2 py-0.5 text-xs font-medium tabular-nums text-zinc-300"
+              title="Total bytes stored on the server (sum of snapshots)"
+            >
+              {save.total_size_bytes > 0
+                ? fmtBytes(save.total_size_bytes)
+                : "—"}
+            </span>
+          </div>
+        {/each}
+      </div>
+    </section>
+  {/if}
 
   {#if scanning && progress}
     <div class="mb-6 rounded-md border border-zinc-800 bg-zinc-900/50 p-4">
@@ -295,11 +365,17 @@
 
             <div class="mt-4 flex items-center gap-2">
               {#if isTracked}
+                {@const t = trackedBySlug.get(game.slug)}
                 <span
                   class="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-500/30"
                 >
                   <Check size={12} />
                   Tracked
+                  {#if t && t.total_size_bytes > 0}
+                    <span class="text-emerald-400/70 tabular-nums">
+                      · {fmtBytes(t.total_size_bytes)}
+                    </span>
+                  {/if}
                 </span>
               {:else}
                 <Button

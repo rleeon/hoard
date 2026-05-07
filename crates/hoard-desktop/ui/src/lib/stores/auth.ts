@@ -42,12 +42,31 @@ export async function hydrateAuth(): Promise<void> {
       bootAgent().catch((e) =>
         console.warn("agent boot failed on hydrate:", e),
       );
+      // The cached UserInfo from disk has zero quota (we don't persist it
+      // — see commands/auth.rs). Trigger a fresh whoami so the dashboard
+      // shows real numbers as soon as it mounts.
+      refreshQuota().catch((e) =>
+        console.warn("initial refreshQuota failed:", e),
+      );
     }
   } catch (e) {
     // currentUser shouldn't throw, but if Tauri is broken we still want the
     // UI to show *something* rather than spin forever.
     console.error("hydrateAuth failed:", e);
     internal.set({ user: null, hydrated: true });
+  }
+}
+
+/** Re-fetch storage quota and update the cached user in place. The dashboard
+ *  polls this so the "% used" / "MB used" indicator tracks reality without
+ *  forcing a full re-login. Silently no-ops when not signed in. */
+export async function refreshQuota(): Promise<void> {
+  try {
+    const user = await api.refreshQuota();
+    internal.update(($s) => ({ ...$s, user }));
+  } catch (e) {
+    // Network blips shouldn't blow up the UI — keep the last known numbers.
+    console.warn("refreshQuota failed:", e);
   }
 }
 
