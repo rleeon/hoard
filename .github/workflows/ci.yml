@@ -26,6 +26,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: crates/hoard-desktop/ui/pnpm-lock.yaml
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -40,6 +49,13 @@ jobs:
             librsvg2-dev \
             patchelf \
             libglib2.0-dev
+      # The desktop crate's `tauri::generate_context!()` proc-macro validates
+      # `frontendDist` ("./ui/dist") at compile time, so the frontend must be
+      # built before any cargo invocation that touches hoard-desktop.
+      - name: Install frontend deps
+        run: pnpm --dir crates/hoard-desktop/ui install --frozen-lockfile
+      - name: Build frontend
+        run: pnpm --dir crates/hoard-desktop/ui build
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
   build-test:
@@ -51,6 +67,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: crates/hoard-desktop/ui/pnpm-lock.yaml
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: System deps
@@ -64,5 +89,12 @@ jobs:
             librsvg2-dev \
             patchelf \
             libglib2.0-dev
+      # The desktop crate's `tauri::generate_context!()` proc-macro validates
+      # `frontendDist` ("./ui/dist") at compile time, so the frontend must be
+      # built before any cargo invocation that touches hoard-desktop.
+      - name: Install frontend deps
+        run: pnpm --dir crates/hoard-desktop/ui install --frozen-lockfile
+      - name: Build frontend
+        run: pnpm --dir crates/hoard-desktop/ui build
       - run: cargo build --workspace --verbose
       - run: cargo test --workspace --verbose
