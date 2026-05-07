@@ -14,6 +14,14 @@ name = "hoard_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 path = "src/lib.rs"
 
+[features]
+# Enables Tauri's custom-protocol asset loader so production builds serve the
+# bundled frontend from `tauri://localhost` instead of falling back to the
+# Vite dev URL. Default-on so plain `cargo build --release` produces a
+# working app; `cargo tauri dev` / `--no-default-features` opt out for HMR.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
