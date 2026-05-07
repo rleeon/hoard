@@ -31,7 +31,15 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: System deps
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libssl-dev pkg-config \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libglib2.0-dev
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
   build-test:
@@ -47,6 +55,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: System deps
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libssl-dev pkg-config \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libglib2.0-dev
       - run: cargo build --workspace --verbose
       - run: cargo test --workspace --verbose
