@@ -64,14 +64,23 @@ pub enum LogFormat {
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() {
+            let mut tried = vec![path.display().to_string()];
+            if let Some(found) = Self::search_fallbacks(&mut tried) {
+                return Self::load_from(&found);
+            }
             anyhow::bail!(
-                "Config file not found at {}. \
-                 Create it from the example: cp deploy/config.toml.example {}",
-                path.display(),
-                path.display()
+                "Config file not found. Tried:\n  - {}\n\n\
+                 Create one from the example, e.g.:\n    \
+                 mkdir -p ~/.config/hoard && cp deploy/config.toml.example ~/.config/hoard/server.toml\n  \
+                 or for a system-wide install:\n    \
+                 sudo mkdir -p /etc/hoard && sudo cp deploy/config.toml.example /etc/hoard/config.toml",
+                tried.join("\n  - ")
             );
         }
+        Self::load_from(path)
+    }
 
+    fn load_from(path: &Path) -> Result<Self> {
         let config: Config = Figment::new()
             .merge(Toml::file(path))
             .merge(Env::prefixed("HOARD__").split("__"))
@@ -80,6 +89,50 @@ impl Config {
 
         config.validate()?;
         Ok(config)
+    }
+
+    /// Search the standard fallback locations for a config file. Used when
+    /// the explicit `--config` path doesn't exist — letting users run
+    /// `hoard-server` without sudo by dropping a config in their XDG config
+    /// dir or the working directory.
+    ///
+    /// We deliberately use `server.toml` for the XDG path instead of
+    /// `config.toml` because the CLI (`hoard-cli`) already uses
+    /// `~/.config/hoard/config.toml` with a different schema — sharing the
+    /// filename would cause confusing parse errors when the server tries
+    /// to read CLI credentials.
+    ///
+    /// Order, first-found wins:
+    ///   1. `$XDG_CONFIG_HOME/hoard/server.toml`
+    ///      (or `$HOME/.config/hoard/server.toml`)
+    ///   2. `./hoard-server.toml` in the current working directory
+    ///   3. `./server.toml` in the current working directory
+    fn search_fallbacks(tried: &mut Vec<String>) -> Option<PathBuf> {
+        let mut candidates: Vec<PathBuf> = Vec::new();
+
+        if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
+            candidates.push(PathBuf::from(xdg).join("hoard").join("server.toml"));
+        } else if let Some(home) = std::env::var_os("HOME") {
+            candidates.push(
+                PathBuf::from(home)
+                    .join(".config")
+                    .join("hoard")
+                    .join("server.toml"),
+            );
+        }
+
+        if let Ok(cwd) = std::env::current_dir() {
+            candidates.push(cwd.join("hoard-server.toml"));
+            candidates.push(cwd.join("server.toml"));
+        }
+
+        for c in candidates {
+            tried.push(c.display().to_string());
+            if c.exists() {
+                return Some(c);
+            }
+        }
+        None
     }
 
     fn validate(&self) -> Result<()> {
