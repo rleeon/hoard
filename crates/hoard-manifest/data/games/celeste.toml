@@ -1,0 +1,10 @@
+id = "celeste"
+title = "Celeste"
+steam_appid = 504230
+processes = ["Celeste.exe"]
+source = "hand-curated"
+
+[[windows_paths]]
+location = "{LOCALAPPDATA}/Celeste/Saves"
+patterns = ["*.celeste", "*.celeste.bak"]
+tag = "saves"

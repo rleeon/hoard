@@ -1,0 +1,15 @@
+[package]
+name = "hoard-watcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Debounced filesystem watcher for game save directories"
+
+[dependencies]
+notify = { workspace = true }
+notify-debouncer-mini = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

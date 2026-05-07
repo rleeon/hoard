@@ -1,0 +1,15 @@
+id = "factorio"
+title = "Factorio"
+steam_appid = 427520
+processes = ["factorio.exe"]
+source = "hand-curated"
+
+[[windows_paths]]
+location = "{APPDATA}/Factorio/saves"
+patterns = ["*.zip"]
+tag = "saves"
+
+[[windows_paths]]
+location = "{APPDATA}/Factorio"
+patterns = ["mod-list.json", "mod-settings.dat", "config/config.ini"]
+tag = "config"

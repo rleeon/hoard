@@ -1,0 +1,11 @@
+id = "witcher-3"
+title = "The Witcher 3: Wild Hunt"
+steam_appid = 292030
+gog_id = 1207664663
+processes = ["witcher3.exe"]
+source = "hand-curated"
+
+[[windows_paths]]
+location = "{DOCUMENTS}/The Witcher 3/gamesaves"
+patterns = ["*.sav"]
+tag = "saves"

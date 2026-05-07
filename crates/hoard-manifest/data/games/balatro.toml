@@ -1,0 +1,10 @@
+id = "balatro"
+title = "Balatro"
+steam_appid = 2379780
+processes = ["Balatro.exe"]
+source = "hand-curated"
+
+[[windows_paths]]
+location = "{APPDATA}/Balatro"
+patterns = ["**/*"]
+tag = "saves"

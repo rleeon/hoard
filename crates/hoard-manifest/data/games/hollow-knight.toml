@@ -1,0 +1,12 @@
+id = "hollow-knight"
+title = "Hollow Knight"
+steam_appid = 367520
+gog_id = 1308793361
+processes = ["hollow_knight.exe"]
+source = "hand-curated"
+notes = "Unity game — saves under LocalLow."
+
+[[windows_paths]]
+location = "{LOCALAPPDATALOW}/Team Cherry/Hollow Knight"
+patterns = ["user*.dat", "user*.dat.bak"]
+tag = "saves"

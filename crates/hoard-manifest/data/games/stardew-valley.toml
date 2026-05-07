@@ -1,0 +1,12 @@
+id = "stardew-valley"
+title = "Stardew Valley"
+steam_appid = 413150
+gog_id = 1453375253
+processes = ["Stardew Valley.exe", "StardewModdingAPI.exe"]
+source = "hand-curated"
+
+[[windows_paths]]
+location = "{APPDATA}/StardewValley/Saves"
+patterns = ["**/*"]
+exclude = ["**/SaveGameInfo_BACKUP", "**/*.bak"]
+tag = "saves"

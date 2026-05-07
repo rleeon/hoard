@@ -1,0 +1,11 @@
+id = "cyberpunk-2077"
+title = "Cyberpunk 2077"
+steam_appid = 1091500
+gog_id = 1423049311
+processes = ["Cyberpunk2077.exe"]
+source = "hand-curated"
+
+[[windows_paths]]
+location = "{SAVEDGAMES}/CD Projekt Red/Cyberpunk 2077"
+patterns = ["**/*"]
+tag = "saves"
