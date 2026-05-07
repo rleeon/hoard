@@ -29,7 +29,12 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - name: System deps
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+        # libdbus-1-dev is needed by `libdbus-sys`, which gets pulled in
+        # transitively via hoard-cli → hoard-agent → keyring (its
+        # `sync-secret-service` feature). The CI workflow doesn't hit this
+        # because libwebkit2gtk-4.1-dev's deps include dbus, but the slim
+        # server-release runner has neither.
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libdbus-1-dev
 
       - name: Build release binaries
         run: |
