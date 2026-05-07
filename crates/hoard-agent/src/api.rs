@@ -306,6 +306,17 @@ pub struct Whoami {
     pub user_id: String,
     pub username: String,
     pub is_admin: bool,
+    /// Bytes the user has stored on the server right now. Server-side
+    /// counter, kept in sync by the snapshot upload/delete pipeline.
+    /// Older servers (pre v0.3) omit this; default to 0 so onboarding
+    /// against a stale instance still works.
+    #[serde(default)]
+    pub storage_used_bytes: i64,
+    /// Total bytes the user is allowed to store. Default 100 GiB on a
+    /// fresh server. Pre-v0.3 servers omit this; default to 0 (the UI
+    /// reads this as "quota unknown" and falls back to MB display).
+    #[serde(default)]
+    pub storage_quota_bytes: i64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
