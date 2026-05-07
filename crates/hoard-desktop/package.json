@@ -1,0 +1,10 @@
+{
+  "name": "hoard-desktop-shim",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Thin wrapper so `pnpm build` / `pnpm dev` work from this dir AND from ui/. Used by tauri's beforeBuildCommand so both local `cargo tauri build` (cwd here) and CI's tauri-action (cwd is ui/) hit the same script name.",
+  "scripts": {
+    "build": "pnpm --dir ui build",
+    "dev": "pnpm --dir ui dev"
+  }
+}
