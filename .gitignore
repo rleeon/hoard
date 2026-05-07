@@ -14,3 +14,9 @@ crates/hoard-desktop/gen/
 crates/hoard-desktop/ui/node_modules/
 crates/hoard-desktop/ui/dist/
 crates/hoard-desktop/ui/.vite/
+
+# This project uses pnpm — npm/yarn lockfiles dropped in by accident
+# (e.g. running `npm install` against the same package.json) shouldn't
+# be tracked. pnpm-lock.yaml is the source of truth.
+package-lock.json
+yarn.lock
