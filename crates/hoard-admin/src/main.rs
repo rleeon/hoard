@@ -47,6 +47,18 @@ enum Commands {
         #[command(subcommand)]
         action: commands::manifest::ManifestCommand,
     },
+    /// Refresh the games catalog from upstream Ludusavi.
+    ///
+    /// One-shot convenience for ops: equivalent to
+    /// `hoard-admin manifest import` with sensible defaults (download from
+    /// the official upstream URL, no prune, version=ISO timestamp). Use
+    /// `manifest import` directly when you need the knobs (--prune,
+    /// --from-file, --dry-run, …).
+    Update {
+        /// Print what would change without writing to the database.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[tokio::main]
@@ -67,5 +79,19 @@ async fn main() -> Result<()> {
         Commands::Token { action } => commands::token::run(action, &cfg).await,
         Commands::Game { action } => commands::game::run(action, &cfg).await,
         Commands::Manifest { action } => commands::manifest::run(action, &cfg).await,
+        Commands::Update { dry_run } => {
+            // Delegate to `manifest import` with the no-fuss defaults.
+            commands::manifest::run(
+                commands::manifest::ManifestCommand::Import {
+                    from_url: None,
+                    from_file: None,
+                    prune: false,
+                    dry_run,
+                    version: None,
+                },
+                &cfg,
+            )
+            .await
+        }
     }
 }

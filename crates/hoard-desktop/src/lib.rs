@@ -123,6 +123,8 @@ pub fn run() {
             commands::history::set_save_local_path,
             commands::history::tail_logs,
             commands::history::logs_path,
+            commands::catalog::update_catalog,
+            commands::catalog::catalog_status,
         ])
         .setup(|app| {
             // Build the tray as soon as we have an AppHandle. Failures here
@@ -147,6 +149,13 @@ pub fn run() {
                     }
                 }
             }
+
+            // Kick off a background Ludusavi-catalog refresh if the cached
+            // copy is missing or older than a week. Fire-and-forget — the
+            // app keeps running on the embedded catalog while the
+            // download happens, and the next launch picks up the fresh
+            // override transparently.
+            commands::catalog::auto_update_catalog_in_background(app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())

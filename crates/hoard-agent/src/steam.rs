@@ -61,13 +61,32 @@ pub fn detect_steam_libraries(os: Os) -> Vec<PathBuf> {
 }
 
 /// List Steam apps installed across all detected libraries.
+///
+/// Errors reading individual library folders / appmanifest files are logged
+/// and skipped — we never abort the whole scan because one folder is
+/// missing or one manifest file is corrupt. Returning `Ok(vec![])` is a
+/// normal outcome (Steam not installed); detection treats it as "no
+/// Steam apps found, fall back to filesystem heuristic".
 pub fn list_installed_steam_games(os: Os) -> Result<Vec<SteamApp>> {
+    let libraries = detect_steam_libraries(os);
+    if libraries.is_empty() {
+        tracing::debug!(?os, "no Steam libraries found");
+        return Ok(Vec::new());
+    }
+
     let mut out: Vec<SteamApp> = Vec::new();
-    for lib in detect_steam_libraries(os) {
+    for lib in &libraries {
         let steamapps = lib.join("steamapps");
         let entries = match std::fs::read_dir(&steamapps) {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::warn!(
+                    path = %steamapps.display(),
+                    error = %e,
+                    "skipping Steam library — read_dir failed"
+                );
+                continue;
+            }
         };
         for entry in entries.flatten() {
             let path = entry.path();
@@ -79,15 +98,29 @@ pub fn list_installed_steam_games(os: Os) -> Result<Vec<SteamApp>> {
             }
             let text = match std::fs::read_to_string(&path) {
                 Ok(t) => t,
-                Err(_) => continue,
+                Err(e) => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        error = %e,
+                        "appmanifest unreadable; skipping"
+                    );
+                    continue;
+                }
             };
-            if let Some(app) = parse_app_manifest(&text, &steamapps) {
-                out.push(app);
+            match parse_app_manifest(&text, &steamapps) {
+                Some(app) => out.push(app),
+                None => {
+                    tracing::debug!(
+                        path = %path.display(),
+                        "appmanifest missing required fields (appid/installdir); skipping"
+                    );
+                }
             }
         }
     }
     out.sort_by_key(|a| a.app_id);
     out.dedup_by(|a, b| a.app_id == b.app_id);
+    tracing::info!(libraries = libraries.len(), apps = out.len(), "Steam scan complete");
     Ok(out)
 }
 

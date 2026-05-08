@@ -353,3 +353,34 @@ export function tailLogs(maxLines?: number): Promise<LogLine[]> {
 export function logsPath(): Promise<string> {
   return invoke<string>("logs_path");
 }
+
+// ---- Game catalog (Ludusavi) updates --------------------------------------
+
+/**
+ * Wire shape for `catalog_status` / `update_catalog`.
+ *
+ * - `games`               — number of games in the currently-loaded catalog.
+ * - `has_runtime_override` — whether a refreshed copy is on disk; `false`
+ *                            means we're on the version that shipped with the app.
+ * - `updated_at`          — Unix epoch seconds of the last successful refresh.
+ */
+export type CatalogStatus = {
+  games: number;
+  has_runtime_override: boolean;
+  updated_at: number | null;
+};
+
+export type CatalogUpdateResult = {
+  games: number;
+  updated_at: number;
+  size_bytes: number;
+  path: string;
+};
+
+export function catalogStatus(): Promise<CatalogStatus> {
+  return invoke<CatalogStatus>("catalog_status");
+}
+
+export function updateCatalog(): Promise<CatalogUpdateResult> {
+  return invoke<CatalogUpdateResult>("update_catalog");
+}

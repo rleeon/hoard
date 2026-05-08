@@ -1,33 +1,44 @@
-//! Auto-detect installed games on the host.
+//! Auto-detect installed games on the host **without talking to the server**.
 //!
-//! Two complementary signals:
+//! Detection runs against the catalog embedded in [`hoard_manifest`]:
+//! ~20k games imported from the Ludusavi public manifest at build time, plus
+//! the hand-curated TOML entries. Both sources are merged so the user sees
+//! every game that has a save-path definition we know about, full stop —
+//! no server round-trips, no "only ten games found" because the admin
+//! hasn't run a manifest import yet.
 //!
-//! 1. **Filesystem heuristic** — walk the catalog from the server, expand each
-//!    game's save-path templates, and check whether any expanded directory
-//!    actually exists. A hit means the user has played (or at least installed)
-//!    the game on this machine. This catches GOG, Epic, and DRM-free installs.
+//! Two complementary signals decide whether a game is *installed*:
+//!
+//! 1. **Filesystem heuristic** — for each catalog entry, expand its
+//!    save-path templates against the local environment (`<winAppData>`,
+//!    `<xdgData>`, `<home>`, …) and check whether any expanded directory
+//!    actually exists. A hit means the user has played (or at least
+//!    installed) the game on this machine. Catches GOG, Epic, DRM-free,
+//!    pirated installs — anything that left a save folder behind.
 //! 2. **Steam library scan** — read Steam's `libraryfolders.vdf` and
-//!    `appmanifest_<id>.acf` files to enumerate installed Steam apps, then
-//!    cross-reference their `appid` against the catalog's `steam_app_id`.
-//!    This finds games even when no save folder has been written yet.
+//!    `appmanifest_<id>.acf` files to enumerate installed Steam apps,
+//!    then cross-reference their `appid` against the catalog. Finds
+//!    games even when no save folder has been written yet.
 //!
-//! Results from both sources are merged by slug; if a game shows up in both
-//! we promote its confidence to `High` and tag the source as `Both`.
+//! Results from both sources are merged by slug; if a game shows up in
+//! both we promote its confidence to `High` and tag the source as `Both`.
 //!
-//! The scan never writes to disk or talks to the world beyond the Hoard
-//! server. Disk IO is fanned out via a Tokio semaphore so we don't open ten
-//! thousand file handles at once.
+//! Disk IO for the filesystem heuristic is fanned out via a Tokio
+//! semaphore so we don't open thousands of file handles at once. The
+//! `progress(done, total)` callback fires as we churn through the
+//! catalog; the Tauri command pipes it to the frontend as a
+//! `library://scan-progress` event.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
+use hoard_manifest::ludusavi::{self, LudusaviEntry};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 
-use crate::api::ApiClient;
-use crate::manifest::{Os, PathsByOs};
+use crate::manifest::Os;
 use crate::pathexpand::expand_path;
 use crate::steam::{self, SteamApp};
 
@@ -77,215 +88,173 @@ pub struct DetectionReport {
     pub scanned_at_ms: u64,
 }
 
-const PAGE_SIZE: u32 = 1000;
+/// Cap on how many filesystem stats we run concurrently. 32 is well below
+/// any reasonable file-descriptor limit while still saturating an SSD.
 const FS_PARALLELISM: usize = 32;
 
-/// Scan the filesystem for known save-path matches. Pages through the entire
-/// catalog from the server. `progress(done, total)` is invoked as each page
-/// completes — the UI uses it to drive a progress bar.
+/// Granularity of the progress callback. Firing once per game on a 20k-entry
+/// catalog would spam the IPC channel; we batch by chunks of this many.
+const PROGRESS_CHUNK: usize = 256;
+
+/// Run filesystem + Steam scans against the embedded catalog, merge by slug,
+/// and report.
 ///
-/// The function is cancellation-safe: dropping the future stops the scan
-/// without leaking semaphore permits or open files.
-pub async fn scan_filesystem<F>(api: &ApiClient, os: Os, progress: F) -> Result<Vec<DetectedGame>>
-where
-    F: Fn(usize, usize) + Send + Sync,
-{
-    let progress = Arc::new(progress);
-    let semaphore = Arc::new(Semaphore::new(FS_PARALLELISM));
-
-    let mut found: Vec<DetectedGame> = Vec::new();
-    let mut offset: u32 = 0;
-    let mut catalog_size: usize = 0;
-
-    loop {
-        let page = api.list_games_paged(PAGE_SIZE, offset).await?;
-        if page.is_empty() {
-            break;
-        }
-        catalog_size += page.len();
-
-        // Spawn one task per game, gated by the semaphore so we don't stat
-        // thousands of paths at once.
-        let mut tasks = Vec::with_capacity(page.len());
-        for game in page.iter() {
-            let Some(paths) = parse_save_paths(&game.save_paths_json) else {
-                continue;
-            };
-            let templates: Vec<String> = paths.for_os(os).iter().map(|p| p.path.clone()).collect();
-            if templates.is_empty() {
-                continue;
-            }
-            let slug = game.slug.clone();
-            let display_name = game.display_name.clone();
-            let permit = semaphore.clone().acquire_owned().await?;
-            tasks.push(tokio::task::spawn_blocking(move || {
-                // _permit drops at end of closure, releasing the slot.
-                let _permit = permit;
-                let mut hits: Vec<PathBuf> = Vec::new();
-                for tmpl in &templates {
-                    for candidate in expand_path(tmpl, os) {
-                        if candidate.exists() {
-                            hits.push(candidate);
-                        }
-                    }
-                }
-                if hits.is_empty() {
-                    None
-                } else {
-                    Some(DetectedGame {
-                        slug,
-                        display_name,
-                        found_paths: hits,
-                        confidence: Confidence::Medium,
-                        source: DetectionSource::FilesystemHeuristic,
-                        steam_app_id: None,
-                    })
-                }
-            }));
-        }
-
-        for t in tasks {
-            if let Ok(Some(g)) = t.await {
-                found.push(g);
-            }
-        }
-
-        progress(catalog_size, catalog_size + (PAGE_SIZE as usize));
-
-        if (page.len() as u32) < PAGE_SIZE {
-            break;
-        }
-        offset += PAGE_SIZE;
-    }
-
-    progress(catalog_size, catalog_size);
-    Ok(found)
-}
-
-/// Run both filesystem and Steam scans, merge by slug, and report.
+/// `progress(done, total)` fires as we work through the catalog so the UI
+/// can drive a progress bar. The future is cancellation-safe: dropping it
+/// stops the scan without leaking semaphore permits or open files.
 ///
-/// The Steam scan is fast (just file reads inside `~/.steam`) so we always
-/// run it. We then walk the catalog once more to translate Steam app ids
-/// into catalog slugs — this is where `steam_app_id` on `GameManifest` pays
-/// off.
-pub async fn detect_all<F>(api: &ApiClient, os: Os, progress: F) -> Result<DetectionReport>
+/// This function does **not** touch the network — the catalog ships in the
+/// binary. That keeps the desktop app working on first launch on a fresh
+/// Windows machine before the user has even pointed it at a server.
+pub async fn detect_all<F>(os: Os, progress: F) -> Result<DetectionReport>
 where
-    F: Fn(usize, usize) + Send + Sync,
+    F: Fn(usize, usize) + Send + Sync + 'static,
 {
     let started = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
 
-    // Steam first — cheap, no network.
-    let steam_apps = steam::list_installed_steam_games(os).unwrap_or_default();
-    // Index by display_name for the in-line cross-reference below; we don't
-    // know each catalog row's `steam_app_id` until we'd fetch /known-paths,
-    // and doing 11k lookups would dwarf the rest of the scan.
-    let _steam_by_appid: HashMap<u64, &SteamApp> =
+    // ---- Steam scan ---------------------------------------------------
+    // Cheap (just file reads under the Steam install) so we always run it.
+    // A failure here means Steam isn't installed or the user revoked
+    // access — log it loudly so the agent log shows *why* a Steam-heavy
+    // user got an empty scan, then fall through to the filesystem pass.
+    let steam_apps = match steam::list_installed_steam_games(os) {
+        Ok(apps) => apps,
+        Err(e) => {
+            tracing::warn!(error = %e, "Steam library scan failed; continuing without it");
+            Vec::new()
+        }
+    };
+    tracing::info!(count = steam_apps.len(), "Steam apps discovered");
+
+    let steam_by_appid: HashMap<u64, &SteamApp> =
         steam_apps.iter().map(|a| (a.app_id, a)).collect();
 
-    // Filesystem heuristic — paginated catalog walk. We piggy-back on the
-    // pages we fetch here to also resolve Steam app ids → slugs without
-    // making a second pass.
+    // ---- Catalog walk -------------------------------------------------
+    let catalog = ludusavi::catalog();
+    let catalog_size = catalog.len();
+    tracing::info!(catalog_size, "Detecting against embedded catalog");
+
     let progress = Arc::new(progress);
-    let progress_for_fs = progress.clone();
     let semaphore = Arc::new(Semaphore::new(FS_PARALLELISM));
 
     let mut by_slug: HashMap<String, DetectedGame> = HashMap::new();
-    let mut catalog_size: usize = 0;
-    let mut offset: u32 = 0;
 
-    loop {
-        let page = api.list_games_paged(PAGE_SIZE, offset).await?;
-        if page.is_empty() {
-            break;
+    // Steam cross-reference is O(catalog) but cheap (just hashmap lookups);
+    // do it up-front so every Steam-installed game shows up even if the
+    // filesystem pass below skips it because no save folder exists yet.
+    for entry in catalog {
+        let Some(appid) = entry.steam_app_id else {
+            continue;
+        };
+        let Some(app) = steam_by_appid.get(&appid) else {
+            continue;
+        };
+        by_slug.insert(
+            entry.slug.clone(),
+            DetectedGame {
+                slug: entry.slug.clone(),
+                display_name: entry.display_name.clone(),
+                found_paths: vec![app.install_dir.clone()],
+                confidence: Confidence::Medium,
+                source: DetectionSource::SteamLibrary,
+                steam_app_id: Some(app.app_id),
+            },
+        );
+    }
+    tracing::info!(
+        steam_matches = by_slug.len(),
+        "Steam → catalog cross-reference complete"
+    );
+
+    // Filesystem heuristic: spawn one blocking task per game, gated by the
+    // semaphore. Each task expands every Windows/Linux/Mac template that
+    // applies to the current OS and stat()s every candidate path.
+    let mut tasks = Vec::new();
+    for entry in catalog {
+        let templates: Vec<String> = paths_for_os(entry, os);
+        if templates.is_empty() {
+            continue;
         }
-        catalog_size += page.len();
-
-        // ---- Steam cross-reference (cheap, in-line). ---------------------
-        // We need each game's steam_app_id, which lives only on
-        // /known-paths, not on /games. So we do a second on-demand fetch
-        // for any game whose save_paths_json mentions a steam-flavoured
-        // path *or* whose slug we'll need for Steam — but to avoid 11k
-        // round-trips we only call known_paths for games that are likely
-        // matches: those whose display_name appears in our installed-Steam
-        // list. That's a tiny subset (~hundreds at most).
-        let steam_names: HashMap<&str, &SteamApp> =
-            steam_apps.iter().map(|a| (a.name.as_str(), a)).collect();
-        for game in page.iter() {
-            if let Some(app) = steam_names.get(game.display_name.as_str()) {
-                let entry = by_slug.entry(game.slug.clone()).or_insert(DetectedGame {
-                    slug: game.slug.clone(),
-                    display_name: game.display_name.clone(),
-                    found_paths: vec![app.install_dir.clone()],
-                    confidence: Confidence::Medium,
-                    source: DetectionSource::SteamLibrary,
-                    steam_app_id: Some(app.app_id),
-                });
-                entry.steam_app_id = Some(app.app_id);
-                if !entry.found_paths.contains(&app.install_dir) {
-                    entry.found_paths.push(app.install_dir.clone());
+        let slug = entry.slug.clone();
+        let display_name = entry.display_name.clone();
+        let permit = semaphore.clone().acquire_owned().await?;
+        tasks.push(tokio::task::spawn_blocking(move || {
+            // _permit drops at end of closure, releasing the slot.
+            let _permit = permit;
+            let mut hits: Vec<PathBuf> = Vec::new();
+            let mut seen: HashSet<PathBuf> = HashSet::new();
+            for tmpl in &templates {
+                let candidates = expand_path(tmpl, os);
+                if candidates.is_empty() {
+                    // Unknown placeholder or unset env var — pathexpand
+                    // already returns vec![] for those. Useful to log
+                    // once per *unknown* template so the agent log can
+                    // tell us what's missing in pathexpand.
+                    if !tmpl.is_empty() && tmpl.starts_with('<') {
+                        tracing::trace!(template = %tmpl, "expand_path returned no candidates");
+                    }
+                    continue;
                 }
-            }
-        }
-
-        // ---- Filesystem heuristic per game (parallel via semaphore). ----
-        let mut tasks = Vec::with_capacity(page.len());
-        for game in page.iter() {
-            let Some(paths) = parse_save_paths(&game.save_paths_json) else {
-                continue;
-            };
-            let templates: Vec<String> = paths.for_os(os).iter().map(|p| p.path.clone()).collect();
-            if templates.is_empty() {
-                continue;
-            }
-            let slug = game.slug.clone();
-            let display_name = game.display_name.clone();
-            let permit = semaphore.clone().acquire_owned().await?;
-            tasks.push(tokio::task::spawn_blocking(move || {
-                let _permit = permit;
-                let mut hits: Vec<PathBuf> = Vec::new();
-                for tmpl in &templates {
-                    for candidate in expand_path(tmpl, os) {
-                        if candidate.exists() {
-                            hits.push(candidate);
-                        }
+                for candidate in candidates {
+                    if !candidate.exists() {
+                        continue;
+                    }
+                    if seen.insert(candidate.clone()) {
+                        hits.push(candidate);
                     }
                 }
-                if hits.is_empty() {
-                    None
-                } else {
-                    Some((slug, display_name, hits))
-                }
-            }));
-        }
-
-        for t in tasks {
-            if let Ok(Some((slug, display_name, hits))) = t.await {
-                merge_fs_hit(&mut by_slug, slug, display_name, hits);
             }
-        }
-
-        progress_for_fs(catalog_size, catalog_size + (PAGE_SIZE as usize));
-
-        if (page.len() as u32) < PAGE_SIZE {
-            break;
-        }
-        offset += PAGE_SIZE;
+            if hits.is_empty() {
+                None
+            } else {
+                Some((slug, display_name, hits))
+            }
+        }));
     }
 
-    // Promote confidence anywhere both signals fired.
+    let total_tasks = tasks.len();
+    progress(0, total_tasks);
+
+    let mut done = 0usize;
+    for t in tasks {
+        match t.await {
+            Ok(Some((slug, display_name, hits))) => {
+                merge_fs_hit(&mut by_slug, slug, display_name, hits);
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::warn!(error = %e, "filesystem-heuristic task panicked");
+            }
+        }
+        done += 1;
+        // Batch progress events so we don't spam the IPC channel for every
+        // single one of the catalog's ~20k entries.
+        if done.is_multiple_of(PROGRESS_CHUNK) {
+            progress(done, total_tasks);
+        }
+    }
+
+    // Promote confidence wherever both signals fired.
     for game in by_slug.values_mut() {
         if matches!(game.source, DetectionSource::Both) {
             game.confidence = Confidence::High;
         }
     }
 
-    progress(catalog_size, catalog_size);
+    progress(total_tasks, total_tasks);
 
     let mut games: Vec<DetectedGame> = by_slug.into_values().collect();
     games.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+
+    tracing::info!(
+        detected = games.len(),
+        catalog_size,
+        steam_apps = steam_apps.len(),
+        "Detection complete"
+    );
 
     Ok(DetectionReport {
         games,
@@ -293,6 +262,18 @@ where
         steam_apps_found: steam_apps.len(),
         scanned_at_ms: started,
     })
+}
+
+/// Pull the list of save-path template strings that apply to the requested
+/// OS for a single Ludusavi entry. Strips constraints/tags — detection only
+/// cares about the path itself.
+fn paths_for_os(entry: &LudusaviEntry, os: Os) -> Vec<String> {
+    let slot = match os {
+        Os::Windows => &entry.paths.windows,
+        Os::Linux => &entry.paths.linux,
+        Os::Mac => &entry.paths.mac,
+    };
+    slot.iter().map(|p| p.path.clone()).collect()
 }
 
 /// Merge a filesystem hit into the dedupe map, promoting source/confidence
@@ -330,45 +311,9 @@ fn merge_fs_hit(
     }
 }
 
-/// Parse the `save_paths_json` field — the server stores it as an opaque
-/// string. Returns `None` if the column is null or we can't decode (a
-/// handful of legacy rows have malformed JSON, and we'd rather skip them
-/// than abort the whole scan).
-fn parse_save_paths(json: &Option<String>) -> Option<PathsByOs> {
-    let s = json.as_deref()?;
-    if s.is_empty() {
-        return None;
-    }
-    serde_json::from_str(s).ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn fake_paths(linux: &[&str]) -> String {
-        let value = serde_json::json!({
-            "windows": [],
-            "linux": linux.iter().map(|p| serde_json::json!({"path": p})).collect::<Vec<_>>(),
-            "mac": []
-        });
-        value.to_string()
-    }
-
-    #[test]
-    fn parses_save_paths_json() {
-        let s = fake_paths(&["<home>/.foo"]);
-        let parsed = parse_save_paths(&Some(s)).expect("parsed");
-        assert_eq!(parsed.linux.len(), 1);
-        assert_eq!(parsed.linux[0].path, "<home>/.foo");
-    }
-
-    #[test]
-    fn parse_save_paths_handles_bad_json() {
-        assert!(parse_save_paths(&Some("not-json".to_string())).is_none());
-        assert!(parse_save_paths(&Some(String::new())).is_none());
-        assert!(parse_save_paths(&None).is_none());
-    }
 
     #[test]
     fn merge_fs_hit_promotes_existing_steam_entry() {

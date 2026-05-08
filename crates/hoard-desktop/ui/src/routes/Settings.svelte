@@ -7,8 +7,9 @@
    * actions (clear cache, sign out) sit at the bottom in a separate card so
    * they can't be hit by reflex.
    */
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { push } from "svelte-spa-router";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import {
     Power,
     BellRing,
@@ -21,6 +22,8 @@
     FileText,
     ChevronRight,
     BarChart3,
+    RefreshCw,
+    Database,
   } from "lucide-svelte";
 
   import Card from "../lib/components/Card.svelte";
@@ -33,6 +36,15 @@
 
   let saving = $state<string | null>(null);
   let signingOut = $state(false);
+
+  // Catalog (Ludusavi) update state. We poll status once on mount and listen
+  // for `catalog://update-progress` events while a refresh is in flight so
+  // the button can show "Downloading…" / "Parsing…" / "Saving…" instead of a
+  // mute spinner.
+  let catalog = $state<api.CatalogStatus | null>(null);
+  let updatingCatalog = $state(false);
+  let catalogStage = $state<string>("");
+  let unlistenCatalog: UnlistenFn | null = null;
 
   onMount(async () => {
     await hydratePrefs();
@@ -47,7 +59,58 @@
     } catch (e) {
       console.warn("isAutostartEnabled probe failed:", e);
     }
+    try {
+      catalog = await api.catalogStatus();
+    } catch (e) {
+      console.warn("catalogStatus failed:", e);
+    }
+    unlistenCatalog = await listen<string>("catalog://update-progress", (ev) => {
+      catalogStage = ev.payload;
+    });
   });
+
+  onDestroy(() => {
+    unlistenCatalog?.();
+  });
+
+  async function handleCatalogUpdate() {
+    updatingCatalog = true;
+    catalogStage = "downloading";
+    try {
+      const result = await api.updateCatalog();
+      catalog = {
+        games: result.games,
+        has_runtime_override: true,
+        updated_at: result.updated_at,
+      };
+      toastSuccess(`Catalog updated — ${result.games.toLocaleString()} games.`);
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    } finally {
+      updatingCatalog = false;
+      catalogStage = "";
+    }
+  }
+
+  function formatRelative(epochSecs: number | null): string {
+    if (!epochSecs) return "using bundled catalog";
+    const ageSecs = Math.max(0, Math.floor(Date.now() / 1000) - epochSecs);
+    if (ageSecs < 60) return "updated just now";
+    if (ageSecs < 3600) return `updated ${Math.floor(ageSecs / 60)} min ago`;
+    if (ageSecs < 86400) return `updated ${Math.floor(ageSecs / 3600)} h ago`;
+    const days = Math.floor(ageSecs / 86400);
+    return days === 1 ? "updated 1 day ago" : `updated ${days} days ago`;
+  }
+
+  function stageLabel(stage: string): string {
+    switch (stage) {
+      case "downloading": return "Downloading…";
+      case "parsing": return "Parsing…";
+      case "saving": return "Saving…";
+      case "done": return "Done";
+      default: return "Working…";
+    }
+  }
 
   async function toggle(field: keyof api.Prefs, value: boolean) {
     if (!$prefs) return;
@@ -266,6 +329,53 @@
 
       <section>
         <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+          Game catalog
+        </h2>
+        <Card>
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex min-w-0 flex-1 items-start gap-3">
+              <Database size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+              <div class="min-w-0 flex-1">
+                <p class="text-sm text-zinc-100">
+                  {#if catalog}
+                    {catalog.games.toLocaleString()} games
+                    <span class="text-zinc-500">·</span>
+                    <span class="text-zinc-400">
+                      {catalog.has_runtime_override
+                        ? formatRelative(catalog.updated_at)
+                        : "using bundled catalog"}
+                    </span>
+                  {:else}
+                    Loading…
+                  {/if}
+                </p>
+                <p class="mt-1 text-xs text-zinc-500">
+                  Hoard auto-detects games using the Ludusavi catalog. We
+                  refresh it weekly in the background — hit the button to
+                  pull the latest list now.
+                </p>
+                {#if updatingCatalog}
+                  <p class="mt-2 text-xs text-zinc-400">
+                    {stageLabel(catalogStage)}
+                  </p>
+                {/if}
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              onclick={handleCatalogUpdate}
+              loading={updatingCatalog}
+              disabled={updatingCatalog}
+            >
+              <RefreshCw size={14} />
+              Check for updates
+            </Button>
+          </div>
+        </Card>
+      </section>
+
+      <section>
+        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
           Advanced
         </h2>
         <Card>
@@ -296,7 +406,7 @@
           <div class="flex items-start gap-3 text-sm text-zinc-300">
             <Info size={16} class="mt-0.5 shrink-0 text-zinc-500" />
             <div>
-              <p>Hoard 0.2.0 — self-hosted save sync.</p>
+              <p>Hoard 1.1.0 — self-hosted save sync.</p>
               <p class="mt-1 text-xs text-zinc-500">
                 Your server, your data. Source code & docs at hoard.dev.
               </p>

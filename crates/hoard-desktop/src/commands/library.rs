@@ -67,15 +67,15 @@ pub struct TrackedSave {
     pub total_size_bytes: i64,
 }
 
-/// Run a full auto-detection sweep. Emits `library://scan-progress` events
-/// (`{ done, total }`) as it pages through the catalog. The completed
+/// Run a full auto-detection sweep against the **bundled** catalog (no
+/// server round-trips). Emits `library://scan-progress` events
+/// (`{ done, total }`) as it churns through the catalog. The completed
 /// `DetectionReport` is also stored on the app state so re-renders are free.
 #[tauri::command]
 pub async fn scan_library(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<DetectionReport, String> {
-    let client = current_client(&state)?;
     let os = Os::current();
 
     let app_for_progress = app.clone();
@@ -85,7 +85,7 @@ pub async fn scan_library(
         let _ = app_for_progress.emit("library://scan-progress", ScanProgress { done, total });
     };
 
-    let report = detection::detect_all(&client, os, progress)
+    let report = detection::detect_all(os, progress)
         .await
         .map_err(pretty_error)?;
 

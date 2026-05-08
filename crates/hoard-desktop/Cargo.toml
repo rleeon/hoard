@@ -28,6 +28,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 hoard-core = { path = "../hoard-core" }
 hoard-agent = { path = "../hoard-agent" }
+hoard-manifest = { path = "../hoard-manifest" }
 
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-single-instance = "2"

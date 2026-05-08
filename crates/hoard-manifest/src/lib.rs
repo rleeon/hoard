@@ -5,16 +5,19 @@
 //! is embedded into the binary at compile time via [`include_dir`], so the
 //! desktop app needs no network access to know where saves live.
 //!
-//! ## Why hand-curated, not PCGamingWiki?
+//! ## Two catalogs, two licenses
 //!
-//! The plan for v0.4+ is to import bulk data from PCGamingWiki. That data is
-//! licensed CC-BY-NC-SA-3.0, which can't be statically linked into our
-//! AGPL-3.0 binary. To ship "preinstalled paths" today without a license
-//! mess, we hand-author a small subset (everything in `data/games/` is
-//! original work, AGPL-3.0 like the rest of the code).
+//! * **`data/games/*.toml`** — hand-authored entries, AGPL-3.0, exposed via
+//!   [`catalogue`] / [`lookup`] / [`all_games`]. Use these whenever a hand
+//!   entry exists; they're narrower and better-tested than the bulk import.
+//! * **`data/ludusavi-catalog.json`** — bulk-imported from the
+//!   [Ludusavi manifest](https://github.com/mtkennerly/ludusavi-manifest)
+//!   (~20k games). The underlying data is sourced from PCGamingWiki and is
+//!   CC-BY-NC-SA-3.0. Exposed via [`ludusavi::catalog`]. Distributors who
+//!   want to ship Hoard commercially should remove the JSON before bundling
+//!   and rely on the AGPL-clean TOML catalog only.
 //!
-//! When PCGW import lands, that data will live in a separate
-//! runtime-loaded directory with its own LICENSE — not in this crate.
+//! See `data/README.md` for the full story and refresh instructions.
 //!
 //! ## Schema
 //!
@@ -22,6 +25,7 @@
 //! schema. Paths use placeholder tokens like `{APPDATA}` resolved against
 //! Windows Known Folders at runtime.
 
+pub mod ludusavi;
 pub mod placeholders;
 pub mod schema;
 

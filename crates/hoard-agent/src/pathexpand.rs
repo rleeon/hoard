@@ -111,7 +111,15 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
             Vec::new()
         }
 
-        _ => Vec::new(),
+        (_, other) => {
+            // An unknown placeholder is almost always a real bug — either
+            // the manifest grew a new token that we haven't taught
+            // pathexpand about, or the user is on an OS we don't handle.
+            // Log it (sampled — `trace`, not `warn`) so we can spot gaps
+            // without spamming the terminal during a full scan.
+            tracing::trace!(token = other, ?os, "unknown path placeholder; dropping template");
+            Vec::new()
+        }
     }
 }
 
