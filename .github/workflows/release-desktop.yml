@@ -37,15 +37,25 @@ jobs:
             label: windows-x86_64
             target: x86_64-pc-windows-msvc
             args: ""
+          # macOS runners are best-effort: the macos-13 image is being
+          # retired by GitHub and macos-14 queues can stall for hours. We
+          # don't want a queued mac runner to block publishing the Windows
+          # + Linux bundles, so they're flagged continue-on-error and the
+          # publish job below uses `if: always()` to attach whatever did
+          # build.
           - os: macos-13
             label: macos-x86_64
             target: x86_64-apple-darwin
             args: "--target x86_64-apple-darwin"
+            optional: true
           - os: macos-14
             label: macos-aarch64
             target: aarch64-apple-darwin
             args: "--target aarch64-apple-darwin"
+            optional: true
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.optional == true }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -154,8 +164,12 @@ jobs:
     name: Attach to release
     needs: build
     runs-on: ubuntu-latest
-    # When triggered manually we don't have a release to attach to — skip.
-    if: startsWith(github.ref, 'refs/tags/')
+    # `!cancelled()` so we still publish Linux + Windows even if the
+    # macOS matrix entries failed or timed out (they're best-effort —
+    # see the `optional` flag in the matrix above). It also skips this
+    # job when the workflow is manually cancelled. The tag check skips
+    # workflow_dispatch runs that have no release to attach to.
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/') }}
     steps:
       - uses: actions/download-artifact@v4
         with:
