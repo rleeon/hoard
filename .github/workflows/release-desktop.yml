@@ -133,7 +133,16 @@ jobs:
                -o -name '*.dmg' -o -name '*.app.tar.gz' \) \
             -exec cp -v {} dist/ \; || true
           ls -la dist/
-          ( cd dist && for f in *; do sha256sum "$f" > "$f.sha256"; done )
+          # macOS runners don't ship GNU coreutils, so `sha256sum` is missing
+          # there. Fall back to BSD `shasum -a 256` (present on macOS by
+          # default and on Linux since BSD utils are also packaged everywhere
+          # we care about).
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256_cmd() { sha256sum "$1"; }
+          else
+            sha256_cmd() { shasum -a 256 "$1"; }
+          fi
+          ( cd dist && for f in *; do sha256_cmd "$f" > "$f.sha256"; done )
           echo "label=${{ matrix.label }}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
