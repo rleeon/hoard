@@ -2089,7 +2089,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-admin"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2115,7 +2115,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-agent"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -2146,7 +2146,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-cli"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2165,7 +2165,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-core"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "argon2",
@@ -2182,7 +2182,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-desktop"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "hoard-agent",
@@ -2208,7 +2208,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-detect"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "hoard-manifest",
  "serde",
@@ -2221,7 +2221,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-manifest"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "include_dir",
  "serde",
@@ -2234,7 +2234,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-server"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -2266,7 +2266,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-watcher"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "notify",
  "notify-debouncer-mini",

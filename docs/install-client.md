@@ -12,7 +12,7 @@ versions from a friendly UI. It runs on Linux, Windows, and macOS.
 ## Download
 
 Grab the latest installer for your platform from the
-[**Releases page**](https://github.com/hoarddev/hoard/releases/latest).
+[**Releases page**](https://github.com/rleeon/hoard/releases/latest).
 
 | Platform | File you want |
 | --- | --- |
@@ -27,7 +27,11 @@ Each artifact ships with a matching `.sha256` file. Verify before
 installing:
 
 ```sh
+# Linux
 sha256sum -c Hoard_*.sha256
+
+# macOS (no GNU coreutils)
+shasum -a 256 -c Hoard_*.sha256
 ```
 
 ---
@@ -131,14 +135,15 @@ from your platform's credential manager after uninstalling.
 
 ## Updating
 
-For v0.2 there's no auto-updater yet. Watch the
-[Releases page](https://github.com/hoarddev/hoard/releases) for new
-versions and reinstall over the top — Hoard's local state survives
-upgrades.
+There's no auto-updater in 1.0. Watch the
+[Releases page](https://github.com/rleeon/hoard/releases) for new
+versions and reinstall over the top — Hoard's local state (tracked
+saves, watchers, server URL, paused state) survives upgrades. The
+keyring-stored token survives too.
 
-Auto-updates are on the roadmap for v0.3. They'll require code-signing
-keys to be rolled out first, so we're holding the feature until we can
-ship signed releases on every platform.
+Auto-updates are on the 1.x roadmap. They'll require code-signing
+certificates to be rolled out first, so we're holding the feature
+until we can ship signed releases on every platform.
 
 ---
 

@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-05-08
+
+First stable release. The desktop app, server, and CLI are now considered
+stable; the HTTP API and on-disk schema will only change in
+backwards-compatible ways within the 1.x line.
+
+This release rolls up the v0.3 phase work (manifest catalog,
+process-name detection, storage quota UI, packaging hardening) into a
+finalised, signed-off product. From this point forward, official
+Windows / Linux / macOS installers are published on every tag —
+**users do not have to compile from source**.
+
+### Added
+
+- **Pre-built installers** for every platform on every tagged release
+  (see the [Releases page](https://github.com/rleeon/hoard/releases/latest)):
+  - **Windows**: NSIS `.exe` setup + `.msi` (MSI installer). Per-user
+    install — no admin privileges required.
+  - **Linux**: `.deb`, `.rpm`, and AppImage.
+  - **macOS**: `.dmg` for both Intel and Apple Silicon.
+  - Server tarball: `hoard-1.0.0-linux-x86_64.tar.gz` with the
+    headless `hoard-server`, `hoard-admin`, and `hoard` CLI binaries.
+  - SHA256 checksums alongside every artifact.
+- **Game-detection upgrades** (rolled up from v0.3 phases 1–4b):
+  - New `hoard-manifest` crate parses the
+    [Ludusavi manifest](https://github.com/mtkennerly/ludusavi-manifest)
+    YAML so the catalog covers thousands of titles instead of the
+    seeded 10.
+  - New `hoard-detect` crate combines filesystem heuristics, Steam
+    library parsing (`libraryfolders.vdf` + `appmanifest_*.acf`), and
+    process-name matching to identify which save folders belong to
+    which game.
+  - New `hoard-watcher` crate exposes the live filesystem +
+    process watchers as a reusable library so both the desktop agent
+    and any future headless daemon share the exact same change-
+    detection logic.
+  - Lazy `notify` watcher registration: the agent only opens an
+    inotify/FSEvents handle when the user actually starts tracking a
+    save, dramatically lowering the FD footprint on machines with
+    hundreds of detected games.
+- **Storage quota UI** (v0.3 phase 4a–5):
+  - `whoami` now returns `storage_used_bytes` and
+    `storage_quota_bytes`; the desktop app surfaces this as a
+    quota bar on the Dashboard.
+  - Per-game disk-usage breakdown on the Library page.
+- **NSIS per-user install** (v0.3 phase 6): the Windows installer now
+  defaults to `currentUser` install mode and a single-language
+  English UI, removing the elevation prompt and the language picker
+  on first run.
+
+### Changed
+
+- Workspace version bumped to `1.0.0` across every crate.
+- README and `docs/install-client.md` updated to point users at the
+  pre-built installers as the recommended install path; building
+  from source is now an "advanced" option.
+- Release CI made portable across runners: macOS bundles now hash
+  with `shasum -a 256` (GNU `sha256sum` is not available on macOS
+  runners), Linux still uses `sha256sum`. Outputs are byte-identical.
+- CI installs `libdbus-1-dev` on the slim server-release runner so
+  the CLI's `keyring` dependency builds even outside the
+  desktop-runner's GTK stack.
+
+### Fixed
+
+- Tauri icon decoding: regenerated `icon.ico` and the seeded PNGs as
+  8-bit RGBA (PNG color_type=6) so Tauri's image pipeline accepts
+  them on every platform.
+- Release-desktop workflow: Tauri-action's `beforeBuildCommand`
+  resolution now finds a `package.json` at the repo root via a thin
+  shim, fixing first-tag builds on a fresh checkout.
+- `whoami` SQLx offline cache refreshed for the new quota query so
+  CI no longer fails with `SQLX_OFFLINE` set.
+
+### Stability commitment
+
+From 1.0.0 onward:
+
+- The HTTP API will only change in backwards-compatible ways within
+  the 1.x series. Breaking changes go in 2.0 with a migration note.
+- The on-disk snapshot layout (server-side `data/` and `trash/`
+  trees) is stable. Old snapshots remain restorable across upgrades.
+- The CLI flag surface is stable. New flags may appear; existing
+  flags will not be removed without a deprecation cycle.
+
+### Known limitations
+
+- No code-signing on Windows or macOS yet — first-run shows the OS
+  "unverified developer" warning. Documented workaround in
+  [`docs/install-client.md`](docs/install-client.md#install).
+- No auto-updater — install new versions over the top from the
+  Releases page. See ADR 0007. Auto-update is on the 1.x roadmap
+  once we have signing certificates.
+
 ## [0.2.0] — 2026-05-04
 
 The desktop app release. v0.2 ships a Tauri + Svelte client for Linux,
@@ -127,6 +221,7 @@ least once before 1.0.**
 - No rate limiting; put a reverse proxy in front for that.
 - Single SQLite database; no replication. Back up the file.
 
-[Unreleased]: https://github.com/rleeon/hoard/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/rleeon/hoard/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/rleeon/hoard/releases/tag/v1.0.0
 [0.2.0]: https://github.com/rleeon/hoard/releases/tag/v0.2.0
 [0.1.0]: https://github.com/rleeon/hoard/releases/tag/v0.1.0
