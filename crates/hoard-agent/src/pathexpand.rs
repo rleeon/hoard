@@ -117,7 +117,11 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
             // pathexpand about, or the user is on an OS we don't handle.
             // Log it (sampled — `trace`, not `warn`) so we can spot gaps
             // without spamming the terminal during a full scan.
-            tracing::trace!(token = other, ?os, "unknown path placeholder; dropping template");
+            tracing::trace!(
+                token = other,
+                ?os,
+                "unknown path placeholder; dropping template"
+            );
             Vec::new()
         }
     }

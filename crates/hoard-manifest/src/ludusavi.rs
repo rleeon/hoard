@@ -471,7 +471,11 @@ mod tests {
         let cat = catalog();
         let mut seen = std::collections::HashSet::with_capacity(cat.len());
         for e in cat {
-            assert!(seen.insert(&e.slug), "duplicate slug in catalog: {}", e.slug);
+            assert!(
+                seen.insert(&e.slug),
+                "duplicate slug in catalog: {}",
+                e.slug
+            );
         }
     }
 

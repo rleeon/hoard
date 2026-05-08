@@ -102,16 +102,21 @@ async fn do_update(app: Option<AppHandle>) -> Result<CatalogUpdateResult, anyhow
         .user_agent(concat!("hoard-desktop/", env!("CARGO_PKG_VERSION")))
         .timeout(Duration::from_secs(60))
         .build()?;
-    let yaml = client.get(url).send().await?.error_for_status()?.text().await?;
+    let yaml = client
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
     tracing::info!(bytes = yaml.len(), "manifest downloaded");
 
     emit_stage(&app, "parsing");
     // Conversion is CPU-bound; spawn_blocking so the UI thread doesn't
     // stall on a 17 MB YAML parse + 20k entry transform (~1-2s).
-    let games = tokio::task::spawn_blocking(move || {
-        hoard_manifest::ludusavi::save_runtime_override(&yaml)
-    })
-    .await??;
+    let games =
+        tokio::task::spawn_blocking(move || hoard_manifest::ludusavi::save_runtime_override(&yaml))
+            .await??;
 
     emit_stage(&app, "saving");
     let path = hoard_manifest::ludusavi::runtime_override_path()
@@ -156,10 +161,7 @@ pub fn catalog_status() -> CatalogStatus {
     let games = hoard_manifest::ludusavi::catalog_size();
 
     let runtime_path = hoard_manifest::ludusavi::runtime_override_path();
-    let has_runtime_override = runtime_path
-        .as_ref()
-        .map(|p| p.exists())
-        .unwrap_or(false);
+    let has_runtime_override = runtime_path.as_ref().map(|p| p.exists()).unwrap_or(false);
 
     let updated_at = meta_path()
         .and_then(|mp| std::fs::read(&mp).ok())

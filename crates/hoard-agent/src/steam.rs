@@ -120,7 +120,11 @@ pub fn list_installed_steam_games(os: Os) -> Result<Vec<SteamApp>> {
     }
     out.sort_by_key(|a| a.app_id);
     out.dedup_by(|a, b| a.app_id == b.app_id);
-    tracing::info!(libraries = libraries.len(), apps = out.len(), "Steam scan complete");
+    tracing::info!(
+        libraries = libraries.len(),
+        apps = out.len(),
+        "Steam scan complete"
+    );
     Ok(out)
 }
 
