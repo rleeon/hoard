@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-05-08
+
+Desktop UX overhaul: friendlier path handling, restore-anywhere, and full
+internationalisation.
+
+### Added
+
+- **Multi-language UI.** The desktop app now ships with translations for
+  English, Spanish, French, German, Portuguese, Italian, Japanese, and
+  Simplified Chinese. The language is auto-detected from the OS and can be
+  changed at any time from **Settings → Language**.
+- **Restore to any folder.** When restoring a snapshot for a save that
+  isn't tracked on the current machine yet (e.g. you pulled it from
+  another device), the app now opens a folder picker and remembers the
+  choice — no more "Re-track from the Library" dead end.
+- **Native folder pickers.** "Edit folder" on the History page and "Track
+  this game" in the Library both grow a *Browse…* button that opens the
+  OS folder dialog instead of forcing you to hand-type the path.
+
+### Changed
+
+- **Auto-create missing folders.** Specifying a save folder that doesn't
+  exist yet (typed path, picker, or restore destination) now creates it
+  for you instead of failing with *"doesn't exist on this machine — pick
+  a different folder"*. Useful when restoring saves before installing
+  the game.
+- **Snapshot labels include a timestamp.** History rows now read
+  `save_v3 · 2026-05-08 14:30` so the version line is self-describing
+  and copy-pastable into bug reports.
+- **Release pipeline.** Dropped the retired `macos-13` (Intel) runner
+  from the desktop matrix and switched the publish gate to
+  `success() || failure()`, so a stuck-in-queue runner can no longer
+  block the rest of the platforms from publishing.
+
+### Fixed
+
+- Restore from the desktop UI now works end-to-end without falling back
+  to the CLI — previously the download path resolved against
+  `CliState` only, and any save without a local mapping erred out.
+- `set_save_local_path` no longer rejects paths that haven't been
+  created yet — it `mkdir -p`s them.
+
 ## [1.0.0] — 2026-05-08
 
 First stable release. The desktop app, server, and CLI are now considered

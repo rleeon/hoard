@@ -20,6 +20,7 @@
     History,
     PauseCircle,
   } from "lucide-svelte";
+  import { _ } from "svelte-i18n";
 
   import Button from "../lib/components/Button.svelte";
   import Card from "../lib/components/Card.svelte";
@@ -65,7 +66,7 @@
     signingOut = true;
     try {
       await signOut();
-      toastSuccess("Signed out.");
+      toastSuccess($_("dashboard.signed_out"));
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
     } finally {
@@ -76,7 +77,7 @@
   async function backupNow(saveId: string) {
     try {
       await api.backupNow(saveId);
-      toastSuccess("Backup queued.");
+      toastSuccess($_("dashboard.backup_queued"));
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
     }
@@ -84,11 +85,11 @@
 
   function pillFor(saveId: string) {
     const a = $activity[saveId];
-    if (!a) return { label: "Idle", icon: CircleDot, klass: "text-zinc-400" };
+    if (!a) return { label: $_("dashboard.pill_idle"), icon: CircleDot, klass: "text-zinc-400" };
     switch (a.state) {
       case "running":
         return {
-          label: "Game running",
+          label: $_("dashboard.pill_running"),
           icon: PlayCircle,
           klass: "text-sky-400",
         };
@@ -98,33 +99,33 @@
           Math.round(((a.next_backup_at ?? now) - now) / 1000),
         );
         return {
-          label: `Backup in ${secs}s`,
+          label: $_("dashboard.pill_scheduled", { values: { seconds: secs } }),
           icon: Clock,
           klass: "text-amber-400",
         };
       }
       case "uploading":
         return {
-          label: "Uploading…",
+          label: $_("dashboard.pill_uploading"),
           icon: UploadCloud,
           klass: "text-amber-400",
         };
       case "ok":
         return {
           label: a.last_version
-            ? `Saved (v${a.last_version})`
-            : "Saved",
+            ? $_("dashboard.pill_saved_v", { values: { version: a.last_version } })
+            : $_("dashboard.pill_saved"),
           icon: Check,
           klass: "text-emerald-400",
         };
       case "failed":
         return {
-          label: a.will_retry ? "Failed — retrying" : "Failed",
+          label: a.will_retry ? $_("dashboard.pill_failed_retry") : $_("dashboard.pill_failed"),
           icon: AlertTriangle,
           klass: "text-red-400",
         };
       default:
-        return { label: "Idle", icon: CircleDot, klass: "text-zinc-400" };
+        return { label: $_("dashboard.pill_idle"), icon: CircleDot, klass: "text-zinc-400" };
     }
   }
 </script>
@@ -134,9 +135,9 @@
     <div>
       <h1 class="text-2xl font-semibold tracking-tight">
         {#if $auth.user}
-          Welcome back, {$auth.user.username}
+          {$_("dashboard.welcome_back", { values: { username: $auth.user.username } })}
         {:else}
-          Dashboard
+          {$_("dashboard.title")}
         {/if}
       </h1>
       <p class="mt-1 flex items-center gap-2 text-sm text-zinc-400">
@@ -145,9 +146,9 @@
             ? 'bg-emerald-400 animate-pulse'
             : 'bg-zinc-600'}"
         ></span>
-        {$status.running ? "Live agent watching" : "Agent offline"}
+        {$status.running ? $_("dashboard.agent_watching") : $_("dashboard.agent_offline")}
         {#if $status.running}
-          · {saves.length} tracked save{saves.length === 1 ? "" : "s"}
+          · {$_("dashboard.tracked_count", { values: { count: saves.length } })}
         {/if}
       </p>
     </div>
@@ -155,10 +156,10 @@
       variant="ghost"
       onclick={handleLogout}
       loading={signingOut}
-      aria-label="Sign out"
+      aria-label={$_("dashboard.sign_out")}
     >
       <LogOut size={16} />
-      Sign out
+      {$_("dashboard.sign_out")}
     </Button>
   </header>
 
@@ -170,7 +171,7 @@
 
   {#if loading}
     <Card>
-      <div class="py-12 text-center text-sm text-zinc-400">Loading…</div>
+      <div class="py-12 text-center text-sm text-zinc-400">{$_("common.loading")}</div>
     </Card>
   {:else if saves.length === 0}
     <Card>
@@ -181,11 +182,10 @@
           <RefreshCw size={20} />
         </div>
         <h2 class="text-base font-medium text-zinc-100">
-          No saves tracked yet.
+          {$_("dashboard.no_saves_title")}
         </h2>
         <p class="mx-auto mt-2 max-w-md text-sm text-zinc-400">
-          Head to the Library and pick a game — Hoard will auto-back-up
-          its saves whenever they change.
+          {$_("dashboard.no_saves_body")}
         </p>
       </div>
     </Card>
@@ -208,7 +208,7 @@
                 <span
                   class="inline-flex items-center gap-1 rounded bg-amber-500/10 px-2 py-0.5 text-xs text-amber-400 ring-1 ring-amber-500/30"
                 >
-                  <PauseCircle size={12} /> Paused
+                  <PauseCircle size={12} /> {$_("dashboard.paused")}
                 </span>
               {/if}
             </div>
@@ -229,10 +229,10 @@
             variant="ghost"
             size="md"
             onclick={() => push(`/history/${save.save_id}`)}
-            title="View snapshots & restore"
+            title={$_("dashboard.history_title")}
           >
             <History size={14} />
-            History
+            {$_("dashboard.history")}
           </Button>
           <Button
             variant="secondary"
@@ -240,13 +240,13 @@
             onclick={() => backupNow(save.save_id)}
             disabled={!$status.running || save.paused}
             title={save.paused
-              ? "This save is paused — open History to resume"
+              ? $_("dashboard.tooltip_paused")
               : !$status.running
-                ? "Start the agent first"
-                : "Force a backup now"}
+                ? $_("dashboard.tooltip_offline")
+                : $_("dashboard.tooltip_force")}
           >
             <UploadCloud size={14} />
-            Back up
+            {$_("dashboard.back_up")}
           </Button>
         </div>
       {/each}

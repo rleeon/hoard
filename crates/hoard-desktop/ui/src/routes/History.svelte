@@ -10,10 +10,16 @@
    * confirmation, and offers a "back up current state first" safety toggle
    * (default ON). Deletion is soft on the server side — items go to a
    * recoverable trash for `retention_days`.
+   *
+   * When the save isn't tracked locally yet (e.g. pulled from another
+   * machine), restoring opens a folder-picker modal first; the chosen
+   * destination is sent as `destination_override` and persisted to
+   * `CliState` so subsequent restores skip the dialog.
    */
   import { onDestroy, onMount } from "svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { push } from "svelte-spa-router";
+  import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import {
     ArrowLeft,
     UploadCloud,
@@ -28,13 +34,16 @@
     AlertTriangle,
     History as HistoryIcon,
     Folder,
+    FolderOpen,
   } from "lucide-svelte";
+  import { _ } from "svelte-i18n";
 
   import Button from "../lib/components/Button.svelte";
   import Card from "../lib/components/Card.svelte";
   import Modal from "../lib/components/Modal.svelte";
   import Input from "../lib/components/Input.svelte";
   import * as api from "../lib/api";
+  import { NEEDS_DESTINATION } from "../lib/api";
   import type {
     SnapshotEntry,
     SnapshotDetail,
@@ -66,6 +75,10 @@
   let editingPath = $state(false);
   let newPath = $state("");
   let savingPath = $state(false);
+
+  // Pending-destination modal: shown when restore_snapshot returns
+  // NEEDS_DESTINATION because there's no local mapping for this save yet.
+  let pickingDestination = $state<SnapshotEntry | null>(null);
 
   let togglingPause = $state(false);
   let backingUp = $state(false);
@@ -120,10 +133,19 @@
   function formatRelative(iso: string): string {
     const t = new Date(iso).getTime();
     const diff = (Date.now() - t) / 1000;
-    if (diff < 60) return "just now";
-    if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} h ago`;
-    if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} d ago`;
+    if (diff < 60) return $_("history.relative_just_now");
+    if (diff < 3600)
+      return $_("history.relative_minutes", {
+        values: { count: Math.floor(diff / 60) },
+      });
+    if (diff < 86400)
+      return $_("history.relative_hours", {
+        values: { count: Math.floor(diff / 3600) },
+      });
+    if (diff < 86400 * 7)
+      return $_("history.relative_days", {
+        values: { count: Math.floor(diff / 86400) },
+      });
     return new Date(iso).toLocaleDateString();
   }
 
@@ -138,31 +160,88 @@
     });
   }
 
-  async function startRestore() {
-    if (!restoreTarget) return;
+  /** Compact ISO-ish stamp for the snapshot label, e.g. "2026-05-08 14:30".
+   *  Locale-aware date+time but with explicit numeric components so the
+   *  result is sortable and unambiguous across regions. */
+  function snapshotStamp(iso: string): string {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return (
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+      `${pad(d.getHours())}:${pad(d.getMinutes())}`
+    );
+  }
+
+  /** Run the actual restore call. Pulled out of `startRestore` so the
+   *  destination-picker flow can also call it after the user chooses a
+   *  folder. */
+  async function performRestore(
+    target: SnapshotEntry,
+    destinationOverride: string | null,
+  ) {
     restoring = true;
     restoreProgress = null;
     try {
       const out = await api.restoreSnapshot({
         save_id: saveId,
-        version: restoreTarget.version_num,
+        version: target.version_num,
         backup_first: backupFirst,
+        destination_override: destinationOverride,
       });
       const safety = out.safety_version
-        ? ` (safety backup: v${out.safety_version})`
+        ? $_("history.safety_suffix", {
+            values: { version: out.safety_version },
+          })
         : "";
       toastSuccess(
-        `Restored v${restoreTarget.version_num} — ${out.files_extracted} file${
-          out.files_extracted === 1 ? "" : "s"
-        }${safety}.`,
+        $_("history.restored_toast", {
+          values: {
+            version: target.version_num,
+            count: out.files_extracted,
+            safety,
+          },
+        }),
       );
       restoreTarget = null;
+      pickingDestination = null;
       await hydrate();
     } catch (e) {
-      toastError(typeof e === "string" ? e : (e as Error).message);
+      const msg = typeof e === "string" ? e : (e as Error).message;
+      // Backend signals "no local path" with a sentinel string; turn that
+      // into the folder-picker flow instead of bubbling the raw error to
+      // the user.
+      if (msg === NEEDS_DESTINATION) {
+        pickingDestination = target;
+        restoreTarget = null;
+      } else {
+        toastError(msg);
+      }
     } finally {
       restoring = false;
       restoreProgress = null;
+    }
+  }
+
+  async function startRestore() {
+    if (!restoreTarget) return;
+    await performRestore(restoreTarget, null);
+  }
+
+  async function pickDestinationAndRestore() {
+    if (!pickingDestination) return;
+    try {
+      const picked = await openDialog({
+        directory: true,
+        multiple: false,
+        title: $_("history.pick_destination_dialog_title"),
+      });
+      if (typeof picked !== "string" || picked.length === 0) {
+        toastError($_("history.no_destination_picked"));
+        return;
+      }
+      await performRestore(pickingDestination, picked);
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
     }
   }
 
@@ -171,7 +250,11 @@
     deleting = true;
     try {
       await api.deleteSnapshot(saveId, deleteTarget.version_num);
-      toastSuccess(`Sent v${deleteTarget.version_num} to trash.`);
+      toastSuccess(
+        $_("history.trashed_toast", {
+          values: { version: deleteTarget.version_num },
+        }),
+      );
       deleteTarget = null;
       await hydrate();
     } catch (e) {
@@ -184,7 +267,7 @@
   async function recover(version: number) {
     try {
       await api.undeleteSnapshot(saveId, version);
-      toastSuccess(`Recovered v${version}.`);
+      toastSuccess($_("history.recovered_toast", { values: { version } }));
       await hydrate();
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
@@ -195,7 +278,7 @@
     backingUp = true;
     try {
       await api.backupNow(saveId);
-      toastSuccess("Backup queued.");
+      toastSuccess($_("dashboard.backup_queued"));
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
     } finally {
@@ -210,7 +293,7 @@
       const next = !save.paused;
       await api.setSavePaused(saveId, next);
       toastSuccess(
-        next ? "Paused tracking for this save." : "Resumed tracking.",
+        next ? $_("history.tracking_paused") : $_("history.tracking_resumed"),
       );
       await hydrate();
     } catch (e) {
@@ -222,19 +305,37 @@
 
   async function commitPath() {
     if (!newPath.trim()) {
-      toastError("Path can't be empty.");
+      toastError($_("history.path_empty"));
       return;
     }
     savingPath = true;
     try {
       await api.setSaveLocalPath(saveId, newPath.trim());
-      toastSuccess("Updated save folder.");
+      toastSuccess($_("history.path_updated"));
       editingPath = false;
       await hydrate();
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
     } finally {
       savingPath = false;
+    }
+  }
+
+  /** Open an OS folder dialog and pipe the result into the Edit-folder
+   *  input. We don't auto-submit so the user can still tweak the path
+   *  string before confirming. */
+  async function browseEditFolder() {
+    try {
+      const picked = await openDialog({
+        directory: true,
+        multiple: false,
+        title: $_("history.edit_folder_title"),
+      });
+      if (typeof picked === "string" && picked.length > 0) {
+        newPath = picked;
+      }
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
     }
   }
 
@@ -253,15 +354,25 @@
   function progressLabel(p: RestoreProgress): string {
     if (p.phase === "pre_backup") {
       return p.total > 0
-        ? `Backing up current state — ${formatBytes(p.downloaded)} / ${formatBytes(p.total)}`
-        : `Backing up current state…`;
+        ? $_("history.progress_pre_backup", {
+            values: {
+              downloaded: formatBytes(p.downloaded),
+              total: formatBytes(p.total),
+            },
+          })
+        : $_("history.progress_pre_backup_indeterminate");
     }
     if (p.phase === "downloading") {
       return p.total > 0
-        ? `Downloading — ${formatBytes(p.downloaded)} / ${formatBytes(p.total)}`
-        : `Downloading…`;
+        ? $_("history.progress_downloading", {
+            values: {
+              downloaded: formatBytes(p.downloaded),
+              total: formatBytes(p.total),
+            },
+          })
+        : $_("history.progress_downloading_indeterminate");
     }
-    return "Done.";
+    return $_("history.progress_done");
   }
 
   function progressPercent(p: RestoreProgress): number | null {
@@ -276,19 +387,21 @@
     onclick={() => push("/dashboard")}
     class="mb-4 inline-flex items-center gap-2 text-sm text-zinc-400 transition-colors hover:text-zinc-100"
   >
-    <ArrowLeft size={14} /> Back to dashboard
+    <ArrowLeft size={14} /> {$_("history.back_to_dashboard")}
   </button>
 
   {#if loading && !save}
     <Card>
-      <div class="py-12 text-center text-sm text-zinc-400">Loading…</div>
+      <div class="py-12 text-center text-sm text-zinc-400">
+        {$_("common.loading")}
+      </div>
     </Card>
   {:else if !save}
     <Card>
       <div class="py-12 text-center">
-        <p class="text-sm text-zinc-300">We couldn't find that save.</p>
+        <p class="text-sm text-zinc-300">{$_("history.not_found")}</p>
         <p class="mt-1 text-xs text-zinc-500">
-          It may have been removed from this machine.
+          {$_("history.not_found_hint")}
         </p>
       </div>
     </Card>
@@ -300,14 +413,16 @@
             <h1 class="truncate text-2xl font-semibold tracking-tight">
               {save.game_slug}
             </h1>
-            <span class="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+            <span
+              class="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400"
+            >
               {save.label}
             </span>
             {#if save.paused}
               <span
                 class="inline-flex items-center gap-1 rounded bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300"
               >
-                <PauseCircle size={12} /> Paused
+                <PauseCircle size={12} /> {$_("history.paused")}
               </span>
             {/if}
           </div>
@@ -316,9 +431,13 @@
             <span class="truncate font-mono text-xs">{save.local_path}</span>
           </p>
           <p class="mt-2 text-xs text-zinc-500">
-            {snapshots.length} version{snapshots.length === 1 ? "" : "s"}
+            {$_("history.versions_count", {
+              values: { count: snapshots.length },
+            })}
             {#if save.last_backup_at}
-              · last activity {formatRelative(save.last_backup_at)}
+              {$_("history.last_activity", {
+                values: { when: formatRelative(save.last_backup_at) },
+              })}
             {/if}
           </p>
         </div>
@@ -326,43 +445,50 @@
 
       <div class="mt-4 flex flex-wrap items-center gap-2">
         <Button variant="primary" onclick={backupNow} loading={backingUp}>
-          <UploadCloud size={14} /> Back up now
+          <UploadCloud size={14} /> {$_("history.back_up_now")}
         </Button>
-        <Button variant="secondary" onclick={togglePause} loading={togglingPause}>
+        <Button
+          variant="secondary"
+          onclick={togglePause}
+          loading={togglingPause}
+        >
           {#if save.paused}
-            <PlayCircle size={14} /> Resume tracking
+            <PlayCircle size={14} /> {$_("history.resume_tracking")}
           {:else}
-            <PauseCircle size={14} /> Pause tracking
+            <PauseCircle size={14} /> {$_("history.pause_tracking")}
           {/if}
         </Button>
         <Button variant="secondary" onclick={() => (editingPath = true)}>
-          <Edit3 size={14} /> Edit folder
+          <Edit3 size={14} /> {$_("history.edit_folder")}
         </Button>
       </div>
     </header>
 
     <section class="mb-3 flex items-center justify-between">
       <h2 class="flex items-center gap-2 text-sm font-medium text-zinc-300">
-        <HistoryIcon size={14} class="text-zinc-500" /> Versions
+        <HistoryIcon size={14} class="text-zinc-500" />
+        {$_("history.versions")}
       </h2>
       <label class="flex items-center gap-2 text-xs text-zinc-400">
         <input
           type="checkbox"
           class="h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-900 text-amber-500"
           checked={includeDeleted}
-          onchange={(e) => (includeDeleted = (e.currentTarget as HTMLInputElement).checked)}
+          onchange={(e) =>
+            (includeDeleted = (e.currentTarget as HTMLInputElement).checked)}
         />
-        Show recoverable (trash)
+        {$_("history.show_recoverable")}
       </label>
     </section>
 
     {#if snapshots.length === 0}
       <Card>
         <div class="py-12 text-center">
-          <p class="text-sm text-zinc-300">No backups yet.</p>
+          <p class="text-sm text-zinc-300">
+            {$_("history.no_backups_title")}
+          </p>
           <p class="mt-1 text-xs text-zinc-500">
-            Your first backup runs as soon as the game writes new save data —
-            or hit "Back up now" above.
+            {$_("history.no_backups_body")}
           </p>
         </div>
       </Card>
@@ -380,7 +506,9 @@
                 type="button"
                 onclick={() => toggleExpanded(snap.version_num)}
                 class="text-zinc-500 transition-colors hover:text-zinc-200"
-                aria-label={isOpen ? "Collapse" : "Expand"}
+                aria-label={isOpen
+                  ? $_("history.collapse")
+                  : $_("history.expand")}
               >
                 {#if isOpen}
                   <ChevronDown size={16} />
@@ -390,8 +518,20 @@
               </button>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 text-sm">
-                  <span class="font-mono font-medium text-zinc-100">
-                    v{snap.version_num}
+                  <!-- Self-describing label: `save_v3 · 2026-05-08 14:30`.
+                       The plain `v3` was useful but ambiguous in bug
+                       reports; the timestamp suffix makes it copy-paste
+                       friendly. -->
+                  <span
+                    class="font-mono font-medium text-zinc-100"
+                    title={formatAbsolute(snap.created_at)}
+                  >
+                    {$_("history.snapshot_label", {
+                      values: {
+                        version: snap.version_num,
+                        date: snapshotStamp(snap.created_at),
+                      },
+                    })}
                   </span>
                   {#if snap.is_pinned}
                     <Pin size={12} class="text-amber-400" />
@@ -400,16 +540,22 @@
                     <span
                       class="inline-flex items-center gap-1 rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400"
                     >
-                      <Trash2 size={10} /> Recoverable
+                      <Trash2 size={10} /> {$_("history.recoverable")}
                     </span>
                   {/if}
                 </div>
-                <div class="mt-1 flex items-center gap-3 text-xs text-zinc-500">
+                <div
+                  class="mt-1 flex items-center gap-3 text-xs text-zinc-500"
+                >
                   <span title={formatAbsolute(snap.created_at)}>
                     {formatRelative(snap.created_at)}
                   </span>
                   <span>·</span>
-                  <span>{snap.file_count} file{snap.file_count === 1 ? "" : "s"}</span>
+                  <span>
+                    {$_("history.files_count", {
+                      values: { count: snap.file_count },
+                    })}
+                  </span>
                   <span>·</span>
                   <span>{formatBytes(snap.total_size_bytes)}</span>
                 </div>
@@ -421,7 +567,7 @@
                     size="md"
                     onclick={() => recover(snap.version_num)}
                   >
-                    <RotateCcw size={12} /> Recover
+                    <RotateCcw size={12} /> {$_("history.recover")}
                   </Button>
                 {:else}
                   <Button
@@ -429,13 +575,13 @@
                     size="md"
                     onclick={() => (restoreTarget = snap)}
                   >
-                    <RotateCcw size={12} /> Restore
+                    <RotateCcw size={12} /> {$_("history.restore")}
                   </Button>
                   <Button
                     variant="ghost"
                     size="md"
                     onclick={() => (deleteTarget = snap)}
-                    aria-label="Delete this version"
+                    aria-label={$_("history.delete_aria")}
                   >
                     <Trash2 size={12} />
                   </Button>
@@ -448,8 +594,12 @@
                 {#if detailCache[snap.version_num]}
                   <ul class="divide-y divide-zinc-900">
                     {#each detailCache[snap.version_num].files as f (f.relative_path)}
-                      <li class="flex items-center justify-between gap-3 py-1.5">
-                        <span class="truncate font-mono text-xs text-zinc-300">
+                      <li
+                        class="flex items-center justify-between gap-3 py-1.5"
+                      >
+                        <span
+                          class="truncate font-mono text-xs text-zinc-300"
+                        >
                           {f.relative_path}
                         </span>
                         <span class="shrink-0 text-xs text-zinc-500">
@@ -459,7 +609,9 @@
                     {/each}
                   </ul>
                 {:else}
-                  <p class="text-xs text-zinc-500">Loading file list…</p>
+                  <p class="text-xs text-zinc-500">
+                    {$_("history.loading_files")}
+                  </p>
                 {/if}
               </div>
             {/if}
@@ -473,9 +625,13 @@
 <!-- Restore confirmation -->
 <Modal
   open={!!restoreTarget}
-  title={restoreTarget ? `Restore version ${restoreTarget.version_num}?` : ""}
+  title={restoreTarget
+    ? $_("history.restore_title", {
+        values: { version: restoreTarget.version_num },
+      })
+    : ""}
   description={save
-    ? `Files in ${save.local_path} will be overwritten with the contents of this version.`
+    ? $_("history.restore_description", { values: { path: save.local_path } })
     : ""}
   dismissible={!restoring}
   onClose={() => {
@@ -489,13 +645,15 @@
         class="mt-0.5 h-4 w-4 shrink-0 rounded border-zinc-700 bg-zinc-900 text-amber-500"
         checked={backupFirst}
         disabled={restoring}
-        onchange={(e) => (backupFirst = (e.currentTarget as HTMLInputElement).checked)}
+        onchange={(e) =>
+          (backupFirst = (e.currentTarget as HTMLInputElement).checked)}
       />
       <span>
-        <span class="font-medium text-zinc-100">Back up current state first</span>
+        <span class="font-medium text-zinc-100">
+          {$_("history.backup_first_label")}
+        </span>
         <span class="mt-0.5 block text-xs text-zinc-400">
-          Recommended. Saves what's in the folder right now as a fresh
-          version, so you can roll back if you restored the wrong one.
+          {$_("history.backup_first_hint")}
         </span>
       </span>
     </label>
@@ -521,12 +679,11 @@
     {/if}
 
     {#if !restoring}
-      <div class="flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">
+      <div
+        class="flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200"
+      >
         <AlertTriangle size={14} class="mt-0.5 shrink-0" />
-        <span>
-          Restore overwrites the current files. If the game is running,
-          quit it first or your progress in this session may be lost.
-        </span>
+        <span>{$_("history.restore_warning")}</span>
       </div>
     {/if}
   </div>
@@ -536,10 +693,44 @@
       onclick={() => (restoreTarget = null)}
       disabled={restoring}
     >
-      Cancel
+      {$_("common.cancel")}
     </Button>
     <Button variant="primary" onclick={startRestore} loading={restoring}>
-      Restore
+      {$_("history.restore")}
+    </Button>
+  {/snippet}
+</Modal>
+
+<!-- Pick a destination when the save isn't tracked locally yet. The
+     primary button opens the OS folder picker; on success we re-call
+     restore with `destination_override`. -->
+<Modal
+  open={!!pickingDestination}
+  title={$_("history.choose_destination_title")}
+  description={$_("history.choose_destination_description")}
+  dismissible={!restoring}
+  onClose={() => {
+    if (!restoring) pickingDestination = null;
+  }}
+>
+  <p class="text-sm text-zinc-300">
+    {$_("history.choose_destination_description")}
+  </p>
+  {#snippet footer()}
+    <Button
+      variant="secondary"
+      onclick={() => (pickingDestination = null)}
+      disabled={restoring}
+    >
+      {$_("common.cancel")}
+    </Button>
+    <Button
+      variant="primary"
+      onclick={pickDestinationAndRestore}
+      loading={restoring}
+    >
+      <FolderOpen size={14} />
+      {$_("history.browse")}
     </Button>
   {/snippet}
 </Modal>
@@ -548,28 +739,27 @@
 <Modal
   open={!!deleteTarget}
   title={deleteTarget
-    ? `Send version ${deleteTarget.version_num} to trash?`
+    ? $_("history.delete_title", {
+        values: { version: deleteTarget.version_num },
+      })
     : ""}
-  description="The version stays recoverable from the trash for the server's retention window (default 30 days). After that it's gone for good."
+  description={$_("history.delete_description")}
   dismissible={!deleting}
   onClose={() => {
     if (!deleting) deleteTarget = null;
   }}
 >
-  <p class="text-sm text-zinc-300">
-    Deleted versions don't count against your storage quota and can be
-    recovered from the "Show recoverable" toggle above this list.
-  </p>
+  <p class="text-sm text-zinc-300">{$_("history.delete_body")}</p>
   {#snippet footer()}
     <Button
       variant="secondary"
       onclick={() => (deleteTarget = null)}
       disabled={deleting}
     >
-      Cancel
+      {$_("common.cancel")}
     </Button>
     <Button variant="primary" onclick={confirmDelete} loading={deleting}>
-      Send to trash
+      {$_("history.send_to_trash")}
     </Button>
   {/snippet}
 </Modal>
@@ -577,29 +767,41 @@
 <!-- Edit local path -->
 <Modal
   open={editingPath}
-  title="Edit save folder"
-  description="Tell Hoard where this save lives now. Use the full path to the folder, exactly as it appears in your file manager."
+  title={$_("history.edit_folder_title")}
+  description={$_("history.edit_folder_description")}
   dismissible={!savingPath}
   onClose={() => {
     if (!savingPath) editingPath = false;
   }}
 >
-  <Input
-    label="Save folder"
-    bind:value={newPath}
-    placeholder="/home/you/.local/share/Game/Saves"
-    disabled={savingPath}
-  />
+  <div class="flex items-end gap-2">
+    <div class="flex-1">
+      <Input
+        label={$_("history.save_folder_label")}
+        bind:value={newPath}
+        placeholder="/home/you/.local/share/Game/Saves"
+        disabled={savingPath}
+      />
+    </div>
+    <Button
+      variant="secondary"
+      onclick={browseEditFolder}
+      disabled={savingPath}
+    >
+      <FolderOpen size={14} />
+      {$_("history.browse")}
+    </Button>
+  </div>
   {#snippet footer()}
     <Button
       variant="secondary"
       onclick={() => (editingPath = false)}
       disabled={savingPath}
     >
-      Cancel
+      {$_("common.cancel")}
     </Button>
     <Button variant="primary" onclick={commitPath} loading={savingPath}>
-      Update folder
+      {$_("history.update_folder")}
     </Button>
   {/snippet}
 </Modal>

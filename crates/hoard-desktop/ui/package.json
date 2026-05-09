@@ -1,7 +1,7 @@
 {
   "name": "hoard-desktop-ui",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,10 +11,12 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-dialog": "^2.2.0",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-shell": "^2.0.1",
     "@tauri-apps/plugin-store": "^2.4.3",
     "lucide-svelte": "^0.460.0",
+    "svelte-i18n": "^4.0.1",
     "svelte-spa-router": "^4.0.1"
   },
   "devDependencies": {

@@ -20,6 +20,8 @@
     HardDrive,
     Gamepad2,
   } from "lucide-svelte";
+  import { _ } from "svelte-i18n";
+  import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
   import Button from "../lib/components/Button.svelte";
   import Card from "../lib/components/Card.svelte";
@@ -74,9 +76,7 @@
     try {
       report = await api.scanLibrary();
       toastSuccess(
-        `Found ${report.games.length} game${
-          report.games.length === 1 ? "" : "s"
-        }.`,
+        $_("library.scan_toast", { values: { count: report.games.length } }),
       );
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
@@ -87,21 +87,46 @@
   }
 
   async function track(game: DetectedGame) {
-    if (!game.found_paths.length) {
-      toastError(
-        "No save folder yet — start the game once, then re-scan to track it.",
-      );
-      return;
+    // Auto-track when detection found a folder; otherwise fall through to
+    // the manual picker below so the user can point Hoard at the right
+    // place themselves.
+    let chosen: string | null = game.found_paths[0] ?? null;
+    if (!chosen) {
+      chosen = await pickFolder(game.display_name);
+      if (!chosen) return; // User cancelled the dialog.
     }
     try {
       const saved = await api.addGameToTracking({
         game_slug: game.slug,
-        local_path: game.found_paths[0],
+        local_path: chosen,
       });
       tracked = [...tracked, saved];
-      toastSuccess(`Now tracking ${game.display_name}.`);
+      toastSuccess(
+        $_("library.now_tracking", { values: { name: game.display_name } }),
+      );
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
+    }
+  }
+
+  /** Open the OS folder picker. Returns the selected absolute path or null
+   *  on cancel. We pass the game's display name as the dialog title so the
+   *  user knows which game they're picking the save folder for. */
+  async function pickFolder(displayName: string): Promise<string | null> {
+    try {
+      const result = await openDialog({
+        directory: true,
+        multiple: false,
+        title: $_("library.pick_folder_title", {
+          values: { name: displayName },
+        }),
+      });
+      // Tauri's dialog plugin returns string | null; normalise just in case.
+      if (typeof result === "string" && result.length > 0) return result;
+      return null;
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+      return null;
     }
   }
 
@@ -122,13 +147,13 @@
   });
 
   function confidenceLabel(c: Confidence): string {
-    return c === "high" ? "High" : c === "medium" ? "Medium" : "Low";
+    return c === "high" ? $_("library.high") : c === "medium" ? $_("library.medium") : $_("library.low");
   }
 
   function sourceLabel(s: DetectionSource): string {
-    if (s === "both") return "Steam + filesystem";
-    if (s === "steam_library") return "Steam";
-    return "Filesystem";
+    if (s === "both") return $_("library.both_sources");
+    if (s === "steam_library") return $_("library.steam_label");
+    return $_("library.filesystem_label");
   }
 
   function sourceBadgeClass(s: DetectionSource): string {
@@ -179,23 +204,21 @@
 <div class="mx-auto max-w-6xl px-8 py-8">
   <header class="mb-6 flex items-start justify-between gap-4">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">Library</h1>
+      <h1 class="text-2xl font-semibold tracking-tight">{$_("library.title")}</h1>
       <p class="mt-1 text-sm text-zinc-400">
         {#if report}
-          Scanned {report.catalog_size.toLocaleString()} catalog entries —
-          found {report.games.length} on this machine
+          {$_("library.subtitle_scanned", { values: { catalog: report.catalog_size.toLocaleString(), found: report.games.length } })}
           {#if report.steam_apps_found > 0}
-            (plus {report.steam_apps_found} installed Steam apps)
+            {$_("library.subtitle_steam_addendum", { values: { steam: report.steam_apps_found } })}
           {/if}
         {:else}
-          Scan your machine to find games whose save folders Hoard knows
-          about.
+          {$_("library.subtitle_initial")}
         {/if}
       </p>
     </div>
     <Button onclick={runScan} loading={scanning}>
       <RefreshCw size={16} />
-      {scanning ? "Scanning…" : report ? "Rescan" : "Scan now"}
+      {scanning ? $_("library.scanning") : report ? $_("library.rescan") : $_("library.scan_now")}
     </Button>
   </header>
 
@@ -208,10 +231,9 @@
       <div
         class="mb-2 flex items-center justify-between gap-3 text-xs uppercase tracking-wide text-zinc-500"
       >
-        <span>Tracked games</span>
+        <span>{$_("library.tracked_games")}</span>
         <span class="tabular-nums normal-case tracking-normal text-zinc-400">
-          {tracked.length} game{tracked.length === 1 ? "" : "s"} ·
-          {fmtBytes(trackedTotalBytes)}
+          {$_("library.tracked_summary", { values: { count: tracked.length, size: fmtBytes(trackedTotalBytes) } })}
         </span>
       </div>
       <div
@@ -234,7 +256,7 @@
             </div>
             <span
               class="shrink-0 rounded bg-zinc-800 px-2 py-0.5 text-xs font-medium tabular-nums text-zinc-300"
-              title="Total bytes stored on the server (sum of snapshots)"
+              title={$_("library.tracked_size_title")}
             >
               {save.total_size_bytes > 0
                 ? fmtBytes(save.total_size_bytes)
@@ -249,7 +271,7 @@
   {#if scanning && progress}
     <div class="mb-6 rounded-md border border-zinc-800 bg-zinc-900/50 p-4">
       <div class="mb-2 flex items-center justify-between text-xs text-zinc-400">
-        <span>Scanning catalog…</span>
+        <span>{$_("library.scanning_catalog")}</span>
         <span>
           {progress.done.toLocaleString()} / {progress.total.toLocaleString()}
         </span>
@@ -266,31 +288,31 @@
   {#if report}
     <div class="mb-5 flex flex-wrap items-center gap-3">
       <div class="flex-1 min-w-[14rem]">
-        <Input bind:value={search} placeholder="Search games" icon={SearchIcon} />
+        <Input bind:value={search} placeholder={$_("library.search")} icon={SearchIcon} />
       </div>
       <label class="flex items-center gap-2 text-xs text-zinc-400">
         <Filter size={14} />
-        Confidence
+        {$_("library.confidence")}
         <select
           bind:value={confidenceFilter}
           class="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
         >
-          <option value="all">Any</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
+          <option value="all">{$_("library.any")}</option>
+          <option value="high">{$_("library.high")}</option>
+          <option value="medium">{$_("library.medium")}</option>
+          <option value="low">{$_("library.low")}</option>
         </select>
       </label>
       <label class="flex items-center gap-2 text-xs text-zinc-400">
-        Source
+        {$_("library.source")}
         <select
           bind:value={sourceFilter}
           class="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
         >
-          <option value="all">Any</option>
-          <option value="both">Steam + filesystem</option>
-          <option value="steam_library">Steam only</option>
-          <option value="filesystem_heuristic">Filesystem only</option>
+          <option value="all">{$_("library.any")}</option>
+          <option value="both">{$_("library.both_sources")}</option>
+          <option value="steam_library">{$_("library.steam_only")}</option>
+          <option value="filesystem_heuristic">{$_("library.filesystem_only")}</option>
         </select>
       </label>
     </div>
@@ -299,8 +321,8 @@
       <Card>
         <div class="py-12 text-center text-sm text-zinc-400">
           {report.games.length === 0
-            ? "Nothing detected yet. Try installing a few games or running a deeper scan."
-            : "No games match those filters."}
+            ? $_("library.no_results_empty")
+            : $_("library.no_results_filtered")}
         </div>
       </Card>
     {:else}
@@ -353,13 +375,13 @@
                 {game.found_paths[0]}
                 {#if game.found_paths.length > 1}
                   <span class="text-zinc-600">
-                    (+{game.found_paths.length - 1} more)
+                    {$_("library.found_more", { values: { count: game.found_paths.length - 1 } })}
                   </span>
                 {/if}
               </p>
             {:else}
               <p class="mt-1 text-[11px] italic text-zinc-600">
-                No save folder yet
+                {$_("library.no_save_folder_yet")}
               </p>
             {/if}
 
@@ -370,7 +392,7 @@
                   class="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-500/30"
                 >
                   <Check size={12} />
-                  Tracked
+                  {$_("library.tracked_badge")}
                   {#if t && t.total_size_bytes > 0}
                     <span class="text-emerald-400/70 tabular-nums">
                       · {fmtBytes(t.total_size_bytes)}
@@ -382,10 +404,11 @@
                   variant="secondary"
                   size="md"
                   onclick={() => track(game)}
-                  disabled={!game.found_paths.length}
                 >
                   <Plus size={14} />
-                  Track
+                  {game.found_paths.length
+                    ? $_("library.track_button")
+                    : $_("library.pick_folder_button")}
                 </Button>
               {/if}
             </div>
@@ -402,16 +425,15 @@
           <RefreshCw size={20} />
         </div>
         <h2 class="text-base font-medium text-zinc-100">
-          No scan yet on this session.
+          {$_("library.no_scan_title")}
         </h2>
         <p class="mx-auto mt-2 max-w-md text-sm text-zinc-400">
-          Hoard will check ~10,000 catalog entries against your filesystem
-          and Steam library. The first scan takes 10–30 seconds.
+          {$_("library.no_scan_body")}
         </p>
         <div class="mt-6">
           <Button onclick={runScan}>
             <RefreshCw size={16} />
-            Scan now
+            {$_("library.scan_now")}
           </Button>
         </div>
       </div>

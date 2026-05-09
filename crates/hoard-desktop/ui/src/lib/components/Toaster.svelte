@@ -8,6 +8,7 @@
    */
   import { fly } from "svelte/transition";
   import { CheckCircle2, AlertCircle, Info, X } from "lucide-svelte";
+  import { _ } from "svelte-i18n";
   import { toasts, dismissToast, type Toast } from "../stores/toasts";
 
   const ICONS = {
@@ -32,7 +33,7 @@
 <div
   class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2"
   role="region"
-  aria-label="Notifications"
+  aria-label={$_("common.notifications")}
   aria-live="polite"
 >
   {#each $toasts as toast (toast.id)}
@@ -50,7 +51,7 @@
       <button
         type="button"
         class="-mr-1 -mt-1 shrink-0 rounded p-1 text-zinc-400 hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
-        aria-label="Dismiss notification"
+        aria-label={$_("common.dismiss")}
         onclick={() => dismissToast(toast.id)}
       >
         <X size={14} />

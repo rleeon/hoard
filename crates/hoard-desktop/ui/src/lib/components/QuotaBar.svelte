@@ -15,6 +15,7 @@
    * auth store).
    */
   import { HardDrive } from "lucide-svelte";
+  import { _ } from "svelte-i18n";
   import type { UserInfo } from "../api";
 
   type Props = {
@@ -66,19 +67,19 @@
       </span>
       <div>
         <p class="text-xs uppercase tracking-wide text-zinc-500">
-          Storage
+          {$_("quota.label")}
         </p>
         {#if user.is_local_server}
           <p class="text-sm font-medium text-zinc-100">
-            {fmtBytes(used)} used
+            {$_("quota.used", { values: { size: fmtBytes(used) } })}
           </p>
         {:else if quota > 0}
           <p class="text-sm font-medium text-zinc-100">
-            {fmtBytes(used)} of {fmtBytes(quota)}
+            {$_("quota.used_of", { values: { used: fmtBytes(used), quota: fmtBytes(quota) } })}
           </p>
         {:else}
           <p class="text-sm font-medium text-zinc-100">
-            {fmtBytes(used)} used
+            {$_("quota.used", { values: { size: fmtBytes(used) } })}
           </p>
         {/if}
       </div>
@@ -94,7 +95,7 @@
         {pct.toFixed(1)}%
       </span>
     {:else if user.is_local_server}
-      <span class="text-xs text-zinc-500">Self-hosted</span>
+      <span class="text-xs text-zinc-500">{$_("quota.self_hosted")}</span>
     {/if}
   </div>
 

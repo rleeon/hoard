@@ -177,29 +177,76 @@ pub struct RestoreOutcome {
 /// fresh snapshot *before* overwriting anything — that's the user's escape
 /// hatch if they restored the wrong version. The returned `safety_version`
 /// is what they'd restore to undo this.
+///
+/// `destination_override` lets the caller restore into a folder we don't yet
+/// have in `CliState` (e.g. the user pulled this save from another machine
+/// and never tracked it locally). When provided, the path is created if
+/// missing and persisted to `CliState` so subsequent restores can skip the
+/// dialog.
 #[tauri::command]
 pub async fn restore_snapshot(
     app: AppHandle,
     save_id: String,
     version: i64,
     backup_first: bool,
+    destination_override: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<RestoreOutcome, String> {
     let client = current_client(&state)?;
 
-    // Resolve the destination from local state — we don't trust the
-    // frontend to round-trip the path correctly, and CliState is the
-    // authoritative answer to "where does this save live on disk".
-    let (cli_state, _) = CliState::load_default().map_err(|e| e.to_string())?;
-    let local_path = cli_state
-        .saves
-        .get(&save_id)
-        .map(|s| s.local_path.clone())
-        .ok_or_else(|| {
-            "We don't have a local path for that save on this machine. \
-             Re-track the game from the Library."
-                .to_string()
-        })?;
+    // Resolve the destination. Priority: explicit override > CliState lookup.
+    // If neither yields a path we surface a structured error the frontend
+    // catches and turns into a folder-picker dialog.
+    let (mut cli_state, cli_state_path) = CliState::load_default().map_err(|e| e.to_string())?;
+
+    let local_path: PathBuf = if let Some(raw) = destination_override.as_deref() {
+        let p = PathBuf::from(raw.trim());
+        if p.as_os_str().is_empty() {
+            return Err("Destination path can't be empty.".to_string());
+        }
+        // Auto-create the folder if it's missing — the user explicitly
+        // picked it as the restore target, so creating an empty dir is
+        // less surprising than failing.
+        if !p.exists() {
+            std::fs::create_dir_all(&p)
+                .map_err(|e| format!("Couldn't create {}: {e}", p.display()))?;
+        } else if !p.is_dir() {
+            return Err(format!("{} isn't a folder.", p.display()));
+        }
+        // Persist the chosen path so future restores/backups know where
+        // this save lives. We need the server-side metadata to fill in
+        // `game_slug` / `label` if the entry is brand-new on this machine.
+        let entry = cli_state.saves.entry(save_id.clone()).or_insert_with(|| {
+            // Defaults that get patched below from the server response.
+            hoard_agent::state::SaveState {
+                local_path: p.clone(),
+                game_slug: String::new(),
+                label: String::new(),
+                last_backup_at: None,
+                last_version_num: None,
+                paused: false,
+            }
+        });
+        entry.local_path = p.clone();
+        if entry.game_slug.is_empty() || entry.label.is_empty() {
+            if let Ok(server_save) = client.get_save(&save_id).await {
+                if entry.game_slug.is_empty() {
+                    entry.game_slug = server_save.game_slug;
+                }
+                if entry.label.is_empty() {
+                    entry.label = server_save.label;
+                }
+            }
+        }
+        cli_state.save(&cli_state_path).map_err(|e| e.to_string())?;
+        p
+    } else {
+        cli_state
+            .saves
+            .get(&save_id)
+            .map(|s| s.local_path.clone())
+            .ok_or_else(|| "NEEDS_DESTINATION".to_string())?
+    };
 
     // 1) Optional pre-restore backup. Done synchronously so the user can be
     //    sure the safety net exists before we start overwriting files.
@@ -334,8 +381,10 @@ pub async fn set_save_paused(
 
 /// Update the local-disk path for a tracked save. Used when the user moves
 /// the game folder (re-installed on a different drive, switched from Steam
-/// to GOG, etc.). Validates that the new path exists; the agent gets
-/// detached + reattached so the FS watcher rebinds to the new location.
+/// to GOG, etc.). The folder is created if missing — that's the friendly
+/// behaviour for "I haven't installed the game yet but I want my saves
+/// restored here". The agent gets detached + reattached so the FS watcher
+/// rebinds to the new location.
 #[tauri::command]
 pub async fn set_save_local_path(
     save_id: String,
@@ -343,13 +392,13 @@ pub async fn set_save_local_path(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let path_buf = PathBuf::from(new_path.trim());
-    if !path_buf.exists() {
-        return Err(format!(
-            "{} doesn't exist on this machine. Pick a different folder.",
-            path_buf.display()
-        ));
+    if path_buf.as_os_str().is_empty() {
+        return Err("Path can't be empty.".to_string());
     }
-    if !path_buf.is_dir() {
+    if !path_buf.exists() {
+        std::fs::create_dir_all(&path_buf)
+            .map_err(|e| format!("Couldn't create {}: {e}", path_buf.display()))?;
+    } else if !path_buf.is_dir() {
         return Err(format!("{} isn't a folder.", path_buf.display()));
     }
 

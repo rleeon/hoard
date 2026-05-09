@@ -9,6 +9,7 @@
    */
   import type { Snippet } from "svelte";
   import { ArrowLeft } from "lucide-svelte";
+  import { _ } from "svelte-i18n";
   import Logo from "./Logo.svelte";
   import type { OnboardingStep } from "../stores/onboarding";
 
@@ -44,7 +45,7 @@
           class="mb-4 inline-flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 rounded"
         >
           <ArrowLeft size={14} />
-          Back
+          {$_("common.back")}
         </button>
       {/if}
       {@render children()}
@@ -53,7 +54,7 @@
     <!-- Progress dots -->
     <div
       class="mt-6 flex items-center justify-center gap-2"
-      aria-label={`Step ${currentIndex + 1} of ${ORDER.length}`}
+      aria-label={$_("wizard.step_aria", { values: { current: currentIndex + 1, total: ORDER.length } })}
     >
       {#each ORDER as s, i (s)}
         <span

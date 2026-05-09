@@ -12,6 +12,7 @@
   import type { Snippet } from "svelte";
   import { onMount } from "svelte";
   import { X } from "lucide-svelte";
+  import { _ } from "svelte-i18n";
 
   type Props = {
     open: boolean;
@@ -78,7 +79,7 @@
           <button
             type="button"
             onclick={onClose}
-            aria-label="Close"
+            aria-label={$_("common.close")}
             class="-mr-1 -mt-1 rounded-md p-1 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
           >
             <X size={16} />

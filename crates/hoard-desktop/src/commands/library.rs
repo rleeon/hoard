@@ -123,11 +123,17 @@ pub async fn add_game_to_tracking(
     let label = args.label.unwrap_or_else(|| "main".to_string());
 
     let local_path = PathBuf::from(&args.local_path);
+    if local_path.as_os_str().is_empty() {
+        return Err("Save folder path can't be empty.".to_string());
+    }
+    // Auto-create when the folder is missing — useful when the user wants
+    // to start tracking a save before launching the game (e.g. restoring
+    // from another machine first).
     if !local_path.exists() {
-        return Err(format!(
-            "{} doesn't exist on this machine — pick a different folder.",
-            local_path.display()
-        ));
+        std::fs::create_dir_all(&local_path)
+            .map_err(|e| format!("Couldn't create {}: {e}", local_path.display()))?;
+    } else if !local_path.is_dir() {
+        return Err(format!("{} isn't a folder.", local_path.display()));
     }
 
     let save = client

@@ -2,6 +2,7 @@
   import { push } from "svelte-spa-router";
   import { fly } from "svelte/transition";
   import { ArrowRight, Server, CheckCircle2 } from "lucide-svelte";
+  import { _ } from "svelte-i18n";
   import Button from "../lib/components/Button.svelte";
   import Input from "../lib/components/Input.svelte";
   import WizardShell from "../lib/components/WizardShell.svelte";
@@ -28,7 +29,7 @@
     healthy = null;
     const trimmed = url.trim();
     if (!looksLikeUrl(trimmed)) {
-      inlineError = "Address must start with http:// or https://";
+      inlineError = $_("server.invalid_url");
       return;
     }
     loading = true;
@@ -68,10 +69,10 @@
 <WizardShell step="server" onBack={back}>
   <div in:fly={{ x: 24, duration: 220 }}>
     <h1 class="text-xl font-semibold tracking-tight text-zinc-50">
-      Connect to your server
+      {$_("server.title")}
     </h1>
     <p class="mt-2 text-sm text-zinc-400">
-      Paste the address of the Hoard server you (or your admin) set up.
+      {$_("server.subtitle")}
     </p>
 
     <form
@@ -82,10 +83,10 @@
       }}
     >
       <Input
-        label="Server address"
+        label={$_("server.address_label")}
         bind:value={url}
         placeholder="https://hoard.example.com:8080"
-        hint="The same URL you would open in a web browser."
+        hint={$_("server.address_hint")}
         icon={Server}
         autocomplete="url"
         spellcheck={false}
@@ -100,14 +101,14 @@
           {loading}
           disabled={!url.trim()}
         >
-          Test connection
+          {$_("server.test_connection")}
         </Button>
         {#if healthy}
           <span
             class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300"
           >
             <CheckCircle2 size={14} />
-            Reached server v{healthy.version}
+            {$_("server.reached_server", { values: { version: healthy.version } })}
           </span>
         {/if}
       </div>
@@ -119,7 +120,7 @@
           size="lg"
           disabled={!healthy || loading}
         >
-          Continue
+          {$_("common.continue")}
           <ArrowRight size={16} />
         </Button>
       </div>

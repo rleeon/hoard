@@ -208,6 +208,10 @@ export type Prefs = {
   start_minimised: boolean;
   seen_tray_hint: boolean;
   anonymous_telemetry: boolean;
+  /** ISO-639 code for the desktop UI language, e.g. "en", "fr". `null` means
+   *  the user hasn't picked one yet — we then fall back to the browser
+   *  language at boot. */
+  language: string | null;
 };
 
 export type TrayStateName =
@@ -327,13 +331,24 @@ export function restoreSnapshot(args: {
   save_id: string;
   version: number;
   backup_first: boolean;
+  /** When the save isn't tracked locally yet, the caller passes the folder
+   *  the user picked from a dialog. The backend creates it if missing and
+   *  records the (save_id → path) mapping in CliState so subsequent
+   *  restores skip the dialog. */
+  destination_override?: string | null;
 }): Promise<RestoreOutcome> {
   return invoke<RestoreOutcome>("restore_snapshot", {
     saveId: args.save_id,
     version: args.version,
     backupFirst: args.backup_first,
+    destinationOverride: args.destination_override ?? null,
   });
 }
+
+/** Sentinel error string from the Rust side meaning "we have no local path
+ *  for this save — prompt the user to pick one and retry with
+ *  `destination_override`". */
+export const NEEDS_DESTINATION = "NEEDS_DESTINATION";
 
 export function setSavePaused(saveId: string, paused: boolean): Promise<void> {
   return invoke<void>("set_save_paused", { saveId, paused });

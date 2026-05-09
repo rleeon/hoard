@@ -2,6 +2,7 @@
   import { push } from "svelte-spa-router";
   import { fly } from "svelte/transition";
   import { ArrowRight, ShieldCheck, Sparkles } from "lucide-svelte";
+  import { _ } from "svelte-i18n";
   import Button from "../lib/components/Button.svelte";
   import WizardShell from "../lib/components/WizardShell.svelte";
   import { auth } from "../lib/stores/auth";
@@ -27,13 +28,13 @@
       class="mt-5 text-center text-2xl font-semibold tracking-tight text-zinc-50"
     >
       {#if $auth.user}
-        You're in, {$auth.user.username}!
+        {$_("onboarding_done.title_named", { values: { username: $auth.user.username } })}
       {:else}
-        You're all set!
+        {$_("onboarding_done.title_generic")}
       {/if}
     </h1>
     <p class="mt-2 text-center text-sm text-zinc-400">
-      Hoard now has everything it needs to keep your saves in sync.
+      {$_("onboarding_done.subtitle")}
     </p>
 
     {#if $auth.user}
@@ -41,22 +42,22 @@
         class="mt-6 space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 text-sm"
       >
         <div class="flex items-center justify-between gap-3">
-          <dt class="text-zinc-500">Account</dt>
+          <dt class="text-zinc-500">{$_("onboarding_done.account")}</dt>
           <dd class="text-zinc-200">{$auth.user.username}</dd>
         </div>
         <div class="flex items-center justify-between gap-3">
-          <dt class="text-zinc-500">Server</dt>
+          <dt class="text-zinc-500">{$_("onboarding_done.server")}</dt>
           <dd class="break-all text-right font-mono text-xs text-zinc-300">
             {$auth.user.server_url}
           </dd>
         </div>
         {#if $auth.user.is_admin}
           <div class="flex items-center justify-between gap-3">
-            <dt class="text-zinc-500">Role</dt>
+            <dt class="text-zinc-500">{$_("onboarding_done.role")}</dt>
             <dd
               class="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300"
             >
-              <Sparkles size={12} /> Administrator
+              <Sparkles size={12} /> {$_("onboarding_done.administrator")}
             </dd>
           </div>
         {/if}
@@ -65,7 +66,7 @@
 
     <div class="mt-7 flex justify-center">
       <Button variant="primary" size="lg" onclick={finish}>
-        Continue to dashboard
+        {$_("onboarding_done.continue")}
         <ArrowRight size={16} />
       </Button>
     </div>

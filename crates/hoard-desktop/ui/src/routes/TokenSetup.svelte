@@ -2,6 +2,7 @@
   import { push } from "svelte-spa-router";
   import { fly } from "svelte/transition";
   import { KeyRound, ArrowRight } from "lucide-svelte";
+  import { _ } from "svelte-i18n";
   import Button from "../lib/components/Button.svelte";
   import Input from "../lib/components/Input.svelte";
   import WizardShell from "../lib/components/WizardShell.svelte";
@@ -33,8 +34,7 @@
     inlineError = null;
     const trimmed = token.trim();
     if (!TOKEN_RE.test(trimmed)) {
-      inlineError =
-        "That doesn't look like a Hoard access key. It should start with `hoard_v1_` followed by 64 lowercase hex characters.";
+      inlineError = $_("token.invalid_key");
       return;
     }
     loading = true;
@@ -55,14 +55,14 @@
 <WizardShell step="token" onBack={back}>
   <div in:fly={{ x: 24, duration: 220 }}>
     <h1 class="text-xl font-semibold tracking-tight text-zinc-50">
-      Sign in
+      {$_("token.title")}
     </h1>
     <p class="mt-2 text-sm text-zinc-400">
-      Paste the access key for your account on
+      {$_("token.subtitle")}
       <span
         class="break-all rounded bg-zinc-800/80 px-1.5 py-0.5 font-mono text-xs text-zinc-200"
       >
-        {url || "your server"}
+        {url || $_("token.your_server")}
       </span>.
     </p>
 
@@ -74,11 +74,11 @@
       }}
     >
       <Input
-        label="Access key"
+        label={$_("token.access_key_label")}
         bind:value={token}
         type="password"
         placeholder="hoard_v1_…"
-        hint="Your server admin can create one with `hoard-admin token create <username>`."
+        hint={$_("token.access_key_hint")}
         icon={KeyRound}
         autocomplete="off"
         spellcheck={false}
@@ -94,7 +94,7 @@
           {loading}
           disabled={!token.trim()}
         >
-          Sign in
+          {$_("token.sign_in")}
           <ArrowRight size={16} />
         </Button>
       </div>

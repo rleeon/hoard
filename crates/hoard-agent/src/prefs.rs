@@ -62,6 +62,14 @@ pub struct Prefs {
     /// a settings migration); see `docs/privacy.md`.
     #[serde(default)]
     pub anonymous_telemetry: bool,
+
+    /// ISO-639 code for the desktop UI's display language (e.g. "en", "fr",
+    /// "ja"). `None` means "follow the browser/OS locale" — the desktop
+    /// frontend falls back to that on first run. The agent itself doesn't
+    /// look at this field; it only exists so the Settings page can persist
+    /// the user's language choice across restarts.
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -78,6 +86,7 @@ impl Default for Prefs {
             start_minimised: false,
             seen_tray_hint: false,
             anonymous_telemetry: false,
+            language: None,
         }
     }
 }

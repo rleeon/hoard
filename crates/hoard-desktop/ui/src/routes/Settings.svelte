@@ -10,6 +10,7 @@
   import { onMount, onDestroy } from "svelte";
   import { push } from "svelte-spa-router";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { _, locale } from "svelte-i18n";
   import {
     Power,
     BellRing,
@@ -17,13 +18,13 @@
     Minimize2,
     LogIn,
     LogOut,
-    Trash2,
     Info,
     FileText,
     ChevronRight,
     BarChart3,
     RefreshCw,
     Database,
+    Languages,
   } from "lucide-svelte";
 
   import Card from "../lib/components/Card.svelte";
@@ -31,6 +32,7 @@
   import SettingsRow from "../lib/components/SettingsRow.svelte";
   import { prefs, hydratePrefs, updatePrefs } from "../lib/stores/prefs";
   import { auth, signOut } from "../lib/stores/auth";
+  import { supportedLocales, setLocale } from "../lib/i18n";
   import * as api from "../lib/api";
   import { toastError, toastSuccess } from "../lib/stores/toasts";
 
@@ -83,7 +85,11 @@
         has_runtime_override: true,
         updated_at: result.updated_at,
       };
-      toastSuccess(`Catalog updated — ${result.games.toLocaleString()} games.`);
+      toastSuccess(
+        $_("settings.catalog_updated_toast", {
+          values: { count: result.games.toLocaleString() },
+        }),
+      );
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
     } finally {
@@ -93,22 +99,35 @@
   }
 
   function formatRelative(epochSecs: number | null): string {
-    if (!epochSecs) return "using bundled catalog";
+    if (!epochSecs) return $_("settings.catalog_using_bundled");
     const ageSecs = Math.max(0, Math.floor(Date.now() / 1000) - epochSecs);
-    if (ageSecs < 60) return "updated just now";
-    if (ageSecs < 3600) return `updated ${Math.floor(ageSecs / 60)} min ago`;
-    if (ageSecs < 86400) return `updated ${Math.floor(ageSecs / 3600)} h ago`;
+    if (ageSecs < 60) return $_("settings.catalog_updated_just_now");
+    if (ageSecs < 3600)
+      return $_("settings.catalog_updated_minutes", {
+        values: { count: Math.floor(ageSecs / 60) },
+      });
+    if (ageSecs < 86400)
+      return $_("settings.catalog_updated_hours", {
+        values: { count: Math.floor(ageSecs / 3600) },
+      });
     const days = Math.floor(ageSecs / 86400);
-    return days === 1 ? "updated 1 day ago" : `updated ${days} days ago`;
+    return days === 1
+      ? $_("settings.catalog_updated_one_day")
+      : $_("settings.catalog_updated_days", { values: { count: days } });
   }
 
   function stageLabel(stage: string): string {
     switch (stage) {
-      case "downloading": return "Downloading…";
-      case "parsing": return "Parsing…";
-      case "saving": return "Saving…";
-      case "done": return "Done";
-      default: return "Working…";
+      case "downloading":
+        return $_("settings.catalog_stage_downloading");
+      case "parsing":
+        return $_("settings.catalog_stage_parsing");
+      case "saving":
+        return $_("settings.catalog_stage_saving");
+      case "done":
+        return $_("settings.catalog_stage_done");
+      default:
+        return $_("settings.catalog_stage_working");
     }
   }
 
@@ -119,9 +138,7 @@
       if (field === "autostart") {
         const actual = await api.setAutostart(value);
         if (actual !== value) {
-          toastError(
-            "The OS rejected the autostart change — try enabling autostart from your launcher settings.",
-          );
+          toastError($_("settings.autostart_rejected"));
         }
         await hydratePrefs();
       } else {
@@ -138,7 +155,7 @@
     signingOut = true;
     try {
       await signOut();
-      toastSuccess("Signed out.");
+      toastSuccess($_("settings.signed_out_toast"));
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
     } finally {
@@ -153,79 +170,91 @@
     icon: any;
   };
 
-  const generalRows: Row[] = [
+  // Rows are derived so they re-render when the active locale changes. Using
+  // `$derived` instead of plain `const` keeps the labels reactive without
+  // forcing a remount of the Settings page on language switch.
+  const generalRows: Row[] = $derived([
     {
       field: "close_to_tray",
-      label: "Close to tray",
-      description:
-        "Closing the window keeps Hoard running in the background so backups continue. Quit from the tray icon to stop it.",
+      label: $_("settings.close_to_tray_label"),
+      description: $_("settings.close_to_tray_desc"),
       icon: Minimize2,
     },
-  ];
+  ]);
 
-  const startupRows: Row[] = [
+  const startupRows: Row[] = $derived([
     {
       field: "autostart",
-      label: "Start Hoard at login",
-      description:
-        "Adds Hoard to your launcher. Pair with “Start minimised” for a quiet boot.",
+      label: $_("settings.autostart_label"),
+      description: $_("settings.autostart_desc"),
       icon: LogIn,
     },
     {
       field: "start_minimised",
-      label: "Start minimised",
-      description:
-        "Launch with the window hidden — only the tray icon shows up.",
+      label: $_("settings.start_minimised_label"),
+      description: $_("settings.start_minimised_desc"),
       icon: Power,
     },
-  ];
+  ]);
 
-  const privacyRows: Row[] = [
+  const privacyRows: Row[] = $derived([
     {
       field: "anonymous_telemetry",
-      label: "Send anonymous usage pings",
-      description:
-        "Help us see how many people are using Hoard. We only count events (successful backup, restore, first-run completed) — never your username, game names, save paths, file contents, or tokens. Off by default.",
+      label: $_("settings.telemetry_label"),
+      description: $_("settings.telemetry_desc"),
       icon: BarChart3,
     },
-  ];
+  ]);
 
-  const notifyRows: Row[] = [
+  const notifyRows: Row[] = $derived([
     {
       field: "notify_on_success",
-      label: "Notify on successful backup",
-      description:
-        "A small desktop notification when a backup uploads successfully. Turn this off once you trust the agent.",
+      label: $_("settings.notify_success_label"),
+      description: $_("settings.notify_success_desc"),
       icon: BellRing,
     },
     {
       field: "notify_on_failure",
-      label: "Notify on backup failure",
-      description:
-        "Alerts you when a backup fails, even after retries. We strongly recommend leaving this on.",
+      label: $_("settings.notify_failure_label"),
+      description: $_("settings.notify_failure_desc"),
       icon: BellOff,
     },
-  ];
+  ]);
+
+  async function handleLanguageChange(e: Event) {
+    const next = (e.currentTarget as HTMLSelectElement).value;
+    try {
+      await setLocale(next);
+      // `setLocale` already persists to prefs; refresh the local store so the
+      // value sticks if the page is remounted.
+      await hydratePrefs();
+    } catch (err) {
+      toastError(typeof err === "string" ? err : (err as Error).message);
+    }
+  }
 </script>
 
 <div class="mx-auto max-w-3xl px-8 py-8">
   <header class="mb-6">
-    <h1 class="text-2xl font-semibold tracking-tight">Settings</h1>
-    <p class="mt-1 text-sm text-zinc-400">
-      Tweak how Hoard behaves on this machine. Changes are saved as soon as
-      you toggle them.
-    </p>
+    <h1 class="text-2xl font-semibold tracking-tight">
+      {$_("settings.title")}
+    </h1>
+    <p class="mt-1 text-sm text-zinc-400">{$_("settings.subtitle")}</p>
   </header>
 
   {#if !$prefs}
     <Card>
-      <div class="py-12 text-center text-sm text-zinc-400">Loading…</div>
+      <div class="py-12 text-center text-sm text-zinc-400">
+        {$_("common.loading")}
+      </div>
     </Card>
   {:else}
     <div class="space-y-6">
       <section>
-        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          General
+        <h2
+          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+        >
+          {$_("settings.section_general")}
         </h2>
         <Card>
           <div class="divide-y divide-zinc-800">
@@ -242,8 +271,43 @@
       </section>
 
       <section>
-        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          Startup
+        <h2
+          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+        >
+          {$_("settings.section_language")}
+        </h2>
+        <Card>
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex min-w-0 flex-1 items-start gap-3">
+              <Languages size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-zinc-100">
+                  {$_("settings.language_label")}
+                </p>
+                <p class="mt-0.5 text-xs text-zinc-500">
+                  {$_("settings.language_desc")}
+                </p>
+              </div>
+            </div>
+            <select
+              value={$locale ?? "en"}
+              onchange={handleLanguageChange}
+              class="shrink-0 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-600 focus:border-amber-500"
+              aria-label={$_("settings.language_label")}
+            >
+              {#each supportedLocales as loc (loc.code)}
+                <option value={loc.code}>{loc.label}</option>
+              {/each}
+            </select>
+          </div>
+        </Card>
+      </section>
+
+      <section>
+        <h2
+          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+        >
+          {$_("settings.section_startup")}
         </h2>
         <Card>
           <div class="divide-y divide-zinc-800">
@@ -260,8 +324,10 @@
       </section>
 
       <section>
-        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          Notifications
+        <h2
+          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+        >
+          {$_("settings.section_notifications")}
         </h2>
         <Card>
           <div class="divide-y divide-zinc-800">
@@ -278,8 +344,10 @@
       </section>
 
       <section>
-        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          Privacy
+        <h2
+          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+        >
+          {$_("settings.section_privacy")}
         </h2>
         <Card>
           <div class="divide-y divide-zinc-800">
@@ -296,18 +364,20 @@
       </section>
 
       <section>
-        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          Account
+        <h2
+          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+        >
+          {$_("settings.section_account")}
         </h2>
         <Card>
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0 flex-1">
               <p class="text-sm text-zinc-100">
                 {#if $auth.user}
-                  Signed in as
+                  {$_("settings.signed_in_as")}
                   <span class="font-medium">{$auth.user.username}</span>
                 {:else}
-                  Not signed in
+                  {$_("settings.not_signed_in")}
                 {/if}
               </p>
               <p class="mt-1 truncate text-xs text-zinc-500">
@@ -321,15 +391,17 @@
               disabled={!$auth.user}
             >
               <LogOut size={14} />
-              Sign out
+              {$_("settings.sign_out")}
             </Button>
           </div>
         </Card>
       </section>
 
       <section>
-        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          Game catalog
+        <h2
+          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+        >
+          {$_("settings.section_catalog")}
         </h2>
         <Card>
           <div class="flex items-start justify-between gap-4">
@@ -338,21 +410,21 @@
               <div class="min-w-0 flex-1">
                 <p class="text-sm text-zinc-100">
                   {#if catalog}
-                    {catalog.games.toLocaleString()} games
+                    {$_("settings.catalog_games", {
+                      values: { count: catalog.games.toLocaleString() },
+                    })}
                     <span class="text-zinc-500">·</span>
                     <span class="text-zinc-400">
                       {catalog.has_runtime_override
                         ? formatRelative(catalog.updated_at)
-                        : "using bundled catalog"}
+                        : $_("settings.catalog_using_bundled")}
                     </span>
                   {:else}
-                    Loading…
+                    {$_("common.loading")}
                   {/if}
                 </p>
                 <p class="mt-1 text-xs text-zinc-500">
-                  Hoard auto-detects games using the Ludusavi catalog. We
-                  refresh it weekly in the background — hit the button to
-                  pull the latest list now.
+                  {$_("settings.catalog_desc")}
                 </p>
                 {#if updatingCatalog}
                   <p class="mt-2 text-xs text-zinc-400">
@@ -368,15 +440,17 @@
               disabled={updatingCatalog}
             >
               <RefreshCw size={14} />
-              Check for updates
+              {$_("settings.catalog_check")}
             </Button>
           </div>
         </Card>
       </section>
 
       <section>
-        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          Advanced
+        <h2
+          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+        >
+          {$_("settings.section_advanced")}
         </h2>
         <Card>
           <button
@@ -387,9 +461,11 @@
             <div class="flex items-start gap-3">
               <FileText size={16} class="mt-0.5 shrink-0 text-zinc-500" />
               <div>
-                <p class="text-sm font-medium text-zinc-100">View logs</p>
+                <p class="text-sm font-medium text-zinc-100">
+                  {$_("settings.view_logs_title")}
+                </p>
                 <p class="mt-0.5 text-xs text-zinc-500">
-                  Inspect the agent's activity log. Handy for bug reports.
+                  {$_("settings.view_logs_desc")}
                 </p>
               </div>
             </div>
@@ -399,16 +475,18 @@
       </section>
 
       <section>
-        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          About
+        <h2
+          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+        >
+          {$_("settings.section_about")}
         </h2>
         <Card>
           <div class="flex items-start gap-3 text-sm text-zinc-300">
             <Info size={16} class="mt-0.5 shrink-0 text-zinc-500" />
             <div>
-              <p>Hoard 1.1.0 — self-hosted save sync.</p>
+              <p>{$_("settings.about_line_1")}</p>
               <p class="mt-1 text-xs text-zinc-500">
-                Your server, your data. Source code & docs at hoard.dev.
+                {$_("settings.about_line_2")}
               </p>
             </div>
           </div>
@@ -423,4 +501,3 @@
   as its own component makes it reusable from future Settings sub-pages and
   keeps this file focused on the page composition.
 -->
-
