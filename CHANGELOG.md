@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.2] — 2026-05-09
+
+Hotfix #2 for v1.2.0: the v1.2.1 build no longer panicked, but instead
+opened to a blank window (just the body background). Root cause:
+`svelte-i18n`'s `init()` only *queues* the locale-dictionary load, so
+the very first render reached `$_(...)` while no messages were loaded
+yet, the formatter threw "Cannot format a message without first setting
+the initial locale", and Svelte unwound the entire mount silently.
+Fixed by awaiting `waitLocale()` before calling `mount()`.
+
+### Fixed
+
+- **App opened to a blank window** on every platform after v1.2.1. The
+  body background colour was visible because `<body>` ships with a
+  Tailwind class, but `#app` stayed empty. Mounting now waits for the
+  active locale's dictionary to load. (`crates/hoard-desktop/ui/src/main.ts`,
+  `crates/hoard-desktop/ui/src/lib/i18n/index.ts`)
+
 ## [1.2.1] — 2026-05-09
 
 Hotfix for v1.2.0: the app crashed on launch with

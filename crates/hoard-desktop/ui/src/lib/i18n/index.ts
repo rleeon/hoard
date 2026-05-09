@@ -10,6 +10,7 @@ import {
   init,
   locale,
   register,
+  waitLocale,
   getLocaleFromNavigator,
 } from "svelte-i18n";
 import { get } from "svelte/store";
@@ -61,7 +62,15 @@ init({
   initialLocale: pickSupported(getLocaleFromNavigator()) ?? "en",
 });
 
-void (async () => {
+/** Promise the bootstrap (`main.ts`) awaits before calling `mount()`.
+ *
+ *  svelte-i18n's `$_` throws "Cannot format a message without first setting
+ *  the initial locale" if a component renders before the locale loader has
+ *  resolved. `init()` only *queues* the load — we must explicitly wait for
+ *  it. We also try to read the persisted language preference here so the
+ *  first paint already uses the user's chosen locale (no flash from
+ *  navigator-language → persisted-language). */
+export const i18nReady: Promise<void> = (async () => {
   try {
     const prefs = await getPrefs();
     const persisted = pickSupported(prefs.language ?? null);
@@ -72,6 +81,10 @@ void (async () => {
     // Falling back to whatever `init` picked is fine — the Settings page can
     // repair prefs.json if it was corrupt.
   }
+  // Block until the active locale's dictionary is loaded. Without this the
+  // very first render sees `$locale = null` and `$_` throws, which silently
+  // unwinds Svelte's mount() and leaves the user with a blank window.
+  await waitLocale();
 })();
 
 /** Update the active locale and persist it to prefs so the next launch

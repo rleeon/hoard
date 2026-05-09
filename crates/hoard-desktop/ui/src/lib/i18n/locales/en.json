@@ -201,7 +201,7 @@
   "settings.catalog_stage_working": "Working…",
   "settings.view_logs_title": "View logs",
   "settings.view_logs_desc": "Inspect the agent's activity log. Handy for bug reports.",
-  "settings.about_line_1": "Hoard 1.2.1 — self-hosted save sync.",
+  "settings.about_line_1": "Hoard 1.2.2 — self-hosted save sync.",
   "settings.about_line_2": "Your server, your data. Source code & docs at hoard.dev.",
   "logs.back_to_settings": "Back to Settings",
   "logs.title": "Logs",
