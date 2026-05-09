@@ -6,6 +6,11 @@
 .env.local
 deploy/config.toml
 /dist
+/dist-v1
+/dist-*
+
+# Local scratch / draft notes that should never be committed.
+guide*
 
 # Tauri build artifacts
 crates/hoard-desktop/gen/
