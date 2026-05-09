@@ -201,7 +201,7 @@
   "settings.catalog_stage_working": "In corso…",
   "settings.view_logs_title": "Vedi log",
   "settings.view_logs_desc": "Ispeziona il log di attività dell'agente. Utile per i bug report.",
-  "settings.about_line_1": "Hoard 1.2.0 — sync auto-ospitato.",
+  "settings.about_line_1": "Hoard 1.2.1 — sync auto-ospitato.",
   "settings.about_line_2": "Il tuo server, i tuoi dati. Codice e doc su hoard.dev.",
   "logs.back_to_settings": "Torna alle Impostazioni",
   "logs.title": "Log",

@@ -201,7 +201,7 @@
   "settings.catalog_stage_working": "工作中…",
   "settings.view_logs_title": "查看日志",
   "settings.view_logs_desc": "查看代理活动日志。便于错误报告。",
-  "settings.about_line_1": "Hoard 1.2.0 — 自托管存档同步。",
+  "settings.about_line_1": "Hoard 1.2.1 — 自托管存档同步。",
   "settings.about_line_2": "你的服务器，你的数据。源码与文档见 hoard.dev。",
   "logs.back_to_settings": "返回设置",
   "logs.title": "日志",

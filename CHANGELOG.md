@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.1] — 2026-05-09
+
+Hotfix for v1.2.0: the app crashed on launch with
+`there is no reactor running, must be called from the context of a Tokio
+1.x runtime`. The auto-update of the Ludusavi catalog was being spawned
+with `tokio::spawn` from `setup()`, which runs before Tauri enters its
+event loop and therefore has no ambient Tokio runtime. Switched to
+`tauri::async_runtime::spawn` which is always available.
+
+### Fixed
+
+- **App crashed instantly on startup** on every platform (Linux/Windows/
+  macOS). On Windows the process exited before the window appeared, with
+  no console output. (`crates/hoard-desktop/src/commands/catalog.rs`)
+
 ## [1.2.0] — 2026-05-08
 
 Desktop UX overhaul: friendlier path handling, restore-anywhere, and full

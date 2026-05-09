@@ -201,7 +201,7 @@
   "settings.catalog_stage_working": "A trabalhar…",
   "settings.view_logs_title": "Ver registos",
   "settings.view_logs_desc": "Inspeciona o registo de atividade do agente. Útil para relatos de bugs.",
-  "settings.about_line_1": "Hoard 1.2.0 — sync auto-alojado.",
+  "settings.about_line_1": "Hoard 1.2.1 — sync auto-alojado.",
   "settings.about_line_2": "O teu servidor, os teus dados. Código e documentação em hoard.dev.",
   "logs.back_to_settings": "Voltar às Definições",
   "logs.title": "Registos",

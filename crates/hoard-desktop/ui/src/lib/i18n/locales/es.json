@@ -201,7 +201,7 @@
   "settings.catalog_stage_working": "Trabajando…",
   "settings.view_logs_title": "Ver registros",
   "settings.view_logs_desc": "Inspecciona el registro de actividad del agente. Útil para informes de errores.",
-  "settings.about_line_1": "Hoard 1.2.0 — sincronización autohospedada.",
+  "settings.about_line_1": "Hoard 1.2.1 — sincronización autohospedada.",
   "settings.about_line_2": "Tu servidor, tus datos. Código fuente y documentación en hoard.dev.",
   "logs.back_to_settings": "Volver a Configuración",
   "logs.title": "Registros",

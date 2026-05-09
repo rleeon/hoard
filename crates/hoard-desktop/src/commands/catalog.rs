@@ -181,7 +181,11 @@ pub fn catalog_status() -> CatalogStatus {
 /// errors (the user's already running on the embedded catalog, so a
 /// failed refresh is degradation, not breakage).
 pub fn auto_update_catalog_in_background(app: AppHandle) {
-    tokio::spawn(async move {
+    // `tauri::async_runtime::spawn` rather than `tokio::spawn`: this is
+    // called from `setup()` which runs *before* Tauri enters its event
+    // loop, so there is no ambient Tokio runtime yet. Tauri provides its
+    // own multi-thread runtime that's always available.
+    tauri::async_runtime::spawn(async move {
         let needs_refresh = match meta_path().and_then(|mp| std::fs::read(&mp).ok()) {
             None => true,
             Some(bytes) => match serde_json::from_slice::<CatalogMeta>(&bytes) {
