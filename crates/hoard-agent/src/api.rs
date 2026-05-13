@@ -174,7 +174,30 @@ impl ApiClient {
     }
 
     pub async fn create_save(&self, game_slug: &str, label: &str) -> Result<Save> {
-        let body = serde_json::json!({ "game_slug": game_slug, "label": label });
+        self.create_save_with_meta(game_slug, label, None, None)
+            .await
+    }
+
+    /// Create a Save and, optionally, hint to the server what the game's
+    /// display name / Steam ID are. Used by the desktop client so that
+    /// servers running an older Ludusavi catalog can self-heal a missing
+    /// games row from the metadata the desktop already has at hand. Older
+    /// servers ignore the extra fields (Serde tolerates unknown keys), so
+    /// this is forward-compatible.
+    pub async fn create_save_with_meta(
+        &self,
+        game_slug: &str,
+        label: &str,
+        display_name: Option<&str>,
+        steam_app_id: Option<i64>,
+    ) -> Result<Save> {
+        let mut body = serde_json::json!({ "game_slug": game_slug, "label": label });
+        if let Some(name) = display_name {
+            body["display_name"] = serde_json::Value::String(name.to_string());
+        }
+        if let Some(id) = steam_app_id {
+            body["steam_app_id"] = serde_json::Value::Number(id.into());
+        }
         let resp = self
             .http
             .post(self.url("/v1/saves"))

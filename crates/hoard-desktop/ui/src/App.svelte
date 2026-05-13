@@ -1,7 +1,15 @@
 <script lang="ts">
   import Router, { push, replace, location } from "svelte-spa-router";
   import { onMount } from "svelte";
-  import { Archive, Library, History, Settings as SettingsIcon } from "lucide-svelte";
+  import {
+    Archive,
+    Library,
+    History,
+    Settings as SettingsIcon,
+    Sparkles,
+    AlertCircle,
+  } from "lucide-svelte";
+  import { _ } from "svelte-i18n";
 
   import Welcome from "./routes/Welcome.svelte";
   import ServerSetup from "./routes/ServerSetup.svelte";
@@ -16,6 +24,8 @@
   import Toaster from "./lib/components/Toaster.svelte";
   import { auth, hydrateAuth } from "./lib/stores/auth";
   import { loadStep, routeForStep } from "./lib/stores/onboarding";
+  import { runMagicSetup, magicState } from "./lib/stores/magic";
+  import { checkForUpdates, type UpdateReport } from "./lib/stores/updates";
 
   /**
    * Routing layout
@@ -41,6 +51,7 @@
   };
 
   let booted = $state(false);
+  let updates = $state<UpdateReport | null>(null);
 
   onMount(async () => {
     await hydrateAuth();
@@ -51,7 +62,31 @@
       replace(routeForStep(step));
     }
     booted = true;
+
+    // Fire-and-forget update probe once auth is settled. The result feeds
+    // the small "Update available" banner above the sidebar footer; a
+    // network blip silently leaves it hidden, which is the right default.
+    if ($auth.user) {
+      checkForUpdates()
+        .then((r) => (updates = r))
+        .catch((e) => console.warn("update check failed:", e));
+    }
   });
+
+  function magicLabel(s: typeof $magicState): string {
+    switch (s.kind) {
+      case "idle":
+        return $_("magic.idle");
+      case "detecting":
+        return $_("magic.detecting");
+      case "tracking":
+        return $_("magic.tracking", {
+          values: { done: s.done, total: s.total },
+        });
+      case "starting_agent":
+        return $_("magic.starting_agent");
+    }
+  }
 
   const sidebarItems = [
     { label: "Library", icon: Library, route: "/library" },
@@ -97,7 +132,7 @@
         </div>
         <div>
           <div class="text-base font-semibold tracking-tight">Hoard</div>
-          <div class="text-xs text-zinc-500">v1.1.0</div>
+          <div class="text-xs text-zinc-500">v{import.meta.env.VITE_HOARD_VERSION || "1.3.0"}</div>
         </div>
       </div>
 
@@ -125,9 +160,46 @@
         {/each}
       </nav>
 
-      <div class="border-t border-zinc-800 px-5 py-4 text-xs text-zinc-500">
-        Self-hosted save sync.<br />
-        Your server, your data.
+      <!-- Sidebar footer: Magic auto-setup button + optional update nag.
+           The button is the "I don't want to think about it" path: it scans,
+           tracks every high-confidence detection, and starts the agent. -->
+      <div class="border-t border-zinc-800 px-3 py-3 space-y-2">
+        {#if updates && (updates.client.available || updates.server?.available)}
+          <button
+            type="button"
+            onclick={() => push("/settings")}
+            class="flex w-full items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-left text-xs text-amber-200 hover:bg-amber-500/15"
+            title={updates.client.available
+              ? $_("updates.client_available", {
+                  values: { latest: updates.client.latest ?? "?" },
+                })
+              : $_("updates.server_available", {
+                  values: { latest: updates.server?.latest ?? "?" },
+                })}
+          >
+            <AlertCircle size={14} class="mt-0.5 shrink-0" />
+            <span class="leading-tight">
+              {updates.client.available
+                ? $_("updates.client_short")
+                : $_("updates.server_short")}
+            </span>
+          </button>
+        {/if}
+
+        <button
+          type="button"
+          onclick={runMagicSetup}
+          disabled={$magicState.kind !== "idle"}
+          class="flex w-full items-center justify-center gap-2 rounded-md bg-amber-500 px-3 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-amber-400 disabled:cursor-wait disabled:bg-amber-500/60"
+          title={$_("magic.tooltip")}
+        >
+          <Sparkles size={16} />
+          <span>{magicLabel($magicState)}</span>
+        </button>
+
+        <p class="px-1 text-[11px] leading-tight text-zinc-500">
+          {$_("magic.subtitle")}
+        </p>
       </div>
     </aside>
 

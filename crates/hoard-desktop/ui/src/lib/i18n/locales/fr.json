@@ -201,7 +201,7 @@
   "settings.catalog_stage_working": "En cours…",
   "settings.view_logs_title": "Voir les journaux",
   "settings.view_logs_desc": "Inspectez l'activité de l'agent. Pratique pour les rapports de bug.",
-  "settings.about_line_1": "Hoard 1.2.2 — sync auto-hébergée.",
+  "settings.about_line_1": "Hoard 1.3.0 — sync auto-hébergée.",
   "settings.about_line_2": "Votre serveur, vos données. Code source et docs sur hoard.dev.",
   "logs.back_to_settings": "Retour aux Paramètres",
   "logs.title": "Journaux",
@@ -226,5 +226,15 @@
   "history.choose_destination_description": "Hoard ne connaît pas encore de dossier pour ce jeu sur cette machine. Choisissez un dossier — nous le créerons s'il n'existe pas.",
   "history.pick_destination_dialog_title": "Choisissez un dossier pour la sauvegarde restaurée",
   "history.no_destination_picked": "Aucun dossier choisi — restauration annulée.",
-  "history.snapshot_label": "save_v{version} · {date}"
+  "history.snapshot_label": "save_v{version} · {date}",
+  "magic.idle": "Tout configurer",
+  "magic.detecting": "Détection…",
+  "magic.tracking": "Suivi {done}/{total}",
+  "magic.starting_agent": "Démarrage de l'agent…",
+  "magic.tooltip": "Scanner, suivre chaque jeu détecté avec haute confiance et démarrer l'agent — en un clic.",
+  "magic.subtitle": "Scan, suivi des détections fiables, démarrage de l'agent.",
+  "updates.client_short": "Mise à jour du client disponible",
+  "updates.server_short": "Mise à jour du serveur disponible",
+  "updates.client_available": "Hoard {latest} est disponible — cliquez pour les détails.",
+  "updates.server_available": "Votre serveur utilise une ancienne version de Hoard ({latest} disponible) — cliquez pour les détails."
 }

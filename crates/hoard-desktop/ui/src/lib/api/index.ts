@@ -120,11 +120,17 @@ export function cachedDetection(): Promise<DetectionReport | null> {
   return invoke<DetectionReport | null>("cached_detection");
 }
 
-/** Begin tracking a detected game at the given path. */
+/** Begin tracking a detected game at the given path.
+ *
+ *  `display_name` and `steam_app_id` are forwarded to the server so it can
+ *  self-heal its games table when the desktop's catalog is fresher than the
+ *  server's seed. Older servers ignore the extra fields. */
 export function addGameToTracking(args: {
   game_slug: string;
   label?: string;
   local_path: string;
+  display_name?: string;
+  steam_app_id?: number | null;
 }): Promise<TrackedSave> {
   return invoke<TrackedSave>("add_game_to_tracking", { args });
 }

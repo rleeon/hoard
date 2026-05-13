@@ -201,7 +201,7 @@
   "settings.catalog_stage_working": "作業中…",
   "settings.view_logs_title": "ログを見る",
   "settings.view_logs_desc": "エージェントの活動ログを確認。バグ報告に便利。",
-  "settings.about_line_1": "Hoard 1.2.2 — セルフホスト型セーブ同期。",
+  "settings.about_line_1": "Hoard 1.3.0 — セルフホスト型セーブ同期。",
   "settings.about_line_2": "あなたのサーバー、あなたのデータ。ソース・ドキュメントは hoard.dev。",
   "logs.back_to_settings": "設定へ戻る",
   "logs.title": "ログ",
@@ -226,5 +226,15 @@
   "history.choose_destination_description": "このマシンではこのゲームのセーブフォルダがまだわかりません。フォルダを選んでください — 存在しない場合は作成します。",
   "history.pick_destination_dialog_title": "復元先のフォルダを選択",
   "history.no_destination_picked": "フォルダが選ばれませんでした — 復元をキャンセルしました。",
-  "history.snapshot_label": "save_v{version} · {date}"
+  "history.snapshot_label": "save_v{version} · {date}",
+  "magic.idle": "自動セットアップ",
+  "magic.detecting": "検出中…",
+  "magic.tracking": "追跡中 {done}/{total}",
+  "magic.starting_agent": "エージェントを起動中…",
+  "magic.tooltip": "スキャンし、信頼度の高いゲームをすべて追跡し、ライブエージェントを起動 — ワンクリックで。",
+  "magic.subtitle": "スキャンし、信頼できる検出を追跡し、エージェントを起動します。",
+  "updates.client_short": "クライアントの更新があります",
+  "updates.server_short": "サーバーの更新があります",
+  "updates.client_available": "Hoard {latest} が利用可能 — クリックで詳細を表示。",
+  "updates.server_available": "サーバーが古い Hoard を実行中（{latest} が利用可能）— クリックで詳細を表示。"
 }

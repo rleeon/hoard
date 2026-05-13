@@ -201,7 +201,7 @@
   "settings.catalog_stage_working": "A trabalhar…",
   "settings.view_logs_title": "Ver registos",
   "settings.view_logs_desc": "Inspeciona o registo de atividade do agente. Útil para relatos de bugs.",
-  "settings.about_line_1": "Hoard 1.2.2 — sync auto-alojado.",
+  "settings.about_line_1": "Hoard 1.3.0 — sync auto-alojado.",
   "settings.about_line_2": "O teu servidor, os teus dados. Código e documentação em hoard.dev.",
   "logs.back_to_settings": "Voltar às Definições",
   "logs.title": "Registos",
@@ -226,5 +226,15 @@
   "history.choose_destination_description": "O Hoard ainda não conhece uma pasta de saves deste jogo neste equipamento. Escolhe uma pasta — criamos se não existir.",
   "history.pick_destination_dialog_title": "Escolhe uma pasta para o save restaurado",
   "history.no_destination_picked": "Nenhuma pasta escolhida — restauro cancelado.",
-  "history.snapshot_label": "save_v{version} · {date}"
+  "history.snapshot_label": "save_v{version} · {date}",
+  "magic.idle": "Configurar tudo",
+  "magic.detecting": "Detectando…",
+  "magic.tracking": "Rastreando {done}/{total}",
+  "magic.starting_agent": "Iniciando agente…",
+  "magic.tooltip": "Escaneia, rastreia todos os jogos detectados com alta confiança e inicia o agente — num clique.",
+  "magic.subtitle": "Escaneia, rastreia detecções fiáveis, inicia o agente.",
+  "updates.client_short": "Atualização do cliente disponível",
+  "updates.server_short": "Atualização do servidor disponível",
+  "updates.client_available": "Hoard {latest} está disponível — clique para detalhes.",
+  "updates.server_available": "O teu servidor está a correr uma versão antiga de Hoard ({latest} disponível) — clica para detalhes."
 }

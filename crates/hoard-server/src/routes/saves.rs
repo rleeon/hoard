@@ -18,6 +18,16 @@ pub struct CreateSaveRequest {
     pub label: Option<String>,
     pub local_path_hint: Option<String>,
     pub client_os: Option<String>,
+    /// Optional metadata supplied by newer clients. When the server's `games`
+    /// table doesn't know the slug yet (e.g. an older server seeded before
+    /// the game existed in the Ludusavi manifest), we use these fields to
+    /// upsert a stub games row instead of returning 422. Older clients omit
+    /// the fields and still get the 422 — but new clients self-heal the
+    /// catalog as they go.
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub steam_app_id: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -63,10 +73,40 @@ pub async fn create(
     .map_err(|_| internal_err())?;
 
     if game_count == 0 {
-        return Err((
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(serde_json::json!({"error": "game not found"})),
-        ));
+        // Self-heal path: if the client supplied a display_name (newer
+        // desktops do; older CLI clients don't), insert a minimal games
+        // stub. This unblocks tracking when the desktop's Ludusavi catalog
+        // is fresher than the server's seed — the alternative is making
+        // the user manually re-import the manifest on every server upgrade.
+        if let Some(display) = body.display_name.as_deref().filter(|s| !s.is_empty()) {
+            let display = display.to_string();
+            let slug_for_insert = body.game_slug.clone();
+            let res = sqlx::query!(
+                "INSERT INTO games (slug, display_name, steam_app_id, imported_from)
+                 VALUES (?, ?, ?, 'client-supplied')
+                 ON CONFLICT(slug) DO NOTHING",
+                slug_for_insert,
+                display,
+                body.steam_app_id,
+            )
+            .execute(&state.pool)
+            .await;
+            if let Err(e) = res {
+                tracing::warn!(error = %e, slug = %body.game_slug,
+                    "couldn't self-heal games row from client metadata");
+                return Err((
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    Json(serde_json::json!({"error": "game not found"})),
+                ));
+            }
+            tracing::info!(slug = %body.game_slug,
+                "inserted client-supplied games row to unblock tracking");
+        } else {
+            return Err((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(serde_json::json!({"error": "game not found"})),
+            ));
+        }
     }
 
     let label = body.label.unwrap_or_else(|| "default".to_string());

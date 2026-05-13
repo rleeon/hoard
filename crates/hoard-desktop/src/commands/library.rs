@@ -109,6 +109,15 @@ pub struct AddGameArgs {
     pub game_slug: String,
     pub label: Option<String>,
     pub local_path: String,
+    /// Optional catalog metadata. We pass this to the server so it can
+    /// self-heal its games table when the desktop's Ludusavi catalog is
+    /// fresher than the server's seed (e.g. self-hosted server still on
+    /// v1.0.0 while the desktop has auto-refreshed). Older servers ignore
+    /// the extra fields silently.
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub steam_app_id: Option<i64>,
 }
 
 /// Begin tracking a detected game. Creates a Save on the server and writes
@@ -137,7 +146,12 @@ pub async fn add_game_to_tracking(
     }
 
     let save = client
-        .create_save(&args.game_slug, &label)
+        .create_save_with_meta(
+            &args.game_slug,
+            &label,
+            args.display_name.as_deref(),
+            args.steam_app_id,
+        )
         .await
         .map_err(pretty_error)?;
 

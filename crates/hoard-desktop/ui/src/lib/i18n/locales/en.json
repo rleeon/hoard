@@ -201,7 +201,7 @@
   "settings.catalog_stage_working": "Working…",
   "settings.view_logs_title": "View logs",
   "settings.view_logs_desc": "Inspect the agent's activity log. Handy for bug reports.",
-  "settings.about_line_1": "Hoard 1.2.2 — self-hosted save sync.",
+  "settings.about_line_1": "Hoard 1.3.0 — self-hosted save sync.",
   "settings.about_line_2": "Your server, your data. Source code & docs at hoard.dev.",
   "logs.back_to_settings": "Back to Settings",
   "logs.title": "Logs",
@@ -226,5 +226,15 @@
   "history.choose_destination_description": "Hoard doesn't know a save folder for this game on this machine yet. Pick a folder and we'll create it if it doesn't exist.",
   "history.pick_destination_dialog_title": "Choose a folder for the restored save",
   "history.no_destination_picked": "No folder picked — restore cancelled.",
-  "history.snapshot_label": "save_v{version} · {date}"
+  "history.snapshot_label": "save_v{version} · {date}",
+  "magic.idle": "Auto-setup",
+  "magic.detecting": "Detecting…",
+  "magic.tracking": "Tracking {done}/{total}",
+  "magic.starting_agent": "Starting agent…",
+  "magic.tooltip": "Scan, track every confidently-detected game, and start the live agent — in one click.",
+  "magic.subtitle": "Scans, tracks high-confidence detections, starts the agent.",
+  "updates.client_short": "Client update available",
+  "updates.server_short": "Server update available",
+  "updates.client_available": "Hoard {latest} is out — click for details.",
+  "updates.server_available": "Your server is on an older Hoard ({latest} available) — click for details."
 }

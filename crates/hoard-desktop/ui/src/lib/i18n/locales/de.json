@@ -201,7 +201,7 @@
   "settings.catalog_stage_working": "Arbeite…",
   "settings.view_logs_title": "Protokolle ansehen",
   "settings.view_logs_desc": "Aktivitätsprotokoll des Agenten ansehen. Hilfreich für Bugreports.",
-  "settings.about_line_1": "Hoard 1.2.2 — selbst gehostete Save-Sync.",
+  "settings.about_line_1": "Hoard 1.3.0 — selbst gehostete Save-Sync.",
   "settings.about_line_2": "Dein Server, deine Daten. Quellcode & Doku unter hoard.dev.",
   "logs.back_to_settings": "Zurück zu Einstellungen",
   "logs.title": "Protokolle",
@@ -226,5 +226,15 @@
   "history.choose_destination_description": "Hoard kennt für dieses Spiel auf diesem Gerät noch keinen Speicherordner. Wähle einen Ordner — wir erstellen ihn, falls er nicht existiert.",
   "history.pick_destination_dialog_title": "Ordner für den wiederhergestellten Spielstand wählen",
   "history.no_destination_picked": "Kein Ordner gewählt — Wiederherstellung abgebrochen.",
-  "history.snapshot_label": "save_v{version} · {date}"
+  "history.snapshot_label": "save_v{version} · {date}",
+  "magic.idle": "Auto-Einrichtung",
+  "magic.detecting": "Erkenne…",
+  "magic.tracking": "Verfolge {done}/{total}",
+  "magic.starting_agent": "Agent wird gestartet…",
+  "magic.tooltip": "Scannen, jedes mit hoher Sicherheit erkannte Spiel verfolgen und den Live-Agenten starten — mit einem Klick.",
+  "magic.subtitle": "Scannt, verfolgt zuverlässige Erkennungen, startet den Agenten.",
+  "updates.client_short": "Client-Update verfügbar",
+  "updates.server_short": "Server-Update verfügbar",
+  "updates.client_available": "Hoard {latest} ist verfügbar — klicken für Details.",
+  "updates.server_available": "Dein Server läuft auf einer älteren Hoard-Version ({latest} verfügbar) — klicken für Details."
 }

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO games (slug, display_name, steam_app_id, imported_from)\n                 VALUES (?, ?, ?, 'client-supplied')\n                 ON CONFLICT(slug) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "ca07edaf3de5b0ac62040e24f1e7ea3ec480ab0d919fcc41dfc9d2e88d58abac"
+}

@@ -125,6 +125,7 @@ pub fn run() {
             commands::history::logs_path,
             commands::catalog::update_catalog,
             commands::catalog::catalog_status,
+            commands::updates::check_for_updates,
         ])
         .setup(|app| {
             // Build the tray as soon as we have an AppHandle. Failures here

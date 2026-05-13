@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-05-09
+
+Three small features that together make the desktop app feel less like a
+toolbox and more like an appliance: the server self-heals when a client
+knows about a game it doesn't, the app nags when a newer client or server
+is available, and a one-click "magic" button does the whole detect →
+track → start-agent dance for users who don't want to think about it.
+
+### Added
+
+- **Server self-heal of unknown games.** When the desktop client tries
+  to track a game whose slug the server's catalog doesn't know yet (e.g.
+  the server is on an older Ludusavi snapshot), the client now sends
+  along the `display_name` and optional `steam_app_id` it already has.
+  The server inserts a stub games row (`imported_from = 'client-supplied'`,
+  `ON CONFLICT(slug) DO NOTHING`) and proceeds with the save. Old clients
+  without these fields still get the original 422, so the change is
+  backwards-compatible. (`crates/hoard-server/src/routes/saves.rs`,
+  `crates/hoard-agent/src/api.rs`,
+  `crates/hoard-desktop/src/commands/library.rs`,
+  `crates/hoard-desktop/ui/src/routes/Library.svelte`)
+- **Update checker for client and server.** A new `check_for_updates`
+  Tauri command probes the GitHub releases API for the latest hoard tag
+  and the configured server's `/v1/health` for its running version. Both
+  probes run in parallel and tolerate `v` prefixes, prerelease suffixes,
+  and double-digit components. The sidebar shows a small amber banner
+  above the magic button when either side has an update available; the
+  banner deep-links to `/settings`. Failures are silent — a network blip
+  just leaves the banner hidden. (`crates/hoard-desktop/src/commands/updates.rs`,
+  `crates/hoard-desktop/ui/src/lib/stores/updates.ts`,
+  `crates/hoard-desktop/ui/src/App.svelte`)
+- **Magic auto-setup button.** A new amber Sparkles button at the bottom
+  of the sidebar runs `scan_library` → tracks every detection with
+  `confidence === "high"` and at least one found path → boots the agent.
+  Per-game errors are reported via toasts but don't abort the rest. The
+  button shows phase-aware labels (`detecting`, `tracking 3/12`,
+  `starting agent`) and is intentionally limited to high-confidence hits
+  to avoid filling the server with false positives.
+  (`crates/hoard-desktop/ui/src/lib/stores/magic.ts`,
+  `crates/hoard-desktop/ui/src/App.svelte`)
+- **Single-source version label in the sidebar.** Vite now injects
+  `package.json`'s version into the bundle via `import.meta.env.VITE_HOARD_VERSION`,
+  so the sidebar `v1.3.0` line stays in sync with the workspace version
+  without a hand-maintained constant. (`crates/hoard-desktop/ui/vite.config.ts`,
+  `crates/hoard-desktop/ui/src/vite-env.d.ts`,
+  `crates/hoard-desktop/ui/src/App.svelte`)
+- **i18n keys for the new surfaces.** Ten new keys (`magic.*` and
+  `updates.*`) added to all eight locales (en, es, fr, de, it, pt, ja,
+  zh).
+
 ## [1.2.2] — 2026-05-09
 
 Hotfix #2 for v1.2.0: the v1.2.1 build no longer panicked, but instead

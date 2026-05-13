@@ -11,3 +11,4 @@ pub mod history;
 pub mod library;
 pub mod misc;
 pub mod prefs;
+pub mod updates;

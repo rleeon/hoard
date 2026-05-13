@@ -99,6 +99,12 @@
       const saved = await api.addGameToTracking({
         game_slug: game.slug,
         local_path: chosen,
+        // Pass the catalog metadata so the server can self-heal its games
+        // table when its Ludusavi catalog is older than ours. Older servers
+        // (pre-v1.3.0) ignore the extra fields; newer servers insert a
+        // stub row instead of replying 422 "game not found".
+        display_name: game.display_name,
+        steam_app_id: game.steam_app_id,
       });
       tracked = [...tracked, saved];
       toastSuccess(
