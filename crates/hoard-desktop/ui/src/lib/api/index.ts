@@ -79,10 +79,21 @@ export type DetectionSource =
 export type DetectedGame = {
   slug: string;
   display_name: string;
+  /**
+   * Save-path candidates that exist on disk. Never contains the game's
+   * install directory — that's in `install_dir`. Empty for Steam-only
+   * matches with no save folder yet, in which case `track()` should fall
+   * back to the folder picker.
+   */
   found_paths: string[];
   confidence: Confidence;
   source: DetectionSource;
   steam_app_id: number | null;
+  /**
+   * Steam install directory (e.g. `…/steamapps/common/Stellaris`). Show
+   * as a hint near the folder picker; never use as a backup path.
+   */
+  install_dir?: string | null;
 };
 
 export type DetectionReport = {

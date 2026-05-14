@@ -69,13 +69,20 @@ pub enum DetectionSource {
 pub struct DetectedGame {
     pub slug: String,
     pub display_name: String,
-    /// Save-path candidates that exist on disk. Empty for Steam-only matches
-    /// where no save folder has been created yet.
+    /// **Save**-path candidates that exist on disk. Never contains the game's
+    /// install directory — that lives in [`install_dir`] so the UI can show
+    /// it as a hint without us accidentally backing up the game binary.
+    /// Empty for Steam-only matches where no save folder has been created yet.
     pub found_paths: Vec<PathBuf>,
     pub confidence: Confidence,
     pub source: DetectionSource,
     /// If we matched via Steam, the app id is preserved so the UI can show it.
     pub steam_app_id: Option<u64>,
+    /// Steam install directory (e.g. `…/steamapps/common/Stellaris`). Only
+    /// set when we matched via Steam. Surfaced to the UI as a hint near the
+    /// folder picker — **must not** be used as a backup path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_dir: Option<PathBuf>,
 }
 
 /// Aggregate result of a detection pass. The numeric counts let the UI show a
@@ -157,10 +164,15 @@ where
             DetectedGame {
                 slug: entry.slug.clone(),
                 display_name: entry.display_name.clone(),
-                found_paths: vec![app.install_dir.clone()],
+                // Steam tells us where the game is *installed*, not where it
+                // writes saves. Leaving `found_paths` empty is critical: the
+                // UI's track() falls back to the folder picker when this is
+                // empty, instead of silently backing up the install dir.
+                found_paths: Vec::new(),
                 confidence: Confidence::Medium,
                 source: DetectionSource::SteamLibrary,
                 steam_app_id: Some(app.app_id),
+                install_dir: Some(app.install_dir.clone()),
             },
         );
     }
@@ -305,6 +317,7 @@ fn merge_fs_hit(
                     confidence: Confidence::Medium,
                     source: DetectionSource::FilesystemHeuristic,
                     steam_app_id: None,
+                    install_dir: None,
                 },
             );
         }
@@ -323,10 +336,11 @@ mod tests {
             DetectedGame {
                 slug: "x".into(),
                 display_name: "X".into(),
-                found_paths: vec![PathBuf::from("/steam/x")],
+                found_paths: Vec::new(),
                 confidence: Confidence::Medium,
                 source: DetectionSource::SteamLibrary,
                 steam_app_id: Some(42),
+                install_dir: Some(PathBuf::from("/steam/x")),
             },
         );
 
@@ -340,8 +354,10 @@ mod tests {
         let g = &map["x"];
         assert_eq!(g.source, DetectionSource::Both);
         assert_eq!(g.confidence, Confidence::High);
-        assert_eq!(g.found_paths.len(), 2);
+        // Only the real save path; install_dir stays out of found_paths.
+        assert_eq!(g.found_paths, vec![PathBuf::from("/save/x")]);
         assert_eq!(g.steam_app_id, Some(42));
+        assert_eq!(g.install_dir, Some(PathBuf::from("/steam/x")));
     }
 
     #[test]

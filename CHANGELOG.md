@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-05-14
+
+Hotfix for a path-detection bug that caused several Steam-installed games
+(Cell to Singularity, Stellaris, …) to be backed up by their **install
+directory** rather than their save directory — the user saw 600 MB
+snapshots full of the game binaries.
+
+### Fixed
+
+- **Steam matches no longer leak the install directory into `found_paths`.**
+  `detect_all` previously seeded the cross-reference map with
+  `found_paths: vec![app.install_dir.clone()]`, so any catalog entry that
+  matched a Steam appid carried the install dir at index 0. The UI's
+  `track()` reads `found_paths[0]` as the local path to back up, which
+  meant the snapshot consumed the entire game folder. Steam-only matches
+  now leave `found_paths` empty (the UI falls back to the folder picker
+  with `library.no_save_folder_yet`), and the install dir is preserved
+  separately on a new `DetectedGame.install_dir` field for future UI hints.
+  When the filesystem heuristic later fires for the same slug,
+  `merge_fs_hit` populates `found_paths` from real save-path templates
+  only. (`crates/hoard-agent/src/detection.rs`,
+  `crates/hoard-desktop/ui/src/lib/api/index.ts`)
+
 ## [1.3.0] — 2026-05-09
 
 Three small features that together make the desktop app feel less like a
