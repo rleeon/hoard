@@ -292,7 +292,7 @@
             <select
               value={$locale ?? "en"}
               onchange={handleLanguageChange}
-              class="shrink-0 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-600 focus:border-amber-500"
+              class="shrink-0 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-600 focus:border-emerald-500"
               aria-label={$_("settings.language_label")}
             >
               {#each supportedLocales as loc (loc.code)}

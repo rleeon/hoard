@@ -2,17 +2,18 @@
 
 /* ---- Theme ----------------------------------------------------------- */
 /* Tailwind v4 theme tokens. The values map roughly to Tailwind's zinc and
-   amber palettes; we lift the pieces we use most often into named CSS
+   emerald palettes; we lift the pieces we use most often into named CSS
    variables so non-Tailwind sources (raw style attributes, third-party
-   widgets) can read them too. */
+   widgets) can read them too. The accent green is picked to contrast with
+   the dragon mascot — medium-dark, not olive, not neon. */
 @theme {
   --color-bg: oklch(0.18 0 0); /* zinc-900 */
   --color-bg-elev: oklch(0.22 0 0); /* zinc-800 */
   --color-fg: oklch(0.98 0 0); /* zinc-50 */
   --color-fg-muted: oklch(0.7 0 0); /* zinc-400 */
   --color-border: oklch(0.32 0 0); /* zinc-700 */
-  --color-accent: oklch(0.78 0.16 70); /* amber-500 */
-  --color-accent-hover: oklch(0.84 0.14 75); /* amber-400 */
+  --color-accent: oklch(0.6 0.14 158); /* emerald-600 */
+  --color-accent-hover: oklch(0.7 0.16 160); /* emerald-500 */
 }
 
 html,

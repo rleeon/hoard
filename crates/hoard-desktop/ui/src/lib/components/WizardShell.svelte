@@ -30,7 +30,7 @@
 >
   <div class="w-full max-w-md">
     <!-- Logo header -->
-    <div class="mb-8 flex justify-center text-amber-500">
+    <div class="mb-8 flex justify-center text-emerald-500">
       <Logo size={48} />
     </div>
 
@@ -42,7 +42,7 @@
         <button
           type="button"
           onclick={onBack}
-          class="mb-4 inline-flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 rounded"
+          class="mb-4 inline-flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 rounded"
         >
           <ArrowLeft size={14} />
           {$_("common.back")}
@@ -60,9 +60,9 @@
         <span
           class="h-1.5 rounded-full transition-all duration-300 {i ===
           currentIndex
-            ? 'w-6 bg-amber-500'
+            ? 'w-6 bg-emerald-500'
             : i < currentIndex
-              ? 'w-1.5 bg-amber-500/70'
+              ? 'w-1.5 bg-emerald-500/70'
               : 'w-1.5 bg-zinc-700'}"
           aria-hidden="true"
         ></span>

@@ -352,7 +352,7 @@
       </div>
       <div class="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
         <div
-          class="h-full bg-amber-500 transition-all"
+          class="h-full bg-emerald-500 transition-all"
           style="width: {pct}%"
         ></div>
       </div>

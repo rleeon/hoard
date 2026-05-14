@@ -55,7 +55,7 @@
              outline-none transition-colors focus:ring-1
              {error
         ? 'border-red-500/60 focus:border-red-500 focus:ring-red-500'
-        : 'border-zinc-700 focus:border-amber-500 focus:ring-amber-500'}
+        : 'border-zinc-700 focus:border-emerald-500 focus:ring-emerald-500'}
              {Icon ? 'pl-9' : ''}"
       aria-invalid={error ? "true" : undefined}
       aria-describedby={error ? `${id}-error` : hint ? `${id}-hint` : undefined}

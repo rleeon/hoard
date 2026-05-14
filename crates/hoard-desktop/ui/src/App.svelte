@@ -116,7 +116,7 @@
   -->
   <div class="flex h-full items-center justify-center bg-zinc-950">
     <div
-      class="h-6 w-6 animate-spin rounded-full border-2 border-zinc-700 border-t-amber-500"
+      class="h-6 w-6 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-500"
     ></div>
   </div>
 {:else if isAppRoute}
@@ -126,7 +126,7 @@
     >
       <div class="flex items-center gap-2 px-5 py-5">
         <div
-          class="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500 ring-1 ring-amber-500/40"
+          class="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/40"
         >
           <Archive size={20} />
         </div>
@@ -190,7 +190,7 @@
           type="button"
           onclick={runMagicSetup}
           disabled={$magicState.kind !== "idle"}
-          class="flex w-full items-center justify-center gap-2 rounded-md bg-amber-500 px-3 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-amber-400 disabled:cursor-wait disabled:bg-amber-500/60"
+          class="flex w-full items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-emerald-500 disabled:cursor-wait disabled:bg-emerald-600/60"
           title={$_("magic.tooltip")}
         >
           <Sparkles size={16} />

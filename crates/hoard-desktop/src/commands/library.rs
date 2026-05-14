@@ -15,7 +15,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use hoard_agent::api::ApiClient;
+use hoard_agent::api::{ApiClient, ApiError};
 use hoard_agent::credentials;
 use hoard_agent::detection::{self, DetectionReport};
 use hoard_agent::manifest::Os;
@@ -145,7 +145,7 @@ pub async fn add_game_to_tracking(
         return Err(format!("{} isn't a folder.", local_path.display()));
     }
 
-    let save = client
+    let save = match client
         .create_save_with_meta(
             &args.game_slug,
             &label,
@@ -153,7 +153,34 @@ pub async fn add_game_to_tracking(
             args.steam_app_id,
         )
         .await
-        .map_err(pretty_error)?;
+    {
+        Ok(s) => s,
+        Err(e) => {
+            // A 409 means there's already a server-side save for this
+            // (game_slug, label) pair owned by this user. That happens when
+            // the user destracked the save locally — which intentionally
+            // leaves the server row in place to preserve snapshots — and
+            // then re-tracks the same game. Recover by finding the existing
+            // save and re-linking it into local state, so destrack+retrack
+            // restores the user's snapshot history instead of dead-ending
+            // with an opaque error.
+            let is_conflict = e
+                .downcast_ref::<ApiError>()
+                .map(|api| matches!(api, ApiError::Conflict(_)))
+                .unwrap_or(false);
+            if !is_conflict {
+                return Err(pretty_error(e));
+            }
+            let existing = client
+                .list_saves(Some(&args.game_slug))
+                .await
+                .map_err(pretty_error)?;
+            existing
+                .into_iter()
+                .find(|s| s.game_slug == args.game_slug && s.label == label)
+                .ok_or_else(|| "Couldn't re-link the existing save on the server.".to_string())?
+        }
+    };
 
     // Persist the local-path mapping so backup/restore know where to look.
     let (mut cli_state, path) = CliState::load_default().map_err(|e| e.to_string())?;
@@ -180,16 +207,20 @@ pub async fn add_game_to_tracking(
     );
     attach_save_if_running(&state, watched).await;
 
+    // Surface whatever the server already knows about this save — for a
+    // brand-new one these are zero/None; for a re-linked one (destrack +
+    // retrack) they restore the snapshot history into the Library card.
+    let last_version_num = save.latest_version_num;
+    let total_size_bytes = save.total_size_bytes.unwrap_or(0);
     Ok(TrackedSave {
         save_id: save.id,
         game_slug: save.game_slug,
         label: save.label,
         local_path: local_path.to_string_lossy().into_owned(),
-        last_version_num: None,
+        last_version_num,
         last_backup_at: None,
         paused: false,
-        // Brand-new save — nothing uploaded yet.
-        total_size_bytes: 0,
+        total_size_bytes,
     })
 }
 
@@ -204,11 +235,17 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
 
     let mut out = Vec::with_capacity(saves.len());
     for s in saves {
-        let st = cli_state.saves.get(&s.id);
-        let local = st
-            .map(|st| st.local_path.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "(not on this machine)".to_string());
-        let paused = st.map(|st| st.paused).unwrap_or(false);
+        // Only surface saves that this machine is actively tracking. Without
+        // this filter, destracking a save (which only removes the local
+        // CliState row, on purpose, to preserve snapshots on the server) was
+        // bouncing back on the next app launch as a ghost "tracked" card —
+        // and worse, suppressed the amber "no save folder" alert because the
+        // detection card thought the game was already being watched.
+        let Some(st) = cli_state.saves.get(&s.id) else {
+            continue;
+        };
+        let local = st.local_path.to_string_lossy().into_owned();
+        let paused = st.paused;
         out.push(TrackedSave {
             save_id: s.id,
             game_slug: s.game_slug,

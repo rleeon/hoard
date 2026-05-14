@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.3] — 2026-05-14
+
+Brand refresh and a small but irritating tracking bug. The accent colour
+moves from amber to a medium-dark emerald that contrasts better with the
+dragon mascot; amber is kept exclusively for warnings (pause badge,
+restore overwrite banner, near-quota meter, update-available nag, WARN
+log lines).
+
+### Fixed
+
+- **Destracking and re-tracking the same game now works.** Stopping
+  tracking only clears the local `CliState` row — by design, so server
+  snapshots survive a fresh machine. But `list_tracked_saves` was
+  returning every save the server knew about for the user, including
+  destracked ones, so on the next app launch a ghost "Tracked" card came
+  back. Worse, the Library detection card thought the game was still
+  being watched and suppressed the amber "no save folder" alert, which
+  is the entry point for re-picking the folder. The command now filters
+  by local-state presence, so destracked games disappear cleanly.
+  (`crates/hoard-desktop/src/commands/library.rs`)
+- **Re-tracking after a destrack no longer fails with a 409.** The
+  server enforces `UNIQUE(user_id, game_slug, label)`, so the second
+  `create_save` returned a conflict the desktop surfaced as an opaque
+  error. `add_game_to_tracking` now catches the conflict, finds the
+  existing server save via `list_saves`, and re-links it locally —
+  preserving the original snapshot history for the user.
+  (`crates/hoard-desktop/src/commands/library.rs`)
+
+### Changed
+
+- **Accent colour amber → emerald.** `--color-accent` /
+  `--color-accent-hover` now resolve to `emerald-600` / `emerald-500`;
+  the `Button` primary variant, `Input` focus ring, `SettingsRow`
+  toggle, wizard logo and progress dots, Library scan progress bar,
+  History restore progress + checkboxes, Dashboard empty-state icon,
+  sidebar logo + magic-setup button, and OnboardingDone admin badge all
+  follow. Warning amber is preserved on update banners, WARN log lines,
+  medium-confidence detection badges, paused-save badges, restore
+  warnings, the near-quota meter, and the no-save alert chip.
+  (`crates/hoard-desktop/ui/src/app.css`,
+  `crates/hoard-desktop/ui/src/lib/components/*.svelte`,
+  `crates/hoard-desktop/ui/src/routes/*.svelte`,
+  `crates/hoard-desktop/ui/src/App.svelte`)
+- **Spanish copy: pluralise "carpeta de partidas".** The UI used a mix
+  of singular and plural ("carpeta de partida" vs. "carpeta de
+  partidas") for the same concept; everything is now plural for
+  consistency with the History page label. Also fixed *"Hoard no sabe
+  dónde guarda partidas {name}"* → *"Hoard no sabe dónde guarda las
+  partidas de {name}"* and *"monitorea"* → *"monitoriza"* in the
+  magic-setup tooltip/subtitle.
+  (`crates/hoard-desktop/ui/src/lib/i18n/locales/es.json`)
+
 ## [1.3.2] — 2026-05-14
 
 UX cleanup around the Library page: stop ambushing the user with a folder

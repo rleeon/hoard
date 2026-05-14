@@ -55,7 +55,7 @@
           <div class="flex items-center justify-between gap-3">
             <dt class="text-zinc-500">{$_("onboarding_done.role")}</dt>
             <dd
-              class="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300"
+              class="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-300"
             >
               <Sparkles size={12} /> {$_("onboarding_done.administrator")}
             </dd>

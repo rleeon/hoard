@@ -28,17 +28,17 @@
 
     <ul class="mt-6 space-y-2 text-sm text-zinc-300">
       <li class="flex items-start gap-2">
-        <span class="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
+        <span class="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500"
         ></span>
         {$_("welcome.bullet_1")}
       </li>
       <li class="flex items-start gap-2">
-        <span class="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
+        <span class="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500"
         ></span>
         {$_("welcome.bullet_2")}
       </li>
       <li class="flex items-start gap-2">
-        <span class="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
+        <span class="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500"
         ></span>
         {$_("welcome.bullet_3")}
       </li>

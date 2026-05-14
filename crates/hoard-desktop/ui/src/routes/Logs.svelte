@@ -132,7 +132,7 @@
     </div>
     <select
       bind:value={levelFilter}
-      class="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-500"
+      class="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-emerald-500"
     >
       <option value="all">{$_("logs.level_all")}</option>
       <option value="ERROR">{$_("logs.level_error")}</option>

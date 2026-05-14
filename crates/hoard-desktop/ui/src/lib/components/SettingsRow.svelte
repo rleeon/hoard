@@ -48,7 +48,7 @@
       onchange={(e) => onChange((e.currentTarget as HTMLInputElement).checked)}
     />
     <span
-      class="absolute inset-0 rounded-full bg-zinc-700 transition-colors peer-checked:bg-amber-500/80
+      class="absolute inset-0 rounded-full bg-zinc-700 transition-colors peer-checked:bg-emerald-600/90
         peer-disabled:bg-zinc-800"
     ></span>
     <span

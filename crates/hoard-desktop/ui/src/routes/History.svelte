@@ -472,7 +472,7 @@
       <label class="flex items-center gap-2 text-xs text-zinc-400">
         <input
           type="checkbox"
-          class="h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-900 text-amber-500"
+          class="h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-900 text-emerald-500"
           checked={includeDeleted}
           onchange={(e) =>
             (includeDeleted = (e.currentTarget as HTMLInputElement).checked)}
@@ -642,7 +642,7 @@
     <label class="flex items-start gap-3">
       <input
         type="checkbox"
-        class="mt-0.5 h-4 w-4 shrink-0 rounded border-zinc-700 bg-zinc-900 text-amber-500"
+        class="mt-0.5 h-4 w-4 shrink-0 rounded border-zinc-700 bg-zinc-900 text-emerald-500"
         checked={backupFirst}
         disabled={restoring}
         onchange={(e) =>
@@ -666,13 +666,13 @@
         {#if progressPercent(restoreProgress) !== null}
           <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-800">
             <div
-              class="h-full bg-amber-500 transition-all"
+              class="h-full bg-emerald-500 transition-all"
               style="width: {progressPercent(restoreProgress)}%"
             ></div>
           </div>
         {:else}
           <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-800">
-            <div class="h-full w-1/3 animate-pulse bg-amber-500"></div>
+            <div class="h-full w-1/3 animate-pulse bg-emerald-500"></div>
           </div>
         {/if}
       </div>

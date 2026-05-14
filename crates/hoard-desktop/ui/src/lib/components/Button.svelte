@@ -2,7 +2,7 @@
   /**
    * Reusable button with three variants and a loading state.
    *
-   * - `primary`   — amber, used for the page's main action (one per screen).
+   * - `primary`   — emerald, used for the page's main action (one per screen).
    * - `secondary` — neutral, used for "Back" / "Cancel" style actions.
    * - `ghost`     — transparent, used inside cards or as quiet icon buttons.
    */
@@ -39,7 +39,7 @@
 
   const variantClasses: Record<Variant, string> = {
     primary:
-      "bg-amber-500 text-zinc-950 hover:bg-amber-400 focus-visible:ring-amber-400 disabled:bg-zinc-700 disabled:text-zinc-400",
+      "bg-emerald-600 text-zinc-50 hover:bg-emerald-500 focus-visible:ring-emerald-500 disabled:bg-zinc-700 disabled:text-zinc-400",
     secondary:
       "bg-zinc-800 text-zinc-100 hover:bg-zinc-700 focus-visible:ring-zinc-500 disabled:bg-zinc-900 disabled:text-zinc-600",
     ghost:
