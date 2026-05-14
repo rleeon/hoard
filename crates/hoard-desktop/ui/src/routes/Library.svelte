@@ -148,6 +148,18 @@
     await trackWithPath(game, chosen);
   }
 
+  /** "Pick a different folder" icon button next to the auto-Track action.
+   *  Used when the user wants to override the detected save path — e.g.
+   *  Stellaris on Windows expands to the Documents folder, but the user
+   *  keeps their saves on another drive, or wants to pick a sibling folder
+   *  with custom data. Bypasses the alert modal entirely (that one is for
+   *  the no-found-paths case). */
+  async function trackWithCustomPath(game: DetectedGame) {
+    const chosen = await pickFolder(game.display_name);
+    if (!chosen) return;
+    await trackWithPath(game, chosen);
+  }
+
   /** Pop the untrack confirmation modal. The actual delete happens in
    *  `confirmUntrack` so the user has a clear "are you sure" beat. */
   function askUntrack(save: TrackedSave) {
@@ -493,6 +505,15 @@
                   <Plus size={14} />
                   {$_("library.track_button")}
                 </Button>
+                <button
+                  type="button"
+                  onclick={() => trackWithCustomPath(game)}
+                  aria-label={$_("library.track_pick_folder_aria")}
+                  title={$_("library.track_pick_folder_aria")}
+                  class="shrink-0 rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-700/40 hover:text-zinc-200"
+                >
+                  <FolderOpen size={14} />
+                </button>
               {:else}
                 <!-- Steam-only match with no save folder yet. We surface an
                      amber alert button instead of either auto-popping the OS

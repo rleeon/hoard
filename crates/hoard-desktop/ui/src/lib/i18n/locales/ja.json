@@ -98,6 +98,7 @@
   "library.found_more": "(他 {count} 件)",
   "library.tracked_badge": "追跡中",
   "library.track_button": "追跡",
+  "library.track_pick_folder_aria": "別のフォルダーで追跡…",
   "library.no_scan_title": "このセッションではまだスキャンしていません。",
   "library.no_scan_body": "Hoard は約 10,000 件のカタログ項目をファイルと Steam に対して照合します。初回は 10〜30 秒かかります。",
   "library.scan_toast": "{count, plural, other {# ゲーム検出。}}",

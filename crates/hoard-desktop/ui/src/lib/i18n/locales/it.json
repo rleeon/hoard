@@ -98,6 +98,7 @@
   "library.found_more": "(+{count} altri)",
   "library.tracked_badge": "Tracciato",
   "library.track_button": "Traccia",
+  "library.track_pick_folder_aria": "Traccia con un'altra cartella…",
   "library.no_scan_title": "Nessuna scansione in questa sessione.",
   "library.no_scan_body": "Hoard verifica ~10.000 elementi del catalogo contro il tuo filesystem e Steam. La prima scansione dura 10–30 secondi.",
   "library.scan_toast": "{count, plural, one {Trovato # gioco.} other {Trovati # giochi.}}",

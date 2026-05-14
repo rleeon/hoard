@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.4] — 2026-05-14
+
+Small UX gap on the Library page. When auto-detection finds a save folder
+the "Track" button used to commit to that exact path with no way to
+override — fine for Stardew, painful for Stellaris on Windows where the
+detected `<winDocuments>\Paradox Interactive\Stellaris` may not be where
+the user actually keeps their campaigns.
+
+### Added
+
+- **Pick a different folder when tracking.** A small folder icon sits
+  next to the "Track" button on every detected game whose save path was
+  found automatically. Clicking it pops the OS folder picker instead of
+  auto-committing, so users can override the auto-detected path before
+  Hoard starts watching. Same code path as the existing pick-from-alert
+  flow; no surprise dialogs.
+  (`crates/hoard-desktop/ui/src/routes/Library.svelte`,
+  `crates/hoard-desktop/ui/src/lib/i18n/locales/*.json`)
+
 ## [1.3.3] — 2026-05-14
 
 Brand refresh and a small but irritating tracking bug. The accent colour
