@@ -19,6 +19,9 @@
     Filter,
     HardDrive,
     Gamepad2,
+    AlertTriangle,
+    Trash2,
+    FolderOpen,
   } from "lucide-svelte";
   import { _ } from "svelte-i18n";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -26,6 +29,7 @@
   import Button from "../lib/components/Button.svelte";
   import Card from "../lib/components/Card.svelte";
   import Input from "../lib/components/Input.svelte";
+  import Modal from "../lib/components/Modal.svelte";
   import * as api from "../lib/api";
   import type {
     Confidence,
@@ -45,6 +49,14 @@
   let confidenceFilter = $state<"all" | Confidence>("all");
   let sourceFilter = $state<"all" | DetectionSource>("all");
   let unlisten: UnlistenFn | null = null;
+
+  /** Currently-open "no save folder" alert. We render a single shared Modal
+   *  driven by this state instead of one Modal per card — keeps the DOM lean
+   *  for catalogs with hundreds of detected games. */
+  let alertGame = $state<DetectedGame | null>(null);
+  /** Currently-open untrack confirmation. Same single-modal pattern. */
+  let untrackTarget = $state<TrackedSave | null>(null);
+  let untracking = $state(false);
 
   onMount(async () => {
     // Wire the progress event before we trigger anything that emits.
@@ -86,15 +98,25 @@
     }
   }
 
+  /** "Track" click on a card. If we already have a save-folder candidate
+   *  (filesystem heuristic hit), wire it up directly. Otherwise — Steam-only
+   *  match with no save folder yet — open the alert modal so the user
+   *  understands *why* we don't have a path before the OS file picker pops
+   *  up out of nowhere. */
   async function track(game: DetectedGame) {
-    // Auto-track when detection found a folder; otherwise fall through to
-    // the manual picker below so the user can point Hoard at the right
-    // place themselves.
-    let chosen: string | null = game.found_paths[0] ?? null;
+    const chosen = game.found_paths[0] ?? null;
     if (!chosen) {
-      chosen = await pickFolder(game.display_name);
-      if (!chosen) return; // User cancelled the dialog.
+      alertGame = game;
+      return;
     }
+    await trackWithPath(game, chosen);
+  }
+
+  /** Shared "actually commit the tracking" path. Used by both the auto-track
+   *  flow and the explicit "Choose save folder…" button inside the alert
+   *  modal. Kept separate so the alert dialog can close itself before the
+   *  network call starts. */
+  async function trackWithPath(game: DetectedGame, chosen: string) {
     try {
       const saved = await api.addGameToTracking({
         game_slug: game.slug,
@@ -112,6 +134,43 @@
       );
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
+    }
+  }
+
+  /** "Choose save folder…" button inside the alert modal. Pops the picker
+   *  *after* the user has read the explanation — no surprise dialogs. */
+  async function chooseFromAlert() {
+    if (!alertGame) return;
+    const game = alertGame;
+    alertGame = null; // Close the modal so the OS picker isn't on top.
+    const chosen = await pickFolder(game.display_name);
+    if (!chosen) return;
+    await trackWithPath(game, chosen);
+  }
+
+  /** Pop the untrack confirmation modal. The actual delete happens in
+   *  `confirmUntrack` so the user has a clear "are you sure" beat. */
+  function askUntrack(save: TrackedSave) {
+    untrackTarget = save;
+  }
+
+  async function confirmUntrack() {
+    if (!untrackTarget) return;
+    const target = untrackTarget;
+    untracking = true;
+    try {
+      await api.untrackSave(target.save_id);
+      tracked = tracked.filter((t) => t.save_id !== target.save_id);
+      toastSuccess(
+        $_("library.untracked_toast", {
+          values: { name: target.game_slug },
+        }),
+      );
+      untrackTarget = null;
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    } finally {
+      untracking = false;
     }
   }
 
@@ -249,7 +308,7 @@
           <div
             class="flex items-center justify-between gap-2 rounded-md border border-zinc-800 bg-zinc-900/40 p-3"
           >
-            <div class="min-w-0">
+            <div class="min-w-0 flex-1">
               <p
                 class="truncate text-sm font-medium text-zinc-100"
                 title={save.game_slug}
@@ -268,6 +327,15 @@
                 ? fmtBytes(save.total_size_bytes)
                 : "—"}
             </span>
+            <button
+              type="button"
+              onclick={() => askUntrack(save)}
+              aria-label={$_("library.untrack_button")}
+              title={$_("library.untrack_title")}
+              class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+            >
+              <Trash2 size={14} />
+            </button>
           </div>
         {/each}
       </div>
@@ -395,7 +463,7 @@
               {#if isTracked}
                 {@const t = trackedBySlug.get(game.slug)}
                 <span
-                  class="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-500/30"
+                  class="inline-flex flex-1 items-center gap-1.5 rounded-md bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-500/30"
                 >
                   <Check size={12} />
                   {$_("library.tracked_badge")}
@@ -405,17 +473,43 @@
                     </span>
                   {/if}
                 </span>
-              {:else}
+                {#if t}
+                  <button
+                    type="button"
+                    onclick={() => askUntrack(t)}
+                    aria-label={$_("library.untrack_button")}
+                    title={$_("library.untrack_title")}
+                    class="shrink-0 rounded p-1.5 text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                {/if}
+              {:else if game.found_paths.length}
                 <Button
                   variant="secondary"
                   size="md"
                   onclick={() => track(game)}
                 >
                   <Plus size={14} />
-                  {game.found_paths.length
-                    ? $_("library.track_button")
-                    : $_("library.pick_folder_button")}
+                  {$_("library.track_button")}
                 </Button>
+              {:else}
+                <!-- Steam-only match with no save folder yet. We surface an
+                     amber alert button instead of either auto-popping the OS
+                     file picker (jarring) or silently doing nothing. Click →
+                     a modal explains the situation and offers an explicit
+                     "pick folder" button so the user knows what they're
+                     consenting to. -->
+                <button
+                  type="button"
+                  onclick={() => (alertGame = game)}
+                  aria-label={$_("library.no_save_alert_aria")}
+                  title={$_("library.no_save_alert_aria")}
+                  class="inline-flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300 ring-1 ring-inset ring-amber-500/30 transition-colors hover:bg-amber-500/20"
+                >
+                  <AlertTriangle size={14} />
+                  {$_("library.no_save_folder_yet")}
+                </button>
               {/if}
             </div>
           </div>
@@ -445,4 +539,75 @@
       </div>
     </Card>
   {/if}
+
+  <!-- "No save folder yet" alert. Triggered by clicking the amber warning
+       button on a Steam-only detection card. Explains why we don't have a
+       path and offers an explicit "pick folder" action — no surprise OS
+       dialog. -->
+  <Modal
+    open={alertGame !== null}
+    title={$_("library.no_save_alert_title", {
+      values: { name: alertGame?.display_name ?? "" },
+    })}
+    onClose={() => (alertGame = null)}
+  >
+    <p class="text-sm text-zinc-300">
+      {$_("library.no_save_alert_body", {
+        values: { name: alertGame?.display_name ?? "" },
+      })}
+    </p>
+    {#if alertGame?.install_dir}
+      <p class="mt-3 break-all rounded-md bg-zinc-950/60 px-3 py-2 font-mono text-[11px] text-zinc-400 ring-1 ring-inset ring-zinc-800">
+        {$_("library.no_save_alert_install_hint", {
+          values: { path: alertGame.install_dir },
+        })}
+      </p>
+    {/if}
+    {#snippet footer()}
+      <Button variant="ghost" onclick={() => (alertGame = null)}>
+        {$_("common.cancel")}
+      </Button>
+      <Button onclick={chooseFromAlert}>
+        <FolderOpen size={14} />
+        {$_("library.no_save_alert_choose")}
+      </Button>
+    {/snippet}
+  </Modal>
+
+  <!-- Destructive: stop tracking a game. Snapshots already on the server
+       are NOT deleted by this — only the local watch/auto-backup link.
+       We surface that nuance in the body copy so the user isn't scared
+       off thinking they're wiping their backups. -->
+  <Modal
+    open={untrackTarget !== null}
+    title={$_("library.untrack_confirm_title", {
+      values: { name: untrackTarget?.game_slug ?? "" },
+    })}
+    onClose={() => {
+      if (!untracking) untrackTarget = null;
+    }}
+    dismissible={!untracking}
+  >
+    <p class="text-sm text-zinc-300">
+      {$_("library.untrack_confirm_body")}
+    </p>
+    {#snippet footer()}
+      <Button
+        variant="ghost"
+        onclick={() => (untrackTarget = null)}
+        disabled={untracking}
+      >
+        {$_("common.cancel")}
+      </Button>
+      <button
+        type="button"
+        onclick={confirmUntrack}
+        disabled={untracking}
+        class="inline-flex items-center justify-center gap-2 rounded-md bg-rose-500 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-rose-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+      >
+        <Trash2 size={14} />
+        {$_("library.untrack_confirm_action")}
+      </button>
+    {/snippet}
+  </Modal>
 </div>

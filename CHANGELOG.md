@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.2] — 2026-05-14
+
+UX cleanup around the Library page: stop ambushing the user with a folder
+picker, and let them untrack a game without dropping to the CLI.
+
+### Added
+
+- **Untrack button on tracked-game cards.** Both the tracked-games strip
+  at the top of the Library page and the green "Tracked" badge on
+  detection cards now expose a trash icon. Click → confirmation modal
+  ("Stop tracking {name}?") that makes clear snapshots on the server are
+  preserved. The destructive action calls the existing `untrack_save`
+  Tauri command, removes the entry from the local list, and toasts.
+  (`crates/hoard-desktop/ui/src/routes/Library.svelte`,
+  `crates/hoard-desktop/ui/src/lib/i18n/locales/*.json`)
+- **Explicit "no save folder" alert.** Steam-only matches with no
+  detected save folder used to silently pop the OS folder picker the
+  moment the user clicked "Track" — disorienting if you didn't expect a
+  native dialog. Those cards now show an amber `AlertTriangle` button
+  instead. Clicking it opens a modal explaining *why* Hoard doesn't have
+  a path yet (game never launched on this machine, or saves live outside
+  the catalog) and surfaces the Steam install dir as a hint. The folder
+  picker only opens when the user explicitly clicks "Choose save
+  folder…" in the modal. (`crates/hoard-desktop/ui/src/routes/Library.svelte`)
+
+### Changed
+
+- **`track()` no longer auto-opens the folder picker.** With no
+  `found_paths` candidate it now opens the alert modal instead. The
+  picker is still reachable via the modal's primary button.
+  (`crates/hoard-desktop/ui/src/routes/Library.svelte`)
+
 ## [1.3.1] — 2026-05-14
 
 Hotfix for a path-detection bug that caused several Steam-installed games

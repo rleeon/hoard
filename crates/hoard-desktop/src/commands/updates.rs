@@ -71,17 +71,19 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 /// can render two badges side-by-side.
 #[tauri::command]
 pub async fn check_for_updates(state: State<'_, AppState>) -> Result<UpdateReport, String> {
-    let server_url = state.user.lock().unwrap().as_ref().map(|u| u.server_url.clone());
+    let server_url = state
+        .user
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|u| u.server_url.clone());
 
-    let (client, server) = tokio::join!(
-        probe_client(),
-        async {
-            match server_url {
-                Some(url) => Some(probe_server(url).await),
-                None => None,
-            }
+    let (client, server) = tokio::join!(probe_client(), async {
+        match server_url {
+            Some(url) => Some(probe_server(url).await),
+            None => None,
         }
-    );
+    });
 
     Ok(UpdateReport { client, server })
 }
