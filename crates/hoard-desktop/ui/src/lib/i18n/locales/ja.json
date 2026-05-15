@@ -236,6 +236,19 @@
   "magic.subtitle": "スキャンし、信頼できる検出を追跡し、エージェントを起動します。",
   "updates.client_short": "クライアントの更新があります",
   "updates.server_short": "サーバーの更新があります",
-  "updates.client_available": "Hoard {latest} が利用可能 — クリックで詳細を表示。",
-  "updates.server_available": "サーバーが古い Hoard を実行中（{latest} が利用可能）— クリックで詳細を表示。"
+  "updates.client_available": "Hoard {latest} がリリースされました — クリックでインストール。",
+  "updates.server_available": "サーバーが古い Hoard を実行中（{latest} が利用可能）— クリックでアップグレードコマンドを表示。",
+  "updates.button_label": "更新があります",
+  "updates.confirm_title": "更新があります",
+  "updates.needs_update": "更新が必要です。",
+  "updates.client_body": "Hoard アプリは {current} です。{latest} をインストールしますか？OS のインストーラーが確認を求めます。",
+  "updates.server_body": "サーバーは {current} で、最新は {latest} です。サーバーは自動更新されません — サーバーで次のコマンドを実行してください：",
+  "updates.yes": "はい",
+  "updates.no": "いいえ",
+  "updates.installing": "インストール中…",
+  "updates.installer_launched": "インストーラーを起動しました — システムの指示に従ってください。",
+  "updates.downloaded_manual": "{path} にダウンロードしました。開いてインストールしてください。",
+  "updates.install_failed": "更新に失敗しました: {error}",
+  "updates.server_command_copied": "コマンドをコピーしました — サーバーで実行してください。",
+  "updates.server_command_manual": "サーバーで `sudo hoard-server upgrade` を実行してください。"
 }

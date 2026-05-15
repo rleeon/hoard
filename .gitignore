@@ -12,6 +12,11 @@ deploy/config.toml
 # Local scratch / draft notes that should never be committed.
 guide*
 
+# Private context for Claude Code sessions. Workstation-specific,
+# may reference local paths or tokens — never committed.
+CLAUDE.md
+.claude/
+
 # Tauri build artifacts
 crates/hoard-desktop/gen/
 

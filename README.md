@@ -19,8 +19,11 @@ Every backup is a hashed, compressed, versioned snapshot. You can restore any
 past state, undo a corrupted save, or pull your saves down on a fresh
 install with one click.
 
-**Status: v1.0.0 — stable.** API and on-disk schema are now committed; only
-backwards-compatible changes within the 1.x line.
+**Status: v1.3.5 — stable.** API and on-disk schema are committed since
+v1.0; only backwards-compatible changes within the 1.x line. Recent
+1.3.x releases focused on detection coverage, the Library UX, and an
+in-app updater that finally retires the "download the .deb and run
+`dpkg -i`" loop.
 
 ## Why
 
@@ -43,6 +46,12 @@ and the data**.
   detection.
 - **Cross-platform clients**: Windows, Linux, and macOS — pre-built
   installers, no compiler needed.
+- **In-app updates**: when a newer release is out, an amber alert
+  button next to the sidebar version offers to install it. The
+  desktop client downloads the right asset for your OS and hands it
+  to the platform installer (`pkexec dpkg -i` / `msiexec` / `open`);
+  the server has a separate `hoard-server upgrade` subcommand the
+  operator runs by hand so a sync mid-upload never gets killed.
 
 ---
 
@@ -55,12 +64,16 @@ Download from the [**Releases page →**](https://github.com/rleeon/hoard/releas
 
 | Platform | File |
 | --- | --- |
-| **Windows 10 / 11** | `Hoard_1.0.0_x64-setup.exe` (NSIS, per-user) — or `Hoard_1.0.0_x64_en-US.msi` |
-| **Linux (Debian / Ubuntu / Mint / Pop!_OS)** | `Hoard_1.0.0_amd64.deb` |
-| **Linux (Fedora / RHEL / openSUSE)** | `hoard-1.0.0-1.x86_64.rpm` |
-| **Linux (Arch / NixOS / others)** | `Hoard_1.0.0_amd64.AppImage` |
-| **macOS 11+ (Intel)** | `Hoard_1.0.0_x64.dmg` |
-| **macOS 11+ (Apple Silicon)** | `Hoard_1.0.0_aarch64.dmg` |
+| **Windows 10 / 11** | `Hoard_<version>_x64-setup.exe` (NSIS, per-user) — or `Hoard_<version>_x64_en-US.msi` |
+| **Linux (Debian / Ubuntu / Mint / Pop!_OS)** | `Hoard_<version>_amd64.deb` |
+| **Linux (Fedora / RHEL / openSUSE)** | `hoard-<version>-1.x86_64.rpm` |
+| **Linux (Arch / NixOS / others)** | `Hoard_<version>_amd64.AppImage` |
+| **macOS 11+ (Intel)** | `Hoard_<version>_x64.dmg` |
+| **macOS 11+ (Apple Silicon)** | `Hoard_<version>_aarch64.dmg` |
+
+After the first install, future updates are offered inside the app: an
+amber alert button next to the sidebar version pops a confirmation
+modal and runs the platform installer for you.
 
 Full install / uninstall / troubleshooting guide:
 [**docs/install-client.md**](docs/install-client.md).
@@ -114,8 +127,14 @@ sudo journalctl -u hoard-server -f
 ```
 
 Or download the pre-built server tarball
-(`hoard-1.0.0-linux-x86_64.tar.gz`) from the Releases page if you don't want
-to compile.
+(`hoard-<version>-linux-x86_64.tar.gz`) from the Releases page if you don't
+want to compile.
+
+To upgrade the server later, run `sudo hoard-server upgrade` on the
+host — the subcommand fetches the latest release, swaps the binary
+atomically, and prints the `systemctl restart` step. It deliberately
+does *not* restart the service itself, so an in-flight sync isn't
+killed by the upgrader.
 
 Full server install instructions: [**docs/install.md**](docs/install.md).
 

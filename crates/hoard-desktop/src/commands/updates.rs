@@ -20,7 +20,7 @@
 use std::time::Duration;
 
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 use crate::state::AppState;
 
@@ -50,10 +50,19 @@ pub struct UpdateReport {
     pub server: Option<ComponentUpdate>,
 }
 
-/// GitHub releases API only needs the tag name; we ignore the rest.
+/// GitHub releases API. For `check_for_updates` we only need the tag; for
+/// `apply_desktop_update` we also need to pick the right downloadable asset.
 #[derive(serde::Deserialize)]
 struct GhRelease {
     tag_name: String,
+    #[serde(default)]
+    assets: Vec<GhAsset>,
+}
+
+#[derive(serde::Deserialize, Clone)]
+struct GhAsset {
+    name: String,
+    browser_download_url: String,
 }
 
 /// `/v1/health` shape (mirrors `crates/hoard-server/src/routes/health.rs`).
@@ -155,6 +164,26 @@ async fn fetch_gh_latest() -> Result<String, String> {
     Ok(release.tag_name)
 }
 
+/// Full release fetch — used by `apply_desktop_update` to discover the asset
+/// list at install time (we don't cache it because the user might leave the
+/// app open for days between detection and applying).
+async fn fetch_gh_release() -> Result<GhRelease, String> {
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("hoard-desktop/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get(GH_RELEASES_URL)
+        .header("accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    resp.json::<GhRelease>().await.map_err(|e| e.to_string())
+}
+
 async fn fetch_server_health(server_url: &str) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .user_agent(concat!("hoard-desktop/", env!("CARGO_PKG_VERSION")))
@@ -199,6 +228,164 @@ fn parse_version(s: &str) -> (u32, u32, u32) {
         .and_then(|x| x.parse().ok())
         .unwrap_or(0);
     (major, minor, patch)
+}
+
+/// Outcome of `apply_desktop_update`. The UI uses `kind` to decide what to
+/// show: on `installer_launched` we close the app so the OS installer can
+/// replace it; on `downloaded` we tell the user where the file is.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ApplyOutcome {
+    /// We spawned the platform installer (pkexec dpkg / msiexec / `open` on
+    /// macOS). The UI should prompt the user to wait + restart.
+    InstallerLaunched { path: String, version: String },
+    /// We downloaded the asset but couldn't auto-launch the installer. The
+    /// UI surfaces the path so the user can run it manually.
+    Downloaded { path: String, version: String },
+}
+
+/// Tauri command. Downloads the right release asset for this OS and tries to
+/// launch the platform installer.
+///
+/// This is the "Sí" path of the in-app update modal. We deliberately keep
+/// the privilege-escalation choice on the OS: `pkexec` for Linux .deb,
+/// `msiexec` for Windows .msi, `open` for macOS .dmg. Each pops the system's
+/// usual auth prompt; we never ask the user for a password ourselves.
+#[tauri::command]
+pub async fn apply_desktop_update(app: AppHandle) -> Result<ApplyOutcome, String> {
+    let release = fetch_gh_release().await?;
+    let version = release.tag_name.trim_start_matches('v').to_string();
+
+    let asset = pick_asset(&release.assets)
+        .ok_or_else(|| {
+            format!(
+                "no installer asset for this platform in release v{}. Assets: {}",
+                version,
+                release
+                    .assets
+                    .iter()
+                    .map(|a| a.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })?
+        .clone();
+
+    // Download into the OS download dir so the file is findable later if the
+    // installer asks the user to "Save As".
+    let download_dir = app
+        .path()
+        .download_dir()
+        .or_else(|_| app.path().temp_dir())
+        .map_err(|e| format!("locating a writable directory: {e}"))?;
+    tokio::fs::create_dir_all(&download_dir)
+        .await
+        .map_err(|e| e.to_string())?;
+    let dest = download_dir.join(&asset.name);
+
+    download_to(&asset.browser_download_url, &dest).await?;
+
+    // Try to launch the platform installer. If that fails, we still succeeded
+    // at *downloading* the update, so report Downloaded with the path so the
+    // user can do it themselves.
+    let path_str = dest.to_string_lossy().to_string();
+    match launch_installer(&dest).await {
+        Ok(()) => Ok(ApplyOutcome::InstallerLaunched {
+            path: path_str,
+            version,
+        }),
+        Err(e) => {
+            tracing::warn!(error = %e, "installer launch failed, falling back to manual");
+            Ok(ApplyOutcome::Downloaded {
+                path: path_str,
+                version,
+            })
+        }
+    }
+}
+
+/// Pick the right asset for the current OS/arch. We match on filename suffix
+/// because Tauri's bundle namer doesn't expose a stable scheme we can predict.
+fn pick_asset(assets: &[GhAsset]) -> Option<&GhAsset> {
+    #[cfg(target_os = "linux")]
+    {
+        // Prefer .deb (Ubuntu/Debian, what we test against). Fall back to
+        // .AppImage if no .deb is in the release.
+        if let Some(a) = assets.iter().find(|a| a.name.ends_with(".deb")) {
+            return Some(a);
+        }
+        assets.iter().find(|a| a.name.ends_with(".AppImage"))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        assets
+            .iter()
+            .find(|a| a.name.ends_with(".msi"))
+            .or_else(|| assets.iter().find(|a| a.name.ends_with(".exe")))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        assets.iter().find(|a| a.name.ends_with(".dmg"))
+    }
+}
+
+async fn download_to(url: &str, dest: &std::path::Path) -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("hoard-desktop/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let bytes = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?
+        .bytes()
+        .await
+        .map_err(|e| e.to_string())?;
+    tokio::fs::write(dest, &bytes)
+        .await
+        .map_err(|e| format!("writing {}: {e}", dest.display()))?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+async fn launch_installer(path: &std::path::Path) -> Result<(), String> {
+    // pkexec pops the polkit auth dialog and runs dpkg as root. If the user
+    // cancels, dpkg never runs and we get a non-zero exit; we treat that as
+    // an error so the UI can fall back to "Downloaded".
+    let p = path.to_string_lossy().to_string();
+    let status = tokio::process::Command::new("pkexec")
+        .args(["dpkg", "-i", &p])
+        .status()
+        .await
+        .map_err(|e| format!("spawning pkexec: {e}"))?;
+    if !status.success() {
+        return Err(format!("dpkg -i exited with status {status}"));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+async fn launch_installer(path: &std::path::Path) -> Result<(), String> {
+    let p = path.to_string_lossy().to_string();
+    tokio::process::Command::new("msiexec")
+        .args(["/i", &p])
+        .spawn()
+        .map_err(|e| format!("spawning msiexec: {e}"))?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+async fn launch_installer(path: &std::path::Path) -> Result<(), String> {
+    let p = path.to_string_lossy().to_string();
+    tokio::process::Command::new("open")
+        .arg(&p)
+        .spawn()
+        .map_err(|e| format!("spawning open: {e}"))?;
+    Ok(())
 }
 
 #[cfg(test)]

@@ -236,6 +236,19 @@
   "magic.subtitle": "Scansiona, traccia rilevamenti affidabili, avvia l'agente.",
   "updates.client_short": "Aggiornamento client disponibile",
   "updates.server_short": "Aggiornamento server disponibile",
-  "updates.client_available": "Hoard {latest} è disponibile — clicca per i dettagli.",
-  "updates.server_available": "Il tuo server usa una versione vecchia di Hoard ({latest} disponibile) — clicca per i dettagli."
+  "updates.client_available": "Hoard {latest} è uscito — clicca per installare.",
+  "updates.server_available": "Il tuo server usa una versione vecchia di Hoard ({latest} disponibile) — clicca per il comando di aggiornamento.",
+  "updates.button_label": "Aggiornamento disponibile",
+  "updates.confirm_title": "Aggiornamento disponibile",
+  "updates.needs_update": "È necessario un aggiornamento.",
+  "updates.client_body": "L'app Hoard è alla {current}. Installare {latest}? Il sistema chiederà conferma.",
+  "updates.server_body": "Il tuo server è alla {current}; l'ultima è {latest}. Il server non si aggiorna da solo — esegui questo comando sul tuo server:",
+  "updates.yes": "Sì",
+  "updates.no": "No",
+  "updates.installing": "Installazione…",
+  "updates.installer_launched": "Installer avviato — segui le istruzioni di sistema.",
+  "updates.downloaded_manual": "Scaricato in {path}. Aprilo per installare.",
+  "updates.install_failed": "Aggiornamento fallito: {error}",
+  "updates.server_command_copied": "Comando copiato — eseguilo sul tuo server.",
+  "updates.server_command_manual": "Esegui `sudo hoard-server upgrade` sul tuo server."
 }

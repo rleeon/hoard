@@ -778,6 +778,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce2548391e9c1929c21bf6aa2680af86fe4c1b33e6cea9ac1cfeec0bd11218cf"
 dependencies = [
  "compression-core",
+ "flate2",
+ "memchr",
  "zstd",
  "zstd-safe",
 ]
@@ -2089,7 +2091,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-admin"
-version = "1.3.4"
+version = "1.3.5"
 dependencies = [
  "anyhow",
  "clap",
@@ -2115,7 +2117,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-agent"
-version = "1.3.4"
+version = "1.3.5"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -2146,7 +2148,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-cli"
-version = "1.3.4"
+version = "1.3.5"
 dependencies = [
  "anyhow",
  "clap",
@@ -2165,7 +2167,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-core"
-version = "1.3.4"
+version = "1.3.5"
 dependencies = [
  "anyhow",
  "argon2",
@@ -2182,7 +2184,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-desktop"
-version = "1.3.4"
+version = "1.3.5"
 dependencies = [
  "anyhow",
  "hoard-agent",
@@ -2209,7 +2211,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-detect"
-version = "1.3.4"
+version = "1.3.5"
 dependencies = [
  "hoard-manifest",
  "serde",
@@ -2222,7 +2224,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-manifest"
-version = "1.3.4"
+version = "1.3.5"
 dependencies = [
  "directories",
  "include_dir",
@@ -2238,7 +2240,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-server"
-version = "1.3.4"
+version = "1.3.5"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -2250,6 +2252,7 @@ dependencies = [
  "hex",
  "hoard-core",
  "rand 0.8.6",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "sha2",
@@ -2270,7 +2273,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-watcher"
-version = "1.3.4"
+version = "1.3.5"
 dependencies = [
  "notify",
  "notify-debouncer-mini",

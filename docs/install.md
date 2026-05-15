@@ -144,6 +144,54 @@ hoard.example.com {
 
 ---
 
+## Upgrading
+
+The server does **not** self-update on a timer — an in-flight upload
+shouldn't be killed by the upgrader's choice of restart moment. Instead
+there's an explicit subcommand:
+
+```sh
+sudo hoard-server upgrade
+```
+
+What it does:
+
+1. Hits the GitHub releases API and finds the latest tagged version.
+2. Bails if you're already on the latest, or on a newer build.
+3. Downloads `hoard-{version}-linux-x86_64.tar.gz`, extracts the
+   `hoard-server` binary to a sibling tmpfile, chmods it `0755`.
+4. Atomically renames it over the running binary's path. The
+   in-flight process keeps its file descriptor; the next exec picks
+   up the new binary.
+5. Prints the restart hint:
+
+   ```
+   sudo systemctl restart hoard-server
+   ```
+
+It deliberately doesn't:
+
+- Load `/etc/hoard/config.toml`. Broken configs still upgrade cleanly.
+- Touch the SQLite database or run migrations. Migrations run on the
+  next `hoard-server` start.
+- Restart the systemd unit itself — init systems vary, and you may
+  want to schedule the restart yourself.
+
+Docker users: the in-container path is the same, but the cleaner
+upgrade is to bump the image tag and recreate the container:
+
+```sh
+cd deploy/docker
+docker compose pull
+docker compose up -d
+```
+
+Either way, **back up `data_dir` before upgrading across more than a
+patch version** — see the next section. The 1.x line is committed to
+backwards-compatible schema changes, but a backup is cheap insurance.
+
+---
+
 ## Backup of the server data
 
 The server itself stores everything under `data_dir`:

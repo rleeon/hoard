@@ -135,15 +135,30 @@ from your platform's credential manager after uninstalling.
 
 ## Updating
 
-There's no auto-updater in 1.0. Watch the
-[Releases page](https://github.com/rleeon/hoard/releases) for new
-versions and reinstall over the top — Hoard's local state (tracked
-saves, watchers, server URL, paused state) survives upgrades. The
-keyring-stored token survives too.
+Hoard checks GitHub for a newer release on startup. When one's
+available, a small amber alert icon shows up next to the version
+string in the top-left of the sidebar.
 
-Auto-updates are on the 1.x roadmap. They'll require code-signing
-certificates to be rolled out first, so we're holding the feature
-until we can ship signed releases on every platform.
+Click it → confirmation modal → **Yes** → Hoard downloads the right
+asset for your platform (`.deb`, `.msi`, or `.dmg`) and hands it to
+the system installer:
+
+- **Linux**: `pkexec dpkg -i` (one polkit auth prompt).
+- **Windows**: `msiexec /i` (one UAC prompt).
+- **macOS**: `open` the `.dmg` (mount, drag to `/Applications`).
+
+If launching the installer fails for any reason (no `pkexec`, sandboxed
+environment, etc.), Hoard still tells you the path it downloaded the
+file to so you can run it manually.
+
+Local state — tracked saves, watchers, server URL, paused state, the
+keyring-stored token — survives all upgrades regardless of which path
+you use.
+
+> The desktop and the server upgrade independently. If your server is
+> on an older version, the modal shows `sudo hoard-server upgrade`
+> and copies it to your clipboard — run it on your server box. See
+> [docs/install.md](install.md#upgrading) for the server side.
 
 ---
 

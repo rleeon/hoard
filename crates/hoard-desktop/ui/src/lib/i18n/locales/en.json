@@ -247,6 +247,19 @@
   "magic.subtitle": "Scans, tracks high-confidence detections, starts the agent.",
   "updates.client_short": "Client update available",
   "updates.server_short": "Server update available",
-  "updates.client_available": "Hoard {latest} is out — click for details.",
-  "updates.server_available": "Your server is on an older Hoard ({latest} available) — click for details."
+  "updates.client_available": "Hoard {latest} is out — click to install.",
+  "updates.server_available": "Your server is on an older Hoard ({latest} available) — click for the upgrade command.",
+  "updates.button_label": "Update available",
+  "updates.confirm_title": "Update available",
+  "updates.needs_update": "An update is needed.",
+  "updates.client_body": "The Hoard app is on {current}. Install {latest}? The OS installer will ask for confirmation.",
+  "updates.server_body": "Your server is on {current}; the latest is {latest}. The server doesn't self-update — run this command on your server to upgrade:",
+  "updates.yes": "Yes",
+  "updates.no": "No",
+  "updates.installing": "Installing…",
+  "updates.installer_launched": "Installer launched — follow the system prompt to finish.",
+  "updates.downloaded_manual": "Downloaded to {path}. Open it to install.",
+  "updates.install_failed": "Update failed: {error}",
+  "updates.server_command_copied": "Command copied — run it on your server.",
+  "updates.server_command_manual": "Run `sudo hoard-server upgrade` on your server."
 }

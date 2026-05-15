@@ -236,6 +236,19 @@
   "magic.subtitle": "扫描、跟踪高置信度检测、启动代理。",
   "updates.client_short": "有客户端更新",
   "updates.server_short": "有服务器更新",
-  "updates.client_available": "Hoard {latest} 已发布 — 点击查看详情。",
-  "updates.server_available": "你的服务器运行着旧版本的 Hoard（{latest} 可用）— 点击查看详情。"
+  "updates.client_available": "Hoard {latest} 已发布 — 点击安装。",
+  "updates.server_available": "你的服务器运行着旧版本的 Hoard（{latest} 可用）— 点击查看升级命令。",
+  "updates.button_label": "有可用更新",
+  "updates.confirm_title": "有可用更新",
+  "updates.needs_update": "需要更新。",
+  "updates.client_body": "Hoard 应用当前为 {current}。安装 {latest}？操作系统会请求确认。",
+  "updates.server_body": "你的服务器当前为 {current}；最新版本为 {latest}。服务器不会自动更新 — 在你的服务器上运行以下命令：",
+  "updates.yes": "是",
+  "updates.no": "否",
+  "updates.installing": "正在安装…",
+  "updates.installer_launched": "安装程序已启动 — 按系统提示完成。",
+  "updates.downloaded_manual": "已下载到 {path}。打开以安装。",
+  "updates.install_failed": "更新失败：{error}",
+  "updates.server_command_copied": "命令已复制 — 在你的服务器上运行。",
+  "updates.server_command_manual": "在你的服务器上运行 `sudo hoard-server upgrade`。"
 }

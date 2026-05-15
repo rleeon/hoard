@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.5] — 2026-05-15
+
+In-app updates land. The desktop app already knew when a newer release was
+out, but the user still had to download the `.deb` and run `dpkg -i` by
+hand. That ends here — the sidebar surfaces an amber alert button next to
+the version when GitHub has something newer, clicking it opens a
+confirmation modal, and "Yes" launches the OS installer. The server is
+kept manual on purpose (it shouldn't self-restart while it might be
+serving sync traffic) but gains a `hoard-server upgrade` subcommand so
+the operator runs one command instead of editing systemd by hand.
+
+### Added
+
+- **In-app desktop updater.** The sidebar's update-available banner moves
+  to a small amber alert button next to the version string (same visual
+  vocabulary as the "Sin carpeta" alert). Clicking it pops a confirmation
+  modal showing the current and target versions, with **Sí** (green) /
+  **No** (red) buttons. Sí downloads the appropriate release asset for
+  the host platform (`.deb` on Linux, `.msi` on Windows, `.dmg` on macOS)
+  and hands it to the OS installer — `pkexec dpkg -i`, `msiexec /i`,
+  `open` — so the user never opens a terminal. If launching the
+  installer fails we still surface the downloaded path so they can run
+  it manually.
+  (`crates/hoard-desktop/src/commands/updates.rs`,
+  `crates/hoard-desktop/ui/src/lib/components/UpdateConfirmModal.svelte`,
+  `crates/hoard-desktop/ui/src/App.svelte`)
+- **`hoard-server upgrade` subcommand.** Fetches the latest GitHub
+  release, downloads the linux-x86_64 tarball, atomically swaps the
+  `hoard-server` binary in place, and prints a hint to restart the
+  systemd unit. Does not load config or touch the database, so a broken
+  config still upgrades cleanly. Server self-restart is deliberately not
+  attempted — distro init systems vary too much and an in-flight sync
+  shouldn't get killed mid-upload by the upgrader.
+  (`crates/hoard-server/src/upgrade.rs`,
+  `crates/hoard-server/src/main.rs`)
+
+### Changed
+
+- **Update banner replaced by an icon button.** The previous full-width
+  amber banner above the sidebar's Magic button is gone; its replacement
+  is a 7×7 alert icon next to the Hoard version. Tighter, less noisy,
+  and the click target is now the obvious one. The server-update path
+  still doesn't auto-install — it copies `sudo hoard-server upgrade` to
+  the clipboard so the user runs it on their server box.
+  (`crates/hoard-desktop/ui/src/App.svelte`,
+  `crates/hoard-desktop/ui/src/lib/i18n/locales/*.json`)
+
 ## [1.3.4] — 2026-05-14
 
 Small UX gap on the Library page. When auto-detection finds a save folder

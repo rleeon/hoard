@@ -126,6 +126,7 @@ pub fn run() {
             commands::catalog::update_catalog,
             commands::catalog::catalog_status,
             commands::updates::check_for_updates,
+            commands::updates::apply_desktop_update,
         ])
         .setup(|app| {
             // Build the tray as soon as we have an AppHandle. Failures here

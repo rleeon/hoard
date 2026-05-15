@@ -34,3 +34,17 @@ export async function checkForUpdates(): Promise<UpdateReport> {
   lastReport.set(r);
   return r;
 }
+
+/**
+ * Result of `apply_desktop_update`. `installer_launched` means we spawned the
+ * platform installer (pkexec / msiexec / open); `downloaded` means we got the
+ * file onto disk but couldn't launch — the UI tells the user to run it.
+ */
+export type ApplyOutcome =
+  | { kind: "installer_launched"; path: string; version: string }
+  | { kind: "downloaded"; path: string; version: string };
+
+/** Download the latest desktop release asset and trigger the OS installer. */
+export async function applyDesktopUpdate(): Promise<ApplyOutcome> {
+  return await invoke<ApplyOutcome>("apply_desktop_update");
+}

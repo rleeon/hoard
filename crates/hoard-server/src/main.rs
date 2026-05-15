@@ -4,10 +4,10 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use hoard_server::{
     config::{Config, LogFormat},
-    db,
+    db, upgrade,
 };
 use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 use tracing::info;
@@ -22,13 +22,38 @@ use hoard_server::routes::{
 #[derive(Parser)]
 #[command(name = "hoard-server", version, about = "Hoard save-sync server")]
 struct Args {
-    #[arg(long, default_value = "/etc/hoard/config.toml")]
+    /// Path to the TOML config file. Used by `serve` (and by default when no
+    /// subcommand is given). Ignored by `upgrade`.
+    #[arg(long, default_value = "/etc/hoard/config.toml", global = true)]
     config: PathBuf,
+
+    #[command(subcommand)]
+    cmd: Option<Cmd>,
+}
+
+#[derive(Subcommand)]
+enum Cmd {
+    /// Run the HTTP server. Default if no subcommand is given.
+    Serve,
+    /// Download the latest release from GitHub and replace this binary.
+    /// Does not restart the systemd service — see the printed hint.
+    Upgrade {
+        /// Override the install destination. Defaults to the path of the
+        /// currently-running binary (resolved via /proc/self/exe).
+        #[arg(long)]
+        target: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
+
+    // `upgrade` is self-contained: no config load, no DB, no logging init.
+    if let Some(Cmd::Upgrade { target }) = args.cmd {
+        return upgrade::run(target).await;
+    }
+
     let cfg = Config::load(&args.config)?;
 
     init_logging(&cfg);

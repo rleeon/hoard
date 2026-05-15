@@ -1,6 +1,11 @@
 # 0007 — Desktop packaging targets, no auto-updater for v0.2
 
-**Status:** accepted, 2026-05-04
+**Status:** partially superseded by [0008](0008-in-app-updater.md) on
+2026-05-15. The bundle-targets matrix below is still current; the
+no-auto-updater stance was reversed once we found a way to ship in-app
+updates without depending on code-signing certs.
+
+**Original status:** accepted, 2026-05-04
 
 ## Context
 

@@ -22,6 +22,7 @@
   import LogsRoute from "./routes/Logs.svelte";
 
   import Toaster from "./lib/components/Toaster.svelte";
+  import UpdateConfirmModal from "./lib/components/UpdateConfirmModal.svelte";
   import { auth, hydrateAuth } from "./lib/stores/auth";
   import { loadStep, routeForStep } from "./lib/stores/onboarding";
   import { runMagicSetup, magicState } from "./lib/stores/magic";
@@ -52,6 +53,13 @@
 
   let booted = $state(false);
   let updates = $state<UpdateReport | null>(null);
+  let updateModalOpen = $state(false);
+
+  // Used by the small alert button next to the version. True when either the
+  // client or the user's server has a newer version available.
+  const hasUpdate = $derived(
+    !!(updates && (updates.client.available || updates.server?.available)),
+  );
 
   onMount(async () => {
     await hydrateAuth();
@@ -130,10 +138,32 @@
         >
           <Archive size={20} />
         </div>
-        <div>
+        <div class="min-w-0 flex-1">
           <div class="text-base font-semibold tracking-tight">Hoard</div>
-          <div class="text-xs text-zinc-500">v{import.meta.env.VITE_HOARD_VERSION || "1.3.0"}</div>
+          <div class="text-xs text-zinc-500">
+            v{import.meta.env.VITE_HOARD_VERSION || "1.3.5"}
+          </div>
         </div>
+        <!-- Small amber alert button. Same visual language as "Sin carpeta":
+             border + tinted background, no rounded-full pill. Click pops a
+             confirmation modal; we don't auto-install behind the user's back. -->
+        {#if hasUpdate}
+          <button
+            type="button"
+            onclick={() => (updateModalOpen = true)}
+            title={updates?.client.available
+              ? $_("updates.client_available", {
+                  values: { latest: updates?.client.latest ?? "?" },
+                })
+              : $_("updates.server_available", {
+                  values: { latest: updates?.server?.latest ?? "?" },
+                })}
+            aria-label={$_("updates.button_label")}
+            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-300 transition-colors hover:bg-amber-500/20"
+          >
+            <AlertCircle size={14} />
+          </button>
+        {/if}
       </div>
 
       <nav class="flex-1 space-y-1 px-3 py-2">
@@ -160,32 +190,9 @@
         {/each}
       </nav>
 
-      <!-- Sidebar footer: Magic auto-setup button + optional update nag.
-           The button is the "I don't want to think about it" path: it scans,
-           tracks every high-confidence detection, and starts the agent. -->
+      <!-- Sidebar footer: Magic auto-setup button. The "Update available"
+           alert lives next to the version up top now, not here. -->
       <div class="border-t border-zinc-800 px-3 py-3 space-y-2">
-        {#if updates && (updates.client.available || updates.server?.available)}
-          <button
-            type="button"
-            onclick={() => push("/settings")}
-            class="flex w-full items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-left text-xs text-amber-200 hover:bg-amber-500/15"
-            title={updates.client.available
-              ? $_("updates.client_available", {
-                  values: { latest: updates.client.latest ?? "?" },
-                })
-              : $_("updates.server_available", {
-                  values: { latest: updates.server?.latest ?? "?" },
-                })}
-          >
-            <AlertCircle size={14} class="mt-0.5 shrink-0" />
-            <span class="leading-tight">
-              {updates.client.available
-                ? $_("updates.client_short")
-                : $_("updates.server_short")}
-            </span>
-          </button>
-        {/if}
-
         <button
           type="button"
           onclick={runMagicSetup}
@@ -213,5 +220,11 @@
     <Router {routes} />
   </div>
 {/if}
+
+<UpdateConfirmModal
+  open={updateModalOpen}
+  report={updates}
+  onClose={() => (updateModalOpen = false)}
+/>
 
 <Toaster />
