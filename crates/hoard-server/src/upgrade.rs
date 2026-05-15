@@ -158,7 +158,7 @@ fn resolve_target(override_: Option<PathBuf>) -> Result<PathBuf> {
 fn preferred_asset_name(version: &str) -> Result<String> {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
-        return Ok(format!("hoard-{version}-linux-x86_64.tar.gz"));
+        Ok(format!("hoard-{version}-linux-x86_64.tar.gz"))
     }
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
     {
