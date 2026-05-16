@@ -25,6 +25,7 @@
     RefreshCw,
     Database,
     Languages,
+    Activity,
   } from "lucide-svelte";
 
   import Card from "../lib/components/Card.svelte";
@@ -48,6 +49,42 @@
   let catalogStage = $state<string>("");
   let unlistenCatalog: UnlistenFn | null = null;
 
+  // Hidden diagnostics panel — only visible after 5 clicks on the sidebar
+  // version. We re-poll every 2s while the page is open; the round-trip is
+  // cheap (just locks a Mutex + a oneshot through the agent loop).
+  let diagnosticsUnlocked = $state(false);
+  let agentSlots = $state<api.AgentSlotStatus[]>([]);
+  let diagnosticsTimer: ReturnType<typeof setInterval> | null = null;
+
+  async function refreshAgentSlots() {
+    try {
+      agentSlots = await api.agentStatus();
+    } catch (e) {
+      console.warn("agentStatus failed:", e);
+    }
+  }
+
+  function formatTimestamp(iso: string | null): string {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    const ageSecs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+    if (ageSecs < 5) return $_("history.relative_just_now");
+    if (ageSecs < 60)
+      return $_("diagnostics.relative_seconds", { values: { count: ageSecs } });
+    if (ageSecs < 3600)
+      return $_("history.relative_minutes", {
+        values: { count: Math.floor(ageSecs / 60) },
+      });
+    if (ageSecs < 86400)
+      return $_("history.relative_hours", {
+        values: { count: Math.floor(ageSecs / 3600) },
+      });
+    return $_("history.relative_days", {
+      values: { count: Math.floor(ageSecs / 86400) },
+    });
+  }
+
   onMount(async () => {
     await hydratePrefs();
     // Re-sync autostart from the OS so the toggle reflects truth even if the
@@ -69,10 +106,18 @@
     unlistenCatalog = await listen<string>("catalog://update-progress", (ev) => {
       catalogStage = ev.payload;
     });
+
+    diagnosticsUnlocked =
+      sessionStorage.getItem("hoard-diagnostics-unlocked") === "1";
+    if (diagnosticsUnlocked) {
+      await refreshAgentSlots();
+      diagnosticsTimer = setInterval(refreshAgentSlots, 2000);
+    }
   });
 
   onDestroy(() => {
     unlistenCatalog?.();
+    if (diagnosticsTimer) clearInterval(diagnosticsTimer);
   });
 
   async function handleCatalogUpdate() {
@@ -473,6 +518,87 @@
           </button>
         </Card>
       </section>
+
+      {#if diagnosticsUnlocked}
+        <section>
+          <h2
+            class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+          >
+            {$_("diagnostics.section_title")}
+          </h2>
+          <Card>
+            <div class="flex items-start gap-3">
+              <Activity size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-zinc-100">
+                  {$_("diagnostics.heading")}
+                </p>
+                <p class="mt-0.5 text-xs text-zinc-500">
+                  {$_("diagnostics.subtitle")}
+                </p>
+
+                {#if agentSlots.length === 0}
+                  <p class="mt-4 text-xs text-zinc-500">
+                    {$_("diagnostics.agent_stopped")}
+                  </p>
+                {:else}
+                  <ul class="mt-4 space-y-3">
+                    {#each agentSlots as slot (slot.save_id)}
+                      <li
+                        class="rounded-md border border-zinc-800 bg-zinc-900/40 p-3 text-xs"
+                      >
+                        <div class="flex items-center justify-between gap-2">
+                          <span class="truncate font-medium text-zinc-100">
+                            {slot.display_name}
+                          </span>
+                          <span class="flex shrink-0 items-center gap-1.5">
+                            {#if slot.watcher_armed}
+                              <span
+                                class="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300"
+                                >{$_("diagnostics.watcher_armed")}</span
+                              >
+                            {:else}
+                              <span
+                                class="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-300"
+                                >{$_("diagnostics.watcher_off")}</span
+                              >
+                            {/if}
+                            {#if slot.process_running}
+                              <span
+                                class="rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-300"
+                                >{$_("diagnostics.process_running")}</span
+                              >
+                            {/if}
+                          </span>
+                        </div>
+                        <p class="mt-1 truncate text-[11px] text-zinc-500">
+                          {slot.path}
+                        </p>
+                        <dl
+                          class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]"
+                        >
+                          <dt class="text-zinc-500">
+                            {$_("diagnostics.last_fs_event")}
+                          </dt>
+                          <dd class="text-zinc-300">
+                            {formatTimestamp(slot.last_fs_event_at)}
+                          </dd>
+                          <dt class="text-zinc-500">
+                            {$_("diagnostics.next_backup")}
+                          </dt>
+                          <dd class="text-zinc-300">
+                            {formatTimestamp(slot.next_scheduled_backup_at)}
+                          </dd>
+                        </dl>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+              </div>
+            </div>
+          </Card>
+        </section>
+      {/if}
 
       <section>
         <h2

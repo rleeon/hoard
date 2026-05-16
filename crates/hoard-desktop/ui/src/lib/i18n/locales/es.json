@@ -261,5 +261,16 @@
   "updates.downloaded_manual": "Descargado en {path}. Ábrelo para instalar.",
   "updates.install_failed": "Error al actualizar: {error}",
   "updates.server_command_copied": "Comando copiado — ejecútalo en tu servidor.",
-  "updates.server_command_manual": "Ejecuta `sudo hoard-server upgrade` en tu servidor."
+  "updates.server_command_manual": "Ejecuta `sudo hoard-server upgrade` en tu servidor.",
+  "diagnostics.unlocked_toast": "Diagnóstico del agente desbloqueado — abre Ajustes.",
+  "diagnostics.section_title": "Diagnóstico del agente",
+  "diagnostics.heading": "Slots del agente",
+  "diagnostics.subtitle": "Estado de cada save que el agente está vigilando. Panel oculto — se refresca cada 2 segundos.",
+  "diagnostics.agent_stopped": "El agente no está activo. Inicia sesión para arrancarlo.",
+  "diagnostics.watcher_armed": "Watcher activo",
+  "diagnostics.watcher_off": "Watcher apagado",
+  "diagnostics.process_running": "Juego abierto",
+  "diagnostics.last_fs_event": "Último evento FS",
+  "diagnostics.next_backup": "Próximo backup",
+  "diagnostics.relative_seconds": "hace {count}s"
 }

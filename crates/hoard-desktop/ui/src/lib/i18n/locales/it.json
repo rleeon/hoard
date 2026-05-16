@@ -250,5 +250,16 @@
   "updates.downloaded_manual": "Scaricato in {path}. Aprilo per installare.",
   "updates.install_failed": "Aggiornamento fallito: {error}",
   "updates.server_command_copied": "Comando copiato — eseguilo sul tuo server.",
-  "updates.server_command_manual": "Esegui `sudo hoard-server upgrade` sul tuo server."
+  "updates.server_command_manual": "Esegui `sudo hoard-server upgrade` sul tuo server.",
+  "diagnostics.unlocked_toast": "Diagnostica agente sbloccata — apri Impostazioni.",
+  "diagnostics.section_title": "Diagnostica agente",
+  "diagnostics.heading": "Slot dell'agente",
+  "diagnostics.subtitle": "Snapshot di ogni save monitorato dall'agente. Pannello nascosto — si aggiorna ogni 2 secondi.",
+  "diagnostics.agent_stopped": "L'agente non è attivo. Accedi per avviarlo.",
+  "diagnostics.watcher_armed": "Watcher attivo",
+  "diagnostics.watcher_off": "Watcher spento",
+  "diagnostics.process_running": "Gioco in esecuzione",
+  "diagnostics.last_fs_event": "Ultimo evento FS",
+  "diagnostics.next_backup": "Prossimo backup",
+  "diagnostics.relative_seconds": "{count}s fa"
 }

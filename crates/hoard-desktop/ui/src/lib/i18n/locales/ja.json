@@ -250,5 +250,16 @@
   "updates.downloaded_manual": "{path} にダウンロードしました。開いてインストールしてください。",
   "updates.install_failed": "更新に失敗しました: {error}",
   "updates.server_command_copied": "コマンドをコピーしました — サーバーで実行してください。",
-  "updates.server_command_manual": "サーバーで `sudo hoard-server upgrade` を実行してください。"
+  "updates.server_command_manual": "サーバーで `sudo hoard-server upgrade` を実行してください。",
+  "diagnostics.unlocked_toast": "エージェント診断が有効になりました — 設定を開いてください。",
+  "diagnostics.section_title": "エージェント診断",
+  "diagnostics.heading": "ライブエージェントのスロット",
+  "diagnostics.subtitle": "エージェントが監視している各セーブのスナップショット。隠しパネル — 2秒ごとに更新されます。",
+  "diagnostics.agent_stopped": "エージェントは停止中です。ログインして起動してください。",
+  "diagnostics.watcher_armed": "監視中",
+  "diagnostics.watcher_off": "監視オフ",
+  "diagnostics.process_running": "ゲーム実行中",
+  "diagnostics.last_fs_event": "最後のFSイベント",
+  "diagnostics.next_backup": "次回のバックアップ",
+  "diagnostics.relative_seconds": "{count}秒前"
 }

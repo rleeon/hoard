@@ -165,6 +165,20 @@ export type AgentStatus = {
   watched_count: number;
 };
 
+/** Per-slot diagnostic snapshot. Mirrors
+ * `hoard_agent::agent::AgentSlotStatus`. Empty array = agent not running. */
+export type AgentSlotStatus = {
+  save_id: string;
+  display_name: string;
+  path: string;
+  watcher_armed: boolean;
+  process_running: boolean;
+  /** RFC3339 UTC or null if no event seen yet. */
+  last_fs_event_at: string | null;
+  /** RFC3339 UTC or null if no backup pending. */
+  next_scheduled_backup_at: string | null;
+};
+
 export type BackupReason = "filesystem_settled" | "game_stopped" | "manual";
 
 /** Tagged union mirroring `hoard_agent::agent::AgentEvent`. The `type`
@@ -207,9 +221,9 @@ export function backupNow(save_id: string): Promise<void> {
   return invoke<void>("backup_now", { saveId: save_id });
 }
 
-/** Lightweight status accessor. */
-export function agentStatus(): Promise<AgentStatus> {
-  return invoke<AgentStatus>("agent_status");
+/** Per-slot diagnostic snapshot for the hidden Settings panel. */
+export function agentStatus(): Promise<AgentSlotStatus[]> {
+  return invoke<AgentSlotStatus[]>("agent_status");
 }
 
 // ---------------------------------------------------------------------------

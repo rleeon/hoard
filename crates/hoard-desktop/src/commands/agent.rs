@@ -20,7 +20,7 @@
 
 use std::path::PathBuf;
 
-use hoard_agent::agent::{self, AgentConfig, AgentEvent, WatchedSave};
+use hoard_agent::agent::{self, AgentConfig, AgentEvent, AgentSlotStatus, WatchedSave};
 use hoard_agent::manifest::Os;
 use hoard_agent::state::CliState;
 use hoard_agent::steam;
@@ -113,13 +113,18 @@ pub async fn backup_now(save_id: String, state: State<'_, AppState>) -> Result<(
     Ok(())
 }
 
-/// Lightweight status accessor for the dashboard's "live" badge.
+/// Diagnostic snapshot of every slot the agent is currently tracking.
+/// Powers the hidden "agent diagnostics" panel in Settings — the only
+/// non-trace surface that reveals whether each slot's fs watcher actually
+/// armed and what it's seen. Returns an empty vec when the agent is not
+/// running (no error: the UI shows "agent stopped").
 #[tauri::command]
-pub fn agent_status(state: State<'_, AppState>) -> AgentStatus {
-    AgentStatus {
-        running: state.agent.lock().unwrap().is_some(),
-        watched_count: 0,
-    }
+pub async fn agent_status(state: State<'_, AppState>) -> Result<Vec<AgentSlotStatus>, String> {
+    let handle = state.agent.lock().unwrap().clone();
+    let Some(h) = handle else {
+        return Ok(Vec::new());
+    };
+    h.status().await.map_err(|e| e.to_string())
 }
 
 // ---- helpers ----------------------------------------------------------

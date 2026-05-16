@@ -250,5 +250,16 @@
   "updates.downloaded_manual": "已下载到 {path}。打开以安装。",
   "updates.install_failed": "更新失败：{error}",
   "updates.server_command_copied": "命令已复制 — 在你的服务器上运行。",
-  "updates.server_command_manual": "在你的服务器上运行 `sudo hoard-server upgrade`。"
+  "updates.server_command_manual": "在你的服务器上运行 `sudo hoard-server upgrade`。",
+  "diagnostics.unlocked_toast": "代理诊断已解锁 — 打开设置。",
+  "diagnostics.section_title": "代理诊断",
+  "diagnostics.heading": "实时代理槽位",
+  "diagnostics.subtitle": "代理正在监视的每个存档的快照。隐藏面板 — 每 2 秒刷新一次。",
+  "diagnostics.agent_stopped": "代理未运行。请登录以启动。",
+  "diagnostics.watcher_armed": "监视中",
+  "diagnostics.watcher_off": "监视关闭",
+  "diagnostics.process_running": "游戏运行中",
+  "diagnostics.last_fs_event": "最近文件事件",
+  "diagnostics.next_backup": "下次备份",
+  "diagnostics.relative_seconds": "{count} 秒前"
 }

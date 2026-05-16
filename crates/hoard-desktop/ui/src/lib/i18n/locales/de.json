@@ -250,5 +250,16 @@
   "updates.downloaded_manual": "Heruntergeladen nach {path}. Öffnen, um zu installieren.",
   "updates.install_failed": "Update fehlgeschlagen: {error}",
   "updates.server_command_copied": "Befehl kopiert — auf deinem Server ausführen.",
-  "updates.server_command_manual": "Führe `sudo hoard-server upgrade` auf deinem Server aus."
+  "updates.server_command_manual": "Führe `sudo hoard-server upgrade` auf deinem Server aus.",
+  "diagnostics.unlocked_toast": "Agent-Diagnose freigeschaltet — öffne die Einstellungen.",
+  "diagnostics.section_title": "Agent-Diagnose",
+  "diagnostics.heading": "Live-Agent-Slots",
+  "diagnostics.subtitle": "Schnappschuss jedes Spielstands, den der Agent überwacht. Verstecktes Panel — aktualisiert sich alle 2 Sekunden.",
+  "diagnostics.agent_stopped": "Agent läuft nicht. Melde dich an, um ihn zu starten.",
+  "diagnostics.watcher_armed": "Watcher aktiv",
+  "diagnostics.watcher_off": "Watcher aus",
+  "diagnostics.process_running": "Spiel läuft",
+  "diagnostics.last_fs_event": "Letztes FS-Ereignis",
+  "diagnostics.next_backup": "Nächstes Backup",
+  "diagnostics.relative_seconds": "vor {count}s"
 }

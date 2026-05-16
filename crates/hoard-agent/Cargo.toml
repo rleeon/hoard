@@ -46,3 +46,6 @@ keyring = { version = "3", default-features = false, features = [
     "sync-secret-service",
     "crypto-rust",
 ] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

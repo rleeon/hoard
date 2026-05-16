@@ -83,3 +83,6 @@ regex = "1"
 sysinfo = { version = "0.32", default-features = false, features = ["system"] }
 notify = "6"
 notify-debouncer-mini = "0.4"
+
+# Test-only — used by per-crate `[dev-dependencies]` blocks.
+tempfile = "3"

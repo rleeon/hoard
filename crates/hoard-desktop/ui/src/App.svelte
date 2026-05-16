@@ -55,6 +55,29 @@
   let updates = $state<UpdateReport | null>(null);
   let updateModalOpen = $state(false);
 
+  // Hidden diagnostics unlock — 5 consecutive clicks on the sidebar version
+  // string flips a session flag that reveals the Agent Diagnostics card in
+  // Settings. Deliberately undocumented; only useful for triaging the silent
+  // autobackup failure mode introduced before P1.4.0-0.
+  let versionClicks = $state(0);
+  let lastVersionClick = 0;
+  function handleVersionClick() {
+    const now = Date.now();
+    // Reset the streak if the user pauses for >1.5s between taps. Keeps the
+    // gesture deliberate — a stray double-click on idle UI shouldn't drift
+    // toward unlocking.
+    versionClicks = now - lastVersionClick > 1500 ? 1 : versionClicks + 1;
+    lastVersionClick = now;
+    if (versionClicks >= 5) {
+      sessionStorage.setItem("hoard-diagnostics-unlocked", "1");
+      versionClicks = 0;
+      // Lazy import keeps the toast store out of the boot path.
+      import("./lib/stores/toasts").then(({ toastSuccess }) =>
+        toastSuccess($_("diagnostics.unlocked_toast")),
+      );
+    }
+  }
+
   // Used by the small alert button next to the version. True when either the
   // client or the user's server has a newer version available.
   const hasUpdate = $derived(
@@ -140,9 +163,15 @@
         </div>
         <div class="min-w-0 flex-1">
           <div class="text-base font-semibold tracking-tight">Hoard</div>
-          <div class="text-xs text-zinc-500">
+          <button
+            type="button"
+            onclick={handleVersionClick}
+            class="cursor-default select-none text-left text-xs text-zinc-500 outline-none"
+            tabindex="-1"
+            aria-hidden="true"
+          >
             v{import.meta.env.VITE_HOARD_VERSION || "1.3.5"}
-          </div>
+          </button>
         </div>
         <!-- Small amber alert button. Same visual language as "Sin carpeta":
              border + tinted background, no rounded-full pill. Click pops a

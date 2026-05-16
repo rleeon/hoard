@@ -10,7 +10,13 @@ deploy/config.toml
 /dist-*
 
 # Local scratch / draft notes that should never be committed.
+# Root-only patterns: docs/**.md and CHANGELOG.md are unaffected.
 guide*
+/version*.md
+/plan*.md
+/notes*.md
+/draft*.md
+/scratch*.md
 
 # Private context for Claude Code sessions. Workstation-specific,
 # may reference local paths or tokens — never committed.

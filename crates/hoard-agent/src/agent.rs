@@ -30,7 +30,8 @@ use anyhow::Result;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
 use serde::{Deserialize, Serialize};
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
-use tokio::sync::mpsc;
+use time::OffsetDateTime;
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::api::ApiClient;
@@ -130,12 +131,28 @@ pub enum BackupReason {
     Manual,
 }
 
+/// Per-slot diagnostic snapshot. Surfaced by the hidden Settings diagnostics
+/// panel so a user can verify the watcher actually armed and is seeing fs
+/// events. Serializable so the desktop can hand it straight to the UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentSlotStatus {
+    pub save_id: String,
+    pub display_name: String,
+    pub path: PathBuf,
+    pub watcher_armed: bool,
+    pub process_running: bool,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub last_fs_event_at: Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub next_scheduled_backup_at: Option<OffsetDateTime>,
+}
+
 /// Commands the host (Tauri command handlers, tests) sends to the agent.
-#[derive(Debug)]
 enum AgentCommand {
     AddSave(WatchedSave),
     RemoveSave(String),
     BackupNow(String),
+    QueryStatus(oneshot::Sender<Vec<AgentSlotStatus>>),
     Shutdown,
 }
 
@@ -165,6 +182,16 @@ impl AgentHandle {
             .send(AgentCommand::BackupNow(save_id.into()))
             .await?;
         Ok(())
+    }
+
+    /// Diagnostic snapshot of every tracked slot. Backs the hidden Settings
+    /// "agent diagnostics" panel — surfaces the same internal state we'd
+    /// otherwise only see in `tracing` logs (watcher armed, last fs event,
+    /// next scheduled backup).
+    pub async fn status(&self) -> Result<Vec<AgentSlotStatus>> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.tx.send(AgentCommand::QueryStatus(resp_tx)).await?;
+        Ok(resp_rx.await?)
     }
 
     pub async fn shutdown(&self) -> Result<()> {
@@ -201,11 +228,13 @@ pub fn spawn(
 /// Internal per-save bookkeeping.
 struct SaveSlot {
     save: WatchedSave,
-    /// Active fs debouncer. Built lazily on `GameStarted` and dropped on
-    /// `GameStopped` — the user's v0.3 priority is "watch only the game
-    /// that's running right now", so we don't burn an inotify slot per
-    /// idle save.
-    _watcher: Option<Debouncer<notify::RecommendedWatcher>>,
+    /// Active fs debouncer. Armed in `handle_add` so the agent reacts to
+    /// save-folder changes whether or not a game process is running. The
+    /// pre-1.4 design built this lazily on `GameStarted`, which silently
+    /// broke autobackup for any save without a matching process name
+    /// (most non-Steam installs and most manifest entries without a
+    /// `processes` field). See ADR / version1-5 §P1.4.0-0.
+    watcher: Option<Debouncer<notify::RecommendedWatcher>>,
     /// Tokio task that fires the debounced backup. Cancelled and recreated
     /// on every fs event so the timer effectively resets.
     pending: Option<tokio::task::JoinHandle<()>>,
@@ -217,6 +246,13 @@ struct SaveSlot {
     /// — no point re-uploading an unchanged save just because the user
     /// quit. Set on every fs event; cleared on backup success.
     has_pending: bool,
+    /// Most recent debounced fs event observed for this slot. Surfaced via
+    /// `AgentSlotStatus` so the diagnostics panel can prove the watcher
+    /// is actually seeing writes.
+    last_fs_event_at: Option<OffsetDateTime>,
+    /// When the currently-pending backup will fire (UTC). `None` if no
+    /// backup is scheduled. Recomputed in `schedule_backup`.
+    next_scheduled_backup_at: Option<OffsetDateTime>,
 }
 
 async fn run_agent(
@@ -264,7 +300,7 @@ async fn run_agent(
                             if let Some(p) = slot.pending {
                                 p.abort();
                             }
-                            // _watcher dropped here, releasing inotify handle.
+                            // watcher dropped here, releasing inotify handle.
                         }
                     }
                     Some(AgentCommand::BackupNow(id)) => {
@@ -274,6 +310,21 @@ async fn run_agent(
                                 Duration::ZERO, &api, &events_tx, &config, &done_tx,
                             );
                         }
+                    }
+                    Some(AgentCommand::QueryStatus(resp)) => {
+                        let snapshot: Vec<AgentSlotStatus> = slots
+                            .values()
+                            .map(|s| AgentSlotStatus {
+                                save_id: s.save.save_id.clone(),
+                                display_name: s.save.display_name.clone(),
+                                path: s.save.local_path.clone(),
+                                watcher_armed: s.watcher.is_some(),
+                                process_running: s.is_running,
+                                last_fs_event_at: s.last_fs_event_at,
+                                next_scheduled_backup_at: s.next_scheduled_backup_at,
+                            })
+                            .collect();
+                        let _ = resp.send(snapshot);
                     }
                     Some(AgentCommand::Shutdown) | None => {
                         tracing::info!("agent: shutting down");
@@ -287,7 +338,13 @@ async fn run_agent(
                 if let Some(save_id) = match_save_for_path(&slots, &path) {
                     if let Some(slot) = slots.get_mut(&save_id) {
                         slot.has_pending = true;
+                        slot.last_fs_event_at = Some(OffsetDateTime::now_utc());
                     }
+                    tracing::info!(
+                        save_id = %save_id,
+                        path = %path.display(),
+                        "agent: fs event observed; scheduling backup"
+                    );
                     schedule_backup(
                         &mut slots, &save_id, BackupReason::FilesystemSettled,
                         Duration::from_secs(config.debounce_secs),
@@ -298,45 +355,82 @@ async fn run_agent(
 
             // ----- Process poll tick -----
             _ = poll.tick() => {
-                process_poll(&mut sys, &mut slots, &events_tx, &api, &config, &fs_tx, &done_tx);
+                process_poll(&mut sys, &mut slots, &events_tx, &api, &config, &done_tx);
             }
 
             // ----- Backup success notifications -----
             Some(save_id) = done_rx.recv() => {
                 if let Some(slot) = slots.get_mut(&save_id) {
                     slot.has_pending = false;
+                    slot.next_scheduled_backup_at = None;
                 }
             }
         }
     }
 }
 
-/// Register a save with the agent. The fs watcher is **not** started
-/// here — it's deferred to `GameStarted` so we only hold an inotify slot
-/// for the game the user is actively playing. This matches the v0.3
-/// priority "process-first, only watch the running game".
+/// Register a save with the agent and arm its fs watcher immediately.
+///
+/// Pre-1.4 this deferred the watcher to `GameStarted`, which silently broke
+/// autobackup for saves whose Ludusavi manifest entry had no `processes`
+/// and that weren't a Steam install — the process poll never matched, the
+/// watcher never armed, no events fired, the Dashboard pill stayed
+/// "Inactivo" forever. Arming up front trades one inotify slot per tracked
+/// save for end-to-end reliability; `process_poll` still emits
+/// `GameStarted`/`GameStopped` for UI signalling but no longer gates the
+/// fs subsystem.
 fn handle_add(
     slots: &mut HashMap<String, SaveSlot>,
     save: WatchedSave,
-    _fs_tx: &mpsc::Sender<PathBuf>,
+    fs_tx: &mpsc::Sender<PathBuf>,
 ) {
-    if !save.local_path.is_dir() {
+    let mut slot = SaveSlot {
+        save,
+        watcher: None,
+        pending: None,
+        is_running: false,
+        has_pending: false,
+        last_fs_event_at: None,
+        next_scheduled_backup_at: None,
+    };
+    arm_watcher(&mut slot, fs_tx);
+    slots.insert(slot.save.save_id.clone(), slot);
+}
+
+/// Try to attach an fs debouncer to `slot`. Tolerant: a missing folder or
+/// an inotify error logs and leaves `slot.watcher == None` so the agent
+/// keeps running for the other slots. Re-arming later is fine — we just
+/// overwrite the field.
+fn arm_watcher(slot: &mut SaveSlot, fs_tx: &mpsc::Sender<PathBuf>) {
+    let path = slot.save.local_path.clone();
+    if !path.is_dir() {
         tracing::info!(
-            save_id = %save.save_id,
-            path = %save.local_path.display(),
-            "agent: save path doesn't exist yet — fs watcher will start on first GameStarted"
+            save_id = %slot.save.save_id,
+            path = %path.display(),
+            "agent: save path missing on add; fs watcher not armed"
         );
+        slot.watcher = None;
+        return;
     }
-    slots.insert(
-        save.save_id.clone(),
-        SaveSlot {
-            save,
-            _watcher: None,
-            pending: None,
-            is_running: false,
-            has_pending: false,
-        },
-    );
+    match build_watcher(&path, fs_tx.clone()) {
+        Ok(w) => {
+            tracing::info!(
+                save_id = %slot.save.save_id,
+                path = %path.display(),
+                "agent: fs watcher armed"
+            );
+            slot.watcher = Some(w);
+        }
+        Err(e) => {
+            tracing::warn!(
+                save_id = %slot.save.save_id,
+                path = %path.display(),
+                error = %e,
+                "agent: couldn't arm fs watcher"
+            );
+            slot.watcher = None;
+        }
+    }
 }
 
 fn build_watcher(
@@ -395,6 +489,15 @@ fn schedule_backup(
     if let Some(p) = slot.pending.take() {
         p.abort();
     }
+
+    slot.next_scheduled_backup_at = Some(OffsetDateTime::now_utc() + delay);
+
+    tracing::info!(
+        save_id = %save_id,
+        delay_ms = delay.as_millis() as u64,
+        reason = ?reason,
+        "agent: backup scheduled"
+    );
 
     // Don't bother announcing zero-delay manual backups twice — that just
     // adds noise to the activity feed.
@@ -477,14 +580,16 @@ async fn run_backup_with_retry(
 
 /// One sweep of the process table. Emits transitions + schedules a
 /// post-game backup when a watched game stops running.
-#[allow(clippy::too_many_arguments)]
+///
+/// Since 1.4 this no longer touches the fs watcher — the watcher is armed
+/// in `handle_add` and lives for the slot's lifetime. `process_poll` is
+/// pure UI signal (Dashboard pill, "the game just closed → flush" hint).
 fn process_poll(
     sys: &mut System,
     slots: &mut HashMap<String, SaveSlot>,
     events_tx: &mpsc::Sender<AgentEvent>,
     api: &ApiClient,
     config: &AgentConfig,
-    fs_tx: &mpsc::Sender<PathBuf>,
     done_tx: &mpsc::Sender<String>,
 ) {
     // Refresh every process. The `true` flag asks sysinfo to remove
@@ -555,48 +660,36 @@ fn process_poll(
         };
 
         if now_running {
-            // Lazy attach: we only spend an inotify slot while the user
-            // is actually playing. This is the v0.3 priority "watch only
-            // the running game" made literal.
-            let watcher = if local_path.is_dir() {
-                match build_watcher(&local_path, fs_tx.clone()) {
-                    Ok(w) => Some(w),
-                    Err(e) => {
-                        tracing::warn!(
-                            save_id = %id, error = %e,
-                            "agent: couldn't start fs watcher on GameStarted"
-                        );
-                        None
-                    }
-                }
-            } else {
-                tracing::info!(
-                    save_id = %id, path = %local_path.display(),
-                    "agent: save path missing on GameStarted; fs events will be lost"
-                );
-                None
-            };
             if let Some(slot) = slots.get_mut(&id) {
                 slot.is_running = true;
-                slot._watcher = watcher;
             }
+            tracing::info!(
+                save_id = %id,
+                game_slug = %game_slug,
+                path = %local_path.display(),
+                "agent: GameStarted"
+            );
             let _ = events_tx.try_send(AgentEvent::GameStarted {
                 save_id: id,
                 game_slug,
             });
         } else {
-            // Drop the watcher first so we stop holding the inotify slot.
             if let Some(slot) = slots.get_mut(&id) {
                 slot.is_running = false;
-                slot._watcher = None;
             }
+            tracing::info!(
+                save_id = %id,
+                game_slug = %game_slug,
+                had_pending,
+                "agent: GameStopped"
+            );
             let _ = events_tx.try_send(AgentEvent::GameStopped {
                 save_id: id.clone(),
                 game_slug,
             });
-            // v0.3 rule: final flush on GameStopped *only* if something
-            // changed since the last successful backup. Otherwise we'd
-            // re-upload an identical snapshot every time the user quits.
+            // Final flush on GameStopped *only* if something changed since
+            // the last successful backup — avoids re-uploading an identical
+            // snapshot every time the user quits.
             if had_pending {
                 schedule_backup(
                     slots,
@@ -621,6 +714,7 @@ fn process_poll(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     #[test]
     fn config_defaults_are_sane() {
@@ -647,10 +741,12 @@ mod tests {
             "abc".to_string(),
             SaveSlot {
                 save,
-                _watcher: None,
+                watcher: None,
                 pending: None,
                 is_running: false,
                 has_pending: false,
+                last_fs_event_at: None,
+                next_scheduled_backup_at: None,
             },
         );
 
@@ -666,5 +762,71 @@ mod tests {
             match_save_for_path(&slots, Path::new("/tmp/saves/other")),
             None
         );
+    }
+
+    /// Regression for the "watcher only arms on GameStarted" bug.
+    /// A save with no `processes` and no `steam_install_dir` should still
+    /// trigger a debounced backup when its folder changes — even with no
+    /// game process running. Today this fails: `handle_add` doesn't arm
+    /// the watcher and `process_poll` never finds a matching process, so
+    /// the fs event is never observed.
+    #[tokio::test(flavor = "current_thread")]
+    async fn fs_event_triggers_backup_without_game_running() {
+        let tmp = tempfile::tempdir().expect("create tempdir");
+        let save_path = tmp.path().to_path_buf();
+
+        let api = ApiClient::new("http://127.0.0.1:1", "fake").expect("fake api client");
+        let (events_tx, mut events_rx) = mpsc::channel::<AgentEvent>(64);
+
+        let save = WatchedSave {
+            save_id: "watcher-bug-1".into(),
+            game_slug: "fake-game".into(),
+            display_name: "Fake Game".into(),
+            label: "main".into(),
+            local_path: save_path.clone(),
+            steam_install_dir: None,
+            processes: vec![],
+        };
+
+        // Short debounce so the test completes well under the 10s timeout.
+        let config = AgentConfig {
+            debounce_secs: 1,
+            poll_secs: 2,
+            max_retries: 0,
+        };
+
+        let (handle, task) = spawn(api, config, vec![save], events_tx);
+
+        // Give the agent a beat to register the save before we touch the
+        // folder — otherwise the fs event could land before `AddSave` is
+        // processed.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Touch a file inside the watched directory.
+        let mut f = std::fs::File::create(save_path.join("save.dat")).expect("create save file");
+        f.write_all(b"hello").expect("write save file");
+        f.sync_all().expect("sync save file");
+        drop(f);
+
+        // Wait for BackupScheduled within 10s. If the bug is present this
+        // times out because no watcher is ever armed.
+        let scheduled = tokio::time::timeout(Duration::from_secs(10), async {
+            while let Some(evt) = events_rx.recv().await {
+                if let AgentEvent::BackupScheduled { save_id, .. } = evt {
+                    return save_id;
+                }
+            }
+            "<channel closed>".to_string()
+        })
+        .await;
+
+        // Best-effort teardown before asserting so the task doesn't leak.
+        let _ = handle.shutdown().await;
+        let _ = tokio::time::timeout(Duration::from_secs(2), task).await;
+
+        let save_id = scheduled.expect(
+            "timed out waiting for BackupScheduled — the fs watcher never armed for an idle save",
+        );
+        assert_eq!(save_id, "watcher-bug-1");
     }
 }
