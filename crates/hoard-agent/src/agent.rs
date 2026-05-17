@@ -33,6 +33,7 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+use tokio::time::Instant as TokioInstant;
 
 use crate::api::ApiClient;
 use crate::backup::upload_directory;
@@ -203,6 +204,17 @@ enum AgentCommand {
     /// Not exposed through `AgentHandle` because only the auto-restore
     /// task ever fires it.
     RearmWatcher(String),
+    /// Internal: a spawned auto-restore task finished (success or failure).
+    /// Clears `slot.restoring` so the reconciliation sweep can try again
+    /// next tick. Carries no error payload — the failure event was already
+    /// emitted by the task itself.
+    AutoRestoreFinished(String),
+    /// Live-toggle `config.auto_restore` so the user's Settings change
+    /// reaches the running agent without a restart. When flipped from
+    /// `false → true` the agent also kicks an immediate reconciliation
+    /// sweep so any tracked save with an empty local folder gets restored
+    /// right away.
+    SetAutoRestore(bool),
     QueryStatus(oneshot::Sender<Vec<AgentSlotStatus>>),
     Shutdown,
 }
@@ -247,6 +259,16 @@ impl AgentHandle {
 
     pub async fn shutdown(&self) -> Result<()> {
         self.tx.send(AgentCommand::Shutdown).await?;
+        Ok(())
+    }
+
+    /// Push a new `auto_restore` preference into the running agent. The
+    /// agent loop applies it to its own copy of `AgentConfig` and, on a
+    /// `false → true` flip, immediately re-scans every slot so any
+    /// already-empty folder is restored right away (instead of waiting
+    /// for the next fs event / process tick).
+    pub async fn set_auto_restore(&self, enabled: bool) -> Result<()> {
+        self.tx.send(AgentCommand::SetAutoRestore(enabled)).await?;
         Ok(())
     }
 }
@@ -308,11 +330,22 @@ struct SaveSlot {
     /// When the currently-pending backup will fire (UTC). `None` if no
     /// backup is scheduled. Recomputed in `schedule_backup`.
     next_scheduled_backup_at: Option<OffsetDateTime>,
+    /// `true` while a background auto-restore task is downloading into
+    /// this slot's local path. Prevents the reconciliation sweep from
+    /// firing the same restore twice. Cleared by
+    /// `AgentCommand::AutoRestoreFinished` when the task ends (success
+    /// or failure).
+    restoring: bool,
+    /// Earliest moment the reconciliation sweep is allowed to fire
+    /// another auto-restore for this slot. Used as a 60-second cooldown
+    /// after a failed attempt so a misbehaving server doesn't burn rate
+    /// limits in a tight loop. `None` means "no cooldown active".
+    next_auto_restore_at: Option<TokioInstant>,
 }
 
 async fn run_agent(
     api: ApiClient,
-    config: AgentConfig,
+    mut config: AgentConfig,
     mut cmd_rx: mpsc::Receiver<AgentCommand>,
     cmd_tx: mpsc::Sender<AgentCommand>,
     events_tx: mpsc::Sender<AgentEvent>,
@@ -359,6 +392,30 @@ async fn run_agent(
                         // to be rebuilt against the now-existing directory.
                         if let Some(slot) = slots.get_mut(&id) {
                             arm_watcher(slot, &fs_tx);
+                        }
+                    }
+                    Some(AgentCommand::AutoRestoreFinished(id)) => {
+                        // The background restore task signalled completion
+                        // (success or failure). Clear the in-flight flag so
+                        // the reconciliation sweep can try again once the
+                        // cooldown expires — `next_auto_restore_at` was set
+                        // when we spawned, so we don't reset it here.
+                        if let Some(slot) = slots.get_mut(&id) {
+                            slot.restoring = false;
+                        }
+                    }
+                    Some(AgentCommand::SetAutoRestore(enabled)) => {
+                        let was = config.auto_restore;
+                        config.auto_restore = enabled;
+                        tracing::info!(
+                            auto_restore = enabled,
+                            "agent: auto_restore preference updated"
+                        );
+                        // Flipping from off → on is the user's cue that they
+                        // want any already-empty folder pulled back right
+                        // now. Don't wait for the next poll tick.
+                        if !was && enabled {
+                            sweep_for_auto_restore(&mut slots, &api, &events_tx, &cmd_tx);
                         }
                     }
                     Some(AgentCommand::RemoveSave(id)) => {
@@ -422,6 +479,16 @@ async fn run_agent(
             // ----- Process poll tick -----
             _ = poll.tick() => {
                 process_poll(&mut sys, &mut slots, &events_tx, &api, &config, &done_tx, &cmd_tx);
+                // Reconciliation backstop: every tick, look for tracked
+                // saves whose local folder is empty and (a) the user has
+                // auto_restore on, (b) we're not already restoring, and
+                // (c) the cooldown has elapsed. Catches the cases the
+                // event-driven paths miss — uninstall while Hoard was
+                // closed, network came back online after a failed attempt,
+                // user just turned auto_restore on with several stale slots.
+                if config.auto_restore {
+                    sweep_for_auto_restore(&mut slots, &api, &events_tx, &cmd_tx);
+                }
             }
 
             // ----- Backup success notifications -----
@@ -462,6 +529,7 @@ fn handle_add(
 ) {
     let save_for_restore = save.clone();
     let local_path = save.local_path.clone();
+    let save_id = save.save_id.clone();
     let mut slot = SaveSlot {
         save,
         watcher: None,
@@ -470,11 +538,18 @@ fn handle_add(
         has_pending: false,
         last_fs_event_at: None,
         next_scheduled_backup_at: None,
+        restoring: false,
+        next_auto_restore_at: None,
     };
     arm_watcher(&mut slot, fs_tx);
-    slots.insert(slot.save.save_id.clone(), slot);
+    slots.insert(save_id.clone(), slot);
 
     if config.auto_restore && is_path_empty_or_missing(&local_path) {
+        if let Some(slot) = slots.get_mut(&save_id) {
+            slot.restoring = true;
+            slot.next_auto_restore_at =
+                Some(TokioInstant::now() + Duration::from_secs(AUTO_RESTORE_COOLDOWN_SECS));
+        }
         spawn_auto_restore(
             save_for_restore,
             api.clone(),
@@ -483,6 +558,13 @@ fn handle_add(
         );
     }
 }
+
+/// Minimum interval between successive auto-restore attempts for the
+/// same save. Applied to both successful and failed attempts so a server
+/// that's flapping ("snapshot available", "snapshot gone", "snapshot
+/// available" — possible during a GC race) doesn't get hammered by the
+/// reconciliation sweep.
+const AUTO_RESTORE_COOLDOWN_SECS: u64 = 60;
 
 /// True if `path` doesn't exist on disk, or exists as a directory that
 /// contains no entries. Anything else (file, broken symlink, populated
@@ -564,7 +646,63 @@ fn spawn_auto_restore(
                     .await;
             }
         }
+        // Always clear the slot's `restoring` flag, even on failure — the
+        // reconciliation sweep is responsible for retrying once the
+        // cooldown expires; we just need to mark this attempt as done.
+        let _ = cmd_tx
+            .send(AgentCommand::AutoRestoreFinished(save.save_id.clone()))
+            .await;
     });
+}
+
+/// Reconciliation sweep: scan every slot and start an auto-restore for
+/// any save whose local folder is empty/missing right now, the user has
+/// `auto_restore = true`, and the cooldown has expired since the last
+/// attempt. Used as the "self-healing" backstop so a save folder that
+/// goes empty between fs events (uninstall while Hoard wasn't running,
+/// a syscall that didn't emit inotify) still gets restored.
+///
+/// Cheap: the only syscall per slot is the `read_dir` inside
+/// `is_path_empty_or_missing`, and only ever for paths the user already
+/// asked Hoard to track. With dozens of tracked saves this is still
+/// a single-digit-millisecond pass on a hot fs cache.
+fn sweep_for_auto_restore(
+    slots: &mut HashMap<String, SaveSlot>,
+    api: &ApiClient,
+    events_tx: &mpsc::Sender<AgentEvent>,
+    cmd_tx: &mpsc::Sender<AgentCommand>,
+) {
+    let now = TokioInstant::now();
+    // Collect candidate save_ids first to keep the borrow checker happy
+    // (we mutate the slot afterwards, then spawn a task that holds a
+    // clone of `WatchedSave`).
+    let candidates: Vec<(String, WatchedSave)> = slots
+        .iter()
+        .filter(|(_, slot)| {
+            if slot.restoring {
+                return false;
+            }
+            if let Some(t) = slot.next_auto_restore_at {
+                if now < t {
+                    return false;
+                }
+            }
+            is_path_empty_or_missing(&slot.save.local_path)
+        })
+        .map(|(id, slot)| (id.clone(), slot.save.clone()))
+        .collect();
+
+    for (id, save) in candidates {
+        if let Some(slot) = slots.get_mut(&id) {
+            slot.restoring = true;
+            slot.next_auto_restore_at = Some(now + Duration::from_secs(AUTO_RESTORE_COOLDOWN_SECS));
+        }
+        tracing::info!(
+            save_id = %id,
+            "agent: reconciliation sweep — scheduling auto-restore for empty slot"
+        );
+        spawn_auto_restore(save, api.clone(), events_tx.clone(), cmd_tx.clone());
+    }
 }
 
 /// Internal restore primitive returning the outcome summary or `None` if
@@ -1006,6 +1144,8 @@ mod tests {
                 has_pending: false,
                 last_fs_event_at: None,
                 next_scheduled_backup_at: None,
+                restoring: false,
+                next_auto_restore_at: None,
             },
         );
 

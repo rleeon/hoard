@@ -117,6 +117,16 @@
       await refreshAgentSlots();
       diagnosticsTimer = setInterval(refreshAgentSlots, 2000);
     }
+
+    // If we don't have a cached update report yet (user opened Settings
+    // before the boot-time probe finished, or before the 30-min poller
+    // ran), fire one now so the Server panel can show the version + any
+    // pending upgrade without forcing a manual click.
+    if ($lastReport == null) {
+      checkForUpdates().catch((e) =>
+        console.warn("Settings update probe failed:", e),
+      );
+    }
   });
 
   onDestroy(() => {
@@ -124,13 +134,14 @@
     if (diagnosticsTimer) clearInterval(diagnosticsTimer);
   });
 
-  // Self-hosted server panel — only renders when the user is signed into a
-  // local network server (`is_local_server`) rather than a future
-  // cloud-hosted Hoard. We pull the version info from the same
-  // `lastReport.server` the sidebar amber badge consumes, so we don't have to
-  // refetch on mount.
+  // Hoard-server panel. Shown for every signed-in user — earlier versions
+  // gated it on `is_local_server` (the RFC1918 / localhost / .local
+  // classifier) but a user pointed out that even a public-DNS self-hosted
+  // box ("hoard.mydomain.com") wants the upgrade button. We'll re-gate
+  // properly once a real cloud-hosted instance exists; until then any
+  // signed-in user sees the panel.
   const serverUpdate = $derived($lastReport?.server ?? null);
-  const showServerCard = $derived($auth.user?.is_local_server === true);
+  const showServerCard = $derived($auth.user != null);
   let refreshingServer = $state(false);
   let copyingUpgrade = $state(false);
 

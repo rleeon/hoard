@@ -10,9 +10,10 @@
 //! the user disabled the launcher entry from outside Hoard.
 
 use hoard_agent::prefs::Prefs;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
+use crate::state::AppState;
 use crate::tray::{TrayController, TrayState};
 
 /// Read the prefs file from disk. Cheap; called by the Settings page on mount.
@@ -26,10 +27,37 @@ pub fn get_prefs() -> Result<Prefs, String> {
 /// individual fields — the form on the frontend always submits the full
 /// object so there's nothing to lose, and partial-update semantics tend to
 /// surprise users who edit prefs.json by hand.
+///
+/// Side-effect: if `auto_restore` changed and the live agent is running,
+/// push the new value into it via `AgentHandle::set_auto_restore`. The
+/// agent applies it to its config and, on a `false → true` flip, kicks
+/// an immediate reconciliation sweep so the user doesn't have to restart
+/// the app to see the new behaviour. Failures here are non-fatal —
+/// prefs.json is already saved, and the change will take effect the
+/// next time the agent reads its config (worst case, on next boot).
 #[tauri::command]
-pub fn save_prefs(prefs: Prefs) -> Result<Prefs, String> {
+pub async fn save_prefs(state: State<'_, AppState>, prefs: Prefs) -> Result<Prefs, String> {
     let path = Prefs::default_path().map_err(|e| e.to_string())?;
+    let prev = Prefs::load(&path).ok();
     prefs.save(&path).map_err(|e| e.to_string())?;
+
+    let auto_restore_changed = match &prev {
+        Some(p) => p.auto_restore != prefs.auto_restore,
+        // No prior file (first save ever) → treat current value as "new"
+        // so the agent picks it up even if it was already running.
+        None => true,
+    };
+    if auto_restore_changed {
+        let handle = state.agent.lock().unwrap().clone();
+        if let Some(h) = handle {
+            if let Err(e) = h.set_auto_restore(prefs.auto_restore).await {
+                tracing::warn!(
+                    error = %e,
+                    "couldn't push auto_restore preference to live agent"
+                );
+            }
+        }
+    }
     Ok(prefs)
 }
 

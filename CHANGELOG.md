@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.6] — 2026-05-17
+
+Follow-up after 1.4.5. Two reports landed within a day of shipping:
+the new self-hosted server panel never appeared even with a local
+server, and auto-restore — promoted in 1.4.3 as the safety net for
+empty save folders — only ever fired in two narrow moments (right
+after the user added the save, and right before a scheduled upload),
+which left big gaps for the kind of failures it's supposed to cover.
+
+### Changed
+
+- **Auto-restore is now a continuous reconciliation loop, not a
+  one-shot.** Every process-poll tick (2 s by default) the agent
+  sweeps every tracked slot, finds any save whose local folder is
+  empty/missing while `auto_restore = true`, and starts a restore
+  if no attempt is already running and the 60 s cooldown has
+  elapsed. Catches the cases the event-driven paths missed:
+  uninstall while Hoard was closed, network blip during an earlier
+  attempt, user just turned the toggle on, fs event swallowed by
+  the kernel. Per-slot `restoring` flag prevents double-spawn; the
+  cooldown prevents a misbehaving server from burning rate limits
+  in a loop.
+- **The Settings auto-restore toggle now reaches the running agent
+  without an app restart.** Flipping it pushes a new
+  `AgentCommand::SetAutoRestore` into the live loop; a `false → true`
+  flip also kicks an immediate reconciliation sweep so any
+  already-empty slot gets restored right then instead of waiting
+  for the next tick.
+- **Hoard-server panel in Settings → Advanced is shown to every
+  signed-in user**, not just `is_local_server == true`. The
+  RFC1918/localhost/.local heuristic missed public-DNS self-hosted
+  boxes ("hoard.mydomain.com"), so the upgrade panel never
+  appeared for users who terminate TLS in front of their own
+  server. We'll re-gate properly once a real cloud-hosted instance
+  exists; until then any signed-in user sees the panel.
+
+### Fixed
+
+- Settings now triggers an update probe on mount when `lastReport`
+  is empty, so the new server panel renders its current/latest
+  version on first visit instead of "Comprobando…" until the user
+  clicks "Recheck".
+
 ## [1.4.5] — 2026-05-17
 
 Tray-resident sessions could go days without ever finding out a new
