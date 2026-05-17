@@ -109,6 +109,7 @@
   "library.scan_toast": "{count, plural, one {Trovato # gioco.} other {Trovati # giochi.}}",
   "library.auto_restored_toast": "{name} ripristinato dal cloud (v{version}, {count, plural, one {# file} other {# file}}).",
   "library.auto_restore_failed_toast": "Impossibile ripristinare automaticamente {name}: {error}",
+  "library.backup_skipped_empty_toast": "Nessun backup di {name}: la cartella del salvataggio è vuota. Attiva il ripristino automatico nelle impostazioni se vuoi recuperare invece la copia dal cloud.",
   "library.tracked_size_title": "Byte totali archiviati sul server (somma snapshot)",
   "history.back_to_dashboard": "Torna alla dashboard",
   "history.not_found": "Salvataggio non trovato.",

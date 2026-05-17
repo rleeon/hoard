@@ -109,6 +109,7 @@
   "library.scan_toast": "{count, plural, other {# ゲーム検出。}}",
   "library.auto_restored_toast": "{name} をクラウドから復元しました (v{version}、{count, plural, other {# ファイル}})。",
   "library.auto_restore_failed_toast": "{name} を自動復元できませんでした: {error}",
+  "library.backup_skipped_empty_toast": "{name} はバックアップしませんでした: セーブフォルダーが空です。代わりにクラウドからコピーを取得したい場合は、設定で自動復元をオンにしてください。",
   "library.tracked_size_title": "サーバー上の総バイト数 (スナップショット合計)",
   "history.back_to_dashboard": "ダッシュボードへ戻る",
   "history.not_found": "そのセーブは見つかりません。",

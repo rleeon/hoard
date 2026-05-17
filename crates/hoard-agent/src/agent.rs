@@ -150,6 +150,19 @@ pub enum AgentEvent {
         game_slug: String,
         error: String,
     },
+    /// A scheduled backup landed but the local folder was empty (or gone)
+    /// at upload time. We deliberately do **not** push an empty snapshot —
+    /// that would silently destroy the user's last good save on the server
+    /// the next time they look at History. Instead we surface this event so
+    /// the UI can toast "we skipped backup because the folder is empty; turn
+    /// on auto-restore in Settings if you wanted it pulled back".
+    ///
+    /// Since 1.4.3. Pairs with `SaveAutoRestored` when `auto_restore` is on:
+    /// in that case the agent fires the restore *instead* of this event.
+    BackupSkippedEmpty {
+        save_id: String,
+        game_slug: String,
+    },
 }
 
 /// Why we scheduled a backup. Useful in the UI to explain "the game just
@@ -360,7 +373,7 @@ async fn run_agent(
                         if slots.contains_key(&id) {
                             schedule_backup(
                                 &mut slots, &id, BackupReason::Manual,
-                                Duration::ZERO, &api, &events_tx, &config, &done_tx,
+                                Duration::ZERO, &api, &events_tx, &config, &done_tx, &cmd_tx,
                             );
                         }
                     }
@@ -401,14 +414,14 @@ async fn run_agent(
                     schedule_backup(
                         &mut slots, &save_id, BackupReason::FilesystemSettled,
                         Duration::from_secs(config.debounce_secs),
-                        &api, &events_tx, &config, &done_tx,
+                        &api, &events_tx, &config, &done_tx, &cmd_tx,
                     );
                 }
             }
 
             // ----- Process poll tick -----
             _ = poll.tick() => {
-                process_poll(&mut sys, &mut slots, &events_tx, &api, &config, &done_tx);
+                process_poll(&mut sys, &mut slots, &events_tx, &api, &config, &done_tx, &cmd_tx);
             }
 
             // ----- Backup success notifications -----
@@ -673,6 +686,7 @@ fn schedule_backup(
     events_tx: &mpsc::Sender<AgentEvent>,
     config: &AgentConfig,
     done_tx: &mpsc::Sender<String>,
+    cmd_tx: &mpsc::Sender<AgentCommand>,
 ) {
     let Some(slot) = slots.get_mut(save_id) else {
         return;
@@ -703,26 +717,64 @@ fn schedule_backup(
     let api = api.clone();
     let events_tx = events_tx.clone();
     let done_tx = done_tx.clone();
+    let cmd_tx = cmd_tx.clone();
     let save = slot.save.clone();
     let max_retries = config.max_retries;
+    let auto_restore = config.auto_restore;
 
     slot.pending = Some(tokio::spawn(async move {
         if delay > Duration::ZERO {
             tokio::time::sleep(delay).await;
         }
-        run_backup_with_retry(api, save, events_tx, done_tx, max_retries).await;
+        run_backup_with_retry(
+            api, save, events_tx, done_tx, cmd_tx, max_retries, auto_restore,
+        ).await;
     }));
 }
 
 /// Upload + retry. Backoff is `2 ** attempt` seconds, capped at 5 min.
 /// `max_retries == 0` means "try once and give up on failure".
+///
+/// Since 1.4.3 there's a pre-check: if the local folder is missing or empty
+/// at upload time, we never push an empty snapshot. The user can wipe a
+/// save folder for any number of reasons (uninstall, manual cleanup,
+/// crashed mod) and shipping an empty backup would silently overwrite the
+/// last good copy on the server with nothing. Instead:
+///
+/// - `auto_restore = true`  → spawn a restore task to repopulate the
+///   folder from the latest server snapshot and emit `SaveAutoRestored`.
+/// - `auto_restore = false` → emit `BackupSkippedEmpty` and bail. The UI
+///   surfaces a toast pointing the user at the Settings toggle.
 async fn run_backup_with_retry(
     api: ApiClient,
     save: WatchedSave,
     events_tx: mpsc::Sender<AgentEvent>,
     done_tx: mpsc::Sender<String>,
+    cmd_tx: mpsc::Sender<AgentCommand>,
     max_retries: u32,
+    auto_restore: bool,
 ) {
+    if is_path_empty_or_missing(&save.local_path) {
+        tracing::info!(
+            save_id = %save.save_id,
+            path = %save.local_path.display(),
+            auto_restore,
+            "agent: backup skipped — local folder is empty/missing"
+        );
+        // Always clear has_pending so a future fs event isn't blocked.
+        let _ = done_tx.try_send(save.save_id.clone());
+        if auto_restore {
+            spawn_auto_restore(save.clone(), api.clone(), events_tx.clone(), cmd_tx);
+        } else {
+            let _ = events_tx
+                .send(AgentEvent::BackupSkippedEmpty {
+                    save_id: save.save_id.clone(),
+                    game_slug: save.game_slug.clone(),
+                })
+                .await;
+        }
+        return;
+    }
     let mut attempt = 0u32;
     loop {
         let _ = events_tx
@@ -775,6 +827,7 @@ async fn run_backup_with_retry(
 /// Since 1.4 this no longer touches the fs watcher — the watcher is armed
 /// in `handle_add` and lives for the slot's lifetime. `process_poll` is
 /// pure UI signal (Dashboard pill, "the game just closed → flush" hint).
+#[allow(clippy::too_many_arguments)]
 fn process_poll(
     sys: &mut System,
     slots: &mut HashMap<String, SaveSlot>,
@@ -782,6 +835,7 @@ fn process_poll(
     api: &ApiClient,
     config: &AgentConfig,
     done_tx: &mpsc::Sender<String>,
+    cmd_tx: &mpsc::Sender<AgentCommand>,
 ) {
     // Refresh every process. The `true` flag asks sysinfo to remove
     // entries for processes that have exited since the last refresh,
@@ -891,6 +945,7 @@ fn process_poll(
                     events_tx,
                     config,
                     done_tx,
+                    cmd_tx,
                 );
             } else {
                 tracing::debug!(

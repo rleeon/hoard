@@ -109,6 +109,7 @@
   "library.scan_toast": "{count, plural, one {Encontrado # jogo.} other {Encontrados # jogos.}}",
   "library.auto_restored_toast": "{name} restaurado da nuvem (v{version}, {count, plural, one {# ficheiro} other {# ficheiros}}).",
   "library.auto_restore_failed_toast": "Não foi possível restaurar automaticamente {name}: {error}",
+  "library.backup_skipped_empty_toast": "Sem cópia de {name}: a pasta do save está vazia. Ativa a restauração automática nas definições se quiseres que se descarregue a cópia da nuvem.",
   "library.tracked_size_title": "Bytes totais armazenados no servidor (soma dos instantâneos)",
   "history.back_to_dashboard": "Voltar ao painel",
   "history.not_found": "Não foi possível encontrar esse save.",

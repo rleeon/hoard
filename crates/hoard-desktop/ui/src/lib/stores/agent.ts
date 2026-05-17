@@ -37,7 +37,7 @@ import type {
 } from "../api";
 import * as api from "../api";
 import { prefs } from "./prefs";
-import { toastSuccess, toastError } from "./toasts";
+import { toastSuccess, toastError, toastInfo } from "./toasts";
 
 export type SaveActivity = {
   state:
@@ -197,6 +197,21 @@ function applyEvent(ev: AgentEvent) {
       );
       break;
     }
+    case "backup_skipped_empty": {
+      // Saw an fs event that resolved to an empty/missing folder. We did
+      // *not* push an empty snapshot to the server (that would silently
+      // overwrite the user's last good copy). Toast the situation so the
+      // user knows nothing was uploaded and can flip auto-restore on if
+      // they wanted the cloud copy pulled back instead.
+      patch(ev.save_id, { state: "idle", error: undefined, will_retry: undefined });
+      const t = get(i18n);
+      toastInfo(
+        t("library.backup_skipped_empty_toast", {
+          values: { name: ev.game_slug },
+        }),
+      );
+      break;
+    }
   }
 }
 
@@ -219,6 +234,7 @@ export async function subscribeAgent() {
     "agent://backup-failed",
     "agent://save-auto-restored",
     "agent://save-auto-restore-failed",
+    "agent://backup-skipped-empty",
   ];
   unlisteners = await Promise.all(
     topics.map((t) =>

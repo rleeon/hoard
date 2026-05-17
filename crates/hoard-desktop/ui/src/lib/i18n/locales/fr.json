@@ -109,6 +109,7 @@
   "library.scan_toast": "{count, plural, one {# jeu trouvé.} other {# jeux trouvés.}}",
   "library.auto_restored_toast": "{name} restauré depuis le cloud (v{version}, {count, plural, one {# fichier} other {# fichiers}}).",
   "library.auto_restore_failed_toast": "Impossible de restaurer automatiquement {name} : {error}",
+  "library.backup_skipped_empty_toast": "Pas de sauvegarde de {name} : le dossier de sauvegarde est vide. Activez la restauration automatique dans les paramètres pour récupérer la copie du cloud à la place.",
   "library.tracked_size_title": "Octets totaux stockés sur le serveur (somme des instantanés)",
   "history.back_to_dashboard": "Retour au tableau de bord",
   "history.not_found": "Sauvegarde introuvable.",

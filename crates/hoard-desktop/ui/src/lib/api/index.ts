@@ -244,6 +244,11 @@ export type AgentEvent =
       save_id: string;
       game_slug: string;
       error: string;
+    }
+  | {
+      type: "backup_skipped_empty";
+      save_id: string;
+      game_slug: string;
     };
 
 /** Boot the live agent and start emitting `agent://*` events. */

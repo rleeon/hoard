@@ -109,6 +109,7 @@
   "library.scan_toast": "{count, plural, one {Found # game.} other {Found # games.}}",
   "library.auto_restored_toast": "Restored {name} from the cloud (v{version}, {count, plural, one {# file} other {# files}}).",
   "library.auto_restore_failed_toast": "Couldn't auto-restore {name}: {error}",
+  "library.backup_skipped_empty_toast": "Didn't back up {name}: the save folder is empty. Turn on auto-restore in Settings if you want the cloud copy pulled back instead.",
   "library.tracked_size_title": "Total bytes stored on the server (sum of snapshots)",
   "history.back_to_dashboard": "Back to dashboard",
   "history.not_found": "We couldn't find that save.",

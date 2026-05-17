@@ -109,6 +109,7 @@
   "library.scan_toast": "{count, plural, one {# Spiel gefunden.} other {# Spiele gefunden.}}",
   "library.auto_restored_toast": "{name} aus der Cloud wiederhergestellt (v{version}, {count, plural, one {# Datei} other {# Dateien}}).",
   "library.auto_restore_failed_toast": "{name} konnte nicht automatisch wiederhergestellt werden: {error}",
+  "library.backup_skipped_empty_toast": "{name} nicht gesichert: der Save-Ordner ist leer. Aktiviere „Cloud-Wiederherstellung“ in den Einstellungen, wenn stattdessen die Cloud-Kopie geholt werden soll.",
   "library.tracked_size_title": "Auf dem Server gespeicherte Bytes (Summe der Snapshots)",
   "history.back_to_dashboard": "Zurück zum Dashboard",
   "history.not_found": "Save nicht gefunden.",

@@ -109,6 +109,7 @@
   "library.scan_toast": "{count, plural, other {发现 # 款游戏。}}",
   "library.auto_restored_toast": "已从云端恢复 {name}（v{version}，{count, plural, other {# 个文件}}）。",
   "library.auto_restore_failed_toast": "无法自动恢复 {name}：{error}",
+  "library.backup_skipped_empty_toast": "未备份 {name}：存档文件夹为空。若想改为从云端拉取备份，请在设置中开启自动恢复。",
   "library.tracked_size_title": "服务器已存总字节数（快照之和）",
   "history.back_to_dashboard": "返回面板",
   "history.not_found": "未找到该存档。",

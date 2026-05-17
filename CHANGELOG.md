@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.3] — 2026-05-17
+
+Two related bugs the 1.4.2 auto-restore feature surfaced once users
+started exercising the "save folder went missing" path in anger:
+
+### Fixed
+
+- **Empty folders no longer push an empty snapshot to the server.** A
+  user reported deleting their local save and watching the agent fire a
+  backup that "failed because there was nothing to upload". The fs
+  watcher *does* fire on deletes (that's the same inotify event you get
+  on writes), so `schedule_backup` got armed and then `upload_directory`
+  walked an empty tree. We now pre-check the local path inside
+  `run_backup_with_retry`: if the folder is missing or contains zero
+  entries we skip the upload entirely. Pushing an empty snapshot would
+  have silently rotated the last good copy on the server out from
+  under the user the next time they looked at History — much worse
+  than the visible failure the bug originally caused.
+- **Auto-restore now triggers on the fs path, not just on add.** 1.4.2
+  only restored when the agent attached to a save with an empty folder.
+  If the folder went empty mid-session (uninstall, manual cleanup), the
+  agent kept trying to back it up forever. With `auto_restore = true`,
+  the same empty-folder pre-check now spawns a restore from the latest
+  server snapshot and re-arms the fs watcher against the repopulated
+  directory.
+
+### Added
+
+- **`AgentEvent::BackupSkippedEmpty`** + `agent://backup-skipped-empty`
+  Tauri channel. Fires when `auto_restore = false` and the local folder
+  is empty at backup time. The UI shows an info toast pointing the user
+  at the Settings toggle — that way "nothing happened" doesn't read as
+  "the agent is broken".
+- Eight-locale translation for the new toast string.
+
+### Notes
+
+- The pre-check uses the same `is_path_empty_or_missing` helper as the
+  on-attach auto-restore path, so the bar to write user data is
+  identical: a populated folder is never touched, and a folder we
+  can't enumerate (NFS hiccup) is treated as not-empty rather than
+  not-empty-so-overwrite.
+
 ## [1.4.2] — 2026-05-17
 
 Opt-in cloud restore on add. The first concrete step of the 1.5.0 client

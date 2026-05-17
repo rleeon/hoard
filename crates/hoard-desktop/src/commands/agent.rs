@@ -89,6 +89,7 @@ pub async fn start_agent(
                 AgentEvent::BackupFailed { .. } => "agent://backup-failed",
                 AgentEvent::SaveAutoRestored { .. } => "agent://save-auto-restored",
                 AgentEvent::SaveAutoRestoreFailed { .. } => "agent://save-auto-restore-failed",
+                AgentEvent::BackupSkippedEmpty { .. } => "agent://backup-skipped-empty",
             };
             let _ = app_for_emit.emit(topic, &ev);
         }
