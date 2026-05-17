@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.5] — 2026-05-17
+
+Tray-resident sessions could go days without ever finding out a new
+desktop release had landed: the in-app update probe only ran at boot
+and the sidebar amber badge is invisible while the window is hidden.
+Plus the only way to upgrade a self-hosted server lived behind the
+update modal, which never appeared if the *client* itself was already
+current.
+
+### Changed
+
+- **Update poll interval: 6h → 30 min.** GitHub's unauthenticated API
+  budget allows 60 req/h; 30 min cadence is still two orders of
+  magnitude under that. The exponential backoff cap also dropped from
+  24h to 6h so a transient outage no longer freezes detection for a
+  full day.
+
+### Added
+
+- **Native OS notification on new desktop release.** The poll now fires
+  a `sendNotification` banner the first time it sees a version the user
+  hasn't been notified about. Works even when Hoard is minimised to the
+  tray — the original "you have to reopen the app to learn there's an
+  update" complaint. Persisted in the new
+  `prefs.last_update_notified_version` field so reopening the app
+  doesn't re-banner for a release the user already saw.
+- **Hoard-server panel in Settings → Advanced** (self-hosted only).
+  Shows the server's address and current version, flags an update if
+  the running server is behind the client, and surfaces the
+  `sudo hoard-server upgrade` command + a "Copy" button without making
+  the user hunt for the update modal. Gated on
+  `auth.user.is_local_server` — the existing RFC1918/localhost/.local
+  classifier — so a future cloud-hosted Hoard instance won't show this
+  panel.
+- Eight-locale translations for the new notification and server-panel
+  strings.
+
+### Notes
+
+- The server-update path is still entirely manual (the server must
+  never self-update; that decision predates 1.4.5 and is intentional).
+  The new panel just removes the modal-hunting required to find the
+  upgrade command.
+
 ## [1.4.4] — 2026-05-17
 
 Settings UX nit reported right after 1.4.3 shipped: the new auto-restore

@@ -293,6 +293,12 @@ export type Prefs = {
    *  add. Off by default — silent writes under `~` are the kind of thing
    *  that earns trust slowly, so users have to opt in. */
   auto_restore: boolean;
+  /** Last desktop-client version we already fired a native notification
+   *  about. The update poller compares this against the latest report and
+   *  only sends a notification the first time it sees a new version — the
+   *  sidebar amber badge keeps showing regardless. Persisted so reopening
+   *  the app doesn't re-notify for a version the user already saw. */
+  last_update_notified_version: string | null;
 };
 
 export type TrayStateName =

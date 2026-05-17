@@ -27,6 +27,8 @@
     Languages,
     Activity,
     DownloadCloud,
+    Server,
+    ServerCog,
   } from "lucide-svelte";
 
   import Card from "../lib/components/Card.svelte";
@@ -36,7 +38,8 @@
   import { auth, signOut } from "../lib/stores/auth";
   import { supportedLocales, setLocale } from "../lib/i18n";
   import * as api from "../lib/api";
-  import { toastError, toastSuccess } from "../lib/stores/toasts";
+  import { toastError, toastInfo, toastSuccess } from "../lib/stores/toasts";
+  import { checkForUpdates, lastReport } from "../lib/stores/updates";
 
   let saving = $state<string | null>(null);
   let signingOut = $state(false);
@@ -120,6 +123,42 @@
     unlistenCatalog?.();
     if (diagnosticsTimer) clearInterval(diagnosticsTimer);
   });
+
+  // Self-hosted server panel — only renders when the user is signed into a
+  // local network server (`is_local_server`) rather than a future
+  // cloud-hosted Hoard. We pull the version info from the same
+  // `lastReport.server` the sidebar amber badge consumes, so we don't have to
+  // refetch on mount.
+  const serverUpdate = $derived($lastReport?.server ?? null);
+  const showServerCard = $derived($auth.user?.is_local_server === true);
+  let refreshingServer = $state(false);
+  let copyingUpgrade = $state(false);
+
+  async function handleServerRefresh() {
+    refreshingServer = true;
+    try {
+      await checkForUpdates();
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    } finally {
+      refreshingServer = false;
+    }
+  }
+
+  async function handleServerUpgrade() {
+    if (copyingUpgrade) return;
+    copyingUpgrade = true;
+    try {
+      try {
+        await navigator.clipboard.writeText("sudo hoard-server upgrade");
+        toastSuccess($_("settings.server_command_copied"));
+      } catch {
+        toastInfo($_("settings.server_command_manual"));
+      }
+    } finally {
+      copyingUpgrade = false;
+    }
+  }
 
   async function handleCatalogUpdate() {
     updatingCatalog = true;
@@ -509,24 +548,134 @@
           {$_("settings.section_advanced")}
         </h2>
         <Card>
-          <button
-            type="button"
-            onclick={() => push("/logs")}
-            class="-m-6 flex w-[calc(100%+3rem)] items-center justify-between gap-4 rounded-xl px-6 py-5 text-left transition-colors hover:bg-zinc-900/60"
-          >
-            <div class="flex items-start gap-3">
-              <FileText size={16} class="mt-0.5 shrink-0 text-zinc-500" />
-              <div>
-                <p class="text-sm font-medium text-zinc-100">
-                  {$_("settings.view_logs_title")}
-                </p>
-                <p class="mt-0.5 text-xs text-zinc-500">
-                  {$_("settings.view_logs_desc")}
-                </p>
+          <div class="divide-y divide-zinc-800">
+            <button
+              type="button"
+              onclick={() => push("/logs")}
+              class="-mx-6 -mt-6 flex w-[calc(100%+3rem)] items-center justify-between gap-4 px-6 py-5 text-left transition-colors hover:bg-zinc-900/60"
+            >
+              <div class="flex items-start gap-3">
+                <FileText size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+                <div>
+                  <p class="text-sm font-medium text-zinc-100">
+                    {$_("settings.view_logs_title")}
+                  </p>
+                  <p class="mt-0.5 text-xs text-zinc-500">
+                    {$_("settings.view_logs_desc")}
+                  </p>
+                </div>
               </div>
-            </div>
-            <ChevronRight size={16} class="shrink-0 text-zinc-500" />
-          </button>
+              <ChevronRight size={16} class="shrink-0 text-zinc-500" />
+            </button>
+
+            {#if showServerCard}
+              <!--
+                Self-hosted server panel. Only renders when the user signed in
+                against a private-network server (RFC1918 / localhost / .local);
+                a future cloud-hosted Hoard won't expose this subsection because
+                the upgrade is handled server-side.
+              -->
+              <div class="-mx-6 px-6 pb-2 pt-6">
+                <div class="flex items-start gap-3">
+                  <Server size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-zinc-100">
+                      {$_("settings.server_section_title")}
+                    </p>
+                    <p class="mt-0.5 text-xs text-zinc-500">
+                      {$_("settings.server_section_desc")}
+                    </p>
+
+                    <dl
+                      class="mt-3 grid grid-cols-[max-content,1fr] gap-x-3 gap-y-1 text-xs"
+                    >
+                      <dt class="text-zinc-500">
+                        {$_("settings.server_url_label")}
+                      </dt>
+                      <dd class="truncate font-mono text-zinc-300">
+                        {$auth.user?.server_url ?? "—"}
+                      </dd>
+                      <dt class="text-zinc-500">
+                        {$_("settings.server_version_label")}
+                      </dt>
+                      <dd class="text-zinc-300">
+                        {#if serverUpdate}
+                          v{serverUpdate.current}
+                          {#if serverUpdate.available && serverUpdate.latest}
+                            <span class="text-amber-300">
+                              → v{serverUpdate.latest}
+                            </span>
+                          {/if}
+                        {:else}
+                          {$_("common.loading")}
+                        {/if}
+                      </dd>
+                    </dl>
+
+                    {#if serverUpdate?.available}
+                      <p class="mt-3 text-xs text-amber-300">
+                        {$_("settings.server_update_available", {
+                          values: { latest: serverUpdate.latest ?? "?" },
+                        })}
+                      </p>
+                      <pre
+                        class="mt-2 overflow-x-auto rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-emerald-300">sudo hoard-server upgrade</pre>
+                      <div class="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          variant="primary"
+                          onclick={handleServerUpgrade}
+                          loading={copyingUpgrade}
+                          disabled={copyingUpgrade}
+                        >
+                          <ServerCog size={14} />
+                          {$_("settings.server_copy_command")}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          onclick={handleServerRefresh}
+                          loading={refreshingServer}
+                          disabled={refreshingServer}
+                        >
+                          <RefreshCw size={14} />
+                          {$_("settings.server_recheck")}
+                        </Button>
+                      </div>
+                    {:else if serverUpdate && !serverUpdate.error}
+                      <p class="mt-3 text-xs text-emerald-300">
+                        {$_("settings.server_up_to_date")}
+                      </p>
+                      <div class="mt-3">
+                        <Button
+                          variant="ghost"
+                          onclick={handleServerRefresh}
+                          loading={refreshingServer}
+                          disabled={refreshingServer}
+                        >
+                          <RefreshCw size={14} />
+                          {$_("settings.server_recheck")}
+                        </Button>
+                      </div>
+                    {:else if serverUpdate?.error}
+                      <p class="mt-3 text-xs text-red-400">
+                        {$_("settings.server_probe_failed")}
+                      </p>
+                      <div class="mt-3">
+                        <Button
+                          variant="ghost"
+                          onclick={handleServerRefresh}
+                          loading={refreshingServer}
+                          disabled={refreshingServer}
+                        >
+                          <RefreshCw size={14} />
+                          {$_("settings.server_recheck")}
+                        </Button>
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+              </div>
+            {/if}
+          </div>
         </Card>
       </section>
 

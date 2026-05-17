@@ -79,6 +79,17 @@ pub struct Prefs {
     /// of thing that earns trust slowly, so we make it opt-in.
     #[serde(default)]
     pub auto_restore: bool,
+
+    /// Last desktop-client version we already nudged the user about via a
+    /// native OS notification. The update poller checks this before firing
+    /// `sendNotification` so the user doesn't get banner-spammed every 30
+    /// minutes that 1.5.0 is out — once they've seen the notification for a
+    /// given version we leave them alone (the amber sidebar badge still
+    /// shows). Reset to `None` after the user installs an update (the new
+    /// client doesn't match this string anymore, so the next *newer* release
+    /// will notify again).
+    #[serde(default)]
+    pub last_update_notified_version: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -97,6 +108,7 @@ impl Default for Prefs {
             anonymous_telemetry: false,
             language: None,
             auto_restore: false,
+            last_update_notified_version: None,
         }
     }
 }
