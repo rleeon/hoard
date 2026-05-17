@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.2] — 2026-05-17
+
+Opt-in cloud restore on add. The first concrete step of the 1.5.0 client
+polish track: when you attach a tracked save whose local folder doesn't
+exist or is empty (fresh install of the game, new machine, accidentally
+wiped folder), the agent can now pull the latest server snapshot in the
+background instead of leaving the slot empty until the user remembers
+to "Restore" manually.
+
+### Added
+
+- **`Prefs.auto_restore` + Settings → Sync section.** Off by default —
+  silently writing files under the user's `~` is the kind of side-effect
+  that earns trust slowly, so it's behind an explicit toggle. The new
+  *Sync* section lives between *Startup* and *Notifications* in
+  Settings, with a one-line explanation of what gets restored and when.
+- **`AgentEvent::SaveAutoRestored` / `SaveAutoRestoreFailed`.** Emitted
+  by `hoard-agent` after the background restore lands (or fails). The
+  desktop subscribes to `agent://save-auto-restored` and
+  `agent://save-auto-restore-failed` and pops an in-app toast so the
+  user can see that files appeared without having to refresh the page.
+- **8 locales kept in sync.** Five new strings (toast success, toast
+  failure, section header, toggle label, toggle description) translated
+  into en/es/de/fr/it/ja/pt/zh.
+
+### Changed
+
+- `handle_add` in `hoard-agent` now takes the api client + event sender
+  so it can spawn an auto-restore task when the local path is empty.
+  The new internal `RearmWatcher` command re-attaches the fs debouncer
+  to the now-populated folder so subsequent saves are picked up.
+
+### Notes
+
+- Restore is gated by `is_path_empty_or_missing`: a populated folder
+  is never touched, and a folder we can't enumerate (NFS hiccup) is
+  treated as not-empty rather than not-empty-so-overwrite. The bar to
+  write user data is "we're 100% sure there's nothing there".
+- Failure is final: a network error or sha mismatch surfaces as a toast
+  and the slot is left untouched. The user can re-attempt manually
+  from History.
+
 ## [1.4.1] — 2026-05-17
 
 Emergency follow-up to 1.4.0. Two bugs in the in-app upgrade flow that

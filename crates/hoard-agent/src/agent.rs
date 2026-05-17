@@ -53,6 +53,14 @@ pub struct AgentConfig {
     pub debounce_secs: u64,
     pub poll_secs: u64,
     pub max_retries: u32,
+    /// Mirror of `Prefs::auto_restore`. When `true`, every save the agent
+    /// adopts (initial seed or live `AddSave`) is checked against the
+    /// server: if the local path is missing or empty *and* the server has
+    /// at least one snapshot, we restore the latest snapshot in the
+    /// background and emit `AgentEvent::SaveAutoRestored`. Off by default
+    /// because silently writing files under the user's `~` is the sort
+    /// of side-effect that needs explicit opt-in.
+    pub auto_restore: bool,
 }
 
 impl Default for AgentConfig {
@@ -61,6 +69,7 @@ impl Default for AgentConfig {
             debounce_secs: 5,
             poll_secs: 2,
             max_retries: 5,
+            auto_restore: false,
         }
     }
 }
@@ -119,6 +128,28 @@ pub enum AgentEvent {
         error: String,
         will_retry: bool,
     },
+    /// The agent detected that the save's local folder was missing or empty
+    /// on add and `Prefs::auto_restore` was enabled, so it downloaded the
+    /// latest server snapshot into the folder. The UI uses this to toast
+    /// "We restored your save from the cloud" and to nudge the dashboard
+    /// pill back to a synced state.
+    SaveAutoRestored {
+        save_id: String,
+        game_slug: String,
+        version_num: i64,
+        files_extracted: u64,
+        bytes_extracted: u64,
+    },
+    /// Auto-restore was attempted but failed (network error, sha mismatch,
+    /// permission denied writing to the local path). Surfaced separately
+    /// from `BackupFailed` because the user-visible message is different:
+    /// the save is left untouched, no retry is scheduled, and we want
+    /// the UI to suggest "restore manually" rather than "we'll try again".
+    SaveAutoRestoreFailed {
+        save_id: String,
+        game_slug: String,
+        error: String,
+    },
 }
 
 /// Why we scheduled a backup. Useful in the UI to explain "the game just
@@ -152,6 +183,13 @@ enum AgentCommand {
     AddSave(WatchedSave),
     RemoveSave(String),
     BackupNow(String),
+    /// Internal: an auto-restore task finished writing files into a slot's
+    /// local path. The slot's fs watcher was either never armed (path was
+    /// missing on AddSave) or armed against an empty directory — either
+    /// way we re-arm it now so the freshly-restored save is being watched.
+    /// Not exposed through `AgentHandle` because only the auto-restore
+    /// task ever fires it.
+    RearmWatcher(String),
     QueryStatus(oneshot::Sender<Vec<AgentSlotStatus>>),
     Shutdown,
 }
@@ -221,7 +259,11 @@ pub fn spawn(
         });
     }
 
-    let task = tokio::spawn(run_agent(api, config, cmd_rx, events_tx));
+    // The agent loop needs its own clone of `cmd_tx` so background tasks
+    // it spawns (auto-restore is the only one today) can post commands
+    // back to it — e.g. `RearmWatcher` after files land on disk.
+    let cmd_tx_loop = cmd_tx.clone();
+    let task = tokio::spawn(run_agent(api, config, cmd_rx, cmd_tx_loop, events_tx));
     (AgentHandle { tx: cmd_tx }, task)
 }
 
@@ -259,6 +301,7 @@ async fn run_agent(
     api: ApiClient,
     config: AgentConfig,
     mut cmd_rx: mpsc::Receiver<AgentCommand>,
+    cmd_tx: mpsc::Sender<AgentCommand>,
     events_tx: mpsc::Sender<AgentEvent>,
 ) {
     let mut slots: HashMap<String, SaveSlot> = HashMap::new();
@@ -293,7 +336,17 @@ async fn run_agent(
             cmd = cmd_rx.recv() => {
                 match cmd {
                     Some(AgentCommand::AddSave(save)) => {
-                        handle_add(&mut slots, save, &fs_tx);
+                        handle_add(
+                            &mut slots, save, &fs_tx, &api, &events_tx, &cmd_tx, &config,
+                        );
+                    }
+                    Some(AgentCommand::RearmWatcher(id)) => {
+                        // Auto-restore created files where there were none —
+                        // the watcher we built (or skipped) on AddSave needs
+                        // to be rebuilt against the now-existing directory.
+                        if let Some(slot) = slots.get_mut(&id) {
+                            arm_watcher(slot, &fs_tx);
+                        }
                     }
                     Some(AgentCommand::RemoveSave(id)) => {
                         if let Some(slot) = slots.remove(&id) {
@@ -379,11 +432,23 @@ async fn run_agent(
 /// save for end-to-end reliability; `process_poll` still emits
 /// `GameStarted`/`GameStopped` for UI signalling but no longer gates the
 /// fs subsystem.
+///
+/// Since 1.4.2: if `config.auto_restore` is on and the local folder is
+/// missing or empty, kick off a background restore of the latest server
+/// snapshot. Files land on disk, the agent loop receives `RearmWatcher`,
+/// and the slot ends up watching the restored folder for the rest of
+/// the session.
 fn handle_add(
     slots: &mut HashMap<String, SaveSlot>,
     save: WatchedSave,
     fs_tx: &mpsc::Sender<PathBuf>,
+    api: &ApiClient,
+    events_tx: &mpsc::Sender<AgentEvent>,
+    cmd_tx: &mpsc::Sender<AgentCommand>,
+    config: &AgentConfig,
 ) {
+    let save_for_restore = save.clone();
+    let local_path = save.local_path.clone();
     let mut slot = SaveSlot {
         save,
         watcher: None,
@@ -395,6 +460,132 @@ fn handle_add(
     };
     arm_watcher(&mut slot, fs_tx);
     slots.insert(slot.save.save_id.clone(), slot);
+
+    if config.auto_restore && is_path_empty_or_missing(&local_path) {
+        spawn_auto_restore(
+            save_for_restore,
+            api.clone(),
+            events_tx.clone(),
+            cmd_tx.clone(),
+        );
+    }
+}
+
+/// True if `path` doesn't exist on disk, or exists as a directory that
+/// contains no entries. Anything else (file, broken symlink, populated
+/// directory) returns `false`. Errors reading the directory are treated
+/// conservatively as "not empty" so we never wipe a user's save folder
+/// just because we couldn't enumerate it (NFS hiccup, etc).
+fn is_path_empty_or_missing(path: &Path) -> bool {
+    if !path.exists() {
+        return true;
+    }
+    if !path.is_dir() {
+        return false;
+    }
+    match std::fs::read_dir(path) {
+        Ok(mut it) => it.next().is_none(),
+        Err(_) => false,
+    }
+}
+
+/// Background task: resolve the latest snapshot for `save`, download it
+/// into the local path, emit `SaveAutoRestored` on success or
+/// `SaveAutoRestoreFailed` otherwise, and ping the agent loop to re-arm
+/// the watcher against the now-populated folder.
+fn spawn_auto_restore(
+    save: WatchedSave,
+    api: ApiClient,
+    events_tx: mpsc::Sender<AgentEvent>,
+    cmd_tx: mpsc::Sender<AgentCommand>,
+) {
+    tokio::spawn(async move {
+        tracing::info!(
+            save_id = %save.save_id,
+            game_slug = %save.game_slug,
+            path = %save.local_path.display(),
+            "agent: auto-restore — local path empty/missing, checking server"
+        );
+        match run_auto_restore(&api, &save).await {
+            Ok(Some(outcome)) => {
+                tracing::info!(
+                    save_id = %save.save_id,
+                    version_num = outcome.version_num,
+                    files = outcome.files_extracted,
+                    bytes = outcome.bytes_extracted,
+                    "agent: auto-restore succeeded"
+                );
+                let _ = events_tx
+                    .send(AgentEvent::SaveAutoRestored {
+                        save_id: save.save_id.clone(),
+                        game_slug: save.game_slug.clone(),
+                        version_num: outcome.version_num,
+                        files_extracted: outcome.files_extracted,
+                        bytes_extracted: outcome.bytes_extracted,
+                    })
+                    .await;
+                // Tell the agent loop to rebuild the fs watcher now that
+                // the directory actually has contents.
+                let _ = cmd_tx
+                    .send(AgentCommand::RearmWatcher(save.save_id.clone()))
+                    .await;
+            }
+            Ok(None) => {
+                tracing::info!(
+                    save_id = %save.save_id,
+                    "agent: auto-restore — server has no snapshots yet; nothing to restore"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    save_id = %save.save_id,
+                    error = %e,
+                    "agent: auto-restore failed"
+                );
+                let _ = events_tx
+                    .send(AgentEvent::SaveAutoRestoreFailed {
+                        save_id: save.save_id.clone(),
+                        game_slug: save.game_slug.clone(),
+                        error: e.to_string(),
+                    })
+                    .await;
+            }
+        }
+    });
+}
+
+/// Internal restore primitive returning the outcome summary or `None` if
+/// the server has no snapshots for this save (in which case auto-restore
+/// is a no-op, not a failure).
+struct AutoRestoreOutcome {
+    version_num: i64,
+    files_extracted: u64,
+    bytes_extracted: u64,
+}
+
+async fn run_auto_restore(
+    api: &ApiClient,
+    save: &WatchedSave,
+) -> Result<Option<AutoRestoreOutcome>> {
+    let remote = api.get_save(&save.save_id).await?;
+    let Some(version) = remote.latest_version_num else {
+        return Ok(None);
+    };
+    // `force=true` because the directory may exist as an empty stub
+    // (Library path with no files yet). `is_path_empty_or_missing` is the
+    // gate that decided we're allowed to write here in the first place.
+    let opts = crate::restore::RestoreOptions {
+        skip_verify: false,
+        force: true,
+    };
+    let outcome =
+        crate::restore::download_snapshot(api, &save.save_id, version, &save.local_path, opts, |_, _| {})
+            .await?;
+    Ok(Some(AutoRestoreOutcome {
+        version_num: version,
+        files_extracted: outcome.files_extracted as u64,
+        bytes_extracted: outcome.bytes_extracted,
+    }))
 }
 
 /// Try to attach an fs debouncer to `slot`. Tolerant: a missing folder or
@@ -793,6 +984,7 @@ mod tests {
             debounce_secs: 1,
             poll_secs: 2,
             max_retries: 0,
+            auto_restore: false,
         };
 
         let (handle, task) = spawn(api, config, vec![save], events_tx);

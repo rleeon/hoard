@@ -230,6 +230,20 @@ export type AgentEvent =
       save_id: string;
       error: string;
       will_retry: boolean;
+    }
+  | {
+      type: "save_auto_restored";
+      save_id: string;
+      game_slug: string;
+      version_num: number;
+      files_extracted: number;
+      bytes_extracted: number;
+    }
+  | {
+      type: "save_auto_restore_failed";
+      save_id: string;
+      game_slug: string;
+      error: string;
     };
 
 /** Boot the live agent and start emitting `agent://*` events. */
@@ -269,6 +283,11 @@ export type Prefs = {
    *  the user hasn't picked one yet — we then fall back to the browser
    *  language at boot. */
   language: string | null;
+  /** When `true`, the agent restores the latest server snapshot into a
+   *  tracked save's local path whenever that path is missing or empty on
+   *  add. Off by default — silent writes under `~` are the kind of thing
+   *  that earns trust slowly, so users have to opt in. */
+  auto_restore: boolean;
 };
 
 export type TrayStateName =

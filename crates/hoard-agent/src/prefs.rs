@@ -70,6 +70,15 @@ pub struct Prefs {
     /// the user's language choice across restarts.
     #[serde(default)]
     pub language: Option<String>,
+
+    /// When `true`, the agent restores the latest server snapshot into a
+    /// tracked save's local path whenever that path is missing or empty on
+    /// add (typical scenarios: fresh install of the game, new machine,
+    /// user accidentally wiped the save folder). Defaults to `false` —
+    /// silently writing files under the user's `~` is exactly the kind
+    /// of thing that earns trust slowly, so we make it opt-in.
+    #[serde(default)]
+    pub auto_restore: bool,
 }
 
 fn default_true() -> bool {
@@ -87,6 +96,7 @@ impl Default for Prefs {
             seen_tray_hint: false,
             anonymous_telemetry: false,
             language: None,
+            auto_restore: false,
         }
     }
 }

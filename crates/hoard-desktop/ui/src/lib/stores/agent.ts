@@ -27,6 +27,7 @@ import {
   requestPermission,
   sendNotification,
 } from "@tauri-apps/plugin-notification";
+import { _ as i18n } from "svelte-i18n";
 
 import type {
   AgentEvent,
@@ -36,6 +37,7 @@ import type {
 } from "../api";
 import * as api from "../api";
 import { prefs } from "./prefs";
+import { toastSuccess, toastError } from "./toasts";
 
 export type SaveActivity = {
   state:
@@ -168,6 +170,33 @@ function applyEvent(ev: AgentEvent) {
       }
       break;
     }
+    case "save_auto_restored": {
+      // Auto-restore is a one-shot adoption side-effect — no need to mutate
+      // `activity` (no ongoing watch state to update), but we do want to
+      // surface a toast so the user notices files appeared under `~`. The
+      // `game_slug` is what we have to hand; resolving to display_name would
+      // require another store dependency just for cosmetics.
+      const t = get(i18n);
+      toastSuccess(
+        t("library.auto_restored_toast", {
+          values: {
+            name: ev.game_slug,
+            version: ev.version_num,
+            count: ev.files_extracted,
+          },
+        }),
+      );
+      break;
+    }
+    case "save_auto_restore_failed": {
+      const t = get(i18n);
+      toastError(
+        t("library.auto_restore_failed_toast", {
+          values: { name: ev.game_slug, error: ev.error },
+        }),
+      );
+      break;
+    }
   }
 }
 
@@ -188,6 +217,8 @@ export async function subscribeAgent() {
     "agent://backup-started",
     "agent://backup-success",
     "agent://backup-failed",
+    "agent://save-auto-restored",
+    "agent://save-auto-restore-failed",
   ];
   unlisteners = await Promise.all(
     topics.map((t) =>

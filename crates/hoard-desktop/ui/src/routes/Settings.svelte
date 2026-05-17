@@ -26,6 +26,7 @@
     Database,
     Languages,
     Activity,
+    DownloadCloud,
   } from "lucide-svelte";
 
   import Card from "../lib/components/Card.svelte";
@@ -239,6 +240,15 @@
       label: $_("settings.start_minimised_label"),
       description: $_("settings.start_minimised_desc"),
       icon: Power,
+    },
+  ]);
+
+  const syncRows: Row[] = $derived([
+    {
+      field: "auto_restore",
+      label: $_("settings.auto_restore_label"),
+      description: $_("settings.auto_restore_desc"),
+      icon: DownloadCloud,
     },
   ]);
 

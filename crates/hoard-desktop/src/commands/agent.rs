@@ -22,6 +22,7 @@ use std::path::PathBuf;
 
 use hoard_agent::agent::{self, AgentConfig, AgentEvent, AgentSlotStatus, WatchedSave};
 use hoard_agent::manifest::Os;
+use hoard_agent::prefs::Prefs;
 use hoard_agent::state::CliState;
 use hoard_agent::steam;
 use serde::Serialize;
@@ -56,8 +57,19 @@ pub async fn start_agent(
     let saves = hydrate_watched_saves(&state).map_err(|e| e.to_string())?;
     let watched_count = saves.len();
 
+    // Pull the user's auto-restore preference so the agent knows whether it
+    // should pull the latest server snapshot when a tracked save's local
+    // path is missing or empty on attach.
+    let auto_restore = Prefs::load_default()
+        .map(|(p, _)| p.auto_restore)
+        .unwrap_or(false);
+    let config = AgentConfig {
+        auto_restore,
+        ..AgentConfig::default()
+    };
+
     let (events_tx, mut events_rx) = mpsc::channel::<AgentEvent>(256);
-    let (handle, _task) = agent::spawn(client, AgentConfig::default(), saves, events_tx);
+    let (handle, _task) = agent::spawn(client, config, saves, events_tx);
 
     // Forwarder task — translate AgentEvent into Tauri events the UI can
     // subscribe to. `agent://*` is our private event namespace; the
@@ -75,6 +87,8 @@ pub async fn start_agent(
                 AgentEvent::BackupStarted { .. } => "agent://backup-started",
                 AgentEvent::BackupSuccess { .. } => "agent://backup-success",
                 AgentEvent::BackupFailed { .. } => "agent://backup-failed",
+                AgentEvent::SaveAutoRestored { .. } => "agent://save-auto-restored",
+                AgentEvent::SaveAutoRestoreFailed { .. } => "agent://save-auto-restore-failed",
             };
             let _ = app_for_emit.emit(topic, &ev);
         }
