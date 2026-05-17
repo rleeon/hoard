@@ -273,27 +273,28 @@ pub async fn patch(
     // then rename the directory, then commit. If the rename fails we roll
     // back the UPDATE so the user sees a clean error instead of a save
     // whose old snapshots are unreachable.
-    if let Some(new_label) = body.label.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    if let Some(new_label) = body
+        .label
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         if new_label != current.label {
             let mut tx = state.pool.begin().await.map_err(|_| internal_err())?;
 
-            sqlx::query!(
-                "UPDATE saves SET label=? WHERE id=?",
-                new_label,
-                save_id
-            )
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| {
-                if e.to_string().contains("UNIQUE") {
-                    (
-                        StatusCode::CONFLICT,
-                        Json(serde_json::json!({"error":"label collision"})),
-                    )
-                } else {
-                    internal_err()
-                }
-            })?;
+            sqlx::query!("UPDATE saves SET label=? WHERE id=?", new_label, save_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| {
+                    if e.to_string().contains("UNIQUE") {
+                        (
+                            StatusCode::CONFLICT,
+                            Json(serde_json::json!({"error":"label collision"})),
+                        )
+                    } else {
+                        internal_err()
+                    }
+                })?;
 
             let old_dir = state
                 .config

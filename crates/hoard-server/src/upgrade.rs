@@ -116,11 +116,19 @@ pub async fn run(target: Option<PathBuf>) -> Result<()> {
 
     // 5. Mark executable and swap into place via rename (atomic on the same
     //    FS). Processes currently exec'ing the old binary keep their old
-    //    inode on Linux; the next start picks up the new file.
-    use std::os::unix::fs::PermissionsExt;
-    let mut perms = std::fs::metadata(&tmp_path)?.permissions();
-    perms.set_mode(0o755);
-    std::fs::set_permissions(&tmp_path, perms)?;
+    //    inode on Linux; the next start picks up the new file. The chmod
+    //    is a unix-only concern — on Windows the binary is .exe and the
+    //    NTFS permission bits aren't expressed this way. We keep the
+    //    server compiling on Windows so the CI matrix passes; the actual
+    //    `upgrade` command is still gated to linux-x86_64 by the asset
+    //    matcher above.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&tmp_path)?.permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&tmp_path, perms)?;
+    }
 
     if let Err(e) = std::fs::rename(&tmp_path, &target_path) {
         // Common case: no write permission on /usr/local/bin.

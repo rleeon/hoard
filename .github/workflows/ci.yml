@@ -131,8 +131,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: crates/hoard-desktop/ui/pnpm-lock.yaml
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # hoard-desktop is in the workspace and `cargo sqlx prepare --workspace`
+      # invokes the build script for every member crate, including the Tauri
+      # shell. Without these system libs (and the prebuilt frontend that
+      # `generate_context!` validates at compile time) the prepare step fails
+      # before it ever reaches the SQLx macros.
+      - name: System deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libssl-dev pkg-config \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libglib2.0-dev
+      - name: Install frontend deps
+        run: pnpm --dir crates/hoard-desktop/ui install --frozen-lockfile
+      - name: Build frontend
+        run: pnpm --dir crates/hoard-desktop/ui build
       - name: Install sqlx-cli
         run: cargo install sqlx-cli --version 0.8.2 --no-default-features --features sqlite,rustls --locked
       - name: Prepare database

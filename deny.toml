@@ -14,7 +14,43 @@ version = 2
 # specific RUSTSEC ID is unavoidable for now, add it to `ignore` with a link
 # to the tracking issue explaining the exposure.
 yanked = "deny"
-ignore = []
+ignore = [
+    # gtk-rs GTK3 bindings — unmaintained but still the only way to render
+    # the Tauri webview on Linux. Pulled in transitively by tauri-runtime-wry
+    # → webkit2gtk → atk/gtk/gdk/cairo/glib/pango/etc. Upstream Tauri is
+    # tracking the migration to GTK4; until that ships there is no safe
+    # upgrade.
+    "RUSTSEC-2024-0411",
+    "RUSTSEC-2024-0412",
+    "RUSTSEC-2024-0413",
+    "RUSTSEC-2024-0414",
+    "RUSTSEC-2024-0415",
+    "RUSTSEC-2024-0416",
+    "RUSTSEC-2024-0417",
+    "RUSTSEC-2024-0418",
+    "RUSTSEC-2024-0419",
+    "RUSTSEC-2024-0420",
+    # proc-macro-error: unmaintained, used by older proc-macro crates we
+    # don't control (transitive via tauri-macros or similar).
+    "RUSTSEC-2024-0370",
+    # number_prefix: unmaintained, transitive via indicatif used by the CLI
+    # progress bars. No safe upgrade — replacement crate isn't drop-in.
+    "RUSTSEC-2025-0119",
+    # unic-* family: open-i18n/rust-unic is unmaintained as a group. Pulled
+    # transitively by urlpattern → tauri-utils. Tauri's tracking issue:
+    # https://github.com/rustsec/advisory-db/issues/2414. No safe upgrade.
+    "RUSTSEC-2025-0075", # unic-char-range
+    "RUSTSEC-2025-0080", # unic-common
+    "RUSTSEC-2025-0081", # unic-char-property
+    "RUSTSEC-2025-0098", # unic-ucd-version
+    "RUSTSEC-2025-0100", # unic-ucd-ident
+    # tokio-tar PAX header smuggling. We only extract tarballs that come from
+    # the server we trust (hoard-server) over an authenticated session, so the
+    # smuggling vector doesn't apply to our threat model. Tracked in #upstream
+    # — we'll swap to the maintained `astral-tokio-tar` fork or `tar` (sync,
+    # ran on a blocking task) once 1.5 lands and we touch the restore path.
+    "RUSTSEC-2025-0111",
+]
 
 [licenses]
 version = 2
@@ -55,7 +91,13 @@ license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 # transitive dep that hasn't caught up. We allow it with a warning; CI will
 # not fail solely on duplicates so we can ship while waiting on upstream.
 multiple-versions = "warn"
+# `wildcards = "deny"` catches public crates that pin to `version = "*"`,
+# but flags our own intra-workspace path deps (which have no version field
+# and are therefore parsed as `*`). `allow-wildcard-paths = true` exempts
+# path-only deps — those resolve from the workspace, never from the registry,
+# so the wildcard has no security implication.
 wildcards = "deny"
+allow-wildcard-paths = true
 deny = []
 skip = []
 skip-tree = []

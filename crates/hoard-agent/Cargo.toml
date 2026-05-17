@@ -10,7 +10,6 @@ name = "hoard_agent"
 path = "src/lib.rs"
 
 [dependencies]
-hoard-core = { path = "../hoard-core" }
 hoard-manifest = { path = "../hoard-manifest" }
 hoard-detect = { path = "../hoard-detect" }
 
@@ -23,13 +22,11 @@ tracing = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
-uuid = { workspace = true }
 directories = { workspace = true }
 async-compression = { workspace = true }
 tokio-tar = { workspace = true }
 tokio-util = { workspace = true }
 futures = { workspace = true }
-bytes = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 sysinfo = { workspace = true }
