@@ -591,9 +591,15 @@ async fn run_auto_restore(
         skip_verify: false,
         force: true,
     };
-    let outcome =
-        crate::restore::download_snapshot(api, &save.save_id, version, &save.local_path, opts, |_, _| {})
-            .await?;
+    let outcome = crate::restore::download_snapshot(
+        api,
+        &save.save_id,
+        version,
+        &save.local_path,
+        opts,
+        |_, _| {},
+    )
+    .await?;
     Ok(Some(AutoRestoreOutcome {
         version_num: version,
         files_extracted: outcome.files_extracted as u64,
@@ -727,8 +733,15 @@ fn schedule_backup(
             tokio::time::sleep(delay).await;
         }
         run_backup_with_retry(
-            api, save, events_tx, done_tx, cmd_tx, max_retries, auto_restore,
-        ).await;
+            api,
+            save,
+            events_tx,
+            done_tx,
+            cmd_tx,
+            max_retries,
+            auto_restore,
+        )
+        .await;
     }));
 }
 
