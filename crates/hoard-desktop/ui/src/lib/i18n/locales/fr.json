@@ -167,7 +167,6 @@
   "settings.subtitle": "Ajustez le comportement de Hoard sur cette machine. Les changements sont enregistrés à chaque bascule.",
   "settings.section_general": "Général",
   "settings.section_startup": "Démarrage",
-  "settings.section_sync": "Synchronisation",
   "settings.section_notifications": "Notifications",
   "settings.section_privacy": "Confidentialité",
   "settings.section_account": "Compte",

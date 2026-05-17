@@ -226,6 +226,16 @@
       description: $_("settings.close_to_tray_desc"),
       icon: Minimize2,
     },
+    // Auto-restore originally lived in its own "Sync" section, but the user
+    // pointed out it's a one-toggle section masquerading as a category —
+    // promoted into General alongside close-to-tray so all the "how Hoard
+    // behaves day to day" switches live in one card.
+    {
+      field: "auto_restore",
+      label: $_("settings.auto_restore_label"),
+      description: $_("settings.auto_restore_desc"),
+      icon: DownloadCloud,
+    },
   ]);
 
   const startupRows: Row[] = $derived([
@@ -240,15 +250,6 @@
       label: $_("settings.start_minimised_label"),
       description: $_("settings.start_minimised_desc"),
       icon: Power,
-    },
-  ]);
-
-  const syncRows: Row[] = $derived([
-    {
-      field: "auto_restore",
-      label: $_("settings.auto_restore_label"),
-      description: $_("settings.auto_restore_desc"),
-      icon: DownloadCloud,
     },
   ]);
 

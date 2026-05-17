@@ -167,7 +167,6 @@
   "settings.subtitle": "Tweak how Hoard behaves on this machine. Changes are saved as soon as you toggle them.",
   "settings.section_general": "General",
   "settings.section_startup": "Startup",
-  "settings.section_sync": "Sync",
   "settings.section_notifications": "Notifications",
   "settings.section_privacy": "Privacy",
   "settings.section_account": "Account",

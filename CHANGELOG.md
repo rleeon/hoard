@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.4] — 2026-05-17
+
+Settings UX nit reported right after 1.4.3 shipped: the new auto-restore
+toggle was hiding in its own "Sync" section, which is a section
+masquerading as a category when it only holds one switch.
+
+### Changed
+
+- **Auto-restore toggle promoted into the General section.** It now
+  sits next to "Minimize to tray" — same category of "how Hoard behaves
+  day to day" — so users actually find it without having to scroll past
+  Language / Startup / Notifications / Privacy looking for a Sync
+  heading that barely held one row.
+
+### Removed
+
+- `settings.section_sync` translation key (no longer rendered). The
+  eight locale files lose the now-orphaned heading string.
+
 ## [1.4.3] — 2026-05-17
 
 Two related bugs the 1.4.2 auto-restore feature surfaced once users
