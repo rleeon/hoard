@@ -1,6 +1,6 @@
 <script lang="ts">
   import Router, { push, replace, location } from "svelte-spa-router";
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import {
     Archive,
     Library,
@@ -26,7 +26,12 @@
   import { auth, hydrateAuth } from "./lib/stores/auth";
   import { loadStep, routeForStep } from "./lib/stores/onboarding";
   import { runMagicSetup, magicState } from "./lib/stores/magic";
-  import { checkForUpdates, type UpdateReport } from "./lib/stores/updates";
+  import {
+    checkForUpdates,
+    lastReport,
+    startUpdatePoller,
+    type UpdateReport,
+  } from "./lib/stores/updates";
 
   /**
    * Routing layout
@@ -52,8 +57,18 @@
   };
 
   let booted = $state(false);
-  let updates = $state<UpdateReport | null>(null);
   let updateModalOpen = $state(false);
+
+  // The update report is owned by `lastReport` in `stores/updates.ts` — both
+  // the boot probe and the periodic re-check write to it. Reading via
+  // `$lastReport` keeps this view in sync without a local mirror state.
+  const updates = $derived<UpdateReport | null>($lastReport);
+
+  // Long-running sessions need a periodic re-check; boot probe alone misses
+  // releases shipped after the app was opened. The poller fires every 6h with
+  // exponential backoff on failure (24h cap). Captured here so logout / unmount
+  // can cancel it.
+  let disposeUpdatePoller: (() => void) | null = null;
 
   // Hidden diagnostics unlock — 5 consecutive clicks on the sidebar version
   // string flips a session flag that reveals the Agent Diagnostics card in
@@ -98,10 +113,18 @@
     // the small "Update available" banner above the sidebar footer; a
     // network blip silently leaves it hidden, which is the right default.
     if ($auth.user) {
-      checkForUpdates()
-        .then((r) => (updates = r))
-        .catch((e) => console.warn("update check failed:", e));
+      // `checkForUpdates` writes into `lastReport`; the `$derived` above picks it up.
+      checkForUpdates().catch((e) =>
+        console.warn("update check failed:", e),
+      );
+      // And keep checking quietly while the session stays open.
+      disposeUpdatePoller = startUpdatePoller();
     }
+  });
+
+  onDestroy(() => {
+    disposeUpdatePoller?.();
+    disposeUpdatePoller = null;
   });
 
   function magicLabel(s: typeof $magicState): string {
@@ -119,11 +142,15 @@
     }
   }
 
+  // The `labelKey` is resolved through `$_()` at render time so the sidebar
+  // re-translates instantly when the user switches language in Settings —
+  // hard-coded English here was the long-standing reason German/Spanish UIs
+  // still showed "Library / Dashboard …" in the rail.
   const sidebarItems = [
-    { label: "Library", icon: Library, route: "/library" },
-    { label: "Dashboard", icon: Archive, route: "/dashboard" },
-    { label: "History", icon: History, route: "/history" },
-    { label: "Settings", icon: SettingsIcon, route: "/settings" },
+    { labelKey: "nav.library", icon: Library, route: "/library" },
+    { labelKey: "nav.dashboard", icon: Archive, route: "/dashboard" },
+    { labelKey: "nav.history", icon: History, route: "/history" },
+    { labelKey: "nav.settings", icon: SettingsIcon, route: "/settings" },
   ];
 
   // App-shell routes share the persistent sidebar; wizard routes own the
@@ -170,7 +197,7 @@
             tabindex="-1"
             aria-hidden="true"
           >
-            v{import.meta.env.VITE_HOARD_VERSION || "1.3.5"}
+            v{import.meta.env.VITE_HOARD_VERSION || "1.4.0"}
           </button>
         </div>
         <!-- Small amber alert button. Same visual language as "Sin carpeta":
@@ -196,7 +223,7 @@
       </div>
 
       <nav class="flex-1 space-y-1 px-3 py-2">
-        {#each sidebarItems as item (item.label)}
+        {#each sidebarItems as item (item.labelKey)}
           {@const active = $location === item.route}
           {@const enabled =
             item.route === "/dashboard" ||
@@ -211,10 +238,10 @@
               ? 'bg-zinc-800 text-zinc-50'
               : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100'}
               disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-400"
-            title={enabled ? undefined : "Coming in a later phase"}
+            title={enabled ? undefined : $_("nav.coming_later")}
           >
             <item.icon size={18} />
-            <span>{item.label}</span>
+            <span>{$_(item.labelKey)}</span>
           </button>
         {/each}
       </nav>

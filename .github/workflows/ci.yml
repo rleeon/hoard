@@ -57,21 +57,32 @@ jobs:
       - name: Build frontend
         run: pnpm --dir crates/hoard-desktop/ui build
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: svelte-check
+        run: pnpm --dir crates/hoard-desktop/ui check
+      - name: i18n locales parity
+        run: node scripts/check-i18n.mjs
 
+  # Compile + test across the three host platforms we ship desktop builds for.
+  # Ubuntu carries the full system deps for Tauri; Windows / macOS need only
+  # the Rust toolchain because the desktop crate is *not* built there in CI
+  # (the release workflow handles that). We still build the workspace minus
+  # hoard-desktop to validate the agent / server / CLI on all platforms.
   build-test:
     name: build + test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest, macos-14]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Install pnpm
+        if: runner.os == 'Linux'
         uses: pnpm/action-setup@v3
         with:
           version: 9
       - uses: actions/setup-node@v4
+        if: runner.os == 'Linux'
         with:
           node-version: "20"
           cache: pnpm
@@ -89,12 +100,67 @@ jobs:
             librsvg2-dev \
             patchelf \
             libglib2.0-dev
-      # The desktop crate's `tauri::generate_context!()` proc-macro validates
-      # `frontendDist` ("./ui/dist") at compile time, so the frontend must be
-      # built before any cargo invocation that touches hoard-desktop.
       - name: Install frontend deps
+        if: runner.os == 'Linux'
         run: pnpm --dir crates/hoard-desktop/ui install --frozen-lockfile
       - name: Build frontend
+        if: runner.os == 'Linux'
         run: pnpm --dir crates/hoard-desktop/ui build
-      - run: cargo build --workspace --verbose
-      - run: cargo test --workspace --verbose
+      # On Linux the full workspace builds (hoard-desktop included). On Windows
+      # and macOS we skip the desktop crate — it needs the prebuilt frontend
+      # plus host-specific webview shims, which the release pipeline already
+      # exercises. Server / agent / CLI must still compile + pass tests.
+      - name: cargo build (full workspace)
+        if: runner.os == 'Linux'
+        run: cargo build --workspace --verbose
+      - name: cargo test (full workspace)
+        if: runner.os == 'Linux'
+        run: cargo test --workspace --verbose
+      - name: cargo build (no desktop)
+        if: runner.os != 'Linux'
+        run: cargo build --workspace --exclude hoard-desktop --verbose
+      - name: cargo test (no desktop)
+        if: runner.os != 'Linux'
+        run: cargo test --workspace --exclude hoard-desktop --verbose
+
+  # Catches stale .sqlx/ caches before merge — same check `just sqlx-prepare`
+  # would let us run locally with a real database. Uses sqlx-cli's
+  # `--check` mode against the migrations under crates/hoard-server.
+  sqlx-check:
+    name: sqlx offline cache
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --version 0.8.2 --no-default-features --features sqlite,rustls --locked
+      - name: Prepare database
+        run: |
+          mkdir -p /tmp/hoard-data
+          export DATABASE_URL="sqlite:///tmp/hoard-data/hoard.db?mode=rwc"
+          cargo sqlx database create
+          cargo sqlx migrate run --source crates/hoard-server/migrations
+          echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
+      - name: Verify .sqlx is up to date
+        run: cargo sqlx prepare --workspace --check
+
+  # Supply-chain guard: license allow list + advisory check across the
+  # workspace dep tree. Config lives in deny.toml at the repo root.
+  cargo-deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans licenses advisories sources
+
+  # Flags unused workspace dependencies that drift in over time. Doesn't run
+  # cargo, just parses the manifests, so it's cheap.
+  cargo-machete:
+    name: cargo machete
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bnjbvr/cargo-machete@v0.7.0

@@ -22,6 +22,7 @@
     AlertTriangle,
     Trash2,
     FolderOpen,
+    Pencil,
   } from "lucide-svelte";
   import { _ } from "svelte-i18n";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -58,6 +59,12 @@
   let untrackTarget = $state<TrackedSave | null>(null);
   let untracking = $state(false);
 
+  /** Currently-open rename-label modal. Pre-fills `renameDraft` from the
+   *  target save when set. Single-modal pattern again. */
+  let renameTarget = $state<TrackedSave | null>(null);
+  let renameDraft = $state("");
+  let renaming = $state(false);
+
   onMount(async () => {
     // Wire the progress event before we trigger anything that emits.
     unlisten = await listen<ScanProgress>(
@@ -86,7 +93,10 @@
     scanning = true;
     progress = { done: 0, total: 0 };
     try {
-      report = await api.scanLibrary();
+      // Use rescan when we already have a report — same wire payload, but the
+      // explicit intent helps backend logs distinguish "user mashed the
+      // button" from "page just mounted with no cache".
+      report = report ? await api.rescanLibrary() : await api.scanLibrary();
       toastSuccess(
         $_("library.scan_toast", { values: { count: report.games.length } }),
       );
@@ -183,6 +193,43 @@
       toastError(typeof e === "string" ? e : (e as Error).message);
     } finally {
       untracking = false;
+    }
+  }
+
+  /** Open the rename-label modal for a tracked save. The draft is seeded with
+   *  the current label so the user can tweak rather than retype. */
+  function askRename(save: TrackedSave) {
+    renameTarget = save;
+    renameDraft = save.label;
+  }
+
+  async function confirmRename() {
+    if (!renameTarget) return;
+    const target = renameTarget;
+    const trimmed = renameDraft.trim();
+    if (!trimmed || trimmed === target.label) {
+      renameTarget = null;
+      return;
+    }
+    renaming = true;
+    try {
+      const updated = await api.renameSaveLabel(target.save_id, trimmed);
+      tracked = tracked.map((t) =>
+        t.save_id === updated.save_id ? updated : t,
+      );
+      toastSuccess(
+        $_("library.rename_success", { values: { label: updated.label } }),
+      );
+      renameTarget = null;
+    } catch (e) {
+      const msg = typeof e === "string" ? e : (e as Error).message;
+      if (msg === api.LABEL_COLLISION) {
+        toastError($_("library.rename_error_conflict"));
+      } else {
+        toastError(msg);
+      }
+    } finally {
+      renaming = false;
     }
   }
 
@@ -339,6 +386,15 @@
                 ? fmtBytes(save.total_size_bytes)
                 : "—"}
             </span>
+            <button
+              type="button"
+              onclick={() => askRename(save)}
+              aria-label={$_("library.rename_button")}
+              title={$_("library.rename_title")}
+              class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-700/40 hover:text-zinc-200"
+            >
+              <Pencil size={14} />
+            </button>
             <button
               type="button"
               onclick={() => askUntrack(save)}
@@ -629,6 +685,42 @@
         <Trash2 size={14} />
         {$_("library.untrack_confirm_action")}
       </button>
+    {/snippet}
+  </Modal>
+
+  <!-- Rename label modal. The on-disk snapshot directory is renamed
+       atomically server-side, so a 409 means another save under this
+       (user, game) already owns the requested label. We show a localized
+       error and keep the modal open so the user can pick another. -->
+  <Modal
+    open={renameTarget !== null}
+    title={$_("library.rename_modal_title", {
+      values: { name: renameTarget?.game_slug ?? "" },
+    })}
+    onClose={() => {
+      if (!renaming) renameTarget = null;
+    }}
+    dismissible={!renaming}
+  >
+    <p class="mb-3 text-sm text-zinc-300">
+      {$_("library.rename_modal_body")}
+    </p>
+    <Input
+      bind:value={renameDraft}
+      placeholder={$_("library.rename_input_placeholder")}
+      disabled={renaming}
+    />
+    {#snippet footer()}
+      <Button
+        variant="ghost"
+        onclick={() => (renameTarget = null)}
+        disabled={renaming}
+      >
+        {$_("common.cancel")}
+      </Button>
+      <Button onclick={confirmRename} loading={renaming}>
+        {$_("library.rename_confirm")}
+      </Button>
     {/snippet}
   </Modal>
 </div>

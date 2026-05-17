@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use hoard_agent::agent::AgentHandle;
 
 use crate::commands::auth::{classify_server, UserInfo};
-use crate::commands::library::DetectionCache;
+use crate::commands::library::{self, DetectionCache};
 
 #[derive(Default)]
 pub struct AppState {
@@ -49,9 +49,13 @@ impl AppState {
                 None
             }
         };
+        let detection_cache = DetectionCache::default();
+        if let Some(cached) = library::load_detection_from_disk() {
+            *detection_cache.last.lock().unwrap() = Some(cached);
+        }
         Self {
             user: Mutex::new(user),
-            detection_cache: DetectionCache::default(),
+            detection_cache,
             agent: Mutex::new(None),
         }
     }

@@ -83,9 +83,26 @@
     }
   }
 
-  function pillFor(saveId: string) {
-    const a = $activity[saveId];
-    if (!a) return { label: $_("dashboard.pill_idle"), icon: CircleDot, klass: "text-zinc-400" };
+  function pillFor(save: TrackedSave) {
+    const a = $activity[save.save_id];
+    // Live activity always wins — if the agent reports anything, the pill
+    // reflects *that* (it's the freshest signal on screen). Falls through
+    // to the server-side history check only when we have no in-memory state
+    // for this save, which is the case on a cold app launch.
+    if (!a) {
+      if (save.last_version_num != null) {
+        return {
+          label: $_("dashboard.pill_saved_v", { values: { version: save.last_version_num } }),
+          icon: Check,
+          klass: "text-emerald-400",
+        };
+      }
+      return {
+        label: $_("dashboard.pill_no_backup"),
+        icon: CircleDot,
+        klass: "text-zinc-400",
+      };
+    }
     switch (a.state) {
       case "running":
         return {
@@ -125,7 +142,17 @@
           klass: "text-red-400",
         };
       default:
-        return { label: $_("dashboard.pill_idle"), icon: CircleDot, klass: "text-zinc-400" };
+        // Same fallback as the no-activity branch: prefer a real "v3 saved"
+        // over "Inactivo" whenever the server already proved this save has
+        // backups. Keeps the Dashboard honest after a restart.
+        if (save.last_version_num != null) {
+          return {
+            label: $_("dashboard.pill_saved_v", { values: { version: save.last_version_num } }),
+            icon: Check,
+            klass: "text-emerald-400",
+          };
+        }
+        return { label: $_("dashboard.pill_no_backup"), icon: CircleDot, klass: "text-zinc-400" };
     }
   }
 </script>
@@ -192,7 +219,7 @@
   {:else}
     <div class="space-y-2">
       {#each saves as save (save.save_id)}
-        {@const pill = pillFor(save.save_id)}
+        {@const pill = pillFor(save)}
         <div
           class="flex items-center justify-between gap-4 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4"
         >

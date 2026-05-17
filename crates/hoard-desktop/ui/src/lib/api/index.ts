@@ -126,6 +126,13 @@ export function scanLibrary(): Promise<DetectionReport> {
   return invoke<DetectionReport>("scan_library");
 }
 
+/** Forced re-scan from the Library "Re-escanear" button. Same wire shape as
+ *  `scan_library` — distinct command so the backend can disambiguate UI
+ *  intent from page-mount auto-scans in metrics/logs. */
+export function rescanLibrary(): Promise<DetectionReport> {
+  return invoke<DetectionReport>("rescan_library");
+}
+
 /** Return the previous scan if one is in memory, else null. */
 export function cachedDetection(): Promise<DetectionReport | null> {
   return invoke<DetectionReport | null>("cached_detection");
@@ -154,6 +161,25 @@ export function listTrackedSaves(): Promise<TrackedSave[]> {
 /** Stop tracking a save locally. Server-side data is left alone. */
 export function untrackSave(save_id: string): Promise<void> {
   return invoke<void>("untrack_save", { saveId: save_id });
+}
+
+/** Sentinel error string raised by `renameSaveLabel` when another save under
+ *  the same user+game already owns the requested label. The UI matches this
+ *  exact string to show a localized message instead of the raw server text. */
+export const LABEL_COLLISION = "conflict:label_collision";
+
+/** Rename a tracked save's label. The server PATCHes the row and atomically
+ *  renames the on-disk snapshot directory; the local agent re-attaches with
+ *  the new label so subsequent backups land in the right place. Rejects with
+ *  `LABEL_COLLISION` on 409. */
+export function renameSaveLabel(
+  save_id: string,
+  new_label: string,
+): Promise<TrackedSave> {
+  return invoke<TrackedSave>("rename_save_label", {
+    saveId: save_id,
+    newLabel: new_label,
+  });
 }
 
 // ---------------------------------------------------------------------------

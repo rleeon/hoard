@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Hoard pre-commit gate.
+#
+# Mirrors the CI checks so the most common breakages get caught before a push.
+# Install with: just install-hooks  (or `git config core.hooksPath .githooks`).
+#
+# Skip in an emergency with `git commit --no-verify`. CI will still block you,
+# so don't make a habit of it.
+
+set -eu
+
+# Only run heavy checks when staged changes touch the relevant trees. A doc-only
+# commit shouldn't pay for a full clippy run.
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+needs_rust=0
+needs_ui=0
+needs_i18n=0
+
+while IFS= read -r f; do
+    case "$f" in
+        *.rs|Cargo.toml|Cargo.lock|crates/*/Cargo.toml) needs_rust=1 ;;
+        crates/hoard-desktop/ui/*.ts|crates/hoard-desktop/ui/*.tsx|crates/hoard-desktop/ui/*.svelte|crates/hoard-desktop/ui/*.js|crates/hoard-desktop/ui/package.json) needs_ui=1 ;;
+    esac
+    case "$f" in
+        crates/hoard-desktop/ui/src/lib/i18n/locales/*.json) needs_i18n=1 ;;
+    esac
+done <<< "$staged"
+
+if [ "$needs_rust" = "1" ]; then
+    echo "[pre-commit] cargo fmt --check"
+    cargo fmt --all -- --check
+    echo "[pre-commit] cargo clippy"
+    cargo clippy --workspace --all-targets -- -D warnings
+fi
+
+if [ "$needs_ui" = "1" ]; then
+    echo "[pre-commit] svelte-check"
+    pnpm --dir crates/hoard-desktop/ui check
+fi
+
+if [ "$needs_i18n" = "1" ] && [ -f scripts/check-i18n.mjs ]; then
+    echo "[pre-commit] i18n locales lint"
+    node scripts/check-i18n.mjs
+fi
+
+exit 0

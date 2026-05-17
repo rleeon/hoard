@@ -231,6 +231,22 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Rename the label on an existing save. Surfaces 409 via
+    /// [`ApiError::Conflict`] so the UI can show a "label already exists"
+    /// message instead of a generic server error.
+    pub async fn rename_save_label(&self, save_id: &str, new_label: &str) -> Result<Save> {
+        let body = serde_json::json!({ "label": new_label });
+        let resp = self
+            .http
+            .patch(self.url(&format!("/v1/saves/{}", save_id)))
+            .header("authorization", self.auth_header())
+            .json(&body)
+            .send()
+            .await?;
+        let resp = Self::ok_or_err(resp).await?;
+        Ok(resp.json().await?)
+    }
+
     pub async fn list_snapshots(
         &self,
         save_id: &str,

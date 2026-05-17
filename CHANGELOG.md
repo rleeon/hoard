@@ -7,6 +7,117 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-05-17
+
+Reliability + polish cycle. The big one: auto-backup was silently broken
+for any game whose Ludusavi entry has no `processes` list and isn't a
+Steam install — the filesystem watcher was being armed lazily on
+`GameStarted`, which never fired for those titles, so the Dashboard pill
+stayed "Inactivo" forever even while the user was saving in-game. Fixed
+by arming the watcher unconditionally on `handle_add` and demoting
+`process_poll` to a pure UI signal. Plus: the detection report now
+survives restarts, the sidebar nav re-translates with the rest of the
+UI, the Dashboard pill no longer lies on cold boot, and the desktop
+update probe runs on a 6h timer instead of only at launch.
+
+### Added
+
+- **Persistent detection cache.** `DetectionReport` now serialises to
+  `cache.json` alongside `CliState`, with a 24h auto-rescan and an
+  explicit "Re-escanear" button on the Library page. Restarting the app
+  no longer wipes the scan — the Library hydrates from disk before the
+  first scan completes. (`crates/hoard-desktop/src/state.rs`,
+  `crates/hoard-desktop/src/commands/library.rs`,
+  `crates/hoard-desktop/ui/src/routes/Library.svelte`)
+- **Periodic in-app update poller.** Beyond the boot probe, the desktop
+  app now re-checks for client and server updates every 6 hours with
+  exponential backoff on failure (24 h cap), so long-running sessions
+  pick up releases shipped after launch. `App.svelte` consumes the
+  result via `$derived($lastReport)`; the timer is cancelled on unmount.
+  (`crates/hoard-desktop/ui/src/lib/stores/updates.ts`,
+  `crates/hoard-desktop/ui/src/App.svelte`)
+- **`just` task runner + pre-commit hook.** New `justfile` at the repo
+  root with `dev / check / test / i18n-check / sqlx-prepare /
+  install-hooks` recipes; `just install-hooks` points `core.hooksPath`
+  at `.githooks/`. The hook itself is scope-aware — `cargo fmt --check
+  && clippy` only when Rust files staged, `pnpm check` only when UI
+  files staged, `node scripts/check-i18n.mjs` only when locale JSON
+  changes — so doc-only commits don't pay the full price.
+  (`justfile`, `.githooks/pre-commit`, `docs/dev.md`, `CONTRIBUTING.md`)
+- **i18n parity linter.** `scripts/check-i18n.mjs` is pure-Node (no
+  deps): for each locale it JSON-validates, diffs the key set against
+  `en.json` (missing = error, extra = warning), and verifies
+  `{placeholder}` parity with a depth-aware parser that understands ICU
+  `plural` / `select` blocks (so branch literals like `{Zeile}` inside
+  `{count, plural, one {…}}` don't get mistaken for variables). Wired
+  into the pre-commit hook and the `clippy` CI job.
+  (`scripts/check-i18n.mjs`, `.github/workflows/ci.yml`)
+- **CI hardening.** New `sqlx-check` job runs `cargo sqlx prepare
+  --workspace --check` so a missing offline cache fails the PR;
+  `cargo-deny` job (Embark action v2) gates licenses / advisories /
+  sources / bans; `cargo-machete` flags unused workspace deps. Build
+  matrix split into Linux (full workspace + tests) and Windows / macOS
+  (excludes `hoard-desktop` — the Tauri `generate_context!()` macro
+  needs the frontend, which the release-desktop workflow already
+  exercises). (`.github/workflows/ci.yml`, `deny.toml`)
+- **Developer guide.** `docs/dev.md` enumerates every just recipe, the
+  hook setup, UI and Rust conventions, and the SQLx offline-cache
+  workflow.
+
+### Fixed
+
+- **Auto-backup no longer requires the game to be "running".** The fs
+  watcher is now armed unconditionally in `handle_add` and survives the
+  game starting/stopping. `process_poll` is kept for UI signalling
+  (`GameStarted` / `GameStopped` → activity pills, "starting agent"
+  state in Magic), but it no longer gates filesystem watching. Heavy
+  `tracing::info!` was added at watcher-arm, fs-event, backup-schedule,
+  and process transitions so the next silent-failure mode is caught
+  immediately instead of two releases later.
+  (`crates/hoard-agent/src/agent.rs`)
+- **Dashboard pill on first render.** `pillFor()` now falls back to
+  `dashboard.pill_saved` (`v{n} guardado`) when `$activity` is empty
+  but `tracked.last_version_num > 0`, or to a new
+  `dashboard.pill_no_backup` ("Sin copia aún") when there's genuinely
+  no snapshot yet. The old behaviour wrongly reported "Inactivo" for
+  every save until the agent emitted its first event.
+  (`crates/hoard-desktop/ui/src/routes/Dashboard.svelte`,
+  `crates/hoard-desktop/ui/src/lib/i18n/locales/*.json`)
+- **Stellaris (and similar) now show the "pick a folder" alert.** The
+  detector previously trusted the absolute `<winDocuments>\Paradox
+  Interactive\Stellaris` path it derived from the manifest even when
+  that folder didn't actually exist on the machine, so the user got a
+  "Track" button that backed up an empty directory. Detection now
+  verifies the candidate path exists and is non-empty before populating
+  `found_paths`; otherwise the card falls back to the same amber
+  no-save-folder alert other Steam-only matches get.
+  (`crates/hoard-detect/src/filesystem.rs`,
+  `crates/hoard-desktop/src/commands/library.rs`)
+- **Sidebar nav labels re-translate on language change.** `App.svelte`
+  was hard-coding the English strings on the `sidebarItems` array; they
+  now go through `$_()` at render time via a `labelKey` indirection,
+  so switching language in Settings updates the rail instantly.
+  (`crates/hoard-desktop/ui/src/App.svelte`,
+  `crates/hoard-desktop/ui/src/lib/i18n/locales/*.json`)
+
+### Changed
+
+- **Rename save label.** Saves grow a `PATCH /v1/saves/{id}` endpoint
+  on the server and a "Renombrar" item on the History page header.
+  Tracked local state migrates the label too; snapshot history is
+  preserved untouched. Drag-along from the 0.2 known-limitations list.
+  (`crates/hoard-server/src/routes/saves.rs`,
+  `crates/hoard-agent/src/api.rs`,
+  `crates/hoard-desktop/src/commands/library.rs`,
+  `crates/hoard-desktop/ui/src/routes/History.svelte`)
+- **i18n gap fill.** All eight locales gained the 11 keys behind the
+  Library "no save folder" alert and the untrack confirmation modal
+  (`library.no_save_alert_*`, `library.untrack_*`) plus the new
+  `dashboard.pill_no_backup`. `settings.about_line_1` bumped to "Hoard
+  1.4.0" across the board. Final linter state:
+  `i18n ok — 8 locales, 287 keys`.
+  (`crates/hoard-desktop/ui/src/lib/i18n/locales/*.json`)
+
 ## [1.3.5] — 2026-05-15
 
 In-app updates land. The desktop app already knew when a newer release was

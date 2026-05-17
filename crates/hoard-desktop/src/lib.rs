@@ -101,10 +101,12 @@ pub fn run() {
             commands::auth::current_user,
             commands::auth::refresh_quota,
             commands::library::scan_library,
+            commands::library::rescan_library,
             commands::library::cached_detection,
             commands::library::add_game_to_tracking,
             commands::library::list_tracked_saves,
             commands::library::untrack_save,
+            commands::library::rename_save_label,
             commands::agent::start_agent,
             commands::agent::stop_agent,
             commands::agent::backup_now,
@@ -158,6 +160,12 @@ pub fn run() {
             // download happens, and the next launch picks up the fresh
             // override transparently.
             commands::catalog::auto_update_catalog_in_background(app.handle().clone());
+
+            // Periodic detection refresh: if the cached scan is older than
+            // 24h, redo it in the background so the Library page is fresh
+            // when the user next opens it. Skipped entirely on a fresh
+            // install (no cache) so we don't spam disk on first launch.
+            commands::library::spawn_periodic_rescan(app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())

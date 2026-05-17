@@ -249,26 +249,40 @@ pub async fn patch(
 ) -> Result<Json<SaveResponse>, (StatusCode, Json<serde_json::Value>)> {
     let user_id = user.user_id.to_string();
 
-    // Verify ownership
-    let count: i64 = sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM saves WHERE id=? AND user_id=?",
+    // Verify ownership and fetch the current label so we can rename the
+    // physical snapshot directory atomically when the label changes.
+    let current = sqlx::query!(
+        "SELECT game_slug, label FROM saves WHERE id=? AND user_id=?",
         save_id,
         user_id
     )
-    .fetch_one(&state.pool)
+    .fetch_optional(&state.pool)
     .await
-    .map_err(|_| internal_err())?;
-
-    if count == 0 {
-        return Err((
+    .map_err(|_| internal_err())?
+    .ok_or_else(|| {
+        (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error":"not found"})),
-        ));
-    }
+        )
+    })?;
 
-    if let Some(label) = &body.label {
-        sqlx::query!("UPDATE saves SET label=? WHERE id=?", label, save_id)
-            .execute(&state.pool)
+    // ---- Label rename ------------------------------------------------------
+    // The label is part of the on-disk path (data/<user>/<game>/<label>/v*/),
+    // so a rename has to move two pieces in lockstep: the `saves.label`
+    // row and the directory itself. We do the UPDATE inside a transaction,
+    // then rename the directory, then commit. If the rename fails we roll
+    // back the UPDATE so the user sees a clean error instead of a save
+    // whose old snapshots are unreachable.
+    if let Some(new_label) = body.label.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if new_label != current.label {
+            let mut tx = state.pool.begin().await.map_err(|_| internal_err())?;
+
+            sqlx::query!(
+                "UPDATE saves SET label=? WHERE id=?",
+                new_label,
+                save_id
+            )
+            .execute(&mut *tx)
             .await
             .map_err(|e| {
                 if e.to_string().contains("UNIQUE") {
@@ -280,7 +294,56 @@ pub async fn patch(
                     internal_err()
                 }
             })?;
+
+            let old_dir = state
+                .config
+                .storage
+                .data_dir
+                .join("data")
+                .join(&user_id)
+                .join(&current.game_slug)
+                .join(&current.label);
+            let new_dir = state
+                .config
+                .storage
+                .data_dir
+                .join("data")
+                .join(&user_id)
+                .join(&current.game_slug)
+                .join(new_label);
+
+            if old_dir.exists() {
+                // Reject if the target dir already exists — the UNIQUE
+                // constraint above should make this unreachable but we
+                // double-check rather than trust two writers can't race.
+                if new_dir.exists() {
+                    tx.rollback().await.ok();
+                    return Err((
+                        StatusCode::CONFLICT,
+                        Json(serde_json::json!({"error":"target directory already exists"})),
+                    ));
+                }
+                if let Some(parent) = new_dir.parent() {
+                    tokio::fs::create_dir_all(parent).await.ok();
+                }
+                if let Err(e) = tokio::fs::rename(&old_dir, &new_dir).await {
+                    tracing::warn!(error = %e, old = ?old_dir, new = ?new_dir,
+                        "rename failed during save label patch; rolling back DB");
+                    tx.rollback().await.ok();
+                    return Err(internal_err());
+                }
+            }
+
+            if let Err(e) = tx.commit().await {
+                // Commit failed after the rename succeeded — try to undo
+                // the rename so the world stays consistent.
+                tracing::warn!(error = %e, "commit failed after rename; reverting rename");
+                tokio::fs::rename(&new_dir, &old_dir).await.ok();
+                return Err(internal_err());
+            }
+        }
     }
+
     if let Some(hint) = &body.local_path_hint {
         sqlx::query!(
             "UPDATE saves SET local_path_hint=? WHERE id=?",

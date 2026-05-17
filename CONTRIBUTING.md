@@ -17,8 +17,8 @@ other's time.
 
 - Open an issue first for non-trivial changes so we can agree on the
   shape before you write code.
-- Run `cargo fmt --all`, `cargo clippy --workspace -- -D warnings`,
-  `cargo test --workspace` — CI will block on all of these.
+- Run `just check` (formatting + clippy + svelte-check) — CI will block
+  on all of these. `just test` covers the workspace tests.
 - One logical change per PR. Refactors and feature work go in separate
   PRs.
 - New SQL: add a migration under `crates/hoard-server/migrations/`.
@@ -27,6 +27,19 @@ other's time.
   builds offline.
 - Architectural changes: write an ADR in `docs/decisions/` (see
   existing ones for the format).
+
+## Task runner
+
+We use [`just`](https://github.com/casey/just) for the common workflows
+(`just dev`, `just check`, `just test`, `just i18n-check`, …). See
+[docs/dev.md](docs/dev.md) for the full recipe list. Install once with
+`cargo install just` or your package manager.
+
+After clone, enable the shared git hooks:
+
+```sh
+just install-hooks
+```
 
 ## Local development setup
 

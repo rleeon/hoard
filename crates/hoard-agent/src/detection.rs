@@ -103,6 +103,24 @@ const FS_PARALLELISM: usize = 32;
 /// catalog would spam the IPC channel; we batch by chunks of this many.
 const PROGRESS_CHUNK: usize = 256;
 
+/// Slugs whose catalog entry points to a *game root* that mixes config,
+/// mods, and saves in one directory. If we used the catalog path verbatim
+/// as `found_paths`, tracking the game would back up the entire root
+/// (mods included), which is rarely what the user wants — and on Stellaris
+/// in particular it triggers backups every time the game writes any of its
+/// dozens of telemetry files.
+///
+/// Strategy: when the filesystem heuristic hits the root, try the well-known
+/// saves subdirectory. If the subdir exists, surface that as the only path;
+/// if it doesn't, leave `found_paths` empty so the UI shows the amber
+/// "pick folder yourself" alert. Either way, never expose the root itself
+/// as a backup target.
+const AMBIGUOUS_ROOT_PATHS: &[(&str, &str)] = &[
+    // Paradox Interactive/Stellaris — config + mods + saves all together;
+    // actual save files live under `save games/`.
+    ("stellaris", "save games"),
+];
+
 /// Run filesystem + Steam scans against the embedded catalog, merge by slug,
 /// and report.
 ///
@@ -198,6 +216,7 @@ where
             let _permit = permit;
             let mut hits: Vec<PathBuf> = Vec::new();
             let mut seen: HashSet<PathBuf> = HashSet::new();
+            let mut root_matched = false;
             for tmpl in &templates {
                 let candidates = expand_path(tmpl, os);
                 if candidates.is_empty() {
@@ -216,13 +235,24 @@ where
                     }
                     if seen.insert(candidate.clone()) {
                         hits.push(candidate);
+                        root_matched = true;
                     }
                 }
             }
-            if hits.is_empty() {
+            // Refine ambiguous "game root" hits down to their canonical
+            // save subdirectory (or drop them entirely so the UI shows
+            // the amber alert).
+            let refined = refine_ambiguous_root(&slug, hits);
+            if refined.is_empty() && root_matched {
+                // The fs heuristic saw the game on disk but we deliberately
+                // hid the path because it's a known ambiguous root. Keep
+                // the slug in the report (with no path) so the UI shows
+                // an amber alert prompting the user to pick a folder.
+                Some((slug, display_name, Vec::new()))
+            } else if refined.is_empty() {
                 None
             } else {
-                Some((slug, display_name, hits))
+                Some((slug, display_name, refined))
             }
         }));
     }
@@ -324,6 +354,26 @@ fn merge_fs_hit(
     }
 }
 
+/// For slugs flagged in [`AMBIGUOUS_ROOT_PATHS`], replace each "game root"
+/// hit with its known save subdirectory if that subdirectory exists on
+/// disk. If it doesn't, drop the hit — the UI then shows the amber
+/// "pick folder yourself" alert instead of silently tracking the root.
+///
+/// Slugs not in the list pass through unchanged.
+fn refine_ambiguous_root(slug: &str, hits: Vec<PathBuf>) -> Vec<PathBuf> {
+    let Some((_, subdir)) = AMBIGUOUS_ROOT_PATHS.iter().find(|(s, _)| *s == slug) else {
+        return hits;
+    };
+    let mut refined: Vec<PathBuf> = Vec::new();
+    for hit in hits {
+        let candidate = hit.join(subdir);
+        if candidate.is_dir() && !refined.contains(&candidate) {
+            refined.push(candidate);
+        }
+    }
+    refined
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,5 +423,40 @@ mod tests {
         assert_eq!(g.source, DetectionSource::FilesystemHeuristic);
         assert_eq!(g.confidence, Confidence::Medium);
         assert!(g.steam_app_id.is_none());
+    }
+
+    /// Stellaris' catalog path is `<xdgData>/Paradox Interactive/Stellaris`,
+    /// which is the game root (config + mods + saves). Tracking that
+    /// directory would back up everything indiscriminately. The refiner
+    /// must surface only the `save games/` subdirectory when it exists,
+    /// or drop the hit entirely so the UI shows the amber alert.
+    #[test]
+    fn refine_ambiguous_root_promotes_existing_save_games_subdir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("Paradox Interactive").join("Stellaris");
+        std::fs::create_dir_all(root.join("save games")).unwrap();
+        std::fs::create_dir_all(root.join("mod")).unwrap();
+
+        let refined = refine_ambiguous_root("stellaris", vec![root.clone()]);
+        assert_eq!(refined, vec![root.join("save games")]);
+    }
+
+    #[test]
+    fn refine_ambiguous_root_drops_hit_when_save_subdir_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("Paradox Interactive").join("Stellaris");
+        // Root exists (config + mods present) but no `save games/` yet —
+        // user installed Stellaris but hasn't created a campaign.
+        std::fs::create_dir_all(root.join("mod")).unwrap();
+
+        let refined = refine_ambiguous_root("stellaris", vec![root]);
+        assert!(refined.is_empty());
+    }
+
+    #[test]
+    fn refine_ambiguous_root_passes_through_non_listed_slugs() {
+        let p = PathBuf::from("/whatever/Skyrim");
+        let refined = refine_ambiguous_root("skyrim-special-edition", vec![p.clone()]);
+        assert_eq!(refined, vec![p]);
     }
 }
