@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.1] — 2026-05-17
+
+Emergency follow-up to 1.4.0. Two bugs in the in-app upgrade flow that
+only surfaced once users tried it against the actual GitHub release:
+
+### Fixed
+
+- **App refused to launch after upgrade.** `setup()` called
+  `commands::library::spawn_periodic_rescan`, which used `tokio::spawn`
+  before Tauri had entered its event loop — so the very first thing the
+  1.4.0 binary did was panic with *"there is no reactor running, must be
+  called from the context of a Tokio 1.x runtime"*. On Windows this
+  manifested as an instant exit with no window ever painting; on Linux
+  the .deb installed cleanly but reopening from the terminal printed
+  the panic and bailed. Replaced with `tauri::async_runtime::spawn`,
+  matching the sibling helper `auto_update_catalog_in_background`.
+- **Old process kept running after `dpkg -i` / `msiexec`.**
+  `apply_desktop_update` returned `InstallerLaunched` without telling
+  the app to exit, so the user stayed on the 1.3.5 window even though
+  the new binary was already on disk. On Windows this also blocked
+  msiexec from overlaying the running `.exe` cleanly. After a
+  successful installer launch we now wait 1.5 s (long enough for the
+  frontend to paint the "installer launched" toast), then on Linux
+  spawn the freshly-installed binary via `setsid` so it outlives us
+  and call `app.exit(0)`. Windows and macOS just exit — `msiexec` is
+  still running async and the .exe is mid-replace, and `open` on
+  macOS hands Finder the .dmg; relaunching either would race.
+
 ## [1.4.0] — 2026-05-17
 
 Reliability + polish cycle. The big one: auto-backup was silently broken

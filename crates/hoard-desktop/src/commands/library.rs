@@ -476,7 +476,14 @@ fn format_optional_time(t: Option<OffsetDateTime>) -> Option<String> {
 /// are logged and swallowed — a transient detection failure must not crash
 /// the app loop.
 pub fn spawn_periodic_rescan(app: AppHandle) {
-    tokio::spawn(async move {
+    // `tauri::async_runtime::spawn`, not `tokio::spawn`: this is called from
+    // `setup()`, which runs before Tauri enters its event loop, so there is
+    // no ambient Tokio runtime yet. Using `tokio::spawn` here panics with
+    // "there is no reactor running" the instant the app starts — that's how
+    // 1.4.0 shipped, which is why the binary refused to launch on every
+    // platform after the upgrade until the user reopened it from a terminal
+    // and saw the stack trace.
+    tauri::async_runtime::spawn(async move {
         use std::time::Duration;
         loop {
             tokio::time::sleep(Duration::from_secs(POLL_INTERVAL_SECS)).await;

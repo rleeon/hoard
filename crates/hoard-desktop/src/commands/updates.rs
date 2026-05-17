@@ -290,10 +290,29 @@ pub async fn apply_desktop_update(app: AppHandle) -> Result<ApplyOutcome, String
     // user can do it themselves.
     let path_str = dest.to_string_lossy().to_string();
     match launch_installer(&dest).await {
-        Ok(()) => Ok(ApplyOutcome::InstallerLaunched {
-            path: path_str,
-            version,
-        }),
+        Ok(()) => {
+            // Quit the old process shortly after we return. Without this the
+            // user is stuck running 1.3.5 even though dpkg/msiexec already
+            // dropped 1.4.0 on disk — that's exactly what the 1.3.5 → 1.4.0
+            // upgrade looked like in the wild on Linux ("se queda tan
+            // pancho") and is what makes Windows refuse to overlay the .exe
+            // until the running copy goes away. The small delay lets the
+            // frontend paint the "installed, reopen" toast before we cut the
+            // process. On Linux we additionally relaunch the freshly-
+            // installed binary so the user doesn't have to dig around the
+            // app menu — the .deb sits at the same /usr/bin path so
+            // `current_exe()` already points at the new binary, and
+            // `setsid` detaches it from our dying process group.
+            let app2 = app.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(1500)).await;
+                relaunch_then_exit(&app2);
+            });
+            Ok(ApplyOutcome::InstallerLaunched {
+                path: path_str,
+                version,
+            })
+        }
         Err(e) => {
             tracing::warn!(error = %e, "installer launch failed, falling back to manual");
             Ok(ApplyOutcome::Downloaded {
@@ -302,6 +321,41 @@ pub async fn apply_desktop_update(app: AppHandle) -> Result<ApplyOutcome, String
             })
         }
     }
+}
+
+/// Try to spawn the new binary detached from the current process, then exit.
+/// Failures are logged and swallowed — the worst case is the user has to
+/// reopen the app from their app menu, which is exactly the 1.4.0 status
+/// quo we're trying to improve.
+fn relaunch_then_exit(app: &AppHandle) {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(exe) = std::env::current_exe() {
+            use std::process::{Command, Stdio};
+            // `setsid` puts the child in its own session so it survives our
+            // imminent `app.exit(0)`. If `setsid` isn't on PATH (unusual on
+            // any modern Linux) we just skip the relaunch — exit is still
+            // useful on its own because the old process was blocking the
+            // user from running the new binary anyway.
+            let spawn = Command::new("setsid")
+                .arg(&exe)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
+            if let Err(e) = spawn {
+                tracing::warn!(error = %e, exe = %exe.display(), "couldn't relaunch with setsid; user will have to reopen manually");
+            }
+        }
+    }
+    // On Windows we *don't* relaunch: msiexec is still running asynchronously
+    // and the .exe is mid-replace. Starting a process from the path that's
+    // being overwritten races msiexec and usually crashes. The user reopens
+    // from the Start menu after the installer finishes.
+    //
+    // On macOS we leave it to the user too — `open` on the .dmg pops Finder
+    // and the user drags into Applications.
+    app.exit(0);
 }
 
 /// Pick the right asset for the current OS/arch. We match on filename suffix
