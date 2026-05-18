@@ -285,6 +285,11 @@
   "settings.server_recheck": "Erneut prüfen",
   "settings.server_command_copied": "Befehl kopiert — führe ihn auf deinem Server aus.",
   "settings.server_command_manual": "Führe `sudo hoard-server upgrade` auf deinem Server aus.",
+  "settings.server_upgrade_button": "Server aktualisieren",
+  "settings.server_upgrade_hint": "Du wirst nach deinem Passwort gefragt — Hoard führt das Upgrade mit Adminrechten aus und startet den Dienst danach neu.",
+  "settings.server_upgrade_success": "Server aktualisiert und neu gestartet.",
+  "settings.server_upgrade_partial": "Server wurde aktualisiert, aber der Neustart hat nicht geklappt ({error}). Starte ihn von Hand, wenn es passt.",
+  "settings.server_upgrade_failed": "Server konnte nicht aktualisiert werden: {error}",
   "diagnostics.unlocked_toast": "Agent-Diagnose freigeschaltet — öffne die Einstellungen.",
   "diagnostics.section_title": "Agent-Diagnose",
   "diagnostics.heading": "Live-Agent-Slots",
@@ -296,6 +301,10 @@
   "diagnostics.last_fs_event": "Letztes FS-Ereignis",
   "diagnostics.next_backup": "Nächstes Backup",
   "diagnostics.relative_seconds": "vor {count}s",
+  "diagnostics.title": "Erkennungsdiagnose",
+  "diagnostics.slug_label": "Slug",
+  "diagnostics.run_button": "Diagnose ausführen",
+  "diagnostics.no_trace": "Starte eine Diagnose, um den Pipeline-Trace zu sehen.",
   "library.rename_button": "Label umbenennen",
   "library.rename_title": "Label dieses Spielstands umbenennen",
   "library.rename_modal_title": "{name} umbenennen",
@@ -303,5 +312,9 @@
   "library.rename_input_placeholder": "Neues Label",
   "library.rename_confirm": "Umbenennen",
   "library.rename_success": "Label auf „{label}“ aktualisiert.",
-  "library.rename_error_conflict": "Ein anderer Spielstand für dieses Spiel verwendet dieses Label bereits. Wähle ein anderes."
+  "library.rename_error_conflict": "Ein anderer Spielstand für dieses Spiel verwendet dieses Label bereits. Wähle ein anderes.",
+  "library.manual_label": "Manuell",
+  "library.use_auto_detection": "Zurück zur automatischen Erkennung",
+  "library.manual_path_set": "Hoard merkt sich den von dir gewählten Ordner für {name}.",
+  "library.manual_path_cleared": "Manuelle Auswahl für {name} entfernt."
 }

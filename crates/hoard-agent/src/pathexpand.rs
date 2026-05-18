@@ -12,7 +12,7 @@
 //! Detection is intentionally non-destructive: nothing here touches disks
 //! beyond reading environment variables.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::manifest::Os;
 
@@ -50,6 +50,57 @@ pub fn expand_path(template: &str, os: Os) -> Vec<PathBuf> {
             }
         })
         .collect()
+}
+
+/// Expand a Ludusavi Windows template against a Proton/Wine prefix root.
+///
+/// `prefix` points at the `pfx/` directory of one Steam compatdata entry
+/// (e.g. `~/.steam/steam/steamapps/compatdata/413150/pfx`). Windows
+/// placeholders (`<winAppData>`, `<home>`, `<root>`, …) are mapped onto
+/// the prefix's `drive_c/` layout, mirroring how Wine exposes a Windows
+/// user environment.
+///
+/// Returns an empty `Vec` if the template doesn't start with a placeholder
+/// we know how to map to a Wine path — Linux/Mac-only placeholders
+/// (`<xdgData>`, `<macAppSupport>`, …) and unknown tokens both yield
+/// `vec![]` so the caller doesn't accidentally stat a meaningless path
+/// under the prefix.
+pub fn expand_path_in_prefix(template: &str, prefix: &Path) -> Vec<PathBuf> {
+    let Some((placeholder, tail)) = split_placeholder(template) else {
+        // Literal templates don't apply to a prefix — they're absolute
+        // host paths, not Wine paths. Drop them.
+        return Vec::new();
+    };
+    let Some(base) = expand_placeholder_in_prefix(&placeholder, prefix) else {
+        return Vec::new();
+    };
+    let tail_clean = tail.trim_start_matches(['/', '\\']);
+    if tail_clean.is_empty() {
+        vec![base]
+    } else {
+        vec![base.join(tail_clean)]
+    }
+}
+
+/// Map one Ludusavi placeholder onto the corresponding directory inside a
+/// Wine prefix. Returns `None` for placeholders that don't apply (Linux/Mac
+/// tokens, per-install identifiers, unknown names).
+fn expand_placeholder_in_prefix(name: &str, prefix: &Path) -> Option<PathBuf> {
+    let drive_c = prefix.join("drive_c");
+    let steamuser = drive_c.join("users/steamuser");
+    let mapped = match name {
+        "winAppData" => steamuser.join("AppData/Roaming"),
+        "winLocalAppData" => steamuser.join("AppData/Local"),
+        "winLocalAppDataLow" => steamuser.join("AppData/LocalLow"),
+        "winDocuments" => steamuser.join("Documents"),
+        "winPublic" => drive_c.join("users/Public"),
+        "winProgramData" => drive_c.join("ProgramData"),
+        "winDir" => drive_c.join("windows"),
+        "home" => steamuser,
+        "root" => drive_c,
+        _ => return None,
+    };
+    Some(mapped)
 }
 
 /// Split `<name>tail` into `("name", "tail")`. Returns `None` if the template
@@ -162,16 +213,13 @@ fn xdg_or(default: Option<PathBuf>, env_var: &str) -> Vec<PathBuf> {
 mod tests {
     use super::*;
 
-    use std::sync::Mutex;
-
-    // Tests in this module mutate the process environment, which is shared
-    // across threads. cargo test runs them in parallel by default, so we
-    // serialise with a single mutex instead of asking users to remember
-    // `--test-threads=1`.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
+    // Tests in this module mutate the process environment. Use the
+    // crate-wide lock so tests in *other* modules that also poke `HOME`
+    // can't interleave with us.
     fn with_env<F: FnOnce()>(pairs: &[(&str, Option<&str>)], f: F) {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_lock::ENV
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let prev: Vec<_> = pairs
             .iter()
             .map(|(name, _)| (*name, std::env::var_os(name)))
@@ -257,5 +305,69 @@ mod tests {
             let out = expand_path("<home>", Os::Linux);
             assert_eq!(out, vec![PathBuf::from("/home/test")]);
         });
+    }
+
+    #[test]
+    fn expands_winappdata_against_prefix() {
+        let prefix = PathBuf::from("/tmp/fake-prefix");
+        let out = expand_path_in_prefix("<winAppData>/Game", &prefix);
+        assert_eq!(
+            out,
+            vec![PathBuf::from(
+                "/tmp/fake-prefix/drive_c/users/steamuser/AppData/Roaming/Game"
+            )]
+        );
+    }
+
+    #[test]
+    fn expands_all_known_windows_tokens_against_prefix() {
+        let prefix = PathBuf::from("/p");
+        let cases: &[(&str, &str)] = &[
+            ("<winAppData>/X", "/p/drive_c/users/steamuser/AppData/Roaming/X"),
+            ("<winLocalAppData>/X", "/p/drive_c/users/steamuser/AppData/Local/X"),
+            (
+                "<winLocalAppDataLow>/X",
+                "/p/drive_c/users/steamuser/AppData/LocalLow/X",
+            ),
+            ("<winDocuments>/X", "/p/drive_c/users/steamuser/Documents/X"),
+            ("<winPublic>/X", "/p/drive_c/users/Public/X"),
+            ("<winProgramData>/X", "/p/drive_c/ProgramData/X"),
+            ("<winDir>/X", "/p/drive_c/windows/X"),
+            ("<home>/X", "/p/drive_c/users/steamuser/X"),
+            ("<root>/X", "/p/drive_c/X"),
+        ];
+        for (template, expected) in cases {
+            let out = expand_path_in_prefix(template, &prefix);
+            assert_eq!(
+                out,
+                vec![PathBuf::from(expected)],
+                "template {template} mismatched"
+            );
+        }
+    }
+
+    #[test]
+    fn prefix_expand_drops_linux_and_unknown_tokens() {
+        let prefix = PathBuf::from("/p");
+        assert!(expand_path_in_prefix("<xdgData>/X", &prefix).is_empty());
+        assert!(expand_path_in_prefix("<xdgConfig>/X", &prefix).is_empty());
+        assert!(expand_path_in_prefix("<macAppSupport>/X", &prefix).is_empty());
+        assert!(expand_path_in_prefix("<frobnicate>/X", &prefix).is_empty());
+    }
+
+    #[test]
+    fn prefix_expand_drops_literal_templates() {
+        let prefix = PathBuf::from("/p");
+        assert!(expand_path_in_prefix("/etc/games/foo", &prefix).is_empty());
+    }
+
+    #[test]
+    fn prefix_expand_placeholder_no_tail() {
+        let prefix = PathBuf::from("/p");
+        let out = expand_path_in_prefix("<winAppData>", &prefix);
+        assert_eq!(
+            out,
+            vec![PathBuf::from("/p/drive_c/users/steamuser/AppData/Roaming")]
+        );
     }
 }

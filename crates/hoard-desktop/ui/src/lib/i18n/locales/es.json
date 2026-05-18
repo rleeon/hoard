@@ -251,6 +251,10 @@
   "library.rename_confirm": "Renombrar",
   "library.rename_success": "Etiqueta actualizada a «{label}».",
   "library.rename_error_conflict": "Otra partida de este juego ya usa esa etiqueta. Elige otra distinta.",
+  "library.manual_label": "Manual",
+  "library.use_auto_detection": "Volver a la detección automática",
+  "library.manual_path_set": "Hoard recordará la carpeta que elegiste para {name}.",
+  "library.manual_path_cleared": "Se quitó la elección manual para {name}.",
   "history.browse": "Examinar…",
   "history.choose_destination_title": "¿Dónde quieres restaurar?",
   "history.choose_destination_description": "Hoard aún no conoce una carpeta de partidas para este juego en este equipo. Elige una carpeta y la crearemos si no existe.",
@@ -293,6 +297,11 @@
   "settings.server_recheck": "Volver a comprobar",
   "settings.server_command_copied": "Comando copiado — ejecútalo en tu servidor.",
   "settings.server_command_manual": "Ejecuta `sudo hoard-server upgrade` en tu servidor.",
+  "settings.server_upgrade_button": "Actualizar servidor",
+  "settings.server_upgrade_hint": "Se te pedirá la contraseña — Hoard ejecuta la actualización en tu servidor con permisos de administrador y reinicia el servicio al terminar.",
+  "settings.server_upgrade_success": "Servidor actualizado y reiniciado.",
+  "settings.server_upgrade_partial": "El servidor se actualizó, pero el reinicio falló ({error}). Reinícialo a mano cuando puedas.",
+  "settings.server_upgrade_failed": "No se pudo actualizar el servidor: {error}",
   "diagnostics.unlocked_toast": "Diagnóstico del agente desbloqueado — abre Ajustes.",
   "diagnostics.section_title": "Diagnóstico del agente",
   "diagnostics.heading": "Slots del agente",
@@ -303,5 +312,9 @@
   "diagnostics.process_running": "Juego abierto",
   "diagnostics.last_fs_event": "Último evento FS",
   "diagnostics.next_backup": "Próximo backup",
-  "diagnostics.relative_seconds": "hace {count}s"
+  "diagnostics.relative_seconds": "hace {count}s",
+  "diagnostics.title": "Diagnóstico de detección",
+  "diagnostics.slug_label": "Slug",
+  "diagnostics.run_button": "Diagnosticar",
+  "diagnostics.no_trace": "Lanza un diagnóstico para ver la traza del pipeline."
 }

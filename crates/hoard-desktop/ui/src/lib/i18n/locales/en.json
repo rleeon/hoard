@@ -251,6 +251,10 @@
   "library.rename_confirm": "Rename",
   "library.rename_success": "Label updated to “{label}”.",
   "library.rename_error_conflict": "Another save for this game already uses that label. Pick a different one.",
+  "library.manual_label": "Manual",
+  "library.use_auto_detection": "Back to auto-detection",
+  "library.manual_path_set": "Hoard will remember the folder you picked for {name}.",
+  "library.manual_path_cleared": "Cleared the manual override for {name}.",
   "history.browse": "Browse…",
   "history.choose_destination_title": "Where should we restore to?",
   "history.choose_destination_description": "Hoard doesn't know a save folder for this game on this machine yet. Pick a folder and we'll create it if it doesn't exist.",
@@ -293,6 +297,11 @@
   "settings.server_recheck": "Check again",
   "settings.server_command_copied": "Command copied — run it on your server.",
   "settings.server_command_manual": "Run `sudo hoard-server upgrade` on your server.",
+  "settings.server_upgrade_button": "Upgrade server",
+  "settings.server_upgrade_hint": "You'll be asked for your password — Hoard runs the upgrade on your server with elevated privileges and restarts the service afterwards.",
+  "settings.server_upgrade_success": "Server upgraded and restarted.",
+  "settings.server_upgrade_partial": "Server upgraded, but the restart didn't go through ({error}). Restart it yourself when it's safe to.",
+  "settings.server_upgrade_failed": "Couldn't upgrade the server: {error}",
   "diagnostics.unlocked_toast": "Agent diagnostics unlocked — open Settings.",
   "diagnostics.section_title": "Agent diagnostics",
   "diagnostics.heading": "Live agent slots",
@@ -303,5 +312,9 @@
   "diagnostics.process_running": "Game running",
   "diagnostics.last_fs_event": "Last fs event",
   "diagnostics.next_backup": "Next scheduled backup",
-  "diagnostics.relative_seconds": "{count}s ago"
+  "diagnostics.relative_seconds": "{count}s ago",
+  "diagnostics.title": "Detection diagnostics",
+  "diagnostics.slug_label": "Slug",
+  "diagnostics.run_button": "Diagnose",
+  "diagnostics.no_trace": "Run a diagnosis to see the pipeline trace."
 }

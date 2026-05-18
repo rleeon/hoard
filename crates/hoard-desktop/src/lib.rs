@@ -107,6 +107,9 @@ pub fn run() {
             commands::library::list_tracked_saves,
             commands::library::untrack_save,
             commands::library::rename_save_label,
+            commands::library::set_manual_path,
+            commands::library::clear_manual_path,
+            commands::library::detection_diagnostics,
             commands::agent::start_agent,
             commands::agent::stop_agent,
             commands::agent::backup_now,
@@ -129,6 +132,7 @@ pub fn run() {
             commands::catalog::catalog_status,
             commands::updates::check_for_updates,
             commands::updates::apply_desktop_update,
+            commands::updates::apply_server_update,
         ])
         .setup(|app| {
             // Build the tray as soon as we have an AppHandle. Failures here

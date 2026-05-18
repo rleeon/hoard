@@ -285,6 +285,11 @@
   "settings.server_recheck": "Revérifier",
   "settings.server_command_copied": "Commande copiée — exécutez-la sur votre serveur.",
   "settings.server_command_manual": "Exécutez `sudo hoard-server upgrade` sur votre serveur.",
+  "settings.server_upgrade_button": "Mettre à jour le serveur",
+  "settings.server_upgrade_hint": "Votre mot de passe vous sera demandé — Hoard lance la mise à jour avec des droits administrateur et redémarre le service ensuite.",
+  "settings.server_upgrade_success": "Serveur mis à jour et redémarré.",
+  "settings.server_upgrade_partial": "Le serveur est à jour, mais le redémarrage a échoué ({error}). Redémarrez-le manuellement dès que possible.",
+  "settings.server_upgrade_failed": "Impossible de mettre à jour le serveur : {error}",
   "diagnostics.unlocked_toast": "Diagnostic de l'agent débloqué — ouvrez Réglages.",
   "diagnostics.section_title": "Diagnostic de l'agent",
   "diagnostics.heading": "Slots de l'agent",
@@ -296,6 +301,10 @@
   "diagnostics.last_fs_event": "Dernier évènement FS",
   "diagnostics.next_backup": "Prochaine sauvegarde",
   "diagnostics.relative_seconds": "il y a {count}s",
+  "diagnostics.title": "Diagnostic de détection",
+  "diagnostics.slug_label": "Slug",
+  "diagnostics.run_button": "Diagnostiquer",
+  "diagnostics.no_trace": "Lance un diagnostic pour voir la trace du pipeline.",
   "library.rename_button": "Renommer l'étiquette",
   "library.rename_title": "Renommer l'étiquette de cette sauvegarde",
   "library.rename_modal_title": "Renommer {name}",
@@ -303,5 +312,9 @@
   "library.rename_input_placeholder": "Nouvelle étiquette",
   "library.rename_confirm": "Renommer",
   "library.rename_success": "Étiquette mise à jour en « {label} ».",
-  "library.rename_error_conflict": "Une autre sauvegarde de ce jeu utilise déjà cette étiquette. Choisis-en une autre."
+  "library.rename_error_conflict": "Une autre sauvegarde de ce jeu utilise déjà cette étiquette. Choisis-en une autre.",
+  "library.manual_label": "Manuel",
+  "library.use_auto_detection": "Revenir à la détection automatique",
+  "library.manual_path_set": "Hoard retiendra le dossier que tu as choisi pour {name}.",
+  "library.manual_path_cleared": "Choix manuel retiré pour {name}."
 }

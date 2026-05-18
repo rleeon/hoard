@@ -20,6 +20,7 @@
   import SettingsRoute from "./routes/Settings.svelte";
   import HistoryRoute from "./routes/History.svelte";
   import LogsRoute from "./routes/Logs.svelte";
+  import DiagnosticsRoute from "./routes/Diagnostics.svelte";
 
   import Toaster from "./lib/components/Toaster.svelte";
   import UpdateConfirmModal from "./lib/components/UpdateConfirmModal.svelte";
@@ -54,6 +55,7 @@
     "/settings": SettingsRoute,
     "/history/:saveId": HistoryRoute,
     "/logs": LogsRoute,
+    "/diagnostics": DiagnosticsRoute,
   };
 
   let booted = $state(false);
@@ -161,6 +163,7 @@
     "/settings",
     "/history",
     "/logs",
+    "/diagnostics",
   ];
   const isAppRoute = $derived(
     APP_ROUTE_PREFIXES.some((p) => $location.startsWith(p)),
@@ -197,7 +200,7 @@
             tabindex="-1"
             aria-hidden="true"
           >
-            v{import.meta.env.VITE_HOARD_VERSION || "1.4.6"}
+            v{import.meta.env.VITE_HOARD_VERSION || "1.5.0"}
           </button>
         </div>
         <!-- Small amber alert button. Same visual language as "Sin carpeta":

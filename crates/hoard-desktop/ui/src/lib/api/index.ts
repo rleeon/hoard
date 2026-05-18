@@ -74,7 +74,8 @@ export type Confidence = "low" | "medium" | "high";
 export type DetectionSource =
   | "filesystem_heuristic"
   | "steam_library"
-  | "both";
+  | "both"
+  | "manual_override";
 
 export type DetectedGame = {
   slug: string;
@@ -161,6 +162,46 @@ export function listTrackedSaves(): Promise<TrackedSave[]> {
 /** Stop tracking a save locally. Server-side data is left alone. */
 export function untrackSave(save_id: string): Promise<void> {
   return invoke<void>("untrack_save", { saveId: save_id });
+}
+
+/** Persist a user-picked save-folder override for a slug. Wins over every
+ *  heuristic on subsequent scans (source becomes `manual_override`). The
+ *  backend validates that the path exists and is a directory before saving;
+ *  it then refreshes the detection cache so the next render sees the
+ *  override without forcing a Rescan click. */
+export function setManualPath(slug: string, path: string): Promise<void> {
+  return invoke<void>("set_manual_path", { slug, path });
+}
+
+/** Drop a manual override and fall back to whatever the heuristics find. */
+export function clearManualPath(slug: string): Promise<void> {
+  return invoke<void>("clear_manual_path", { slug });
+}
+
+export type DroppedPath = {
+  path: string;
+  reason: string;
+};
+
+export type TraceStep = {
+  kind: string;
+  template?: string | null;
+  expanded?: string[];
+  kept?: string[];
+  dropped?: DroppedPath[];
+};
+
+export type DetectionTrace = {
+  slug: string;
+  attempts: TraceStep[];
+};
+
+/** Replay the detection pipeline for a single slug and return a trace of
+ *  every step. Backs the hidden `/diagnostics` panel that's unlocked via
+ *  5 clicks on the sidebar version. Read-only — never writes to the
+ *  detection cache or `state.json`. */
+export function detectionDiagnostics(slug: string): Promise<DetectionTrace> {
+  return invoke<DetectionTrace>("detection_diagnostics", { slug });
 }
 
 /** Sentinel error string raised by `renameSaveLabel` when another save under

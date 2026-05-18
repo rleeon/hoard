@@ -285,6 +285,11 @@
   "settings.server_recheck": "再チェック",
   "settings.server_command_copied": "コマンドをコピーしました — サーバーで実行してください。",
   "settings.server_command_manual": "サーバーで `sudo hoard-server upgrade` を実行してください。",
+  "settings.server_upgrade_button": "サーバーをアップグレード",
+  "settings.server_upgrade_hint": "パスワードを求められます — Hoard が管理者権限でアップグレードを実行し、その後サービスを再起動します。",
+  "settings.server_upgrade_success": "サーバーをアップグレードして再起動しました。",
+  "settings.server_upgrade_partial": "サーバーはアップグレードされましたが、再起動に失敗しました ({error})。都合のよいときに手動で再起動してください。",
+  "settings.server_upgrade_failed": "サーバーのアップグレードに失敗しました: {error}",
   "diagnostics.unlocked_toast": "エージェント診断が有効になりました — 設定を開いてください。",
   "diagnostics.section_title": "エージェント診断",
   "diagnostics.heading": "ライブエージェントのスロット",
@@ -296,6 +301,10 @@
   "diagnostics.last_fs_event": "最後のFSイベント",
   "diagnostics.next_backup": "次回のバックアップ",
   "diagnostics.relative_seconds": "{count}秒前",
+  "diagnostics.title": "検出の診断",
+  "diagnostics.slug_label": "スラッグ",
+  "diagnostics.run_button": "診断する",
+  "diagnostics.no_trace": "診断を実行するとパイプラインのトレースが表示されます。",
   "library.rename_button": "ラベルを変更",
   "library.rename_title": "このセーブのラベルを変更",
   "library.rename_modal_title": "{name} の名前を変更",
@@ -303,5 +312,9 @@
   "library.rename_input_placeholder": "新しいラベル",
   "library.rename_confirm": "変更",
   "library.rename_success": "ラベルを「{label}」に更新しました。",
-  "library.rename_error_conflict": "このゲームの別のセーブが既にそのラベルを使用しています。別のラベルを選んでください。"
+  "library.rename_error_conflict": "このゲームの別のセーブが既にそのラベルを使用しています。別のラベルを選んでください。",
+  "library.manual_label": "手動",
+  "library.use_auto_detection": "自動検出に戻す",
+  "library.manual_path_set": "{name} に選んだフォルダを Hoard が記憶します。",
+  "library.manual_path_cleared": "{name} の手動設定を解除しました。"
 }

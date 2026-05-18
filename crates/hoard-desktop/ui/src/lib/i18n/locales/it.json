@@ -285,6 +285,11 @@
   "settings.server_recheck": "Ricontrolla",
   "settings.server_command_copied": "Comando copiato — eseguilo sul tuo server.",
   "settings.server_command_manual": "Esegui `sudo hoard-server upgrade` sul tuo server.",
+  "settings.server_upgrade_button": "Aggiorna server",
+  "settings.server_upgrade_hint": "Ti verrà chiesta la password — Hoard esegue l'aggiornamento con privilegi di amministratore e riavvia il servizio.",
+  "settings.server_upgrade_success": "Server aggiornato e riavviato.",
+  "settings.server_upgrade_partial": "Server aggiornato, ma il riavvio non è andato a buon fine ({error}). Riavvialo manualmente quando puoi.",
+  "settings.server_upgrade_failed": "Impossibile aggiornare il server: {error}",
   "diagnostics.unlocked_toast": "Diagnostica agente sbloccata — apri Impostazioni.",
   "diagnostics.section_title": "Diagnostica agente",
   "diagnostics.heading": "Slot dell'agente",
@@ -296,6 +301,10 @@
   "diagnostics.last_fs_event": "Ultimo evento FS",
   "diagnostics.next_backup": "Prossimo backup",
   "diagnostics.relative_seconds": "{count}s fa",
+  "diagnostics.title": "Diagnostica della rilevazione",
+  "diagnostics.slug_label": "Slug",
+  "diagnostics.run_button": "Diagnostica",
+  "diagnostics.no_trace": "Avvia una diagnostica per vedere la traccia della pipeline.",
   "library.rename_button": "Rinomina etichetta",
   "library.rename_title": "Rinomina l'etichetta di questo salvataggio",
   "library.rename_modal_title": "Rinomina {name}",
@@ -303,5 +312,9 @@
   "library.rename_input_placeholder": "Nuova etichetta",
   "library.rename_confirm": "Rinomina",
   "library.rename_success": "Etichetta aggiornata a «{label}».",
-  "library.rename_error_conflict": "Un altro salvataggio di questo gioco usa già questa etichetta. Scegline un'altra."
+  "library.rename_error_conflict": "Un altro salvataggio di questo gioco usa già questa etichetta. Scegline un'altra.",
+  "library.manual_label": "Manuale",
+  "library.use_auto_detection": "Torna al rilevamento automatico",
+  "library.manual_path_set": "Hoard ricorderà la cartella che hai scelto per {name}.",
+  "library.manual_path_cleared": "Scelta manuale rimossa per {name}."
 }

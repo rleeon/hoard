@@ -26,6 +26,15 @@ pub struct CliState {
     /// keyed by save_id (UUID string)
     #[serde(default)]
     pub saves: HashMap<String, SaveState>,
+    /// User-supplied save-path overrides, keyed by game slug. When detection
+    /// runs, any entry here wins over every heuristic (filesystem, Steam,
+    /// Proton prefix, refinement). The detection pipeline tags the resulting
+    /// row with `DetectionSource::ManualOverride` so the UI can show "manual"
+    /// in the source badge. Set via [`Self::set_manual_path`], cleared via
+    /// [`Self::clear_manual_path`]. `default` lets older `state.json` files
+    /// load without migration.
+    #[serde(default)]
+    pub manual_paths: HashMap<String, PathBuf>,
 }
 
 impl CliState {
@@ -58,5 +67,73 @@ impl CliState {
         let text = serde_json::to_string_pretty(self).context("serializing state")?;
         std::fs::write(path, text).with_context(|| format!("writing {}", path.display()))?;
         Ok(())
+    }
+
+    /// Record a manual save-folder override for `slug`. Subsequent calls to
+    /// [`crate::detection::detect_all`] return a row whose `found_paths` is
+    /// exactly `[path]` and whose source is `ManualOverride`, regardless of
+    /// what the heuristics produced.
+    pub fn set_manual_path(&mut self, slug: &str, path: PathBuf) {
+        self.manual_paths.insert(slug.to_string(), path);
+    }
+
+    /// Drop the manual override for `slug` (if any). After this the next
+    /// detect_all pass returns whatever the heuristics find.
+    pub fn clear_manual_path(&mut self, slug: &str) {
+        self.manual_paths.remove(slug);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `manual_paths` survives a save → load round-trip and a missing field
+    /// in older `state.json` files deserialises as an empty map.
+    #[test]
+    fn manual_paths_round_trip_to_disk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("state.json");
+
+        let mut state = CliState::default();
+        state.set_manual_path("stellaris", PathBuf::from("/home/x/Stellaris/save games"));
+        state.set_manual_path("ck3", PathBuf::from("/data/ck3"));
+        state.save(&path).unwrap();
+
+        let loaded = CliState::load(&path).unwrap();
+        assert_eq!(loaded.manual_paths.len(), 2);
+        assert_eq!(
+            loaded.manual_paths.get("stellaris"),
+            Some(&PathBuf::from("/home/x/Stellaris/save games")),
+        );
+        assert_eq!(
+            loaded.manual_paths.get("ck3"),
+            Some(&PathBuf::from("/data/ck3")),
+        );
+    }
+
+    /// Pre-1.5 state files have no `manual_paths` key. Loading them must not
+    /// fail and must default to an empty map (no serde migration step).
+    #[test]
+    fn manual_paths_default_when_missing_from_disk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("state.json");
+        std::fs::write(&path, "{\"saves\":{}}").unwrap();
+
+        let loaded = CliState::load(&path).unwrap();
+        assert!(loaded.manual_paths.is_empty());
+    }
+
+    /// `clear_manual_path` removes the entry; subsequent saves no longer
+    /// emit the slug.
+    #[test]
+    fn clear_manual_path_removes_entry() {
+        let mut state = CliState::default();
+        state.set_manual_path("stardew-valley", PathBuf::from("/x"));
+        assert_eq!(state.manual_paths.len(), 1);
+        state.clear_manual_path("stardew-valley");
+        assert!(state.manual_paths.is_empty());
+        // Idempotent: clearing an unknown slug doesn't panic.
+        state.clear_manual_path("not-there");
     }
 }

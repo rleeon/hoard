@@ -407,7 +407,12 @@ fn normalise_os(s: &str) -> Option<&'static str> {
 /// Lower-kebab slug. Mirrors `slugify` in `data/convert-ludusavi.py` and
 /// in `hoard-admin::commands::manifest::slugify` so all three stay
 /// byte-compatible — same input always produces the same slug.
-fn slugify(name: &str) -> String {
+///
+/// Public so detection code can slugify a Steam app's display name and
+/// fall back to a slug-based catalog lookup when the catalog entry lacks
+/// `steam_app_id`. **Never duplicate this algorithm** — divergence here
+/// silently breaks the cross-reference.
+pub fn slugify(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     let mut last_dash = true;
     for ch in name.chars() {

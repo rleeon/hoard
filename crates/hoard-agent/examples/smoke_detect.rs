@@ -7,13 +7,19 @@
 
 use hoard_agent::detection::detect_all;
 use hoard_agent::manifest::Os;
+use hoard_agent::state::CliState;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let os = Os::current();
     println!("Scanning for installed games on {os:?}...");
 
-    let report = detect_all(os, |done, total| {
+    // The smoke binary doesn't load the on-disk state — it's a quick
+    // detection sanity check, not a session. An empty CliState means no
+    // manual_paths overrides apply, which is fine for "did the heuristics
+    // find anything?".
+    let state = CliState::default();
+    let report = detect_all(os, &state, |done, total| {
         if total > 0 && done % 4096 == 0 {
             println!("  progress: {done}/{total}");
         }

@@ -11,7 +11,6 @@ path = "src/lib.rs"
 
 [dependencies]
 hoard-manifest = { path = "../hoard-manifest" }
-hoard-detect = { path = "../hoard-detect" }
 
 tokio = { workspace = true }
 reqwest = { workspace = true }

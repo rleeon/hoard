@@ -9,7 +9,6 @@
 
 pub mod agent;
 pub mod api;
-pub mod autodetect;
 pub mod backup;
 pub mod config;
 pub mod credentials;
@@ -21,19 +20,18 @@ pub mod restore;
 pub mod state;
 pub mod steam;
 
+#[cfg(test)]
+pub(crate) mod test_lock {
+    //! Single process-wide mutex guarding tests that mutate environment
+    //! variables (`HOME`, `XDG_*`). Cargo runs tests in parallel by default,
+    //! so two unrelated tests poking `HOME` in different threads will
+    //! corrupt each other's view. Hold this lock for the entire body of
+    //! any env-mutating test.
+    use std::sync::Mutex;
+    pub(crate) static ENV: Mutex<()> = Mutex::new(());
+}
+
 pub use api::{ApiClient, ApiError};
 pub use config::CliConfig;
 pub use credentials::{Credentials, TokenStorage, UserSection};
 pub use state::{CliState, SaveState};
-
-/// Look up the `processes` list for a game slug from the embedded
-/// manifest catalogue. Returns an empty `Vec` if the slug is unknown —
-/// the agent treats an empty list as "fall back to install-dir match".
-///
-/// Convenience wrapper so callers (e.g. `hoard-desktop`) don't need a
-/// direct dependency on `hoard-manifest`.
-pub fn hoard_manifest_processes(slug: &str) -> Vec<String> {
-    hoard_manifest::lookup(slug)
-        .map(|m| m.processes.clone())
-        .unwrap_or_default()
-}

@@ -21,6 +21,20 @@ pub struct SteamApp {
     pub install_dir: PathBuf,
 }
 
+/// A Proton/Wine prefix that Steam created for one Windows-only game.
+///
+/// Steam stores per-game Proton prefixes under
+/// `<library>/steamapps/compatdata/<appid>/pfx/`. The contents mirror a
+/// Windows `C:\` drive (under `drive_c/`), so the Windows save-path
+/// templates from Ludusavi can be expanded against this root to find the
+/// game's saves on Linux.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProtonPrefix {
+    pub app_id: u64,
+    /// Absolute path to the `pfx/` directory itself.
+    pub prefix_root: PathBuf,
+}
+
 /// Probe the host for Steam libraries. Returns the directories that contain
 /// a `steamapps` subfolder; later passes scan those.
 ///
@@ -126,6 +140,51 @@ pub fn list_installed_steam_games(os: Os) -> Result<Vec<SteamApp>> {
         "Steam scan complete"
     );
     Ok(out)
+}
+
+/// Enumerate every Proton/Wine prefix Steam has created on this host.
+///
+/// Steam writes one prefix per Windows-on-Linux game under
+/// `<library>/steamapps/compatdata/<appid>/pfx/`. Entries without a `pfx/`
+/// subdirectory are skipped (Steam sometimes creates the appid folder
+/// before the prefix itself, e.g. mid-install). Returns an empty `Vec` on
+/// non-Linux hosts and when no libraries are detected — the caller treats
+/// that as "no Proton games to consider".
+pub fn list_proton_prefixes(os: Os) -> Vec<ProtonPrefix> {
+    let libraries = detect_steam_libraries(os);
+    let mut out: Vec<ProtonPrefix> = Vec::new();
+    for lib in &libraries {
+        let compatdata = lib.join("steamapps/compatdata");
+        let entries = match std::fs::read_dir(&compatdata) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let Ok(app_id) = name.parse::<u64>() else {
+                continue;
+            };
+            let pfx = path.join("pfx");
+            if !pfx.is_dir() {
+                continue;
+            }
+            out.push(ProtonPrefix {
+                app_id,
+                prefix_root: pfx,
+            });
+        }
+    }
+    out.sort_by_key(|p| p.app_id);
+    out.dedup_by(|a, b| a.app_id == b.app_id);
+    tracing::info!(
+        libraries = libraries.len(),
+        prefixes = out.len(),
+        "Proton prefix scan complete"
+    );
+    out
 }
 
 // ---- Roots --------------------------------------------------------------
@@ -411,5 +470,47 @@ mod tests {
 }
 "#;
         assert!(parse_app_manifest(sample, Path::new("/x")).is_none());
+    }
+
+    fn with_home<F: FnOnce()>(home: &Path, f: F) {
+        let _guard = crate::test_lock::ENV
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var_os("HOME");
+        std::env::set_var("HOME", home);
+        f();
+        match prev {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+    }
+
+    #[test]
+    fn list_proton_prefixes_detects_appids_with_pfx() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        let compatdata = home.join(".steam/steam/steamapps/compatdata");
+        // 413150 (Stardew) has a real pfx — should appear.
+        std::fs::create_dir_all(compatdata.join("413150/pfx/drive_c")).unwrap();
+        // 999999 has the appid dir but no pfx — should be skipped.
+        std::fs::create_dir_all(compatdata.join("999999")).unwrap();
+        // "shader_cache" is not numeric — should be skipped.
+        std::fs::create_dir_all(compatdata.join("shader_cache/pfx")).unwrap();
+
+        with_home(home, || {
+            let prefixes = list_proton_prefixes(Os::Linux);
+            let ids: Vec<u64> = prefixes.iter().map(|p| p.app_id).collect();
+            assert_eq!(ids, vec![413150]);
+            assert!(prefixes[0].prefix_root.ends_with("compatdata/413150/pfx"));
+        });
+    }
+
+    #[test]
+    fn list_proton_prefixes_empty_when_no_steam() {
+        let tmp = tempfile::tempdir().unwrap();
+        with_home(tmp.path(), || {
+            let prefixes = list_proton_prefixes(Os::Linux);
+            assert!(prefixes.is_empty());
+        });
     }
 }

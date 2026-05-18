@@ -18,7 +18,7 @@ use std::sync::Mutex;
 use hoard_agent::api::{ApiClient, ApiError};
 use hoard_agent::config::CliConfig;
 use hoard_agent::credentials;
-use hoard_agent::detection::{self, DetectionReport};
+use hoard_agent::detection::{self, DetectionReport, DetectionTrace};
 use hoard_agent::manifest::Os;
 use hoard_agent::state::{CliState, SaveState};
 use serde::{Deserialize, Serialize};
@@ -156,7 +156,13 @@ pub async fn scan_library(
         let _ = app_for_progress.emit("library://scan-progress", ScanProgress { done, total });
     };
 
-    let report = detection::detect_all(os, progress)
+    // Load CliState so detect_all sees the user's manual_paths overrides.
+    // Failures here mean state.json is unreadable; we surface that instead
+    // of silently scanning without overrides, otherwise the user sees their
+    // manual picks vanish from the Library card on every re-scan.
+    let (cli_state, _) = CliState::load_default().map_err(|e| e.to_string())?;
+
+    let report = detection::detect_all(os, &cli_state, progress)
         .await
         .map_err(pretty_error)?;
 
@@ -432,6 +438,98 @@ pub async fn rename_save_label(
     })
 }
 
+/// Validate a user-picked override path: non-empty, exists, is a directory.
+/// Pulled out of the Tauri command so the failure messages can be unit-tested
+/// without spinning up Tauri's `State` machinery.
+fn validate_override_path(path: &str) -> Result<PathBuf, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Path can't be empty.".to_string());
+    }
+    let buf = PathBuf::from(trimmed);
+    if !buf.exists() {
+        return Err(format!("{} doesn't exist.", buf.display()));
+    }
+    if !buf.is_dir() {
+        return Err(format!("{} isn't a folder.", buf.display()));
+    }
+    Ok(buf)
+}
+
+/// Record a manual save-folder override for `slug`. The path must already
+/// exist and be a directory — we validate up-front so an obvious typo in
+/// the picker doesn't get persisted and silently fail the next re-scan.
+///
+/// After the override lands in `state.json`, we kick a background re-scan
+/// so the Library card flips to source=manual without the user clicking
+/// "Rescan". Disk failures inside the background scan are logged; the
+/// command itself returns as soon as the override is durable.
+#[tauri::command]
+pub async fn set_manual_path(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    slug: String,
+    path: String,
+) -> Result<(), String> {
+    let path_buf = validate_override_path(&path)?;
+
+    let (mut cli_state, state_path) = CliState::load_default().map_err(|e| e.to_string())?;
+    cli_state.set_manual_path(&slug, path_buf);
+    cli_state.save(&state_path).map_err(|e| e.to_string())?;
+
+    // Refresh the detection cache so subsequent renders see source=manual
+    // without forcing the user to click "Rescan". A short-circuit failure
+    // here is harmless — the next scheduled rescan will pick up the
+    // override either way.
+    let app_for_progress = app.clone();
+    let progress = move |done: usize, total: usize| {
+        let _ = app_for_progress.emit("library://scan-progress", ScanProgress { done, total });
+    };
+    match detection::detect_all(Os::current(), &cli_state, progress).await {
+        Ok(report) => persist_scan(&state, report),
+        Err(e) => tracing::warn!(error = %e, "post-override detection refresh failed"),
+    }
+    Ok(())
+}
+
+/// Drop the manual override for `slug` so the next re-scan goes back to
+/// whatever the heuristics produce. Mirrors `set_manual_path` and also
+/// refreshes the detection cache in-line so the UI re-paints without an
+/// explicit rescan click.
+#[tauri::command]
+pub async fn clear_manual_path(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    slug: String,
+) -> Result<(), String> {
+    let (mut cli_state, state_path) = CliState::load_default().map_err(|e| e.to_string())?;
+    cli_state.clear_manual_path(&slug);
+    cli_state.save(&state_path).map_err(|e| e.to_string())?;
+
+    let app_for_progress = app.clone();
+    let progress = move |done: usize, total: usize| {
+        let _ = app_for_progress.emit("library://scan-progress", ScanProgress { done, total });
+    };
+    match detection::detect_all(Os::current(), &cli_state, progress).await {
+        Ok(report) => persist_scan(&state, report),
+        Err(e) => tracing::warn!(error = %e, "post-clear detection refresh failed"),
+    }
+    Ok(())
+}
+
+/// Replay the detection pipeline for a single slug and return a trace
+/// explaining what every step kept / dropped. Read-only — does not write
+/// to the detection cache or `state.json`. Backs the hidden
+/// `/diagnostics` route unlocked by the 5-click sidebar gesture.
+#[tauri::command]
+pub async fn detection_diagnostics(slug: String) -> Result<DetectionTrace, String> {
+    if slug.trim().is_empty() {
+        return Err("Slug is empty.".into());
+    }
+    let (cli_state, _path) = CliState::load_default().map_err(|e| e.to_string())?;
+    Ok(detection::diagnose(slug.trim(), Os::current(), &cli_state).await)
+}
+
 /// Stop tracking a save. Removes the local-state row but leaves server data
 /// intact (delete from the History view if you want that gone too).
 #[tauri::command]
@@ -509,10 +607,21 @@ pub fn spawn_periodic_rescan(app: AppHandle) {
             }
             tracing::info!("detection cache older than 24h, refreshing in background");
             let os = Os::current();
+            // Reload state on each background pass so manual_paths overrides
+            // that landed since the previous scan are honoured. Cheap (one
+            // small JSON file read) and skipping it would let manual picks
+            // silently disappear from the auto-refreshed report.
+            let cli_state = match CliState::load_default() {
+                Ok((s, _)) => s,
+                Err(e) => {
+                    tracing::warn!(error = %e, "couldn't load state for background rescan");
+                    continue;
+                }
+            };
             // No progress emit on the background path — the UI isn't
             // listening, and repainting a progress bar while the user is
             // on another page would be noise.
-            let report = match detection::detect_all(os, |_, _| {}).await {
+            let report = match detection::detect_all(os, &cli_state, |_, _| {}).await {
                 Ok(r) => r,
                 Err(e) => {
                     tracing::warn!(error = %e, "background detection refresh failed");
@@ -532,4 +641,41 @@ pub fn spawn_periodic_rescan(app: AppHandle) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_override_path_rejects_empty() {
+        let err = validate_override_path("   ").unwrap_err();
+        assert!(err.contains("empty"), "expected legible error, got {err:?}");
+    }
+
+    #[test]
+    fn validate_override_path_rejects_missing() {
+        let err = validate_override_path("/definitely/not/a/real/path/zzz").unwrap_err();
+        assert!(
+            err.contains("doesn't exist"),
+            "expected legible error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn validate_override_path_rejects_file() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let err = validate_override_path(tmp.path().to_str().unwrap()).unwrap_err();
+        assert!(
+            err.contains("isn't a folder"),
+            "expected legible error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn validate_override_path_accepts_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let buf = validate_override_path(tmp.path().to_str().unwrap()).unwrap();
+        assert_eq!(buf, tmp.path());
+    }
 }

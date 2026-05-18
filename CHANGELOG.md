@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-05-18
+
+Detection overhaul. The Library used to lie quietly on Linux: any game
+played through Proton was invisible, every Paradox title tracked its
+entire game-root instead of just `save games/`, and a user correcting a
+wrong path had to do it again on every re-scan. This release rebuilds
+the detection pipeline end-to-end against those failure modes.
+
+### Added
+
+- Proton/Wine prefix detection on Linux: games installed via Proton now
+  appear in Library with their save path resolved against the
+  `steamapps/compatdata/<appid>/pfx` prefix. Stardew Valley played
+  through Proton is detected as well as a native Linux install.
+- Manual save-path overrides: a path picked from the folder dialog
+  persists in `state.json` under `manual_paths` and survives re-scans.
+  A "Volver a sugerencia automática" action restores the heuristic
+  pick. Overrides always win over filesystem heuristics and catalog
+  matches.
+- Steam-to-catalog fallback by slugified name when the Ludusavi entry
+  lacks `steam_app_id`. Confidence is `Low` so the UI can surface the
+  ambiguity if needed.
+- Hidden Diagnostics panel (5-click on the sidebar version number,
+  same gesture that destapaba `agent_status`) explains step-by-step
+  why a given slug is or isn't in the detection report: templates
+  expanded, paths kept, paths dropped and the reason.
+
+### Changed
+
+- "Game root → save subdir" refinement is now a general heuristic
+  applied to every slug, not the previous hardcoded Stellaris list.
+  Paradox games (CK3, EU4, HoI4, Imperator, Victoria 3) no longer get
+  their entire game-root backed up — only the `save games/` subdir.
+  The exact-on-segment match against `save`, `saves`, `savegame`,
+  `savegames`, `save games`, `save_games` keeps false positives like
+  `save settings` out.
+- Internal cleanup: removed the dead `hoard-detect` crate, the v0.3
+  `autodetect.rs` module, and the hand-curated TOML catalog
+  (`crates/hoard-manifest/data/games/*.toml` plus
+  `placeholders.rs` / `schema.rs`). Only the Ludusavi catalog is
+  consulted on the hot path. The workspace shrinks from 9 to 8
+  crates.
+
+### Fixed
+
+- Stellaris no longer surfaces the game root as a save path (covered
+  by the general refinement above).
+- `pathexpand` no longer needs the literal-absolute workaround on the
+  hot path: detection routes literal templates through the prefix
+  expander, which returns empty for absolute literals rather than
+  silently stripping the leading slash.
+
 ## [1.4.6] — 2026-05-17
 
 Follow-up after 1.4.5. Two reports landed within a day of shipping:

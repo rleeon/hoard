@@ -39,7 +39,11 @@
   import { supportedLocales, setLocale } from "../lib/i18n";
   import * as api from "../lib/api";
   import { toastError, toastInfo, toastSuccess } from "../lib/stores/toasts";
-  import { checkForUpdates, lastReport } from "../lib/stores/updates";
+  import {
+    applyServerUpdate,
+    checkForUpdates,
+    lastReport,
+  } from "../lib/stores/updates";
 
   let saving = $state<string | null>(null);
   let signingOut = $state(false);
@@ -142,7 +146,15 @@
   // signed-in user sees the panel.
   const serverUpdate = $derived($lastReport?.server ?? null);
   const showServerCard = $derived($auth.user != null);
+  // In-app upgrade button is only meaningful when the server is on the
+  // same host as the desktop app — `pkexec hoard-server upgrade` swaps a
+  // binary on this machine. For remote servers we fall back to copying
+  // the command so the user can run it over SSH. The `is_local_server`
+  // gate uses the RFC1918 / localhost / .local classifier in
+  // `commands::auth::classify_server`.
+  const canInAppUpgrade = $derived($auth.user?.is_local_server === true);
   let refreshingServer = $state(false);
+  let upgradingServer = $state(false);
   let copyingUpgrade = $state(false);
 
   async function handleServerRefresh() {
@@ -156,7 +168,48 @@
     }
   }
 
-  async function handleServerUpgrade() {
+  /**
+   * Local server: kick off the in-app `pkexec hoard-server upgrade` flow.
+   * The Rust side handles the polkit prompt; we only need to surface the
+   * outcome. After a successful upgrade we re-probe so the panel flips
+   * from "v… → v…" back to "Up to date".
+   */
+  async function handleServerInAppUpgrade() {
+    if (upgradingServer) return;
+    upgradingServer = true;
+    try {
+      const outcome = await applyServerUpdate();
+      if (outcome.kind === "upgraded_and_restarted") {
+        toastSuccess($_("settings.server_upgrade_success"));
+      } else {
+        // Upgrade succeeded but the systemctl restart didn't — most
+        // commonly because the user runs hoard-server outside systemd.
+        toastInfo(
+          $_("settings.server_upgrade_partial", {
+            values: { error: outcome.restart_error },
+          }),
+        );
+      }
+      // Re-probe so the version line updates without forcing a manual click.
+      checkForUpdates().catch((e) =>
+        console.warn("post-upgrade probe failed:", e),
+      );
+    } catch (e) {
+      toastError(
+        $_("settings.server_upgrade_failed", {
+          values: { error: typeof e === "string" ? e : (e as Error).message },
+        }),
+      );
+    } finally {
+      upgradingServer = false;
+    }
+  }
+
+  /**
+   * Remote server (or any non-Linux client): copy the command to the
+   * clipboard so the user can paste it over SSH on the server host.
+   */
+  async function handleServerCopyCommand() {
     if (copyingUpgrade) return;
     copyingUpgrade = true;
     try {
@@ -629,28 +682,60 @@
                           values: { latest: serverUpdate.latest ?? "?" },
                         })}
                       </p>
-                      <pre
-                        class="mt-2 overflow-x-auto rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-emerald-300">sudo hoard-server upgrade</pre>
-                      <div class="mt-3 flex flex-wrap gap-2">
-                        <Button
-                          variant="primary"
-                          onclick={handleServerUpgrade}
-                          loading={copyingUpgrade}
-                          disabled={copyingUpgrade}
-                        >
-                          <ServerCog size={14} />
-                          {$_("settings.server_copy_command")}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onclick={handleServerRefresh}
-                          loading={refreshingServer}
-                          disabled={refreshingServer}
-                        >
-                          <RefreshCw size={14} />
-                          {$_("settings.server_recheck")}
-                        </Button>
-                      </div>
+                      {#if canInAppUpgrade}
+                        <!--
+                          Local server: trigger the upgrade in-app via
+                          pkexec. We show the command underneath as a
+                          subtle hint for users who'd rather run it
+                          themselves in a terminal.
+                        -->
+                        <p class="mt-2 text-xs text-zinc-500">
+                          {$_("settings.server_upgrade_hint")}
+                        </p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            variant="primary"
+                            onclick={handleServerInAppUpgrade}
+                            loading={upgradingServer}
+                            disabled={upgradingServer}
+                          >
+                            <ServerCog size={14} />
+                            {$_("settings.server_upgrade_button")}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            onclick={handleServerRefresh}
+                            loading={refreshingServer}
+                            disabled={refreshingServer || upgradingServer}
+                          >
+                            <RefreshCw size={14} />
+                            {$_("settings.server_recheck")}
+                          </Button>
+                        </div>
+                      {:else}
+                        <pre
+                          class="mt-2 overflow-x-auto rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-emerald-300">sudo hoard-server upgrade</pre>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            variant="primary"
+                            onclick={handleServerCopyCommand}
+                            loading={copyingUpgrade}
+                            disabled={copyingUpgrade}
+                          >
+                            <ServerCog size={14} />
+                            {$_("settings.server_copy_command")}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            onclick={handleServerRefresh}
+                            loading={refreshingServer}
+                            disabled={refreshingServer}
+                          >
+                            <RefreshCw size={14} />
+                            {$_("settings.server_recheck")}
+                          </Button>
+                        </div>
+                      {/if}
                     {:else if serverUpdate && !serverUpdate.error}
                       <p class="mt-3 text-xs text-emerald-300">
                         {$_("settings.server_up_to_date")}
@@ -697,6 +782,28 @@
           >
             {$_("diagnostics.section_title")}
           </h2>
+
+          <Card>
+            <button
+              type="button"
+              onclick={() => push("/diagnostics")}
+              class="-m-4 flex w-[calc(100%+2rem)] items-center justify-between gap-3 rounded-lg p-4 text-left transition-colors hover:bg-zinc-900/60"
+            >
+              <span class="flex items-start gap-3">
+                <Activity size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+                <span class="min-w-0">
+                  <span class="block text-sm font-medium text-zinc-100">
+                    {$_("diagnostics.title")}
+                  </span>
+                  <span class="mt-0.5 block text-xs text-zinc-500">
+                    {$_("diagnostics.no_trace")}
+                  </span>
+                </span>
+              </span>
+              <ChevronRight size={16} class="shrink-0 text-zinc-500" />
+            </button>
+          </Card>
+
           <Card>
             <div class="flex items-start gap-3">
               <Activity size={16} class="mt-0.5 shrink-0 text-zinc-500" />

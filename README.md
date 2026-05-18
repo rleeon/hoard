@@ -177,8 +177,7 @@ via `fs::rename` + DB transaction), `hoard-admin` (server-side CLI for
 users / tokens / games / db), `hoard-cli` (the `hoard` binary for headless
 use), `hoard-agent` (the shared sync engine — talks to the server, walks
 files, runs backup / restore), `hoard-manifest` (Ludusavi manifest parser),
-`hoard-detect` (filesystem + Steam + process detection), `hoard-watcher`
-(filesystem + process watchers exposed as a reusable library), and
+`hoard-watcher` (filesystem + process watchers exposed as a reusable library), and
 `hoard-desktop` (Tauri 2 + Svelte 5 GUI that wraps `hoard-agent` with a
 tray icon, autostart, dashboard, and history viewer). Snapshots stream up
 as multipart with per-file SHA256, and stream down as `tar.zst` built on

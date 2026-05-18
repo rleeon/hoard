@@ -129,6 +129,27 @@ export async function applyDesktopUpdate(): Promise<ApplyOutcome> {
   return await invoke<ApplyOutcome>("apply_desktop_update");
 }
 
+/**
+ * Result of `apply_server_update`. The two `kind`s let the UI distinguish
+ * "all done, server is back on the new version" (`upgraded_and_restarted`)
+ * from "binary swapped, but you'll need to restart it yourself" (`upgraded`).
+ * In the latter case `restart_error` carries whatever pkexec / systemctl
+ * said so we can show it for triage.
+ */
+export type ServerUpgradeOutcome =
+  | { kind: "upgraded_and_restarted"; output: string }
+  | { kind: "upgraded"; output: string; restart_error: string };
+
+/**
+ * Trigger an in-app upgrade of the user's self-hosted server. Linux only;
+ * pops a polkit auth prompt (pkexec). The Settings panel should gate this
+ * on `auth.user.is_local_server` so we don't show a button that does
+ * nothing useful when the server lives on another box.
+ */
+export async function applyServerUpdate(): Promise<ServerUpgradeOutcome> {
+  return await invoke<ServerUpgradeOutcome>("apply_server_update");
+}
+
 // ---------------------------------------------------------------------------
 // Periodic re-check
 // ---------------------------------------------------------------------------

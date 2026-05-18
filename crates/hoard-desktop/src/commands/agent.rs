@@ -173,11 +173,6 @@ fn hydrate_watched_saves(_state: &State<'_, AppState>) -> anyhow::Result<Vec<Wat
             .find(|a| name_matches(&a.name, &save_state.game_slug))
             .map(|a| a.install_dir.clone());
 
-        // v0.3 process-name match: pull the manifest's `processes` list
-        // if the slug matches a curated game; otherwise fall back to
-        // legacy install-dir prefix matching only.
-        let processes = hoard_agent::hoard_manifest_processes(&save_state.game_slug);
-
         out.push(WatchedSave {
             save_id,
             game_slug: save_state.game_slug.clone(),
@@ -188,7 +183,7 @@ fn hydrate_watched_saves(_state: &State<'_, AppState>) -> anyhow::Result<Vec<Wat
             label: save_state.label,
             local_path: save_state.local_path,
             steam_install_dir,
-            processes,
+            processes: Vec::new(),
         });
     }
     Ok(out)
@@ -248,7 +243,6 @@ pub(crate) fn watched_save_from(
         .iter()
         .find(|a| name_matches(&a.name, &game_slug))
         .map(|a| a.install_dir.clone());
-    let processes = hoard_agent::hoard_manifest_processes(&game_slug);
     WatchedSave {
         save_id,
         game_slug,
@@ -256,7 +250,7 @@ pub(crate) fn watched_save_from(
         label,
         local_path,
         steam_install_dir,
-        processes,
+        processes: Vec::new(),
     }
 }
 

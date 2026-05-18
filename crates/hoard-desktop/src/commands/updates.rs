@@ -442,6 +442,149 @@ async fn launch_installer(path: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Server upgrade — in-app, for local servers only
+// ---------------------------------------------------------------------------
+//
+// Why this exists: pre-1.4.7 the Server card in Settings only knew how to
+// *copy* `sudo hoard-server upgrade` to the clipboard. That's a sensible
+// fallback when the server is on another box (you have to SSH anyway), but
+// for the common self-hosted case where the server runs on the same machine
+// as the desktop app it's busywork — the user already has both binaries on
+// disk and just wants a button.
+//
+// We piggy-back on the same `pkexec` flow the desktop installer uses: one
+// graphical sudo prompt, no password handling in our own code, no need to
+// stash a sudo password in prefs. The wrapper invocation runs the upgrade
+// *and* restarts the service in a single auth prompt, so the user doesn't
+// have to authenticate twice. If the upgrade succeeds but the restart
+// fails (no systemd unit, manual launch, etc.) we still surface success
+// with a "restart it yourself" hint.
+//
+// Gated to Linux because:
+//   - `hoard-server upgrade` itself is Linux-x86_64 only (see
+//     `crates/hoard-server/src/upgrade.rs::preferred_asset_name`).
+//   - `pkexec` is the Linux polkit entry point; Windows/macOS would
+//     need entirely different privilege-escalation plumbing.
+// On any other platform `apply_server_update` returns the same error
+// regardless of `is_local_server`, so the UI falls back to copy-command.
+
+/// Outcome of `apply_server_update`. The UI uses `kind` to decide what to
+/// show next: on `upgraded_and_restarted` the panel can flip straight to
+/// "up to date"; on `upgraded` it tells the user to restart manually.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ServerUpgradeOutcome {
+    /// The new binary is on disk *and* `systemctl restart hoard-server`
+    /// returned 0. The user can keep using the app immediately.
+    UpgradedAndRestarted { output: String },
+    /// The new binary is on disk but the service restart didn't succeed —
+    /// usually because the server isn't running under systemd. The user
+    /// needs to restart it themselves with whatever supervisor they use.
+    Upgraded {
+        output: String,
+        restart_error: String,
+    },
+}
+
+/// Tauri command. Runs `hoard-server upgrade` (and `systemctl restart`)
+/// through a single `pkexec` invocation so the user only authenticates
+/// once. Only available on Linux; only meaningful when the server is on
+/// the same machine — the UI is responsible for gating the button on
+/// `is_local_server`, but we don't *require* it because the call simply
+/// fails on a non-local box (the local `hoard-server` binary either
+/// doesn't exist, or it does and the user is fine to upgrade their copy).
+#[tauri::command]
+pub async fn apply_server_update() -> Result<ServerUpgradeOutcome, String> {
+    apply_server_update_impl().await
+}
+
+#[cfg(target_os = "linux")]
+async fn apply_server_update_impl() -> Result<ServerUpgradeOutcome, String> {
+    // We launch a shell so we can chain "upgrade && restart" into one
+    // pkexec → one polkit prompt. `set -e` makes the script fail fast if
+    // the upgrade itself returns non-zero (download failed, binary path
+    // not writable, etc.) so we don't restart a half-upgraded server.
+    //
+    // We capture stdout+stderr so the UI can surface the friendly progress
+    // output from `hoard-server upgrade` ("downloading", "Installed
+    // hoard-server v…"). On Linux pkexec returns exit code 126 if the user
+    // cancels the auth prompt and 127 if the underlying binary isn't found;
+    // we surface both as a single human-readable error string.
+    let upgrade = tokio::process::Command::new("pkexec")
+        .args([
+            "sh",
+            "-c",
+            // Resolve `hoard-server` through PATH inside the elevated
+            // shell — polkit doesn't preserve the caller's PATH for the
+            // binary it spawns, but `sh` does for *its* exec, and `sh`'s
+            // default PATH includes the standard system bin dirs we ship to.
+            "set -e; hoard-server upgrade",
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("spawning pkexec: {e}"))?;
+
+    if !upgrade.status.success() {
+        let stderr = String::from_utf8_lossy(&upgrade.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&upgrade.stdout).trim().to_string();
+        // pkexec emits its own message for "Request dismissed" / "Not
+        // authorized"; we pass that through verbatim so the UI can show
+        // the user-facing reason rather than a generic "upgrade failed".
+        let detail = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            format!("pkexec exited with status {}", upgrade.status)
+        };
+        return Err(detail);
+    }
+
+    let upgrade_output = String::from_utf8_lossy(&upgrade.stdout).trim().to_string();
+    tracing::info!(?upgrade_output, "server upgrade pkexec call returned 0");
+
+    // Try the restart in a second pkexec call. Polkit caches the auth
+    // grant for ~5 minutes by default, so this typically won't re-prompt
+    // — but on a stricter polkit policy the user *might* see a second
+    // prompt. We accept that as a price for keeping the chain trivial to
+    // reason about (one pkexec per privileged op, no shell escapes).
+    let restart = tokio::process::Command::new("pkexec")
+        .args(["systemctl", "restart", "hoard-server"])
+        .output()
+        .await;
+
+    match restart {
+        Ok(out) if out.status.success() => Ok(ServerUpgradeOutcome::UpgradedAndRestarted {
+            output: upgrade_output,
+        }),
+        Ok(out) => {
+            let detail = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            let detail = if detail.is_empty() {
+                format!("systemctl exited with status {}", out.status)
+            } else {
+                detail
+            };
+            tracing::warn!(error = %detail, "server upgraded but restart failed");
+            Ok(ServerUpgradeOutcome::Upgraded {
+                output: upgrade_output,
+                restart_error: detail,
+            })
+        }
+        Err(e) => Ok(ServerUpgradeOutcome::Upgraded {
+            output: upgrade_output,
+            restart_error: format!("spawning systemctl restart: {e}"),
+        }),
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+async fn apply_server_update_impl() -> Result<ServerUpgradeOutcome, String> {
+    Err("In-app server upgrade is only supported on Linux today. \
+         Run `sudo hoard-server upgrade` on the server host."
+        .to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -89,9 +89,11 @@ pub struct WatchedSave {
     pub steam_install_dir: Option<PathBuf>,
     /// Process executable file names (case-insensitive, with extension on
     /// Windows). The agent's process poll matches against these to fire
-    /// `GameStarted` / `GameStopped` transitions. Populated from the
-    /// manifest by `autodetect`. Empty list = match by `steam_install_dir`
-    /// only.
+    /// `GameStarted` / `GameStopped` transitions. Empty list = match by
+    /// `steam_install_dir` only. Today the desktop never populates this
+    /// — the curated TOML catalog that fed it was removed in 1.5.0 — so
+    /// every save falls back to install-dir matching. The field stays
+    /// in case a future catalog ships process names again.
     #[serde(default)]
     pub processes: Vec<String>,
 }

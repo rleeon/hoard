@@ -285,6 +285,11 @@
   "settings.server_recheck": "Voltar a verificar",
   "settings.server_command_copied": "Comando copiado — executa-o no teu servidor.",
   "settings.server_command_manual": "Executa `sudo hoard-server upgrade` no teu servidor.",
+  "settings.server_upgrade_button": "Atualizar servidor",
+  "settings.server_upgrade_hint": "Vais ter de inserir a tua palavra-passe — o Hoard executa a atualização com permissões de administrador e reinicia o serviço a seguir.",
+  "settings.server_upgrade_success": "Servidor atualizado e reiniciado.",
+  "settings.server_upgrade_partial": "O servidor foi atualizado, mas o reinício falhou ({error}). Reinicia-o manualmente quando puderes.",
+  "settings.server_upgrade_failed": "Não foi possível atualizar o servidor: {error}",
   "diagnostics.unlocked_toast": "Diagnóstico do agente desbloqueado — abre Definições.",
   "diagnostics.section_title": "Diagnóstico do agente",
   "diagnostics.heading": "Slots do agente",
@@ -296,6 +301,10 @@
   "diagnostics.last_fs_event": "Último evento FS",
   "diagnostics.next_backup": "Próximo backup",
   "diagnostics.relative_seconds": "há {count}s",
+  "diagnostics.title": "Diagnóstico de deteção",
+  "diagnostics.slug_label": "Slug",
+  "diagnostics.run_button": "Diagnosticar",
+  "diagnostics.no_trace": "Inicia um diagnóstico para ver o rasto do pipeline.",
   "library.rename_button": "Renomear etiqueta",
   "library.rename_title": "Renomear a etiqueta deste save",
   "library.rename_modal_title": "Renomear {name}",
@@ -303,5 +312,9 @@
   "library.rename_input_placeholder": "Nova etiqueta",
   "library.rename_confirm": "Renomear",
   "library.rename_success": "Etiqueta atualizada para «{label}».",
-  "library.rename_error_conflict": "Outro save deste jogo já usa essa etiqueta. Escolhe outra."
+  "library.rename_error_conflict": "Outro save deste jogo já usa essa etiqueta. Escolhe outra.",
+  "library.manual_label": "Manual",
+  "library.use_auto_detection": "Voltar à detecção automática",
+  "library.manual_path_set": "Hoard vai lembrar da pasta que escolheste para {name}.",
+  "library.manual_path_cleared": "Escolha manual removida para {name}."
 }

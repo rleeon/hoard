@@ -23,6 +23,7 @@
     Trash2,
     FolderOpen,
     Pencil,
+    RotateCcw,
   } from "lucide-svelte";
   import { _ } from "svelte-i18n";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -155,6 +156,7 @@
     alertGame = null; // Close the modal so the OS picker isn't on top.
     const chosen = await pickFolder(game.display_name);
     if (!chosen) return;
+    await persistManualPath(game, chosen);
     await trackWithPath(game, chosen);
   }
 
@@ -167,7 +169,65 @@
   async function trackWithCustomPath(game: DetectedGame) {
     const chosen = await pickFolder(game.display_name);
     if (!chosen) return;
+    await persistManualPath(game, chosen);
     await trackWithPath(game, chosen);
+  }
+
+  /** Persist the user's hand-picked folder as a manual override so a
+   *  re-scan doesn't revert to the heuristic guess. The detection cache
+   *  refresh happens server-side; we just update our local `report.games`
+   *  so the source badge flips to "manual" without a roundtrip. */
+  async function persistManualPath(game: DetectedGame, chosen: string) {
+    try {
+      await api.setManualPath(game.slug, chosen);
+      if (report) {
+        report = {
+          ...report,
+          games: report.games.map((g) =>
+            g.slug === game.slug
+              ? {
+                  ...g,
+                  found_paths: [chosen],
+                  source: "manual_override",
+                  confidence: "high",
+                }
+              : g,
+          ),
+        };
+      }
+      toastSuccess(
+        $_("library.manual_path_set", {
+          values: { name: game.display_name },
+        }),
+      );
+    } catch (e) {
+      // Persistence failed but the user already picked a folder — surface
+      // the error so they know the override won't survive a re-scan, then
+      // let `trackWithPath` continue so this session's tracking still
+      // works.
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    }
+  }
+
+  /** "Volver a sugerencia automática" entry on the per-game menu. Drops the
+   *  manual_paths override and refreshes the in-memory report so the row
+   *  reverts to whatever the heuristic detected (or, if nothing, the amber
+   *  alert). */
+  async function revertToAutoDetection(save: TrackedSave) {
+    try {
+      await api.clearManualPath(save.game_slug);
+      // Re-fetch the freshly-rebuilt cache so source/found_paths reflect
+      // the heuristic again. Cheaper than re-running the scan client-side
+      // and matches what set_manual_path already wrote to disk.
+      report = await api.cachedDetection();
+      toastSuccess(
+        $_("library.manual_path_cleared", {
+          values: { name: save.game_slug },
+        }),
+      );
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    }
   }
 
   /** Pop the untrack confirmation modal. The actual delete happens in
@@ -277,6 +337,7 @@
   function sourceLabel(s: DetectionSource): string {
     if (s === "both") return $_("library.both_sources");
     if (s === "steam_library") return $_("library.steam_label");
+    if (s === "manual_override") return $_("library.manual_label");
     return $_("library.filesystem_label");
   }
 
@@ -285,6 +346,8 @@
       return "bg-emerald-500/10 text-emerald-300 ring-emerald-500/30";
     if (s === "steam_library")
       return "bg-sky-500/10 text-sky-300 ring-sky-500/30";
+    if (s === "manual_override")
+      return "bg-emerald-500/10 text-emerald-300 ring-emerald-500/30";
     return "bg-zinc-500/10 text-zinc-300 ring-zinc-500/30";
   }
 
@@ -323,6 +386,22 @@
     for (const s of tracked) m.set(s.game_slug, s);
     return m;
   });
+
+  // Slugs whose detection row has source=manual_override. Drives the
+  // "Volver a sugerencia automática" button on the tracked-games strip — we
+  // only show it when the user actually has an override to clear.
+  const slugsWithManualOverride = $derived.by(() => {
+    const s = new Set<string>();
+    if (!report) return s;
+    for (const g of report.games) {
+      if (g.source === "manual_override") s.add(g.slug);
+    }
+    return s;
+  });
+
+  function hasManualOverride(slug: string): boolean {
+    return slugsWithManualOverride.has(slug);
+  }
 </script>
 
 <div class="mx-auto max-w-6xl px-8 py-8">
@@ -395,6 +474,17 @@
             >
               <Pencil size={14} />
             </button>
+            {#if hasManualOverride(save.game_slug)}
+              <button
+                type="button"
+                onclick={() => revertToAutoDetection(save)}
+                aria-label={$_("library.use_auto_detection")}
+                title={$_("library.use_auto_detection")}
+                class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-700/40 hover:text-zinc-200"
+              >
+                <RotateCcw size={14} />
+              </button>
+            {/if}
             <button
               type="button"
               onclick={() => askUntrack(save)}

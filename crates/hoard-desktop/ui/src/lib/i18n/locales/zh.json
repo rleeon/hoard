@@ -285,6 +285,11 @@
   "settings.server_recheck": "重新检查",
   "settings.server_command_copied": "命令已复制 — 在你的服务器上运行。",
   "settings.server_command_manual": "在你的服务器上运行 `sudo hoard-server upgrade`。",
+  "settings.server_upgrade_button": "升级服务器",
+  "settings.server_upgrade_hint": "系统会要求你输入密码 — Hoard 以管理员权限执行升级,完成后会重启服务。",
+  "settings.server_upgrade_success": "服务器已升级并重启。",
+  "settings.server_upgrade_partial": "服务器已升级,但重启失败 ({error})。请在方便时手动重启。",
+  "settings.server_upgrade_failed": "无法升级服务器:{error}",
   "diagnostics.unlocked_toast": "代理诊断已解锁 — 打开设置。",
   "diagnostics.section_title": "代理诊断",
   "diagnostics.heading": "实时代理槽位",
@@ -296,6 +301,10 @@
   "diagnostics.last_fs_event": "最近文件事件",
   "diagnostics.next_backup": "下次备份",
   "diagnostics.relative_seconds": "{count} 秒前",
+  "diagnostics.title": "检测诊断",
+  "diagnostics.slug_label": "Slug",
+  "diagnostics.run_button": "运行诊断",
+  "diagnostics.no_trace": "运行一次诊断以查看流水线轨迹。",
   "library.rename_button": "重命名标签",
   "library.rename_title": "重命名此存档的标签",
   "library.rename_modal_title": "重命名 {name}",
@@ -303,5 +312,9 @@
   "library.rename_input_placeholder": "新标签",
   "library.rename_confirm": "重命名",
   "library.rename_success": "标签已更新为「{label}」。",
-  "library.rename_error_conflict": "此游戏的另一个存档已使用该标签。请选择其他标签。"
+  "library.rename_error_conflict": "此游戏的另一个存档已使用该标签。请选择其他标签。",
+  "library.manual_label": "手动",
+  "library.use_auto_detection": "返回自动检测",
+  "library.manual_path_set": "Hoard 会记住你为 {name} 选择的文件夹。",
+  "library.manual_path_cleared": "已清除 {name} 的手动设置。"
 }
