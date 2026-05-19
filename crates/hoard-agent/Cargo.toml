@@ -43,5 +43,26 @@ keyring = { version = "3", default-features = false, features = [
     "crypto-rust",
 ] }
 
+# Windows-only registry access for `pathexpand::expand_registry_path` and
+# the OneDrive-aware Known Folder lookups (User Shell Folders). Kept under
+# `cfg(windows)` so non-Windows builds don't pull it in. Single consumer,
+# so it stays out of `[workspace.dependencies]`.
+#
+# `rusqlite` powers the GOG Galaxy enumerator in `launchers.rs`: Galaxy
+# stores its installed-product index in `galaxy-2.0.db`, a sqlite file
+# under `%LOCALAPPDATA%`. Feature `bundled` compiles sqlite into the
+# binary so Windows hosts without a system sqlite still work (sqlite is
+# not part of the standard Windows install). Single consumer + cfg-gated,
+# so it also stays out of `[workspace.dependencies]`.
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+rusqlite = { version = "0.32", features = ["bundled"] }
+
 [dev-dependencies]
 tempfile = { workspace = true }
+# Mirror of the cfg(windows) prod dep: GOG Galaxy's sqlite reader lives in
+# `launchers.rs`, but its parser code is OS-agnostic and gets exercised by
+# tests on Linux too (synthesised fixture). The dev-dep makes the
+# `gog_read_db` helper compile cross-platform so the tests can run.
+[target.'cfg(not(windows))'.dev-dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }

@@ -200,7 +200,7 @@
             tabindex="-1"
             aria-hidden="true"
           >
-            v{import.meta.env.VITE_HOARD_VERSION || "1.5.1"}
+            v{import.meta.env.VITE_HOARD_VERSION || "1.5.2"}
           </button>
         </div>
         <!-- Small amber alert button. Same visual language as "Sin carpeta":

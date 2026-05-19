@@ -114,6 +114,20 @@ fn split_placeholder(template: &str) -> Option<(String, String)> {
 }
 
 fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
+    // On Windows, prefer the OneDrive-aware Known Folder lookup before
+    // falling back to env vars. Modern installs frequently have Documents
+    // (and sometimes Pictures/Desktop) redirected to a OneDrive subtree;
+    // `%USERPROFILE%\Documents` then points at an empty stub the game
+    // never writes to. `windows_known_folder` reads
+    // `HKCU\...\User Shell Folders` so we follow the redirect. Returns
+    // `None` on non-Windows or when the registry value is missing — the
+    // existing env-based match below kicks in as the fallback.
+    if matches!(os, Os::Windows) {
+        if let Some(p) = windows_known_folder(name) {
+            return vec![p];
+        }
+    }
+
     match (os, name) {
         // -------- Cross-platform basics
         (_, "home") => home_dir().into_iter().collect(),
@@ -122,6 +136,13 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
         // -------- Windows
         (Os::Windows, "winAppData") => env_dir("APPDATA"),
         (Os::Windows, "winLocalAppData") => env_dir("LOCALAPPDATA"),
+        // `<winLocalAppDataLow>` — `%USERPROFILE%\AppData\LocalLow`. Not
+        // present in `User Shell Folders`, so we synthesise it from
+        // `%USERPROFILE%` directly. Ludusavi uses it for a handful of
+        // games that write to the IE-sandboxed LocalLow tree.
+        (Os::Windows, "winLocalAppDataLow") => home_dir()
+            .map(|h| vec![h.join("AppData").join("LocalLow")])
+            .unwrap_or_default(),
         (Os::Windows, "winDocuments") => {
             // Best-effort: %USERPROFILE%\Documents. The real Documents path
             // can be redirected via Known Folders, but the env-based fallback
@@ -133,6 +154,12 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
         (Os::Windows, "winPublic") => env_dir("PUBLIC"),
         (Os::Windows, "winProgramData") => env_dir("PROGRAMDATA"),
         (Os::Windows, "winDir") => env_dir("WINDIR"),
+        // `<winSavedGames>` — `%USERPROFILE%\Saved Games`, the Vista+
+        // canonical save folder. Modern titles increasingly target it;
+        // on non-Windows it returns an empty `Vec` so callers skip it.
+        (Os::Windows, "winSavedGames") => home_dir()
+            .map(|h| vec![h.join("Saved Games")])
+            .unwrap_or_default(),
 
         // -------- Linux / XDG
         (Os::Linux, "xdgData") => {
@@ -207,6 +234,175 @@ fn xdg_or(default: Option<PathBuf>, env_var: &str) -> Vec<PathBuf> {
         }
     }
     default.into_iter().collect()
+}
+
+/// Resolve a Ludusavi Windows token via the per-user `User Shell Folders`
+/// registry mapping, returning the *real* path even when OneDrive has
+/// redirected Documents/AppData/etc. away from `%USERPROFILE%`.
+///
+/// Returns `None` on non-Windows hosts, for tokens we don't map, or when
+/// the registry value is missing/unreadable — callers then fall back to
+/// the env-var-based match in `expand_placeholder`.
+///
+/// We only ship a Windows implementation; the no-op stub keeps the call
+/// site (`expand_placeholder`) free of `cfg` gating.
+#[cfg(windows)]
+fn windows_known_folder(token: &str) -> Option<PathBuf> {
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::RegKey;
+
+    // Map the Ludusavi token to (hive, subkey, value name). The per-user
+    // tokens live under HKCU User Shell Folders; ProgramData is machine-
+    // wide so we look it up in HKLM Shell Folders instead.
+    let (hive, subkey, value_name): (winreg::HKEY, &str, &str) = match token {
+        "winDocuments" => (
+            HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders",
+            "Personal",
+        ),
+        "winAppData" => (
+            HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders",
+            "AppData",
+        ),
+        "winLocalAppData" => (
+            HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders",
+            "Local AppData",
+        ),
+        "winPublic" => (
+            HKEY_LOCAL_MACHINE,
+            r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders",
+            "Common Documents",
+        ),
+        "winProgramData" => (
+            HKEY_LOCAL_MACHINE,
+            r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders",
+            "Common AppData",
+        ),
+        // No registry mapping for LocalLow or SavedGames — both are
+        // synthesised from %USERPROFILE% in `expand_placeholder`.
+        _ => return None,
+    };
+
+    let key = RegKey::predef(hive).open_subkey(subkey).ok()?;
+    let raw: String = key.get_value(value_name).ok()?;
+    if raw.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(expand_windows_env_vars(&raw)))
+}
+
+#[cfg(not(windows))]
+fn windows_known_folder(_token: &str) -> Option<PathBuf> {
+    None
+}
+
+/// Expand `%FOO%`-style references inside a Windows registry string.
+///
+/// The `User Shell Folders` keys store paths like
+/// `%USERPROFILE%\Documents`; the equivalent `Shell Folders` snapshot is
+/// already expanded. We accept either by walking the string and replacing
+/// any `%NAME%` segment with the corresponding env var (case-insensitive
+/// lookup, since Windows env names are case-insensitive). Unknown
+/// variables are left in place so callers can still spot the failure.
+#[cfg(windows)]
+fn expand_windows_env_vars(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(start) = rest.find('%') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        if let Some(end) = after.find('%') {
+            let name = &after[..end];
+            // Case-insensitive env var lookup — Windows treats `%appdata%`
+            // and `%APPDATA%` identically.
+            let value = std::env::vars_os()
+                .find(|(k, _)| k.to_string_lossy().eq_ignore_ascii_case(name))
+                .map(|(_, v)| v.to_string_lossy().into_owned());
+            match value {
+                Some(v) => out.push_str(&v),
+                None => {
+                    // Unknown variable: keep the literal so misconfig is
+                    // visible upstream.
+                    out.push('%');
+                    out.push_str(name);
+                    out.push('%');
+                }
+            }
+            rest = &after[end + 1..];
+        } else {
+            // Trailing `%` with no closer: append the remainder verbatim.
+            out.push('%');
+            out.push_str(after);
+            rest = "";
+            break;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Resolve a Ludusavi `RegistryPath` to one or more filesystem paths by
+/// reading the named value (or the subkey's default value) on Windows.
+///
+/// `reg.key` carries the full path with the hive prefix, using either
+/// `/` or `\` as separator (Ludusavi emits `/`). Both `HKEY_CURRENT_USER`
+/// and `HKEY_LOCAL_MACHINE` are supported; other hives are rejected.
+/// `reg.value` is the named value to read; `None` means the subkey's
+/// default value.
+///
+/// The value is treated as a string. Absolute paths are returned as-is.
+/// Strings containing `<…>` Ludusavi placeholders are recursively expanded
+/// via `expand_path` (Windows OS). Missing keys/values, non-string values
+/// and parse errors all collapse to `Vec::new()` so a bad registry entry
+/// silently drops out of detection rather than aborting the scan.
+///
+/// Non-Windows builds always return an empty `Vec` so callers don't need
+/// to `#[cfg]` around the call site.
+#[cfg(windows)]
+pub fn expand_registry_path(reg: &hoard_manifest::ludusavi::RegistryPath) -> Vec<PathBuf> {
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::RegKey;
+
+    // Normalise the separator: winreg accepts both, but `\` matches what
+    // every other Windows-facing API uses.
+    let key_path = reg.key.replace('/', "\\");
+    let mut parts = key_path.splitn(2, '\\');
+    let hive_str = parts.next().unwrap_or("");
+    let subkey = parts.next().unwrap_or("");
+    let hive = match hive_str {
+        "HKEY_CURRENT_USER" | "HKCU" => HKEY_CURRENT_USER,
+        "HKEY_LOCAL_MACHINE" | "HKLM" => HKEY_LOCAL_MACHINE,
+        _ => return Vec::new(),
+    };
+
+    let key = match RegKey::predef(hive).open_subkey(subkey) {
+        Ok(k) => k,
+        Err(_) => return Vec::new(),
+    };
+    let value_name: &str = reg.value.as_deref().unwrap_or("");
+    let raw: String = match key.get_value(value_name) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    let expanded = expand_windows_env_vars(&raw);
+
+    // If the value still contains Ludusavi `<token>` placeholders, recurse
+    // through the regular expander so we honour OneDrive redirection and
+    // env var fallbacks; otherwise pass the literal back as a single path.
+    if expanded.contains('<') {
+        expand_path(&expanded, Os::Windows)
+    } else if expanded.is_empty() {
+        Vec::new()
+    } else {
+        vec![PathBuf::from(expanded)]
+    }
+}
+
+#[cfg(not(windows))]
+pub fn expand_registry_path(_reg: &hoard_manifest::ludusavi::RegistryPath) -> Vec<PathBuf> {
+    Vec::new()
 }
 
 #[cfg(test)]
@@ -369,5 +565,91 @@ mod tests {
             out,
             vec![PathBuf::from("/p/drive_c/users/steamuser/AppData/Roaming")]
         );
+    }
+
+    /// `<winSavedGames>` is keyed on `(Os::Windows, …)` in the match, so
+    /// asking for it under `Os::Linux` drops the template. That's the
+    /// real-world case on a Linux host: detection passes `Os::Linux` and
+    /// the token is irrelevant.
+    #[test]
+    fn winsavedgames_dropped_under_os_linux() {
+        with_env(&[("HOME", Some("/home/test"))], || {
+            let out = expand_path("<winSavedGames>/MyGame", Os::Linux);
+            assert!(out.is_empty(), "got {out:?}");
+            let out = expand_path("<winSavedGames>/MyGame", Os::Mac);
+            assert!(out.is_empty(), "got {out:?}");
+        });
+    }
+
+    /// When the caller asks for `<winSavedGames>` under `Os::Windows`
+    /// the token resolves to `<home>/Saved Games`, whatever `home_dir`
+    /// returns. Validates the synthesis works without poking the
+    /// registry (the OneDrive-aware path covers only Documents/AppData).
+    #[test]
+    fn winsavedgames_synthesises_from_home_under_os_windows() {
+        with_env(
+            &[
+                ("HOME", Some("/home/test")),
+                // Force the Known-Folder helper to return None on
+                // Windows hosts running the test suite — we don't want
+                // a real HKCU lookup to interfere.
+                ("USERPROFILE", Some("/home/test")),
+            ],
+            || {
+                let out = expand_path("<winSavedGames>/MyGame", Os::Windows);
+                assert_eq!(out.len(), 1, "got {out:?}");
+                assert!(
+                    out[0].ends_with("Saved Games/MyGame")
+                        || out[0].ends_with("Saved Games\\MyGame"),
+                    "got {out:?}"
+                );
+            },
+        );
+    }
+
+    /// `expand_registry_path` is a Windows-only feature; on every other
+    /// host it must collapse to an empty vec so callers don't need to
+    /// `#[cfg]` around the call.
+    #[cfg(not(windows))]
+    #[test]
+    fn expand_registry_returns_empty_on_unix() {
+        let reg = hoard_manifest::ludusavi::RegistryPath {
+            key: "HKEY_CURRENT_USER/Software/Acme/Game".to_string(),
+            value: None,
+        };
+        assert!(expand_registry_path(&reg).is_empty());
+        let reg = hoard_manifest::ludusavi::RegistryPath {
+            key: "HKEY_LOCAL_MACHINE/Software/Acme/Game".to_string(),
+            value: Some("SavePath".to_string()),
+        };
+        assert!(expand_registry_path(&reg).is_empty());
+    }
+
+    /// Reads a value the test itself writes to HKCU. Marked `#[ignore]`
+    /// because it touches the live user hive; run by hand on a Windows
+    /// box when validating the registry expander.
+    #[cfg(windows)]
+    #[test]
+    #[ignore]
+    fn expand_registry_reads_value_from_hkcu() {
+        use winreg::enums::{HKEY_CURRENT_USER, KEY_ALL_ACCESS};
+        use winreg::RegKey;
+
+        let subkey = r"Software\Hoard\PathexpandTest";
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let (key, _) = hkcu
+            .create_subkey_with_flags(subkey, KEY_ALL_ACCESS)
+            .expect("create subkey");
+        key.set_value("SavePath", &"C:\\Users\\Tester\\Saves\\Game")
+            .expect("set value");
+
+        let reg = hoard_manifest::ludusavi::RegistryPath {
+            key: format!("HKEY_CURRENT_USER/{}", subkey.replace('\\', "/")),
+            value: Some("SavePath".to_string()),
+        };
+        let out = expand_registry_path(&reg);
+        assert_eq!(out, vec![PathBuf::from("C:\\Users\\Tester\\Saves\\Game")]);
+
+        let _ = hkcu.delete_subkey_all(subkey);
     }
 }

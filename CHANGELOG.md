@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.2] — 2026-05-19
+
+Tercer ciclo de detección, foco principal Windows. 1.5.0 y 1.5.1
+dejaron huecos del lado del SO mayoritario: launchers no-Steam
+invisibles, paths en registry descartados silenciosamente, "Saved
+Games" sin token, OneDrive redirigiendo Documents sin que la app se
+entere. Linux recibe paridad con Proton añadiendo Lutris y Bottles.
+
+### Added
+
+- Detección de juegos instalados por Epic Games, GOG Galaxy y
+  Microsoft Store / Xbox Game Pass: parsers nuevos en
+  `launchers.rs` que enumeran manifests `.item` de Epic, el sqlite
+  `galaxy-2.0.db` de GOG y el subárbol `GamingServices` del registro
+  para MS Store. Cada launcher emite `LauncherApp { app_id, name,
+  install_dir }` y se cruza contra el catálogo Ludusavi por slug
+  exacto o fuzzy match igual que las entradas Steam.
+- Expansión de paths del registro de Windows declarados en el catálogo
+  Ludusavi. El parser de `hoard-manifest` captura ahora el campo
+  `registry:` de cada entry, y `pathexpand::expand_registry_path` lee
+  el value real del hive (`HKEY_CURRENT_USER` / `HKEY_LOCAL_MACHINE`)
+  para resolverlo como path candidato. Antes esos paths se
+  descartaban silenciosamente en el deserializador.
+- Token `<winSavedGames>` en `pathexpand`, mapeado a
+  `%USERPROFILE%\Saved Games`. Cubre juegos modernos que usan la
+  carpeta oficial Vista+ que Ludusavi expresa con ese placeholder.
+- Known Folders sensibles a OneDrive en Windows: `<winDocuments>`,
+  `<winAppData>`, `<winLocalAppData>`, `<winPublic>`,
+  `<winProgramData>` ahora consultan
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders`
+  para resolver al destino real, capturando la redirección a
+  `OneDrive\Documents` que hacen las instalaciones modernas. Si la
+  key no existe, fallback al comportamiento previo basado en env vars.
+- Detección de prefixes Lutris y Bottles en Linux. Módulo nuevo
+  `wine_prefixes.rs` que envuelve `list_proton_prefixes` y suma walks
+  de `~/.local/share/lutris/runners/wine/.../prefixes/` y
+  `~/.local/share/bottles/bottles/` (más el path flatpak
+  `~/.var/app/com.usebottles.bottles/data/bottles/bottles/`). Cada
+  prefix detectado entra al walker agresivo y al expander de save
+  paths como un Proton más.
+
+### Changed
+
+- El walker agresivo (introducido en 1.5.1) ahora se activa también
+  para juegos no-Steam (Epic / GOG / Microsoft Store) y para prefixes
+  Lutris / Bottles, no sólo Steam / Proton. El mapa
+  `prefix_root_by_slug` se construye a partir de
+  `list_wine_prefixes`, así que los tres tipos de prefix alimentan el
+  walker con el mismo flujo.
+
+### Fixed
+
+- Paths del registro en entradas Ludusavi ya no se descartan
+  silenciosamente. Juegos cuyo save path Ludusavi documenta sólo en
+  el campo `registry:` (Skyrim classic, varios Paradox antiguos)
+  vuelven a resolverse en Windows.
+- Usuarios de Windows con OneDrive activo ya no ven `<winDocuments>`
+  redirigido a paths inexistentes. El expander consulta primero el
+  registro de Shell Folders, así que la carpeta real
+  (`C:\Users\<user>\OneDrive\Documents` o
+  `C:\Users\<user>\Documents` según el sistema) gana sobre la
+  derivación naive desde `%USERPROFILE%`.
+
 ## [1.5.1] — 2026-05-18
 
 Follow-up to 1.5.0. The detection overhaul closed the six structural

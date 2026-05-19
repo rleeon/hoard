@@ -78,6 +78,27 @@ pub struct LudusaviEntry {
     pub steam_app_id: Option<u64>,
     /// Per-OS save-path templates with optional store/tag constraints.
     pub paths: LudusaviPaths,
+    /// Windows registry locations where the game stores save data. Each
+    /// entry is a `HKEY_*` key (and optionally a value name); expansion to
+    /// a filesystem path happens at detection time and is a no-op on
+    /// non-Windows hosts. See ADR 0011.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub registry: Vec<RegistryPath>,
+}
+
+/// A single Windows registry location from the Ludusavi catalog.
+///
+/// `key` is the full key path including the hive prefix
+/// (`HKEY_CURRENT_USER/Software/Foo/Bar`). `value` is the optional named
+/// value inside that key; `None` means the consumer should read the
+/// subkey's default value (Ludusavi's convention).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryPath {
+    /// Full registry key path, hive prefix included.
+    pub key: String,
+    /// Specific value name to read inside `key`. `None` means default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
 }
 
 /// Per-OS bundle of save paths in the Ludusavi catalog.
@@ -281,6 +302,11 @@ struct YamlEntry {
     files: BTreeMap<String, YamlPath>,
     #[serde(default)]
     steam: Option<YamlSteamRef>,
+    /// Ludusavi `registry:` block. Keys are full registry paths
+    /// (`HKEY_CURRENT_USER/Software/...`); we ignore the per-entry
+    /// `tags`/`when` payload here and just keep the key.
+    #[serde(default)]
+    registry: BTreeMap<String, serde::de::IgnoredAny>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -321,7 +347,12 @@ pub fn convert_yaml_to_catalog(yaml_text: &str) -> Result<Vec<LudusaviEntry>, Ca
             continue;
         }
         let paths = transform_files(&entry.files);
-        if paths.windows.is_empty() && paths.linux.is_empty() && paths.mac.is_empty() {
+        let registry = transform_registry(&entry.registry);
+        if paths.windows.is_empty()
+            && paths.linux.is_empty()
+            && paths.mac.is_empty()
+            && registry.is_empty()
+        {
             continue;
         }
 
@@ -345,6 +376,7 @@ pub fn convert_yaml_to_catalog(yaml_text: &str) -> Result<Vec<LudusaviEntry>, Ca
             display_name,
             steam_app_id: entry.steam.as_ref().map(|s| s.id),
             paths,
+            registry,
         });
     }
 
@@ -454,6 +486,23 @@ fn transform_files(files: &BTreeMap<String, YamlPath>) -> LudusaviPaths {
     }
 
     out
+}
+
+/// Convert a Ludusavi `registry:` block into a flat `Vec<RegistryPath>`.
+///
+/// Each map key becomes the `RegistryPath::key`. We never populate
+/// `value` here: Ludusavi's upstream YAML doesn't carry per-value
+/// metadata, so callers default to reading the subkey's default value
+/// (handled by `pathexpand::expand_registry_path` on Windows). Order is
+/// stable thanks to `BTreeMap`.
+fn transform_registry(registry: &BTreeMap<String, serde::de::IgnoredAny>) -> Vec<RegistryPath> {
+    registry
+        .keys()
+        .map(|k| RegistryPath {
+            key: k.clone(),
+            value: None,
+        })
+        .collect()
 }
 
 fn normalise_os(s: &str) -> Option<&'static str> {
@@ -609,6 +658,7 @@ Game X:
             display_name: slug.to_string(),
             steam_app_id,
             paths: LudusaviPaths::default(),
+            registry: Vec::new(),
         }
     }
 
@@ -656,5 +706,84 @@ Game X:
         let cat = vec![entry("portal-2", Some(620))];
         // "minecraft" vs "portal-2": normalised distance ≈ 1.0, far above 0.15.
         assert!(fuzzy_match_in(&cat, "minecraft", 0.15).is_none());
+    }
+
+    #[test]
+    fn parses_registry_field_from_entry() {
+        // Deserialise a synthetic catalog entry whose JSON includes the
+        // new `registry` field. Verifies the schema accepts the field
+        // and turns it into a `Vec<RegistryPath>` with a single key and
+        // `value: None` (the Ludusavi default).
+        let json = r#"{
+            "slug": "skyrim",
+            "display_name": "Skyrim",
+            "paths": { "windows": [], "linux": [], "mac": [] },
+            "registry": [
+                { "key": "HKEY_CURRENT_USER/Software/Bethesda Softworks/Skyrim" }
+            ]
+        }"#;
+        let entry: LudusaviEntry = serde_json::from_str(json).expect("entry parses");
+        assert_eq!(entry.registry.len(), 1);
+        assert_eq!(
+            entry.registry[0].key,
+            "HKEY_CURRENT_USER/Software/Bethesda Softworks/Skyrim"
+        );
+        assert!(entry.registry[0].value.is_none());
+    }
+
+    #[test]
+    fn entry_without_registry_defaults_to_empty() {
+        // Older catalog snapshots omit the field entirely; the `#[serde(default)]`
+        // attribute must give us an empty vec instead of a parse error.
+        let json = r#"{
+            "slug": "stardew-valley",
+            "display_name": "Stardew Valley",
+            "paths": { "windows": [], "linux": [], "mac": [] }
+        }"#;
+        let entry: LudusaviEntry = serde_json::from_str(json).expect("entry parses");
+        assert!(entry.registry.is_empty());
+    }
+
+    #[test]
+    fn convert_yaml_extracts_registry_keys() {
+        // The upstream YAML's `registry:` block must surface as
+        // `RegistryPath`s on the resulting catalog entry, even when the
+        // entry also has `files:`.
+        let yaml = "\
+Skyrim:
+  files:
+    \"<winDocuments>/My Games/Skyrim\":
+      tags: [save]
+  registry:
+    \"HKEY_CURRENT_USER/Software/Bethesda Softworks/Skyrim\":
+      tags: [save]
+      when:
+        - os: windows
+";
+        let cat = convert_yaml_to_catalog(yaml).unwrap();
+        assert_eq!(cat.len(), 1);
+        assert_eq!(cat[0].registry.len(), 1);
+        assert_eq!(
+            cat[0].registry[0].key,
+            "HKEY_CURRENT_USER/Software/Bethesda Softworks/Skyrim"
+        );
+        assert!(cat[0].registry[0].value.is_none());
+    }
+
+    #[test]
+    fn convert_yaml_keeps_registry_only_entries() {
+        // A game with registry-only saves (no `files:`) must not be
+        // discarded as "no paths on any OS"; the registry block is a
+        // valid path source.
+        let yaml = "\
+Registry Only Game:
+  registry:
+    \"HKEY_CURRENT_USER/Software/Acme/RegOnly\":
+      tags: [save]
+";
+        let cat = convert_yaml_to_catalog(yaml).unwrap();
+        assert_eq!(cat.len(), 1);
+        assert_eq!(cat[0].slug, "registry-only-game");
+        assert_eq!(cat[0].registry.len(), 1);
     }
 }

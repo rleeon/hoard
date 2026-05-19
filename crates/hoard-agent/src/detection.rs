@@ -39,10 +39,12 @@ use hoard_manifest::ludusavi::{self, LudusaviEntry};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 
+use crate::launchers::{self, LauncherApp};
 use crate::manifest::Os;
-use crate::pathexpand::{expand_path, expand_path_in_prefix};
+use crate::pathexpand::{expand_path, expand_path_in_prefix, expand_registry_path};
 use crate::state::CliState;
 use crate::steam::{self, SteamApp};
+use crate::wine_prefixes::{self, PrefixKind};
 
 /// How sure we are that the game is actually installed locally.
 ///
@@ -225,6 +227,18 @@ where
     // PCGamingWiki without a Steam appid attached.
     apply_steam_name_fallback(catalog, &steam_apps, &mut by_slug);
 
+    // Non-Steam launchers (1.5.2): Epic Games / GOG Galaxy / Microsoft Store.
+    // Same shape as the Steam name fallback above — slugify the display
+    // name, look up exact, fall back to fuzzy. Each function is a no-op on
+    // non-Windows (or when its launcher data dir is absent), so calling
+    // unconditionally costs nothing on hosts without the launcher.
+    let epic_apps = launchers::list_installed_epic_games(os);
+    let gog_apps = launchers::list_installed_gog_games(os);
+    let ms_apps = launchers::list_installed_msstore_games(os);
+    apply_launcher_name_fallback(catalog, &epic_apps, "epic", &mut by_slug);
+    apply_launcher_name_fallback(catalog, &gog_apps, "gog", &mut by_slug);
+    apply_launcher_name_fallback(catalog, &ms_apps, "msstore", &mut by_slug);
+
     // Filesystem heuristic: spawn one blocking task per game, gated by the
     // semaphore. Each task expands every Windows/Linux/Mac template that
     // applies to the current OS and stat()s every candidate path.
@@ -307,6 +321,53 @@ where
         }
     }
 
+    // Registry expand (1.5.2): catalog entries with `registry` keys point at
+    // HKEY_* paths whose value holds the save directory. On Windows we read
+    // each registry value (via `pathexpand::expand_registry_path`) and treat
+    // the result as a filesystem hit, merging it through the same path as
+    // template expansion. On non-Windows the call returns an empty vec, so
+    // this block is a no-op and never touches the Linux integration tests.
+    let mut registry_hits = 0usize;
+    for entry in catalog {
+        if entry.registry.is_empty() {
+            continue;
+        }
+        let mut hits: Vec<PathBuf> = Vec::new();
+        let mut seen: HashSet<PathBuf> = HashSet::new();
+        for reg in &entry.registry {
+            for candidate in expand_registry_path(reg) {
+                if !candidate.exists() {
+                    continue;
+                }
+                if seen.insert(candidate.clone()) {
+                    hits.push(candidate);
+                }
+            }
+        }
+        if hits.is_empty() {
+            continue;
+        }
+        registry_hits += 1;
+        tracing::debug!(
+            slug = %entry.slug,
+            count = hits.len(),
+            "registry expand produced filesystem hits"
+        );
+        let refined = refine_save_dir(&entry.slug, hits);
+        if refined.is_empty() {
+            continue;
+        }
+        merge_fs_hit(
+            &mut by_slug,
+            entry.slug.clone(),
+            entry.display_name.clone(),
+            refined,
+        );
+    }
+    if registry_hits > 0 {
+        tracing::info!(slugs = registry_hits, "registry expand merged hits");
+    }
+
     // Proton/Wine prefixes: on Linux, expand the Windows save-path templates
     // of each catalog entry against any compatdata prefix Steam has for that
     // appid. Captures the (large) population of Windows-only games that
@@ -353,20 +414,23 @@ where
         }
     }
 
-    // Aggressive walker (1.5.1): for every slug that survived the main
-    // pipeline without any `found_paths`, walk the install dir and the
-    // Proton prefix looking for save-like subdirs. Gated by
-    // `found_paths.is_empty()` so it never costs anything on the happy
-    // path; covers the long tail of indies / GOG titles / odd layouts that
-    // Ludusavi doesn't list or whose templates miss the real save dir.
-    let proton_prefixes_by_appid: HashMap<u64, PathBuf> = if os == Os::Linux {
-        steam::list_proton_prefixes(os)
-            .into_iter()
-            .map(|p| (p.app_id, p.prefix_root))
-            .collect()
-    } else {
-        HashMap::new()
-    };
+    // Aggressive walker (1.5.1, extended in 1.5.2): for every slug that
+    // survived the main pipeline without any `found_paths`, walk the install
+    // dir and the matching Wine/Proton prefix looking for save-like
+    // subdirs. Gated by `found_paths.is_empty()` so it never costs anything
+    // on the happy path; covers the long tail of indies / GOG titles / odd
+    // layouts that Ludusavi doesn't list or whose templates miss the real
+    // save dir.
+    //
+    // 1.5.2 changes:
+    //   * `prefix_root_by_slug` unifies Proton (lookup via Steam appid →
+    //     slug) and Lutris/Bottles (lookup via `slugify(identifier)`), so
+    //     the walker now reaches Wine-managed prefixes outside Steam.
+    //   * `install_dir` for non-Steam launchers (Epic / GOG / MS) is
+    //     already attached to the row in the launcher cross-reference
+    //     block above; the walker reads it from `g.install_dir`, no
+    //     separate map needed.
+    let prefix_root_by_slug = build_prefix_root_by_slug(os);
     let unresolved_slugs: Vec<String> = by_slug
         .iter()
         .filter(|(_, g)| g.found_paths.is_empty())
@@ -376,9 +440,7 @@ where
         let (install_dir, prefix_root, display_name) = {
             let g = &by_slug[&slug];
             let install_dir = g.install_dir.clone();
-            let prefix_root = g
-                .steam_app_id
-                .and_then(|id| proton_prefixes_by_appid.get(&id).cloned());
+            let prefix_root = prefix_root_by_slug.get(&slug).cloned();
             (install_dir, prefix_root, g.display_name.clone())
         };
         if install_dir.is_none() && prefix_root.is_none() {
@@ -535,6 +597,149 @@ fn apply_steam_name_fallback(
 /// fuzzy match for an unrelated query; restrictive enough that
 /// random typos still resolve.
 const FUZZY_NAME_THRESHOLD: f32 = 0.15;
+
+/// Cross-reference non-Steam launcher apps (Epic / GOG / Microsoft Store)
+/// against the Ludusavi catalog. Mirrors [`apply_steam_name_fallback`]:
+/// slugify the launcher's display name, look up exact, fall back to fuzzy.
+///
+/// Rows synthesised here use `DetectionSource::SteamLibrary` as a neutral
+/// "we know this game is installed via a launcher" tag. Adding a new
+/// variant per launcher (`LauncherEpic`, `LauncherGog`, …) was considered
+/// and rejected: the UI consumes `source` as an opaque grouping signal,
+/// not a per-launcher icon, and the install dir hint on the row already
+/// records the launcher (it points at the launcher's install path).
+///
+/// Confidence is pinned to `Low` because the match is structurally weaker
+/// than Steam's `appid`: two unrelated launcher games sharing a slugifiable
+/// name would collide. Rows without any Ludusavi match are **not**
+/// inserted — surfacing every random launcher app would surface launcher
+/// tooling and non-game executables. The walker still benefits from the
+/// install_dir attached to matched rows.
+fn apply_launcher_name_fallback(
+    catalog: &[LudusaviEntry],
+    apps: &[LauncherApp],
+    launcher_tag: &str,
+    by_slug: &mut HashMap<String, DetectedGame>,
+) {
+    if apps.is_empty() {
+        return;
+    }
+    let catalog_by_slug: HashMap<&str, &LudusaviEntry> =
+        catalog.iter().map(|e| (e.slug.as_str(), e)).collect();
+
+    let mut exact_added = 0usize;
+    let mut fuzzy_added = 0usize;
+    for app in apps {
+        let slug = ludusavi::slugify(&app.name);
+        let (entry, via_fuzzy) = match catalog_by_slug.get(slug.as_str()) {
+            Some(entry) => (*entry, false),
+            None => {
+                let Some(entry) = ludusavi::find_by_fuzzy_name(&app.name, FUZZY_NAME_THRESHOLD)
+                else {
+                    continue;
+                };
+                (entry, true)
+            }
+        };
+        match by_slug.get_mut(&entry.slug) {
+            Some(existing) => {
+                // Already linked by Steam appid or another launcher — keep
+                // the stronger row but stamp install_dir if it's still
+                // empty (e.g. the slug came from `apply_steam_name_fallback`
+                // without an install_dir hint).
+                if existing.install_dir.is_none() {
+                    existing.install_dir = Some(app.install_dir.clone());
+                }
+                continue;
+            }
+            None => {
+                by_slug.insert(
+                    entry.slug.clone(),
+                    DetectedGame {
+                        slug: entry.slug.clone(),
+                        display_name: entry.display_name.clone(),
+                        found_paths: Vec::new(),
+                        confidence: Confidence::Low,
+                        source: DetectionSource::SteamLibrary,
+                        steam_app_id: None,
+                        install_dir: Some(app.install_dir.clone()),
+                    },
+                );
+            }
+        }
+        if via_fuzzy {
+            fuzzy_added += 1;
+            tracing::info!(
+                launcher = %launcher_tag,
+                app_name = %app.name,
+                catalog_slug = %entry.slug,
+                "launcher → catalog fuzzy fallback matched"
+            );
+        } else {
+            exact_added += 1;
+            tracing::info!(
+                launcher = %launcher_tag,
+                app_name = %app.name,
+                catalog_slug = %entry.slug,
+                "launcher → catalog slug match"
+            );
+        }
+    }
+    if exact_added > 0 || fuzzy_added > 0 {
+        tracing::info!(
+            launcher = %launcher_tag,
+            exact = exact_added,
+            fuzzy = fuzzy_added,
+            "launcher cross-reference complete"
+        );
+    }
+}
+
+/// Build the slug → prefix_root map the aggressive walker consumes.
+///
+/// Unifies three prefix sources behind a single map keyed by Ludusavi slug:
+///   * Proton: looked up via the Steam appid → catalog slug.
+///   * Lutris and Bottles: the prefix's identifier is slugified directly
+///     and used as the key (best-effort — no catalog lookup, the
+///     identifier is whatever the user named the bottle / game dir).
+///
+/// On non-Linux hosts only the Proton wrapper has a chance to contribute,
+/// matching the contract of [`wine_prefixes::list_wine_prefixes`].
+fn build_prefix_root_by_slug(os: Os) -> HashMap<String, PathBuf> {
+    let mut map: HashMap<String, PathBuf> = HashMap::new();
+    for prefix in wine_prefixes::list_wine_prefixes(os) {
+        let slug = match prefix.kind {
+            PrefixKind::Proton => {
+                // The identifier is the Steam appid stringified; look up
+                // the catalog entry to recover the slug. A miss means
+                // Ludusavi doesn't know the appid — silently skip; the
+                // walker can't help without a slug to index against.
+                let Ok(appid) = prefix.identifier.parse::<u64>() else {
+                    continue;
+                };
+                let Some(entry) = ludusavi::find_by_steam_app_id(appid) else {
+                    continue;
+                };
+                entry.slug.clone()
+            }
+            PrefixKind::Lutris | PrefixKind::Bottles => ludusavi::slugify(&prefix.identifier),
+        };
+        // First writer wins — multiple prefixes for the same slug
+        // (e.g. a Steam install AND a Lutris install of the same game) is
+        // an unusual setup; surface a debug log but don't try to merge
+        // walks across prefix roots.
+        if map.contains_key(&slug) {
+            tracing::debug!(
+                slug = %slug,
+                kind = ?prefix.kind,
+                "multiple Wine prefixes resolved to the same slug; keeping the first"
+            );
+            continue;
+        }
+        map.insert(slug, prefix.prefix_root);
+    }
+    map
+}
 
 /// Merge a filesystem hit into the dedupe map, promoting source/confidence
 /// when an existing Steam entry is already present.
@@ -1427,6 +1632,7 @@ mod tests {
             display_name: display_name.into(),
             steam_app_id: app_id,
             paths: hoard_manifest::ludusavi::LudusaviPaths::default(),
+            registry: Vec::new(),
         }
     }
 

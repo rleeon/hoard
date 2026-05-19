@@ -13,12 +13,14 @@ pub mod backup;
 pub mod config;
 pub mod credentials;
 pub mod detection;
+pub mod launchers;
 pub mod manifest;
 pub mod pathexpand;
 pub mod prefs;
 pub mod restore;
 pub mod state;
 pub mod steam;
+pub mod wine_prefixes;
 
 #[cfg(test)]
 pub(crate) mod test_lock {
