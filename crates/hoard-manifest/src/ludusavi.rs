@@ -208,6 +208,67 @@ pub fn find_by_steam_app_id(app_id: u64) -> Option<&'static LudusaviEntry> {
     catalog().iter().find(|e| e.steam_app_id == Some(app_id))
 }
 
+/// Fuzzy lookup by display name using normalised Levenshtein over slugs.
+///
+/// Used as a last-resort fallback in detection when neither `find_by_steam_app_id`
+/// nor an exact slug match against the catalog resolves a Steam app. Slugifies
+/// `name` (so casing/punctuation differences don't count as edits), then scans
+/// every catalog slug and keeps the entry with the lowest normalised distance —
+/// `levenshtein / max(len_a, len_b)` — provided it stays strictly below
+/// `threshold`. The recommended default is `0.15` (≈ one edit per 7 characters),
+/// conservative enough that "Civilization V" vs "Civilization VI" (≈ 0.07) gets
+/// flagged but pulled in only as a `Confidence::Low` fallback by callers.
+///
+/// Tie-break: when two entries share the lowest distance, the one with a
+/// populated `steam_app_id` wins (the appid is a strictly stronger structural
+/// signal). The implementation is O(N) per call, but the catalog is fixed at
+/// ~20k entries and this only fires once per unmatched Steam app per scan, so
+/// it stays well under the cost of the surrounding pipeline.
+pub fn find_by_fuzzy_name(name: &str, threshold: f32) -> Option<&'static LudusaviEntry> {
+    fuzzy_match_in(catalog(), name, threshold)
+}
+
+/// Catalog-agnostic core of [`find_by_fuzzy_name`]. Exposed `pub(crate)` so the
+/// unit tests can drive it against a fixed in-memory slice instead of the
+/// embedded ~20k-entry global catalog — keeps tie-break behaviour deterministic
+/// and the test fast.
+pub(crate) fn fuzzy_match_in<'a>(
+    catalog: &'a [LudusaviEntry],
+    name: &str,
+    threshold: f32,
+) -> Option<&'a LudusaviEntry> {
+    let query = slugify(name);
+    if query.is_empty() {
+        return None;
+    }
+    let mut best: Option<(&'a LudusaviEntry, f32)> = None;
+    for entry in catalog {
+        let max_len = query.len().max(entry.slug.len());
+        if max_len == 0 {
+            continue;
+        }
+        let distance = strsim::levenshtein(&query, &entry.slug) as f32 / max_len as f32;
+        if distance >= threshold {
+            continue;
+        }
+        match best {
+            None => best = Some((entry, distance)),
+            Some((current, current_dist)) => {
+                if distance < current_dist {
+                    best = Some((entry, distance));
+                } else if (distance - current_dist).abs() < f32::EPSILON
+                    && entry.steam_app_id.is_some()
+                    && current.steam_app_id.is_none()
+                {
+                    // Tie: prefer the entry carrying a Steam appid.
+                    best = Some((entry, distance));
+                }
+            }
+        }
+    }
+    best.map(|(entry, _)| entry)
+}
+
 // ----- YAML → catalog conversion ----------------------------------------
 
 /// Subset of the Ludusavi YAML schema we care about. Mirrors the
@@ -538,5 +599,62 @@ Game X:
         let cat = convert_yaml_to_catalog(yaml).unwrap();
         // No paths kept → entry skipped.
         assert!(cat.is_empty());
+    }
+
+    /// Builds a minimal [`LudusaviEntry`] for fuzzy-match tests so the
+    /// behaviour is deterministic (no dependency on the embedded ~20k catalog).
+    fn entry(slug: &str, steam_app_id: Option<u64>) -> LudusaviEntry {
+        LudusaviEntry {
+            slug: slug.to_string(),
+            display_name: slug.to_string(),
+            steam_app_id,
+            paths: LudusaviPaths::default(),
+        }
+    }
+
+    #[test]
+    fn fuzzy_matches_minor_typo() {
+        let cat = vec![
+            entry("stardew-valley", Some(413150)),
+            entry("celeste", Some(504230)),
+        ];
+        let hit = fuzzy_match_in(&cat, "stardew vally", 0.15).expect("fuzzy hit");
+        assert_eq!(hit.slug, "stardew-valley");
+    }
+
+    #[test]
+    fn fuzzy_rejects_distant_names() {
+        let cat = vec![
+            entry("civilization-v", Some(8930)),
+            entry("destiny-2", Some(1085660)),
+        ];
+        // "destiny" vs "civilization-v": distance well above 0.15.
+        assert!(fuzzy_match_in(&cat, "civilization", 0.15).is_some());
+        // And "destiny" must not match the unrelated "civilization-v".
+        let hit = fuzzy_match_in(&cat, "destiny", 0.15);
+        assert!(
+            hit.is_none_or(|e| e.slug != "civilization-v"),
+            "destiny should not collapse onto civilization-v: got {:?}",
+            hit.map(|e| &e.slug)
+        );
+    }
+
+    #[test]
+    fn fuzzy_prefers_steam_id() {
+        // Two slugs at identical distance from the query; only one has a
+        // steam_app_id — that one must win. Iteration order: the no-id entry
+        // comes first so the tie-break has to actively replace it.
+        let cat = vec![entry("aaa", None), entry("aab", Some(42))];
+        // "aac" is exactly 1 edit from each slug ⇒ same normalised distance.
+        let hit = fuzzy_match_in(&cat, "aac", 0.5).expect("fuzzy hit");
+        assert_eq!(hit.slug, "aab");
+        assert_eq!(hit.steam_app_id, Some(42));
+    }
+
+    #[test]
+    fn fuzzy_returns_none_below_threshold() {
+        let cat = vec![entry("portal-2", Some(620))];
+        // "minecraft" vs "portal-2": normalised distance ≈ 1.0, far above 0.15.
+        assert!(fuzzy_match_in(&cat, "minecraft", 0.15).is_none());
     }
 }

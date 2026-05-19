@@ -136,6 +136,14 @@ pub struct TrackedSave {
     /// game.
     #[serde(default)]
     pub total_size_bytes: i64,
+    /// `true` when the save exists server-side but this machine has no
+    /// matching `CliState` row — i.e. the user reinstalled, switched PCs,
+    /// or cleared local state without deleting the server data. The UI
+    /// shows these with a discreet "Sin estado local" badge and disables
+    /// the untrack (local-only) button: there's nothing local to clean,
+    /// so the only sensible action is the full `delete_save_completely`.
+    #[serde(default)]
+    pub orphan: bool,
 }
 
 /// Run a full auto-detection sweep against the **bundled** catalog (no
@@ -330,6 +338,7 @@ pub async fn add_game_to_tracking(
         last_backup_at: None,
         paused: false,
         total_size_bytes,
+        orphan: false,
     })
 }
 
@@ -344,27 +353,47 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
 
     let mut out = Vec::with_capacity(saves.len());
     for s in saves {
-        // Only surface saves that this machine is actively tracking. Without
-        // this filter, destracking a save (which only removes the local
-        // CliState row, on purpose, to preserve snapshots on the server) was
-        // bouncing back on the next app launch as a ghost "tracked" card —
-        // and worse, suppressed the amber "no save folder" alert because the
-        // detection card thought the game was already being watched.
-        let Some(st) = cli_state.saves.get(&s.id) else {
-            continue;
-        };
-        let local = st.local_path.to_string_lossy().into_owned();
-        let paused = st.paused;
-        out.push(TrackedSave {
-            save_id: s.id,
-            game_slug: s.game_slug,
-            label: s.label,
-            local_path: local,
-            last_version_num: s.latest_version_num,
-            last_backup_at: format_optional_time(Some(s.updated_at)),
-            paused,
-            total_size_bytes: s.total_size_bytes.unwrap_or(0),
-        });
+        // Saves with a matching CliState row are the happy path: this
+        // machine is actively tracking them, so we surface the local path
+        // and pause flag straight from state.
+        //
+        // Saves *without* a CliState row used to be skipped — that hid
+        // server-side rows after a reinstall, a PC switch, or a manual
+        // CliState wipe, leaving the user no way to clean them up from the
+        // UI (only `hoard-admin` worked). Since 1.5.1 we emit them with
+        // `orphan: true` so the Library strip can show them with a "Sin
+        // estado local" badge and offer the destructive
+        // `delete_save_completely` as the only sensible action.
+        match cli_state.saves.get(&s.id) {
+            Some(st) => {
+                let local = st.local_path.to_string_lossy().into_owned();
+                let paused = st.paused;
+                out.push(TrackedSave {
+                    save_id: s.id,
+                    game_slug: s.game_slug,
+                    label: s.label,
+                    local_path: local,
+                    last_version_num: s.latest_version_num,
+                    last_backup_at: format_optional_time(Some(s.updated_at)),
+                    paused,
+                    total_size_bytes: s.total_size_bytes.unwrap_or(0),
+                    orphan: false,
+                });
+            }
+            None => {
+                out.push(TrackedSave {
+                    save_id: s.id,
+                    game_slug: s.game_slug,
+                    label: s.label,
+                    local_path: String::new(),
+                    last_version_num: s.latest_version_num,
+                    last_backup_at: format_optional_time(Some(s.updated_at)),
+                    paused: false,
+                    total_size_bytes: s.total_size_bytes.unwrap_or(0),
+                    orphan: true,
+                });
+            }
+        }
     }
     Ok(out)
 }
@@ -435,6 +464,7 @@ pub async fn rename_save_label(
         last_backup_at: None,
         paused: false,
         total_size_bytes: updated.total_size_bytes.unwrap_or(0),
+        orphan: false,
     })
 }
 
@@ -537,6 +567,33 @@ pub async fn untrack_save(save_id: String, state: State<'_, AppState>) -> Result
     let (mut cli_state, path) = CliState::load_default().map_err(|e| e.to_string())?;
     cli_state.saves.remove(&save_id);
     cli_state.save(&path).map_err(|e| e.to_string())?;
+    detach_save_if_running(&state, save_id).await;
+    Ok(())
+}
+
+/// Hard-delete a save: drop the row + every snapshot on the server **and**
+/// purge any local CliState that referenced it. Sibling of `untrack_save`,
+/// but destructive on purpose — it's what the user clicks when a save was
+/// tracked against a wrong path and the only way out is to start over
+/// (otherwise `add_game_to_tracking` swallows the next 409 and re-links to
+/// the bad row). The matching `manual_paths` override is also cleared so a
+/// re-add doesn't immediately bounce back to the same wrong folder.
+#[tauri::command]
+pub async fn delete_save_completely(
+    save_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let client = current_client(&state)?;
+    client.delete_save(&save_id).await.map_err(pretty_error)?;
+
+    let (mut cli_state, path) = CliState::load_default().map_err(|e| e.to_string())?;
+    let slug = cli_state.saves.get(&save_id).map(|s| s.game_slug.clone());
+    cli_state.saves.remove(&save_id);
+    if let Some(slug) = slug {
+        cli_state.clear_manual_path(&slug);
+    }
+    cli_state.save(&path).map_err(|e| e.to_string())?;
+
     detach_save_if_running(&state, save_id).await;
     Ok(())
 }

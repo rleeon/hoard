@@ -30,8 +30,9 @@
 //! `library://scan-progress` event.
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Result;
 use hoard_manifest::ludusavi::{self, LudusaviEntry};
@@ -352,6 +353,64 @@ where
         }
     }
 
+    // Aggressive walker (1.5.1): for every slug that survived the main
+    // pipeline without any `found_paths`, walk the install dir and the
+    // Proton prefix looking for save-like subdirs. Gated by
+    // `found_paths.is_empty()` so it never costs anything on the happy
+    // path; covers the long tail of indies / GOG titles / odd layouts that
+    // Ludusavi doesn't list or whose templates miss the real save dir.
+    let proton_prefixes_by_appid: HashMap<u64, PathBuf> = if os == Os::Linux {
+        steam::list_proton_prefixes(os)
+            .into_iter()
+            .map(|p| (p.app_id, p.prefix_root))
+            .collect()
+    } else {
+        HashMap::new()
+    };
+    let unresolved_slugs: Vec<String> = by_slug
+        .iter()
+        .filter(|(_, g)| g.found_paths.is_empty())
+        .map(|(s, _)| s.clone())
+        .collect();
+    for slug in unresolved_slugs {
+        let (install_dir, prefix_root, display_name) = {
+            let g = &by_slug[&slug];
+            let install_dir = g.install_dir.clone();
+            let prefix_root = g
+                .steam_app_id
+                .and_then(|id| proton_prefixes_by_appid.get(&id).cloned());
+            (install_dir, prefix_root, g.display_name.clone())
+        };
+        if install_dir.is_none() && prefix_root.is_none() {
+            continue;
+        }
+        let discoveries = aggressive_discover(
+            &slug,
+            &display_name,
+            install_dir.as_deref(),
+            prefix_root.as_deref(),
+            AGGRESSIVE_WALK_TIMEOUT,
+            AGGRESSIVE_WALK_MAX_DEPTH,
+        );
+        if discoveries.is_empty() {
+            continue;
+        }
+        let max_conf = discoveries
+            .iter()
+            .map(|d| d.confidence)
+            .max_by_key(|c| confidence_rank(*c))
+            .unwrap_or(Confidence::Low);
+        let hits: Vec<PathBuf> = discoveries.into_iter().map(|d| d.path).collect();
+        merge_fs_hit(&mut by_slug, slug.clone(), display_name, hits);
+        if let Some(entry) = by_slug.get_mut(&slug) {
+            // `merge_fs_hit` over a pre-existing Steam entry stamps
+            // `Both`/`High`. The walker's signal is structurally weaker
+            // (heuristic dir-name match, not a catalog hit), so pin the
+            // confidence to the walker's own grading instead.
+            entry.confidence = max_conf;
+        }
+    }
+
     // Apply user overrides last so they always win, regardless of how strong
     // a heuristic signal the upstream pipeline produced.
     apply_manual_overrides(&state.manual_paths, &mut by_slug);
@@ -410,13 +469,25 @@ fn apply_steam_name_fallback(
         catalog.iter().map(|e| (e.slug.as_str(), e)).collect();
 
     let mut added = 0usize;
+    let mut fuzzy_added = 0usize;
     for app in steam_apps {
         if matched_appids.contains(&app.app_id) {
             continue;
         }
         let slug = ludusavi::slugify(&app.name);
-        let Some(entry) = catalog_by_slug.get(slug.as_str()) else {
-            continue;
+        let (entry, via_fuzzy) = match catalog_by_slug.get(slug.as_str()) {
+            Some(entry) => (*entry, false),
+            None => {
+                // Last-resort: fuzzy match on the slugified display name
+                // (Levenshtein normalised, threshold 0.15). Catches Steam
+                // titles whose slug diverges slightly from the catalog
+                // (typos, "Definitive Edition" suffixes, minor localisation).
+                let Some(entry) = ludusavi::find_by_fuzzy_name(&app.name, FUZZY_NAME_THRESHOLD)
+                else {
+                    continue;
+                };
+                (entry, true)
+            }
         };
         if by_slug.contains_key(&entry.slug) {
             continue;
@@ -433,7 +504,16 @@ fn apply_steam_name_fallback(
                 install_dir: Some(app.install_dir.clone()),
             },
         );
-        added += 1;
+        if via_fuzzy {
+            fuzzy_added += 1;
+            tracing::info!(
+                steam_name = %app.name,
+                catalog_slug = %entry.slug,
+                "Steam → catalog fuzzy fallback matched with Confidence::Low"
+            );
+        } else {
+            added += 1;
+        }
     }
     if added > 0 {
         tracing::info!(
@@ -441,7 +521,20 @@ fn apply_steam_name_fallback(
             "Steam → catalog slug fallback added entries with Confidence::Low"
         );
     }
+    if fuzzy_added > 0 {
+        tracing::info!(
+            fuzzy_added,
+            "Steam → catalog fuzzy-name fallback added entries with Confidence::Low"
+        );
+    }
 }
+
+/// Threshold for `find_by_fuzzy_name` in [`apply_steam_name_fallback`].
+/// 0.15 ≈ one edit per ~7 characters. Conservative enough that
+/// "Civilization V" vs "Civilization VI" (≈ 0.07) wouldn't trip the
+/// fuzzy match for an unrelated query; restrictive enough that
+/// random typos still resolve.
+const FUZZY_NAME_THRESHOLD: f32 = 0.15;
 
 /// Merge a filesystem hit into the dedupe map, promoting source/confidence
 /// when an existing Steam entry is already present.
@@ -887,6 +980,299 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
         slug: slug.into(),
         attempts,
     }
+}
+
+/// Ordering helper for `Confidence`: `Low < Medium < High`. Used by the
+/// aggressive-walker integration to fold multiple discoveries into one
+/// grade.
+fn confidence_rank(c: Confidence) -> u8 {
+    match c {
+        Confidence::Low => 0,
+        Confidence::Medium => 1,
+        Confidence::High => 2,
+    }
+}
+
+/// Default per-root timeout for [`aggressive_discover`]. Intentionally
+/// conservative: 1.5s is enough to walk a typical install dir on an SSD
+/// (depth 4, a few hundred entries) but short enough to keep the overall
+/// scan responsive when the heuristic misses on dozens of slugs.
+pub(crate) const AGGRESSIVE_WALK_TIMEOUT: Duration = Duration::from_millis(1500);
+
+/// Default depth cap for [`aggressive_discover`]. Four levels covers the
+/// most common save-dir layouts (e.g. `<install>/data/save_games/slot1`)
+/// without descending into asset trees.
+pub(crate) const AGGRESSIVE_WALK_MAX_DEPTH: usize = 4;
+
+/// Hard cap on the number of save-like dirs we report per walked root.
+/// Beyond this the walker bails out — five candidates is already more than
+/// the UI can usefully show without scaring the user with false positives.
+pub(crate) const AGGRESSIVE_WALK_MAX_CANDIDATES: usize = 5;
+
+/// How often (in dirs visited) the walker re-checks the elapsed timeout.
+/// `Instant::elapsed` is cheap but not free; sampling every N entries keeps
+/// the overhead negligible without letting the walker run far past the cap.
+const TIMEOUT_CHECK_INTERVAL: usize = 10;
+
+/// Directory names we never descend into during the aggressive walk.
+/// Anything binary-/asset-heavy (mostly large, never holds saves), plus the
+/// usual VCS/build folders. Comparison is case-insensitive (see
+/// [`is_skip_dir`]).
+pub(crate) const WALK_SKIP: &[&str] = &[
+    "bin",
+    "lib",
+    "libs",
+    "locale",
+    "locales",
+    "languages",
+    "audio",
+    "video",
+    "movies",
+    "music",
+    "fonts",
+    "shaders",
+    "content",
+    "_commonredist",
+    "vcredist",
+    "dotnet",
+    "node_modules",
+    ".git",
+    ".vs",
+];
+
+/// File extensions we treat as "save-like" when promoting a dir from
+/// `Low` to `Medium` confidence. Compared case-insensitively. Kept tight on
+/// purpose — `.cfg` / `.ini` would generate too many false positives from
+/// engine config dirs.
+pub(crate) const SAVE_FILE_EXTENSIONS: &[&str] =
+    &["sav", "save", "profile", "json", "dat", "xml"];
+
+/// How recent a save-like file has to be to promote a dir to `Medium`.
+/// 90 days catches "user played it last quarter" while ignoring stale
+/// shipped data files.
+pub(crate) const RECENT_SAVE_FILE_WINDOW: Duration = Duration::from_secs(60 * 60 * 24 * 90);
+
+/// One save-like path discovered by [`aggressive_discover`]. The `reason`
+/// is forwarded to the diagnostics panel so a human can see *why* a path
+/// got accepted (e.g. `"matches SAVE_PATTERNS"` vs
+/// `"matches pattern + recent save-like files"`).
+#[derive(Debug, Clone)]
+pub struct DiscoveredSavePath {
+    pub path: PathBuf,
+    pub confidence: Confidence,
+    pub reason: String,
+}
+
+/// Aggressive filesystem walker for slugs that finished the main pipeline
+/// without any `found_paths`. Walks `install_dir` and the Proton prefix
+/// user dir (if present) down to `max_depth`, skipping the
+/// [`WALK_SKIP`] denylist and well-known asset roots, and collects dirs
+/// whose name matches [`SAVE_PATTERNS`] or the `slot/profile/user<N>`
+/// regex-shaped pattern.
+///
+/// Bails out per-root if `timeout_per_root` elapses (checked every 10
+/// entries) or once [`AGGRESSIVE_WALK_MAX_CANDIDATES`] candidates are
+/// found in that root. The function never panics: missing dirs and
+/// permission errors are silently skipped.
+///
+/// `display_name` is reserved for future "game-like dir name" heuristics
+/// (e.g. only descend into subdirs whose slugified name matches the slug
+/// or its aliases). 1.5.1 ships the simpler pattern-match-only flavour;
+/// the param is kept in the signature to avoid an API break later.
+pub fn aggressive_discover(
+    _slug: &str,
+    _display_name: &str,
+    install_dir: Option<&Path>,
+    prefix_root: Option<&Path>,
+    timeout_per_root: Duration,
+    max_depth: usize,
+) -> Vec<DiscoveredSavePath> {
+    let mut out: Vec<DiscoveredSavePath> = Vec::new();
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+
+    if let Some(root) = install_dir {
+        if root.is_dir() {
+            walk_root_collecting(root, max_depth, timeout_per_root, &mut out, &mut seen);
+        }
+    }
+
+    if let Some(prefix) = prefix_root {
+        // Proton prefixes mirror a Windows `C:\` drive under `drive_c/`.
+        // The user-writable areas (AppData, Documents, save folders) all
+        // live under `drive_c/users/steamuser/`, so walking from there
+        // avoids the `drive_c/windows` / `drive_c/Program Files` noise.
+        let user = prefix.join("drive_c/users/steamuser");
+        if user.is_dir() {
+            walk_root_collecting(&user, max_depth, timeout_per_root, &mut out, &mut seen);
+        }
+    }
+
+    out
+}
+
+/// Walk one root, appending up to [`AGGRESSIVE_WALK_MAX_CANDIDATES`]
+/// discoveries into `out`. Honours the timeout and the depth cap.
+fn walk_root_collecting(
+    root: &Path,
+    max_depth: usize,
+    timeout: Duration,
+    out: &mut Vec<DiscoveredSavePath>,
+    seen: &mut HashSet<PathBuf>,
+) {
+    let start = Instant::now();
+    let mut entries_checked: usize = 0;
+    let initial = out.len();
+    // Depth-first walk via an explicit stack. Save-like dirs are not
+    // descended into (see the `continue` below), so the order in which we
+    // exhaust branches doesn't change which paths qualify — only the order
+    // they're appended to `out` before the cap kicks in. Each entry is
+    // `(path, depth)` so we can cap descent at push-time.
+    let mut stack: Vec<(PathBuf, usize)> = vec![(root.to_path_buf(), 0)];
+    while let Some((dir, depth)) = stack.pop() {
+        if out.len() - initial >= AGGRESSIVE_WALK_MAX_CANDIDATES {
+            break;
+        }
+        if entries_checked % TIMEOUT_CHECK_INTERVAL == 0 && start.elapsed() >= timeout {
+            break;
+        }
+        entries_checked += 1;
+
+        let Ok(read) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in read.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if !file_type.is_dir() {
+                continue;
+            }
+            let path = entry.path();
+            let name = entry.file_name();
+            let Some(name_str) = name.to_str() else {
+                continue;
+            };
+            if is_skip_dir(name_str) {
+                continue;
+            }
+            if let Some(hit) = classify_dir_as_save_like(&path, name_str) {
+                if seen.insert(path.clone()) {
+                    out.push(hit);
+                    if out.len() - initial >= AGGRESSIVE_WALK_MAX_CANDIDATES {
+                        return;
+                    }
+                }
+                // Even when this dir is itself save-like we don't descend
+                // into it — saves typically live one level deep, and going
+                // further just bloats the candidate list.
+                continue;
+            }
+            if depth + 1 <= max_depth {
+                stack.push((path, depth + 1));
+            }
+        }
+    }
+}
+
+/// True iff the directory name is in [`WALK_SKIP`] (case-insensitive).
+fn is_skip_dir(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    WALK_SKIP.iter().any(|s| *s == lower.as_str())
+}
+
+/// If `name` and the dir's contents look save-like, return a
+/// [`DiscoveredSavePath`] with the appropriate confidence and reason.
+///
+/// Rules:
+/// * Name matches [`SAVE_PATTERNS`] → `Low` (reason "matches SAVE_PATTERNS").
+/// * Name matches the `slot|profile|user [sep] <digits>` shape → `Low`
+///   (reason "matches slot/profile/user pattern").
+/// * Either of the above **and** the dir contains a file with a
+///   [`SAVE_FILE_EXTENSIONS`] extension modified in the last
+///   [`RECENT_SAVE_FILE_WINDOW`] → promote to `Medium`
+///   (reason "matches pattern + recent save-like files").
+fn classify_dir_as_save_like(path: &Path, name: &str) -> Option<DiscoveredSavePath> {
+    let (base_reason, _) = if name_matches_save_pattern(name) {
+        ("matches SAVE_PATTERNS", true)
+    } else if name_matches_slot_profile_user(name) {
+        ("matches slot/profile/user pattern", true)
+    } else {
+        return None;
+    };
+
+    if dir_has_recent_save_file(path) {
+        Some(DiscoveredSavePath {
+            path: path.to_path_buf(),
+            confidence: Confidence::Medium,
+            reason: format!("{base_reason} + recent save-like files"),
+        })
+    } else {
+        Some(DiscoveredSavePath {
+            path: path.to_path_buf(),
+            confidence: Confidence::Low,
+            reason: base_reason.into(),
+        })
+    }
+}
+
+/// Match the `slot|profile|user [sep] <digits>` pattern without pulling
+/// in a regex dep. Case-insensitive; separator is optional non-alnum.
+/// Examples: `slot1`, `Slot_2`, `profile-3`, `user 04`.
+fn name_matches_slot_profile_user(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    for prefix in ["slot", "profile", "user"] {
+        let Some(rest) = lower.strip_prefix(prefix) else {
+            continue;
+        };
+        if rest.is_empty() {
+            continue;
+        }
+        // Skip an optional single non-alnum separator.
+        let after_sep = rest
+            .strip_prefix(|c: char| !c.is_alphanumeric())
+            .unwrap_or(rest);
+        if !after_sep.is_empty() && after_sep.chars().all(|c| c.is_ascii_digit()) {
+            return true;
+        }
+    }
+    false
+}
+
+/// True iff `dir` contains at least one regular file with an extension in
+/// [`SAVE_FILE_EXTENSIONS`] modified inside [`RECENT_SAVE_FILE_WINDOW`].
+fn dir_has_recent_save_file(dir: &Path) -> bool {
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    let now = SystemTime::now();
+    for entry in read.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_file() {
+            continue;
+        }
+        let path = entry.path();
+        let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let ext_lower = ext.to_lowercase();
+        if !SAVE_FILE_EXTENSIONS.iter().any(|e| *e == ext_lower.as_str()) {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else {
+            continue;
+        };
+        let Ok(modified) = meta.modified() else {
+            continue;
+        };
+        if let Ok(age) = now.duration_since(modified) {
+            if age <= RECENT_SAVE_FILE_WINDOW {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// List immediate subdirectories of `path` whose name matches a save
@@ -1438,5 +1824,120 @@ mod tests {
                 "expected a proton_prefix step whose kept contains {save_str}; got {proton_steps:?}"
             );
         });
+    }
+
+    /// Walker happy path: a fresh save file inside a save-named dir under
+    /// the install root is reported with `Medium` confidence.
+    #[test]
+    fn aggressive_discover_finds_save_dir_in_install() {
+        let tmp = tempfile::tempdir().unwrap();
+        let install = tmp.path().join("Game");
+        let save_dir = install.join("data").join("SaveGames");
+        std::fs::create_dir_all(&save_dir).unwrap();
+        // A `.sav` file modified now → recent save-like file → Medium.
+        std::fs::write(save_dir.join("slot1.sav"), b"binary").unwrap();
+
+        let hits = aggressive_discover(
+            "fake-slug",
+            "Fake Game",
+            Some(&install),
+            None,
+            AGGRESSIVE_WALK_TIMEOUT,
+            AGGRESSIVE_WALK_MAX_DEPTH,
+        );
+
+        assert_eq!(hits.len(), 1, "expected exactly one hit, got {hits:?}");
+        assert_eq!(hits[0].path, save_dir);
+        assert_eq!(hits[0].confidence, Confidence::Medium);
+        assert!(
+            hits[0].reason.contains("recent save-like files"),
+            "expected a 'recent save-like files' reason; got {:?}",
+            hits[0].reason
+        );
+    }
+
+    /// A `save/` dir nested under a `bin/` denylist entry must not be
+    /// walked into — `WALK_SKIP` is honoured even when the inner dir name
+    /// matches the save patterns.
+    #[test]
+    fn aggressive_discover_respects_skip_list() {
+        let tmp = tempfile::tempdir().unwrap();
+        let install = tmp.path().join("Game");
+        std::fs::create_dir_all(install.join("bin").join("save")).unwrap();
+
+        let hits = aggressive_discover(
+            "fake-slug",
+            "Fake Game",
+            Some(&install),
+            None,
+            AGGRESSIVE_WALK_TIMEOUT,
+            AGGRESSIVE_WALK_MAX_DEPTH,
+        );
+
+        assert!(
+            hits.is_empty(),
+            "WALK_SKIP must hide save dirs nested under denylisted parents; got {hits:?}"
+        );
+    }
+
+    /// Empty `save/` stays `Low`; sibling `save/` with a fresh `.sav` rises
+    /// to `Medium`. The promotion is observable only when a save-like
+    /// file is present and recent.
+    #[test]
+    fn aggressive_discover_promotes_with_recent_savefile() {
+        let tmp = tempfile::tempdir().unwrap();
+        let empty_install = tmp.path().join("Empty");
+        std::fs::create_dir_all(empty_install.join("save")).unwrap();
+        let filled_install = tmp.path().join("Filled");
+        std::fs::create_dir_all(filled_install.join("save")).unwrap();
+        std::fs::write(filled_install.join("save").join("slot.sav"), b"...").unwrap();
+
+        let empty_hits = aggressive_discover(
+            "empty-slug",
+            "Empty Game",
+            Some(&empty_install),
+            None,
+            AGGRESSIVE_WALK_TIMEOUT,
+            AGGRESSIVE_WALK_MAX_DEPTH,
+        );
+        let filled_hits = aggressive_discover(
+            "filled-slug",
+            "Filled Game",
+            Some(&filled_install),
+            None,
+            AGGRESSIVE_WALK_TIMEOUT,
+            AGGRESSIVE_WALK_MAX_DEPTH,
+        );
+
+        assert_eq!(empty_hits.len(), 1);
+        assert_eq!(empty_hits[0].confidence, Confidence::Low);
+        assert_eq!(filled_hits.len(), 1);
+        assert_eq!(filled_hits[0].confidence, Confidence::Medium);
+    }
+
+    /// Both roots `None`, plus both roots pointing at missing paths,
+    /// produce an empty vec without panicking.
+    #[test]
+    fn aggressive_discover_returns_empty_on_missing_dirs() {
+        let none_hits = aggressive_discover(
+            "fake-slug",
+            "Fake Game",
+            None,
+            None,
+            AGGRESSIVE_WALK_TIMEOUT,
+            AGGRESSIVE_WALK_MAX_DEPTH,
+        );
+        assert!(none_hits.is_empty());
+
+        let bogus = PathBuf::from("/definitely/not/a/real/path/zzz-aggressive-walker");
+        let bogus_hits = aggressive_discover(
+            "fake-slug",
+            "Fake Game",
+            Some(&bogus),
+            Some(&bogus),
+            AGGRESSIVE_WALK_TIMEOUT,
+            AGGRESSIVE_WALK_MAX_DEPTH,
+        );
+        assert!(bogus_hits.is_empty());
     }
 }

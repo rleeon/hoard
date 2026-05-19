@@ -119,6 +119,11 @@ export type TrackedSave = {
   paused: boolean;
   /** Bytes occupied on the server (sum of non-deleted snapshots). */
   total_size_bytes: number;
+  /** `true` when the save exists server-side but this machine has no
+   *  matching CliState row (reinstall, PC switch, manual state wipe). The
+   *  UI shows a discreet "Sin estado local" badge and disables the local
+   *  untrack button — only `deleteSaveCompletely` is meaningful here. */
+  orphan: boolean;
 };
 
 /** Run a full auto-detection sweep. Subscribe to `library://scan-progress`
@@ -162,6 +167,15 @@ export function listTrackedSaves(): Promise<TrackedSave[]> {
 /** Stop tracking a save locally. Server-side data is left alone. */
 export function untrackSave(save_id: string): Promise<void> {
   return invoke<void>("untrack_save", { saveId: save_id });
+}
+
+/** Hard-delete a save server-side: removes the row plus every snapshot, then
+ *  purges the local CliState entry and any matching `manual_paths` override
+ *  so a subsequent `add_game_to_tracking` for the same slug starts clean
+ *  instead of bouncing off the 409-recovery path. Destructive — the UI must
+ *  gate this behind a confirmation modal. */
+export function deleteSaveCompletely(saveId: string): Promise<void> {
+  return invoke<void>("delete_save_completely", { saveId });
 }
 
 /** Persist a user-picked save-folder override for a slug. Wins over every

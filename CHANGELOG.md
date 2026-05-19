@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.1] — 2026-05-18
+
+Follow-up to 1.5.0. The detection overhaul closed the six structural
+gaps, but day-to-day use surfaced three remaining sharp edges: games
+the pipeline could see but couldn't resolve to a save path, the inability
+to recover from a wrong track without touching `hoard-admin` or the
+server DB by hand, and saves stranded on the server after a reinstall
+or PC swap with no UI to manage them. 1.5.1 attacks those three.
+
+### Added
+
+- Aggressive walker for installed games the normal pipeline can't
+  resolve to a save path. Runs only when the catalog plus filesystem
+  heuristic leave a slug with no candidates; bounded by depth 4, a
+  1.5 s timeout per root, and a cap of 5 candidates. Confidence stays
+  `Low` (or `Medium` when a recent save-like file backs the directory),
+  so it complements the catalog rather than overriding it.
+- Fuzzy match against the Ludusavi catalog when a Steam app has no
+  `steam_app_id` entry and the exact slug also misses. Normalized
+  Levenshtein with a 0.15 threshold; ties prefer the entry with a
+  Steam app id. The slug-exact lookup still wins first, fuzzy only
+  fires as the last fallback before giving up.
+- "Eliminar juego" button in the tracked-saves strip that calls the
+  existing `DELETE /v1/saves/{id}` endpoint server-side, then clears
+  `CliState.saves` and any manual override for the slug. A confirmation
+  modal spells out that the snapshots are gone and the action cannot
+  be undone.
+- Orphan saves (rows that exist on the server but have no local
+  `CliState` entry, e.g. after a reinstall or PC swap) are now visible
+  in Library with a discreet "Sin estado local" badge. The new red
+  delete button is the only actionable control on them; the local
+  untrack button is disabled because there is nothing local to remove.
+
+### Changed
+
+- `list_tracked_saves` no longer filters by the local `CliState`. The
+  command emits every save the server owns; rows missing locally are
+  returned with `orphan: true` so the UI can render them with the
+  badge and the disabled-untrack treatment.
+
+### Fixed
+
+- Recovering from a bad track (wrong path, renamed game, stale
+  fixture) is now possible from the UI: click the red button, confirm,
+  re-scan and re-add cleanly. Previously the only options were to edit
+  the server database or run `hoard-admin` by hand, because a local
+  untrack left the server row behind and `add_game_to_tracking` would
+  swallow the 409 and re-link to the bad row on the next attempt.
+
 ## [1.5.0] — 2026-05-18
 
 Detection overhaul. The Library used to lie quietly on Linux: any game

@@ -106,6 +106,7 @@ pub fn run() {
             commands::library::add_game_to_tracking,
             commands::library::list_tracked_saves,
             commands::library::untrack_save,
+            commands::library::delete_save_completely,
             commands::library::rename_save_label,
             commands::library::set_manual_path,
             commands::library::clear_manual_path,

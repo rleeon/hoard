@@ -21,6 +21,7 @@
     Gamepad2,
     AlertTriangle,
     Trash2,
+    Trash,
     FolderOpen,
     Pencil,
     RotateCcw,
@@ -59,6 +60,14 @@
   /** Currently-open untrack confirmation. Same single-modal pattern. */
   let untrackTarget = $state<TrackedSave | null>(null);
   let untracking = $state(false);
+
+  /** Currently-open "delete completely" confirmation. Destructive: wipes the
+   *  server-side row, snapshots, and clears the CliState entry so a re-scan
+   *  can re-track from scratch. Distinct modal from `untrackTarget` because
+   *  the consequences are not the same (untrack keeps backups; delete
+   *  wipes them). */
+  let deleteTarget = $state<TrackedSave | null>(null);
+  let deleting = $state(false);
 
   /** Currently-open rename-label modal. Pre-fills `renameDraft` from the
    *  target save when set. Single-modal pattern again. */
@@ -253,6 +262,36 @@
       toastError(typeof e === "string" ? e : (e as Error).message);
     } finally {
       untracking = false;
+    }
+  }
+
+  /** Pop the "delete completely" confirmation modal. Distinct from the
+   *  untrack flow: this wipes server-side state (snapshots + row) so a
+   *  subsequent re-scan can re-track from scratch instead of resurrecting
+   *  the old row via 409-recovery. */
+  function askDelete(save: TrackedSave) {
+    deleteTarget = save;
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    deleting = true;
+    try {
+      await api.deleteSaveCompletely(target.save_id);
+      // Re-fetch instead of filtering locally so any orphan rows the
+      // server still surfaces stay accurate.
+      tracked = await api.listTrackedSaves();
+      toastSuccess(
+        $_("library.deleted_toast", {
+          values: { name: target.game_slug },
+        }),
+      );
+      deleteTarget = null;
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    } finally {
+      deleting = false;
     }
   }
 
@@ -456,6 +495,15 @@
               <p class="truncate text-[11px] text-zinc-500">
                 {save.label}
               </p>
+              {#if save.orphan}
+                <!-- Save exists server-side but has no local CliState entry
+                     (reinstall, machine switch, manual wipe). Untrack is a
+                     no-op for these — only the new delete button below
+                     actually clears the server row. -->
+                <p class="truncate text-[10px] text-zinc-500">
+                  {$_("library.orphan_badge")}
+                </p>
+              {/if}
             </div>
             <span
               class="shrink-0 rounded bg-zinc-800 px-2 py-0.5 text-xs font-medium tabular-nums text-zinc-300"
@@ -488,11 +536,21 @@
             <button
               type="button"
               onclick={() => askUntrack(save)}
+              disabled={save.orphan}
               aria-label={$_("library.untrack_button")}
               title={$_("library.untrack_title")}
-              class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+              class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-500"
             >
               <Trash2 size={14} />
+            </button>
+            <button
+              type="button"
+              onclick={() => askDelete(save)}
+              aria-label={$_("library.delete_button")}
+              title={$_("library.delete_title")}
+              class="shrink-0 rounded p-1 text-rose-500 transition-colors hover:bg-rose-500/20 hover:text-rose-300"
+            >
+              <Trash size={14} />
             </button>
           </div>
         {/each}
@@ -774,6 +832,45 @@
       >
         <Trash2 size={14} />
         {$_("library.untrack_confirm_action")}
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- Destructive: wipe the save server-side. Distinct from untrack — this
+       deletes every snapshot for this game on the server, clears the local
+       CliState entry, and lets a subsequent scan re-track from scratch
+       without 409-recovery resurrecting the bad row. -->
+  <Modal
+    open={deleteTarget !== null}
+    title={$_("library.delete_confirm_title", {
+      values: { name: deleteTarget?.game_slug ?? "" },
+    })}
+    onClose={() => {
+      if (!deleting) deleteTarget = null;
+    }}
+    dismissible={!deleting}
+  >
+    <p class="text-sm text-zinc-300">
+      {$_("library.delete_confirm_body", {
+        values: { name: deleteTarget?.game_slug ?? "" },
+      })}
+    </p>
+    {#snippet footer()}
+      <Button
+        variant="ghost"
+        onclick={() => (deleteTarget = null)}
+        disabled={deleting}
+      >
+        {$_("common.cancel")}
+      </Button>
+      <button
+        type="button"
+        onclick={confirmDelete}
+        disabled={deleting}
+        class="inline-flex items-center justify-center gap-2 rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-rose-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+      >
+        <Trash size={14} />
+        {$_("library.delete_confirm_action")}
       </button>
     {/snippet}
   </Modal>
