@@ -192,6 +192,25 @@ export function clearManualPath(slug: string): Promise<void> {
   return invoke<void>("clear_manual_path", { slug });
 }
 
+/** Persistently blacklist a detected slug so it stops appearing in the
+ *  Library grid. Reversible via {@link unignoreDetectedGame}; the matching
+ *  Settings list renders every currently-ignored slug. */
+export async function ignoreDetectedGame(slug: string): Promise<void> {
+  await invoke("ignore_detected_game", { slug });
+}
+
+/** Reactivate a previously-blacklisted slug; the next scan re-surfaces it
+ *  in the Library. Counterpart of {@link ignoreDetectedGame}. */
+export async function unignoreDetectedGame(slug: string): Promise<void> {
+  await invoke("unignore_detected_game", { slug });
+}
+
+/** Every slug the user has currently blacklisted, sorted alphabetically so
+ *  the Settings page renders a stable order. */
+export async function listIgnoredSlugs(): Promise<string[]> {
+  return await invoke<string[]>("list_ignored_slugs");
+}
+
 export type DroppedPath = {
   path: string;
   reason: string;
@@ -354,6 +373,15 @@ export type Prefs = {
    *  sidebar amber badge keeps showing regardless. Persisted so reopening
    *  the app doesn't re-notify for a version the user already saw. */
   last_update_notified_version: string | null;
+  /** When `true`, the sidebar "Modo Automático" toggle is on. The Rust
+   *  side keeps a background scheduler alive that re-runs the magic flow
+   *  every `automatic_scan_interval_hours`; activating the toggle also
+   *  cascades `auto_restore = true`. Off by default. */
+  automatic_mode: boolean;
+  /** Hours between background scans while `automatic_mode` is on.
+   *  Defaults to 6h server-side; there's no Settings UI for it yet but
+   *  the field is part of the persisted shape. */
+  automatic_scan_interval_hours: number;
 };
 
 export type TrayStateName =
@@ -372,6 +400,15 @@ export function getPrefs(): Promise<Prefs> {
 /** Persist prefs. Returns the saved object so the caller can hydrate stores. */
 export function savePrefs(prefs: Prefs): Promise<Prefs> {
   return invoke<Prefs>("save_prefs", { prefs });
+}
+
+/** Toggle the sidebar's "Modo Automático" persisted flag. Returns the
+ *  full updated prefs so the caller can hydrate every dependent store with
+ *  the cascaded value (activation also flips `auto_restore` to true). The
+ *  Rust side also starts or stops the background scheduler as part of the
+ *  call. */
+export function setAutomaticMode(enabled: boolean): Promise<Prefs> {
+  return invoke<Prefs>("set_automatic_mode", { enabled });
 }
 
 /** Toggle the launcher autostart entry. Returns the resulting state. */

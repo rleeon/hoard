@@ -43,6 +43,7 @@
     TrackedSave,
   } from "../lib/api";
   import { toastError, toastSuccess } from "../lib/stores/toasts";
+  import { showError } from "../lib/stores/error_dialog";
 
   let report = $state<DetectionReport | null>(null);
   let tracked = $state<TrackedSave[]>([]);
@@ -74,6 +75,18 @@
   let renameTarget = $state<TrackedSave | null>(null);
   let renameDraft = $state("");
   let renaming = $state(false);
+
+  /** Currently-open "dismiss detected game" modal. Two flavours: a
+   *  session-only filter (default, no persistence) or a permanent blacklist
+   *  entry recorded in CliState. The checkbox `dismissBlacklist` drives the
+   *  branch — unchecked drops the slug into `sessionDismissed`, checked
+   *  calls `ignoreDetectedGame`. */
+  let dismissTarget = $state<DetectedGame | null>(null);
+  let dismissBlacklist = $state(false);
+  let dismissBusy = $state(false);
+  /** Slugs the user dismissed in this session only — wiped on reload. They
+   *  reappear on the next scan unless the user also blacklisted them. */
+  let sessionDismissed = $state(new Set<string>());
 
   onMount(async () => {
     // Wire the progress event before we trigger anything that emits.
@@ -332,6 +345,54 @@
     }
   }
 
+  /** Pop the "dismiss detected game" modal. Source of two outcomes
+   *  depending on whether the user ticks the blacklist checkbox: a session
+   *  filter (in-memory `sessionDismissed`) or a permanent CliState
+   *  blacklist entry. */
+  function askDismiss(game: DetectedGame) {
+    dismissTarget = game;
+    dismissBlacklist = false;
+  }
+
+  async function confirmDismiss() {
+    if (!dismissTarget) return;
+    const target = dismissTarget;
+    dismissBusy = true;
+    try {
+      if (dismissBlacklist) {
+        try {
+          await api.ignoreDetectedGame(target.slug);
+        } catch (e) {
+          showError(e);
+          return;
+        }
+        // Re-fetch so the new blacklist entry takes effect immediately —
+        // the backend already filters on read, so we just consume the
+        // current cached report.
+        try {
+          report = await api.cachedDetection();
+        } catch (e) {
+          // Non-fatal: filter locally if the cache fetch hiccups.
+          if (report) {
+            report = {
+              ...report,
+              games: report.games.filter((g) => g.slug !== target.slug),
+            };
+          }
+        }
+        toastSuccess($_("library.ignored_toast"));
+      } else {
+        sessionDismissed.add(target.slug);
+        // Force a reactive update — Svelte 5 runes don't track Set mutations.
+        sessionDismissed = new Set(sessionDismissed);
+      }
+      dismissTarget = null;
+      dismissBlacklist = false;
+    } finally {
+      dismissBusy = false;
+    }
+  }
+
   /** Open the OS folder picker. Returns the selected absolute path or null
    *  on cancel. We pass the game's display name as the dialog title so the
    *  user knows which game they're picking the save folder for. */
@@ -361,6 +422,9 @@
     if (!report) return [];
     const q = search.trim().toLowerCase();
     return report.games.filter((g) => {
+      // Session dismissals: same UX as permanent blacklist, just without
+      // the persistence beat. Reset on app reload.
+      if (sessionDismissed.has(g.slug)) return false;
       if (q && !g.display_name.toLowerCase().includes(q)) return false;
       if (confidenceFilter !== "all" && g.confidence !== confidenceFilter)
         return false;
@@ -736,6 +800,20 @@
                   {$_("library.no_save_folder_yet")}
                 </button>
               {/if}
+              {#if !isTracked}
+                <!-- "Dismiss this detected game" — session filter by
+                     default, with an opt-in checkbox in the modal to
+                     promote it to a permanent CliState blacklist entry. -->
+                <button
+                  type="button"
+                  onclick={() => askDismiss(game)}
+                  aria-label={$_("library.ignore_confirm")}
+                  title={$_("library.ignore_confirm")}
+                  class="ml-auto shrink-0 rounded p-1.5 text-rose-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+                >
+                  <Trash size={14} />
+                </button>
+              {/if}
             </div>
           </div>
         {/each}
@@ -871,6 +949,60 @@
       >
         <Trash size={14} />
         {$_("library.delete_confirm_action")}
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- Dismiss a detected game from the Library. Without the checkbox this
+       is just a session filter; with the checkbox it persists in CliState
+       so the slug stops appearing in future scans until reactivated from
+       Settings → "Juegos ignorados". -->
+  <Modal
+    open={dismissTarget !== null}
+    title={$_("library.ignore_title", {
+      values: { name: dismissTarget?.display_name ?? "" },
+    })}
+    onClose={() => {
+      if (!dismissBusy) {
+        dismissTarget = null;
+        dismissBlacklist = false;
+      }
+    }}
+    dismissible={!dismissBusy}
+  >
+    <p class="text-sm text-zinc-300">
+      {$_("library.ignore_body", {
+        values: { name: dismissTarget?.display_name ?? "" },
+      })}
+    </p>
+    <label class="mt-4 flex items-start gap-2 text-sm text-zinc-300">
+      <input
+        type="checkbox"
+        bind:checked={dismissBlacklist}
+        disabled={dismissBusy}
+        class="mt-0.5 h-4 w-4 shrink-0 rounded border-zinc-700 bg-zinc-900 accent-emerald-500"
+      />
+      <span>{$_("library.ignore_blacklist_check")}</span>
+    </label>
+    {#snippet footer()}
+      <Button
+        variant="ghost"
+        onclick={() => {
+          dismissTarget = null;
+          dismissBlacklist = false;
+        }}
+        disabled={dismissBusy}
+      >
+        {$_("common.cancel")}
+      </Button>
+      <button
+        type="button"
+        onclick={confirmDismiss}
+        disabled={dismissBusy}
+        class="inline-flex items-center justify-center gap-2 rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-rose-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+      >
+        <Trash size={14} />
+        {$_("library.ignore_confirm")}
       </button>
     {/snippet}
   </Modal>

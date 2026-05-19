@@ -13,11 +13,18 @@
    * The component owns its own "installing" lifecycle so the parent doesn't
    * have to thread loading state through props.
    */
+  import { onMount } from "svelte";
   import { _ } from "svelte-i18n";
   import { Loader2 } from "lucide-svelte";
   import Modal from "./Modal.svelte";
-  import { applyDesktopUpdate, type UpdateReport } from "../stores/updates";
-  import { toastInfo, toastSuccess, toastError } from "../stores/toasts";
+  import {
+    applyDesktopUpdate,
+    applyServerUpdate,
+    type UpdateReport,
+  } from "../stores/updates";
+  import { toastInfo, toastSuccess } from "../stores/toasts";
+  import { showError } from "../stores/error_dialog";
+  import { auth } from "../stores/auth";
 
   type Props = {
     open: boolean;
@@ -25,6 +32,21 @@
     onClose: () => void;
   };
   let { open, report, onClose }: Props = $props();
+
+  // We don't depend on `@tauri-apps/plugin-os` (not installed in this
+  // workspace as of 1.5.3). The desktop WebView's UA string always carries
+  // the host OS family — that's good enough to gate a Linux-only pkexec
+  // call. Hydrated in `onMount` to keep SSR-safe even though Tauri runs
+  // CSR exclusively.
+  let platformName = $state("");
+  onMount(() => {
+    const ua =
+      typeof navigator !== "undefined" ? navigator.userAgent : "";
+    if (/Linux/i.test(ua)) platformName = "linux";
+    else if (/Windows/i.test(ua)) platformName = "windows";
+    else if (/Mac OS X|Macintosh/i.test(ua)) platformName = "macos";
+    else platformName = "";
+  });
 
   // We treat the modal as serving one of two purposes:
   //   - clientUpdate: the desktop app itself is behind → green Sí = install.
@@ -48,7 +70,16 @@
       : (report?.server?.current ?? "?"),
   );
 
+  // The pkexec-based in-app server upgrade only makes sense when the
+  // server lives on this same Linux box; for remote servers we keep the
+  // copy-command fallback so the user pastes it over SSH. Mirrors the
+  // gate `handleServerInAppUpgrade` uses in Settings.svelte.
+  const canRunServerUpgrade = $derived(
+    $auth.user?.is_local_server === true && platformName === "linux",
+  );
+
   let installing = $state(false);
+  let busy = $state(false);
 
   async function onYes() {
     if (installing) return;
@@ -65,25 +96,60 @@
         }
         onClose();
       } catch (e) {
-        toastError(
-          $_("updates.install_failed", { values: { error: String(e) } }),
-        );
+        // `apply_desktop_update` returns `Result<_, AppError>` since 1.5.3 —
+        // the invoke bridge serialises that to `{ title, body, detail }`.
+        // `showError` also accepts raw strings as a retrocompat fallback for
+        // any pre-migration code path that still throws plain text.
+        showError(e);
+        onClose();
       } finally {
         installing = false;
       }
     } else if (isServer) {
-      // Server upgrade is a CLI affair; we copy the command for the user to
-      // paste into their server's shell.
-      try {
-        await navigator.clipboard.writeText("sudo hoard-server upgrade");
-        toastSuccess($_("updates.server_command_copied"));
-      } catch {
-        toastInfo($_("updates.server_command_manual"));
+      if (canRunServerUpgrade) {
+        await runServerUpgrade();
+      } else {
+        await copyServerCommand();
       }
-      onClose();
     } else {
       onClose();
     }
+  }
+
+  /**
+   * Local Linux server: drive the in-app `pkexec hoard-server upgrade`
+   * flow. Mirrors `handleServerInAppUpgrade` in Settings.svelte but
+   * routes failures through the structured `showError` dialog (which is
+   * what `apply_server_update` returns since P-D153-1).
+   */
+  async function runServerUpgrade() {
+    if (busy) return;
+    busy = true;
+    try {
+      const outcome = await applyServerUpdate();
+      if (outcome.kind === "upgraded_and_restarted") {
+        toastSuccess($_("updates.server_upgrade_success"));
+      } else if (outcome.kind === "upgraded") {
+        toastInfo($_("updates.server_upgrade_partial"));
+      }
+      onClose();
+    } catch (e) {
+      showError(e);
+      onClose();
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** Remote server (or non-Linux client): keep the copy-command fallback. */
+  async function copyServerCommand() {
+    try {
+      await navigator.clipboard.writeText("sudo hoard-server upgrade");
+      toastSuccess($_("updates.server_command_copied"));
+    } catch {
+      toastInfo($_("updates.server_command_manual"));
+    }
+    onClose();
   }
 </script>
 
@@ -116,23 +182,39 @@
     <button
       type="button"
       onclick={onClose}
-      disabled={installing}
+      disabled={installing || busy}
       class="inline-flex items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {$_("updates.no")}
     </button>
-    <button
-      type="button"
-      onclick={onYes}
-      disabled={installing}
-      class="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-emerald-600/60"
-    >
-      {#if installing}
-        <Loader2 size={14} class="animate-spin" />
-        <span>{$_("updates.installing")}</span>
-      {:else}
-        <span>{$_("updates.yes")}</span>
-      {/if}
-    </button>
+    {#if isServer && canRunServerUpgrade}
+      <button
+        type="button"
+        onclick={onYes}
+        disabled={installing || busy}
+        class="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-emerald-600/60"
+      >
+        {#if busy}
+          <Loader2 size={14} class="animate-spin" />
+          <span>{$_("updates.installing")}</span>
+        {:else}
+          <span>{$_("updates.server_upgrade_button")}</span>
+        {/if}
+      </button>
+    {:else}
+      <button
+        type="button"
+        onclick={onYes}
+        disabled={installing || busy}
+        class="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-emerald-600/60"
+      >
+        {#if installing}
+          <Loader2 size={14} class="animate-spin" />
+          <span>{$_("updates.installing")}</span>
+        {:else}
+          <span>{$_("updates.yes")}</span>
+        {/if}
+      </button>
+    {/if}
   {/snippet}
 </Modal>

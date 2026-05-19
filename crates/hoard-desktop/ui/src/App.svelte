@@ -8,8 +8,10 @@
     Settings as SettingsIcon,
     Sparkles,
     AlertCircle,
+    HardDrive,
   } from "lucide-svelte";
   import { _ } from "svelte-i18n";
+  import { formatBytes } from "./lib/utils/format";
 
   import Welcome from "./routes/Welcome.svelte";
   import ServerSetup from "./routes/ServerSetup.svelte";
@@ -24,9 +26,17 @@
 
   import Toaster from "./lib/components/Toaster.svelte";
   import UpdateConfirmModal from "./lib/components/UpdateConfirmModal.svelte";
+  import ErrorDialog from "./lib/components/ErrorDialog.svelte";
+  import { errorDialog, dismissError, showError } from "./lib/stores/error_dialog";
   import { auth, hydrateAuth } from "./lib/stores/auth";
   import { loadStep, routeForStep } from "./lib/stores/onboarding";
-  import { runMagicSetup, magicState } from "./lib/stores/magic";
+  import {
+    runAutomaticSetup,
+    automaticState,
+    initAutomaticListener,
+  } from "./lib/stores/automatic";
+  import { toastInfo, toastSuccess } from "./lib/stores/toasts";
+  import * as api from "./lib/api";
   import {
     checkForUpdates,
     lastReport,
@@ -60,6 +70,8 @@
 
   let booted = $state(false);
   let updateModalOpen = $state(false);
+  let automaticMode = $state(false);
+  let automaticBusy = $state(false);
 
   // The update report is owned by `lastReport` in `stores/updates.ts` — both
   // the boot probe and the periodic re-check write to it. Reading via
@@ -102,6 +114,17 @@
   );
 
   onMount(async () => {
+    // Cheap OS detection so the global stylesheet can swap font-family per
+    // platform without pulling `@tauri-apps/plugin-os` (not installed). The
+    // Tauri WebView keeps the host UA on each platform, so this heuristic is
+    // reliable enough for cosmetic tweaks. Idempotent — classList dedupes.
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    let osTag: "linux" | "macos" | "windows" | "unknown" = "unknown";
+    if (/Linux/i.test(ua) && !/Android/i.test(ua)) osTag = "linux";
+    else if (/Mac/i.test(ua)) osTag = "macos";
+    else if (/Windows/i.test(ua)) osTag = "windows";
+    document.documentElement.classList.add(`is-${osTag}`);
+
     await hydrateAuth();
     if ($auth.user) {
       replace("/dashboard");
@@ -110,6 +133,22 @@
       replace(routeForStep(step));
     }
     booted = true;
+
+    // Register the Tauri listener exactly once for the lifetime of this
+    // app instance. The Rust scheduler emits `automatic-tick` on its
+    // interval; this listener turns each tick into a `runAutomaticSetup`
+    // invocation. Idempotent — safe to call from any onMount path.
+    initAutomaticListener();
+
+    // Hydrate the toggle state from prefs so the sidebar paints with the
+    // correct ON/OFF the moment the boot blank lifts. Failures fall back
+    // to "off" which matches the default for fresh installs.
+    try {
+      const prefs = await api.getPrefs();
+      automaticMode = prefs.automatic_mode;
+    } catch (e) {
+      console.warn("couldn't load prefs for automatic mode:", e);
+    }
 
     // Fire-and-forget update probe once auth is settled. The result feeds
     // the small "Update available" banner above the sidebar footer; a
@@ -129,18 +168,70 @@
     disposeUpdatePoller = null;
   });
 
-  function magicLabel(s: typeof $magicState): string {
+  // Live phase label used while a scan is in progress. When the scheduler
+  // is idle we show the plain "Modo Automático · ON/OFF" string built
+  // inline in the markup; this only kicks in for the transient phases the
+  // background flow walks through.
+  const automaticPhaseLabel = $derived.by(() => {
+    const s = $automaticState;
     switch (s.kind) {
       case "idle":
-        return $_("magic.idle");
+        return null;
       case "detecting":
-        return $_("magic.detecting");
+        return $_("automatic.detecting");
       case "tracking":
-        return $_("magic.tracking", {
+        return $_("automatic.tracking", {
           values: { done: s.done, total: s.total },
         });
       case "starting_agent":
-        return $_("magic.starting_agent");
+        return $_("automatic.starting_agent");
+    }
+  });
+
+  // Sidebar plan-usage indicator. Reads straight from `$auth.user` which
+  // the `auth` store already refreshes every 30 s via `refreshQuota` —
+  // we don't poll here. Three shapes:
+  //   - `null`     when no user, or when remote+unlimited quota (rare cloud
+  //                edge case we don't pretend to render a bar for).
+  //   - `local`    when `is_local_server` — disk usage on your own box is
+  //                meaningless as a percentage, so we render a static
+  //                "Local server" label.
+  //   - `remote`   otherwise — used / quota bytes + percentage + colour
+  //                ramp (emerald < 75% < amber < 90% < rose).
+  const quotaInfo = $derived.by(() => {
+    const u = $auth.user;
+    if (!u) return null;
+    if (u.is_local_server) return { kind: "local" as const };
+    const quota = u.storage_quota_bytes;
+    if (quota === 0) return null; // unlimited cloud — no bar to draw.
+    const used = u.storage_used_bytes;
+    const rawPct = Math.round((used / quota) * 100);
+    const pct = Math.max(0, Math.min(rawPct, 100));
+    const barColor =
+      pct > 90 ? "bg-rose-500" : pct > 75 ? "bg-amber-500" : "bg-emerald-500";
+    return { kind: "remote" as const, used, quota, pct, barColor };
+  });
+
+  async function toggleAutomatic() {
+    if (automaticBusy) return;
+    automaticBusy = true;
+    try {
+      const next = !automaticMode;
+      const updated = await api.setAutomaticMode(next);
+      automaticMode = updated.automatic_mode;
+      if (automaticMode) {
+        toastSuccess($_("automatic.activated"));
+        // Fire the first scan immediately so the user doesn't wait the
+        // full interval to see the toggle do something. Subsequent runs
+        // are driven by the Rust scheduler via `automatic-tick`.
+        void runAutomaticSetup();
+      } else {
+        toastInfo($_("automatic.deactivated"));
+      }
+    } catch (e) {
+      showError(e);
+    } finally {
+      automaticBusy = false;
     }
   }
 
@@ -183,9 +274,9 @@
 {:else if isAppRoute}
   <div class="flex h-full">
     <aside
-      class="flex w-60 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950"
+      class="flex w-60 shrink-0 flex-col border-r border-zinc-800/80 bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.03)]"
     >
-      <div class="flex items-center gap-2 px-5 py-5">
+      <div class="flex items-center gap-2 px-4 py-4">
         <div
           class="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/40"
         >
@@ -200,7 +291,7 @@
             tabindex="-1"
             aria-hidden="true"
           >
-            v{import.meta.env.VITE_HOARD_VERSION || "1.5.2"}
+            v{import.meta.env.VITE_HOARD_VERSION || "1.5.3"}
           </button>
         </div>
         <!-- Small amber alert button. Same visual language as "Sin carpeta":
@@ -235,11 +326,13 @@
           <button
             type="button"
             disabled={!enabled}
+            aria-disabled={!enabled}
+            aria-label={$_(item.labelKey)}
             onclick={() => push(item.route)}
-            class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors
+            class="group flex w-full items-center gap-3 rounded-md border-l-2 px-3 py-2 text-sm transition-colors duration-150
               {active
-              ? 'bg-zinc-800 text-zinc-50'
-              : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100'}
+              ? 'border-emerald-500 bg-zinc-800/50 text-zinc-50'
+              : 'border-transparent text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100'}
               disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-400"
             title={enabled ? undefined : $_("nav.coming_later")}
           >
@@ -249,22 +342,67 @@
         {/each}
       </nav>
 
-      <!-- Sidebar footer: Magic auto-setup button. The "Update available"
-           alert lives next to the version up top now, not here. -->
-      <div class="border-t border-zinc-800 px-3 py-3 space-y-2">
+      <!-- Sidebar footer: "Modo Automático" toggle. The "Update available"
+           alert lives next to the version up top now, not here. Colour
+           swaps between emerald (on) and rose (off); a transient scan
+           phase pulses the icon while the background flow is running. -->
+      <div class="border-t border-zinc-800/60 px-3 py-3 space-y-3">
+        {#if quotaInfo}
+          {#if quotaInfo.kind === "local"}
+            <div
+              class="flex items-center gap-2 px-1 text-[11px] text-zinc-400"
+            >
+              <HardDrive size={12} />
+              <span>{$_("sidebar.plan_local")}</span>
+            </div>
+          {:else}
+            <div class="space-y-1 px-1">
+              <div
+                class="flex items-center justify-between text-[11px] text-zinc-400"
+              >
+                <span
+                  >{formatBytes(quotaInfo.used)} / {formatBytes(
+                    quotaInfo.quota,
+                  )}</span
+                >
+                <span>{quotaInfo.pct}%</span>
+              </div>
+              <div class="h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                <div
+                  class="h-full rounded-full transition-all duration-500 {quotaInfo.barColor}"
+                  style="width: {Math.min(quotaInfo.pct, 100)}%"
+                ></div>
+              </div>
+            </div>
+          {/if}
+        {/if}
         <button
           type="button"
-          onclick={runMagicSetup}
-          disabled={$magicState.kind !== "idle"}
-          class="flex w-full items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-emerald-500 disabled:cursor-wait disabled:bg-emerald-600/60"
-          title={$_("magic.tooltip")}
+          onclick={toggleAutomatic}
+          disabled={automaticBusy}
+          class="flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors {automaticMode
+            ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+            : 'border-rose-500/40 bg-rose-500/15 text-rose-300 hover:bg-rose-500/25'} disabled:cursor-wait disabled:opacity-60"
+          aria-label={$_("automatic.aria_toggle")}
+          title={$_("automatic.help_tooltip")}
         >
-          <Sparkles size={16} />
-          <span>{magicLabel($magicState)}</span>
+          <Sparkles
+            size={16}
+            class={$automaticState.kind === "idle" ? "" : "animate-pulse"}
+          />
+          <span>
+            {#if automaticPhaseLabel}
+              {automaticPhaseLabel}
+            {:else}
+              {$_("automatic.title")} ·
+              {automaticMode ? $_("automatic.on") : $_("automatic.off")}
+            {/if}
+          </span>
         </button>
-
         <p class="px-1 text-[11px] leading-tight text-zinc-500">
-          {$_("magic.subtitle")}
+          {automaticMode
+            ? $_("automatic.subtitle_on")
+            : $_("automatic.subtitle_off")}
         </p>
       </div>
     </aside>
@@ -285,5 +423,7 @@
   report={updates}
   onClose={() => (updateModalOpen = false)}
 />
+
+<ErrorDialog error={$errorDialog} onClose={dismissError} />
 
 <Toaster />

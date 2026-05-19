@@ -27,6 +27,7 @@ use time::OffsetDateTime;
 
 use super::agent::{attach_save_if_running, detach_save_if_running, watched_save_from};
 use super::auth::pretty_error;
+use super::error::AppError;
 use crate::state::AppState;
 
 /// Persisted detection snapshot. Lives on disk alongside `state.json` so the
@@ -170,9 +171,14 @@ pub async fn scan_library(
     // manual picks vanish from the Library card on every re-scan.
     let (cli_state, _) = CliState::load_default().map_err(|e| e.to_string())?;
 
-    let report = detection::detect_all(os, &cli_state, progress)
+    let mut report = detection::detect_all(os, &cli_state, progress)
         .await
         .map_err(pretty_error)?;
+
+    // Drop user-blacklisted slugs *after* detection finishes so the walker
+    // still benefits from their install dirs when cross-referencing other
+    // games on the same volume. The filter is purely a UI-edge concern.
+    report.games.retain(|g| !cli_state.is_ignored(&g.slug));
 
     persist_scan(&state, report.clone());
     Ok(report)
@@ -516,7 +522,10 @@ pub async fn set_manual_path(
         let _ = app_for_progress.emit("library://scan-progress", ScanProgress { done, total });
     };
     match detection::detect_all(Os::current(), &cli_state, progress).await {
-        Ok(report) => persist_scan(&state, report),
+        Ok(mut report) => {
+            report.games.retain(|g| !cli_state.is_ignored(&g.slug));
+            persist_scan(&state, report);
+        }
         Err(e) => tracing::warn!(error = %e, "post-override detection refresh failed"),
     }
     Ok(())
@@ -541,10 +550,59 @@ pub async fn clear_manual_path(
         let _ = app_for_progress.emit("library://scan-progress", ScanProgress { done, total });
     };
     match detection::detect_all(Os::current(), &cli_state, progress).await {
-        Ok(report) => persist_scan(&state, report),
+        Ok(mut report) => {
+            report.games.retain(|g| !cli_state.is_ignored(&g.slug));
+            persist_scan(&state, report);
+        }
         Err(e) => tracing::warn!(error = %e, "post-clear detection refresh failed"),
     }
     Ok(())
+}
+
+/// Persistently blacklist a detected game from the Library page. Subsequent
+/// scans run the full detection pipeline but the matching slug is filtered
+/// out before the report reaches the UI. Reversible via
+/// [`unignore_detected_game`]. Idempotent.
+#[tauri::command]
+pub async fn ignore_detected_game(slug: String) -> Result<(), AppError> {
+    let trimmed = slug.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::plain("Slug is empty."));
+    }
+    let (mut cli_state, path) =
+        CliState::load_default().map_err(|e| AppError::plain(e.to_string()))?;
+    cli_state.add_ignored_slug(trimmed.to_string());
+    cli_state
+        .save(&path)
+        .map_err(|e| AppError::plain(e.to_string()))?;
+    Ok(())
+}
+
+/// Drop the blacklist entry for `slug` so the next scan re-surfaces it in
+/// the Library. Mirror of [`ignore_detected_game`]. Idempotent.
+#[tauri::command]
+pub async fn unignore_detected_game(slug: String) -> Result<(), AppError> {
+    let trimmed = slug.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::plain("Slug is empty."));
+    }
+    let (mut cli_state, path) =
+        CliState::load_default().map_err(|e| AppError::plain(e.to_string()))?;
+    cli_state.remove_ignored_slug(trimmed);
+    cli_state
+        .save(&path)
+        .map_err(|e| AppError::plain(e.to_string()))?;
+    Ok(())
+}
+
+/// Return every slug the user has blacklisted. Sorted alphabetically so the
+/// Settings page renders a stable order across refreshes.
+#[tauri::command]
+pub async fn list_ignored_slugs() -> Result<Vec<String>, AppError> {
+    let (cli_state, _) = CliState::load_default().map_err(|e| AppError::plain(e.to_string()))?;
+    let mut slugs: Vec<String> = cli_state.ignored_slugs.iter().cloned().collect();
+    slugs.sort();
+    Ok(slugs)
 }
 
 /// Replay the detection pipeline for a single slug and return a trace
@@ -678,13 +736,17 @@ pub fn spawn_periodic_rescan(app: AppHandle) {
             // No progress emit on the background path — the UI isn't
             // listening, and repainting a progress bar while the user is
             // on another page would be noise.
-            let report = match detection::detect_all(os, &cli_state, |_, _| {}).await {
+            let mut report = match detection::detect_all(os, &cli_state, |_, _| {}).await {
                 Ok(r) => r,
                 Err(e) => {
                     tracing::warn!(error = %e, "background detection refresh failed");
                     continue;
                 }
             };
+            // Honour the user's blacklist on the background path too —
+            // otherwise the cache flips back to including ignored slugs
+            // every time the 24h scheduler fires.
+            report.games.retain(|g| !cli_state.is_ignored(&g.slug));
             let cached = CachedDetection {
                 report,
                 scanned_at: OffsetDateTime::now_utc(),

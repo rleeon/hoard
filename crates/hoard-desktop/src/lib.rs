@@ -15,6 +15,7 @@ use tauri_plugin_autostart::MacosLauncher;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
+use crate::commands::automatic::AutomaticScheduler;
 use crate::state::AppState;
 use crate::tray::{TrayController, TrayState};
 
@@ -92,6 +93,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(AppState::from_disk())
         .manage(TrayController::default())
+        .manage(AutomaticScheduler::default())
         .invoke_handler(tauri::generate_handler![
             commands::misc::greet,
             commands::auth::health_check,
@@ -110,6 +112,9 @@ pub fn run() {
             commands::library::rename_save_label,
             commands::library::set_manual_path,
             commands::library::clear_manual_path,
+            commands::library::ignore_detected_game,
+            commands::library::unignore_detected_game,
+            commands::library::list_ignored_slugs,
             commands::library::detection_diagnostics,
             commands::agent::start_agent,
             commands::agent::stop_agent,
@@ -119,6 +124,7 @@ pub fn run() {
             commands::prefs::save_prefs,
             commands::prefs::set_autostart,
             commands::prefs::is_autostart_enabled,
+            commands::prefs::set_automatic_mode,
             commands::prefs::set_tray_state,
             commands::history::list_save_snapshots,
             commands::history::save_snapshot_detail,
@@ -171,6 +177,17 @@ pub fn run() {
             // when the user next opens it. Skipped entirely on a fresh
             // install (no cache) so we don't spam disk on first launch.
             commands::library::spawn_periodic_rescan(app.handle().clone());
+
+            // Re-arm the Modo Automático scheduler if the user had it on
+            // before the app last closed. The scheduler state singleton is
+            // already managed above; this fire-and-forget task just reads
+            // prefs.json and (if the toggle was on) calls `start()`.
+            let auto_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = commands::automatic::restart_if_enabled(&auto_handle).await {
+                    tracing::warn!(error = %e, "couldn't rehydrate automatic-mode scheduler");
+                }
+            });
             Ok(())
         })
         .build(tauri::generate_context!())

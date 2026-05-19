@@ -13,6 +13,8 @@ use hoard_agent::prefs::Prefs;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
+use crate::commands::automatic;
+use crate::commands::error::AppError;
 use crate::state::AppState;
 use crate::tray::{TrayController, TrayState};
 
@@ -97,6 +99,67 @@ pub fn is_autostart_enabled(app: AppHandle) -> Result<bool, String> {
     app.autolaunch()
         .is_enabled()
         .map_err(|e| format!("Couldn't read autostart status: {e}"))
+}
+
+/// Flip the sidebar's "Modo Automático" toggle. Persists the new value to
+/// `prefs.json`, cascades `auto_restore = true` on activation (and only on
+/// activation — turning the toggle off intentionally leaves `auto_restore`
+/// alone so the user can keep auto-restore independently), and starts or
+/// stops the background scheduler accordingly.
+///
+/// The cascade direction was a deliberate choice: activating Modo
+/// Automático implies "do everything for me", so silently enabling
+/// auto-restore is the obvious follow-through. Deactivating it, on the
+/// other hand, is "don't scan periodically" — it shouldn't pull the rug
+/// out from under a user who explicitly toggled auto-restore on a week ago
+/// and forgot.
+///
+/// Errors are returned as `AppError` so the frontend `showError` flow
+/// handles them uniformly with the rest of the 1.5.3 command surface.
+#[tauri::command]
+pub async fn set_automatic_mode(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<Prefs, AppError> {
+    let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
+    let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
+    let prev_auto_restore = prefs.auto_restore;
+
+    prefs.automatic_mode = enabled;
+    let mut auto_restore_changed = false;
+    if enabled && !prefs.auto_restore {
+        prefs.auto_restore = true;
+        auto_restore_changed = true;
+    }
+
+    prefs
+        .save(&path)
+        .map_err(|e| AppError::plain(e.to_string()))?;
+
+    // Push the new auto_restore into the live agent if it cascaded on. We
+    // mirror the side-effect that `save_prefs` performs for the same field
+    // so toggling Modo Automático behaves identically to flipping the
+    // auto-restore checkbox in Settings.
+    if auto_restore_changed && prefs.auto_restore != prev_auto_restore {
+        let handle = state.agent.lock().unwrap().clone();
+        if let Some(h) = handle {
+            if let Err(e) = h.set_auto_restore(prefs.auto_restore).await {
+                tracing::warn!(
+                    error = %e,
+                    "couldn't push auto_restore preference to live agent from set_automatic_mode"
+                );
+            }
+        }
+    }
+
+    if enabled {
+        automatic::start(&app, prefs.automatic_scan_interval_hours);
+    } else {
+        automatic::stop(&app);
+    }
+
+    Ok(prefs)
 }
 
 /// Frontend-driven tray-state setter. The dashboard already aggregates agent

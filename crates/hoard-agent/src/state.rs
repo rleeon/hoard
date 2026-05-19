@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
 
@@ -35,6 +35,14 @@ pub struct CliState {
     /// load without migration.
     #[serde(default)]
     pub manual_paths: HashMap<String, PathBuf>,
+    /// Slugs the user has explicitly blacklisted from the Library page. The
+    /// detection pipeline runs to completion as usual; the filter happens at
+    /// the edge of `list_detected_games` so the walker still benefits from
+    /// install dirs we'd otherwise miss. Reactivatable from
+    /// Settings → "Juegos ignorados". `default` keeps older `state.json`
+    /// files loading without migration.
+    #[serde(default)]
+    pub ignored_slugs: HashSet<String>,
 }
 
 impl CliState {
@@ -81,6 +89,27 @@ impl CliState {
     /// detect_all pass returns whatever the heuristics find.
     pub fn clear_manual_path(&mut self, slug: &str) {
         self.manual_paths.remove(slug);
+    }
+
+    /// True when `slug` has been blacklisted via
+    /// [`Self::add_ignored_slug`]. The Library page filters detected games
+    /// against this set so they stop reappearing in the grid until the user
+    /// reactivates them from Settings.
+    pub fn is_ignored(&self, slug: &str) -> bool {
+        self.ignored_slugs.contains(slug)
+    }
+
+    /// Persistently blacklist a detected slug. After this call any
+    /// `list_detected_games` invocation drops the row before returning it to
+    /// the UI. Idempotent: re-adding an existing slug is a no-op.
+    pub fn add_ignored_slug(&mut self, slug: String) {
+        self.ignored_slugs.insert(slug);
+    }
+
+    /// Drop the blacklist entry for `slug` so the next detection pass
+    /// re-surfaces it. Mirrors `add_ignored_slug`. Idempotent.
+    pub fn remove_ignored_slug(&mut self, slug: &str) {
+        self.ignored_slugs.remove(slug);
     }
 }
 
@@ -135,5 +164,62 @@ mod tests {
         assert!(state.manual_paths.is_empty());
         // Idempotent: clearing an unknown slug doesn't panic.
         state.clear_manual_path("not-there");
+    }
+
+    /// Default `CliState` has no blacklisted slugs — the field is purely
+    /// opt-in.
+    #[test]
+    fn ignored_slugs_default_empty() {
+        assert!(CliState::default().ignored_slugs.is_empty());
+    }
+
+    /// Round-trip the blacklist API: add a slug, see it via `is_ignored`,
+    /// drop it, see it gone. Idempotent on both ends.
+    #[test]
+    fn add_and_remove_ignored_slug() {
+        let mut state = CliState::default();
+        assert!(!state.is_ignored("lethal-company"));
+
+        state.add_ignored_slug("lethal-company".to_string());
+        assert!(state.is_ignored("lethal-company"));
+        assert_eq!(state.ignored_slugs.len(), 1);
+
+        // Idempotent: re-adding doesn't grow the set.
+        state.add_ignored_slug("lethal-company".to_string());
+        assert_eq!(state.ignored_slugs.len(), 1);
+
+        state.remove_ignored_slug("lethal-company");
+        assert!(!state.is_ignored("lethal-company"));
+        assert!(state.ignored_slugs.is_empty());
+
+        // Idempotent: removing an unknown slug doesn't panic.
+        state.remove_ignored_slug("not-there");
+    }
+
+    /// `ignored_slugs` survives a JSON round-trip and pre-1.5.3 state files
+    /// (no `ignored_slugs` key) deserialise as an empty set.
+    #[test]
+    fn serialize_with_empty_ignored_does_not_emit_field_explicitly_or_does_emit_consistently()
+    {
+        // Round-trip with a populated set: every slug survives.
+        let mut state = CliState::default();
+        state.add_ignored_slug("lethal-company".to_string());
+        state.add_ignored_slug("terraforming-mars".to_string());
+        let json = serde_json::to_string(&state).unwrap();
+        let parsed: CliState = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.ignored_slugs.len(), 2);
+        assert!(parsed.is_ignored("lethal-company"));
+        assert!(parsed.is_ignored("terraforming-mars"));
+
+        // Pre-1.5.3 files without the key load with an empty set thanks to
+        // `#[serde(default)]`.
+        let legacy: CliState = serde_json::from_str("{\"saves\":{}}").unwrap();
+        assert!(legacy.ignored_slugs.is_empty());
+
+        // Empty set round-trips back to empty.
+        let empty = CliState::default();
+        let empty_json = serde_json::to_string(&empty).unwrap();
+        let parsed_empty: CliState = serde_json::from_str(&empty_json).unwrap();
+        assert!(parsed_empty.ignored_slugs.is_empty());
     }
 }

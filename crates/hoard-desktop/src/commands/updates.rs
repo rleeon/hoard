@@ -22,6 +22,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
+use crate::commands::error::AppError;
 use crate::state::AppState;
 
 /// Reported status for one component (client or server).
@@ -252,22 +253,25 @@ pub enum ApplyOutcome {
 /// `msiexec` for Windows .msi, `open` for macOS .dmg. Each pops the system's
 /// usual auth prompt; we never ask the user for a password ourselves.
 #[tauri::command]
-pub async fn apply_desktop_update(app: AppHandle) -> Result<ApplyOutcome, String> {
-    let release = fetch_gh_release().await?;
+pub async fn apply_desktop_update(app: AppHandle) -> Result<ApplyOutcome, AppError> {
+    // Network/HTTP failures fetching the release feed: surface as "unknown",
+    // since this branch fires before we even know what version we're trying
+    // to install. The raw `reqwest` message goes into `detail`.
+    let release = fetch_gh_release()
+        .await
+        .map_err(|e| AppError::new("updates.error.title", "updates.error.unknown").with_detail(e))?;
     let version = release.tag_name.trim_start_matches('v').to_string();
 
     let asset = pick_asset(&release.assets)
         .ok_or_else(|| {
-            format!(
-                "no installer asset for this platform in release v{}. Assets: {}",
-                version,
-                release
-                    .assets
-                    .iter()
-                    .map(|a| a.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
+            let assets = release
+                .assets
+                .iter()
+                .map(|a| a.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            AppError::new("updates.error.title", "updates.error.no_installer")
+                .with_detail(format!("v{version} · Assets: {assets}"))
         })?
         .clone();
 
@@ -277,13 +281,21 @@ pub async fn apply_desktop_update(app: AppHandle) -> Result<ApplyOutcome, String
         .path()
         .download_dir()
         .or_else(|_| app.path().temp_dir())
-        .map_err(|e| format!("locating a writable directory: {e}"))?;
-    tokio::fs::create_dir_all(&download_dir)
-        .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            AppError::new("updates.error.title", "updates.error.download_failed")
+                .with_detail(format!("locating a writable directory: {e}"))
+        })?;
+    tokio::fs::create_dir_all(&download_dir).await.map_err(|e| {
+        AppError::new("updates.error.title", "updates.error.download_failed")
+            .with_detail(e.to_string())
+    })?;
     let dest = download_dir.join(&asset.name);
 
-    download_to(&asset.browser_download_url, &dest).await?;
+    download_to(&asset.browser_download_url, &dest)
+        .await
+        .map_err(|e| {
+            AppError::new("updates.error.title", "updates.error.download_failed").with_detail(e)
+        })?;
 
     // Try to launch the platform installer. If that fails, we still succeeded
     // at *downloading* the update, so report Downloaded with the path so the
@@ -495,12 +507,12 @@ pub enum ServerUpgradeOutcome {
 /// fails on a non-local box (the local `hoard-server` binary either
 /// doesn't exist, or it does and the user is fine to upgrade their copy).
 #[tauri::command]
-pub async fn apply_server_update() -> Result<ServerUpgradeOutcome, String> {
+pub async fn apply_server_update() -> Result<ServerUpgradeOutcome, AppError> {
     apply_server_update_impl().await
 }
 
 #[cfg(target_os = "linux")]
-async fn apply_server_update_impl() -> Result<ServerUpgradeOutcome, String> {
+async fn apply_server_update_impl() -> Result<ServerUpgradeOutcome, AppError> {
     // We launch a shell so we can chain "upgrade && restart" into one
     // pkexec → one polkit prompt. `set -e` makes the script fail fast if
     // the upgrade itself returns non-zero (download failed, binary path
@@ -523,7 +535,10 @@ async fn apply_server_update_impl() -> Result<ServerUpgradeOutcome, String> {
         ])
         .output()
         .await
-        .map_err(|e| format!("spawning pkexec: {e}"))?;
+        .map_err(|e| {
+            AppError::new("updates.error.title", "updates.error.server_pkexec_failed")
+                .with_detail(format!("spawning pkexec: {e}"))
+        })?;
 
     if !upgrade.status.success() {
         let stderr = String::from_utf8_lossy(&upgrade.stderr).trim().to_string();
@@ -538,7 +553,10 @@ async fn apply_server_update_impl() -> Result<ServerUpgradeOutcome, String> {
         } else {
             format!("pkexec exited with status {}", upgrade.status)
         };
-        return Err(detail);
+        return Err(
+            AppError::new("updates.error.title", "updates.error.server_pkexec_failed")
+                .with_detail(detail),
+        );
     }
 
     let upgrade_output = String::from_utf8_lossy(&upgrade.stdout).trim().to_string();
@@ -579,10 +597,14 @@ async fn apply_server_update_impl() -> Result<ServerUpgradeOutcome, String> {
 }
 
 #[cfg(not(target_os = "linux"))]
-async fn apply_server_update_impl() -> Result<ServerUpgradeOutcome, String> {
-    Err("In-app server upgrade is only supported on Linux today. \
-         Run `sudo hoard-server upgrade` on the server host."
-        .to_string())
+async fn apply_server_update_impl() -> Result<ServerUpgradeOutcome, AppError> {
+    Err(
+        AppError::new("updates.error.title", "updates.error.server_unknown").with_detail(
+            "In-app server upgrade is only supported on Linux today. \
+             Run `sudo hoard-server upgrade` on the server host."
+                .to_string(),
+        ),
+    )
 }
 
 #[cfg(test)]

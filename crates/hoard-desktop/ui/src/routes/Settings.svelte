@@ -48,6 +48,32 @@
   let saving = $state<string | null>(null);
   let signingOut = $state(false);
 
+  // User-blacklisted slugs from the Library page. Hydrated on mount; the
+  // "Reactivar" button calls `unignoreDetectedGame` and re-fetches so the
+  // list stays in step with disk state.
+  let ignored = $state<string[]>([]);
+  let ignoredBusy = $state<string | null>(null);
+
+  async function refreshIgnored() {
+    try {
+      ignored = await api.listIgnoredSlugs();
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    }
+  }
+
+  async function reactivateIgnored(slug: string) {
+    ignoredBusy = slug;
+    try {
+      await api.unignoreDetectedGame(slug);
+      await refreshIgnored();
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    } finally {
+      ignoredBusy = null;
+    }
+  }
+
   // Catalog (Ludusavi) update state. We poll status once on mount and listen
   // for `catalog://update-progress` events while a refresh is in flight so
   // the button can show "Downloading…" / "Parsing…" / "Saving…" instead of a
@@ -114,6 +140,8 @@
     unlistenCatalog = await listen<string>("catalog://update-progress", (ev) => {
       catalogStage = ev.payload;
     });
+
+    await refreshIgnored();
 
     diagnosticsUnlocked =
       sessionStorage.getItem("hoard-diagnostics-unlocked") === "1";
@@ -602,6 +630,44 @@
               {$_("settings.catalog_check")}
             </Button>
           </div>
+        </Card>
+      </section>
+
+      <section>
+        <h2
+          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+        >
+          {$_("settings.ignored_section_title")}
+        </h2>
+        <Card>
+          {#if ignored.length === 0}
+            <p class="py-1 text-sm text-zinc-500">
+              {$_("settings.ignored_empty")}
+            </p>
+          {:else}
+            <ul class="divide-y divide-zinc-800">
+              {#each ignored as slug (slug)}
+                <li
+                  class="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                >
+                  <span
+                    class="truncate font-mono text-sm text-zinc-200"
+                    title={slug}
+                  >
+                    {slug}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    onclick={() => reactivateIgnored(slug)}
+                    loading={ignoredBusy === slug}
+                    disabled={ignoredBusy === slug}
+                  >
+                    {$_("settings.ignored_reactivate")}
+                  </Button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
         </Card>
       </section>
 

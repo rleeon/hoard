@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.3] — 2026-05-19
+
+UX polish después del overhaul de detección: errores legibles,
+server upgrade ejecutable, blacklist de juegos detectados, Modo
+Automático persistido, indicador de uso de plan y sidebar pulida
+manteniendo decoraciones nativas.
+
+### Added
+- Dialog de errores con título + cuerpo + detalles colapsables;
+  reemplaza los toasts crudos del updater (cliente y servidor).
+- Botón "Actualizar servidor" ejecutable en el modal updater
+  cuando el servidor es local y la plataforma es Linux. Fallback
+  a "Copiar comando" en cualquier otro caso.
+- Blacklist de juegos detectados con confirmación opt-in
+  ("Añadir a blacklist permanente"). Reactivación desde Settings
+  → "Juegos ignorados".
+- **Modo Automático** (toggle on/off persistido). Activarlo
+  fuerza `auto_restore = true` y arranca un scheduler que
+  re-escanea cada N horas en background. Desactivarlo no toca
+  `auto_restore` (independencia hacia abajo).
+- Indicador de uso de plan en la sidebar: "Servidor local" si el
+  server es self-hosted, o barra 0-100% con ramp emerald/amber/rose
+  si está en nube.
+- Sidebar y frame pulidos: gradiente sutil, separadores tenues,
+  border-l-2 emerald en active state, hover suave con
+  transition-colors. Decoraciones nativas intactas.
+
+### Changed
+- "Configurar todo" pasa a llamarse "Modo Automático" en los
+  ocho locales y deja de ser acción one-shot.
+- Errores del updater dejan de mostrarse como strings JSON crudos
+  en un toast.
+
+### Fixed
+- Juegos detectados sin save path ya se pueden eliminar de la UI.
+- Sidebar y items de nav ahora responden visualmente al cursor.
+
 ## [1.5.2] — 2026-05-19
 
 Tercer ciclo de detección, foco principal Windows. 1.5.0 y 1.5.1

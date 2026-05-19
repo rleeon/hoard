@@ -35,6 +35,22 @@ body {
     sans-serif;
 }
 
+/* Cross-OS subtle tweaks. Native decorations stay; we only nudge spacing
+   and font where it helps blend in. The `.is-*` class is set on
+   `documentElement` in `App.svelte::onMount` from navigator.userAgent. */
+.is-linux body {
+  font-family:
+    -apple-system, "Segoe UI", "Inter", "Cantarell", "Ubuntu", sans-serif;
+}
+.is-macos body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+    sans-serif;
+}
+.is-windows body {
+  font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+}
+
 /* Respect prefers-reduced-motion across all transitions. */
 @media (prefers-reduced-motion: reduce) {
   *,
