@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.5] — 2026-05-20
+
+Modo Automático endurecido: resolución de conflictos por mtime con
+backup local antes de sobrescribir, skip mientras juegas, tick
+inmediato al activar, sliders configurables en Settings, y smoke
+test de i18n.
+
+### Added
+- Conflict-aware restore: si los bytes locales y remotos difieren,
+  el más nuevo (por mtime) gana. Si gana el remoto, la copia local
+  se mueve a `~/.local/share/hoard/conflicts/<save>/<ts>/` antes de
+  sobrescribir. TTL configurable (default 14 días) limpia la
+  carpeta en cada tick.
+- Sliders en Settings → Modo Automático: "Intervalo de escaneo"
+  (1-24h) y "Conservar copias de conflicto" (1-30d). Los valores
+  se persisten en `prefs.json` y se aplican al instante.
+- Toast al activar/desactivar Modo Automático.
+- Toast informativo cuando se guardan copias locales por conflicto,
+  con la ruta de la carpeta.
+- `AgentEvent::SaveConflictsBackedUp` y comandos
+  `set_scheduler_interval` / `set_conflict_retention`.
+- Smoke test `pnpm i18n:check` que verifica que los 8 locales
+  tienen las mismas claves que `en.json`.
+- ADR [0014](docs/decisions/0014-conflict-aware-restore-and-game-activity-skip.md)
+  documenta las 4 decisiones (mtime+backup, TTL 14d, skip al jugar,
+  tick inmediato).
+
+### Changed
+- `restore_files_into` ya no asume "local always wins" — compara
+  mtime y decide caso por caso. Supersede en parte la regla de
+  ADR 0013.
+- `AutoRestoreOutcome` reemplaza `files_conflicts` por
+  `conflicts_local_wins` + `conflicts_backed_up` + `conflict_dir`.
+- `AutomaticScheduler::start` emite el primer `automatic-tick`
+  inmediatamente (antes consumía el primer tick para evitar fire
+  instantáneo).
+- `sweep_for_auto_restore` y `handle_add` saltan la restauración
+  si el juego está corriendo (`slot.is_running`) o, sin match de
+  proceso, si el directorio fue tocado en los últimos 5 minutos.
+- PT locale: rename de "Copiar"/"A copiar" → "Enviar"/"A enviar"
+  en strings de acción direccional (sustantivo "cópia" intacto).
+
+### Notes
+- `@tauri-apps/plugin-os` queda diferido a 1.6.0 — el heurístico
+  `navigator.userAgent` actual funciona en práctica y no aporta
+  riesgo visible.
+
 ## [1.5.4] — 2026-05-20
 
 Modo Automático que de verdad sincroniza: auto-restore por diff

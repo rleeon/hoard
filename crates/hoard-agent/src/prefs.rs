@@ -107,6 +107,14 @@ pub struct Prefs {
     /// so future Settings pages can surface a slider without a migration.
     #[serde(default = "default_scan_interval_hours")]
     pub automatic_scan_interval_hours: u32,
+
+    /// Days to keep per-save conflict backups under
+    /// `<state_dir>/conflicts/<save_id>/<rfc3339>/`. The agent sweeps and
+    /// removes older subdirs at the start of every auto-restore tick.
+    /// Defaults to 14 — long enough for the user to notice and recover a
+    /// lost local edit, short enough not to balloon disk usage.
+    #[serde(default = "default_conflict_retention_days")]
+    pub conflict_retention_days: u32,
 }
 
 fn default_true() -> bool {
@@ -115,6 +123,10 @@ fn default_true() -> bool {
 
 fn default_scan_interval_hours() -> u32 {
     6
+}
+
+fn default_conflict_retention_days() -> u32 {
+    14
 }
 
 impl Default for Prefs {
@@ -132,6 +144,7 @@ impl Default for Prefs {
             last_update_notified_version: None,
             automatic_mode: false,
             automatic_scan_interval_hours: default_scan_interval_hours(),
+            conflict_retention_days: default_conflict_retention_days(),
         }
     }
 }
@@ -199,6 +212,8 @@ mod tests {
         // New fields introduced in 1.5.3 — toggle is off, interval is 6h.
         assert!(!p.automatic_mode);
         assert_eq!(p.automatic_scan_interval_hours, 6);
+        // 1.5.5: conflict backups retained for 14 days by default.
+        assert_eq!(p.conflict_retention_days, 14);
     }
 
     #[test]
@@ -234,6 +249,32 @@ mod tests {
         let back: Prefs = serde_json::from_str(&json).expect("round-trip");
         assert!(back.automatic_mode);
         assert_eq!(back.automatic_scan_interval_hours, 12);
+    }
+
+    /// 1.5.5 retro-compat: un `prefs.json` escrito por 1.5.4 (sin
+    /// `conflict_retention_days`) debe seguir cargando y rellenar el
+    /// default 14d sin perder el resto de los campos.
+    #[test]
+    fn pre_155_json_deserialises_with_conflict_retention_default() {
+        let legacy = r#"{
+            "close_to_tray": true,
+            "notify_on_success": true,
+            "notify_on_failure": true,
+            "autostart": false,
+            "start_minimised": false,
+            "seen_tray_hint": false,
+            "anonymous_telemetry": false,
+            "language": null,
+            "auto_restore": true,
+            "last_update_notified_version": null,
+            "automatic_mode": true,
+            "automatic_scan_interval_hours": 6
+        }"#;
+        let parsed: Prefs =
+            serde_json::from_str(legacy).expect("1.5.4 prefs.json should still parse");
+        assert_eq!(parsed.conflict_retention_days, 14);
+        assert!(parsed.auto_restore);
+        assert!(parsed.automatic_mode);
     }
 
     /// Invariante crítico de 1.5.3: el deserializador NO debe acoplar

@@ -12,9 +12,12 @@
 //!
 //! Lifecycle:
 //! * `start(app, hours)` aborts any previous handle and spawns a fresh
-//!   `tokio::time::interval`. The first tick is consumed without action
-//!   because `interval()` fires immediately on the first poll, and we want
-//!   the wakeup to land on a fresh wall-clock interval boundary.
+//!   task. We emit `automatic-tick` **immediately** so flipping the toggle
+//!   on (or saving a new interval in Settings) kicks off a scan right
+//!   away — users expect "Modo Automático" to do something visible the
+//!   moment it's enabled. After that we drive a `tokio::time::interval`
+//!   normally; its built-in zero-delay first tick is consumed before the
+//!   loop so subsequent emits land on full-interval boundaries.
 //! * `stop(app)` aborts the handle and clears the slot.
 //! * `restart_if_enabled(app)` is called from Tauri setup so a user who
 //!   left the toggle on across reboots gets their scheduler back without
@@ -65,13 +68,20 @@ pub fn start(app: &AppHandle, interval_hours: u32) {
     let period = Duration::from_secs(hours * 3600);
     let app = app.clone();
     let new_handle = tokio::task::spawn(async move {
+        // Fire one tick immediately so toggling Modo Automático on (or
+        // changing the interval from Settings) produces a visible scan
+        // right away instead of waiting up to `interval_hours`. The UI
+        // is idempotent — if it already ran a scan synchronously on
+        // toggle-on it will just no-op the duplicate one.
+        tracing::info!(interval_hours = hours, "automatic mode: immediate scan on (re)start");
+        if let Err(e) = app.emit("automatic-tick", ()) {
+            tracing::warn!(error = %e, "automatic mode: couldn't emit initial tick event");
+        }
+
         let mut ticker = interval(period);
-        // Consume the immediate first tick — `tokio::time::interval` fires
-        // straight away on the first `tick().await`, which would dispatch
-        // a scan the instant the user flips the toggle on. The UI already
-        // calls `runAutomaticSetup()` synchronously on toggle-on for the
-        // first scan; the scheduler is for the *subsequent* periodic
-        // ones.
+        // Consume the zero-delay first tick from `tokio::time::interval`
+        // so the loop below waits a full `period` before the next emit
+        // (we just fired manually above).
         ticker.tick().await;
         loop {
             ticker.tick().await;

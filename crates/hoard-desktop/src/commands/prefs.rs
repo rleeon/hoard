@@ -162,6 +162,51 @@ pub async fn set_automatic_mode(
     Ok(prefs)
 }
 
+/// Persist a new scheduler interval (in hours) for Modo Automático. Caller
+/// is the Settings slider; range is 1..=24. If the toggle is currently on
+/// we restart the scheduler so the new interval takes effect immediately
+/// (and, thanks to `automatic::start`'s tick-on-start, the user sees a
+/// scan fire right after saving).
+#[tauri::command]
+pub async fn set_scheduler_interval(app: AppHandle, hours: u32) -> Result<Prefs, AppError> {
+    if !(1..=24).contains(&hours) {
+        return Err(AppError::plain(format!(
+            "scheduler interval out of range: {hours} (expected 1..=24)"
+        )));
+    }
+    let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
+    let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
+    prefs.automatic_scan_interval_hours = hours;
+    prefs
+        .save(&path)
+        .map_err(|e| AppError::plain(e.to_string()))?;
+
+    if prefs.automatic_mode {
+        automatic::start(&app, prefs.automatic_scan_interval_hours);
+    }
+
+    Ok(prefs)
+}
+
+/// Persist a new retention window (in days) for per-save conflict backups.
+/// Caller is the Settings slider; range is 1..=30. The agent reads this
+/// value on its next auto-restore sweep, so no live restart is needed.
+#[tauri::command]
+pub async fn set_conflict_retention(_app: AppHandle, days: u32) -> Result<Prefs, AppError> {
+    if !(1..=30).contains(&days) {
+        return Err(AppError::plain(format!(
+            "conflict retention out of range: {days} (expected 1..=30)"
+        )));
+    }
+    let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
+    let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
+    prefs.conflict_retention_days = days;
+    prefs
+        .save(&path)
+        .map_err(|e| AppError::plain(e.to_string()))?;
+    Ok(prefs)
+}
+
 /// Frontend-driven tray-state setter. The dashboard already aggregates agent
 /// events into a single per-save activity map; we let it derive the global
 /// status and tell us, rather than re-implementing that logic in Rust.

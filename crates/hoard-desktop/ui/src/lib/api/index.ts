@@ -382,6 +382,10 @@ export type Prefs = {
    *  Defaults to 6h server-side; there's no Settings UI for it yet but
    *  the field is part of the persisted shape. */
   automatic_scan_interval_hours: number;
+  /** Days to retain per-save conflict backups under
+   *  `<state_dir>/conflicts/<save_id>/<rfc3339>/`. Defaults to 14;
+   *  validated on the Rust side to 1..=30. */
+  conflict_retention_days: number;
 };
 
 export type TrayStateName =
@@ -409,6 +413,19 @@ export function savePrefs(prefs: Prefs): Promise<Prefs> {
  *  call. */
 export function setAutomaticMode(enabled: boolean): Promise<Prefs> {
   return invoke<Prefs>("set_automatic_mode", { enabled });
+}
+
+/** Persist a new background-scan interval (hours, 1..=24) for Modo
+ *  Automático. If the toggle is on, the scheduler restarts so the new
+ *  interval applies immediately and a tick fires right away. */
+export function setSchedulerInterval(hours: number): Promise<Prefs> {
+  return invoke<Prefs>("set_scheduler_interval", { hours });
+}
+
+/** Persist a new retention window (days, 1..=30) for per-save conflict
+ *  backups. Picked up by the agent on its next auto-restore sweep. */
+export function setConflictRetention(days: number): Promise<Prefs> {
+  return invoke<Prefs>("set_conflict_retention", { days });
 }
 
 /** Toggle the launcher autostart entry. Returns the resulting state. */

@@ -40,6 +40,7 @@ export async function hydratePrefs(): Promise<void> {
       last_update_notified_version: null,
       automatic_mode: false,
       automatic_scan_interval_hours: 6,
+      conflict_retention_days: 14,
     });
   }
 }

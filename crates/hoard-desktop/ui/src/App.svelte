@@ -225,13 +225,13 @@
       prefs.set(updated);
       automaticMode = updated.automatic_mode;
       if (automaticMode) {
-        toastSuccess($_("automatic.activated"));
+        toastSuccess($_("automatic.toggled_on"));
         // Fire the first scan immediately so the user doesn't wait the
         // full interval to see the toggle do something. Subsequent runs
         // are driven by the Rust scheduler via `automatic-tick`.
         void runAutomaticSetup();
       } else {
-        toastInfo($_("automatic.deactivated"));
+        toastInfo($_("automatic.toggled_off"));
       }
     } catch (e) {
       showError(e);
@@ -296,7 +296,7 @@
             tabindex="-1"
             aria-hidden="true"
           >
-            v{import.meta.env.VITE_HOARD_VERSION || "1.5.4"}
+            v{import.meta.env.VITE_HOARD_VERSION || "1.5.5"}
           </button>
         </div>
         <!-- Small amber alert button. Same visual language as "Sin carpeta":

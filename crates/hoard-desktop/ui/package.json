@@ -1,13 +1,14 @@
 {
   "name": "hoard-desktop-ui",
   "private": true,
-  "version": "1.5.4",
+  "version": "1.5.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "i18n:check": "node scripts/check-i18n-keys.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.1.1",

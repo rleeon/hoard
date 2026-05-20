@@ -2119,6 +2119,7 @@ dependencies = [
  "anyhow",
  "async-compression",
  "directories",
+ "filetime",
  "futures",
  "hex",
  "hoard-manifest",

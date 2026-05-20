@@ -60,6 +60,9 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Manipulating file mtimes in tests for conflict-resolution and TTL sweep
+# coverage. Dev-only — the production code reads mtime via `tokio::fs::metadata`.
+filetime = "0.2"
 # Mirror of the cfg(windows) prod dep: GOG Galaxy's sqlite reader lives in
 # `launchers.rs`, but its parser code is OS-agnostic and gets exercised by
 # tests on Linux too (synthesised fixture). The dev-dep makes the

@@ -21,6 +21,7 @@
 use std::path::PathBuf;
 
 use hoard_agent::agent::{self, AgentConfig, AgentEvent, AgentSlotStatus, WatchedSave};
+use hoard_agent::config::CliConfig;
 use hoard_agent::manifest::Os;
 use hoard_agent::prefs::Prefs;
 use hoard_agent::state::CliState;
@@ -57,14 +58,26 @@ pub async fn start_agent(
     let saves = hydrate_watched_saves(&state).map_err(|e| e.to_string())?;
     let watched_count = saves.len();
 
-    // Pull the user's auto-restore preference so the agent knows whether it
-    // should pull the latest server snapshot when a tracked save's local
-    // path is missing or empty on attach.
-    let auto_restore = Prefs::load_default()
+    // Pull the user's auto-restore preference + conflict retention so the
+    // agent knows whether to pull missing snapshots on attach and how long
+    // to keep conflict backups under `<state_dir>/conflicts/`.
+    let prefs_loaded = Prefs::load_default().ok();
+    let auto_restore = prefs_loaded
+        .as_ref()
         .map(|(p, _)| p.auto_restore)
         .unwrap_or(false);
+    let conflict_retention_days = prefs_loaded
+        .as_ref()
+        .map(|(p, _)| p.conflict_retention_days)
+        .unwrap_or(14);
+    // state_dir resolution can fail on locked-down hosts (no $HOME etc).
+    // When it does, fall back to None — the agent then keeps the legacy
+    // "never destroy local" behaviour for conflicts.
+    let conflict_root = CliConfig::state_dir().ok().map(|d| d.join("conflicts"));
     let config = AgentConfig {
         auto_restore,
+        conflict_root,
+        conflict_retention_days,
         ..AgentConfig::default()
     };
 
@@ -90,6 +103,7 @@ pub async fn start_agent(
                 AgentEvent::SaveAutoRestored { .. } => "agent://save-auto-restored",
                 AgentEvent::SaveAutoRestoreFailed { .. } => "agent://save-auto-restore-failed",
                 AgentEvent::BackupSkippedEmpty { .. } => "agent://backup-skipped-empty",
+                AgentEvent::SaveConflictsBackedUp { .. } => "agent://save-conflicts-backed-up",
             };
             let _ = app_for_emit.emit(topic, &ev);
         }

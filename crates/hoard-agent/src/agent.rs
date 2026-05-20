@@ -62,6 +62,16 @@ pub struct AgentConfig {
     /// because silently writing files under the user's `~` is the sort
     /// of side-effect that needs explicit opt-in.
     pub auto_restore: bool,
+    /// Root directory the agent uses to park the *local* copy of a file
+    /// before letting a newer remote version overwrite it (ADR 0014). The
+    /// final path is `<conflict_root>/<save_id>/<rfc3339_ts>/<rel>`. When
+    /// `None`, the agent falls back to 1.5.4 behaviour: a conflict where
+    /// the remote is newer is *not* applied (we keep local) so data is
+    /// never destroyed silently.
+    pub conflict_root: Option<PathBuf>,
+    /// Days to keep conflict backups under `conflict_root` before the
+    /// per-tick sweep removes them. Mirrors `Prefs::conflict_retention_days`.
+    pub conflict_retention_days: u32,
 }
 
 impl Default for AgentConfig {
@@ -71,6 +81,8 @@ impl Default for AgentConfig {
             poll_secs: 2,
             max_retries: 5,
             auto_restore: false,
+            conflict_root: None,
+            conflict_retention_days: 14,
         }
     }
 }
@@ -165,6 +177,16 @@ pub enum AgentEvent {
     BackupSkippedEmpty {
         save_id: String,
         game_slug: String,
+    },
+    /// The diff-based auto-restore found N files where the remote snapshot
+    /// was newer than the local copy (ADR 0014). Before overwriting, the
+    /// agent moved each local version into `conflict_dir`. The UI surfaces
+    /// a toast so the user can recover manually if mtime decided wrong.
+    SaveConflictsBackedUp {
+        save_id: String,
+        game_slug: String,
+        count: u64,
+        conflict_dir: PathBuf,
     },
 }
 
@@ -417,7 +439,9 @@ async fn run_agent(
                         // want any already-empty folder pulled back right
                         // now. Don't wait for the next poll tick.
                         if !was && enabled {
-                            sweep_for_auto_restore(&mut slots, &api, &events_tx, &cmd_tx);
+                            sweep_for_auto_restore(
+                                &mut slots, &api, &events_tx, &cmd_tx, &config,
+                            );
                         }
                     }
                     Some(AgentCommand::RemoveSave(id)) => {
@@ -489,7 +513,9 @@ async fn run_agent(
                 // closed, network came back online after a failed attempt,
                 // user just turned auto_restore on with several stale slots.
                 if config.auto_restore {
-                    sweep_for_auto_restore(&mut slots, &api, &events_tx, &cmd_tx);
+                    sweep_for_auto_restore(
+                        &mut slots, &api, &events_tx, &cmd_tx, &config,
+                    );
                 }
             }
 
@@ -549,18 +575,35 @@ fn handle_add(
     // runs when `auto_restore` is on, and decides per-file whether to copy.
     // If nothing's missing the task ends with `restored == 0` and no event
     // is emitted, so this is cheap even on a fully-populated slot.
+    //
+    // Since 1.5.5 (ADR 0014) the same "user is playing" guards from the
+    // sweep apply here too: if the catalog has no process match and the
+    // folder was just touched, the user is likely mid-session — let the
+    // next sweep handle it once mtime stabilises.
     if config.auto_restore {
-        if let Some(slot) = slots.get_mut(&save_id) {
-            slot.restoring = true;
-            slot.next_auto_restore_at =
-                Some(TokioInstant::now() + Duration::from_secs(AUTO_RESTORE_COOLDOWN_SECS));
+        let recently_touched = save_for_restore.processes.is_empty()
+            && is_path_recently_touched(&save_for_restore.local_path, RECENT_SAVE_GRACE);
+        if recently_touched {
+            tracing::debug!(
+                save_id = %save_id,
+                path = %save_for_restore.local_path.display(),
+                "agent: handle_add auto-restore deferred — folder touched recently and no process match"
+            );
+        } else {
+            if let Some(slot) = slots.get_mut(&save_id) {
+                slot.restoring = true;
+                slot.next_auto_restore_at =
+                    Some(TokioInstant::now() + Duration::from_secs(AUTO_RESTORE_COOLDOWN_SECS));
+            }
+            spawn_auto_restore(
+                save_for_restore,
+                api.clone(),
+                events_tx.clone(),
+                cmd_tx.clone(),
+                config.conflict_root.clone(),
+                config.conflict_retention_days,
+            );
         }
-        spawn_auto_restore(
-            save_for_restore,
-            api.clone(),
-            events_tx.clone(),
-            cmd_tx.clone(),
-        );
     }
 }
 
@@ -598,6 +641,8 @@ fn spawn_auto_restore(
     api: ApiClient,
     events_tx: mpsc::Sender<AgentEvent>,
     cmd_tx: mpsc::Sender<AgentCommand>,
+    conflict_root: Option<PathBuf>,
+    conflict_retention_days: u32,
 ) {
     tokio::spawn(async move {
         tracing::debug!(
@@ -606,40 +651,57 @@ fn spawn_auto_restore(
             path = %save.local_path.display(),
             "agent: auto-restore diff — checking server snapshot against local"
         );
-        match run_auto_restore(&api, &save).await {
+        let retention = Duration::from_secs(u64::from(conflict_retention_days) * 86_400);
+        match run_auto_restore(&api, &save, conflict_root.as_deref(), retention).await {
             Ok(Some(outcome)) => {
-                if outcome.files_restored > 0 {
+                let touched = outcome.files_restored
+                    + outcome.conflicts_backed_up;
+                if touched > 0 {
                     tracing::info!(
                         save_id = %save.save_id,
                         version_num = outcome.version_num,
                         restored = outcome.files_restored,
-                        conflicts = outcome.files_conflicts,
+                        backed_up = outcome.conflicts_backed_up,
+                        local_wins = outcome.conflicts_local_wins,
                         bytes = outcome.bytes_extracted,
-                        "auto-restore diff: restored {} files, {} conflicts skipped (local wins)",
-                        outcome.files_restored,
-                        outcome.files_conflicts
+                        "auto-restore diff: applied {} files (incl. {} conflict-backups), {} kept local",
+                        touched,
+                        outcome.conflicts_backed_up,
+                        outcome.conflicts_local_wins
                     );
                     let _ = events_tx
                         .send(AgentEvent::SaveAutoRestored {
                             save_id: save.save_id.clone(),
                             game_slug: save.game_slug.clone(),
                             version_num: outcome.version_num,
-                            files_extracted: outcome.files_restored,
+                            files_extracted: touched,
                             bytes_extracted: outcome.bytes_extracted,
                         })
                         .await;
+                    if outcome.conflicts_backed_up > 0 {
+                        if let Some(dir) = outcome.conflict_dir.clone() {
+                            let _ = events_tx
+                                .send(AgentEvent::SaveConflictsBackedUp {
+                                    save_id: save.save_id.clone(),
+                                    game_slug: save.game_slug.clone(),
+                                    count: outcome.conflicts_backed_up,
+                                    conflict_dir: dir,
+                                })
+                                .await;
+                        }
+                    }
                     // Tell the agent loop to rebuild the fs watcher now that
                     // the directory actually has contents. Safe to send even
                     // if it was already armed — `arm_watcher` overwrites.
                     let _ = cmd_tx
                         .send(AgentCommand::RearmWatcher(save.save_id.clone()))
                         .await;
-                } else if outcome.files_conflicts > 0 {
+                } else if outcome.conflicts_local_wins > 0 {
                     tracing::debug!(
                         save_id = %save.save_id,
-                        conflicts = outcome.files_conflicts,
-                        "auto-restore diff: nothing copied; {} files differ locally (local wins)",
-                        outcome.files_conflicts
+                        local_wins = outcome.conflicts_local_wins,
+                        "auto-restore diff: nothing copied; {} files newer locally",
+                        outcome.conflicts_local_wins
                     );
                 }
                 // else: every file present and identical — silent no-op.
@@ -681,6 +743,13 @@ fn spawn_auto_restore(
 /// this stage; it skips inside `restore_files_into` once we've compared
 /// the snapshot against what's on disk.
 ///
+/// Since 1.5.5 (ADR 0014) two guards apply *before* spawning to avoid
+/// stomping on a save the user is actively touching:
+/// 1. `slot.is_running` → game is open, skip.
+/// 2. No process match available *and* the local folder was modified
+///    less than `RECENT_SAVE_GRACE` ago → skip; the user is likely
+///    playing but the agent has no proc name to confirm.
+///
 /// Cheap: per-slot work here is just a `restoring` flag check and a
 /// timer compare. The network/disk cost happens inside the spawned task,
 /// which dedupes via `restoring` so the next sweep doesn't pile up.
@@ -689,6 +758,7 @@ fn sweep_for_auto_restore(
     api: &ApiClient,
     events_tx: &mpsc::Sender<AgentEvent>,
     cmd_tx: &mpsc::Sender<AgentCommand>,
+    config: &AgentConfig,
 ) {
     let now = TokioInstant::now();
     // Collect candidate save_ids first to keep the borrow checker happy
@@ -696,7 +766,7 @@ fn sweep_for_auto_restore(
     // clone of `WatchedSave`).
     let candidates: Vec<(String, WatchedSave)> = slots
         .iter()
-        .filter(|(_, slot)| {
+        .filter(|(id, slot)| {
             if slot.restoring {
                 return false;
             }
@@ -704,6 +774,23 @@ fn sweep_for_auto_restore(
                 if now < t {
                     return false;
                 }
+            }
+            if slot.is_running {
+                tracing::debug!(
+                    save_id = %id,
+                    "sweep: skipping — game process is running"
+                );
+                return false;
+            }
+            if slot.save.processes.is_empty()
+                && is_path_recently_touched(&slot.save.local_path, RECENT_SAVE_GRACE)
+            {
+                tracing::debug!(
+                    save_id = %id,
+                    path = %slot.save.local_path.display(),
+                    "sweep: skipping — save folder touched recently and no process match"
+                );
+                return false;
             }
             true
         })
@@ -719,7 +806,36 @@ fn sweep_for_auto_restore(
             save_id = %id,
             "agent: reconciliation sweep — scheduling diff auto-restore"
         );
-        spawn_auto_restore(save, api.clone(), events_tx.clone(), cmd_tx.clone());
+        spawn_auto_restore(
+            save,
+            api.clone(),
+            events_tx.clone(),
+            cmd_tx.clone(),
+            config.conflict_root.clone(),
+            config.conflict_retention_days,
+        );
+    }
+}
+
+/// Grace window for the "save touched recently" heuristic in sweep guards.
+/// Five minutes matches the ADR 0014 acceptance: while playing, the
+/// process poll will normally mark the slot `is_running`; this catches the
+/// case where the slot has no process match in the catalog.
+const RECENT_SAVE_GRACE: Duration = Duration::from_secs(5 * 60);
+
+/// True if `path` exists and has been modified within `grace`. Conservative
+/// on errors: an unreadable path returns `false` so we don't deadlock the
+/// auto-restore against a slot we can't stat.
+fn is_path_recently_touched(path: &Path, grace: Duration) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    let Ok(mtime) = meta.modified() else {
+        return false;
+    };
+    match std::time::SystemTime::now().duration_since(mtime) {
+        Ok(age) => age < grace,
+        Err(_) => false,
     }
 }
 
@@ -732,10 +848,18 @@ struct AutoRestoreOutcome {
     /// that were missing locally). Bytes equal between staging and local
     /// don't count.
     files_restored: u64,
-    /// Files in the remote snapshot whose local counterpart exists with a
-    /// different byte sequence — left untouched. Local wins by design.
-    files_conflicts: u64,
-    /// Total bytes copied. Sum of `restored` file sizes only.
+    /// Files where the local copy was preserved because its mtime was
+    /// newer than the remote (or `conflict_root` was unset — see
+    /// `restore_files_into` for the fallback path).
+    conflicts_local_wins: u64,
+    /// Files where the local copy was moved into the conflict backup dir
+    /// before being overwritten by the remote version (ADR 0014).
+    conflicts_backed_up: u64,
+    /// Where the local versions were parked, if any. `None` when
+    /// `conflicts_backed_up == 0`.
+    conflict_dir: Option<PathBuf>,
+    /// Total bytes copied. Sum of `restored` + `conflicts_resolved_remote`
+    /// file sizes.
     bytes_extracted: u64,
 }
 
@@ -749,20 +873,37 @@ pub(crate) struct RestoreStats {
     /// Files present in both `source` and `target` with identical bytes.
     /// Left as-is.
     pub skipped: usize,
-    /// Files present in both `source` and `target` with different bytes.
-    /// Local copy in `target` is preserved — see ADR 0013.
-    pub conflicts: usize,
-    /// Total bytes copied across `restored` files. Useful for the
-    /// `SaveAutoRestored` event payload.
+    /// Files where bytes differ and the *remote* won by mtime, so we
+    /// overwrote the local copy with the staged remote version.
+    pub conflicts_resolved_remote: usize,
+    /// Files where bytes differ and the *local* won by mtime, so we left
+    /// the local copy alone. Also incremented as a safety fallback when
+    /// `conflict_backup_dir` is `None` and the remote would have won.
+    pub conflicts_resolved_local: usize,
+    /// Files where the local copy was moved into the conflict backup dir
+    /// before being replaced by the remote version (subset of
+    /// `conflicts_resolved_remote`).
+    pub conflicts_backed_up: usize,
+    /// Total bytes copied across `restored` + `conflicts_resolved_remote`.
+    /// Useful for the `SaveAutoRestored` event payload.
     pub bytes_restored: u64,
 }
 
 async fn run_auto_restore(
     api: &ApiClient,
     save: &WatchedSave,
+    conflict_root: Option<&Path>,
+    retention: Duration,
 ) -> Result<Option<AutoRestoreOutcome>> {
     let remote = api.get_save(&save.save_id).await?;
     let Some(version) = remote.latest_version_num else {
+        // Still sweep TTL before bailing — keeps the conflict dir bounded
+        // even for saves whose remote has been purged.
+        if let Some(root) = conflict_root {
+            if let Err(e) = cleanup_old_conflicts(root, retention).await {
+                tracing::debug!(error = %e, "cleanup_old_conflicts failed (no-snapshot path)");
+            }
+        }
         return Ok(None);
     };
     // Stage the snapshot in a unique temp dir so we never overwrite the
@@ -796,14 +937,44 @@ async fn run_auto_restore(
     };
     let _ = outcome; // we walk the staging dir directly for the diff
 
-    let copy_result = restore_files_into(&save.local_path, &staging).await;
+    // Per-attempt timestamped subdir so concurrent restores never collide
+    // and the TTL sweep can drop the whole subtree in one shot. We compute
+    // it lazily *only if* a conflict_root is configured — `restore_files_into`
+    // treats `None` as the safe legacy fallback.
+    let conflict_backup_dir: Option<PathBuf> = conflict_root.map(|root| {
+        let ts = OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_else(|_| "unknown-ts".to_string())
+            // Colons aren't legal in Windows paths and look weird everywhere.
+            .replace(':', "-");
+        root.join(&save.save_id).join(ts)
+    });
+
+    let copy_result =
+        restore_files_into(&save.local_path, &staging, conflict_backup_dir.as_deref()).await;
     cleanup_staging(&staging).await;
+
+    // Best-effort TTL sweep regardless of the per-file outcome — we want
+    // bounded disk usage even when the current restore had no conflicts.
+    if let Some(root) = conflict_root {
+        if let Err(e) = cleanup_old_conflicts(root, retention).await {
+            tracing::debug!(error = %e, "cleanup_old_conflicts failed");
+        }
+    }
+
     let stats = copy_result?;
+    let dir_used = if stats.conflicts_backed_up > 0 {
+        conflict_backup_dir
+    } else {
+        None
+    };
 
     Ok(Some(AutoRestoreOutcome {
         version_num: version,
         files_restored: stats.restored as u64,
-        files_conflicts: stats.conflicts as u64,
+        conflicts_local_wins: stats.conflicts_resolved_local as u64,
+        conflicts_backed_up: stats.conflicts_backed_up as u64,
+        conflict_dir: dir_used,
         bytes_extracted: stats.bytes_restored,
     }))
 }
@@ -841,21 +1012,99 @@ async fn cleanup_staging(staging: &Path) {
     }
 }
 
-/// Copy files from `source` into `target` non-destructively.
+/// Walk `conflict_root` two levels deep (`<save_id>/<timestamp>/`) and
+/// remove every timestamp dir whose mtime is older than `now - retention`.
+/// No-op when the root doesn't exist (typical fresh install). Errors are
+/// logged but never propagated — a stuck conflict dir is much better than
+/// killing the auto-restore tick.
+pub(crate) async fn cleanup_old_conflicts(
+    conflict_root: &Path,
+    retention: Duration,
+) -> Result<()> {
+    if !conflict_root.exists() {
+        return Ok(());
+    }
+    let cutoff = std::time::SystemTime::now()
+        .checked_sub(retention)
+        .unwrap_or(std::time::UNIX_EPOCH);
+    let mut save_entries = tokio::fs::read_dir(conflict_root)
+        .await
+        .with_context(|| format!("reading conflict root {}", conflict_root.display()))?;
+    while let Some(save_entry) = save_entries.next_entry().await? {
+        if !save_entry.file_type().await?.is_dir() {
+            continue;
+        }
+        let save_dir = save_entry.path();
+        let mut ts_entries = match tokio::fs::read_dir(&save_dir).await {
+            Ok(it) => it,
+            Err(e) => {
+                tracing::debug!(
+                    dir = %save_dir.display(),
+                    error = %e,
+                    "agent: skipping unreadable conflict save dir"
+                );
+                continue;
+            }
+        };
+        while let Some(ts_entry) = ts_entries.next_entry().await? {
+            if !ts_entry.file_type().await?.is_dir() {
+                continue;
+            }
+            let ts_dir = ts_entry.path();
+            let mtime = match ts_entry.metadata().await.and_then(|m| m.modified()) {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::debug!(
+                        dir = %ts_dir.display(),
+                        error = %e,
+                        "agent: couldn't read conflict ts mtime; leaving it alone"
+                    );
+                    continue;
+                }
+            };
+            if mtime < cutoff {
+                match tokio::fs::remove_dir_all(&ts_dir).await {
+                    Ok(()) => tracing::info!(
+                        dir = %ts_dir.display(),
+                        "agent: removed expired conflict backup"
+                    ),
+                    Err(e) => tracing::warn!(
+                        dir = %ts_dir.display(),
+                        error = %e,
+                        "agent: failed to remove expired conflict backup"
+                    ),
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Copy files from `source` into `target` non-destructively, resolving
+/// per-file conflicts via mtime (ADR 0014).
 ///
 /// Walks `source` recursively. For each file:
 ///
-/// - `target/rel` missing → copy `source/rel` to `target/rel`, creating
-///   parent directories as needed; bump `restored`.
-/// - `target/rel` exists with identical bytes → leave it; bump `skipped`.
-/// - `target/rel` exists with different bytes → leave it; bump `conflicts`.
-///   Local always wins (ADR 0013): the user's in-flight work is preserved
-///   and will be uploaded by the watcher on its next debounce.
+/// - `target/rel` missing → copy; bump `restored`.
+/// - `target/rel` exists with identical bytes → skip; bump `skipped`.
+/// - `target/rel` exists with different bytes:
+///   - `local_mtime > remote_mtime + 1s` → local wins, untouched; bump
+///     `conflicts_resolved_local`.
+///   - Otherwise (remote newer, or within ±1s tolerance) → remote wins.
+///     If `conflict_backup_dir` is `Some(dir)`, move `target/rel` to
+///     `dir/rel` (creating parents) and bump `conflicts_backed_up`, then
+///     copy `source/rel` over and bump `conflicts_resolved_remote`. If
+///     `conflict_backup_dir` is `None`, *do not* overwrite — bump
+///     `conflicts_resolved_local` as a safety fallback (legacy 1.5.4
+///     behaviour) and log a warn.
 ///
-/// Returns aggregate stats. Errors propagate only for I/O failures we
-/// can't classify into one of the three buckets (e.g. permission denied
-/// reading a file we just listed).
-pub(crate) async fn restore_files_into(target: &Path, source: &Path) -> Result<RestoreStats> {
+/// Errors propagate only for I/O failures we can't classify (e.g.
+/// permission denied reading a file we just listed).
+pub(crate) async fn restore_files_into(
+    target: &Path,
+    source: &Path,
+    conflict_backup_dir: Option<&Path>,
+) -> Result<RestoreStats> {
     let mut stats = RestoreStats::default();
     let mut stack: Vec<PathBuf> = vec![source.to_path_buf()];
 
@@ -882,13 +1131,65 @@ pub(crate) async fn restore_files_into(target: &Path, source: &Path) -> Result<R
             if dest.exists() {
                 if files_have_equal_bytes(&path, &dest).await? {
                     stats.skipped += 1;
-                } else {
+                    continue;
+                }
+                // Bytes differ — resolve via mtime. 1s tolerance covers
+                // FAT32 and friends; remote ties take the local side so a
+                // close call doesn't trash data.
+                if local_mtime_wins(&dest, &path).await {
                     tracing::debug!(
                         rel = %rel.display(),
-                        "auto-restore diff: skipping conflict, local wins"
+                        "auto-restore diff: local wins on mtime"
                     );
-                    stats.conflicts += 1;
+                    stats.conflicts_resolved_local += 1;
+                    continue;
                 }
+                let Some(backup_root) = conflict_backup_dir else {
+                    // No backup dir configured (legacy fallback): never
+                    // destroy local data even if remote looks newer.
+                    tracing::warn!(
+                        rel = %rel.display(),
+                        "auto-restore diff: remote appears newer but no conflict_backup_dir; keeping local"
+                    );
+                    stats.conflicts_resolved_local += 1;
+                    continue;
+                };
+                let backup_dest = backup_root.join(rel);
+                if let Some(parent) = backup_dest.parent() {
+                    tokio::fs::create_dir_all(parent).await.with_context(|| {
+                        format!(
+                            "creating conflict backup parent dir {}",
+                            parent.display()
+                        )
+                    })?;
+                }
+                // `rename` first (cheap, atomic). Fall back to copy+remove
+                // when the conflict root is on a different filesystem
+                // (typical when state_dir lives on the system disk and the
+                // save folder is on a different volume).
+                if let Err(e) = tokio::fs::rename(&dest, &backup_dest).await {
+                    tracing::debug!(
+                        rel = %rel.display(),
+                        error = %e,
+                        "auto-restore diff: rename across filesystems failed, falling back to copy"
+                    );
+                    tokio::fs::copy(&dest, &backup_dest).await.with_context(|| {
+                        format!(
+                            "copying {} → {} for conflict backup",
+                            dest.display(),
+                            backup_dest.display()
+                        )
+                    })?;
+                    tokio::fs::remove_file(&dest).await.with_context(|| {
+                        format!("removing local {} after conflict backup", dest.display())
+                    })?;
+                }
+                stats.conflicts_backed_up += 1;
+                let copied = tokio::fs::copy(&path, &dest).await.with_context(|| {
+                    format!("copying {} → {}", path.display(), dest.display())
+                })?;
+                stats.conflicts_resolved_remote += 1;
+                stats.bytes_restored += copied;
                 continue;
             }
             if let Some(parent) = dest.parent() {
@@ -905,6 +1206,26 @@ pub(crate) async fn restore_files_into(target: &Path, source: &Path) -> Result<R
     }
 
     Ok(stats)
+}
+
+/// True when the local file's mtime is more than 1s newer than the remote
+/// file's. Conservative on errors: if we can't read either mtime, we treat
+/// the remote as the winner — the snapshot's authority comes from the
+/// server's committed timestamps, which are more reliable than a local
+/// filesystem with quirks (FAT32 2s rounding, network share clock skew).
+async fn local_mtime_wins(local: &Path, remote: &Path) -> bool {
+    let local_mtime = match tokio::fs::metadata(local).await.and_then(|m| m.modified()) {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    let remote_mtime = match tokio::fs::metadata(remote).await.and_then(|m| m.modified()) {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    match local_mtime.duration_since(remote_mtime) {
+        Ok(d) => d > Duration::from_secs(1),
+        Err(_) => false,
+    }
 }
 
 /// Cheap bytes-equal: size first (saves the read for the common
@@ -1044,6 +1365,8 @@ fn schedule_backup(
     let save = slot.save.clone();
     let max_retries = config.max_retries;
     let auto_restore = config.auto_restore;
+    let conflict_root = config.conflict_root.clone();
+    let conflict_retention_days = config.conflict_retention_days;
 
     slot.pending = Some(tokio::spawn(async move {
         if delay > Duration::ZERO {
@@ -1057,6 +1380,8 @@ fn schedule_backup(
             cmd_tx,
             max_retries,
             auto_restore,
+            conflict_root,
+            conflict_retention_days,
         )
         .await;
     }));
@@ -1075,6 +1400,7 @@ fn schedule_backup(
 ///   folder from the latest server snapshot and emit `SaveAutoRestored`.
 /// - `auto_restore = false` → emit `BackupSkippedEmpty` and bail. The UI
 ///   surfaces a toast pointing the user at the Settings toggle.
+#[allow(clippy::too_many_arguments)]
 async fn run_backup_with_retry(
     api: ApiClient,
     save: WatchedSave,
@@ -1083,6 +1409,8 @@ async fn run_backup_with_retry(
     cmd_tx: mpsc::Sender<AgentCommand>,
     max_retries: u32,
     auto_restore: bool,
+    conflict_root: Option<PathBuf>,
+    conflict_retention_days: u32,
 ) {
     if is_path_empty_or_missing(&save.local_path) {
         tracing::info!(
@@ -1094,7 +1422,14 @@ async fn run_backup_with_retry(
         // Always clear has_pending so a future fs event isn't blocked.
         let _ = done_tx.try_send(save.save_id.clone());
         if auto_restore {
-            spawn_auto_restore(save.clone(), api.clone(), events_tx.clone(), cmd_tx);
+            spawn_auto_restore(
+                save.clone(),
+                api.clone(),
+                events_tx.clone(),
+                cmd_tx,
+                conflict_root,
+                conflict_retention_days,
+            );
         } else {
             let _ = events_tx
                 .send(AgentEvent::BackupSkippedEmpty {
@@ -1372,6 +1707,8 @@ mod tests {
             poll_secs: 2,
             max_retries: 0,
             auto_restore: false,
+            conflict_root: None,
+            conflict_retention_days: 14,
         };
 
         let (handle, task) = spawn(api, config, vec![save], events_tx);
@@ -1432,11 +1769,13 @@ mod tests {
         write_file(&source.join("nested/c.dat"), b"gamma");
         write_file(&target.join("a.dat"), b"alpha");
 
-        let stats = restore_files_into(target, source).await.unwrap();
+        let stats = restore_files_into(target, source, None).await.unwrap();
 
         assert_eq!(stats.restored, 2, "B and C should be copied");
         assert_eq!(stats.skipped, 1, "A is identical, skipped silently");
-        assert_eq!(stats.conflicts, 0);
+        assert_eq!(stats.conflicts_resolved_remote, 0);
+        assert_eq!(stats.conflicts_resolved_local, 0);
+        assert_eq!(stats.conflicts_backed_up, 0);
         assert_eq!(stats.bytes_restored, (b"beta".len() + b"gamma".len()) as u64);
 
         // Local A untouched.
@@ -1462,11 +1801,15 @@ mod tests {
         write_file(&source.join("a.dat"), b"remote-version");
         write_file(&target.join("a.dat"), b"LOCAL-WORK");
 
-        let stats = restore_files_into(target, source).await.unwrap();
+        let stats = restore_files_into(target, source, None).await.unwrap();
 
         assert_eq!(stats.restored, 0, "nothing copied — A is a conflict");
         assert_eq!(stats.skipped, 0);
-        assert_eq!(stats.conflicts, 1);
+        // No conflict_backup_dir → fallback to "keep local" regardless of
+        // mtime, accounted under `conflicts_resolved_local`.
+        assert_eq!(stats.conflicts_resolved_local, 1);
+        assert_eq!(stats.conflicts_resolved_remote, 0);
+        assert_eq!(stats.conflicts_backed_up, 0);
         assert_eq!(stats.bytes_restored, 0);
         // Local content preserved verbatim.
         assert_eq!(std::fs::read(target.join("a.dat")).unwrap(), b"LOCAL-WORK");
@@ -1487,11 +1830,13 @@ mod tests {
         write_file(&target.join("a.dat"), b"alpha");
         write_file(&target.join("sub/b.dat"), b"beta");
 
-        let stats = restore_files_into(target, source).await.unwrap();
+        let stats = restore_files_into(target, source, None).await.unwrap();
 
         assert_eq!(stats.restored, 0);
         assert_eq!(stats.skipped, 2);
-        assert_eq!(stats.conflicts, 0);
+        assert_eq!(stats.conflicts_resolved_remote, 0);
+        assert_eq!(stats.conflicts_resolved_local, 0);
+        assert_eq!(stats.conflicts_backed_up, 0);
         assert_eq!(stats.bytes_restored, 0);
     }
 
@@ -1508,11 +1853,13 @@ mod tests {
         write_file(&source.join("b.dat"), b"beta-bytes");
         write_file(&source.join("deep/nested/c.dat"), b"gamma!");
 
-        let stats = restore_files_into(target, source).await.unwrap();
+        let stats = restore_files_into(target, source, None).await.unwrap();
 
         assert_eq!(stats.restored, 3);
         assert_eq!(stats.skipped, 0);
-        assert_eq!(stats.conflicts, 0);
+        assert_eq!(stats.conflicts_resolved_remote, 0);
+        assert_eq!(stats.conflicts_resolved_local, 0);
+        assert_eq!(stats.conflicts_backed_up, 0);
         assert_eq!(
             stats.bytes_restored,
             (b"alpha".len() + b"beta-bytes".len() + b"gamma!".len()) as u64
@@ -1522,5 +1869,143 @@ mod tests {
             std::fs::read(target.join("deep/nested/c.dat")).unwrap(),
             b"gamma!"
         );
+    }
+
+    /// Helper: set both file mtimes deterministically so the mtime branch
+    /// is exercised without relying on test runtime ordering.
+    fn set_mtime(path: &Path, mtime: std::time::SystemTime) {
+        let ft = filetime::FileTime::from_system_time(mtime);
+        filetime::set_file_mtime(path, ft).expect("set mtime");
+    }
+
+    /// Remote newer than local + a conflict_backup_dir → remote wins. The
+    /// previous local bytes land in `conflict_backup_dir/<rel>` before
+    /// being overwritten by the staged remote version.
+    #[tokio::test(flavor = "current_thread")]
+    async fn restore_files_into_remote_wins_when_remote_newer() {
+        let source_tmp = tempfile::tempdir().unwrap();
+        let target_tmp = tempfile::tempdir().unwrap();
+        let backup_tmp = tempfile::tempdir().unwrap();
+        let source = source_tmp.path();
+        let target = target_tmp.path();
+        let backup = backup_tmp.path();
+
+        write_file(&source.join("a.dat"), b"remote-new");
+        write_file(&target.join("a.dat"), b"local-old");
+        // local mtime = T-10s, remote mtime = T+10s (clearly newer).
+        let now = std::time::SystemTime::now();
+        set_mtime(&target.join("a.dat"), now - Duration::from_secs(10));
+        set_mtime(&source.join("a.dat"), now + Duration::from_secs(10));
+
+        let stats = restore_files_into(target, source, Some(backup))
+            .await
+            .unwrap();
+
+        assert_eq!(stats.conflicts_resolved_remote, 1);
+        assert_eq!(stats.conflicts_backed_up, 1);
+        assert_eq!(stats.conflicts_resolved_local, 0);
+        assert_eq!(stats.restored, 0);
+        assert_eq!(stats.bytes_restored, b"remote-new".len() as u64);
+        // Target now has the remote version.
+        assert_eq!(std::fs::read(target.join("a.dat")).unwrap(), b"remote-new");
+        // The previous local bytes were parked in the backup root.
+        assert_eq!(std::fs::read(backup.join("a.dat")).unwrap(), b"local-old");
+    }
+
+    /// Local newer than remote (well past the 1s tolerance) → local wins.
+    /// The remote file is *not* applied and no conflict backup is taken.
+    #[tokio::test(flavor = "current_thread")]
+    async fn restore_files_into_local_wins_when_local_newer() {
+        let source_tmp = tempfile::tempdir().unwrap();
+        let target_tmp = tempfile::tempdir().unwrap();
+        let backup_tmp = tempfile::tempdir().unwrap();
+        let source = source_tmp.path();
+        let target = target_tmp.path();
+        let backup = backup_tmp.path();
+
+        write_file(&source.join("a.dat"), b"remote-old");
+        write_file(&target.join("a.dat"), b"LOCAL-WORK");
+        let now = std::time::SystemTime::now();
+        set_mtime(&source.join("a.dat"), now - Duration::from_secs(60));
+        set_mtime(&target.join("a.dat"), now);
+
+        let stats = restore_files_into(target, source, Some(backup))
+            .await
+            .unwrap();
+
+        assert_eq!(stats.conflicts_resolved_local, 1);
+        assert_eq!(stats.conflicts_resolved_remote, 0);
+        assert_eq!(stats.conflicts_backed_up, 0);
+        assert_eq!(stats.bytes_restored, 0);
+        assert_eq!(std::fs::read(target.join("a.dat")).unwrap(), b"LOCAL-WORK");
+        // No backup was created — `backup` is still empty.
+        assert!(std::fs::read_dir(backup).unwrap().next().is_none());
+    }
+
+    /// Even with the remote winning by mtime, when `conflict_backup_dir`
+    /// is `None` the agent must never overwrite local data. This is the
+    /// 1.5.4 fallback for hosts where the conflict root couldn't be
+    /// resolved (state_dir missing, permission denied, etc).
+    #[tokio::test(flavor = "current_thread")]
+    async fn restore_files_into_skips_when_no_backup_dir_provided() {
+        let source_tmp = tempfile::tempdir().unwrap();
+        let target_tmp = tempfile::tempdir().unwrap();
+        let source = source_tmp.path();
+        let target = target_tmp.path();
+
+        write_file(&source.join("a.dat"), b"remote-new");
+        write_file(&target.join("a.dat"), b"local-old");
+        let now = std::time::SystemTime::now();
+        set_mtime(&target.join("a.dat"), now - Duration::from_secs(10));
+        set_mtime(&source.join("a.dat"), now + Duration::from_secs(10));
+
+        let stats = restore_files_into(target, source, None).await.unwrap();
+
+        assert_eq!(stats.conflicts_resolved_local, 1);
+        assert_eq!(stats.conflicts_resolved_remote, 0);
+        assert_eq!(stats.conflicts_backed_up, 0);
+        // Local content was preserved.
+        assert_eq!(std::fs::read(target.join("a.dat")).unwrap(), b"local-old");
+    }
+
+    /// `cleanup_old_conflicts` walks two levels deep and removes only the
+    /// timestamp dirs older than the retention window. The save_id parent
+    /// is left in place even after its children disappear.
+    #[tokio::test(flavor = "current_thread")]
+    async fn cleanup_old_conflicts_respects_ttl() {
+        let root_tmp = tempfile::tempdir().unwrap();
+        let root = root_tmp.path();
+
+        let old_dir = root.join("save-A").join("2026-04-01T00-00-00Z");
+        let fresh_dir = root.join("save-A").join("2026-05-20T00-00-00Z");
+        std::fs::create_dir_all(&old_dir).unwrap();
+        std::fs::create_dir_all(&fresh_dir).unwrap();
+        std::fs::write(old_dir.join("dummy.txt"), b"x").unwrap();
+        std::fs::write(fresh_dir.join("dummy.txt"), b"x").unwrap();
+
+        let now = std::time::SystemTime::now();
+        set_mtime(&old_dir, now - Duration::from_secs(30 * 86_400));
+        set_mtime(&fresh_dir, now - Duration::from_secs(60));
+
+        cleanup_old_conflicts(root, Duration::from_secs(14 * 86_400))
+            .await
+            .expect("cleanup ok");
+
+        assert!(!old_dir.exists(), "old conflict dir should have been pruned");
+        assert!(fresh_dir.exists(), "fresh conflict dir must survive");
+        assert!(root.join("save-A").exists(), "save_id parent stays");
+    }
+
+    /// `cleanup_old_conflicts` on a non-existent root is a no-op, not an
+    /// error. Mirrors the fresh-install case where the conflict dir hasn't
+    /// been touched yet.
+    #[tokio::test(flavor = "current_thread")]
+    async fn cleanup_old_conflicts_handles_missing_dir() {
+        let parent = tempfile::tempdir().unwrap();
+        let missing = parent.path().join("does-not-exist");
+        assert!(!missing.exists());
+        cleanup_old_conflicts(&missing, Duration::from_secs(14 * 86_400))
+            .await
+            .expect("missing root must be no-op");
     }
 }

@@ -125,6 +125,8 @@ pub fn run() {
             commands::prefs::set_autostart,
             commands::prefs::is_autostart_enabled,
             commands::prefs::set_automatic_mode,
+            commands::prefs::set_scheduler_interval,
+            commands::prefs::set_conflict_retention,
             commands::prefs::set_tray_state,
             commands::history::list_save_snapshots,
             commands::history::save_snapshot_detail,

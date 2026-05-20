@@ -48,6 +48,52 @@
   let saving = $state<string | null>(null);
   let signingOut = $state(false);
 
+  // Local mirrors of the two slider-backed prefs so the thumb drags smoothly
+  // without a round-trip on every `input` event. The committed value is only
+  // pushed when the user releases (`onchange`). `$effect` keeps these in sync
+  // when prefs hydrate or another part of the app updates them (e.g. the
+  // sidebar toggle cascading defaults).
+  let scanIntervalHours = $state(6);
+  let conflictRetentionDays = $state(14);
+  $effect(() => {
+    const p = $prefs;
+    if (!p) return;
+    scanIntervalHours = p.automatic_scan_interval_hours ?? 6;
+    conflictRetentionDays = p.conflict_retention_days ?? 14;
+  });
+
+  async function commitScanInterval() {
+    if (!$prefs) return;
+    const value = scanIntervalHours;
+    saving = "automatic_scan_interval_hours";
+    try {
+      const updated = await api.setSchedulerInterval(value);
+      prefs.set(updated);
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+      // Roll back the slider to the persisted value so the UI doesn't lie
+      // about an unsaved change.
+      scanIntervalHours = $prefs?.automatic_scan_interval_hours ?? 6;
+    } finally {
+      saving = null;
+    }
+  }
+
+  async function commitConflictRetention() {
+    if (!$prefs) return;
+    const value = conflictRetentionDays;
+    saving = "conflict_retention_days";
+    try {
+      const updated = await api.setConflictRetention(value);
+      prefs.set(updated);
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+      conflictRetentionDays = $prefs?.conflict_retention_days ?? 14;
+    } finally {
+      saving = null;
+    }
+  }
+
   // User-blacklisted slugs from the Library page. Hydrated on mount; the
   // "Reactivar" button calls `unignoreDetectedGame` and re-fetches so the
   // list stays in step with disk state.
@@ -526,6 +572,92 @@
                 onChange={(v) => toggle(row.field, v)}
               />
             {/each}
+          </div>
+        </Card>
+      </section>
+
+      <!--
+        Modo Automático: dos sliders que mapean a los campos persistidos
+        `automatic_scan_interval_hours` (1..=24) y `conflict_retention_days`
+        (1..=30). El primero sólo está activo cuando `automatic_mode` está
+        encendido — el sidebar es el lugar canónico para activarlo, así que
+        aquí no replicamos el toggle. El backend reinicia el scheduler
+        automáticamente al persistir el nuevo intervalo si el modo está
+        activo.
+      -->
+      <section>
+        <h2
+          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+        >
+          {$_("settings.automatic_section_title")}
+        </h2>
+        <Card>
+          <div class="space-y-6">
+            <div>
+              <div class="flex items-baseline justify-between gap-3">
+                <label
+                  for="scan-interval-slider"
+                  class="text-sm font-medium text-zinc-100"
+                >
+                  {$_("settings.scan_interval_label")}
+                </label>
+                <span
+                  class="font-mono text-xs text-zinc-400"
+                  aria-live="polite"
+                >
+                  {$_("settings.scan_interval_value", {
+                    values: { hours: scanIntervalHours },
+                  })}
+                </span>
+              </div>
+              <input
+                id="scan-interval-slider"
+                type="range"
+                min="1"
+                max="24"
+                step="1"
+                bind:value={scanIntervalHours}
+                onchange={commitScanInterval}
+                disabled={!$prefs.automatic_mode || saving === "automatic_scan_interval_hours"}
+                class="mt-2 w-full accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <p class="mt-1 text-xs text-zinc-500">
+                {$_("settings.scan_interval_hint")}
+              </p>
+            </div>
+
+            <div>
+              <div class="flex items-baseline justify-between gap-3">
+                <label
+                  for="conflict-retention-slider"
+                  class="text-sm font-medium text-zinc-100"
+                >
+                  {$_("settings.conflict_retention_label")}
+                </label>
+                <span
+                  class="font-mono text-xs text-zinc-400"
+                  aria-live="polite"
+                >
+                  {$_("settings.conflict_retention_value", {
+                    values: { days: conflictRetentionDays },
+                  })}
+                </span>
+              </div>
+              <input
+                id="conflict-retention-slider"
+                type="range"
+                min="1"
+                max="30"
+                step="1"
+                bind:value={conflictRetentionDays}
+                onchange={commitConflictRetention}
+                disabled={saving === "conflict_retention_days"}
+                class="mt-2 w-full accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <p class="mt-1 text-xs text-zinc-500">
+                {$_("settings.conflict_retention_hint")}
+              </p>
+            </div>
           </div>
         </Card>
       </section>

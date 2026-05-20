@@ -175,7 +175,19 @@ export async function runAutomaticSetup(): Promise<number> {
 // ---------------------------------------------------------------------------
 
 let listenerInstalled = false;
-let unlisten: UnlistenFn | null = null;
+let unlisteners: UnlistenFn[] = [];
+
+/** Payload of `agent://save-conflicts-backed-up`. Emitted when the agent's
+ *  diff-based restore detects that some local files were older than the
+ *  cloud copy and stashed them under `<state_dir>/conflicts/<save_id>/<ts>/`
+ *  before overwriting them. The toast points the user at the folder so they
+ *  can recover the local version if it turns out to be the canonical one. */
+type SaveConflictsBackedUp = {
+  save_id: string;
+  game_slug: string;
+  count: number;
+  conflict_dir: string;
+};
 
 /**
  * Subscribe to the `automatic-tick` Tauri event so the Rust-side scheduler
@@ -183,32 +195,59 @@ let unlisten: UnlistenFn | null = null;
  * twice does nothing on the second call. Designed to be invoked once from
  * `App.svelte::onMount` and never torn down (the listener costs nothing
  * when no events fire).
+ *
+ * Also installs the `agent://save-conflicts-backed-up` listener — same
+ * lifetime, same install-once contract. We keep both subscriptions in the
+ * same `unlisteners[]` so `disposeAutomaticListener()` tears them down
+ * together.
  */
 export function initAutomaticListener(): void {
   if (listenerInstalled) return;
   listenerInstalled = true;
-  listen("automatic-tick", () => {
-    // Show a discreet info toast so the user notices something happened
-    // when the scheduler fires on its own. `runAutomaticSetup()` may also
-    // emit its own toasts; that's fine — the two read as a small "scan
-    // started, here's the result" pair.
-    toastInfo(tr("automatic.scanning"));
-    void runAutomaticSetup();
-  })
-    .then((u) => {
-      unlisten = u;
+  Promise.all([
+    listen("automatic-tick", () => {
+      // Show a discreet info toast so the user notices something happened
+      // when the scheduler fires on its own. `runAutomaticSetup()` may also
+      // emit its own toasts; that's fine — the two read as a small "scan
+      // started, here's the result" pair.
+      toastInfo(tr("automatic.scanning"));
+      void runAutomaticSetup();
+    }),
+    listen<SaveConflictsBackedUp>(
+      "agent://save-conflicts-backed-up",
+      (event) => {
+        const { count, conflict_dir } = event.payload;
+        // No warning level in the toast store, so this surfaces as info.
+        // The retention slider in Settings explains the lifetime; the
+        // toast body cites the absolute path so the user can paste it
+        // into their file manager.
+        toastInfo(
+          tr("automatic.conflicts_backed_up", {
+            count,
+            dir: conflict_dir,
+          }),
+        );
+      },
+    ),
+  ])
+    .then((subs) => {
+      unlisteners = subs;
     })
     .catch((e) => {
-      console.warn("automatic-tick listener install failed:", e);
+      console.warn("automatic listener install failed:", e);
       listenerInstalled = false;
     });
 }
 
 /** Test-only helper to undo `initAutomaticListener`. Not used in app code. */
 export function disposeAutomaticListener(): void {
-  if (unlisten) {
-    unlisten();
-    unlisten = null;
+  for (const u of unlisteners) {
+    try {
+      u();
+    } catch {
+      /* ignore */
+    }
   }
+  unlisteners = [];
   listenerInstalled = false;
 }
