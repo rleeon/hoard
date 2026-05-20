@@ -273,6 +273,7 @@
   "automatic.subtitle_on": "Scan périodique et restauration automatique actifs.",
   "automatic.subtitle_off": "Activer pour le scan et la restauration automatiques.",
   "automatic.scanning": "Scan automatique en cours…",
+  "automatic.syncing": "Synchronisation des sauvegardes…",
   "automatic.nothing_new": "Rien de nouveau à suivre. Tout est prêt.",
   "automatic.tracked_summary": "{count, plural, one {# jeu suivi — agent actif.} other {# jeux suivis — agent actif.}}",
   "updates.client_short": "Mise à jour du client disponible",

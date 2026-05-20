@@ -36,6 +36,7 @@
     initAutomaticListener,
   } from "./lib/stores/automatic";
   import { toastInfo, toastSuccess } from "./lib/stores/toasts";
+  import { prefs, hydratePrefs } from "./lib/stores/prefs";
   import * as api from "./lib/api";
   import {
     checkForUpdates,
@@ -140,15 +141,12 @@
     // invocation. Idempotent — safe to call from any onMount path.
     initAutomaticListener();
 
-    // Hydrate the toggle state from prefs so the sidebar paints with the
-    // correct ON/OFF the moment the boot blank lifts. Failures fall back
-    // to "off" which matches the default for fresh installs.
-    try {
-      const prefs = await api.getPrefs();
-      automaticMode = prefs.automatic_mode;
-    } catch (e) {
-      console.warn("couldn't load prefs for automatic mode:", e);
-    }
+    // Hydrate the global prefs store so the sidebar toggle and any other
+    // subscriber (Settings.svelte → `auto_restore`) paint with the correct
+    // values the moment the boot blank lifts. `hydratePrefs` swallows its
+    // own errors and falls back to pessimistic defaults.
+    await hydratePrefs();
+    automaticMode = $prefs?.automatic_mode ?? false;
 
     // Fire-and-forget update probe once auth is settled. The result feeds
     // the small "Update available" banner above the sidebar footer; a
@@ -185,6 +183,8 @@
         });
       case "starting_agent":
         return $_("automatic.starting_agent");
+      case "syncing":
+        return $_("automatic.syncing");
     }
   });
 
@@ -218,6 +218,11 @@
     try {
       const next = !automaticMode;
       const updated = await api.setAutomaticMode(next);
+      // Fan the updated Prefs out to every subscriber (Settings.svelte
+      // watches `$prefs.auto_restore`, which `set_automatic_mode` cascades
+      // to true). Without this, the Settings toggle lies until the user
+      // reloads the page.
+      prefs.set(updated);
       automaticMode = updated.automatic_mode;
       if (automaticMode) {
         toastSuccess($_("automatic.activated"));
@@ -291,7 +296,7 @@
             tabindex="-1"
             aria-hidden="true"
           >
-            v{import.meta.env.VITE_HOARD_VERSION || "1.5.3"}
+            v{import.meta.env.VITE_HOARD_VERSION || "1.5.4"}
           </button>
         </div>
         <!-- Small amber alert button. Same visual language as "Sin carpeta":

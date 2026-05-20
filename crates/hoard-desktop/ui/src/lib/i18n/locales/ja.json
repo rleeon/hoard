@@ -273,6 +273,7 @@
   "automatic.subtitle_on": "定期スキャンと自動復元が有効です。",
   "automatic.subtitle_off": "自動スキャンと復元を有効にするにはオンにしてください。",
   "automatic.scanning": "自動スキャンを実行中…",
+  "automatic.syncing": "セーブを同期中…",
   "automatic.nothing_new": "新しく追跡するものはありません。準備完了です。",
   "automatic.tracked_summary": "{count, plural, other {# 件のゲームを追跡 — エージェント稼働中。}}",
   "updates.client_short": "クライアントの更新があります",

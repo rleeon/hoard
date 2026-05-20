@@ -33,7 +33,8 @@ export type AutomaticPhase =
   | { kind: "idle" }
   | { kind: "detecting" }
   | { kind: "tracking"; done: number; total: number }
-  | { kind: "starting_agent" };
+  | { kind: "starting_agent" }
+  | { kind: "syncing" };
 
 export const automaticState: Writable<AutomaticPhase> = writable({
   kind: "idle",
@@ -51,6 +52,41 @@ function tr(
 ): string {
   const fn = get(_);
   return fn(key, values ? { values } : undefined);
+}
+
+/**
+ * Catch-up backup pass: for every tracked save, ask the agent for an
+ * explicit backup (bypassing the fs-watcher debounce). This is the fix
+ * for the user-reported "noto que las cosas no se copian solas" bug —
+ * the watcher can miss events while the desktop app is closed or the
+ * agent isn't booted yet, leaving the local save newer than the last
+ * remote snapshot. Running this on every `automatic-tick` guarantees a
+ * periodic upload regardless of watcher state.
+ *
+ * `backupNow` is the same Tauri command the dashboard's "Subir" button
+ * uses; the agent dedupes if a backup is already pending for the slot
+ * (`schedule_backup` aborts the previous pending task), so a sweep
+ * across N saves doesn't fan out into N concurrent backups for the
+ * same save.
+ */
+async function runBackupStaleSweep(
+  saves: { save_id: string }[],
+): Promise<number> {
+  if (saves.length === 0) return 0;
+  automaticState.set({ kind: "syncing" });
+  let synced = 0;
+  for (const save of saves) {
+    try {
+      await api.backupNow(save.save_id);
+      synced += 1;
+    } catch (e) {
+      console.warn(
+        `automatic-tick: backup-stale failed for ${save.save_id}:`,
+        e,
+      );
+    }
+  }
+  return synced;
 }
 
 /** Run the full auto-setup flow. Resolves to the count of newly-tracked
@@ -79,11 +115,12 @@ export async function runAutomaticSetup(): Promise<number> {
     );
 
     if (candidates.length === 0) {
-      automaticState.set({ kind: "idle" });
-      toastInfo(tr("automatic.nothing_new"));
       // Still try to start the agent — the user may have tracked games
       // from a previous session that aren't running yet.
       await bootAgent().catch(() => {});
+      await runBackupStaleSweep(tracked);
+      automaticState.set({ kind: "idle" });
+      toastInfo(tr("automatic.nothing_new"));
       return 0;
     }
 
@@ -111,6 +148,13 @@ export async function runAutomaticSetup(): Promise<number> {
 
     automaticState.set({ kind: "starting_agent" });
     await bootAgent().catch(() => {});
+
+    // Catch-up sweep: every tracked save (including the ones we just
+    // added) gets an explicit backup request. The agent's debounce/abort
+    // logic in `schedule_backup` dedupes if a backup is already pending,
+    // so we don't spam concurrent uploads for the same save.
+    const refreshed = await api.listTrackedSaves().catch(() => tracked);
+    await runBackupStaleSweep(refreshed);
 
     automaticState.set({ kind: "idle" });
     toastSuccess(

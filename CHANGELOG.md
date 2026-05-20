@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.4] — 2026-05-20
+
+Modo Automático que de verdad sincroniza: auto-restore por diff
+no destructivo, backup-stale en cada tick, reactividad inmediata
+del toggle en Settings, y rename "Copiar" → "Subir" en español.
+
+### Added
+- Auto-restore por diff: si faltan archivos del snapshot remoto
+  en local, se descargan; los archivos locales nunca se
+  sobreescriben (gana local en conflicto).
+- Backup-stale en cada tick del Modo Automático: tras
+  scan + track, se fuerza `backup_now` por cada save tracked
+  como catch-up periódico.
+- Doc en el Escritorio (`hoard-modo-automatico.md`) que explica
+  el flujo completo del Modo Automático parte por parte.
+
+### Changed
+- "Copiar" pasa a "Subir" en los call sites de save-sync en
+  español (Dashboard, History). Otros locales ya tenían el
+  verbo correcto.
+- `set_automatic_mode` ahora propaga el `Prefs` retornado al
+  store global del frontend, así Settings refleja
+  `auto_restore = true` al instante al activar Modo Automático.
+- `is_path_empty_or_missing` deja de ser el gate de
+  auto-restore — se sustituye por reconciliación por diff
+  (cooldown 60 s y dedup intactos).
+
+### Fixed
+- Bug donde el toggle Restauración automática en Settings no
+  reflejaba el cambio de `auto_restore` tras activar Modo
+  Automático desde la sidebar.
+- Bug donde el Modo Automático nunca subía nada por sí solo
+  (solo escaneaba + trackeaba; los uploads dependían del
+  watcher, que podía perder eventos).
+
 ## [1.5.3] — 2026-05-19
 
 UX polish después del overhaul de detección: errores legibles,

@@ -290,6 +290,7 @@
   "automatic.subtitle_on": "Periodic scanning and auto-restore are active.",
   "automatic.subtitle_off": "Turn on for automatic scanning and restore.",
   "automatic.scanning": "Automatic scan in progress…",
+  "automatic.syncing": "Syncing saves…",
   "automatic.nothing_new": "Nothing new to track. You're all set.",
   "automatic.tracked_summary": "{count, plural, one {Tracked # game — agent running.} other {Tracked # games — agent running.}}",
   "updates.client_short": "Client update available",

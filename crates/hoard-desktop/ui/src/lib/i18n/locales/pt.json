@@ -273,6 +273,7 @@
   "automatic.subtitle_on": "Scan periódico e restauro automático ativos.",
   "automatic.subtitle_off": "Ativa para scan e restauro automáticos.",
   "automatic.scanning": "Scan automático em curso…",
+  "automatic.syncing": "A sincronizar saves…",
   "automatic.nothing_new": "Nada de novo para rastrear. Está tudo pronto.",
   "automatic.tracked_summary": "{count, plural, one {Rastreou-se # jogo — agente ativo.} other {Rastrearam-se # jogos — agente ativo.}}",
   "updates.client_short": "Atualização do cliente disponível",

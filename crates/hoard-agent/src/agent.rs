@@ -26,7 +26,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
 use serde::{Deserialize, Serialize};
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
@@ -530,7 +530,6 @@ fn handle_add(
     config: &AgentConfig,
 ) {
     let save_for_restore = save.clone();
-    let local_path = save.local_path.clone();
     let save_id = save.save_id.clone();
     let mut slot = SaveSlot {
         save,
@@ -546,7 +545,11 @@ fn handle_add(
     arm_watcher(&mut slot, fs_tx);
     slots.insert(save_id.clone(), slot);
 
-    if config.auto_restore && is_path_empty_or_missing(&local_path) {
+    // Since 1.5.4 auto-restore is diff-based and non-destructive: it always
+    // runs when `auto_restore` is on, and decides per-file whether to copy.
+    // If nothing's missing the task ends with `restored == 0` and no event
+    // is emitted, so this is cheap even on a fully-populated slot.
+    if config.auto_restore {
         if let Some(slot) = slots.get_mut(&save_id) {
             slot.restoring = true;
             slot.next_auto_restore_at =
@@ -597,38 +600,52 @@ fn spawn_auto_restore(
     cmd_tx: mpsc::Sender<AgentCommand>,
 ) {
     tokio::spawn(async move {
-        tracing::info!(
+        tracing::debug!(
             save_id = %save.save_id,
             game_slug = %save.game_slug,
             path = %save.local_path.display(),
-            "agent: auto-restore — local path empty/missing, checking server"
+            "agent: auto-restore diff — checking server snapshot against local"
         );
         match run_auto_restore(&api, &save).await {
             Ok(Some(outcome)) => {
-                tracing::info!(
-                    save_id = %save.save_id,
-                    version_num = outcome.version_num,
-                    files = outcome.files_extracted,
-                    bytes = outcome.bytes_extracted,
-                    "agent: auto-restore succeeded"
-                );
-                let _ = events_tx
-                    .send(AgentEvent::SaveAutoRestored {
-                        save_id: save.save_id.clone(),
-                        game_slug: save.game_slug.clone(),
-                        version_num: outcome.version_num,
-                        files_extracted: outcome.files_extracted,
-                        bytes_extracted: outcome.bytes_extracted,
-                    })
-                    .await;
-                // Tell the agent loop to rebuild the fs watcher now that
-                // the directory actually has contents.
-                let _ = cmd_tx
-                    .send(AgentCommand::RearmWatcher(save.save_id.clone()))
-                    .await;
+                if outcome.files_restored > 0 {
+                    tracing::info!(
+                        save_id = %save.save_id,
+                        version_num = outcome.version_num,
+                        restored = outcome.files_restored,
+                        conflicts = outcome.files_conflicts,
+                        bytes = outcome.bytes_extracted,
+                        "auto-restore diff: restored {} files, {} conflicts skipped (local wins)",
+                        outcome.files_restored,
+                        outcome.files_conflicts
+                    );
+                    let _ = events_tx
+                        .send(AgentEvent::SaveAutoRestored {
+                            save_id: save.save_id.clone(),
+                            game_slug: save.game_slug.clone(),
+                            version_num: outcome.version_num,
+                            files_extracted: outcome.files_restored,
+                            bytes_extracted: outcome.bytes_extracted,
+                        })
+                        .await;
+                    // Tell the agent loop to rebuild the fs watcher now that
+                    // the directory actually has contents. Safe to send even
+                    // if it was already armed — `arm_watcher` overwrites.
+                    let _ = cmd_tx
+                        .send(AgentCommand::RearmWatcher(save.save_id.clone()))
+                        .await;
+                } else if outcome.files_conflicts > 0 {
+                    tracing::debug!(
+                        save_id = %save.save_id,
+                        conflicts = outcome.files_conflicts,
+                        "auto-restore diff: nothing copied; {} files differ locally (local wins)",
+                        outcome.files_conflicts
+                    );
+                }
+                // else: every file present and identical — silent no-op.
             }
             Ok(None) => {
-                tracing::info!(
+                tracing::debug!(
                     save_id = %save.save_id,
                     "agent: auto-restore — server has no snapshots yet; nothing to restore"
                 );
@@ -657,17 +674,16 @@ fn spawn_auto_restore(
     });
 }
 
-/// Reconciliation sweep: scan every slot and start an auto-restore for
-/// any save whose local folder is empty/missing right now, the user has
-/// `auto_restore = true`, and the cooldown has expired since the last
-/// attempt. Used as the "self-healing" backstop so a save folder that
-/// goes empty between fs events (uninstall while Hoard wasn't running,
-/// a syscall that didn't emit inotify) still gets restored.
+/// Reconciliation sweep: every tick, schedule a diff-based auto-restore for
+/// any save not already being restored and outside its cooldown window. The
+/// restore task itself decides whether anything actually needs copying —
+/// since 1.5.4 a populated local folder no longer skips the attempt at
+/// this stage; it skips inside `restore_files_into` once we've compared
+/// the snapshot against what's on disk.
 ///
-/// Cheap: the only syscall per slot is the `read_dir` inside
-/// `is_path_empty_or_missing`, and only ever for paths the user already
-/// asked Hoard to track. With dozens of tracked saves this is still
-/// a single-digit-millisecond pass on a hot fs cache.
+/// Cheap: per-slot work here is just a `restoring` flag check and a
+/// timer compare. The network/disk cost happens inside the spawned task,
+/// which dedupes via `restoring` so the next sweep doesn't pile up.
 fn sweep_for_auto_restore(
     slots: &mut HashMap<String, SaveSlot>,
     api: &ApiClient,
@@ -689,7 +705,7 @@ fn sweep_for_auto_restore(
                     return false;
                 }
             }
-            is_path_empty_or_missing(&slot.save.local_path)
+            true
         })
         .map(|(id, slot)| (id.clone(), slot.save.clone()))
         .collect();
@@ -699,9 +715,9 @@ fn sweep_for_auto_restore(
             slot.restoring = true;
             slot.next_auto_restore_at = Some(now + Duration::from_secs(AUTO_RESTORE_COOLDOWN_SECS));
         }
-        tracing::info!(
+        tracing::debug!(
             save_id = %id,
-            "agent: reconciliation sweep — scheduling auto-restore for empty slot"
+            "agent: reconciliation sweep — scheduling diff auto-restore"
         );
         spawn_auto_restore(save, api.clone(), events_tx.clone(), cmd_tx.clone());
     }
@@ -712,8 +728,33 @@ fn sweep_for_auto_restore(
 /// is a no-op, not a failure).
 struct AutoRestoreOutcome {
     version_num: i64,
-    files_extracted: u64,
+    /// Files copied from the remote snapshot into the local folder (those
+    /// that were missing locally). Bytes equal between staging and local
+    /// don't count.
+    files_restored: u64,
+    /// Files in the remote snapshot whose local counterpart exists with a
+    /// different byte sequence — left untouched. Local wins by design.
+    files_conflicts: u64,
+    /// Total bytes copied. Sum of `restored` file sizes only.
     bytes_extracted: u64,
+}
+
+/// Per-file outcome accounting for diff-based restore. Returned by
+/// `restore_files_into` and embedded into `AutoRestoreOutcome`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct RestoreStats {
+    /// Files copied from `source` into `target` because they were missing
+    /// from `target`.
+    pub restored: usize,
+    /// Files present in both `source` and `target` with identical bytes.
+    /// Left as-is.
+    pub skipped: usize,
+    /// Files present in both `source` and `target` with different bytes.
+    /// Local copy in `target` is preserved — see ADR 0013.
+    pub conflicts: usize,
+    /// Total bytes copied across `restored` files. Useful for the
+    /// `SaveAutoRestored` event payload.
+    pub bytes_restored: u64,
 }
 
 async fn run_auto_restore(
@@ -724,27 +765,163 @@ async fn run_auto_restore(
     let Some(version) = remote.latest_version_num else {
         return Ok(None);
     };
-    // `force=true` because the directory may exist as an empty stub
-    // (Library path with no files yet). `is_path_empty_or_missing` is the
-    // gate that decided we're allowed to write here in the first place.
-    let opts = crate::restore::RestoreOptions {
-        skip_verify: false,
-        force: true,
-    };
-    let outcome = crate::restore::download_snapshot(
+    // Stage the snapshot in a unique temp dir so we never overwrite the
+    // user's local files during extraction. The staging dir is empty by
+    // construction, so `download_snapshot` extracts into it cleanly even
+    // with `force=false`. Cleanup happens in `cleanup_staging` at the end.
+    let staging = staging_dir_for(&save.save_id);
+    tokio::fs::create_dir_all(&staging)
+        .await
+        .with_context(|| format!("creating staging dir {}", staging.display()))?;
+
+    let download_result = crate::restore::download_snapshot(
         api,
         &save.save_id,
         version,
-        &save.local_path,
-        opts,
+        &staging,
+        crate::restore::RestoreOptions {
+            skip_verify: false,
+            force: false,
+        },
         |_, _| {},
     )
-    .await?;
+    .await;
+
+    let outcome = match download_result {
+        Ok(o) => o,
+        Err(e) => {
+            cleanup_staging(&staging).await;
+            return Err(e);
+        }
+    };
+    let _ = outcome; // we walk the staging dir directly for the diff
+
+    let copy_result = restore_files_into(&save.local_path, &staging).await;
+    cleanup_staging(&staging).await;
+    let stats = copy_result?;
+
     Ok(Some(AutoRestoreOutcome {
         version_num: version,
-        files_extracted: outcome.files_extracted as u64,
-        bytes_extracted: outcome.bytes_extracted,
+        files_restored: stats.restored as u64,
+        files_conflicts: stats.conflicts as u64,
+        bytes_extracted: stats.bytes_restored,
     }))
+}
+
+/// Build a unique staging directory under the system temp dir. We embed
+/// the save_id (sanitised to alphanumeric+dash) and a monotonic nanosecond
+/// counter so concurrent restores for the same save never collide.
+fn staging_dir_for(save_id: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let safe_id: String = save_id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    std::env::temp_dir().join(format!("hoard-restore-{safe_id}-{n}-{}", std::process::id()))
+}
+
+/// Best-effort tempdir cleanup. We log but never propagate the error: a
+/// leaked staging dir is annoying but not user-visible, and the OS will
+/// reap `/tmp` on reboot anyway.
+async fn cleanup_staging(staging: &Path) {
+    if let Err(e) = tokio::fs::remove_dir_all(staging).await {
+        tracing::debug!(
+            staging = %staging.display(),
+            error = %e,
+            "agent: failed to clean up restore staging dir"
+        );
+    }
+}
+
+/// Copy files from `source` into `target` non-destructively.
+///
+/// Walks `source` recursively. For each file:
+///
+/// - `target/rel` missing → copy `source/rel` to `target/rel`, creating
+///   parent directories as needed; bump `restored`.
+/// - `target/rel` exists with identical bytes → leave it; bump `skipped`.
+/// - `target/rel` exists with different bytes → leave it; bump `conflicts`.
+///   Local always wins (ADR 0013): the user's in-flight work is preserved
+///   and will be uploaded by the watcher on its next debounce.
+///
+/// Returns aggregate stats. Errors propagate only for I/O failures we
+/// can't classify into one of the three buckets (e.g. permission denied
+/// reading a file we just listed).
+pub(crate) async fn restore_files_into(target: &Path, source: &Path) -> Result<RestoreStats> {
+    let mut stats = RestoreStats::default();
+    let mut stack: Vec<PathBuf> = vec![source.to_path_buf()];
+
+    while let Some(dir) = stack.pop() {
+        let mut entries = tokio::fs::read_dir(&dir)
+            .await
+            .with_context(|| format!("reading staging dir {}", dir.display()))?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            let file_type = entry.file_type().await?;
+            if file_type.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if !file_type.is_file() {
+                // Skip symlinks, devices etc — they shouldn't appear in
+                // a hoard snapshot but we'd rather no-op than crash.
+                continue;
+            }
+            let rel = path
+                .strip_prefix(source)
+                .with_context(|| format!("path {} not under source", path.display()))?;
+            let dest = target.join(rel);
+            if dest.exists() {
+                if files_have_equal_bytes(&path, &dest).await? {
+                    stats.skipped += 1;
+                } else {
+                    tracing::debug!(
+                        rel = %rel.display(),
+                        "auto-restore diff: skipping conflict, local wins"
+                    );
+                    stats.conflicts += 1;
+                }
+                continue;
+            }
+            if let Some(parent) = dest.parent() {
+                tokio::fs::create_dir_all(parent).await.with_context(|| {
+                    format!("creating parent dir {} for restore", parent.display())
+                })?;
+            }
+            let copied = tokio::fs::copy(&path, &dest)
+                .await
+                .with_context(|| format!("copying {} → {}", path.display(), dest.display()))?;
+            stats.restored += 1;
+            stats.bytes_restored += copied;
+        }
+    }
+
+    Ok(stats)
+}
+
+/// Cheap bytes-equal: size first (saves the read for the common
+/// different-sized case), then a single shot read of each file and a
+/// linear compare. Files in tracked saves are small enough that
+/// chunk-streaming would only matter for pathological archives — the
+/// per-file alloc cost is much smaller than the network/zstd cost we
+/// already paid to land them in staging.
+async fn files_have_equal_bytes(a: &Path, b: &Path) -> Result<bool> {
+    let meta_a = tokio::fs::metadata(a).await?;
+    let meta_b = tokio::fs::metadata(b).await?;
+    if meta_a.len() != meta_b.len() {
+        return Ok(false);
+    }
+    let bytes_a = tokio::fs::read(a).await?;
+    let bytes_b = tokio::fs::read(b).await?;
+    Ok(bytes_a == bytes_b)
 }
 
 /// Try to attach an fs debouncer to `slot`. Tolerant: a missing folder or
@@ -1230,5 +1407,120 @@ mod tests {
             "timed out waiting for BackupScheduled — the fs watcher never armed for an idle save",
         );
         assert_eq!(save_id, "watcher-bug-1");
+    }
+
+    /// Helper for the diff-restore tests: write `contents` to `path`
+    /// creating parent dirs as needed.
+    fn write_file(path: &Path, contents: &[u8]) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, contents).unwrap();
+    }
+
+    /// Source has A, B, C. Target has only A (identical to source). The
+    /// diff restore copies B and C and leaves A alone.
+    #[tokio::test(flavor = "current_thread")]
+    async fn restore_files_into_copies_missing_files() {
+        let source_tmp = tempfile::tempdir().unwrap();
+        let target_tmp = tempfile::tempdir().unwrap();
+        let source = source_tmp.path();
+        let target = target_tmp.path();
+
+        write_file(&source.join("a.dat"), b"alpha");
+        write_file(&source.join("b.dat"), b"beta");
+        write_file(&source.join("nested/c.dat"), b"gamma");
+        write_file(&target.join("a.dat"), b"alpha");
+
+        let stats = restore_files_into(target, source).await.unwrap();
+
+        assert_eq!(stats.restored, 2, "B and C should be copied");
+        assert_eq!(stats.skipped, 1, "A is identical, skipped silently");
+        assert_eq!(stats.conflicts, 0);
+        assert_eq!(stats.bytes_restored, (b"beta".len() + b"gamma".len()) as u64);
+
+        // Local A untouched.
+        assert_eq!(std::fs::read(target.join("a.dat")).unwrap(), b"alpha");
+        // B and C now present locally with source contents.
+        assert_eq!(std::fs::read(target.join("b.dat")).unwrap(), b"beta");
+        assert_eq!(
+            std::fs::read(target.join("nested/c.dat")).unwrap(),
+            b"gamma"
+        );
+    }
+
+    /// Conflict case: A exists in both source and target but bytes differ.
+    /// The local copy wins — bytes on disk stay as the target's version
+    /// and the conflict is reported in stats.
+    #[tokio::test(flavor = "current_thread")]
+    async fn restore_files_into_preserves_local_on_conflict() {
+        let source_tmp = tempfile::tempdir().unwrap();
+        let target_tmp = tempfile::tempdir().unwrap();
+        let source = source_tmp.path();
+        let target = target_tmp.path();
+
+        write_file(&source.join("a.dat"), b"remote-version");
+        write_file(&target.join("a.dat"), b"LOCAL-WORK");
+
+        let stats = restore_files_into(target, source).await.unwrap();
+
+        assert_eq!(stats.restored, 0, "nothing copied — A is a conflict");
+        assert_eq!(stats.skipped, 0);
+        assert_eq!(stats.conflicts, 1);
+        assert_eq!(stats.bytes_restored, 0);
+        // Local content preserved verbatim.
+        assert_eq!(std::fs::read(target.join("a.dat")).unwrap(), b"LOCAL-WORK");
+    }
+
+    /// Everything identical between source and target: zero restores, zero
+    /// conflicts, just `skipped` accounting. The agent uses
+    /// `restored == 0 && conflicts == 0` to keep the activity feed quiet.
+    #[tokio::test(flavor = "current_thread")]
+    async fn restore_files_into_silent_when_all_identical() {
+        let source_tmp = tempfile::tempdir().unwrap();
+        let target_tmp = tempfile::tempdir().unwrap();
+        let source = source_tmp.path();
+        let target = target_tmp.path();
+
+        write_file(&source.join("a.dat"), b"alpha");
+        write_file(&source.join("sub/b.dat"), b"beta");
+        write_file(&target.join("a.dat"), b"alpha");
+        write_file(&target.join("sub/b.dat"), b"beta");
+
+        let stats = restore_files_into(target, source).await.unwrap();
+
+        assert_eq!(stats.restored, 0);
+        assert_eq!(stats.skipped, 2);
+        assert_eq!(stats.conflicts, 0);
+        assert_eq!(stats.bytes_restored, 0);
+    }
+
+    /// Empty target dir: every file in source gets copied, no conflicts.
+    /// Mirrors the "agent boots, save folder was wiped" scenario.
+    #[tokio::test(flavor = "current_thread")]
+    async fn restore_files_into_full_restore_when_target_empty() {
+        let source_tmp = tempfile::tempdir().unwrap();
+        let target_tmp = tempfile::tempdir().unwrap();
+        let source = source_tmp.path();
+        let target = target_tmp.path();
+
+        write_file(&source.join("a.dat"), b"alpha");
+        write_file(&source.join("b.dat"), b"beta-bytes");
+        write_file(&source.join("deep/nested/c.dat"), b"gamma!");
+
+        let stats = restore_files_into(target, source).await.unwrap();
+
+        assert_eq!(stats.restored, 3);
+        assert_eq!(stats.skipped, 0);
+        assert_eq!(stats.conflicts, 0);
+        assert_eq!(
+            stats.bytes_restored,
+            (b"alpha".len() + b"beta-bytes".len() + b"gamma!".len()) as u64
+        );
+        assert_eq!(std::fs::read(target.join("a.dat")).unwrap(), b"alpha");
+        assert_eq!(
+            std::fs::read(target.join("deep/nested/c.dat")).unwrap(),
+            b"gamma!"
+        );
     }
 }

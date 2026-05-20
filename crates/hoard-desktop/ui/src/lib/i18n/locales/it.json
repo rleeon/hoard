@@ -273,6 +273,7 @@
   "automatic.subtitle_on": "Scansione periodica e ripristino automatico attivi.",
   "automatic.subtitle_off": "Attiva per scansione e ripristino automatici.",
   "automatic.scanning": "Scansione automatica in corso…",
+  "automatic.syncing": "Sincronizzazione salvataggi…",
   "automatic.nothing_new": "Niente di nuovo da tracciare. È tutto pronto.",
   "automatic.tracked_summary": "{count, plural, one {Tracciato # gioco — agente attivo.} other {Tracciati # giochi — agente attivo.}}",
   "updates.client_short": "Aggiornamento client disponibile",

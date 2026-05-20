@@ -273,6 +273,7 @@
   "automatic.subtitle_on": "定期扫描和自动恢复正在运行。",
   "automatic.subtitle_off": "开启以启用自动扫描和恢复。",
   "automatic.scanning": "自动扫描进行中…",
+  "automatic.syncing": "正在同步存档…",
   "automatic.nothing_new": "没有新内容需要跟踪。一切就绪。",
   "automatic.tracked_summary": "{count, plural, other {已跟踪 # 个游戏 — 代理正在运行。}}",
   "updates.client_short": "有客户端更新",
