@@ -1,0 +1,83 @@
+# Hoard Cloud server config (Fly.io / cloud mode).
+# Set `backend = "postgres"` to enable cloud mode (requires building with
+# `--features cloud`). All secret-bearing fields can be supplied via env
+# vars instead — prefer that in production. Figment merges
+# `HOARD__SECTION__KEY=value` over this file.
+
+[server]
+host = "0.0.0.0"
+port = 8082
+public_url = "https://api.hoard.services"
+
+[storage]
+# Not used in cloud mode (snapshots live in R2), but the field is required
+# by the config schema. Any writable path works.
+data_dir = "/tmp/hoard"
+max_snapshot_size_mb = 1024
+upload_timeout_secs = 900
+
+[database]
+backend = "postgres"
+# Set HOARD__DATABASE__URL=postgres://... in env in production.
+url = "postgres://postgres:postgres@localhost:5432/hoard"
+max_connections = 10
+
+[auth]
+# Self-hosted bearer-token settings — ignored in cloud mode but the config
+# struct still parses them. Cloud uses Supabase JWTs.
+token_lifetime_days = 365
+allow_registration = false
+
+[retention]
+trash_retention_days = 30
+tmp_cleanup_hours = 24
+
+[logging]
+level = "info"
+format = "json"
+
+[cloud]
+# Supabase JWKS URL — required.
+# HOARD__CLOUD__SUPABASE_JWKS_URL=https://<project>.supabase.co/auth/v1/.well-known/jwks.json
+supabase_jwks_url = ""
+supabase_audience = "authenticated"
+supabase_issuer = ""
+jwks_refresh_secs = 3600
+upgrade_url = "https://hoard.services/upgrade"
+
+[cloud.r2]
+# Cloudflare R2: see https://developers.cloudflare.com/r2/api/s3/
+# HOARD__CLOUD__R2__ENDPOINT=https://<account>.r2.cloudflarestorage.com
+endpoint = ""
+bucket = "hoard-snapshots-prod"
+region = "auto"
+access_key_id = ""
+secret_access_key = ""
+presign_ttl_secs = 3600
+
+[cloud.lemonsqueezy]
+api_key = ""
+webhook_secret = ""
+store_id = ""
+
+# One entry per LS product variant. Resolved by webhook handler to translate
+# LS variant_id → our plan tier. Order doesn't matter.
+[[cloud.lemonsqueezy.variants]]
+variant_id = "PRO_MONTHLY_VARIANT_ID"
+plan = "pro"
+interval = "month"
+
+[[cloud.lemonsqueezy.variants]]
+variant_id = "PRO_YEARLY_VARIANT_ID"
+plan = "pro"
+interval = "year"
+
+[[cloud.lemonsqueezy.variants]]
+variant_id = "PROPLUS_MONTHLY_VARIANT_ID"
+plan = "proplus"
+interval = "month"
+
+[[cloud.lemonsqueezy.variants]]
+variant_id = "PROPLUS_YEARLY_VARIANT_ID"
+plan = "proplus"
+interval = "year"
