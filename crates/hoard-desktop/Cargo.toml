@@ -37,6 +37,16 @@ tauri-plugin-dialog = "2"
 tauri-plugin-os = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-store = "2"
+# Deep link — registers the `hoard://` scheme so the OAuth callback from
+# Hoard Cloud can hand the desktop app a Supabase access_token.
+tauri-plugin-deep-link = "2"
+keyring = { version = "3", default-features = false, features = [
+    "apple-native",
+    "windows-native",
+    "sync-secret-service",
+    "crypto-rust",
+] }
+toml = { workspace = true }
 
 reqwest = { workspace = true }
 serde = { workspace = true }

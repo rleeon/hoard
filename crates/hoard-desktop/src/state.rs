@@ -8,6 +8,7 @@ use std::sync::Mutex;
 use hoard_agent::agent::AgentHandle;
 
 use crate::commands::auth::{classify_server, UserInfo};
+use crate::commands::cloud::CloudAccount;
 use crate::commands::library::{self, DetectionCache};
 
 #[derive(Default)]
@@ -15,6 +16,9 @@ pub struct AppState {
     /// Cached identity from `whoami`. `None` means "not logged in" or "the
     /// session file was malformed/wiped".
     pub user: Mutex<Option<UserInfo>>,
+    /// Cached `/v1/me` snapshot for Hoard Cloud. Independent of `user` —
+    /// a user can be signed in to cloud, self-hosted, or neither.
+    pub cloud_account: Mutex<Option<CloudAccount>>,
     /// Last successful auto-detection report. Lets the Library page render
     /// immediately on revisit without forcing another disk sweep.
     pub detection_cache: DetectionCache,
@@ -53,10 +57,13 @@ impl AppState {
         if let Some(cached) = library::load_detection_from_disk() {
             *detection_cache.last.lock().unwrap() = Some(cached);
         }
-        Self {
+        let state = Self {
             user: Mutex::new(user),
+            cloud_account: Mutex::new(None),
             detection_cache,
             agent: Mutex::new(None),
-        }
+        };
+        crate::commands::cloud::rehydrate(&state);
+        state
     }
 }

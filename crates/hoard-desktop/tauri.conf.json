@@ -25,6 +25,14 @@
       "csp": null
     }
   },
+  "plugins": {
+    "deep-link": {
+      "mobile": [],
+      "desktop": {
+        "schemes": ["hoard"]
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["deb", "rpm", "appimage", "nsis", "msi", "app", "dmg"],

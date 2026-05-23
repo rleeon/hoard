@@ -10,8 +10,9 @@ mod tray;
 
 use hoard_agent::config::CliConfig;
 use hoard_agent::prefs::Prefs;
-use tauri::{Manager, RunEvent, WindowEvent};
+use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_deep_link::DeepLinkExt;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -91,6 +92,11 @@ pub fn run() {
         // Persistent KV store for the frontend (wizard step, UI prefs).
         // We don't read it from Rust today; later phases probably will.
         .plugin(tauri_plugin_store::Builder::default().build())
+        // Deep link — the `hoard://` scheme is owned by this app. The OAuth
+        // callback from Hoard Cloud (`hoard://auth/callback?access_token=…`)
+        // is forwarded to the frontend via the `deep-link://new-url` event
+        // and consumed by the cloud store in /account.
+        .plugin(tauri_plugin_deep_link::init())
         .manage(AppState::from_disk())
         .manage(TrayController::default())
         .manage(AutomaticScheduler::default())
@@ -142,6 +148,14 @@ pub fn run() {
             commands::updates::check_for_updates,
             commands::updates::apply_desktop_update,
             commands::updates::apply_server_update,
+            commands::cloud::cloud_login_url,
+            commands::cloud::cloud_complete_login,
+            commands::cloud::cloud_current_account,
+            commands::cloud::cloud_is_logged_in,
+            commands::cloud::cloud_refresh_account,
+            commands::cloud::cloud_logout,
+            commands::cloud::cloud_export_all,
+            commands::cloud::cloud_delete_account,
         ])
         .setup(|app| {
             // Build the tray as soon as we have an AppHandle. Failures here
@@ -190,6 +204,34 @@ pub fn run() {
                     tracing::warn!(error = %e, "couldn't rehydrate automatic-mode scheduler");
                 }
             });
+
+            // Wire the deep-link receiver. `hoard://auth/callback?...` URLs
+            // (clicked from the browser after a Supabase OAuth round-trip)
+            // come in here; we forward the raw URL to the frontend, which
+            // parses the fragment and calls `cloud_complete_login`. We also
+            // bring the window to the front so the user sees the result.
+            let dl_handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    tracing::info!(url = %url, "deep link opened");
+                    if let Some(window) = dl_handle.get_webview_window("main") {
+                        let _ = window.unminimize();
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                    let _ = dl_handle.emit("deep-link://new-url", url.to_string());
+                }
+            });
+            // On Linux/Windows the desktop entry handles the scheme, but in
+            // `cargo tauri dev` (no installer) we have to register at
+            // runtime so the OS knows to dispatch `hoard://…` to us. This
+            // is a no-op when the scheme is already registered.
+            #[cfg(any(target_os = "linux", windows))]
+            {
+                if let Err(e) = app.deep_link().register("hoard") {
+                    tracing::warn!(error = %e, "couldn't register hoard:// scheme at runtime");
+                }
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

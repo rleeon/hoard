@@ -10,6 +10,7 @@
     "notification:default",
     "os:default",
     "store:default",
-    "autostart:default"
+    "autostart:default",
+    "deep-link:default"
   ]
 }
