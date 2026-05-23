@@ -14,6 +14,10 @@ pub struct Config {
     pub auth: AuthConfig,
     pub retention: RetentionConfig,
     pub logging: LoggingConfig,
+    /// Cloud mode configuration. Required when `database.backend = "postgres"`.
+    /// Ignored in self-hosted mode.
+    #[serde(default)]
+    pub cloud: Option<CloudConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -32,8 +36,24 @@ pub struct StorageConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DatabaseConfig {
+    /// Connection URL. `sqlite://...` for self-hosted, `postgres://...` for cloud.
     pub url: String,
     pub max_connections: u32,
+    /// Selects which backend the server boots into.
+    /// Cloud routes (Supabase/R2/LS) only exist on `postgres`.
+    #[serde(default = "default_backend")]
+    pub backend: DbBackend,
+}
+
+fn default_backend() -> DbBackend {
+    DbBackend::Sqlite
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DbBackend {
+    Sqlite,
+    Postgres,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -59,6 +79,89 @@ pub struct LoggingConfig {
 pub enum LogFormat {
     Json,
     Pretty,
+}
+
+/// Cloud-mode configuration. Most fields can also come from env vars (and
+/// usually do in production, since secrets shouldn't live in config files).
+/// Figment merges `HOARD__CLOUD__*` over the TOML, so leaving these empty in
+/// `config.toml` and exporting via env is the standard production path.
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct CloudConfig {
+    /// JWKS URL for Supabase Auth — used to verify access tokens.
+    /// Typical value: `https://<project>.supabase.co/auth/v1/.well-known/jwks.json`.
+    #[serde(default)]
+    pub supabase_jwks_url: String,
+    /// Audience claim expected in JWTs. Supabase issues `authenticated` by
+    /// default; override if you've changed it.
+    #[serde(default = "default_aud")]
+    pub supabase_audience: String,
+    /// Optional issuer claim check. Empty = skip.
+    #[serde(default)]
+    pub supabase_issuer: String,
+    /// JWKS refresh interval (seconds). Defaults to one hour.
+    #[serde(default = "default_jwks_refresh_secs")]
+    pub jwks_refresh_secs: u64,
+    #[serde(default)]
+    pub r2: R2Config,
+    #[serde(default)]
+    pub lemonsqueezy: LemonSqueezyConfig,
+    /// Public-facing URL of the Hoard Cloud landing/checkout. Embedded in
+    /// 402 responses so the client can offer an upgrade link.
+    #[serde(default = "default_upgrade_url")]
+    pub upgrade_url: String,
+}
+
+fn default_aud() -> String {
+    "authenticated".to_string()
+}
+fn default_jwks_refresh_secs() -> u64 {
+    3600
+}
+fn default_upgrade_url() -> String {
+    "https://hoard.services/upgrade".to_string()
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct R2Config {
+    #[serde(default)]
+    pub endpoint: String,
+    #[serde(default)]
+    pub bucket: String,
+    #[serde(default)]
+    pub region: String,
+    #[serde(default)]
+    pub access_key_id: String,
+    #[serde(default)]
+    pub secret_access_key: String,
+    /// Default TTL for presigned URLs, in seconds. 1h is a sane default.
+    #[serde(default = "default_presign_ttl")]
+    pub presign_ttl_secs: u64,
+}
+
+fn default_presign_ttl() -> u64 {
+    3600
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct LemonSqueezyConfig {
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default)]
+    pub webhook_secret: String,
+    #[serde(default)]
+    pub store_id: String,
+    /// Map LS variant_id -> our plan tier (pro/proplus) and interval.
+    /// Empty by default — set explicitly so a misconfigured webhook doesn't
+    /// silently grant Pro+ to someone who paid for Pro.
+    #[serde(default)]
+    pub variants: Vec<LemonSqueezyVariant>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LemonSqueezyVariant {
+    pub variant_id: String,
+    pub plan: String,     // 'pro' | 'proplus'
+    pub interval: String, // 'month' | 'year'
 }
 
 impl Config {
@@ -149,24 +252,53 @@ impl Config {
             );
         }
 
-        if !self.storage.data_dir.exists() {
-            anyhow::bail!(
-                "storage.data_dir {:?} does not exist. Create it with: \
-                 mkdir -p {}",
-                self.storage.data_dir,
-                self.storage.data_dir.display()
-            );
+        match self.database.backend {
+            DbBackend::Sqlite => {
+                // Self-hosted: storage lives on disk under data_dir.
+                if !self.storage.data_dir.exists() {
+                    anyhow::bail!(
+                        "storage.data_dir {:?} does not exist. Create it with: \
+                         mkdir -p {}",
+                        self.storage.data_dir,
+                        self.storage.data_dir.display()
+                    );
+                }
+                // Check write permission by attempting to create a temp file
+                let probe = self.storage.data_dir.join(".hoard_write_probe");
+                std::fs::write(&probe, b"").with_context(|| {
+                    format!(
+                        "storage.data_dir {:?} is not writable",
+                        self.storage.data_dir
+                    )
+                })?;
+                std::fs::remove_file(&probe).ok();
+            }
+            DbBackend::Postgres => {
+                // Cloud mode: storage is R2, not disk. data_dir may still be
+                // present in the TOML (it's not optional in the schema) but
+                // we don't require it to exist.
+                #[cfg(not(feature = "cloud"))]
+                anyhow::bail!(
+                    "database.backend = \"postgres\" requires building with --features cloud"
+                );
+                #[cfg(feature = "cloud")]
+                {
+                    let cloud = self.cloud.as_ref().ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "cloud mode requires [cloud] section in config (see deploy/config.cloud.toml.example)"
+                        )
+                    })?;
+                    if cloud.supabase_jwks_url.is_empty() {
+                        anyhow::bail!(
+                            "cloud.supabase_jwks_url is required when database.backend = \"postgres\""
+                        );
+                    }
+                    if cloud.r2.bucket.is_empty() || cloud.r2.endpoint.is_empty() {
+                        anyhow::bail!("cloud.r2.bucket and cloud.r2.endpoint are required");
+                    }
+                }
+            }
         }
-
-        // Check write permission by attempting to create a temp file
-        let probe = self.storage.data_dir.join(".hoard_write_probe");
-        std::fs::write(&probe, b"").with_context(|| {
-            format!(
-                "storage.data_dir {:?} is not writable",
-                self.storage.data_dir
-            )
-        })?;
-        std::fs::remove_file(&probe).ok();
 
         Ok(())
     }

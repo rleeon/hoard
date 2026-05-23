@@ -6,7 +6,7 @@ use axum::{
 };
 use clap::{Parser, Subcommand};
 use hoard_server::{
-    config::{Config, LogFormat},
+    config::{Config, DbBackend, LogFormat},
     db, upgrade,
 };
 use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
@@ -62,9 +62,29 @@ async fn main() -> Result<()> {
         version = env!("CARGO_PKG_VERSION"),
         host = %cfg.server.host,
         port = cfg.server.port,
-        data_dir = %cfg.storage.data_dir.display(),
+        backend = ?cfg.database.backend,
         "starting hoard-server"
     );
+
+    match cfg.database.backend {
+        DbBackend::Sqlite => run_self_hosted(cfg).await,
+        DbBackend::Postgres => {
+            #[cfg(feature = "cloud")]
+            {
+                hoard_server::cloud::run(cfg).await
+            }
+            #[cfg(not(feature = "cloud"))]
+            {
+                anyhow::bail!(
+                    "database.backend = \"postgres\" requires building with --features cloud"
+                )
+            }
+        }
+    }
+}
+
+async fn run_self_hosted(cfg: Config) -> Result<()> {
+    info!(data_dir = %cfg.storage.data_dir.display(), "self-hosted mode");
 
     // Ensure data subdirectories exist
     for dir in &["data", "tmp", "trash"] {
