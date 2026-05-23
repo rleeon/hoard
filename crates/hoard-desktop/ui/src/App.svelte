@@ -23,12 +23,19 @@
   import HistoryRoute from "./routes/History.svelte";
   import LogsRoute from "./routes/Logs.svelte";
   import DiagnosticsRoute from "./routes/Diagnostics.svelte";
+  import AccountRoute from "./routes/Account.svelte";
 
   import Toaster from "./lib/components/Toaster.svelte";
   import UpdateConfirmModal from "./lib/components/UpdateConfirmModal.svelte";
   import ErrorDialog from "./lib/components/ErrorDialog.svelte";
   import { errorDialog, dismissError, showError } from "./lib/stores/error_dialog";
   import { auth, hydrateAuth } from "./lib/stores/auth";
+  import {
+    cloud,
+    hydrateCloud,
+    initCloudDeepLink,
+    planLabel,
+  } from "./lib/stores/cloud";
   import { loadStep, routeForStep } from "./lib/stores/onboarding";
   import {
     runAutomaticSetup,
@@ -67,6 +74,7 @@
     "/history/:saveId": HistoryRoute,
     "/logs": LogsRoute,
     "/diagnostics": DiagnosticsRoute,
+    "/account": AccountRoute,
   };
 
   let booted = $state(false);
@@ -126,7 +134,7 @@
     else if (/Windows/i.test(ua)) osTag = "windows";
     document.documentElement.classList.add(`is-${osTag}`);
 
-    await hydrateAuth();
+    await Promise.all([hydrateAuth(), hydrateCloud()]);
     if ($auth.user) {
       replace("/dashboard");
     } else {
@@ -134,6 +142,22 @@
       replace(routeForStep(step));
     }
     booted = true;
+
+    // Cloud OAuth callback handler: when the system browser hits
+    // `hoard://auth/callback#access_token=…`, the Rust deep-link plugin
+    // emits `deep-link://new-url`; we parse the fragment and call
+    // `cloud_complete_login`. Route to /account on success so the user
+    // sees their freshly-loaded plan + usage.
+    initCloudDeepLink(
+      () => {
+        push("/account");
+        toastSuccess($_("account.signin_success"));
+      },
+      (e) => {
+        const msg = typeof e === "string" ? e : (e as Error).message;
+        toastInfo($_("account.signin_failed", { values: { error: msg } }));
+      },
+    );
 
     // Register the Tauri listener exactly once for the lifetime of this
     // app instance. The Rust scheduler emits `automatic-tick` on its
@@ -260,6 +284,7 @@
     "/history",
     "/logs",
     "/diagnostics",
+    "/account",
   ];
   const isAppRoute = $derived(
     APP_ROUTE_PREFIXES.some((p) => $location.startsWith(p)),
@@ -352,6 +377,20 @@
            swaps between emerald (on) and rose (off); a transient scan
            phase pulses the icon while the background flow is running. -->
       <div class="border-t border-zinc-800/60 px-3 py-3 space-y-3">
+        {#if $cloud.account}
+          <button
+            type="button"
+            onclick={() => push("/account")}
+            class="flex w-full items-center justify-between gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-[11px] text-emerald-200 transition-colors hover:bg-emerald-500/20"
+            title={$_("sidebar.cloud_chip_tooltip")}
+          >
+            <span class="flex items-center gap-1.5">
+              <Sparkles size={12} />
+              <span>{$_("sidebar.cloud_chip_prefix")}</span>
+            </span>
+            <span class="font-semibold">{planLabel($cloud.account.plan)}</span>
+          </button>
+        {/if}
         {#if quotaInfo}
           {#if quotaInfo.kind === "local"}
             <div

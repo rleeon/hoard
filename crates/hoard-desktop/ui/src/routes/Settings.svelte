@@ -36,6 +36,7 @@
   import SettingsRow from "../lib/components/SettingsRow.svelte";
   import { prefs, hydratePrefs, updatePrefs } from "../lib/stores/prefs";
   import { auth, signOut } from "../lib/stores/auth";
+  import { cloud, planLabel } from "../lib/stores/cloud";
   import { supportedLocales, setLocale } from "../lib/i18n";
   import * as api from "../lib/api";
   import { toastError, toastInfo, toastSuccess } from "../lib/stores/toasts";
@@ -500,6 +501,40 @@
               />
             {/each}
           </div>
+        </Card>
+      </section>
+
+      <section>
+        <h2
+          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+        >
+          {$_("settings.section_account")}
+        </h2>
+        <Card>
+          <button
+            type="button"
+            onclick={() => push("/account")}
+            class="-mx-2 -my-1 flex w-[calc(100%+1rem)] items-center justify-between gap-3 rounded-md px-2 py-1 text-left transition-colors hover:bg-zinc-800/40"
+          >
+            <div class="flex min-w-0 flex-1 items-start gap-3">
+              <Server size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-zinc-100">
+                  {$_("settings.account_label")}
+                </p>
+                <p class="mt-0.5 text-xs text-zinc-500">
+                  {#if $cloud.account}
+                    {$cloud.account.email} · {$_("settings.account_plan", {
+                      values: { plan: planLabel($cloud.account.plan) },
+                    })}
+                  {:else}
+                    {$_("settings.account_desc")}
+                  {/if}
+                </p>
+              </div>
+            </div>
+            <ChevronRight size={16} class="shrink-0 text-zinc-500" />
+          </button>
         </Card>
       </section>
 
