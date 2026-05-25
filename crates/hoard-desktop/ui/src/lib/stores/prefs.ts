@@ -41,6 +41,7 @@ export async function hydratePrefs(): Promise<void> {
       automatic_mode: false,
       automatic_scan_interval_hours: 6,
       conflict_retention_days: 14,
+      cloud_savings_mode: false,
     });
   }
 }

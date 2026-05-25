@@ -26,13 +26,13 @@
 
   const currentPlan = $derived($cloud.account?.plan ?? null);
 
-  function pick(plan: "pro" | "proplus") {
+  function pick(plan: "pro") {
     void openUpgradePage(plan);
     onClose();
   }
 
   type PlanCard = {
-    key: "free" | "pro" | "proplus";
+    key: "free" | "pro";
     name: string;
     price: string;
     features: string[];
@@ -42,6 +42,9 @@
     highlighted?: boolean;
   };
 
+  // Two tiers post-1.6.1. Pro+ dropped; the modal mirrors the public
+  // pricing page (Free + Pro side-by-side). Features stay in i18n so
+  // every locale can re-phrase the bullets independently.
   const plans = $derived<PlanCard[]>([
     {
       key: "free",
@@ -50,8 +53,9 @@
       features: [
         $_("upgrade.free_feat_storage"),
         $_("upgrade.free_feat_devices"),
-        $_("upgrade.free_feat_saves"),
-        $_("upgrade.free_feat_retention"),
+        $_("upgrade.free_feat_history"),
+        $_("upgrade.free_feat_max_save"),
+        $_("upgrade.free_feat_bandwidth"),
       ],
       accent: "border-zinc-700/60",
     },
@@ -62,27 +66,14 @@
       features: [
         $_("upgrade.pro_feat_storage"),
         $_("upgrade.pro_feat_devices"),
-        $_("upgrade.pro_feat_saves"),
-        $_("upgrade.pro_feat_retention"),
+        $_("upgrade.pro_feat_history"),
+        $_("upgrade.pro_feat_max_save"),
+        $_("upgrade.pro_feat_bandwidth"),
       ],
       accent: "border-emerald-500/40 bg-emerald-500/5",
       cta: () => pick("pro"),
       ctaLabel: $_("upgrade.pro_cta"),
       highlighted: true,
-    },
-    {
-      key: "proplus",
-      name: $_("upgrade.proplus_name"),
-      price: $_("upgrade.proplus_price"),
-      features: [
-        $_("upgrade.proplus_feat_storage"),
-        $_("upgrade.proplus_feat_devices"),
-        $_("upgrade.proplus_feat_saves"),
-        $_("upgrade.proplus_feat_retention"),
-      ],
-      accent: "border-emerald-500/20",
-      cta: () => pick("proplus"),
-      ctaLabel: $_("upgrade.proplus_cta"),
     },
   ]);
 </script>
@@ -101,7 +92,7 @@
     </div>
   {/if}
 
-  <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+  <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
     {#each plans as plan (plan.key)}
       {@const isCurrent = currentPlan === plan.key}
       <div

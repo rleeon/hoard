@@ -29,6 +29,7 @@
     DownloadCloud,
     Server,
     ServerCog,
+    CloudOff,
   } from "lucide-svelte";
 
   import Card from "../lib/components/Card.svelte";
@@ -455,6 +456,18 @@
     },
   ]);
 
+  // Cloud-only toggle: "Modo ahorro" defaults every new cloud upload to
+  // `backup_only` so it stays a one-way push from this device. Per-save
+  // overrides live on the Library card.
+  const cloudRows: Row[] = $derived([
+    {
+      field: "cloud_savings_mode",
+      label: $_("settings.cloud_savings_mode_label"),
+      description: $_("settings.cloud_savings_mode_desc"),
+      icon: CloudOff,
+    },
+  ]);
+
   async function handleLanguageChange(e: Event) {
     const next = (e.currentTarget as HTMLSelectElement).value;
     try {
@@ -610,6 +623,35 @@
           </div>
         </Card>
       </section>
+
+      <!--
+        Cloud "modo ahorro": single toggle that flips the default for new
+        cloud uploads to `backup_only`. Visible only when the user is signed
+        in to Hoard Cloud — for self-hosted users the field is still in
+        prefs.json but has no observable effect, so we hide the row to keep
+        the page focused.
+      -->
+      {#if $cloud.account}
+        <section>
+          <h2
+            class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+          >
+            {$_("settings.section_cloud")}
+          </h2>
+          <Card>
+            <div class="divide-y divide-zinc-800">
+              {#each cloudRows as row (row.field)}
+                <SettingsRow
+                  {row}
+                  value={$prefs[row.field] as boolean}
+                  disabled={saving === row.field}
+                  onChange={(v) => toggle(row.field, v)}
+                />
+              {/each}
+            </div>
+          </Card>
+        </section>
+      {/if}
 
       <!--
         Modo Automático: dos sliders que mapean a los campos persistidos

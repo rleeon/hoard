@@ -115,6 +115,15 @@ pub struct Prefs {
     /// lost local edit, short enough not to balloon disk usage.
     #[serde(default = "default_conflict_retention_days")]
     pub conflict_retention_days: u32,
+
+    /// Global "modo ahorro" — when `true`, every new cloud upload is
+    /// flagged `backup_only` so the save uploads (and stays version-able
+    /// from this device) but no *other* device pulls it in via the
+    /// manifest. Pairs with the per-save toggle on the Library card; the
+    /// global setting just changes the default for new uploads. Defaults
+    /// to `false` so the multi-device flow keeps working out of the box.
+    #[serde(default)]
+    pub cloud_savings_mode: bool,
 }
 
 fn default_true() -> bool {
@@ -145,6 +154,7 @@ impl Default for Prefs {
             automatic_mode: false,
             automatic_scan_interval_hours: default_scan_interval_hours(),
             conflict_retention_days: default_conflict_retention_days(),
+            cloud_savings_mode: false,
         }
     }
 }

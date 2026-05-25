@@ -45,6 +45,13 @@ struct AuthSection {
 }
 
 /// Public account shape — what `/v1/me` returns and what the UI binds to.
+///
+/// Wire shape changed in 1.6.1: dropped `retention_days` (history is
+/// forever on every tier now) and added the per-save + bandwidth-window
+/// fields so the Account page can surface them in the usage card.
+/// `serde` is forgiving on missing fields — an old server that still
+/// emits `retention_days` simply won't populate the new ones, which the
+/// UI handles by hiding the row.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudAccount {
     pub user_id: String,
@@ -58,10 +65,21 @@ pub struct CloudAccount {
     pub devices_limit: i32,
     pub saves_used: i32,
     pub saves_limit: i32,
-    pub retention_days: i32,
+    #[serde(default = "default_forever")]
+    pub version_history_forever: bool,
+    #[serde(default)]
+    pub max_save_size_bytes: i64,
+    #[serde(default)]
+    pub bandwidth_window_secs: i32,
+    #[serde(default)]
+    pub bandwidth_quota_bytes: i64,
     pub subscription_status: Option<String>,
     pub renews_at: Option<String>,
     pub cancel_at: Option<String>,
+}
+
+fn default_forever() -> bool {
+    true
 }
 
 /// Carry the access_token through method calls without persisting it on every

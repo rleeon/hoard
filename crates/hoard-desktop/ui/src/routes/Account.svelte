@@ -14,7 +14,7 @@
   import { onMount, onDestroy } from "svelte";
   import { push } from "svelte-spa-router";
   import { _ } from "svelte-i18n";
-  import { ChevronLeft, LogOut, ArrowUpRight, Mail, Download, Trash2, RefreshCw, ShieldCheck, AlertTriangle, CreditCard, HardDrive, Layers, Clock } from "lucide-svelte";
+  import { ChevronLeft, LogOut, ArrowUpRight, Mail, Download, Trash2, RefreshCw, ShieldCheck, AlertTriangle, CreditCard, HardDrive, Layers, Clock, FileArchive, Gauge } from "lucide-svelte";
 
   import Card from "../lib/components/Card.svelte";
   import Button from "../lib/components/Button.svelte";
@@ -342,7 +342,7 @@
           {/if}
         </div>
         <div class="flex flex-col items-end gap-2">
-          {#if account.plan === "free" || account.plan === "pro"}
+          {#if account.plan === "free"}
             <Button variant="primary" onclick={() => openUpgradePage()}>
               <ArrowUpRight size={14} />
               {$_("account.upgrade")}
@@ -414,14 +414,41 @@
         <div class="rounded-md border border-zinc-800 bg-zinc-900/40 p-3">
           <p class="flex items-center gap-2 text-xs text-zinc-500">
             <Clock size={12} />
-            {$_("account.retention")}
+            {$_("account.history")}
           </p>
           <p class="mt-1 text-sm text-zinc-200">
-            {$_("account.retention_days", {
-              values: { days: account.retention_days },
-            })}
+            {account.version_history_forever
+              ? $_("account.history_forever")
+              : "—"}
           </p>
         </div>
+        {#if account.max_save_size_bytes > 0}
+          <div class="rounded-md border border-zinc-800 bg-zinc-900/40 p-3">
+            <p class="flex items-center gap-2 text-xs text-zinc-500">
+              <FileArchive size={12} />
+              {$_("account.max_save_size")}
+            </p>
+            <p class="mt-1 text-sm text-zinc-200">
+              {formatBytes(account.max_save_size_bytes)}
+            </p>
+          </div>
+        {/if}
+        {#if account.bandwidth_quota_bytes > 0}
+          <div class="rounded-md border border-zinc-800 bg-zinc-900/40 p-3">
+            <p class="flex items-center gap-2 text-xs text-zinc-500">
+              <Gauge size={12} />
+              {$_("account.bandwidth")}
+            </p>
+            <p class="mt-1 text-sm text-zinc-200">
+              {$_("account.bandwidth_value", {
+                values: {
+                  amount: formatBytes(account.bandwidth_quota_bytes),
+                  minutes: Math.round(account.bandwidth_window_secs / 60),
+                },
+              })}
+            </p>
+          </div>
+        {/if}
       </div>
     </Card>
 

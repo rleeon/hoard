@@ -386,6 +386,12 @@ export type Prefs = {
    *  `<state_dir>/conflicts/<save_id>/<rfc3339>/`. Defaults to 14;
    *  validated on the Rust side to 1..=30. */
   conflict_retention_days: number;
+  /** Global "modo ahorro" — when `true`, every new cloud upload defaults
+   *  to `backup_only`: the save still uploads and is version-able from
+   *  this device, but the server hides it from *other* devices'
+   *  manifest pull so nothing auto-restores it elsewhere. Pairs with
+   *  the per-save toggle on the Library card. Off by default. */
+  cloud_savings_mode: boolean;
 };
 
 export type TrayStateName =

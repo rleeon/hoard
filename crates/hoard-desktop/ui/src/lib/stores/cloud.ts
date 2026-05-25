@@ -21,15 +21,25 @@ export type CloudAccount = {
   email: string;
   display_name: string | null;
   avatar_url: string | null;
-  /** "free" | "pro" | "proplus" */
+  /** "free" | "pro" */
   plan: string;
   storage_used_bytes: number;
+  /** `-1` = unlimited. */
   storage_limit_bytes: number;
   devices_used: number;
+  /** `-1` = unlimited. */
   devices_limit: number;
   saves_used: number;
+  /** `-1` = unlimited. Unlimited on every tier post-1.6.1. */
   saves_limit: number;
-  retention_days: number;
+  /** Always `true` post-1.6.1. Future tiers with a rolling-window
+   *  retention would flip this to `false`. */
+  version_history_forever: boolean;
+  /** Per-save upload cap. Server returns 413 above this. */
+  max_save_size_bytes: number;
+  /** Rolling-window bandwidth quota (over `bandwidth_window_secs`). */
+  bandwidth_quota_bytes: number;
+  bandwidth_window_secs: number;
   subscription_status: string | null;
   /** RFC3339 — when the current billing period renews. */
   renews_at: string | null;
@@ -149,8 +159,9 @@ export async function deleteCloudAccount(): Promise<void> {
 }
 
 /** Open the public upgrade page in the browser. If a `plan` is provided,
- *  deep-links straight to that tier's checkout (?plan=pro|proplus). */
-export async function openUpgradePage(plan?: "pro" | "proplus"): Promise<void> {
+ *  deep-links straight to that tier's checkout (?plan=pro). Single paid
+ *  tier post-1.6.1; the param is kept for future extensibility. */
+export async function openUpgradePage(plan?: "pro"): Promise<void> {
   const base = "https://hoard.services";
   const url = plan ? `${base}/upgrade?plan=${plan}` : `${base}/upgrade`;
   await openExternal(url);
@@ -222,15 +233,16 @@ function parseAuthCallback(
 // ---- presentation helpers --------------------------------------------
 
 /** Pretty plan label, matching the marketing copy. Falls back to the raw
- *  key when the server invents a new tier we don't render yet. */
+ *  key when the server invents a new tier we don't render yet. Legacy
+ *  "proplus" rows are surfaced as Pro since the 1.6.1 migration folds
+ *  Pro+ subscribers onto Pro. */
 export function planLabel(plan: string | null | undefined): string {
   switch (plan) {
     case "free":
       return "Free";
     case "pro":
-      return "Pro";
     case "proplus":
-      return "Pro+";
+      return "Pro";
     default:
       return plan ?? "—";
   }
