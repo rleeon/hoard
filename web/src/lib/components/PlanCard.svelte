@@ -3,7 +3,7 @@
   import { Check } from 'lucide-svelte';
   import Button from './Button.svelte';
   import type { PlanId, BillingCycle, PlanLimits } from '$lib/types';
-  import { formatPlanQuota } from '$lib/plans';
+  import { formatPlanQuota, formatMaxSaveSize, formatBandwidthQuota } from '$lib/plans';
 
   interface Props {
     plan: PlanLimits;
@@ -17,7 +17,9 @@
 
   let isCurrent = $derived(current === plan.id);
   let price = $derived(cycle === 'monthly' ? plan.priceMonthly : plan.priceYearly);
-  let priceLabel = $derived(price === 0 ? '0 €' : `${price.toLocaleString('es-ES')} €`);
+  let priceLabel = $derived(
+    price === 0 ? '0 €' : `${price.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`
+  );
   let suffix = $derived(cycle === 'monthly' ? $_('pricing.per_month') : $_('pricing.per_year'));
 </script>
 
@@ -60,14 +62,22 @@
     </li>
     <li class="flex items-start gap-2">
       <Check class="mt-0.5 h-4 w-4 flex-none text-emerald-400" />
-      <span class="text-zinc-300">
-        {#if plan.saves === null}{$_('plan.saves_unlimited')}{:else}{$_('plan.saves_n', { values: { n: plan.saves } })}{/if}
-      </span>
+      <span class="text-zinc-300">{$_('plan.saves_unlimited')}</span>
+    </li>
+    <li class="flex items-start gap-2">
+      <Check class="mt-0.5 h-4 w-4 flex-none text-emerald-400" />
+      <span class="text-zinc-300">{$_('plan.history_forever')}</span>
     </li>
     <li class="flex items-start gap-2">
       <Check class="mt-0.5 h-4 w-4 flex-none text-emerald-400" />
       <span class="text-zinc-300"
-        >{$_('plan.retention', { values: { days: plan.retentionDays } })}</span
+        >{$_('plan.max_save_size', { values: { amount: formatMaxSaveSize(plan.id) } })}</span
+      >
+    </li>
+    <li class="flex items-start gap-2">
+      <Check class="mt-0.5 h-4 w-4 flex-none text-emerald-400" />
+      <span class="text-zinc-300"
+        >{$_('plan.bandwidth', { values: { amount: formatBandwidthQuota(plan.id) } })}</span
       >
     </li>
     <li class="flex items-start gap-2">
@@ -77,9 +87,7 @@
     {#if plan.id !== 'free'}
       <li class="flex items-start gap-2">
         <Check class="mt-0.5 h-4 w-4 flex-none text-emerald-400" />
-        <span class="text-zinc-300">
-          {#if plan.id === 'proplus'}{$_('plan.priority_support')}{:else}{$_('plan.email_support')}{/if}
-        </span>
+        <span class="text-zinc-300">{$_('plan.email_support')}</span>
       </li>
     {/if}
   </ul>

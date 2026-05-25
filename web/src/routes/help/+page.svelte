@@ -9,7 +9,9 @@
     { q: 'help.faq_q2', a: 'help.faq_a2' },
     { q: 'help.faq_q3', a: 'help.faq_a3' },
     { q: 'help.faq_q4', a: 'help.faq_a4' },
-    { q: 'help.faq_q5', a: 'help.faq_a5' }
+    { q: 'help.faq_q5', a: 'help.faq_a5' },
+    { q: 'help.faq_q6', a: 'help.faq_a6' },
+    { q: 'help.faq_q7', a: 'help.faq_a7' }
   ];
 
   let open = $state<number | null>(0);

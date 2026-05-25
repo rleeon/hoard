@@ -141,11 +141,9 @@
       ></div>
       <div class="relative max-w-2xl">
         <h2 class="text-balance text-3xl font-bold tracking-tight text-white sm:text-4xl">
-          Free forever for casual play.
+          {$_('cta_section.title')}
         </h2>
-        <p class="mt-3 text-zinc-400">
-          500 MB, 1 device, no card required. Pro starts at 3,99 €/mo whenever your library outgrows it.
-        </p>
+        <p class="mt-3 text-zinc-400">{$_('cta_section.body')}</p>
         <div class="mt-6 flex flex-wrap gap-3">
           <Button href="/login" size="lg" variant="primary">
             {$_('hero.cta_start')}

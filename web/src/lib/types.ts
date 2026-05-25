@@ -1,12 +1,21 @@
-export type PlanId = 'free' | 'pro' | 'proplus';
+export type PlanId = 'free' | 'pro';
 export type BillingCycle = 'monthly' | 'yearly';
 
 export interface PlanLimits {
   id: PlanId;
   storageBytes: number;
+  /** `null` = unlimited. */
   devices: number | null;
+  /** `null` = unlimited. Unlimited on every tier post-1.6.1. */
   saves: number | null;
-  retentionDays: number;
+  /** Always `true` post-1.6.1. Kept as a field so a future tier with a
+   *  rolling window can opt out without renaming. */
+  versionHistoryForever: boolean;
+  /** Per-save upload cap in bytes. Server returns 413 above this. */
+  maxSaveSizeBytes: number;
+  /** Rolling-window bandwidth quota in bytes (over `bandwidthWindowSecs`). */
+  bandwidthQuotaBytes: number;
+  bandwidthWindowSecs: number;
   priceMonthly: number;
   priceYearly: number;
 }

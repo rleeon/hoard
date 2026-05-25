@@ -19,9 +19,7 @@ export const config = {
     customerPortal: env.PUBLIC_LS_CUSTOMER_PORTAL ?? '',
     checkout: {
       pro_monthly: env.PUBLIC_LS_CHECKOUT_PRO_MONTHLY ?? '',
-      pro_yearly: env.PUBLIC_LS_CHECKOUT_PRO_YEARLY ?? '',
-      proplus_monthly: env.PUBLIC_LS_CHECKOUT_PROPLUS_MONTHLY ?? '',
-      proplus_yearly: env.PUBLIC_LS_CHECKOUT_PROPLUS_YEARLY ?? ''
+      pro_yearly: env.PUBLIC_LS_CHECKOUT_PRO_YEARLY ?? ''
     }
   }
 } as const;

@@ -57,10 +57,9 @@
     </div>
   </div>
 
-  <div class="mt-12 grid gap-6 lg:grid-cols-3">
+  <div class="mx-auto mt-12 grid max-w-3xl gap-6 sm:grid-cols-2">
     <PlanCard plan={PLANS.free} {cycle} onChoose={choose} />
     <PlanCard plan={PLANS.pro} {cycle} featured onChoose={choose} />
-    <PlanCard plan={PLANS.proplus} {cycle} onChoose={choose} />
   </div>
 
   <div class="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 text-sm text-zinc-400">
