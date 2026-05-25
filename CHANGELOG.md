@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.1] — 2026-05-25
+
+Hoard Cloud entra en escena con dos planes (Free y Pro), tope por
+partida, ancho de banda con ventana móvil de 15 min, y modo ahorro
+para usar un dispositivo como caja fuerte de subida pura. El
+self-hosted no se toca: todo el cloud feature vive detrás del flag
+`--features cloud` del servidor, y el cliente Tauri sigue hablando
+con `hoard-server` igual que antes.
+
+### Added
+- Plan Free 1.6.1: 1 GB de almacenamiento, 3 dispositivos, partidas
+  ilimitadas, historial de versiones para siempre, hasta 200 MB por
+  partida, 500 MB cada 15 min de ancho de banda.
+- Plan Pro 1.6.1: 50 GB, dispositivos ilimitados, partidas
+  ilimitadas, historial para siempre, hasta 2 GB por partida, 1 GB
+  cada 15 min de ancho de banda. 4,49 €/mes o 35,99 €/año.
+- `crates/hoard-server/src/cloud/bandwidth.rs`: módulo nuevo con
+  contador minute-bucketed (`bandwidth_usage` table) que suma sobre
+  la ventana del plan para enforzar el quota. `check()` antes del
+  PUT presignado, `record()` después del commit, `cleanup_old()`
+  como tarea en `tokio::spawn` cada 10 min borrando buckets >1h.
+  Falla abierto si la DB tiene un mal momento — preferimos servir
+  bytes que bloquear clientes pagos por un timeout en Postgres.
+- 413 estructurado `save_too_large` en `POST /v1/cloud/saves`
+  cuando `size_bytes > limits.max_save_size_bytes`. El cliente
+  recibe el quota y los bytes pedidos para mostrar un toast claro.
+- 429 estructurado `bandwidth_limit_exceeded` con header
+  `Retry-After` calculado a partir del primer bucket en salir de
+  la ventana de 15 min.
+- Flag `backup_only` per-save: cuando una partida sube con este
+  flag, el servidor la oculta del manifest que devuelve
+  `/v1/cloud/sync` a los demás dispositivos. Sigue siendo
+  descargable por id directo y sigue acumulando versiones para
+  este dispositivo. Vivirá con un toggle por tarjeta en la
+  Library cuando aterrice el cliente cloud nativo (1.7.0).
+- Pref global `cloud_savings_mode` (default `false`) más una
+  sección "Hoard Cloud" en Settings que sólo se renderiza para
+  usuarios cloud-signed-in. Cuando está activo, cada nueva subida
+  hereda `backup_only = true` para este dispositivo — pensado para
+  un portátil que tratas como caja fuerte.
+- Account.svelte gana tres tarjetas (history, max_save_size,
+  bandwidth) que reemplazan la antigua de retention.
+- Helper `lib/utils/cloudErrors.ts` que parsea las respuestas
+  413/429/402 del servidor y las traduce a strings localizados
+  para toasts.
+- Migración Postgres `0014_simplify_plans_and_backup_only_and_bandwidth.sql`
+  aplicada contra Supabase prod (project `zddepgqdiuhhzqdimsks`):
+  migra filas `proplus` → `pro`, añade columna `saves.backup_only`
+  con índice parcial, crea tabla `bandwidth_usage` con RLS.
+- Hero, FAQ, CTA y pricing de la landing (`web/`) reescritos para
+  la línea 1.6.1: dos planes lado a lado, "Forever history" como
+  bullet propio, dos FAQ nuevas (per-save size + bandwidth).
+
+### Changed
+- `Plan` enum del servidor pasa a `{ Free, Pro }`. `from_str`
+  grandfathea `"proplus"`, `"pro+"` y `"pro_plus"` → `Pro` para
+  que cualquier fila o JWT cacheado siga deserializando.
+- `PlanLimits` reemplaza `retention_days` por
+  `version_history_forever` y añade `max_save_size_bytes`,
+  `bandwidth_window_secs`, `bandwidth_quota_bytes`.
+- `Me` struct (`/v1/me`) y `CloudAccount` (Tauri command +
+  TS type) reflejan el nuevo shape. Los locales se sincronizan
+  para los 8 idiomas (en, es, de, fr, it, ja, pt, zh).
+- `UpgradePlanModal` colapsa a dos columnas; precio Pro
+  formateado con 2 decimales para "4,49 €".
+- `planLabel` en el desktop store dobla `"proplus"` → "Pro" para
+  cualquier JSON cacheado de una sesión anterior.
+
+### Removed
+- Plan Pro+ (tier 9,99 €). Los suscriptores actuales se migran a
+  Pro vía la migración 0014; el JWT y el webhook handler aceptan
+  los tokens viejos por compatibilidad.
+- `retention_days` en todos los planes (Pro y Free ahora son
+  "forever"). El campo desaparece del JSON de `/v1/me`.
+
 ## [1.5.5] — 2026-05-20
 
 Modo Automático endurecido: resolución de conflictos por mtime con

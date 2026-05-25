@@ -223,7 +223,7 @@
   "settings.catalog_stage_working": "Arbeite…",
   "settings.view_logs_title": "Protokolle ansehen",
   "settings.view_logs_desc": "Aktivitätsprotokoll des Agenten ansehen. Hilfreich für Bugreports.",
-  "settings.about_line_1": "Hoard 1.4.0 — selbst gehostete Save-Sync.",
+  "settings.about_line_1": "Hoard 1.6.1 — selbst gehostete Save-Sync.",
   "settings.about_line_2": "Dein Server, deine Daten. Quellcode & Doku unter hoard.dev.",
   "logs.back_to_settings": "Zurück zu Einstellungen",
   "logs.title": "Protokolle",

@@ -223,7 +223,7 @@
   "settings.catalog_stage_working": "En cours…",
   "settings.view_logs_title": "Voir les journaux",
   "settings.view_logs_desc": "Inspectez l'activité de l'agent. Pratique pour les rapports de bug.",
-  "settings.about_line_1": "Hoard 1.4.0 — sync auto-hébergée.",
+  "settings.about_line_1": "Hoard 1.6.1 — sync auto-hébergée.",
   "settings.about_line_2": "Votre serveur, vos données. Code source et docs sur hoard.dev.",
   "logs.back_to_settings": "Retour aux Paramètres",
   "logs.title": "Journaux",

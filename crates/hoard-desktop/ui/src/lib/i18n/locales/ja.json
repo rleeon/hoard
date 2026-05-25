@@ -223,7 +223,7 @@
   "settings.catalog_stage_working": "作業中…",
   "settings.view_logs_title": "ログを見る",
   "settings.view_logs_desc": "エージェントの活動ログを確認。バグ報告に便利。",
-  "settings.about_line_1": "Hoard 1.4.0 — セルフホスト型セーブ同期。",
+  "settings.about_line_1": "Hoard 1.6.1 — セルフホスト型セーブ同期。",
   "settings.about_line_2": "あなたのサーバー、あなたのデータ。ソース・ドキュメントは hoard.dev。",
   "logs.back_to_settings": "設定へ戻る",
   "logs.title": "ログ",
