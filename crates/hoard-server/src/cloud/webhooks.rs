@@ -8,7 +8,7 @@
 use crate::cloud::errors::CloudError;
 use crate::cloud::plans::Plan;
 use crate::cloud::state::CloudState;
-use crate::config::LemonSqueezyVariant;
+use crate::config::LemonSqueezyProduct;
 use axum::{
     body::Bytes,
     extract::State,
@@ -53,6 +53,12 @@ pub struct LsData {
 pub struct LsAttributes {
     pub status: Option<String>,        // 'active','cancelled','expired',...
     pub customer_id: Option<i64>,
+    /// Each LS product has its own product_id and one variant_id. We
+    /// key on product_id because the store uses two separate products
+    /// (Pro Monthly and Pro Yearly) rather than one product with two
+    /// variants. `variant_id` is still deserialised for logging /
+    /// future debugging but the routing decision is product-based.
+    pub product_id: Option<i64>,
     pub variant_id: Option<i64>,
     pub renews_at: Option<String>,
     pub ends_at: Option<String>,
@@ -101,15 +107,15 @@ pub fn status_for_event(event: &str) -> Option<&'static str> {
     }
 }
 
-/// Resolve a variant_id → (plan, interval) from config.
-pub fn resolve_variant<'a>(
-    variants: &'a [LemonSqueezyVariant],
-    variant_id: i64,
+/// Resolve a product_id → (plan, interval) from config.
+pub fn resolve_product<'a>(
+    products: &'a [LemonSqueezyProduct],
+    product_id: i64,
 ) -> Option<(&'a str, &'a str)> {
-    let v = variant_id.to_string();
-    variants
+    let p = product_id.to_string();
+    products
         .iter()
-        .find(|x| x.variant_id == v)
+        .find(|x| x.product_id == p)
         .map(|x| (x.plan.as_str(), x.interval.as_str()))
 }
 
@@ -161,12 +167,12 @@ pub async fn handle(
         }
     };
 
-    let variant_id = event.data.attributes.variant_id.unwrap_or(-1);
-    let (plan, interval) = match resolve_variant(&cloud.lemonsqueezy.variants, variant_id) {
+    let product_id = event.data.attributes.product_id.unwrap_or(-1);
+    let (plan, interval) = match resolve_product(&cloud.lemonsqueezy.products, product_id) {
         Some(x) => x,
         None => {
-            warn!(variant_id, "ls webhook: unknown variant_id");
-            return (StatusCode::BAD_REQUEST, "unknown variant_id").into_response();
+            warn!(product_id, "ls webhook: unknown product_id");
+            return (StatusCode::BAD_REQUEST, "unknown product_id").into_response();
         }
     };
 
@@ -175,7 +181,7 @@ pub async fn handle(
         user_id,
         &event.data.id,
         event.data.attributes.customer_id.unwrap_or(0),
-        variant_id,
+        product_id,
         plan,
         interval,
         status,
@@ -221,7 +227,7 @@ async fn upsert_subscription(
     user_id: Uuid,
     ls_sub_id: &str,
     customer_id: i64,
-    variant_id: i64,
+    product_id: i64,
     plan: &str,
     interval: &str,
     status: &str,
@@ -232,7 +238,7 @@ async fn upsert_subscription(
     sqlx::query(
         r#"
         INSERT INTO subscriptions (
-            user_id, ls_customer_id, ls_subscription_id, ls_variant_id,
+            user_id, ls_customer_id, ls_subscription_id, ls_product_id,
             plan, interval, status, renews_at, cancel_at, cancelled_at,
             last_event, last_event_at
         )
@@ -253,7 +259,7 @@ async fn upsert_subscription(
     .bind(user_id)
     .bind(customer_id.to_string())
     .bind(ls_sub_id)
-    .bind(variant_id.to_string())
+    .bind(product_id.to_string())
     .bind(plan)
     .bind(interval)
     .bind(status)
@@ -317,25 +323,25 @@ mod tests {
     }
 
     #[test]
-    fn variant_resolution() {
-        // Post-1.6.1 only Pro exists; we keep the two-variant test (monthly
-        // and yearly) because the variant_id → (plan, interval) tuple is
-        // the shape the upsert relies on, and a single-variant test would
-        // miss the interval column entirely.
-        let variants = vec![
-            LemonSqueezyVariant {
-                variant_id: "111".into(),
+    fn product_resolution() {
+        // Post-1.6.1 only Pro exists; the store uses two products (Pro
+        // Monthly + Pro Yearly), each with its own product_id. We keep
+        // both in the test so a single-product test wouldn't accidentally
+        // miss the `interval` column wiring.
+        let products = vec![
+            LemonSqueezyProduct {
+                product_id: "1087714".into(),
                 plan: "pro".into(),
                 interval: "month".into(),
             },
-            LemonSqueezyVariant {
-                variant_id: "222".into(),
+            LemonSqueezyProduct {
+                product_id: "1087715".into(),
                 plan: "pro".into(),
                 interval: "year".into(),
             },
         ];
-        assert_eq!(resolve_variant(&variants, 111), Some(("pro", "month")));
-        assert_eq!(resolve_variant(&variants, 222), Some(("pro", "year")));
-        assert_eq!(resolve_variant(&variants, 333), None);
+        assert_eq!(resolve_product(&products, 1087714), Some(("pro", "month")));
+        assert_eq!(resolve_product(&products, 1087715), Some(("pro", "year")));
+        assert_eq!(resolve_product(&products, 333), None);
     }
 }

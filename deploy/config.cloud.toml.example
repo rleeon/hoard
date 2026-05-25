@@ -60,24 +60,15 @@ api_key = ""
 webhook_secret = ""
 store_id = ""
 
-# One entry per LS product variant. Resolved by webhook handler to translate
-# LS variant_id → our plan tier. Order doesn't matter.
-[[cloud.lemonsqueezy.variants]]
-variant_id = "PRO_MONTHLY_VARIANT_ID"
+# One entry per LS product. The store uses two separate products (Pro
+# Monthly + Pro Yearly), each with its own product_id. The webhook
+# handler matches by product_id; order doesn't matter.
+[[cloud.lemonsqueezy.products]]
+product_id = "1087714"
 plan = "pro"
 interval = "month"
 
-[[cloud.lemonsqueezy.variants]]
-variant_id = "PRO_YEARLY_VARIANT_ID"
+[[cloud.lemonsqueezy.products]]
+product_id = "1087715"
 plan = "pro"
-interval = "year"
-
-[[cloud.lemonsqueezy.variants]]
-variant_id = "PROPLUS_MONTHLY_VARIANT_ID"
-plan = "proplus"
-interval = "month"
-
-[[cloud.lemonsqueezy.variants]]
-variant_id = "PROPLUS_YEARLY_VARIANT_ID"
-plan = "proplus"
 interval = "year"
