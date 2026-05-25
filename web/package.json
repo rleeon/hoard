@@ -1,0 +1,30 @@
+{
+  "name": "hoard-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "lucide-svelte": "^0.460.0",
+    "svelte-i18n": "^4.0.1"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "^3.0.6",
+    "@sveltejs/kit": "^2.8.0",
+    "@sveltejs/vite-plugin-svelte": "^5.0.1",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^25.9.1",
+    "svelte": "^5.1.0",
+    "svelte-check": "^4.1.0",
+    "tailwindcss": "^4.0.0",
+    "tslib": "^2.8.1",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0"
+  }
+}
