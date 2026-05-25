@@ -50,6 +50,9 @@ jobs:
       - name: Preserve CNAME
         run: echo "hoard.services" > web/build/CNAME
 
+      - name: SPA fallback (404 → index.html)
+        run: cp web/build/index.html web/build/404.html
+
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:
