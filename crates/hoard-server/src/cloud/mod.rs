@@ -17,6 +17,7 @@
 //!   `database.backend = "postgres"`.
 
 pub mod auth;
+pub mod bandwidth;
 pub mod db;
 pub mod errors;
 pub mod plans;

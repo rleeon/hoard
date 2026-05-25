@@ -1,12 +1,15 @@
 //! `/v1/cloud/saves*` — upload + download flows for cloud-stored snapshots.
 
 use crate::cloud::auth::CloudUser;
+use crate::cloud::bandwidth;
 use crate::cloud::errors::CloudError;
+use crate::cloud::plans::Plan;
 use crate::cloud::quota;
 use crate::cloud::r2;
 use crate::cloud::state::CloudState;
 use axum::{
     extract::{Path, State},
+    http::StatusCode,
     response::{IntoResponse, Json, Response},
     Extension,
 };
@@ -30,6 +33,31 @@ pub struct UploadInit {
     pub device_name: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
+    /// When true, this save is excluded from the multi-device manifest pull
+    /// — other devices won't auto-restore it. Manual download via
+    /// `/v1/cloud/saves/:id/versions/:n/download` still works. Toggleable
+    /// per-save by the client (per the 1.6.1 "modo ahorro" UX).
+    #[serde(default)]
+    pub backup_only: bool,
+}
+
+/// 413 response for a single upload that exceeds the per-save cap. Wire
+/// shape mirrors the 402 quota response so the client toast layer can
+/// reuse one structured-error path.
+#[derive(Debug, Serialize)]
+struct SaveTooLargeResponse {
+    error: &'static str,
+    code: &'static str,
+    plan: &'static str,
+    limit_bytes: u64,
+    actual_bytes: u64,
+    upgrade_url: String,
+}
+
+impl IntoResponse for SaveTooLargeResponse {
+    fn into_response(self) -> Response {
+        (StatusCode::PAYLOAD_TOO_LARGE, Json(self)).into_response()
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -45,21 +73,59 @@ pub async fn init_upload(
     Extension(user): Extension<CloudUser>,
     Json(body): Json<UploadInit>,
 ) -> Result<Response, CloudError> {
-    // 1. Quota check first — cheap, fast, and a 402 short-circuits everything else.
+    // 1. Per-save size cap — cheapest check, doesn't even touch the DB.
+    //    Resolve the plan from the cached load() in `check_storage` below
+    //    would mean two queries; do a tiny direct lookup so we can 413
+    //    before incurring the storage SUM.
+    let plan = match plan_for_user(&state, user.user_id).await? {
+        Some(p) => p,
+        None => return Err(CloudError::NotFound("no profile")),
+    };
+    let limits = plan.limits();
+    if body.size_bytes > limits.max_save_size_bytes {
+        let upgrade_url = state
+            .config
+            .cloud
+            .as_ref()
+            .map(|c| c.upgrade_url.clone())
+            .unwrap_or_else(|| "https://hoard.services/upgrade".to_string());
+        return Ok(SaveTooLargeResponse {
+            error: "save exceeds per-save size limit",
+            code: "save_too_large",
+            plan: plan.as_str(),
+            limit_bytes: limits.max_save_size_bytes,
+            actual_bytes: body.size_bytes,
+            upgrade_url,
+        }
+        .into_response());
+    }
+
+    // 2. Bandwidth window — pre-upload check so we 429 *before* presigning.
+    //    The PUT itself goes direct to R2 so we can't intercept the bytes;
+    //    we credit the window in `commit_upload` once R2 head confirms the
+    //    object landed.
+    if let Err(resp) = bandwidth::check(&state, user.user_id, body.size_bytes, &limits).await {
+        return Ok(resp);
+    }
+
+    // 3. Storage quota.
     let info = match quota::check_storage(&state, user.user_id, body.size_bytes).await {
         Ok(i) => i,
         Err(resp) => return Ok(resp),
     };
 
-    // 2. Ensure the saves row exists. UPSERT semantics — first version
+    // 4. Ensure the saves row exists. UPSERT semantics — first version
     //    of a save creates it; subsequent versions just bump latest_version_num.
+    //    `backup_only` is captured per-save: a row toggled to backup_only=true
+    //    on a later upload stays out of the manifest until explicitly
+    //    re-enabled by the client.
     let label = body.label.clone().unwrap_or_else(|| "default".to_string());
     let save_row: (String, i64) = sqlx::query_as(
         r#"
-        INSERT INTO saves (id, user_id, game_slug, label, latest_version_num)
-        VALUES ($1, $2, $3, $4, 0)
+        INSERT INTO saves (id, user_id, game_slug, label, latest_version_num, backup_only)
+        VALUES ($1, $2, $3, $4, 0, $5)
         ON CONFLICT (user_id, game_slug, label)
-        DO UPDATE SET updated_at = now()
+        DO UPDATE SET updated_at = now(), backup_only = EXCLUDED.backup_only
         RETURNING id, latest_version_num
         "#,
     )
@@ -67,13 +133,14 @@ pub async fn init_upload(
     .bind(user.user_id)
     .bind(&body.game_slug)
     .bind(&label)
+    .bind(body.backup_only)
     .fetch_one(&state.pool)
     .await?;
 
     let next_version = save_row.1 + 1;
     let r2_key = r2::key_for_snapshot(user.user_id, &save_row.0, next_version as u64);
 
-    // 3. Insert the (pending) save_versions row. We only know size and key
+    // 5. Insert the (pending) save_versions row. We only know size and key
     //    so far — sha256 is filled in by `commit`. Until then the row is
     //    pending and storage_bytes hasn't been credited (trigger runs on
     //    INSERT but with the *requested* size; if the upload fails or never
@@ -92,7 +159,7 @@ pub async fn init_upload(
     .execute(&state.pool)
     .await?;
 
-    // 4. Mint the presigned PUT URL.
+    // 6. Mint the presigned PUT URL.
     let upload = state
         .r2
         .presign_put(&r2_key, None)
@@ -207,6 +274,15 @@ pub async fn commit_upload(
     .await?;
     tx.commit().await?;
 
+    // Credit the bandwidth window with the observed size. Done after the
+    // commit so a failed upload doesn't eat into the user's quota. We log
+    // and swallow errors here — the upload itself was successful; a stale
+    // bandwidth counter is recoverable, a 500 returned to the client is
+    // not.
+    if let Err(e) = bandwidth::record(&state.pool, user.user_id, head_size as u64).await {
+        tracing::warn!(error = %e, user_id = %user.user_id, "bandwidth: record failed on upload");
+    }
+
     Ok(Json(UploadCommitOut {
         save_id,
         version_num: version,
@@ -227,7 +303,7 @@ pub async fn download(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
     Path((save_id, version)): Path<(String, i64)>,
-) -> Result<Json<DownloadOut>, CloudError> {
+) -> Result<Response, CloudError> {
     let row: Option<(Uuid, String, String, i64)> = sqlx::query_as(
         r#"
         SELECT s.user_id, sv.r2_key, sv.sha256, sv.size_bytes
@@ -248,6 +324,18 @@ pub async fn download(
         return Err(CloudError::Forbidden("not your save"));
     }
 
+    // Bandwidth gate. Downloads count against the same window as uploads
+    // (one quota, one counter). We credit optimistically below since the
+    // presigned URL almost always gets used; if the client never fetches
+    // it the overcount falls off in 15 min.
+    let plan = plan_for_user(&state, user.user_id)
+        .await?
+        .unwrap_or(Plan::Free);
+    let limits = plan.limits();
+    if let Err(resp) = bandwidth::check(&state, user.user_id, size.max(0) as u64, &limits).await {
+        return Ok(resp);
+    }
+
     let presigned = state
         .r2
         .presign_get(&r2_key, None)
@@ -265,11 +353,31 @@ pub async fn download(
     .execute(&state.pool)
     .await?;
 
+    if let Err(e) = bandwidth::record(&state.pool, user.user_id, size.max(0) as u64).await {
+        tracing::warn!(error = %e, user_id = %user.user_id, "bandwidth: record failed on download");
+    }
+
     Ok(Json(DownloadOut {
         save_id,
         version_num: version,
         sha256,
         size_bytes: size,
         download: presigned,
-    }))
+    })
+    .into_response())
+}
+
+/// Tiny one-query helper to fetch a user's plan tag without going through
+/// the full quota::load pipeline. Used by paths that need the plan but
+/// don't need (yet) the storage figures.
+async fn plan_for_user(
+    state: &CloudState,
+    user_id: Uuid,
+) -> Result<Option<Plan>, CloudError> {
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT plan FROM profiles WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    Ok(row.map(|r| Plan::from_str(&r.0).unwrap_or(Plan::Free)))
 }

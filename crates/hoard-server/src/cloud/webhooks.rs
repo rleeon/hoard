@@ -318,6 +318,10 @@ mod tests {
 
     #[test]
     fn variant_resolution() {
+        // Post-1.6.1 only Pro exists; we keep the two-variant test (monthly
+        // and yearly) because the variant_id → (plan, interval) tuple is
+        // the shape the upsert relies on, and a single-variant test would
+        // miss the interval column entirely.
         let variants = vec![
             LemonSqueezyVariant {
                 variant_id: "111".into(),
@@ -326,12 +330,12 @@ mod tests {
             },
             LemonSqueezyVariant {
                 variant_id: "222".into(),
-                plan: "proplus".into(),
+                plan: "pro".into(),
                 interval: "year".into(),
             },
         ];
         assert_eq!(resolve_variant(&variants, 111), Some(("pro", "month")));
-        assert_eq!(resolve_variant(&variants, 222), Some(("proplus", "year")));
+        assert_eq!(resolve_variant(&variants, 222), Some(("pro", "year")));
         assert_eq!(resolve_variant(&variants, 333), None);
     }
 }

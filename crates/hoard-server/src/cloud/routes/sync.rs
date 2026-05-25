@@ -29,6 +29,10 @@ pub async fn manifest(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
 ) -> Result<Json<Manifest>, CloudError> {
+    // `backup_only` saves are hidden from the manifest pull: other devices
+    // won't see them, so the agent won't auto-restore the file. The save
+    // is still uploadable and downloadable through the explicit per-id
+    // endpoints — that's the "modo ahorro" toggle.
     let rows: Vec<(String, String, String, i64, OffsetDateTime, Option<i64>, Option<String>)> =
         sqlx::query_as(
             r#"
@@ -37,7 +41,7 @@ pub async fn manifest(
               FROM saves s
          LEFT JOIN save_versions sv
                 ON sv.save_id = s.id AND sv.version_num = s.latest_version_num
-             WHERE s.user_id = $1
+             WHERE s.user_id = $1 AND s.backup_only = false
           ORDER BY s.updated_at DESC
             "#,
         )

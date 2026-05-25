@@ -3,6 +3,15 @@
 //! Hardcoded on purpose. Pricing is an opinion (see ADR 0015); when it
 //! changes, update here + the landing + the Lemon Squeezy products and
 //! ship a new release. Reading these from the DB would invite drift.
+//!
+//! Two tiers post-1.6.1: Free and Pro. Pro+ was removed — the gap
+//! between "I play one game" and "I store every save I've ever made"
+//! turned out to be smaller than originally guessed, and a third tier
+//! complicated pricing copy without a clear customer to sell it to.
+//!
+//! Version history is forever on both tiers. The retention cron only
+//! purges hard-deleted accounts and unreferenced R2 objects; it never
+//! ages out a user's snapshots by date.
 
 use serde::Serialize;
 
@@ -11,7 +20,6 @@ use serde::Serialize;
 pub enum Plan {
     Free,
     Pro,
-    ProPlus,
 }
 
 impl Plan {
@@ -19,7 +27,13 @@ impl Plan {
         match s {
             "free" => Some(Plan::Free),
             "pro" => Some(Plan::Pro),
-            "proplus" | "pro+" => Some(Plan::ProPlus),
+            // Legacy values from the old enum — a user who paid for
+            // Pro+ pre-1.6.1 is grandfathered onto Pro (same storage,
+            // bandwidth shape; the difference was retention which is
+            // now forever for everyone). The migration rewrites stored
+            // rows to "pro" so this branch only fires on stale tokens
+            // / cached JSON.
+            "proplus" | "pro+" | "pro_plus" => Some(Plan::Pro),
             _ => None,
         }
     }
@@ -28,7 +42,6 @@ impl Plan {
         match self {
             Plan::Free => "free",
             Plan::Pro => "pro",
-            Plan::ProPlus => "proplus",
         }
     }
 
@@ -36,24 +49,23 @@ impl Plan {
         match self {
             Plan::Free => PlanLimits {
                 plan: self,
-                storage_bytes: 500 * MB,
-                devices: 1,
-                saves_tracked: Some(3),
-                retention_days: 7,
+                storage_bytes: 1 * GB,
+                devices: 3,
+                saves_tracked: None,
+                version_history_forever: true,
+                max_save_size_bytes: 200 * MB,
+                bandwidth_window_secs: 15 * 60,
+                bandwidth_quota_bytes: 500 * MB,
             },
             Plan::Pro => PlanLimits {
                 plan: self,
                 storage_bytes: 50 * GB,
-                devices: 5,
-                saves_tracked: None,
-                retention_days: 90,
-            },
-            Plan::ProPlus => PlanLimits {
-                plan: self,
-                storage_bytes: 200 * GB,
                 devices: u32::MAX,
                 saves_tracked: None,
-                retention_days: 365,
+                version_history_forever: true,
+                max_save_size_bytes: 2 * GB,
+                bandwidth_window_secs: 15 * 60,
+                bandwidth_quota_bytes: 1 * GB,
             },
         }
     }
@@ -63,12 +75,22 @@ impl Plan {
 pub struct PlanLimits {
     pub plan: Plan,
     pub storage_bytes: u64,
+    /// `u32::MAX` means unlimited devices. The wire shape on `/v1/me`
+    /// normalises this to `-1`.
     pub devices: u32,
-    /// `None` means unlimited tracked saves.
+    /// `None` means unlimited tracked saves. Free is unlimited too as
+    /// of 1.6.1.
     pub saves_tracked: Option<u32>,
-    pub retention_days: u32,
+    /// Always `true` post-1.6.1. Kept as a field on the limits struct so
+    /// a future "rolling 30 days" tier could opt out without a wire
+    /// rename.
+    pub version_history_forever: bool,
+    pub max_save_size_bytes: u64,
+    pub bandwidth_window_secs: u32,
+    pub bandwidth_quota_bytes: u64,
 }
 
+#[allow(clippy::identity_op)]
 const MB: u64 = 1024 * 1024;
 const GB: u64 = 1024 * MB;
 
@@ -79,35 +101,36 @@ mod tests {
     #[test]
     fn free_limits_match_spec() {
         let l = Plan::Free.limits();
-        assert_eq!(l.storage_bytes, 500 * MB);
-        assert_eq!(l.devices, 1);
-        assert_eq!(l.saves_tracked, Some(3));
-        assert_eq!(l.retention_days, 7);
+        assert_eq!(l.storage_bytes, 1 * GB);
+        assert_eq!(l.devices, 3);
+        assert_eq!(l.saves_tracked, None);
+        assert!(l.version_history_forever);
+        assert_eq!(l.max_save_size_bytes, 200 * MB);
+        assert_eq!(l.bandwidth_window_secs, 15 * 60);
+        assert_eq!(l.bandwidth_quota_bytes, 500 * MB);
     }
 
     #[test]
     fn pro_limits_match_spec() {
         let l = Plan::Pro.limits();
         assert_eq!(l.storage_bytes, 50 * GB);
-        assert_eq!(l.devices, 5);
+        assert_eq!(l.devices, u32::MAX);
         assert_eq!(l.saves_tracked, None);
-        assert_eq!(l.retention_days, 90);
-    }
-
-    #[test]
-    fn proplus_limits_match_spec() {
-        let l = Plan::ProPlus.limits();
-        assert_eq!(l.storage_bytes, 200 * GB);
-        assert!(l.devices >= 1000);
-        assert_eq!(l.retention_days, 365);
+        assert!(l.version_history_forever);
+        assert_eq!(l.max_save_size_bytes, 2 * GB);
+        assert_eq!(l.bandwidth_window_secs, 15 * 60);
+        assert_eq!(l.bandwidth_quota_bytes, 1 * GB);
     }
 
     #[test]
     fn from_str_roundtrip() {
-        for p in [Plan::Free, Plan::Pro, Plan::ProPlus] {
+        for p in [Plan::Free, Plan::Pro] {
             assert_eq!(Plan::from_str(p.as_str()), Some(p));
         }
         assert_eq!(Plan::from_str("bogus"), None);
-        assert_eq!(Plan::from_str("pro+"), Some(Plan::ProPlus));
+        // Legacy tokens grandfather onto Pro.
+        assert_eq!(Plan::from_str("proplus"), Some(Plan::Pro));
+        assert_eq!(Plan::from_str("pro+"), Some(Plan::Pro));
+        assert_eq!(Plan::from_str("pro_plus"), Some(Plan::Pro));
     }
 }

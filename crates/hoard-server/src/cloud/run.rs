@@ -3,7 +3,7 @@
 
 use crate::cloud::{
     auth::{require_cloud_auth, JwksCache},
-    db, r2,
+    bandwidth, db, r2,
     routes::{me, saves, sync as sync_routes},
     state::CloudState,
     webhooks,
@@ -53,6 +53,33 @@ pub async fn run(cfg: Config) -> Result<()> {
         r2: r2_store,
         start_time: Instant::now(),
     };
+
+    // 4b. Bandwidth bucket cleanup. 10-minute cadence is far below the
+    //     1-hour cutoff, so a missed tick after a deploy can't let the
+    //     table grow more than ~1.5h before the next run trims it back.
+    //     Spawned as a detached task — failures just `warn!` and the
+    //     next tick retries; not worth crashing the server over.
+    {
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(600));
+            // The first tick fires immediately; skip it so we don't double
+            // up with startup work.
+            tick.tick().await;
+            loop {
+                tick.tick().await;
+                match bandwidth::cleanup_old(&pool).await {
+                    Ok(n) if n > 0 => {
+                        tracing::debug!(rows = n, "bandwidth: cleaned old buckets");
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error = %e, "bandwidth: cleanup failed");
+                    }
+                }
+            }
+        });
+    }
 
     // 5. Build routers.
     let authed = Router::new()

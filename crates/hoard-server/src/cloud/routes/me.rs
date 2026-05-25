@@ -31,7 +31,14 @@ pub struct Me {
     pub devices_limit: i32,
     pub saves_used: i32,
     pub saves_limit: i32,
-    pub retention_days: i32,
+    /// True on every tier post-1.6.1 — kept on the wire as a bool so
+    /// "rolling N days" tiers in the future flip this to `false` instead
+    /// of forcing every client to start reading a `retention_days` int
+    /// that used to be missing.
+    pub version_history_forever: bool,
+    pub max_save_size_bytes: i64,
+    pub bandwidth_window_secs: i32,
+    pub bandwidth_quota_bytes: i64,
 }
 
 /// GET /v1/me — current user's profile + plan + usage. Auto-creates the
@@ -93,7 +100,10 @@ pub async fn get_me(
             .saves_tracked
             .map(|n| n as i32)
             .unwrap_or(-1),
-        retention_days: limits.retention_days as i32,
+        version_history_forever: limits.version_history_forever,
+        max_save_size_bytes: bytes_or_unlimited(limits.max_save_size_bytes),
+        bandwidth_window_secs: limits.bandwidth_window_secs as i32,
+        bandwidth_quota_bytes: bytes_or_unlimited(limits.bandwidth_quota_bytes),
     }))
 }
 
@@ -104,7 +114,7 @@ fn bytes_or_unlimited(n: u64) -> i64 {
     i64::try_from(n).unwrap_or(i64::MAX)
 }
 
-/// Pro+ uses `u32::MAX` as a sentinel for unlimited devices; surface it
+/// `u32::MAX` is the sentinel for unlimited devices (Pro); surface it
 /// to the wire as `-1` so the desktop UI can render `∞` without a magic
 /// large number drifting through the front-end format helpers.
 fn devices_or_unlimited(n: u32) -> i32 {

@@ -150,9 +150,11 @@ pub struct LemonSqueezyConfig {
     pub webhook_secret: String,
     #[serde(default)]
     pub store_id: String,
-    /// Map LS variant_id -> our plan tier (pro/proplus) and interval.
-    /// Empty by default — set explicitly so a misconfigured webhook doesn't
-    /// silently grant Pro+ to someone who paid for Pro.
+    /// Map LS variant_id -> our plan tier and interval. Single tier
+    /// post-1.6.1 (Pro) so `plan` is always `"pro"`; the field stays as
+    /// a string instead of an enum so an old Pro+ variant in a deployed
+    /// config doesn't fail validation — it just won't resolve into the
+    /// runtime `Plan` enum and will return 400 from the webhook.
     #[serde(default)]
     pub variants: Vec<LemonSqueezyVariant>,
 }
@@ -160,7 +162,7 @@ pub struct LemonSqueezyConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LemonSqueezyVariant {
     pub variant_id: String,
-    pub plan: String,     // 'pro' | 'proplus'
+    pub plan: String,     // 'pro'
     pub interval: String, // 'month' | 'year'
 }
 
