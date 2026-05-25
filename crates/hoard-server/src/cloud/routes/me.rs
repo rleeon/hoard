@@ -63,14 +63,15 @@ pub async fn get_me(
 
     // Saves count comes from a separate query — keeps profile reads cheap
     // for endpoints that don't need this and avoids a join when the saves
-    // count would be `0` on day one anyway.
-    let saves_used: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*)::bigint FROM saves WHERE user_id = $1 AND deleted_at IS NULL",
-    )
-    .bind(user.user_id)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(0);
+    // count would be `0` on day one anyway. `saves` has no soft-delete
+    // column today (only `save_versions` does); a plain COUNT is the right
+    // shape. Propagate the SQL error rather than swallowing it so schema
+    // drift surfaces here instead of a silent `0`.
+    let saves_used: i64 =
+        sqlx::query_scalar("SELECT COUNT(*)::bigint FROM saves WHERE user_id = $1")
+            .bind(user.user_id)
+            .fetch_one(&state.pool)
+            .await?;
 
     let plan = Plan::from_str(&row.3).unwrap_or(Plan::Free);
     let limits = plan.limits();
