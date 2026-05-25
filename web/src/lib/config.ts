@@ -1,32 +1,34 @@
-import { env } from '$env/dynamic/public';
-
-function required(key: string, value: string | undefined): string {
-  if (!value) {
-    throw new Error(`Missing required public env var: ${key}`);
-  }
-  return value;
-}
+import {
+  PUBLIC_SUPABASE_URL,
+  PUBLIC_SUPABASE_ANON_KEY,
+  PUBLIC_API_URL,
+  PUBLIC_LS_CHECKOUT_PRO_MONTHLY,
+  PUBLIC_LS_CHECKOUT_PRO_YEARLY,
+  PUBLIC_LS_CHECKOUT_PROPLUS_MONTHLY,
+  PUBLIC_LS_CHECKOUT_PROPLUS_YEARLY,
+  PUBLIC_LS_CUSTOMER_PORTAL
+} from '$env/static/public';
 
 export const config = {
   supabase: {
-    url: env.PUBLIC_SUPABASE_URL ?? '',
-    anonKey: env.PUBLIC_SUPABASE_ANON_KEY ?? ''
+    url: PUBLIC_SUPABASE_URL,
+    anonKey: PUBLIC_SUPABASE_ANON_KEY
   },
   api: {
-    baseUrl: env.PUBLIC_API_URL ?? 'https://api.hoard.services'
+    baseUrl: PUBLIC_API_URL || 'https://api.hoard.services'
   },
   billing: {
-    customerPortal: env.PUBLIC_LS_CUSTOMER_PORTAL ?? '',
+    customerPortal: PUBLIC_LS_CUSTOMER_PORTAL,
     checkout: {
-      pro_monthly: env.PUBLIC_LS_CHECKOUT_PRO_MONTHLY ?? '',
-      pro_yearly: env.PUBLIC_LS_CHECKOUT_PRO_YEARLY ?? '',
-      proplus_monthly: env.PUBLIC_LS_CHECKOUT_PROPLUS_MONTHLY ?? '',
-      proplus_yearly: env.PUBLIC_LS_CHECKOUT_PROPLUS_YEARLY ?? ''
+      pro_monthly: PUBLIC_LS_CHECKOUT_PRO_MONTHLY,
+      pro_yearly: PUBLIC_LS_CHECKOUT_PRO_YEARLY,
+      proplus_monthly: PUBLIC_LS_CHECKOUT_PROPLUS_MONTHLY,
+      proplus_yearly: PUBLIC_LS_CHECKOUT_PROPLUS_YEARLY
     }
   }
 } as const;
 
 export function assertConfig() {
-  required('PUBLIC_SUPABASE_URL', config.supabase.url);
-  required('PUBLIC_SUPABASE_ANON_KEY', config.supabase.anonKey);
+  if (!config.supabase.url) throw new Error('Missing PUBLIC_SUPABASE_URL');
+  if (!config.supabase.anonKey) throw new Error('Missing PUBLIC_SUPABASE_ANON_KEY');
 }
