@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-05-26
+
+Modo Automático sale del fondo del escritorio y pasa a ser visible.
+Dos componentes nuevos en la UI — un indicador en vivo en la sidebar
+y un panel de actividad flotante — leen un bus de eventos `agent://*`
+estable y muestran qué está vigilando el watcher, qué sube o baja en
+ese momento, y si la cuota o la red rompen algo. El cloud poll se
+desacopla del scheduler horario pesado y corre en su propia cadencia
+configurable (default 10 s) sin tocar disco.
+
+### Added
+- `LiveStatus.svelte`: widget de dos puntos en el footer del
+  sidebar. Uno cubre el estado del watcher (watching / off /
+  unknown) y otro el del cloud poll (online / throttled / offline /
+  unknown). Tooltip granular con el conteo de saves seguidos.
+- `ActivityFeed.svelte`: panel flotante abajo-derecha (toggle por
+  botón `ScrollText` en el header o desde Settings) con las últimas
+  ~50 entradas: watcher armado, juego iniciado/parado, subida en
+  curso/completada/fallida, auto-restore, versiones nuevas en
+  cloud, throttled, quota_reached, offline/online. Timestamps
+  relativos refrescados cada segundo.
+- `lib/stores/live.ts`: single source of truth para la UI viva.
+  Suscribe a todos los topics `agent://*` al montar `App.svelte` y
+  desuscribe al destruir. Ring buffer FIFO acotado a 80 entradas;
+  `seenArmed: Set<save_id>` dedupe el primer `watcher-armed` por
+  save tras re-armado del watcher.
+- `crates/hoard-desktop/src/commands/cloud_pull.rs`: poller dedicado
+  al cloud, cadencia `cloud_poll_interval_secs` (default 10 s,
+  slider 5..=300 s en Settings). Un GET ligero al manifest del user
+  por tick; compara `(save_id, version)` con la última seeded y
+  emite `agent://cloud-pull-completed` con `new_versions`. **No
+  descarga nada** — sólo notifica; el scheduler horario sigue
+  gobernando los restores reales. El primer poll tras login se
+  considera seeding y no cuenta como "nuevas versiones" (evita
+  spam de notificaciones al iniciar sesión).
+- Topics `agent://*` nuevos: `watcher-armed`, `upload-started`,
+  `upload-completed`, `cloud-pull-started`, `cloud-pull-completed`,
+  `quota-reached`, `throttled`, `offline`. Los topics legacy
+  (`backup-started`, `backup-success`, etc.) coexisten para no
+  romper consumers existentes.
+- Pref `cloud_poll_interval_secs` (5..=300, default 10) y
+  `live_activity_visible` (default true). Settings → Cloud expone
+  ambas: slider del intervalo de poll y toggle del panel.
+- 36 nuevas claves i18n mirroreadas en los 8 locales:
+  `settings.cloud_poll_*`, `settings.live_activity_*`, `status.*`,
+  `activity.*`.
+- ADR [0016](docs/decisions/0016-live-status-and-dual-cadence.md):
+  contrato del bus `agent://*`, store derivado, cadencia dual
+  (scheduler horario + cloud poll de 10 s), razón por la que el
+  poller no descarga.
+
+### Changed
+- `commands/agent.rs` re-emite los `AgentEvent` también con los
+  topics nuevos (`upload-started`, `upload-completed`, `throttled`)
+  además de los legacy. `BackupScheduled { reason:
+  FilesystemSettled }` se sirve también como `agent://throttled`.
+- `App.svelte` arranca el poller con `subscribeLive()` después de
+  `hydratePrefs` y lo apaga en `onDestroy`. Nuevo botón
+  `ScrollText` en el header al lado del icono de actualización.
+- Fallback de versión en `App.svelte`: `"1.6.1"` → `"1.7.0"`.
+
 ## [1.6.1] — 2026-05-25
 
 Hoard Cloud entra en escena con dos planes (Free y Pro), tope por

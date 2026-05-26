@@ -3,6 +3,7 @@
 *.db-wal
 *.db-shm
 .env
+.info
 .env.local
 deploy/config.toml
 /dist
