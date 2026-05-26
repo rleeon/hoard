@@ -12,13 +12,10 @@
 #     HOARD__CLOUD__LEMONSQUEEZY__API_KEY=...
 #   fly deploy --dockerfile deploy/fly/Dockerfile
 
-app = "hoard-server-cloud"
+app = "hoard-server"
 primary_region = "cdg"
 kill_signal = "SIGINT"
 kill_timeout = "10s"
-
-[build]
-  dockerfile = "deploy/fly/Dockerfile"
 
 [env]
   HOARD__SERVER__HOST = "0.0.0.0"

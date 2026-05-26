@@ -1,0 +1,51 @@
+# Docker build context exclusions.
+# Without this, `target/` (14 GB+) and node_modules ship to the remote
+# builder on every deploy and turn a 5-minute build into a half-hour one.
+
+# Rust build artifacts (cargo caches inside the image instead)
+target/
+**/target/
+
+# Node / pnpm
+node_modules/
+**/node_modules/
+.pnpm-store/
+**/.pnpm-store/
+
+# Frontend build output (rebuilt inside the image when needed; the cloud
+# server image doesn't ship the desktop UI bundle anyway)
+crates/hoard-desktop/ui/dist/
+crates/hoard-desktop/ui/build/
+crates/hoard-desktop/ui/.svelte-kit/
+
+# Tauri build output
+crates/hoard-desktop/src-tauri/target/
+
+# Git + local config (we still need .git when cargo wants vcs metadata,
+# but Fly's distroless runtime never needs it — keep .git out of context)
+.git/
+.github/
+.gitignore
+.githooks/
+
+# Secrets and local env
+.env
+.env.local
+.env.*.local
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docs (not consumed by the build)
+docs/
+*.md
+!Cargo.lock
+!Cargo.toml
+
+# Local data + temp
+data/
+tmp/
+*.log

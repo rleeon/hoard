@@ -7,7 +7,7 @@
 # The build context MUST be the repo root (so the Cargo workspace resolves).
 
 # ---- 1. Builder ------------------------------------------------------------
-FROM rust:1.83-slim-bookworm AS builder
+FROM rust:1.92-slim-bookworm AS builder
 
 # Build deps. libssl-dev for reqwest's native-tls (sqlx uses bundled sqlite,
 # so no libsqlite3 needed). pkg-config is required to find openssl.
