@@ -15,7 +15,9 @@
 
   let next = $derived($page.url.searchParams.get('next') ?? '/account');
   let redirectTo = $derived(
-    typeof window !== 'undefined' ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` : ''
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`
+      : ''
   );
 
   onMount(() => {
@@ -53,14 +55,22 @@
   }
 </script>
 
-<section class="mx-auto flex max-w-md flex-col items-center px-4 py-20 sm:px-6">
-  <LogoMark size={44} />
-  <h1 class="mt-4 text-3xl font-bold tracking-tight text-white">{$_('login.title')}</h1>
+<svelte:head>
+  <title>{`${$_('login.title')} — Hoard`}</title>
+</svelte:head>
+
+<section class="relative mx-auto flex max-w-md flex-col items-center px-4 py-20 sm:px-6">
+  <div
+    class="pointer-events-none absolute -top-24 left-1/2 -z-10 h-72 w-[28rem] -translate-x-1/2 rounded-full bg-emerald-500/10 blur-3xl"
+  ></div>
+
+  <LogoMark size={48} />
+  <h1 class="mt-5 text-3xl font-bold tracking-tight text-white">{$_('login.title')}</h1>
   <p class="mt-2 text-sm text-zinc-400">{$_('login.subtitle')}</p>
 
   <div class="mt-10 w-full space-y-5">
     <button
-      class="flex w-full items-center justify-center gap-3 rounded-lg border border-zinc-700 bg-white px-4 py-3 text-sm font-medium text-zinc-900 transition-transform hover:-translate-y-px disabled:opacity-50"
+      class="ring-focus flex w-full items-center justify-center gap-3 rounded-lg border border-zinc-300/20 bg-white px-4 py-3 text-sm font-medium text-zinc-900 shadow-[0_8px_24px_-12px_rgba(255,255,255,0.25)] transition-all hover:-translate-y-px hover:shadow-[0_12px_28px_-12px_rgba(255,255,255,0.45)] disabled:opacity-50"
       onclick={withGoogle}
       disabled={busy}
     >
@@ -86,13 +96,17 @@
     </button>
 
     <div class="flex items-center gap-3">
-      <div class="h-px flex-1 bg-zinc-800"></div>
-      <span class="text-xs uppercase tracking-wider text-zinc-500">{$_('login.email_label')}</span>
-      <div class="h-px flex-1 bg-zinc-800"></div>
+      <div class="h-px flex-1 bg-white/10"></div>
+      <span class="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+        {$_('login.email_label')}
+      </span>
+      <div class="h-px flex-1 bg-white/10"></div>
     </div>
 
     {#if sent}
-      <div class="rounded-xl border border-emerald-700/40 bg-emerald-900/20 p-4 text-sm text-emerald-200">
+      <div
+        class="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.07] p-4 text-sm text-emerald-200"
+      >
         {$_('login.email_sent', { values: { email } })}
       </div>
     {:else}
@@ -102,9 +116,9 @@
           required
           bind:value={email}
           placeholder={$_('login.email_placeholder')}
-          class="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/30"
+          class="ring-focus w-full rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 transition-colors focus:border-emerald-500/60 focus:bg-white/[0.05] focus:outline-none"
         />
-        <Button type="submit" variant="primary" full disabled={busy}>
+        <Button type="submit" variant="primary" full disabled={busy} loading={busy}>
           {$_('login.email_cta')}
         </Button>
       </form>

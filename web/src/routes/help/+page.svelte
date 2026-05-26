@@ -2,6 +2,9 @@
   import { _ } from 'svelte-i18n';
   import Button from '$lib/components/Button.svelte';
   import StatusDot from '$lib/components/StatusDot.svelte';
+  import { reveal } from '$lib/actions/reveal';
+  import { slide } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { ChevronDown, Mail, Github } from 'lucide-svelte';
 
   const faqs = [
@@ -17,7 +20,12 @@
   let open = $state<number | null>(0);
 </script>
 
-<section class="mx-auto max-w-3xl px-4 py-20 sm:px-6">
+<svelte:head>
+  <title>{`${$_('help.title')} — Hoard`}</title>
+  <link rel="canonical" href="https://hoard.services/help" />
+</svelte:head>
+
+<section class="mx-auto max-w-3xl px-4 py-20 sm:px-6 sm:py-24">
   <div class="text-center">
     <h1 class="text-balance text-4xl font-bold tracking-tight text-white sm:text-5xl">
       {$_('help.title')}
@@ -30,19 +38,29 @@
 
   <div class="mt-5 space-y-2">
     {#each faqs as f, i (f.q)}
-      <div class="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40">
+      <div
+        class="reveal overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02] transition-colors hover:border-white/15"
+        use:reveal={{ delay: i * 40 }}
+      >
         <button
-          class="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-zinc-900/80"
+          class="flex w-full items-center justify-between gap-4 px-5 py-4 text-left ring-focus transition-colors hover:bg-white/[0.04]"
           onclick={() => (open = open === i ? null : i)}
           aria-expanded={open === i}
+          aria-controls={`faq-${i}`}
         >
           <span class="font-medium text-zinc-100">{$_(f.q)}</span>
           <ChevronDown
-            class="h-4 w-4 flex-none text-zinc-400 transition-transform {open === i ? 'rotate-180' : ''}"
+            class="h-4 w-4 flex-none text-zinc-400 transition-transform duration-300 {open === i
+              ? 'rotate-180 text-emerald-400'
+              : ''}"
           />
         </button>
         {#if open === i}
-          <div class="border-t border-zinc-800 px-5 py-4 text-sm leading-relaxed text-zinc-400">
+          <div
+            id={`faq-${i}`}
+            class="border-t border-white/[0.06] px-5 py-4 text-sm leading-relaxed text-zinc-400"
+            transition:slide={{ duration: 220, easing: cubicOut }}
+          >
             {$_(f.a)}
           </div>
         {/if}

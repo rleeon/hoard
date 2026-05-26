@@ -1,16 +1,18 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: oklch(0.16 0 0);
-  --color-bg-elev: oklch(0.22 0 0);
+  --color-bg: oklch(0.14 0.005 160);
+  --color-bg-elev: oklch(0.20 0.008 160);
   --color-fg: oklch(0.98 0 0);
-  --color-fg-muted: oklch(0.7 0 0);
-  --color-border: oklch(0.32 0 0);
-  --color-accent: oklch(0.6 0.14 158);
-  --color-accent-hover: oklch(0.7 0.16 160);
+  --color-fg-muted: oklch(0.68 0.01 160);
+  --color-border: oklch(0.30 0.01 160);
+  --color-accent: oklch(0.65 0.16 160);
+  --color-accent-hover: oklch(0.74 0.18 162);
 
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono",
+    "Menlo", monospace;
 }
 
 html,
@@ -18,8 +20,30 @@ body {
   height: 100%;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+}
+
 body {
   font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01", "ss03";
+  background:
+    radial-gradient(60rem 60rem at 20% -10%, rgba(16, 185, 129, 0.06), transparent 70%),
+    radial-gradient(50rem 50rem at 90% 110%, rgba(45, 212, 191, 0.04), transparent 70%),
+    #050706;
+}
+
+/* very faint grain across the whole site */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
 }
 
 @keyframes float {
@@ -27,37 +51,153 @@ body {
   50% { transform: translateY(-8px); }
 }
 @keyframes pulse-glow {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55); opacity: 0.95; }
+  50%       { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); opacity: 1; }
 }
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes drift {
+  0%   { transform: translate3d(-3%, -2%, 0) scale(1); }
+  50%  { transform: translate3d(3%, 4%, 0) scale(1.05); }
+  100% { transform: translate3d(-3%, -2%, 0) scale(1); }
+}
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+@keyframes sweep {
+  0%   { transform: translateX(-120%) skewX(-20deg); }
+  100% { transform: translateX(220%) skewX(-20deg); }
 }
 
-.animate-float { animation: float 4s ease-in-out infinite; }
-.animate-pulse-glow { animation: pulse-glow 2.4s ease-in-out infinite; }
-.animate-fade-up { animation: fade-up 0.6s ease-out both; }
+.animate-float       { animation: float 4s ease-in-out infinite; }
+.animate-pulse-glow  { animation: pulse-glow 2.6s ease-in-out infinite; }
+.animate-fade-up     { animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-drift       { animation: drift 18s ease-in-out infinite; }
+.animate-blink       { animation: blink 1.05s steps(1) infinite; }
 
 .shimmer {
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(16, 185, 129, 0.15),
+    rgba(16, 185, 129, 0.18),
     transparent
   );
   background-size: 200% 100%;
   animation: shimmer 2.4s linear infinite;
 }
 
+/* Reveal-on-scroll baseline */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
 /* utility for the dotted grid backdrop */
 .grid-bg {
   background-image:
-    radial-gradient(circle at center, rgba(16, 185, 129, 0.08) 0%, transparent 60%),
-    radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-  background-size: auto, 24px 24px;
+    radial-gradient(circle at center, rgba(16, 185, 129, 0.10) 0%, transparent 55%),
+    radial-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: auto, 26px 26px;
+}
+
+/* spotlight effect for cards: drives a radial gradient from cursor */
+.spotlight {
+  position: relative;
+  isolation: isolate;
+}
+.spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    240px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(16, 185, 129, 0.16),
+    transparent 60%
+  );
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+  z-index: 0;
+}
+.spotlight:hover::before,
+.spotlight:focus-within::before {
+  opacity: 1;
+}
+.spotlight > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* gentle link underline */
+.link-underline {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-size: 0% 1px;
+  background-position: 0 100%;
+  transition: background-size 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.link-underline:hover,
+.link-underline:focus-visible {
+  background-size: 100% 1px;
+}
+
+/* focus ring shared across the site */
+.ring-focus:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px #050706,
+    0 0 0 4px rgba(16, 185, 129, 0.55);
+}
+
+/* respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* view transitions (Chrome/Edge today; harmless elsewhere) */
+@view-transition {
+  navigation: auto;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.28s;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* keep cursor caret stable inside terminal */
+.term-caret {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  vertical-align: -2px;
+  background: currentColor;
+  border-radius: 1px;
+  margin-left: 2px;
 }
