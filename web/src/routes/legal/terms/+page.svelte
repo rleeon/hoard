@@ -30,18 +30,23 @@
     {#if isEs}
       <p>
         Estos Términos rigen el uso del servicio Hoard ("Hoard", "el Servicio", "nosotros"),
-        operado por Rai León Oliva, persona física residente en España, contactable en
+        operado por <strong>Raimundo León Oliva</strong>, persona física residente en
+        España, fundador y responsable de la plataforma Hoard, contactable en
         <a href="mailto:support@hoard.services">support@hoard.services</a>. Al crear una cuenta
         o usar el Servicio aceptas estos Términos. Si no estás de acuerdo, no uses el Servicio.
       </p>
 
       <h2>1. Qué es Hoard</h2>
       <p>
-        Hoard es un servicio de sincronización en la nube de partidas guardadas de videojuegos.
-        Una aplicación de escritorio detecta archivos de save en tu equipo, genera snapshots
-        firmados por contenido (SHA-256), los sube a almacenamiento en la UE y te permite
-        restaurar versiones anteriores. El código del cliente y del servidor es open source
-        bajo licencia AGPL-3.0 y puede ser auto-alojado por cualquiera.
+        Hoard es una plataforma de servicios bajo el dominio
+        <a href="https://hoard.services">hoard.services</a>. Estos Términos cubren el
+        servicio actualmente disponible: sincronización en la nube de partidas guardadas de
+        videojuegos. Una aplicación de escritorio detecta archivos de save en tu equipo,
+        genera snapshots firmados por contenido (SHA-256), los sube a almacenamiento en la
+        UE y te permite restaurar versiones anteriores. El código del cliente y del servidor
+        es open source bajo licencia AGPL-3.0 y puede ser auto-alojado por cualquiera. Si
+        en el futuro lanzamos servicios adicionales bajo el mismo dominio, publicaremos
+        términos específicos para ellos o ampliaremos los presentes.
       </p>
 
       <h2>2. Cuenta y elegibilidad</h2>
@@ -178,7 +183,8 @@
     {:else}
       <p>
         These Terms govern use of the Hoard service ("Hoard", "the Service", "we"), operated
-        by Rai León Oliva, a natural person resident in Spain, reachable at
+        by <strong>Raimundo León Oliva</strong>, a natural person resident in Spain, founder
+        and operator of the Hoard platform, reachable at
         <a href="mailto:support@hoard.services">support@hoard.services</a>. By creating an
         account or using the Service you accept these Terms. If you do not agree, do not use
         the Service.
@@ -186,10 +192,15 @@
 
       <h2>1. What Hoard is</h2>
       <p>
-        Hoard is a cloud sync service for video game save files. A desktop application
-        detects save files on your machine, produces content-addressed snapshots (SHA-256),
-        uploads them to EU-based storage, and lets you restore previous versions. Both the
-        client and server are open source under AGPL-3.0 and can be self-hosted by anyone.
+        Hoard is a services platform under the
+        <a href="https://hoard.services">hoard.services</a> domain. These Terms cover the
+        currently available service: cloud sync for video game save files. A desktop
+        application detects save files on your machine, produces content-addressed
+        snapshots (SHA-256), uploads them to EU-based storage, and lets you restore
+        previous versions. Both the client and server are open source under AGPL-3.0 and
+        can be self-hosted by anyone. If we launch additional services under the same
+        domain in the future, we will publish specific terms for them or extend the
+        present ones.
       </p>
 
       <h2>2. Account and eligibility</h2>

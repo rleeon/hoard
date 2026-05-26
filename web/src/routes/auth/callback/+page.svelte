@@ -1,13 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { _ } from 'svelte-i18n';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { supabase } from '$lib/auth/supabase';
 
-  let message = $state('Signing you in…');
+  let message = $state('');
   let error = $state<string | null>(null);
 
   onMount(async () => {
+    message = $_('callback.signing_in');
     try {
       const { data, error: e } = await supabase.auth.getSession();
       if (e) throw e;
@@ -23,7 +25,7 @@
           const next = $page.url.searchParams.get('next') ?? '/account';
           goto(next, { replaceState: true });
         } else {
-          error = 'Could not complete sign-in. Try again.';
+          error = $_('callback.failed_generic');
           message = '';
         }
       }, 500);
@@ -36,9 +38,11 @@
 
 <section class="mx-auto flex max-w-md flex-col items-center px-4 py-32 text-center sm:px-6">
   {#if error}
-    <h1 class="text-2xl font-semibold text-white">Sign-in failed</h1>
+    <h1 class="text-2xl font-semibold text-white">{$_('callback.failed_title')}</h1>
     <p class="mt-2 text-sm text-zinc-400">{error}</p>
-    <a href="/login" class="mt-6 text-sm text-emerald-400 hover:underline">Back to sign-in</a>
+    <a href="/login" class="mt-6 text-sm text-emerald-400 hover:underline">
+      {$_('callback.back_to_signin')}
+    </a>
   {:else}
     <div class="h-10 w-10 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent"></div>
     <p class="mt-6 text-sm text-zinc-400">{message}</p>

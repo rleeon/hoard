@@ -65,22 +65,20 @@
   }
 
   async function unlink(id: string) {
-    if (!confirm('Unlink this device?')) return;
+    if (!confirm($_('account.confirm_unlink'))) return;
     await api.unlinkDevice(id);
     devices = devices.filter((d) => d.id !== id);
   }
 
   async function exportAll() {
     await api.requestAccountExport();
-    alert('Export requested. You will receive an email when ready.');
+    alert($_('account.export_requested'));
   }
 
   async function deleteAccount() {
-    const ok = confirm(
-      'This permanently deletes your account and every save. Type yes in the next prompt to continue.'
-    );
+    const ok = confirm($_('account.confirm_delete_intro'));
     if (!ok) return;
-    const c = prompt('Type DELETE to confirm');
+    const c = prompt($_('account.confirm_delete_type'));
     if (c !== 'DELETE') return;
     await api.deleteAccount();
     await auth.signOut();
@@ -90,12 +88,12 @@
   function timeAgo(iso: string): string {
     const ms = Date.now() - new Date(iso).getTime();
     const s = Math.floor(ms / 1000);
-    if (s < 60) return `${s}s ago`;
+    if (s < 60) return $_('account.time_seconds_ago', { values: { n: s } });
     const m = Math.floor(s / 60);
-    if (m < 60) return `${m}m ago`;
+    if (m < 60) return $_('account.time_minutes_ago', { values: { n: m } });
     const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    return `${Math.floor(h / 24)}d ago`;
+    if (h < 24) return $_('account.time_hours_ago', { values: { n: h } });
+    return $_('account.time_days_ago', { values: { n: Math.floor(h / 24) } });
   }
 </script>
 
@@ -151,7 +149,9 @@
         <span class="text-3xl font-bold text-white">{planLabel}</span>
         {#if p.plan !== 'free'}
           <span class="text-sm text-zinc-400">
-            {plan.priceMonthly.toLocaleString('es-ES')} €/mes
+            {$_('account.price_per_month', {
+              values: { price: plan.priceMonthly.toLocaleString('es-ES') }
+            })}
           </span>
         {/if}
       </div>
@@ -174,13 +174,13 @@
         <QuotaBar
           used={p.storageBytes}
           total={plan.storageBytes}
-          label="Storage"
+          label={$_('account.storage_label')}
           formatted={$_('account.storage_used', {
             values: { used: formatBytes(p.storageBytes), quota: formatPlanQuota(p.plan) }
           })}
         />
         <div class="flex items-baseline justify-between text-sm">
-          <span class="text-zinc-300">Devices</span>
+          <span class="text-zinc-300">{$_('account.devices_label')}</span>
           <span class="font-medium text-zinc-200 tabular-nums">
             {#if plan.devices === null}
               {$_('account.devices_unlimited', { values: { used: p.devicesCount } })}
@@ -194,7 +194,7 @@
 
     <Card title={$_('account.devices_section')}>
       {#if devices.length === 0}
-        <p class="text-sm text-zinc-500">No devices linked yet. Sign in from the desktop app to see it here.</p>
+        <p class="text-sm text-zinc-500">{$_('account.no_devices')}</p>
       {:else}
         <ul class="divide-y divide-zinc-800">
           {#each devices as d (d.id)}

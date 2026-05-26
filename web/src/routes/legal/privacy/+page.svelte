@@ -31,8 +31,8 @@
       <p>
         Esta Política explica qué datos personales recogemos sobre ti cuando usas Hoard,
         para qué los usamos, con quién los compartimos y qué derechos tienes. El
-        responsable del tratamiento es Rai León Oliva, persona física residente en España,
-        contactable en
+        responsable del tratamiento es <strong>Raimundo León Oliva</strong>, persona física
+        residente en España, fundador y operador de la plataforma Hoard, contactable en
         <a href="mailto:support@hoard.services">support@hoard.services</a>.
       </p>
 
@@ -180,7 +180,8 @@
       <p>
         This Policy explains what personal data we collect about you when you use Hoard,
         why we use it, who we share it with and what rights you have. The data controller
-        is Rai León Oliva, a natural person resident in Spain, reachable at
+        is <strong>Raimundo León Oliva</strong>, a natural person resident in Spain, founder
+        and operator of the Hoard platform, reachable at
         <a href="mailto:support@hoard.services">support@hoard.services</a>.
       </p>
 

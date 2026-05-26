@@ -114,6 +114,10 @@
       <p class="text-sm text-red-400">{error}</p>
     {/if}
 
-    <p class="text-center text-xs text-zinc-500">{$_('login.terms')}</p>
+    <p
+      class="text-center text-xs text-zinc-500 [&_a]:text-emerald-400 [&_a]:underline [&_a]:underline-offset-2 [&_a:hover]:text-emerald-300"
+    >
+      {@html $_('login.terms_html')}
+    </p>
   </div>
 </section>

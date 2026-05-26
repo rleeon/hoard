@@ -64,16 +64,16 @@
 
   <div class="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 text-sm text-zinc-400">
     <div>
-      <h3 class="font-semibold text-zinc-200">Cancel anytime</h3>
-      <p class="mt-1">No contracts. Drop to Free at the end of the billing period and keep your data.</p>
+      <h3 class="font-semibold text-zinc-200">{$_('pricing.note_cancel_title')}</h3>
+      <p class="mt-1">{$_('pricing.note_cancel_body')}</p>
     </div>
     <div>
-      <h3 class="font-semibold text-zinc-200">Merchant of Record</h3>
-      <p class="mt-1">VAT and invoicing handled by Lemon Squeezy. Paid in EUR, included tax.</p>
+      <h3 class="font-semibold text-zinc-200">{$_('pricing.note_mor_title')}</h3>
+      <p class="mt-1">{$_('pricing.note_mor_body')}</p>
     </div>
     <div>
-      <h3 class="font-semibold text-zinc-200">Zero lock-in</h3>
-      <p class="mt-1">Export every save in original format any time. Self-host the same binary if you want.</p>
+      <h3 class="font-semibold text-zinc-200">{$_('pricing.note_lockin_title')}</h3>
+      <p class="mt-1">{$_('pricing.note_lockin_body')}</p>
     </div>
   </div>
 </section>
