@@ -175,7 +175,8 @@ body::after {
     0 0 0 4px rgba(16, 185, 129, 0.55);
 }
 
-/* respect reduced motion */
+/* respect reduced motion — but the hero terminal is product demo
+   content, not decoration, so its spinner/caret keep animating. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -188,6 +189,15 @@ body::after {
   .reveal {
     opacity: 1 !important;
     transform: none !important;
+  }
+  .term-spinner {
+    animation: spin 0.85s linear infinite !important;
+  }
+  .term-dots::after {
+    animation: term-dots 1.05s steps(4, end) infinite !important;
+  }
+  .animate-blink {
+    animation: blink 1.05s steps(1) infinite !important;
   }
 }
 

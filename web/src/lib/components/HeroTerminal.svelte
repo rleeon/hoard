@@ -71,7 +71,6 @@
   let activeIdx = $state(-1);
   let busyIdx = $state(-1);
   let paused = $state(false);
-  let reducedMotion = $state(false);
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   function cancel() {
@@ -79,12 +78,6 @@
       clearTimeout(timer);
       timer = null;
     }
-  }
-
-  function showAll() {
-    visible = script.map((l) => l.text.length);
-    activeIdx = script.length - 1;
-    busyIdx = -1;
   }
 
   async function play() {
@@ -134,13 +127,6 @@
   }
 
   onMount(() => {
-    if (typeof window !== 'undefined') {
-      reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    }
-    if (reducedMotion) {
-      showAll();
-      return;
-    }
     play();
     return () => {
       paused = true;
@@ -149,12 +135,10 @@
   });
 
   function handleEnter() {
-    if (reducedMotion) return;
     paused = true;
     cancel();
   }
   function handleLeave() {
-    if (reducedMotion) return;
     if (!paused) return;
     paused = false;
     play();
