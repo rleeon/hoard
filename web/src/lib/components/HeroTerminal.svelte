@@ -10,6 +10,8 @@
     instant?: boolean;
     /** delay before this line begins, in ms */
     delay?: number;
+    /** if set, the line first shows with a spinner for this many ms before resolving */
+    spinnerMs?: number;
   };
 
   const SAVE_ID_FULL = '8e3a9f4c-2b71-4d68-a3f1-91d2b6c4f7e0';
@@ -38,33 +40,36 @@
       kind: 'output-muted',
       text: 'uploading from /home/raimundo/.config/StardewValley/Saves',
       instant: true,
-      delay: 320
+      delay: 240,
+      spinnerMs: 1000
     },
     {
       kind: 'output-emerald',
       text: 'snapshot v48 created (12 files, 8.34 MiB)',
       instant: true,
-      delay: 280
+      delay: 200
     },
     { kind: 'spacer', text: '', delay: 480 },
     { kind: 'prompt', text: 'hoard restore 8e3a9f4c --version 43', speed: 55 },
     {
       kind: 'output-muted',
-      text: `restoring v43 of 8e3a9f4c-2b71-4d68-a3f1-… to ~/.config/StardewValley/Saves`,
+      text: 'restoring v43 of 8e3a9f4c-2b71-4d68-a3f1-... to ~/.config/StardewValley/Saves',
       instant: true,
-      delay: 300
+      delay: 240,
+      spinnerMs: 1000
     },
     {
       kind: 'output-emerald',
       text: 'restored 12 files (7.94 MiB)',
       instant: true,
-      delay: 240
+      delay: 200
     }
   ];
 
   // visible[i] = how many chars of script[i] are shown
   let visible = $state<number[]>(script.map(() => 0));
   let activeIdx = $state(-1);
+  let busyIdx = $state(-1);
   let paused = $state(false);
   let reducedMotion = $state(false);
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -79,11 +84,13 @@
   function showAll() {
     visible = script.map((l) => l.text.length);
     activeIdx = script.length - 1;
+    busyIdx = -1;
   }
 
   async function play() {
     visible = script.map(() => 0);
     activeIdx = -1;
+    busyIdx = -1;
 
     for (let i = 0; i < script.length; i++) {
       const line = script[i];
@@ -92,10 +99,17 @@
       if (line.delay) await wait(line.delay);
       if (paused) return;
 
+      if (line.spinnerMs) {
+        busyIdx = i;
+        await wait(line.spinnerMs);
+        if (paused) return;
+        busyIdx = -1;
+      }
+
       if (line.instant || line.kind === 'spacer') {
         visible[i] = line.text.length;
       } else {
-        const speed = line.speed ?? 55; // chars per second
+        const speed = line.speed ?? 55;
         const perChar = 1000 / speed;
         for (let c = 1; c <= line.text.length; c++) {
           if (paused) return;
@@ -105,13 +119,11 @@
       }
     }
 
-    // hold final state for a beat, then restart
     await wait(4200);
     if (!paused) play();
   }
 
   function jitter() {
-    // ±25% so typing doesn't sound like a metronome
     return (Math.random() - 0.5) * 28;
   }
 
@@ -157,7 +169,6 @@
   onfocusout={handleLeave}
   role="presentation"
 >
-  <!-- ambient glow ring -->
   <div
     class="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-emerald-500/20 via-transparent to-teal-500/10 opacity-60"
     aria-hidden="true"
@@ -169,7 +180,7 @@
       <span class="h-3 w-3 rounded-full bg-amber-500/70"></span>
       <span class="h-3 w-3 rounded-full bg-emerald-500/70"></span>
       <span class="ml-3 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-        hoard — ~/.config/StardewValley/Saves
+        hoard ~ /.config/StardewValley/Saves
       </span>
       {#if paused}
         <span
@@ -183,10 +194,6 @@
 
     <pre
       class="m-0 overflow-x-auto whitespace-pre font-mono text-[13px] leading-[1.65] sm:text-sm"
-    ><code class="block">{#each script as line, i (i)}{#if line.kind === 'spacer'}<span class="block h-2"></span>{:else}<span class="block">{#if line.kind === 'prompt'}<span class="text-emerald-500/80">$</span> <span class="text-zinc-100">{line.text.slice(0, visible[i])}</span>{:else if line.kind === 'output-emerald'}<span class="text-emerald-300"
-              >→ {line.text.slice(0, visible[i])}</span
-            >{:else if line.kind === 'output-muted'}<span class="text-zinc-500"
-              >{line.text.slice(0, visible[i])}</span
-            >{:else}<span class="text-zinc-300">{line.text.slice(0, visible[i])}</span>{/if}{#if activeIdx === i && visible[i] < line.text.length && !line.instant}<span class="term-caret animate-blink bg-emerald-400"></span>{/if}</span>{/if}{/each}</code></pre>
+    ><code class="block">{#each script as line, i (i)}{#if line.kind === 'spacer'}<span class="block h-2"></span>{:else if busyIdx === i}<span class="block"><span class="inline-flex items-center gap-2 text-zinc-500"><span class="term-spinner" aria-hidden="true"></span><span>{line.kind === 'output-muted' && line.text.startsWith('uploading') ? 'uploading' : line.kind === 'output-muted' && line.text.startsWith('restoring') ? 'restoring' : 'working'}<span class="term-dots"></span></span></span></span>{:else}<span class="block">{#if line.kind === 'prompt'}<span class="text-emerald-500/80">$</span> <span class="text-zinc-100">{line.text.slice(0, visible[i])}</span>{:else if line.kind === 'output-emerald'}<span class="text-emerald-300">{line.text.slice(0, visible[i])}</span>{:else if line.kind === 'output-muted'}<span class="text-zinc-500">{line.text.slice(0, visible[i])}</span>{:else}<span class="text-zinc-300">{line.text.slice(0, visible[i])}</span>{/if}{#if activeIdx === i && visible[i] < line.text.length && !line.instant}<span class="term-caret animate-blink bg-emerald-400"></span>{/if}</span>{/if}{/each}</code></pre>
   </div>
 </div>

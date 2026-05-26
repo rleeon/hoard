@@ -30,12 +30,8 @@
       <ul class="mt-3 space-y-2 text-sm text-zinc-400">
         <li><a class="link-underline hover:text-white" href="/pricing">{$_('nav.pricing')}</a></li>
         <li>
-          <a
-            class="link-underline hover:text-white"
-            href="https://github.com/rleeon/hoard/releases/latest"
-            rel="noreferrer"
-          >
-            {$_('nav.get_app')}
+          <a class="link-underline hover:text-white" href="/download">
+            {$_('nav.download')}
           </a>
         </li>
         <li>

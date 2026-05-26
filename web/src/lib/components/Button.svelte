@@ -37,12 +37,12 @@
 
   const variants: Record<Variant, string> = {
     primary:
-      'bg-emerald-600 text-white shadow-[0_8px_24px_-10px_rgba(16,185,129,0.65)] hover:-translate-y-px hover:bg-emerald-500 hover:shadow-[0_12px_30px_-12px_rgba(16,185,129,0.85)]',
+      'bg-emerald-600 text-white shadow-[0_8px_24px_-10px_rgba(16,185,129,0.65)] hover:bg-emerald-500 hover:shadow-[0_14px_36px_-12px_rgba(16,185,129,0.85)]',
     secondary:
       'border border-white/10 bg-white/[0.04] text-zinc-100 hover:border-white/20 hover:bg-white/[0.08]',
     ghost: 'text-zinc-300 hover:bg-white/[0.05] hover:text-white',
     danger:
-      'bg-red-600 text-white shadow-[0_8px_24px_-10px_rgba(220,38,38,0.55)] hover:-translate-y-px hover:bg-red-500'
+      'bg-red-600 text-white shadow-[0_8px_24px_-10px_rgba(220,38,38,0.55)] hover:bg-red-500 hover:shadow-[0_14px_36px_-12px_rgba(220,38,38,0.7)]'
   };
 
   const sizes: Record<Size, string> = {

@@ -70,7 +70,7 @@
 
   <div class="mt-10 w-full space-y-5">
     <button
-      class="ring-focus flex w-full items-center justify-center gap-3 rounded-lg border border-zinc-300/20 bg-white px-4 py-3 text-sm font-medium text-zinc-900 shadow-[0_8px_24px_-12px_rgba(255,255,255,0.25)] transition-all hover:-translate-y-px hover:shadow-[0_12px_28px_-12px_rgba(255,255,255,0.45)] disabled:opacity-50"
+      class="ring-focus flex w-full items-center justify-center gap-3 rounded-lg border border-zinc-300/20 bg-white px-4 py-3 text-sm font-medium text-zinc-900 shadow-[0_8px_24px_-12px_rgba(255,255,255,0.25)] transition-all hover:shadow-[0_14px_32px_-12px_rgba(255,255,255,0.45)] disabled:opacity-50"
       onclick={withGoogle}
       disabled={busy}
     >

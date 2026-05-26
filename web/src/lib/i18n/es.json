@@ -6,6 +6,7 @@
   "nav.signout": "Cerrar sesión",
   "nav.dashboard": "Panel",
   "nav.get_app": "Descargar",
+  "nav.download": "Descargar",
 
   "hero.eyebrow": "Hoard Cloud",
   "hero.title_1": "Tus partidas guardadas,",
@@ -14,8 +15,8 @@
   "hero.cta_start": "Empieza gratis",
   "hero.cta_selfhost": "Auto-aloja",
   "hero.status_online": "Todos los sistemas funcionando",
-  "hero.status_degraded": "Servicio degradado — ver estado",
-  "hero.status_offline": "Comprobando estado…",
+  "hero.status_degraded": "Servicio degradado · ver estado",
+  "hero.status_offline": "Comprobando estado...",
 
   "features.title": "Hecho como una herramienta, no como una página de marketing",
   "features.versioned.title": "Cada backup es un snapshot",
@@ -33,6 +34,7 @@
 
   "cta_section.title": "Gratis hasta que se te quede pequeño.",
   "cta_section.body": "1 GB, 3 dispositivos, historial completo, sin tarjeta. Pro a 4,49 €/mes cuando la biblioteca lo pida.",
+  "cta_section.cta": "Descargar gratis",
 
   "pricing.title": "Dos planes. Nada más.",
   "pricing.subtitle": "Free es un plan real, no una prueba. Pásate a Pro cuando se agote el espacio — tus datos y tu historial siguen contigo.",
@@ -44,6 +46,8 @@
   "pricing.cta_current": "Plan actual",
   "pricing.cta_choose": "Elegir {plan}",
   "pricing.cta_signin": "Inicia sesión para cambiar de plan",
+  "pricing.cta_download_free": "Descargar gratis",
+  "pricing.cta_buy_pro": "Hazte Pro",
   "pricing.popular_badge": "El más elegido",
   "pricing.note_cancel_title": "Cancela cuando quieras",
   "pricing.note_cancel_body": "Sin contratos. Cancelas y sigues en Pro hasta fin de periodo, luego pasas a Free. Tus datos se quedan.",
@@ -105,7 +109,16 @@
   "account.time_hours_ago": "hace {n} h",
   "account.time_days_ago": "hace {n} días",
 
-  "callback.signing_in": "Iniciando sesión…",
+  "download.title": "Descargar Hoard",
+  "download.subtitle": "Mismo binario para los tres sistemas. La cuenta y los saves siguen iguales.",
+  "download.detected": "Detectado",
+  "download.cta_for": "Descargar para {platform}",
+  "download.all_releases_title": "¿Otra versión o arquitectura?",
+  "download.all_releases_body": "Todas las builds y notas de cambios viven en GitHub Releases.",
+  "download.all_releases_cta": "Ver todas las releases",
+  "download.selfhost_note": "¿Prefieres montar tu propio servidor? Mismo binario en Rust, AGPL-3.0:",
+
+  "callback.signing_in": "Iniciando sesión...",
   "callback.failed_title": "Error al iniciar sesión",
   "callback.failed_generic": "No pudimos terminar el inicio de sesión. Inténtalo de nuevo.",
   "callback.back_to_signin": "Volver al inicio de sesión",

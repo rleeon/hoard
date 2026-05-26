@@ -28,20 +28,30 @@ html {
 body {
   font-family: var(--font-sans);
   font-feature-settings: "cv11", "ss01", "ss03";
-  background:
-    radial-gradient(60rem 60rem at 20% -10%, rgba(16, 185, 129, 0.06), transparent 70%),
-    radial-gradient(50rem 50rem at 90% 110%, rgba(45, 212, 191, 0.04), transparent 70%),
-    #050706;
+  background: #050706;
 }
 
-/* very faint grain across the whole site */
+/* fixed ambient glow — stays put while you scroll so the page never looks
+   "cut" mid-document. Two soft blobs pinned to the viewport. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 0;
-  opacity: 0.035;
+  z-index: -2;
+  background:
+    radial-gradient(55rem 45rem at 15% -5%, rgba(16, 185, 129, 0.07), transparent 60%),
+    radial-gradient(40rem 40rem at 85% 100%, rgba(45, 212, 191, 0.045), transparent 60%);
+}
+
+/* very faint grain over everything */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.03;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
 }
@@ -200,4 +210,34 @@ body::before {
   background: currentColor;
   border-radius: 1px;
   margin-left: 2px;
+}
+
+/* terminal spinner used during the simulated upload/restore */
+.term-spinner {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  border-radius: 50%;
+  border: 1.5px solid rgba(16, 185, 129, 0.25);
+  border-top-color: rgba(16, 185, 129, 0.95);
+  animation: spin 0.85s linear infinite;
+}
+.term-dots {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  width: 1.4em;
+  white-space: nowrap;
+}
+.term-dots::after {
+  content: "...";
+  display: inline-block;
+  animation: term-dots 1.05s steps(4, end) infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes term-dots {
+  0%   { transform: translateX(-2em); }
+  100% { transform: translateX(0); }
 }

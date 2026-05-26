@@ -68,7 +68,7 @@
         class="mt-9 flex flex-col items-center gap-3 sm:flex-row animate-fade-up"
         style="animation-delay:0.2s"
       >
-        <Button href="/login" size="lg" variant="primary">
+        <Button href="/pricing" size="lg" variant="primary">
           {$_('hero.cta_start')}
           <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </Button>
@@ -140,12 +140,9 @@
         </h2>
         <p class="mt-3 text-zinc-400">{$_('cta_section.body')}</p>
         <div class="mt-7 flex flex-wrap gap-3">
-          <Button href="/login" size="lg" variant="primary">
-            {$_('hero.cta_start')}
+          <Button href="/download" size="lg" variant="primary">
+            {$_('cta_section.cta')}
             <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-          </Button>
-          <Button href="/pricing" size="lg" variant="secondary">
-            {$_('nav.pricing')}
           </Button>
         </div>
       </div>

@@ -55,12 +55,12 @@
         {$_('nav.help')}
       </a>
       <a
-        href="https://github.com/rleeon/hoard/releases/latest"
-        target="_blank"
-        rel="noreferrer"
-        class="link-underline ring-focus text-sm text-zinc-400 transition-colors hover:text-white"
+        href="/download"
+        class="link-underline ring-focus text-sm transition-colors {isActive('/download')
+          ? 'text-white'
+          : 'text-zinc-400 hover:text-white'}"
       >
-        {$_('nav.get_app')}
+        {$_('nav.download')}
       </a>
     </div>
 
@@ -95,7 +95,7 @@
       {:else}
         <a
           href="/login"
-          class="group relative inline-flex h-9 items-center overflow-hidden rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white shadow-[0_6px_24px_-8px_rgba(16,185,129,0.65)] ring-focus transition-all hover:-translate-y-px hover:bg-emerald-500 hover:shadow-[0_10px_28px_-10px_rgba(16,185,129,0.85)]"
+          class="group relative inline-flex h-9 items-center overflow-hidden rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white shadow-[0_6px_24px_-8px_rgba(16,185,129,0.65)] ring-focus transition-all hover:bg-emerald-500 hover:shadow-[0_12px_32px_-10px_rgba(16,185,129,0.85)]"
         >
           <span class="relative z-10">{$_('nav.signin')}</span>
           <span
@@ -139,14 +139,8 @@
         <a class="rounded-md px-3 py-2.5 text-zinc-200 hover:bg-white/5" href="/help" onclick={() => (open = false)}>
           {$_('nav.help')}
         </a>
-        <a
-          class="rounded-md px-3 py-2.5 text-zinc-200 hover:bg-white/5"
-          href="https://github.com/rleeon/hoard/releases/latest"
-          target="_blank"
-          rel="noreferrer"
-          onclick={() => (open = false)}
-        >
-          {$_('nav.get_app')}
+        <a class="rounded-md px-3 py-2.5 text-zinc-200 hover:bg-white/5" href="/download" onclick={() => (open = false)}>
+          {$_('nav.download')}
         </a>
         {#if $session}
           <a class="rounded-md px-3 py-2.5 text-zinc-200 hover:bg-white/5" href="/account" onclick={() => (open = false)}>

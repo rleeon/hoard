@@ -1,0 +1,176 @@
+<script lang="ts">
+  import { _ } from 'svelte-i18n';
+  import Button from '$lib/components/Button.svelte';
+  import { reveal } from '$lib/actions/reveal';
+  import { spotlight } from '$lib/actions/spotlight';
+  import { onMount } from 'svelte';
+  import { Apple, Github, Monitor } from 'lucide-svelte';
+
+  type Platform = 'windows' | 'macos' | 'linux';
+  let detected = $state<Platform | null>(null);
+
+  const RELEASE_BASE = 'https://github.com/rleeon/hoard/releases/latest';
+
+  type Asset = {
+    label: string;
+    sublabel: string;
+    href: string;
+  };
+
+  const downloads: Record<Platform, { name: string; assets: Asset[] }> = {
+    windows: {
+      name: 'Windows',
+      assets: [
+        {
+          label: 'Hoard-Setup.msi',
+          sublabel: 'Windows 10/11 · x64',
+          href: `${RELEASE_BASE}`
+        }
+      ]
+    },
+    macos: {
+      name: 'macOS',
+      assets: [
+        {
+          label: 'Hoard.dmg',
+          sublabel: 'macOS 12+ · Apple Silicon / Intel',
+          href: `${RELEASE_BASE}`
+        }
+      ]
+    },
+    linux: {
+      name: 'Linux',
+      assets: [
+        {
+          label: 'hoard.deb',
+          sublabel: 'Debian / Ubuntu · x64',
+          href: `${RELEASE_BASE}`
+        },
+        {
+          label: 'hoard.AppImage',
+          sublabel: 'Universal · x64',
+          href: `${RELEASE_BASE}`
+        }
+      ]
+    }
+  };
+
+  onMount(() => {
+    const ua = navigator.userAgent.toLowerCase();
+    if (ua.includes('win')) detected = 'windows';
+    else if (ua.includes('mac')) detected = 'macos';
+    else if (ua.includes('linux')) detected = 'linux';
+  });
+
+  const icons: Record<Platform, typeof Apple> = {
+    windows: Monitor,
+    macos: Apple,
+    linux: Monitor
+  };
+
+  const order: Platform[] = ['windows', 'macos', 'linux'];
+</script>
+
+<svelte:head>
+  <title>{`${$_('download.title')} — Hoard`}</title>
+  <link rel="canonical" href="https://hoard.services/download" />
+</svelte:head>
+
+<section class="relative mx-auto max-w-5xl px-4 py-20 sm:px-6 sm:py-24">
+  <div class="text-center">
+    <h1 class="text-balance text-4xl font-bold tracking-tight text-white sm:text-5xl">
+      {$_('download.title')}
+    </h1>
+    <p class="mt-4 text-pretty text-lg text-zinc-400">{$_('download.subtitle')}</p>
+  </div>
+
+  {#if detected}
+    <div class="reveal mt-10 flex justify-center" use:reveal>
+      <a
+        href={downloads[detected].assets[0].href}
+        target="_blank"
+        rel="noreferrer"
+        class="group relative inline-flex items-center gap-3 overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-600/15 to-emerald-500/[0.04] px-6 py-4 text-left ring-focus transition-colors hover:border-emerald-400/55 hover:bg-emerald-500/10"
+      >
+        <span
+          class="grid h-12 w-12 place-items-center rounded-xl bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-400/30"
+        >
+          {#if detected === 'macos'}
+            <Apple class="h-6 w-6" />
+          {:else}
+            <Monitor class="h-6 w-6" />
+          {/if}
+        </span>
+        <span class="flex flex-col">
+          <span class="text-xs uppercase tracking-wider text-emerald-300/80">
+            {$_('download.detected')}
+          </span>
+          <span class="text-lg font-semibold text-white">
+            {$_('download.cta_for', { values: { platform: downloads[detected].name } })}
+          </span>
+          <span class="text-xs text-zinc-400">{downloads[detected].assets[0].sublabel}</span>
+        </span>
+      </a>
+    </div>
+  {/if}
+
+  <div class="mt-14 grid gap-5 sm:grid-cols-3">
+    {#each order as p, i (p)}
+      <article
+        class="reveal spotlight group flex flex-col rounded-2xl border border-white/[0.06] bg-white/[0.025] p-6 transition-all duration-500 hover:border-emerald-500/30 hover:bg-white/[0.045]"
+        use:reveal={{ delay: i * 70 }}
+        use:spotlight
+      >
+        <div class="flex items-center gap-3">
+          <div
+            class="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-emerald-500/15 to-emerald-500/[0.04] text-emerald-300 ring-1 ring-inset ring-emerald-400/20"
+          >
+            {#if p === 'macos'}
+              <Apple class="h-5 w-5" />
+            {:else}
+              <Monitor class="h-5 w-5" />
+            {/if}
+          </div>
+          <h2 class="text-lg font-semibold text-white">{downloads[p].name}</h2>
+        </div>
+
+        <ul class="mt-5 space-y-2.5">
+          {#each downloads[p].assets as a (a.label)}
+            <li>
+              <a
+                href={a.href}
+                target="_blank"
+                rel="noreferrer"
+                class="block rounded-lg border border-white/[0.06] bg-zinc-900/40 px-4 py-3 transition-colors hover:border-emerald-500/30 hover:bg-emerald-500/[0.06]"
+              >
+                <span class="block text-sm font-medium text-zinc-100">{a.label}</span>
+                <span class="mt-0.5 block text-xs text-zinc-500">{a.sublabel}</span>
+              </a>
+            </li>
+          {/each}
+        </ul>
+      </article>
+    {/each}
+  </div>
+
+  <div
+    class="reveal mt-12 flex flex-col items-center gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-8 text-center sm:flex-row sm:justify-between sm:text-left"
+    use:reveal
+  >
+    <div>
+      <h3 class="text-lg font-semibold text-white">{$_('download.all_releases_title')}</h3>
+      <p class="mt-1.5 text-sm text-zinc-400">{$_('download.all_releases_body')}</p>
+    </div>
+    <Button href={RELEASE_BASE} target="_blank" variant="secondary" size="lg">
+      <Github class="h-4 w-4" />
+      {$_('download.all_releases_cta')}
+    </Button>
+  </div>
+
+  <p class="mt-10 text-center text-xs text-zinc-500">
+    {$_('download.selfhost_note')}
+    <a href="https://github.com/rleeon/hoard#self-host" class="link-underline text-emerald-400 hover:text-emerald-300">
+      {$_('hero.cta_selfhost')}
+    </a>.
+  </p>
+</section>

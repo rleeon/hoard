@@ -6,6 +6,7 @@
   "nav.signout": "Sign out",
   "nav.dashboard": "Dashboard",
   "nav.get_app": "Download",
+  "nav.download": "Download",
 
   "hero.eyebrow": "Hoard Cloud",
   "hero.title_1": "Your game saves,",
@@ -14,8 +15,8 @@
   "hero.cta_start": "Start free",
   "hero.cta_selfhost": "Self-host",
   "hero.status_online": "All systems normal",
-  "hero.status_degraded": "Degraded — see status",
-  "hero.status_offline": "Checking status…",
+  "hero.status_degraded": "Degraded · see status",
+  "hero.status_offline": "Checking status...",
 
   "features.title": "Built like a tool, not a product page",
   "features.versioned.title": "Every backup is a snapshot",
@@ -33,6 +34,7 @@
 
   "cta_section.title": "Free until you outgrow it.",
   "cta_section.body": "1 GB, 3 devices, full history, no card. Pro is 4,49 €/mo when the library gets serious.",
+  "cta_section.cta": "Download free",
 
   "pricing.title": "Two tiers. That's it.",
   "pricing.subtitle": "Free is a real plan, not a trial. Upgrade when the storage runs out — your data and history come along.",
@@ -44,6 +46,8 @@
   "pricing.cta_current": "Current plan",
   "pricing.cta_choose": "Choose {plan}",
   "pricing.cta_signin": "Sign in to upgrade",
+  "pricing.cta_download_free": "Download free",
+  "pricing.cta_buy_pro": "Get Pro",
   "pricing.popular_badge": "Most picked",
   "pricing.note_cancel_title": "Cancel anytime",
   "pricing.note_cancel_body": "No contracts. Cancel and you stay on Pro until the period ends, then drop to Free. Your data stays.",
@@ -105,7 +109,16 @@
   "account.time_hours_ago": "{n}h ago",
   "account.time_days_ago": "{n}d ago",
 
-  "callback.signing_in": "Signing you in…",
+  "download.title": "Download Hoard",
+  "download.subtitle": "Same binary across the three OSes. Your account and saves stay with you.",
+  "download.detected": "Detected",
+  "download.cta_for": "Download for {platform}",
+  "download.all_releases_title": "Looking for another version or arch?",
+  "download.all_releases_body": "Every build and changelog lives on GitHub Releases.",
+  "download.all_releases_cta": "See all releases",
+  "download.selfhost_note": "Prefer to run your own server? Same Rust binary, AGPL-3.0:",
+
+  "callback.signing_in": "Signing you in...",
   "callback.failed_title": "Sign-in failed",
   "callback.failed_generic": "We couldn't finish the sign-in. Try again.",
   "callback.back_to_signin": "Back to sign-in",

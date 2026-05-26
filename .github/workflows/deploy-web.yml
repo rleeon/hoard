@@ -50,8 +50,8 @@ jobs:
       - name: Preserve CNAME
         run: echo "hoard.services" > web/build/CNAME
 
-      - name: SPA fallback for GitHub Pages (deep links → 404 → index)
-        run: cp web/build/index.html web/build/404.html
+      - name: SPA fallback for GitHub Pages (deep links → 404 → SPA shell)
+        run: cp web/build/200.html web/build/404.html
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4

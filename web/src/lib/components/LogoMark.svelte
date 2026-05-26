@@ -21,21 +21,14 @@
       <stop offset="1" stop-color="#047857" />
     </linearGradient>
     <radialGradient id="hoard-mark-shine" cx="0.3" cy="0.2" r="0.6">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.45" />
-      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0" />
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18" />
+      <stop offset="0.7" stop-color="#ffffff" stop-opacity="0" />
     </radialGradient>
   </defs>
+  <rect width="64" height="64" rx="14" fill="#0a0c0b" />
+  <rect width="64" height="64" rx="14" fill="url(#hoard-mark-shine)" />
   <path
-    d="M16 18 L32 12 L48 18 L48 40 C48 48 40 52 32 52 C24 52 16 48 16 40 Z"
+    d="M16 14 h8 v14 h16 v-14 h8 v36 h-8 v-14 h-16 v14 h-8 z"
     fill="url(#hoard-mark-grad)"
-  />
-  <path
-    d="M16 18 L32 12 L48 18 L48 40 C48 48 40 52 32 52 C24 52 16 48 16 40 Z"
-    fill="url(#hoard-mark-shine)"
-  />
-  <path
-    d="M24 28 L32 24 L40 28 L40 38 C40 42 36 44 32 44 C28 44 24 42 24 38 Z"
-    fill="#020403"
-    opacity="0.55"
   />
 </svg>

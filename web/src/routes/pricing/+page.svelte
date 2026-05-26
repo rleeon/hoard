@@ -12,14 +12,10 @@
 
   function choose(plan: PlanId, c: BillingCycle) {
     if (plan === 'free') {
-      goto('/login');
+      goto('/download');
       return;
     }
-    if (!$session) {
-      goto('/login?next=/pricing');
-      return;
-    }
-    const url = billing.checkoutUrl(plan, c, $session.email);
+    const url = billing.checkoutUrl(plan, c, $session?.email);
     window.location.href = url;
   }
 </script>
@@ -41,7 +37,7 @@
     <p class="mt-4 text-pretty text-lg text-zinc-400">{$_('pricing.subtitle')}</p>
   </div>
 
-  <div class="mt-10 flex justify-center">
+  <div class="mt-10 flex flex-col items-center gap-3">
     <div
       class="relative inline-flex items-center rounded-full border border-white/10 bg-white/[0.03] p-1 backdrop-blur"
       role="tablist"
@@ -55,7 +51,7 @@
       <button
         role="tab"
         aria-selected={cycle === 'monthly'}
-        class="relative z-10 rounded-full px-5 py-1.5 text-sm font-medium ring-focus transition-colors duration-300 {cycle ===
+        class="relative z-10 rounded-full px-6 py-1.5 text-sm font-medium ring-focus transition-colors duration-300 {cycle ===
         'monthly'
           ? 'text-white'
           : 'text-zinc-400 hover:text-white'}"
@@ -66,28 +62,41 @@
       <button
         role="tab"
         aria-selected={cycle === 'yearly'}
-        class="relative z-10 inline-flex items-center gap-2 rounded-full px-5 py-1.5 text-sm font-medium ring-focus transition-colors duration-300 {cycle ===
+        class="relative z-10 rounded-full px-6 py-1.5 text-sm font-medium ring-focus transition-colors duration-300 {cycle ===
         'yearly'
           ? 'text-white'
           : 'text-zinc-400 hover:text-white'}"
         onclick={() => (cycle = 'yearly')}
       >
         {$_('pricing.toggle_yearly')}
-        <span
-          class="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-emerald-300"
-        >
-          {$_('pricing.save_badge')}
-        </span>
       </button>
     </div>
+    <span
+      class="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-emerald-200 transition-opacity duration-300"
+      style="opacity: {cycle === 'yearly' ? '1' : '0.55'};"
+    >
+      <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+      {$_('pricing.save_badge')} {$_('pricing.toggle_yearly').toLowerCase()}
+    </span>
   </div>
 
   <div class="mx-auto mt-12 grid max-w-3xl gap-6 sm:grid-cols-2">
     <div class="reveal" use:reveal={{ delay: 0 }}>
-      <PlanCard plan={PLANS.free} {cycle} onChoose={choose} />
+      <PlanCard
+        plan={PLANS.free}
+        {cycle}
+        onChoose={choose}
+        ctaLabel={$_('pricing.cta_download_free')}
+      />
     </div>
     <div class="reveal" use:reveal={{ delay: 100 }}>
-      <PlanCard plan={PLANS.pro} {cycle} featured onChoose={choose} />
+      <PlanCard
+        plan={PLANS.pro}
+        {cycle}
+        featured
+        onChoose={choose}
+        ctaLabel={$_('pricing.cta_buy_pro')}
+      />
     </div>
   </div>
 
