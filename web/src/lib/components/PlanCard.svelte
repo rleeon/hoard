@@ -33,7 +33,7 @@
     <span
       class="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold tracking-wide text-emerald-950 shadow"
     >
-      MOST POPULAR
+      {$_('pricing.popular_badge')}
     </span>
   {/if}
 

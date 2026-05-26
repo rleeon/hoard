@@ -44,6 +44,7 @@
   "pricing.cta_current": "Your current plan",
   "pricing.cta_choose": "Choose {plan}",
   "pricing.cta_signin": "Sign in to upgrade",
+  "pricing.popular_badge": "MOST POPULAR",
 
   "plan.free": "Free",
   "plan.pro": "Pro",
@@ -133,5 +134,10 @@
   "common.error": "Something went wrong.",
   "common.retry": "Retry",
   "common.cancel": "Cancel",
-  "common.confirm": "Confirm"
+  "common.confirm": "Confirm",
+
+  "legal.terms_title": "Terms of Service",
+  "legal.privacy_title": "Privacy Policy",
+  "legal.last_updated": "Last updated: 26 May 2026",
+  "legal.back_home": "Back to home"
 }
