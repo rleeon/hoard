@@ -9,6 +9,7 @@
     Sparkles,
     AlertCircle,
     HardDrive,
+    ScrollText,
   } from "lucide-svelte";
   import { _ } from "svelte-i18n";
   import { formatBytes } from "./lib/utils/format";
@@ -28,6 +29,9 @@
   import Toaster from "./lib/components/Toaster.svelte";
   import UpdateConfirmModal from "./lib/components/UpdateConfirmModal.svelte";
   import ErrorDialog from "./lib/components/ErrorDialog.svelte";
+  import LiveStatus from "./lib/components/LiveStatus.svelte";
+  import ActivityFeed from "./lib/components/ActivityFeed.svelte";
+  import { subscribeLive, unsubscribeLive } from "./lib/stores/live";
   import { errorDialog, dismissError, showError } from "./lib/stores/error_dialog";
   import { auth, hydrateAuth } from "./lib/stores/auth";
   import {
@@ -172,6 +176,12 @@
     await hydratePrefs();
     automaticMode = $prefs?.automatic_mode ?? false;
 
+    // Subscribe to the live event firehose once. LiveStatus + ActivityFeed
+    // read from the resulting stores; subscribing here (vs. in each
+    // component's onMount) means a panel toggle doesn't tear down or
+    // re-arm the listener and miss events in the gap.
+    void subscribeLive();
+
     // Fire-and-forget update probe once auth is settled. The result feeds
     // the small "Update available" banner above the sidebar footer; a
     // network blip silently leaves it hidden, which is the right default.
@@ -188,7 +198,18 @@
   onDestroy(() => {
     disposeUpdatePoller?.();
     disposeUpdatePoller = null;
+    void unsubscribeLive();
   });
+
+  async function toggleActivityFeed() {
+    const visible = !($prefs?.live_activity_visible ?? true);
+    try {
+      const updated = await api.setLiveActivityVisible(visible);
+      prefs.set(updated);
+    } catch (e) {
+      showError(e);
+    }
+  }
 
   // Live phase label used while a scan is in progress. When the scheduler
   // is idle we show the plain "Modo Automático · ON/OFF" string built
@@ -321,9 +342,22 @@
             tabindex="-1"
             aria-hidden="true"
           >
-            v{import.meta.env.VITE_HOARD_VERSION || "1.6.1"}
+            v{import.meta.env.VITE_HOARD_VERSION || "1.7.0"}
           </button>
         </div>
+        <!-- ActivityFeed toggle: small scroll icon, dim when the panel is
+             hidden so the affordance reads as "off". -->
+        <button
+          type="button"
+          onclick={toggleActivityFeed}
+          aria-label={$_("activity.toggle_label")}
+          title={$_("activity.toggle_label")}
+          class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors {$prefs?.live_activity_visible ?? true
+            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+            : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-zinc-100'}"
+        >
+          <ScrollText size={14} />
+        </button>
         <!-- Small amber alert button. Same visual language as "Sin carpeta":
              border + tinted background, no rounded-full pill. Click pops a
              confirmation modal; we don't auto-install behind the user's back. -->
@@ -377,6 +411,10 @@
            swaps between emerald (on) and rose (off); a transient scan
            phase pulses the icon while the background flow is running. -->
       <div class="border-t border-zinc-800/60 px-3 py-3 space-y-3">
+        <!-- Compact live status (watcher + cloud). Always rendered when in
+             the app shell — degrades to a neutral dot until the agent or
+             cloud loop come online. -->
+        <LiveStatus />
         {#if $cloud.account}
           <button
             type="button"
@@ -469,5 +507,9 @@
 />
 
 <ErrorDialog error={$errorDialog} onClose={dismissError} />
+
+{#if isAppRoute && ($prefs?.live_activity_visible ?? true)}
+  <ActivityFeed onClose={() => toggleActivityFeed()} />
+{/if}
 
 <Toaster />

@@ -82,11 +82,34 @@ pub async fn start_agent(
     };
 
     let (events_tx, mut events_rx) = mpsc::channel::<AgentEvent>(256);
+    // Capture per-save metadata before moving `saves` into the agent so we
+    // can fire `agent://watcher-armed` for each slot right after spawn.
+    // The frontend uses these events to flip the LiveStatus indicator to
+    // "watching" without having to round-trip `agent_status`.
+    let armed: Vec<WatcherArmed> = saves
+        .iter()
+        .map(|s| WatcherArmed {
+            save_id: s.save_id.clone(),
+            game_slug: s.game_slug.clone(),
+        })
+        .collect();
     let (handle, _task) = agent::spawn(client, config, saves, events_tx);
+
+    // Fan out the synthetic watcher-armed events. Done after `spawn` so the
+    // frontend's "armed" count never exceeds what the agent actually
+    // tracks. Best-effort — emit failures fall through.
+    for entry in &armed {
+        let _ = app.emit("agent://watcher-armed", entry);
+    }
 
     // Forwarder task — translate AgentEvent into Tauri events the UI can
     // subscribe to. `agent://*` is our private event namespace; the
     // dashboard listens with a single `listen("agent://...")` per type.
+    //
+    // A handful of events are also re-emitted under second, UX-friendlier
+    // topics so the new LiveStatus + ActivityFeed surface can subscribe to
+    // semantic names ("upload", "throttled") without forcing every legacy
+    // listener to rename. The original `agent://backup-*` topics stay live.
     let app_for_emit = app.clone();
     tokio::spawn(async move {
         while let Some(ev) = events_rx.recv().await {
@@ -106,6 +129,25 @@ pub async fn start_agent(
                 AgentEvent::SaveConflictsBackedUp { .. } => "agent://save-conflicts-backed-up",
             };
             let _ = app_for_emit.emit(topic, &ev);
+
+            // Aliases for the new UX surface. Same payload, friendlier
+            // channel name. `throttled` only fires for the filesystem-
+            // settled flavour of BackupScheduled — the "game stopped"
+            // and "manual" reasons aren't throttling, they're triggers.
+            match &ev {
+                AgentEvent::BackupStarted { .. } => {
+                    let _ = app_for_emit.emit("agent://upload-started", &ev);
+                }
+                AgentEvent::BackupSuccess { .. } => {
+                    let _ = app_for_emit.emit("agent://upload-completed", &ev);
+                }
+                AgentEvent::BackupScheduled { reason, .. }
+                    if matches!(reason, hoard_agent::agent::BackupReason::FilesystemSettled) =>
+                {
+                    let _ = app_for_emit.emit("agent://throttled", &ev);
+                }
+                _ => {}
+            }
         }
     });
 
@@ -114,6 +156,12 @@ pub async fn start_agent(
         running: true,
         watched_count,
     })
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct WatcherArmed {
+    save_id: String,
+    game_slug: String,
 }
 
 /// Tear the agent down. Used on logout and on app exit (best-effort).

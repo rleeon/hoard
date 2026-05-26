@@ -14,8 +14,9 @@ use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
-use tauri::State;
+use tauri::{AppHandle, State};
 
+use crate::commands::cloud_pull;
 use crate::state::AppState;
 
 const CLOUD_DEFAULT_URL: &str = "https://api.hoard.services";
@@ -85,11 +86,15 @@ fn default_forever() -> bool {
 /// Carry the access_token through method calls without persisting it on every
 /// hop. Loaded from the keyring at the top of each command.
 #[derive(Debug, Clone)]
-struct CloudCreds {
-    access_token: String,
+pub struct CloudCreds {
+    pub access_token: String,
     #[allow(dead_code)] // wired in when we implement Supabase refresh
-    refresh_token: String,
-    server_url: String,
+    pub refresh_token: String,
+    pub server_url: String,
+    /// Cached plan tier from the last `/v1/me`. Used by `cloud_pull` to
+    /// label `quota-reached` events. `None` when the session file
+    /// pre-dates this snapshot — callers default to "free".
+    pub plan: Option<String>,
 }
 
 // ---- helpers ----------------------------------------------------------
@@ -195,7 +200,15 @@ fn load_creds() -> Result<Option<CloudCreds>> {
         } else {
             session.server_url
         },
+        plan: session.user.as_ref().map(|u| u.plan.clone()),
     }))
+}
+
+/// Public wrapper used by the cloud-pull poller. Returns the active cloud
+/// session credentials (access token + server URL + cached plan label) or
+/// `None` when the user is signed out.
+pub fn load_active_creds() -> Result<Option<CloudCreds>> {
+    load_creds()
 }
 
 fn save_creds(access: &str, refresh: &str, server_url: &str, user: &CloudAccount) -> Result<()> {
@@ -244,6 +257,7 @@ pub fn cloud_login_url() -> String {
 /// account so the frontend can route into /account.
 #[tauri::command]
 pub async fn cloud_complete_login(
+    app: AppHandle,
     access_token: String,
     refresh_token: String,
     state: State<'_, AppState>,
@@ -257,6 +271,15 @@ pub async fn cloud_complete_login(
     let me = fetch_me(&base, &access).await.map_err(prettify)?;
     save_creds(&access, &refresh, &base, &me).map_err(|e| format!("Couldn't save session: {e}"))?;
     *state.cloud_account.lock().unwrap() = Some(me.clone());
+
+    // Boot the cloud-pull poller so LiveStatus has fresh manifest data
+    // within `prefs.cloud_poll_interval_secs`. Read the interval from
+    // disk so the just-logged-in session honours the user's last choice.
+    let secs = hoard_agent::prefs::Prefs::load_default()
+        .map(|(p, _)| p.cloud_poll_interval_secs)
+        .unwrap_or(10);
+    cloud_pull::start(&app, secs);
+
     Ok(me)
 }
 
@@ -294,9 +317,12 @@ pub async fn cloud_refresh_account(
 /// Drop the cloud session: clears the keyring entry, the on-disk file, and
 /// the in-memory cache. Idempotent.
 #[tauri::command]
-pub fn cloud_logout(state: State<'_, AppState>) -> Result<(), String> {
+pub fn cloud_logout(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     clear_creds().map_err(|e| format!("Couldn't clear session: {e}"))?;
     *state.cloud_account.lock().unwrap() = None;
+    // Stop the cloud-pull poller — otherwise it would keep tickling
+    // `load_active_creds` and quietly do nothing forever.
+    cloud_pull::stop(&app);
     Ok(())
 }
 

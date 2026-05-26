@@ -57,11 +57,13 @@
   // sidebar toggle cascading defaults).
   let scanIntervalHours = $state(6);
   let conflictRetentionDays = $state(14);
+  let cloudPollSecs = $state(10);
   $effect(() => {
     const p = $prefs;
     if (!p) return;
     scanIntervalHours = p.automatic_scan_interval_hours ?? 6;
     conflictRetentionDays = p.conflict_retention_days ?? 14;
+    cloudPollSecs = p.cloud_poll_interval_secs ?? 10;
   });
 
   async function commitScanInterval() {
@@ -91,6 +93,21 @@
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
       conflictRetentionDays = $prefs?.conflict_retention_days ?? 14;
+    } finally {
+      saving = null;
+    }
+  }
+
+  async function commitCloudPoll() {
+    if (!$prefs) return;
+    const value = cloudPollSecs;
+    saving = "cloud_poll_interval_secs";
+    try {
+      const updated = await api.setCloudPollInterval(value);
+      prefs.set(updated);
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+      cloudPollSecs = $prefs?.cloud_poll_interval_secs ?? 10;
     } finally {
       saving = null;
     }
@@ -466,7 +483,21 @@
       description: $_("settings.cloud_savings_mode_desc"),
       icon: CloudOff,
     },
+    {
+      field: "live_activity_visible",
+      label: $_("settings.live_activity_label"),
+      description: $_("settings.live_activity_desc"),
+      icon: Activity,
+    },
   ]);
+
+  /** Format the cloud-poll slider value as "10 s" / "2 min" so the user
+   *  reads the right unit. The Rust side accepts 5..=300. */
+  function formatCloudPoll(secs: number): string {
+    if (secs < 60) return $_("settings.cloud_poll_value_secs", { values: { secs } });
+    const minutes = Math.round(secs / 60);
+    return $_("settings.cloud_poll_value_minutes", { values: { minutes } });
+  }
 
   async function handleLanguageChange(e: Event) {
     const next = (e.currentTarget as HTMLSelectElement).value;
@@ -648,6 +679,36 @@
                   onChange={(v) => toggle(row.field, v)}
                 />
               {/each}
+              <div class="pt-4">
+                <div class="flex items-baseline justify-between gap-3">
+                  <label
+                    for="cloud-poll-slider"
+                    class="text-sm font-medium text-zinc-100"
+                  >
+                    {$_("settings.cloud_poll_label")}
+                  </label>
+                  <span
+                    class="font-mono text-xs text-zinc-400"
+                    aria-live="polite"
+                  >
+                    {formatCloudPoll(cloudPollSecs)}
+                  </span>
+                </div>
+                <input
+                  id="cloud-poll-slider"
+                  type="range"
+                  min="5"
+                  max="300"
+                  step="5"
+                  bind:value={cloudPollSecs}
+                  onchange={commitCloudPoll}
+                  disabled={saving === "cloud_poll_interval_secs"}
+                  class="mt-2 w-full accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <p class="mt-1 text-xs text-zinc-500">
+                  {$_("settings.cloud_poll_hint")}
+                </p>
+              </div>
             </div>
           </Card>
         </section>

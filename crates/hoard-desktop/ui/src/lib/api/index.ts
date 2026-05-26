@@ -392,6 +392,15 @@ export type Prefs = {
    *  manifest pull so nothing auto-restores it elsewhere. Pairs with
    *  the per-save toggle on the Library card. Off by default. */
   cloud_savings_mode: boolean;
+  /** Seconds between manifest polls on the live cloud-pull loop.
+   *  Range 5..=300; default 10. Independent from
+   *  `automatic_scan_interval_hours` — that one drives the heavy
+   *  scan+backup sweep, this one only emits `agent://cloud-pull-*`
+   *  events so the LiveStatus widget reflects server state. */
+  cloud_poll_interval_secs: number;
+  /** Whether the floating ActivityFeed panel is visible. Defaults to
+   *  true; the user can hide it from the sidebar toggle. */
+  live_activity_visible: boolean;
 };
 
 export type TrayStateName =
@@ -432,6 +441,18 @@ export function setSchedulerInterval(hours: number): Promise<Prefs> {
  *  backups. Picked up by the agent on its next auto-restore sweep. */
 export function setConflictRetention(days: number): Promise<Prefs> {
   return invoke<Prefs>("set_conflict_retention", { days });
+}
+
+/** Persist a new cloud-pull interval (seconds, 5..=300). If a cloud
+ *  session is active the poller restarts so the new cadence kicks in
+ *  immediately. */
+export function setCloudPollInterval(secs: number): Promise<Prefs> {
+  return invoke<Prefs>("set_cloud_poll_interval", { secs });
+}
+
+/** Toggle whether the floating ActivityFeed panel renders. */
+export function setLiveActivityVisible(visible: boolean): Promise<Prefs> {
+  return invoke<Prefs>("set_live_activity_visible", { visible });
 }
 
 /** Toggle the launcher autostart entry. Returns the resulting state. */

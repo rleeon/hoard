@@ -14,6 +14,7 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::commands::automatic;
+use crate::commands::cloud_pull;
 use crate::commands::error::AppError;
 use crate::state::AppState;
 use crate::tray::{TrayController, TrayState};
@@ -185,6 +186,42 @@ pub async fn set_scheduler_interval(app: AppHandle, hours: u32) -> Result<Prefs,
         automatic::start(&app, prefs.automatic_scan_interval_hours);
     }
 
+    Ok(prefs)
+}
+
+/// Persist a new cloud-pull interval (in seconds) for the live manifest
+/// poller. Range 5..=300 s. If a cloud session exists, restart the poller
+/// so the new cadence takes effect immediately. No-op otherwise — the
+/// next login will start the poller with the new value.
+#[tauri::command]
+pub async fn set_cloud_poll_interval(app: AppHandle, secs: u32) -> Result<Prefs, AppError> {
+    if !(5..=300).contains(&secs) {
+        return Err(AppError::plain(format!(
+            "cloud poll interval out of range: {secs} (expected 5..=300)"
+        )));
+    }
+    let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
+    let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
+    prefs.cloud_poll_interval_secs = secs;
+    prefs
+        .save(&path)
+        .map_err(|e| AppError::plain(e.to_string()))?;
+
+    cloud_pull::restart_if_signed_in(&app, secs);
+    Ok(prefs)
+}
+
+/// Persist whether the floating ActivityFeed panel renders. Pure state
+/// flip — no side effects beyond writing prefs.json. Frontend reads the
+/// new value through the standard prefs store subscription.
+#[tauri::command]
+pub async fn set_live_activity_visible(visible: bool) -> Result<Prefs, AppError> {
+    let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
+    let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
+    prefs.live_activity_visible = visible;
+    prefs
+        .save(&path)
+        .map_err(|e| AppError::plain(e.to_string()))?;
     Ok(prefs)
 }
 

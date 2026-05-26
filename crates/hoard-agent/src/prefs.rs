@@ -124,6 +124,25 @@ pub struct Prefs {
     /// to `false` so the multi-device flow keeps working out of the box.
     #[serde(default)]
     pub cloud_savings_mode: bool,
+
+    /// How often the desktop pulls `/v1/cloud/sync` to learn what other
+    /// devices have uploaded. Cheap call (<5 KB manifest, not counted
+    /// against the bandwidth quota) so 10 s default reads as "instant"
+    /// across devices without flooding the server. Range 5..=300 s; the
+    /// Settings slider in Cloud section persists this. Decoupled from
+    /// `automatic_scan_interval_hours` because that one runs the much
+    /// heavier scan-library + backup-stale sweep and only makes sense at
+    /// the hourly scale.
+    #[serde(default = "default_cloud_poll_interval_secs")]
+    pub cloud_poll_interval_secs: u32,
+
+    /// When `true`, the floating ActivityFeed panel is rendered next to
+    /// the sidebar so the user sees a live stream of upload / pull /
+    /// throttle events. Default `true` — it's the most useful first
+    /// impression of Modo Automático working. Users who find it noisy
+    /// can hide it from Settings → Cloud.
+    #[serde(default = "default_true")]
+    pub live_activity_visible: bool,
 }
 
 fn default_true() -> bool {
@@ -136,6 +155,10 @@ fn default_scan_interval_hours() -> u32 {
 
 fn default_conflict_retention_days() -> u32 {
     14
+}
+
+fn default_cloud_poll_interval_secs() -> u32 {
+    10
 }
 
 impl Default for Prefs {
@@ -155,6 +178,8 @@ impl Default for Prefs {
             automatic_scan_interval_hours: default_scan_interval_hours(),
             conflict_retention_days: default_conflict_retention_days(),
             cloud_savings_mode: false,
+            cloud_poll_interval_secs: default_cloud_poll_interval_secs(),
+            live_activity_visible: true,
         }
     }
 }
@@ -224,6 +249,9 @@ mod tests {
         assert_eq!(p.automatic_scan_interval_hours, 6);
         // 1.5.5: conflict backups retained for 14 days by default.
         assert_eq!(p.conflict_retention_days, 14);
+        // 1.7.0: cloud-pull poller every 10 s by default; activity feed on.
+        assert_eq!(p.cloud_poll_interval_secs, 10);
+        assert!(p.live_activity_visible);
     }
 
     #[test]

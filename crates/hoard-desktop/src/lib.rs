@@ -100,6 +100,7 @@ pub fn run() {
         .manage(AppState::from_disk())
         .manage(TrayController::default())
         .manage(AutomaticScheduler::default())
+        .manage(commands::cloud_pull::CloudPullScheduler::default())
         .invoke_handler(tauri::generate_handler![
             commands::misc::greet,
             commands::auth::health_check,
@@ -133,6 +134,8 @@ pub fn run() {
             commands::prefs::set_automatic_mode,
             commands::prefs::set_scheduler_interval,
             commands::prefs::set_conflict_retention,
+            commands::prefs::set_cloud_poll_interval,
+            commands::prefs::set_live_activity_visible,
             commands::prefs::set_tray_state,
             commands::history::list_save_snapshots,
             commands::history::save_snapshot_detail,
@@ -202,6 +205,17 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = commands::automatic::restart_if_enabled(&auto_handle).await {
                     tracing::warn!(error = %e, "couldn't rehydrate automatic-mode scheduler");
+                }
+            });
+
+            // Cloud-pull poller — independent cadence from the hourly
+            // scheduler above. Boots only when a cloud session exists on
+            // disk; otherwise lies dormant until the user signs in (the
+            // login command starts it explicitly).
+            let cloud_pull_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = commands::cloud_pull::restart_if_enabled(&cloud_pull_handle).await {
+                    tracing::warn!(error = %e, "couldn't rehydrate cloud-pull poller");
                 }
             });
 
