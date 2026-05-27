@@ -6,9 +6,12 @@
   import { cubicOut } from 'svelte/easing';
   import { session } from '$lib/stores/session';
   import LogoMark from './LogoMark.svelte';
+  import StatusDot from './StatusDot.svelte';
   import { Menu, X } from 'lucide-svelte';
+  import { onMount } from 'svelte';
 
   let open = $state(false);
+  let scrolled = $state(false);
 
   async function signOut() {
     const { auth } = await import('$lib/auth');
@@ -20,10 +23,21 @@
   function isActive(href: string) {
     return $page.url.pathname === href || $page.url.pathname.startsWith(href + '/');
   }
+
+  onMount(() => {
+    function onScroll() {
+      scrolled = window.scrollY > 8;
+    }
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  });
 </script>
 
 <header
-  class="sticky top-0 z-40 w-full border-b border-white/[0.06] bg-zinc-950/70 backdrop-blur-xl"
+  class="sticky top-0 z-40 w-full border-b transition-[background-color,border-color,box-shadow] duration-300 {scrolled
+    ? 'border-white/[0.08] bg-zinc-950/85 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.5)] backdrop-blur-xl'
+    : 'border-transparent bg-zinc-950/55 backdrop-blur-lg'}"
 >
   <nav class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
     <a
@@ -31,7 +45,7 @@
       class="group flex items-center gap-2.5 rounded-md ring-focus"
       aria-label="Hoard home"
     >
-      <span class="transition-transform group-hover:rotate-[8deg] group-hover:scale-110">
+      <span class="transition-transform duration-500 group-hover:rotate-[8deg] group-hover:scale-110">
         <LogoMark size={28} animated />
       </span>
       <span class="text-base font-semibold tracking-tight text-white">Hoard</span>
@@ -95,12 +109,12 @@
       {:else}
         <a
           href="/login"
-          class="group relative inline-flex h-9 items-center overflow-hidden rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white shadow-[0_6px_24px_-8px_rgba(16,185,129,0.65)] ring-focus transition-all hover:bg-emerald-500 hover:shadow-[0_12px_32px_-10px_rgba(16,185,129,0.85)]"
+          class="group relative inline-flex h-9 items-center overflow-hidden rounded-lg bg-gradient-to-b from-emerald-500 to-emerald-600 px-4 text-sm font-medium text-white shadow-[0_6px_24px_-8px_rgba(16,185,129,0.65),inset_0_1px_0_rgba(255,255,255,0.18)] ring-focus transition-all hover:from-emerald-400 hover:to-emerald-500 hover:shadow-[0_12px_32px_-10px_rgba(16,185,129,0.85),inset_0_1px_0_rgba(255,255,255,0.22)]"
         >
           <span class="relative z-10">{$_('nav.signin')}</span>
           <span
             aria-hidden="true"
-            class="pointer-events-none absolute inset-0 -translate-x-[120%] bg-gradient-to-r from-transparent via-white/35 to-transparent transition-transform duration-700 group-hover:translate-x-[120%]"
+            class="pointer-events-none absolute inset-y-0 left-0 w-1/2 -translate-x-full bg-gradient-to-r from-transparent via-white/35 to-transparent transition-transform duration-[800ms] ease-out group-hover:translate-x-[220%]"
           ></span>
         </a>
       {/if}
@@ -158,6 +172,9 @@
             {$_('nav.signin')}
           </a>
         {/if}
+        <div class="mt-3 border-t border-white/[0.06] pt-3">
+          <StatusDot />
+        </div>
       </div>
     </div>
   {/if}

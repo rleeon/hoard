@@ -19,14 +19,17 @@
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     return new Promise<void>((resolve) => {
       doc.startViewTransition!(async () => {
-        resolve();
         await navigation.complete;
+        resolve();
       });
     });
   });
 </script>
 
-<div class="relative isolate flex min-h-full flex-col text-zinc-100">
+<div
+  class="relative isolate flex min-h-full flex-col text-zinc-100"
+  data-sveltekit-preload-data="hover"
+>
   <a
     href="#main"
     class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-emerald-600 focus:px-3 focus:py-2 focus:text-sm focus:text-white"

@@ -1,18 +1,31 @@
 // Mousemove-driven CSS custom properties for radial spotlight effects.
-// Pairs with the `.spotlight` class in app.css.
+// Pairs with the `.spotlight` class in app.css. Throttled via rAF so
+// the per-card pointer listeners cost at most one style write per frame.
 export function spotlight(node: HTMLElement) {
   if (typeof window === 'undefined') return {};
 
-  function onMove(e: PointerEvent) {
-    const rect = node.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    node.style.setProperty('--mx', `${x}%`);
-    node.style.setProperty('--my', `${y}%`);
+  let pending = false;
+  let lastX = 50;
+  let lastY = 50;
+
+  function flush() {
+    pending = false;
+    node.style.setProperty('--mx', `${lastX}%`);
+    node.style.setProperty('--my', `${lastY}%`);
   }
 
-  node.addEventListener('pointermove', onMove);
-  node.addEventListener('pointerenter', onMove);
+  function onMove(e: PointerEvent) {
+    const rect = node.getBoundingClientRect();
+    lastX = ((e.clientX - rect.left) / rect.width) * 100;
+    lastY = ((e.clientY - rect.top) / rect.height) * 100;
+    if (!pending) {
+      pending = true;
+      requestAnimationFrame(flush);
+    }
+  }
+
+  node.addEventListener('pointermove', onMove, { passive: true });
+  node.addEventListener('pointerenter', onMove, { passive: true });
 
   return {
     destroy() {

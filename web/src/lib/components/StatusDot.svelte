@@ -1,37 +1,30 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { _ } from 'svelte-i18n';
-  import { api } from '$lib/api';
+  import { health } from '$lib/stores/health';
 
-  let state = $state<'loading' | 'ok' | 'down'>('loading');
-
-  onMount(async () => {
-    try {
-      const r = await api.serverHealth();
-      state = r.ok ? 'ok' : 'down';
-    } catch {
-      state = 'down';
-    }
+  onMount(() => {
+    void health.ensure();
   });
 
   let label = $derived(
-    state === 'loading'
+    $health === 'loading'
       ? $_('hero.status_offline')
-      : state === 'ok'
+      : $health === 'ok'
         ? $_('hero.status_online')
         : $_('hero.status_degraded')
   );
   let dotClass = $derived(
-    state === 'loading'
+    $health === 'loading'
       ? 'bg-zinc-500'
-      : state === 'ok'
+      : $health === 'ok'
         ? 'bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.7)] animate-pulse-glow'
         : 'bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.55)]'
   );
   let borderClass = $derived(
-    state === 'ok'
+    $health === 'ok'
       ? 'border-emerald-400/30 hover:border-emerald-400/55'
-      : state === 'down'
+      : $health === 'down'
         ? 'border-amber-400/30 hover:border-amber-400/55'
         : 'border-white/10 hover:border-white/20'
   );

@@ -3,6 +3,13 @@
   import Button from '$lib/components/Button.svelte';
   import StatusDot from '$lib/components/StatusDot.svelte';
   import HeroTerminal from '$lib/components/HeroTerminal.svelte';
+  import MetricStrip from '$lib/components/MetricStrip.svelte';
+  import PlatformMarquee from '$lib/components/PlatformMarquee.svelte';
+  import HowItWorks from '$lib/components/HowItWorks.svelte';
+  import SecurityStrip from '$lib/components/SecurityStrip.svelte';
+  import ProductMockup from '$lib/components/ProductMockup.svelte';
+  import DownloadCTA from '$lib/components/DownloadCTA.svelte';
+  import Squiggle from '$lib/components/Squiggle.svelte';
   import { reveal } from '$lib/actions/reveal';
   import { spotlight } from '$lib/actions/spotlight';
   import {
@@ -16,12 +23,12 @@
   } from 'lucide-svelte';
 
   const features = [
-    { key: 'versioned', icon: GitBranch },
-    { key: 'verified', icon: Shield },
-    { key: 'detect', icon: Search },
-    { key: 'crossplat', icon: MonitorSmartphone },
-    { key: 'export', icon: Download },
-    { key: 'selfhost', icon: ServerCog }
+    { key: 'versioned', icon: GitBranch, tint: 'emerald' },
+    { key: 'verified', icon: Shield, tint: 'teal' },
+    { key: 'detect', icon: Search, tint: 'emerald' },
+    { key: 'crossplat', icon: MonitorSmartphone, tint: 'emerald' },
+    { key: 'export', icon: Download, tint: 'teal' },
+    { key: 'selfhost', icon: ServerCog, tint: 'emerald' }
   ];
 </script>
 
@@ -30,42 +37,45 @@
   <link rel="canonical" href="https://hoard.services/" />
 </svelte:head>
 
+<!-- ───────── HERO ───────── -->
 <section class="relative overflow-hidden">
   <div class="grid-bg pointer-events-none absolute inset-0 -z-10"></div>
   <div
     class="pointer-events-none absolute -top-40 left-1/2 -z-10 h-[36rem] w-[60rem] -translate-x-1/2 rounded-full bg-emerald-500/[0.14] blur-3xl animate-drift"
   ></div>
 
-  <div class="mx-auto max-w-6xl px-4 pb-24 pt-16 sm:px-6 sm:pt-24">
+  <div class="mx-auto max-w-6xl px-4 pb-20 pt-14 sm:px-6 sm:pt-20">
     <div class="flex flex-col items-center text-center">
       <StatusDot />
 
+      <div class="mt-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.025] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400 backdrop-blur animate-fade-up">
+        <span class="h-1 w-1 rounded-full bg-emerald-400"></span>
+        {$_('hero.eyebrow')}
+      </div>
+
       <h1
-        class="mt-6 max-w-3xl text-balance text-[2.6rem] font-bold leading-[1.05] tracking-[-0.02em] text-white sm:text-[3.75rem] animate-fade-up"
+        class="mt-5 max-w-3xl text-balance text-[2.1rem] font-extrabold leading-[1.04] tracking-[-0.03em] text-white sm:text-[3.4rem] lg:text-[4.25rem] animate-fade-up"
       >
         {$_('hero.title_1')}
         <span class="relative inline-block">
-          <span
-            class="bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-300 bg-clip-text text-transparent"
-          >
+          <span class="hue-pan font-extrabold">
             {$_('hero.title_2')}
           </span>
-          <span
-            aria-hidden="true"
-            class="pointer-events-none absolute -inset-x-2 -bottom-1 h-2 rounded-full bg-emerald-500/20 blur-md"
-          ></span>
+          <span class="pointer-events-none absolute -bottom-2 left-0 hidden w-full sm:block">
+            <Squiggle width={520} height={14} stroke="#34d399" thickness={3} class="w-full" />
+          </span>
         </span>
       </h1>
 
       <p
-        class="mt-5 max-w-2xl text-pretty text-[1.05rem] leading-relaxed text-zinc-400 sm:text-lg animate-fade-up"
+        class="mt-6 max-w-2xl text-pretty text-[1.02rem] leading-relaxed text-zinc-400 sm:text-lg animate-fade-up"
         style="animation-delay:0.1s"
       >
         {$_('hero.subtitle')}
       </p>
 
       <div
-        class="mt-9 flex flex-col items-center gap-3 sm:flex-row animate-fade-up"
+        class="mt-9 flex flex-col items-center gap-4 sm:flex-row animate-fade-up"
         style="animation-delay:0.2s"
       >
         <Button href="/pricing" size="lg" variant="primary">
@@ -88,32 +98,54 @@
       >
         <HeroTerminal />
       </div>
+
+      <div
+        class="mt-10 w-full animate-fade-up"
+        style="animation-delay:0.4s"
+      >
+        <MetricStrip />
+      </div>
     </div>
   </div>
 </section>
 
+<!-- ───────── PLATFORM MARQUEE ───────── -->
+<section class="relative border-t border-white/[0.05]">
+  <div class="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-14">
+    <PlatformMarquee />
+  </div>
+</section>
+
+<!-- ───────── FEATURES ───────── -->
 <section class="relative border-t border-white/[0.05]">
   <div class="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
-    <div class="reveal text-center" use:reveal>
-      <h2 class="text-balance text-3xl font-bold tracking-tight text-white sm:text-4xl">
+    <div class="reveal mx-auto max-w-2xl text-center" use:reveal>
+      <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400/80">
+        Why Hoard
+      </div>
+      <h2 class="mt-3 text-balance text-3xl font-bold tracking-tight text-white sm:text-4xl">
         {$_('features.title')}
       </h2>
+      <p class="mt-3 text-pretty text-zinc-400">{$_('features.subtitle')}</p>
     </div>
 
     <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
       {#each features as f, i (f.key)}
         <article
-          class="reveal spotlight group rounded-2xl border border-white/[0.06] bg-white/[0.025] p-6 transition-all duration-500 hover:-translate-y-1 hover:border-emerald-500/30 hover:bg-white/[0.045]"
+          class="reveal spotlight card-edge group rounded-2xl border border-white/[0.06] bg-white/[0.025] p-6 transition-colors duration-500 hover:border-emerald-500/30 hover:bg-white/[0.045]"
           use:reveal={{ delay: i * 70 }}
           use:spotlight
         >
           <div
-            class="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-emerald-500/15 to-emerald-500/[0.04] text-emerald-300 ring-1 ring-inset ring-emerald-400/20 transition-transform duration-500 group-hover:scale-110 group-hover:rotate-[-4deg]"
+            class="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br {f.tint ===
+            'teal'
+              ? 'from-teal-500/15 to-teal-500/[0.04] text-teal-200 ring-teal-400/25'
+              : 'from-emerald-500/15 to-emerald-500/[0.04] text-emerald-300 ring-emerald-400/20'} ring-1 ring-inset transition-transform duration-500 group-hover:scale-110 group-hover:rotate-[-4deg]"
           >
             <f.icon class="h-5 w-5" />
           </div>
           <h3 class="font-semibold text-white">{$_(`features.${f.key}.title`)}</h3>
-          <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
+          <p class="mt-1.5 text-sm leading-relaxed text-zinc-300">
             {$_(`features.${f.key}.body`)}
           </p>
         </article>
@@ -122,6 +154,34 @@
   </div>
 </section>
 
+<!-- ───────── HOW IT WORKS ───────── -->
+<HowItWorks />
+
+<!-- ───────── PRODUCT MOCKUP ───────── -->
+<section class="relative border-t border-white/[0.05]">
+  <div class="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
+    <div class="reveal mx-auto max-w-2xl text-center" use:reveal>
+      <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400/80">
+        A real desktop app
+      </div>
+      <h2 class="mt-3 text-balance text-3xl font-bold tracking-tight text-white sm:text-4xl">
+        Looks like a tool. Acts like one.
+      </h2>
+      <p class="mt-3 text-pretty text-zinc-400">
+        Tray icon, autostart, four tabs. No tutorials, no upsell modals, no toasts that don't say anything.
+      </p>
+    </div>
+
+    <div class="reveal mx-auto mt-12 max-w-5xl" use:reveal={{ delay: 80 }}>
+      <ProductMockup />
+    </div>
+  </div>
+</section>
+
+<!-- ───────── SECURITY / TRUST ───────── -->
+<SecurityStrip />
+
+<!-- ───────── FINAL CTA ───────── -->
 <section class="border-t border-white/[0.05]">
   <div class="mx-auto max-w-6xl px-4 py-20 sm:px-6">
     <div
@@ -139,11 +199,8 @@
           {$_('cta_section.title')}
         </h2>
         <p class="mt-3 text-zinc-400">{$_('cta_section.body')}</p>
-        <div class="mt-7 flex flex-wrap gap-3">
-          <Button href="/download" size="lg" variant="primary">
-            {$_('cta_section.cta')}
-            <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-          </Button>
+        <div class="mt-7">
+          <DownloadCTA />
         </div>
       </div>
     </div>

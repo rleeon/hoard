@@ -126,22 +126,42 @@
     });
   }
 
+  let hoverPaused = false;
+  let hidden = false;
+
+  function syncPaused() {
+    const next = hoverPaused || hidden;
+    if (next === paused) return;
+    paused = next;
+    if (next) {
+      cancel();
+    } else {
+      play();
+    }
+  }
+
+  function onVisibility() {
+    hidden = typeof document !== 'undefined' && document.hidden;
+    syncPaused();
+  }
+
   onMount(() => {
+    document.addEventListener('visibilitychange', onVisibility);
     play();
     return () => {
       paused = true;
       cancel();
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   });
 
   function handleEnter() {
-    paused = true;
-    cancel();
+    hoverPaused = true;
+    syncPaused();
   }
   function handleLeave() {
-    if (!paused) return;
-    paused = false;
-    play();
+    hoverPaused = false;
+    syncPaused();
   }
 </script>
 

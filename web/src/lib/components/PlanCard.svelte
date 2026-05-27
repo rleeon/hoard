@@ -26,9 +26,9 @@
 
 <div
   use:spotlight
-  class="spotlight relative flex h-full flex-col rounded-2xl border p-7 transition-all duration-500
+  class="spotlight card-edge relative flex h-full flex-col rounded-2xl border p-7 transition-colors duration-500
     {featured
-    ? 'border-emerald-500/40 bg-gradient-to-b from-emerald-950/40 to-zinc-900/60 shadow-[0_30px_60px_-30px_rgba(16,185,129,0.5)] sm:scale-[1.02]'
+    ? 'conic-stroke border-emerald-500/40 bg-gradient-to-b from-emerald-950/40 to-zinc-900/60 shadow-[0_30px_60px_-30px_rgba(16,185,129,0.5)] md:scale-[1.03]'
     : 'border-white/[0.06] bg-white/[0.02] hover:border-white/15'}"
 >
   {#if featured}

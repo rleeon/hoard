@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter/index.css";
+@import "@fontsource-variable/jetbrains-mono/index.css";
 
 @theme {
   --color-bg: oklch(0.14 0.005 160);
@@ -9,10 +11,16 @@
   --color-accent: oklch(0.65 0.16 160);
   --color-accent-hover: oklch(0.74 0.18 162);
 
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system,
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono",
-    "Menlo", monospace;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace,
+    "SF Mono", "Cascadia Mono", "Menlo", monospace;
+}
+
+@property --angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
 }
 
 html,
@@ -31,8 +39,9 @@ body {
   background: #050706;
 }
 
-/* fixed ambient glow — stays put while you scroll so the page never looks
-   "cut" mid-document. Two soft blobs pinned to the viewport. */
+/* fixed ambient glow — pinned to viewport so the page never looks
+   "cut" mid-document. Two soft blobs + faint grain merged into one
+   layer for compositor cost. */
 body::before {
   content: "";
   position: fixed;
@@ -40,22 +49,34 @@ body::before {
   pointer-events: none;
   z-index: -2;
   background:
-    radial-gradient(55rem 45rem at 15% -5%, rgba(16, 185, 129, 0.07), transparent 60%),
-    radial-gradient(40rem 40rem at 85% 100%, rgba(45, 212, 191, 0.045), transparent 60%);
+    radial-gradient(60rem 50rem at 12% -8%, rgba(16, 185, 129, 0.08), transparent 60%),
+    radial-gradient(45rem 45rem at 88% 105%, rgba(45, 212, 191, 0.05), transparent 60%),
+    radial-gradient(28rem 28rem at 50% 50%, rgba(16, 185, 129, 0.015), transparent 70%);
 }
 
-/* very faint grain over everything */
+/* Tighter, lighter grain on a smaller tile — cheaper to rasterize. */
 body::after {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: -1;
-  opacity: 0.03;
+  opacity: 0.025;
   mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='1' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.7 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
 }
 
+/* Tighter typographic rhythm for big headings. */
+h1, h2 {
+  letter-spacing: -0.025em;
+}
+h3 {
+  letter-spacing: -0.015em;
+}
+
+/* ------------------------------------------------------------------
+   Keyframes
+------------------------------------------------------------------ */
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-8px); }
@@ -85,12 +106,40 @@ body::after {
   0%   { transform: translateX(-120%) skewX(-20deg); }
   100% { transform: translateX(220%) skewX(-20deg); }
 }
+@keyframes hue-pan {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes squiggle {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+@keyframes orbit {
+  to { --angle: 360deg; }
+}
+@keyframes ping-soft {
+  0%   { transform: scale(1); opacity: 0.5; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
 
 .animate-float       { animation: float 4s ease-in-out infinite; }
 .animate-pulse-glow  { animation: pulse-glow 2.6s ease-in-out infinite; }
 .animate-fade-up     { animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.animate-drift       { animation: drift 18s ease-in-out infinite; }
+.animate-drift       { animation: drift 22s ease-in-out infinite; }
 .animate-blink       { animation: blink 1.05s steps(1) infinite; }
+.animate-marquee     { animation: marquee 36s linear infinite; }
+.animate-ping-soft   { animation: ping-soft 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
+
+/* Decorative animations pause when their host is out of view via
+   IntersectionObserver toggling .anim-paused. */
+.anim-paused.animate-drift,
+.anim-paused .animate-drift {
+  animation-play-state: paused;
+}
 
 .shimmer {
   background: linear-gradient(
@@ -101,6 +150,31 @@ body::after {
   );
   background-size: 200% 100%;
   animation: shimmer 2.4s linear infinite;
+}
+
+/* Animated emerald-to-teal hue band, applied via class to a span
+   that wraps a heading word. */
+.hue-pan {
+  background: linear-gradient(
+    90deg,
+    #6ee7b7,
+    #34d399,
+    #14b8a6,
+    #34d399,
+    #6ee7b7
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: hue-pan 9s ease-in-out infinite;
+}
+
+/* Hand-drawn squiggle underline reveal */
+.squiggle {
+  stroke-dasharray: 320;
+  stroke-dashoffset: 320;
+  animation: squiggle 1.6s cubic-bezier(0.22, 1, 0.36, 1) 0.4s forwards;
 }
 
 /* Reveal-on-scroll baseline */
@@ -125,6 +199,12 @@ body::after {
   background-size: auto, 26px 26px;
 }
 
+/* Dotted edge fade for marquee tracks */
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
 /* spotlight effect for cards: drives a radial gradient from cursor */
 .spotlight {
   position: relative;
@@ -136,8 +216,8 @@ body::after {
   inset: 0;
   border-radius: inherit;
   background: radial-gradient(
-    240px circle at var(--mx, 50%) var(--my, 50%),
-    rgba(16, 185, 129, 0.16),
+    260px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(16, 185, 129, 0.18),
     transparent 60%
   );
   opacity: 0;
@@ -152,6 +232,42 @@ body::after {
 .spotlight > * {
   position: relative;
   z-index: 1;
+}
+
+/* Conic gradient stroke for featured plan card. Uses CSS Houdini
+   @property --angle so it can be animated. */
+.conic-stroke {
+  position: relative;
+  isolation: isolate;
+}
+.conic-stroke::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--angle),
+    rgba(16, 185, 129, 0.65),
+    rgba(20, 184, 166, 0.05) 30%,
+    rgba(16, 185, 129, 0.05) 70%,
+    rgba(16, 185, 129, 0.65)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  animation: orbit 8s linear infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Subtle inner highlight that gives cards a "real" specular edge. */
+.card-edge {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 12px 30px -18px rgba(0, 0, 0, 0.55);
 }
 
 /* gentle link underline */
@@ -198,6 +314,12 @@ body::after {
   }
   .animate-blink {
     animation: blink 1.05s steps(1) infinite !important;
+  }
+  .animate-marquee {
+    animation: marquee 36s linear infinite !important;
+  }
+  .hue-pan {
+    animation: hue-pan 9s ease-in-out infinite !important;
   }
 }
 
