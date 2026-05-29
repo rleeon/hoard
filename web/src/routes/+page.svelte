@@ -9,7 +9,6 @@
   import SecurityStrip from '$lib/components/SecurityStrip.svelte';
   import ProductMockup from '$lib/components/ProductMockup.svelte';
   import DownloadCTA from '$lib/components/DownloadCTA.svelte';
-  import Squiggle from '$lib/components/Squiggle.svelte';
   import { reveal } from '$lib/actions/reveal';
   import { spotlight } from '$lib/actions/spotlight';
   import {
@@ -40,9 +39,6 @@
 <!-- ───────── HERO ───────── -->
 <section class="relative overflow-hidden">
   <div class="grid-bg pointer-events-none absolute inset-0 -z-10"></div>
-  <div
-    class="pointer-events-none absolute -top-40 left-1/2 -z-10 h-[36rem] w-[60rem] -translate-x-1/2 rounded-full bg-emerald-500/[0.14] blur-3xl animate-drift"
-  ></div>
 
   <div class="mx-auto max-w-6xl px-4 pb-20 pt-14 sm:px-6 sm:pt-20">
     <div class="flex flex-col items-center text-center">
@@ -54,21 +50,18 @@
       </div>
 
       <h1
-        class="mt-5 max-w-3xl text-balance text-[2.1rem] font-extrabold leading-[1.04] tracking-[-0.03em] text-white sm:text-[3.4rem] lg:text-[4.25rem] animate-fade-up"
+        class="mt-5 max-w-4xl text-balance text-[2.1rem] font-extrabold leading-[1.04] tracking-[-0.03em] text-white sm:text-[3.4rem] lg:text-[4.25rem] animate-fade-up"
       >
         {$_('hero.title_1')}
         <span class="relative inline-block">
           <span class="hue-pan font-extrabold">
             {$_('hero.title_2')}
           </span>
-          <span class="pointer-events-none absolute -bottom-2 left-0 hidden w-full sm:block">
-            <Squiggle width={520} height={14} stroke="#34d399" thickness={3} class="w-full" />
-          </span>
         </span>
       </h1>
 
       <p
-        class="mt-6 max-w-2xl text-pretty text-[1.02rem] leading-relaxed text-zinc-400 sm:text-lg animate-fade-up"
+        class="mt-6 max-w-3xl text-pretty text-[1.02rem] leading-relaxed text-zinc-400 sm:text-lg animate-fade-up"
         style="animation-delay:0.1s"
       >
         {$_('hero.subtitle')}
