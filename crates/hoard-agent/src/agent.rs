@@ -505,6 +505,23 @@ async fn run_agent(
             // ----- Process poll tick -----
             _ = poll.tick() => {
                 process_poll(&mut sys, &mut slots, &events_tx, &api, &config, &done_tx, &cmd_tx);
+                // Watcher self-healing: a slot whose folder didn't exist when
+                // the game was tracked (freshly installed, save dir created on
+                // first save) never armed its watcher, and nothing rearms it
+                // short of an auto-restore or an app restart. Every tick,
+                // (re)arm any slot that has no watcher but whose folder now
+                // exists. Cheap (a stat per tracked save) and silent for the
+                // common already-armed case.
+                for slot in slots.values_mut() {
+                    if slot.watcher.is_none() && slot.save.local_path.is_dir() {
+                        tracing::info!(
+                            save_id = %slot.save.save_id,
+                            path = %slot.save.local_path.display(),
+                            "agent: save folder now present; rearming fs watcher"
+                        );
+                        arm_watcher(slot, &fs_tx);
+                    }
+                }
                 // Reconciliation backstop: every tick, look for tracked
                 // saves whose local folder is empty and (a) the user has
                 // auto_restore on, (b) we're not already restoring, and
