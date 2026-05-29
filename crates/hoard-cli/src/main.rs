@@ -98,12 +98,19 @@ enum SnapshotCommand {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
-        )
-        .init();
+    {
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::util::SubscriberInitExt;
+        let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::layer())
+            // Best-effort log shipping to the connected server. Short-lived
+            // CLI invocations may exit before a batch flushes; that's fine.
+            .with(hoard_agent::logship::start())
+            .init();
+    }
 
     let cli = Cli::parse();
     if let Err(e) = dispatch(cli).await {

@@ -15,6 +15,10 @@ pub struct HealthResponse {
     status: &'static str,
     version: &'static str,
     uptime_secs: u64,
+    /// Minimum log level this server accepts for client-log ingest. The
+    /// client reads this on connect and filters at source. Self-hosted
+    /// keeps everything, so this is always `"debug"`.
+    log_min_level: &'static str,
 }
 
 pub async fn handler(State(state): State<Arc<ServerState>>) -> (StatusCode, Json<HealthResponse>) {
@@ -28,6 +32,7 @@ pub async fn handler(State(state): State<Arc<ServerState>>) -> (StatusCode, Json
                 status: "db_error",
                 version: env!("CARGO_PKG_VERSION"),
                 uptime_secs: state.start_time.elapsed().as_secs(),
+                log_min_level: "debug",
             }),
         );
     }
@@ -38,6 +43,7 @@ pub async fn handler(State(state): State<Arc<ServerState>>) -> (StatusCode, Json
             status: "ok",
             version: env!("CARGO_PKG_VERSION"),
             uptime_secs: state.start_time.elapsed().as_secs(),
+            log_min_level: "debug",
         }),
     )
 }

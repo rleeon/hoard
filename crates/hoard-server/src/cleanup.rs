@@ -31,6 +31,26 @@ pub async fn run_once(
 ) -> anyhow::Result<()> {
     purge_tmp(data_dir, tmp_cleanup_hours).await?;
     purge_trash(pool, data_dir, trash_retention_days).await?;
+    purge_client_logs(pool, CLIENT_LOG_RETENTION_DAYS).await?;
+    Ok(())
+}
+
+/// Client diagnostic logs are kept for 14 days on both branches.
+const CLIENT_LOG_RETENTION_DAYS: i64 = 14;
+
+async fn purge_client_logs(pool: &SqlitePool, retention_days: i64) -> anyhow::Result<()> {
+    let cutoff = time::OffsetDateTime::now_utc() - time::Duration::days(retention_days);
+    let cutoff_str = cutoff.format(&time::format_description::well_known::Rfc3339)?;
+    // Runtime query (not the `query!` macro) so this doesn't depend on the
+    // .sqlx offline cache being regenerated.
+    let res = sqlx::query("DELETE FROM client_logs WHERE received_at < ?")
+        .bind(&cutoff_str)
+        .execute(pool)
+        .await?;
+    let removed = res.rows_affected();
+    if removed > 0 {
+        info!(removed, "purged expired client logs");
+    }
     Ok(())
 }
 

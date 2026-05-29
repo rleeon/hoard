@@ -55,6 +55,14 @@
         para diagnóstico y prevención de abuso.
       </p>
       <p>
+        <strong>Logs de diagnóstico de la app.</strong> La aplicación de escritorio envía a
+        nuestro servidor eventos de diagnóstico de nivel informativo o superior (no
+        depuración), identificados por nombre de dispositivo y un identificador estable
+        generado por la app, para diagnosticar fallos de sincronización. Se conservan 14
+        días y luego se borran automáticamente. En instalaciones autoalojadas estos logs
+        residen únicamente en tu propio servidor, sin terceros.
+      </p>
+      <p>
         <strong>Datos de facturación.</strong> Los procesa íntegramente nuestro Merchant
         of Record. Sólo recibimos confirmación de estado de suscripción (plan, periodo,
         próxima renovación, cancelación). No vemos ni almacenamos tu tarjeta ni tu
@@ -114,7 +122,8 @@
         Mantenemos tus datos mientras tu cuenta esté activa. Si eliminas tu cuenta, todos
         los snapshots y metadatos asociados se borran de forma irreversible en un plazo
         máximo de 30 días. Las copias de seguridad operativas se sobrescriben en ciclos de
-        30 días. Los logs técnicos se conservan hasta 30 días. Los registros de
+        30 días. Los logs técnicos se conservan hasta 30 días y los logs de diagnóstico de la
+        app durante 14 días. Los registros de
         facturación se conservan durante los plazos exigidos por la legislación fiscal
         española (en general, 6 años).
       </p>
@@ -202,6 +211,13 @@
         and abuse prevention.
       </p>
       <p>
+        <strong>App diagnostic logs.</strong> The desktop app sends our server
+        informational-or-higher diagnostic events (not debug), identified by device name
+        and a stable app-generated identifier, so we can diagnose sync failures. They are
+        kept for 14 days and then deleted automatically. On self-hosted installations these
+        logs live solely on your own server, with no third parties.
+      </p>
+      <p>
         <strong>Billing data.</strong> Processed entirely by our Merchant of Record. We
         only receive subscription status updates (plan, period, next renewal,
         cancellation). We do not see or store your card or postal address.
@@ -260,7 +276,8 @@
         We retain your data for as long as your account is active. If you delete your
         account, all snapshots and associated metadata are irreversibly removed within 30
         days. Operational backups are overwritten on a 30-day cycle. Technical logs are
-        retained for up to 30 days. Billing records are kept for the periods required by
+        retained for up to 30 days and app diagnostic logs for 14 days. Billing records are
+        kept for the periods required by
         Spanish tax law (generally 6 years).
       </p>
 

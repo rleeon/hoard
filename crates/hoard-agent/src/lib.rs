@@ -14,6 +14,7 @@ pub mod config;
 pub mod credentials;
 pub mod detection;
 pub mod launchers;
+pub mod logship;
 pub mod manifest;
 pub mod pathexpand;
 pub mod prefs;

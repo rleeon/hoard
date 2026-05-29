@@ -4,7 +4,7 @@
 use crate::cloud::{
     auth::{require_cloud_auth, JwksCache},
     bandwidth, db, r2,
-    routes::{me, saves, sync as sync_routes},
+    routes::{logs as log_routes, me, saves, sync as sync_routes},
     state::CloudState,
     webhooks,
 };
@@ -81,6 +81,34 @@ pub async fn run(cfg: Config) -> Result<()> {
         });
     }
 
+    // 4c. Client-log retention. Diagnostic logs are kept 14 days; an hourly
+    //     sweep deletes anything older. Detached task: failures `warn!` and
+    //     the next tick retries.
+    {
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(3600));
+            tick.tick().await; // skip the immediate first tick
+            loop {
+                tick.tick().await;
+                let res = sqlx::query(
+                    "DELETE FROM client_logs WHERE received_at < now() - interval '14 days'",
+                )
+                .execute(&pool)
+                .await;
+                match res {
+                    Ok(r) if r.rows_affected() > 0 => {
+                        tracing::debug!(rows = r.rows_affected(), "client logs: pruned expired");
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error = %e, "client logs: prune failed");
+                    }
+                }
+            }
+        });
+    }
+
     // 5. Build routers.
     let authed = Router::new()
         .route("/v1/me", get(me::get_me).delete(me::delete_me))
@@ -95,6 +123,14 @@ pub async fn run(cfg: Config) -> Result<()> {
             get(saves::download),
         )
         .route("/v1/cloud/sync", get(sync_routes::manifest))
+        // Client diagnostic-log ingest (INFO+ only). Smaller body cap than
+        // save uploads — applied per-route.
+        .route(
+            "/v1/cloud/logs",
+            post(log_routes::ingest).layer(axum::extract::DefaultBodyLimit::max(
+                crate::routes::logs::MAX_BATCH_BYTES,
+            )),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_cloud_auth,
@@ -127,6 +163,7 @@ async fn cloud_health() -> axum::Json<HealthBody> {
         status: "ok",
         version: env!("CARGO_PKG_VERSION"),
         mode: "cloud",
+        log_min_level: "info",
     })
 }
 
@@ -135,4 +172,7 @@ struct HealthBody {
     status: &'static str,
     version: &'static str,
     mode: &'static str,
+    /// Minimum log level cloud accepts for client-log ingest — INFO. The
+    /// client reads this on connect and filters at source.
+    log_min_level: &'static str,
 }

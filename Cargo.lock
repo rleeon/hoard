@@ -2864,6 +2864,7 @@ dependencies = [
  "tokio-util",
  "toml 0.8.2",
  "tracing",
+ "tracing-subscriber",
  "winreg 0.52.0",
 ]
 
@@ -2958,6 +2959,7 @@ dependencies = [
  "hmac 0.12.1",
  "hoard-core",
  "jsonwebtoken",
+ "minisign-verify",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3880,6 +3882,12 @@ dependencies = [
  "mime",
  "unicase",
 ]
+
+[[package]]
+name = "minisign-verify"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22f9645cb765ea72b8111f36c522475d2daa0d22c957a9826437e97534bc4e9e"
 
 [[package]]
 name = "miniz_oxide"

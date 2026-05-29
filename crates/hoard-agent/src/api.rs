@@ -362,7 +362,17 @@ pub struct Whoami {
 pub struct Health {
     pub status: String,
     pub version: String,
+    #[serde(default)]
     pub uptime_secs: u64,
+    /// Minimum log level the server accepts for client-log ingest. Absent on
+    /// pre-log-ingest servers — the client takes `None` to mean "this server
+    /// can't receive logs" and disables shipping.
+    #[serde(default)]
+    pub log_min_level: Option<String>,
+    /// `"cloud"` on the SaaS deployment, absent/`None` self-hosted. Selects
+    /// the ingest endpoint (`/v1/cloud/logs` vs `/v1/logs`).
+    #[serde(default)]
+    pub mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

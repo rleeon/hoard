@@ -15,7 +15,7 @@ use tracing::info;
 use hoard_server::auth::require_auth;
 use hoard_server::cleanup;
 use hoard_server::routes::{
-    auth as auth_routes, games as game_routes, health, saves as save_routes,
+    auth as auth_routes, games as game_routes, health, logs as log_routes, saves as save_routes,
     snapshots as snap_routes,
 };
 
@@ -103,6 +103,14 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
     // Routes that require auth
     let authed = Router::new()
         .route("/v1/auth/whoami", get(auth_routes::whoami))
+        // Client diagnostic-log ingest. Smaller body cap than snapshots —
+        // applied per-route so it overrides the large snapshot limit below.
+        .route(
+            "/v1/logs",
+            post(log_routes::ingest).layer(axum::extract::DefaultBodyLimit::max(
+                log_routes::MAX_BATCH_BYTES,
+            )),
+        )
         // Games
         .route("/v1/games", get(game_routes::list))
         .route("/v1/games/:slug", get(game_routes::get_one))
