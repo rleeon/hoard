@@ -56,12 +56,41 @@ jobs:
           ( cd dist && sha256sum "$ARTIFACT.tar.gz" > "$ARTIFACT.tar.gz.sha256" )
           echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
 
+      # Sign the tarball with minisign so `hoard-server upgrade` can verify it
+      # against the public key embedded in the binary (ADR 0017). The secret
+      # key lives only in repo secrets and never touches the runner's disk
+      # beyond this ephemeral step. If the signing secret isn't configured we
+      # skip and warn loudly — the release just won't be auto-upgradable
+      # (the client fails closed on the missing/invalid signature).
+      - name: Sign artifact (minisign)
+        id: sign
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_KEY_PASSWORD: ${{ secrets.MINISIGN_KEY_PASSWORD }}
+        run: |
+          if [ -z "${MINISIGN_SECRET_KEY:-}" ]; then
+            echo "::warning::MINISIGN_SECRET_KEY not set — skipping signature. This release will NOT be installable via the in-app server upgrade."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sudo apt-get install -y minisign
+          printf '%s' "$MINISIGN_SECRET_KEY" > minisign.key
+          TARBALL="dist/${{ steps.package.outputs.artifact }}.tar.gz"
+          # minisign reads the key password from stdin when stdin isn't a TTY.
+          printf '%s\n' "${MINISIGN_KEY_PASSWORD:-}" | \
+            minisign -S -s minisign.key -m "$TARBALL"
+          rm -f minisign.key
+          test -f "$TARBALL.minisig" || { echo "::error::signing produced no .minisig"; exit 1; }
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.artifact }}
           path: |
             dist/${{ steps.package.outputs.artifact }}.tar.gz
             dist/${{ steps.package.outputs.artifact }}.tar.gz.sha256
+            dist/${{ steps.package.outputs.artifact }}.tar.gz.minisig
+          if-no-files-found: warn
 
   release:
     name: GitHub Release
@@ -87,9 +116,12 @@ jobs:
 
             ```sh
             sha256sum -c hoard-*.tar.gz.sha256
+            # Signature (same key the in-app server upgrade trusts):
+            minisign -Vm hoard-*.tar.gz -P <hoard-public-key>
             ```
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             dist/*.tar.gz
             dist/*.sha256
+            dist/*.minisig

@@ -15,8 +15,8 @@ use tracing::info;
 use hoard_server::auth::require_auth;
 use hoard_server::cleanup;
 use hoard_server::routes::{
-    auth as auth_routes, games as game_routes, health, logs as log_routes, saves as save_routes,
-    snapshots as snap_routes,
+    admin as admin_routes, auth as auth_routes, games as game_routes, health,
+    logs as log_routes, saves as save_routes, snapshots as snap_routes,
 };
 
 #[derive(Parser)]
@@ -111,6 +111,9 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
                 log_routes::MAX_BATCH_BYTES,
             )),
         )
+        // Admin ops (self-hosted only — see ADR 0017). Gated on is_admin
+        // inside the handler; the cloud router never mounts this.
+        .route("/v1/admin/upgrade", post(admin_routes::upgrade))
         // Games
         .route("/v1/games", get(game_routes::list))
         .route("/v1/games/:slug", get(game_routes::get_one))

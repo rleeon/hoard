@@ -10,6 +10,11 @@ host = "0.0.0.0"
 port = 8082
 # Public URL for CORS and self-referencing links.
 public_url = "https://hoard.example.com"
+# Allow admins to trigger a self-upgrade from the desktop app via
+# POST /v1/admin/upgrade. The request only drops a marker file; a root
+# systemd oneshot (hoard-upgrade.service) does the signed binary swap and
+# restart (see ADR 0017). Set to false to disable the remote path entirely.
+allow_remote_upgrade = true
 
 [storage]
 # Directory where all user data, temp uploads and trash are stored.

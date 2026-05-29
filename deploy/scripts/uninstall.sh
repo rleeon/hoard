@@ -38,6 +38,14 @@ if systemctl list-unit-files | grep -q "^$SERVICE_NAME"; then
   systemctl stop "$SERVICE_NAME" 2>/dev/null || true
   systemctl disable "$SERVICE_NAME" 2>/dev/null || true
 fi
+
+# Remote-upgrade units (ADR 0017)
+log "Removing remote-upgrade units"
+systemctl disable --now hoard-upgrade.path 2>/dev/null || true
+systemctl stop hoard-upgrade.service 2>/dev/null || true
+rm -f "/etc/systemd/system/hoard-upgrade.path" \
+      "/etc/systemd/system/hoard-upgrade.service"
+
 rm -f "/etc/systemd/system/$SERVICE_NAME"
 systemctl daemon-reload
 

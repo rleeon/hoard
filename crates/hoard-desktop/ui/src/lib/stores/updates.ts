@@ -142,12 +142,32 @@ export type ServerUpgradeOutcome =
 
 /**
  * Trigger an in-app upgrade of the user's self-hosted server. Linux only;
- * pops a polkit auth prompt (pkexec). The Settings panel should gate this
- * on `auth.user.is_local_server` so we don't show a button that does
- * nothing useful when the server lives on another box.
+ * pops a polkit auth prompt (pkexec). Only works when the server shares the
+ * machine with the desktop app — superseded by `triggerServerUpgrade` for
+ * the general (cross-machine) case. Kept for the same-box convenience path.
  */
 export async function applyServerUpdate(): Promise<ServerUpgradeOutcome> {
   return await invoke<ServerUpgradeOutcome>("apply_server_update");
+}
+
+/**
+ * Result of `trigger_server_upgrade` (ADR 0017). `confirmed` means the server
+ * came back on a new version within the poll window; `scheduled` means the
+ * request was accepted but we couldn't confirm the restart before timing out
+ * (the server may still be coming back, or was already up to date).
+ */
+export type RemoteUpgradeOutcome =
+  | { kind: "confirmed"; version: string }
+  | { kind: "scheduled" };
+
+/**
+ * Ask the self-hosted server to upgrade *itself* over HTTP. Works from any
+ * OS and whether the server is local or on another box — the server runs a
+ * signed self-upgrade and restarts. Requires an admin token; the Settings
+ * panel gates the button on `auth.user.is_admin`.
+ */
+export async function triggerServerUpgrade(): Promise<RemoteUpgradeOutcome> {
+  return await invoke<RemoteUpgradeOutcome>("trigger_server_upgrade");
 }
 
 // ---------------------------------------------------------------------------

@@ -41,10 +41,11 @@
   import { supportedLocales, setLocale } from "../lib/i18n";
   import * as api from "../lib/api";
   import { toastError, toastInfo, toastSuccess } from "../lib/stores/toasts";
+  import { showError } from "../lib/stores/error_dialog";
   import {
-    applyServerUpdate,
     checkForUpdates,
     lastReport,
+    triggerServerUpgrade,
   } from "../lib/stores/updates";
 
   let saving = $state<string | null>(null);
@@ -239,13 +240,11 @@
   // signed-in user sees the panel.
   const serverUpdate = $derived($lastReport?.server ?? null);
   const showServerCard = $derived($auth.user != null);
-  // In-app upgrade button is only meaningful when the server is on the
-  // same host as the desktop app — `pkexec hoard-server upgrade` swaps a
-  // binary on this machine. For remote servers we fall back to copying
-  // the command so the user can run it over SSH. The `is_local_server`
-  // gate uses the RFC1918 / localhost / .local classifier in
-  // `commands::auth::classify_server`.
-  const canInAppUpgrade = $derived($auth.user?.is_local_server === true);
+  // The remote-upgrade button asks the server to upgrade *itself* over HTTP
+  // (ADR 0017), so it works from any OS and whether the server is local or on
+  // another box. The only requirement is an admin token — the server rejects
+  // the request otherwise. Non-admins fall back to copying the shell command.
+  const canInAppUpgrade = $derived($auth.user?.is_admin === true);
   let refreshingServer = $state(false);
   let upgradingServer = $state(false);
   let copyingUpgrade = $state(false);
@@ -262,37 +261,35 @@
   }
 
   /**
-   * Local server: kick off the in-app `pkexec hoard-server upgrade` flow.
-   * The Rust side handles the polkit prompt; we only need to surface the
-   * outcome. After a successful upgrade we re-probe so the panel flips
-   * from "v… → v…" back to "Up to date".
+   * Admin: ask the self-hosted server to upgrade itself over HTTP (ADR 0017).
+   * The Rust command POSTs `/v1/admin/upgrade` and then polls `/v1/health`
+   * until the version flips. `confirmed` means it came back on the new
+   * version; `scheduled` means the request was accepted but we couldn't
+   * confirm the restart before the poll window closed (still likely fine).
    */
-  async function handleServerInAppUpgrade() {
+  async function handleServerRemoteUpgrade() {
     if (upgradingServer) return;
     upgradingServer = true;
     try {
-      const outcome = await applyServerUpdate();
-      if (outcome.kind === "upgraded_and_restarted") {
-        toastSuccess($_("settings.server_upgrade_success"));
-      } else {
-        // Upgrade succeeded but the systemctl restart didn't — most
-        // commonly because the user runs hoard-server outside systemd.
-        toastInfo(
-          $_("settings.server_upgrade_partial", {
-            values: { error: outcome.restart_error },
+      const outcome = await triggerServerUpgrade();
+      if (outcome.kind === "confirmed") {
+        toastSuccess(
+          $_("settings.server_remote_upgrade_confirmed", {
+            values: { version: outcome.version },
           }),
         );
+      } else {
+        toastInfo($_("settings.server_remote_upgrade_scheduled"));
       }
       // Re-probe so the version line updates without forcing a manual click.
       checkForUpdates().catch((e) =>
         console.warn("post-upgrade probe failed:", e),
       );
     } catch (e) {
-      toastError(
-        $_("settings.server_upgrade_failed", {
-          values: { error: typeof e === "string" ? e : (e as Error).message },
-        }),
-      );
+      // The command fails with a structured AppError (i18n keys) — surface it
+      // through the global error dialog so the user sees the actual reason
+      // (not logged in, forbidden, unreachable…) rather than a raw string.
+      showError(e);
     } finally {
       upgradingServer = false;
     }
@@ -1020,18 +1017,18 @@
                       </p>
                       {#if canInAppUpgrade}
                         <!--
-                          Local server: trigger the upgrade in-app via
-                          pkexec. We show the command underneath as a
-                          subtle hint for users who'd rather run it
-                          themselves in a terminal.
+                          Admin: trigger the upgrade remotely over HTTP. The
+                          server upgrades itself and restarts; we show the
+                          shell command underneath as a subtle hint for users
+                          who'd rather run it on the box themselves.
                         -->
                         <p class="mt-2 text-xs text-zinc-500">
-                          {$_("settings.server_upgrade_hint")}
+                          {$_("settings.server_remote_upgrade_hint")}
                         </p>
                         <div class="mt-3 flex flex-wrap gap-2">
                           <Button
                             variant="primary"
-                            onclick={handleServerInAppUpgrade}
+                            onclick={handleServerRemoteUpgrade}
                             loading={upgradingServer}
                             disabled={upgradingServer}
                           >

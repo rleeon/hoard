@@ -21,6 +21,18 @@ use tokio::io::AsyncReadExt;
 const GH_LATEST: &str = "https://api.github.com/repos/rleeon/hoard/releases/latest";
 const USER_AGENT: &str = concat!("hoard-server/", env!("CARGO_PKG_VERSION"));
 
+/// minisign public key for Hoard release artifacts. The matching secret
+/// key lives only in GitHub Actions secrets and signs every
+/// `hoard-*-linux-x86_64.tar.gz` at release time (see ADR 0017). This is
+/// public by definition; embedding it pins trust to a key only the
+/// release pipeline holds, so a compromise of the GitHub *account* (asset
+/// re-upload) can't push a binary that `upgrade` will run as root.
+///
+/// NOTE: replace this placeholder with the real key emitted by
+/// `minisign -G` / `rsign generate`. The verifier rejects everything
+/// while it's the placeholder, which fails closed (no unsigned upgrade).
+const MINISIGN_PUBKEY: &str = "RWQexAMPLEREPLACEWITHREALKEY00000000000000000000000000000000000";
+
 #[derive(serde::Deserialize)]
 struct Release {
     tag_name: String,
@@ -109,6 +121,16 @@ pub async fn run(target: Option<PathBuf>) -> Result<()> {
         .await
         .context("reading release asset body")?;
 
+    // 3b. Verify the minisign signature BEFORE we touch the binary. The
+    //     signature asset is `<asset>.minisig` in the same release. This is
+    //     the gate that makes `upgrade` safe to run as root: an attacker who
+    //     re-uploads a malicious tarball can't forge a signature for the
+    //     embedded public key. Fails closed — no signature, no upgrade.
+    println!("  verifying      : minisign signature");
+    verify_release_signature(&client, &release.assets, &asset.name, &bytes)
+        .await
+        .context("verifying release signature")?;
+
     // 4. Extract the `hoard-server` binary out of the gzipped tarball.
     extract_binary(&bytes, &tmp_path)
         .await
@@ -176,6 +198,47 @@ fn preferred_asset_name(version: &str) -> Result<String> {
              Download the binary manually from GitHub."
         )
     }
+}
+
+/// Download `<asset>.minisig` from the release and verify it against the
+/// tarball bytes using the embedded [`MINISIGN_PUBKEY`]. Returns an error
+/// (aborting the upgrade) if the signature asset is missing or invalid.
+async fn verify_release_signature(
+    client: &reqwest::Client,
+    assets: &[Asset],
+    asset_name: &str,
+    tarball: &[u8],
+) -> Result<()> {
+    use minisign_verify::{PublicKey, Signature};
+
+    let sig_name = format!("{asset_name}.minisig");
+    let sig_asset = assets.iter().find(|a| a.name == sig_name).ok_or_else(|| {
+        anyhow!(
+            "release is missing the signature asset `{sig_name}`. \
+             Refusing to install an unsigned binary."
+        )
+    })?;
+
+    let sig_text = client
+        .get(&sig_asset.browser_download_url)
+        .send()
+        .await
+        .context("downloading signature asset")?
+        .error_for_status()
+        .context("signature download returned a non-2xx status")?
+        .text()
+        .await
+        .context("reading signature body")?;
+
+    let pubkey = PublicKey::from_base64(MINISIGN_PUBKEY)
+        .map_err(|e| anyhow!("embedded minisign public key is invalid: {e}"))?;
+    let signature =
+        Signature::decode(&sig_text).map_err(|e| anyhow!("malformed .minisig file: {e}"))?;
+    pubkey
+        .verify(tarball, &signature, false)
+        .map_err(|e| anyhow!("signature does NOT match the embedded Hoard release key: {e}"))?;
+
+    Ok(())
 }
 
 /// Pull `hoard-server` out of a gzipped tarball into `dest`.

@@ -98,13 +98,26 @@ for sub in data tmp trash; do
   install -d -m 0750 -o "$USER_NAME" -g "$GROUP_NAME" "$DATA_DIR/$sub"
 done
 
-# 6. systemd unit -----------------------------------------------------------
+# 6. systemd units ----------------------------------------------------------
 UNIT_SRC="$REPO_ROOT/deploy/systemd/$SERVICE_NAME"
 UNIT_DST="/etc/systemd/system/$SERVICE_NAME"
 log "Installing $UNIT_DST"
 install -m 0644 "$UNIT_SRC" "$UNIT_DST"
+
+# Remote-upgrade units (ADR 0017): a path unit watches for the marker the
+# server drops on POST /v1/admin/upgrade, and a root oneshot does the
+# privileged binary swap + restart. The web service can't do this itself.
+log "Installing remote-upgrade units (hoard-upgrade.path / .service)"
+install -m 0644 "$REPO_ROOT/deploy/systemd/hoard-upgrade.path" \
+        "/etc/systemd/system/hoard-upgrade.path"
+install -m 0644 "$REPO_ROOT/deploy/systemd/hoard-upgrade.service" \
+        "/etc/systemd/system/hoard-upgrade.service"
+
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME" >/dev/null
+# Enable + start the path watcher now so it survives reboots and is armed
+# immediately. The oneshot is triggered by the path; never enabled directly.
+systemctl enable --now hoard-upgrade.path >/dev/null
 
 # Done ----------------------------------------------------------------------
 log "Install complete."

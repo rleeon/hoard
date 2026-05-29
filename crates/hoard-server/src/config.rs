@@ -25,6 +25,16 @@ pub struct ServerConfig {
     pub host: String,
     pub port: u16,
     pub public_url: String,
+    /// When true (default), admins can trigger a self-upgrade remotely via
+    /// `POST /v1/admin/upgrade`. The request only drops a marker file in
+    /// `data_dir`; a root systemd oneshot does the privileged work (ADR
+    /// 0017). Set to false to disable the remote path entirely.
+    #[serde(default = "default_allow_remote_upgrade")]
+    pub allow_remote_upgrade: bool,
+}
+
+fn default_allow_remote_upgrade() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

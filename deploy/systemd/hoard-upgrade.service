@@ -1,0 +1,31 @@
+# Privileged oneshot that performs the actual server self-upgrade. Triggered
+# by hoard-upgrade.path when the marker file appears. Runs as root — the ONLY
+# place in the deploy with privilege to overwrite /usr/local/bin/hoard-server
+# and restart the service. See ADR 0017.
+#
+# Flow:
+#   1. ExecStartPre removes the marker FIRST, so a failed upgrade doesn't
+#      loop (the path unit would otherwise re-trigger immediately).
+#   2. ExecStart runs `hoard-server upgrade`, which downloads the latest
+#      release, VERIFIES its minisign signature against the embedded public
+#      key, and atomically swaps the binary. Non-zero exit (e.g. bad
+#      signature) aborts here and ExecStartPost does NOT run.
+#   3. ExecStartPost restarts the web service so it execs the new binary.
+#      Only runs if the upgrade succeeded.
+
+[Unit]
+Description=Hoard server self-upgrade (privileged oneshot)
+Documentation=https://github.com/rleeon/hoard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStartPre=/bin/rm -f /var/lib/hoard/.upgrade-requested
+ExecStart=/usr/local/bin/hoard-server upgrade
+ExecStartPost=/bin/systemctl restart hoard-server.service
+# Don't leave a failed unit "active"; we want each request to be a clean run.
+RemainAfterExit=no
+TimeoutStartSec=300s

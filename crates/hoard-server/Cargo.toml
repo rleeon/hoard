@@ -55,6 +55,10 @@ futures = { workspace = true }
 bytes = { workspace = true }
 reqwest = { workspace = true }
 
+# Release signature verification for `hoard-server upgrade`. Pure-Rust
+# Ed25519 minisign verifier — no libsodium link. See ADR 0017.
+minisign-verify = "0.2"
+
 # Cloud-only optional dependencies. Pull in only when --features cloud.
 aws-sdk-s3 = { version = "1", optional = true }
 aws-config = { version = "1", optional = true }

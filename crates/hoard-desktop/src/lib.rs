@@ -31,7 +31,10 @@ pub fn run() {
 
     let registry = tracing_subscriber::registry()
         .with(env_filter)
-        .with(tracing_subscriber::fmt::layer().with_target(true));
+        .with(tracing_subscriber::fmt::layer().with_target(true))
+        // Ship events to the connected server (best-effort, drop-on-full).
+        // Inert until a session + log-accepting server are present.
+        .with(hoard_agent::logship::start());
 
     // We deliberately let log-init failures fall through to "stdout-only" —
     // a corrupt cache_dir shouldn't keep the app from starting.
@@ -151,6 +154,7 @@ pub fn run() {
             commands::updates::check_for_updates,
             commands::updates::apply_desktop_update,
             commands::updates::apply_server_update,
+            commands::updates::trigger_server_upgrade,
             commands::cloud::cloud_login_url,
             commands::cloud::cloud_complete_login,
             commands::cloud::cloud_current_account,

@@ -607,6 +607,111 @@ async fn apply_server_update_impl() -> Result<ServerUpgradeOutcome, AppError> {
     )
 }
 
+// ---------------------------------------------------------------------------
+// Remote-triggered server upgrade — works from any OS, any machine (ADR 0017)
+// ---------------------------------------------------------------------------
+//
+// Unlike `apply_server_update` (which runs `pkexec hoard-server upgrade` on
+// *this* machine and therefore only helps when the server shares the box),
+// this asks the server to upgrade *itself* over HTTP. The desktop can run on
+// Windows and still upgrade a headless Linux server across the network.
+//
+// The server-side handler (`POST /v1/admin/upgrade`) only drops a marker file;
+// a root systemd oneshot does the signed binary swap + restart. So all we do
+// here is fire the authenticated request and then poll `/v1/health` until the
+// reported version changes (the server is briefly unreachable mid-restart,
+// which we tolerate) or a timeout elapses.
+
+/// Outcome of `trigger_server_upgrade`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RemoteUpgradeOutcome {
+    /// The server came back on a new version within the poll window.
+    Confirmed { version: String },
+    /// The request was accepted (202) but we couldn't confirm the new
+    /// version before the timeout — the server may still be restarting, or
+    /// it was already on the latest signed release. The UI tells the user to
+    /// re-check in a moment rather than treating this as a failure.
+    Scheduled,
+}
+
+/// Tauri command. Sends `POST {server_url}/v1/admin/upgrade` with the saved
+/// bearer token, then polls `/v1/health` for a version change. Requires an
+/// admin token (the server returns 403 otherwise); the UI gates the button
+/// on `is_admin` so this is a defence-in-depth check, not the primary one.
+#[tauri::command]
+pub async fn trigger_server_upgrade(
+    state: State<'_, AppState>,
+) -> Result<RemoteUpgradeOutcome, AppError> {
+    let server_url = state
+        .user
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|u| u.server_url.clone())
+        .ok_or_else(|| {
+            AppError::new("updates.error.title", "updates.error.server_not_logged_in")
+        })?;
+    let token = hoard_agent::credentials::load()
+        .ok()
+        .flatten()
+        .map(|c| c.token)
+        .ok_or_else(|| {
+            AppError::new("updates.error.title", "updates.error.server_not_logged_in")
+        })?;
+
+    let base = server_url.trim_end_matches('/').to_string();
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("hoard-desktop/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| {
+            AppError::new("updates.error.title", "updates.error.unknown").with_detail(e.to_string())
+        })?;
+
+    // Snapshot the current version so we can detect the flip after restart.
+    let before = fetch_server_health(&base).await.ok();
+
+    let resp = client
+        .post(format!("{base}/v1/admin/upgrade"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| {
+            AppError::new("updates.error.title", "updates.error.server_unreachable")
+                .with_detail(e.to_string())
+        })?;
+
+    let status = resp.status();
+    if status == reqwest::StatusCode::FORBIDDEN {
+        let detail = resp.text().await.unwrap_or_default();
+        return Err(
+            AppError::new("updates.error.title", "updates.error.server_forbidden")
+                .with_detail(detail),
+        );
+    }
+    if !status.is_success() {
+        let detail = resp.text().await.unwrap_or_default();
+        return Err(
+            AppError::new("updates.error.title", "updates.error.server_unknown")
+                .with_detail(format!("HTTP {status}: {detail}")),
+        );
+    }
+
+    // Poll /v1/health for ~90s (30 × 3s). The server is unreachable for a few
+    // seconds while systemd restarts it; we ignore probe errors and keep going.
+    for _ in 0..30 {
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        if let Ok(version) = fetch_server_health(&base).await {
+            if before.as_deref() != Some(version.as_str()) {
+                return Ok(RemoteUpgradeOutcome::Confirmed { version });
+            }
+        }
+    }
+
+    Ok(RemoteUpgradeOutcome::Scheduled)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

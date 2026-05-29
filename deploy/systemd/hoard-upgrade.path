@@ -1,0 +1,18 @@
+# Watches for the upgrade marker dropped by `POST /v1/admin/upgrade`.
+# When the file appears, systemd starts hoard-upgrade.service (a root
+# oneshot) which performs the privileged binary swap + restart.
+#
+# The web service (hoard-server.service) runs sandboxed and CANNOT do this
+# itself by design — see ADR 0017. Keep the path in sync with
+# `routes::admin::UPGRADE_MARKER` and the server's data_dir.
+
+[Unit]
+Description=Watch for Hoard server self-upgrade requests
+Documentation=https://github.com/rleeon/hoard
+
+[Path]
+PathExists=/var/lib/hoard/.upgrade-requested
+Unit=hoard-upgrade.service
+
+[Install]
+WantedBy=multi-user.target
