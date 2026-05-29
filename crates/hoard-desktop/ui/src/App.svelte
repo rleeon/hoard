@@ -176,6 +176,19 @@
     await hydratePrefs();
     automaticMode = $prefs?.automatic_mode ?? false;
 
+    // Startup scan when Modo Automático is on. The Rust scheduler also emits
+    // an immediate `automatic-tick` from `restart_if_enabled`, but that fires
+    // during Tauri `setup()` — before this component mounts and installs the
+    // listener above — so it's almost always dropped (the emit is
+    // best-effort, no queue). Relying on it meant the app could open with the
+    // toggle on yet not scan/track/monitor anything until the next interval
+    // (hours later). Kicking the flow here makes the first scan reliable on
+    // every launch. `runAutomaticSetup` guards against re-entrancy, so if the
+    // Rust tick *was* caught this is a no-op.
+    if (automaticMode && $auth.user) {
+      void runAutomaticSetup();
+    }
+
     // Subscribe to the live event firehose once. LiveStatus + ActivityFeed
     // read from the resulting stores; subscribing here (vs. in each
     // component's onMount) means a panel toggle doesn't tear down or
