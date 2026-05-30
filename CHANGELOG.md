@@ -7,7 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.1] — 2026-05-31
+
 ### Added
+- **Webhooks de Polar (Merchant of Record).** Alternativa a Lemon Squeezy:
+  endpoint `POST /v1/webhooks/polar` con verificación de firma Standard
+  Webhooks (HMAC-SHA256 sobre `{id}.{ts}.{body}`), mapeo de eventos
+  `subscription.*` al enum de estado y cascada a `profiles.plan`. Ambos
+  proveedores conviven. Producto y plan se resuelven por `product_id` desde
+  `[cloud.polar]`.
+- **CORS en el servidor cloud.** `CorsLayer` permite a `hoard.services` (y
+  localhost en dev) leer la API cross-origin con Bearer token; sin esto el
+  navegador bloqueaba la respuesta y la web mostraba "degradado" en falso.
+- **Estado de servicio real de 3 estados en la web.** El punto de estado
+  distingue ok (verde), degradado (ámbar) y caído (rojo) en vez del binario
+  anterior. `/v1/health` ahora hace un ping a Postgres (`SELECT 1`, timeout
+  2 s) y reporta `degraded` si la DB falla.
+- **Cuenta en la barra lateral del desktop.** Sesión, avatar y botón
+  "Mejorar plan".
 - **Almacenamiento content-addressed con deduplicación** (ADR 0018, eje C).
   Los bytes de cada archivo se guardan una sola vez por usuario en
   `blobs/<user>/<sha[0:2]>/<sha>`; una versión pasa a ser sólo su lista de
@@ -54,12 +71,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   cada segundo reiniciaba el debounce de 5 s eternamente y la subida nunca
   vencía. Nuevo tope `MAX_BACKUP_WAIT_SECS` (30 s) fuerza la subida aunque
   las escrituras no paren.
+- **Navegación SPA de la web.** Los enlaces (`/help`, etc.) no cambiaban de
+  vista hasta recargar: la View Transition esperaba a `navigation.complete`
+  antes de resolver, bloqueando el cambio. Reordenado para resolver primero.
 
 ### Docs
 - ADR 0018 + plan `storage-efficiency.md`: rediseño de almacenamiento
   (dedup content-addressed + poda por antigüedad + barra "ahorro de datos")
   motivado por el caso OpenTTD (33 versiones ≈ 53 MB para ~5 MB únicos).
-  Propuesto, sin implementar aún.
+  Fase 1 implementada; fases 2-3 pendientes.
 
 ## [1.7.0] — 2026-05-26
 
