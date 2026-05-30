@@ -4,6 +4,7 @@
 use crate::cloud::{
     auth::{require_cloud_auth, JwksCache},
     bandwidth, db, r2,
+    polar,
     routes::{logs as log_routes, me, saves, sync as sync_routes},
     state::CloudState,
     webhooks,
@@ -11,11 +12,14 @@ use crate::cloud::{
 use crate::config::Config;
 use anyhow::Result;
 use axum::{
+    extract::State,
+    http::{header, HeaderValue, Method},
     middleware,
     routing::{get, post},
     Router,
 };
 use std::{net::SocketAddr, sync::Arc, time::Duration, time::Instant};
+use tower_http::cors::CorsLayer;
 use tracing::info;
 
 pub async fn run(cfg: Config) -> Result<()> {
@@ -138,13 +142,29 @@ pub async fn run(cfg: Config) -> Result<()> {
 
     let public = Router::new()
         .route("/v1/webhooks/lemonsqueezy", post(webhooks::handle))
+        .route("/v1/webhooks/polar", post(polar::handle))
         // Health is *also* available unauthed in cloud mode so Fly can probe it.
         .route("/v1/health", get(cloud_health));
+
+    // Browser CORS: the marketing site (hoard.services) and the account
+    // page fetch this API cross-origin. Without these headers the browser
+    // blocks reading the response even on a healthy 200, which is what made
+    // the status dot read "degraded". No cookies — auth is a Bearer token —
+    // so credentials stay off.
+    let cors = CorsLayer::new()
+        .allow_origin([
+            HeaderValue::from_static("https://hoard.services"),
+            HeaderValue::from_static("http://localhost:5173"),
+            HeaderValue::from_static("http://localhost:4173"),
+        ])
+        .allow_methods([Method::GET, Method::POST, Method::DELETE])
+        .allow_headers([header::AUTHORIZATION, header::ACCEPT, header::CONTENT_TYPE]);
 
     let app = Router::new()
         .merge(public)
         .merge(authed)
-        .with_state(state.clone());
+        .with_state(state.clone())
+        .layer(cors);
 
     let addr: SocketAddr = format!("{}:{}", cfg.server.host, cfg.server.port).parse()?;
     info!(%addr, "cloud mode listening");
@@ -158,9 +178,26 @@ pub async fn run(cfg: Config) -> Result<()> {
     Ok(())
 }
 
-async fn cloud_health() -> axum::Json<HealthBody> {
+async fn cloud_health(State(state): State<CloudState>) -> axum::Json<HealthBody> {
+    // Reaching this handler means the server process is up. "degraded" is
+    // reserved for "up but a dependency is failing" — here, Postgres. If the
+    // process itself were down the request wouldn't connect at all, which the
+    // client reads as a hard outage (red), not degraded (amber).
+    //
+    // The DB probe is bounded by a 2s timeout: Fly's health check hits this
+    // endpoint every 15s with a 5s budget, so a hung Postgres must never make
+    // the handler block past that — otherwise Fly would crash-loop a machine
+    // that a restart can't fix. Timeout or error → degraded.
+    let db_ok = matches!(
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            sqlx::query("SELECT 1").execute(&state.pool),
+        )
+        .await,
+        Ok(Ok(_))
+    );
     axum::Json(HealthBody {
-        status: "ok",
+        status: if db_ok { "ok" } else { "degraded" },
         version: env!("CARGO_PKG_VERSION"),
         mode: "cloud",
         log_min_level: "info",

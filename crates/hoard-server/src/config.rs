@@ -135,6 +135,12 @@ pub struct CloudConfig {
     pub r2: R2Config,
     #[serde(default)]
     pub lemonsqueezy: LemonSqueezyConfig,
+    /// Polar (Merchant of Record) configuration. Coexists with Lemon
+    /// Squeezy — whichever provider sends a webhook is processed; both
+    /// upsert into the same `subscriptions` table keyed on the provider's
+    /// subscription id. Fields usually come from `HOARD__CLOUD__POLAR__*`.
+    #[serde(default)]
+    pub polar: PolarConfig,
     /// Public-facing URL of the Hoard Cloud landing/checkout. Embedded in
     /// 402 responses so the client can offer an upgrade link.
     #[serde(default = "default_upgrade_url")]
@@ -196,6 +202,30 @@ pub struct LemonSqueezyProduct {
     pub product_id: String,
     pub plan: String,     // 'pro'
     pub interval: String, // 'month' | 'year'
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct PolarConfig {
+    /// Organization access token (OAT). Reserved for server-initiated
+    /// Polar API calls (e.g. creating checkouts); webhook verification
+    /// itself only needs the webhook secret.
+    #[serde(default)]
+    pub access_token: String,
+    /// Standard Webhooks signing secret (the `polar_whs_...` value). Used
+    /// verbatim as the HMAC key — see `cloud::polar::verify_signature`.
+    #[serde(default)]
+    pub webhook_secret: String,
+    /// Map Polar product UUID -> our plan tier and interval. Two products:
+    /// Pro Monthly and Pro Yearly, mirroring the Lemon Squeezy setup.
+    #[serde(default)]
+    pub products: Vec<PolarProduct>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PolarProduct {
+    pub product_id: String, // UUID
+    pub plan: String,       // 'pro'
+    pub interval: String,   // 'month' | 'year'
 }
 
 impl Config {

@@ -31,6 +31,11 @@ allow_registration = false
 [retention]
 trash_retention_days = 30
 tmp_cleanup_hours = 24
+# Age-weighted snapshot pruning (ADR 0018). Note: in cloud mode the periodic
+# cleanup task is self-hosted-only today; these keys are parsed but the prune
+# pass runs on the disk-backed (sqlite) path. See plan storage-efficiency.md.
+snapshot_pruning = true
+data_saving = 0.3
 
 [logging]
 level = "info"
@@ -70,5 +75,22 @@ interval = "month"
 
 [[cloud.lemonsqueezy.products]]
 product_id = "1087715"
+plan = "pro"
+interval = "year"
+
+# Polar (Merchant of Record). access_token + webhook_secret come from env
+# (HOARD__CLOUD__POLAR__ACCESS_TOKEN / __WEBHOOK_SECRET); product UUIDs go
+# here. The handler at POST /v1/webhooks/polar matches by product_id.
+[cloud.polar]
+access_token = ""
+webhook_secret = ""
+
+[[cloud.polar.products]]
+product_id = "4404a328-9289-4077-b25b-162ecd1d6ed3"
+plan = "pro"
+interval = "month"
+
+[[cloud.polar.products]]
+product_id = "77d81015-7c9d-4009-b2a6-e0c0a0901899"
 plan = "pro"
 interval = "year"

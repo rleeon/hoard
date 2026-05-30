@@ -2951,6 +2951,7 @@ dependencies = [
  "aws-sdk-s3",
  "aws-smithy-runtime-api",
  "axum",
+ "base64 0.22.1",
  "bytes",
  "clap",
  "figment",

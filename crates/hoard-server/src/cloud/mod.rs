@@ -21,6 +21,7 @@ pub mod bandwidth;
 pub mod db;
 pub mod errors;
 pub mod plans;
+pub mod polar;
 pub mod quota;
 pub mod r2;
 pub mod routes;
