@@ -76,6 +76,26 @@ pub struct AuthConfig {
 pub struct RetentionConfig {
     pub trash_retention_days: u64,
     pub tmp_cleanup_hours: u64,
+    /// Age-weighted snapshot pruning (ADR 0018, eje B). When true, the
+    /// periodic cleanup thins old snapshots per the `data_saving` policy,
+    /// soft-deleting the losers into `trash/` (recoverable, purged later by
+    /// `trash_retention_days`). Defaults on. `#[serde(default)]` so existing
+    /// configs without this key keep parsing.
+    #[serde(default = "default_snapshot_pruning")]
+    pub snapshot_pruning: bool,
+    /// "Ahorro de datos" knob `k ∈ [0,1]`: higher keeps fewer snapshots.
+    /// Maps onto concrete keep-counts via
+    /// `RetentionPolicy::from_data_saving`. Default 0.3.
+    #[serde(default = "default_data_saving")]
+    pub data_saving: f64,
+}
+
+fn default_snapshot_pruning() -> bool {
+    true
+}
+
+fn default_data_saving() -> f64 {
+    0.3
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

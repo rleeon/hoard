@@ -94,6 +94,10 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
     let pool = db::connect(&cfg.database.url, cfg.database.max_connections).await?;
     db::run_migrations(&pool).await?;
 
+    // One-time migration of legacy folder snapshots into the blob store
+    // (ADR 0018, eje C). No-op on fresh installs and once already migrated.
+    hoard_server::blobs::backfill_from_folders(&pool, &cfg.storage.data_dir).await?;
+
     let state = Arc::new(health::ServerState {
         pool: pool.clone(),
         config: cfg.clone(),
@@ -157,8 +161,23 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
     let cleanup_data = cfg.storage.data_dir.clone();
     let cleanup_tmp_h = cfg.retention.tmp_cleanup_hours;
     let cleanup_trash_d = cfg.retention.trash_retention_days;
+    // Age-weighted snapshot pruning policy (ADR 0018). `None` disables it.
+    let prune_policy = if cfg.retention.snapshot_pruning {
+        Some(hoard_server::retention::RetentionPolicy::from_data_saving(
+            cfg.retention.data_saving,
+        ))
+    } else {
+        None
+    };
     tokio::spawn(async move {
-        cleanup::run_periodic(cleanup_pool, cleanup_data, cleanup_tmp_h, cleanup_trash_d).await;
+        cleanup::run_periodic(
+            cleanup_pool,
+            cleanup_data,
+            cleanup_tmp_h,
+            cleanup_trash_d,
+            prune_policy,
+        )
+        .await;
     });
 
     let app = Router::new()

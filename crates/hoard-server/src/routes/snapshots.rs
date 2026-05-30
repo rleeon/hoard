@@ -7,6 +7,7 @@ use axum::{
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use sqlx::Row;
 use std::path::{Component, PathBuf};
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
@@ -226,10 +227,10 @@ pub async fn create(
                     "snapshot exceeds size limit",
                 ));
             }
-            if used + total_size > quota {
-                cleanup_tmp();
-                return Err(err(StatusCode::PAYLOAD_TOO_LARGE, "storage quota exceeded"));
-            }
+            // Quota is checked at commit time against deduplicated bytes — a
+            // re-upload of mostly-identical files (the OpenTTD case) adds
+            // almost nothing, so the streaming `total_size` check would reject
+            // uploads that actually fit. `max_per_snapshot` still caps disk.
 
             hasher.update(&chunk);
             if let Err(e) = file.write_all(&chunk).await {
@@ -249,7 +250,29 @@ pub async fn create(
         return Err(err(StatusCode::BAD_REQUEST, "no files uploaded"));
     }
 
-    // ── Atomic commit: DB transaction + filesystem rename ──
+    // ── Atomic commit: DB transaction + content-addressed blob placement ──
+    //
+    // Each file's bytes are stored once per user at blobs/<user>/<sha[0:2]>/<sha>
+    // (ADR 0018, eje C). Identical files across versions share one blob; the
+    // version is just its list of `snapshot_files` rows. Quota counts unique
+    // blob bytes, so only the genuinely-new bytes of this upload are charged.
+    let data_dir = state.config.storage.data_dir.clone();
+    let _ = &game_slug; // path components no longer used for storage layout
+    let _ = &label;
+
+    // New bytes = distinct shas in this upload not already on disk for this user.
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut newly_stored_bytes: i64 = 0;
+    for (_, size, sha) in &files {
+        if seen.insert(sha.as_str()) && !crate::blobs::blob_path(&data_dir, &user_id, sha).exists() {
+            newly_stored_bytes += size;
+        }
+    }
+    if used + newly_stored_bytes > quota {
+        cleanup_tmp();
+        return Err(err(StatusCode::PAYLOAD_TOO_LARGE, "storage quota exceeded"));
+    }
+
     let snapshot_id = Uuid::new_v4().to_string();
     let mut tx = state.pool.begin().await.map_err(|_| {
         cleanup_tmp();
@@ -285,9 +308,21 @@ pub async fn create(
         internal()
     })?;
 
+    // Blobs we physically placed this request, so we can roll them back if the
+    // transaction fails to commit.
+    let mut created_blobs: Vec<PathBuf> = Vec::new();
+    let rollback_blobs = |blobs: &[PathBuf]| {
+        let blobs: Vec<PathBuf> = blobs.to_vec();
+        tokio::spawn(async move {
+            for p in blobs {
+                let _ = tokio::fs::remove_file(&p).await;
+            }
+        });
+    };
+
     for (rel_path, size, sha) in &files {
         let file_id = Uuid::new_v4().to_string();
-        sqlx::query!(
+        if sqlx::query!(
             "INSERT INTO snapshot_files (id, snapshot_id, relative_path, size_bytes, sha256)
              VALUES (?,?,?,?,?)",
             file_id,
@@ -298,10 +333,56 @@ pub async fn create(
         )
         .execute(&mut *tx)
         .await
-        .map_err(|_| {
+        .is_err()
+        {
+            rollback_blobs(&created_blobs);
             cleanup_tmp();
-            internal()
-        })?;
+            return Err(internal());
+        }
+
+        // Reference-count the blob (insert at 1, or bump an existing one).
+        if sqlx::query(
+            "INSERT INTO blobs (user_id, sha256, size_bytes, refcount)
+             VALUES (?,?,?,1)
+             ON CONFLICT(user_id, sha256) DO UPDATE SET refcount = refcount + 1",
+        )
+        .bind(&user_id)
+        .bind(sha)
+        .bind(size)
+        .execute(&mut *tx)
+        .await
+        .is_err()
+        {
+            rollback_blobs(&created_blobs);
+            cleanup_tmp();
+            return Err(internal());
+        }
+
+        // Place the bytes on disk exactly once.
+        let dst = crate::blobs::blob_path(&data_dir, &user_id, sha);
+        if !dst.exists() {
+            if let Some(parent) = dst.parent() {
+                if tokio::fs::create_dir_all(parent).await.is_err() {
+                    rollback_blobs(&created_blobs);
+                    cleanup_tmp();
+                    return Err(internal());
+                }
+            }
+            let src = tmp_root.join(rel_path);
+            // Same filesystem (tmp + blobs share data_dir) → rename; fall back
+            // to copy on the off chance of EXDEV.
+            let placed = match tokio::fs::rename(&src, &dst).await {
+                Ok(_) => true,
+                Err(_) => tokio::fs::copy(&src, &dst).await.is_ok(),
+            };
+            if !placed {
+                warn!(sha = %sha, "blob placement failed");
+                rollback_blobs(&created_blobs);
+                cleanup_tmp();
+                return Err(internal());
+            }
+            created_blobs.push(dst);
+        }
     }
 
     sqlx::query!(
@@ -312,11 +393,12 @@ pub async fn create(
     .execute(&mut *tx)
     .await
     .map_err(|_| {
+        rollback_blobs(&created_blobs);
         cleanup_tmp();
         internal()
     })?;
 
-    let new_used = used + total_size;
+    let new_used = used + newly_stored_bytes;
     sqlx::query!(
         "UPDATE users SET storage_used_bytes=? WHERE id=?",
         new_used,
@@ -325,6 +407,7 @@ pub async fn create(
     .execute(&mut *tx)
     .await
     .map_err(|_| {
+        rollback_blobs(&created_blobs);
         cleanup_tmp();
         internal()
     })?;
@@ -335,6 +418,7 @@ pub async fn create(
         "version_num": new_version,
         "files": file_count,
         "bytes": total_size,
+        "new_bytes": newly_stored_bytes,
     })
     .to_string();
     sqlx::query!(
@@ -348,40 +432,20 @@ pub async fn create(
     .execute(&mut *tx)
     .await
     .map_err(|_| {
+        rollback_blobs(&created_blobs);
         cleanup_tmp();
         internal()
     })?;
 
-    // Move tmp/<upload_id>/ → data/<user_id>/<game_slug>/<label>/v<n>/
-    let final_dir = state
-        .config
-        .storage
-        .data_dir
-        .join("data")
-        .join(&user_id)
-        .join(&game_slug)
-        .join(&label)
-        .join(format!("v{}", new_version));
-
-    if let Some(parent) = final_dir.parent() {
-        tokio::fs::create_dir_all(parent).await.map_err(|_| {
-            cleanup_tmp();
-            internal()
-        })?;
-    }
-
-    if let Err(e) = tokio::fs::rename(&tmp_root, &final_dir).await {
-        warn!(error=%e, "rename tmp→data failed");
+    if let Err(e) = tx.commit().await {
+        warn!(error=%e, "transaction commit failed");
+        rollback_blobs(&created_blobs);
         cleanup_tmp();
         return Err(internal());
     }
 
-    if let Err(e) = tx.commit().await {
-        warn!(error=%e, "transaction commit failed");
-        // Try to put files back? Best-effort cleanup of the now-orphaned data dir.
-        let _ = tokio::fs::remove_dir_all(&final_dir).await;
-        return Err(internal());
-    }
+    // Drop any leftover tmp files (duplicate-sha entries we didn't move out).
+    cleanup_tmp();
 
     info!(
         user = %user.username,
@@ -563,40 +627,41 @@ pub async fn download(
         .map_err(|_| internal())?
         .ok_or_else(|| err(StatusCode::NOT_FOUND, "save not found"))?;
 
-    let count: i64 = sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM snapshots WHERE save_id=? AND version_num=? AND deleted_at IS NULL",
-        save_id,
-        version
+    let snap_id: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM snapshots WHERE save_id=? AND version_num=? AND deleted_at IS NULL",
     )
-    .fetch_one(&state.pool)
+    .bind(&save_id)
+    .bind(version)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|_| internal())?;
+    let snap_id = snap_id.ok_or_else(|| err(StatusCode::NOT_FOUND, "snapshot not found"))?;
+
+    // A version is just its list of files; reconstruct the tarball from the
+    // referenced blobs (ADR 0018, eje C). No per-version folder exists anymore.
+    let file_rows = sqlx::query(
+        "SELECT relative_path, sha256 FROM snapshot_files WHERE snapshot_id=? ORDER BY relative_path",
+    )
+    .bind(&snap_id)
+    .fetch_all(&state.pool)
     .await
     .map_err(|_| internal())?;
 
-    if count == 0 {
-        return Err(err(StatusCode::NOT_FOUND, "snapshot not found"));
-    }
-
-    let dir: PathBuf = state
-        .config
-        .storage
-        .data_dir
-        .join("data")
-        .join(&user_id)
-        .join(&game_slug)
-        .join(&label)
-        .join(format!("v{}", version));
-
-    if !dir.exists() {
-        return Err(err(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "snapshot data missing",
-        ));
-    }
+    let data_dir = state.config.storage.data_dir.clone();
+    let uid = user_id.clone();
+    let entries: Vec<(String, PathBuf)> = file_rows
+        .into_iter()
+        .map(|r| {
+            let rel: String = r.get("relative_path");
+            let sha: String = r.get("sha256");
+            let bp = crate::blobs::blob_path(&data_dir, &uid, &sha);
+            (rel, bp)
+        })
+        .collect();
 
     // Build a tar.zst stream in a background task and pipe it to the response body.
     let (tx_bytes, rx_bytes) =
         tokio::sync::mpsc::channel::<Result<bytes::Bytes, std::io::Error>>(8);
-    let dir_clone = dir.clone();
 
     tokio::spawn(async move {
         use async_compression::tokio::write::ZstdEncoder;
@@ -646,10 +711,12 @@ pub async fn download(
         let zstd = ZstdEncoder::new(writer);
         let mut tar = tokio_tar::Builder::new(zstd);
 
-        if let Err(e) = tar.append_dir_all(".", &dir_clone).await {
-            warn!(error=%e, "tar build error");
-            let _ = tx_bytes.send(Err(e)).await;
-            return;
+        for (rel, blob) in &entries {
+            if let Err(e) = tar.append_path_with_name(blob, rel).await {
+                warn!(error=%e, path=%rel, "tar build error");
+                let _ = tx_bytes.send(Err(e)).await;
+                return;
+            }
         }
 
         // Finish tar (writes EOF blocks), then finish zstd
@@ -690,36 +757,35 @@ pub async fn soft_delete(
     Path((save_id, version)): Path<(String, i64)>,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
     let user_id = user.user_id.to_string();
-    let (game_slug, label) = ownership_check(&state.pool, &save_id, &user_id)
+    if ownership_check(&state.pool, &save_id, &user_id)
         .await
         .map_err(|_| internal())?
-        .ok_or_else(|| err(StatusCode::NOT_FOUND, "save not found"))?;
+        .is_none()
+    {
+        return Err(err(StatusCode::NOT_FOUND, "save not found"));
+    }
 
-    let snap = sqlx::query!(
-        "SELECT id, total_size_bytes FROM snapshots
+    let snap_id: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM snapshots
          WHERE save_id=? AND version_num=? AND deleted_at IS NULL",
-        save_id,
-        version
     )
+    .bind(&save_id)
+    .bind(version)
     .fetch_optional(&state.pool)
     .await
-    .map_err(|_| internal())?
-    .ok_or_else(|| err(StatusCode::NOT_FOUND, "snapshot not found"))?;
+    .map_err(|_| internal())?;
+    let snap_id = snap_id.ok_or_else(|| err(StatusCode::NOT_FOUND, "snapshot not found"))?;
 
+    // Soft-delete is purely logical now (ADR 0018, eje C): mark deleted_at and
+    // audit. The blobs stay on disk with their refcount intact — a trashed
+    // snapshot still pins its bytes (and quota) until the trash purge actually
+    // decrements the refcounts and GCs blobs that reach 0. No folder to move,
+    // no quota change here.
     let mut tx = state.pool.begin().await.map_err(|_| internal())?;
 
     sqlx::query!(
         "UPDATE snapshots SET deleted_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=?",
-        snap.id
-    )
-    .execute(&mut *tx)
-    .await
-    .map_err(|_| internal())?;
-
-    sqlx::query!(
-        "UPDATE users SET storage_used_bytes = MAX(0, storage_used_bytes - ?) WHERE id=?",
-        snap.total_size_bytes,
-        user_id
+        snap_id
     )
     .execute(&mut *tx)
     .await
@@ -731,34 +797,13 @@ pub async fn soft_delete(
          VALUES (?,?,'snapshot.deleted',?)",
         audit_id,
         user_id,
-        snap.id
+        snap_id
     )
     .execute(&mut *tx)
     .await
     .map_err(|_| internal())?;
 
     tx.commit().await.map_err(|_| internal())?;
-
-    // Move folder to trash
-    let src = state
-        .config
-        .storage
-        .data_dir
-        .join("data")
-        .join(&user_id)
-        .join(&game_slug)
-        .join(&label)
-        .join(format!("v{}", version));
-    let dst = state.config.storage.data_dir.join("trash").join(&snap.id);
-
-    if src.exists() {
-        if let Some(parent) = dst.parent() {
-            tokio::fs::create_dir_all(parent).await.ok();
-        }
-        if let Err(e) = tokio::fs::rename(&src, &dst).await {
-            warn!(error=%e, "trash move failed");
-        }
-    }
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -771,69 +816,47 @@ pub async fn restore(
     Path((save_id, version)): Path<(String, i64)>,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
     let user_id = user.user_id.to_string();
-    let (game_slug, label) = ownership_check(&state.pool, &save_id, &user_id)
+    if ownership_check(&state.pool, &save_id, &user_id)
         .await
         .map_err(|_| internal())?
-        .ok_or_else(|| err(StatusCode::NOT_FOUND, "save not found"))?;
+        .is_none()
+    {
+        return Err(err(StatusCode::NOT_FOUND, "save not found"));
+    }
 
-    let snap = sqlx::query!(
-        "SELECT id, total_size_bytes, deleted_at FROM snapshots
+    // A purged snapshot has had its row deleted entirely (its blobs GC'd), so a
+    // missing row is the "has been purged / never existed" case. A still-present
+    // but soft-deleted row is recoverable: its blobs were never removed, so
+    // restore is purely clearing deleted_at (ADR 0018, eje C).
+    let snap = sqlx::query(
+        "SELECT id, deleted_at FROM snapshots
          WHERE save_id=? AND version_num=?",
-        save_id,
-        version
     )
+    .bind(&save_id)
+    .bind(version)
     .fetch_optional(&state.pool)
     .await
     .map_err(|_| internal())?
     .ok_or_else(|| err(StatusCode::NOT_FOUND, "snapshot not found"))?;
 
-    if snap.deleted_at.is_none() {
+    let snap_id: String = snap.get("id");
+    let deleted_at: Option<String> = snap.get("deleted_at");
+    if deleted_at.is_none() {
         return Err(err(StatusCode::CONFLICT, "snapshot is not deleted"));
     }
 
-    let trash_path = state.config.storage.data_dir.join("trash").join(&snap.id);
-    if !trash_path.exists() {
-        return Err(err(StatusCode::GONE, "snapshot has been purged"));
-    }
-
-    let dst = state
-        .config
-        .storage
-        .data_dir
-        .join("data")
-        .join(&user_id)
-        .join(&game_slug)
-        .join(&label)
-        .join(format!("v{}", version));
-
-    if let Some(parent) = dst.parent() {
-        tokio::fs::create_dir_all(parent).await.ok();
-    }
-    if let Err(e) = tokio::fs::rename(&trash_path, &dst).await {
-        warn!(error=%e, "restore rename failed");
-        return Err(internal());
-    }
-
     let mut tx = state.pool.begin().await.map_err(|_| internal())?;
-    sqlx::query!("UPDATE snapshots SET deleted_at=NULL WHERE id=?", snap.id)
+    sqlx::query!("UPDATE snapshots SET deleted_at=NULL WHERE id=?", snap_id)
         .execute(&mut *tx)
         .await
         .map_err(|_| internal())?;
-    sqlx::query!(
-        "UPDATE users SET storage_used_bytes = storage_used_bytes + ? WHERE id=?",
-        snap.total_size_bytes,
-        user_id
-    )
-    .execute(&mut *tx)
-    .await
-    .map_err(|_| internal())?;
     let audit_id = Uuid::new_v4().to_string();
     sqlx::query!(
         "INSERT INTO audit_log (id, user_id, event_type, entity_id)
          VALUES (?,?,'snapshot.restored',?)",
         audit_id,
         user_id,
-        snap.id
+        snap_id
     )
     .execute(&mut *tx)
     .await

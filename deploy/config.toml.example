@@ -42,6 +42,15 @@ allow_registration = true
 trash_retention_days = 30
 # Hours after which incomplete uploads in tmp/ are cleaned up.
 tmp_cleanup_hours = 24
+# Age-weighted snapshot pruning (ADR 0018). When true, the hourly cleanup
+# thins redundant snapshots, keeping recent history dense and old history
+# sparse. Pruned snapshots are soft-deleted into trash (recoverable, purged
+# later by trash_retention_days). Pinned snapshots and the newest version
+# are never pruned.
+snapshot_pruning = true
+# "Ahorro de datos" knob, 0.0..1.0. Higher keeps fewer snapshots. 0.3 is a
+# light default; 1.0 keeps only the essentials, 0.0 keeps almost everything.
+data_saving = 0.3
 
 [logging]
 # Log level: trace, debug, info, warn, error

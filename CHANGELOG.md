@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Almacenamiento content-addressed con deduplicación** (ADR 0018, eje C).
+  Los bytes de cada archivo se guardan una sola vez por usuario en
+  `blobs/<user>/<sha[0:2]>/<sha>`; una versión pasa a ser sólo su lista de
+  `snapshot_files` apuntando a blobs por sha256. Archivos idénticos entre
+  versiones comparten un blob, con `refcount` y GC cuando llega a 0. La cuota
+  (`storage_used_bytes`) pasa a contar bytes de blobs únicos, así que un
+  re-subido casi-idéntico (el caso OpenTTD: 16 autosaves donde sólo cambian
+  1-2) apenas suma. Migración `0013_blobs.sql` + `hoard-server/src/blobs.rs`,
+  con backfill idempotente al arrancar que convierte los `v<n>/` y
+  `trash/<id>/` legacy a blobs y recalcula la cuota. Dedup por usuario (sin
+  cruce entre cuentas). El `download` reconstruye el mismo tar.zst desde
+  blobs; soft-delete/restore pasan a ser puramente lógicos.
+- **Poda de snapshots ponderada por antigüedad** (ADR 0018, eje B). El
+  cleanup horario del server adelgaza versiones redundantes con un esquema
+  GFS (grandfather-father-son): conserva densas las recientes y dispersas las
+  viejas (1 por hora/día/semana). Las pinned y la última versión nunca se
+  podan; lo podado va a la papelera (recuperable, se purga por
+  `trash_retention_days`). Configurable en `[retention]`:
+  `snapshot_pruning` (default on) y `data_saving` (knob 0..1, default 0.3).
+  Nuevo módulo `hoard-server/src/retention.rs` con la lógica pura testeada.
+- **Barra "Ahorro de datos" en Settings** (ADR 0018, eje A). Un único knob
+  `data_saving ∈ [0,1]` (izq "Guardar todo" → der "Máximo ahorro", default
+  0.3) que pone un suelo entre snapshots por save: el cliente espacía las
+  subidas de 5 s hasta 10 min según la barra
+  (`min_snapshot_interval = lerp(k, 5s, 600s)`), coalescendo los cambios
+  intermedios sin perder el estado final. Mata la cadencia de "una versión por
+  minuto" del autosave (caso OpenTTD). Persistido en `prefs.json`
+  (`data_saving`), slider en los 8 locales. La misma barra escala la retención
+  GFS del server.
+
+### Fixed
+- **Auto-restore ya no se dispara mientras juegas.** El guard de "usuario
+  jugando" del sweep de auto-restore dependía de `is_running` (falla cuando
+  el nombre de proceso no casa con el manifest, p.ej. OpenTTD) y del mtime
+  del directorio (no cambia en reescrituras in-place). Ahora gatea con la
+  actividad real del watcher (`has_pending` + `last_fs_event_at`), inmune a
+  ambos fallos. Evita que el Modo Automático reintroduzca autosaves rotados
+  encima de una partida activa. Refina ADR 0014 §3.
+- **Feed de actividad: fin del flood de "en cola — esperando…".**
+  `schedule_backup` re-emitía `BackupScheduled` en cada escritura, dejando
+  filas huérfanas que nunca resolvían. Ahora solo emite en el flanco de
+  subida; la fila se cierra cuando la subida completa.
+- **Backups ya no se quedan en cola indefinidamente.** Un juego que escribe
+  cada segundo reiniciaba el debounce de 5 s eternamente y la subida nunca
+  vencía. Nuevo tope `MAX_BACKUP_WAIT_SECS` (30 s) fuerza la subida aunque
+  las escrituras no paren.
+
+### Docs
+- ADR 0018 + plan `storage-efficiency.md`: rediseño de almacenamiento
+  (dedup content-addressed + poda por antigüedad + barra "ahorro de datos")
+  motivado por el caso OpenTTD (33 versiones ≈ 53 MB para ~5 MB únicos).
+  Propuesto, sin implementar aún.
+
 ## [1.7.0] — 2026-05-26
 
 Modo Automático sale del fondo del escritorio y pasa a ser visible.

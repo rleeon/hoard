@@ -401,6 +401,12 @@ export type Prefs = {
   /** Whether the floating ActivityFeed panel is visible. Defaults to
    *  true; the user can hide it from the sidebar toggle. */
   live_activity_visible: boolean;
+  /** "Ahorro de datos" knob `k ∈ [0,1]` (ADR 0018). 0 = "guardar todo"
+   *  (cadencia agresiva, retención larga); 1 = "máximo ahorro" (intervalo
+   *  mínimo de hasta 10 min entre snapshots, retención agresiva). Scales
+   *  both the client min-snapshot-interval and the server retention
+   *  policy. Default 0.3. */
+  data_saving: number;
 };
 
 export type TrayStateName =
@@ -453,6 +459,12 @@ export function setCloudPollInterval(secs: number): Promise<Prefs> {
 /** Toggle whether the floating ActivityFeed panel renders. */
 export function setLiveActivityVisible(visible: boolean): Promise<Prefs> {
   return invoke<Prefs>("set_live_activity_visible", { visible });
+}
+
+/** Persist the "ahorro de datos" knob `k ∈ [0,1]` (ADR 0018). Clamped on
+ *  the Rust side. Takes effect on the agent's next boot. */
+export function setDataSaving(saving: number): Promise<Prefs> {
+  return invoke<Prefs>("set_data_saving", { saving });
 }
 
 /** Toggle the launcher autostart entry. Returns the resulting state. */

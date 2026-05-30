@@ -139,6 +139,7 @@ pub fn run() {
             commands::prefs::set_conflict_retention,
             commands::prefs::set_cloud_poll_interval,
             commands::prefs::set_live_activity_visible,
+            commands::prefs::set_data_saving,
             commands::prefs::set_tray_state,
             commands::history::list_save_snapshots,
             commands::history::save_snapshot_detail,

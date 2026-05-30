@@ -70,6 +70,14 @@ pub async fn start_agent(
         .as_ref()
         .map(|(p, _)| p.conflict_retention_days)
         .unwrap_or(14);
+    // "Ahorro de datos" knob → minimum interval between snapshots per save
+    // (ADR 0018 eje A). Maps `data_saving ∈ [0,1]` to 5s..600s via the
+    // shared lerp helper so the cadence floor matches the server-side
+    // retention scaling.
+    let min_snapshot_interval_secs = prefs_loaded
+        .as_ref()
+        .map(|(p, _)| agent::min_snapshot_interval_for(p.data_saving))
+        .unwrap_or_else(|| agent::min_snapshot_interval_for(0.3));
     // state_dir resolution can fail on locked-down hosts (no $HOME etc).
     // When it does, fall back to None — the agent then keeps the legacy
     // "never destroy local" behaviour for conflicts.
@@ -78,6 +86,7 @@ pub async fn start_agent(
         auto_restore,
         conflict_root,
         conflict_retention_days,
+        min_snapshot_interval_secs,
         ..AgentConfig::default()
     };
 

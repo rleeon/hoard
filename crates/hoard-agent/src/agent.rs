@@ -72,6 +72,15 @@ pub struct AgentConfig {
     /// Days to keep conflict backups under `conflict_root` before the
     /// per-tick sweep removes them. Mirrors `Prefs::conflict_retention_days`.
     pub conflict_retention_days: u32,
+    /// Minimum seconds between two successful backups of the *same* save
+    /// (ADR 0018, eje A — "ahorro de datos"). After a backup succeeds, the
+    /// agent won't start another for this save until the interval elapses;
+    /// intermediate writes coalesce into the next one (the final state is
+    /// always uploaded). Kills the "one version per minute" cadence of games
+    /// that autosave every few seconds (OpenTTD). `0` disables the floor
+    /// (legacy behaviour — every settle backs up). The desktop derives this
+    /// from `Prefs::data_saving` via `lerp(k, 5s, 600s)`.
+    pub min_snapshot_interval_secs: u64,
 }
 
 impl Default for AgentConfig {
@@ -83,8 +92,17 @@ impl Default for AgentConfig {
             auto_restore: false,
             conflict_root: None,
             conflict_retention_days: 14,
+            min_snapshot_interval_secs: 0,
         }
     }
+}
+
+/// Map the user's `data_saving` knob (0..=1) to a minimum snapshot interval
+/// in seconds via `lerp(k, 5, 600)` (ADR 0018, Decisión 4). `k=0` keeps the
+/// eager 5 s floor; `k=1` waits up to 10 min between backups of a save.
+pub fn min_snapshot_interval_for(data_saving: f64) -> u64 {
+    let k = data_saving.clamp(0.0, 1.0);
+    (5.0 + (600.0 - 5.0) * k).round() as u64
 }
 
 /// One save the agent is responsible for backing up.
@@ -354,6 +372,19 @@ struct SaveSlot {
     /// When the currently-pending backup will fire (UTC). `None` if no
     /// backup is scheduled. Recomputed in `schedule_backup`.
     next_scheduled_backup_at: Option<OffsetDateTime>,
+    /// When the *oldest* un-flushed change in the current debounce window
+    /// arrived (UTC). The notify debounce resets `next_scheduled_backup_at`
+    /// on every write, so a game that autosaves every second (OpenTTD,
+    /// factory builders) would reset the timer forever and never flush.
+    /// This anchor lets the fs handler cap the total wait: once it's older
+    /// than `MAX_BACKUP_WAIT_SECS`, we stop resetting and back up now.
+    /// `None` when there are no pending changes; cleared on backup success.
+    first_pending_event_at: Option<OffsetDateTime>,
+    /// When this save was last successfully backed up (UTC). Anchors the
+    /// `min_snapshot_interval_secs` floor (ADR 0018, eje A): a new backup is
+    /// never scheduled to fire before `last_backup_at + interval`. `None`
+    /// until the first success this session.
+    last_backup_at: Option<OffsetDateTime>,
     /// `true` while a background auto-restore task is downloading into
     /// this slot's local path. Prevents the reconciliation sweep from
     /// firing the same restore twice. Cleared by
@@ -485,18 +516,49 @@ async fn run_agent(
             // ----- Filesystem debounce hits -----
             Some(path) = fs_rx.recv() => {
                 if let Some(save_id) = match_save_for_path(&slots, &path) {
+                    let now = OffsetDateTime::now_utc();
+                    let mut delay = Duration::from_secs(config.debounce_secs);
                     if let Some(slot) = slots.get_mut(&save_id) {
                         slot.has_pending = true;
-                        slot.last_fs_event_at = Some(OffsetDateTime::now_utc());
+                        slot.last_fs_event_at = Some(now);
+                        // Anti-starvation cap. Each fs event resets the
+                        // debounce, so a game writing every second would
+                        // never settle and never flush ("se quedó todo en
+                        // cola"). Anchor the oldest un-flushed change; once
+                        // it has waited MAX_BACKUP_WAIT_SECS, stop resetting
+                        // and back up now even though writes keep arriving.
+                        let waited_since = *slot.first_pending_event_at.get_or_insert(now);
+                        if (now - waited_since).whole_seconds() >= MAX_BACKUP_WAIT_SECS {
+                            delay = Duration::ZERO;
+                            slot.first_pending_event_at = Some(now);
+                        }
+                        // Minimum-interval floor (ADR 0018, eje A). Never start
+                        // a new backup sooner than `min_snapshot_interval_secs`
+                        // after the last successful one — coalesce the burst
+                        // into the next allowed slot. The anchor is the fixed
+                        // `last_backup_at`, so repeated writes converge on the
+                        // same fire time instead of drifting. Wins over the
+                        // anti-starvation `delay = ZERO` above: we deliberately
+                        // wait, and always upload the final state when we do.
+                        if config.min_snapshot_interval_secs > 0 {
+                            if let Some(last) = slot.last_backup_at {
+                                let earliest = last
+                                    + Duration::from_secs(config.min_snapshot_interval_secs);
+                                if now + delay < earliest {
+                                    delay = (earliest - now).unsigned_abs();
+                                }
+                            }
+                        }
                     }
                     tracing::info!(
                         save_id = %save_id,
                         path = %path.display(),
+                        delay_ms = delay.as_millis() as u64,
                         "agent: fs event observed; scheduling backup"
                     );
                     schedule_backup(
                         &mut slots, &save_id, BackupReason::FilesystemSettled,
-                        Duration::from_secs(config.debounce_secs),
+                        delay,
                         &api, &events_tx, &config, &done_tx, &cmd_tx,
                     );
                 }
@@ -541,6 +603,8 @@ async fn run_agent(
                 if let Some(slot) = slots.get_mut(&save_id) {
                     slot.has_pending = false;
                     slot.next_scheduled_backup_at = None;
+                    slot.first_pending_event_at = None;
+                    slot.last_backup_at = Some(OffsetDateTime::now_utc());
                 }
             }
         }
@@ -582,6 +646,8 @@ fn handle_add(
         has_pending: false,
         last_fs_event_at: None,
         next_scheduled_backup_at: None,
+        first_pending_event_at: None,
+        last_backup_at: None,
         restoring: false,
         next_auto_restore_at: None,
     };
@@ -593,18 +659,24 @@ fn handle_add(
     // If nothing's missing the task ends with `restored == 0` and no event
     // is emitted, so this is cheap even on a fully-populated slot.
     //
-    // Since 1.5.5 (ADR 0014) the same "user is playing" guards from the
-    // sweep apply here too: if the catalog has no process match and the
-    // folder was just touched, the user is likely mid-session — let the
-    // next sweep handle it once mtime stabilises.
+    // Since 1.5.5 (ADR 0014) the same "user is playing" guard from the
+    // sweep applies here too: if the folder was just touched, the user is
+    // likely mid-session — let the next sweep handle it once mtime
+    // stabilises. Since 1.7.x this is unconditional (no longer gated on
+    // `processes.is_empty()`): a game whose process name doesn't match the
+    // manifest leaves `is_running` false *and* `processes` non-empty, so
+    // the old gate skipped this guard and an auto-restore could fire
+    // mid-session, resurrecting rotated-out autosaves. The recent-touch
+    // check is the reliable "user is playing" signal regardless of process
+    // detection.
     if config.auto_restore {
-        let recently_touched = save_for_restore.processes.is_empty()
-            && is_path_recently_touched(&save_for_restore.local_path, RECENT_SAVE_GRACE);
+        let recently_touched =
+            is_path_recently_touched(&save_for_restore.local_path, RECENT_SAVE_GRACE);
         if recently_touched {
             tracing::debug!(
                 save_id = %save_id,
                 path = %save_for_restore.local_path.display(),
-                "agent: handle_add auto-restore deferred — folder touched recently and no process match"
+                "agent: handle_add auto-restore deferred — folder touched recently"
             );
         } else {
             if let Some(slot) = slots.get_mut(&save_id) {
@@ -630,6 +702,15 @@ fn handle_add(
 /// available" — possible during a GC race) doesn't get hammered by the
 /// reconciliation sweep.
 const AUTO_RESTORE_COOLDOWN_SECS: u64 = 60;
+
+/// Hard ceiling on how long a continuously-writing save can defer its
+/// backup. The notify debounce resets the timer on every write, so a game
+/// that autosaves every second would never settle and never flush. Once
+/// the oldest un-backed-up change has waited this long, the fs handler
+/// forces the backup with a zero delay even though writes keep arriving.
+/// Kept comfortably above the default 5 s debounce so normal saves still
+/// coalesce; only pathological writers ever hit it.
+const MAX_BACKUP_WAIT_SECS: i64 = 30;
 
 /// True if `path` doesn't exist on disk, or exists as a directory that
 /// contains no entries. Anything else (file, broken symlink, populated
@@ -760,12 +841,24 @@ fn spawn_auto_restore(
 /// this stage; it skips inside `restore_files_into` once we've compared
 /// the snapshot against what's on disk.
 ///
-/// Since 1.5.5 (ADR 0014) two guards apply *before* spawning to avoid
-/// stomping on a save the user is actively touching:
+/// Guards apply *before* spawning to avoid stomping on a save the user is
+/// actively touching:
 /// 1. `slot.is_running` → game is open, skip.
-/// 2. No process match available *and* the local folder was modified
-///    less than `RECENT_SAVE_GRACE` ago → skip; the user is likely
-///    playing but the agent has no proc name to confirm.
+/// 2. `slot.has_pending` → un-flushed local changes queued, skip.
+/// 3. `last_fs_event_at` within `RECENT_SAVE_GRACE` → the watcher saw a
+///    write recently, skip.
+/// 4. Disk mtime within `RECENT_SAVE_GRACE` → fallback for the startup
+///    window before the agent has fs history of its own.
+///
+/// Since 1.7.x the activity guards (2, 3) drive the decision and the mtime
+/// check is only a fallback. The earlier version gated solely on
+/// `is_running` + dir mtime, both of which miss real-world cases: a game
+/// whose process name doesn't match its manifest never sets `is_running`,
+/// and autosavers that truncate-and-overwrite the same file in place don't
+/// bump the *directory* mtime — so the sweep auto-restored mid-session,
+/// re-downloading autosaves the game had already rotated away and failing
+/// uploads as the restore mutated the folder under them. The agent's own
+/// inotify stream catches both.
 ///
 /// Cheap: per-slot work here is just a `restoring` flag check and a
 /// timer compare. The network/disk cost happens inside the spawned task,
@@ -799,13 +892,40 @@ fn sweep_for_auto_restore(
                 );
                 return false;
             }
-            if slot.save.processes.is_empty()
-                && is_path_recently_touched(&slot.save.local_path, RECENT_SAVE_GRACE)
-            {
+            // The agent's own watcher is a far more reliable "user is here"
+            // signal than disk mtime: inotify catches in-place file rewrites
+            // that DON'T bump the directory's mtime (OpenTTD and other
+            // autosavers truncate-and-overwrite the same .sav). If there are
+            // un-flushed changes queued, or we observed an fs event within
+            // the grace window, the user is mid-session — never auto-restore
+            // into a folder they're actively writing, or the restore and the
+            // backup fight over the same files (re-adding rotated autosaves,
+            // failing uploads mid-mutation).
+            if slot.has_pending {
+                tracing::debug!(
+                    save_id = %id,
+                    "sweep: skipping — un-flushed local changes pending"
+                );
+                return false;
+            }
+            if let Some(last) = slot.last_fs_event_at {
+                if (OffsetDateTime::now_utc() - last).whole_seconds()
+                    < RECENT_SAVE_GRACE.as_secs() as i64
+                {
+                    tracing::debug!(
+                        save_id = %id,
+                        "sweep: skipping — fs event observed recently"
+                    );
+                    return false;
+                }
+            }
+            // Disk-mtime fallback: covers the window right after the agent
+            // starts, before it has any fs history of its own.
+            if is_path_recently_touched(&slot.save.local_path, RECENT_SAVE_GRACE) {
                 tracing::debug!(
                     save_id = %id,
                     path = %slot.save.local_path.display(),
-                    "sweep: skipping — save folder touched recently and no process match"
+                    "sweep: skipping — save folder touched recently"
                 );
                 return false;
             }
@@ -1352,6 +1472,14 @@ fn schedule_backup(
     let Some(slot) = slots.get_mut(save_id) else {
         return;
     };
+    // Was a backup already scheduled for this slot? If so, this call is
+    // just resetting the debounce timer inside an in-progress window — the
+    // feed already shows a "queued" row for it. Re-announcing on every fs
+    // event is what flooded the activity feed with orphaned "en cola"
+    // entries when a game autosaves every second. Only announce on the
+    // leading edge; the row resolves when the upload completes (which
+    // clears `next_scheduled_backup_at` via `done_rx`).
+    let already_scheduled = slot.next_scheduled_backup_at.is_some();
     if let Some(p) = slot.pending.take() {
         p.abort();
     }
@@ -1365,9 +1493,9 @@ fn schedule_backup(
         "agent: backup scheduled"
     );
 
-    // Don't bother announcing zero-delay manual backups twice — that just
-    // adds noise to the activity feed.
-    if delay > Duration::ZERO {
+    // Don't announce zero-delay backups (manual / forced flush) — they'd
+    // add noise — nor re-announce a window that's already queued.
+    if delay > Duration::ZERO && !already_scheduled {
         let _ = events_tx.try_send(AgentEvent::BackupScheduled {
             save_id: save_id.to_string(),
             delay_ms: delay.as_millis() as u64,
@@ -1675,6 +1803,8 @@ mod tests {
                 has_pending: false,
                 last_fs_event_at: None,
                 next_scheduled_backup_at: None,
+                first_pending_event_at: None,
+                last_backup_at: None,
                 restoring: false,
                 next_auto_restore_at: None,
             },
@@ -1726,6 +1856,7 @@ mod tests {
             auto_restore: false,
             conflict_root: None,
             conflict_retention_days: 14,
+            min_snapshot_interval_secs: 0,
         };
 
         let (handle, task) = spawn(api, config, vec![save], events_tx);

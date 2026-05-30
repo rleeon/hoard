@@ -59,12 +59,17 @@
   let scanIntervalHours = $state(6);
   let conflictRetentionDays = $state(14);
   let cloudPollSecs = $state(10);
+  // "Ahorro de datos" knob, kept as 0..100 for the slider; persisted as
+  // 0..1 (ADR 0018). Mirrors the same drag-smoothly / commit-on-release
+  // pattern as the other sliders.
+  let dataSavingPct = $state(30);
   $effect(() => {
     const p = $prefs;
     if (!p) return;
     scanIntervalHours = p.automatic_scan_interval_hours ?? 6;
     conflictRetentionDays = p.conflict_retention_days ?? 14;
     cloudPollSecs = p.cloud_poll_interval_secs ?? 10;
+    dataSavingPct = Math.round((p.data_saving ?? 0.3) * 100);
   });
 
   async function commitScanInterval() {
@@ -109,6 +114,21 @@
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
       cloudPollSecs = $prefs?.cloud_poll_interval_secs ?? 10;
+    } finally {
+      saving = null;
+    }
+  }
+
+  async function commitDataSaving() {
+    if (!$prefs) return;
+    const value = dataSavingPct / 100;
+    saving = "data_saving";
+    try {
+      const updated = await api.setDataSaving(value);
+      prefs.set(updated);
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+      dataSavingPct = Math.round(($prefs?.data_saving ?? 0.3) * 100);
     } finally {
       saving = null;
     }
@@ -793,6 +813,58 @@
                 {$_("settings.conflict_retention_hint")}
               </p>
             </div>
+          </div>
+        </Card>
+      </section>
+
+      <!--
+        Ahorro de datos (ADR 0018): un único knob `data_saving ∈ [0,1]` que
+        escala dos ejes — el intervalo mínimo entre snapshots del cliente
+        (5s..10min) y la política de retención GFS del server. Se persiste
+        como 0..1; el slider trabaja en 0..100 por comodidad. Surte efecto
+        al reiniciar el agente (logout/login o reinicio de la app).
+      -->
+      <section>
+        <h2
+          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+        >
+          {$_("settings.data_saving_section_title")}
+        </h2>
+        <Card>
+          <div>
+            <div class="flex items-baseline justify-between gap-3">
+              <label
+                for="data-saving-slider"
+                class="text-sm font-medium text-zinc-100"
+              >
+                {$_("settings.data_saving_label")}
+              </label>
+              <span class="font-mono text-xs text-zinc-400" aria-live="polite">
+                {$_("settings.data_saving_value", {
+                  values: { pct: dataSavingPct },
+                })}
+              </span>
+            </div>
+            <input
+              id="data-saving-slider"
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              bind:value={dataSavingPct}
+              onchange={commitDataSaving}
+              disabled={saving === "data_saving"}
+              class="mt-2 w-full accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <div
+              class="mt-1 flex justify-between text-xs text-zinc-500"
+            >
+              <span>{$_("settings.data_saving_min")}</span>
+              <span>{$_("settings.data_saving_max")}</span>
+            </div>
+            <p class="mt-2 text-xs text-zinc-500">
+              {$_("settings.data_saving_hint")}
+            </p>
           </div>
         </Card>
       </section>

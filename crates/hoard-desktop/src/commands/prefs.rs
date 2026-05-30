@@ -244,6 +244,27 @@ pub async fn set_conflict_retention(_app: AppHandle, days: u32) -> Result<Prefs,
     Ok(prefs)
 }
 
+/// Persist the "ahorro de datos" knob `k ∈ [0,1]` (ADR 0018). Caller is the
+/// Settings slider. Clamped defensively to `[0,1]`. The value scales both the
+/// client-side `min_snapshot_interval` and the server-side `RetentionPolicy`;
+/// the new interval takes effect the next time the agent boots (logout/login
+/// or app restart), so no live restart is wired here.
+#[tauri::command]
+pub async fn set_data_saving(saving: f64) -> Result<Prefs, AppError> {
+    if !saving.is_finite() {
+        return Err(AppError::plain(format!(
+            "data_saving must be a finite number, got {saving}"
+        )));
+    }
+    let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
+    let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
+    prefs.data_saving = saving.clamp(0.0, 1.0);
+    prefs
+        .save(&path)
+        .map_err(|e| AppError::plain(e.to_string()))?;
+    Ok(prefs)
+}
+
 /// Frontend-driven tray-state setter. The dashboard already aggregates agent
 /// events into a single per-save activity map; we let it derive the global
 /// status and tell us, rather than re-implementing that logic in Rust.

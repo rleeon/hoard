@@ -143,6 +143,16 @@ pub struct Prefs {
     /// can hide it from Settings → Cloud.
     #[serde(default = "default_true")]
     pub live_activity_visible: bool,
+
+    /// "Ahorro de datos" knob `k ∈ [0,1]` (ADR 0018 Decisión 4). `0` =
+    /// "guardar todo" (cadencia agresiva, retención larga); `1` = "máximo
+    /// ahorro" (intervalo mínimo de hasta 10 min entre snapshots, retención
+    /// agresiva). Escala dos ejes: el `min_snapshot_interval` del cliente
+    /// (eje A, vía `agent::min_snapshot_interval_for`) y la `RetentionPolicy`
+    /// del server (eje B). Default `0.3` — un poco de ahorro de fábrica
+    /// porque "guardar todo" sorprende mal al usuario (caso OpenTTD).
+    #[serde(default = "default_data_saving")]
+    pub data_saving: f64,
 }
 
 fn default_true() -> bool {
@@ -159,6 +169,10 @@ fn default_conflict_retention_days() -> u32 {
 
 fn default_cloud_poll_interval_secs() -> u32 {
     10
+}
+
+fn default_data_saving() -> f64 {
+    0.3
 }
 
 impl Default for Prefs {
@@ -180,6 +194,7 @@ impl Default for Prefs {
             cloud_savings_mode: false,
             cloud_poll_interval_secs: default_cloud_poll_interval_secs(),
             live_activity_visible: true,
+            data_saving: default_data_saving(),
         }
     }
 }
@@ -252,6 +267,8 @@ mod tests {
         // 1.7.0: cloud-pull poller every 10 s by default; activity feed on.
         assert_eq!(p.cloud_poll_interval_secs, 10);
         assert!(p.live_activity_visible);
+        // Storage-efficiency: "ahorro de datos" defaults to 0.3 (ADR 0018).
+        assert_eq!(p.data_saving, 0.3);
     }
 
     #[test]
