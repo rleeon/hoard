@@ -1,7 +1,7 @@
 import { writable, type Readable } from 'svelte/store';
 import { api } from '$lib/api';
 
-export type HealthState = 'loading' | 'ok' | 'down';
+export type HealthState = 'loading' | 'ok' | 'degraded' | 'down';
 
 const TTL_MS = 30_000;
 
@@ -15,7 +15,7 @@ async function refresh(): Promise<HealthState> {
   inflight = (async () => {
     try {
       const r = await api.serverHealth();
-      const next: HealthState = r.ok ? 'ok' : 'down';
+      const next: HealthState = !r.reachable ? 'down' : r.status === 'degraded' ? 'degraded' : 'ok';
       cache = { state: next, at: Date.now() };
       store.set(next);
       return next;

@@ -57,14 +57,21 @@ export const api = {
     return j.events ?? [];
   },
 
-  async serverHealth(): Promise<{ ok: boolean; version: string | null }> {
+  async serverHealth(): Promise<{
+    reachable: boolean;
+    status: 'ok' | 'degraded' | null;
+    version: string | null;
+  }> {
     try {
       const res = await fetch(`${config.api.baseUrl}/v1/health`);
-      if (!res.ok) return { ok: false, version: null };
+      // The server answered but with an error code: it's up but not well.
+      if (!res.ok) return { reachable: true, status: 'degraded', version: null };
       const j = await res.json();
-      return { ok: true, version: j.version ?? null };
+      const status = j.status === 'degraded' ? 'degraded' : 'ok';
+      return { reachable: true, status, version: j.version ?? null };
     } catch {
-      return { ok: false, version: null };
+      // Network/CORS failure: nothing answered → treat as a hard outage.
+      return { reachable: false, status: null, version: null };
     }
   },
 

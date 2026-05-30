@@ -16,6 +16,7 @@
   "hero.cta_selfhost": "Auto-aloja",
   "hero.status_online": "Todos los sistemas funcionando",
   "hero.status_degraded": "Servicio degradado · ver estado",
+  "hero.status_down": "Servicio caído · ver estado",
   "hero.status_offline": "Comprobando estado...",
 
   "metrics.snapshots": "snapshots / día",

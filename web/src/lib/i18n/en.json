@@ -16,6 +16,7 @@
   "hero.cta_selfhost": "Self-host",
   "hero.status_online": "All systems normal",
   "hero.status_degraded": "Degraded · see status",
+  "hero.status_down": "Service down · see status",
   "hero.status_offline": "Checking status...",
 
   "metrics.snapshots": "snapshots / day",
