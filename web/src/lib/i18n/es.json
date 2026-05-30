@@ -185,6 +185,7 @@
   "callback.failed_title": "Error al iniciar sesión",
   "callback.failed_generic": "No pudimos terminar el inicio de sesión. Inténtalo de nuevo.",
   "callback.back_to_signin": "Volver al inicio de sesión",
+  "callback.desktop_return": "¡Sesión iniciada! Vuelve a la app de Hoard, ya puedes cerrar esta pestaña.",
 
   "login.title": "Inicia sesión en Hoard",
   "login.subtitle": "La misma cuenta en todos tus dispositivos.",

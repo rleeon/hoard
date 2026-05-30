@@ -14,18 +14,29 @@
   let error = $state<string | null>(null);
 
   let next = $derived($page.url.searchParams.get('next') ?? '/account');
+  // Desktop login handoff: the Hoard app opens this page with ?desktop=1 and
+  // expects the session to bounce back via the `hoard://` deep link instead of
+  // staying in the browser. We carry the flag through to /auth/callback, which
+  // does the actual redirect to the app.
+  let desktop = $derived($page.url.searchParams.get('desktop') === '1');
   let redirectTo = $derived(
     typeof window !== 'undefined'
-      ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`
+      ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}${desktop ? '&desktop=1' : ''}`
       : ''
   );
 
+  // Where to send an already-authenticated browser. For desktop we route to the
+  // callback (which bounces to the app); otherwise straight to `next`.
+  let postLogin = $derived(
+    desktop ? `/auth/callback?desktop=1&next=${encodeURIComponent(next)}` : next
+  );
+
   onMount(() => {
-    if ($session) goto(next);
+    if ($session) goto(postLogin);
   });
 
   $effect(() => {
-    if ($session) goto(next);
+    if ($session) goto(postLogin);
   });
 
   async function withGoogle() {

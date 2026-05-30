@@ -4,9 +4,33 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { supabase } from '$lib/auth/supabase';
+  import type { Session } from '@supabase/supabase-js';
 
   let message = $state('');
   let error = $state<string | null>(null);
+
+  const isDesktop = () => $page.url.searchParams.get('desktop') === '1';
+
+  // Desktop handoff: hand the freshly-minted session to the Hoard app via its
+  // `hoard://` deep link. The app parses the URL fragment (access_token /
+  // refresh_token) and verifies it against /v1/me. We use the fragment, not the
+  // query, so the tokens never hit a server log.
+  function bounceToApp(s: Session) {
+    const url =
+      `hoard://auth/callback#access_token=${encodeURIComponent(s.access_token)}` +
+      `&refresh_token=${encodeURIComponent(s.refresh_token ?? '')}`;
+    message = $_('callback.desktop_return');
+    window.location.href = url;
+  }
+
+  function done(s: Session) {
+    if (isDesktop()) {
+      bounceToApp(s);
+      return;
+    }
+    const next = $page.url.searchParams.get('next') ?? '/account';
+    goto(next, { replaceState: true });
+  }
 
   onMount(async () => {
     message = $_('callback.signing_in');
@@ -14,16 +38,14 @@
       const { data, error: e } = await supabase.auth.getSession();
       if (e) throw e;
       if (data.session) {
-        const next = $page.url.searchParams.get('next') ?? '/account';
-        goto(next, { replaceState: true });
+        done(data.session);
         return;
       }
       // Supabase JS handles detectSessionInUrl automatically; give it a moment
       setTimeout(async () => {
         const { data: d2 } = await supabase.auth.getSession();
         if (d2.session) {
-          const next = $page.url.searchParams.get('next') ?? '/account';
-          goto(next, { replaceState: true });
+          done(d2.session);
         } else {
           error = $_('callback.failed_generic');
           message = '';

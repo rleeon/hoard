@@ -185,6 +185,7 @@
   "callback.failed_title": "Sign-in failed",
   "callback.failed_generic": "We couldn't finish the sign-in. Try again.",
   "callback.back_to_signin": "Back to sign-in",
+  "callback.desktop_return": "Signed in! Return to the Hoard app — you can close this tab.",
 
   "login.title": "Sign in to Hoard",
   "login.subtitle": "Same account on every device.",
