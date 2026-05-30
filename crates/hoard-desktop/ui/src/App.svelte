@@ -10,6 +10,7 @@
     AlertCircle,
     HardDrive,
     ScrollText,
+    LogIn,
   } from "lucide-svelte";
   import { _ } from "svelte-i18n";
   import { formatBytes } from "./lib/utils/format";
@@ -41,6 +42,7 @@
     cloud,
     hydrateCloud,
     initCloudDeepLink,
+    openUpgradePage,
     planLabel,
   } from "./lib/stores/cloud";
   import { loadStep, routeForStep } from "./lib/stores/onboarding";
@@ -327,6 +329,16 @@
   const isAppRoute = $derived(
     APP_ROUTE_PREFIXES.some((p) => $location.startsWith(p)),
   );
+
+  // First letter for the avatar fallback when the cloud account has no
+  // `avatar_url` (email/password sign-ups, or providers that don't return
+  // a picture). Display name wins over email so it reads as a person.
+  const accountInitial = $derived.by(() => {
+    const a = $cloud.account;
+    if (!a) return "?";
+    const src = a.display_name?.trim() || a.email;
+    return src ? src.charAt(0).toUpperCase() : "?";
+  });
 </script>
 
 {#if !booted}
@@ -431,19 +443,62 @@
              the app shell — degrades to a neutral dot until the agent or
              cloud loop come online. -->
         <LiveStatus />
-        {#if $cloud.account}
-          <button
-            type="button"
-            onclick={() => push("/account")}
-            class="flex w-full items-center justify-between gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-[11px] text-emerald-200 transition-colors hover:bg-emerald-500/20"
-            title={$_("sidebar.cloud_chip_tooltip")}
-          >
-            <span class="flex items-center gap-1.5">
-              <Sparkles size={12} />
-              <span>{$_("sidebar.cloud_chip_prefix")}</span>
-            </span>
-            <span class="font-semibold">{planLabel($cloud.account.plan)}</span>
-          </button>
+        <!-- Cloud account: signed in → avatar button (+ "Mejorar plan" when
+             on Free); signed out → "Iniciar sesión" CTA. Both route to
+             /account, the full account/billing page. -->
+        {#if $cloud.hydrated}
+          {#if $cloud.account}
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                onclick={() => push("/account")}
+                class="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-800/60"
+                title={$_("sidebar.account_tooltip")}
+              >
+                {#if $cloud.account.avatar_url}
+                  <img
+                    src={$cloud.account.avatar_url}
+                    alt=""
+                    class="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-zinc-700"
+                  />
+                {:else}
+                  <span
+                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-500/30"
+                  >
+                    {accountInitial}
+                  </span>
+                {/if}
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-xs font-medium text-zinc-100">
+                    {$cloud.account.display_name ?? $cloud.account.email}
+                  </span>
+                  <span class="block truncate text-[10px] text-zinc-500">
+                    {planLabel($cloud.account.plan)}
+                  </span>
+                </span>
+              </button>
+              {#if $cloud.account.plan === "free"}
+                <button
+                  type="button"
+                  onclick={() => openUpgradePage("pro")}
+                  class="flex shrink-0 items-center gap-1 rounded-md bg-gradient-to-r from-emerald-400 to-teal-400 px-2.5 py-2 text-[11px] font-semibold text-emerald-950 shadow-sm shadow-emerald-500/30 transition-all hover:from-emerald-300 hover:to-teal-300 hover:shadow-emerald-500/50"
+                  title={$_("sidebar.upgrade_tooltip")}
+                >
+                  <Sparkles size={12} />
+                  {$_("sidebar.upgrade")}
+                </button>
+              {/if}
+            </div>
+          {:else}
+            <button
+              type="button"
+              onclick={() => push("/account")}
+              class="flex w-full items-center justify-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-2 text-xs font-medium text-emerald-200 transition-colors hover:bg-emerald-500/20"
+            >
+              <LogIn size={14} />
+              {$_("sidebar.sign_in")}
+            </button>
+          {/if}
         {/if}
         {#if quotaInfo}
           {#if quotaInfo.kind === "local"}
