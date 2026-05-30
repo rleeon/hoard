@@ -19,8 +19,8 @@
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     return new Promise<void>((resolve) => {
       doc.startViewTransition!(async () => {
-        await navigation.complete;
         resolve();
+        await navigation.complete;
       });
     });
   });
