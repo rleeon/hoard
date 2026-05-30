@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use hoard_agent::agent::AgentHandle;
 
-use crate::commands::auth::{classify_server, UserInfo};
+use crate::commands::auth::{classify_cloud, classify_server, UserInfo};
 use crate::commands::cloud::CloudAccount;
 use crate::commands::library::{self, DetectionCache};
 
@@ -40,6 +40,7 @@ impl AppState {
                     username: u.username,
                     is_admin: u.is_admin,
                     is_local_server: classify_server(&server_url),
+                    is_cloud_server: classify_cloud(&server_url),
                     // Quota isn't cached on disk — the UI calls
                     // `refresh_quota` shortly after boot to fill it in.
                     storage_used_bytes: 0,

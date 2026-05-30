@@ -4,7 +4,7 @@
   import {
     Archive,
     Library,
-    History,
+    Home,
     Settings as SettingsIcon,
     Sparkles,
     AlertCircle,
@@ -23,7 +23,6 @@
   import LibraryRoute from "./routes/Library.svelte";
   import SettingsRoute from "./routes/Settings.svelte";
   import HistoryRoute from "./routes/History.svelte";
-  import HistoryIndexRoute from "./routes/HistoryIndex.svelte";
   import LogsRoute from "./routes/Logs.svelte";
   import DiagnosticsRoute from "./routes/Diagnostics.svelte";
   import AccountRoute from "./routes/Account.svelte";
@@ -80,7 +79,9 @@
     "/dashboard": Dashboard,
     "/library": LibraryRoute,
     "/settings": SettingsRoute,
-    "/history": HistoryIndexRoute,
+    // The old `/history` index was a duplicate of the Dashboard, so it was
+    // dropped from the nav. The per-save timeline still lives here and is
+    // reached by clicking a save in the Dashboard / Library.
     "/history/:saveId": HistoryRoute,
     "/logs": LogsRoute,
     "/diagnostics": DiagnosticsRoute,
@@ -308,15 +309,24 @@
   // re-translates instantly when the user switches language in Settings —
   // hard-coded English here was the long-standing reason German/Spanish UIs
   // still showed "Library / Dashboard …" in the rail.
-  const sidebarItems = [
+  //
+  // First entry is the account button, sitting above Library: "Iniciar
+  // sesión" when there's no cloud session, "Inicio" (the read-only account /
+  // plan-status view) once signed in. Derived so it swaps the moment the
+  // cloud session hydrates. The old "Historial" item was removed — it just
+  // duplicated the Dashboard.
+  const sidebarItems = $derived([
+    $cloud.account
+      ? { labelKey: "nav.home", icon: Home, route: "/account" }
+      : { labelKey: "nav.sign_in", icon: LogIn, route: "/account" },
     { labelKey: "nav.library", icon: Library, route: "/library" },
     { labelKey: "nav.dashboard", icon: Archive, route: "/dashboard" },
-    { labelKey: "nav.history", icon: History, route: "/history" },
     { labelKey: "nav.settings", icon: SettingsIcon, route: "/settings" },
-  ];
+  ]);
 
   // App-shell routes share the persistent sidebar; wizard routes own the
-  // viewport. Keep this list in sync with `sidebarItems` above.
+  // viewport. `/history` stays here so the per-save timeline (`/history/:id`)
+  // still renders inside the rail even though the index was removed.
   const APP_ROUTE_PREFIXES = [
     "/dashboard",
     "/library",
@@ -406,14 +416,12 @@
       </div>
 
       <nav class="flex-1 space-y-1 px-3 py-2">
-        {#each sidebarItems as item (item.labelKey)}
-          {@const active =
-            $location === item.route ||
-            (item.route === "/history" && $location.startsWith("/history/"))}
+        {#each sidebarItems as item (item.route)}
+          {@const active = $location === item.route}
           {@const enabled =
+            item.route === "/account" ||
             item.route === "/dashboard" ||
             item.route === "/library" ||
-            item.route === "/history" ||
             item.route === "/settings"}
           <button
             type="button"
@@ -443,11 +451,11 @@
              the app shell — degrades to a neutral dot until the agent or
              cloud loop come online. -->
         <LiveStatus />
-        <!-- Cloud account: signed in → avatar button (+ "Mejorar plan" when
-             on Free); signed out → "Iniciar sesión" CTA. Both route to
-             /account, the full account/billing page. -->
-        {#if $cloud.hydrated}
-          {#if $cloud.account}
+        <!-- Cloud account chip: avatar + plan (+ "Mejorar plan" when on Free),
+             routing to /account. The signed-out "Iniciar sesión" entry now
+             lives at the top of the nav, so we only render this when signed
+             in to avoid a duplicate button. -->
+        {#if $cloud.hydrated && $cloud.account}
             <div class="flex items-center gap-2">
               <button
                 type="button"
@@ -489,16 +497,6 @@
                 </button>
               {/if}
             </div>
-          {:else}
-            <button
-              type="button"
-              onclick={() => push("/account")}
-              class="flex w-full items-center justify-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-2 text-xs font-medium text-emerald-200 transition-colors hover:bg-emerald-500/20"
-            >
-              <LogIn size={14} />
-              {$_("sidebar.sign_in")}
-            </button>
-          {/if}
         {/if}
         {#if quotaInfo}
           {#if quotaInfo.kind === "local"}

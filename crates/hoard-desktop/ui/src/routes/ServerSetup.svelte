@@ -9,6 +9,7 @@
   import * as api from "../lib/api";
   import { toastError } from "../lib/stores/toasts";
   import { loadUrl, saveStep, saveUrl } from "../lib/stores/onboarding";
+  import { auth } from "../lib/stores/auth";
   import { onMount } from "svelte";
 
   let url = $state("");
@@ -20,23 +21,40 @@
     url = await loadUrl();
   });
 
-  function looksLikeUrl(s: string): boolean {
-    return s.startsWith("http://") || s.startsWith("https://");
+  // Accept a bare hostname ("mi-servidor.local", "192.168.1.20:8080") by
+  // prepending `https://` so the user doesn't have to remember the scheme.
+  // Returns `null` when the string can't be a host at all (contains spaces —
+  // e.g. someone typed a friendly name like "mi servidor"), so we can show a
+  // clearer hint instead of a confusing "can't reach" network error.
+  function normalizeUrl(raw: string): string | null {
+    const s = raw.trim();
+    if (!s) return null;
+    const withScheme =
+      s.startsWith("http://") || s.startsWith("https://")
+        ? s
+        : `https://${s}`;
+    // A real host has no whitespace. Reject early; the address field is for a
+    // URL, not a label.
+    if (/\s/.test(withScheme.replace(/^https?:\/\//, ""))) return null;
+    return withScheme;
   }
 
   async function testConnection() {
     inlineError = null;
     healthy = null;
-    const trimmed = url.trim();
-    if (!looksLikeUrl(trimmed)) {
+    const normalized = normalizeUrl(url);
+    if (!normalized) {
       inlineError = $_("server.invalid_url");
       return;
     }
+    // Reflect the normalized form back into the field so the user sees the
+    // scheme we'll actually use.
+    url = normalized;
     loading = true;
     try {
-      const info = await api.healthCheck(trimmed);
+      const info = await api.healthCheck(normalized);
       healthy = { version: info.version };
-      await saveUrl(trimmed);
+      await saveUrl(normalized);
     } catch (e) {
       const msg = typeof e === "string" ? e : (e as Error).message;
       inlineError = msg;
@@ -55,8 +73,16 @@
     push("/onboarding/token");
   }
 
+  // Back navigation. A user who already has an active session (they came here
+  // from "connect to your server" inside the app) must not get trapped in the
+  // wizard — send them back to the account page. A brand-new user goes to the
+  // welcome step as before.
   function back() {
-    push("/welcome");
+    if ($auth.user) {
+      push("/account");
+    } else {
+      push("/welcome");
+    }
   }
 
   // Reset the green badge as soon as the user edits the URL again.

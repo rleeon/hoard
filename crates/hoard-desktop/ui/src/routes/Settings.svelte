@@ -253,19 +253,22 @@
     if (diagnosticsTimer) clearInterval(diagnosticsTimer);
   });
 
-  // Hoard-server panel. Shown for every signed-in user — earlier versions
-  // gated it on `is_local_server` (the RFC1918 / localhost / .local
-  // classifier) but a user pointed out that even a public-DNS self-hosted
-  // box ("hoard.mydomain.com") wants the upgrade button. We'll re-gate
-  // properly once a real cloud-hosted instance exists; until then any
-  // signed-in user sees the panel.
+  // Hoard-server panel. Shown for self-hosted sessions (local or public-DNS
+  // boxes) but hidden when connected to the managed Hoard Cloud: the cloud
+  // upgrades itself and has no `/v1/admin/upgrade` route, so the button there
+  // only ever returned "HTTP 404 Not Found". `is_cloud_server` is classified
+  // by Rust on login (see commands/auth.rs::classify_cloud).
   const serverUpdate = $derived($lastReport?.server ?? null);
-  const showServerCard = $derived($auth.user != null);
+  const showServerCard = $derived(
+    $auth.user != null && $auth.user.is_cloud_server !== true,
+  );
   // The remote-upgrade button asks the server to upgrade *itself* over HTTP
   // (ADR 0017), so it works from any OS and whether the server is local or on
   // another box. The only requirement is an admin token — the server rejects
   // the request otherwise. Non-admins fall back to copying the shell command.
-  const canInAppUpgrade = $derived($auth.user?.is_admin === true);
+  const canInAppUpgrade = $derived(
+    $auth.user?.is_admin === true && $auth.user?.is_cloud_server !== true,
+  );
   let refreshingServer = $state(false);
   let upgradingServer = $state(false);
   let copyingUpgrade = $state(false);

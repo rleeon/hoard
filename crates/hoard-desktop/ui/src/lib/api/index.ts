@@ -27,6 +27,11 @@ export type UserInfo = {
    *  `.local`). The dashboard uses this to show MB ("23 MB used") instead of
    *  "% of quota" — for a server you own at home a quota bar is meaningless. */
   is_local_server: boolean;
+  /** True when the URL points at the managed Hoard Cloud backend
+   *  (`*.hoard.services` / `*.fly.dev`). The cloud upgrades itself and has no
+   *  `/v1/admin/upgrade` route, so the UI hides the self-hosted server-upgrade
+   *  panel for these connections. */
+  is_cloud_server: boolean;
 };
 
 /** Anonymous probe — used by the wizard to validate the server URL. */

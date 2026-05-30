@@ -44,6 +44,12 @@ pub struct UserInfo {
     pub storage_used_bytes: i64,
     pub storage_quota_bytes: i64,
     pub is_local_server: bool,
+    /// True when the URL points at the managed Hoard Cloud backend
+    /// (`*.hoard.services` / `*.fly.dev`). The cloud upgrades itself, so the
+    /// UI hides the self-hosted "upgrade server" panel for these — see
+    /// [`classify_cloud`]. Avoids the `/v1/admin/upgrade` 404 a cloud box
+    /// returns (it has no such route).
+    pub is_cloud_server: bool,
 }
 
 /// Probe `/v1/health` without auth. Frontend uses this in the wizard to give
@@ -95,6 +101,7 @@ pub async fn login(
         storage_used_bytes: who.storage_used_bytes,
         storage_quota_bytes: who.storage_quota_bytes,
         is_local_server: classify_server(&url),
+        is_cloud_server: classify_cloud(&url),
     };
 
     credentials::save(&Credentials {
@@ -164,23 +171,10 @@ pub async fn refresh_quota(state: State<'_, AppState>) -> Result<UserInfo, Strin
 /// treated as external. Worst case the user sees % when they wanted
 /// MB; both views show the same data.
 pub(crate) fn classify_server(url: &str) -> bool {
-    let host = match url
-        .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))
-    {
-        Some(rest) => rest,
+    let host = match host_of(url) {
+        Some(h) => h,
         None => return false,
     };
-    // Trim trailing path / port.
-    let host = host
-        .split('/')
-        .next()
-        .unwrap_or(host)
-        .split(':')
-        .next()
-        .unwrap_or(host)
-        .trim_end_matches('.')
-        .to_lowercase();
 
     if host == "localhost" || host == "127.0.0.1" || host == "::1" || host.ends_with(".local") {
         return true;
@@ -197,7 +191,41 @@ pub(crate) fn classify_server(url: &str) -> bool {
     false
 }
 
+/// Decide whether `url` points at the managed Hoard Cloud backend. Used by
+/// the UI to hide the self-hosted "upgrade server" panel — the cloud has no
+/// `/v1/admin/upgrade` route (POSTing it returns 404; that was the source of
+/// the Windows "HTTP 404 Not Found" the user hit) and is upgraded out of
+/// band. Matches `hoard.services` / any `*.hoard.services` subdomain and the
+/// Fly.io hostnames the backend runs on (`*.fly.dev`).
+pub(crate) fn classify_cloud(url: &str) -> bool {
+    let host = match host_of(url) {
+        Some(h) => h,
+        None => return false,
+    };
+    host == "hoard.services"
+        || host.ends_with(".hoard.services")
+        || host.ends_with(".fly.dev")
+}
+
 // ---- helpers ----------------------------------------------------------
+
+/// Extract the lowercased host from a `http(s)://host[:port][/path]` URL.
+/// Returns `None` when the URL has no recognised scheme.
+fn host_of(url: &str) -> Option<String> {
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))?;
+    Some(
+        rest.split('/')
+            .next()
+            .unwrap_or(rest)
+            .split(':')
+            .next()
+            .unwrap_or(rest)
+            .trim_end_matches('.')
+            .to_lowercase(),
+    )
+}
 
 fn validate_url(url: &str) -> Result<(), String> {
     if url.is_empty() {
