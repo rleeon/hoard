@@ -37,6 +37,7 @@ import type {
 } from "../api";
 import * as api from "../api";
 import { prefs } from "./prefs";
+import { seedWatcher } from "./live";
 import { toastSuccess, toastError, toastInfo } from "./toasts";
 
 export type SaveActivity = {
@@ -273,6 +274,11 @@ export async function bootAgent() {
   await ensureNotificationPermission();
   const s = await api.startAgent();
   status.set(s);
+  // Seed the live header's watcher dot from the boot status. The
+  // `agent://watcher-armed` events fire inside `start_agent` before
+  // `subscribeLive()` is wired, so without this the header stays on
+  // "watcher off" for the whole session even though saves are watched.
+  seedWatcher(s.watched_count);
   await subscribeAgent();
 }
 

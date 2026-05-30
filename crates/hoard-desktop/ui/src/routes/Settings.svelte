@@ -40,6 +40,7 @@
   import { cloud, planLabel } from "../lib/stores/cloud";
   import { supportedLocales, setLocale } from "../lib/i18n";
   import * as api from "../lib/api";
+  import { APP_VERSION } from "../lib/version";
   import { toastError, toastInfo, toastSuccess } from "../lib/stores/toasts";
   import { showError } from "../lib/stores/error_dialog";
   import {
@@ -1293,7 +1294,11 @@
           <div class="flex items-start gap-3 text-sm text-zinc-300">
             <Info size={16} class="mt-0.5 shrink-0 text-zinc-500" />
             <div>
-              <p>{$_("settings.about_line_1")}</p>
+              <p>
+                {$_("settings.about_line_1", {
+                  values: { version: APP_VERSION },
+                })}
+              </p>
               <p class="mt-1 text-xs text-zinc-500">
                 {$_("settings.about_line_2")}
               </p>

@@ -15,11 +15,22 @@
     cloudLoop,
     liveStatus,
   } from "../stores/live";
+  import { auth } from "../stores/auth";
 
   const w = watcherStore;
   const c = cloudLoop;
 
+  // Self-hosted servers have no cloud-pull loop, so the cloud half would sit
+  // on "Comprobando…" forever. On a local server we show watcher state only
+  // and colour the dot from the watcher alone.
+  const isLocal = $derived($auth.user?.is_local_server ?? false);
+
   const dot = $derived.by(() => {
+    if (isLocal) {
+      return $w.armed
+        ? "bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.18)]"
+        : "bg-zinc-500 shadow-[0_0_0_3px_rgba(113,113,122,0.18)]";
+    }
     switch ($liveStatus) {
       case "ok":
         return "bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.18)]";
@@ -38,6 +49,7 @@
     const wPart = $w.armed
       ? $_("status.watching_count", { values: { count: $w.count } })
       : $_("status.watcher_off");
+    if (isLocal) return wPart;
     let cPart: string;
     switch ($c.status) {
       case "online":
@@ -62,6 +74,7 @@
         ? $_("status.tooltip_watcher_on", { values: { count: $w.count } })
         : $_("status.tooltip_watcher_off"),
     );
+    if (isLocal) return lines.join("\n");
     switch ($c.status) {
       case "online":
         lines.push(

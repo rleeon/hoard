@@ -107,6 +107,19 @@ export const liveStatus: Readable<"ok" | "warn" | "error" | "unknown"> =
     return "ok";
   });
 
+/** Seed the watcher state straight from the agent's boot status.
+ *
+ *  The `agent://watcher-armed` events are emitted by `start_agent` the instant
+ *  it spawns — which happens during `hydrateAuth()`/`bootAgent()`, *before*
+ *  `subscribeLive()` has registered its listener. Those events are therefore
+ *  routinely missed, leaving the header stuck on "watcher off" even though the
+ *  agent is happily watching. `bootAgent` calls this with the watched-save
+ *  count so the dot reflects reality without depending on the event race. */
+export function seedWatcher(count: number) {
+  if (count <= 0) return;
+  watcher.set({ armed: true, count });
+}
+
 let nextId = 1;
 function pushEntry(entry: Omit<FeedEntry, "id" | "at">) {
   activityFeed.update((rows) => {

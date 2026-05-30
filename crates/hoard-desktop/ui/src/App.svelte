@@ -22,6 +22,7 @@
   import LibraryRoute from "./routes/Library.svelte";
   import SettingsRoute from "./routes/Settings.svelte";
   import HistoryRoute from "./routes/History.svelte";
+  import HistoryIndexRoute from "./routes/HistoryIndex.svelte";
   import LogsRoute from "./routes/Logs.svelte";
   import DiagnosticsRoute from "./routes/Diagnostics.svelte";
   import AccountRoute from "./routes/Account.svelte";
@@ -30,8 +31,10 @@
   import UpdateConfirmModal from "./lib/components/UpdateConfirmModal.svelte";
   import ErrorDialog from "./lib/components/ErrorDialog.svelte";
   import LiveStatus from "./lib/components/LiveStatus.svelte";
+  import Logo from "./lib/components/Logo.svelte";
   import ActivityFeed from "./lib/components/ActivityFeed.svelte";
   import { subscribeLive, unsubscribeLive } from "./lib/stores/live";
+  import { APP_VERSION } from "./lib/version";
   import { errorDialog, dismissError, showError } from "./lib/stores/error_dialog";
   import { auth, hydrateAuth } from "./lib/stores/auth";
   import {
@@ -75,6 +78,7 @@
     "/dashboard": Dashboard,
     "/library": LibraryRoute,
     "/settings": SettingsRoute,
+    "/history": HistoryIndexRoute,
     "/history/:saveId": HistoryRoute,
     "/logs": LogsRoute,
     "/diagnostics": DiagnosticsRoute,
@@ -341,11 +345,7 @@
       class="flex w-60 shrink-0 flex-col border-r border-zinc-800/80 bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.03)]"
     >
       <div class="flex items-center gap-2 px-4 py-4">
-        <div
-          class="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/40"
-        >
-          <Archive size={20} />
-        </div>
+        <Logo size={36} class="shrink-0 rounded-lg" />
         <div class="min-w-0 flex-1">
           <div class="text-base font-semibold tracking-tight">Hoard</div>
           <button
@@ -355,7 +355,7 @@
             tabindex="-1"
             aria-hidden="true"
           >
-            v{import.meta.env.VITE_HOARD_VERSION || "1.7.0"}
+            v{APP_VERSION}
           </button>
         </div>
         <!-- ActivityFeed toggle: small scroll icon, dim when the panel is
@@ -395,10 +395,13 @@
 
       <nav class="flex-1 space-y-1 px-3 py-2">
         {#each sidebarItems as item (item.labelKey)}
-          {@const active = $location === item.route}
+          {@const active =
+            $location === item.route ||
+            (item.route === "/history" && $location.startsWith("/history/"))}
           {@const enabled =
             item.route === "/dashboard" ||
             item.route === "/library" ||
+            item.route === "/history" ||
             item.route === "/settings"}
           <button
             type="button"
