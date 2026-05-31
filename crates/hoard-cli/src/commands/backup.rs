@@ -9,7 +9,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 
 use hoard_agent::api::ApiClient;
-use hoard_agent::backup::{remember_save, upload_directory};
+use hoard_agent::backup::{remember_save, upload_directory_checked, BackupResult};
 use hoard_agent::config::CliConfig;
 use hoard_agent::state::CliState;
 
@@ -48,9 +48,19 @@ pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Re
     };
 
     println!("uploading from {}", source.display());
-    let outcome = upload_directory(&client, &save_id, &source, on_progress)
+    let prev_sig = state.saves.get(&save_id).and_then(|s| s.set_hash.clone());
+    let result = upload_directory_checked(&client, &save_id, &source, prev_sig.as_deref(), on_progress)
         .await
         .context("upload failed")?;
+
+    let (outcome, signature) = match result {
+        BackupResult::Skipped => {
+            pb.finish_and_clear();
+            println!("no changes since last backup — skipped");
+            return Ok(());
+        }
+        BackupResult::Uploaded { outcome, signature } => (outcome, signature),
+    };
     pb.finish_with_message("uploaded");
 
     println!(
@@ -71,6 +81,10 @@ pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Re
         remember,
     )
     .await?;
+    // Cache the fresh signature so an unchanged re-run is skipped next time.
+    if let Some(s) = state.saves.get_mut(&save_id) {
+        s.set_hash = Some(signature);
+    }
     state.save(&state_path)?;
 
     Ok(())

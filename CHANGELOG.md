@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Ingesta adaptativa por forma del save** (ADR 0019). El cliente sube por
+  streaming (sin cargar el snapshot entero en RAM) y elige transporte según la
+  forma: por-archivo (normal), tar empaquetado en un campo `pack` cuando hay
+  más de 500 archivos (sube el cap a 50 000), o archivo entero para los
+  monolíticos. Restore también vuelca a disco por streaming.
+- **Chunking content-defined server-side** para archivos grandes (> 128 MiB).
+  Un save monolítico que reescribe unos pocos KB por versión ya sólo almacena
+  el delta: el server lo trocea con un CDC gear-hash propio y deduplica por
+  chunk (tablas `chunks` / `snapshot_file_chunks`, GC y cuota uniformes con los
+  blobs). La descarga reensambla de forma transparente; clientes viejos reciben
+  el mismo `tar.zst`.
+- **Skip-by-hash de conjunto.** Antes de subir, si la firma barata
+  `(rel_path, size, mtime)` del directorio coincide con la del último backup, no
+  se crea versión (cubre settles espurios del watcher).
+- **Detección de Steam Cloud.** Los juegos cuyo save vive en
+  `userdata/<id>/<appid>/remote/` ahora se detectan; las plantillas Ludusavi con
+  `<storeUserId>`/`<gameId>` se expanden sobre los usuarios Steam descubiertos.
+
+### Fixed
+- Plantilla de ruta literal absoluta se preserva tal cual (ya no se convertía en
+  relativa).
+
 ## [1.7.2] — 2026-05-31
 
 ### Changed

@@ -19,6 +19,14 @@ pub struct SaveState {
     /// older state files without migration.
     #[serde(default)]
     pub paused: bool,
+    /// Skip-by-set-hash cache (ADR 0019). A cheap signature over the save's
+    /// `(relative_path, size, mtime)` set as of the last successful upload.
+    /// Before backing up, the agent recomputes the signature; if it's
+    /// unchanged the watcher fired on a settle that touched nothing, so the
+    /// upload is a no-op and skipped. `default` keeps older state files
+    /// loading without migration.
+    #[serde(default)]
+    pub set_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

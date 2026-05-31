@@ -36,7 +36,7 @@ use tokio::task::JoinHandle;
 use tokio::time::Instant as TokioInstant;
 
 use crate::api::ApiClient;
-use crate::backup::upload_directory;
+use crate::backup::{upload_directory_checked, BackupResult};
 
 /// Configuration for the live agent. Defaults are tuned for v0.3's
 /// "instant feel" priority:
@@ -344,6 +344,16 @@ pub fn spawn(
     (AgentHandle { tx: cmd_tx }, task)
 }
 
+/// Signal from a finished backup task back to the agent loop.
+struct BackupDone {
+    save_id: String,
+    /// `Some` when a new snapshot was uploaded — carries the fresh set
+    /// signature to cache on the slot. `None` when the backup was skipped
+    /// (unchanged) or the folder was empty, so the slot keeps its previous
+    /// signature.
+    new_set_hash: Option<String>,
+}
+
 /// Internal per-save bookkeeping.
 struct SaveSlot {
     save: WatchedSave,
@@ -396,6 +406,12 @@ struct SaveSlot {
     /// after a failed attempt so a misbehaving server doesn't burn rate
     /// limits in a tight loop. `None` means "no cooldown active".
     next_auto_restore_at: Option<TokioInstant>,
+    /// Skip-by-set-hash signature of the last successful upload this session
+    /// (ADR 0019). Compared against the freshly-walked signature before each
+    /// backup; an unchanged signature means the watcher fired on a no-op
+    /// settle, so the upload is skipped. In-memory only — cross-restart
+    /// persistence is the CLI/desktop's job via `state.json`.
+    last_set_hash: Option<String>,
 }
 
 async fn run_agent(
@@ -414,7 +430,7 @@ async fn run_agent(
 
     // Backup tasks signal "save_id of save just successfully backed up"
     // so the agent loop can clear `has_pending`. Cap matches `cmd_rx`.
-    let (done_tx, mut done_rx) = mpsc::channel::<String>(64);
+    let (done_tx, mut done_rx) = mpsc::channel::<BackupDone>(64);
 
     // Process watcher: periodic poll. We refresh only the bits we care
     // about (process names + exe paths) to keep CPU near zero when idle.
@@ -599,12 +615,15 @@ async fn run_agent(
             }
 
             // ----- Backup success notifications -----
-            Some(save_id) = done_rx.recv() => {
-                if let Some(slot) = slots.get_mut(&save_id) {
+            Some(done) = done_rx.recv() => {
+                if let Some(slot) = slots.get_mut(&done.save_id) {
                     slot.has_pending = false;
                     slot.next_scheduled_backup_at = None;
                     slot.first_pending_event_at = None;
                     slot.last_backup_at = Some(OffsetDateTime::now_utc());
+                    if let Some(h) = done.new_set_hash {
+                        slot.last_set_hash = Some(h);
+                    }
                 }
             }
         }
@@ -650,6 +669,7 @@ fn handle_add(
         last_backup_at: None,
         restoring: false,
         next_auto_restore_at: None,
+        last_set_hash: None,
     };
     arm_watcher(&mut slot, fs_tx);
     slots.insert(save_id.clone(), slot);
@@ -1466,7 +1486,7 @@ fn schedule_backup(
     api: &ApiClient,
     events_tx: &mpsc::Sender<AgentEvent>,
     config: &AgentConfig,
-    done_tx: &mpsc::Sender<String>,
+    done_tx: &mpsc::Sender<BackupDone>,
     cmd_tx: &mpsc::Sender<AgentCommand>,
 ) {
     let Some(slot) = slots.get_mut(save_id) else {
@@ -1508,6 +1528,7 @@ fn schedule_backup(
     let done_tx = done_tx.clone();
     let cmd_tx = cmd_tx.clone();
     let save = slot.save.clone();
+    let prev_set_hash = slot.last_set_hash.clone();
     let max_retries = config.max_retries;
     let auto_restore = config.auto_restore;
     let conflict_root = config.conflict_root.clone();
@@ -1520,6 +1541,7 @@ fn schedule_backup(
         run_backup_with_retry(
             api,
             save,
+            prev_set_hash,
             events_tx,
             done_tx,
             cmd_tx,
@@ -1549,8 +1571,9 @@ fn schedule_backup(
 async fn run_backup_with_retry(
     api: ApiClient,
     save: WatchedSave,
+    prev_set_hash: Option<String>,
     events_tx: mpsc::Sender<AgentEvent>,
-    done_tx: mpsc::Sender<String>,
+    done_tx: mpsc::Sender<BackupDone>,
     cmd_tx: mpsc::Sender<AgentCommand>,
     max_retries: u32,
     auto_restore: bool,
@@ -1565,7 +1588,10 @@ async fn run_backup_with_retry(
             "agent: backup skipped — local folder is empty/missing"
         );
         // Always clear has_pending so a future fs event isn't blocked.
-        let _ = done_tx.try_send(save.save_id.clone());
+        let _ = done_tx.try_send(BackupDone {
+            save_id: save.save_id.clone(),
+            new_set_hash: None,
+        });
         if auto_restore {
             spawn_auto_restore(
                 save.clone(),
@@ -1593,10 +1619,31 @@ async fn run_backup_with_retry(
             })
             .await;
 
-        let outcome = upload_directory(&api, &save.save_id, &save.local_path, |_, _| {}).await;
+        let outcome = upload_directory_checked(
+            &api,
+            &save.save_id,
+            &save.local_path,
+            prev_set_hash.as_deref(),
+            |_, _| {},
+        )
+        .await;
 
         match outcome {
-            Ok(o) => {
+            Ok(BackupResult::Skipped) => {
+                // The save's set signature is unchanged since the last upload:
+                // the watcher fired on a settle that didn't actually write
+                // anything. Skip the no-op snapshot, clear has_pending.
+                tracing::info!(
+                    save_id = %save.save_id,
+                    "agent: backup skipped — no content change since last upload"
+                );
+                let _ = done_tx.try_send(BackupDone {
+                    save_id: save.save_id.clone(),
+                    new_set_hash: None,
+                });
+                return;
+            }
+            Ok(BackupResult::Uploaded { outcome: o, signature }) => {
                 let _ = events_tx
                     .send(AgentEvent::BackupSuccess {
                         save_id: save.save_id.clone(),
@@ -1604,11 +1651,14 @@ async fn run_backup_with_retry(
                         total_bytes: o.total_bytes,
                     })
                     .await;
-                // Tell the agent loop to clear has_pending. If the channel
-                // is full or the agent is shutting down we just drop the
-                // signal — worst case we re-upload an unchanged snapshot
-                // on the next GameStopped, which is a soft failure.
-                let _ = done_tx.try_send(save.save_id.clone());
+                // Tell the agent loop to clear has_pending and cache the new
+                // signature. If the channel is full or the agent is shutting
+                // down we just drop the signal — worst case we re-upload an
+                // unchanged snapshot on the next GameStopped, a soft failure.
+                let _ = done_tx.try_send(BackupDone {
+                    save_id: save.save_id.clone(),
+                    new_set_hash: Some(signature),
+                });
                 return;
             }
             Err(e) => {
@@ -1644,7 +1694,7 @@ fn process_poll(
     events_tx: &mpsc::Sender<AgentEvent>,
     api: &ApiClient,
     config: &AgentConfig,
-    done_tx: &mpsc::Sender<String>,
+    done_tx: &mpsc::Sender<BackupDone>,
     cmd_tx: &mpsc::Sender<AgentCommand>,
 ) {
     // Refresh every process. The `true` flag asks sysinfo to remove
@@ -1807,6 +1857,7 @@ mod tests {
                 last_backup_at: None,
                 restoring: false,
                 next_auto_restore_at: None,
+                last_set_hash: None,
             },
         );
 

@@ -407,6 +407,48 @@ where
         }
     }
 
+    // Steam Cloud (ADR 0019): some titles write their only save to
+    // `<root>/userdata/<storeUserId>/<appid>/remote/` and never touch the
+    // filesystem locations the catalog lists. Cross-reference every installed
+    // app's appid against the per-user `userdata` dirs and merge any existing
+    // `remote/` folder as a filesystem hit. Reuses `merge_fs_hit`, so a slug
+    // already seen via the Steam cross-reference is promoted to Both/High.
+    // No-op when Steam isn't installed (empty user dirs).
+    {
+        let libraries = steam::detect_steam_libraries(os);
+        let user_dirs = steam::steam_user_dirs(&libraries).unwrap_or_default();
+        if !user_dirs.is_empty() {
+            let mut cloud_hits = 0usize;
+            for app in &steam_apps {
+                let Some(entry) = hoard_manifest::ludusavi::find_by_steam_app_id(app.app_id)
+                else {
+                    continue;
+                };
+                let mut hits: Vec<PathBuf> = Vec::new();
+                let mut seen: HashSet<PathBuf> = HashSet::new();
+                for ud in &user_dirs {
+                    let remote = ud.join(app.app_id.to_string()).join("remote");
+                    if remote.is_dir() && seen.insert(remote.clone()) {
+                        hits.push(remote);
+                    }
+                }
+                if hits.is_empty() {
+                    continue;
+                }
+                cloud_hits += 1;
+                merge_fs_hit(
+                    &mut by_slug,
+                    entry.slug.clone(),
+                    entry.display_name.clone(),
+                    hits,
+                );
+            }
+            if cloud_hits > 0 {
+                tracing::info!(slugs = cloud_hits, "Steam Cloud remote dirs merged");
+            }
+        }
+    }
+
     // Promote confidence wherever both signals fired.
     for game in by_slug.values_mut() {
         if matches!(game.source, DetectionSource::Both) {
@@ -815,7 +857,25 @@ fn refine_save_dir(slug: &str, hits: Vec<PathBuf>) -> Vec<PathBuf> {
             }
             continue;
         }
-        for candidate in find_save_subdirs(&hit) {
+        let mut subdirs = find_save_subdirs(&hit);
+        // Content validation (ADR 0019): when a single hit yields several
+        // save-named subdirs, prefer the ones that actually hold a recent
+        // save-like file. Disambiguates real save folders from editor /
+        // "save settings" dirs that merely match a name pattern. Advisory,
+        // not a hard filter: if none qualify (e.g. all saves are old), keep
+        // them all so we never regress a layout that simply hasn't been
+        // touched lately.
+        if subdirs.len() > 1 {
+            let qualifying: Vec<PathBuf> = subdirs
+                .iter()
+                .filter(|d| dir_has_recent_save_file(d))
+                .cloned()
+                .collect();
+            if !qualifying.is_empty() {
+                subdirs = qualifying;
+            }
+        }
+        for candidate in subdirs {
             if !refined.contains(&candidate) {
                 refined.push(candidate);
             }

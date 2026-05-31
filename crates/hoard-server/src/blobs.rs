@@ -127,10 +127,13 @@ pub async fn backfill_from_folders(pool: &SqlitePool, data_dir: &Path) -> anyhow
         }
     }
 
-    // Quota now means: sum of unique blob sizes referenced by the user.
+    // Quota now means: sum of unique blob sizes plus unique chunk sizes
+    // referenced by the user (ADR 0018 eje C + ADR 0019 Fase 4). Idempotent —
+    // recomputed from scratch, so re-running never drifts.
     sqlx::query(
         "UPDATE users SET storage_used_bytes =
-            (SELECT COALESCE(SUM(size_bytes),0) FROM blobs WHERE blobs.user_id = users.id)",
+            (SELECT COALESCE(SUM(size_bytes),0) FROM blobs WHERE blobs.user_id = users.id)
+          + (SELECT COALESCE(SUM(size_bytes),0) FROM chunks WHERE chunks.user_id = users.id)",
     )
     .execute(&mut *tx)
     .await?;

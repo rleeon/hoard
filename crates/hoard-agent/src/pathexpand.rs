@@ -26,11 +26,11 @@ pub fn expand_path(template: &str, os: Os) -> Vec<PathBuf> {
     let (placeholder, tail) = match split_placeholder(template) {
         Some(parts) => parts,
         None => {
-            // No placeholder at the start: template is literal and probably
-            // useless to us (Ludusavi only emits absolute literals on rare
-            // entries). Return as-is.
-            let trimmed = template.trim_start_matches('/');
-            return vec![PathBuf::from(trimmed)];
+            // No placeholder at the start: template is a literal path
+            // (Ludusavi only emits absolute literals on rare entries). Return
+            // it verbatim — stripping the leading '/' would turn an absolute
+            // path into a bogus relative one that never stats.
+            return vec![PathBuf::from(template)];
         }
     };
 
@@ -144,9 +144,10 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
             .map(|h| vec![h.join("AppData").join("LocalLow")])
             .unwrap_or_default(),
         (Os::Windows, "winDocuments") => {
-            // Best-effort: %USERPROFILE%\Documents. The real Documents path
-            // can be redirected via Known Folders, but the env-based fallback
-            // is what 99% of installs use.
+            // Fallback only: `windows_known_folder` already ran above and
+            // resolves the OneDrive-redirected Documents path when present.
+            // We only reach here when the registry lookup failed, so use the
+            // plain %USERPROFILE%\Documents stub.
             home_dir()
                 .map(|h| vec![h.join("Documents")])
                 .unwrap_or_default()
@@ -183,9 +184,13 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
 
         // -------- Steam
         (_, "storeUserId") | (_, "gameId") => {
-            // These are per-install identifiers we don't know yet at
-            // expansion time. Returning an empty list drops the template;
-            // detection.rs handles the wildcard case separately.
+            // These are per-install Steam identifiers we can't resolve from a
+            // template alone (we'd need the live `userdata/<id>` and the app's
+            // numeric id). Dropping the template here is correct: the Steam
+            // Cloud stage in `detection.rs::detect_all` (ADR 0019) walks
+            // `userdata/<storeUserId>/<appid>/remote/` directly for every
+            // installed app and merges any hit, which covers this case without
+            // threading live Steam state through this pure expander.
             Vec::new()
         }
 
@@ -492,7 +497,7 @@ mod tests {
     #[test]
     fn literal_path_passes_through() {
         let out = expand_path("/etc/games/foo", Os::Linux);
-        assert_eq!(out, vec![PathBuf::from("etc/games/foo")]);
+        assert_eq!(out, vec![PathBuf::from("/etc/games/foo")]);
     }
 
     #[test]

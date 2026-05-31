@@ -11,7 +11,7 @@ use futures::StreamExt;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
-use tokio::io::{AsyncReadExt, BufReader};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio_util::io::StreamReader;
 
 use crate::api::{ApiClient, SnapshotDetail, SnapshotFile};
@@ -136,16 +136,38 @@ where
         let key = safe_rel.to_string_lossy().replace('\\', "/");
         let expected_file = expected.get(&key);
 
-        let mut bytes = Vec::with_capacity(entry.header().size().unwrap_or(0) as usize);
-        entry
-            .read_to_end(&mut bytes)
+        // Stream the entry to disk in fixed-size chunks while hashing, instead
+        // of buffering the whole file in a Vec. A 2 GB file no longer means
+        // 2 GB of RAM. The SHA-256 is computed incrementally over the same
+        // bytes we write.
+        let mut out = tokio::fs::File::create(&dest_path)
             .await
-            .with_context(|| format!("reading entry {key}"))?;
+            .with_context(|| format!("writing {}", dest_path.display()))?;
+        let mut hasher = Sha256::new();
+        let mut written = 0u64;
+        let mut buf = vec![0u8; 256 * 1024];
+        loop {
+            let n = entry
+                .read(&mut buf)
+                .await
+                .with_context(|| format!("reading entry {key}"))?;
+            if n == 0 {
+                break;
+            }
+            if !options.skip_verify && expected_file.is_some() {
+                hasher.update(&buf[..n]);
+            }
+            out.write_all(&buf[..n])
+                .await
+                .with_context(|| format!("writing {}", dest_path.display()))?;
+            written += n as u64;
+        }
+        out.flush()
+            .await
+            .with_context(|| format!("writing {}", dest_path.display()))?;
 
         if !options.skip_verify {
             if let Some(meta) = expected_file {
-                let mut hasher = Sha256::new();
-                hasher.update(&bytes);
                 let got = hex::encode(hasher.finalize());
                 if got != meta.sha256 {
                     bail!(
@@ -154,21 +176,18 @@ where
                         got
                     );
                 }
-                if (bytes.len() as i64) != meta.size_bytes {
+                if (written as i64) != meta.size_bytes {
                     bail!(
                         "size mismatch for {key}: expected {}, got {}",
                         meta.size_bytes,
-                        bytes.len()
+                        written
                     );
                 }
             }
             // Files outside the manifest still get extracted but not verified.
         }
 
-        bytes_extracted += bytes.len() as u64;
-        tokio::fs::write(&dest_path, &bytes)
-            .await
-            .with_context(|| format!("writing {}", dest_path.display()))?;
+        bytes_extracted += written;
         files_extracted += 1;
     }
 

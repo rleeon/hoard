@@ -225,6 +225,7 @@ pub async fn restore_snapshot(
                 last_backup_at: None,
                 last_version_num: None,
                 paused: false,
+                set_hash: None,
             }
         });
         entry.local_path = p.clone();

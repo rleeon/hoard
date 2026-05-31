@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use std::path::{Component, PathBuf};
 use std::sync::Arc;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -127,7 +127,14 @@ pub async fn create(
     .map_err(|_| internal())?;
 
     let max_per_snapshot = (state.config.storage.max_snapshot_size_mb as i64) * 1024 * 1024;
+    // Per-file multipart keeps its modest cap (each file is a round-trip and a
+    // row). The packed mode (a single `pack` tar field, ADR 0019) lifts it:
+    // thousands of tiny files arrive in one stream, so handles and round-trips
+    // stop being the bottleneck. `max_files` starts at the per-file cap and is
+    // raised the moment a `pack` field is seen.
     const MAX_FILES_PER_SNAPSHOT: usize = 1000;
+    const MAX_FILES_PACKED: usize = 50_000;
+    let mut max_files = MAX_FILES_PER_SNAPSHOT;
 
     let upload_id = Uuid::new_v4().to_string();
     let tmp_root = state.config.storage.data_dir.join("tmp").join(&upload_id);
@@ -168,6 +175,101 @@ pub async fn create(
             notes = field.text().await.ok();
             continue;
         }
+
+        // ── Packed mode (ADR 0019) ──────────────────────────────────────
+        // A single uncompressed tar carrying many files. We stream-unpack it
+        // straight from the request body into `tmp_root`, hashing each entry,
+        // and feed the same `files` vec the per-file path uses below — so the
+        // commit logic (dedup, blobs, quota) is identical regardless of how
+        // the bytes arrived.
+        if name == "pack" {
+            max_files = MAX_FILES_PACKED;
+            let byte_stream = field.map(|r| r.map_err(std::io::Error::other));
+            let reader = tokio_util::io::StreamReader::new(byte_stream);
+            let mut archive = tokio_tar::Archive::new(reader);
+            let mut entries = match archive.entries() {
+                Ok(e) => e,
+                Err(e) => {
+                    warn!(error=%e, "opening pack tar");
+                    cleanup_tmp();
+                    return Err(err(StatusCode::BAD_REQUEST, "malformed pack archive"));
+                }
+            };
+            while let Some(entry_res) = entries.next().await {
+                let mut entry = match entry_res {
+                    Ok(e) => e,
+                    Err(e) => {
+                        warn!(error=%e, "reading pack entry");
+                        cleanup_tmp();
+                        return Err(err(StatusCode::BAD_REQUEST, "malformed pack archive"));
+                    }
+                };
+                if entry.header().entry_type().is_dir() {
+                    continue;
+                }
+                let rel = match entry.path() {
+                    Ok(p) => p.to_string_lossy().replace('\\', "/"),
+                    Err(_) => {
+                        cleanup_tmp();
+                        return Err(err(StatusCode::BAD_REQUEST, "unsafe file path"));
+                    }
+                };
+                if !is_safe_relative_path(&rel) {
+                    cleanup_tmp();
+                    return Err(err(StatusCode::BAD_REQUEST, "unsafe file path"));
+                }
+                if files.len() >= max_files {
+                    cleanup_tmp();
+                    return Err(err(StatusCode::BAD_REQUEST, "too many files in snapshot"));
+                }
+                let dest = tmp_root.join(&rel);
+                if let Some(parent) = dest.parent() {
+                    tokio::fs::create_dir_all(parent).await.map_err(|_| {
+                        cleanup_tmp();
+                        internal()
+                    })?;
+                }
+                let mut out = tokio::fs::File::create(&dest).await.map_err(|_| {
+                    cleanup_tmp();
+                    internal()
+                })?;
+                let mut hasher = Sha256::new();
+                let mut size: i64 = 0;
+                let mut buf = vec![0u8; 256 * 1024];
+                loop {
+                    let n = match entry.read(&mut buf).await {
+                        Ok(n) => n,
+                        Err(e) => {
+                            warn!(error=%e, "pack entry read");
+                            cleanup_tmp();
+                            return Err(err(StatusCode::BAD_REQUEST, "stream error"));
+                        }
+                    };
+                    if n == 0 {
+                        break;
+                    }
+                    size += n as i64;
+                    total_size += n as i64;
+                    if total_size > max_per_snapshot {
+                        cleanup_tmp();
+                        return Err(err(
+                            StatusCode::PAYLOAD_TOO_LARGE,
+                            "snapshot exceeds size limit",
+                        ));
+                    }
+                    hasher.update(&buf[..n]);
+                    if out.write_all(&buf[..n]).await.is_err() {
+                        cleanup_tmp();
+                        return Err(internal());
+                    }
+                }
+                let _ = out.flush().await;
+                let sha = hex::encode(hasher.finalize());
+                files.push((rel, size, sha));
+            }
+            continue;
+        }
+
         if name != "files" && name != "files[]" {
             // Drain unknown field
             let _ = field.bytes().await;
@@ -187,7 +289,7 @@ pub async fn create(
             return Err(err(StatusCode::BAD_REQUEST, "unsafe file path"));
         }
 
-        if files.len() >= MAX_FILES_PER_SNAPSHOT {
+        if files.len() >= max_files {
             cleanup_tmp();
             return Err(err(StatusCode::BAD_REQUEST, "too many files in snapshot"));
         }
@@ -260,11 +362,47 @@ pub async fn create(
     let _ = &game_slug; // path components no longer used for storage layout
     let _ = &label;
 
-    // New bytes = distinct shas in this upload not already on disk for this user.
-    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    // ── Chunk planning (ADR 0019, Fase 4) ───────────────────────────────────
+    // A file above the chunk threshold is split by the content-defined chunker
+    // so a monolithic save that rewrites a few KB per version re-stores only
+    // the changed chunks. Planning only hashes (no disk writes yet), so a quota
+    // rejection below costs nothing to undo. Files at/below the threshold keep
+    // the whole-file blob path untouched.
+    let mut chunk_plans: std::collections::HashMap<usize, Vec<crate::chunking::ChunkPlan>> =
+        std::collections::HashMap::new();
+    for (i, (rel, size, _sha)) in files.iter().enumerate() {
+        if *size as u64 > crate::chunking::CHUNK_THRESHOLD {
+            match crate::chunking::plan_chunks(&tmp_root.join(rel)).await {
+                Ok(plan) => {
+                    chunk_plans.insert(i, plan);
+                }
+                Err(e) => {
+                    warn!(error=%e, path=%rel, "chunk planning failed");
+                    cleanup_tmp();
+                    return Err(internal());
+                }
+            }
+        }
+    }
+
+    // New bytes = distinct content (whole-file blobs for small files, per-chunk
+    // for chunked ones) not already on disk for this user. Both stores are
+    // counted so dedup across versions is reflected in quota exactly once.
+    let mut seen_blobs: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_chunks: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut newly_stored_bytes: i64 = 0;
-    for (_, size, sha) in &files {
-        if seen.insert(sha.as_str()) && !crate::blobs::blob_path(&data_dir, &user_id, sha).exists() {
+    for (i, (_, size, sha)) in files.iter().enumerate() {
+        if let Some(plan) = chunk_plans.get(&i) {
+            for c in plan {
+                if seen_chunks.insert(c.sha256.clone())
+                    && !crate::chunking::chunk_path(&data_dir, &user_id, &c.sha256).exists()
+                {
+                    newly_stored_bytes += c.len as i64;
+                }
+            }
+        } else if seen_blobs.insert(sha.clone())
+            && !crate::blobs::blob_path(&data_dir, &user_id, sha).exists()
+        {
             newly_stored_bytes += size;
         }
     }
@@ -320,7 +458,7 @@ pub async fn create(
         });
     };
 
-    for (rel_path, size, sha) in &files {
+    for (i, (rel_path, size, sha)) in files.iter().enumerate() {
         let file_id = Uuid::new_v4().to_string();
         if sqlx::query!(
             "INSERT INTO snapshot_files (id, snapshot_id, relative_path, size_bytes, sha256)
@@ -338,6 +476,65 @@ pub async fn create(
             rollback_blobs(&created_blobs);
             cleanup_tmp();
             return Err(internal());
+        }
+
+        // ── Chunked file (ADR 0019, Fase 4) ─────────────────────────────
+        // A large file has no whole-file blob: its bytes live as
+        // content-defined chunks listed in order by snapshot_file_chunks.
+        // Each chunk is refcounted and placed on disk exactly like a blob,
+        // so dedup, GC and quota treat chunks and blobs uniformly.
+        if let Some(plan) = chunk_plans.get(&i) {
+            let src = tmp_root.join(rel_path);
+            for (ordinal, c) in plan.iter().enumerate() {
+                let ord = ordinal as i64;
+                let csize = c.len as i64;
+                if sqlx::query(
+                    "INSERT INTO snapshot_file_chunks (snapshot_file_id, ordinal, chunk_sha256)
+                     VALUES (?,?,?)",
+                )
+                .bind(&file_id)
+                .bind(ord)
+                .bind(&c.sha256)
+                .execute(&mut *tx)
+                .await
+                .is_err()
+                {
+                    rollback_blobs(&created_blobs);
+                    cleanup_tmp();
+                    return Err(internal());
+                }
+                if sqlx::query(
+                    "INSERT INTO chunks (user_id, sha256, size_bytes, refcount)
+                     VALUES (?,?,?,1)
+                     ON CONFLICT(user_id, sha256) DO UPDATE SET refcount = refcount + 1",
+                )
+                .bind(&user_id)
+                .bind(&c.sha256)
+                .bind(csize)
+                .execute(&mut *tx)
+                .await
+                .is_err()
+                {
+                    rollback_blobs(&created_blobs);
+                    cleanup_tmp();
+                    return Err(internal());
+                }
+                let dst = crate::chunking::chunk_path(&data_dir, &user_id, &c.sha256);
+                if !dst.exists() {
+                    if crate::chunking::place_chunk(&src, c.offset, c.len, &dst)
+                        .await
+                        .is_err()
+                    {
+                        warn!(sha = %c.sha256, "chunk placement failed");
+                        rollback_blobs(&created_blobs);
+                        cleanup_tmp();
+                        return Err(internal());
+                    }
+                    created_blobs.push(dst);
+                }
+            }
+            // tmp source is left for cleanup_tmp; chunks were copied out.
+            continue;
         }
 
         // Reference-count the blob (insert at 1, or bump an existing one).
@@ -638,9 +835,13 @@ pub async fn download(
     let snap_id = snap_id.ok_or_else(|| err(StatusCode::NOT_FOUND, "snapshot not found"))?;
 
     // A version is just its list of files; reconstruct the tarball from the
-    // referenced blobs (ADR 0018, eje C). No per-version folder exists anymore.
+    // referenced blobs and/or chunks (ADR 0018 eje C + ADR 0019 Fase 4). No
+    // per-version folder exists anymore. A file is reassembled from its ordered
+    // chunks when it has snapshot_file_chunks rows, otherwise from its single
+    // whole-file blob — transparent to the client, which gets the same tar.zst.
     let file_rows = sqlx::query(
-        "SELECT relative_path, sha256 FROM snapshot_files WHERE snapshot_id=? ORDER BY relative_path",
+        "SELECT id, relative_path, size_bytes, sha256 FROM snapshot_files
+         WHERE snapshot_id=? ORDER BY relative_path",
     )
     .bind(&snap_id)
     .fetch_all(&state.pool)
@@ -649,15 +850,42 @@ pub async fn download(
 
     let data_dir = state.config.storage.data_dir.clone();
     let uid = user_id.clone();
-    let entries: Vec<(String, PathBuf)> = file_rows
-        .into_iter()
-        .map(|r| {
-            let rel: String = r.get("relative_path");
-            let sha: String = r.get("sha256");
-            let bp = crate::blobs::blob_path(&data_dir, &uid, &sha);
-            (rel, bp)
-        })
-        .collect();
+
+    // How to source one entry's bytes when building the tar.
+    enum DlSource {
+        Blob(PathBuf),
+        Chunks { paths: Vec<PathBuf>, size: u64 },
+    }
+
+    let mut entries: Vec<(String, DlSource)> = Vec::with_capacity(file_rows.len());
+    for r in &file_rows {
+        let file_id: String = r.get("id");
+        let rel: String = r.get("relative_path");
+        let size: i64 = r.get("size_bytes");
+        let sha: String = r.get("sha256");
+
+        let chunk_rows = sqlx::query(
+            "SELECT chunk_sha256 FROM snapshot_file_chunks
+             WHERE snapshot_file_id=? ORDER BY ordinal",
+        )
+        .bind(&file_id)
+        .fetch_all(&state.pool)
+        .await
+        .map_err(|_| internal())?;
+
+        if chunk_rows.is_empty() {
+            entries.push((rel, DlSource::Blob(crate::blobs::blob_path(&data_dir, &uid, &sha))));
+        } else {
+            let paths = chunk_rows
+                .iter()
+                .map(|c| {
+                    let csha: String = c.get("chunk_sha256");
+                    crate::chunking::chunk_path(&data_dir, &uid, &csha)
+                })
+                .collect();
+            entries.push((rel, DlSource::Chunks { paths, size: size as u64 }));
+        }
+    }
 
     // Build a tar.zst stream in a background task and pipe it to the response body.
     let (tx_bytes, rx_bytes) =
@@ -711,8 +939,26 @@ pub async fn download(
         let zstd = ZstdEncoder::new(writer);
         let mut tar = tokio_tar::Builder::new(zstd);
 
-        for (rel, blob) in &entries {
-            if let Err(e) = tar.append_path_with_name(blob, rel).await {
+        for (rel, source) in &entries {
+            let res = match source {
+                DlSource::Blob(blob) => tar.append_path_with_name(blob, rel).await,
+                DlSource::Chunks { paths, size } => {
+                    // Concatenate the chunk files into one tar entry. Each chunk
+                    // is ≤ MAX_CHUNK (a few MiB), so streaming them one at a time
+                    // never buffers the whole file in RAM.
+                    let stream = futures::stream::iter(paths.clone())
+                        .then(|p| async move { tokio::fs::read(&p).await.map(bytes::Bytes::from) })
+                        .boxed();
+                    let reader = tokio_util::io::StreamReader::new(stream);
+                    let mut header = tokio_tar::Header::new_gnu();
+                    header.set_size(*size);
+                    header.set_mode(0o644);
+                    header.set_mtime(0);
+                    header.set_entry_type(tokio_tar::EntryType::Regular);
+                    tar.append_data(&mut header, rel, reader).await
+                }
+            };
+            if let Err(e) = res {
                 warn!(error=%e, path=%rel, "tar build error");
                 let _ = tx_bytes.send(Err(e)).await;
                 return;

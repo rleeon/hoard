@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod blobs;
+pub mod chunking;
 pub mod cleanup;
 pub mod config;
 pub mod db;

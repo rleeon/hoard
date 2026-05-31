@@ -316,6 +316,7 @@ pub async fn add_game_to_tracking(
             last_backup_at: None,
             last_version_num: None,
             paused: false,
+            set_hash: None,
         },
     );
     cli_state.save(&path).map_err(|e| e.to_string())?;
