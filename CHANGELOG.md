@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-05-31
+
 ### Added
 - **Ingesta adaptativa por forma del save** (ADR 0019). El cliente sube por
   streaming (sin cargar el snapshot entero en RAM) y elige transporte según la
@@ -29,6 +31,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Plantilla de ruta literal absoluta se preserva tal cual (ya no se convertía en
   relativa).
+- **Login OAuth llega a la app aunque ya esté abierta (Linux/Windows).** El
+  `hoard://auth/callback#…` que el SO entrega como argumento de un segundo
+  lanzamiento se reenvía ahora por el evento `deep-link://new-url`; antes se
+  perdía en silencio (el handler `on_open_url` solo dispara en arranque en
+  frío/macOS) y la sesión nunca llegaba.
+- **Página de callback web ya no se queda con el spinner congelado.** Tras ceder
+  el control al handler `hoard://` del SO se muestra un estado de éxito con
+  checkmark estático y un enlace para reabrir la app manualmente.
+- **La web refleja la versión real.** El número sale del `Cargo.toml` del
+  workspace en tiempo de build (`__HOARD_VERSION__`) en vez de un literal
+  desactualizado.
+- **Cuenta sin botón "Atrás" redundante** ahora que es la pestaña principal de
+  inicio.
 
 ## [1.7.2] — 2026-05-31
 
