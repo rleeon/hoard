@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.1] — 2026-05-31
+
 ### Fixed
 - **Login de Hoard Cloud llega a la app en Linux/Windows (handoff robusto).**
   Se endurece el camino del deep link de OAuth de extremo a extremo: (1) el
