@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.2] — 2026-05-31
+
+### Changed
+- **Barra lateral reorganizada.** Se quita "Historial" (duplicaba el Panel)
+  y se añade arriba de Biblioteca un botón de cuenta: "Iniciar sesión" sin
+  sesión cloud y "Inicio" (cuenta y estado del plan, solo lectura) cuando hay
+  sesión. La línea de tiempo por partida sigue accesible desde el Panel y la
+  Biblioteca (`/history/:id`).
+
+### Fixed
+- **Conectar a tu servidor acepta un host pelado.** El campo antepone
+  `https://` automáticamente, así que ya no exige escribir el esquema; un
+  texto con espacios (un nombre amigable) sigue rechazándose con un aviso
+  claro en vez de un error de red confuso.
+- **Salir del asistente de servidor con sesión activa.** "Atrás" devuelve a
+  la app en vez de atrapar al usuario en el flujo de onboarding.
+- **Actualización del servidor en Hoard Cloud.** Se oculta el panel de
+  actualización cuando la conexión apunta al backend gestionado
+  (`*.hoard.services` / `*.fly.dev`): no expone `/v1/admin/upgrade`, lo que
+  causaba el "HTTP 404 Not Found" al pulsar el botón en Windows. Nuevo flag
+  `is_cloud_server` clasificado en el login.
+
 ## [1.7.1] — 2026-05-31
 
 ### Added
