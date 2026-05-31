@@ -8,7 +8,7 @@
   "nav.get_app": "Descargar",
   "nav.download": "Descargar",
 
-  "hero.eyebrow": "Sincronización en la nube para saves · v1.7.0",
+  "hero.eyebrow": "Sincronización en la nube para saves · v{v}",
   "hero.title_1": "Tus partidas guardadas,",
   "hero.title_2": "versionadas y verificadas.",
   "hero.subtitle": "Un demonio pequeño hace snapshot de tus saves cada vez que terminas de jugar, hashea cada archivo y te deja volver a cualquier versión anterior. Gratis hasta que tu biblioteca lo desborde. Auto-aloja el mismo binario si lo prefieres.",
@@ -186,6 +186,7 @@
   "callback.failed_generic": "No pudimos terminar el inicio de sesión. Inténtalo de nuevo.",
   "callback.back_to_signin": "Volver al inicio de sesión",
   "callback.desktop_return": "¡Sesión iniciada! Vuelve a la app de Hoard, ya puedes cerrar esta pestaña.",
+  "callback.desktop_reopen": "¿No se abrió? Haz clic aquí para reabrir Hoard.",
 
   "login.title": "Inicia sesión en Hoard",
   "login.subtitle": "La misma cuenta en todos tus dispositivos.",

@@ -3,7 +3,7 @@
   import LogoMark from './LogoMark.svelte';
   import StatusDot from './StatusDot.svelte';
   const year = new Date().getFullYear();
-  const VERSION = '1.7.0';
+  const VERSION = __HOARD_VERSION__;
 </script>
 
 <footer class="relative mt-auto border-t border-white/[0.06]">

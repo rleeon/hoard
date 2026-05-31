@@ -46,7 +46,7 @@
 
       <div class="mt-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.025] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400 backdrop-blur animate-fade-up">
         <span class="h-1 w-1 rounded-full bg-emerald-400"></span>
-        {$_('hero.eyebrow')}
+        {$_('hero.eyebrow', { values: { v: __HOARD_VERSION__ } })}
       </div>
 
       <h1

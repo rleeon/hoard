@@ -14,7 +14,7 @@
   import { onMount, onDestroy } from "svelte";
   import { push } from "svelte-spa-router";
   import { _ } from "svelte-i18n";
-  import { ChevronLeft, LogOut, ArrowUpRight, Mail, Download, Trash2, RefreshCw, ShieldCheck, AlertTriangle, CreditCard, HardDrive, Layers, Clock, FileArchive, Gauge } from "lucide-svelte";
+  import { LogOut, ArrowUpRight, Mail, Download, Trash2, RefreshCw, ShieldCheck, AlertTriangle, CreditCard, HardDrive, Layers, Clock, FileArchive, Gauge } from "lucide-svelte";
 
   import Card from "../lib/components/Card.svelte";
   import Button from "../lib/components/Button.svelte";
@@ -195,14 +195,6 @@
 
 <div class="mx-auto max-w-3xl px-6 py-8">
   <div class="mb-6 flex items-center gap-2">
-    <button
-      type="button"
-      class="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100"
-      onclick={() => push("/settings")}
-    >
-      <ChevronLeft size={16} />
-      <span>{$_("common.back")}</span>
-    </button>
     <h1 class="text-2xl font-semibold tracking-tight">
       {$_("account.title")}
     </h1>

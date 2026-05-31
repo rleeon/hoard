@@ -4,10 +4,17 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { supabase } from '$lib/auth/supabase';
+  import { CheckCircle2 } from 'lucide-svelte';
   import type { Session } from '@supabase/supabase-js';
 
   let message = $state('');
   let error = $state<string | null>(null);
+  // Once we've handed off to the desktop app we stop the spinner and show a
+  // terminal success state. Setting `window.location.href = "hoard://…"` blocks
+  // the page (the browser hands control to the OS handler), so a CSS spinner
+  // appears frozen — we render a static checkmark instead and keep the deep
+  // link around for a manual retry.
+  let handoffUrl = $state<string | null>(null);
 
   const isDesktop = () => $page.url.searchParams.get('desktop') === '1';
 
@@ -19,6 +26,7 @@
     const url =
       `hoard://auth/callback#access_token=${encodeURIComponent(s.access_token)}` +
       `&refresh_token=${encodeURIComponent(s.refresh_token ?? '')}`;
+    handoffUrl = url;
     message = $_('callback.desktop_return');
     window.location.href = url;
   }
@@ -64,6 +72,12 @@
     <p class="mt-2 text-sm text-zinc-400">{error}</p>
     <a href="/login" class="mt-6 text-sm text-emerald-400 hover:underline">
       {$_('callback.back_to_signin')}
+    </a>
+  {:else if handoffUrl}
+    <CheckCircle2 size={40} class="text-emerald-400" />
+    <p class="mt-6 text-sm text-zinc-300">{message}</p>
+    <a href={handoffUrl} class="mt-4 text-sm text-emerald-400 hover:underline">
+      {$_('callback.desktop_reopen')}
     </a>
   {:else}
     <div class="h-10 w-10 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent"></div>

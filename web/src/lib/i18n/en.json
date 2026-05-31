@@ -8,7 +8,7 @@
   "nav.get_app": "Download",
   "nav.download": "Download",
 
-  "hero.eyebrow": "Cloud sync for game saves · v1.7.0",
+  "hero.eyebrow": "Cloud sync for game saves · v{v}",
   "hero.title_1": "Your game saves,",
   "hero.title_2": "versioned and verified.",
   "hero.subtitle": "A small daemon snapshots your saves every time you finish playing, hashes every file, and lets you roll back to any previous version. Free until your library outgrows it. Self-host the same binary if you'd rather.",
@@ -186,6 +186,7 @@
   "callback.failed_generic": "We couldn't finish the sign-in. Try again.",
   "callback.back_to_signin": "Back to sign-in",
   "callback.desktop_return": "Signed in! Return to the Hoard app — you can close this tab.",
+  "callback.desktop_reopen": "Didn't open? Click here to reopen Hoard.",
 
   "login.title": "Sign in to Hoard",
   "login.subtitle": "Same account on every device.",

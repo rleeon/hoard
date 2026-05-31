@@ -77,11 +77,23 @@ pub fn run() {
     let app = tauri::Builder::default()
         // Single instance: clicking the launcher again brings the existing
         // window to the front instead of spawning a second copy.
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.show();
                 let _ = window.set_focus();
+            }
+            // On Linux/Windows a `hoard://…` deep link opened while the app is
+            // already running arrives as a *second launch* — the OS hands the
+            // URL to this callback as an argv entry, NOT through the deep-link
+            // plugin's `on_open_url` channel (that one only fires on cold
+            // start / macOS). Without forwarding it here the OAuth handoff is
+            // silently dropped and the app never sees the session. Find the
+            // `hoard://` arg and emit it on the same event the frontend
+            // already listens to.
+            if let Some(url) = argv.iter().find(|a| a.starts_with("hoard://")) {
+                tracing::info!(url = %url, "deep link via single-instance argv");
+                let _ = app.emit("deep-link://new-url", url.to_string());
             }
         }))
         .plugin(tauri_plugin_autostart::init(
