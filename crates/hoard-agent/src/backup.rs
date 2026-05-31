@@ -44,10 +44,17 @@ pub struct UploadOutcome {
 /// Outcome of a skip-aware backup ([`upload_directory_checked`]).
 #[derive(Debug, Clone)]
 pub enum BackupResult {
-    /// The save's set signature matched the cached one — nothing was uploaded.
+    /// The cheap set signature matched the cached one — nothing was read or
+    /// uploaded. (Fast path.)
     Skipped,
-    /// A new snapshot was created. `signature` is the freshly-computed set
-    /// signature the caller should persist for the next skip check.
+    /// The cheap signature drifted (the game rewrote its save files, bumping
+    /// mtimes) but the actual bytes are identical to the last upload, so no
+    /// new snapshot was created. `signature` is the refreshed composite the
+    /// caller should persist so the *next* check hits the fast path again
+    /// instead of re-hashing the whole save every cycle.
+    Unchanged { signature: String },
+    /// A new snapshot was created. `signature` is the freshly-computed
+    /// composite signature the caller should persist for the next skip check.
     Uploaded {
         outcome: UploadOutcome,
         signature: String,
@@ -77,6 +84,58 @@ pub fn compute_set_signature(files: &[UploadFile]) -> String {
         h.update([0u8]);
     }
     hex::encode(h.finalize())
+}
+
+/// Content signature over the sorted `(relative_path, bytes)` set.
+///
+/// Unlike [`compute_set_signature`] this *reads every file*, so it's only used
+/// as a fallback when the cheap signature drifted: many games (and some
+/// background launchers / cloud-sync daemons) rewrite save files on a timer,
+/// bumping the mtime without changing a single byte. The cheap check would
+/// treat that as a change and cut a redundant snapshot every few hours; this
+/// confirms whether the bytes actually moved before we upload.
+async fn compute_content_signature(files: &[UploadFile]) -> Result<String> {
+    use tokio::io::AsyncReadExt;
+    let mut h = Sha256::new();
+    let mut buf = vec![0u8; 128 * 1024];
+    for f in files {
+        h.update(f.relative_path.as_bytes());
+        h.update([0u8]);
+        let mut file = tokio::fs::File::open(&f.absolute_path)
+            .await
+            .with_context(|| format!("hashing {}", f.absolute_path.display()))?;
+        loop {
+            let n = file
+                .read(&mut buf)
+                .await
+                .with_context(|| format!("reading {}", f.absolute_path.display()))?;
+            if n == 0 {
+                break;
+            }
+            h.update(&buf[..n]);
+        }
+        h.update([0u8]);
+    }
+    Ok(hex::encode(h.finalize()))
+}
+
+/// Persisted skip signature is a composite `"<cheap>:<content>"`. We split it
+/// back into its two halves; a legacy value with no `:` (pre-fallback state
+/// files held only the cheap hash) is treated as cheap-only with no known
+/// content hash, so the first drift after upgrading reads bytes once and then
+/// stores the composite.
+fn split_signature(sig: Option<&str>) -> (Option<&str>, Option<&str>) {
+    match sig {
+        None => (None, None),
+        Some(s) => match s.split_once(':') {
+            Some((cheap, content)) => (Some(cheap), Some(content)),
+            None => (Some(s), None),
+        },
+    }
+}
+
+fn join_signature(cheap: &str, content: &str) -> String {
+    format!("{cheap}:{content}")
 }
 
 /// Walk `root` recursively and return all regular files, sorted by relative path.
@@ -221,10 +280,16 @@ where
 
 /// Skip-aware wrapper around [`upload_directory`] (ADR 0019).
 ///
-/// Computes the cheap set signature of `source`; if it equals
-/// `prev_signature` the directory hasn't changed since the last upload and
-/// we return [`BackupResult::Skipped`] without touching the network. Otherwise
-/// it uploads and returns the fresh signature for the caller to persist.
+/// Two-tier check against the persisted composite `prev_signature`:
+/// 1. Cheap `(path, size, mtime)` signature matches → [`BackupResult::Skipped`],
+///    no file read, no network.
+/// 2. Cheap drifted (usually just an mtime bump from a game/daemon rewriting
+///    saves on a timer) → read bytes once; if the content hash matches the
+///    stored one → [`BackupResult::Unchanged`] carrying the refreshed composite
+///    so the next cycle hits the fast path again instead of re-hashing.
+/// 3. Bytes actually moved → upload and return [`BackupResult::Uploaded`].
+///
+/// The signature persisted by the caller is `"<cheap>:<content>"`.
 pub async fn upload_directory_checked<F>(
     client: &ApiClient,
     save_id: &str,
@@ -245,12 +310,27 @@ where
     if files.is_empty() {
         bail!("no files found in {}", canonical.display());
     }
-    let signature = compute_set_signature(&files);
-    if prev_signature == Some(signature.as_str()) {
+    let (prev_cheap, prev_content) = split_signature(prev_signature);
+    let cheap = compute_set_signature(&files);
+    if prev_cheap == Some(cheap.as_str()) {
+        // Fast path: the cheap (path, size, mtime) signature is unchanged, so
+        // the bytes can't have moved either — skip without reading any file.
         return Ok(BackupResult::Skipped);
     }
+    // The cheap signature drifted. That's often just an mtime bump (a game or
+    // background daemon rewriting save files on a timer), so confirm whether
+    // the actual bytes changed before cutting a snapshot.
+    let content = compute_content_signature(&files).await?;
+    if prev_content == Some(content.as_str()) {
+        return Ok(BackupResult::Unchanged {
+            signature: join_signature(&cheap, &content),
+        });
+    }
     let outcome = upload_directory(client, save_id, &canonical, progress).await?;
-    Ok(BackupResult::Uploaded { outcome, signature })
+    Ok(BackupResult::Uploaded {
+        outcome,
+        signature: join_signature(&cheap, &content),
+    })
 }
 
 /// Persist (or refresh) the `(save_id → local_path)` mapping in `state.json`.
@@ -333,5 +413,46 @@ mod tests {
         let one = vec![uf("a.sav", 10, 100)];
         let two = vec![uf("a.sav", 10, 100), uf("b.sav", 5, 50)];
         assert_ne!(compute_set_signature(&one), compute_set_signature(&two));
+    }
+
+    #[test]
+    fn split_join_round_trip() {
+        assert_eq!(split_signature(None), (None, None));
+        // Legacy cheap-only state (pre-fallback): no content half.
+        assert_eq!(split_signature(Some("abc")), (Some("abc"), None));
+        let composite = join_signature("cheap", "content");
+        assert_eq!(composite, "cheap:content");
+        assert_eq!(
+            split_signature(Some(&composite)),
+            (Some("cheap"), Some("content"))
+        );
+    }
+
+    #[tokio::test]
+    async fn content_signature_ignores_mtime_but_tracks_bytes() {
+        let dir = std::env::temp_dir().join(format!("hoard-sig-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("save.dat");
+        std::fs::write(&path, b"hello world").unwrap();
+        let mk = |mtime: u64| UploadFile {
+            relative_path: "save.dat".to_string(),
+            absolute_path: path.clone(),
+            size_bytes: 11,
+            modified: Some(UNIX_EPOCH + std::time::Duration::from_secs(mtime)),
+        };
+        // Cheap signature drifts with mtime, content signature does not.
+        let a = vec![mk(100)];
+        let b = vec![mk(999)];
+        assert_ne!(compute_set_signature(&a), compute_set_signature(&b));
+        assert_eq!(
+            compute_content_signature(&a).await.unwrap(),
+            compute_content_signature(&b).await.unwrap()
+        );
+        // Changing the bytes does move the content signature.
+        let before = compute_content_signature(&a).await.unwrap();
+        std::fs::write(&path, b"hello WORLD").unwrap();
+        let after = compute_content_signature(&a).await.unwrap();
+        assert_ne!(before, after);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

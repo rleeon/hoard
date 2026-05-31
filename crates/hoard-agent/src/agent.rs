@@ -1630,9 +1630,9 @@ async fn run_backup_with_retry(
 
         match outcome {
             Ok(BackupResult::Skipped) => {
-                // The save's set signature is unchanged since the last upload:
-                // the watcher fired on a settle that didn't actually write
-                // anything. Skip the no-op snapshot, clear has_pending.
+                // The save's cheap set signature is unchanged since the last
+                // upload: the watcher fired on a settle that didn't actually
+                // write anything. Skip the no-op snapshot, clear has_pending.
                 tracing::info!(
                     save_id = %save.save_id,
                     "agent: backup skipped — no content change since last upload"
@@ -1640,6 +1640,21 @@ async fn run_backup_with_retry(
                 let _ = done_tx.try_send(BackupDone {
                     save_id: save.save_id.clone(),
                     new_set_hash: None,
+                });
+                return;
+            }
+            Ok(BackupResult::Unchanged { signature }) => {
+                // The cheap signature drifted (mtime bump) but the bytes are
+                // identical to the last upload. No snapshot, but cache the
+                // refreshed composite so the next check hits the fast path
+                // instead of re-reading every file.
+                tracing::info!(
+                    save_id = %save.save_id,
+                    "agent: backup skipped — bytes unchanged despite mtime drift"
+                );
+                let _ = done_tx.try_send(BackupDone {
+                    save_id: save.save_id.clone(),
+                    new_set_hash: Some(signature),
                 });
                 return;
             }

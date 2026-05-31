@@ -21,10 +21,27 @@ function workspaceVersion(): string {
   }
 }
 
+// Date of the latest *released* version, read from the top dated CHANGELOG
+// entry (skips the `## [Unreleased]` heading). Keeps the download page's
+// "published <date>" line single-sourced alongside the version.
+function releaseDate(): string {
+  try {
+    const log = readFileSync(
+      fileURLToPath(new URL('../CHANGELOG.md', import.meta.url)),
+      'utf8'
+    );
+    const m = log.match(/^##\s*\[\d+\.\d+\.\d+\][^\n]*?(\d{4}-\d{2}-\d{2})/m);
+    return m ? m[1] : '';
+  } catch {
+    return '';
+  }
+}
+
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
   define: {
-    __HOARD_VERSION__: JSON.stringify(workspaceVersion())
+    __HOARD_VERSION__: JSON.stringify(workspaceVersion()),
+    __HOARD_RELEASE_DATE__: JSON.stringify(releaseDate())
   },
   server: {
     port: 5173,

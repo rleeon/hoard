@@ -13,6 +13,7 @@ pub mod cloud_pull;
 pub mod error;
 pub mod history;
 pub mod library;
+pub mod loopback;
 pub mod misc;
 pub mod prefs;
 pub mod updates;

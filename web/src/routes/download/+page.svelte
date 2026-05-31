@@ -9,8 +9,8 @@
   type Platform = 'windows' | 'macos' | 'linux';
   let detected = $state<Platform | null>(null);
 
-  const HOARD_VERSION = '1.7.0';
-  const RELEASE_DATE = '2026-05-20';
+  const HOARD_VERSION = __HOARD_VERSION__;
+  const RELEASE_DATE = __HOARD_RELEASE_DATE__;
   const RELEASE_BASE = `https://github.com/rleeon/hoard/releases/tag/v${HOARD_VERSION}`;
   const ALL_RELEASES = 'https://github.com/rleeon/hoard/releases';
   const CHANGELOG_URL = 'https://github.com/rleeon/hoard/blob/main/CHANGELOG.md';
@@ -86,7 +86,7 @@
 
   <div class="text-center">
     <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400/80">
-      Download
+      {$_('nav.download')}
     </div>
     <h1 class="mt-3 text-balance text-4xl font-extrabold tracking-tight text-white sm:text-6xl">
       {$_('download.title')}

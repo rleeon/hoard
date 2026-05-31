@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.2] — 2026-05-31
+
+### Fixed
+- **La cuenta de Hoard Cloud ya no "caduca" al reiniciar el PC.** El access
+  token de Supabase es un JWT de vida corta (~1 h) y nunca se renovaba, así que
+  cualquier llamada posterior a su expiración —el botón "Refrescar" (`/v1/me`) o
+  el poller (`/v1/cloud/sync`)— recibía un 401 y parecía sesión muerta, aunque
+  el refresh token seguía válido sin usarse. Ahora, ante un 401, se canjea el
+  refresh token contra Supabase GoTrue para obtener un par nuevo, se persisten
+  los tokens rotados y se reintenta una vez. Esto arregla tanto el aviso de
+  "sesión caducada, inicia de nuevo" como el puntito "Servidor caído" en la
+  barra lateral cuando había sesión cloud activa.
+- **La página de descargas web ya no muestra una versión congelada.** La
+  versión y la fecha estaban hardcodeadas a `1.7.0 · 2026-05-20`; ahora se
+  inyectan en build desde `Cargo.toml` y la entrada datada más reciente del
+  `CHANGELOG.md`, alineadas con el resto del sitio.
+- **El epígrafe "Download" de `/download` estaba en inglés** aunque el resto de
+  la página estuviera en español; ahora usa la clave i18n `nav.download`.
+- **Login de Hoard Cloud funciona con navegadores en sandbox (snap/flatpak).**
+  El handoff por esquema `hoard://` se perdía silenciosamente con el Firefox de
+  snap (el navegador por defecto en Ubuntu): un navegador confinado no puede
+  despachar esquemas custom al host, así que el botón "vuelve a Hoard" no hacía
+  nada. Ahora el flujo usa un **redirect loopback** (RFC 8252): la app levanta
+  un listener efímero en `http://127.0.0.1:<puerto>`, pasa el puerto al flujo
+  web (`/login?desktop=1&port=N`) y el callback rebota los tokens a esa URL —
+  que los navegadores confinados sí abren. El esquema `hoard://` queda como
+  fallback (navegadores no confinados y macOS). Reusa el mismo camino interno
+  `deep-link://new-url`, así que el resto del login no cambia.
+
+### Changed
+- **Skip-by-hash de backup ahora confirma por contenido antes de saltar.** La
+  firma de set pasa a ser un compuesto `<barato>:<contenido>`: el camino rápido
+  sigue siendo `(ruta, tamaño, mtime)` sin leer bytes, pero cuando esa firma
+  cambia (juegos/daemons que reescriben saves por temporizador, bumpeando
+  mtime sin tocar bytes) se computa una firma de contenido y, si coincide, se
+  refresca el compuesto sin crear snapshot redundante (`BackupResult::Unchanged`).
+
 ## [1.8.1] — 2026-05-31
 
 ### Fixed

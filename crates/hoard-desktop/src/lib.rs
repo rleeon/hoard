@@ -333,7 +333,7 @@ fn first_hoard_url<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
 /// whose listener isn't ready yet still drains it on mount) and emit only when
 /// a window already exists to receive it. The buffer is cleared on a
 /// successful `cloud_complete_login`.
-fn capture_deep_link(app: &tauri::AppHandle, url: String, emit: bool) {
+pub(crate) fn capture_deep_link(app: &tauri::AppHandle, url: String, emit: bool) {
     *app.state::<AppState>().pending_deep_link.lock().unwrap() = Some(url.clone());
     if emit {
         let _ = app.emit("deep-link://new-url", url);

@@ -202,12 +202,8 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
     };
 
     let url = format!("{}/v1/cloud/sync", creds.server_url);
-    let resp = match client
-        .get(&url)
-        .bearer_auth(&creds.access_token)
-        .send()
-        .await
-    {
+    let mut access_token = creds.access_token.clone();
+    let mut resp = match client.get(&url).bearer_auth(&access_token).send().await {
         Ok(r) => r,
         Err(e) => {
             tracing::debug!(error = %e, "cloud-pull: network error");
@@ -215,6 +211,31 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
             return;
         }
     };
+
+    // The access token is a short-lived Supabase JWT. When it expires the
+    // sync endpoint answers 401 — which previously surfaced as a permanent
+    // "server down" dot. Renew it with the refresh token and retry once so the
+    // poller keeps working across the token's lifetime (and across restarts).
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        match crate::commands::cloud::refresh_active_session().await {
+            Ok(fresh) => {
+                access_token = fresh.access_token;
+                match client.get(&url).bearer_auth(&access_token).send().await {
+                    Ok(r) => resp = r,
+                    Err(e) => {
+                        tracing::debug!(error = %e, "cloud-pull: network error after refresh");
+                        let _ = app.emit("agent://offline", ());
+                        return;
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "cloud-pull: token refresh failed");
+                let _ = app.emit("agent://offline", ());
+                return;
+            }
+        }
+    }
 
     let status = resp.status();
     if status == reqwest::StatusCode::TOO_MANY_REQUESTS {

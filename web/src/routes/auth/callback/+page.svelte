@@ -18,17 +18,27 @@
 
   const isDesktop = () => $page.url.searchParams.get('desktop') === '1';
 
-  // Desktop handoff: hand the freshly-minted session to the Hoard app via its
-  // `hoard://` deep link. The app parses the tokens and verifies them against
-  // /v1/me. We put them in the QUERY string (not the fragment): a `hoard://`
-  // URL is dispatched to a local OS scheme handler and never reaches any
-  // server, so there's no log-leak concern — and unlike the fragment, the
-  // query reliably survives being passed through the OS handler / argv on
-  // Linux and Windows (fragments are frequently dropped there).
+  // Desktop handoff: hand the freshly-minted session back to the Hoard app.
+  //
+  // Preferred path is the loopback redirect (RFC 8252): the app passes the port
+  // it's listening on as `?port=N`, and we navigate to
+  // `http://127.0.0.1:N/callback?...`. This is the only handoff that survives
+  // snap/flatpak-confined browsers (Ubuntu's default Firefox is a snap), which
+  // silently drop custom `hoard://` schemes. When there's no port (older app,
+  // non-confined browser, macOS) we fall back to the `hoard://` scheme.
+  //
+  // Either way the tokens ride in the QUERY string (not the fragment): a
+  // fragment never reaches the loopback server, and on Linux/Windows the OS
+  // scheme handler frequently drops it from argv too. There's no log-leak
+  // concern — 127.0.0.1 stays on the box and `hoard://` never hits a server.
   function bounceToApp(s: Session) {
-    const url =
-      `hoard://auth/callback?access_token=${encodeURIComponent(s.access_token)}` +
+    const port = $page.url.searchParams.get('port');
+    const qs =
+      `access_token=${encodeURIComponent(s.access_token)}` +
       `&refresh_token=${encodeURIComponent(s.refresh_token ?? '')}`;
+    const url = port
+      ? `http://127.0.0.1:${port}/callback?${qs}`
+      : `hoard://auth/callback?${qs}`;
     handoffUrl = url;
     message = $_('callback.desktop_return');
     window.location.href = url;

@@ -19,16 +19,24 @@
   // staying in the browser. We carry the flag through to /auth/callback, which
   // does the actual redirect to the app.
   let desktop = $derived($page.url.searchParams.get('desktop') === '1');
+  // Loopback port the desktop app is listening on for the OAuth handoff. When
+  // present we bounce the session to http://127.0.0.1:<port> (confined browsers
+  // like Ubuntu's snap Firefox can open that) instead of the custom hoard://
+  // scheme (which they silently drop). Carried through to /auth/callback.
+  let port = $derived($page.url.searchParams.get('port') ?? '');
+  let dlExtra = $derived(
+    `${desktop ? '&desktop=1' : ''}${port ? `&port=${encodeURIComponent(port)}` : ''}`
+  );
   let redirectTo = $derived(
     typeof window !== 'undefined'
-      ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}${desktop ? '&desktop=1' : ''}`
+      ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}${dlExtra}`
       : ''
   );
 
   // Where to send an already-authenticated browser. For desktop we route to the
   // callback (which bounces to the app); otherwise straight to `next`.
   let postLogin = $derived(
-    desktop ? `/auth/callback?desktop=1&next=${encodeURIComponent(next)}` : next
+    desktop ? `/auth/callback?next=${encodeURIComponent(next)}${dlExtra}` : next
   );
 
   onMount(() => {

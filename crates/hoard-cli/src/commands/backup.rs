@@ -59,6 +59,17 @@ pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Re
             println!("no changes since last backup — skipped");
             return Ok(());
         }
+        BackupResult::Unchanged { signature } => {
+            pb.finish_and_clear();
+            println!("no changes since last backup — skipped");
+            // Persist the refreshed composite signature so the next run hits
+            // the cheap fast path instead of re-reading every file.
+            if let Some(s) = state.saves.get_mut(&save_id) {
+                s.set_hash = Some(signature);
+            }
+            state.save(&state_path)?;
+            return Ok(());
+        }
         BackupResult::Uploaded { outcome, signature } => (outcome, signature),
     };
     pb.finish_with_message("uploaded");

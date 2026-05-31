@@ -23,6 +23,31 @@ const CLOUD_DEFAULT_URL: &str = "https://api.hoard.services";
 const KEYRING_SERVICE: &str = "hoard-desktop-cloud";
 const KEYRING_USER: &str = "default";
 
+// Supabase GoTrue project — the same public project the web app talks to
+// (`web/.env` → `PUBLIC_SUPABASE_*`, baked into the static bundle). The anon
+// key is a public, browser-exposed credential, so embedding it here is no more
+// sensitive than shipping the web client. Both are overridable at runtime
+// (env var) or build time (`option_env!`) so a dev build can point at a
+// different project without touching code.
+const SUPABASE_DEFAULT_URL: &str = "https://zddepgqdiuhhzqdimsks.supabase.co";
+const SUPABASE_DEFAULT_ANON_KEY: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkZGVwZ3FkaXVoaHpxZGltc2tzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2MzM2MTksImV4cCI6MjA5NTIwOTYxOX0.3nZebGwCzFO1byTqhowq9ip89GE9fMRxPscgYSlPzFk";
+
+fn supabase_url() -> String {
+    std::env::var("HOARD_SUPABASE_URL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| option_env!("HOARD_SUPABASE_URL").map(str::to_string))
+        .unwrap_or_else(|| SUPABASE_DEFAULT_URL.to_string())
+}
+
+fn supabase_anon_key() -> String {
+    std::env::var("HOARD_SUPABASE_ANON_KEY")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| option_env!("HOARD_SUPABASE_ANON_KEY").map(str::to_string))
+        .unwrap_or_else(|| SUPABASE_DEFAULT_ANON_KEY.to_string())
+}
+
 // ---- session model ----------------------------------------------------
 
 /// Cached cloud session — Supabase JWT plus the most recent `/v1/me` snapshot.
@@ -88,7 +113,8 @@ fn default_forever() -> bool {
 #[derive(Debug, Clone)]
 pub struct CloudCreds {
     pub access_token: String,
-    #[allow(dead_code)] // wired in when we implement Supabase refresh
+    /// Supabase refresh token. Used by [`refresh_active_session`] to mint a
+    /// fresh access token when the short-lived JWT expires.
     pub refresh_token: String,
     pub server_url: String,
     /// Cached plan tier from the last `/v1/me`. Used by `cloud_pull` to
@@ -230,6 +256,26 @@ fn save_creds(access: &str, refresh: &str, server_url: &str, user: &CloudAccount
     }
 }
 
+/// Rewrite just the token pair, keeping the cached `/v1/me` snapshot and
+/// server URL already on disk. Used after a Supabase refresh, which rotates
+/// both tokens but doesn't change the account shape.
+fn update_tokens(access: &str, refresh: &str) -> Result<()> {
+    let mut session = read_session()?.unwrap_or_default();
+    if session.server_url.is_empty() {
+        session.server_url = cloud_base_url();
+    }
+    match keyring_set(access, refresh) {
+        Ok(()) => session.auth = None,
+        Err(_) => {
+            session.auth = Some(AuthSection {
+                access_token: access.to_string(),
+                refresh_token: refresh.to_string(),
+            })
+        }
+    }
+    write_session(&session)
+}
+
 fn clear_creds() -> Result<()> {
     let _ = keyring_delete();
     let path = session_path()?;
@@ -239,17 +285,53 @@ fn clear_creds() -> Result<()> {
     Ok(())
 }
 
+/// Exchange the stored refresh token for a fresh Supabase session and persist
+/// the rotated tokens. Returns the refreshed creds (cached plan/server URL
+/// carried over). Callers that need a fresh `/v1/me` fetch it themselves with
+/// the new access token.
+///
+/// This is the fix for "the account expires every time I restart": the
+/// access token (a short-lived Supabase JWT) was never renewed, so any call
+/// after it expired — the Refresh button's `/v1/me` or the poller's
+/// `/v1/cloud/sync` — came back 401 and looked like a dead session, even
+/// though the long-lived refresh token was sitting right there unused.
+pub async fn refresh_active_session() -> Result<CloudCreds> {
+    let Some(creds) = load_creds()? else {
+        anyhow::bail!("Not signed in to Hoard Cloud.");
+    };
+    let (access, refresh) = refresh_supabase_session(&creds.refresh_token).await?;
+    update_tokens(&access, &refresh)?;
+    Ok(CloudCreds {
+        access_token: access,
+        refresh_token: refresh,
+        ..creds
+    })
+}
+
 // ---- commands ---------------------------------------------------------
 
 /// Resolve the public URL the OAuth login flow starts from. The desktop UI
-/// opens this in the system browser; the web app (hosted at
-/// `hoard.services`) renders provider buttons that redirect via Supabase
-/// and end up at `hoard://auth/callback?access_token=...&refresh_token=...`.
+/// opens this in the system browser; the web app (hosted at `hoard.services`)
+/// renders provider buttons that redirect via Supabase and hand the session
+/// back to the app.
+///
+/// We start a loopback HTTP listener and pass its `port` to the web flow so the
+/// browser returns the tokens via `http://127.0.0.1:<port>/callback`. This is
+/// the only handoff that works with snap/flatpak-confined browsers (Ubuntu's
+/// default Firefox is a snap), which silently drop custom `hoard://` schemes.
+/// If the listener can't bind we fall back to the `hoard://` scheme, which
+/// still works with non-confined browsers and on macOS.
 #[tauri::command]
-pub fn cloud_login_url() -> String {
+pub async fn cloud_login_url(app: AppHandle) -> String {
     let base = std::env::var("HOARD_CLOUD_PUBLIC_URL")
         .unwrap_or_else(|_| "https://hoard.services".to_string());
-    format!("{base}/login?desktop=1")
+    match crate::commands::loopback::start(app).await {
+        Ok(port) => format!("{base}/login?desktop=1&port={port}"),
+        Err(e) => {
+            tracing::warn!(error = %e, "loopback listener failed; using hoard:// scheme");
+            format!("{base}/login?desktop=1")
+        }
+    }
 }
 
 /// Browser → `hoard://auth/callback?...` → deep-link handler → here.
@@ -318,9 +400,20 @@ pub async fn cloud_refresh_account(
     let Some(creds) = load_creds().map_err(|e| e.to_string())? else {
         return Err("Not signed in to Hoard Cloud.".into());
     };
-    let me = fetch_me(&creds.server_url, &creds.access_token)
-        .await
-        .map_err(prettify)?;
+    // Try with the cached access token; if it expired, transparently renew it
+    // with the refresh token and retry once instead of declaring the session
+    // dead (the bug: a restart outlived the ~1h JWT, so this always 401'd).
+    let (me, creds) = match fetch_me_raw(&creds.server_url, &creds.access_token).await {
+        Ok(me) => (me, creds),
+        Err(MeError::Unauthorized) => {
+            let fresh = refresh_active_session().await.map_err(prettify)?;
+            let me = fetch_me(&fresh.server_url, &fresh.access_token)
+                .await
+                .map_err(prettify)?;
+            (me, fresh)
+        }
+        Err(other) => return Err(other.into_message()),
+    };
     // Refresh both the disk and the in-memory cache so the bar updates.
     save_creds(&creds.access_token, &creds.refresh_token, &creds.server_url, &me)
         .map_err(|e| format!("Couldn't update session: {e}"))?;
@@ -400,22 +493,82 @@ pub async fn cloud_delete_account(state: State<'_, AppState>) -> Result<(), Stri
 
 // ---- HTTP helpers -----------------------------------------------------
 
-async fn fetch_me(base: &str, token: &str) -> Result<CloudAccount> {
+/// Error from `/v1/me` that distinguishes "token expired" (recoverable via a
+/// Supabase refresh) from everything else.
+enum MeError {
+    Unauthorized,
+    Other(String),
+}
+
+impl MeError {
+    fn into_message(self) -> String {
+        match self {
+            MeError::Unauthorized => {
+                "Your Hoard Cloud session expired. Please sign in again.".into()
+            }
+            MeError::Other(m) => m,
+        }
+    }
+}
+
+async fn fetch_me_raw(base: &str, token: &str) -> Result<CloudAccount, MeError> {
     let url = format!("{base}/v1/me");
-    let client = http_client()?;
+    let client = http_client().map_err(|e| MeError::Other(e.to_string()))?;
     let resp = client
         .get(&url)
         .bearer_auth(token)
         .send()
         .await
-        .with_context(|| format!("GET {url}"))?;
+        .map_err(|e| MeError::Other(format!("Network error: {e}")))?;
+    let status = resp.status();
+    if status == StatusCode::UNAUTHORIZED {
+        return Err(MeError::Unauthorized);
+    }
+    let body = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(MeError::Other(format_http_error(status, &body)));
+    }
+    serde_json::from_str::<CloudAccount>(&body)
+        .map_err(|e| MeError::Other(format!("parsing /v1/me response: {e}: {body}")))
+}
+
+async fn fetch_me(base: &str, token: &str) -> Result<CloudAccount> {
+    fetch_me_raw(base, token)
+        .await
+        .map_err(|e| anyhow::anyhow!(e.into_message()))
+}
+
+#[derive(Debug, Deserialize)]
+struct RefreshResponse {
+    access_token: String,
+    refresh_token: String,
+}
+
+/// Hit Supabase GoTrue's `token?grant_type=refresh_token` endpoint to swap a
+/// refresh token for a new access/refresh pair. The `apikey` header (anon
+/// key) is required by the Supabase API gateway even for token refresh.
+async fn refresh_supabase_session(refresh_token: &str) -> Result<(String, String)> {
+    let refresh_token = refresh_token.trim();
+    if refresh_token.is_empty() {
+        anyhow::bail!("no refresh token stored — please sign in again");
+    }
+    let url = format!("{}/auth/v1/token?grant_type=refresh_token", supabase_url());
+    let client = http_client()?;
+    let resp = client
+        .post(&url)
+        .header("apikey", supabase_anon_key())
+        .json(&serde_json::json!({ "refresh_token": refresh_token }))
+        .send()
+        .await
+        .with_context(|| format!("POST {url}"))?;
     let status = resp.status();
     let body = resp.text().await.unwrap_or_default();
     if !status.is_success() {
-        anyhow::bail!(format_http_error(status, &body));
+        anyhow::bail!("couldn't renew session ({status}): {body}");
     }
-    serde_json::from_str::<CloudAccount>(&body)
-        .with_context(|| format!("parsing /v1/me response: {body}"))
+    let parsed: RefreshResponse = serde_json::from_str(&body)
+        .with_context(|| format!("parsing token refresh response: {body}"))?;
+    Ok((parsed.access_token, parsed.refresh_token))
 }
 
 fn format_http_error(status: StatusCode, body: &str) -> String {
