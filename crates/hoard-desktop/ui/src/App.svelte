@@ -202,17 +202,17 @@
     // re-arm the listener and miss events in the gap.
     void subscribeLive();
 
-    // Fire-and-forget update probe once auth is settled. The result feeds
-    // the small "Update available" banner above the sidebar footer; a
-    // network blip silently leaves it hidden, which is the right default.
-    if ($auth.user) {
-      // `checkForUpdates` writes into `lastReport`; the `$derived` above picks it up.
-      checkForUpdates().catch((e) =>
-        console.warn("update check failed:", e),
-      );
-      // And keep checking quietly while the session stays open.
-      disposeUpdatePoller = startUpdatePoller();
-    }
+    // Fire-and-forget update probe. The client-update check hits GitHub and
+    // needs no session at all; the server half returns `null` when there's no
+    // self-hosted server configured. Gating this on `$auth.user` meant a
+    // user signed in only to Hoard Cloud (or fully signed out) never got the
+    // desktop "update available" banner — they had to open Settings and run a
+    // manual check. So we probe unconditionally and keep the poller running
+    // for the whole session regardless of auth state.
+    checkForUpdates().catch((e) =>
+      console.warn("update check failed:", e),
+    );
+    disposeUpdatePoller = startUpdatePoller();
   });
 
   onDestroy(() => {

@@ -158,19 +158,21 @@ export async function deleteCloudAccount(): Promise<void> {
   internal.set({ account: null, hydrated: true, loading: false });
 }
 
-/** Open the public upgrade page in the browser. If a `plan` is provided,
- *  deep-links straight to that tier's checkout (?plan=pro). Single paid
- *  tier post-1.6.1; the param is kept for future extensibility. */
+/** Open the public pricing page in the browser, where the checkout buttons
+ *  live. There is no `/upgrade` route on the site (it 404'd); `/pricing` is
+ *  the page that links to the Lemon Squeezy hosted checkout. The optional
+ *  `plan` is kept for future deep-linking but `/pricing` ignores it today. */
 export async function openUpgradePage(plan?: "pro"): Promise<void> {
   const base = "https://hoard.services";
-  const url = plan ? `${base}/upgrade?plan=${plan}` : `${base}/upgrade`;
+  const url = plan ? `${base}/pricing?plan=${plan}` : `${base}/pricing`;
   await openExternal(url);
 }
 
-/** Open the Lemon Squeezy customer portal (managed via account email). */
+/** Open the web account page, which exposes the customer portal link
+ *  (Lemon Squeezy). The old `/billing` route didn't exist. */
 export async function openBillingPortal(): Promise<void> {
   const base = "https://hoard.services";
-  await openExternal(`${base}/billing`);
+  await openExternal(`${base}/account`);
 }
 
 // ---- deep-link plumbing ----------------------------------------------

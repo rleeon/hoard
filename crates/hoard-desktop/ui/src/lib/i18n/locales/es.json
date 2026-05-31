@@ -413,7 +413,7 @@
   "account.selfhost_action": "Conectar con un servidor propio",
   "account.signed_in_as": "Sesión iniciada como",
   "account.signed_out": "Sesión cerrada en Hoard Cloud.",
-  "account.refresh": "Actualizar",
+  "account.refresh": "Refrescar",
   "account.plan": "Plan",
   "account.upgrade": "Mejorar plan",
   "account.manage_billing": "Gestionar suscripción",

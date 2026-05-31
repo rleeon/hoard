@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Detección de nuevas versiones del desktop sin sesión de servidor.** El
+  chequeo de actualizaciones estaba acoplado a la sesión self-hosted, así que
+  con solo sesión de Hoard Cloud (o sin sesión) nunca aparecía el aviso de
+  actualizar la app — había que abrir Ajustes y forzarlo. Ahora se prueba
+  siempre al arrancar y el poller corre toda la sesión.
+- **"Mejorar plan" ya no da 404.** Apuntaba a `https://hoard.services/upgrade`,
+  ruta inexistente; ahora abre `/pricing` (donde están los botones de checkout).
+  "Gestionar facturación" abre `/account` en vez del inexistente `/billing`.
+- **Botón "Actualizar" de la cabecera de Cuenta renombrado a "Refrescar"** (ES)
+  para no confundirse con actualizar la app; solo recarga los datos del plan.
+
 ## [1.8.0] — 2026-05-31
 
 ### Added
