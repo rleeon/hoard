@@ -178,23 +178,25 @@ export async function openBillingPortal(): Promise<void> {
 // ---- deep-link plumbing ----------------------------------------------
 
 let dlUnlisten: UnlistenFn | null = null;
+/** The last callback URL we acted on, so the live event and the on-mount
+ *  buffer drain don't both run `completeCloudLogin` for the same tokens. */
+let lastHandledUrl: string | null = null;
 
 /** Wire the `deep-link://new-url` listener that the Rust side emits for
- *  every `hoard://…` URL. Parses the OAuth callback fragment and calls
- *  `completeCloudLogin`. Idempotent — calling twice replaces the previous
- *  subscription. */
+ *  every `hoard://…` URL AND drain any URL buffered before this listener
+ *  existed (the cold-start case: the OS launches the app with the OAuth
+ *  callback as a launch argument, well before the webview mounts). Parses
+ *  the callback and calls `completeCloudLogin`. Idempotent — calling twice
+ *  replaces the previous subscription. */
 export async function initCloudDeepLink(
   onSignedIn?: (account: CloudAccount) => void,
   onError?: (err: unknown) => void,
 ): Promise<void> {
-  if (dlUnlisten) {
-    dlUnlisten();
-    dlUnlisten = null;
-  }
-  dlUnlisten = await listen<string>("deep-link://new-url", async (event) => {
-    const raw = event.payload;
+  const handle = async (raw: unknown): Promise<void> => {
     if (typeof raw !== "string") return;
     if (!raw.startsWith("hoard://auth/callback")) return;
+    if (raw === lastHandledUrl) return; // dedup event vs. buffer drain
+    lastHandledUrl = raw;
     const tokens = parseAuthCallback(raw);
     if (!tokens) return;
     try {
@@ -205,9 +207,28 @@ export async function initCloudDeepLink(
       onSignedIn?.(account);
     } catch (e) {
       console.error("cloud deep-link sign-in failed:", e);
+      // Allow a retry of the same URL after a failure (e.g. transient
+      // network error verifying the token against /v1/me).
+      lastHandledUrl = null;
       onError?.(e);
     }
-  });
+  };
+
+  if (dlUnlisten) {
+    dlUnlisten();
+    dlUnlisten = null;
+  }
+  // Subscribe first so nothing emitted between the drain and the listen is
+  // lost, then drain whatever was buffered before we got here.
+  dlUnlisten = await listen<string>("deep-link://new-url", (event) =>
+    handle(event.payload),
+  );
+  try {
+    const pending = await invoke<string | null>("cloud_take_pending_deep_link");
+    if (pending) await handle(pending);
+  } catch (e) {
+    console.warn("draining pending deep link failed:", e);
+  }
 }
 
 function parseAuthCallback(

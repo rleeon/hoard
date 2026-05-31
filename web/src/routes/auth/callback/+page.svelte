@@ -19,12 +19,15 @@
   const isDesktop = () => $page.url.searchParams.get('desktop') === '1';
 
   // Desktop handoff: hand the freshly-minted session to the Hoard app via its
-  // `hoard://` deep link. The app parses the URL fragment (access_token /
-  // refresh_token) and verifies it against /v1/me. We use the fragment, not the
-  // query, so the tokens never hit a server log.
+  // `hoard://` deep link. The app parses the tokens and verifies them against
+  // /v1/me. We put them in the QUERY string (not the fragment): a `hoard://`
+  // URL is dispatched to a local OS scheme handler and never reaches any
+  // server, so there's no log-leak concern — and unlike the fragment, the
+  // query reliably survives being passed through the OS handler / argv on
+  // Linux and Windows (fragments are frequently dropped there).
   function bounceToApp(s: Session) {
     const url =
-      `hoard://auth/callback#access_token=${encodeURIComponent(s.access_token)}` +
+      `hoard://auth/callback?access_token=${encodeURIComponent(s.access_token)}` +
       `&refresh_token=${encodeURIComponent(s.refresh_token ?? '')}`;
     handoffUrl = url;
     message = $_('callback.desktop_return');

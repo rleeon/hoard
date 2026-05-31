@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **Login de Hoard Cloud llega a la app en Linux/Windows (handoff robusto).**
+  Se endurece el camino del deep link de OAuth de extremo a extremo: (1) el
+  `hoard://auth/callback` lleva los tokens en la query en vez del fragment
+  (`#`), que los handlers de esquema de Linux/Windows suelen descartar; (2)
+  Rust bufferiza la URL capturada en arranque en frío (llega como argumento de
+  lanzamiento antes de que el webview monte su listener) y el frontend la drena
+  al montar vía `cloud_take_pending_deep_link`; (3) se escanea `argv` también
+  en `setup()` (primera instancia, donde el callback de single-instance no
+  dispara) además del callback de single-instance (app ya abierta) y
+  `on_open_url` (macOS). El buffer se limpia tras un login exitoso y el
+  frontend deduplica evento vs. drenado.
 - **Detección de nuevas versiones del desktop sin sesión de servidor.** El
   chequeo de actualizaciones estaba acoplado a la sesión self-hosted, así que
   con solo sesión de Hoard Cloud (o sin sesión) nunca aparecía el aviso de

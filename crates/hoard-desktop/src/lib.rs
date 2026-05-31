@@ -88,12 +88,12 @@ pub fn run() {
             // URL to this callback as an argv entry, NOT through the deep-link
             // plugin's `on_open_url` channel (that one only fires on cold
             // start / macOS). Without forwarding it here the OAuth handoff is
-            // silently dropped and the app never sees the session. Find the
-            // `hoard://` arg and emit it on the same event the frontend
-            // already listens to.
-            if let Some(url) = argv.iter().find(|a| a.starts_with("hoard://")) {
+            // silently dropped and the app never sees the session. The app is
+            // already running so its listener is up: emit, and also buffer it
+            // so a not-yet-mounted webview still drains it on mount.
+            if let Some(url) = first_hoard_url(argv.iter().cloned()) {
                 tracing::info!(url = %url, "deep link via single-instance argv");
-                let _ = app.emit("deep-link://new-url", url.to_string());
+                capture_deep_link(app, url, true);
             }
         }))
         .plugin(tauri_plugin_autostart::init(
@@ -170,6 +170,7 @@ pub fn run() {
             commands::updates::trigger_server_upgrade,
             commands::cloud::cloud_login_url,
             commands::cloud::cloud_complete_login,
+            commands::cloud::cloud_take_pending_deep_link,
             commands::cloud::cloud_current_account,
             commands::cloud::cloud_is_logged_in,
             commands::cloud::cloud_refresh_account,
@@ -238,21 +239,36 @@ pub fn run() {
 
             // Wire the deep-link receiver. `hoard://auth/callback?...` URLs
             // (clicked from the browser after a Supabase OAuth round-trip)
-            // come in here; we forward the raw URL to the frontend, which
-            // parses the fragment and calls `cloud_complete_login`. We also
-            // bring the window to the front so the user sees the result.
+            // come in here on macOS (Apple events) and on some Linux/Windows
+            // runtime deliveries. We forward the raw URL to the frontend and
+            // also buffer it, so a webview that hasn't mounted its listener
+            // yet still drains it on mount. We bring the window to the front
+            // so the user sees the result.
             let dl_handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
                 for url in event.urls() {
-                    tracing::info!(url = %url, "deep link opened");
+                    tracing::info!(url = %url, "deep link opened (on_open_url)");
                     if let Some(window) = dl_handle.get_webview_window("main") {
                         let _ = window.unminimize();
                         let _ = window.show();
                         let _ = window.set_focus();
                     }
-                    let _ = dl_handle.emit("deep-link://new-url", url.to_string());
+                    capture_deep_link(&dl_handle, url.to_string(), true);
                 }
             });
+
+            // Cold start: when the OS launches us *fresh* with the callback URL
+            // (the common Linux/Windows case — the app wasn't running when the
+            // user clicked the link), the URL arrives as a launch argument and
+            // neither the single-instance callback (we ARE the first instance)
+            // nor a runtime `on_open_url` necessarily fires before the webview
+            // mounts. Scan argv ourselves and buffer the URL; the frontend
+            // drains it on mount. Don't emit — no listener exists yet.
+            if let Some(url) = first_hoard_url(std::env::args()) {
+                tracing::info!(url = %url, "deep link via launch argv (cold start)");
+                capture_deep_link(app.handle(), url, false);
+            }
+
             // On Linux/Windows the desktop entry handles the scheme, but in
             // `cargo tauri dev` (no installer) we have to register at
             // runtime so the OS knows to dispatch `hoard://…` to us. This
@@ -302,4 +318,24 @@ pub fn run() {
             }
         }
     });
+}
+
+/// Pick the first `hoard://` URL out of a list of process arguments. The OS
+/// hands the deep link to us as one of the argv entries (Linux/Windows); the
+/// position isn't fixed (argv[0] is the binary, and some launchers prepend
+/// flags), so we scan rather than index.
+fn first_hoard_url<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
+    args.into_iter().find(|a| a.starts_with("hoard://"))
+}
+
+/// Stash a `hoard://` URL where the frontend can find it and, optionally,
+/// emit the live `deep-link://new-url` event. We always buffer (so a webview
+/// whose listener isn't ready yet still drains it on mount) and emit only when
+/// a window already exists to receive it. The buffer is cleared on a
+/// successful `cloud_complete_login`.
+fn capture_deep_link(app: &tauri::AppHandle, url: String, emit: bool) {
+    *app.state::<AppState>().pending_deep_link.lock().unwrap() = Some(url.clone());
+    if emit {
+        let _ = app.emit("deep-link://new-url", url);
+    }
 }

@@ -25,6 +25,12 @@ pub struct AppState {
     /// Live agent handle. Populated lazily by the agent bootstrapper; tests
     /// and the logged-out state both leave it `None`.
     pub agent: Mutex<Option<AgentHandle>>,
+    /// Buffered `hoard://` deep-link URL captured before the frontend's
+    /// listener was ready (cold start passes the OAuth callback as a launch
+    /// argument; the webview registers its `deep-link://new-url` listener only
+    /// after it mounts). The frontend drains this on mount via
+    /// `cloud_take_pending_deep_link`. Cleared on a successful login.
+    pub pending_deep_link: Mutex<Option<String>>,
 }
 
 impl AppState {
@@ -63,6 +69,7 @@ impl AppState {
             cloud_account: Mutex::new(None),
             detection_cache,
             agent: Mutex::new(None),
+            pending_deep_link: Mutex::new(None),
         };
         crate::commands::cloud::rehydrate(&state);
         state

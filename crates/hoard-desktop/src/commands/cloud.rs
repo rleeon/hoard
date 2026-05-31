@@ -280,7 +280,21 @@ pub async fn cloud_complete_login(
         .unwrap_or(10);
     cloud_pull::start(&app, secs);
 
+    // A login completed, so any buffered deep-link URL has served its purpose.
+    // Clearing it stops a stale (and by now expired) token from being replayed
+    // the next time the frontend drains the buffer on mount.
+    *state.pending_deep_link.lock().unwrap() = None;
+
     Ok(me)
+}
+
+/// Drain the buffered `hoard://` deep-link URL captured before the frontend
+/// listener was ready (cold start). Returns `None` when there's nothing
+/// pending. The frontend calls this once on mount, then relies on the live
+/// `deep-link://new-url` event for anything that arrives afterwards.
+#[tauri::command]
+pub fn cloud_take_pending_deep_link(state: State<'_, AppState>) -> Option<String> {
+    state.pending_deep_link.lock().unwrap().take()
 }
 
 /// Cached account from the on-disk session, or `None` when signed out.
