@@ -29,7 +29,10 @@ kill_timeout = "10s"
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 1
+  # Idle to zero: with no recurrent users we don't keep a machine warm. Fly's
+  # proxy cold-starts the app on the first request (a ~1-2s penalty on a small
+  # Rust binary). Flip back to 1 once there's steady traffic worth the warm VM.
+  min_machines_running = 0
   processes = ["app"]
 
 [[http_service.checks]]
