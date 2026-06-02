@@ -9,13 +9,15 @@
 //! GUI gets it for free.
 
 use anyhow::{anyhow, bail, Context, Result};
+use async_compression::tokio::write::ZstdEncoder;
 use reqwest::multipart;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use time::OffsetDateTime;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::api::{ApiClient, Snapshot};
+use crate::api::{ApiClient, CloudUploadCommit, CloudUploadInit, Snapshot};
 use crate::state::{CliState, SaveState};
 
 /// One file enumerated from the source directory.
@@ -180,9 +182,15 @@ pub fn walk_source(root: &Path) -> Result<Vec<UploadFile>> {
 /// `progress(uploaded, total)` is called once per file as it's added to the
 /// multipart form. Both values are byte counts. The callback is `Fn` so the
 /// caller can wire any UI on top.
+///
+/// `game_slug` and `label` are only consulted on the Hoard Cloud path, where
+/// the server keys the save row on `(user_id, game_slug, label)` and the
+/// snapshot list endpoints don't exist. They're ignored self-hosted.
 pub async fn upload_directory<F>(
     client: &ApiClient,
     save_id: &str,
+    game_slug: &str,
+    label: &str,
     source: &Path,
     progress: F,
 ) -> Result<UploadOutcome>
@@ -202,6 +210,23 @@ where
     }
     let total_bytes: u64 = files.iter().map(|f| f.size_bytes).sum();
     let file_count = files.len();
+
+    // Hoard Cloud (api.hoard.services) speaks a different protocol: the
+    // self-hosted `/v1/saves/:id/snapshots` multipart endpoint doesn't exist
+    // there. Pack the save into a single tar.zst, declare the upload, PUT the
+    // bytes straight to R2 via a presigned URL, then commit.
+    if client.is_cloud().await {
+        return upload_directory_cloud(
+            client,
+            save_id,
+            game_slug,
+            label,
+            &files,
+            total_bytes,
+            progress,
+        )
+        .await;
+    }
 
     // Ingesta adaptativa por forma del save (ADR 0019): muchos archivos
     // pequeños viajan mejor como un único tar (un round-trip, un handle) que
@@ -278,6 +303,166 @@ where
     })
 }
 
+/// Hoard Cloud upload: pack → init → presigned PUT → commit.
+///
+/// Unlike the self-hosted multipart path, the server never sees the bytes —
+/// they go straight to R2. The init call must declare the *exact* archive
+/// size up front and commit records the sha256 the server later verifies via
+/// R2 HEAD, so we materialise the tar.zst to a temp file first to measure
+/// both before talking to the API.
+async fn upload_directory_cloud<F>(
+    client: &ApiClient,
+    save_id: &str,
+    game_slug: &str,
+    label: &str,
+    files: &[UploadFile],
+    total_bytes: u64,
+    progress: F,
+) -> Result<UploadOutcome>
+where
+    F: Fn(u64, u64),
+{
+    let file_count = files.len();
+    progress(0, total_bytes);
+
+    // 1. Pack into a temp tar.zst. Unique per process+nanos so concurrent
+    //    uploads from the same machine never collide.
+    let suffix = format!(
+        "{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    let tmp = std::env::temp_dir().join(format!("hoard-upload-{suffix}.tar.zst"));
+
+    let pack_result = pack_tar_zst(files, &tmp).await;
+    if let Err(e) = pack_result {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(e);
+    }
+    progress(total_bytes, total_bytes);
+
+    // 2. Measure the packed archive.
+    let size_bytes = tokio::fs::metadata(&tmp)
+        .await
+        .with_context(|| format!("stat temp archive {}", tmp.display()))?
+        .len();
+    let sha256 = match hash_file(&tmp).await {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err(e);
+        }
+    };
+
+    // 3. init → PUT → commit. Clean up the temp file on every exit path.
+    let result = async {
+        let init = client
+            .cloud_init_upload(&CloudUploadInit {
+                save_id: save_id.to_string(),
+                game_slug: game_slug.to_string(),
+                label: Some(label.to_string()),
+                size_bytes,
+                device_name: None,
+                notes: None,
+                backup_only: false,
+            })
+            .await
+            .context("cloud upload init")?;
+
+        let body = file_to_body(&tmp).await?;
+        client
+            .put_presigned(&init.upload, body, size_bytes)
+            .await
+            .context("uploading archive to cloud storage")?;
+
+        let commit = client
+            .cloud_commit(
+                save_id,
+                init.version_num,
+                &CloudUploadCommit { sha256, size_bytes },
+            )
+            .await
+            .context("cloud upload commit")?;
+        Ok::<_, anyhow::Error>(commit)
+    }
+    .await;
+
+    let _ = tokio::fs::remove_file(&tmp).await;
+    let commit = result?;
+
+    // Synthesize a Snapshot for the shared `UploadOutcome` shape. The cloud
+    // commit only returns the version number; the rest is what we know
+    // locally. `total_size_bytes` is the *uncompressed* save size, matching
+    // self-hosted snapshot semantics (sum of file sizes, not archive size).
+    let snapshot = Snapshot {
+        id: String::new(),
+        save_id: Some(commit.save_id),
+        version_num: commit.version_num,
+        file_count: file_count as i64,
+        total_size_bytes: total_bytes as i64,
+        is_pinned: false,
+        created_at: OffsetDateTime::now_utc(),
+        deleted_at: None,
+    };
+    Ok(UploadOutcome {
+        snapshot,
+        file_count,
+        total_bytes,
+    })
+}
+
+/// Build a `.tar.zst` of `files` at `dest`, streaming each file from disk so
+/// a large save never lands wholly in RAM.
+async fn pack_tar_zst(files: &[UploadFile], dest: &Path) -> Result<()> {
+    let out = tokio::fs::File::create(dest)
+        .await
+        .with_context(|| format!("creating temp archive {}", dest.display()))?;
+    let zstd = ZstdEncoder::new(out);
+    let mut tar = tokio_tar::Builder::new(zstd);
+    for f in files {
+        tar.append_path_with_name(&f.absolute_path, &f.relative_path)
+            .await
+            .with_context(|| format!("packing {}", f.relative_path))?;
+    }
+    // Finish the tar (writes the trailing zero blocks), then flush + close
+    // the zstd encoder so the frame footer lands on disk.
+    let mut zstd = tar.into_inner().await.context("finalizing tar")?;
+    zstd.shutdown().await.context("finalizing zstd stream")?;
+    Ok(())
+}
+
+/// SHA-256 of a file's bytes, read in fixed-size chunks.
+async fn hash_file(path: &Path) -> Result<String> {
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .with_context(|| format!("hashing {}", path.display()))?;
+    let mut h = Sha256::new();
+    let mut buf = vec![0u8; 256 * 1024];
+    loop {
+        let n = file
+            .read(&mut buf)
+            .await
+            .with_context(|| format!("reading {}", path.display()))?;
+        if n == 0 {
+            break;
+        }
+        h.update(&buf[..n]);
+    }
+    Ok(hex::encode(h.finalize()))
+}
+
+/// Wrap a file as a streaming reqwest body for the presigned PUT.
+async fn file_to_body(path: &Path) -> Result<reqwest::Body> {
+    let file = tokio::fs::File::open(path)
+        .await
+        .with_context(|| format!("opening {}", path.display()))?;
+    let stream = tokio_util::io::ReaderStream::new(file);
+    Ok(reqwest::Body::wrap_stream(stream))
+}
+
 /// Skip-aware wrapper around [`upload_directory`] (ADR 0019).
 ///
 /// Two-tier check against the persisted composite `prev_signature`:
@@ -293,6 +478,8 @@ where
 pub async fn upload_directory_checked<F>(
     client: &ApiClient,
     save_id: &str,
+    game_slug: &str,
+    label: &str,
     source: &Path,
     prev_signature: Option<&str>,
     progress: F,
@@ -326,7 +513,8 @@ where
             signature: join_signature(&cheap, &content),
         });
     }
-    let outcome = upload_directory(client, save_id, &canonical, progress).await?;
+    let outcome =
+        upload_directory(client, save_id, game_slug, label, &canonical, progress).await?;
     Ok(BackupResult::Uploaded {
         outcome,
         signature: join_signature(&cheap, &content),

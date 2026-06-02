@@ -268,6 +268,48 @@ pub async fn add_game_to_tracking(
         return Err(format!("{} isn't a folder.", local_path.display()));
     }
 
+    // Cloud has no server-side `create_save`: the row is materialized on the
+    // first upload via UPSERT on (user_id, game_slug, label). The client just
+    // mints a local save_id, records the path, and starts watching.
+    if client.is_cloud().await {
+        let save_id = uuid::Uuid::new_v4().to_string();
+        let (mut cli_state, path) = CliState::load_default().map_err(|e| e.to_string())?;
+        cli_state.saves.insert(
+            save_id.clone(),
+            SaveState {
+                local_path: local_path.clone(),
+                game_slug: args.game_slug.clone(),
+                label: label.clone(),
+                last_backup_at: None,
+                last_version_num: None,
+                paused: false,
+                set_hash: None,
+            },
+        );
+        cli_state.save(&path).map_err(|e| e.to_string())?;
+
+        let watched = watched_save_from(
+            save_id.clone(),
+            args.game_slug.clone(),
+            args.game_slug.clone(),
+            label.clone(),
+            local_path.clone(),
+        );
+        attach_save_if_running(&state, watched).await;
+
+        return Ok(TrackedSave {
+            save_id,
+            game_slug: args.game_slug,
+            label,
+            local_path: local_path.to_string_lossy().into_owned(),
+            last_version_num: None,
+            last_backup_at: None,
+            paused: false,
+            total_size_bytes: 0,
+            orphan: false,
+        });
+    }
+
     let save = match client
         .create_save_with_meta(
             &args.game_slug,
@@ -355,6 +397,32 @@ pub async fn add_game_to_tracking(
 #[tauri::command]
 pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<TrackedSave>, String> {
     let client = current_client(&state)?;
+
+    // Cloud has no per-user save listing that includes never-uploaded saves:
+    // the manifest only carries saves with at least one committed version.
+    // CliState is the tracked-set source of truth here; the manifest just
+    // enriches latest_version_num / size for saves that have been uploaded.
+    if client.is_cloud().await {
+        let manifest = client.cloud_sync().await.map_err(pretty_error)?;
+        let (cli_state, _) = CliState::load_default().map_err(|e| e.to_string())?;
+        let mut out = Vec::with_capacity(cli_state.saves.len());
+        for (id, st) in &cli_state.saves {
+            let entry = manifest.saves.iter().find(|e| &e.save_id == id);
+            out.push(TrackedSave {
+                save_id: id.clone(),
+                game_slug: st.game_slug.clone(),
+                label: st.label.clone(),
+                local_path: st.local_path.to_string_lossy().into_owned(),
+                last_version_num: entry.map(|e| e.latest_version_num),
+                last_backup_at: None,
+                paused: st.paused,
+                total_size_bytes: entry.map(|e| e.latest_size_bytes).unwrap_or(0),
+                orphan: false,
+            });
+        }
+        return Ok(out);
+    }
+
     let saves = client.list_saves(None).await.map_err(pretty_error)?;
     let (cli_state, _) = CliState::load_default().map_err(|e| e.to_string())?;
 

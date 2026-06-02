@@ -75,6 +75,22 @@ pub async fn list_save_snapshots(
     state: State<'_, AppState>,
 ) -> Result<Vec<SnapshotWire>, String> {
     let client = current_client(&state)?;
+    // Cloud exposes no snapshot history — only the latest committed version
+    // via the sync manifest. Synthesize a single-row timeline from it.
+    if client.is_cloud().await {
+        let manifest = client.cloud_sync().await.map_err(pretty_error)?;
+        let Some(entry) = manifest.saves.into_iter().find(|e| e.save_id == save_id) else {
+            return Ok(Vec::new());
+        };
+        return Ok(vec![SnapshotWire {
+            version_num: entry.latest_version_num,
+            file_count: 0,
+            total_size_bytes: entry.latest_size_bytes,
+            is_pinned: false,
+            created_at: entry.updated_at,
+            deleted_at: None,
+        }]);
+    }
     let snaps = client
         .list_snapshots(&save_id, include_deleted)
         .await
@@ -91,6 +107,27 @@ pub async fn save_snapshot_detail(
     state: State<'_, AppState>,
 ) -> Result<SnapshotDetailWire, String> {
     let client = current_client(&state)?;
+    // Cloud stores a whole-archive blob with no per-file index, so the detail
+    // view falls back to the manifest's latest entry with an empty file list.
+    if client.is_cloud().await {
+        let manifest = client.cloud_sync().await.map_err(pretty_error)?;
+        let entry = manifest
+            .saves
+            .into_iter()
+            .find(|e| e.save_id == save_id)
+            .ok_or_else(|| "snapshot not found".to_string())?;
+        return Ok(SnapshotDetailWire {
+            snapshot: SnapshotWire {
+                version_num: entry.latest_version_num,
+                file_count: 0,
+                total_size_bytes: entry.latest_size_bytes,
+                is_pinned: false,
+                created_at: entry.updated_at,
+                deleted_at: None,
+            },
+            files: Vec::new(),
+        });
+    }
     let detail = client
         .snapshot_detail(&save_id, version)
         .await
@@ -119,6 +156,9 @@ pub async fn delete_snapshot(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let client = current_client(&state)?;
+    if client.is_cloud().await {
+        return Err("Deleting snapshots isn't supported on Hoard Cloud.".to_string());
+    }
     client
         .snapshot_delete(&save_id, version)
         .await
@@ -133,6 +173,9 @@ pub async fn undelete_snapshot(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let client = current_client(&state)?;
+    if client.is_cloud().await {
+        return Err("Restoring snapshots from trash isn't supported on Hoard Cloud.".to_string());
+    }
     client
         .snapshot_restore(&save_id, version)
         .await
@@ -230,7 +273,18 @@ pub async fn restore_snapshot(
         });
         entry.local_path = p.clone();
         if entry.game_slug.is_empty() || entry.label.is_empty() {
-            if let Ok(server_save) = client.get_save(&save_id).await {
+            if client.is_cloud().await {
+                if let Ok(manifest) = client.cloud_sync().await {
+                    if let Some(e) = manifest.saves.into_iter().find(|e| e.save_id == save_id) {
+                        if entry.game_slug.is_empty() {
+                            entry.game_slug = e.game_slug;
+                        }
+                        if entry.label.is_empty() {
+                            entry.label = e.label;
+                        }
+                    }
+                }
+            } else if let Ok(server_save) = client.get_save(&save_id).await {
                 if entry.game_slug.is_empty() {
                     entry.game_slug = server_save.game_slug;
                 }
@@ -249,6 +303,14 @@ pub async fn restore_snapshot(
             .ok_or_else(|| "NEEDS_DESTINATION".to_string())?
     };
 
+    // Slug/label for the cloud upload init (ignored by self-hosted). Read
+    // from CliState, which now holds the resolved entry from either branch.
+    let (game_slug, label) = cli_state
+        .saves
+        .get(&save_id)
+        .map(|s| (s.game_slug.clone(), s.label.clone()))
+        .unwrap_or_default();
+
     // 1) Optional pre-restore backup. Done synchronously so the user can be
     //    sure the safety net exists before we start overwriting files.
     let mut safety_version = None;
@@ -263,8 +325,13 @@ pub async fn restore_snapshot(
             let app_for_progress = app.clone();
             let save_id_for_progress = save_id.clone();
             emit_phase(&app, &save_id, version, RestorePhase::PreBackup, 0, 0);
-            let outcome =
-                backup::upload_directory(&client, &save_id, &local_path, move |uploaded, total| {
+            let outcome = backup::upload_directory(
+                &client,
+                &save_id,
+                &game_slug,
+                &label,
+                &local_path,
+                move |uploaded, total| {
                     let _ = app_for_progress.emit(
                         "restore://progress",
                         RestoreProgress {

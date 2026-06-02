@@ -49,9 +49,27 @@ pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Re
 
     println!("uploading from {}", source.display());
     let prev_sig = state.saves.get(&save_id).and_then(|s| s.set_hash.clone());
-    let result = upload_directory_checked(&client, &save_id, &source, prev_sig.as_deref(), on_progress)
-        .await
-        .context("upload failed")?;
+    let game_slug = state
+        .saves
+        .get(&save_id)
+        .map(|s| s.game_slug.clone())
+        .unwrap_or_default();
+    let label = state
+        .saves
+        .get(&save_id)
+        .map(|s| s.label.clone())
+        .unwrap_or_default();
+    let result = upload_directory_checked(
+        &client,
+        &save_id,
+        &game_slug,
+        &label,
+        &source,
+        prev_sig.as_deref(),
+        on_progress,
+    )
+    .await
+    .context("upload failed")?;
 
     let (outcome, signature) = match result {
         BackupResult::Skipped => {

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.5] — 2026-06-02
+
+### Added
+- **Protocolo de subida a Hoard Cloud en el cliente.** El cliente desktop/CLI
+  ahora habla el protocolo `/v1/cloud/*` de `api.hoard.services` (init →
+  PUT presignado a R2 → commit) además del self-hosted, ramificando según
+  `/v1/health` `mode`. Antes apuntaba el cliente self-hosted contra la API
+  cloud, que no tiene `/v1/saves`, y daba 404 ("doesn't look like a Hoard
+  server") al monitorizar juegos con la cuenta de Gmail. Subida, restauración
+  (descarga presignada + verificación sha256 del archivo completo), historial
+  (vía manifest `/v1/cloud/sync`) y alta de juegos funcionan ya en modo cloud.
+
 ## [1.8.4] — 2026-06-02
 
 ### Changed

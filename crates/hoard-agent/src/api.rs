@@ -1,9 +1,11 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use time::OffsetDateTime;
+use tokio::sync::OnceCell;
 
 #[derive(Debug, Error)]
 pub enum ApiError {
@@ -61,6 +63,13 @@ pub struct ApiClient {
     base_url: String,
     token: String,
     http: Client,
+    /// Lazily-probed `/v1/health` `mode` (`Some("cloud")` on the SaaS
+    /// deployment, `None`/absent self-hosted). Cached behind an `Arc` so the
+    /// many `ApiClient` clones in flight share a single probe. Only cached on
+    /// a successful probe — a transient health failure leaves the cell empty
+    /// so the next call retries instead of wedging the client into the wrong
+    /// protocol forever.
+    mode: Arc<OnceCell<Option<String>>>,
 }
 
 impl ApiClient {
@@ -74,6 +83,7 @@ impl ApiClient {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             token: token.into(),
             http,
+            mode: Arc::new(OnceCell::new()),
         })
     }
 
@@ -121,6 +131,133 @@ impl ApiClient {
         let resp = self.http.get(self.url("/v1/health")).send().await?;
         let resp = Self::ok_or_err(resp).await?;
         Ok(resp.json().await?)
+    }
+
+    /// Resolve (and cache) the server's deployment mode from `/v1/health`.
+    /// `Some("cloud")` selects the Hoard Cloud protocol; `None` means
+    /// self-hosted. A failed probe returns `None` *without* caching so the
+    /// next call retries.
+    pub async fn server_mode(&self) -> Option<String> {
+        self.mode
+            .get_or_try_init(|| async { self.health().await.map(|h| h.mode) })
+            .await
+            .ok()
+            .cloned()
+            .flatten()
+    }
+
+    /// True when the server is the SaaS (`api.hoard.services`) deployment,
+    /// which speaks the `/v1/cloud/*` protocol instead of the self-hosted
+    /// `/v1/saves` + multipart one.
+    pub async fn is_cloud(&self) -> bool {
+        self.server_mode().await.as_deref() == Some("cloud")
+    }
+
+    // ---- Cloud (SaaS) protocol -----------------------------------------
+
+    /// `POST /v1/cloud/saves` — declare upload intent. The server validates
+    /// plan + quota, mints a presigned R2 PUT URL, and returns the version
+    /// number the client must `commit` against.
+    pub async fn cloud_init_upload(&self, init: &CloudUploadInit) -> Result<CloudUploadInitOut> {
+        let resp = self
+            .http
+            .post(self.url("/v1/cloud/saves"))
+            .header("authorization", self.auth_header())
+            .json(init)
+            .send()
+            .await?;
+        let resp = Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
+        Ok(resp.json().await?)
+    }
+
+    /// Upload bytes directly to a presigned R2 URL. No `Authorization`
+    /// header — the presigned URL carries its own signature in the query
+    /// string, and an extra auth header breaks the S3 v4 signature.
+    pub async fn put_presigned(
+        &self,
+        presigned: &PresignedUrl,
+        body: reqwest::Body,
+        content_length: u64,
+    ) -> Result<()> {
+        let method = reqwest::Method::from_bytes(presigned.method.as_bytes())
+            .unwrap_or(reqwest::Method::PUT);
+        let resp = self
+            .http
+            .request(method, &presigned.url)
+            .header(reqwest::header::CONTENT_LENGTH, content_length)
+            .body(body)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            bail!("storage upload failed ({status}): {text}");
+        }
+        Ok(())
+    }
+
+    /// `POST /v1/cloud/saves/:id/versions/:n/commit` — finalize an upload.
+    /// The server verifies the object via R2 HEAD and records the sha256.
+    pub async fn cloud_commit(
+        &self,
+        save_id: &str,
+        version: i64,
+        commit: &CloudUploadCommit,
+    ) -> Result<CloudUploadCommitOut> {
+        let resp = self
+            .http
+            .post(self.url(&format!(
+                "/v1/cloud/saves/{save_id}/versions/{version}/commit"
+            )))
+            .header("authorization", self.auth_header())
+            .json(commit)
+            .send()
+            .await?;
+        let resp = Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
+        Ok(resp.json().await?)
+    }
+
+    /// `GET /v1/cloud/saves/:id/versions/:n/download` — mint a presigned R2
+    /// GET URL plus the version's sha256/size for verification.
+    pub async fn cloud_download(&self, save_id: &str, version: i64) -> Result<CloudDownloadOut> {
+        let resp = self
+            .http
+            .get(self.url(&format!(
+                "/v1/cloud/saves/{save_id}/versions/{version}/download"
+            )))
+            .header("authorization", self.auth_header())
+            .send()
+            .await?;
+        let resp = Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
+        Ok(resp.json().await?)
+    }
+
+    /// `GET /v1/cloud/sync` — the manifest of the user's saves (latest
+    /// version of each). The cloud analogue of `list_saves`; excludes
+    /// `backup_only` saves.
+    pub async fn cloud_sync(&self) -> Result<CloudManifest> {
+        let resp = self
+            .http
+            .get(self.url("/v1/cloud/sync"))
+            .header("authorization", self.auth_header())
+            .send()
+            .await?;
+        let resp = Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
+        Ok(resp.json().await?)
+    }
+
+    /// GET the bytes behind a presigned download URL as a streaming response.
+    /// No auth header, same rationale as [`put_presigned`].
+    pub async fn get_presigned(&self, presigned: &PresignedUrl) -> Result<reqwest::Response> {
+        let method = reqwest::Method::from_bytes(presigned.method.as_bytes())
+            .unwrap_or(reqwest::Method::GET);
+        let resp = self.http.request(method, &presigned.url).send().await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            bail!("storage download failed ({status}): {text}");
+        }
+        Ok(resp)
     }
 
     pub async fn list_games(&self, query: Option<&str>) -> Result<Vec<Game>> {
@@ -429,4 +566,89 @@ pub struct SnapshotFile {
     pub relative_path: String,
     pub size_bytes: i64,
     pub sha256: String,
+}
+
+// ---- Cloud (SaaS) protocol DTOs ----------------------------------------
+
+/// Body for `POST /v1/cloud/saves`. Mirrors `hoard-server`'s `UploadInit`.
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudUploadInit {
+    pub save_id: String,
+    pub game_slug: String,
+    pub label: Option<String>,
+    pub size_bytes: u64,
+    pub device_name: Option<String>,
+    pub notes: Option<String>,
+    pub backup_only: bool,
+}
+
+/// A short-lived presigned R2 URL (PUT for upload, GET for download).
+#[derive(Debug, Clone, Deserialize)]
+pub struct PresignedUrl {
+    pub method: String,
+    pub url: String,
+    #[serde(default)]
+    pub expires_in_secs: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CloudQuotaInfo {
+    pub plan: String,
+    pub used_bytes: u64,
+    pub limit_bytes: u64,
+    #[serde(default)]
+    pub devices_used: u32,
+    #[serde(default)]
+    pub devices_limit: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CloudUploadInitOut {
+    pub version_num: i64,
+    pub r2_key: String,
+    pub upload: PresignedUrl,
+    pub quota: CloudQuotaInfo,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudUploadCommit {
+    pub sha256: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CloudUploadCommitOut {
+    pub save_id: String,
+    pub version_num: i64,
+    pub committed: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CloudDownloadOut {
+    pub save_id: String,
+    pub version_num: i64,
+    pub sha256: String,
+    pub size_bytes: i64,
+    pub download: PresignedUrl,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CloudManifestEntry {
+    pub save_id: String,
+    pub game_slug: String,
+    pub label: String,
+    pub latest_version_num: i64,
+    #[serde(default)]
+    pub latest_size_bytes: i64,
+    #[serde(default)]
+    pub latest_sha256: String,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CloudManifest {
+    #[serde(default)]
+    pub generated_at: String,
+    pub saves: Vec<CloudManifestEntry>,
 }

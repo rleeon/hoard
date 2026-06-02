@@ -43,6 +43,17 @@ pub async fn resolve_version(
     if let Some(v) = version {
         return Ok(v);
     }
+    if client.is_cloud().await {
+        // Cloud has no `get_save`; the manifest carries each save's latest
+        // version. A missing entry means nothing has been uploaded yet.
+        let manifest = client.cloud_sync().await?;
+        return manifest
+            .saves
+            .into_iter()
+            .find(|e| e.save_id == save_id)
+            .map(|e| e.latest_version_num)
+            .ok_or_else(|| anyhow!("save has no snapshots yet"));
+    }
     let save = client.get_save(save_id).await?;
     save.latest_version_num
         .ok_or_else(|| anyhow!("save has no snapshots yet"))
@@ -63,6 +74,9 @@ pub async fn download_snapshot<F>(
 where
     F: Fn(u64, u64) + Send + Sync + 'static,
 {
+    if client.is_cloud().await {
+        return download_snapshot_cloud(client, save_id, version, dest, options, progress).await;
+    }
     let detail: SnapshotDetail = client.snapshot_detail(save_id, version).await?;
     let expected: HashMap<String, &SnapshotFile> = detail
         .files
@@ -186,6 +200,158 @@ where
             }
             // Files outside the manifest still get extracted but not verified.
         }
+
+        bytes_extracted += written;
+        files_extracted += 1;
+    }
+
+    Ok(RestoreOutcome {
+        files_extracted,
+        bytes_extracted,
+        destination: dest.to_path_buf(),
+    })
+}
+
+/// Hoard Cloud download: presigned R2 GET → temp tar.zst → verify whole-
+/// archive sha256 → extract.
+///
+/// The cloud server stores one opaque `.tar.zst` per version and exposes no
+/// per-file manifest (`snapshot_detail` doesn't exist there), so verification
+/// is over the whole archive's sha256 — recorded at commit time and returned
+/// in `DownloadOut` — rather than per-file. We download to a temp file first
+/// so the hash check happens before we touch the destination.
+async fn download_snapshot_cloud<F>(
+    client: &ApiClient,
+    save_id: &str,
+    version: i64,
+    dest: &Path,
+    options: RestoreOptions,
+    progress: F,
+) -> Result<RestoreOutcome>
+where
+    F: Fn(u64, u64) + Send + Sync + 'static,
+{
+    let meta = client.cloud_download(save_id, version).await?;
+
+    if dest.exists() {
+        let empty = std::fs::read_dir(dest)?.next().is_none();
+        if !empty && !options.force {
+            bail!(
+                "destination is not empty: {} (set force = true to extract anyway)",
+                dest.display()
+            );
+        }
+    } else {
+        std::fs::create_dir_all(dest).with_context(|| format!("creating {}", dest.display()))?;
+    }
+
+    // 1. Stream the archive to a temp file, hashing as we go.
+    let suffix = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    let tmp = std::env::temp_dir().join(format!("hoard-download-{suffix}.tar.zst"));
+
+    let result = download_and_extract_cloud(client, &meta, dest, &tmp, &options, progress).await;
+    let _ = tokio::fs::remove_file(&tmp).await;
+    result
+}
+
+async fn download_and_extract_cloud<F>(
+    client: &ApiClient,
+    meta: &crate::api::CloudDownloadOut,
+    dest: &Path,
+    tmp: &Path,
+    options: &RestoreOptions,
+    progress: F,
+) -> Result<RestoreOutcome>
+where
+    F: Fn(u64, u64) + Send + Sync + 'static,
+{
+    let resp = client.get_presigned(&meta.download).await?;
+    let total = resp
+        .content_length()
+        .unwrap_or_else(|| meta.size_bytes.max(0) as u64);
+
+    let mut out = tokio::fs::File::create(tmp)
+        .await
+        .with_context(|| format!("creating temp archive {}", tmp.display()))?;
+    let mut hasher = Sha256::new();
+    let mut downloaded = 0u64;
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.context("downloading archive")?;
+        if !options.skip_verify {
+            hasher.update(&chunk);
+        }
+        out.write_all(&chunk)
+            .await
+            .with_context(|| format!("writing {}", tmp.display()))?;
+        downloaded += chunk.len() as u64;
+        progress(downloaded, total);
+    }
+    out.flush().await.context("flushing temp archive")?;
+    drop(out);
+
+    if !options.skip_verify {
+        let got = hex::encode(hasher.finalize());
+        if got != meta.sha256 {
+            bail!(
+                "sha256 mismatch for v{}: expected {}, got {}",
+                meta.version_num,
+                meta.sha256,
+                got
+            );
+        }
+    }
+
+    // 2. Decode + extract from the verified temp file.
+    let file = tokio::fs::File::open(tmp)
+        .await
+        .with_context(|| format!("opening {}", tmp.display()))?;
+    let zstd = ZstdDecoder::new(BufReader::new(file));
+    let zstd = BufReader::new(zstd);
+    let mut archive = tokio_tar::Archive::new(zstd);
+
+    let mut entries = archive.entries().context("opening tar archive")?;
+    let mut files_extracted = 0usize;
+    let mut bytes_extracted = 0u64;
+
+    while let Some(entry) = entries.next().await {
+        let mut entry = entry.context("reading tar entry")?;
+        let path_in_tar = entry.path()?.into_owned();
+
+        let safe_rel = match sanitize(&path_in_tar) {
+            Some(p) => p,
+            None if entry.header().entry_type().is_dir() => continue,
+            None => bail!("unsafe path in archive: {}", path_in_tar.display()),
+        };
+        let dest_path = dest.join(&safe_rel);
+
+        if entry.header().entry_type().is_dir() {
+            tokio::fs::create_dir_all(&dest_path).await.ok();
+            continue;
+        }
+        if let Some(parent) = dest_path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .with_context(|| format!("creating parent {}", parent.display()))?;
+        }
+
+        let mut writer = tokio::fs::File::create(&dest_path)
+            .await
+            .with_context(|| format!("writing {}", dest_path.display()))?;
+        let written = tokio::io::copy(&mut entry, &mut writer)
+            .await
+            .with_context(|| format!("extracting {}", dest_path.display()))?;
+        writer
+            .flush()
+            .await
+            .with_context(|| format!("writing {}", dest_path.display()))?;
 
         bytes_extracted += written;
         files_extracted += 1;

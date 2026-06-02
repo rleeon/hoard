@@ -1052,8 +1052,17 @@ async fn run_auto_restore(
     conflict_root: Option<&Path>,
     retention: Duration,
 ) -> Result<Option<AutoRestoreOutcome>> {
-    let remote = api.get_save(&save.save_id).await?;
-    let Some(version) = remote.latest_version_num else {
+    let latest = if api.is_cloud().await {
+        api.cloud_sync()
+            .await?
+            .saves
+            .into_iter()
+            .find(|e| e.save_id == save.save_id)
+            .map(|e| e.latest_version_num)
+    } else {
+        api.get_save(&save.save_id).await?.latest_version_num
+    };
+    let Some(version) = latest else {
         // Still sweep TTL before bailing — keeps the conflict dir bounded
         // even for saves whose remote has been purged.
         if let Some(root) = conflict_root {
@@ -1622,6 +1631,8 @@ async fn run_backup_with_retry(
         let outcome = upload_directory_checked(
             &api,
             &save.save_id,
+            &save.game_slug,
+            &save.label,
             &save.local_path,
             prev_set_hash.as_deref(),
             |_, _| {},
