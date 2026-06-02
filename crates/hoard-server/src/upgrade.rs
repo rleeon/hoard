@@ -28,10 +28,11 @@ const USER_AGENT: &str = concat!("hoard-server/", env!("CARGO_PKG_VERSION"));
 /// release pipeline holds, so a compromise of the GitHub *account* (asset
 /// re-upload) can't push a binary that `upgrade` will run as root.
 ///
-/// NOTE: replace this placeholder with the real key emitted by
-/// `minisign -G` / `rsign generate`. The verifier rejects everything
-/// while it's the placeholder, which fails closed (no unsigned upgrade).
-const MINISIGN_PUBKEY: &str = "RWQexAMPLEREPLACEWITHREALKEY00000000000000000000000000000000000";
+/// Key ID `F648761D67BD389E`, generated 2026-06-02. The secret half is in
+/// the repo's `MINISIGN_SECRET_KEY` Actions secret. Rotating this means
+/// re-keying CI *and* shipping a release that embeds the new public key
+/// before old clients can trust signatures made with it.
+const MINISIGN_PUBKEY: &str = "RWSeOL1nHXZI9oa+WOdrc6yVasLPeBurvGWnERo4tN9F+YIQn7ipx3eO";
 
 #[derive(serde::Deserialize)]
 struct Release {
@@ -313,5 +314,13 @@ mod tests {
     fn newer_double_digit() {
         assert!(is_newer("1.10.0", "1.9.0"));
         assert!(is_newer("2.0.0", "1.99.99"));
+    }
+
+    #[test]
+    fn embedded_pubkey_parses() {
+        // Guards against a typo in MINISIGN_PUBKEY shipping a build that
+        // can never verify any signature (fails closed but silently).
+        minisign_verify::PublicKey::from_base64(MINISIGN_PUBKEY)
+            .expect("embedded minisign public key must be valid base64");
     }
 }

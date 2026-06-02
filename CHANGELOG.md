@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [1.8.2] — 2026-05-31
+## [1.8.3] — 2026-06-02
+
+### Fixed
+- **El "actualizar servidor" desde la app ya funciona.** La firma de releases
+  (ADR 0017) estaba a medias: `upgrade.rs` llevaba una clave pública
+  *placeholder* y el workflow no firmaba porque faltaba el secret
+  `MINISIGN_SECRET_KEY`. Resultado: todo release salía sin `.minisig` y el
+  verificador —que falla cerrado— rechazaba instalar el binario ("release is
+  missing the signature asset"). Ahora hay una clave minisign real
+  (`F648761D67BD389E`), su secreta vive en los secrets de Actions y cada
+  `hoard-*-linux-x86_64.tar.gz` se firma en CI. Un test nuevo valida que la
+  clave embebida parsea, para no volver a publicar un binario que no puede
+  verificar nada.
 
 ### Fixed
 - **La cuenta de Hoard Cloud ya no "caduca" al reiniciar el PC.** El access
