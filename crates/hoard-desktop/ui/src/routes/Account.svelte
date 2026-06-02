@@ -33,6 +33,7 @@
     planLabel,
   } from "../lib/stores/cloud";
   import { toastError, toastInfo, toastSuccess } from "../lib/stores/toasts";
+  import { clearOnboarding } from "../lib/stores/onboarding";
   import { formatBytes } from "../lib/utils/format";
 
   let busyAction = $state<
@@ -66,7 +67,13 @@
     busyAction = "logout";
     try {
       await logoutCloud();
+      // Reset the wizard so the next launch (and this navigation) lands on the
+      // welcome screen, not a stale persisted step. Then leave /account
+      // immediately instead of sitting on the signed-out view, which is what
+      // made it look like the session "came back".
+      await clearOnboarding();
       toastInfo($_("account.signed_out"));
+      push("/welcome");
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
     } finally {

@@ -45,7 +45,6 @@
     openUpgradePage,
     planLabel,
   } from "./lib/stores/cloud";
-  import { loadStep, routeForStep } from "./lib/stores/onboarding";
   import {
     runAutomaticSetup,
     automaticState,
@@ -156,8 +155,13 @@
       // launch because the old boot only checked `$auth.user`.
       replace("/account");
     } else {
-      const step = await loadStep();
-      replace(routeForStep(step));
+      // No session at all → always start at the welcome screen. We used to
+      // resume `routeForStep(loadStep())`, but a persisted "server" step (left
+      // over from an old install or a session that was later logged out) trapped
+      // the user straight on "Connect to your server" instead of showing the
+      // welcome / chooser. The wizard re-hydrates the saved URL anyway, so
+      // restarting from welcome loses nothing.
+      replace("/welcome");
     }
     booted = true;
 

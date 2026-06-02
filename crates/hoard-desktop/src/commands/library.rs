@@ -664,19 +664,32 @@ pub async fn delete_save_completely(
 /// and we want fresh creds per command — the cost is negligible (`reqwest`
 /// connections are pooled internally).
 pub(crate) fn current_client(state: &State<'_, AppState>) -> Result<ApiClient, String> {
-    // The cached UserInfo gives us the URL; the keychain holds the token.
-    // If either is missing we surface a single uniform error so the frontend
-    // can route the user back to the login screen.
-    let user = state
-        .user
-        .lock()
-        .unwrap()
-        .clone()
-        .ok_or_else(|| "Not logged in. Sign in again to continue.".to_string())?;
-    let creds = credentials::load()
-        .map_err(|e| format!("Couldn't load credentials: {e}"))?
-        .ok_or_else(|| "Saved credentials are missing. Sign in again.".to_string())?;
-    ApiClient::new(user.server_url, creds.token).map_err(|e| e.to_string())
+    // Prefer the self-hosted session: the cached UserInfo gives us the URL and
+    // the keychain holds the bearer token.
+    let self_hosted = state.user.lock().unwrap().clone();
+    if let Some(user) = self_hosted {
+        let creds = credentials::load()
+            .map_err(|e| format!("Couldn't load credentials: {e}"))?
+            .ok_or_else(|| "Saved credentials are missing. Sign in again.".to_string())?;
+        return ApiClient::new(user.server_url, creds.token).map_err(|e| e.to_string());
+    }
+    // Fall back to a Hoard Cloud session (Gmail login). The cloud API exposes
+    // the same `/v1/...` surface and accepts the Supabase JWT as a bearer
+    // token, so the agent and every library/history command can talk to it
+    // exactly like a self-hosted server. Without this branch a cloud-only user
+    // hit "Not logged in" on every monitor/backup action even though the
+    // sidebar showed "Nube conectada".
+    //
+    // Note: the JWT is short-lived (~1h). The cloud-pull poller refreshes the
+    // on-disk token on a 401, so per-command clients built here stay fresh;
+    // the long-lived agent client created at `start_agent` is the one case that
+    // can outlive a token and is handled separately.
+    if let Some(cloud) = crate::commands::cloud::load_active_creds()
+        .map_err(|e| format!("Couldn't load cloud credentials: {e}"))?
+    {
+        return ApiClient::new(cloud.server_url, cloud.access_token).map_err(|e| e.to_string());
+    }
+    Err("Not logged in. Sign in again to continue.".to_string())
 }
 
 fn format_optional_time(t: Option<OffsetDateTime>) -> Option<String> {
