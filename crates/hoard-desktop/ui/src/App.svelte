@@ -16,6 +16,7 @@
   import { formatBytes } from "./lib/utils/format";
 
   import Welcome from "./routes/Welcome.svelte";
+  import ChooseMode from "./routes/ChooseMode.svelte";
   import ServerSetup from "./routes/ServerSetup.svelte";
   import TokenSetup from "./routes/TokenSetup.svelte";
   import OnboardingDone from "./routes/OnboardingDone.svelte";
@@ -73,6 +74,7 @@
   // don't need a `*` route here.
   const routes = {
     "/welcome": Welcome,
+    "/onboarding/choose": ChooseMode,
     "/onboarding/server": ServerSetup,
     "/onboarding/token": TokenSetup,
     "/onboarding/done": OnboardingDone,
@@ -148,6 +150,11 @@
     await Promise.all([hydrateAuth(), hydrateCloud()]);
     if ($auth.user) {
       replace("/dashboard");
+    } else if ($cloud.account) {
+      // Cloud-only user (signed in via Gmail, no self-hosted server). Without
+      // this branch they'd be dumped back into the onboarding wizard on every
+      // launch because the old boot only checked `$auth.user`.
+      replace("/account");
     } else {
       const step = await loadStep();
       replace(routeForStep(step));

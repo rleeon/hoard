@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.4] — 2026-06-02
+
+### Changed
+- **Onboarding: nuevo paso "cómo quieres entrar" antes de pedir el servidor.**
+  La bienvenida ya no lleva directo a meter la URL de un servidor self-hosted.
+  Ahora aparece un selector con dos opciones: **Autoalojado** (conéctate a tu
+  propio servidor) y **Entrar con Google** (Hoard Cloud, sin configurar nada).
+  La pantalla de URL del servidor solo sale si eliges autoalojado.
+
+### Fixed
+- **Los usuarios solo-cloud (Gmail) ya aterrizan en la app al reabrirla.** El
+  arranque solo comprobaba la sesión self-hosted (`$auth.user`), así que una
+  sesión cloud sin servidor propio volvía al asistente de onboarding en cada
+  inicio. Ahora, sin sesión self-hosted pero con cuenta cloud, se va directo a
+  `/account`.
+- **Corregido "tu datos" → "tus datos"** en la bienvenida (ES). El tagline
+  reutilizaba una sola palabra "tu" para "tu servidor" y "tu datos"; ahora es
+  una frase única y gramaticalmente correcta en los 8 idiomas.
+
 ## [1.8.3] — 2026-06-02
 
 ### Fixed

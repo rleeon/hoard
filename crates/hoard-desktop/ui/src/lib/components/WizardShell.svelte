@@ -21,7 +21,7 @@
 
   let { step, onBack, children }: Props = $props();
 
-  const ORDER: OnboardingStep[] = ["welcome", "server", "token", "done"];
+  const ORDER: OnboardingStep[] = ["welcome", "choose", "server", "token", "done"];
   const currentIndex = $derived(ORDER.indexOf(step));
 </script>
 

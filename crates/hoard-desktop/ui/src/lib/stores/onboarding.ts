@@ -16,11 +16,12 @@ const KEY_URL = "url";
 /** Routes that make up the wizard, in order. */
 export type OnboardingStep =
   | "welcome"
+  | "choose"
   | "server"
   | "token"
   | "done";
 
-const STEPS: OnboardingStep[] = ["welcome", "server", "token", "done"];
+const STEPS: OnboardingStep[] = ["welcome", "choose", "server", "token", "done"];
 
 const store = new LazyStore(STORE_FILE);
 
@@ -57,6 +58,8 @@ export function routeForStep(step: OnboardingStep): string {
   switch (step) {
     case "welcome":
       return "/welcome";
+    case "choose":
+      return "/onboarding/choose";
     case "server":
       return "/onboarding/server";
     case "token":

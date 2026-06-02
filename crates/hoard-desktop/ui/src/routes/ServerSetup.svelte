@@ -81,7 +81,7 @@
     if ($auth.user) {
       push("/account");
     } else {
-      push("/welcome");
+      push("/onboarding/choose");
     }
   }
 

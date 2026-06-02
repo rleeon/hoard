@@ -8,8 +8,8 @@
   import { saveStep } from "../lib/stores/onboarding";
 
   async function start() {
-    await saveStep("server");
-    push("/onboarding/server");
+    await saveStep("choose");
+    push("/onboarding/choose");
   }
 </script>
 
@@ -19,11 +19,7 @@
       {$_("welcome.title")}
     </h1>
     <p class="mt-2 text-sm leading-relaxed text-zinc-400">
-      {$_("welcome.tagline_1")}
-      <strong class="text-zinc-200">{$_("welcome.tagline_your")}</strong>
-      {$_("welcome.tagline_2")}
-      <strong class="text-zinc-200">{$_("welcome.tagline_your")}</strong>
-      {$_("welcome.tagline_3")}
+      {$_("welcome.tagline")}
     </p>
 
     <ul class="mt-6 space-y-2 text-sm text-zinc-300">
