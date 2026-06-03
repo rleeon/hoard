@@ -39,6 +39,29 @@ pub struct UploadInit {
     /// per-save by the client (per the 1.6.1 "modo ahorro" UX).
     #[serde(default)]
     pub backup_only: bool,
+    /// The version the client based this upload on (its last-synced version
+    /// for this save). When present and it no longer matches the server's
+    /// `latest_version_num`, the upload is a non-fast-forward (another device
+    /// advanced the save) and is rejected with 409 so the client can pull +
+    /// resolve instead of clobbering the other device's line.
+    #[serde(default)]
+    pub base_version: Option<i64>,
+}
+
+/// 409 response for a divergent (non-fast-forward) push. Carries the current
+/// head so the client knows which version it must reconcile against.
+#[derive(Debug, Serialize)]
+struct NonFastForwardResponse {
+    error: &'static str,
+    code: &'static str,
+    head_version: i64,
+    base_version: i64,
+}
+
+impl IntoResponse for NonFastForwardResponse {
+    fn into_response(self) -> Response {
+        (StatusCode::CONFLICT, Json(self)).into_response()
+    }
 }
 
 /// 413 response for a single upload that exceeds the per-save cap. Wire
@@ -137,7 +160,25 @@ pub async fn init_upload(
     .fetch_one(&state.pool)
     .await?;
 
-    let next_version = save_row.1 + 1;
+    let head = save_row.1;
+
+    // Fast-forward check (the DAG's enforcement). A base that no longer matches
+    // the head means another device pushed since the client last synced.
+    if let Some(base) = body.base_version {
+        if base != head {
+            return Ok(NonFastForwardResponse {
+                error: "non-fast-forward: another device advanced this save since your base version",
+                code: "non_fast_forward",
+                head_version: head,
+                base_version: base,
+            }
+            .into_response());
+        }
+    }
+
+    let next_version = head + 1;
+    // Root version has no parent; otherwise it descends from the current head.
+    let parent_version: Option<i64> = (head > 0).then_some(head);
     let r2_key = r2::key_for_snapshot(user.user_id, &save_row.0, next_version as u64);
 
     // 5. Insert the (pending) save_versions row. We only know size and key
@@ -147,8 +188,8 @@ pub async fn init_upload(
     //    commits, the cleanup cron deletes pending rows older than 1h).
     sqlx::query(
         r#"
-        INSERT INTO save_versions (save_id, version_num, size_bytes, sha256, r2_key, notes)
-        VALUES ($1, $2, $3, '', $4, $5)
+        INSERT INTO save_versions (save_id, version_num, size_bytes, sha256, r2_key, notes, parent_version)
+        VALUES ($1, $2, $3, '', $4, $5, $6)
         "#,
     )
     .bind(&save_row.0)
@@ -156,6 +197,7 @@ pub async fn init_upload(
     .bind(body.size_bytes as i64)
     .bind(&r2_key)
     .bind(body.notes.as_deref())
+    .bind(parent_version)
     .execute(&state.pool)
     .await?;
 

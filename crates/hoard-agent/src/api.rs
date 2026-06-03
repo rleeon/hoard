@@ -545,6 +545,9 @@ pub struct Snapshot {
     #[serde(default)]
     pub save_id: Option<String>,
     pub version_num: i64,
+    /// DAG parent (`None` = root). Older servers omit it → defaults to None.
+    #[serde(default)]
+    pub parent_version: Option<i64>,
     pub file_count: i64,
     pub total_size_bytes: i64,
     pub is_pinned: bool,
@@ -580,6 +583,10 @@ pub struct CloudUploadInit {
     pub device_name: Option<String>,
     pub notes: Option<String>,
     pub backup_only: bool,
+    /// Last-synced version for this save. Drives the server's fast-forward
+    /// check: a mismatch means another device pushed since, → 409.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_version: Option<i64>,
 }
 
 /// A short-lived presigned R2 URL (PUT for upload, GET for download).
@@ -638,6 +645,8 @@ pub struct CloudManifestEntry {
     pub game_slug: String,
     pub label: String,
     pub latest_version_num: i64,
+    #[serde(default)]
+    pub latest_parent_version: Option<i64>,
     #[serde(default)]
     pub latest_size_bytes: i64,
     #[serde(default)]

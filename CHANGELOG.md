@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.6] — 2026-06-03
+
+### Added
+- **Detección dirigida por señales (ADR 0020, fases 0/1/3).** Primer paso para
+  invertir el pipeline catalog-first hacia descubrimiento automático con el
+  catálogo como red de seguridad. El walk agresivo ya no clasifica carpetas con
+  un booleano name-only: ahora puntúa cada candidata con un score multi-señal
+  `S ∈ [0,1]` (`scoring.rs`) que combina nombre (vocabulario multilingüe),
+  contenido (extensiones save fuertes/débiles/ruidosas, imágenes), recencia y
+  señales negativas (config/cache/screenshots). Cutoffs `S ≥ 0.60` confirmado /
+  `0.35 ≤ S < 0.60` posible / `< 0.35` descartado. Añadidos los roots de
+  descubrimiento por SO (`roots.rs`) y, la pieza clave, la **correlación
+  proceso↔escritura** (`correlation.rs`, +0.50): cuando un save vigilado se
+  reescribe, el agente muestrea los procesos de juego vivos y persiste la
+  correlación en `correlation.json`, sentando la base para descubrir y atribuir
+  saves de nombre opaco (GUID) que el name-signal jamás atraparía (~6% de recall
+  solo por nombre, medido sobre el manifest). La integración completa
+  (observador sobre roots amplios + aprendizaje) llega en fases posteriores.
+- **DAG de versiones (base para sync tipo git entre dispositivos).** Cada
+  snapshot/versión registra ahora su `parent_version` (la versión de la que
+  desciende; `NULL` = raíz), convirtiendo el log lineal `version_num` en un
+  grafo. Con ello el servidor detecta un *push divergente* (non-fast-forward):
+  si el cliente declara una `base_version` que ya no es el head —porque otro
+  dispositivo subió entre medias— la subida se rechaza con `409
+  non_fast_forward` (con `head_version` para reconciliar) en lugar de pisar la
+  otra línea con last-writer-wins. Implementado en ambos backends (SQLite
+  self-hosted en `routes/snapshots.rs`, Postgres cloud en
+  `cloud/routes/saves.rs`), expuesto en las respuestas (`parent_version` en
+  el resumen de snapshot y `latest_parent_version` en el manifest
+  `/v1/cloud/sync`). El cliente CLI ya manda su base (`last_version_num`); el
+  auto-path del agente registra el parent pero todavía no envía base (la
+  resolución de conflicto con "guardar ambas" llega después). Migraciones
+  `0015_snapshot_parent.sql` y `postgres/0017_save_version_parent.sql`.
+
 ## [1.8.5] — 2026-06-02
 
 ### Added

@@ -23,6 +23,9 @@ use crate::routes::health::ServerState;
 pub struct SnapshotSummary {
     pub id: String,
     pub version_num: i64,
+    /// The version this snapshot descends from. `None` = root (first version
+    /// of the save). The DAG edge that makes divergence detectable.
+    pub parent_version: Option<i64>,
     pub device_name: Option<String>,
     pub notes: Option<String>,
     pub total_size_bytes: i64,
@@ -152,6 +155,10 @@ pub async fn create(
 
     let mut device_name: Option<String> = None;
     let mut notes: Option<String> = None;
+    // The version the client based this snapshot on (its last-synced version
+    // for this save). When present and it no longer matches the server's head,
+    // another device advanced the save → non-fast-forward, rejected below.
+    let mut base_version: Option<i64> = None;
     let mut files: Vec<(String, i64, String)> = Vec::new(); // (rel_path, size, sha256)
     let mut total_size: i64 = 0;
 
@@ -173,6 +180,14 @@ pub async fn create(
         }
         if name == "notes" {
             notes = field.text().await.ok();
+            continue;
+        }
+        if name == "base_version" {
+            base_version = field
+                .text()
+                .await
+                .ok()
+                .and_then(|s| s.trim().parse::<i64>().ok());
             continue;
         }
 
@@ -417,28 +432,52 @@ pub async fn create(
         internal()
     })?;
 
-    let new_version: i64 = sqlx::query!("SELECT latest_version_num FROM saves WHERE id=?", save_id)
+    let head: i64 = sqlx::query!("SELECT latest_version_num FROM saves WHERE id=?", save_id)
         .fetch_one(&mut *tx)
         .await
-        .map(|r| r.latest_version_num + 1)
+        .map(|r| r.latest_version_num)
         .map_err(|_| {
             cleanup_tmp();
             internal()
         })?;
 
+    // Fast-forward check (the DAG's enforcement). A client that declares a
+    // base version which is no longer the head has diverged: another device
+    // pushed since it last synced. Reject so the client can pull + merge
+    // (keep-both) instead of silently overwriting the other line.
+    if let Some(base) = base_version {
+        if base != head {
+            cleanup_tmp();
+            return Err((
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": "non-fast-forward: another device advanced this save since your base version",
+                    "code": "non_fast_forward",
+                    "head_version": head,
+                    "base_version": base,
+                })),
+            ));
+        }
+    }
+    let new_version = head + 1;
+    // Root version has no parent; every other version points at the head it
+    // descended from.
+    let parent_version: Option<i64> = (head > 0).then_some(head);
+
     let file_count = files.len() as i64;
-    sqlx::query!(
+    sqlx::query(
         "INSERT INTO snapshots (id, save_id, version_num, device_name, notes,
-                                total_size_bytes, file_count)
-         VALUES (?,?,?,?,?,?,?)",
-        snapshot_id,
-        save_id,
-        new_version,
-        device_name,
-        notes,
-        total_size,
-        file_count
+                                total_size_bytes, file_count, parent_version)
+         VALUES (?,?,?,?,?,?,?,?)",
     )
+    .bind(&snapshot_id)
+    .bind(&save_id)
+    .bind(new_version)
+    .bind(&device_name)
+    .bind(&notes)
+    .bind(total_size)
+    .bind(file_count)
+    .bind(parent_version)
     .execute(&mut *tx)
     .await
     .map_err(|_| {
@@ -662,6 +701,7 @@ pub async fn create(
         Json(SnapshotSummary {
             id: snapshot_id,
             version_num: new_version,
+            parent_version,
             device_name,
             notes,
             total_size_bytes: total_size,
@@ -694,59 +734,40 @@ pub async fn list(
     let limit = q.limit.clamp(1, 200);
     let offset = q.offset.max(0);
 
-    let rows = if q.include_deleted {
-        sqlx::query!(
-            "SELECT id, version_num, device_name, notes, total_size_bytes, file_count,
-                    is_pinned, deleted_at, created_at
-             FROM snapshots WHERE save_id=?
-             ORDER BY version_num DESC LIMIT ? OFFSET ?",
-            save_id,
-            limit,
-            offset
-        )
-        .fetch_all(&state.pool)
-        .await
-        .map_err(|_| internal())?
-        .into_iter()
-        .map(|r| SnapshotSummary {
-            id: r.id,
-            version_num: r.version_num,
-            device_name: r.device_name,
-            notes: r.notes,
-            total_size_bytes: r.total_size_bytes,
-            file_count: r.file_count,
-            is_pinned: r.is_pinned != 0,
-            deleted_at: r.deleted_at,
-            created_at: r.created_at,
-        })
-        .collect()
+    // Runtime query (not the `query!` macro) so the new parent_version column
+    // can be selected without regenerating the offline sqlx cache.
+    let sql = if q.include_deleted {
+        "SELECT id, version_num, parent_version, device_name, notes, total_size_bytes,
+                file_count, is_pinned, deleted_at, created_at
+         FROM snapshots WHERE save_id=?
+         ORDER BY version_num DESC LIMIT ? OFFSET ?"
     } else {
-        sqlx::query!(
-            "SELECT id, version_num, device_name, notes, total_size_bytes, file_count,
-                    is_pinned, deleted_at, created_at
-             FROM snapshots WHERE save_id=? AND deleted_at IS NULL
-             ORDER BY version_num DESC LIMIT ? OFFSET ?",
-            save_id,
-            limit,
-            offset
-        )
+        "SELECT id, version_num, parent_version, device_name, notes, total_size_bytes,
+                file_count, is_pinned, deleted_at, created_at
+         FROM snapshots WHERE save_id=? AND deleted_at IS NULL
+         ORDER BY version_num DESC LIMIT ? OFFSET ?"
+    };
+    let rows: Vec<SnapshotSummary> = sqlx::query(sql)
+        .bind(&save_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&state.pool)
         .await
         .map_err(|_| internal())?
-        .into_iter()
+        .iter()
         .map(|r| SnapshotSummary {
-            id: r.id,
-            version_num: r.version_num,
-            device_name: r.device_name,
-            notes: r.notes,
-            total_size_bytes: r.total_size_bytes,
-            file_count: r.file_count,
-            is_pinned: r.is_pinned != 0,
-            deleted_at: r.deleted_at,
-            created_at: r.created_at,
+            id: r.get("id"),
+            version_num: r.get("version_num"),
+            parent_version: r.get("parent_version"),
+            device_name: r.get("device_name"),
+            notes: r.get("notes"),
+            total_size_bytes: r.get("total_size_bytes"),
+            file_count: r.get("file_count"),
+            is_pinned: r.get::<i64, _>("is_pinned") != 0,
+            deleted_at: r.get("deleted_at"),
+            created_at: r.get("created_at"),
         })
-        .collect()
-    };
+        .collect();
 
     Ok(Json(rows))
 }
@@ -767,22 +788,23 @@ pub async fn detail(
         return Err(err(StatusCode::NOT_FOUND, "save not found"));
     }
 
-    let snap = sqlx::query!(
-        "SELECT id, version_num, device_name, notes, total_size_bytes, file_count,
-                is_pinned, deleted_at, created_at
+    let snap = sqlx::query(
+        "SELECT id, version_num, parent_version, device_name, notes, total_size_bytes,
+                file_count, is_pinned, deleted_at, created_at
          FROM snapshots WHERE save_id=? AND version_num=?",
-        save_id,
-        version
     )
+    .bind(&save_id)
+    .bind(version)
     .fetch_optional(&state.pool)
     .await
     .map_err(|_| internal())?
     .ok_or_else(|| err(StatusCode::NOT_FOUND, "snapshot not found"))?;
 
+    let snap_id: String = snap.get("id");
     let files = sqlx::query!(
         "SELECT relative_path, size_bytes, sha256 FROM snapshot_files
          WHERE snapshot_id=? ORDER BY relative_path",
-        snap.id
+        snap_id
     )
     .fetch_all(&state.pool)
     .await
@@ -797,15 +819,16 @@ pub async fn detail(
 
     Ok(Json(SnapshotDetail {
         summary: SnapshotSummary {
-            id: snap.id,
-            version_num: snap.version_num,
-            device_name: snap.device_name,
-            notes: snap.notes,
-            total_size_bytes: snap.total_size_bytes,
-            file_count: snap.file_count,
-            is_pinned: snap.is_pinned != 0,
-            deleted_at: snap.deleted_at,
-            created_at: snap.created_at,
+            id: snap.get("id"),
+            version_num: snap.get("version_num"),
+            parent_version: snap.get("parent_version"),
+            device_name: snap.get("device_name"),
+            notes: snap.get("notes"),
+            total_size_bytes: snap.get("total_size_bytes"),
+            file_count: snap.get("file_count"),
+            is_pinned: snap.get::<i64, _>("is_pinned") != 0,
+            deleted_at: snap.get("deleted_at"),
+            created_at: snap.get("created_at"),
         },
         files,
     }))

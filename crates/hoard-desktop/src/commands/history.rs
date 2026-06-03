@@ -331,6 +331,9 @@ pub async fn restore_snapshot(
                 &game_slug,
                 &label,
                 &local_path,
+                // Pre-restore safety backup is an explicit user action; don't
+                // gate it on fast-forward.
+                None,
                 move |uploaded, total| {
                     let _ = app_for_progress.emit(
                         "restore://progress",

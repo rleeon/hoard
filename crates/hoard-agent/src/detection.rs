@@ -42,6 +42,7 @@ use tokio::sync::Semaphore;
 use crate::launchers::{self, LauncherApp};
 use crate::manifest::Os;
 use crate::pathexpand::{expand_path, expand_path_in_prefix, expand_registry_path};
+use crate::scoring;
 use crate::state::CliState;
 use crate::steam::{self, SteamApp};
 use crate::wine_prefixes::{self, PrefixKind};
@@ -124,6 +125,15 @@ const SAVE_PATTERNS: &[&str] = &[
     "savegames",
     "save games",
     "save_games",
+    // DETECCIÓN (recall, fase 1): `savedata`/`savefiles` son nombres de
+    // carpeta muy comunes (Unity, muchos indies, ports de consola) que el
+    // set original no reconocía. Match exacto-por-segmento, así que el
+    // riesgo de falso positivo sigue siendo bajo (no matchea "save settings").
+    "savedata",
+    "save data",
+    "save_data",
+    "savefile",
+    "savefiles",
 ];
 
 /// Slugs whose catalog entry points at a "game root" mixing saves with other
@@ -1270,9 +1280,13 @@ pub(crate) const AGGRESSIVE_WALK_TIMEOUT: Duration = Duration::from_millis(1500)
 pub(crate) const AGGRESSIVE_WALK_MAX_DEPTH: usize = 4;
 
 /// Hard cap on the number of save-like dirs we report per walked root.
-/// Beyond this the walker bails out — five candidates is already more than
-/// the UI can usefully show without scaring the user with false positives.
-pub(crate) const AGGRESSIVE_WALK_MAX_CANDIDATES: usize = 5;
+/// DETECCIÓN (fase 1, ADR 0020): el ADR pide eliminar este tope porque la
+/// verdadera puerta de calidad ahora es el score de `scoring::score_dir`
+/// (sólo cruzan el umbral las carpetas con evidencia real). Lo subimos
+/// 5→16 en vez de quitarlo del todo: sigue actuando de cinturón de
+/// seguridad ante un árbol patológico, pero ya no recorta candidatos
+/// legítimos a los primeros cinco.
+pub(crate) const AGGRESSIVE_WALK_MAX_CANDIDATES: usize = 16;
 
 /// How often (in dirs visited) the walker re-checks the elapsed timeout.
 /// `Instant::elapsed` is cheap but not free; sampling every N entries keeps
@@ -1313,9 +1327,11 @@ pub(crate) const SAVE_FILE_EXTENSIONS: &[&str] =
     &["sav", "save", "profile", "json", "dat", "xml"];
 
 /// How recent a save-like file has to be to promote a dir to `Medium`.
-/// 90 days catches "user played it last quarter" while ignoring stale
-/// shipped data files.
-pub(crate) const RECENT_SAVE_FILE_WINDOW: Duration = Duration::from_secs(60 * 60 * 24 * 90);
+/// DETECCIÓN (recall, fase 1): subido 90→180 días. 90 dejaba fuera saves
+/// de juegos jugados "la temporada pasada"; 180 los recupera y sigue
+/// descartando data shippeada (que casi siempre tiene la mtime del install,
+/// más vieja que medio año en cuanto el juego lleva tiempo instalado).
+pub(crate) const RECENT_SAVE_FILE_WINDOW: Duration = Duration::from_secs(60 * 60 * 24 * 180);
 
 /// One save-like path discovered by [`aggressive_discover`]. The `reason`
 /// is forwarded to the diagnostics panel so a human can see *why* a path
@@ -1445,45 +1461,43 @@ fn is_skip_dir(name: &str) -> bool {
     WALK_SKIP.iter().any(|s| *s == lower.as_str())
 }
 
-/// If `name` and the dir's contents look save-like, return a
-/// [`DiscoveredSavePath`] with the appropriate confidence and reason.
-///
-/// Rules:
-/// * Name matches [`SAVE_PATTERNS`] → `Low` (reason "matches SAVE_PATTERNS").
-/// * Name matches the `slot|profile|user [sep] <digits>` shape → `Low`
-///   (reason "matches slot/profile/user pattern").
-/// * Either of the above **and** the dir contains a file with a
-///   [`SAVE_FILE_EXTENSIONS`] extension modified in the last
-///   [`RECENT_SAVE_FILE_WINDOW`] → promote to `Medium`
-///   (reason "matches pattern + recent save-like files").
+/// If a dir's name + contents look save-like, return a
+/// [`DiscoveredSavePath`] graded by [`scoring::score_dir`] (fase 1, ADR
+/// 0020). Below `SCORE_POSSIBLE` (0.35) the dir is dropped; `≥ SCORE_CONFIRMED`
+/// (0.60) maps to `Medium`, the grey zone to `Low`. `High` is withheld until
+/// the process-correlation signal of fase 3 exists. The `reason` carries the
+/// numeric score and the signal breakdown for the diagnostics panel.
 fn classify_dir_as_save_like(path: &Path, name: &str) -> Option<DiscoveredSavePath> {
-    let (base_reason, _) = if name_matches_save_pattern(name) {
-        ("matches SAVE_PATTERNS", true)
-    } else if name_matches_slot_profile_user(name) {
-        ("matches slot/profile/user pattern", true)
-    } else {
+    // DETECCIÓN (fase 1, ADR 0020): el booleano name-only se sustituye por
+    // el scoring graduado de `scoring::score_dir` (nombre + contenido +
+    // recencia + negativas). Por debajo de `SCORE_POSSIBLE` se descarta.
+    //
+    // Mapeo a `Confidence` deliberadamente conservador: el walker sólo
+    // emite Low/Medium. `High` se reserva para la fase 3, cuando la
+    // correlación proceso↔escritura (+0.50) aporte la señal que justifica
+    // auto-confirmar; sin ella, evidencia puramente estática no debe
+    // pintarse como certeza. El score numérico va en `reason` para el panel
+    // de diagnóstico.
+    let breakdown = scoring::score_dir(path, name);
+    if breakdown.score < scoring::SCORE_POSSIBLE {
         return None;
-    };
-
-    if dir_has_recent_save_file(path) {
-        Some(DiscoveredSavePath {
-            path: path.to_path_buf(),
-            confidence: Confidence::Medium,
-            reason: format!("{base_reason} + recent save-like files"),
-        })
-    } else {
-        Some(DiscoveredSavePath {
-            path: path.to_path_buf(),
-            confidence: Confidence::Low,
-            reason: base_reason.into(),
-        })
     }
+    let confidence = if breakdown.score >= scoring::SCORE_CONFIRMED {
+        Confidence::Medium
+    } else {
+        Confidence::Low
+    };
+    Some(DiscoveredSavePath {
+        path: path.to_path_buf(),
+        confidence,
+        reason: format!("score {:.2}: {}", breakdown.score, breakdown.reasons.join(", ")),
+    })
 }
 
 /// Match the `slot|profile|user [sep] <digits>` pattern without pulling
 /// in a regex dep. Case-insensitive; separator is optional non-alnum.
 /// Examples: `slot1`, `Slot_2`, `profile-3`, `user 04`.
-fn name_matches_slot_profile_user(name: &str) -> bool {
+pub(crate) fn name_matches_slot_profile_user(name: &str) -> bool {
     let lower = name.to_lowercase();
     for prefix in ["slot", "profile", "user"] {
         let Some(rest) = lower.strip_prefix(prefix) else {
@@ -1505,7 +1519,7 @@ fn name_matches_slot_profile_user(name: &str) -> bool {
 
 /// True iff `dir` contains at least one regular file with an extension in
 /// [`SAVE_FILE_EXTENSIONS`] modified inside [`RECENT_SAVE_FILE_WINDOW`].
-fn dir_has_recent_save_file(dir: &Path) -> bool {
+pub(crate) fn dir_has_recent_save_file(dir: &Path) -> bool {
     let Ok(read) = std::fs::read_dir(dir) else {
         return false;
     };
@@ -2115,9 +2129,12 @@ mod tests {
         assert_eq!(hits.len(), 1, "expected exactly one hit, got {hits:?}");
         assert_eq!(hits[0].path, save_dir);
         assert_eq!(hits[0].confidence, Confidence::Medium);
+        // DETECCIÓN (fase 1, ADR 0020): el reason ahora es el desglose del
+        // score; un `.sav` reciente aporta "strong save ext" + "recent
+        // save-like file".
         assert!(
-            hits[0].reason.contains("recent save-like files"),
-            "expected a 'recent save-like files' reason; got {:?}",
+            hits[0].reason.contains("recent save-like file"),
+            "expected a 'recent save-like file' reason; got {:?}",
             hits[0].reason
         );
     }

@@ -440,6 +440,18 @@ async fn run_agent(
     let mut poll = tokio::time::interval(Duration::from_secs(config.poll_secs.max(1)));
     poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+    // DETECCIÓN (fase 3, ADR 0020): store de correlación proceso↔escritura.
+    // Cuando un save vigilado se reescribe, registramos qué proceso de juego
+    // estaba vivo. Hoy alimenta atribución/aprendizaje sobre saves ya
+    // rastreados; el observador sobre los roots amplios de `roots.rs` (para
+    // DESCUBRIR carpetas nuevas) es el paso siguiente, más pesado, y queda
+    // fuera de este cableado.
+    let corr_path = crate::correlation::CorrelationStore::default_path().ok();
+    let mut corr_store = corr_path
+        .as_deref()
+        .map(crate::correlation::CorrelationStore::load)
+        .unwrap_or_default();
+
     tracing::info!(
         debounce_secs = config.debounce_secs,
         poll_secs = config.poll_secs,
@@ -577,6 +589,29 @@ async fn run_agent(
                         delay,
                         &api, &events_tx, &config, &done_tx, &cmd_tx,
                     );
+
+                    // DETECCIÓN (fase 3, ADR 0020): la carpeta se reescribió;
+                    // muestrea los procesos de juego vivos y registra la
+                    // correlación proceso↔escritura. Alimenta atribución y la
+                    // señal +0.50 del scoring para descubrimientos futuros.
+                    sys.refresh_processes_specifics(
+                        ProcessesToUpdate::All,
+                        true,
+                        ProcessRefreshKind::everything(),
+                    );
+                    let games = crate::correlation::sample_game_processes(&sys);
+                    if !games.is_empty() {
+                        let dir = slots
+                            .get(&save_id)
+                            .map(|s| s.save.local_path.clone())
+                            .unwrap_or_else(|| path.clone());
+                        corr_store.record(&dir, &games);
+                        if let Some(p) = &corr_path {
+                            if let Err(e) = corr_store.save(p) {
+                                tracing::debug!(error = %e, "agent: failed to persist correlation store");
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1635,6 +1670,11 @@ async fn run_backup_with_retry(
             &save.label,
             &save.local_path,
             prev_set_hash.as_deref(),
+            // base_version: the auto-path doesn't yet track the last-synced
+            // version per save (WatchedSave carries none), so it pushes
+            // without a fast-forward base for now. The server still records
+            // the DAG parent; conflict-aware auto-sync is the next step.
+            None,
             |_, _| {},
         )
         .await;

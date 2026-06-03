@@ -192,6 +192,7 @@ pub async fn upload_directory<F>(
     game_slug: &str,
     label: &str,
     source: &Path,
+    base_version: Option<i64>,
     progress: F,
 ) -> Result<UploadOutcome>
 where
@@ -223,6 +224,7 @@ where
             label,
             &files,
             total_bytes,
+            base_version,
             progress,
         )
         .await;
@@ -236,6 +238,11 @@ where
     const PACK_THRESHOLD: usize = 500;
 
     let mut form = multipart::Form::new();
+    // Declare the base version so the server can reject a non-fast-forward
+    // (another device advanced this save since we last synced).
+    if let Some(b) = base_version {
+        form = form.text("base_version", b.to_string());
+    }
     progress(0, total_bytes);
 
     if file_count > PACK_THRESHOLD {
@@ -317,6 +324,7 @@ async fn upload_directory_cloud<F>(
     label: &str,
     files: &[UploadFile],
     total_bytes: u64,
+    base_version: Option<i64>,
     progress: F,
 ) -> Result<UploadOutcome>
 where
@@ -368,6 +376,7 @@ where
                 device_name: None,
                 notes: None,
                 backup_only: false,
+                base_version,
             })
             .await
             .context("cloud upload init")?;
@@ -401,6 +410,7 @@ where
         id: String::new(),
         save_id: Some(commit.save_id),
         version_num: commit.version_num,
+        parent_version: base_version,
         file_count: file_count as i64,
         total_size_bytes: total_bytes as i64,
         is_pinned: false,
@@ -482,6 +492,7 @@ pub async fn upload_directory_checked<F>(
     label: &str,
     source: &Path,
     prev_signature: Option<&str>,
+    base_version: Option<i64>,
     progress: F,
 ) -> Result<BackupResult>
 where
@@ -513,8 +524,16 @@ where
             signature: join_signature(&cheap, &content),
         });
     }
-    let outcome =
-        upload_directory(client, save_id, game_slug, label, &canonical, progress).await?;
+    let outcome = upload_directory(
+        client,
+        save_id,
+        game_slug,
+        label,
+        &canonical,
+        base_version,
+        progress,
+    )
+    .await?;
     Ok(BackupResult::Uploaded {
         outcome,
         signature: join_signature(&cheap, &content),
