@@ -35,8 +35,13 @@ use std::sync::Mutex;
 use hoard_agent::detection::{detect_all, DetectionSource};
 use hoard_agent::launchers;
 use hoard_agent::manifest::Os;
+// Only the `#[cfg(not(windows))]` no-op test below consumes these; on a
+// Windows host that test is compiled out, so gate the imports to match and
+// avoid an unused-import error under `-D warnings`.
+#[cfg(not(windows))]
 use hoard_agent::pathexpand::expand_registry_path;
 use hoard_agent::state::CliState;
+#[cfg(not(windows))]
 use hoard_manifest::ludusavi::RegistryPath;
 
 /// Process-wide serialisation for env-mutating tests. Mirrors the lock used
