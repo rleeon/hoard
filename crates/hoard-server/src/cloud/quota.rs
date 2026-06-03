@@ -47,7 +47,10 @@ impl IntoResponse for QuotaResponse {
 
 /// Fetch plan + storage_bytes for a user. Returns None if no profile row
 /// exists yet — callers should treat that as a 404 / "log in first".
-pub async fn load(pool: &PgPool, user_id: Uuid) -> Result<Option<(PlanLimits, QuotaInfo)>, CloudError> {
+pub async fn load(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Option<(PlanLimits, QuotaInfo)>, CloudError> {
     let row: Option<(String, i64, i32)> = sqlx::query_as(
         "SELECT plan, storage_bytes, devices_count FROM profiles WHERE user_id = $1",
     )

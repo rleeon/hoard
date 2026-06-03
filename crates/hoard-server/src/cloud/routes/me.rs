@@ -58,15 +58,18 @@ pub async fn get_me(
     .fetch_one(&state.pool)
     .await?;
 
-    let sub: Option<(String, Option<time::OffsetDateTime>, Option<time::OffsetDateTime>)> =
-        sqlx::query_as(
-            "SELECT status, renews_at, cancel_at FROM subscriptions
+    let sub: Option<(
+        String,
+        Option<time::OffsetDateTime>,
+        Option<time::OffsetDateTime>,
+    )> = sqlx::query_as(
+        "SELECT status, renews_at, cancel_at FROM subscriptions
               WHERE user_id = $1 AND status IN ('active','grace')
               ORDER BY updated_at DESC LIMIT 1",
-        )
-        .bind(user.user_id)
-        .fetch_optional(&state.pool)
-        .await?;
+    )
+    .bind(user.user_id)
+    .fetch_optional(&state.pool)
+    .await?;
 
     // Saves count comes from a separate query — keeps profile reads cheap
     // for endpoints that don't need this and avoids a join when the saves
@@ -96,10 +99,7 @@ pub async fn get_me(
         devices_used: row.5,
         devices_limit: devices_or_unlimited(limits.devices),
         saves_used: saves_used as i32,
-        saves_limit: limits
-            .saves_tracked
-            .map(|n| n as i32)
-            .unwrap_or(-1),
+        saves_limit: limits.saves_tracked.map(|n| n as i32).unwrap_or(-1),
         version_history_forever: limits.version_history_forever,
         max_save_size_bytes: bytes_or_unlimited(limits.max_save_size_bytes),
         bandwidth_window_secs: limits.bandwidth_window_secs as i32,

@@ -62,18 +62,20 @@ pub async fn manifest(
 
     let saves = rows
         .into_iter()
-        .map(|(id, slug, label, ver, updated, size, sha, parent)| ManifestEntry {
-            save_id: id,
-            game_slug: slug,
-            label,
-            latest_version_num: ver,
-            latest_parent_version: parent,
-            latest_size_bytes: size.unwrap_or(0),
-            latest_sha256: sha.unwrap_or_default(),
-            updated_at: updated
-                .format(&time::format_description::well_known::Rfc3339)
-                .unwrap_or_default(),
-        })
+        .map(
+            |(id, slug, label, ver, updated, size, sha, parent)| ManifestEntry {
+                save_id: id,
+                game_slug: slug,
+                label,
+                latest_version_num: ver,
+                latest_parent_version: parent,
+                latest_size_bytes: size.unwrap_or(0),
+                latest_sha256: sha.unwrap_or_default(),
+                updated_at: updated
+                    .format(&time::format_description::well_known::Rfc3339)
+                    .unwrap_or_default(),
+            },
+        )
         .collect();
 
     Ok(Json(Manifest {

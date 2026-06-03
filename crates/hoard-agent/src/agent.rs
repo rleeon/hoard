@@ -807,8 +807,7 @@ fn spawn_auto_restore(
         let retention = Duration::from_secs(u64::from(conflict_retention_days) * 86_400);
         match run_auto_restore(&api, &save, conflict_root.as_deref(), retention).await {
             Ok(Some(outcome)) => {
-                let touched = outcome.files_restored
-                    + outcome.conflicts_backed_up;
+                let touched = outcome.files_restored + outcome.conflicts_backed_up;
                 if touched > 0 {
                     tracing::info!(
                         save_id = %save.save_id,
@@ -1197,7 +1196,10 @@ fn staging_dir_for(save_id: &str) -> PathBuf {
             }
         })
         .collect();
-    std::env::temp_dir().join(format!("hoard-restore-{safe_id}-{n}-{}", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "hoard-restore-{safe_id}-{n}-{}",
+        std::process::id()
+    ))
 }
 
 /// Best-effort tempdir cleanup. We log but never propagate the error: a
@@ -1218,10 +1220,7 @@ async fn cleanup_staging(staging: &Path) {
 /// No-op when the root doesn't exist (typical fresh install). Errors are
 /// logged but never propagated — a stuck conflict dir is much better than
 /// killing the auto-restore tick.
-pub(crate) async fn cleanup_old_conflicts(
-    conflict_root: &Path,
-    retention: Duration,
-) -> Result<()> {
+pub(crate) async fn cleanup_old_conflicts(conflict_root: &Path, retention: Duration) -> Result<()> {
     if !conflict_root.exists() {
         return Ok(());
     }
@@ -1358,10 +1357,7 @@ pub(crate) async fn restore_files_into(
                 let backup_dest = backup_root.join(rel);
                 if let Some(parent) = backup_dest.parent() {
                     tokio::fs::create_dir_all(parent).await.with_context(|| {
-                        format!(
-                            "creating conflict backup parent dir {}",
-                            parent.display()
-                        )
+                        format!("creating conflict backup parent dir {}", parent.display())
                     })?;
                 }
                 // `rename` first (cheap, atomic). Fall back to copy+remove
@@ -1374,21 +1370,23 @@ pub(crate) async fn restore_files_into(
                         error = %e,
                         "auto-restore diff: rename across filesystems failed, falling back to copy"
                     );
-                    tokio::fs::copy(&dest, &backup_dest).await.with_context(|| {
-                        format!(
-                            "copying {} → {} for conflict backup",
-                            dest.display(),
-                            backup_dest.display()
-                        )
-                    })?;
+                    tokio::fs::copy(&dest, &backup_dest)
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "copying {} → {} for conflict backup",
+                                dest.display(),
+                                backup_dest.display()
+                            )
+                        })?;
                     tokio::fs::remove_file(&dest).await.with_context(|| {
                         format!("removing local {} after conflict backup", dest.display())
                     })?;
                 }
                 stats.conflicts_backed_up += 1;
-                let copied = tokio::fs::copy(&path, &dest).await.with_context(|| {
-                    format!("copying {} → {}", path.display(), dest.display())
-                })?;
+                let copied = tokio::fs::copy(&path, &dest)
+                    .await
+                    .with_context(|| format!("copying {} → {}", path.display(), dest.display()))?;
                 stats.conflicts_resolved_remote += 1;
                 stats.bytes_restored += copied;
                 continue;
@@ -1709,7 +1707,10 @@ async fn run_backup_with_retry(
                 });
                 return;
             }
-            Ok(BackupResult::Uploaded { outcome: o, signature }) => {
+            Ok(BackupResult::Uploaded {
+                outcome: o,
+                signature,
+            }) => {
                 let _ = events_tx
                     .send(AgentEvent::BackupSuccess {
                         save_id: save.save_id.clone(),
@@ -2041,7 +2042,10 @@ mod tests {
         assert_eq!(stats.conflicts_resolved_remote, 0);
         assert_eq!(stats.conflicts_resolved_local, 0);
         assert_eq!(stats.conflicts_backed_up, 0);
-        assert_eq!(stats.bytes_restored, (b"beta".len() + b"gamma".len()) as u64);
+        assert_eq!(
+            stats.bytes_restored,
+            (b"beta".len() + b"gamma".len()) as u64
+        );
 
         // Local A untouched.
         assert_eq!(std::fs::read(target.join("a.dat")).unwrap(), b"alpha");
@@ -2256,7 +2260,10 @@ mod tests {
             .await
             .expect("cleanup ok");
 
-        assert!(!old_dir.exists(), "old conflict dir should have been pruned");
+        assert!(
+            !old_dir.exists(),
+            "old conflict dir should have been pruned"
+        );
         assert!(fresh_dir.exists(), "fresh conflict dir must survive");
         assert!(root.join("save-A").exists(), "save_id parent stays");
     }

@@ -158,8 +158,7 @@ fn walker_finds_save_dir_in_install_when_catalog_misses() {
         // Appid 413150 is Stardew Valley — present in the catalog with a
         // Linux template (`<xdgConfig>/StardewValley/Saves`) that we
         // deliberately do not materialise so the heuristic stays empty.
-        let steamapps =
-            build_steam_install(home, &[(413150, "Stardew Valley", "Stardew Valley")]);
+        let steamapps = build_steam_install(home, &[(413150, "Stardew Valley", "Stardew Valley")]);
         let install = steamapps.join("common").join("Stardew Valley");
         let save_dir = install.join("saves");
         std::fs::create_dir_all(&save_dir).unwrap();
@@ -260,12 +259,13 @@ fn aggressive_discover_respects_caps_against_noisy_dirs() {
         "aggressive walker hung past the 5s safety budget; elapsed = {elapsed:?}",
     );
     // The plan calls this out as `<= AGGRESSIVE_WALK_MAX_CANDIDATES`
-    // (currently 5). Hard-coding the number here means a bump to the
-    // constant will fail this test loudly rather than silently widen the
-    // contract.
+    // (bumped to 16 in the ADR 0020 phase-1 scoring work — graded scoring
+    // surfaces more partial matches, so the cap was widened to match).
+    // Hard-coding the number here means a future bump to the constant will
+    // fail this test loudly rather than silently widen the contract.
     assert!(
-        hits.len() <= 5,
-        "walker must respect the per-root candidate cap (<= 5); got {} hits: {hits:?}",
+        hits.len() <= 16,
+        "walker must respect the per-root candidate cap (<= 16); got {} hits: {hits:?}",
         hits.len(),
     );
     assert!(
@@ -328,8 +328,7 @@ fn fuzzy_match_resolves_steam_app_with_typo() {
         );
 
         let install_subdir = "Stardew Vally";
-        let steamapps =
-            build_steam_install(home, &[(appid, "Stardew Vally", install_subdir)]);
+        let steamapps = build_steam_install(home, &[(appid, "Stardew Vally", install_subdir)]);
 
         let state = CliState::default();
         let report = block_on_detect(Os::Linux, &state);
@@ -342,11 +341,7 @@ fn fuzzy_match_resolves_steam_app_with_typo() {
                 panic!(
                     "fuzzy match should surface `stardew-valley`; report had {} games: {:?}",
                     report.games.len(),
-                    report
-                        .games
-                        .iter()
-                        .map(|g| &g.slug)
-                        .collect::<Vec<_>>(),
+                    report.games.iter().map(|g| &g.slug).collect::<Vec<_>>(),
                 )
             });
         assert_eq!(game.source, DetectionSource::SteamLibrary);

@@ -297,9 +297,11 @@ mod tests {
 
     #[test]
     fn round_trip_preserves_non_default_automatic_mode() {
-        let mut p = Prefs::default();
-        p.automatic_mode = true;
-        p.automatic_scan_interval_hours = 12;
+        let p = Prefs {
+            automatic_mode: true,
+            automatic_scan_interval_hours: 12,
+            ..Prefs::default()
+        };
         let json = serde_json::to_string(&p).expect("serialising prefs");
         let back: Prefs = serde_json::from_str(&json).expect("round-trip");
         assert!(back.automatic_mode);

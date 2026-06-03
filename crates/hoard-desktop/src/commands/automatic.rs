@@ -73,7 +73,10 @@ pub fn start(app: &AppHandle, interval_hours: u32) {
         // right away instead of waiting up to `interval_hours`. The UI
         // is idempotent — if it already ran a scan synchronously on
         // toggle-on it will just no-op the duplicate one.
-        tracing::info!(interval_hours = hours, "automatic mode: immediate scan on (re)start");
+        tracing::info!(
+            interval_hours = hours,
+            "automatic mode: immediate scan on (re)start"
+        );
         if let Err(e) = app.emit("automatic-tick", ()) {
             tracing::warn!(error = %e, "automatic mode: couldn't emit initial tick event");
         }
@@ -85,7 +88,10 @@ pub fn start(app: &AppHandle, interval_hours: u32) {
         ticker.tick().await;
         loop {
             ticker.tick().await;
-            tracing::info!(interval_hours = hours, "automatic mode: scheduled scan starting");
+            tracing::info!(
+                interval_hours = hours,
+                "automatic mode: scheduled scan starting"
+            );
             // Best-effort emit — if no window is listening (rare; the
             // listener registers in App.svelte::onMount) we silently
             // drop the tick rather than queue events.

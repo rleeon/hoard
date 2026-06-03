@@ -3,6 +3,7 @@ name = "hoard-agent"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish.workspace = true
 description = "Shared client logic for the Hoard CLI and desktop app"
 
 [lib]

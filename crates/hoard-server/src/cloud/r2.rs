@@ -125,8 +125,7 @@ impl R2Store {
                 // bubbles up — we'd rather surface a real error than treat
                 // a transient outage as "object doesn't exist" and silently
                 // re-create something the user already has.
-                if e.to_string().contains("NotFound")
-                    || e.to_string().contains("status code: 404")
+                if e.to_string().contains("NotFound") || e.to_string().contains("status code: 404")
                 {
                     Ok(None)
                 } else {
@@ -149,9 +148,7 @@ impl R2Store {
         Ok(PresignedUrl {
             method: "PUT".to_string(),
             url: req.uri().to_string(),
-            expires_in_secs: ttl
-                .unwrap_or(self.default_presign_ttl)
-                .as_secs(),
+            expires_in_secs: ttl.unwrap_or(self.default_presign_ttl).as_secs(),
         })
     }
 
@@ -168,9 +165,7 @@ impl R2Store {
         Ok(PresignedUrl {
             method: "GET".to_string(),
             url: req.uri().to_string(),
-            expires_in_secs: ttl
-                .unwrap_or(self.default_presign_ttl)
-                .as_secs(),
+            expires_in_secs: ttl.unwrap_or(self.default_presign_ttl).as_secs(),
         })
     }
 

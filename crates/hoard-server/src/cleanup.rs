@@ -241,13 +241,14 @@ async fn purge_trash(
         // included so the refcount decrement matches the increment from
         // `create`). Chunked files have no blob row, so their decrement below
         // is a harmless no-op — their bytes are freed via the chunk pass.
-        let shas: Vec<String> = sqlx::query("SELECT sha256 FROM snapshot_files WHERE snapshot_id = ?")
-            .bind(&snap_id)
-            .fetch_all(pool)
-            .await?
-            .iter()
-            .map(|r| r.get::<String, _>("sha256"))
-            .collect();
+        let shas: Vec<String> =
+            sqlx::query("SELECT sha256 FROM snapshot_files WHERE snapshot_id = ?")
+                .bind(&snap_id)
+                .fetch_all(pool)
+                .await?
+                .iter()
+                .map(|r| r.get::<String, _>("sha256"))
+                .collect();
 
         // The chunk shas this snapshot referenced (ADR 0019, Fase 4): one row
         // per chunk reference, dups included, matching the per-chunk increment.
@@ -269,17 +270,21 @@ async fn purge_trash(
         let mut gc_paths: Vec<PathBuf> = Vec::new();
 
         for sha in &shas {
-            sqlx::query("UPDATE blobs SET refcount = refcount - 1 WHERE user_id = ? AND sha256 = ?")
-                .bind(&user_id)
-                .bind(sha)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query(
+                "UPDATE blobs SET refcount = refcount - 1 WHERE user_id = ? AND sha256 = ?",
+            )
+            .bind(&user_id)
+            .bind(sha)
+            .execute(&mut *tx)
+            .await?;
 
-            let remaining = sqlx::query("SELECT refcount, size_bytes FROM blobs WHERE user_id = ? AND sha256 = ?")
-                .bind(&user_id)
-                .bind(sha)
-                .fetch_optional(&mut *tx)
-                .await?;
+            let remaining = sqlx::query(
+                "SELECT refcount, size_bytes FROM blobs WHERE user_id = ? AND sha256 = ?",
+            )
+            .bind(&user_id)
+            .bind(sha)
+            .fetch_optional(&mut *tx)
+            .await?;
 
             if let Some(r) = remaining {
                 let rc: i64 = r.get("refcount");
@@ -300,17 +305,21 @@ async fn purge_trash(
         // refund the freed bytes. Done in the same tx as the blob pass so a
         // crash can't leave a chunk refcounted but unreferenced.
         for sha in &chunk_shas {
-            sqlx::query("UPDATE chunks SET refcount = refcount - 1 WHERE user_id = ? AND sha256 = ?")
-                .bind(&user_id)
-                .bind(sha)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query(
+                "UPDATE chunks SET refcount = refcount - 1 WHERE user_id = ? AND sha256 = ?",
+            )
+            .bind(&user_id)
+            .bind(sha)
+            .execute(&mut *tx)
+            .await?;
 
-            let remaining = sqlx::query("SELECT refcount, size_bytes FROM chunks WHERE user_id = ? AND sha256 = ?")
-                .bind(&user_id)
-                .bind(sha)
-                .fetch_optional(&mut *tx)
-                .await?;
+            let remaining = sqlx::query(
+                "SELECT refcount, size_bytes FROM chunks WHERE user_id = ? AND sha256 = ?",
+            )
+            .bind(&user_id)
+            .bind(sha)
+            .fetch_optional(&mut *tx)
+            .await?;
 
             if let Some(r) = remaining {
                 let rc: i64 = r.get("refcount");
@@ -381,7 +390,9 @@ mod tests {
 
     async fn write_blob(data_dir: &Path, user: &str, sha: &str, bytes: &[u8]) {
         let p = crate::blobs::blob_path(data_dir, user, sha);
-        tokio::fs::create_dir_all(p.parent().unwrap()).await.unwrap();
+        tokio::fs::create_dir_all(p.parent().unwrap())
+            .await
+            .unwrap();
         tokio::fs::write(&p, bytes).await.unwrap();
     }
 
@@ -402,7 +413,9 @@ mod tests {
         sqlx::query("INSERT INTO users (id, username, password_hash, storage_used_bytes) VALUES ('u1','user','x',220)")
             .execute(&pool).await.unwrap();
         sqlx::query("INSERT INTO games (slug, display_name) VALUES ('g','G')")
-            .execute(&pool).await.unwrap();
+            .execute(&pool)
+            .await
+            .unwrap();
         sqlx::query("INSERT INTO saves (id, user_id, game_slug, label, latest_version_num) VALUES ('sv','u1','g','default',2)")
             .execute(&pool).await.unwrap();
 
@@ -422,10 +435,20 @@ mod tests {
                 .bind(id).bind(snap).bind(id).bind(size).bind(sha)
                 .execute(&pool).await.unwrap();
         }
-        for (sha, size, rc) in [(&sha_shared, 100, 2), (&sha_only1, 50, 1), (&sha_only2, 70, 1)] {
-            sqlx::query("INSERT INTO blobs (user_id, sha256, size_bytes, refcount) VALUES ('u1',?,?,?)")
-                .bind(sha).bind(size).bind(rc)
-                .execute(&pool).await.unwrap();
+        for (sha, size, rc) in [
+            (&sha_shared, 100, 2),
+            (&sha_only1, 50, 1),
+            (&sha_only2, 70, 1),
+        ] {
+            sqlx::query(
+                "INSERT INTO blobs (user_id, sha256, size_bytes, refcount) VALUES ('u1',?,?,?)",
+            )
+            .bind(sha)
+            .bind(size)
+            .bind(rc)
+            .execute(&pool)
+            .await
+            .unwrap();
             write_blob(data_dir, "u1", sha, b"data").await;
         }
 
@@ -433,18 +456,28 @@ mod tests {
 
         // s1 gone (cascade removed its files); s2 intact.
         let s1: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM snapshots WHERE id='s1'")
-            .fetch_one(&pool).await.unwrap();
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         let s2: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM snapshots WHERE id='s2'")
-            .fetch_one(&pool).await.unwrap();
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(s1, 0);
         assert_eq!(s2, 1);
 
         // Shared blob decremented to 1, still present; only-s1 blob GC'd.
         let rc_shared: i64 = sqlx::query_scalar("SELECT refcount FROM blobs WHERE sha256=?")
-            .bind(&sha_shared).fetch_one(&pool).await.unwrap();
+            .bind(&sha_shared)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(rc_shared, 1);
         let only1: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM blobs WHERE sha256=?")
-            .bind(&sha_only1).fetch_one(&pool).await.unwrap();
+            .bind(&sha_only1)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(only1, 0);
 
         // Disk: shared + only2 present, only1 file removed.
@@ -454,7 +487,9 @@ mod tests {
 
         // Quota refunded by exactly the 50 freed bytes (220 → 170).
         let used: i64 = sqlx::query_scalar("SELECT storage_used_bytes FROM users WHERE id='u1'")
-            .fetch_one(&pool).await.unwrap();
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(used, 170);
 
         let _ = std::fs::remove_dir_all(&tmp);
@@ -462,7 +497,9 @@ mod tests {
 
     async fn write_chunk(data_dir: &Path, user: &str, sha: &str, bytes: &[u8]) {
         let p = crate::chunking::chunk_path(data_dir, user, sha);
-        tokio::fs::create_dir_all(p.parent().unwrap()).await.unwrap();
+        tokio::fs::create_dir_all(p.parent().unwrap())
+            .await
+            .unwrap();
         tokio::fs::write(&p, bytes).await.unwrap();
     }
 
@@ -486,7 +523,9 @@ mod tests {
         sqlx::query("INSERT INTO users (id, username, password_hash, storage_used_bytes) VALUES ('u1','user','x',220)")
             .execute(&pool).await.unwrap();
         sqlx::query("INSERT INTO games (slug, display_name) VALUES ('g','G')")
-            .execute(&pool).await.unwrap();
+            .execute(&pool)
+            .await
+            .unwrap();
         sqlx::query("INSERT INTO saves (id, user_id, game_slug, label, latest_version_num) VALUES ('sv','u1','g','default',2)")
             .execute(&pool).await.unwrap();
 
@@ -514,9 +553,15 @@ mod tests {
                 .execute(&pool).await.unwrap();
         }
         for (sha, size, rc) in [(&c_shared, 100, 2), (&c_only1, 50, 1), (&c_only2, 70, 1)] {
-            sqlx::query("INSERT INTO chunks (user_id, sha256, size_bytes, refcount) VALUES ('u1',?,?,?)")
-                .bind(sha).bind(size as i64).bind(rc as i64)
-                .execute(&pool).await.unwrap();
+            sqlx::query(
+                "INSERT INTO chunks (user_id, sha256, size_bytes, refcount) VALUES ('u1',?,?,?)",
+            )
+            .bind(sha)
+            .bind(size as i64)
+            .bind(rc as i64)
+            .execute(&pool)
+            .await
+            .unwrap();
             write_chunk(data_dir, "u1", sha, b"data").await;
         }
 
@@ -524,18 +569,30 @@ mod tests {
 
         // s1 gone (cascade removed its files + chunk refs); s2 intact.
         let s1: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM snapshots WHERE id='s1'")
-            .fetch_one(&pool).await.unwrap();
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(s1, 0);
-        let sfc1: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM snapshot_file_chunks WHERE snapshot_file_id='f1'")
-            .fetch_one(&pool).await.unwrap();
+        let sfc1: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM snapshot_file_chunks WHERE snapshot_file_id='f1'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert_eq!(sfc1, 0, "chunk refs cascade-deleted with the purged file");
 
         // Shared chunk decremented to 1, still present; only-s1 chunk GC'd.
         let rc_shared: i64 = sqlx::query_scalar("SELECT refcount FROM chunks WHERE sha256=?")
-            .bind(&c_shared).fetch_one(&pool).await.unwrap();
+            .bind(&c_shared)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(rc_shared, 1);
         let only1: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM chunks WHERE sha256=?")
-            .bind(&c_only1).fetch_one(&pool).await.unwrap();
+            .bind(&c_only1)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(only1, 0);
 
         assert!(crate::chunking::chunk_path(data_dir, "u1", &c_shared).exists());
@@ -544,7 +601,9 @@ mod tests {
 
         // Quota refunded by exactly the 50 freed bytes (220 → 170).
         let used: i64 = sqlx::query_scalar("SELECT storage_used_bytes FROM users WHERE id='u1'")
-            .fetch_one(&pool).await.unwrap();
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(used, 170);
 
         let _ = std::fs::remove_dir_all(&tmp);

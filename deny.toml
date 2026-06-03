@@ -44,6 +44,17 @@ ignore = [
     "RUSTSEC-2025-0081", # unic-char-property
     "RUSTSEC-2025-0098", # unic-ucd-version
     "RUSTSEC-2025-0100", # unic-ucd-ident
+    # rustls-webpki 0.101.7 advisories. All three share one root: this old
+    # webpki is pulled transitively ONLY under `--features cloud`, via
+    # aws-sdk-s3 → aws-smithy-http-client → rustls 0.21 → rustls-webpki 0.101.
+    # rustls 0.21 pins webpki ^0.101, so there's no in-line upgrade without
+    # bumping the aws-sdk majors (a separate, larger change). The TLS we do
+    # with it is to known AWS/R2 endpoints validated against public CAs, and
+    # we never parse CRLs. Revisit when the aws-smithy stack moves to rustls
+    # 0.23 (which uses a patched webpki).
+    "RUSTSEC-2026-0098", # name constraints accepted for URI names
+    "RUSTSEC-2026-0099", # name constraints accepted for wildcard certs
+    "RUSTSEC-2026-0104", # panic on malformed CRL (we don't parse CRLs)
     # tokio-tar PAX header smuggling. We only extract tarballs that come from
     # the server we trust (hoard-server) over an authenticated session, so the
     # smuggling vector doesn't apply to our threat model. Tracked in #upstream

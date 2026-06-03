@@ -1,7 +1,7 @@
 //! Shared Axum state for cloud mode.
 
-use crate::config::Config;
 use crate::cloud::{auth::JwksCache, r2::R2Store};
+use crate::config::Config;
 use sqlx::PgPool;
 use std::{sync::Arc, time::Instant};
 

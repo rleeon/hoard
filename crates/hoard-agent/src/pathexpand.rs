@@ -524,8 +524,14 @@ mod tests {
     fn expands_all_known_windows_tokens_against_prefix() {
         let prefix = PathBuf::from("/p");
         let cases: &[(&str, &str)] = &[
-            ("<winAppData>/X", "/p/drive_c/users/steamuser/AppData/Roaming/X"),
-            ("<winLocalAppData>/X", "/p/drive_c/users/steamuser/AppData/Local/X"),
+            (
+                "<winAppData>/X",
+                "/p/drive_c/users/steamuser/AppData/Roaming/X",
+            ),
+            (
+                "<winLocalAppData>/X",
+                "/p/drive_c/users/steamuser/AppData/Local/X",
+            ),
             (
                 "<winLocalAppDataLow>/X",
                 "/p/drive_c/users/steamuser/AppData/LocalLow/X",

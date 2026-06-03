@@ -36,11 +36,7 @@ fn root_templates(os: Os) -> &'static [&'static str] {
             "<home>/.local/state",
             "<home>/Documents",
         ],
-        Os::Mac => &[
-            "<macAppSupport>",
-            "<macPreferences>",
-            "<home>/Documents",
-        ],
+        Os::Mac => &["<macAppSupport>", "<macPreferences>", "<home>/Documents"],
     }
 }
 

@@ -214,7 +214,10 @@ fn first_linux_expansion(slug: &str) -> PathBuf {
         .into_iter()
         .next()
         .unwrap_or_else(|| {
-            panic!("linux template {:?} for {slug} did not expand", template.path)
+            panic!(
+                "linux template {:?} for {slug} did not expand",
+                template.path
+            )
         })
 }
 
@@ -311,8 +314,7 @@ fn fs_heuristic_finds_windows_appdata_save() {
 #[test]
 fn proton_prefix_finds_windows_only_game_on_linux() {
     with_isolated_linux_env(|home| {
-        let steamapps =
-            build_steam_install(home, &[(413150, "Stardew Valley", "Stardew Valley")]);
+        let steamapps = build_steam_install(home, &[(413150, "Stardew Valley", "Stardew Valley")]);
         let pfx = build_compatdata_prefix(&steamapps, 413150);
         let save_dir = pfx.join("drive_c/users/steamuser/AppData/Roaming/StardewValley/Saves");
         std::fs::create_dir_all(&save_dir).unwrap();
@@ -420,7 +422,9 @@ fn steam_name_fallback_picks_up_no_appid_entries() {
                     && !e.display_name.is_empty()
                     && ludusavi::slugify(&e.display_name) == e.slug
             })
-            .expect("catalog must contain at least one no-appid entry whose name slugifies cleanly");
+            .expect(
+                "catalog must contain at least one no-appid entry whose name slugifies cleanly",
+            );
 
         // Synthetic appid that no catalog entry claims, so the appid
         // cross-reference can't pre-empt the fallback path.

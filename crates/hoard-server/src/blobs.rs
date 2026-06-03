@@ -14,7 +14,11 @@ use tracing::{info, warn};
 /// Absolute on-disk path of a blob. Sharded by the first two hex chars of the
 /// sha to avoid one giant directory.
 pub fn blob_path(data_dir: &Path, user_id: &str, sha256: &str) -> PathBuf {
-    let prefix = if sha256.len() >= 2 { &sha256[..2] } else { "00" };
+    let prefix = if sha256.len() >= 2 {
+        &sha256[..2]
+    } else {
+        "00"
+    };
     data_dir
         .join("blobs")
         .join(user_id)

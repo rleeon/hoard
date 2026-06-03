@@ -26,6 +26,11 @@ pub mod state;
 pub mod steam;
 pub mod wine_prefixes;
 
+pub use api::{ApiClient, ApiError};
+pub use config::CliConfig;
+pub use credentials::{Credentials, TokenStorage, UserSection};
+pub use state::{CliState, SaveState};
+
 #[cfg(test)]
 pub(crate) mod test_lock {
     //! Single process-wide mutex guarding tests that mutate environment
@@ -36,8 +41,3 @@ pub(crate) mod test_lock {
     use std::sync::Mutex;
     pub(crate) static ENV: Mutex<()> = Mutex::new(());
 }
-
-pub use api::{ApiClient, ApiError};
-pub use config::CliConfig;
-pub use credentials::{Credentials, TokenStorage, UserSection};
-pub use state::{CliState, SaveState};

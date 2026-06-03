@@ -97,7 +97,7 @@ pub fn plan_prune(snapshots: &[SnapshotMeta], policy: &RetentionPolicy) -> Vec<S
 
     // Newest first.
     let mut ordered: Vec<&SnapshotMeta> = snapshots.iter().collect();
-    ordered.sort_by(|a, b| b.created_unix.cmp(&a.created_unix));
+    ordered.sort_by_key(|s| std::cmp::Reverse(s.created_unix));
 
     let newest_id = ordered[0].id.clone();
 
@@ -271,7 +271,10 @@ mod tests {
         let pruned = plan_prune(&snaps, &p);
         // 5 * 1.6MB = 8MB kept by recency, cap allows ~2 → prune the 3 oldest.
         assert_eq!(pruned.len(), 3);
-        assert!(!pruned.contains(&"v4".to_string()), "newest survives the cap");
+        assert!(
+            !pruned.contains(&"v4".to_string()),
+            "newest survives the cap"
+        );
         assert!(pruned.contains(&"v0".to_string()), "oldest pruned first");
     }
 

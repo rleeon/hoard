@@ -3,6 +3,7 @@ name = "hoard-manifest"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish.workspace = true
 description = "Game save-path manifest: curated game definitions + placeholder resolution"
 
 [dependencies]

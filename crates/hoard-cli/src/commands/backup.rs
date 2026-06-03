@@ -50,10 +50,7 @@ pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Re
     println!("uploading from {}", source.display());
     let prev_sig = state.saves.get(&save_id).and_then(|s| s.set_hash.clone());
     // Our last-synced version for this save → the server's fast-forward base.
-    let base_version = state
-        .saves
-        .get(&save_id)
-        .and_then(|s| s.last_version_num);
+    let base_version = state.saves.get(&save_id).and_then(|s| s.last_version_num);
     let game_slug = state
         .saves
         .get(&save_id)

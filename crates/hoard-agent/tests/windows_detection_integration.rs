@@ -401,16 +401,15 @@ fn lutris_fixture_yields_detected_game() {
         // Stardew Valley's Steam appid is 413150 — see Ludusavi catalog.
         // The cross-reference inserts the slug with empty `found_paths`
         // so the aggressive walker has work to do.
-        let _steamapps =
-            build_steam_install(home, &[(413150, "Stardew Valley", "Stardew Valley")]);
+        let _steamapps = build_steam_install(home, &[(413150, "Stardew Valley", "Stardew Valley")]);
 
         let prefix_root = home
             .join(".local/share/lutris/runners/wine")
             .join("lutris-fshack-7.2-x86_64")
             .join("prefixes")
             .join("stardew-valley");
-        let save_dir = prefix_root
-            .join("drive_c/users/steamuser/AppData/Roaming/StardewValley/Saves");
+        let save_dir =
+            prefix_root.join("drive_c/users/steamuser/AppData/Roaming/StardewValley/Saves");
         std::fs::create_dir_all(&save_dir).unwrap();
         // A recent `.sav` file pushes the aggressive walker to Medium
         // confidence — the same pattern the 1.5.1 walker tests rely on to
@@ -438,10 +437,7 @@ fn lutris_fixture_yields_detected_game() {
             "Lutris walker should produce at least one hit inside the prefix; got {:?}",
             game.found_paths,
         );
-        let inside_prefix = game
-            .found_paths
-            .iter()
-            .any(|p| p.starts_with(&prefix_root));
+        let inside_prefix = game.found_paths.iter().any(|p| p.starts_with(&prefix_root));
         assert!(
             inside_prefix,
             "at least one found_paths entry should live under the Lutris prefix {prefix_root:?}; got {:?}",
@@ -460,14 +456,13 @@ fn lutris_fixture_yields_detected_game() {
 #[test]
 fn bottles_fixture_yields_detected_game() {
     with_isolated_linux_env(|home| {
-        let _steamapps =
-            build_steam_install(home, &[(413150, "Stardew Valley", "Stardew Valley")]);
+        let _steamapps = build_steam_install(home, &[(413150, "Stardew Valley", "Stardew Valley")]);
 
         let prefix_root = home
             .join(".local/share/bottles/bottles")
             .join("stardew-valley");
-        let save_dir = prefix_root
-            .join("drive_c/users/steamuser/AppData/Roaming/StardewValley/Saves");
+        let save_dir =
+            prefix_root.join("drive_c/users/steamuser/AppData/Roaming/StardewValley/Saves");
         std::fs::create_dir_all(&save_dir).unwrap();
         std::fs::write(save_dir.join("Farm.sav"), b"synthetic save").unwrap();
 
@@ -489,10 +484,7 @@ fn bottles_fixture_yields_detected_game() {
             "Bottles walker should produce at least one hit inside the prefix; got {:?}",
             game.found_paths,
         );
-        let inside_prefix = game
-            .found_paths
-            .iter()
-            .any(|p| p.starts_with(&prefix_root));
+        let inside_prefix = game.found_paths.iter().any(|p| p.starts_with(&prefix_root));
         assert!(
             inside_prefix,
             "at least one found_paths entry should live under the Bottles prefix {prefix_root:?}; got {:?}",

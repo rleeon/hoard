@@ -897,7 +897,10 @@ pub async fn download(
         .map_err(|_| internal())?;
 
         if chunk_rows.is_empty() {
-            entries.push((rel, DlSource::Blob(crate::blobs::blob_path(&data_dir, &uid, &sha))));
+            entries.push((
+                rel,
+                DlSource::Blob(crate::blobs::blob_path(&data_dir, &uid, &sha)),
+            ));
         } else {
             let paths = chunk_rows
                 .iter()
@@ -906,7 +909,13 @@ pub async fn download(
                     crate::chunking::chunk_path(&data_dir, &uid, &csha)
                 })
                 .collect();
-            entries.push((rel, DlSource::Chunks { paths, size: size as u64 }));
+            entries.push((
+                rel,
+                DlSource::Chunks {
+                    paths,
+                    size: size as u64,
+                },
+            ));
         }
     }
 

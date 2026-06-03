@@ -45,13 +45,13 @@ pub struct LsCustom {
 
 #[derive(Debug, Deserialize)]
 pub struct LsData {
-    pub id: String,                    // subscription / order id
+    pub id: String, // subscription / order id
     pub attributes: LsAttributes,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct LsAttributes {
-    pub status: Option<String>,        // 'active','cancelled','expired',...
+    pub status: Option<String>, // 'active','cancelled','expired',...
     pub customer_id: Option<i64>,
     /// Each LS product has its own product_id and one variant_id. We
     /// key on product_id because the store uses two separate products
@@ -97,9 +97,7 @@ pub fn verify_signature(body: &[u8], secret: &str, signature_hex: &str) -> bool 
 /// Map LS event_name → desired status in our `subscriptions` table.
 pub fn status_for_event(event: &str) -> Option<&'static str> {
     match event {
-        "subscription_created" | "subscription_updated" | "subscription_resumed" => {
-            Some("active")
-        }
+        "subscription_created" | "subscription_updated" | "subscription_resumed" => Some("active"),
         "subscription_cancelled" => Some("grace"),
         "subscription_expired" => Some("expired"),
         "subscription_payment_failed" => Some("grace"),
@@ -154,8 +152,7 @@ pub async fn handle(
         Some(u) => u,
         None => {
             warn!("ls webhook: missing/invalid custom_data.user_id");
-            return (StatusCode::BAD_REQUEST, "missing user_id in custom_data")
-                .into_response();
+            return (StatusCode::BAD_REQUEST, "missing user_id in custom_data").into_response();
         }
     };
 
@@ -199,13 +196,12 @@ pub async fn handle(
     // profiles.plan untouched until the daily cron pushes the user to free
     // — gives them the period they paid for.
     if status == "active" {
-        if let Err(e) = sqlx::query(
-            "UPDATE profiles SET plan = $1, updated_at = now() WHERE user_id = $2",
-        )
-        .bind(plan)
-        .bind(user_id)
-        .execute(&state.pool)
-        .await
+        if let Err(e) =
+            sqlx::query("UPDATE profiles SET plan = $1, updated_at = now() WHERE user_id = $2")
+                .bind(plan)
+                .bind(user_id)
+                .execute(&state.pool)
+                .await
         {
             warn!(error = %e, "ls webhook: profile plan update failed");
         }

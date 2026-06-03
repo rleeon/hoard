@@ -257,9 +257,9 @@ pub async fn apply_desktop_update(app: AppHandle) -> Result<ApplyOutcome, AppErr
     // Network/HTTP failures fetching the release feed: surface as "unknown",
     // since this branch fires before we even know what version we're trying
     // to install. The raw `reqwest` message goes into `detail`.
-    let release = fetch_gh_release()
-        .await
-        .map_err(|e| AppError::new("updates.error.title", "updates.error.unknown").with_detail(e))?;
+    let release = fetch_gh_release().await.map_err(|e| {
+        AppError::new("updates.error.title", "updates.error.unknown").with_detail(e)
+    })?;
     let version = release.tag_name.trim_start_matches('v').to_string();
 
     let asset = pick_asset(&release.assets)
@@ -285,10 +285,12 @@ pub async fn apply_desktop_update(app: AppHandle) -> Result<ApplyOutcome, AppErr
             AppError::new("updates.error.title", "updates.error.download_failed")
                 .with_detail(format!("locating a writable directory: {e}"))
         })?;
-    tokio::fs::create_dir_all(&download_dir).await.map_err(|e| {
-        AppError::new("updates.error.title", "updates.error.download_failed")
-            .with_detail(e.to_string())
-    })?;
+    tokio::fs::create_dir_all(&download_dir)
+        .await
+        .map_err(|e| {
+            AppError::new("updates.error.title", "updates.error.download_failed")
+                .with_detail(e.to_string())
+        })?;
     let dest = download_dir.join(&asset.name);
 
     download_to(&asset.browser_download_url, &dest)

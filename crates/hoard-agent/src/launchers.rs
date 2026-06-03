@@ -493,11 +493,7 @@ mod tests {
             .unwrap();
             conn.execute(
                 "INSERT INTO Builds (productId, productName, installationPath) VALUES (?1, ?2, ?3)",
-                rusqlite::params![
-                    1207659999_i64,
-                    "Hyperdrive",
-                    install_dir.to_string_lossy(),
-                ],
+                rusqlite::params![1207659999_i64, "Hyperdrive", install_dir.to_string_lossy(),],
             )
             .unwrap();
             // A second row pointing at a path that does not exist must be
@@ -505,11 +501,7 @@ mod tests {
             // delete.
             conn.execute(
                 "INSERT INTO Builds (productId, productName, installationPath) VALUES (?1, ?2, ?3)",
-                rusqlite::params![
-                    9999_i64,
-                    "Ghost",
-                    tmp.path().join("nope").to_string_lossy(),
-                ],
+                rusqlite::params![9999_i64, "Ghost", tmp.path().join("nope").to_string_lossy(),],
             )
             .unwrap();
         }
@@ -536,7 +528,8 @@ mod tests {
         // about — must collapse to vec empty without panic.
         {
             let conn = rusqlite::Connection::open(&db_path).unwrap();
-            conn.execute("CREATE TABLE Unrelated (x INTEGER)", []).unwrap();
+            conn.execute("CREATE TABLE Unrelated (x INTEGER)", [])
+                .unwrap();
         }
 
         with_env("LOCALAPPDATA", localappdata, || {

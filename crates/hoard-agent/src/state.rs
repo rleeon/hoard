@@ -207,8 +207,7 @@ mod tests {
     /// `ignored_slugs` survives a JSON round-trip and pre-1.5.3 state files
     /// (no `ignored_slugs` key) deserialise as an empty set.
     #[test]
-    fn serialize_with_empty_ignored_does_not_emit_field_explicitly_or_does_emit_consistently()
-    {
+    fn serialize_with_empty_ignored_does_not_emit_field_explicitly_or_does_emit_consistently() {
         // Round-trip with a populated set: every slug survives.
         let mut state = CliState::default();
         state.add_ignored_slug("lethal-company".to_string());

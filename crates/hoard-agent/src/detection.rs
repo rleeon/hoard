@@ -430,8 +430,7 @@ where
         if !user_dirs.is_empty() {
             let mut cloud_hits = 0usize;
             for app in &steam_apps {
-                let Some(entry) = hoard_manifest::ludusavi::find_by_steam_app_id(app.app_id)
-                else {
+                let Some(entry) = hoard_manifest::ludusavi::find_by_steam_app_id(app.app_id) else {
                     continue;
                 };
                 let mut hits: Vec<PathBuf> = Vec::new();
@@ -969,11 +968,7 @@ fn apply_manual_overrides(
         orphaned += 1;
     }
     if applied > 0 || orphaned > 0 {
-        tracing::info!(
-            applied,
-            orphaned,
-            "manual_paths overrides applied"
-        );
+        tracing::info!(applied, orphaned, "manual_paths overrides applied");
     }
 }
 
@@ -1122,7 +1117,9 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
             fallback_step.expanded.push(slugified.clone());
             if slugified == slug {
                 fallback_step.template = Some(format!("slugify({:?})", app.name));
-                fallback_step.kept.push(app.install_dir.display().to_string());
+                fallback_step
+                    .kept
+                    .push(app.install_dir.display().to_string());
             }
         }
         if fallback_step.kept.is_empty() {
@@ -1323,8 +1320,7 @@ pub(crate) const WALK_SKIP: &[&str] = &[
 /// `Low` to `Medium` confidence. Compared case-insensitively. Kept tight on
 /// purpose — `.cfg` / `.ini` would generate too many false positives from
 /// engine config dirs.
-pub(crate) const SAVE_FILE_EXTENSIONS: &[&str] =
-    &["sav", "save", "profile", "json", "dat", "xml"];
+pub(crate) const SAVE_FILE_EXTENSIONS: &[&str] = &["sav", "save", "profile", "json", "dat", "xml"];
 
 /// How recent a save-like file has to be to promote a dir to `Medium`.
 /// DETECCIÓN (recall, fase 1): subido 90→180 días. 90 dejaba fuera saves
@@ -1413,7 +1409,7 @@ fn walk_root_collecting(
         if out.len() - initial >= AGGRESSIVE_WALK_MAX_CANDIDATES {
             break;
         }
-        if entries_checked % TIMEOUT_CHECK_INTERVAL == 0 && start.elapsed() >= timeout {
+        if entries_checked.is_multiple_of(TIMEOUT_CHECK_INTERVAL) && start.elapsed() >= timeout {
             break;
         }
         entries_checked += 1;
@@ -1448,7 +1444,7 @@ fn walk_root_collecting(
                 // further just bloats the candidate list.
                 continue;
             }
-            if depth + 1 <= max_depth {
+            if depth < max_depth {
                 stack.push((path, depth + 1));
             }
         }
@@ -1458,7 +1454,7 @@ fn walk_root_collecting(
 /// True iff the directory name is in [`WALK_SKIP`] (case-insensitive).
 fn is_skip_dir(name: &str) -> bool {
     let lower = name.to_lowercase();
-    WALK_SKIP.iter().any(|s| *s == lower.as_str())
+    WALK_SKIP.contains(&lower.as_str())
 }
 
 /// If a dir's name + contents look save-like, return a
@@ -1490,7 +1486,11 @@ fn classify_dir_as_save_like(path: &Path, name: &str) -> Option<DiscoveredSavePa
     Some(DiscoveredSavePath {
         path: path.to_path_buf(),
         confidence,
-        reason: format!("score {:.2}: {}", breakdown.score, breakdown.reasons.join(", ")),
+        reason: format!(
+            "score {:.2}: {}",
+            breakdown.score,
+            breakdown.reasons.join(", ")
+        ),
     })
 }
 
@@ -1536,7 +1536,7 @@ pub(crate) fn dir_has_recent_save_file(dir: &Path) -> bool {
             continue;
         };
         let ext_lower = ext.to_lowercase();
-        if !SAVE_FILE_EXTENSIONS.iter().any(|e| *e == ext_lower.as_str()) {
+        if !SAVE_FILE_EXTENSIONS.contains(&ext_lower.as_str()) {
             continue;
         }
         let Ok(meta) = entry.metadata() else {
@@ -1691,10 +1691,7 @@ mod tests {
 
         let refined = refine_save_dir("ambiguous-game", vec![root.clone()]);
         // find_save_subdirs sorts, so the order is deterministic.
-        assert_eq!(
-            refined,
-            vec![root.join("save games"), root.join("saves")]
-        );
+        assert_eq!(refined, vec![root.join("save games"), root.join("saves")]);
     }
 
     /// Build a synthetic catalog entry for the slug-fallback tests. The
@@ -1981,8 +1978,9 @@ mod tests {
                 "\"AppState\"\n{\n  \"appid\" \"413150\"\n  \"name\" \"Stardew Valley\"\n  \"installdir\" \"Stardew Valley\"\n}\n",
             )
             .unwrap();
-            let save_dir = steamapps
-                .join("compatdata/413150/pfx/drive_c/users/steamuser/AppData/Roaming/StardewValley/Saves");
+            let save_dir = steamapps.join(
+                "compatdata/413150/pfx/drive_c/users/steamuser/AppData/Roaming/StardewValley/Saves",
+            );
             std::fs::create_dir_all(&save_dir).unwrap();
 
             let rt = tokio::runtime::Builder::new_current_thread()
@@ -2074,8 +2072,9 @@ mod tests {
                 "\"AppState\"\n{\n  \"appid\" \"413150\"\n  \"name\" \"Stardew Valley\"\n  \"installdir\" \"Stardew Valley\"\n}\n",
             )
             .unwrap();
-            let save_dir = steamapps
-                .join("compatdata/413150/pfx/drive_c/users/steamuser/AppData/Roaming/StardewValley/Saves");
+            let save_dir = steamapps.join(
+                "compatdata/413150/pfx/drive_c/users/steamuser/AppData/Roaming/StardewValley/Saves",
+            );
             std::fs::create_dir_all(&save_dir).unwrap();
 
             let rt = tokio::runtime::Builder::new_current_thread()

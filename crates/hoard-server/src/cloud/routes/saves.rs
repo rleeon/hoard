@@ -167,7 +167,8 @@ pub async fn init_upload(
     if let Some(base) = body.base_version {
         if base != head {
             return Ok(NonFastForwardResponse {
-                error: "non-fast-forward: another device advanced this save since your base version",
+                error:
+                    "non-fast-forward: another device advanced this save since your base version",
                 code: "non_fast_forward",
                 head_version: head,
                 base_version: base,
@@ -240,11 +241,10 @@ pub async fn commit_upload(
 ) -> Result<Json<UploadCommitOut>, CloudError> {
     // Owner check first — never trust a save_id from the request without
     // verifying the JWT subject owns it.
-    let owner: Option<Uuid> =
-        sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
-            .bind(&save_id)
-            .fetch_optional(&state.pool)
-            .await?;
+    let owner: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
+        .bind(&save_id)
+        .fetch_optional(&state.pool)
+        .await?;
     let Some(owner) = owner else {
         return Err(CloudError::NotFound("save not found"));
     };
@@ -297,13 +297,11 @@ pub async fn commit_upload(
     .bind(version)
     .execute(&mut *tx)
     .await?;
-    sqlx::query(
-        "UPDATE saves SET latest_version_num = $1, updated_at = now() WHERE id = $2",
-    )
-    .bind(version)
-    .bind(&save_id)
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query("UPDATE saves SET latest_version_num = $1, updated_at = now() WHERE id = $2")
+        .bind(version)
+        .bind(&save_id)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query(
         "INSERT INTO sync_log (user_id, save_id, version_num, kind, bytes)
              VALUES ($1, $2, $3, 'upload', $4)",
@@ -412,14 +410,10 @@ pub async fn download(
 /// Tiny one-query helper to fetch a user's plan tag without going through
 /// the full quota::load pipeline. Used by paths that need the plan but
 /// don't need (yet) the storage figures.
-async fn plan_for_user(
-    state: &CloudState,
-    user_id: Uuid,
-) -> Result<Option<Plan>, CloudError> {
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT plan FROM profiles WHERE user_id = $1")
-            .bind(user_id)
-            .fetch_optional(&state.pool)
-            .await?;
+async fn plan_for_user(state: &CloudState, user_id: Uuid) -> Result<Option<Plan>, CloudError> {
+    let row: Option<(String,)> = sqlx::query_as("SELECT plan FROM profiles WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_optional(&state.pool)
+        .await?;
     Ok(row.map(|r| Plan::from_str(&r.0).unwrap_or(Plan::Free)))
 }

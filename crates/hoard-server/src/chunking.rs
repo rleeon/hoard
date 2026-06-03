@@ -46,7 +46,11 @@ pub struct ChunkPlan {
 /// chars of the sha. Deliberately a sibling of `blobs/` under the same
 /// `data_dir` so chunk placement can use `rename` on the same filesystem.
 pub fn chunk_path(data_dir: &Path, user_id: &str, sha256: &str) -> PathBuf {
-    let prefix = if sha256.len() >= 2 { &sha256[..2] } else { "00" };
+    let prefix = if sha256.len() >= 2 {
+        &sha256[..2]
+    } else {
+        "00"
+    };
     data_dir
         .join("chunks")
         .join(user_id)
@@ -134,12 +138,7 @@ pub async fn plan_chunks(src: &Path) -> std::io::Result<Vec<ChunkPlan>> {
 /// atomically (temp file + rename). Used by the commit phase to place a chunk
 /// that isn't already on disk. Idempotent: a concurrent uploader that placed
 /// the same chunk first just gets overwritten by an identical rename.
-pub async fn place_chunk(
-    src: &Path,
-    offset: u64,
-    len: usize,
-    dest: &Path,
-) -> std::io::Result<()> {
+pub async fn place_chunk(src: &Path, offset: u64, len: usize, dest: &Path) -> std::io::Result<()> {
     if let Some(parent) = dest.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
@@ -179,7 +178,9 @@ mod tests {
         let mut data = vec![0u8; 10 << 20];
         let mut s: u64 = 12345;
         for b in data.iter_mut() {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             *b = (s >> 33) as u8;
         }
         tokio::fs::write(&p, &data).await.unwrap();
@@ -196,7 +197,11 @@ mod tests {
         // Chunk sizes respect the bounds (except possibly the last).
         for (i, c) in a.iter().enumerate() {
             if i + 1 < a.len() {
-                assert!(c.len >= MIN_CHUNK && c.len <= MAX_CHUNK, "chunk {i} len {}", c.len);
+                assert!(
+                    c.len >= MIN_CHUNK && c.len <= MAX_CHUNK,
+                    "chunk {i} len {}",
+                    c.len
+                );
             }
         }
         // Offsets + lengths tile the file exactly.
@@ -214,15 +219,17 @@ mod tests {
         let mut data = vec![0u8; 16 << 20];
         let mut s: u64 = 99;
         for b in data.iter_mut() {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             *b = (s >> 33) as u8;
         }
         let p1 = dir.join("v1.bin");
         tokio::fs::write(&p1, &data).await.unwrap();
 
         // Flip a handful of bytes well into the file.
-        for i in (8 << 20)..((8 << 20) + 16) {
-            data[i] ^= 0xFF;
+        for b in &mut data[(8 << 20)..((8 << 20) + 16)] {
+            *b ^= 0xFF;
         }
         let p2 = dir.join("v2.bin");
         tokio::fs::write(&p2, &data).await.unwrap();

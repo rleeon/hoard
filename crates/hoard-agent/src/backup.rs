@@ -317,6 +317,7 @@ where
 /// size up front and commit records the sha256 the server later verifies via
 /// R2 HEAD, so we materialise the tar.zst to a temp file first to measure
 /// both before talking to the API.
+#[allow(clippy::too_many_arguments)]
 async fn upload_directory_cloud<F>(
     client: &ApiClient,
     save_id: &str,
@@ -485,6 +486,7 @@ async fn file_to_body(path: &Path) -> Result<reqwest::Body> {
 /// 3. Bytes actually moved → upload and return [`BackupResult::Uploaded`].
 ///
 /// The signature persisted by the caller is `"<cheap>:<content>"`.
+#[allow(clippy::too_many_arguments)]
 pub async fn upload_directory_checked<F>(
     client: &ApiClient,
     save_id: &str,
@@ -608,11 +610,11 @@ mod tests {
 
     #[test]
     fn signature_changes_on_size_mtime_or_path() {
-        let base = vec![uf("a.sav", 10, 100)];
+        let base = [uf("a.sav", 10, 100)];
         let base_sig = compute_set_signature(&base);
-        assert_ne!(base_sig, compute_set_signature(&vec![uf("a.sav", 11, 100)]));
-        assert_ne!(base_sig, compute_set_signature(&vec![uf("a.sav", 10, 101)]));
-        assert_ne!(base_sig, compute_set_signature(&vec![uf("b.sav", 10, 100)]));
+        assert_ne!(base_sig, compute_set_signature(&[uf("a.sav", 11, 100)]));
+        assert_ne!(base_sig, compute_set_signature(&[uf("a.sav", 10, 101)]));
+        assert_ne!(base_sig, compute_set_signature(&[uf("b.sav", 10, 100)]));
     }
 
     #[test]

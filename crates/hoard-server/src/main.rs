@@ -15,8 +15,8 @@ use tracing::info;
 use hoard_server::auth::require_auth;
 use hoard_server::cleanup;
 use hoard_server::routes::{
-    admin as admin_routes, auth as auth_routes, games as game_routes, health,
-    logs as log_routes, saves as save_routes, snapshots as snap_routes,
+    admin as admin_routes, auth as auth_routes, games as game_routes, health, logs as log_routes,
+    saves as save_routes, snapshots as snap_routes,
 };
 
 #[derive(Parser)]

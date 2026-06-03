@@ -16,6 +16,10 @@ edition = "2021"
 version = "1.8.6"
 authors = ["insider <raileonoliva@gmail.com>"]
 license = "AGPL-3.0"
+# Self-hosted app, never published to crates.io. Marking the members private
+# also tells cargo-deny to apply `allow-wildcard-paths` to our intra-workspace
+# path deps (the exemption is skipped for publishable crates).
+publish = false
 
 [workspace.dependencies]
 # Async runtime

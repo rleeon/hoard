@@ -82,20 +82,13 @@ pub async fn used_in_window(
     .bind(cutoff)
     .fetch_optional(pool)
     .await?;
-    Ok(row
-        .and_then(|r| r.0)
-        .map(|n| n.max(0) as u64)
-        .unwrap_or(0))
+    Ok(row.and_then(|r| r.0).map(|n| n.max(0) as u64).unwrap_or(0))
 }
 
 /// Record `bytes` against the current minute bucket. Idempotent for the
 /// (user_id, bucket_start) row — concurrent calls just add into the
 /// running counter atomically.
-pub async fn record(
-    pool: &PgPool,
-    user_id: Uuid,
-    bytes: u64,
-) -> Result<(), sqlx::Error> {
+pub async fn record(pool: &PgPool, user_id: Uuid, bytes: u64) -> Result<(), sqlx::Error> {
     let bucket = floor_to_minute(OffsetDateTime::now_utc());
     sqlx::query(
         r#"
@@ -116,11 +109,7 @@ pub async fn record(
 /// "How many seconds until the oldest bucket falls off the window?"
 /// Used to populate `Retry-After`. Falls back to the full window if no
 /// bucket rows exist (shouldn't happen on the 429 path, but defensive).
-pub async fn retry_after_secs(
-    pool: &PgPool,
-    user_id: Uuid,
-    window_secs: u32,
-) -> u32 {
+pub async fn retry_after_secs(pool: &PgPool, user_id: Uuid, window_secs: u32) -> u32 {
     let cutoff = OffsetDateTime::now_utc() - time::Duration::seconds(window_secs as i64);
     let oldest: Option<(OffsetDateTime,)> = sqlx::query_as(
         "SELECT bucket_start FROM bandwidth_usage
@@ -163,8 +152,7 @@ pub async fn check(
         }
     };
     if used.saturating_add(requested) > limits.bandwidth_quota_bytes {
-        let retry =
-            retry_after_secs(&state.pool, user_id, limits.bandwidth_window_secs).await;
+        let retry = retry_after_secs(&state.pool, user_id, limits.bandwidth_window_secs).await;
         let body = BandwidthLimitResponse {
             error: "bandwidth quota exceeded",
             code: "bandwidth_limit",

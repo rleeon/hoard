@@ -180,7 +180,12 @@ pub async fn handle(
         None => return (StatusCode::SERVICE_UNAVAILABLE, "cloud config missing").into_response(),
     };
 
-    let hget = |name: &str| headers.get(name).and_then(|v| v.to_str().ok()).unwrap_or("");
+    let hget = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+    };
     let webhook_id = hget("webhook-id");
     let webhook_ts = hget("webhook-timestamp");
     let signature = hget("webhook-signature");
@@ -231,7 +236,9 @@ pub async fn handle(
     let user_id = match user_id {
         Some(u) => u,
         None => {
-            warn!("polar webhook: missing/invalid user_id (metadata.user_id / customer.external_id)");
+            warn!(
+                "polar webhook: missing/invalid user_id (metadata.user_id / customer.external_id)"
+            );
             return (StatusCode::BAD_REQUEST, "missing user_id").into_response();
         }
     };

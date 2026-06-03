@@ -77,7 +77,12 @@ pub async fn upgrade(
         "remote upgrade scheduled; root oneshot will pick it up"
     );
 
-    Ok((StatusCode::ACCEPTED, Json(UpgradeAck { status: "scheduled" })))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(UpgradeAck {
+            status: "scheduled",
+        }),
+    ))
 }
 
 fn now_unix() -> u64 {

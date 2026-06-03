@@ -202,9 +202,7 @@ pub(crate) fn classify_cloud(url: &str) -> bool {
         Some(h) => h,
         None => return false,
     };
-    host == "hoard.services"
-        || host.ends_with(".hoard.services")
-        || host.ends_with(".fly.dev")
+    host == "hoard.services" || host.ends_with(".hoard.services") || host.ends_with(".fly.dev")
 }
 
 // ---- helpers ----------------------------------------------------------

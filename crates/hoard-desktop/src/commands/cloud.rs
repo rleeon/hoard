@@ -394,9 +394,7 @@ pub fn cloud_is_logged_in(state: State<'_, AppState>) -> bool {
 /// Re-fetch `/v1/me`. Updates the in-memory cache and the persisted
 /// session snapshot. Returns the fresh account.
 #[tauri::command]
-pub async fn cloud_refresh_account(
-    state: State<'_, AppState>,
-) -> Result<CloudAccount, String> {
+pub async fn cloud_refresh_account(state: State<'_, AppState>) -> Result<CloudAccount, String> {
     let Some(creds) = load_creds().map_err(|e| e.to_string())? else {
         return Err("Not signed in to Hoard Cloud.".into());
     };
@@ -415,8 +413,13 @@ pub async fn cloud_refresh_account(
         Err(other) => return Err(other.into_message()),
     };
     // Refresh both the disk and the in-memory cache so the bar updates.
-    save_creds(&creds.access_token, &creds.refresh_token, &creds.server_url, &me)
-        .map_err(|e| format!("Couldn't update session: {e}"))?;
+    save_creds(
+        &creds.access_token,
+        &creds.refresh_token,
+        &creds.server_url,
+        &me,
+    )
+    .map_err(|e| format!("Couldn't update session: {e}"))?;
     *state.cloud_account.lock().unwrap() = Some(me.clone());
     Ok(me)
 }

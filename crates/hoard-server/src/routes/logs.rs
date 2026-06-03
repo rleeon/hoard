@@ -73,23 +73,6 @@ pub fn level_rank(level: &str) -> u8 {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::level_rank;
-
-    #[test]
-    fn cloud_info_filter() {
-        // Cloud keeps INFO and above, drops TRACE/DEBUG. (CLOUD_MIN_RANK == 2)
-        assert!(level_rank("trace") < 2);
-        assert!(level_rank("debug") < 2);
-        assert!(level_rank("info") >= 2);
-        assert!(level_rank("WARN") >= 2);
-        assert!(level_rank("error") >= 2);
-        // Unknown levels are never silently dropped (treated as INFO).
-        assert!(level_rank("notice") >= 2);
-    }
-}
-
 pub async fn ingest(
     Extension(user): Extension<AuthUser>,
     State(state): State<Arc<ServerState>>,
@@ -105,10 +88,7 @@ pub async fn ingest(
     for entry in &batch.entries {
         let id = uuid::Uuid::new_v4().to_string();
         let level = entry.level.trim().to_ascii_lowercase();
-        let fields_json = entry
-            .fields
-            .as_ref()
-            .map(|v| v.to_string());
+        let fields_json = entry.fields.as_ref().map(|v| v.to_string());
 
         let res = sqlx::query(
             "INSERT INTO client_logs
@@ -140,4 +120,21 @@ pub async fn ingest(
     }
 
     Ok((StatusCode::OK, Json(IngestResponse { accepted })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::level_rank;
+
+    #[test]
+    fn cloud_info_filter() {
+        // Cloud keeps INFO and above, drops TRACE/DEBUG. (CLOUD_MIN_RANK == 2)
+        assert!(level_rank("trace") < 2);
+        assert!(level_rank("debug") < 2);
+        assert!(level_rank("info") >= 2);
+        assert!(level_rank("WARN") >= 2);
+        assert!(level_rank("error") >= 2);
+        // Unknown levels are never silently dropped (treated as INFO).
+        assert!(level_rank("notice") >= 2);
+    }
 }

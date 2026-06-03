@@ -207,9 +207,7 @@ mod tests {
     #[test]
     fn extract_bearer_missing_header() {
         use axum::http::Request as HttpReq;
-        let req = HttpReq::builder()
-            .body(axum::body::Body::empty())
-            .unwrap();
+        let req = HttpReq::builder().body(axum::body::Body::empty()).unwrap();
         assert!(extract_bearer(&req).is_none());
     }
 

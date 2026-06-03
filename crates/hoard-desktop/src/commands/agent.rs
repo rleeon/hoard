@@ -150,9 +150,10 @@ pub async fn start_agent(
                 AgentEvent::BackupSuccess { .. } => {
                     let _ = app_for_emit.emit("agent://upload-completed", &ev);
                 }
-                AgentEvent::BackupScheduled { reason, .. }
-                    if matches!(reason, hoard_agent::agent::BackupReason::FilesystemSettled) =>
-                {
+                AgentEvent::BackupScheduled {
+                    reason: hoard_agent::agent::BackupReason::FilesystemSettled,
+                    ..
+                } => {
                     let _ = app_for_emit.emit("agent://throttled", &ev);
                 }
                 _ => {}

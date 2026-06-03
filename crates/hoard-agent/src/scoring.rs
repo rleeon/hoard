@@ -138,7 +138,10 @@ fn name_signal(name: &str, reasons: &mut Vec<String>) -> f32 {
         reasons.push("name exact".into());
         return 0.35;
     }
-    if SAVE_NAME_VOCAB.iter().any(|v| v.len() >= 4 && lower.contains(v)) {
+    if SAVE_NAME_VOCAB
+        .iter()
+        .any(|v| v.len() >= 4 && lower.contains(v))
+    {
         reasons.push("name contains save token".into());
         return 0.20;
     }
@@ -206,6 +209,19 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
     }
 
     ScoreBreakdown { score, reasons }
+}
+
+/// `true` si la señal de nombre por sí sola reconoce esta carpeta como
+/// save (exacto, substring de token, o patrón slot/profile/user). Aislado
+/// para el benchmark de §(scoring) — mide el techo de recall del nombre sin
+/// confundirlo con señales de contenido.
+pub fn name_recognised(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    SAVE_NAME_VOCAB.iter().any(|v| *v == lower)
+        || SAVE_NAME_VOCAB
+            .iter()
+            .any(|v| v.len() >= 4 && lower.contains(v))
+        || crate::detection::name_matches_slot_profile_user(name)
 }
 
 #[cfg(test)]
@@ -281,15 +297,4 @@ mod bench {
         eprintln!("  of which config-ish:   {neg_collisions} (precision risk)");
         eprintln!("=> recall del NAME-signal solo; contenido+correlación suben esto en fases 2/3");
     }
-}
-
-/// `true` si la señal de nombre por sí sola reconoce esta carpeta como
-/// save (exacto, substring de token, o patrón slot/profile/user). Aislado
-/// para el benchmark de §(scoring) — mide el techo de recall del nombre sin
-/// confundirlo con señales de contenido.
-pub fn name_recognised(name: &str) -> bool {
-    let lower = name.to_lowercase();
-    SAVE_NAME_VOCAB.iter().any(|v| *v == lower)
-        || SAVE_NAME_VOCAB.iter().any(|v| v.len() >= 4 && lower.contains(v))
-        || crate::detection::name_matches_slot_profile_user(name)
 }

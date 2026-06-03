@@ -345,9 +345,10 @@ pub async fn restore_snapshot(
                             total,
                         },
                     );
-                })
-                .await
-                .map_err(pretty_error)?;
+                },
+            )
+            .await
+            .map_err(pretty_error)?;
             safety_version = Some(outcome.snapshot.version_num);
         }
     }
