@@ -2095,12 +2095,17 @@ mod tests {
                 "diagnose should record at least one proton_prefix step; got kinds {:?}",
                 trace.attempts.iter().map(|s| &s.kind).collect::<Vec<_>>()
             );
-            let save_str = save_dir.display().to_string();
+            // Compare component-wise via `Path`, not as raw strings: on
+            // Windows the `kept` entries are built with component joins and
+            // mix `\\` with the embedded `/` separators, while `save_dir`
+            // here is a single forward-slash join. `Path` equality
+            // normalises separators on every host; string equality doesn't.
             assert!(
                 proton_steps
                     .iter()
-                    .any(|s| s.kept.iter().any(|k| k == &save_str)),
-                "expected a proton_prefix step whose kept contains {save_str}; got {proton_steps:?}"
+                    .any(|s| s.kept.iter().any(|k| Path::new(k) == save_dir)),
+                "expected a proton_prefix step whose kept contains {}; got {proton_steps:?}",
+                save_dir.display()
             );
         });
     }
