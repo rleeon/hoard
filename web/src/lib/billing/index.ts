@@ -1,9 +1,9 @@
 import type { BillingCycle, PlanId } from '../types';
 
 /**
- * BillingProvider — swap-in interface for the payments backend.
- * Today: Lemon Squeezy (Merchant of Record, hosted checkout). Swapping
- * to Stripe means writing one new file and changing the export below.
+ * BillingProvider — swap-in interface for the payments backend. Hosted
+ * checkout via a Merchant of Record. Swapping providers means writing one
+ * new file and changing the export below.
  */
 export interface BillingProvider {
   /** Returns the URL the user should be redirected to in order to upgrade. */
@@ -12,6 +12,6 @@ export interface BillingProvider {
   customerPortalUrl(): string;
 }
 
-import { lemonsqueezyBilling } from './lemonsqueezy';
+import { checkoutBilling } from './provider';
 
-export const billing: BillingProvider = lemonsqueezyBilling;
+export const billing: BillingProvider = checkoutBilling;

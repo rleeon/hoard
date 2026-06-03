@@ -5,15 +5,14 @@
   import { spotlight } from '$lib/actions/spotlight';
   import { onMount } from 'svelte';
   import { Apple, Github, Monitor, ArrowRight } from 'lucide-svelte';
+  import { version, RELEASE_DATE, RELEASES_LATEST, ALL_RELEASES, CHANGELOG_URL } from '$lib/version';
 
   type Platform = 'windows' | 'macos' | 'linux';
   let detected = $state<Platform | null>(null);
 
-  const HOARD_VERSION = __HOARD_VERSION__;
-  const RELEASE_DATE = __HOARD_RELEASE_DATE__;
-  const RELEASE_BASE = `https://github.com/rleeon/hoard/releases/tag/v${HOARD_VERSION}`;
-  const ALL_RELEASES = 'https://github.com/rleeon/hoard/releases';
-  const CHANGELOG_URL = 'https://github.com/rleeon/hoard/blob/main/CHANGELOG.md';
+  // Every download button opens the latest release page, so links never go
+  // stale when a new version ships.
+  const RELEASE_BASE = RELEASES_LATEST;
 
   type Asset = {
     label: string;
@@ -95,7 +94,7 @@
       {$_('download.subtitle')}
     </p>
     <p class="mt-3 font-mono text-xs text-zinc-500">
-      {$_('download.version', { values: { v: HOARD_VERSION, date: RELEASE_DATE } })}
+      {$_('download.version', { values: { v: $version, date: RELEASE_DATE } })}
     </p>
   </div>
 
@@ -189,7 +188,7 @@
       <div>
         <div class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400/80">
           <span class="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse-glow"></span>
-          v{HOARD_VERSION}
+          v{$version}
         </div>
         <h3 class="mt-2 text-xl font-bold text-white">{$_('download.changelog_title')}</h3>
         <p class="mt-2 text-sm text-zinc-400">{$_('download.changelog_body')}</p>

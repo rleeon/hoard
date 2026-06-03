@@ -16,10 +16,10 @@ export const config = {
     baseUrl: env.PUBLIC_API_URL ?? 'https://api.hoard.services'
   },
   billing: {
-    customerPortal: env.PUBLIC_LS_CUSTOMER_PORTAL ?? '',
+    customerPortal: env.PUBLIC_BILLING_PORTAL ?? '',
     checkout: {
-      pro_monthly: env.PUBLIC_LS_CHECKOUT_PRO_MONTHLY ?? '',
-      pro_yearly: env.PUBLIC_LS_CHECKOUT_PRO_YEARLY ?? ''
+      pro_monthly: env.PUBLIC_CHECKOUT_PRO_MONTHLY ?? '',
+      pro_yearly: env.PUBLIC_CHECKOUT_PRO_YEARLY ?? ''
     }
   }
 } as const;

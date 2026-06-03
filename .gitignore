@@ -24,6 +24,9 @@ guide*
 CLAUDE.md
 .claude/
 
+# Local editor metadata (Obsidian vault state over the repo).
+.obsidian/
+
 # Tauri build artifacts
 crates/hoard-desktop/gen/
 

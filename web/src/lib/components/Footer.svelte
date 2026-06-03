@@ -2,8 +2,8 @@
   import { _ } from 'svelte-i18n';
   import LogoMark from './LogoMark.svelte';
   import StatusDot from './StatusDot.svelte';
+  import { version } from '$lib/version';
   const year = new Date().getFullYear();
-  const VERSION = __HOARD_VERSION__;
 </script>
 
 <footer class="relative mt-auto border-t border-white/[0.06]">
@@ -22,7 +22,7 @@
         <LogoMark size={26} />
         <span class="text-base font-semibold tracking-tight text-white">Hoard</span>
         <span class="ml-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 font-mono text-[10px] tracking-wider text-zinc-400">
-          {$_('footer.version_label', { values: { v: VERSION } })}
+          {$_('footer.version_label', { values: { v: $version } })}
         </span>
       </div>
       <p class="mt-3 max-w-xs text-sm leading-relaxed text-zinc-400">{$_('footer.tagline')}</p>

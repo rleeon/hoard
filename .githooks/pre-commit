@@ -2,7 +2,7 @@
 # Hoard pre-commit gate.
 #
 # Mirrors the CI checks so the most common breakages get caught before a push.
-# Install with: just install-hooks  (or `git config core.hooksPath .githooks`).
+# Install with: git config core.hooksPath .githooks
 #
 # Skip in an emergency with `git commit --no-verify`. CI will still block you,
 # so don't make a habit of it.
