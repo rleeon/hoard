@@ -299,6 +299,15 @@ pub async fn apply_desktop_update(app: AppHandle) -> Result<ApplyOutcome, AppErr
             AppError::new("updates.error.title", "updates.error.download_failed").with_detail(e)
         })?;
 
+    // Capture our own binary path *before* the installer runs. On Linux the
+    // .deb install makes dpkg unlink+recreate /usr/bin/hoard-desktop, after
+    // which `std::env::current_exe()` resolves to ".../hoard-desktop (deleted)"
+    // — spawning that path fails and the relaunch silently no-ops, which is the
+    // "tengo que cerrar y abrir para que cambie de versión" bug. Snapshotting
+    // the path here (and sanitizing a stale " (deleted)" suffix just in case)
+    // gives us a stable path to the freshly-installed binary.
+    let exe_before = std::env::current_exe().ok().map(sanitize_exe_path);
+
     // Try to launch the platform installer. If that fails, we still succeeded
     // at *downloading* the update, so report Downloaded with the path so the
     // user can do it themselves.
@@ -320,7 +329,7 @@ pub async fn apply_desktop_update(app: AppHandle) -> Result<ApplyOutcome, AppErr
             let app2 = app.clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(1500)).await;
-                relaunch_then_exit(&app2);
+                relaunch_then_exit(&app2, exe_before);
             });
             Ok(ApplyOutcome::InstallerLaunched {
                 path: path_str,
@@ -341,10 +350,13 @@ pub async fn apply_desktop_update(app: AppHandle) -> Result<ApplyOutcome, AppErr
 /// Failures are logged and swallowed — the worst case is the user has to
 /// reopen the app from their app menu, which is exactly the 1.4.0 status
 /// quo we're trying to improve.
-fn relaunch_then_exit(app: &AppHandle) {
+fn relaunch_then_exit(app: &AppHandle, exe_before: Option<std::path::PathBuf>) {
     #[cfg(target_os = "linux")]
     {
-        if let Ok(exe) = std::env::current_exe() {
+        // Prefer the path we snapshotted before the install. Fall back to a
+        // freshly-sanitized `current_exe()` if we somehow didn't capture one.
+        let exe = exe_before.or_else(|| std::env::current_exe().ok().map(sanitize_exe_path));
+        if let Some(exe) = exe {
             use std::process::{Command, Stdio};
             // `setsid` puts the child in its own session so it survives our
             // imminent `app.exit(0)`. If `setsid` isn't on PATH (unusual on
@@ -370,6 +382,19 @@ fn relaunch_then_exit(app: &AppHandle) {
     // On macOS we leave it to the user too — `open` on the .dmg pops Finder
     // and the user drags into Applications.
     app.exit(0);
+}
+
+/// Strip a trailing " (deleted)" marker the Linux kernel appends to
+/// `/proc/self/exe` once the on-disk binary has been unlinked (e.g. by dpkg
+/// mid-upgrade). `current_exe()` reads that link, so without this we'd try to
+/// spawn ".../hoard-desktop (deleted)" and fail.
+fn sanitize_exe_path(exe: std::path::PathBuf) -> std::path::PathBuf {
+    if let Some(s) = exe.to_str() {
+        if let Some(stripped) = s.strip_suffix(" (deleted)") {
+            return std::path::PathBuf::from(stripped);
+        }
+    }
+    exe
 }
 
 /// Pick the right asset for the current OS/arch. We match on filename suffix

@@ -13,7 +13,8 @@ use anyhow::{Context, Result};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::time::Duration;
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, State};
 
 use crate::commands::cloud_pull;
@@ -295,17 +296,48 @@ fn clear_creds() -> Result<()> {
 /// after it expired — the Refresh button's `/v1/me` or the poller's
 /// `/v1/cloud/sync` — came back 401 and looked like a dead session, even
 /// though the long-lived refresh token was sitting right there unused.
+///
+/// SINGLE-FLIGHT: Supabase rotates the refresh token on every use and revokes
+/// the previous one. If two callers refresh concurrently with the *same*
+/// stored token (the 10 s cloud-pull poller + the user's "Refrescar" button,
+/// say), the second replay trips GoTrue's reuse-detection and revokes the
+/// whole token family → a permanent `refresh_token_not_found` that forces a
+/// re-login. We serialise every refresh behind one async lock and collapse a
+/// burst of concurrent 401s into a single network refresh: a caller that
+/// arrives within `REFRESH_REUSE_WINDOW` of a successful refresh gets the
+/// just-rotated creds instead of hitting Supabase again with a token that is
+/// already on its way to being revoked.
+const REFRESH_REUSE_WINDOW: Duration = Duration::from_secs(30);
+
+fn refresh_gate() -> &'static tokio::sync::Mutex<Option<(Instant, CloudCreds)>> {
+    static GATE: OnceLock<tokio::sync::Mutex<Option<(Instant, CloudCreds)>>> = OnceLock::new();
+    GATE.get_or_init(|| tokio::sync::Mutex::new(None))
+}
+
 pub async fn refresh_active_session() -> Result<CloudCreds> {
+    // Holding this across the network call is what serialises refreshes.
+    let mut last = refresh_gate().lock().await;
+
+    // Someone just refreshed while we waited for the lock — reuse their
+    // freshly-rotated creds instead of replaying our now-stale token.
+    if let Some((at, creds)) = last.as_ref() {
+        if at.elapsed() < REFRESH_REUSE_WINDOW {
+            return Ok(creds.clone());
+        }
+    }
+
     let Some(creds) = load_creds()? else {
         anyhow::bail!("Not signed in to Hoard Cloud.");
     };
     let (access, refresh) = refresh_supabase_session(&creds.refresh_token).await?;
     update_tokens(&access, &refresh)?;
-    Ok(CloudCreds {
+    let fresh = CloudCreds {
         access_token: access,
         refresh_token: refresh,
         ..creds
-    })
+    };
+    *last = Some((Instant::now(), fresh.clone()));
+    Ok(fresh)
 }
 
 // ---- commands ---------------------------------------------------------

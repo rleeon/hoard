@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.7] — 2026-06-04
+
+### Fixed
+- **Sesión cloud que se invalidaba sola (`refresh_token_not_found`).** Varias
+  llamadas autenticadas podían renovar el token de Supabase a la vez; como
+  GoTrue rota el refresh token en cada uso y detecta reutilización, la carrera
+  revocaba toda la familia de tokens y dejaba la cuenta caída hasta volver a
+  iniciar sesión. `refresh_active_session` ahora es single-flight con una
+  ventana de reutilización de 30 s, así que renovaciones concurrentes comparten
+  el mismo resultado en vez de pisarse.
+- **Update en Linux que no surtía efecto hasta reabrir.** Tras `dpkg -i`, el
+  binario se reemplaza y `std::env::current_exe()` pasa a resolver
+  `.../hoard-desktop (deleted)`, por lo que el relanzado fallaba en silencio.
+  Ahora capturamos la ruta del ejecutable **antes** de instalar y saneamos el
+  sufijo `" (deleted)"`, de modo que el relanzado arranca el binario recién
+  instalado.
+- **Dropdowns en blanco en Linux (selector de idioma y filtro de nivel de
+  logs).** webkit2gtk renderiza los `<select>` y su popup con GTK e ignora el
+  tema oscuro, dejándolos claro-sobre-claro. Fijado `color-scheme: dark` y
+  colores explícitos de texto/fondo en `select`/`option`.
+
 ## [1.8.6] — 2026-06-03
 
 ### Added

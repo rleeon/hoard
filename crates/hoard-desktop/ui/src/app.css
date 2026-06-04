@@ -22,6 +22,27 @@ body,
   height: 100%;
 }
 
+/* Tell the engine the whole UI is dark so native form controls (and, on
+   webkit2gtk, the GTK-rendered <select> popup) paint with dark chrome. */
+:root {
+  color-scheme: dark;
+}
+
+/* webkit2gtk (Linux Tauri) renders the <select> control and its option list
+   through GTK and largely ignores our dark CSS, so the closed control and the
+   open dropdown came out light-on-light — i.e. blank (the language picker and
+   the Logs level filter). Pin explicit colours (hard-coded hex, since the
+   native popup won't resolve our oklch custom properties) so both stay
+   legible on every distro/theme. */
+select {
+  color: #f4f4f5; /* zinc-100 */
+  background-color: #18181b; /* zinc-900 */
+}
+select option {
+  color: #f4f4f5; /* zinc-100 */
+  background-color: #18181b; /* zinc-900 */
+}
+
 body {
   font-family:
     "Inter",
