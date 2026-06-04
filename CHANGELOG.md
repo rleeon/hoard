@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-06-04
+
+### Added
+- **Detección catalog-free por correlación (ADR 0020, fases 3+4 cerradas).**
+  El bucle de correlación proceso↔escritura ya influye en el descubrimiento:
+  `classify_dir_as_save_like` suma el bonus de +0.50 cuando el
+  `CorrelationStore` corrobora una carpeta, y desbloquea `Confidence::High`
+  para los dirs atribuidos a un proceso de juego (antes tope en `Medium`). La
+  nueva fase 4 (`discover_unattributed`) recorre los roots de usuario una sola
+  vez, puntúa con correlación y aflora saves que ningún catálogo/Steam
+  reclamaba (nombres GUID, idiomas no ingleses, indies fuera de Ludusavi),
+  atribuyendo cada uno a un juego por el proceso que lo escribió. Con verja de
+  precisión: en roots amplios un match débil sólo-por-nombre no crea juegos
+  fantasma.
+
 ## [1.8.7] — 2026-06-04
 
 ### Fixed

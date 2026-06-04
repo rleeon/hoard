@@ -39,9 +39,11 @@ use hoard_manifest::ludusavi::{self, LudusaviEntry};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 
+use crate::correlation::{self, CorrelationStore};
 use crate::launchers::{self, LauncherApp};
 use crate::manifest::Os;
 use crate::pathexpand::{expand_path, expand_path_in_prefix, expand_registry_path};
+use crate::roots;
 use crate::scoring;
 use crate::state::CliState;
 use crate::steam::{self, SteamApp};
@@ -170,6 +172,16 @@ where
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
+
+    // Correlation store (ADR 0020, fase 3): the agent records which game
+    // process was alive when a watched save was rewritten. Loaded best-effort
+    // (empty if absent / unreadable) and fed into both the per-slug
+    // aggressive walk and the phase-4 catalog-free pass, where it adds the
+    // +0.50 process↔write bonus and unlocks `High` for corroborated dirs.
+    let corr_store = CorrelationStore::default_path()
+        .ok()
+        .map(|p| CorrelationStore::load(&p))
+        .unwrap_or_default();
 
     // ---- Steam scan ---------------------------------------------------
     // Cheap (just file reads under the Steam install) so we always run it.
@@ -497,13 +509,14 @@ where
         if install_dir.is_none() && prefix_root.is_none() {
             continue;
         }
-        let discoveries = aggressive_discover(
+        let discoveries = aggressive_discover_with(
             &slug,
             &display_name,
             install_dir.as_deref(),
             prefix_root.as_deref(),
             AGGRESSIVE_WALK_TIMEOUT,
             AGGRESSIVE_WALK_MAX_DEPTH,
+            &corr_store,
         );
         if discoveries.is_empty() {
             continue;
@@ -521,6 +534,59 @@ where
             // (heuristic dir-name match, not a catalog hit), so pin the
             // confidence to the walker's own grading instead.
             entry.confidence = max_conf;
+        }
+    }
+
+    // Phase 4 (ADR 0020): catalog-free discovery + attribution. A single
+    // pass over the broad user save roots — scored WITH the correlation
+    // store — surfaces save folders that no catalog/Steam signal claimed
+    // (GUID names, non-English names, indies Ludusavi doesn't list) and
+    // attributes each to a game by the process that wrote it. Gated to
+    // correlation-corroborated or strong-static candidates so it never mints
+    // phantom games from weak name-only matches; runs once, not per-slug, so
+    // the I/O stays bounded.
+    {
+        let known: HashSet<PathBuf> = by_slug
+            .values()
+            .flat_map(|g| g.found_paths.iter().cloned())
+            .collect();
+        let attributed = discover_unattributed(os, &corr_store, &known);
+        let mut new_games = 0usize;
+        let mut merged = 0usize;
+        for a in attributed {
+            match by_slug.get_mut(&a.slug) {
+                Some(existing) => {
+                    if !existing.found_paths.contains(&a.path) {
+                        existing.found_paths.push(a.path);
+                        if confidence_rank(a.confidence) > confidence_rank(existing.confidence) {
+                            existing.confidence = a.confidence;
+                        }
+                        merged += 1;
+                    }
+                }
+                None => {
+                    by_slug.insert(
+                        a.slug.clone(),
+                        DetectedGame {
+                            slug: a.slug,
+                            display_name: a.display_name,
+                            found_paths: vec![a.path],
+                            confidence: a.confidence,
+                            source: DetectionSource::FilesystemHeuristic,
+                            steam_app_id: None,
+                            install_dir: None,
+                        },
+                    );
+                    new_games += 1;
+                }
+            }
+        }
+        if new_games > 0 || merged > 0 {
+            tracing::info!(
+                new_games,
+                merged,
+                "phase 4: catalog-free saves attributed via correlation"
+            );
         }
     }
 
@@ -1357,19 +1423,46 @@ pub struct DiscoveredSavePath {
 /// or its aliases). 1.5.1 ships the simpler pattern-match-only flavour;
 /// the param is kept in the signature to avoid an API break later.
 pub fn aggressive_discover(
+    slug: &str,
+    display_name: &str,
+    install_dir: Option<&Path>,
+    prefix_root: Option<&Path>,
+    timeout_per_root: Duration,
+    max_depth: usize,
+) -> Vec<DiscoveredSavePath> {
+    // Public API flavour: no correlation context, pure static scoring. The
+    // engine path in `detect_all` calls `aggressive_discover_with` so the
+    // per-slug walk also gets the process↔write bonus when the store
+    // corroborates a candidate.
+    aggressive_discover_with(
+        slug,
+        display_name,
+        install_dir,
+        prefix_root,
+        timeout_per_root,
+        max_depth,
+        &CorrelationStore::default(),
+    )
+}
+
+/// Correlation-aware core of [`aggressive_discover`]. The walk and grading
+/// are identical; the `store` lets [`classify_dir_as_save_like`] add the
+/// +0.50 process↔write bonus and unlock `High` for corroborated dirs.
+pub(crate) fn aggressive_discover_with(
     _slug: &str,
     _display_name: &str,
     install_dir: Option<&Path>,
     prefix_root: Option<&Path>,
     timeout_per_root: Duration,
     max_depth: usize,
+    store: &CorrelationStore,
 ) -> Vec<DiscoveredSavePath> {
     let mut out: Vec<DiscoveredSavePath> = Vec::new();
     let mut seen: HashSet<PathBuf> = HashSet::new();
 
     if let Some(root) = install_dir {
         if root.is_dir() {
-            walk_root_collecting(root, max_depth, timeout_per_root, &mut out, &mut seen);
+            walk_root_collecting(root, max_depth, timeout_per_root, &mut out, &mut seen, store);
         }
     }
 
@@ -1380,11 +1473,164 @@ pub fn aggressive_discover(
         // avoids the `drive_c/windows` / `drive_c/Program Files` noise.
         let user = prefix.join("drive_c/users/steamuser");
         if user.is_dir() {
-            walk_root_collecting(&user, max_depth, timeout_per_root, &mut out, &mut seen);
+            walk_root_collecting(&user, max_depth, timeout_per_root, &mut out, &mut seen, store);
         }
     }
 
     out
+}
+
+/// Per-root timeout for the phase-4 broad-root walk. Slightly more generous
+/// than the per-slug install walk because the user save roots (AppData,
+/// `~/.local/share`, …) fan out wider, but still short enough that the whole
+/// pass stays in the "detection takes seconds" budget. The
+/// [`AGGRESSIVE_WALK_MAX_CANDIDATES`] cap bounds output per root regardless.
+const PHASE4_WALK_TIMEOUT: Duration = Duration::from_millis(2000);
+
+/// Depth cap for the phase-4 walk. Save folders under the user roots sit a
+/// few levels deep (`<root>/<Company>/<Game>/Saves`), so 4 covers the common
+/// layouts without descending into asset trees.
+const PHASE4_WALK_MAX_DEPTH: usize = 4;
+
+/// Generic path segments that are containers, never the game's name. When
+/// attributing a discovered save folder we walk up past these (and past
+/// recognised save-words) to reach the segment that actually names the game.
+const GENERIC_SEGMENTS: &[&str] = &[
+    "appdata",
+    "roaming",
+    "local",
+    "locallow",
+    "documents",
+    "my games",
+    "saved games",
+    "savedgames",
+    ".config",
+    ".local",
+    "share",
+    "state",
+    "users",
+    "steamuser",
+    "drive_c",
+    "home",
+];
+
+/// A save folder discovered catalog-free (phase 4) and attributed to a game.
+/// `slug`/`display_name` come from the attribution heuristic: the process
+/// that wrote the folder (correlation) wins; otherwise the nearest
+/// non-generic ancestor folder name.
+#[derive(Debug, Clone)]
+pub struct AttributedSave {
+    pub slug: String,
+    pub display_name: String,
+    pub path: PathBuf,
+    pub confidence: Confidence,
+    pub reason: String,
+}
+
+/// Phase 4 (ADR 0020): catalog-free discovery + attribution.
+///
+/// One pass over the broad user save roots ([`roots::user_save_roots`]) and
+/// the Wine/Proton prefixes, scoring every candidate **with** the correlation
+/// store so GUID-named / non-English save folders that no catalog or Steam
+/// signal could reach still surface. Each survivor is attributed to a game
+/// name (process-correlation first, ancestor folder name as fallback).
+///
+/// Precision gate: in these broad roots a name-only `Low` hit is too weak to
+/// mint a phantom game, so a candidate is only kept when the correlation
+/// store corroborates it **or** it carries strong static evidence
+/// (`Medium`/`High`). Anything already claimed by a catalog/Steam match
+/// (`known_paths`) is skipped.
+pub fn discover_unattributed(
+    os: Os,
+    store: &CorrelationStore,
+    known_paths: &HashSet<PathBuf>,
+) -> Vec<AttributedSave> {
+    let mut out: Vec<AttributedSave> = Vec::new();
+    let mut emitted: HashSet<PathBuf> = HashSet::new();
+
+    let mut walk_roots = roots::user_save_roots(os);
+    for prefix in wine_prefixes::list_wine_prefixes(os) {
+        walk_roots.extend(roots::prefix_user_roots(&prefix.prefix_root));
+    }
+
+    for root in walk_roots {
+        let mut hits: Vec<DiscoveredSavePath> = Vec::new();
+        let mut seen: HashSet<PathBuf> = HashSet::new();
+        walk_root_collecting(
+            &root,
+            PHASE4_WALK_MAX_DEPTH,
+            PHASE4_WALK_TIMEOUT,
+            &mut hits,
+            &mut seen,
+            store,
+        );
+        for hit in hits {
+            let corroborated = store.signal_for(&hit.path).is_some();
+            // Precision gate: weak static-only matches don't create games.
+            if !corroborated && hit.confidence == Confidence::Low {
+                continue;
+            }
+            if path_already_known(&hit.path, known_paths) {
+                continue;
+            }
+            if !emitted.insert(hit.path.clone()) {
+                continue;
+            }
+            let display_name = attribute_game_name(&hit.path, store);
+            let slug = ludusavi::slugify(&display_name);
+            if slug.is_empty() {
+                continue;
+            }
+            out.push(AttributedSave {
+                slug,
+                display_name,
+                path: hit.path,
+                confidence: hit.confidence,
+                reason: hit.reason,
+            });
+        }
+    }
+
+    out
+}
+
+/// True if `candidate` is already covered by a catalog/Steam hit: either it
+/// equals a known path, sits inside one, or contains one.
+fn path_already_known(candidate: &Path, known: &HashSet<PathBuf>) -> bool {
+    known
+        .iter()
+        .any(|k| candidate.starts_with(k) || k.starts_with(candidate))
+}
+
+/// Best-effort game name for a phase-4 save folder.
+///
+/// 1. If the correlation store attributed a process to the folder, use it
+///    (the process name minus `.exe` is the game far more often than not).
+/// 2. Otherwise walk up from the folder past recognised save-words and
+///    generic container segments; the first "real" segment names the game
+///    (`…/My Games/Skyrim/Saves` → `Skyrim`).
+fn attribute_game_name(path: &Path, store: &CorrelationStore) -> String {
+    if let Some(proc) = store.attributed_name(path) {
+        let trimmed = proc.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    let mut cur = Some(path);
+    while let Some(dir) = cur {
+        if let Some(name) = dir.file_name().and_then(|s| s.to_str()) {
+            let lower = name.to_lowercase();
+            let generic = GENERIC_SEGMENTS.contains(&lower.as_str());
+            if !generic && !scoring::name_recognised(name) {
+                return name.to_string();
+            }
+        }
+        cur = dir.parent();
+    }
+    path.file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown")
+        .to_string()
 }
 
 /// Walk one root, appending up to [`AGGRESSIVE_WALK_MAX_CANDIDATES`]
@@ -1395,6 +1641,7 @@ fn walk_root_collecting(
     timeout: Duration,
     out: &mut Vec<DiscoveredSavePath>,
     seen: &mut HashSet<PathBuf>,
+    store: &CorrelationStore,
 ) {
     let start = Instant::now();
     let mut entries_checked: usize = 0;
@@ -1432,7 +1679,7 @@ fn walk_root_collecting(
             if is_skip_dir(name_str) {
                 continue;
             }
-            if let Some(hit) = classify_dir_as_save_like(&path, name_str) {
+            if let Some(hit) = classify_dir_as_save_like(&path, name_str, store) {
                 if seen.insert(path.clone()) {
                     out.push(hit);
                     if out.len() - initial >= AGGRESSIVE_WALK_MAX_CANDIDATES {
@@ -1463,23 +1710,34 @@ fn is_skip_dir(name: &str) -> bool {
 /// (0.60) maps to `Medium`, the grey zone to `Low`. `High` is withheld until
 /// the process-correlation signal of fase 3 exists. The `reason` carries the
 /// numeric score and the signal breakdown for the diagnostics panel.
-fn classify_dir_as_save_like(path: &Path, name: &str) -> Option<DiscoveredSavePath> {
-    // DETECCIÓN (fase 1, ADR 0020): el booleano name-only se sustituye por
-    // el scoring graduado de `scoring::score_dir` (nombre + contenido +
-    // recencia + negativas). Por debajo de `SCORE_POSSIBLE` se descarta.
+fn classify_dir_as_save_like(
+    path: &Path,
+    name: &str,
+    store: &CorrelationStore,
+) -> Option<DiscoveredSavePath> {
+    // DETECCIÓN (fase 1+3, ADR 0020): el booleano name-only se sustituye por
+    // el scoring graduado (`scoring::score_dir`: nombre + contenido +
+    // recencia + negativas) MÁS el bonus de correlación proceso↔escritura
+    // (+0.50) si el store corrobora el dir. Por debajo de `SCORE_POSSIBLE`
+    // se descarta.
     //
-    // Mapeo a `Confidence` deliberadamente conservador: el walker sólo
-    // emite Low/Medium. `High` se reserva para la fase 3, cuando la
-    // correlación proceso↔escritura (+0.50) aporte la señal que justifica
-    // auto-confirmar; sin ella, evidencia puramente estática no debe
-    // pintarse como certeza. El score numérico va en `reason` para el panel
-    // de diagnóstico.
-    let breakdown = scoring::score_dir(path, name);
+    // Mapeo a `Confidence`: con el bucle de correlación cerrado, `High` ya
+    // no se reserva — se concede cuando el score cruza el cutoff de
+    // auto-confirmado Y la escritura quedó atribuida a un proceso de juego
+    // (la señal que el ADR exige para certeza). Sin correlación, un score
+    // alto puramente estático tope en `Medium`. El número va en `reason`
+    // para el panel de diagnóstico.
+    let breakdown = correlation::score_with_correlation(path, name, store);
     if breakdown.score < scoring::SCORE_POSSIBLE {
         return None;
     }
+    let corroborated = store.signal_for(path).is_some();
     let confidence = if breakdown.score >= scoring::SCORE_CONFIRMED {
-        Confidence::Medium
+        if corroborated {
+            Confidence::High
+        } else {
+            Confidence::Medium
+        }
     } else {
         Confidence::Low
     };
@@ -2226,5 +2484,116 @@ mod tests {
             AGGRESSIVE_WALK_MAX_DEPTH,
         );
         assert!(bogus_hits.is_empty());
+    }
+
+    /// Fase 3 (cierre del bucle): un dir con evidencia estática fuerte
+    /// (`.sav` reciente) que sin correlación tope en `Medium` se promociona
+    /// a `High` cuando el store atribuye la escritura a un proceso de juego.
+    #[test]
+    fn classify_unlocks_high_with_correlation() {
+        let tmp = std::env::temp_dir().join(format!(
+            "hoard-classify-high-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("game.sav"), b"x").unwrap();
+
+        // Sin correlación: strong ext (+0.30) lo deja en `Medium` como mucho,
+        // nunca `High`.
+        let empty = CorrelationStore::default();
+        let plain = classify_dir_as_save_like(&tmp, "saves", &empty).unwrap();
+        assert_ne!(plain.confidence, Confidence::High);
+
+        // Con correlación: +0.50 cruza holgado el cutoff y desbloquea `High`.
+        let mut store = CorrelationStore::default();
+        store.record(
+            &tmp,
+            &[crate::correlation::GameProcess {
+                name: "weirdgame.exe".into(),
+                exe: None,
+            }],
+        );
+        let corr = classify_dir_as_save_like(&tmp, "saves", &store).unwrap();
+        assert_eq!(corr.confidence, Confidence::High);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// Atribución (fase 4): el nombre del proceso que escribió la carpeta gana
+    /// sobre la heurística de ancestro; sin proceso, se usa el primer segmento
+    /// no genérico subiendo por el árbol.
+    #[test]
+    fn attribute_game_name_prefers_process_then_ancestor() {
+        let path = PathBuf::from("/home/u/.local/share/Skyrim/Saves");
+
+        // Sin correlación: sube desde `Saves` (save-word) hasta `Skyrim`.
+        let empty = CorrelationStore::default();
+        assert_eq!(attribute_game_name(&path, &empty), "Skyrim");
+
+        // Con correlación: el proceso atribuido manda.
+        let mut store = CorrelationStore::default();
+        store.record(
+            &path,
+            &[crate::correlation::GameProcess {
+                name: "EldenRing.exe".into(),
+                exe: None,
+            }],
+        );
+        assert_eq!(attribute_game_name(&path, &store), "EldenRing");
+    }
+
+    #[test]
+    fn path_already_known_matches_ancestors_and_descendants() {
+        let mut known = HashSet::new();
+        known.insert(PathBuf::from("/games/a/Saves"));
+        assert!(path_already_known(Path::new("/games/a/Saves"), &known));
+        assert!(path_already_known(Path::new("/games/a/Saves/slot1"), &known));
+        assert!(path_already_known(Path::new("/games/a"), &known));
+        assert!(!path_already_known(Path::new("/games/b/Saves"), &known));
+    }
+
+    /// Fase 4 end-to-end: una carpeta de nombre opaco (GUID) bajo un root de
+    /// usuario, estáticamente invisible, aflora SÓLO porque la correlación la
+    /// corrobora, y se atribuye al proceso que la escribió.
+    #[test]
+    fn discover_unattributed_rescues_correlated_guid_folder() {
+        with_isolated_home(|home| {
+            let xdg_data = home.join("xdg-data");
+            let guid = xdg_data.join("a1b2c3d4-e5f6");
+            std::fs::create_dir_all(&guid).unwrap();
+
+            // Sin correlación no aflora nada (nombre opaco, carpeta vacía).
+            let empty = CorrelationStore::default();
+            let none = discover_unattributed(Os::Linux, &empty, &HashSet::new());
+            assert!(
+                none.iter().all(|a| a.path != guid),
+                "opaque empty folder must stay invisible without correlation"
+            );
+
+            // Con correlación sí, y atribuida al proceso.
+            let mut store = CorrelationStore::default();
+            store.record(
+                &guid,
+                &[crate::correlation::GameProcess {
+                    name: "mysterygame.exe".into(),
+                    exe: None,
+                }],
+            );
+            let found = discover_unattributed(Os::Linux, &store, &HashSet::new());
+            let hit = found
+                .iter()
+                .find(|a| a.path == guid)
+                .expect("correlated GUID folder should surface in phase 4");
+            assert_eq!(hit.display_name, "mysterygame");
+            assert_eq!(hit.slug, "mysterygame");
+
+            // Si ya está reclamada por el catálogo, se omite.
+            let mut known = HashSet::new();
+            known.insert(guid.clone());
+            let skipped = discover_unattributed(Os::Linux, &store, &known);
+            assert!(skipped.iter().all(|a| a.path != guid));
+        });
     }
 }
