@@ -18,6 +18,10 @@ pub struct ManifestEntry {
     /// see the DAG edge without a per-version round-trip.
     pub latest_parent_version: Option<i64>,
     pub latest_size_bytes: i64,
+    /// Files inside the latest version's archive (0 = unknown, e.g. uploaded
+    /// by a client predating file-count reporting). Lets the History view show
+    /// "N archivos" for cloud saves.
+    pub latest_file_count: i64,
     pub latest_sha256: String,
     pub updated_at: String,
 }
@@ -45,10 +49,11 @@ pub async fn manifest(
         Option<i64>,
         Option<String>,
         Option<i64>,
+        Option<i64>,
     )> = sqlx::query_as(
         r#"
             SELECT s.id, s.game_slug, s.label, s.latest_version_num, s.updated_at,
-                   sv.size_bytes, sv.sha256, sv.parent_version
+                   sv.size_bytes, sv.sha256, sv.parent_version, sv.file_count
               FROM saves s
          LEFT JOIN save_versions sv
                 ON sv.save_id = s.id AND sv.version_num = s.latest_version_num
@@ -63,13 +68,14 @@ pub async fn manifest(
     let saves = rows
         .into_iter()
         .map(
-            |(id, slug, label, ver, updated, size, sha, parent)| ManifestEntry {
+            |(id, slug, label, ver, updated, size, sha, parent, file_count)| ManifestEntry {
                 save_id: id,
                 game_slug: slug,
                 label,
                 latest_version_num: ver,
                 latest_parent_version: parent,
                 latest_size_bytes: size.unwrap_or(0),
+                latest_file_count: file_count.unwrap_or(0),
                 latest_sha256: sha.unwrap_or_default(),
                 updated_at: updated
                     .format(&time::format_description::well_known::Rfc3339)

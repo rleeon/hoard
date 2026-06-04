@@ -28,6 +28,12 @@ pub struct UploadInit {
     #[serde(default)]
     pub label: Option<String>,
     pub size_bytes: u64,
+    /// Number of files inside the (opaque) tar.zst this version packs. The
+    /// server can't introspect the blob, so the client declares it; we store
+    /// it purely so the History view can show "N archivos". Older clients omit
+    /// it → 0 (unknown), same as pre-existing rows.
+    #[serde(default)]
+    pub file_count: i64,
     /// Optional, used for analytics + device-limit check.
     #[serde(default)]
     pub device_name: Option<String>,
@@ -189,8 +195,8 @@ pub async fn init_upload(
     //    commits, the cleanup cron deletes pending rows older than 1h).
     sqlx::query(
         r#"
-        INSERT INTO save_versions (save_id, version_num, size_bytes, sha256, r2_key, notes, parent_version)
-        VALUES ($1, $2, $3, '', $4, $5, $6)
+        INSERT INTO save_versions (save_id, version_num, size_bytes, sha256, r2_key, notes, parent_version, file_count)
+        VALUES ($1, $2, $3, '', $4, $5, $6, $7)
         "#,
     )
     .bind(&save_row.0)
@@ -199,6 +205,7 @@ pub async fn init_upload(
     .bind(&r2_key)
     .bind(body.notes.as_deref())
     .bind(parent_version)
+    .bind(body.file_count.max(0))
     .execute(&state.pool)
     .await?;
 

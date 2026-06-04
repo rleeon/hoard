@@ -84,7 +84,7 @@ pub async fn list_save_snapshots(
         };
         return Ok(vec![SnapshotWire {
             version_num: entry.latest_version_num,
-            file_count: 0,
+            file_count: entry.latest_file_count,
             total_size_bytes: entry.latest_size_bytes,
             is_pinned: false,
             created_at: entry.updated_at,
@@ -119,7 +119,7 @@ pub async fn save_snapshot_detail(
         return Ok(SnapshotDetailWire {
             snapshot: SnapshotWire {
                 version_num: entry.latest_version_num,
-                file_count: 0,
+                file_count: entry.latest_file_count,
                 total_size_bytes: entry.latest_size_bytes,
                 is_pinned: false,
                 created_at: entry.updated_at,

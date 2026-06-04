@@ -374,6 +374,7 @@ where
                 game_slug: game_slug.to_string(),
                 label: Some(label.to_string()),
                 size_bytes,
+                file_count: file_count as i64,
                 device_name: None,
                 notes: None,
                 backup_only: false,

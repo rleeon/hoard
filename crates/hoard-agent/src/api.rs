@@ -580,6 +580,9 @@ pub struct CloudUploadInit {
     pub game_slug: String,
     pub label: Option<String>,
     pub size_bytes: u64,
+    /// Files inside the packed tar.zst. The server stores it verbatim so the
+    /// History view can show "N archivos" (the blob is opaque server-side).
+    pub file_count: i64,
     pub device_name: Option<String>,
     pub notes: Option<String>,
     pub backup_only: bool,
@@ -649,6 +652,9 @@ pub struct CloudManifestEntry {
     pub latest_parent_version: Option<i64>,
     #[serde(default)]
     pub latest_size_bytes: i64,
+    /// Files in the latest version (0 = unknown / pre-file-count server).
+    #[serde(default)]
+    pub latest_file_count: i64,
     #[serde(default)]
     pub latest_sha256: String,
     #[serde(default)]

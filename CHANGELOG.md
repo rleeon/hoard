@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.1] — 2026-06-04
+
+### Fixed
+- **Snapshots cloud que mostraban "0 archivos" junto a un tamaño no nulo.** La
+  subida cloud empaqueta el save en un `tar.zst` opaco y el protocolo nunca le
+  decía al servidor cuántos archivos contenía, así que la fila de versión
+  quedaba con `file_count = 0` y el Historial lo pintaba tal cual. Añadida la
+  columna `file_count` a `save_versions` (migración Postgres 0018), `file_count`
+  al `UploadInit`, y `latest_file_count` al manifest de `/v1/cloud/sync`; el
+  cliente ya lo declara y el Historial lo muestra. Los snapshots subidos antes
+  del arreglo se quedan en 0 (no se rellena desde R2). El dato siempre estuvo
+  intacto: solo era el contador.
+
 ## [1.9.0] — 2026-06-04
 
 ### Added
