@@ -183,6 +183,7 @@
   "settings.section_notifications": "Notifications",
   "settings.section_privacy": "Confidentialité",
   "settings.section_account": "Compte",
+  "settings.section_selfhost": "Serveur auto-hébergé",
   "settings.section_language": "Langue",
   "settings.section_catalog": "Catalogue de jeux",
   "settings.section_advanced": "Avancé",

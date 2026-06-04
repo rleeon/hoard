@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.6] — 2026-06-04
+
+### Fixed
+- **Autostart no arrancaba en Linux.** El plugin escribe
+  `~/.config/autostart/<app>.desktop` pero no crea el directorio; en un perfil
+  XDG limpio `enable()` fallaba en silencio y Hoard nunca arrancaba al iniciar
+  sesión. Ahora se crea el directorio antes de habilitar y el autostart se
+  activa por defecto al terminar el onboarding.
+- **No se podía "olvidar" el servidor local.** `signOut()` no limpiaba el
+  estado del wizard, así que la URL del servidor revivía al reabrir la app. Al
+  cerrar sesión ahora se borra también el onboarding persistido.
+- **Tarjeta "Sin sesión" en Settings para usuarios solo-nube.** La sección de
+  servidor self-hosted se mostraba con "Sin sesión" aunque el usuario sólo
+  tuviera cuenta en la nube. Ahora se oculta cuando no hay sesión self-hosted y
+  se renombra a "Servidor propio".
+- **La foto de cuenta nunca aparecía.** El servidor cloud sólo guardaba el email
+  en `profiles`, dejando `avatar_url`/`display_name` en NULL. Ahora se extraen
+  del `user_metadata` del JWT (avatar/picture + full_name/name) y se persisten
+  con COALESCE, y la página de cuenta los pinta (con inicial de fallback).
+- **URL de documentación incorrecta** en `hoard-server.service`
+  (`insider/hoard` → `rleeon/hoard`).
+
+### Changed
+- **Toasts idénticos se fusionan** en uno solo con contador `×N` en vez de
+  apilar cientos, para que un trabajo de fondo que falla en bucle (p. ej. un
+  servidor caído reintentando) no entierre la UI.
+- **Intervalo de comprobación de la nube hasta 2 s en Pro.** El piso baja de 5 s
+  a 2 s para cuentas de pago (el slider expone ese extremo sólo a Pro; gratis
+  sigue en 5 s). La ventana de ancho de banda del servidor es el límite real
+  contra saturación.
+
 ## [1.9.5] — 2026-06-04
 
 ### Fixed

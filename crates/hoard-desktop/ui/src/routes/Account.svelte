@@ -291,14 +291,30 @@
     <!-- ───────────── Signed-in: plan + usage + actions ───────────── -->
     <Card class="mb-4">
       <div class="flex items-start justify-between gap-4">
-        <div>
-          <p class="text-xs uppercase tracking-wide text-zinc-500">
-            {$_("account.signed_in_as")}
-          </p>
-          <p class="mt-1 truncate text-lg font-medium">
-            {account.display_name ?? account.email}
-          </p>
-          <p class="text-xs text-zinc-500">{account.email}</p>
+        <div class="flex min-w-0 items-center gap-3">
+          {#if account.avatar_url}
+            <img
+              src={account.avatar_url}
+              alt={account.display_name ?? account.email}
+              referrerpolicy="no-referrer"
+              class="h-12 w-12 shrink-0 rounded-full object-cover ring-1 ring-zinc-700"
+            />
+          {:else}
+            <span
+              class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-lg font-semibold uppercase text-emerald-300 ring-1 ring-emerald-500/30"
+            >
+              {(account.display_name ?? account.email).trim().charAt(0)}
+            </span>
+          {/if}
+          <div class="min-w-0">
+            <p class="text-xs uppercase tracking-wide text-zinc-500">
+              {$_("account.signed_in_as")}
+            </p>
+            <p class="mt-1 truncate text-lg font-medium">
+              {account.display_name ?? account.email}
+            </p>
+            <p class="truncate text-xs text-zinc-500">{account.email}</p>
+          </div>
         </div>
         <Button
           variant="ghost"

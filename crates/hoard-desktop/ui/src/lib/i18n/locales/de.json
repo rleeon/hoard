@@ -183,6 +183,7 @@
   "settings.section_notifications": "Benachrichtigungen",
   "settings.section_privacy": "Datenschutz",
   "settings.section_account": "Konto",
+  "settings.section_selfhost": "Eigener Server",
   "settings.section_language": "Sprache",
   "settings.section_catalog": "Spielkatalog",
   "settings.section_advanced": "Erweitert",

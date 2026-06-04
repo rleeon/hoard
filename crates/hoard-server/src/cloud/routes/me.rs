@@ -145,13 +145,23 @@ fn format_dt(dt: OffsetDateTime) -> String {
 /// from the handoff but folded into `GET /v1/me` to keep the client API
 /// flat — the first authenticated GET is always the bootstrap.
 async fn upsert_profile_for(state: &CloudState, user: &CloudUser) -> Result<(), CloudError> {
+    // Persist the OAuth provider's name + avatar so /v1/me can return them
+    // (this is why the desktop "account photo" was always blank — we only
+    // ever wrote the email). COALESCE keeps any value already on the row when
+    // a later token happens to omit the metadata, so the picture doesn't
+    // flicker away on refresh.
     sqlx::query(
-        "INSERT INTO profiles (user_id, email)
-             VALUES ($1, $2)
-         ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email",
+        "INSERT INTO profiles (user_id, email, display_name, avatar_url)
+             VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id) DO UPDATE SET
+             email        = EXCLUDED.email,
+             display_name = COALESCE(EXCLUDED.display_name, profiles.display_name),
+             avatar_url   = COALESCE(EXCLUDED.avatar_url, profiles.avatar_url)",
     )
     .bind(user.user_id)
     .bind(&user.email)
+    .bind(&user.display_name)
+    .bind(&user.avatar_url)
     .execute(&state.pool)
     .await?;
     Ok(())

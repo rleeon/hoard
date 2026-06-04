@@ -183,6 +183,7 @@
   "settings.section_notifications": "通知",
   "settings.section_privacy": "プライバシー",
   "settings.section_account": "アカウント",
+  "settings.section_selfhost": "セルフホストサーバー",
   "settings.section_language": "言語",
   "settings.section_catalog": "ゲームカタログ",
   "settings.section_advanced": "詳細",

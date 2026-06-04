@@ -7,9 +7,21 @@
   import WizardShell from "../lib/components/WizardShell.svelte";
   import { auth } from "../lib/stores/auth";
   import { clearOnboarding } from "../lib/stores/onboarding";
+  import { updatePrefs } from "../lib/stores/prefs";
+  import * as api from "../lib/api";
 
   async function finish() {
     await clearOnboarding();
+    // Turn on autostart by default once setup completes — a save-sync tray
+    // app is only useful if it's running. The OS-level enable can fail
+    // (sandboxed/headless), so reflect what actually stuck back into prefs
+    // and never let a failure block the user from reaching the dashboard.
+    try {
+      const enabled = await api.setAutostart(true);
+      await updatePrefs({ autostart: enabled });
+    } catch (e) {
+      console.warn("enabling autostart on finish failed:", e);
+    }
     push("/dashboard");
   }
 </script>

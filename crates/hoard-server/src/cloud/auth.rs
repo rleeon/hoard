@@ -29,6 +29,11 @@ pub struct CloudUser {
     pub user_id: Uuid,
     pub email: String,
     pub role: String,
+    /// Profile picture URL from the OAuth provider (Supabase `user_metadata`).
+    /// `None` when the provider didn't supply one or the token predates it.
+    pub avatar_url: Option<String>,
+    /// Human-friendly name from the provider. Falls back to email in the UI.
+    pub display_name: Option<String>,
 }
 
 /// In-memory JWKS cache. Concurrent reads via `RwLock` (overwhelmingly the
@@ -148,6 +153,44 @@ pub struct Claims {
     pub exp: usize,
     pub aud: serde_json::Value,
     pub iss: Option<String>,
+    /// OAuth provider profile bits. Supabase nests avatar/name under
+    /// `user_metadata`; different providers use different keys (Google →
+    /// `picture`/`name`, GitHub/Discord → `avatar_url`/`full_name`), so we
+    /// accept both and pick whichever is present.
+    #[serde(default)]
+    pub user_metadata: UserMetadata,
+}
+
+/// Subset of Supabase's `user_metadata` we surface on the profile.
+#[derive(Debug, Default, Deserialize)]
+pub struct UserMetadata {
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub picture: Option<String>,
+    #[serde(default)]
+    pub full_name: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+impl UserMetadata {
+    /// Prefer the explicit `avatar_url` (GitHub/Discord) but fall back to
+    /// Google's `picture`. Empty strings are treated as absent.
+    fn avatar(&self) -> Option<String> {
+        self.avatar_url
+            .clone()
+            .or_else(|| self.picture.clone())
+            .filter(|s| !s.trim().is_empty())
+    }
+
+    /// `full_name` (most providers) then `name` (Google). Empty → absent.
+    fn display_name(&self) -> Option<String> {
+        self.full_name
+            .clone()
+            .or_else(|| self.name.clone())
+            .filter(|s| !s.trim().is_empty())
+    }
 }
 
 /// Axum middleware: extract Bearer JWT, validate, inject `CloudUser`.
@@ -174,10 +217,14 @@ pub async fn require_cloud_auth(
         }
     };
     let email = claims.email.unwrap_or_default();
+    let avatar_url = claims.user_metadata.avatar();
+    let display_name = claims.user_metadata.display_name();
     req.extensions_mut().insert(CloudUser {
         user_id,
         email,
         role: claims.role,
+        avatar_url,
+        display_name,
     });
     next.run(req).await
 }

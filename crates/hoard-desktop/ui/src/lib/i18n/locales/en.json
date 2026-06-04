@@ -183,6 +183,7 @@
   "settings.section_notifications": "Notifications",
   "settings.section_privacy": "Privacy",
   "settings.section_account": "Account",
+  "settings.section_selfhost": "Self-hosted server",
   "settings.section_language": "Language",
   "settings.section_catalog": "Game catalog",
   "settings.section_advanced": "Advanced",

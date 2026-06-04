@@ -73,6 +73,13 @@
     dataSavingPct = Math.round((p.data_saving ?? 0.3) * 100);
   });
 
+  // Pro accounts get the snappy 2s floor; Free stays at 5s so a casual user
+  // can't accidentally hammer the server. The backend mirrors this (2..=300)
+  // and the cloud bandwidth window is the ultimate backstop.
+  const cloudPollMin = $derived(
+    $cloud.account && $cloud.account.plan !== "free" ? 2 : 5,
+  );
+
   async function commitScanInterval() {
     if (!$prefs) return;
     const value = scanIntervalHours;
@@ -718,9 +725,9 @@
                 <input
                   id="cloud-poll-slider"
                   type="range"
-                  min="5"
+                  min={cloudPollMin}
                   max="300"
-                  step="5"
+                  step="1"
                   bind:value={cloudPollSecs}
                   onchange={commitCloudPoll}
                   disabled={saving === "cloud_poll_interval_secs"}
@@ -893,39 +900,40 @@
         </Card>
       </section>
 
-      <section>
-        <h2
-          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
-        >
-          {$_("settings.section_account")}
-        </h2>
-        <Card>
-          <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0 flex-1">
-              <p class="text-sm text-zinc-100">
-                {#if $auth.user}
+      <!-- Self-hosted session card. Hidden entirely for cloud-only users:
+           showing "Sin sesión" next to a dead sign-out button was confusing
+           ("habla de servidor local, pero yo tengo la nube"). The cloud
+           account lives in its own section above. -->
+      {#if $auth.user}
+        <section>
+          <h2
+            class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+          >
+            {$_("settings.section_selfhost")}
+          </h2>
+          <Card>
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0 flex-1">
+                <p class="text-sm text-zinc-100">
                   {$_("settings.signed_in_as")}
                   <span class="font-medium">{$auth.user.username}</span>
-                {:else}
-                  {$_("settings.not_signed_in")}
-                {/if}
-              </p>
-              <p class="mt-1 truncate text-xs text-zinc-500">
-                {$auth.user?.server_url ?? ""}
-              </p>
+                </p>
+                <p class="mt-1 truncate text-xs text-zinc-500">
+                  {$auth.user.server_url}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                onclick={handleSignOut}
+                loading={signingOut}
+              >
+                <LogOut size={14} />
+                {$_("settings.sign_out")}
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              onclick={handleSignOut}
-              loading={signingOut}
-              disabled={!$auth.user}
-            >
-              <LogOut size={14} />
-              {$_("settings.sign_out")}
-            </Button>
-          </div>
-        </Card>
-      </section>
+          </Card>
+        </section>
+      {/if}
 
       <section>
         <h2

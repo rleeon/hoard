@@ -70,6 +70,15 @@ pub async fn save_prefs(state: State<'_, AppState>, prefs: Prefs) -> Result<Pref
 /// untouched so the UI stays honest.
 #[tauri::command]
 pub async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    // On Linux the autostart plugin writes `~/.config/autostart/<app>.desktop`
+    // but does *not* create the directory itself — on a fresh XDG profile that
+    // folder often doesn't exist yet, so `enable()` fails and autostart never
+    // takes. Create it up front so enabling is reliable.
+    #[cfg(target_os = "linux")]
+    if enabled {
+        ensure_autostart_dir();
+    }
+
     let manager = app.autolaunch();
     let result = if enabled {
         manager.enable()
@@ -91,6 +100,25 @@ pub async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String
     prefs.save(&path).map_err(|e| e.to_string())?;
 
     Ok(actually_enabled)
+}
+
+/// Best-effort creation of the XDG autostart directory
+/// (`$XDG_CONFIG_HOME/autostart`, defaulting to `~/.config/autostart`). The
+/// autostart plugin drops a `.desktop` file in here but won't `mkdir -p` the
+/// parent, so on a clean profile enabling autostart silently fails. We
+/// swallow errors — if we can't create it the subsequent `enable()` will
+/// surface a real error to the caller.
+#[cfg(target_os = "linux")]
+fn ensure_autostart_dir() {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")));
+    if let Some(base) = base {
+        let dir = base.join("autostart");
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            tracing::warn!(error = %e, path = %dir.display(), "couldn't create autostart dir");
+        }
+    }
 }
 
 /// Read whether autostart is currently enabled. Used on the Settings page
@@ -195,9 +223,14 @@ pub async fn set_scheduler_interval(app: AppHandle, hours: u32) -> Result<Prefs,
 /// next login will start the poller with the new value.
 #[tauri::command]
 pub async fn set_cloud_poll_interval(app: AppHandle, secs: u32) -> Result<Prefs, AppError> {
-    if !(5..=300).contains(&secs) {
+    // Floor is 2s: Pro accounts are allowed the snappy 2–3s cadence (the UI
+    // only exposes that low end to them). 1s would hammer the server with no
+    // perceptible gain over 2s, so we stop there. Free accounts are kept to
+    // ≥5s by the slider min, and the server's bandwidth window is the real
+    // backstop against saturation regardless of this knob.
+    if !(2..=300).contains(&secs) {
         return Err(AppError::plain(format!(
-            "cloud poll interval out of range: {secs} (expected 5..=300)"
+            "cloud poll interval out of range: {secs} (expected 2..=300)"
         )));
     }
     let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;

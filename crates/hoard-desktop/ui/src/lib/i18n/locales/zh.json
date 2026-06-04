@@ -183,6 +183,7 @@
   "settings.section_notifications": "通知",
   "settings.section_privacy": "隐私",
   "settings.section_account": "账户",
+  "settings.section_selfhost": "自托管服务器",
   "settings.section_language": "语言",
   "settings.section_catalog": "游戏目录",
   "settings.section_advanced": "高级",

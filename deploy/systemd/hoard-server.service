@@ -1,6 +1,6 @@
 [Unit]
 Description=Hoard save-sync server
-Documentation=https://github.com/insider/hoard
+Documentation=https://github.com/rleeon/hoard
 After=network-online.target
 Wants=network-online.target
 

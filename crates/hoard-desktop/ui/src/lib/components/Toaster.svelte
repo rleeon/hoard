@@ -47,7 +47,14 @@
       <span class={ICON_TINTS[toast.kind]} aria-hidden="true">
         <Icon size={18} />
       </span>
-      <p class="flex-1 text-sm leading-snug">{toast.message}</p>
+      <p class="flex-1 text-sm leading-snug">
+        {toast.message}
+        {#if toast.count > 1}
+          <span
+            class="ml-1.5 inline-flex items-center rounded-full bg-white/10 px-1.5 py-0.5 text-xs font-medium tabular-nums"
+          >×{toast.count}</span>
+        {/if}
+      </p>
       <button
         type="button"
         class="-mr-1 -mt-1 shrink-0 rounded p-1 text-zinc-400 hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"

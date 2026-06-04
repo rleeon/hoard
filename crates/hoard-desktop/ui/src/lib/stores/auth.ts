@@ -11,6 +11,7 @@ import { writable, derived, type Readable } from "svelte/store";
 import * as api from "../api";
 import type { UserInfo } from "../api";
 import { bootAgent, shutdownAgent } from "./agent";
+import { clearOnboarding } from "./onboarding";
 
 type AuthState = {
   /** `null` while we haven't asked Rust yet; after that it's a concrete value. */
@@ -78,9 +79,17 @@ export async function signIn(url: string, token: string): Promise<UserInfo> {
   return user;
 }
 
-/** Wipe credentials and put the wizard back on screen. */
+/** Wipe credentials and put the wizard back on screen.
+ *
+ * Also clears the persisted onboarding state (step + saved URL). Without
+ * this the wizard re-prefills the old server address on the next launch, so
+ * a user who signs out of a dead self-hosted box can never actually "forget"
+ * it — it keeps coming back. Clearing here makes sign-out a true reset. */
 export async function signOut(): Promise<void> {
   await shutdownAgent();
   await api.logout();
+  await clearOnboarding().catch((e) =>
+    console.warn("clearOnboarding on signOut failed:", e),
+  );
   internal.set({ user: null, hydrated: true });
 }
