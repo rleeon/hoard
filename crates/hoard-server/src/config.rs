@@ -206,19 +206,57 @@ pub struct LemonSqueezyProduct {
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct PolarConfig {
-    /// Organization access token (OAT). Reserved for server-initiated
-    /// Polar API calls (e.g. creating checkouts); webhook verification
-    /// itself only needs the webhook secret.
+    /// Organization access token (OAT). Used for server-initiated Polar API
+    /// calls — specifically `POST /v1/checkouts/` to create a checkout
+    /// session. Webhook verification itself only needs `webhook_secret`.
     #[serde(default)]
     pub access_token: String,
     /// Standard Webhooks signing secret (the `polar_whs_...` value). Used
     /// verbatim as the HMAC key — see `cloud::polar::verify_signature`.
     #[serde(default)]
     pub webhook_secret: String,
+    /// Polar API base URL. Empty falls back to production
+    /// (`https://api.polar.sh`); set to `https://sandbox-api.polar.sh` to
+    /// test against the sandbox.
+    #[serde(default)]
+    pub base_url: String,
+    /// Where Polar redirects the browser after a successful payment. Empty
+    /// falls back to `https://hoard.services/account?upgraded=1`. Polar
+    /// substitutes `{CHECKOUT_ID}` if present.
+    #[serde(default)]
+    pub success_url: String,
     /// Map Polar product UUID -> our plan tier and interval. Two products:
     /// Pro Monthly and Pro Yearly, mirroring the Lemon Squeezy setup.
     #[serde(default)]
     pub products: Vec<PolarProduct>,
+}
+
+impl PolarConfig {
+    /// Production base unless an explicit override is configured.
+    pub fn base(&self) -> &str {
+        if self.base_url.is_empty() {
+            "https://api.polar.sh"
+        } else {
+            self.base_url.trim_end_matches('/')
+        }
+    }
+
+    /// Success redirect, with a production-account fallback.
+    pub fn success(&self) -> &str {
+        if self.success_url.is_empty() {
+            "https://hoard.services/account?upgraded=1"
+        } else {
+            &self.success_url
+        }
+    }
+
+    /// Resolve our (plan, interval) pair → the Polar product UUID to buy.
+    pub fn product_for(&self, plan: &str, interval: &str) -> Option<&str> {
+        self.products
+            .iter()
+            .find(|p| p.plan == plan && p.interval == interval)
+            .map(|p| p.product_id.as_str())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

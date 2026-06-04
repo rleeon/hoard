@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.3] — 2026-06-04
+
+### Fixed
+- **`/account` en la web mostraba todo a cero (espacio usado, dispositivos).**
+  El cliente leía campos que el servidor no manda (`storage_bytes`,
+  `devices_count`, `plan_renews_at`); la forma real de `/v1/me` es
+  `storage_used_bytes` / `devices_used` / `renews_at` + sus límites. Corregido
+  el mapeo y, de paso, la página usa ahora los límites que devuelve el servidor
+  (no los locales) para el plan, el almacenamiento y el tope de dispositivos.
+
+### Added
+- **Listado y desvinculación de dispositivos en cloud.** Nuevos endpoints
+  `GET /v1/devices` y `DELETE /v1/devices/:id` (ambos con alcance al usuario del
+  JWT). La página de cuenta ya los llamaba pero no existían en el servidor, así
+  que la lista salía vacía. Al desvincular se recalcula `profiles.devices_count`.
+- **Flujo de compra de Pro con Polar.** El botón "Comprar Pro" ya no apunta a un
+  enlace muerto: lleva a una pantalla de confirmación (`/checkout`). Si no hay
+  sesión, manda a login y vuelve a la compra (no a la cuenta). Si la hay,
+  pregunta si es la cuenta correcta — verde "Continuar" a la derecha, negro
+  "Cambiar de cuenta" a la izquierda (va a `/account` al ancla de la zona de
+  sesión/borrado). "Continuar" crea la sesión de checkout en el servidor
+  (`POST /v1/cloud/checkout`) con el `access_token` de Polar, estampando
+  `metadata.user_id` y `external_customer_id` desde el JWT — imposible falsear el
+  usuario — y redirige al checkout alojado de Polar. El webhook ya existente lee
+  ese `user_id` para activar el plan.
+
 ## [1.9.2] — 2026-06-04
 
 ### Fixed

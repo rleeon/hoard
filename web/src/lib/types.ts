@@ -33,10 +33,16 @@ export interface AccountProfile {
   displayName: string | null;
   avatarUrl: string | null;
   plan: PlanId;
+  /** 'active' | 'grace' | null — from the subscriptions table. */
+  subscriptionStatus: string | null;
   planRenewsAt: string | null;
   planCancelAt: string | null;
   storageBytes: number;
+  /** Plan storage cap in bytes; -1 = unlimited. Server is the source of truth. */
+  storageLimitBytes: number;
   devicesCount: number;
+  /** Plan device cap; -1 = unlimited. */
+  devicesLimit: number;
 }
 
 export interface DeviceRow {

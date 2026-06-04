@@ -5,7 +5,12 @@ use crate::cloud::errors::CloudError;
 use crate::cloud::plans::Plan;
 use crate::cloud::quota;
 use crate::cloud::state::CloudState;
-use axum::{extract::State, http::HeaderMap, response::Json, Extension};
+use axum::{
+    extract::{Path, State},
+    http::HeaderMap,
+    response::Json,
+    Extension,
+};
 use serde::Serialize;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -198,6 +203,86 @@ async fn register_device(
     .execute(&state.pool)
     .await?;
     Ok(())
+}
+
+/// One row of the account page's device list.
+#[derive(Debug, Serialize)]
+pub struct DeviceOut {
+    pub id: Uuid,
+    pub device_name: String,
+    pub device_kind: Option<String>,
+    pub os: Option<String>,
+    pub last_seen_at: Option<String>,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeviceListOut {
+    pub devices: Vec<DeviceOut>,
+}
+
+/// GET /v1/devices — the machines registered to this account, newest-seen
+/// first. Powers the account page's "Dispositivos" list + unlink buttons.
+pub async fn list_devices(
+    State(state): State<CloudState>,
+    Extension(user): Extension<CloudUser>,
+) -> Result<Json<DeviceListOut>, CloudError> {
+    let rows: Vec<(
+        Uuid,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<time::OffsetDateTime>,
+        Option<time::OffsetDateTime>,
+    )> = sqlx::query_as(
+        "SELECT id, device_name, device_kind, os, last_seen_at, created_at
+           FROM devices WHERE user_id = $1
+          ORDER BY last_seen_at DESC NULLS LAST",
+    )
+    .bind(user.user_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let devices = rows
+        .into_iter()
+        .map(|(id, device_name, device_kind, os, last_seen_at, created_at)| DeviceOut {
+            id,
+            device_name,
+            device_kind,
+            os,
+            last_seen_at: last_seen_at.map(format_dt),
+            created_at: created_at.map(format_dt),
+        })
+        .collect();
+    Ok(Json(DeviceListOut { devices }))
+}
+
+/// DELETE /v1/devices/:id — unlink a device. Scoped to the caller's user_id so
+/// you can never delete another account's row even with a guessed UUID. After
+/// the delete we recompute the cached `profiles.devices_count`. Deleting a
+/// machine that's still running just means it re-registers on its next
+/// `GET /v1/me`; that's intended (it's an "unlink", not a permanent ban).
+pub async fn delete_device(
+    State(state): State<CloudState>,
+    Extension(user): Extension<CloudUser>,
+    Path(device_id): Path<Uuid>,
+) -> Result<Json<DeviceListOut>, CloudError> {
+    sqlx::query("DELETE FROM devices WHERE id = $1 AND user_id = $2")
+        .bind(device_id)
+        .bind(user.user_id)
+        .execute(&state.pool)
+        .await?;
+
+    sqlx::query(
+        "UPDATE profiles
+            SET devices_count = (SELECT count(*) FROM devices WHERE user_id = $1)
+          WHERE user_id = $1",
+    )
+    .bind(user.user_id)
+    .execute(&state.pool)
+    .await?;
+
+    list_devices(State(state), Extension(user)).await
 }
 
 #[derive(Debug, Serialize)]

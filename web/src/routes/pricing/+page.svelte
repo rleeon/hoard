@@ -2,8 +2,6 @@
   import { _ } from 'svelte-i18n';
   import PlanCard from '$lib/components/PlanCard.svelte';
   import { PLANS } from '$lib/plans';
-  import { billing } from '$lib/billing';
-  import { session } from '$lib/stores/session';
   import type { BillingCycle, PlanId } from '$lib/types';
   import { goto } from '$app/navigation';
   import { reveal } from '$lib/actions/reveal';
@@ -19,8 +17,10 @@
       goto('/download');
       return;
     }
-    const url = billing.checkoutUrl(plan, c, $session?.email);
-    window.location.href = url;
+    // Hand off to the confirmation flow. It checks for a session (bouncing to
+    // login first if needed), confirms the account, then creates the Polar
+    // checkout server-side. No checkout URL is built client-side anymore.
+    goto(`/checkout?plan=${plan}&cycle=${c}`);
   }
 
   // Compute thumb geometry from real button rects so the slider lands

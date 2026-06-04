@@ -4,7 +4,7 @@
 use crate::cloud::{
     auth::{require_cloud_auth, JwksCache},
     bandwidth, db, polar, r2,
-    routes::{logs as log_routes, me, saves, sync as sync_routes},
+    routes::{checkout, logs as log_routes, me, saves, sync as sync_routes},
     state::CloudState,
     webhooks,
 };
@@ -116,6 +116,9 @@ pub async fn run(cfg: Config) -> Result<()> {
     let authed = Router::new()
         .route("/v1/me", get(me::get_me).delete(me::delete_me))
         .route("/v1/me/export", post(me::create_export_job))
+        .route("/v1/devices", get(me::list_devices))
+        .route("/v1/devices/:id", axum::routing::delete(me::delete_device))
+        .route("/v1/cloud/checkout", post(checkout::create_checkout))
         .route("/v1/cloud/saves", post(saves::init_upload))
         .route(
             "/v1/cloud/saves/:save_id/versions/:version/commit",

@@ -1,3 +1,4 @@
+pub mod checkout;
 pub mod logs;
 pub mod me;
 pub mod saves;

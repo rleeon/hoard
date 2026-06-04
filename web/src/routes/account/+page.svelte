@@ -35,10 +35,13 @@
           displayName: $session.displayName,
           avatarUrl: $session.avatarUrl,
           plan: 'free',
+          subscriptionStatus: null,
           planRenewsAt: null,
           planCancelAt: null,
           storageBytes: 0,
-          devicesCount: 0
+          storageLimitBytes: PLANS.free.storageBytes,
+          devicesCount: 0,
+          devicesLimit: PLANS.free.devices ?? -1
         };
       }
       devices = d.status === 'fulfilled' ? d.value : [];
@@ -61,7 +64,13 @@
   }
 
   function gotoUpgrade() {
-    goto('/pricing');
+    // Free → straight into the upgrade confirmation flow; paid users go to
+    // pricing to compare/switch cycle.
+    if (profile?.plan === 'free') {
+      goto('/checkout?plan=pro&cycle=monthly');
+    } else {
+      goto('/pricing');
+    }
   }
 
   async function unlink(id: string) {
@@ -173,7 +182,7 @@
       <div class="space-y-5">
         <QuotaBar
           used={p.storageBytes}
-          total={plan.storageBytes}
+          total={p.storageLimitBytes > 0 ? p.storageLimitBytes : plan.storageBytes}
           label={$_('account.storage_label')}
           formatted={$_('account.storage_used', {
             values: { used: formatBytes(p.storageBytes), quota: formatPlanQuota(p.plan) }
@@ -182,10 +191,10 @@
         <div class="flex items-baseline justify-between text-sm">
           <span class="text-zinc-300">{$_('account.devices_label')}</span>
           <span class="font-medium text-zinc-200 tabular-nums">
-            {#if plan.devices === null}
+            {#if p.devicesLimit < 0}
               {$_('account.devices_unlimited', { values: { used: p.devicesCount } })}
             {:else}
-              {$_('account.devices_used', { values: { used: p.devicesCount, quota: plan.devices } })}
+              {$_('account.devices_used', { values: { used: p.devicesCount, quota: p.devicesLimit } })}
             {/if}
           </span>
         </div>
@@ -220,6 +229,7 @@
       {/if}
     </Card>
 
+    <div id="account-danger"></div>
     <Card title={$_('account.danger_section')}>
       <div class="space-y-4">
         <div class="flex flex-wrap items-start justify-between gap-4">

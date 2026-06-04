@@ -197,6 +197,16 @@
   "login.email_sent": "Mira tu bandeja — enlace enviado a {email}.",
   "login.terms_html": "Al continuar aceptas los <a href=\"/legal/terms\">Términos</a> y la <a href=\"/legal/privacy\">Política de Privacidad</a>.",
 
+  "checkout.title": "Pasar a Pro",
+  "checkout.subtitle": "Un último paso antes de ir al pago.",
+  "checkout.question": "¿Es esta la cuenta que quieres pasar a Pro?",
+  "checkout.continue": "Continuar",
+  "checkout.change_account": "Cambiar de cuenta",
+  "checkout.price_monthly": "{price} €/mes",
+  "checkout.price_yearly": "{price} €/año",
+  "checkout.error": "No se pudo iniciar el pago. Inténtalo de nuevo en un momento.",
+  "checkout.secured_by": "Pago seguro gestionado por Polar",
+
   "help.title": "Ayuda",
   "help.subtitle": "La mayoría de respuestas están en la documentación. Para lo demás, escríbenos — leemos todo.",
   "help.search_placeholder": "Busca en las preguntas…",

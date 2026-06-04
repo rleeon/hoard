@@ -197,6 +197,16 @@
   "login.email_sent": "Check your inbox — magic link sent to {email}.",
   "login.terms_html": "By continuing you accept the <a href=\"/legal/terms\">Terms</a> and <a href=\"/legal/privacy\">Privacy Policy</a>.",
 
+  "checkout.title": "Upgrade to Pro",
+  "checkout.subtitle": "One last step before payment.",
+  "checkout.question": "Is this the account you want to upgrade to Pro?",
+  "checkout.continue": "Continue",
+  "checkout.change_account": "Switch account",
+  "checkout.price_monthly": "€{price}/mo",
+  "checkout.price_yearly": "€{price}/yr",
+  "checkout.error": "Couldn't start checkout. Please try again in a moment.",
+  "checkout.secured_by": "Secure payment handled by Polar",
+
   "help.title": "Help",
   "help.subtitle": "Most answers are in the docs. For everything else, email us — we read every message.",
   "help.search_placeholder": "Search the FAQ…",
