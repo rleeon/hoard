@@ -335,12 +335,31 @@ async fn post_batch(
 }
 
 fn device_meta() -> DeviceMeta {
-    let hostname = sysinfo::System::host_name();
+    let id = device_identity();
     DeviceMeta {
-        name: hostname.clone(),
-        os: Some(std::env::consts::OS.to_string()),
-        fingerprint: Some(fingerprint(hostname.as_deref())),
+        name: id.name,
+        os: Some(id.os),
+        fingerprint: Some(id.fingerprint),
         app_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+    }
+}
+
+/// Stable identity of this machine, shared by log shipping and cloud device
+/// registration (the `Dispositivos N/M` counter on the account page). Keeping
+/// one source of truth means the fingerprint a log row carries matches the one
+/// the device-list upsert keys on.
+pub struct DeviceIdentity {
+    pub name: Option<String>,
+    pub os: String,
+    pub fingerprint: String,
+}
+
+pub fn device_identity() -> DeviceIdentity {
+    let hostname = sysinfo::System::host_name();
+    DeviceIdentity {
+        fingerprint: fingerprint(hostname.as_deref()),
+        os: std::env::consts::OS.to_string(),
+        name: hostname,
     }
 }
 

@@ -549,9 +549,21 @@ impl MeError {
 async fn fetch_me_raw(base: &str, token: &str) -> Result<CloudAccount, MeError> {
     let url = format!("{base}/v1/me");
     let client = http_client().map_err(|e| MeError::Other(e.to_string()))?;
-    let resp = client
+    // Declare this machine so the server can register it in `devices` and keep
+    // the "Dispositivos N/M" counter accurate. Sent on /v1/me because it's the
+    // low-frequency account fetch (login + refresh + account page) — never on
+    // the 10s sync poll. The server ignores these headers if the fingerprint
+    // is empty (e.g. older clients send nothing).
+    let dev = hoard_agent::logship::device_identity();
+    let mut req = client
         .get(&url)
         .bearer_auth(token)
+        .header("x-hoard-device-fp", &dev.fingerprint)
+        .header("x-hoard-device-os", &dev.os);
+    if let Some(name) = dev.name.as_deref() {
+        req = req.header("x-hoard-device-name", name);
+    }
+    let resp = req
         .send()
         .await
         .map_err(|e| MeError::Other(format!("Network error: {e}")))?;

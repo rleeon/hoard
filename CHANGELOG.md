@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.2] — 2026-06-04
+
+### Fixed
+- **Contador de dispositivos clavado en "0 / N".** El registro de dispositivos
+  nunca se implementó en el servidor cloud: la tabla `devices` solo se leía y
+  `profiles.devices_count` jamás se escribía, así que la cuenta marcaba 0
+  aunque estuvieras usando la app. Ahora el cliente declara su identidad
+  (fingerprint estable = hash de `/etc/machine-id` + hostname, ya usado para los
+  logs) en cabeceras al pedir `/v1/me`, y el servidor hace upsert en `devices`
+  (clave `(user_id, fingerprint)`, refresca `last_seen_at`) y recalcula
+  `devices_count`. El límite del plan no se aplica todavía aquí — solo se mantiene
+  el conteo veraz, para que un descuadre nunca pueda bloquear al usuario.
+
 ## [1.9.1] — 2026-06-04
 
 ### Fixed

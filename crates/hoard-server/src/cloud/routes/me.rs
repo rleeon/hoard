@@ -5,7 +5,7 @@ use crate::cloud::errors::CloudError;
 use crate::cloud::plans::Plan;
 use crate::cloud::quota;
 use crate::cloud::state::CloudState;
-use axum::{extract::State, response::Json, Extension};
+use axum::{extract::State, http::HeaderMap, response::Json, Extension};
 use serde::Serialize;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -47,8 +47,14 @@ pub struct Me {
 pub async fn get_me(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
+    headers: HeaderMap,
 ) -> Result<Json<Me>, CloudError> {
     upsert_profile_for(&state, &user).await?;
+    // Register/refresh this machine in `devices` so the account page's
+    // "Dispositivos N/M" reflects reality. Runs before the profile SELECT so
+    // the recomputed `devices_count` is the one we return. Best-effort: a
+    // client that sends no fingerprint (older builds) leaves the count alone.
+    register_device(&state, &user, &headers).await?;
 
     let row: (String, Option<String>, Option<String>, String, i64, i32) = sqlx::query_as(
         "SELECT email, display_name, avatar_url, plan, storage_bytes, devices_count
@@ -141,6 +147,54 @@ async fn upsert_profile_for(state: &CloudState, user: &CloudUser) -> Result<(), 
     )
     .bind(user.user_id)
     .bind(&user.email)
+    .execute(&state.pool)
+    .await?;
+    Ok(())
+}
+
+/// Upsert the calling machine into `devices` and recompute the cached
+/// `profiles.devices_count`. Keyed on `(user_id, fingerprint)` so re-opening
+/// the app on the same machine bumps `last_seen_at` instead of inflating the
+/// count. No-op when the client sends no fingerprint header (older builds, or
+/// a machine with neither `/etc/machine-id` nor a hostname). The device limit
+/// is *not* enforced here — we only keep the count truthful; gating uploads on
+/// it is a separate decision so a miscount can never lock a user out.
+async fn register_device(
+    state: &CloudState,
+    user: &CloudUser,
+    headers: &HeaderMap,
+) -> Result<(), CloudError> {
+    let header = |k: &str| headers.get(k).and_then(|v| v.to_str().ok()).map(str::trim);
+    let fingerprint = match header("x-hoard-device-fp").filter(|s| !s.is_empty()) {
+        Some(fp) => fp,
+        None => return Ok(()),
+    };
+    let name = header("x-hoard-device-name")
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Unknown device");
+    let os = header("x-hoard-device-os").filter(|s| !s.is_empty());
+
+    sqlx::query(
+        "INSERT INTO devices (user_id, device_name, device_kind, os, fingerprint)
+             VALUES ($1, $2, 'desktop', $3, $4)
+         ON CONFLICT (user_id, fingerprint)
+         DO UPDATE SET last_seen_at = now(),
+                       device_name  = EXCLUDED.device_name,
+                       os           = EXCLUDED.os",
+    )
+    .bind(user.user_id)
+    .bind(name)
+    .bind(os)
+    .bind(fingerprint)
+    .execute(&state.pool)
+    .await?;
+
+    sqlx::query(
+        "UPDATE profiles
+            SET devices_count = (SELECT count(*) FROM devices WHERE user_id = $1)
+          WHERE user_id = $1",
+    )
+    .bind(user.user_id)
     .execute(&state.pool)
     .await?;
     Ok(())

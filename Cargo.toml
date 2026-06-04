@@ -13,7 +13,7 @@ members = [
 
 [workspace.package]
 edition = "2021"
-version = "1.9.1"
+version = "1.9.2"
 authors = ["insider <raileonoliva@gmail.com>"]
 license = "AGPL-3.0"
 # Self-hosted app, never published to crates.io. Marking the members private
