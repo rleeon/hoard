@@ -1679,6 +1679,13 @@ fn walk_root_collecting(
             if is_skip_dir(name_str) {
                 continue;
             }
+            // Never walk Hoard's own bookkeeping (conflict backups,
+            // correlation/state json) nor the desktop trash — descending there
+            // mints phantom "games" out of our own data (e.g. the timestamped
+            // `conflicts/<id>/<ts>/autosave` folders) or out of deleted files.
+            if is_internal_or_trash(&path) {
+                continue;
+            }
             if let Some(hit) = classify_dir_as_save_like(&path, name_str, store) {
                 if seen.insert(path.clone()) {
                     out.push(hit);
@@ -1702,6 +1709,24 @@ fn walk_root_collecting(
 fn is_skip_dir(name: &str) -> bool {
     let lower = name.to_lowercase();
     WALK_SKIP.contains(&lower.as_str())
+}
+
+/// True if `path` lives inside Hoard's own state dir (conflict backups,
+/// `correlation.json`, `state.json`, …) or any desktop trash. The aggressive
+/// walk and phase-4 discovery must skip these: our conflict backups are real
+/// save bytes copied verbatim, so they score save-like and would resurface as
+/// phantom games named after the backup timestamp; trashed folders are
+/// deleted, not installed games.
+fn is_internal_or_trash(path: &Path) -> bool {
+    if let Ok(state_dir) = crate::config::CliConfig::state_dir() {
+        if path.starts_with(&state_dir) {
+            return true;
+        }
+    }
+    path.components().any(|c| {
+        let s = c.as_os_str().to_string_lossy();
+        s == "Trash" || s.starts_with(".Trash")
+    })
 }
 
 /// If a dir's name + contents look save-like, return a
@@ -2594,6 +2619,41 @@ mod tests {
             known.insert(guid.clone());
             let skipped = discover_unattributed(Os::Linux, &store, &known);
             assert!(skipped.iter().all(|a| a.path != guid));
+        });
+    }
+
+    /// Regresión: los backups de conflictos del propio Hoard
+    /// (`<state_dir>/conflicts/<id>/<ts>/autosave`) son bytes de save
+    /// copiados verbatim, así que puntúan save-like y, antes del fix, afloraban
+    /// como juegos fantasma nombrados con el timestamp. El walk debe saltarlos
+    /// aunque la correlación los corrobore.
+    #[test]
+    fn discover_unattributed_skips_hoard_internal_conflicts() {
+        with_isolated_home(|_home| {
+            let state_dir = crate::config::CliConfig::state_dir().unwrap();
+            let conflict = state_dir
+                .join("conflicts")
+                .join("a9d4b6d5-2df7-4633-b733-63708660d8e5")
+                .join("2026-05-30T11-35-47.308147652Z")
+                .join("autosave");
+            std::fs::create_dir_all(&conflict).unwrap();
+            std::fs::write(conflict.join("game.sav"), b"x").unwrap();
+
+            // Correlación fuerte sobre la carpeta interna: aun así no debe salir.
+            let mut store = CorrelationStore::default();
+            store.record(
+                &conflict,
+                &[crate::correlation::GameProcess {
+                    name: "openttd".into(),
+                    exe: None,
+                }],
+            );
+            let found = discover_unattributed(Os::Linux, &store, &HashSet::new());
+            assert!(
+                found.iter().all(|a| !a.path.starts_with(&state_dir)),
+                "Hoard's own conflict backups must never surface as games: {:?}",
+                found.iter().map(|a| &a.path).collect::<Vec<_>>()
+            );
         });
     }
 }

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.4] — 2026-06-04
+
+### Fixed
+- **El descubrimiento catalog-free (fase 4, ADR 0020) sacaba juegos fantasma
+  de los propios datos de Hoard.** El walk recorría `~/.local/share` entera,
+  incluyendo `<state_dir>/hoard/conflicts/<id>/<ts>/autosave` (backups del
+  auto-restore consciente de conflictos, que son bytes de save copiados
+  verbatim) y la papelera (`~/.local/share/Trash/...`). Ambos puntuaban
+  save-like y afloraban como "juegos" nombrados con el timestamp del backup o
+  con `files`. Ahora el walk salta cualquier ruta dentro del `state_dir` de
+  Hoard o con componente `Trash`/`.Trash`, tanto en fase 4 como en el
+  descubrimiento agresivo por slug.
+
 ## [1.9.3] — 2026-06-04
 
 ### Fixed
