@@ -6,6 +6,7 @@
     Library,
     Home,
     Settings as SettingsIcon,
+    Map as MapIcon,
     Sparkles,
     AlertCircle,
     HardDrive,
@@ -24,6 +25,7 @@
   import LibraryRoute from "./routes/Library.svelte";
   import SettingsRoute from "./routes/Settings.svelte";
   import HistoryRoute from "./routes/History.svelte";
+  import MapRoute from "./routes/Map.svelte";
   import LogsRoute from "./routes/Logs.svelte";
   import DiagnosticsRoute from "./routes/Diagnostics.svelte";
   import AccountRoute from "./routes/Account.svelte";
@@ -84,6 +86,7 @@
     // dropped from the nav. The per-save timeline still lives here and is
     // reached by clicking a save in the Dashboard / Library.
     "/history/:saveId": HistoryRoute,
+    "/map": MapRoute,
     "/logs": LogsRoute,
     "/diagnostics": DiagnosticsRoute,
     "/account": AccountRoute,
@@ -332,6 +335,7 @@
       : { labelKey: "nav.sign_in", icon: LogIn, route: "/account" },
     { labelKey: "nav.library", icon: Library, route: "/library" },
     { labelKey: "nav.dashboard", icon: Archive, route: "/dashboard" },
+    { labelKey: "nav.map", icon: MapIcon, route: "/map" },
     { labelKey: "nav.settings", icon: SettingsIcon, route: "/settings" },
   ]);
 
@@ -343,6 +347,7 @@
     "/library",
     "/settings",
     "/history",
+    "/map",
     "/logs",
     "/diagnostics",
     "/account",

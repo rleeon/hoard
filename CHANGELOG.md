@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.7] — 2026-06-04
+
+### Added
+- **Mapa de saves (vista nueva).** Una constelación estilo Obsidian: cada juego
+  es un orbe aislado, de él salen ramas (una por partida/`label`) y cada rama es
+  una cadena de nodos save (las versiones). SVG puro, sin librerías de grafos,
+  layout determinista (filotaxis para separar los orbes, brazos radiales para las
+  ramas), zoom/pan con niveles de detalle y panel lateral para restaurar una
+  versión o abrir el historial. Solo lectura sobre los datos que ya existen.
+
+### Fixed
+- **OpenTTD (y cualquier juego en la nube) se duplicaba al re-trackear.** En modo
+  nube `add_game_to_tracking` generaba un UUID nuevo en cada llamada en vez de
+  reutilizar el save existente por `(game_slug, label)`; ahora deduplica y solo
+  refresca la ruta local.
+
 ## [1.9.6] — 2026-06-04
 
 ### Fixed

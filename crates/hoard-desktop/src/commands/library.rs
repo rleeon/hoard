@@ -272,8 +272,19 @@ pub async fn add_game_to_tracking(
     // first upload via UPSERT on (user_id, game_slug, label). The client just
     // mints a local save_id, records the path, and starts watching.
     if client.is_cloud().await {
-        let save_id = uuid::Uuid::new_v4().to_string();
         let (mut cli_state, path) = CliState::load_default().map_err(|e| e.to_string())?;
+        // Dedup by (game_slug, label): unlike the self-hosted path — where a
+        // second create hits a 409 and re-links to the one server row — the
+        // cloud path used to mint a fresh uuid every call, so adding the same
+        // game twice (re-track, re-run onboarding, a detection re-add) left
+        // two local rows for one partida and the Library listed it twice.
+        // Reuse the existing id, just refreshing the local path.
+        let save_id = cli_state
+            .saves
+            .iter()
+            .find(|(_, st)| st.game_slug == args.game_slug && st.label == label)
+            .map(|(id, _)| id.clone())
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         cli_state.saves.insert(
             save_id.clone(),
             SaveState {
