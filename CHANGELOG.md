@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.5] — 2026-06-04
+
+### Fixed
+- **Los saves bajados de la nube se marcaban siempre como más recientes que los
+  locales.** La extracción del `.tar.zst` escribía cada archivo con
+  `File::create`, que estampa `mtime=ahora`, sin reaplicar el mtime original que
+  el header del tar conserva. El diff consciente de conflictos del auto-restore
+  (`local_mtime_wins`) comparaba ese mtime falseado y el remoto ganaba siempre,
+  pisando progreso local más nuevo. Ahora se reaplica el mtime de origen al
+  extraer, en las dos rutas (self-hosted y cloud).
+- **`refresh_token_already_used` (400) tras horas de uso forzaba re-login.**
+  Cuando el reuse-detection de Supabase rechazaba un refresh token ya rotado por
+  otro flight (poller + realtime + acción del usuario coincidiendo), la sesión
+  caía. Ahora ese caso se detecta y se recupera releyendo las credenciales de
+  disco: si otro flight ya rotó y persistió un token distinto, se adopta en vez
+  de tirar la sesión.
+- **Un id numérico de cuenta se usaba como nombre de juego.** En rutas tipo
+  `…/Gaddy Games/Plan B Terraform/<steamid64>/saves` la atribución catalog-free
+  cogía el SteamID (17 dígitos) como nombre. Ahora salta los segmentos
+  puramente numéricos (ids de cuenta/perfil) y sigue subiendo hasta el título.
+
+### Added
+- **Push Realtime de Supabase para sync casi-instantáneo entre dispositivos.**
+  Un WebSocket suscrito a `saves` dispara un pull off-cadence en cuanto otro
+  dispositivo sube una versión, bajando la latencia percibida de hasta un
+  intervalo de poll (10 s) a ~1 s. Es un acelerador best-effort: el poll
+  temporizado sigue siendo el fallback si el socket cae.
+- **Barrera de sync pre-lanzamiento.** Al arrancar un juego, el agente tira del
+  último snapshot remoto antes de que empiece a escribir, para que un relevo
+  entre dispositivos (juega en uno, te sientas en otro y lanzas) tenga el
+  progreso ya presente. Respeta todas las guardas "el usuario está aquí"
+  (cambios sin volcar, evento fs reciente, restore en curso, cooldown) y usa el
+  mismo restore consciente de conflictos.
+
+### Changed
+- **Backoff largo para auto-restores que dan 404.** Un save trackeado en local
+  pero ausente del backend actual (arrastrado de otra cuenta, `state.json`
+  obsoleto) se reintentaba cada 60 s para siempre, inundando el log de WARNs.
+  Ahora se espacia a ~1 h y baja a nivel DEBUG; se auto-cura si el save aparece.
+
 ## [1.9.4] — 2026-06-04
 
 ### Fixed

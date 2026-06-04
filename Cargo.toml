@@ -13,7 +13,7 @@ members = [
 
 [workspace.package]
 edition = "2021"
-version = "1.9.4"
+version = "1.9.5"
 authors = ["insider <raileonoliva@gmail.com>"]
 license = "AGPL-3.0"
 # Self-hosted app, never published to crates.io. Marking the members private
@@ -79,6 +79,9 @@ directories = "5"
 indicatif = "0.17"
 tokio-util = { version = "0.7", features = ["io"] }
 futures = "0.3"
+# WebSocket client for the Supabase Realtime push (near-instant sync). Uses
+# native-tls to match reqwest's default TLS backend (no extra rustls stack).
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 bytes = "1"
 regex = "1"
 strsim = "0.11"

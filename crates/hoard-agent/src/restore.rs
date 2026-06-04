@@ -179,6 +179,8 @@ where
         out.flush()
             .await
             .with_context(|| format!("writing {}", dest_path.display()))?;
+        drop(out);
+        apply_entry_mtime(&entry, &dest_path);
 
         if !options.skip_verify {
             if let Some(meta) = expected_file {
@@ -352,6 +354,8 @@ where
             .flush()
             .await
             .with_context(|| format!("writing {}", dest_path.display()))?;
+        drop(writer);
+        apply_entry_mtime(&entry, &dest_path);
 
         bytes_extracted += written;
         files_extracted += 1;
@@ -362,6 +366,27 @@ where
         bytes_extracted,
         destination: dest.to_path_buf(),
     })
+}
+
+/// Re-apply the tar entry's recorded mtime onto the extracted file.
+///
+/// We write each file with `File::create`, which stamps it with mtime=now.
+/// The conflict-aware auto-restore diff (`agent::local_mtime_wins`) compares
+/// the freshly-pulled file's mtime against the local copy's, so without this
+/// every cloud pull would look strictly newer than local and silently win —
+/// exactly the "todos mis saves de la nube los puso más recientes" bug.
+/// Best-effort: a failure here only degrades conflict resolution, never the
+/// extraction itself, so errors are swallowed.
+fn apply_entry_mtime<R>(entry: &tokio_tar::Entry<R>, path: &Path)
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    if let Ok(secs) = entry.header().mtime() {
+        if secs > 0 {
+            let ft = filetime::FileTime::from_unix_time(secs as i64, 0);
+            let _ = filetime::set_file_mtime(path, ft);
+        }
+    }
 }
 
 /// Reject absolute paths, `..`, drive prefixes. Returns a relative `PathBuf`

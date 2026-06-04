@@ -245,14 +245,16 @@ pub async fn list_devices(
 
     let devices = rows
         .into_iter()
-        .map(|(id, device_name, device_kind, os, last_seen_at, created_at)| DeviceOut {
-            id,
-            device_name,
-            device_kind,
-            os,
-            last_seen_at: last_seen_at.map(format_dt),
-            created_at: created_at.map(format_dt),
-        })
+        .map(
+            |(id, device_name, device_kind, os, last_seen_at, created_at)| DeviceOut {
+                id,
+                device_name,
+                device_kind,
+                os,
+                last_seen_at: last_seen_at.map(format_dt),
+                created_at: created_at.map(format_dt),
+            },
+        )
         .collect();
     Ok(Json(DeviceListOut { devices }))
 }

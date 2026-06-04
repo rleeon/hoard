@@ -33,7 +33,7 @@ const KEYRING_USER: &str = "default";
 const SUPABASE_DEFAULT_URL: &str = "https://zddepgqdiuhhzqdimsks.supabase.co";
 const SUPABASE_DEFAULT_ANON_KEY: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkZGVwZ3FkaXVoaHpxZGltc2tzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2MzM2MTksImV4cCI6MjA5NTIwOTYxOX0.3nZebGwCzFO1byTqhowq9ip89GE9fMRxPscgYSlPzFk";
 
-fn supabase_url() -> String {
+pub(crate) fn supabase_url() -> String {
     std::env::var("HOARD_SUPABASE_URL")
         .ok()
         .filter(|s| !s.is_empty())
@@ -41,7 +41,7 @@ fn supabase_url() -> String {
         .unwrap_or_else(|| SUPABASE_DEFAULT_URL.to_string())
 }
 
-fn supabase_anon_key() -> String {
+pub(crate) fn supabase_anon_key() -> String {
     std::env::var("HOARD_SUPABASE_ANON_KEY")
         .ok()
         .filter(|s| !s.is_empty())
@@ -329,7 +329,28 @@ pub async fn refresh_active_session() -> Result<CloudCreds> {
     let Some(creds) = load_creds()? else {
         anyhow::bail!("Not signed in to Hoard Cloud.");
     };
-    let (access, refresh) = refresh_supabase_session(&creds.refresh_token).await?;
+    let attempted = creds.refresh_token.clone();
+    let (access, refresh) = match refresh_supabase_session(&creds.refresh_token).await {
+        Ok(pair) => pair,
+        Err(e) if e.downcast_ref::<RefreshTokenStale>().is_some() => {
+            // Reuse-detection: our stored refresh token was already rotated.
+            // The usual cause is a concurrent flight (another process, or a
+            // refresh that landed between our `load_creds` and the lock) that
+            // already minted a fresh pair and persisted it. Re-read disk: if
+            // the stored token changed, adopt it instead of forcing a re-login.
+            let healed = load_creds()
+                .ok()
+                .flatten()
+                .filter(|c| !c.refresh_token.trim().is_empty() && c.refresh_token != attempted);
+            if let Some(c) = healed {
+                tracing::debug!("cloud: refresh token was rotated elsewhere; adopting disk creds");
+                *last = Some((Instant::now(), c.clone()));
+                return Ok(c);
+            }
+            return Err(e.context("session expired — please sign in again"));
+        }
+        Err(e) => return Err(e),
+    };
     update_tokens(&access, &refresh)?;
     let fresh = CloudCreds {
         access_token: access,
@@ -393,6 +414,9 @@ pub async fn cloud_complete_login(
         .map(|(p, _)| p.cloud_poll_interval_secs)
         .unwrap_or(10);
     cloud_pull::start(&app, secs);
+    // Realtime push for near-instant cross-device sync; rides alongside the
+    // poller (which stays as the fallback).
+    crate::commands::cloud_realtime::start(&app);
 
     // A login completed, so any buffered deep-link URL has served its purpose.
     // Clearing it stops a stale (and by now expired) token from being replayed
@@ -465,6 +489,7 @@ pub fn cloud_logout(app: AppHandle, state: State<'_, AppState>) -> Result<(), St
     // Stop the cloud-pull poller — otherwise it would keep tickling
     // `load_active_creds` and quietly do nothing forever.
     cloud_pull::stop(&app);
+    crate::commands::cloud_realtime::stop(&app);
     Ok(())
 }
 
@@ -591,9 +616,28 @@ struct RefreshResponse {
     refresh_token: String,
 }
 
+/// Sentinel error: Supabase rejected the refresh token because it had already
+/// been rotated (GoTrue's reuse-detection, `refresh_token_already_used`) or no
+/// longer exists (`refresh_token_not_found`). Carried as a distinct error type
+/// so [`refresh_active_session`] can downcast and self-heal from a refresh that
+/// another flight already completed, instead of treating it as a dead session.
+#[derive(Debug)]
+struct RefreshTokenStale;
+
+impl std::fmt::Display for RefreshTokenStale {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("refresh token already rotated by another refresh")
+    }
+}
+
+impl std::error::Error for RefreshTokenStale {}
+
 /// Hit Supabase GoTrue's `token?grant_type=refresh_token` endpoint to swap a
 /// refresh token for a new access/refresh pair. The `apikey` header (anon
 /// key) is required by the Supabase API gateway even for token refresh.
+///
+/// On a reuse-detection rejection the error is [`RefreshTokenStale`] so the
+/// caller can recover from a concurrent rotation rather than bailing.
 async fn refresh_supabase_session(refresh_token: &str) -> Result<(String, String)> {
     let refresh_token = refresh_token.trim();
     if refresh_token.is_empty() {
@@ -611,6 +655,14 @@ async fn refresh_supabase_session(refresh_token: &str) -> Result<(String, String
     let status = resp.status();
     let body = resp.text().await.unwrap_or_default();
     if !status.is_success() {
+        let low = body.to_lowercase();
+        if low.contains("already_used")
+            || low.contains("already used")
+            || low.contains("not_found")
+            || low.contains("not found")
+        {
+            return Err(anyhow::Error::new(RefreshTokenStale));
+        }
         anyhow::bail!("couldn't renew session ({status}): {body}");
     }
     let parsed: RefreshResponse = serde_json::from_str(&body)

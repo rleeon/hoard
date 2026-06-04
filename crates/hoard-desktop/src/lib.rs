@@ -116,6 +116,7 @@ pub fn run() {
         .manage(TrayController::default())
         .manage(AutomaticScheduler::default())
         .manage(commands::cloud_pull::CloudPullScheduler::default())
+        .manage(commands::cloud_realtime::RealtimeScheduler::default())
         .invoke_handler(tauri::generate_handler![
             commands::misc::greet,
             commands::auth::health_check,
@@ -235,6 +236,10 @@ pub fn run() {
                 if let Err(e) = commands::cloud_pull::restart_if_enabled(&cloud_pull_handle).await {
                     tracing::warn!(error = %e, "couldn't rehydrate cloud-pull poller");
                 }
+                // Realtime push rides alongside the poller: it accelerates
+                // "something changed" from up to one poll interval down to
+                // ~1 s. Best-effort — the poll above is the fallback.
+                commands::cloud_realtime::restart_if_enabled(&cloud_pull_handle);
             });
 
             // Wire the deep-link receiver. `hoard://auth/callback?...` URLs

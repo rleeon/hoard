@@ -1462,7 +1462,14 @@ pub(crate) fn aggressive_discover_with(
 
     if let Some(root) = install_dir {
         if root.is_dir() {
-            walk_root_collecting(root, max_depth, timeout_per_root, &mut out, &mut seen, store);
+            walk_root_collecting(
+                root,
+                max_depth,
+                timeout_per_root,
+                &mut out,
+                &mut seen,
+                store,
+            );
         }
     }
 
@@ -1473,7 +1480,14 @@ pub(crate) fn aggressive_discover_with(
         // avoids the `drive_c/windows` / `drive_c/Program Files` noise.
         let user = prefix.join("drive_c/users/steamuser");
         if user.is_dir() {
-            walk_root_collecting(&user, max_depth, timeout_per_root, &mut out, &mut seen, store);
+            walk_root_collecting(
+                &user,
+                max_depth,
+                timeout_per_root,
+                &mut out,
+                &mut seen,
+                store,
+            );
         }
     }
 
@@ -1621,7 +1635,12 @@ fn attribute_game_name(path: &Path, store: &CorrelationStore) -> String {
         if let Some(name) = dir.file_name().and_then(|s| s.to_str()) {
             let lower = name.to_lowercase();
             let generic = GENERIC_SEGMENTS.contains(&lower.as_str());
-            if !generic && !scoring::name_recognised(name) {
+            // A purely-numeric segment is an account/user id, not a game name
+            // — SteamID64 (17 digits), per-user numeric profile dirs, etc.
+            // `…/Gaddy Games/Plan B Terraform/76561197960287930/saves` must
+            // attribute to "Plan B Terraform", not the SteamID. Keep climbing.
+            let id_like = name.len() >= 6 && name.chars().all(|c| c.is_ascii_digit());
+            if !generic && !id_like && !scoring::name_recognised(name) {
                 return name.to_string();
             }
         }
@@ -2574,7 +2593,10 @@ mod tests {
         let mut known = HashSet::new();
         known.insert(PathBuf::from("/games/a/Saves"));
         assert!(path_already_known(Path::new("/games/a/Saves"), &known));
-        assert!(path_already_known(Path::new("/games/a/Saves/slot1"), &known));
+        assert!(path_already_known(
+            Path::new("/games/a/Saves/slot1"),
+            &known
+        ));
         assert!(path_already_known(Path::new("/games/a"), &known));
         assert!(!path_already_known(Path::new("/games/b/Saves"), &known));
     }

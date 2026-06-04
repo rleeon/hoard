@@ -130,6 +130,22 @@ pub fn start(app: &AppHandle, interval_secs: u32) {
     *slot = Some(new_handle);
 }
 
+/// Fire a single manifest pull immediately, off the regular cadence.
+///
+/// Used by the Realtime push (`cloud_realtime`): when another device commits
+/// a new save version, Supabase pushes a `saves` UPDATE and we refresh state
+/// in ~1 s instead of waiting for the next `interval_secs` tick. Reuses the
+/// scheduler's `seen` map so delta detection stays consistent with the timed
+/// poll. No-op when signed out (`run_one_pull` bails on missing creds).
+pub fn kick(app: &AppHandle) {
+    let scheduler = app.state::<CloudPullScheduler>();
+    let seen = scheduler.seen.clone();
+    let app = app.clone();
+    tokio::task::spawn(async move {
+        run_one_pull(&app, &seen).await;
+    });
+}
+
 /// Abort the running poller. No-op when nothing is scheduled.
 pub fn stop(app: &AppHandle) {
     let scheduler = app.state::<CloudPullScheduler>();

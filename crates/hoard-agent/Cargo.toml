@@ -33,6 +33,11 @@ hex = { workspace = true }
 sysinfo = { workspace = true }
 notify = { workspace = true }
 notify-debouncer-mini = { workspace = true }
+# Restoring the original mtime onto extracted files. The tar header carries
+# each file's source mtime; without re-applying it the freshly-written file
+# gets mtime=now and would always beat the local copy in the conflict-aware
+# diff (`agent::local_mtime_wins`), so cloud pulls looked "newer" forever.
+filetime = "0.2"
 
 # OS-native credential storage. Linux uses libsecret via sync-secret-service
 # (no async runtime in the way), Windows uses Credential Manager, macOS uses
@@ -62,9 +67,6 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-# Manipulating file mtimes in tests for conflict-resolution and TTL sweep
-# coverage. Dev-only — the production code reads mtime via `tokio::fs::metadata`.
-filetime = "0.2"
 # Mirror of the cfg(windows) prod dep: GOG Galaxy's sqlite reader lives in
 # `launchers.rs`, but its parser code is OS-agnostic and gets exercised by
 # tests on Linux too (synthesised fixture). The dev-dep makes the

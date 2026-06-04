@@ -59,6 +59,8 @@ tracing-subscriber = { workspace = true }
 tracing-appender = "0.2"
 time = { workspace = true }
 uuid = { workspace = true }
+futures = { workspace = true }
+tokio-tungstenite = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

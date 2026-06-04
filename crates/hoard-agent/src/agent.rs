@@ -35,7 +35,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::Instant as TokioInstant;
 
-use crate::api::ApiClient;
+use crate::api::{ApiClient, ApiError};
 use crate::backup::{upload_directory_checked, BackupResult};
 
 /// Configuration for the live agent. Defaults are tuned for v0.3's
@@ -248,9 +248,15 @@ enum AgentCommand {
     RearmWatcher(String),
     /// Internal: a spawned auto-restore task finished (success or failure).
     /// Clears `slot.restoring` so the reconciliation sweep can try again
-    /// next tick. Carries no error payload — the failure event was already
-    /// emitted by the task itself.
-    AutoRestoreFinished(String),
+    /// next tick. `not_on_server` is set when the restore failed with a 404
+    /// (the save has no record/snapshot on the backend we're talking to) —
+    /// the handler then parks the slot on a long backoff so the sweep stops
+    /// hammering it every cooldown (saves tracked locally but absent from the
+    /// current cloud account otherwise spam the log forever).
+    AutoRestoreFinished {
+        id: String,
+        not_on_server: bool,
+    },
     /// Live-toggle `config.auto_restore` so the user's Settings change
     /// reaches the running agent without a restart. When flipped from
     /// `false → true` the agent also kicks an immediate reconciliation
@@ -477,14 +483,24 @@ async fn run_agent(
                             arm_watcher(slot, &fs_tx);
                         }
                     }
-                    Some(AgentCommand::AutoRestoreFinished(id)) => {
+                    Some(AgentCommand::AutoRestoreFinished { id, not_on_server }) => {
                         // The background restore task signalled completion
                         // (success or failure). Clear the in-flight flag so
                         // the reconciliation sweep can try again once the
                         // cooldown expires — `next_auto_restore_at` was set
-                        // when we spawned, so we don't reset it here.
+                        // when we spawned, so we don't reset it here…
                         if let Some(slot) = slots.get_mut(&id) {
                             slot.restoring = false;
+                            // …unless the save simply isn't on the server
+                            // (404). Retrying every 60s can't conjure a
+                            // snapshot that doesn't exist; park it on a long
+                            // backoff so we check ~hourly instead of spamming.
+                            if not_on_server {
+                                slot.next_auto_restore_at = Some(
+                                    TokioInstant::now()
+                                        + Duration::from_secs(AUTO_RESTORE_NOT_FOUND_BACKOFF_SECS),
+                                );
+                            }
                         }
                     }
                     Some(AgentCommand::SetAutoRestore(enabled)) => {
@@ -758,6 +774,14 @@ fn handle_add(
 /// reconciliation sweep.
 const AUTO_RESTORE_COOLDOWN_SECS: u64 = 60;
 
+/// Backoff applied when an auto-restore fails with a 404: the save is tracked
+/// locally but has no record/snapshot on the backend we're talking to (e.g.
+/// saves carried over from another account, or a stale `state.json` entry).
+/// Retrying on the normal 60s cooldown floods the log with WARNs forever, so
+/// we space these out to roughly hourly — still self-heals if the user later
+/// uploads the save, without the spam.
+const AUTO_RESTORE_NOT_FOUND_BACKOFF_SECS: u64 = 60 * 60;
+
 /// Hard ceiling on how long a continuously-writing save can defer its
 /// backup. The notify debounce resets the timer on every write, so a game
 /// that autosaves every second would never settle and never flush. Once
@@ -805,6 +829,7 @@ fn spawn_auto_restore(
             "agent: auto-restore diff — checking server snapshot against local"
         );
         let retention = Duration::from_secs(u64::from(conflict_retention_days) * 86_400);
+        let mut not_on_server = false;
         match run_auto_restore(&api, &save, conflict_root.as_deref(), retention).await {
             Ok(Some(outcome)) => {
                 let touched = outcome.files_restored + outcome.conflicts_backed_up;
@@ -865,25 +890,41 @@ fn spawn_auto_restore(
                 );
             }
             Err(e) => {
-                tracing::warn!(
-                    save_id = %save.save_id,
-                    error = %e,
-                    "agent: auto-restore failed"
-                );
-                let _ = events_tx
-                    .send(AgentEvent::SaveAutoRestoreFailed {
-                        save_id: save.save_id.clone(),
-                        game_slug: save.game_slug.clone(),
-                        error: e.to_string(),
-                    })
-                    .await;
+                // A 404 means the save has no record/snapshot on the backend
+                // (carried over from another account, stale state, or the
+                // remote was purged). It's not a transient failure — don't
+                // raise it to the user as an error and don't keep retrying on
+                // the short cooldown; park it on a long backoff (below).
+                not_on_server = matches!(e.downcast_ref::<ApiError>(), Some(ApiError::NotFound));
+                if not_on_server {
+                    tracing::debug!(
+                        save_id = %save.save_id,
+                        "agent: auto-restore — save not on server (404); backing off"
+                    );
+                } else {
+                    tracing::warn!(
+                        save_id = %save.save_id,
+                        error = %e,
+                        "agent: auto-restore failed"
+                    );
+                    let _ = events_tx
+                        .send(AgentEvent::SaveAutoRestoreFailed {
+                            save_id: save.save_id.clone(),
+                            game_slug: save.game_slug.clone(),
+                            error: e.to_string(),
+                        })
+                        .await;
+                }
             }
         }
         // Always clear the slot's `restoring` flag, even on failure — the
         // reconciliation sweep is responsible for retrying once the
         // cooldown expires; we just need to mark this attempt as done.
         let _ = cmd_tx
-            .send(AgentCommand::AutoRestoreFinished(save.save_id.clone()))
+            .send(AgentCommand::AutoRestoreFinished {
+                id: save.save_id.clone(),
+                not_on_server,
+            })
             .await;
     });
 }
@@ -1832,6 +1873,44 @@ fn process_poll(
         };
 
         if now_running {
+            // Decide the pre-launch sync barrier *before* flipping
+            // `is_running` — the sweep skips running slots, but the whole
+            // point of the barrier is to pull on launch. We still honour the
+            // other "user is here" guards so we never clobber an active local
+            // session: un-flushed changes, a recent fs event, a recently
+            // touched folder, an in-flight restore, or an unexpired cooldown
+            // all veto the pull. The restore itself is conflict-aware
+            // (local-newer files win, conflicts are backed up), so even when
+            // it does fire it can't lose newer local progress.
+            let barrier_save: Option<WatchedSave> = if config.auto_restore {
+                slots.get(&id).and_then(|slot| {
+                    if slot.restoring {
+                        return None;
+                    }
+                    if let Some(t) = slot.next_auto_restore_at {
+                        if TokioInstant::now() < t {
+                            return None;
+                        }
+                    }
+                    if slot.has_pending {
+                        return None;
+                    }
+                    if let Some(last) = slot.last_fs_event_at {
+                        if (OffsetDateTime::now_utc() - last).whole_seconds()
+                            < RECENT_SAVE_GRACE.as_secs() as i64
+                        {
+                            return None;
+                        }
+                    }
+                    if is_path_recently_touched(&slot.save.local_path, RECENT_SAVE_GRACE) {
+                        return None;
+                    }
+                    Some(slot.save.clone())
+                })
+            } else {
+                None
+            };
+
             if let Some(slot) = slots.get_mut(&id) {
                 slot.is_running = true;
             }
@@ -1842,9 +1921,34 @@ fn process_poll(
                 "agent: GameStarted"
             );
             let _ = events_tx.try_send(AgentEvent::GameStarted {
-                save_id: id,
+                save_id: id.clone(),
                 game_slug,
             });
+
+            // Pre-launch sync barrier (Fase 1): the instant a game launches,
+            // pull the latest remote snapshot so a cross-device hand-off feels
+            // immediate — play on the tablet, sit down at the PC, launch, and
+            // the tablet's progress is already there. Reuses the same
+            // conflict-aware restore as the reconciliation sweep.
+            if let Some(save) = barrier_save {
+                if let Some(slot) = slots.get_mut(&id) {
+                    slot.restoring = true;
+                    slot.next_auto_restore_at =
+                        Some(TokioInstant::now() + Duration::from_secs(AUTO_RESTORE_COOLDOWN_SECS));
+                }
+                tracing::info!(
+                    save_id = %id,
+                    "agent: GameStarted — pre-launch sync barrier, pulling latest snapshot"
+                );
+                spawn_auto_restore(
+                    save,
+                    api.clone(),
+                    events_tx.clone(),
+                    cmd_tx.clone(),
+                    config.conflict_root.clone(),
+                    config.conflict_retention_days,
+                );
+            }
         } else {
             if let Some(slot) = slots.get_mut(&id) {
                 slot.is_running = false;
