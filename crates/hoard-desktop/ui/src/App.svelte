@@ -384,12 +384,14 @@
 {:else if isAppRoute}
   <div class="flex h-full">
     <aside
-      class="flex w-60 shrink-0 flex-col border-r border-zinc-800/80 bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.03)]"
+      class="flex w-60 shrink-0 flex-col border-r border-white/[0.06] bg-gradient-to-b from-zinc-950/80 via-zinc-950/60 to-zinc-900/40 backdrop-blur-sm shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.04)]"
     >
       <div class="flex items-center gap-2 px-4 py-4">
         <Logo size={36} class="shrink-0 rounded-lg" />
         <div class="min-w-0 flex-1">
-          <div class="text-base font-semibold tracking-tight">Hoard</div>
+          <div class="font-display text-xl font-semibold leading-none text-zinc-50">
+            Hoard
+          </div>
           <button
             type="button"
             onclick={handleVersionClick}

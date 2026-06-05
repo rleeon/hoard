@@ -415,7 +415,54 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
     // enriches latest_version_num / size for saves that have been uploaded.
     if client.is_cloud().await {
         let manifest = client.cloud_sync().await.map_err(pretty_error)?;
-        let (cli_state, _) = CliState::load_default().map_err(|e| e.to_string())?;
+        let (mut cli_state, path) = CliState::load_default().map_err(|e| e.to_string())?;
+
+        // Self-heal duplicate tracking rows. The cloud enforces one save per
+        // (game_slug, label) — UPSERT in `init_upload` — so any extra local
+        // row for the same pair is stale (a manual re-add, a re-run of
+        // onboarding, or a row minted before the 1.9.7 dedup landed). Left in
+        // place it shows up as a phantom card on the Dashboard/Library and a
+        // duplicate branch on the Map. Collapse each pair to a single winner
+        // and prune the rest from CliState so it never comes back.
+        //
+        // Winner = the row that best represents reality: prefer one with an
+        // uploaded version (present in the manifest), then one whose local
+        // folder still exists. Ties keep the first seen.
+        let score = |id: &str, local: &std::path::Path| -> u8 {
+            let in_manifest = manifest.saves.iter().any(|e| e.save_id == id) as u8;
+            let exists = local.exists() as u8;
+            in_manifest * 2 + exists
+        };
+        let mut winners: std::collections::HashMap<(String, String), (String, u8)> =
+            std::collections::HashMap::new();
+        let mut losers: Vec<String> = Vec::new();
+        for (id, st) in &cli_state.saves {
+            let key = (st.game_slug.clone(), st.label.clone());
+            let s = score(id, &st.local_path);
+            match winners.get(&key) {
+                None => {
+                    winners.insert(key, (id.clone(), s));
+                }
+                Some((cur_id, cur_s)) => {
+                    if s > *cur_s {
+                        losers.push(cur_id.clone());
+                        winners.insert(key, (id.clone(), s));
+                    } else {
+                        losers.push(id.clone());
+                    }
+                }
+            }
+        }
+        if !losers.is_empty() {
+            for id in &losers {
+                cli_state.saves.remove(id);
+            }
+            cli_state.save(&path).map_err(|e| e.to_string())?;
+            for id in losers {
+                detach_save_if_running(&state, id).await;
+            }
+        }
+
         let mut out = Vec::with_capacity(cli_state.saves.len());
         for (id, st) in &cli_state.saves {
             let entry = manifest.saves.iter().find(|e| &e.save_id == id);

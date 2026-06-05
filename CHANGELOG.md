@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.9] — 2026-06-05
+
+### Added
+- **Mapa de saves en canvas con físicas.** El constelario pasó de SVG reactivo
+  (que se atascaba al hacer zoom) a un `<canvas>` con simulación: orbes y nodos
+  flotan, se repelen entre sí (force-directed) y se separan solos. Los nodos se
+  dibujan a radio constante en pantalla, así que ya no desaparecen al alejar.
+  Zoom alrededor del cursor, paneo por arrastre y LOD en las etiquetas.
+
+### Fixed
+- **Partida duplicada en el panel sin forma de quitarla** (p. ej. dos `openttd`).
+  En la nube el listado iteraba todas las filas locales; como el servidor impone
+  unicidad por `(game_slug, label)`, la fila sobrante no era válida. `list_tracked_saves`
+  ahora hace auto-saneado: colapsa duplicados quedándose con la fila buena.
+- **La foto de perfil seguía sin salir en /cuenta ni en el menú.** La causa real
+  no era CSS: el servidor de producción estaba en 1.9.3 (sin la extracción del
+  avatar del JWT, añadida en 1.9.6) y el `avatar_url` estaba a NULL en la BD.
+  Redesplegado el server y backfill del avatar/nombre desde el metadata de OAuth.
+
+### Changed
+- **Rediseño «Obsidian Vault».** Tipografía propia auto-hospedada (Fraunces para
+  titulares, Geist Sans/Mono), atmósfera con dos focos esmeralda y grano sutil,
+  superficies de cristal con bordes finos. Menos look «plástico/IA».
+
 ## [1.9.8] — 2026-06-05
 
 ### Added

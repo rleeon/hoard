@@ -1,19 +1,64 @@
 @import "tailwindcss";
 
-/* ---- Theme ----------------------------------------------------------- */
-/* Tailwind v4 theme tokens. The values map roughly to Tailwind's zinc and
-   emerald palettes; we lift the pieces we use most often into named CSS
-   variables so non-Tailwind sources (raw style attributes, third-party
-   widgets) can read them too. The accent green is picked to contrast with
-   the dragon mascot — medium-dark, not olive, not neon. */
+/* ====================================================================== */
+/*  Hoard — "Obsidian Vault" theme                                        */
+/*  Direction: warm-dark, editorial, emerald-as-gem. Bundled variable     */
+/*  fonts (offline-safe — no CDN), layered atmosphere instead of flat     */
+/*  fills, hairline borders, a characterful display serif. Deliberately   */
+/*  not the generic "Inter on zinc-900" dashboard look.                   */
+/* ====================================================================== */
+
+/* ---- Fonts (self-hosted, variable woff2) ----------------------------- */
+@font-face {
+  font-family: "Geist Sans";
+  src: url("./fonts/geist-sans.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("./fonts/geist-mono.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Fraunces";
+  src: url("./fonts/fraunces.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Fraunces";
+  src: url("./fonts/fraunces-italic.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* ---- Theme tokens ---------------------------------------------------- */
+/* Tailwind v4 reads --font-* / --color-* here to mint utilities. The
+   palette is a deep, faintly emerald-warm obsidian; the accent stays
+   emerald (the "gem" in the hoard) but is used as a sharp, sparing
+   highlight rather than a flat coat of paint. */
 @theme {
-  --color-bg: oklch(0.18 0 0); /* zinc-900 */
-  --color-bg-elev: oklch(0.22 0 0); /* zinc-800 */
-  --color-fg: oklch(0.98 0 0); /* zinc-50 */
-  --color-fg-muted: oklch(0.7 0 0); /* zinc-400 */
-  --color-border: oklch(0.32 0 0); /* zinc-700 */
-  --color-accent: oklch(0.6 0.14 158); /* emerald-600 */
-  --color-accent-hover: oklch(0.7 0.16 160); /* emerald-500 */
+  --font-sans:
+    "Geist Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:
+    "Geist Mono", ui-monospace, "SFMono-Regular", "Menlo", monospace;
+  --font-serif: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+
+  /* Obsidian surfaces — near-black with a sliver of emerald hue so the
+     dark never reads as dead/plastic grey. */
+  --color-bg: oklch(0.165 0.006 165);
+  --color-bg-elev: oklch(0.205 0.007 165);
+  --color-fg: oklch(0.97 0.005 160);
+  --color-fg-muted: oklch(0.7 0.008 165);
+  --color-border: oklch(1 0 0 / 8%);
+  --color-accent: oklch(0.62 0.15 158); /* emerald, the gem */
+  --color-accent-hover: oklch(0.72 0.16 160);
 }
 
 html,
@@ -22,57 +67,87 @@ body,
   height: 100%;
 }
 
-/* Tell the engine the whole UI is dark so native form controls (and, on
-   webkit2gtk, the GTK-rendered <select> popup) paint with dark chrome. */
 :root {
   color-scheme: dark;
 }
 
-/* webkit2gtk (Linux Tauri) renders the <select> control and its option list
-   through GTK and largely ignores our dark CSS, so the closed control and the
-   open dropdown came out light-on-light — i.e. blank (the language picker and
-   the Logs level filter). Pin explicit colours (hard-coded hex, since the
-   native popup won't resolve our oklch custom properties) so both stay
-   legible on every distro/theme. */
+/* ---- Base atmosphere ------------------------------------------------- */
+/* A static obsidian field with two faint emerald light sources, plus a
+   fine grain overlay. Depth + texture is what separates a designed dark
+   UI from the default "solid #18181b" look. */
+body {
+  font-family: var(--font-sans);
+  color: var(--color-fg);
+  background-color: oklch(0.155 0.006 165);
+  background-image:
+    radial-gradient(
+      120% 90% at 12% -8%,
+      oklch(0.62 0.13 162 / 14%) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      90% 80% at 108% 8%,
+      oklch(0.55 0.1 200 / 10%) 0%,
+      transparent 50%
+    );
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv01", "cv03", "ss03";
+}
+
+/* Grain — a tiny tiled SVG turbulence, blended low so it reads as paper
+   tooth, not noise. pointer-events:none keeps it purely decorative. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Keep app content above the grain layer. */
+#app {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- Display typography --------------------------------------------- */
+/* Fraunces at a high optical size gives the warm, high-contrast editorial
+   masthead feel. Applied to the brand and any opt-in heading via
+   .font-display; h1/h2 get it by default. */
+.font-display,
+h1,
+h2 {
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
+  font-variation-settings: "opsz" 96;
+  letter-spacing: -0.012em;
+}
+
+/* Numerals look sharper tabular-aligned in dense data views. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ---- Native control legibility (webkit2gtk) ------------------------- */
+/* webkit2gtk renders <select> + its option list through GTK and ignores
+   our CSS vars, so pin explicit hex to keep them readable on every
+   distro/theme. */
 select {
-  color: #f4f4f5; /* zinc-100 */
-  background-color: #18181b; /* zinc-900 */
+  color: #f4f4f5;
+  background-color: #15171a;
 }
 select option {
-  color: #f4f4f5; /* zinc-100 */
-  background-color: #18181b; /* zinc-900 */
+  color: #f4f4f5;
+  background-color: #15171a;
 }
 
-body {
-  font-family:
-    "Inter",
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    "Helvetica Neue",
-    Arial,
-    sans-serif;
-}
-
-/* Cross-OS subtle tweaks. Native decorations stay; we only nudge spacing
-   and font where it helps blend in. The `.is-*` class is set on
-   `documentElement` in `App.svelte::onMount` from navigator.userAgent. */
-.is-linux body {
-  font-family:
-    -apple-system, "Segoe UI", "Inter", "Cantarell", "Ubuntu", sans-serif;
-}
-.is-macos body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
-    sans-serif;
-}
-.is-windows body {
-  font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
-}
-
-/* Respect prefers-reduced-motion across all transitions. */
+/* ---- Motion --------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
