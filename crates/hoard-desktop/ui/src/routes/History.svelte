@@ -595,6 +595,13 @@
             {#if isOpen}
               <div class="border-t border-zinc-800 bg-zinc-950/40 px-4 py-3">
                 {#if detailCache[snap.version_num]}
+                  {#if detailCache[snap.version_num].files.length === 0}
+                    <p class="text-xs text-zinc-500">
+                      {$isCloudLoggedIn
+                        ? $_("history.cloud_no_file_index")
+                        : $_("history.no_files")}
+                    </p>
+                  {:else}
                   <ul class="divide-y divide-zinc-900">
                     {#each detailCache[snap.version_num].files as f (f.relative_path)}
                       <li
@@ -611,6 +618,7 @@
                       </li>
                     {/each}
                   </ul>
+                  {/if}
                 {:else}
                   <p class="text-xs text-zinc-500">
                     {$_("history.loading_files")}

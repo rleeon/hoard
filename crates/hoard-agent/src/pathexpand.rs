@@ -93,6 +93,11 @@ fn expand_placeholder_in_prefix(name: &str, prefix: &Path) -> Option<PathBuf> {
         "winLocalAppData" => steamuser.join("AppData/Local"),
         "winLocalAppDataLow" => steamuser.join("AppData/LocalLow"),
         "winDocuments" => steamuser.join("Documents"),
+        // `%USERPROFILE%\Saved Games` inside the prefix. Without this, games
+        // that target `<winSavedGames>` (Planet S, plenty of modern titles)
+        // were never searched under a Proton/Wine prefix on Linux — detection
+        // fell back to the low-confidence Steam Cloud stub instead.
+        "winSavedGames" => steamuser.join("Saved Games"),
         "winPublic" => drive_c.join("users/Public"),
         "winProgramData" => drive_c.join("ProgramData"),
         "winDir" => drive_c.join("windows"),

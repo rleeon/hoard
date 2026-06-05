@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [1.9.9] — 2026-06-05
+## [1.9.10] — 2026-06-05
+
+### Fixed
+- **Saves en `Saved Games` no se detectaban bajo Proton/Wine en Linux.** El
+  mapeo de placeholders dentro del prefijo no contemplaba `<winSavedGames>`, así
+  que juegos que guardan en `%USERPROFILE%\Saved Games` (p. ej. Planet S) nunca
+  se buscaban ahí y la detección caía al stub de Steam Cloud con confianza
+  «Baja». Añadido `winSavedGames → drive_c/users/steamuser/Saved Games`.
+- **El detalle de un snapshot en la nube dejaba un hueco en blanco.** La nube
+  guarda la copia como un único archivo comprimido sin índice por archivo, así
+  que la lista salía vacía sin explicación. Ahora muestra un aviso claro.
 
 ### Added
 - **Mapa de saves en canvas con físicas.** El constelario pasó de SVG reactivo
