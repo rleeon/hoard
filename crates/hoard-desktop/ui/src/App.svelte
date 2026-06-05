@@ -206,7 +206,12 @@
     // (hours later). Kicking the flow here makes the first scan reliable on
     // every launch. `runAutomaticSetup` guards against re-entrancy, so if the
     // Rust tick *was* caught this is a no-op.
-    if (automaticMode && $auth.user) {
+    //
+    // Gate on *either* session: a Hoard Cloud-only user (signed in via Gmail,
+    // no self-hosted server) has `$auth.user == null` but a `$cloud.account`,
+    // and the old `$auth.user`-only check meant the cloud user had to toggle
+    // Modo Automático off→on by hand on every launch to make it do anything.
+    if (automaticMode && ($auth.user || $cloud.account)) {
       void runAutomaticSetup();
     }
 

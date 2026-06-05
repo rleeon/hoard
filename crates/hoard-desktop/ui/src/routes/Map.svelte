@@ -17,12 +17,12 @@
   import { onMount, onDestroy } from "svelte";
   import { push } from "svelte-spa-router";
   import { _ } from "svelte-i18n";
-  import { Map as MapIcon, RotateCcw, History as HistoryIcon, X } from "lucide-svelte";
+  import { Map as MapIcon, History as HistoryIcon, X } from "lucide-svelte";
 
   import * as api from "../lib/api";
-  import type { TrackedSave, SnapshotEntry } from "../lib/api";
+  import type { TrackedSave, SnapshotEntry, DetectedGame } from "../lib/api";
   import { formatBytes } from "../lib/utils/format";
-  import { toastError, toastSuccess } from "../lib/stores/toasts";
+  import { toastError } from "../lib/stores/toasts";
 
   // ---- model --------------------------------------------------------------
 
@@ -57,9 +57,45 @@
     branches: Branch[];
     saveCount: number;
     totalBytes: number;
+    steamAppId: number | null;
+    /** `true` when this game has at least one tracked save (full orb with
+     *  branches). `false` for games we merely detected on disk — those show
+     *  as dimmed "not tracked yet" orbs you can click to add. */
+    tracked: boolean;
+    /** `true` once the physics loop has put this orb (and its nodes) to
+     *  rest. Used so a dragged or freshly-added orb settles and then stops
+     *  consuming CPU — the Obsidian-style "still until you nudge it" feel. */
+    asleep: boolean;
   };
 
   let orbs: Orb[] = [];
+  // slug → Steam app id, sourced best-effort from the cached detection sweep.
+  // Used only to fetch cover art; absence just means we fall back to the
+  // initial-letter orb.
+  let appIdBySlug = new Map<string, number>();
+  // appid → lazily-loaded cover <img>. `ready` flips on load; the rAF loop
+  // is always running so the cover pops in on the next frame. A null entry
+  // marks a permanent failure (offline / 404) so we don't retry every frame.
+  const coverCache = new Map<number, { img: HTMLImageElement; ready: boolean } | null>();
+
+  function getCover(appId: number): HTMLImageElement | null {
+    const hit = coverCache.get(appId);
+    if (hit !== undefined) return hit && hit.ready ? hit.img : null;
+    const img = new Image();
+    const entry = { img, ready: false };
+    coverCache.set(appId, entry);
+    img.onload = () => {
+      entry.ready = true;
+    };
+    img.onerror = () => {
+      coverCache.set(appId, null);
+    };
+    // Steam's public capsule. Drawing a cross-origin image taints the canvas,
+    // which is fine — we never read pixels back. Falls back to the initial on
+    // any failure (e.g. offline).
+    img.src = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`;
+    return null;
+  }
   let nodeCount = 0;
   let loading = $state(true);
   let isEmpty = $state(false);
@@ -91,7 +127,11 @@
   const ARM_GAP = 30;
   const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 
-  function build(saves: TrackedSave[], snapsBySave: Map<string, SnapshotEntry[]>): Orb[] {
+  function build(
+    saves: TrackedSave[],
+    snapsBySave: Map<string, SnapshotEntry[]>,
+    detected: DetectedGame[],
+  ): Orb[] {
     const groups = new Map<string, TrackedSave[]>();
     for (const s of saves) {
       const arr = groups.get(s.game_slug) ?? [];
@@ -99,16 +139,54 @@
       groups.set(s.game_slug, arr);
     }
 
-    type Pre = { slug: string; saves: TrackedSave[]; r: number; reach: number };
+    type Pre = {
+      slug: string;
+      name: string;
+      saves: TrackedSave[];
+      tracked: boolean;
+      appId: number | null;
+      r: number;
+      reach: number;
+    };
     const pre: Pre[] = [];
     for (const [slug, gs] of groups) {
       const maxSnaps = Math.max(1, ...gs.map((g) => (snapsBySave.get(g.save_id) ?? []).length));
       const r = 26 + Math.min(18, gs.length * 3);
-      pre.push({ slug, saves: gs, r, reach: r + ARM_GAP + maxSnaps * NODE_STEP + 30 });
+      pre.push({
+        slug,
+        name: prettify(slug),
+        saves: gs,
+        tracked: true,
+        appId: appIdBySlug.get(slug) ?? null,
+        r,
+        reach: r + ARM_GAP + maxSnaps * NODE_STEP + 30,
+      });
     }
-    pre.sort((a, b) => b.reach - a.reach);
+    // Detected-but-untracked games: only those actually present on disk
+    // (found_paths) and not already tracked. These become smaller, dimmed
+    // orbs so the map shows the *whole* library, not just what's synced.
+    const trackedSlugs = new Set(groups.keys());
+    for (const g of detected) {
+      if (trackedSlugs.has(g.slug)) continue;
+      if (g.found_paths.length === 0) continue;
+      pre.push({
+        slug: g.slug,
+        name: g.display_name || prettify(g.slug),
+        saves: [],
+        tracked: false,
+        appId: g.steam_app_id,
+        r: 22,
+        reach: 22 + 24,
+      });
+    }
+
+    // Tracked first (so they take the inner, tighter ring), then the rest.
+    pre.sort((a, b) => {
+      if (a.tracked !== b.tracked) return a.tracked ? -1 : 1;
+      return b.reach - a.reach;
+    });
     const maxReach = Math.max(140, ...pre.map((p) => p.reach));
-    const c = maxReach * 1.25 + 90;
+    const c = maxReach * 1.05 + 80;
 
     const result: Orb[] = [];
     let nc = 0;
@@ -145,8 +223,8 @@
 
       result.push({
         slug: p.slug,
-        name: prettify(p.slug),
-        initial: prettify(p.slug).charAt(0).toUpperCase() || "?",
+        name: p.name,
+        initial: p.name.charAt(0).toUpperCase() || "?",
         x: ox,
         y: oy,
         vx: 0,
@@ -156,6 +234,9 @@
         branches,
         saveCount: p.saves.length,
         totalBytes: p.saves.reduce((acc, s) => acc + (s.total_size_bytes || 0), 0),
+        steamAppId: p.appId,
+        tracked: p.tracked,
+        asleep: false,
       });
     });
     nodeCount = nc;
@@ -164,18 +245,29 @@
 
   // ---- physics ------------------------------------------------------------
 
-  const DAMP = 0.9;
-  const MAX_ACC = 2.8;
-  const MAX_VEL = 5;
-  const ORB_REPULSION = 90000;
-  const NODE_REPULSION = 6000;
-  const ORB_NODE_REPULSION = 26000;
-  const SPRING_K = 0.06;
-  const CENTER_PULL = 0.0009;
-  const FLOAT_AMP = 0.22;
+  // Obsidian-style relaxation: nodes hold their position and only move to
+  // *separate* when something overlaps them (a drag, a freshly-added orb,
+  // the initial seed). No perpetual float, no constant centre drift — once
+  // everything is spaced out the simulation goes to sleep and the canvas is
+  // perfectly still until you nudge it.
+  const DAMP = 0.78;
+  const MAX_ACC = 3.2;
+  const MAX_VEL = 6;
+  const ORB_SEP_MARGIN = 36; // extra gap enforced between orb bodies
+  const ORB_SEP_K = 0.5; // how hard overlapping orbs push apart
+  const NODE_REPULSION = 5200; // short-range, only to fan siblings out
+  const ORB_NODE_REPULSION = 22000;
+  const SPRING_K = 0.08;
+  const SLEEP_EPS = 0.04; // max speed below which we freeze the sim
 
   let reduceMotion = false;
-  let t = 0;
+  // Cleared to `false` by `wake()` (drag, zoom, resize, fresh data); set to
+  // `true` by `step()` once the whole system is below `SLEEP_EPS`.
+  let settled = false;
+
+  function wake() {
+    settled = false;
+  }
 
   function clampMag(ax: number, ay: number, max: number): [number, number] {
     const m = Math.hypot(ax, ay);
@@ -186,40 +278,44 @@
     return [ax, ay];
   }
 
-  function step() {
-    t += 0.016;
-
-    // accumulate accelerations
+  /** One relaxation pass. Returns the largest speed seen, so the loop can
+   *  decide when the system has come to rest. */
+  function step(): number {
     const N = orbs.length;
     for (let i = 0; i < N; i++) {
       const o = orbs[i];
-      let ax = -CENTER_PULL * o.x;
-      let ay = -CENTER_PULL * o.y;
+      if (o === draggedOrb) {
+        // Pinned under the cursor — no forces, no integration.
+        o.vx = 0;
+        o.vy = 0;
+        continue;
+      }
+      let ax = 0;
+      let ay = 0;
 
-      // orb ↔ orb repulsion
+      // orb ↔ orb separation: only when their bodies (plus margin) overlap.
       for (let k = 0; k < N; k++) {
         if (k === i) continue;
         const ob = orbs[k];
         const dx = o.x - ob.x;
         const dy = o.y - ob.y;
-        const d2 = dx * dx + dy * dy + 1;
-        if (d2 > 1_200_000) continue; // cutoff
-        const f = ORB_REPULSION / d2;
-        const inv = 1 / Math.sqrt(d2);
-        ax += dx * inv * f;
-        ay += dy * inv * f;
+        const d = Math.hypot(dx, dy) || 0.0001;
+        const minD = o.r + ob.r + ORB_SEP_MARGIN;
+        if (d < minD) {
+          const push = ((minD - d) / minD) * ORB_SEP_K * (MAX_ACC * 2);
+          ax += (dx / d) * push;
+          ay += (dy / d) * push;
+        }
       }
-
-      // gentle perpetual float
-      ax += Math.cos(t * 0.6 + o.phase) * FLOAT_AMP;
-      ay += Math.sin(t * 0.5 + o.phase * 1.3) * FLOAT_AMP;
 
       [ax, ay] = clampMag(ax, ay, MAX_ACC);
       o.vx = (o.vx + ax) * DAMP;
       o.vy = (o.vy + ay) * DAMP;
       [o.vx, o.vy] = clampMag(o.vx, o.vy, MAX_VEL);
+    }
 
-      // ---- nodes belonging to this orb ----
+    // ---- save nodes (still spring off their orb so chains stay readable) --
+    for (const o of orbs) {
       for (const b of o.branches) {
         for (let n = 0; n < b.nodes.length; n++) {
           const node = b.nodes[n];
@@ -261,10 +357,6 @@
             }
           }
 
-          // float
-          nax += Math.cos(t * 0.9 + node.phase) * FLOAT_AMP * 0.8;
-          nay += Math.sin(t * 0.8 + node.phase * 1.2) * FLOAT_AMP * 0.8;
-
           [nax, nay] = clampMag(nax, nay, MAX_ACC);
           node.vx = (node.vx + nax) * DAMP;
           node.vy = (node.vy + nay) * DAMP;
@@ -273,16 +365,22 @@
       }
     }
 
-    // integrate
+    // integrate + track peak speed
+    let peak = 0;
     for (const o of orbs) {
-      o.x += o.vx;
-      o.y += o.vy;
+      if (o !== draggedOrb) {
+        o.x += o.vx;
+        o.y += o.vy;
+        peak = Math.max(peak, Math.abs(o.vx), Math.abs(o.vy));
+      }
       for (const b of o.branches)
         for (const node of b.nodes) {
           node.x += node.vx;
           node.y += node.vy;
+          peak = Math.max(peak, Math.abs(node.vx), Math.abs(node.vy));
         }
     }
+    return peak;
   }
 
   // ---- camera -------------------------------------------------------------
@@ -398,42 +496,77 @@
 
     // orbs
     for (const o of orbs) {
+      // Untracked (detected-only) games render dimmed so the synced library
+      // stays visually dominant. A drag/hover doesn't change this — it's a
+      // permanent "this one isn't backed up yet" cue.
+      const dim = !o.tracked;
+      ctx.globalAlpha = dim ? 0.45 : 1;
+
       // glow
       const glow = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r * 2.2);
-      glow.addColorStop(0, "rgba(16,185,129,0.30)");
+      glow.addColorStop(0, dim ? "rgba(113,113,122,0.18)" : "rgba(16,185,129,0.30)");
       glow.addColorStop(1, "rgba(16,185,129,0)");
       ctx.beginPath();
       ctx.arc(o.x, o.y, o.r * 2.2, 0, Math.PI * 2);
       ctx.fillStyle = glow;
       ctx.fill();
 
-      // body
-      const fill = ctx.createRadialGradient(
-        o.x - o.r * 0.3,
-        o.y - o.r * 0.35,
-        o.r * 0.2,
-        o.x,
-        o.y,
-        o.r,
-      );
-      fill.addColorStop(0, "#34d399");
-      fill.addColorStop(0.55, "#059669");
-      fill.addColorStop(1, "#064e3b");
-      ctx.beginPath();
-      ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
-      ctx.fillStyle = fill;
-      ctx.fill();
-      ctx.lineWidth = 1.5 / scale;
-      ctx.strokeStyle = "rgba(16,185,129,0.6)";
-      ctx.stroke();
+      // body — Steam cover art clipped into the circle when available,
+      // otherwise the emerald gem with the game's initial.
+      const cover = o.steamAppId != null ? getCover(o.steamAppId) : null;
+      if (cover) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+        ctx.clip();
+        // cover-fit the (wide) header into the square circle bounds
+        const iw = cover.naturalWidth || 460;
+        const ih = cover.naturalHeight || 215;
+        const side = o.r * 2;
+        const sc = Math.max(side / iw, side / ih);
+        const dw = iw * sc;
+        const dh = ih * sc;
+        ctx.drawImage(cover, o.x - dw / 2, o.y - dh / 2, dw, dh);
+        ctx.restore();
+        ctx.beginPath();
+        ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+        ctx.lineWidth = 2 / scale;
+        ctx.strokeStyle = dim ? "rgba(113,113,122,0.7)" : "rgba(16,185,129,0.85)";
+        ctx.stroke();
+      } else {
+        const fill = ctx.createRadialGradient(
+          o.x - o.r * 0.3,
+          o.y - o.r * 0.35,
+          o.r * 0.2,
+          o.x,
+          o.y,
+          o.r,
+        );
+        if (dim) {
+          fill.addColorStop(0, "#52525b");
+          fill.addColorStop(0.55, "#3f3f46");
+          fill.addColorStop(1, "#27272a");
+        } else {
+          fill.addColorStop(0, "#34d399");
+          fill.addColorStop(0.55, "#059669");
+          fill.addColorStop(1, "#064e3b");
+        }
+        ctx.beginPath();
+        ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.lineWidth = 1.5 / scale;
+        ctx.strokeStyle = dim ? "rgba(113,113,122,0.5)" : "rgba(16,185,129,0.6)";
+        ctx.stroke();
 
-      // initial
-      ctx.fillStyle = "#ecfdf5";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.font = `700 ${o.r}px "Fraunces", serif`;
-      ctx.fillText(o.initial, o.x, o.y + 1);
-      ctx.textBaseline = "alphabetic";
+        // initial
+        ctx.fillStyle = dim ? "#d4d4d8" : "#ecfdf5";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = `600 ${o.r * 0.9}px "Geist Sans", sans-serif`;
+        ctx.fillText(o.initial, o.x, o.y + 1);
+        ctx.textBaseline = "alphabetic";
+      }
 
       // name + count
       ctx.fillStyle = "#e4e4e7";
@@ -442,10 +575,13 @@
       ctx.fillStyle = "#71717a";
       ctx.font = `${10 / scale}px "Geist Sans", sans-serif`;
       ctx.fillText(
-        $_("map.branch_count", { values: { count: o.saveCount } }),
+        o.tracked
+          ? $_("map.branch_count", { values: { count: o.saveCount } })
+          : $_("map.not_tracked"),
         o.x,
         o.y + o.r + 30 / scale,
       );
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -457,7 +593,13 @@
   function loop() {
     if (!running) return;
     if (!document.hidden) {
-      if (!reduceMotion) step();
+      // Only simulate while awake. Once `step()` reports everything below
+      // the sleep threshold we stop integrating (but keep drawing once more
+      // so the final rest frame is painted). Dragging keeps it awake.
+      if (!reduceMotion && (!settled || draggedOrb)) {
+        const peak = step();
+        if (peak < SLEEP_EPS && !draggedOrb) settled = true;
+      }
       draw();
     }
     raf = requestAnimationFrame(loop);
@@ -475,7 +617,8 @@
   let hovered = $state<{ branch: Branch; node: Node } | null>(null);
   let selected = $state<{ orb: Orb; branch: Branch; node: Node } | null>(null);
 
-  let dragging = $state(false);
+  let dragging = $state(false); // panning the camera
+  let draggedOrb: Orb | null = null; // a game orb being moved by the user
   let moved = false;
   let startX = 0;
   let startY = 0;
@@ -527,11 +670,25 @@
   }
 
   function onPointerDown(e: PointerEvent) {
-    dragging = true;
     moved = false;
     startX = e.clientX;
     startY = e.clientY;
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    if (!canvasEl) return;
+    const rect = canvasEl.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    // Pressing directly on a game orb grabs *that orb* to move it; pressing
+    // empty space pans the camera. (Save nodes aren't draggable — they hang
+    // off their orb by springs and follow it.)
+    const orb = hitOrb(px, py);
+    if (orb) {
+      draggedOrb = orb;
+      dragging = false;
+      wake();
+    } else {
+      dragging = true;
+    }
   }
 
   function onPointerMove(e: PointerEvent) {
@@ -540,6 +697,29 @@
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
     pointer = { x: px, y: py };
+
+    if (draggedOrb) {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+      // Move the orb (in world units) and carry its whole branch with it so
+      // the constellation translates as one rigid piece while dragging.
+      const wdx = dx / scale;
+      const wdy = dy / scale;
+      draggedOrb.x += wdx;
+      draggedOrb.y += wdy;
+      for (const b of draggedOrb.branches)
+        for (const n of b.nodes) {
+          n.x += wdx;
+          n.y += wdy;
+          n.vx = 0;
+          n.vy = 0;
+        }
+      startX = e.clientX;
+      startY = e.clientY;
+      wake();
+      return;
+    }
 
     if (dragging) {
       const dx = e.clientX - startX;
@@ -557,6 +737,10 @@
 
   function onPointerUp(e: PointerEvent) {
     dragging = false;
+    if (draggedOrb) {
+      draggedOrb = null;
+      wake(); // let neighbours settle around the new position
+    }
     (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
   }
 
@@ -572,6 +756,12 @@
     }
     const orb = hitOrb(px, py);
     if (orb) {
+      // Untracked games have nothing to inspect — jump to the Library so the
+      // user can start tracking them.
+      if (!orb.tracked) {
+        push("/library");
+        return;
+      }
       const ns = clamp(1.6, 0.18, 4.5);
       scale = ns;
       tx = cssW / 2 - orb.x * ns;
@@ -598,6 +788,21 @@
   onMount(async () => {
     reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     try {
+      // Best-effort detection sweep: maps slug → Steam app id for cover art
+      // and provides the detected-but-untracked games shown as dimmed orbs.
+      let detectedGames: DetectedGame[] = [];
+      try {
+        const det = await api.cachedDetection();
+        if (det) {
+          detectedGames = det.games;
+          for (const g of det.games) {
+            if (g.steam_app_id != null) appIdBySlug.set(g.slug, g.steam_app_id);
+          }
+        }
+      } catch {
+        /* detection unavailable — orbs fall back to initials, no extra games */
+      }
+
       const saves = await api.listTrackedSaves();
       const snapsBySave = new Map<string, SnapshotEntry[]>();
       await Promise.all(
@@ -609,7 +814,7 @@
           }
         }),
       );
-      orbs = build(saves, snapsBySave);
+      orbs = build(saves, snapsBySave, detectedGames);
       isEmpty = orbs.length === 0;
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
@@ -642,23 +847,6 @@
     cancelAnimationFrame(raf);
     ro?.disconnect();
   });
-
-  async function restoreSelected() {
-    if (!selected) return;
-    const { branch, node } = selected;
-    try {
-      await api.restoreSnapshot({
-        save_id: branch.save.save_id,
-        version: node.snap.version_num,
-        backup_first: true,
-      });
-      toastSuccess($_("map.restored", { values: { v: node.snap.version_num } }));
-    } catch (e) {
-      const msg = typeof e === "string" ? e : (e as Error).message;
-      if (msg === api.NEEDS_DESTINATION) push(`/history/${branch.save.save_id}`);
-      else toastError(msg);
-    }
-  }
 
   function formatRelative(iso: string): string {
     const diff = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -805,14 +993,6 @@
       </dl>
 
       <div class="mt-auto space-y-2 pt-5">
-        <button
-          type="button"
-          onclick={restoreSelected}
-          class="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500"
-        >
-          <RotateCcw size={15} />
-          {$_("map.restore")}
-        </button>
         <button
           type="button"
           onclick={() => push(`/history/${selected!.branch.save.save_id}`)}

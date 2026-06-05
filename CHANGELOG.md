@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.11] — 2026-06-05
+
+### Fixed
+- **El modo automático no hacía nada hasta apagarlo y encenderlo a mano.** El
+  escaneo de arranque solo corría para usuarios self-hosted (`$auth.user`); un
+  usuario de Hoard Cloud (login con Gmail, sin servidor propio) tenía la sesión
+  en `$cloud.account` y se saltaba el arranque, así que la app abría con el
+  toggle en ON sin escanear ni respaldar nada hasta el siguiente intervalo. Ahora
+  el arranque vale para cualquiera de las dos sesiones.
+- **Parpadeo de «agente apagado» en la nube.** Un barrido de backup que tocaba
+  N partidas hacía que Supabase Realtime empujara N `UPDATE` casi simultáneos y
+  `cloud_pull::kick()` lanzaba N pulls concurrentes a `/v1/cloud/sync`; al chocar
+  refrescando el JWT (token de un solo uso) un timeout transitorio emitía
+  `agent://offline`. Añadido un *gate* single-flight: a lo sumo un pull en vuelo
+  y una ráfaga de kicks colapsa en un único re-pull.
+- **El error «sin instalador» del updater asustaba sin motivo.** Cuando la
+  release aún se está compilando en CI los `.deb`/`.msi` no existen todavía;
+  ahora el mensaje dice que la versión se está preparando y que reintentes en
+  unos 5 minutos en vez de sonar a fallo.
+
+### Changed
+- **Tipografía de títulos de vuelta a Geist Sans.** La display serif (Fraunces)
+  se veía fina y fuera de sitio en la cabecera; cabeceras y marca vuelven al
+  sans con tracking ajustado.
+- **Mapa estilo Obsidian.** Se acabó la deriva perpetua: los orbes se quedan
+  quietos y solo se mueven para *separarse* cuando se solapan, y luego la
+  simulación se duerme. Puedes arrastrar cada juego con el ratón (su rama lo
+  sigue). Quitado el botón de **restaurar** del panel lateral (peligroso).
+- **El mapa muestra toda la biblioteca.** Además de las partidas rastreadas
+  aparecen los juegos detectados en disco como orbes atenuados («Sin rastrear»);
+  al pulsarlos saltas a la Biblioteca para añadirlos. Las carátulas de Steam se
+  recortan dentro del orbe.
+
 ## [1.9.10] — 2026-06-05
 
 ### Fixed

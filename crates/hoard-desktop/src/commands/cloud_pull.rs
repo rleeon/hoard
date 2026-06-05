@@ -53,6 +53,26 @@ pub struct CloudPullScheduler {
     /// fresh session is correct: the first poll just emits "0 new" and
     /// subsequent polls show real deltas.
     seen: Arc<Mutex<Vec<ManifestSeenEntry>>>,
+    /// Single-flight coalescing gate shared by the timed poller and every
+    /// Realtime `kick()`. Without it, a catch-up backup sweep that touches
+    /// N saves makes Supabase push N near-simultaneous `saves` UPDATEs, and
+    /// each one used to spawn its own `/v1/cloud/sync` — N concurrent pulls
+    /// that race on token refresh, so a single transient timeout among them
+    /// emitted `agent://offline` and the LiveStatus dot flapped to "agente
+    /// apagado". With the gate, at most one pull runs at a time and a burst
+    /// of kicks collapses into a single follow-up pull.
+    gate: Arc<Mutex<PullGate>>,
+}
+
+/// Coalescing state for [`CloudPullScheduler::gate`].
+#[derive(Default)]
+struct PullGate {
+    /// A pull is currently executing.
+    running: bool,
+    /// A pull was requested while one was already running; run exactly one
+    /// more pass when the current one finishes (collapses any number of
+    /// concurrent kicks into a single re-run).
+    rerun: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -112,6 +132,7 @@ pub fn start(app: &AppHandle, interval_secs: u32) {
     let period = Duration::from_secs(secs);
     let app_for_task = app.clone();
     let seen = scheduler.seen.clone();
+    let gate = scheduler.gate.clone();
     let new_handle = tokio::task::spawn(async move {
         tracing::info!(interval_secs = secs, "cloud-pull poller: started");
 
@@ -122,7 +143,7 @@ pub fn start(app: &AppHandle, interval_secs: u32) {
         let mut ticker = interval(period);
         loop {
             ticker.tick().await;
-            run_one_pull(&app_for_task, &seen).await;
+            guarded_pull(&app_for_task, &seen, &gate).await;
         }
     });
 
@@ -140,10 +161,45 @@ pub fn start(app: &AppHandle, interval_secs: u32) {
 pub fn kick(app: &AppHandle) {
     let scheduler = app.state::<CloudPullScheduler>();
     let seen = scheduler.seen.clone();
+    let gate = scheduler.gate.clone();
     let app = app.clone();
     tokio::task::spawn(async move {
-        run_one_pull(&app, &seen).await;
+        guarded_pull(&app, &seen, &gate).await;
     });
+}
+
+/// Run a pull behind the single-flight [`PullGate`]. If a pull is already in
+/// flight this only flags a re-run and returns immediately; the in-flight
+/// caller drains that flag with exactly one extra pass when it finishes. A
+/// burst of kicks (e.g. a backup sweep touching every save) therefore costs
+/// at most two `/v1/cloud/sync` requests instead of one per save.
+async fn guarded_pull(
+    app: &AppHandle,
+    seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>,
+    gate: &Arc<Mutex<PullGate>>,
+) {
+    {
+        let mut g = gate.lock().unwrap();
+        if g.running {
+            // Someone is already pulling; ask them to do one more pass with
+            // the freshest server state and bail.
+            g.rerun = true;
+            return;
+        }
+        g.running = true;
+    }
+
+    loop {
+        run_one_pull(app, seen).await;
+        let mut g = gate.lock().unwrap();
+        if g.rerun {
+            g.rerun = false;
+            // Loop again to honour the kick(s) that arrived mid-flight.
+        } else {
+            g.running = false;
+            return;
+        }
+    }
 }
 
 /// Abort the running poller. No-op when nothing is scheduled.

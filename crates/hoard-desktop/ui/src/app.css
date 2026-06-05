@@ -116,16 +116,17 @@ body::before {
 }
 
 /* ---- Display typography --------------------------------------------- */
-/* Fraunces at a high optical size gives the warm, high-contrast editorial
-   masthead feel. Applied to the brand and any opt-in heading via
-   .font-display; h1/h2 get it by default. */
+/* Headings and the brand stay on Geist Sans — the serif (Fraunces) display
+   experiment read as a thin, out-of-place masthead in the chrome, so we
+   keep everything on the sans family and just tighten the tracking for a
+   modern, dense look. `.font-display` is kept as an alias so existing
+   markup doesn't need touching. */
 .font-display,
 h1,
 h2 {
-  font-family: var(--font-serif);
-  font-optical-sizing: auto;
-  font-variation-settings: "opsz" 96;
-  letter-spacing: -0.012em;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: -0.014em;
 }
 
 /* Numerals look sharper tabular-aligned in dense data views. */
