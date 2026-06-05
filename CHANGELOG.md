@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.12] — 2026-06-05
+
+### Changed
+- **Rediseño visual de las pantallas del escritorio.** Replanteo por vista
+  conservando el sistema «Obsidian Vault» (paleta emerald, tipografía Geist,
+  atmósfera) y sin tocar la lógica ni añadir cadenas nuevas (los 8 locales
+  quedan intactos):
+  - **Panel**: cada partida muestra un tile con su inicial y anillo emerald,
+    jerarquía clara entre nombre y ruta, chips con borde fino y un punto de
+    estado del agente que late.
+  - **Biblioteca**: tarjetas de juegos monitorizados y detectados sobre
+    superficie obsidian con borde fino y hover emerald; barra de escaneo con
+    brillo.
+  - **Historial**: cabecera con avatar del juego y línea de tiempo de
+    versiones en tarjetas de borde fino.
+  - **Ajustes**: cabecera editorial y divisores a borde fino.
+  - **Cuenta** y **Mapa**: bloques de uso a borde fino y cabeceras editoriales.
+
 ## [1.9.11] — 2026-06-05
 
 ### Fixed

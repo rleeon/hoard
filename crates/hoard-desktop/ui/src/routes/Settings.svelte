@@ -542,10 +542,10 @@
 
 <div class="mx-auto max-w-3xl px-8 py-8">
   <header class="mb-6">
-    <h1 class="text-2xl font-semibold tracking-tight">
+    <h1 class="font-display text-[28px] leading-tight font-semibold tracking-[-0.02em] text-zinc-50">
       {$_("settings.title")}
     </h1>
-    <p class="mt-1 text-sm text-zinc-400">{$_("settings.subtitle")}</p>
+    <p class="mt-2 text-sm text-zinc-400">{$_("settings.subtitle")}</p>
   </header>
 
   {#if !$prefs}
@@ -563,7 +563,7 @@
           {$_("settings.section_general")}
         </h2>
         <Card>
-          <div class="divide-y divide-zinc-800">
+          <div class="divide-y divide-white/[0.06]">
             {#each generalRows as row (row.field)}
               <SettingsRow
                 {row}
@@ -650,7 +650,7 @@
           {$_("settings.section_startup")}
         </h2>
         <Card>
-          <div class="divide-y divide-zinc-800">
+          <div class="divide-y divide-white/[0.06]">
             {#each startupRows as row (row.field)}
               <SettingsRow
                 {row}
@@ -670,7 +670,7 @@
           {$_("settings.section_notifications")}
         </h2>
         <Card>
-          <div class="divide-y divide-zinc-800">
+          <div class="divide-y divide-white/[0.06]">
             {#each notifyRows as row (row.field)}
               <SettingsRow
                 {row}
@@ -698,7 +698,7 @@
             {$_("settings.section_cloud")}
           </h2>
           <Card>
-            <div class="divide-y divide-zinc-800">
+            <div class="divide-y divide-white/[0.06]">
               {#each cloudRows as row (row.field)}
                 <SettingsRow
                   {row}
@@ -887,7 +887,7 @@
           {$_("settings.section_privacy")}
         </h2>
         <Card>
-          <div class="divide-y divide-zinc-800">
+          <div class="divide-y divide-white/[0.06]">
             {#each privacyRows as row (row.field)}
               <SettingsRow
                 {row}
@@ -996,7 +996,7 @@
               {$_("settings.ignored_empty")}
             </p>
           {:else}
-            <ul class="divide-y divide-zinc-800">
+            <ul class="divide-y divide-white/[0.06]">
               {#each ignored as slug (slug)}
                 <li
                   class="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
@@ -1029,7 +1029,7 @@
           {$_("settings.section_advanced")}
         </h2>
         <Card>
-          <div class="divide-y divide-zinc-800">
+          <div class="divide-y divide-white/[0.06]">
             <button
               type="button"
               onclick={() => push("/logs")}

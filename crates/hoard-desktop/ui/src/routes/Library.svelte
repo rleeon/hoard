@@ -520,8 +520,8 @@
 <div class="mx-auto max-w-6xl px-8 py-8">
   <header class="mb-6 flex items-start justify-between gap-4">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">{$_("library.title")}</h1>
-      <p class="mt-1 text-sm text-zinc-400">
+      <h1 class="font-display text-[28px] leading-tight font-semibold tracking-[-0.02em] text-zinc-50">{$_("library.title")}</h1>
+      <p class="mt-2 text-sm text-zinc-400">
         {#if report}
           {$_("library.subtitle_scanned", { values: { catalog: report.catalog_size.toLocaleString(), found: report.games.length } })}
           {#if report.steam_apps_found > 0}
@@ -557,7 +557,7 @@
       >
         {#each tracked as save (save.save_id)}
           <div
-            class="flex items-center justify-between gap-2 rounded-md border border-zinc-800 bg-zinc-900/40 p-3"
+            class="group flex items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-zinc-950/40 p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-emerald-500/25 hover:bg-zinc-900/50"
           >
             <Cover
               appId={appIdBySlug.get(save.game_slug) ?? null}
@@ -639,16 +639,16 @@
   {/if}
 
   {#if scanning && progress}
-    <div class="mb-6 rounded-md border border-zinc-800 bg-zinc-900/50 p-4">
+    <div class="mb-6 rounded-xl border border-white/[0.06] bg-zinc-950/40 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]">
       <div class="mb-2 flex items-center justify-between text-xs text-zinc-400">
         <span>{$_("library.scanning_catalog")}</span>
-        <span>
+        <span class="tabular-nums">
           {progress.done.toLocaleString()} / {progress.total.toLocaleString()}
         </span>
       </div>
-      <div class="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+      <div class="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
         <div
-          class="h-full bg-emerald-500 transition-all"
+          class="h-full rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] transition-all"
           style="width: {pct}%"
         ></div>
       </div>
@@ -700,7 +700,7 @@
         {#each filtered as game (game.slug)}
           {@const isTracked = trackedSlugs.has(game.slug)}
           <div
-            class="flex flex-col rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-colors hover:border-zinc-700"
+            class="group flex flex-col rounded-xl border border-white/[0.06] bg-zinc-950/40 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-emerald-500/25 hover:bg-zinc-900/50"
           >
             <div class="mb-2 flex items-start justify-between gap-2">
               <div class="flex min-w-0 items-center gap-2.5">

@@ -202,7 +202,7 @@
 
 <div class="mx-auto max-w-3xl px-6 py-8">
   <div class="mb-6 flex items-center gap-2">
-    <h1 class="text-2xl font-semibold tracking-tight">
+    <h1 class="font-display text-[28px] leading-tight font-semibold tracking-[-0.02em] text-zinc-50">
       {$_("account.title")}
     </h1>
   </div>
@@ -247,7 +247,7 @@
       </div>
 
       <div class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div class="rounded-md border border-zinc-800 bg-zinc-900/40 p-3">
+        <div class="rounded-xl border border-white/[0.06] bg-zinc-950/40 p-3.5">
           <p class="text-xs font-medium text-emerald-400">
             {$_("account.feature_storage")}
           </p>
@@ -255,7 +255,7 @@
             {$_("account.feature_storage_body")}
           </p>
         </div>
-        <div class="rounded-md border border-zinc-800 bg-zinc-900/40 p-3">
+        <div class="rounded-xl border border-white/[0.06] bg-zinc-950/40 p-3.5">
           <p class="text-xs font-medium text-emerald-400">
             {$_("account.feature_sync")}
           </p>
@@ -263,7 +263,7 @@
             {$_("account.feature_sync_body")}
           </p>
         </div>
-        <div class="rounded-md border border-zinc-800 bg-zinc-900/40 p-3">
+        <div class="rounded-xl border border-white/[0.06] bg-zinc-950/40 p-3.5">
           <p class="text-xs font-medium text-emerald-400">
             {$_("account.feature_privacy")}
           </p>
@@ -405,7 +405,7 @@
 
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {#if devicesView}
-          <div class="rounded-md border border-zinc-800 bg-zinc-900/40 p-3">
+          <div class="rounded-xl border border-white/[0.06] bg-zinc-950/40 p-3.5">
             <p class="flex items-center gap-2 text-xs text-zinc-500">
               <Layers size={12} />
               {$_("account.devices")}
@@ -416,7 +416,7 @@
           </div>
         {/if}
         {#if savesView}
-          <div class="rounded-md border border-zinc-800 bg-zinc-900/40 p-3">
+          <div class="rounded-xl border border-white/[0.06] bg-zinc-950/40 p-3.5">
             <p class="flex items-center gap-2 text-xs text-zinc-500">
               <Layers size={12} />
               {$_("account.saves")}
@@ -426,7 +426,7 @@
             </p>
           </div>
         {/if}
-        <div class="rounded-md border border-zinc-800 bg-zinc-900/40 p-3">
+        <div class="rounded-xl border border-white/[0.06] bg-zinc-950/40 p-3.5">
           <p class="flex items-center gap-2 text-xs text-zinc-500">
             <Clock size={12} />
             {$_("account.history")}
@@ -438,7 +438,7 @@
           </p>
         </div>
         {#if account.max_save_size_bytes > 0}
-          <div class="rounded-md border border-zinc-800 bg-zinc-900/40 p-3">
+          <div class="rounded-xl border border-white/[0.06] bg-zinc-950/40 p-3.5">
             <p class="flex items-center gap-2 text-xs text-zinc-500">
               <FileArchive size={12} />
               {$_("account.max_save_size")}
@@ -449,7 +449,7 @@
           </div>
         {/if}
         {#if account.bandwidth_quota_bytes > 0}
-          <div class="rounded-md border border-zinc-800 bg-zinc-900/40 p-3">
+          <div class="rounded-xl border border-white/[0.06] bg-zinc-950/40 p-3.5">
             <p class="flex items-center gap-2 text-xs text-zinc-500">
               <Gauge size={12} />
               {$_("account.bandwidth")}

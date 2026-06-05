@@ -912,11 +912,11 @@
     class="pointer-events-none absolute left-0 right-0 top-0 z-10 flex items-start justify-between p-6"
   >
     <div>
-      <h1 class="flex items-center gap-2 text-xl font-semibold tracking-tight text-zinc-100">
-        <MapIcon size={20} class="text-emerald-400" />
+      <h1 class="font-display flex items-center gap-2.5 text-[22px] font-semibold tracking-[-0.02em] text-zinc-50">
+        <MapIcon size={22} class="text-emerald-400" />
         {$_("map.title")}
       </h1>
-      <p class="mt-1 text-xs text-zinc-500">{$_("map.subtitle")}</p>
+      <p class="mt-1.5 text-xs text-zinc-500">{$_("map.subtitle")}</p>
     </div>
     {#if !isEmpty && !loading}
       <button

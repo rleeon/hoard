@@ -413,23 +413,31 @@
       <div class="flex items-start justify-between gap-4">
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-3">
-            <h1 class="truncate text-2xl font-semibold tracking-tight">
+            <span
+              class="font-display flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500/15 to-emerald-500/[0.04] text-lg font-semibold text-emerald-300 ring-1 ring-inset ring-emerald-500/20"
+              aria-hidden="true"
+            >
+              {save.game_slug.charAt(0).toUpperCase()}
+            </span>
+            <h1
+              class="font-display min-w-0 truncate text-[28px] leading-tight font-semibold tracking-[-0.02em] text-zinc-50"
+            >
               {save.game_slug}
             </h1>
             <span
-              class="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400"
+              class="shrink-0 rounded-md bg-white/[0.05] px-1.5 py-0.5 text-[11px] text-zinc-400 ring-1 ring-inset ring-white/[0.06]"
             >
               {save.label}
             </span>
             {#if save.paused}
               <span
-                class="inline-flex items-center gap-1 rounded bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300"
+                class="inline-flex shrink-0 items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-400 ring-1 ring-inset ring-amber-500/30"
               >
-                <PauseCircle size={12} /> {$_("history.paused")}
+                <PauseCircle size={11} /> {$_("history.paused")}
               </span>
             {/if}
           </div>
-          <p class="mt-1 flex items-center gap-2 text-sm text-zinc-400">
+          <p class="mt-2 flex items-center gap-2 text-sm text-zinc-400">
             <Folder size={14} class="text-zinc-500" />
             <span class="truncate font-mono text-xs">{save.local_path}</span>
           </p>
@@ -496,13 +504,13 @@
         </div>
       </Card>
     {:else}
-      <ol class="space-y-2">
+      <ol class="space-y-2.5">
         {#each snapshots as snap (snap.version_num)}
           {@const isOpen = expanded[snap.version_num] ?? false}
           {@const isDeleted = !!snap.deleted_at}
           <li
-            class="rounded-lg border border-zinc-800 bg-zinc-900/40 transition-colors
-              {isDeleted ? 'opacity-70' : ''}"
+            class="group rounded-xl border border-white/[0.06] bg-zinc-950/40 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-emerald-500/25
+              {isDeleted ? 'opacity-60' : ''}"
           >
             <div class="flex items-center gap-3 px-4 py-3">
               <button
@@ -593,7 +601,7 @@
             </div>
 
             {#if isOpen}
-              <div class="border-t border-zinc-800 bg-zinc-950/40 px-4 py-3">
+              <div class="border-t border-white/[0.06] bg-black/20 px-4 py-3">
                 {#if detailCache[snap.version_num]}
                   {#if detailCache[snap.version_num].files.length === 0}
                     <p class="text-xs text-zinc-500">
