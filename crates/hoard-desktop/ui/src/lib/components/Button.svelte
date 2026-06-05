@@ -13,7 +13,7 @@
   } from "svelte/elements";
   import { Loader2 } from "lucide-svelte";
 
-  type Variant = "primary" | "secondary" | "ghost";
+  type Variant = "primary" | "secondary" | "ghost" | "danger";
   type Size = "md" | "lg";
 
   type Props = {
@@ -44,6 +44,8 @@
       "bg-zinc-800 text-zinc-100 hover:bg-zinc-700 focus-visible:ring-zinc-500 disabled:bg-zinc-900 disabled:text-zinc-600",
     ghost:
       "bg-transparent text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 focus-visible:ring-zinc-500 disabled:text-zinc-600",
+    danger:
+      "bg-red-600 text-zinc-50 hover:bg-red-500 focus-visible:ring-red-500 disabled:bg-zinc-700 disabled:text-zinc-400",
   };
 
   const sizeClasses: Record<Size, string> = {

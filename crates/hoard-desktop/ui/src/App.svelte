@@ -365,6 +365,10 @@
     const src = a.display_name?.trim() || a.email;
     return src ? src.charAt(0).toUpperCase() : "?";
   });
+
+  // If the remote avatar 404/403s (Google's lh3 host sometimes rejects on
+  // referer), fall back to the initial badge instead of a broken image.
+  let avatarFailed = $state(false);
 </script>
 
 {#if !booted}
@@ -438,6 +442,7 @@
             item.route === "/account" ||
             item.route === "/dashboard" ||
             item.route === "/library" ||
+            item.route === "/map" ||
             item.route === "/settings"}
           <button
             type="button"
@@ -479,10 +484,12 @@
                 class="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-800/60"
                 title={$_("sidebar.account_tooltip")}
               >
-                {#if $cloud.account.avatar_url}
+                {#if $cloud.account.avatar_url && !avatarFailed}
                   <img
                     src={$cloud.account.avatar_url}
                     alt=""
+                    referrerpolicy="no-referrer"
+                    onerror={() => (avatarFailed = true)}
                     class="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-zinc-700"
                   />
                 {:else}

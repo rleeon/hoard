@@ -246,6 +246,20 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
+    /// `DELETE /v1/cloud/saves/:save_id` — remove a cloud save and all of its
+    /// versions so the user reclaims storage. Cloud has no per-snapshot
+    /// history, so this is the cloud analogue of `snapshot_delete`.
+    pub async fn cloud_save_delete(&self, save_id: &str) -> Result<()> {
+        let resp = self
+            .http
+            .delete(self.url(&format!("/v1/cloud/saves/{save_id}")))
+            .header("authorization", self.auth_header())
+            .send()
+            .await?;
+        Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
+        Ok(())
+    }
+
     /// GET the bytes behind a presigned download URL as a streaming response.
     /// No auth header, same rationale as [`put_presigned`].
     pub async fn get_presigned(&self, presigned: &PresignedUrl) -> Result<reqwest::Response> {

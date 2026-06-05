@@ -156,8 +156,14 @@ pub async fn delete_snapshot(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let client = current_client(&state)?;
+    // Cloud keeps no per-snapshot history — only the latest committed version
+    // is surfaced. So "delete a snapshot" on cloud deletes the whole save,
+    // letting the user reclaim storage. `version` is ignored on cloud.
     if client.is_cloud().await {
-        return Err("Deleting snapshots isn't supported on Hoard Cloud.".to_string());
+        return client
+            .cloud_save_delete(&save_id)
+            .await
+            .map_err(pretty_error);
     }
     client
         .snapshot_delete(&save_id, version)

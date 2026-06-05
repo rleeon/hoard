@@ -414,6 +414,56 @@ pub async fn download(
     .into_response())
 }
 
+/// `DELETE /v1/cloud/saves/:save_id` — wipe a cloud save and every version
+/// it holds so the user can reclaim storage. Cloud keeps no per-snapshot
+/// history (only the latest committed version is surfaced), so "delete a
+/// snapshot" on cloud means "delete the whole save". We drop the R2 blobs
+/// first (best-effort) then cascade-delete the DB rows; the storage_bytes
+/// trigger credits the freed space back as each `save_versions` row goes.
+pub async fn delete_save(
+    State(state): State<CloudState>,
+    Extension(user): Extension<CloudUser>,
+    Path(save_id): Path<String>,
+) -> Result<Response, CloudError> {
+    // Owner check — never trust a save_id from the request.
+    let owner: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
+        .bind(&save_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some(owner) = owner else {
+        return Err(CloudError::NotFound("save not found"));
+    };
+    if owner != user.user_id {
+        return Err(CloudError::Forbidden("save belongs to a different user"));
+    }
+
+    // Gather every blob key for this save so we can purge R2 before the DB
+    // rows (and their keys) disappear.
+    let keys: Vec<(String,)> =
+        sqlx::query_as("SELECT r2_key FROM save_versions WHERE save_id = $1")
+            .bind(&save_id)
+            .fetch_all(&state.pool)
+            .await?;
+    for (key,) in &keys {
+        if let Err(e) = state.r2.delete_object(key).await {
+            // A leaked blob is recoverable by a later sweep; a 500 here would
+            // strand the row pointing at a key we already tried to drop.
+            tracing::warn!(error = %e, r2_key = %key, "cloud delete: R2 object delete failed");
+        }
+    }
+
+    // Cascade: deleting the save removes its save_versions rows (FK ON DELETE
+    // CASCADE), and the AFTER DELETE trigger decrements profiles.storage_bytes
+    // per row.
+    sqlx::query("DELETE FROM saves WHERE id = $1 AND user_id = $2")
+        .bind(&save_id)
+        .bind(user.user_id)
+        .execute(&state.pool)
+        .await?;
+
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
 /// Tiny one-query helper to fetch a user's plan tag without going through
 /// the full quota::load pipeline. Used by paths that need the plan but
 /// don't need (yet) the storage figures.

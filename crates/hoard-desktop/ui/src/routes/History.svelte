@@ -51,6 +51,7 @@
     RestoreProgress,
   } from "../lib/api";
   import { toastError, toastSuccess } from "../lib/stores/toasts";
+  import { isCloudLoggedIn } from "../lib/stores/cloud";
 
   type Props = { params?: { saveId?: string } };
   let { params }: Props = $props();
@@ -251,9 +252,11 @@
     try {
       await api.deleteSnapshot(saveId, deleteTarget.version_num);
       toastSuccess(
-        $_("history.trashed_toast", {
-          values: { version: deleteTarget.version_num },
-        }),
+        $isCloudLoggedIn
+          ? $_("history.cloud_deleted_toast")
+          : $_("history.trashed_toast", {
+              values: { version: deleteTarget.version_num },
+            }),
       );
       deleteTarget = null;
       await hydrate();
@@ -739,17 +742,25 @@
 <Modal
   open={!!deleteTarget}
   title={deleteTarget
-    ? $_("history.delete_title", {
-        values: { version: deleteTarget.version_num },
-      })
+    ? $isCloudLoggedIn
+      ? $_("history.cloud_delete_title")
+      : $_("history.delete_title", {
+          values: { version: deleteTarget.version_num },
+        })
     : ""}
-  description={$_("history.delete_description")}
+  description={$isCloudLoggedIn
+    ? $_("history.cloud_delete_description")
+    : $_("history.delete_description")}
   dismissible={!deleting}
   onClose={() => {
     if (!deleting) deleteTarget = null;
   }}
 >
-  <p class="text-sm text-zinc-300">{$_("history.delete_body")}</p>
+  <p class="text-sm text-zinc-300">
+    {$isCloudLoggedIn
+      ? $_("history.cloud_delete_body")
+      : $_("history.delete_body")}
+  </p>
   {#snippet footer()}
     <Button
       variant="secondary"
@@ -758,8 +769,14 @@
     >
       {$_("common.cancel")}
     </Button>
-    <Button variant="primary" onclick={confirmDelete} loading={deleting}>
-      {$_("history.send_to_trash")}
+    <Button
+      variant={$isCloudLoggedIn ? "danger" : "primary"}
+      onclick={confirmDelete}
+      loading={deleting}
+    >
+      {$isCloudLoggedIn
+        ? $_("history.cloud_delete_confirm")
+        : $_("history.send_to_trash")}
     </Button>
   {/snippet}
 </Modal>

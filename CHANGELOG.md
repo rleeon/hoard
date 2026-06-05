@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.8] — 2026-06-05
+
+### Added
+- **Borrar partidas de la nube para liberar espacio.** Hoard Cloud no tenía
+  forma de borrar; intentarlo devolvía «Deleting snapshots isn't supported on
+  Hoard Cloud». Nuevo endpoint `DELETE /v1/cloud/saves/:save_id` que purga los
+  blobs en R2 y borra la partida (el trigger devuelve el `storage_bytes`). Como
+  la nube solo guarda la última versión, borrar elimina la partida entera; la UI
+  lo confirma con un diálogo propio y botón rojo.
+
+### Fixed
+- **Botón «Mapa» bloqueado en el sidebar.** Faltaba `/map` en la lista de rutas
+  habilitadas; quedaba deshabilitado pese a existir la vista.
+- **La foto de Gmail no salía junto al usuario en el sidebar.** El avatar no
+  llevaba `referrerpolicy="no-referrer"`, y `lh3.googleusercontent.com` responde
+  403 si se manda referer. Añadido eso más un fallback a la inicial si la imagen
+  falla.
+
 ## [1.9.7] — 2026-06-04
 
 ### Added

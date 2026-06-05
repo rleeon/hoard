@@ -121,6 +121,10 @@ pub async fn run(cfg: Config) -> Result<()> {
         .route("/v1/cloud/checkout", post(checkout::create_checkout))
         .route("/v1/cloud/saves", post(saves::init_upload))
         .route(
+            "/v1/cloud/saves/:save_id",
+            axum::routing::delete(saves::delete_save),
+        )
+        .route(
             "/v1/cloud/saves/:save_id/versions/:version/commit",
             post(saves::commit_upload),
         )
