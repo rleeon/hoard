@@ -34,6 +34,7 @@
 
   import Card from "../lib/components/Card.svelte";
   import Button from "../lib/components/Button.svelte";
+  import Modal from "../lib/components/Modal.svelte";
   import SettingsRow from "../lib/components/SettingsRow.svelte";
   import { prefs, hydratePrefs, updatePrefs } from "../lib/stores/prefs";
   import { auth, signOut } from "../lib/stores/auth";
@@ -51,6 +52,10 @@
 
   let saving = $state<string | null>(null);
   let signingOut = $state(false);
+  // Gate the "forget server" action behind a confirm modal. Forgetting wipes
+  // the saved address + token (session.toml + keyring), which is what stops
+  // the app reconnecting to a dead/abandoned self-hosted box on every launch.
+  let forgetModalOpen = $state(false);
 
   // Local mirrors of the two slider-backed prefs so the thumb drags smoothly
   // without a round-trip on every `input` event. The committed value is only
@@ -421,11 +426,12 @@
     }
   }
 
-  async function handleSignOut() {
+  async function handleForgetServer() {
     signingOut = true;
     try {
       await signOut();
-      toastSuccess($_("settings.signed_out_toast"));
+      forgetModalOpen = false;
+      toastSuccess($_("settings.forgotten_toast"));
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
     } finally {
@@ -923,14 +929,17 @@
                 </p>
               </div>
               <Button
-                variant="ghost"
-                onclick={handleSignOut}
+                variant="danger"
+                onclick={() => (forgetModalOpen = true)}
                 loading={signingOut}
               >
                 <LogOut size={14} />
-                {$_("settings.sign_out")}
+                {$_("settings.forget_server")}
               </Button>
             </div>
+            <p class="mt-3 text-xs leading-relaxed text-zinc-500">
+              {$_("settings.forget_server_desc")}
+            </p>
           </Card>
         </section>
       {/if}
@@ -1320,6 +1329,32 @@
     </div>
   {/if}
 </div>
+
+<Modal
+  open={forgetModalOpen}
+  title={$_("settings.forget_confirm_title")}
+  dismissible={!signingOut}
+  onClose={() => (forgetModalOpen = false)}
+>
+  <p class="text-sm leading-relaxed text-zinc-300">
+    {$_("settings.forget_confirm_body", {
+      values: { url: $auth.user?.server_url ?? "—" },
+    })}
+  </p>
+  {#snippet footer()}
+    <Button
+      variant="secondary"
+      onclick={() => (forgetModalOpen = false)}
+      disabled={signingOut}
+    >
+      {$_("common.cancel")}
+    </Button>
+    <Button variant="danger" onclick={handleForgetServer} loading={signingOut}>
+      <LogOut size={14} />
+      {$_("settings.forget_confirm_cta")}
+    </Button>
+  {/snippet}
+</Modal>
 
 <!--
   The actual row UI lives in `lib/components/SettingsRow.svelte`. Keeping it

@@ -12,6 +12,7 @@
     HardDrive,
     ScrollText,
     LogIn,
+    RotateCw,
   } from "lucide-svelte";
   import { _ } from "svelte-i18n";
   import { formatBytes } from "./lib/utils/format";
@@ -39,7 +40,7 @@
   import { subscribeLive, unsubscribeLive } from "./lib/stores/live";
   import { APP_VERSION } from "./lib/version";
   import { errorDialog, dismissError, showError } from "./lib/stores/error_dialog";
-  import { auth, hydrateAuth } from "./lib/stores/auth";
+  import { auth, hydrateAuth, signOut } from "./lib/stores/auth";
   import {
     cloud,
     hydrateCloud,
@@ -96,6 +97,51 @@
   let updateModalOpen = $state(false);
   let automaticMode = $state(false);
   let automaticBusy = $state(false);
+
+  // Self-hosted reachability escape hatch.
+  // ---------------------------------------
+  // A self-hosted session (address + token) is persisted on disk + the OS
+  // keyring, so it survives folder deletion AND a full reinstall. If the
+  // server is gone (decommissioned, different network, never coming back) the
+  // app would silently retry it forever with no obvious way out — the user
+  // ends up reinstalling in a loop. We probe the saved server once at boot;
+  // if it's unreachable we surface a banner offering "Retry" / "Forget server"
+  // so the dead session can actually be dropped without hunting through
+  // Settings. Cloud-only users (`$auth.user == null`) never see this.
+  let serverUnreachable = $state(false);
+  let probingServer = $state(false);
+  let forgettingServer = $state(false);
+
+  async function probeSelfHostedServer() {
+    const u = $auth.user;
+    if (!u?.server_url) {
+      serverUnreachable = false;
+      return;
+    }
+    probingServer = true;
+    try {
+      await api.healthCheck(u.server_url);
+      serverUnreachable = false;
+    } catch (e) {
+      console.warn("self-hosted server probe failed:", e);
+      serverUnreachable = true;
+    } finally {
+      probingServer = false;
+    }
+  }
+
+  async function forgetUnreachableServer() {
+    forgettingServer = true;
+    try {
+      await signOut();
+      serverUnreachable = false;
+      replace("/welcome");
+    } catch (e) {
+      showError(e);
+    } finally {
+      forgettingServer = false;
+    }
+  }
 
   // The update report is owned by `lastReport` in `stores/updates.ts` — both
   // the boot probe and the periodic re-check write to it. Reading via
@@ -167,6 +213,13 @@
       replace("/welcome");
     }
     booted = true;
+
+    // Fire-and-forget reachability probe for a restored self-hosted session.
+    // Non-blocking so a slow/dead server never holds up the UI; the banner
+    // appears once the probe settles. Cloud-only users short-circuit inside.
+    if ($auth.user) {
+      void probeSelfHostedServer();
+    }
 
     // Cloud OAuth callback handler: when the system browser hits
     // `hoard://auth/callback#access_token=…`, the Rust deep-link plugin
@@ -589,6 +642,45 @@
     </aside>
 
     <main class="flex-1 overflow-y-auto">
+      {#if serverUnreachable && $auth.user}
+        <div
+          class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-amber-500/40 bg-amber-500/10 px-6 py-3"
+        >
+          <AlertCircle size={18} class="shrink-0 text-amber-300" />
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-amber-200">
+              {$_("server.unreachable_title")}
+            </p>
+            <p class="mt-0.5 text-xs text-amber-200/70">
+              {$_("server.unreachable_body", {
+                values: { url: $auth.user.server_url },
+              })}
+            </p>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onclick={probeSelfHostedServer}
+              disabled={probingServer || forgettingServer}
+              class="inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200 transition-colors hover:bg-amber-500/20 disabled:cursor-wait disabled:opacity-60"
+            >
+              <RotateCw
+                size={13}
+                class={probingServer ? "animate-spin" : ""}
+              />
+              {$_("server.retry")}
+            </button>
+            <button
+              type="button"
+              onclick={forgetUnreachableServer}
+              disabled={forgettingServer || probingServer}
+              class="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-red-50 transition-colors hover:bg-red-500 disabled:cursor-wait disabled:opacity-60"
+            >
+              {$_("server.forget")}
+            </button>
+          </div>
+        </div>
+      {/if}
       <Router {routes} />
     </main>
   </div>

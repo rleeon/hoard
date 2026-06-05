@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.13] — 2026-06-05
+
+### Fixed
+- **No había forma de «olvidar» un servidor self-hosted en Windows.** La sesión
+  (dirección en `session.toml` del AppData Roaming + token en el Credential
+  Manager) sobrevive a borrar la carpeta y reinstalar, así que la app seguía
+  intentando reconectarse a un servidor muerto sin escapatoria. Dos arreglos:
+  - **Ajustes → Servidor self-hosted**: el botón ahora es «Olvidar servidor»
+    (rojo) con un modal de confirmación que explica que se borran las
+    credenciales guardadas; las copias en el servidor no se tocan.
+  - **Arranque**: si la sesión restaurada no responde a un `health_check`, se
+    muestra una franja con «Reintentar» y «Olvidar servidor» para soltar la
+    sesión sin bucear en Ajustes.
+
 ## [1.9.12] — 2026-06-05
 
 ### Changed
