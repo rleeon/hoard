@@ -11,6 +11,7 @@ pub mod catalog;
 pub mod cloud;
 pub mod cloud_pull;
 pub mod cloud_realtime;
+pub mod covers;
 pub mod error;
 pub mod history;
 pub mod library;

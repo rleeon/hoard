@@ -538,5 +538,12 @@
   "map.panel_date": "Created",
   "map.restore": "Restore this version",
   "map.open_history": "Open history",
-  "map.restored": "Restored v{v}"
+  "map.restored": "Restored v{v}",
+  "map.panel_game": "Game",
+  "map.panel_partidas": "Playthroughs",
+  "map.panel_versions": "Versions",
+  "map.panel_versions_short": "{count} v",
+  "map.panel_last_backup": "Last backup",
+  "map.view_library": "View in Library",
+  "map.never": "Never"
 }

@@ -538,5 +538,12 @@
   "map.panel_date": "作成日",
   "map.restore": "このバージョンを復元",
   "map.open_history": "履歴を開く",
-  "map.restored": "v{v} を復元しました"
+  "map.restored": "v{v} を復元しました",
+  "map.panel_game": "ゲーム",
+  "map.panel_partidas": "プレイデータ",
+  "map.panel_versions": "バージョン",
+  "map.panel_versions_short": "{count} 件",
+  "map.panel_last_backup": "最終バックアップ",
+  "map.view_library": "ライブラリで表示",
+  "map.never": "なし"
 }

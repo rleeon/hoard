@@ -23,6 +23,8 @@
   import type { TrackedSave, SnapshotEntry, DetectedGame } from "../lib/api";
   import { formatBytes } from "../lib/utils/format";
   import { toastError } from "../lib/stores/toasts";
+  import { coverUrl } from "../lib/stores/covers";
+  import Cover from "../lib/components/Cover.svelte";
 
   // ---- model --------------------------------------------------------------
 
@@ -81,19 +83,23 @@
   function getCover(appId: number): HTMLImageElement | null {
     const hit = coverCache.get(appId);
     if (hit !== undefined) return hit && hit.ready ? hit.img : null;
-    const img = new Image();
-    const entry = { img, ready: false };
+    // Mark in-flight (blank, not-ready) so repeated frames don't refetch.
+    const entry: { img: HTMLImageElement; ready: boolean } = { img: new Image(), ready: false };
     coverCache.set(appId, entry);
-    img.onload = () => {
-      entry.ready = true;
-    };
-    img.onerror = () => {
-      coverCache.set(appId, null);
-    };
-    // Steam's public capsule. Drawing a cross-origin image taints the canvas,
-    // which is fine — we never read pixels back. Falls back to the initial on
-    // any failure (e.g. offline).
-    img.src = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`;
+    // Bytes come from the on-device cache (downloaded once, then read from
+    // disk) as an object URL — no per-frame network hit, no canvas taint.
+    coverUrl(appId).then((url) => {
+      if (!url) {
+        coverCache.set(appId, null);
+        return;
+      }
+      entry.img.onload = () => {
+        entry.ready = true;
+        wake(); // the canvas may be asleep; repaint so the cover pops in
+      };
+      entry.img.onerror = () => coverCache.set(appId, null);
+      entry.img.src = url;
+    });
     return null;
   }
   let nodeCount = 0;
@@ -315,6 +321,13 @@
     }
 
     // ---- save nodes (still spring off their orb so chains stay readable) --
+    // Flatten every node once so branches can repel *across games*, not just
+    // their same-orb siblings: no two save-nodes (whoever owns them) should
+    // sit on top of each other, and a node should steer clear of any orb body
+    // it drifts near — not only its own parent.
+    const allNodes: Node[] = [];
+    for (const o of orbs) for (const b of o.branches) for (const n of b.nodes) allNodes.push(n);
+
     for (const o of orbs) {
       for (const b of o.branches) {
         for (let n = 0; n < b.nodes.length; n++) {
@@ -333,7 +346,7 @@
           nax -= (dx / d) * stretch * SPRING_K;
           nay -= (dy / d) * stretch * SPRING_K;
 
-          // push away from the orb body
+          // push away from the OWN orb body (unbounded — keeps arms extended)
           dx = node.x - o.x;
           dy = node.y - o.y;
           let d2 = dx * dx + dy * dy + 1;
@@ -342,19 +355,31 @@
           nax += dx * inv * f;
           nay += dy * inv * f;
 
-          // repel sibling nodes of the same orb so branches fan out
-          for (const b2 of o.branches) {
-            for (const other of b2.nodes) {
-              if (other === node) continue;
-              dx = node.x - other.x;
-              dy = node.y - other.y;
-              d2 = dx * dx + dy * dy + 1;
-              if (d2 > 40000) continue;
-              f = NODE_REPULSION / d2;
-              inv = 1 / Math.sqrt(d2);
-              nax += dx * inv * f;
-              nay += dy * inv * f;
-            }
+          // avoid OTHER orbs' bodies (local — only when the node drifts close)
+          for (const ob of orbs) {
+            if (ob === o) continue;
+            dx = node.x - ob.x;
+            dy = node.y - ob.y;
+            d2 = dx * dx + dy * dy + 1;
+            const reach = ob.r + 34;
+            if (d2 > reach * reach) continue;
+            f = ORB_NODE_REPULSION / d2;
+            inv = 1 / Math.sqrt(d2);
+            nax += dx * inv * f;
+            nay += dy * inv * f;
+          }
+
+          // repel every other node within range (own siblings + other games)
+          for (const other of allNodes) {
+            if (other === node) continue;
+            dx = node.x - other.x;
+            dy = node.y - other.y;
+            d2 = dx * dx + dy * dy + 1;
+            if (d2 > 40000) continue;
+            f = NODE_REPULSION / d2;
+            inv = 1 / Math.sqrt(d2);
+            nax += dx * inv * f;
+            nay += dy * inv * f;
           }
 
           [nax, nay] = clampMag(nax, nay, MAX_ACC);
@@ -616,6 +641,9 @@
   let pointer = $state({ x: 0, y: 0 });
   let hovered = $state<{ branch: Branch; node: Node } | null>(null);
   let selected = $state<{ orb: Orb; branch: Branch; node: Node } | null>(null);
+  // A whole game selected (orb click) — drives the game-level side panel,
+  // mutually exclusive with `selected` (a single snapshot node).
+  let selectedOrb = $state<Orb | null>(null);
 
   let dragging = $state(false); // panning the camera
   let draggedOrb: Orb | null = null; // a game orb being moved by the user
@@ -702,18 +730,19 @@
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
-      // Move the orb (in world units) and carry its whole branch with it so
-      // the constellation translates as one rigid piece while dragging.
+      // Move only the orb; its branches are NOT translated rigidly. The spring
+      // chains in `step()` pull the nodes after it, so the rama trails and
+      // swings a beat behind the orb — a living drag, not a rigid block. A tiny
+      // fraction (0.25) is carried so far-out nodes don't snap to a hard stop
+      // when you fling the orb, but most of the motion is the spring lag.
       const wdx = dx / scale;
       const wdy = dy / scale;
       draggedOrb.x += wdx;
       draggedOrb.y += wdy;
       for (const b of draggedOrb.branches)
         for (const n of b.nodes) {
-          n.x += wdx;
-          n.y += wdy;
-          n.vx = 0;
-          n.vy = 0;
+          n.x += wdx * 0.25;
+          n.y += wdy * 0.25;
         }
       startX = e.clientX;
       startY = e.clientY;
@@ -752,6 +781,7 @@
     const node = hitNode(px, py);
     if (node) {
       selected = node;
+      selectedOrb = null;
       return;
     }
     const orb = hitOrb(px, py);
@@ -762,10 +792,10 @@
         push("/library");
         return;
       }
-      const ns = clamp(1.6, 0.18, 4.5);
-      scale = ns;
-      tx = cssW / 2 - orb.x * ns;
-      ty = cssH / 2 - orb.y * ns;
+      // Open the game-level panel (same idea as the snapshot panel, but for
+      // the whole partida set).
+      selected = null;
+      selectedOrb = orb;
     }
   }
 
@@ -847,6 +877,21 @@
     cancelAnimationFrame(raf);
     ro?.disconnect();
   });
+
+  function totalVersions(o: Orb): number {
+    let t = 0;
+    for (const b of o.branches) t += b.nodes.length;
+    return t;
+  }
+
+  function lastBackup(o: Orb): string {
+    let latest: string | null = null;
+    for (const b of o.branches) {
+      const t = b.save.last_backup_at;
+      if (t && (!latest || t > latest)) latest = t;
+    }
+    return latest ? formatRelative(latest) : $_("map.never");
+  }
 
   function formatRelative(iso: string): string {
     const diff = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -959,9 +1004,17 @@
       class="absolute right-0 top-0 z-30 flex h-full w-72 flex-col border-l border-white/[0.08] bg-zinc-900/95 p-5 backdrop-blur"
     >
       <div class="flex items-start justify-between">
-        <div>
-          <p class="text-xs uppercase tracking-wide text-emerald-400">{selected.orb.name}</p>
-          <h2 class="mt-1 text-lg font-semibold text-zinc-100">{selected.branch.label}</h2>
+        <div class="flex items-center gap-3">
+          <Cover
+            appId={selected.orb.steamAppId}
+            name={selected.orb.name}
+            class="h-11 w-11 rounded-lg"
+            initialClass="text-base"
+          />
+          <div>
+            <p class="text-xs uppercase tracking-wide text-emerald-400">{selected.orb.name}</p>
+            <h2 class="mt-0.5 text-lg font-semibold text-zinc-100">{selected.branch.label}</h2>
+          </div>
         </div>
         <button
           type="button"
@@ -1000,6 +1053,89 @@
         >
           <HistoryIcon size={15} />
           {$_("map.open_history")}
+        </button>
+      </div>
+    </aside>
+  {/if}
+
+  <!-- game-level panel (orb click) -->
+  {#if selectedOrb}
+    <aside
+      class="absolute right-0 top-0 z-30 flex h-full w-72 flex-col border-l border-white/[0.08] bg-zinc-900/95 p-5 backdrop-blur"
+    >
+      <div class="flex items-start justify-between">
+        <div class="flex items-center gap-3">
+          <Cover
+            appId={selectedOrb.steamAppId}
+            name={selectedOrb.name}
+            class="h-12 w-12 rounded-lg"
+            initialClass="text-lg"
+          />
+          <div>
+            <p class="text-xs uppercase tracking-wide text-emerald-400">{$_("map.panel_game")}</p>
+            <h2 class="mt-0.5 text-lg font-semibold text-zinc-100">{selectedOrb.name}</h2>
+          </div>
+        </div>
+        <button
+          type="button"
+          onclick={() => (selectedOrb = null)}
+          class="rounded p-1 text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200"
+          aria-label="Close"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      <dl class="mt-5 space-y-2.5 text-sm">
+        <div class="flex justify-between">
+          <dt class="text-zinc-500">{$_("map.panel_partidas")}</dt>
+          <dd class="font-medium text-zinc-200">{selectedOrb.branches.length}</dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-zinc-500">{$_("map.panel_versions")}</dt>
+          <dd class="font-medium text-zinc-200">{totalVersions(selectedOrb)}</dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-zinc-500">{$_("map.panel_size")}</dt>
+          <dd class="font-medium text-zinc-200">{formatBytes(selectedOrb.totalBytes)}</dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-zinc-500">{$_("map.panel_last_backup")}</dt>
+          <dd class="font-medium text-zinc-200">{lastBackup(selectedOrb)}</dd>
+        </div>
+      </dl>
+
+      {#if selectedOrb.branches.length > 0}
+        <div class="mt-5 flex-1 space-y-1.5 overflow-y-auto">
+          {#each selectedOrb.branches as b (b.save.save_id)}
+            <button
+              type="button"
+              onclick={() => push(`/history/${b.save.save_id}`)}
+              class="flex w-full items-center justify-between gap-2 rounded-lg border border-white/[0.06] px-3 py-2 text-left text-sm text-zinc-300 transition hover:border-white/[0.16] hover:text-zinc-100"
+            >
+              <span class="flex min-w-0 items-center gap-2">
+                <span
+                  class="h-2 w-2 shrink-0 rounded-full"
+                  style={`background:${STATUS_COLOR[b.status]}`}
+                ></span>
+                <span class="truncate">{b.label}</span>
+              </span>
+              <span class="shrink-0 text-xs text-zinc-500"
+                >{$_("map.panel_versions_short", { values: { count: b.nodes.length } })}</span
+              >
+            </button>
+          {/each}
+        </div>
+      {/if}
+
+      <div class="mt-auto space-y-2 pt-5">
+        <button
+          type="button"
+          onclick={() => push("/library")}
+          class="flex w-full items-center justify-center gap-2 rounded-lg border border-white/[0.1] px-4 py-2 text-sm text-zinc-300 transition hover:border-white/[0.2] hover:text-zinc-100"
+        >
+          <MapIcon size={15} />
+          {$_("map.view_library")}
         </button>
       </div>
     </aside>

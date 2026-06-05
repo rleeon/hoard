@@ -31,6 +31,7 @@
 
   import Button from "../lib/components/Button.svelte";
   import Card from "../lib/components/Card.svelte";
+  import Cover from "../lib/components/Cover.svelte";
   import Input from "../lib/components/Input.svelte";
   import Modal from "../lib/components/Modal.svelte";
   import * as api from "../lib/api";
@@ -47,6 +48,15 @@
 
   let report = $state<DetectionReport | null>(null);
   let tracked = $state<TrackedSave[]>([]);
+  // slug → Steam app id, sourced from the detection report. Used only to show
+  // cover art; absence just falls back to the initial-letter placeholder.
+  const appIdBySlug = $derived.by(() => {
+    const m = new Map<string, number>();
+    for (const g of report?.games ?? []) {
+      if (g.steam_app_id != null) m.set(g.slug, g.steam_app_id);
+    }
+    return m;
+  });
   let scanning = $state(false);
   let progress = $state<ScanProgress | null>(null);
   let search = $state("");
@@ -549,6 +559,12 @@
           <div
             class="flex items-center justify-between gap-2 rounded-md border border-zinc-800 bg-zinc-900/40 p-3"
           >
+            <Cover
+              appId={appIdBySlug.get(save.game_slug) ?? null}
+              name={save.game_slug}
+              class="h-9 w-9 rounded-md"
+              initialClass="text-sm"
+            />
             <div class="min-w-0 flex-1">
               <p
                 class="truncate text-sm font-medium text-zinc-100"
@@ -687,16 +703,24 @@
             class="flex flex-col rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-colors hover:border-zinc-700"
           >
             <div class="mb-2 flex items-start justify-between gap-2">
-              <div class="min-w-0">
-                <h3
-                  class="truncate text-sm font-medium text-zinc-100"
-                  title={game.display_name}
-                >
-                  {game.display_name}
-                </h3>
-                <p class="truncate text-xs text-zinc-500" title={game.slug}>
-                  {game.slug}
-                </p>
+              <div class="flex min-w-0 items-center gap-2.5">
+                <Cover
+                  appId={game.steam_app_id}
+                  name={game.display_name}
+                  class="h-10 w-10 rounded-md"
+                  initialClass="text-base"
+                />
+                <div class="min-w-0">
+                  <h3
+                    class="truncate text-sm font-medium text-zinc-100"
+                    title={game.display_name}
+                  >
+                    {game.display_name}
+                  </h3>
+                  <p class="truncate text-xs text-zinc-500" title={game.slug}>
+                    {game.slug}
+                  </p>
+                </div>
               </div>
               <div class="flex shrink-0 flex-col items-end gap-1">
                 <span

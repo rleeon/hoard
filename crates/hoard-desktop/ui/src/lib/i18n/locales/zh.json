@@ -538,5 +538,12 @@
   "map.panel_date": "创建于",
   "map.restore": "恢复此版本",
   "map.open_history": "打开历史",
-  "map.restored": "已恢复 v{v}"
+  "map.restored": "已恢复 v{v}",
+  "map.panel_game": "游戏",
+  "map.panel_partidas": "存档分支",
+  "map.panel_versions": "版本",
+  "map.panel_versions_short": "{count} 个",
+  "map.panel_last_backup": "上次备份",
+  "map.view_library": "在库中查看",
+  "map.never": "从不"
 }

@@ -119,6 +119,7 @@ pub fn run() {
         .manage(commands::cloud_realtime::RealtimeScheduler::default())
         .invoke_handler(tauri::generate_handler![
             commands::misc::greet,
+            commands::covers::cover_bytes,
             commands::auth::health_check,
             commands::auth::login,
             commands::auth::logout,
