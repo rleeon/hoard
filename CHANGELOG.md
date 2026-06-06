@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.3] — 2026-06-06
+
+### Changed
+- **Un save dentro de un comprimido ya basta para auto-rastrear (ALTA).** En la
+  2.0.2 abrir el `.zip` solo subía el score, pero seguía topado en MEDIA sin
+  corroboración de Steam o de una sesión de juego observada — así que Factorio no
+  se auto-rastreaba aunque hubiéramos visto el save dentro. Ahora el contenido
+  verificado de un comprimido (índice con `level.dat`/`control.lua`/extensión save)
+  cuenta como corroboración directa: leímos los bytes, no es una suposición por
+  nombre. Factorio y similares pasan a ALTA en el siguiente escaneo sin jugar. Se
+  limita a comprimidos; las carpetas con `.sav` sueltos mantienen el comportamiento
+  conservador.
+
+### Fixed
+- **La correlación dejaba de atribuir escrituras a procesos del sistema.**
+  `is_game_like` solo descartaba una lista corta, así que demonios y hilos
+  genéricos (dockerd, avahi, hilos de Brave/Electron como `ThreadPoolForeg`) se
+  registraban como si fueran el juego — incluso un save legítimo quedaba atribuido
+  a `dockerd`. Ahora también se mira la ruta del ejecutable (se rechaza `/usr`,
+  `/lib`, etc.) y el basename del exe, con la lista negra ampliada.
+
 ## [2.0.2] — 2026-06-06
 
 ### Added

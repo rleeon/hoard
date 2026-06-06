@@ -137,6 +137,14 @@ fn archive_looks_like_save(path: &Path) -> bool {
 pub struct ScoreBreakdown {
     pub score: f32,
     pub reasons: Vec<String>,
+    /// `true` si abrimos un comprimido y su índice delata un save dentro
+    /// (`level.dat`, `control.lua`, extensión save...). No es una suposición
+    /// por nombre: leímos el contenido del archivo. Cuenta como corroboración
+    /// para conceder `High` igual que Steam o la correlación de proceso (ADR
+    /// 0020), sin necesidad de una sesión de juego observada. Se limita a
+    /// comprimidos (señal deliberada y cara) — los `.sav` sueltos mantienen el
+    /// comportamiento conservador (tope en `Medium` sin correlación).
+    pub corroborated_by_content: bool,
 }
 
 /// Conteo barato del contenido inmediato (no recursivo) de un candidato.
@@ -268,7 +276,16 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
         score = score.min(SCORE_POSSIBLE - 0.001);
     }
 
-    ScoreBreakdown { score, reasons }
+    // Corroboración por contenido: solo un comprimido con índice save-like
+    // (señal verificada y deliberada). No aplica si la hard-rule degradó la
+    // carpeta a no-save.
+    let corroborated_by_content = !(only_images || only_noisy) && content.archive_save > 0;
+
+    ScoreBreakdown {
+        score,
+        reasons,
+        corroborated_by_content,
+    }
 }
 
 /// `true` si la señal de nombre por sí sola reconoce esta carpeta como
@@ -317,6 +334,8 @@ mod archive_tests {
             b.reasons
         );
         assert!(b.score >= SCORE_CONFIRMED, "score {} too low", b.score);
+        // El contenido verificado corrobora → habilita `High` sin correlación.
+        assert!(b.corroborated_by_content);
     }
 
     #[test]

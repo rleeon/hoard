@@ -60,10 +60,23 @@ const NON_GAME_PROCESS: &[&str] = &[
     "loginwindow",
     // Navegadores / runtimes genéricos.
     "chrome",
+    "chromium",
     "firefox",
     "msedge",
+    "brave",
     "safari",
     "electron",
+    // Demonios del sistema observados colándose como "juego" (atribuían
+    // escrituras a dockerd, avahi, etc.). Match por substring del nombre.
+    "dockerd",
+    "containerd",
+    "multipathd",
+    "avahi-daemon",
+    "systemd-",
+    "gvfsd",
+    "gsd-",
+    "pipewire-",
+    "wireplumber",
     // Launchers / overlays / clientes (no son el juego en sí).
     "steamwebhelper",
     "steam.exe",
@@ -86,13 +99,40 @@ pub struct GameProcess {
     pub exe: Option<PathBuf>,
 }
 
+/// Prefijos de ruta de SISTEMA: un ejecutable bajo ellos no es un juego
+/// (demonios, librerías, runtimes de apps empaquetadas). Los juegos viven en
+/// el home del usuario (Steam, Wine `~/.wine*`, Lutris, Heroic, Flatpak data)
+/// o en `/opt/<juego>` — nunca en `/usr` ni `/lib`. Filtra el grueso de la
+/// basura observada (hilos de Brave en `/opt/brave.com`, Electron en
+/// `/usr/lib/...`, `gsd-*` en `/usr/libexec`).
+const SYSTEM_EXE_PREFIXES: &[&str] = &["/usr/", "/lib", "/lib64", "/bin", "/sbin", "/run/"];
+
 /// `true` si el proceso parece un juego (no sistema/launcher/navegador).
-pub fn is_game_like(name: &str, _exe: Option<&Path>) -> bool {
+/// Usa el nombre y, cuando está, la ruta del ejecutable: un nombre de hilo
+/// genérico (`ThreadPoolForeg`) no delata al navegador, pero su exe sí.
+pub fn is_game_like(name: &str, exe: Option<&Path>) -> bool {
     let lower = name.trim().to_lowercase();
     if lower.is_empty() {
         return false;
     }
-    !NON_GAME_PROCESS.iter().any(|bad| lower.contains(bad))
+    if NON_GAME_PROCESS.iter().any(|bad| lower.contains(bad)) {
+        return false;
+    }
+    if let Some(exe) = exe {
+        let exe_str = exe.to_string_lossy().to_lowercase();
+        if SYSTEM_EXE_PREFIXES.iter().any(|p| exe_str.starts_with(p)) {
+            return false;
+        }
+        // El nombre del proceso puede ser un hilo genérico; mira también el
+        // basename del ejecutable contra la lista negra.
+        if let Some(base) = exe.file_name().and_then(|s| s.to_str()) {
+            let base = base.to_lowercase();
+            if NON_GAME_PROCESS.iter().any(|bad| base.contains(bad)) {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 /// Foto de los procesos vivos que parecen juegos. `sys` debe venir ya
@@ -250,6 +290,33 @@ mod tests {
         // Un juego cualquiera pasa.
         assert!(is_game_like("eldenring.exe", None));
         assert!(is_game_like("Hades.exe", None));
+    }
+
+    #[test]
+    fn is_game_like_rejects_by_exe_path_and_basename() {
+        // Hilo genérico de Brave: el nombre no delata, el exe sí.
+        assert!(!is_game_like(
+            "ThreadPoolForeg",
+            Some(Path::new("/opt/brave.com/brave/brave"))
+        ));
+        // Runtime de Electron / apps en /usr.
+        assert!(!is_game_like(
+            "electro:disk$0",
+            Some(Path::new(
+                "/usr/lib/claude-desktop/node_modules/electron/dist/electron"
+            ))
+        ));
+        assert!(!is_game_like(
+            "gmain",
+            Some(Path::new("/usr/libexec/gsd-sound"))
+        ));
+        // Un juego de Wine en el home pasa.
+        assert!(is_game_like(
+            "factorio.exe",
+            Some(Path::new(
+                "/home/u/.wine64/drive_c/Factorio/bin/factorio.exe"
+            ))
+        ));
     }
 
     #[test]

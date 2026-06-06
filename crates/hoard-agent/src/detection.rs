@@ -1919,7 +1919,11 @@ fn classify_dir_as_save_like(
     if breakdown.score < scoring::SCORE_POSSIBLE {
         return None;
     }
-    let corroborated = store.signal_for(path).is_some();
+    // Corroboración para conceder `High`: correlación proceso↔escritura
+    // (el store) O un comprimido con índice save-like verificado. Lo segundo
+    // es evidencia directa —abrimos el .zip y vimos el save dentro— así que
+    // vale tanto como la correlación y no exige una sesión de juego observada.
+    let corroborated = store.signal_for(path).is_some() || breakdown.corroborated_by_content;
     let confidence = if breakdown.score >= scoring::SCORE_CONFIRMED {
         if corroborated {
             Confidence::High
@@ -2707,6 +2711,28 @@ mod tests {
         let corr = classify_dir_as_save_like(&tmp, "saves", &store).unwrap();
         assert_eq!(corr.confidence, Confidence::High);
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// Corroboración por contenido: una carpeta `saves` con un `.zip` cuyo
+    /// índice delata un save (Factorio: `control.lua`) se concede `High` sin
+    /// necesidad de correlación de proceso — abrimos el archivo y lo vimos.
+    #[test]
+    fn classify_archive_content_unlocks_high_without_correlation() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let saves = dir.path().join("saves");
+        std::fs::create_dir_all(&saves).unwrap();
+        let file = std::fs::File::create(saves.join("world.zip")).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        zip.start_file("world/control.lua", opts).unwrap();
+        zip.write_all(b"x").unwrap();
+        zip.finish().unwrap();
+
+        let empty = CorrelationStore::default();
+        let hit = classify_dir_as_save_like(&saves, "saves", &empty).unwrap();
+        assert_eq!(hit.confidence, Confidence::High);
     }
 
     /// Atribución (fase 4): el nombre del proceso que escribió la carpeta gana
