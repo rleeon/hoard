@@ -336,6 +336,7 @@
   "updates.no": "Non",
   "updates.installing": "Installation…",
   "updates.installer_launched": "Installateur lancé — suivez l'invite système pour terminer.",
+  "updates.superseded": "Opération annulée : une version plus récente ({latest}) est disponible. Mettez à jour à nouveau pour l'installer.",
   "updates.downloaded_manual": "Téléchargé vers {path}. Ouvrez-le pour installer.",
   "updates.install_failed": "Échec de la mise à jour : {error}",
   "updates.server_command_copied": "Commande copiée — exécutez-la sur votre serveur.",

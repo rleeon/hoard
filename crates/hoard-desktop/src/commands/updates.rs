@@ -243,6 +243,12 @@ pub enum ApplyOutcome {
     /// We downloaded the asset but couldn't auto-launch the installer. The
     /// UI surfaces the path so the user can run it manually.
     Downloaded { path: String, version: String },
+    /// A newer release appeared between the moment the modal showed the user a
+    /// version and the moment they confirmed. We abort *without downloading*
+    /// the stale one and report the version that's actually latest now so the
+    /// UI can refresh and re-offer it — never install an older build than what
+    /// GitHub currently calls "latest".
+    Superseded { latest: String },
 }
 
 /// Tauri command. Downloads the right release asset for this OS and tries to
@@ -253,7 +259,10 @@ pub enum ApplyOutcome {
 /// `msiexec` for Windows .msi, `open` for macOS .dmg. Each pops the system's
 /// usual auth prompt; we never ask the user for a password ourselves.
 #[tauri::command]
-pub async fn apply_desktop_update(app: AppHandle) -> Result<ApplyOutcome, AppError> {
+pub async fn apply_desktop_update(
+    app: AppHandle,
+    expected_version: Option<String>,
+) -> Result<ApplyOutcome, AppError> {
     // Network/HTTP failures fetching the release feed: surface as "unknown",
     // since this branch fires before we even know what version we're trying
     // to install. The raw `reqwest` message goes into `detail`.
@@ -261,6 +270,22 @@ pub async fn apply_desktop_update(app: AppHandle) -> Result<ApplyOutcome, AppErr
         AppError::new("updates.error.title", "updates.error.unknown").with_detail(e)
     })?;
     let version = release.tag_name.trim_start_matches('v').to_string();
+
+    // Re-check at confirm time: if a newer release landed since the modal was
+    // painted (the badge can be up to 30 min stale, or the user sat on the
+    // dialog), don't silently install the version they *saw* — bail and tell
+    // the UI to re-offer the now-latest one. `is_newer` is strict, so this
+    // only triggers on a genuinely newer tag, not on an equal re-check.
+    if let Some(expected) = expected_version {
+        if is_newer(&version, &expected) {
+            tracing::info!(
+                expected = %expected,
+                latest = %version,
+                "apply_desktop_update: newer release appeared, aborting stale install"
+            );
+            return Ok(ApplyOutcome::Superseded { latest: version });
+        }
+    }
 
     let asset = pick_asset(&release.assets)
         .ok_or_else(|| {

@@ -20,6 +20,7 @@
   import {
     applyDesktopUpdate,
     applyServerUpdate,
+    checkForUpdates,
     type UpdateReport,
   } from "../stores/updates";
   import { toastInfo, toastSuccess } from "../stores/toasts";
@@ -86,8 +87,16 @@
     if (isClient) {
       installing = true;
       try {
-        const r = await applyDesktopUpdate();
-        if (r.kind === "installer_launched") {
+        const r = await applyDesktopUpdate(report?.client.latest ?? undefined);
+        if (r.kind === "superseded") {
+          // A newer release landed since the modal opened. We didn't install
+          // the stale one — refresh the report so the badge/modal now point at
+          // the latest, and tell the user to confirm again for that version.
+          toastInfo(
+            $_("updates.superseded", { values: { latest: r.latest } }),
+          );
+          await checkForUpdates().catch(() => {});
+        } else if (r.kind === "installer_launched") {
           toastInfo($_("updates.installer_launched"));
         } else {
           toastInfo(

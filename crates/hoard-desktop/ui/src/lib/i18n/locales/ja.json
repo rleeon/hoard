@@ -336,6 +336,7 @@
   "updates.no": "いいえ",
   "updates.installing": "インストール中…",
   "updates.installer_launched": "インストーラーを起動しました — システムの指示に従ってください。",
+  "updates.superseded": "操作をキャンセルしました：より新しいバージョン（{latest}）が利用可能です。もう一度更新してインストールしてください。",
   "updates.downloaded_manual": "{path} にダウンロードしました。開いてインストールしてください。",
   "updates.install_failed": "更新に失敗しました: {error}",
   "updates.server_command_copied": "コマンドをコピーしました — サーバーで実行してください。",

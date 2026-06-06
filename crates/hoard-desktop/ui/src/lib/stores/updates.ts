@@ -122,11 +122,19 @@ async function notifyIfNewClientRelease(report: UpdateReport): Promise<void> {
  */
 export type ApplyOutcome =
   | { kind: "installer_launched"; path: string; version: string }
-  | { kind: "downloaded"; path: string; version: string };
+  | { kind: "downloaded"; path: string; version: string }
+  | { kind: "superseded"; latest: string };
 
-/** Download the latest desktop release asset and trigger the OS installer. */
-export async function applyDesktopUpdate(): Promise<ApplyOutcome> {
-  return await invoke<ApplyOutcome>("apply_desktop_update");
+/** Download the latest desktop release asset and trigger the OS installer.
+ *  Pass the version the modal offered (`expectedVersion`) so the Rust side can
+ *  abort with `superseded` if a newer release appeared in the meantime — we
+ *  never want to install an older build than GitHub's current "latest". */
+export async function applyDesktopUpdate(
+  expectedVersion?: string,
+): Promise<ApplyOutcome> {
+  return await invoke<ApplyOutcome>("apply_desktop_update", {
+    expectedVersion: expectedVersion ?? null,
+  });
 }
 
 /**

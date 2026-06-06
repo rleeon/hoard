@@ -353,6 +353,7 @@
   "updates.no": "No",
   "updates.installing": "Instalando…",
   "updates.installer_launched": "Instalador lanzado — sigue las indicaciones del sistema.",
+  "updates.superseded": "Operación cancelada: hay una versión más reciente ({latest}). Vuelve a actualizar para instalarla.",
   "updates.downloaded_manual": "Descargado en {path}. Ábrelo para instalar.",
   "updates.install_failed": "Error al actualizar: {error}",
   "updates.server_command_copied": "Comando copiado — ejecútalo en tu servidor.",

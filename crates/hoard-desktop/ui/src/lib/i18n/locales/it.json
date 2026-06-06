@@ -336,6 +336,7 @@
   "updates.no": "No",
   "updates.installing": "Installazione…",
   "updates.installer_launched": "Installer avviato — segui le istruzioni di sistema.",
+  "updates.superseded": "Operazione annullata: è disponibile una versione più recente ({latest}). Aggiorna di nuovo per installarla.",
   "updates.downloaded_manual": "Scaricato in {path}. Aprilo per installare.",
   "updates.install_failed": "Aggiornamento fallito: {error}",
   "updates.server_command_copied": "Comando copiato — eseguilo sul tuo server.",

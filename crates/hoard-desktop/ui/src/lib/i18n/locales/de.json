@@ -336,6 +336,7 @@
   "updates.no": "Nein",
   "updates.installing": "Wird installiert…",
   "updates.installer_launched": "Installer gestartet — folge der Systemaufforderung.",
+  "updates.superseded": "Vorgang abgebrochen: Eine neuere Version ({latest}) ist verfügbar. Aktualisiere erneut, um sie zu installieren.",
   "updates.downloaded_manual": "Heruntergeladen nach {path}. Öffnen, um zu installieren.",
   "updates.install_failed": "Update fehlgeschlagen: {error}",
   "updates.server_command_copied": "Befehl kopiert — auf deinem Server ausführen.",

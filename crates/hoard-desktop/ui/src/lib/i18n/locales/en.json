@@ -353,6 +353,7 @@
   "updates.no": "No",
   "updates.installing": "Installing…",
   "updates.installer_launched": "Installer launched — follow the system prompt to finish.",
+  "updates.superseded": "Operation cancelled: a newer version ({latest}) is available. Update again to install it.",
   "updates.downloaded_manual": "Downloaded to {path}. Open it to install.",
   "updates.install_failed": "Update failed: {error}",
   "updates.server_command_copied": "Command copied — run it on your server.",
