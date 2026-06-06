@@ -92,21 +92,40 @@ pub struct Prefs {
     pub last_update_notified_version: Option<String>,
 
     /// When `true`, the sidebar "Modo Automático" toggle is on. The desktop
-    /// app keeps a background scheduler alive that re-runs the full magic
-    /// flow (scan → track high-confidence detections → boot the agent)
-    /// every `automatic_scan_interval_hours`, and the toggle also cascades
-    /// `auto_restore = true` on activation. Defaults to `false` — the
-    /// scheduler is fully opt-in, just like `auto_restore`.
+    /// app keeps two background schedulers alive: a cheap detection scan
+    /// (every `automatic_scan_interval_secs`) that tracks newly installed
+    /// games, and an expensive hash sweep (every
+    /// `automatic_backup_interval_secs`) that catches save changes the
+    /// fs-watcher missed. Activating the toggle also cascades
+    /// `auto_restore = true`. Defaults to `false` — the schedulers are
+    /// fully opt-in, just like `auto_restore`.
     #[serde(default)]
     pub automatic_mode: bool,
 
-    /// Interval, in hours, between background scans when `automatic_mode`
-    /// is enabled. Defaults to 6h — a balance between freshness and not
-    /// hammering disks. The frontend has no UI to change this yet; it's
-    /// exposed as a field so power users can edit `prefs.json` by hand and
-    /// so future Settings pages can surface a slider without a migration.
-    #[serde(default = "default_scan_interval_hours")]
-    pub automatic_scan_interval_hours: u32,
+    /// Interval, in seconds, between background detection scans when
+    /// `automatic_mode` is on. The scan is the cheap half — a metadata-only
+    /// disk walk that cross-references the Ludusavi catalog + Steam against
+    /// the filesystem, reading no file bytes — so it runs often (default
+    /// 300s = 5 min) to pick up newly installed games quickly.
+    ///
+    /// Replaces the pre-1.9.14 `automatic_scan_interval_hours`. That single
+    /// knob conflated the cheap scan with the expensive hash sweep, forcing
+    /// a 6h compromise. The old field is intentionally *not* migrated — its
+    /// value encoded the conflated cadence we're splitting apart — so older
+    /// `prefs.json` files simply pick up the new defaults (serde ignores the
+    /// now-unknown key).
+    #[serde(default = "default_scan_interval_secs")]
+    pub automatic_scan_interval_secs: u64,
+
+    /// Interval, in seconds, between background backup (hash) sweeps when
+    /// `automatic_mode` is on. The sweep re-hashes each tracked save to
+    /// catch changes the fs-watcher missed; it reads file bytes, so it's the
+    /// expensive half and runs rarely (default 3600s = 1h). The agent
+    /// staggers the per-save work across an effective window — which grows
+    /// past this interval when there are tens of GB of saves — so sustained
+    /// disk use stays spread out instead of bursting all saves at once.
+    #[serde(default = "default_backup_interval_secs")]
+    pub automatic_backup_interval_secs: u64,
 
     /// Days to keep per-save conflict backups under
     /// `<state_dir>/conflicts/<save_id>/<rfc3339>/`. The agent sweeps and
@@ -129,10 +148,9 @@ pub struct Prefs {
     /// devices have uploaded. Cheap call (<5 KB manifest, not counted
     /// against the bandwidth quota) so 10 s default reads as "instant"
     /// across devices without flooding the server. Range 5..=300 s; the
-    /// Settings slider in Cloud section persists this. Decoupled from
-    /// `automatic_scan_interval_hours` because that one runs the much
-    /// heavier scan-library + backup-stale sweep and only makes sense at
-    /// the hourly scale.
+    /// Settings slider in Cloud section persists this. Decoupled from the
+    /// `automatic_backup_interval_secs` sweep because that one re-hashes save
+    /// bytes and only makes sense at the hourly scale.
     #[serde(default = "default_cloud_poll_interval_secs")]
     pub cloud_poll_interval_secs: u32,
 
@@ -159,8 +177,12 @@ fn default_true() -> bool {
     true
 }
 
-fn default_scan_interval_hours() -> u32 {
-    6
+fn default_scan_interval_secs() -> u64 {
+    300
+}
+
+fn default_backup_interval_secs() -> u64 {
+    3600
 }
 
 fn default_conflict_retention_days() -> u32 {
@@ -189,7 +211,8 @@ impl Default for Prefs {
             auto_restore: false,
             last_update_notified_version: None,
             automatic_mode: false,
-            automatic_scan_interval_hours: default_scan_interval_hours(),
+            automatic_scan_interval_secs: default_scan_interval_secs(),
+            automatic_backup_interval_secs: default_backup_interval_secs(),
             conflict_retention_days: default_conflict_retention_days(),
             cloud_savings_mode: false,
             cloud_poll_interval_secs: default_cloud_poll_interval_secs(),
@@ -259,9 +282,11 @@ mod tests {
         assert!(p.notify_on_failure);
         assert!(!p.autostart);
         assert!(!p.auto_restore);
-        // New fields introduced in 1.5.3 — toggle is off, interval is 6h.
+        // 1.5.3: toggle off by default. 1.9.14: the single 6h interval was
+        // split into a cheap 5-min scan and an expensive 1h hash sweep.
         assert!(!p.automatic_mode);
-        assert_eq!(p.automatic_scan_interval_hours, 6);
+        assert_eq!(p.automatic_scan_interval_secs, 300);
+        assert_eq!(p.automatic_backup_interval_secs, 3600);
         // 1.5.5: conflict backups retained for 14 days by default.
         assert_eq!(p.conflict_retention_days, 14);
         // 1.7.0: cloud-pull poller every 10 s by default; activity feed on.
@@ -273,10 +298,10 @@ mod tests {
 
     #[test]
     fn pre_153_json_deserialises_with_new_defaults() {
-        // Shape of a prefs.json written by 1.5.2 (no `automatic_mode` or
-        // `automatic_scan_interval_hours`). The `#[serde(default)]` and
-        // `#[serde(default = "default_scan_interval_hours")]` attributes
-        // must fill them in transparently.
+        // Shape of a prefs.json written by 1.5.2 (no `automatic_mode` or the
+        // interval fields). The `#[serde(default)]` and
+        // `#[serde(default = "...")]` attributes must fill them in
+        // transparently.
         let legacy = r#"{
             "close_to_tray": true,
             "notify_on_success": true,
@@ -292,20 +317,41 @@ mod tests {
         let parsed: Prefs =
             serde_json::from_str(legacy).expect("legacy prefs.json should still parse");
         assert!(!parsed.automatic_mode);
-        assert_eq!(parsed.automatic_scan_interval_hours, 6);
+        assert_eq!(parsed.automatic_scan_interval_secs, 300);
+        assert_eq!(parsed.automatic_backup_interval_secs, 3600);
+    }
+
+    /// 1.9.14: a `prefs.json` written by 1.9.13 still carries the old
+    /// `automatic_scan_interval_hours` key. We deliberately *don't* migrate
+    /// it (its value conflated scan + hash), so it's an unknown field serde
+    /// must silently drop — the new interval fields take their defaults.
+    #[test]
+    fn pre_1914_scan_interval_hours_is_dropped_not_migrated() {
+        let legacy = r#"{
+            "automatic_mode": true,
+            "automatic_scan_interval_hours": 12
+        }"#;
+        let parsed: Prefs =
+            serde_json::from_str(legacy).expect("1.9.13 prefs.json should still parse");
+        assert!(parsed.automatic_mode);
+        // Old value (12h) is gone; new fields are at their defaults, not 12.
+        assert_eq!(parsed.automatic_scan_interval_secs, 300);
+        assert_eq!(parsed.automatic_backup_interval_secs, 3600);
     }
 
     #[test]
     fn round_trip_preserves_non_default_automatic_mode() {
         let p = Prefs {
             automatic_mode: true,
-            automatic_scan_interval_hours: 12,
+            automatic_scan_interval_secs: 120,
+            automatic_backup_interval_secs: 7200,
             ..Prefs::default()
         };
         let json = serde_json::to_string(&p).expect("serialising prefs");
         let back: Prefs = serde_json::from_str(&json).expect("round-trip");
         assert!(back.automatic_mode);
-        assert_eq!(back.automatic_scan_interval_hours, 12);
+        assert_eq!(back.automatic_scan_interval_secs, 120);
+        assert_eq!(back.automatic_backup_interval_secs, 7200);
     }
 
     /// 1.5.5 retro-compat: un `prefs.json` escrito por 1.5.4 (sin

@@ -36,6 +36,13 @@ enum Commands {
         #[command(subcommand)]
         action: commands::games::GameCommand,
     },
+    /// Benchmark the local game-detection scan (the heavy half of what Modo
+    /// Automático runs each tick). No server needed; writes nothing.
+    Scan {
+        /// List every detected game, not just the summary counts.
+        #[arg(long)]
+        verbose: bool,
+    },
     /// Manage save namespaces
     Save {
         #[command(subcommand)]
@@ -128,6 +135,7 @@ async fn dispatch(cli: Cli) -> Result<()> {
         Commands::Logout => commands::auth::logout().await,
         Commands::Whoami => commands::auth::whoami().await,
         Commands::Games { action } => commands::games::run(action).await,
+        Commands::Scan { verbose } => commands::scan::run(verbose).await,
         Commands::Save { action } => commands::saves::run(action).await,
         Commands::Snapshots { action } => snapshots_dispatch(action).await,
         Commands::Backup {

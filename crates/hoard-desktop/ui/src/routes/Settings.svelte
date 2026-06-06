@@ -62,7 +62,10 @@
   // pushed when the user releases (`onchange`). `$effect` keeps these in sync
   // when prefs hydrate or another part of the app updates them (e.g. the
   // sidebar toggle cascading defaults).
-  let scanIntervalHours = $state(6);
+  // Both interval sliders work in minutes for readability; persisted as
+  // seconds (scan default 300s = 5 min, backup default 3600s = 60 min).
+  let scanIntervalMin = $state(5);
+  let backupIntervalMin = $state(60);
   let conflictRetentionDays = $state(14);
   let cloudPollSecs = $state(10);
   // "Ahorro de datos" knob, kept as 0..100 for the slider; persisted as
@@ -72,7 +75,10 @@
   $effect(() => {
     const p = $prefs;
     if (!p) return;
-    scanIntervalHours = p.automatic_scan_interval_hours ?? 6;
+    scanIntervalMin = Math.round((p.automatic_scan_interval_secs ?? 300) / 60);
+    backupIntervalMin = Math.round(
+      (p.automatic_backup_interval_secs ?? 3600) / 60,
+    );
     conflictRetentionDays = p.conflict_retention_days ?? 14;
     cloudPollSecs = p.cloud_poll_interval_secs ?? 10;
     dataSavingPct = Math.round((p.data_saving ?? 0.3) * 100);
@@ -87,16 +93,35 @@
 
   async function commitScanInterval() {
     if (!$prefs) return;
-    const value = scanIntervalHours;
-    saving = "automatic_scan_interval_hours";
+    const secs = scanIntervalMin * 60;
+    saving = "automatic_scan_interval_secs";
     try {
-      const updated = await api.setSchedulerInterval(value);
+      const updated = await api.setScanInterval(secs);
       prefs.set(updated);
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
       // Roll back the slider to the persisted value so the UI doesn't lie
       // about an unsaved change.
-      scanIntervalHours = $prefs?.automatic_scan_interval_hours ?? 6;
+      scanIntervalMin = Math.round(
+        ($prefs?.automatic_scan_interval_secs ?? 300) / 60,
+      );
+    } finally {
+      saving = null;
+    }
+  }
+
+  async function commitBackupInterval() {
+    if (!$prefs) return;
+    const secs = backupIntervalMin * 60;
+    saving = "automatic_backup_interval_secs";
+    try {
+      const updated = await api.setBackupInterval(secs);
+      prefs.set(updated);
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+      backupIntervalMin = Math.round(
+        ($prefs?.automatic_backup_interval_secs ?? 3600) / 60,
+      );
     } finally {
       saving = null;
     }
@@ -749,13 +774,15 @@
       {/if}
 
       <!--
-        Modo Automático: dos sliders que mapean a los campos persistidos
-        `automatic_scan_interval_hours` (1..=24) y `conflict_retention_days`
-        (1..=30). El primero sólo está activo cuando `automatic_mode` está
-        encendido — el sidebar es el lugar canónico para activarlo, así que
-        aquí no replicamos el toggle. El backend reinicia el scheduler
-        automáticamente al persistir el nuevo intervalo si el modo está
-        activo.
+        Modo Automático: tres sliders. Los dos de intervalo mapean a campos
+        persistidos en segundos pero se editan en minutos:
+        `automatic_scan_interval_secs` (escaneo barato, 1..=60 min) y
+        `automatic_backup_interval_secs` (barrido de hash caro, 5..=360 min).
+        El tercero es `conflict_retention_days` (1..=30). Los dos de intervalo
+        sólo están activos cuando `automatic_mode` está encendido — el sidebar
+        es el lugar canónico para activarlo, así que aquí no replicamos el
+        toggle. El backend reinicia los schedulers automáticamente al persistir
+        un nuevo intervalo si el modo está activo.
       -->
       <section>
         <h2
@@ -778,7 +805,7 @@
                   aria-live="polite"
                 >
                   {$_("settings.scan_interval_value", {
-                    values: { hours: scanIntervalHours },
+                    values: { minutes: scanIntervalMin },
                   })}
                 </span>
               </div>
@@ -786,15 +813,48 @@
                 id="scan-interval-slider"
                 type="range"
                 min="1"
-                max="24"
+                max="60"
                 step="1"
-                bind:value={scanIntervalHours}
+                bind:value={scanIntervalMin}
                 onchange={commitScanInterval}
-                disabled={!$prefs.automatic_mode || saving === "automatic_scan_interval_hours"}
+                disabled={!$prefs.automatic_mode || saving === "automatic_scan_interval_secs"}
                 class="mt-2 w-full accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
               />
               <p class="mt-1 text-xs text-zinc-500">
                 {$_("settings.scan_interval_hint")}
+              </p>
+            </div>
+
+            <div>
+              <div class="flex items-baseline justify-between gap-3">
+                <label
+                  for="backup-interval-slider"
+                  class="text-sm font-medium text-zinc-100"
+                >
+                  {$_("settings.backup_interval_label")}
+                </label>
+                <span
+                  class="font-mono text-xs text-zinc-400"
+                  aria-live="polite"
+                >
+                  {$_("settings.backup_interval_value", {
+                    values: { minutes: backupIntervalMin },
+                  })}
+                </span>
+              </div>
+              <input
+                id="backup-interval-slider"
+                type="range"
+                min="5"
+                max="360"
+                step="5"
+                bind:value={backupIntervalMin}
+                onchange={commitBackupInterval}
+                disabled={!$prefs.automatic_mode || saving === "automatic_backup_interval_secs"}
+                class="mt-2 w-full accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <p class="mt-1 text-xs text-zinc-500">
+                {$_("settings.backup_interval_hint")}
               </p>
             </div>
 

@@ -237,10 +237,12 @@
       },
     );
 
-    // Register the Tauri listener exactly once for the lifetime of this
-    // app instance. The Rust scheduler emits `automatic-tick` on its
-    // interval; this listener turns each tick into a `runAutomaticSetup`
-    // invocation. Idempotent — safe to call from any onMount path.
+    // Register the Tauri listeners exactly once for the lifetime of this
+    // app instance. The Rust scheduler emits `automatic-scan-tick` (cheap
+    // detection) and `automatic-backup-tick` (staggered hash sweep) on their
+    // own intervals; this turns scan ticks into `runAutomaticSetup` and
+    // backup ticks into the sweep. Idempotent — safe to call from any onMount
+    // path.
     initAutomaticListener();
 
     // Hydrate the global prefs store so the sidebar toggle and any other
@@ -251,7 +253,7 @@
     automaticMode = $prefs?.automatic_mode ?? false;
 
     // Startup scan when Modo Automático is on. The Rust scheduler also emits
-    // an immediate `automatic-tick` from `restart_if_enabled`, but that fires
+    // an immediate `automatic-scan-tick` from `restart_if_enabled`, but that fires
     // during Tauri `setup()` — before this component mounts and installs the
     // listener above — so it's almost always dropped (the emit is
     // best-effort, no queue). Relying on it meant the app could open with the
@@ -365,7 +367,8 @@
         toastSuccess($_("automatic.toggled_on"));
         // Fire the first scan immediately so the user doesn't wait the
         // full interval to see the toggle do something. Subsequent runs
-        // are driven by the Rust scheduler via `automatic-tick`.
+        // (scan and the staggered backup sweep) are driven by the Rust
+        // scheduler via `automatic-scan-tick` / `automatic-backup-tick`.
         void runAutomaticSetup();
       } else {
         toastInfo($_("automatic.toggled_off"));

@@ -183,7 +183,11 @@ pub async fn set_automatic_mode(
     }
 
     if enabled {
-        automatic::start(&app, prefs.automatic_scan_interval_hours);
+        automatic::start(
+            &app,
+            prefs.automatic_scan_interval_secs,
+            prefs.automatic_backup_interval_secs,
+        );
     } else {
         automatic::stop(&app);
     }
@@ -191,27 +195,63 @@ pub async fn set_automatic_mode(
     Ok(prefs)
 }
 
-/// Persist a new scheduler interval (in hours) for Modo Automático. Caller
-/// is the Settings slider; range is 1..=24. If the toggle is currently on
-/// we restart the scheduler so the new interval takes effect immediately
-/// (and, thanks to `automatic::start`'s tick-on-start, the user sees a
-/// scan fire right after saving).
+/// Persist a new detection-scan interval (in seconds) for Modo Automático.
+/// Caller is the Settings slider; range is 60..=3600 (1 min .. 1 h) — the
+/// scan is the cheap, metadata-only half so it's allowed to run often. If the
+/// toggle is on we restart the schedulers so the new cadence applies
+/// immediately (and, thanks to `automatic::start`'s tick-on-start, a scan
+/// fires right after saving).
 #[tauri::command]
-pub async fn set_scheduler_interval(app: AppHandle, hours: u32) -> Result<Prefs, AppError> {
-    if !(1..=24).contains(&hours) {
+pub async fn set_scan_interval(app: AppHandle, secs: u64) -> Result<Prefs, AppError> {
+    if !(60..=3600).contains(&secs) {
         return Err(AppError::plain(format!(
-            "scheduler interval out of range: {hours} (expected 1..=24)"
+            "scan interval out of range: {secs}s (expected 60..=3600)"
         )));
     }
     let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
     let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
-    prefs.automatic_scan_interval_hours = hours;
+    prefs.automatic_scan_interval_secs = secs;
     prefs
         .save(&path)
         .map_err(|e| AppError::plain(e.to_string()))?;
 
     if prefs.automatic_mode {
-        automatic::start(&app, prefs.automatic_scan_interval_hours);
+        automatic::start(
+            &app,
+            prefs.automatic_scan_interval_secs,
+            prefs.automatic_backup_interval_secs,
+        );
+    }
+
+    Ok(prefs)
+}
+
+/// Persist a new backup-sweep interval (in seconds) for Modo Automático.
+/// Caller is the Settings slider; range is 300..=86400 (5 min .. 24 h) — the
+/// sweep re-hashes file bytes so it's the expensive half and runs rarely. The
+/// agent staggers the per-save work across an effective window that grows with
+/// the total save footprint, so this is the *nominal* cadence, not a hard
+/// ceiling on a large set. Restarts the schedulers if the toggle is on.
+#[tauri::command]
+pub async fn set_backup_interval(app: AppHandle, secs: u64) -> Result<Prefs, AppError> {
+    if !(300..=86400).contains(&secs) {
+        return Err(AppError::plain(format!(
+            "backup interval out of range: {secs}s (expected 300..=86400)"
+        )));
+    }
+    let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
+    let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
+    prefs.automatic_backup_interval_secs = secs;
+    prefs
+        .save(&path)
+        .map_err(|e| AppError::plain(e.to_string()))?;
+
+    if prefs.automatic_mode {
+        automatic::start(
+            &app,
+            prefs.automatic_scan_interval_secs,
+            prefs.automatic_backup_interval_secs,
+        );
     }
 
     Ok(prefs)

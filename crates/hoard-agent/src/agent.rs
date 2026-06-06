@@ -216,6 +216,12 @@ pub enum BackupReason {
     FilesystemSettled,
     GameStopped,
     Manual,
+    /// One save inside a staggered "backup sweep" (Modo Automático's hourly
+    /// hash pass). Spaced out across an effective window so disk I/O doesn't
+    /// burst. Kept quiet in the activity feed — unlike a filesystem-settled
+    /// backup there's no user-visible trigger, and N queued rows every hour
+    /// would be noise — but the resulting upload still announces normally.
+    SweepStaggered,
 }
 
 /// Per-slot diagnostic snapshot. Surfaced by the hidden Settings diagnostics
@@ -239,6 +245,18 @@ enum AgentCommand {
     AddSave(WatchedSave),
     RemoveSave(String),
     BackupNow(String),
+    /// Staggered "backup sweep": re-hash every tracked save to catch changes
+    /// the fs-watcher missed, but spread the per-save work over time so disk
+    /// use doesn't spike. `window_secs` is the nominal sweep interval (the
+    /// hourly cadence); the agent grows it into a longer *effective* window
+    /// when the total save footprint is large, and schedules each save at a
+    /// size-proportional offset within it. Saves already queued for backup
+    /// (fs event or a still-running previous sweep) are skipped so ticks
+    /// don't pile up. Fired by the desktop "Modo Automático" backup
+    /// scheduler.
+    SweepAll {
+        window_secs: u64,
+    },
     /// Internal: an auto-restore task finished writing files into a slot's
     /// local path. The slot's fs watcher was either never armed (path was
     /// missing on AddSave) or armed against an empty directory — either
@@ -291,6 +309,18 @@ impl AgentHandle {
     pub async fn backup_now(&self, save_id: impl Into<String>) -> Result<()> {
         self.tx
             .send(AgentCommand::BackupNow(save_id.into()))
+            .await?;
+        Ok(())
+    }
+
+    /// Kick a staggered backup sweep across every tracked save. `window_secs`
+    /// is the nominal sweep interval; the agent spreads each save's re-hash
+    /// across an effective window (grown when there are tens of GB of saves)
+    /// so disk I/O stays spread out. Replaces the frontend's old "loop
+    /// `backup_now` over every save" burst.
+    pub async fn sweep_all(&self, window_secs: u64) -> Result<()> {
+        self.tx
+            .send(AgentCommand::SweepAll { window_secs })
             .await?;
         Ok(())
     }
@@ -534,6 +564,12 @@ async fn run_agent(
                                 Duration::ZERO, &api, &events_tx, &config, &done_tx, &cmd_tx,
                             );
                         }
+                    }
+                    Some(AgentCommand::SweepAll { window_secs }) => {
+                        sweep_all(
+                            &mut slots, window_secs, &api, &events_tx,
+                            &config, &done_tx, &cmd_tx,
+                        );
                     }
                     Some(AgentCommand::QueryStatus(resp)) => {
                         let snapshot: Vec<AgentSlotStatus> = slots
@@ -1597,8 +1633,14 @@ fn schedule_backup(
     );
 
     // Don't announce zero-delay backups (manual / forced flush) — they'd
-    // add noise — nor re-announce a window that's already queued.
-    if delay > Duration::ZERO && !already_scheduled {
+    // add noise — nor re-announce a window that's already queued, nor the
+    // staggered sweep entries (there's no user-visible trigger and one row
+    // per save every hour would flood the feed; the resulting upload still
+    // announces normally when it runs).
+    if delay > Duration::ZERO
+        && !already_scheduled
+        && !matches!(reason, BackupReason::SweepStaggered)
+    {
         let _ = events_tx.try_send(AgentEvent::BackupScheduled {
             save_id: save_id.to_string(),
             delay_ms: delay.as_millis() as u64,
@@ -1635,6 +1677,140 @@ fn schedule_backup(
         )
         .await;
     }));
+}
+
+/// Nominal hash-throughput budget for the staggered sweep: how many bytes of
+/// save data each second of the *effective* window covers. Calibrated so
+/// ~20 GiB of saves stretches the window to ~2h (≈6 min per GiB), keeping
+/// sustained disk reads thin. Below this footprint the configured interval
+/// dominates and the window stays at its nominal length.
+const SWEEP_BYTES_PER_WINDOW_SEC: f64 = 20.0 * 1024.0 * 1024.0 * 1024.0 / 7200.0;
+
+/// Floor on the gap between consecutive saves in a staggered sweep, so even a
+/// pile of tiny saves gets a visible beat between each re-hash instead of
+/// firing back-to-back.
+const SWEEP_MIN_GAP_SECS: f64 = 15.0;
+
+/// Staggered backup sweep (see `AgentCommand::SweepAll`). Walks each tracked
+/// save's folder for its byte footprint (metadata only — no file contents are
+/// read here), then schedules a re-hash for each at a size-proportional offset
+/// inside an effective window. The window is
+/// `max(window_secs, total / SWEEP_BYTES_PER_WINDOW_SEC)`, so a small set
+/// finishes within the nominal interval while tens of GB stretch it out. Saves
+/// already queued for backup (live fs event, or a still-running previous
+/// sweep) are left alone so repeated ticks don't reset the stagger or pile up
+/// concurrent hashes.
+#[allow(clippy::too_many_arguments)]
+fn sweep_all(
+    slots: &mut HashMap<String, SaveSlot>,
+    window_secs: u64,
+    api: &ApiClient,
+    events_tx: &mpsc::Sender<AgentEvent>,
+    config: &AgentConfig,
+    done_tx: &mpsc::Sender<BackupDone>,
+    cmd_tx: &mpsc::Sender<AgentCommand>,
+) {
+    // Snapshot (id, path, already-queued) up front: scheduling borrows `slots`
+    // mutably, so we can't hold an iterator over it while calling
+    // `schedule_backup` below.
+    let entries: Vec<(String, PathBuf, bool)> = slots
+        .values()
+        .map(|s| {
+            (
+                s.save.save_id.clone(),
+                s.save.local_path.clone(),
+                s.next_scheduled_backup_at.is_some(),
+            )
+        })
+        .collect();
+    if entries.is_empty() {
+        return;
+    }
+
+    // Byte footprint per save (metadata walk). Missing/unreadable folders
+    // count as zero — they're handled (or skipped-empty) when their turn to
+    // back up comes.
+    let sized: Vec<(String, bool, u64)> = entries
+        .into_iter()
+        .map(|(id, path, queued)| (id, queued, dir_size_bytes(&path)))
+        .collect();
+    let total_bytes: u64 = sized.iter().map(|(_, _, b)| *b).sum();
+    let n = sized.len() as f64;
+
+    // Effective window: grows past the nominal interval once the footprint is
+    // large enough that spreading it thin needs more time.
+    let window = window_secs.max(1) as f64;
+    let effective_window = if total_bytes > 0 {
+        window.max(total_bytes as f64 / SWEEP_BYTES_PER_WINDOW_SEC)
+    } else {
+        window
+    };
+
+    tracing::info!(
+        saves = sized.len(),
+        total_mib = (total_bytes / (1024 * 1024)),
+        window_secs,
+        effective_window_secs = effective_window as u64,
+        "agent: starting staggered backup sweep"
+    );
+
+    let mut offset = 0.0_f64;
+    for (id, already_queued, bytes) in sized {
+        // Per-save slice of the window: size-proportional when we have a
+        // total, an even split otherwise, floored so tiny saves still space
+        // out.
+        let slice = if total_bytes > 0 {
+            (effective_window * (bytes as f64 / total_bytes as f64)).max(SWEEP_MIN_GAP_SECS)
+        } else {
+            (effective_window / n).max(SWEEP_MIN_GAP_SECS)
+        };
+        // Skip saves already on the schedule (live fs change, or a previous
+        // sweep that hasn't run yet): don't reset their timer. We still
+        // advance `offset` by their slice so the remaining saves keep their
+        // size-proportional spacing — and so a long sweep that overruns into
+        // the next tick finishes instead of restarting.
+        if !already_queued {
+            schedule_backup(
+                slots,
+                &id,
+                BackupReason::SweepStaggered,
+                Duration::from_secs_f64(offset),
+                api,
+                events_tx,
+                config,
+                done_tx,
+                cmd_tx,
+            );
+        }
+        offset += slice;
+    }
+}
+
+/// Sum the byte size of every regular file under `root`, recursively. Reads
+/// directory entries + file metadata only — never opens a file — so it's the
+/// cheap way to learn a save's footprint for sweep staggering. Unreadable
+/// dirs/entries are skipped rather than erroring; a best-effort estimate is
+/// all the scheduler needs.
+fn dir_size_bytes(root: &Path) -> u64 {
+    let mut total = 0u64;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in rd.flatten() {
+            let Ok(ft) = entry.file_type() else { continue };
+            if ft.is_dir() {
+                stack.push(entry.path());
+            } else if ft.is_file() {
+                if let Ok(meta) = entry.metadata() {
+                    total = total.saturating_add(meta.len());
+                }
+            }
+            // symlinks ignored, mirroring walk_source.
+        }
+    }
+    total
 }
 
 /// Upload + retry. Backoff is `2 ** attempt` seconds, capped at 5 min.

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.14] — 2026-06-06
+
+### Changed
+- **Modo Automático ahora son dos schedulers en vez de uno.** El tick único
+  cada 6 h mezclaba un escaneo barato (detección de juegos, solo metadatos) con
+  un barrido caro (re-hashear cada partida, lee bytes), forzando un compromiso.
+  Se separan:
+  - **Escaneo** cada 5 min por defecto (`automatic-scan-tick`): detecta juegos
+    recién instalados y trackea los de confianza alta. Sin leer datos de save.
+  - **Barrido de copias** cada 1 h por defecto (`automatic-backup-tick`): el
+    agente reparte el re-hash de cada partida en una ventana efectiva que
+    **crece** cuando hay decenas de GB de saves (cada partida arranca con un
+    desfase proporcional a su peso, mínimo 15 s entre cada una), para que el uso
+    de disco no se dispare de golpe. Saltarse las partidas ya encoladas evita
+    que ticks consecutivos se pisen. El escalonado vive en el agente, así que
+    sigue funcionando aunque la ventana esté cerrada.
+- **Ajustes → Modo Automático**: dos sliders en minutos (intervalo de escaneo
+  1–60 min, barrido de copias 5–360 min) en lugar del único de horas.
+
+### Migración
+- El campo viejo `automatic_scan_interval_hours` de `prefs.json` se descarta sin
+  migrar (su valor mezclaba escaneo y hash); los `prefs.json` antiguos cargan
+  con los nuevos defaults (300 s escaneo / 3600 s barrido).
+
 ## [1.9.13] — 2026-06-05
 
 ### Fixed

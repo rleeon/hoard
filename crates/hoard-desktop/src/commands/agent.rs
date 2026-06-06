@@ -200,6 +200,26 @@ pub async fn backup_now(save_id: String, state: State<'_, AppState>) -> Result<(
     Ok(())
 }
 
+/// Kick a staggered backup sweep across every tracked save. Backs the Modo
+/// Automático `automatic-backup-tick`: instead of the old "loop `backup_now`
+/// over every save" burst, the agent spreads each save's re-hash across an
+/// effective window (grown when there are tens of GB of saves) so sustained
+/// disk use stays low. The nominal window is the persisted
+/// `automatic_backup_interval_secs`. No-op (not an error) when the agent isn't
+/// running — the next login boots it and the next tick sweeps.
+#[tauri::command]
+pub async fn sweep_backups(state: State<'_, AppState>) -> Result<(), String> {
+    let handle = state.agent.lock().unwrap().clone();
+    let Some(h) = handle else {
+        return Ok(());
+    };
+    let window_secs = Prefs::load_default()
+        .map(|(p, _)| p.automatic_backup_interval_secs)
+        .unwrap_or(3600);
+    h.sweep_all(window_secs).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Diagnostic snapshot of every slot the agent is currently tracking.
 /// Powers the hidden "agent diagnostics" panel in Settings — the only
 /// non-trace surface that reveals whether each slot's fs watcher actually

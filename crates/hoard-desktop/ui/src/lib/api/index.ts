@@ -345,6 +345,15 @@ export function backupNow(save_id: string): Promise<void> {
   return invoke<void>("backup_now", { saveId: save_id });
 }
 
+/** Kick a staggered backup sweep across every tracked save (Modo Automático's
+ *  hourly hash pass). The agent spreads each save's re-hash across an
+ *  effective window so disk use doesn't burst — see `sweep_backups` /
+ *  `AgentCommand::SweepAll` on the Rust side. No-op when the agent isn't
+ *  running. */
+export function sweepBackups(): Promise<void> {
+  return invoke<void>("sweep_backups");
+}
+
 /** Per-slot diagnostic snapshot for the hidden Settings panel. */
 export function agentStatus(): Promise<AgentSlotStatus[]> {
   return invoke<AgentSlotStatus[]>("agent_status");
@@ -379,14 +388,22 @@ export type Prefs = {
    *  the app doesn't re-notify for a version the user already saw. */
   last_update_notified_version: string | null;
   /** When `true`, the sidebar "Modo Automático" toggle is on. The Rust
-   *  side keeps a background scheduler alive that re-runs the magic flow
-   *  every `automatic_scan_interval_hours`; activating the toggle also
-   *  cascades `auto_restore = true`. Off by default. */
+   *  side keeps two background schedulers alive — a cheap detection scan
+   *  (`automatic_scan_interval_secs`) and an expensive staggered hash sweep
+   *  (`automatic_backup_interval_secs`); activating the toggle also cascades
+   *  `auto_restore = true`. Off by default. */
   automatic_mode: boolean;
-  /** Hours between background scans while `automatic_mode` is on.
-   *  Defaults to 6h server-side; there's no Settings UI for it yet but
-   *  the field is part of the persisted shape. */
-  automatic_scan_interval_hours: number;
+  /** Seconds between background detection scans while `automatic_mode` is on.
+   *  The scan is the cheap, metadata-only half (no file bytes read), so it
+   *  runs often — default 300s (5 min). Replaces the pre-1.9.14
+   *  `automatic_scan_interval_hours`. */
+  automatic_scan_interval_secs: number;
+  /** Seconds between background backup (hash) sweeps while `automatic_mode`
+   *  is on. The sweep re-hashes save bytes to catch missed changes, so it's
+   *  the expensive half and runs rarely — default 3600s (1h). The agent
+   *  staggers per-save work across an effective window that grows with the
+   *  total footprint, so this is the nominal cadence, not a hard ceiling. */
+  automatic_backup_interval_secs: number;
   /** Days to retain per-save conflict backups under
    *  `<state_dir>/conflicts/<save_id>/<rfc3339>/`. Defaults to 14;
    *  validated on the Rust side to 1..=30. */
@@ -399,9 +416,9 @@ export type Prefs = {
   cloud_savings_mode: boolean;
   /** Seconds between manifest polls on the live cloud-pull loop.
    *  Range 5..=300; default 10. Independent from
-   *  `automatic_scan_interval_hours` — that one drives the heavy
-   *  scan+backup sweep, this one only emits `agent://cloud-pull-*`
-   *  events so the LiveStatus widget reflects server state. */
+   *  `automatic_backup_interval_secs` — that one re-hashes save bytes,
+   *  this one only emits `agent://cloud-pull-*` events so the LiveStatus
+   *  widget reflects server state. */
   cloud_poll_interval_secs: number;
   /** Whether the floating ActivityFeed panel is visible. Defaults to
    *  true; the user can hide it from the sidebar toggle. */
@@ -441,11 +458,19 @@ export function setAutomaticMode(enabled: boolean): Promise<Prefs> {
   return invoke<Prefs>("set_automatic_mode", { enabled });
 }
 
-/** Persist a new background-scan interval (hours, 1..=24) for Modo
- *  Automático. If the toggle is on, the scheduler restarts so the new
- *  interval applies immediately and a tick fires right away. */
-export function setSchedulerInterval(hours: number): Promise<Prefs> {
-  return invoke<Prefs>("set_scheduler_interval", { hours });
+/** Persist a new detection-scan interval (seconds, 60..=3600) for Modo
+ *  Automático. If the toggle is on, the schedulers restart so the new
+ *  cadence applies immediately and a scan fires right away. */
+export function setScanInterval(secs: number): Promise<Prefs> {
+  return invoke<Prefs>("set_scan_interval", { secs });
+}
+
+/** Persist a new backup-sweep interval (seconds, 300..=86400) for Modo
+ *  Automático. The agent staggers per-save work across an effective window
+ *  that grows with the total save footprint, so this is the nominal cadence,
+ *  not a hard ceiling. Restarts the schedulers if the toggle is on. */
+export function setBackupInterval(secs: number): Promise<Prefs> {
+  return invoke<Prefs>("set_backup_interval", { secs });
 }
 
 /** Persist a new retention window (days, 1..=30) for per-save conflict

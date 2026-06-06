@@ -16,10 +16,12 @@
  * tail.
  *
  * Renamed from the legacy auto-setup store in 1.5.3 — the one-shot button
- * became a persisted on/off toggle ("Modo Automático") with a background
- * scheduler. The Rust side emits an `automatic-tick` event every interval
- * and the listener registered by `initAutomaticListener()` runs this flow
- * in response.
+ * became a persisted on/off toggle ("Modo Automático") with background
+ * schedulers. Since 1.9.14 the Rust side runs two independent tickers:
+ * `automatic-scan-tick` (cheap detection, ~5 min) drives this flow, and
+ * `automatic-backup-tick` (expensive hash sweep, ~1 h) drives the staggered
+ * `runBackupSweep()`. The listeners are registered by
+ * `initAutomaticListener()`.
  */
 import { writable, get, type Writable } from "svelte/store";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -55,44 +57,35 @@ function tr(
 }
 
 /**
- * Catch-up backup pass: for every tracked save, ask the agent for an
- * explicit backup (bypassing the fs-watcher debounce). This is the fix
- * for the user-reported "noto que las cosas no se copian solas" bug —
- * the watcher can miss events while the desktop app is closed or the
- * agent isn't booted yet, leaving the local save newer than the last
- * remote snapshot. Running this on every `automatic-tick` guarantees a
- * periodic upload regardless of watcher state.
+ * Catch-up backup pass, driven by `automatic-backup-tick` (the hourly half
+ * of Modo Automático). Hands the whole sweep to the agent in one call: it
+ * re-hashes every tracked save to catch changes the fs-watcher missed, but
+ * staggers the per-save work across an effective window so disk I/O doesn't
+ * burst — see `sweep_backups` / `AgentCommand::SweepAll` on the Rust side.
  *
- * `backupNow` is the same Tauri command the dashboard's "Subir" button
- * uses; the agent dedupes if a backup is already pending for the slot
- * (`schedule_backup` aborts the previous pending task), so a sweep
- * across N saves doesn't fan out into N concurrent backups for the
- * same save.
+ * This replaces the old "loop `backupNow` over every save" sweep, which
+ * fired all backups near-simultaneously (each `backupNow` only *schedules*
+ * a zero-delay task, so awaiting it didn't space them out). The agent owns
+ * the timing now, so it keeps spreading the load even while the UI window is
+ * closed.
  */
-async function runBackupStaleSweep(
-  saves: { save_id: string }[],
-): Promise<number> {
-  if (saves.length === 0) return 0;
-  automaticState.set({ kind: "syncing" });
-  let synced = 0;
-  for (const save of saves) {
-    try {
-      await api.backupNow(save.save_id);
-      synced += 1;
-    } catch (e) {
-      console.warn(
-        `automatic-tick: backup-stale failed for ${save.save_id}:`,
-        e,
-      );
-    }
+async function runBackupSweep(): Promise<void> {
+  try {
+    await api.sweepBackups();
+  } catch (e) {
+    console.warn("automatic-backup-tick: sweep failed:", e);
   }
-  return synced;
 }
 
-/** Run the full auto-setup flow. Resolves to the count of newly-tracked
- *  games. Surfaces user-friendly toasts; failures fall through to the
- *  toast and resolve to 0 instead of throwing — the sidebar's toggle is
- *  not a place where we want unhandled rejections crashing the UI. */
+/** Run the detection + tracking flow, driven by `automatic-scan-tick` (the
+ *  cheap, frequent half of Modo Automático). Resolves to the count of
+ *  newly-tracked games. Surfaces user-friendly toasts; failures fall through
+ *  to the toast and resolve to 0 instead of throwing — the sidebar's toggle
+ *  is not a place where we want unhandled rejections crashing the UI.
+ *
+ *  Backups are no longer part of this flow: the staggered sweep runs on its
+ *  own `automatic-backup-tick` cadence. We still boot the agent here so any
+ *  newly-tracked save starts being watched (and live-backed-up) immediately. */
 export async function runAutomaticSetup(): Promise<number> {
   if (get(automaticState).kind !== "idle") return 0;
 
@@ -116,9 +109,9 @@ export async function runAutomaticSetup(): Promise<number> {
 
     if (candidates.length === 0) {
       // Still try to start the agent — the user may have tracked games
-      // from a previous session that aren't running yet.
+      // from a previous session that aren't running yet. The backup sweep
+      // runs on its own `automatic-backup-tick`, so we don't trigger it here.
       await bootAgent().catch(() => {});
-      await runBackupStaleSweep(tracked);
       automaticState.set({ kind: "idle" });
       toastInfo(tr("automatic.nothing_new"));
       return 0;
@@ -148,13 +141,6 @@ export async function runAutomaticSetup(): Promise<number> {
 
     automaticState.set({ kind: "starting_agent" });
     await bootAgent().catch(() => {});
-
-    // Catch-up sweep: every tracked save (including the ones we just
-    // added) gets an explicit backup request. The agent's debounce/abort
-    // logic in `schedule_backup` dedupes if a backup is already pending,
-    // so we don't spam concurrent uploads for the same save.
-    const refreshed = await api.listTrackedSaves().catch(() => tracked);
-    await runBackupStaleSweep(refreshed);
 
     automaticState.set({ kind: "idle" });
     toastSuccess(
@@ -190,14 +176,19 @@ type SaveConflictsBackedUp = {
 };
 
 /**
- * Subscribe to the `automatic-tick` Tauri event so the Rust-side scheduler
- * can drive periodic re-runs of `runAutomaticSetup()`. Idempotent — calling
- * twice does nothing on the second call. Designed to be invoked once from
- * `App.svelte::onMount` and never torn down (the listener costs nothing
- * when no events fire).
+ * Subscribe to the two Modo Automático scheduler events so the Rust side can
+ * drive periodic work. Idempotent — calling twice does nothing on the second
+ * call. Designed to be invoked once from `App.svelte::onMount` and never torn
+ * down (the listeners cost nothing when no events fire).
+ *
+ * * `automatic-scan-tick` (cheap, ~5 min) → `runAutomaticSetup()`: detect +
+ *   track newly installed games.
+ * * `automatic-backup-tick` (expensive, ~1 h) → `runBackupSweep()`: the
+ *   agent-staggered hash pass. No toast — it's a quiet background sweep whose
+ *   uploads already surface through the LiveStatus / ActivityFeed events.
  *
  * Also installs the `agent://save-conflicts-backed-up` listener — same
- * lifetime, same install-once contract. We keep both subscriptions in the
+ * lifetime, same install-once contract. We keep all subscriptions in the
  * same `unlisteners[]` so `disposeAutomaticListener()` tears them down
  * together.
  */
@@ -205,13 +196,16 @@ export function initAutomaticListener(): void {
   if (listenerInstalled) return;
   listenerInstalled = true;
   Promise.all([
-    listen("automatic-tick", () => {
+    listen("automatic-scan-tick", () => {
       // Show a discreet info toast so the user notices something happened
       // when the scheduler fires on its own. `runAutomaticSetup()` may also
       // emit its own toasts; that's fine — the two read as a small "scan
       // started, here's the result" pair.
       toastInfo(tr("automatic.scanning"));
       void runAutomaticSetup();
+    }),
+    listen("automatic-backup-tick", () => {
+      void runBackupSweep();
     }),
     listen<SaveConflictsBackedUp>(
       "agent://save-conflicts-backed-up",
