@@ -144,6 +144,14 @@ export function rescanLibrary(): Promise<DetectionReport> {
   return invoke<DetectionReport>("rescan_library");
 }
 
+/** Exhaustive deep scan from the Library deep-scan tile: looks at arbitrary
+ *  Wine prefixes (Heroic/CrossOver/Flatpak/mounted media), Flatpak/Snap/
+ *  EmuDeck roots and deeper directory walks. Slower; same wire shape and
+ *  `library://scan-progress` events as `scan_library`. */
+export function deepScanLibrary(): Promise<DetectionReport> {
+  return invoke<DetectionReport>("deep_scan_library");
+}
+
 /** Return the previous scan if one is in memory, else null. */
 export function cachedDetection(): Promise<DetectionReport | null> {
   return invoke<DetectionReport | null>("cached_detection");

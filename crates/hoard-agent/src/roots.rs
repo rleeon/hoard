@@ -54,11 +54,113 @@ pub fn user_save_roots(os: Os) -> Vec<PathBuf> {
     out
 }
 
+/// Roots adicionales que SOLO recorre el escaneo profundo (Linux): el gaming
+/// confinado en sandboxes y los emuladores, que el tick periódico no mira por
+/// coste. Cubre:
+///
+/// - **Flatpak**: datos por-app en `~/.var/app/<id>/{config,data,.local/share,
+///   .config}` — Steam Deck, Heroic/Lutris/Bottles Flatpak, emuladores
+///   EmuDeck/RetroDECK.
+/// - **Snap**: `~/snap/<app>/{common,current}/.local/share` y `/.config`.
+/// - **EmuDeck / RetroDECK**: `~/Emulation/saves`, `~/Emulation/storage`, y
+///   las copias en microSD `/run/media/<user>/<label>/Emulation/saves`.
+///
+/// Todos filtrados a los que existen; vacío en SO que no sean Linux.
+pub fn deep_save_roots(os: Os) -> Vec<PathBuf> {
+    if !matches!(os, Os::Linux) {
+        return Vec::new();
+    }
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    let push = |p: PathBuf, out: &mut Vec<PathBuf>, seen: &mut HashSet<PathBuf>| {
+        if seen.insert(p.clone()) && p.is_dir() {
+            out.push(p);
+        }
+    };
+
+    // Flatpak: one entry per installed app id under ~/.var/app.
+    if let Ok(entries) = std::fs::read_dir(home.join(".var/app")) {
+        for app in entries.flatten().map(|e| e.path()) {
+            for sub in ["config", "data", ".local/share", ".config"] {
+                push(app.join(sub), &mut out, &mut seen);
+            }
+        }
+    }
+
+    // Snap: per-app data lives under ~/snap/<app>/{common,current}.
+    if let Ok(entries) = std::fs::read_dir(home.join("snap")) {
+        for app in entries.flatten().map(|e| e.path()) {
+            for rev in ["common", "current"] {
+                push(app.join(rev).join(".local/share"), &mut out, &mut seen);
+                push(app.join(rev).join(".config"), &mut out, &mut seen);
+            }
+        }
+    }
+
+    // EmuDeck / RetroDECK conventional save roots, local and on microSD.
+    push(home.join("Emulation/saves"), &mut out, &mut seen);
+    push(home.join("Emulation/storage"), &mut out, &mut seen);
+    if let Ok(mounts) = std::fs::read_dir("/run/media") {
+        for user in mounts.flatten().map(|e| e.path()) {
+            if let Ok(vols) = std::fs::read_dir(&user) {
+                for vol in vols.flatten().map(|e| e.path()) {
+                    push(vol.join("Emulation/saves"), &mut out, &mut seen);
+                    push(vol.join("Emulation/storage"), &mut out, &mut seen);
+                }
+            }
+        }
+    }
+
+    out
+}
+
+/// Nombres de usuario Windows reales dentro de un prefijo Wine/Proton.
+///
+/// Lista los directorios bajo `drive_c/users/` que son usuarios reales —
+/// Proton usa `steamuser`, los prefijos genéricos (`wine`, PlayOnLinux,
+/// lanzadores `.desktop`) usan el login del host (`$USER`). Excluye `Public`
+/// (no es un perfil de usuario) y entradas no-directorio. Vacío si el prefijo
+/// no existe o no tiene `drive_c/users/`.
+pub fn prefix_windows_users(prefix: &Path) -> Vec<String> {
+    let users_dir = prefix.join("drive_c/users");
+    let entries = match std::fs::read_dir(&users_dir) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(),
+    };
+    let mut out = Vec::new();
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if name.eq_ignore_ascii_case("Public") {
+            continue;
+        }
+        out.push(name);
+    }
+    out
+}
+
 /// Subdirectorios de usuario dentro de un prefijo Wine/Proton donde caen
-/// los saves. Mismo naming Windows que `pathexpand::expand_placeholder_in_prefix`.
-/// `prefix` apunta al `pfx/` de una entrada de compatdata.
+/// los saves, para todos los usuarios reales del prefijo. Mismo naming
+/// Windows que `pathexpand::expand_placeholder_in_prefix`. `prefix` apunta al
+/// directorio que contiene `drive_c/` directamente.
 pub fn prefix_user_roots(prefix: &Path) -> Vec<PathBuf> {
-    let steamuser = prefix.join("drive_c/users/steamuser");
+    prefix_windows_users(prefix)
+        .iter()
+        .flat_map(|user| prefix_user_roots_for(prefix, user))
+        .collect()
+}
+
+/// Subdirectorios de save de un usuario Windows concreto dentro de un prefijo.
+pub fn prefix_user_roots_for(prefix: &Path, user: &str) -> Vec<PathBuf> {
+    let userhome = prefix.join("drive_c/users").join(user);
     [
         "AppData/Roaming",
         "AppData/Local",
@@ -67,7 +169,7 @@ pub fn prefix_user_roots(prefix: &Path) -> Vec<PathBuf> {
         "Saved Games",
     ]
     .iter()
-    .map(|sub| steamuser.join(sub))
+    .map(|sub| userhome.join(sub))
     .filter(|p| p.is_dir())
     .collect()
 }

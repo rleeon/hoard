@@ -197,6 +197,37 @@ pub async fn rescan_library(
     scan_library(app, state).await
 }
 
+/// Deep, user-triggered detection sweep — the Library "deep scan" tile. Runs
+/// [`detection::detect_all_deep`], which on top of the normal pipeline looks
+/// at the expensive places the periodic scan skips: arbitrary Wine prefixes
+/// (Heroic/CrossOver/Flatpak/mounted media), Flatpak/Snap/EmuDeck save roots,
+/// deeper directory walks and a relaxed precision gate. Slow by design, so
+/// it's never on the automatic tick. Emits the same `library://scan-progress`
+/// events and persists the merged report like a normal scan.
+#[tauri::command]
+pub async fn deep_scan_library(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<DetectionReport, String> {
+    let os = Os::current();
+
+    let app_for_progress = app.clone();
+    let progress = move |done: usize, total: usize| {
+        let _ = app_for_progress.emit("library://scan-progress", ScanProgress { done, total });
+    };
+
+    let (cli_state, _) = CliState::load_default().map_err(|e| e.to_string())?;
+
+    let mut report = detection::detect_all_deep(os, &cli_state, progress)
+        .await
+        .map_err(pretty_error)?;
+
+    report.games.retain(|g| !cli_state.is_ignored(&g.slug));
+
+    persist_scan(&state, report.clone());
+    Ok(report)
+}
+
 /// Return the previous scan if one is in memory. Used by the Library page
 /// to render quickly on navigation; if `None`, the UI triggers `scan_library`.
 #[tauri::command]

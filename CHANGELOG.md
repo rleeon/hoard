@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-06-06
+
+### Added
+- **Detección de juegos en cualquier prefijo Wine, no solo Steam/Lutris/Bottles.**
+  Antes un juego instalado a mano con `wine`/`wine-stable` (p. ej. Factorio en
+  `~/.wine64`) era invisible. Ahora se descubren prefijos genéricos desde
+  `$WINEPREFIX`, los defaults `~/.wine*`, PlayOnLinux y cualquier `.desktop` con
+  `WINEPREFIX=…`, y se cruza **todo** el catálogo contra cada usuario Windows
+  real del prefijo (no solo `steamuser`).
+- **Escáner profundo** (tile rojo en la Biblioteca + `hoard scan --deep` +
+  comando `deep_scan_library`): mira donde el escaneo periódico no entra —
+  prefijos Wine en ubicaciones arbitrarias (Heroic, CrossOver, Flatpak, medios
+  montados), roots de Flatpak (`~/.var/app`), Snap (`~/snap`) y emuladores
+  EmuDeck/RetroDECK (`~/Emulation/saves`, microSD en `/run/media`), con un
+  recorrido más hondo y una verja de precisión relajada. Solo bajo demanda.
+- **Juegos "no-Steam" lanzados con Proton**: los prefijos cuyo appid no está en
+  el catálogo ahora se cruzan contra el catálogo completo en el escaneo normal.
+
 ## [1.9.14] — 2026-06-06
 
 ### Changed

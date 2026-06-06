@@ -21,7 +21,7 @@
 //! Lutris and Bottles use the directory name as the identifier, which is
 //! the user-visible bottle / game slug.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::manifest::Os;
 use crate::steam;
@@ -32,6 +32,11 @@ pub enum PrefixKind {
     Proton,
     Lutris,
     Bottles,
+    /// A plain Wine prefix not managed by any of the launchers above:
+    /// `$WINEPREFIX`, the default `~/.wine*`, PlayOnLinux, or any prefix a
+    /// `.desktop` launcher references. Not tied to a single game — the whole
+    /// `drive_c/` may hold saves for any number of catalog titles.
+    Generic,
 }
 
 /// One Wine/Proton prefix on disk.
@@ -54,6 +59,17 @@ pub struct WinePrefix {
 /// Returns an empty vector when nothing matches; never panics. On
 /// non-Linux hosts only the Proton wrapper has a chance to contribute.
 pub fn list_wine_prefixes(os: Os) -> Vec<WinePrefix> {
+    list_wine_prefixes_mode(os, false)
+}
+
+/// Like [`list_wine_prefixes`] but also runs the expensive parent-directory
+/// sweep that finds prefixes in arbitrary locations (Heroic, CrossOver,
+/// Flatpak'd Wine, mounted media). For the user-triggered deep scan only.
+pub fn list_wine_prefixes_deep(os: Os) -> Vec<WinePrefix> {
+    list_wine_prefixes_mode(os, true)
+}
+
+fn list_wine_prefixes_mode(os: Os, deep: bool) -> Vec<WinePrefix> {
     let mut out: Vec<WinePrefix> = Vec::new();
 
     // Proton (Steam) — wrapper over the existing, well-tested API.
@@ -71,9 +87,222 @@ pub fn list_wine_prefixes(os: Os) -> Vec<WinePrefix> {
     if matches!(os, Os::Linux) {
         out.extend(discover_lutris_prefixes());
         out.extend(discover_bottles_prefixes());
+        // Generic prefixes come last and are deduplicated against everything
+        // already found, so a prefix Steam/Lutris/Bottles already own isn't
+        // re-reported as Generic.
+        let mut known: std::collections::HashSet<PathBuf> = out
+            .iter()
+            .map(|p| canonical(&p.prefix_root))
+            .collect();
+        for p in discover_generic_prefixes() {
+            if known.insert(canonical(&p.prefix_root)) {
+                out.push(p);
+            }
+        }
+        if deep {
+            for p in discover_deep_prefixes() {
+                if known.insert(canonical(&p.prefix_root)) {
+                    out.push(p);
+                }
+            }
+        }
     }
 
     out
+}
+
+/// Canonicalize a path for dedup, falling back to the path itself when the
+/// target can't be resolved (e.g. a symlink to a missing dir).
+fn canonical(p: &Path) -> PathBuf {
+    std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+}
+
+/// Discover plain Wine prefixes from every general source we know, regardless
+/// of which launcher (if any) created them:
+///
+/// - `$WINEPREFIX` — the prefix the user's shell currently points at.
+/// - Default locations: `~/.wine`, `~/.wine32`, `~/.wine64`.
+/// - PlayOnLinux: `~/.PlayOnLinux/wineprefix/<name>/`.
+/// - Any prefix referenced by a `WINEPREFIX=…` assignment inside a desktop
+///   entry the user can launch (`~/.local/share/applications`, the XDG
+///   desktop dir, `/usr/share/applications`). This covers prefixes in fully
+///   arbitrary locations.
+///
+/// A candidate only qualifies when its `drive_c/` exists, mirroring the
+/// other discoverers. Results are deduplicated by canonical path; the
+/// identifier is the prefix directory name (best-effort, not a game slug).
+fn discover_generic_prefixes() -> Vec<WinePrefix> {
+    let Some(home) = home() else {
+        return Vec::new();
+    };
+
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    if let Some(wp) = std::env::var_os("WINEPREFIX") {
+        candidates.push(PathBuf::from(wp));
+    }
+    for name in [".wine", ".wine32", ".wine64"] {
+        candidates.push(home.join(name));
+    }
+    if let Ok(entries) = std::fs::read_dir(home.join(".PlayOnLinux/wineprefix")) {
+        for e in entries.flatten() {
+            candidates.push(e.path());
+        }
+    }
+    candidates.extend(prefixes_from_desktop_files(&home));
+
+    let mut out: Vec<WinePrefix> = Vec::new();
+    let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+    for root in candidates {
+        if !root.join("drive_c").is_dir() {
+            continue;
+        }
+        if !seen.insert(canonical(&root)) {
+            continue;
+        }
+        let identifier = root
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("wine")
+            .to_string();
+        out.push(WinePrefix {
+            kind: PrefixKind::Generic,
+            identifier,
+            prefix_root: root,
+        });
+    }
+    out
+}
+
+/// Deep sweep: find Wine prefixes in arbitrary locations by scanning the
+/// directories under a set of likely parents for a child holding `drive_c/`.
+///
+/// Parents (each scanned one level down, so `<parent>/<name>/drive_c`):
+/// - Heroic: `~/Games/Heroic/Prefixes` and its `default/` subtree.
+/// - CrossOver: `~/.cxoffice`.
+/// - Flatpak'd Wine front-ends keep prefixes under their app data dir.
+/// - Anything the user dropped under `~/Games`, `~/.local/share`, `/opt`, or a
+///   mounted volume (`/run/media/<user>/<label>`).
+///
+/// Bounded: each parent is read once and only its immediate children are
+/// stat'd for `drive_c/`; no recursion. Identifier is the prefix dir name.
+fn discover_deep_prefixes() -> Vec<WinePrefix> {
+    let Some(home) = home() else {
+        return Vec::new();
+    };
+
+    let mut parents: Vec<PathBuf> = vec![
+        home.join("Games/Heroic/Prefixes"),
+        home.join("Games/Heroic/Prefixes/default"),
+        home.join(".cxoffice"),
+        home.join("Games"),
+        home.join(".local/share"),
+        PathBuf::from("/opt"),
+    ];
+    // Flatpak Lutris/Heroic prefixes live under their app data dir.
+    for app in [
+        "net.lutris.Lutris/data/lutris/runners/wine",
+        "com.heroicgameslauncher.hgl/config/heroic/Prefixes/default",
+    ] {
+        parents.push(home.join(".var/app").join(app));
+    }
+    // Mounted volumes: one level for the volume, then look inside.
+    if let Ok(users) = std::fs::read_dir("/run/media") {
+        for user in users.flatten().map(|e| e.path()) {
+            if let Ok(vols) = std::fs::read_dir(&user) {
+                for vol in vols.flatten().map(|e| e.path()) {
+                    parents.push(vol);
+                }
+            }
+        }
+    }
+
+    let mut out: Vec<WinePrefix> = Vec::new();
+    for parent in parents {
+        let entries = match std::fs::read_dir(&parent) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let root = entry.path();
+            if !root.join("drive_c").is_dir() {
+                continue;
+            }
+            let identifier = root
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("wine")
+                .to_string();
+            out.push(WinePrefix {
+                kind: PrefixKind::Generic,
+                identifier,
+                prefix_root: root,
+            });
+        }
+    }
+    out
+}
+
+/// Scan desktop-entry directories for `WINEPREFIX=` assignments and return the
+/// referenced prefix roots. This is how a manually installed game (the
+/// `.desktop` Wine generates, PlayOnLinux/Lutris shortcuts, etc.) advertises
+/// the prefix it runs in, so it generalizes to arbitrary prefix locations.
+fn prefixes_from_desktop_files(home: &Path) -> Vec<PathBuf> {
+    let mut dirs = vec![
+        home.join(".local/share/applications"),
+        PathBuf::from("/usr/share/applications"),
+    ];
+    // The user's desktop dir (localized — `~/Desktop`, `~/Escritorio`, …).
+    if let Some(d) = std::env::var_os("XDG_DESKTOP_DIR") {
+        dirs.push(PathBuf::from(d));
+    }
+    dirs.push(home.join("Desktop"));
+
+    let mut out: Vec<PathBuf> = Vec::new();
+    for dir in dirs {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("desktop") {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            if let Some(prefix) = parse_wineprefix_assignment(&content) {
+                out.push(prefix);
+            }
+        }
+    }
+    out
+}
+
+/// Extract the value of the first `WINEPREFIX=` assignment in a desktop entry.
+///
+/// Handles the common forms seen in Wine-generated launchers:
+///   `Exec=env WINEPREFIX="/home/u/.wine64" wine-stable "C:\\..."`
+///   `Exec=env WINEPREFIX=/home/u/prefix wine ...`
+/// The value may be double- or single-quoted, or bare up to the next space.
+fn parse_wineprefix_assignment(content: &str) -> Option<PathBuf> {
+    let idx = content.find("WINEPREFIX=")?;
+    let rest = &content[idx + "WINEPREFIX=".len()..];
+    let mut chars = rest.chars();
+    let first = chars.next()?;
+    let value: String = match first {
+        '"' => rest[1..].chars().take_while(|c| *c != '"').collect(),
+        '\'' => rest[1..].chars().take_while(|c| *c != '\'').collect(),
+        _ => rest
+            .chars()
+            .take_while(|c| !c.is_whitespace())
+            .collect(),
+    };
+    if value.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(value))
 }
 
 fn home() -> Option<PathBuf> {
@@ -244,6 +473,80 @@ mod tests {
             assert_eq!(bottles.len(), 1, "got {prefixes:?}");
             assert_eq!(bottles[0].identifier, "MyBottle");
             assert_eq!(bottles[0].prefix_root, bottle_root);
+        });
+    }
+
+    #[test]
+    fn parse_wineprefix_handles_quotes_and_bare() {
+        let double = "Exec=env WINEPREFIX=\"/home/u/.wine64\" wine-stable \"C:\\\\x\"";
+        assert_eq!(
+            parse_wineprefix_assignment(double),
+            Some(PathBuf::from("/home/u/.wine64"))
+        );
+        let bare = "Exec=env WINEPREFIX=/home/u/prefix wine foo.exe";
+        assert_eq!(
+            parse_wineprefix_assignment(bare),
+            Some(PathBuf::from("/home/u/prefix"))
+        );
+        assert_eq!(parse_wineprefix_assignment("Exec=wine foo.exe"), None);
+    }
+
+    #[test]
+    fn list_wine_prefixes_includes_default_wine_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        // A default `~/.wine64` prefix with a real (non-steamuser) user home.
+        let prefix = home.join(".wine64");
+        std::fs::create_dir_all(prefix.join("drive_c/users/insider")).unwrap();
+
+        with_home(home, || {
+            // Isolate from any ambient WINEPREFIX the test host exports.
+            let prev = std::env::var_os("WINEPREFIX");
+            std::env::remove_var("WINEPREFIX");
+            let prefixes = list_wine_prefixes(Os::Linux);
+            match prev {
+                Some(v) => std::env::set_var("WINEPREFIX", v),
+                None => {}
+            }
+            let generic: Vec<&WinePrefix> = prefixes
+                .iter()
+                .filter(|p| p.kind == PrefixKind::Generic)
+                .collect();
+            assert_eq!(generic.len(), 1, "got {prefixes:?}");
+            assert_eq!(generic[0].identifier, ".wine64");
+            assert_eq!(canonical(&generic[0].prefix_root), canonical(&prefix));
+        });
+    }
+
+    #[test]
+    fn list_wine_prefixes_finds_prefix_via_desktop_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        // Prefix in an arbitrary location only discoverable through a launcher.
+        let prefix = home.join("games/custom-prefix");
+        std::fs::create_dir_all(prefix.join("drive_c/users/insider")).unwrap();
+        let apps = home.join(".local/share/applications");
+        std::fs::create_dir_all(&apps).unwrap();
+        std::fs::write(
+            apps.join("Game.desktop"),
+            format!(
+                "[Desktop Entry]\nExec=env WINEPREFIX=\"{}\" wine-stable game.exe\n",
+                prefix.display()
+            ),
+        )
+        .unwrap();
+
+        with_home(home, || {
+            let prev = std::env::var_os("WINEPREFIX");
+            std::env::remove_var("WINEPREFIX");
+            let prefixes = list_wine_prefixes(Os::Linux);
+            if let Some(v) = prev {
+                std::env::set_var("WINEPREFIX", v);
+            }
+            let found = prefixes
+                .iter()
+                .any(|p| p.kind == PrefixKind::Generic && canonical(&p.prefix_root) == canonical(&prefix));
+            assert!(found, "desktop-referenced prefix not found: {prefixes:?}");
         });
     }
 

@@ -141,6 +141,25 @@
     }
   }
 
+  /** Deep-scan tile click. Same flow as `runScan` but hits the exhaustive
+   *  backend command that looks at places the periodic scan skips (arbitrary
+   *  Wine prefixes, Flatpak/Snap/EmuDeck roots, deeper walks). */
+  async function runDeepScan() {
+    scanning = true;
+    progress = { done: 0, total: 0 };
+    try {
+      report = await api.deepScanLibrary();
+      toastSuccess(
+        $_("library.scan_toast", { values: { count: report.games.length } }),
+      );
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    } finally {
+      scanning = false;
+      progress = null;
+    }
+  }
+
   /** "Track" click on a card. If we already have a save-folder candidate
    *  (filesystem heuristic hit), wire it up directly. Otherwise — Steam-only
    *  match with no save folder yet — open the alert modal so the user
@@ -687,6 +706,35 @@
       </label>
     </div>
 
+    {#snippet deepScanTile()}
+      <button
+        type="button"
+        onclick={runDeepScan}
+        disabled={scanning}
+        title={$_("library.deep_scan_hint")}
+        class="group flex flex-col rounded-xl border border-red-500/30 bg-red-950/20 p-4 text-left shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-red-500/55 hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <div class="mb-2 flex items-start gap-2.5">
+          <div
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-red-500/15 text-red-400"
+          >
+            <AlertTriangle class="h-5 w-5" />
+          </div>
+          <div class="min-w-0">
+            <h3 class="truncate text-sm font-medium text-red-300">
+              {$_("library.deep_scan_title")}
+            </h3>
+            <p class="truncate text-xs text-red-400/70">
+              {$_("library.deep_scan_subtitle")}
+            </p>
+          </div>
+        </div>
+        <p class="mt-auto pt-2 text-xs leading-snug text-red-300/60">
+          {$_("library.deep_scan_hint")}
+        </p>
+      </button>
+    {/snippet}
+
     {#if filtered.length === 0}
       <Card>
         <div class="py-12 text-center text-sm text-zinc-400">
@@ -695,6 +743,9 @@
             : $_("library.no_results_filtered")}
         </div>
       </Card>
+      <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {@render deepScanTile()}
+      </div>
     {:else}
       <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {#each filtered as game (game.slug)}
@@ -841,6 +892,7 @@
             </div>
           </div>
         {/each}
+        {@render deepScanTile()}
       </div>
     {/if}
   {:else if !scanning}

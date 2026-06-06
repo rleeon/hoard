@@ -42,7 +42,9 @@ use tokio::sync::Semaphore;
 use crate::correlation::{self, CorrelationStore};
 use crate::launchers::{self, LauncherApp};
 use crate::manifest::Os;
-use crate::pathexpand::{expand_path, expand_path_in_prefix, expand_registry_path};
+use crate::pathexpand::{
+    expand_path, expand_path_in_prefix, expand_path_in_prefix_as_user, expand_registry_path,
+};
 use crate::roots;
 use crate::scoring;
 use crate::state::CliState;
@@ -165,6 +167,30 @@ const SAVE_DIR_OVERRIDES: &[(&str, &str)] = &[];
 /// `CliState` (or `&CliState::default()` for the example/smoke binary that
 /// has no on-disk state).
 pub async fn detect_all<F>(os: Os, state: &CliState, progress: F) -> Result<DetectionReport>
+where
+    F: Fn(usize, usize) + Send + Sync + 'static,
+{
+    detect_all_inner(os, state, false, progress).await
+}
+
+/// Deep variant of [`detect_all`]: same pipeline plus the expensive passes the
+/// periodic scan skips — arbitrary Wine prefixes (Heroic/CrossOver/Flatpak/
+/// mounted media), Flatpak/Snap/EmuDeck save roots, deeper directory walks and
+/// a relaxed precision gate. User-triggered only (the Library "deep scan"
+/// tile), never on the automatic tick.
+pub async fn detect_all_deep<F>(os: Os, state: &CliState, progress: F) -> Result<DetectionReport>
+where
+    F: Fn(usize, usize) + Send + Sync + 'static,
+{
+    detect_all_inner(os, state, true, progress).await
+}
+
+async fn detect_all_inner<F>(
+    os: Os,
+    state: &CliState,
+    deep: bool,
+    progress: F,
+) -> Result<DetectionReport>
 where
     F: Fn(usize, usize) + Send + Sync + 'static,
 {
@@ -429,6 +455,91 @@ where
         }
     }
 
+    // Whole-prefix Windows cross-reference: for prefixes NOT tied to a single
+    // catalog game, expand EVERY catalog entry's Windows templates against each
+    // real Windows user home inside the prefix — the native filesystem
+    // heuristic, pointed at the prefix's `drive_c/`. Two prefix sources qualify:
+    //   * Generic prefixes (plain `wine` / PlayOnLinux / `.desktop`), which
+    //     aren't owned by any launcher.
+    //   * Proton prefixes whose appid has NO catalog match — i.e. "non-Steam
+    //     game" shortcuts the user added to Steam and runs through Proton. The
+    //     appid-keyed Proton block above can't help those (no entry to expand),
+    //     so a save belonging to a real catalog game went unseen.
+    // One blocking task per (prefix, user) bounds the cost and keeps it off the
+    // async runtime. The deep scan additionally discovers prefixes in arbitrary
+    // locations (Heroic/CrossOver/Flatpak/mounted media).
+    if os == Os::Linux {
+        let all_prefixes = if deep {
+            wine_prefixes::list_wine_prefixes_deep(os)
+        } else {
+            wine_prefixes::list_wine_prefixes(os)
+        };
+        let mut cross_ref_roots: Vec<PathBuf> = Vec::new();
+        for p in all_prefixes {
+            let keep = match p.kind {
+                PrefixKind::Generic => true,
+                // Only Proton prefixes the catalog can't resolve by appid.
+                PrefixKind::Proton => p
+                    .identifier
+                    .parse::<u64>()
+                    .ok()
+                    .and_then(ludusavi::find_by_steam_app_id)
+                    .is_none(),
+                PrefixKind::Lutris | PrefixKind::Bottles => false,
+            };
+            if keep {
+                cross_ref_roots.push(p.prefix_root);
+            }
+        }
+        let mut targets: Vec<(PathBuf, String)> = Vec::new();
+        for root in &cross_ref_roots {
+            for user in roots::prefix_windows_users(root) {
+                targets.push((root.clone(), user));
+            }
+        }
+        let mut tasks = Vec::new();
+        for (root, user) in targets {
+            let permit = semaphore.clone().acquire_owned().await?;
+            tasks.push(tokio::task::spawn_blocking(move || {
+                let _permit = permit;
+                let mut found: Vec<(String, String, Vec<PathBuf>)> = Vec::new();
+                for entry in ludusavi::catalog() {
+                    if entry.paths.windows.is_empty() {
+                        continue;
+                    }
+                    let mut hits: Vec<PathBuf> = Vec::new();
+                    let mut seen: HashSet<PathBuf> = HashSet::new();
+                    for tmpl in entry.paths.windows.iter().map(|p| &p.path) {
+                        for candidate in expand_path_in_prefix_as_user(tmpl, &root, &user) {
+                            if candidate.exists() && seen.insert(candidate.clone()) {
+                                hits.push(candidate);
+                            }
+                        }
+                    }
+                    if !hits.is_empty() {
+                        found.push((entry.slug.clone(), entry.display_name.clone(), hits));
+                    }
+                }
+                found
+            }));
+        }
+        let mut generic_hits = 0usize;
+        for t in tasks {
+            match t.await {
+                Ok(found) => {
+                    for (slug, display_name, hits) in found {
+                        generic_hits += 1;
+                        merge_fs_hit(&mut by_slug, slug, display_name, hits);
+                    }
+                }
+                Err(e) => tracing::warn!(error = %e, "generic-prefix scan task panicked"),
+            }
+        }
+        if generic_hits > 0 {
+            tracing::info!(slugs = generic_hits, "generic Wine prefix saves merged");
+        }
+    }
+
     // Steam Cloud (ADR 0019): some titles write their only save to
     // `<root>/userdata/<storeUserId>/<appid>/remote/` and never touch the
     // filesystem locations the catalog lists. Cross-reference every installed
@@ -550,7 +661,7 @@ where
             .values()
             .flat_map(|g| g.found_paths.iter().cloned())
             .collect();
-        let attributed = discover_unattributed(os, &corr_store, &known);
+        let attributed = discover_unattributed_mode(os, &corr_store, &known, deep);
         let mut new_games = 0usize;
         let mut merged = 0usize;
         for a in attributed {
@@ -840,6 +951,10 @@ fn build_prefix_root_by_slug(os: Os) -> HashMap<String, PathBuf> {
                 entry.slug.clone()
             }
             PrefixKind::Lutris | PrefixKind::Bottles => ludusavi::slugify(&prefix.identifier),
+            // Generic prefixes have no per-game identifier — a single prefix
+            // holds many games. They're handled by the dedicated generic-prefix
+            // scan in `detect_all`, not the slug-keyed aggressive walker.
+            PrefixKind::Generic => continue,
         };
         // First writer wins — multiple prefixes for the same slug
         // (e.g. a Steam install AND a Lutris install of the same game) is
@@ -1506,6 +1621,13 @@ const PHASE4_WALK_TIMEOUT: Duration = Duration::from_millis(2000);
 /// layouts without descending into asset trees.
 const PHASE4_WALK_MAX_DEPTH: usize = 4;
 
+/// Deep-scan phase-4 budget: a deeper descent and a more generous per-root
+/// timeout, since the user explicitly asked for an exhaustive look and the
+/// sandbox/emulator roots (`~/.var/app/<id>/...`, `Emulation/saves/<system>`)
+/// nest the actual save folder one or two levels lower than native layouts.
+const PHASE4_DEEP_WALK_MAX_DEPTH: usize = 6;
+const PHASE4_DEEP_WALK_TIMEOUT: Duration = Duration::from_millis(5000);
+
 /// Generic path segments that are containers, never the game's name. When
 /// attributing a discovered save folder we walk up past these (and past
 /// recognised save-words) to reach the segment that actually names the game.
@@ -1559,29 +1681,51 @@ pub fn discover_unattributed(
     store: &CorrelationStore,
     known_paths: &HashSet<PathBuf>,
 ) -> Vec<AttributedSave> {
+    discover_unattributed_mode(os, store, known_paths, false)
+}
+
+/// `deep` variant: walks the broad sandbox/emulator roots
+/// ([`roots::deep_save_roots`]) and arbitrarily-located Wine prefixes on top of
+/// the standard roots, with a deeper walk, longer per-root timeout, and a
+/// relaxed precision gate (keeps `Low` static-only hits the periodic scan
+/// drops, since the deep scan is an explicit "find what's hiding" request).
+pub fn discover_unattributed_mode(
+    os: Os,
+    store: &CorrelationStore,
+    known_paths: &HashSet<PathBuf>,
+    deep: bool,
+) -> Vec<AttributedSave> {
     let mut out: Vec<AttributedSave> = Vec::new();
     let mut emitted: HashSet<PathBuf> = HashSet::new();
 
     let mut walk_roots = roots::user_save_roots(os);
-    for prefix in wine_prefixes::list_wine_prefixes(os) {
+    let prefixes = if deep {
+        wine_prefixes::list_wine_prefixes_deep(os)
+    } else {
+        wine_prefixes::list_wine_prefixes(os)
+    };
+    for prefix in prefixes {
         walk_roots.extend(roots::prefix_user_roots(&prefix.prefix_root));
     }
+    if deep {
+        walk_roots.extend(roots::deep_save_roots(os));
+    }
+
+    let (max_depth, timeout) = if deep {
+        (PHASE4_DEEP_WALK_MAX_DEPTH, PHASE4_DEEP_WALK_TIMEOUT)
+    } else {
+        (PHASE4_WALK_MAX_DEPTH, PHASE4_WALK_TIMEOUT)
+    };
 
     for root in walk_roots {
         let mut hits: Vec<DiscoveredSavePath> = Vec::new();
         let mut seen: HashSet<PathBuf> = HashSet::new();
-        walk_root_collecting(
-            &root,
-            PHASE4_WALK_MAX_DEPTH,
-            PHASE4_WALK_TIMEOUT,
-            &mut hits,
-            &mut seen,
-            store,
-        );
+        walk_root_collecting(&root, max_depth, timeout, &mut hits, &mut seen, store);
         for hit in hits {
             let corroborated = store.signal_for(&hit.path).is_some();
-            // Precision gate: weak static-only matches don't create games.
-            if !corroborated && hit.confidence == Confidence::Low {
+            // Precision gate: weak static-only matches don't create games —
+            // except in deep mode, where surfacing maybes is the whole point.
+            if !deep && !corroborated && hit.confidence == Confidence::Low {
                 continue;
             }
             if path_already_known(&hit.path, known_paths) {

@@ -42,6 +42,11 @@ enum Commands {
         /// List every detected game, not just the summary counts.
         #[arg(long)]
         verbose: bool,
+        /// Run the exhaustive deep scan: arbitrary Wine prefixes
+        /// (Heroic/CrossOver/Flatpak/mounted media), Flatpak/Snap/EmuDeck
+        /// roots, deeper walks. Slower; mirrors the Library deep-scan tile.
+        #[arg(long)]
+        deep: bool,
     },
     /// Manage save namespaces
     Save {
@@ -135,7 +140,7 @@ async fn dispatch(cli: Cli) -> Result<()> {
         Commands::Logout => commands::auth::logout().await,
         Commands::Whoami => commands::auth::whoami().await,
         Commands::Games { action } => commands::games::run(action).await,
-        Commands::Scan { verbose } => commands::scan::run(verbose).await,
+        Commands::Scan { verbose, deep } => commands::scan::run(verbose, deep).await,
         Commands::Save { action } => commands::saves::run(action).await,
         Commands::Snapshots { action } => snapshots_dispatch(action).await,
         Commands::Backup {

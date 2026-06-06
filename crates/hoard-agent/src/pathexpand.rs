@@ -66,12 +66,22 @@ pub fn expand_path(template: &str, os: Os) -> Vec<PathBuf> {
 /// `vec![]` so the caller doesn't accidentally stat a meaningless path
 /// under the prefix.
 pub fn expand_path_in_prefix(template: &str, prefix: &Path) -> Vec<PathBuf> {
+    // Proton always names its single Windows user `steamuser`; keep that as
+    // the back-compatible default so existing Steam callers don't change.
+    expand_path_in_prefix_as_user(template, prefix, "steamuser")
+}
+
+/// Like [`expand_path_in_prefix`] but for a specific Windows user inside the
+/// prefix. Generic Wine prefixes (plain `wine`, PlayOnLinux, `.desktop`
+/// launchers) name their user after the host login (`$USER`), not
+/// `steamuser`, so the caller must pass the real user-dir name.
+pub fn expand_path_in_prefix_as_user(template: &str, prefix: &Path, user: &str) -> Vec<PathBuf> {
     let Some((placeholder, tail)) = split_placeholder(template) else {
         // Literal templates don't apply to a prefix — they're absolute
         // host paths, not Wine paths. Drop them.
         return Vec::new();
     };
-    let Some(base) = expand_placeholder_in_prefix(&placeholder, prefix) else {
+    let Some(base) = expand_placeholder_in_prefix(&placeholder, prefix, user) else {
         return Vec::new();
     };
     let tail_clean = tail.trim_start_matches(['/', '\\']);
@@ -83,25 +93,26 @@ pub fn expand_path_in_prefix(template: &str, prefix: &Path) -> Vec<PathBuf> {
 }
 
 /// Map one Ludusavi placeholder onto the corresponding directory inside a
-/// Wine prefix. Returns `None` for placeholders that don't apply (Linux/Mac
-/// tokens, per-install identifiers, unknown names).
-fn expand_placeholder_in_prefix(name: &str, prefix: &Path) -> Option<PathBuf> {
+/// Wine prefix for the given Windows user. Returns `None` for placeholders
+/// that don't apply (Linux/Mac tokens, per-install identifiers, unknown
+/// names).
+fn expand_placeholder_in_prefix(name: &str, prefix: &Path, user: &str) -> Option<PathBuf> {
     let drive_c = prefix.join("drive_c");
-    let steamuser = drive_c.join("users/steamuser");
+    let userhome = drive_c.join("users").join(user);
     let mapped = match name {
-        "winAppData" => steamuser.join("AppData/Roaming"),
-        "winLocalAppData" => steamuser.join("AppData/Local"),
-        "winLocalAppDataLow" => steamuser.join("AppData/LocalLow"),
-        "winDocuments" => steamuser.join("Documents"),
+        "winAppData" => userhome.join("AppData/Roaming"),
+        "winLocalAppData" => userhome.join("AppData/Local"),
+        "winLocalAppDataLow" => userhome.join("AppData/LocalLow"),
+        "winDocuments" => userhome.join("Documents"),
         // `%USERPROFILE%\Saved Games` inside the prefix. Without this, games
         // that target `<winSavedGames>` (Planet S, plenty of modern titles)
         // were never searched under a Proton/Wine prefix on Linux — detection
         // fell back to the low-confidence Steam Cloud stub instead.
-        "winSavedGames" => steamuser.join("Saved Games"),
+        "winSavedGames" => userhome.join("Saved Games"),
         "winPublic" => drive_c.join("users/Public"),
         "winProgramData" => drive_c.join("ProgramData"),
         "winDir" => drive_c.join("windows"),
-        "home" => steamuser,
+        "home" => userhome,
         "root" => drive_c,
         _ => return None,
     };

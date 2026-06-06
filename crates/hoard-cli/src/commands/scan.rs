@@ -18,13 +18,17 @@ use hoard_agent::detection::{self, Confidence};
 use hoard_agent::manifest::Os;
 use hoard_agent::state::CliState;
 
-pub async fn run(verbose: bool) -> Result<()> {
+pub async fn run(verbose: bool, deep: bool) -> Result<()> {
     let os = Os::current();
     // Load overrides so the bench mirrors what the app actually scans.
     let (cli_state, _) = CliState::load_default()?;
 
     let start = Instant::now();
-    let report = detection::detect_all(os, &cli_state, |_done, _total| {}).await?;
+    let report = if deep {
+        detection::detect_all_deep(os, &cli_state, |_done, _total| {}).await?
+    } else {
+        detection::detect_all(os, &cli_state, |_done, _total| {}).await?
+    };
     let elapsed = start.elapsed();
 
     let (mut high, mut medium, mut low, mut with_paths) = (0usize, 0usize, 0usize, 0usize);

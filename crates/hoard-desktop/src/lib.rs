@@ -128,6 +128,7 @@ pub fn run() {
             commands::auth::refresh_quota,
             commands::library::scan_library,
             commands::library::rescan_library,
+            commands::library::deep_scan_library,
             commands::library::cached_detection,
             commands::library::add_game_to_tracking,
             commands::library::list_tracked_saves,
