@@ -19,8 +19,10 @@
 //! exposes the manual-trigger button on the dashboard.
 
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
 
 use hoard_agent::agent::{self, AgentConfig, AgentEvent, AgentSlotStatus, WatchedSave};
+use hoard_agent::api::ApiClient;
 use hoard_agent::config::CliConfig;
 use hoard_agent::manifest::Os;
 use hoard_agent::prefs::Prefs;
@@ -40,6 +42,38 @@ pub struct AgentStatus {
     pub watched_count: usize,
 }
 
+/// Clone of the live agent's `ApiClient`, kept so the cloud token-refresh path
+/// can push a fresh Supabase JWT into the long-lived agent without rebuilding
+/// it. The agent is spawned once per session with a single client; for a Hoard
+/// Cloud session that client's JWT expires after ~1h, and nothing else refreshes
+/// it. Before this hook the auto-restore sweep kept firing with the stale token
+/// and 401'd every tick ("no se pudo restaurar …"). `ApiClient` shares its token
+/// cell across clones, so calling `set_token` here updates the agent's copy too.
+static AGENT_CLIENT: OnceLock<Mutex<Option<ApiClient>>> = OnceLock::new();
+
+fn agent_client_slot() -> &'static Mutex<Option<ApiClient>> {
+    AGENT_CLIENT.get_or_init(|| Mutex::new(None))
+}
+
+/// Remember the running agent's client so token refreshes can reach it.
+pub fn register_agent_client(client: ApiClient) {
+    *agent_client_slot().lock().unwrap() = Some(client);
+}
+
+/// Forget the agent's client (logout / agent stop).
+pub fn clear_agent_client() {
+    *agent_client_slot().lock().unwrap() = None;
+}
+
+/// Push a freshly-rotated bearer token into the running agent's client, if any.
+/// Called from the cloud token-refresh path so the agent's long-lived client
+/// keeps working across JWT expiry. No-op when no agent is running.
+pub fn update_agent_token(token: &str) {
+    if let Some(client) = agent_client_slot().lock().unwrap().as_ref() {
+        client.set_token(token);
+    }
+}
+
 /// Boot the live agent and start forwarding events. No-op if it's already
 /// running (returns the existing status).
 #[tauri::command]
@@ -55,6 +89,10 @@ pub async fn start_agent(
     }
 
     let client = current_client(&state)?;
+    // Keep a handle on the agent's client so the cloud token-refresh path can
+    // swap in a fresh JWT as it rotates (see `update_agent_token`). `ApiClient`
+    // shares its token cell across clones, so this clone stays in lock-step.
+    register_agent_client(client.clone());
     let saves = hydrate_watched_saves(&state).map_err(|e| e.to_string())?;
     let watched_count = saves.len();
 
@@ -178,6 +216,7 @@ struct WatcherArmed {
 #[tauri::command]
 pub async fn stop_agent(state: State<'_, AppState>) -> Result<(), String> {
     let handle = state.agent.lock().unwrap().take();
+    clear_agent_client();
     if let Some(h) = handle {
         h.shutdown().await.map_err(|e| e.to_string())?;
     }
@@ -201,7 +240,8 @@ pub async fn backup_now(save_id: String, state: State<'_, AppState>) -> Result<(
 }
 
 /// Kick a staggered backup sweep across every tracked save. Backs the Modo
-/// Automático `automatic-backup-tick`: instead of the old "loop `backup_now`
+/// Automático backup tick (driven from Rust by `automatic::run_backup_sweep`):
+/// instead of the old "loop `backup_now`
 /// over every save" burst, the agent spreads each save's re-hash across an
 /// effective window (grown when there are tens of GB of saves) so sustained
 /// disk use stays low. The nominal window is the persisted

@@ -274,6 +274,11 @@ fn update_tokens(access: &str, refresh: &str) -> Result<()> {
             })
         }
     }
+    // Keep the long-lived agent client's bearer token in lock-step with the
+    // rotated JWT. Without this the agent (spawned once with the token current
+    // at login) keeps 401'ing on every auto-restore/backup once the JWT expires,
+    // even though the poller has already refreshed the on-disk token.
+    crate::commands::agent::update_agent_token(access);
     write_session(&session)
 }
 

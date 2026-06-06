@@ -49,7 +49,6 @@
     planLabel,
   } from "./lib/stores/cloud";
   import {
-    runAutomaticSetup,
     automaticState,
     initAutomaticListener,
   } from "./lib/stores/automatic";
@@ -238,11 +237,10 @@
     );
 
     // Register the Tauri listeners exactly once for the lifetime of this
-    // app instance. The Rust scheduler emits `automatic-scan-tick` (cheap
-    // detection) and `automatic-backup-tick` (staggered hash sweep) on their
-    // own intervals; this turns scan ticks into `runAutomaticSetup` and
-    // backup ticks into the sweep. Idempotent — safe to call from any onMount
-    // path.
+    // app instance. Modo Automático's detect/track/sweep work runs entirely in
+    // Rust now (`commands/automatic.rs`); these listeners just mirror its
+    // `automatic-phase` / `automatic-scan-complete` events into the sidebar UI.
+    // Idempotent — safe to call from any onMount path.
     initAutomaticListener();
 
     // Hydrate the global prefs store so the sidebar toggle and any other
@@ -252,23 +250,12 @@
     await hydratePrefs();
     automaticMode = $prefs?.automatic_mode ?? false;
 
-    // Startup scan when Modo Automático is on. The Rust scheduler also emits
-    // an immediate `automatic-scan-tick` from `restart_if_enabled`, but that fires
-    // during Tauri `setup()` — before this component mounts and installs the
-    // listener above — so it's almost always dropped (the emit is
-    // best-effort, no queue). Relying on it meant the app could open with the
-    // toggle on yet not scan/track/monitor anything until the next interval
-    // (hours later). Kicking the flow here makes the first scan reliable on
-    // every launch. `runAutomaticSetup` guards against re-entrancy, so if the
-    // Rust tick *was* caught this is a no-op.
-    //
-    // Gate on *either* session: a Hoard Cloud-only user (signed in via Gmail,
-    // no self-hosted server) has `$auth.user == null` but a `$cloud.account`,
-    // and the old `$auth.user`-only check meant the cloud user had to toggle
-    // Modo Automático off→on by hand on every launch to make it do anything.
-    if (automaticMode && ($auth.user || $cloud.account)) {
-      void runAutomaticSetup();
-    }
+    // No startup scan kicked from here anymore: Rust's `restart_if_enabled`
+    // (run during Tauri `setup()`) fires the first scan immediately when the
+    // toggle was left on, and the work runs headless regardless of whether the
+    // WebView is alive to catch the `automatic-phase` events. The listener
+    // above will pick up phases mid-flight and the resulting tracked saves are
+    // already in CliState by the time the user opens Library/Dashboard.
 
     // Subscribe to the live event firehose once. LiveStatus + ActivityFeed
     // read from the resulting stores; subscribing here (vs. in each
@@ -365,11 +352,10 @@
       automaticMode = updated.automatic_mode;
       if (automaticMode) {
         toastSuccess($_("automatic.toggled_on"));
-        // Fire the first scan immediately so the user doesn't wait the
-        // full interval to see the toggle do something. Subsequent runs
-        // (scan and the staggered backup sweep) are driven by the Rust
-        // scheduler via `automatic-scan-tick` / `automatic-backup-tick`.
-        void runAutomaticSetup();
+        // The Rust scheduler (`set_automatic_mode` → `automatic::start`) fires
+        // an immediate scan tick the moment we flip the pref on, so there's
+        // nothing to kick from here — the `automatic-phase` listener will show
+        // the progress and `automatic-scan-complete` will toast the result.
       } else {
         toastInfo($_("automatic.toggled_off"));
       }

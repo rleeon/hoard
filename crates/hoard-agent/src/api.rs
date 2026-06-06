@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use thiserror::Error;
 use time::OffsetDateTime;
@@ -61,7 +61,17 @@ fn extract_message(body: &str) -> String {
 #[derive(Debug, Clone)]
 pub struct ApiClient {
     base_url: String,
-    token: String,
+    /// Bearer token, shared+swappable across every clone of this client.
+    ///
+    /// Self-hosted bearer tokens are stable for the process lifetime, but a
+    /// Hoard Cloud session uses a short-lived Supabase JWT (~1h). The desktop's
+    /// long-lived agent holds a single `ApiClient` for the whole session, so a
+    /// frozen token would start answering 401 the moment the JWT expired —
+    /// which is exactly what made the auto-restore sweep spam "no se pudo
+    /// restaurar" once an hour in. Storing the token behind a shared `RwLock`
+    /// lets the desktop's token-refresh path push a fresh JWT into the running
+    /// agent's client via [`ApiClient::set_token`] without rebuilding it.
+    token: Arc<RwLock<String>>,
     http: Client,
     /// Lazily-probed `/v1/health` `mode` (`Some("cloud")` on the SaaS
     /// deployment, `None`/absent self-hosted). Cached behind an `Arc` so the
@@ -81,7 +91,7 @@ impl ApiClient {
             .build()?;
         Ok(Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
-            token: token.into(),
+            token: Arc::new(RwLock::new(token.into())),
             http,
             mode: Arc::new(OnceCell::new()),
         })
@@ -91,8 +101,23 @@ impl ApiClient {
         format!("{}{}", self.base_url, path)
     }
 
+    /// Swap in a fresh bearer token. Every clone of this client shares the same
+    /// token cell, so updating one updates them all — the mechanism the desktop
+    /// uses to keep the long-lived agent client's Supabase JWT current after a
+    /// refresh.
+    pub fn set_token(&self, token: impl Into<String>) {
+        if let Ok(mut guard) = self.token.write() {
+            *guard = token.into();
+        }
+    }
+
     fn auth_header(&self) -> String {
-        format!("Bearer {}", self.token)
+        let token = self
+            .token
+            .read()
+            .map(|t| t.clone())
+            .unwrap_or_default();
+        format!("Bearer {token}")
     }
 
     async fn ok_or_err(resp: reqwest::Response) -> Result<reqwest::Response, ApiError> {

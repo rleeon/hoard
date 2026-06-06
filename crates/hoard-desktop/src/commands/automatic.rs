@@ -4,20 +4,23 @@
 //! and start **two** independent Tokio tickers, because the work splits into a
 //! cheap half and an expensive half:
 //!
-//! * **Scan** (`automatic-scan-tick`, default every 5 min) — a metadata-only
-//!   disk walk that detects newly installed games and tracks the
-//!   high-confidence ones. No file bytes read; safe to run often.
-//! * **Backup sweep** (`automatic-backup-tick`, default every 1 h) — re-hashes
-//!   tracked saves to catch changes the fs-watcher missed. Reads file bytes,
-//!   so it's the costly half; the agent staggers the per-save work across an
-//!   effective window so disk use never bursts.
+//! * **Scan** (default every 5 min) — a metadata-only disk walk that detects
+//!   newly installed games and tracks the high-confidence ones, then boots the
+//!   agent so they're watched. No file bytes read; safe to run often.
+//! * **Backup sweep** (default every 1 h) — re-hashes tracked saves to catch
+//!   changes the fs-watcher missed. Reads file bytes, so it's the costly half;
+//!   the agent staggers the per-save work across an effective window so disk
+//!   use never bursts.
 //!
-//! Each tick emits its Tauri event; the frontend's `initAutomaticListener()`
-//! (in `lib/stores/automatic.ts`) reacts — scan-tick runs detection+tracking,
-//! backup-tick fires the staggered sweep. We keep the heavy lifting in the UI
-//! layer for the scan (it reads the catalog cache, dispatches toasts, boots the
-//! live agent through stores that don't exist on the Rust side); the sweep's
-//! staggering lives in the agent.
+//! **Both halves run entirely in Rust** ([`run_scan`] / [`run_backup_sweep`]).
+//! This used to live in the frontend (`automatic.ts` reacted to per-tick Tauri
+//! events), but that only worked while the WebView was alive — exactly *not*
+//! the case while the user is gaming with the window minimized to the tray
+//! (WebView2 suspends background windows). The symptom was "nothing got
+//! monitored no matter how long passed". Driving the work from the Tokio
+//! tickers keeps it running headless. The UI is now a pure observer: we emit
+//! `automatic-phase` (progress for the sidebar pulse) and
+//! `automatic-scan-complete` (so it can toast + refresh the library).
 //!
 //! Lifecycle:
 //! * `start(app, scan_secs, backup_secs)` aborts any previous handles and
@@ -34,11 +37,15 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use hoard_agent::detection::Confidence;
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::task::JoinHandle;
-use tokio::time::interval;
+use tokio::time::{interval, MissedTickBehavior};
 
 use hoard_agent::prefs::Prefs;
+
+use crate::state::AppState;
 
 /// Lower bounds so a hand-edited `prefs.json` can't spin a pathologically
 /// tight loop. The scan is cheap but still touches the disk; the sweep is
@@ -82,32 +89,151 @@ pub fn start(app: &AppHandle, scan_interval_secs: u64, backup_interval_secs: u64
         "automatic mode: starting scan + backup schedulers"
     );
 
-    let scan = spawn_ticker(app.clone(), "automatic-scan-tick", scan_secs);
-    let backup = spawn_ticker(app.clone(), "automatic-backup-tick", backup_secs);
+    let scan = spawn_worker(app.clone(), TickKind::Scan, scan_secs);
+    let backup = spawn_worker(app.clone(), TickKind::Backup, backup_secs);
 
     *scheduler.scan_handle.lock().unwrap() = Some(scan);
     *scheduler.backup_handle.lock().unwrap() = Some(backup);
 }
 
-/// Spawn one ticker task. Emits `event` immediately (so toggling on produces
-/// a visible effect right away), then drives a `tokio::time::interval`,
-/// consuming its built-in zero-delay first tick so subsequent emits land on
-/// full-period boundaries.
-fn spawn_ticker(app: AppHandle, event: &'static str, period_secs: u64) -> JoinHandle<()> {
+/// Which half of Modo Automático a worker task drives.
+#[derive(Clone, Copy)]
+enum TickKind {
+    Scan,
+    Backup,
+}
+
+/// Spawn one worker task. `tokio::time::interval`'s first tick is immediate, so
+/// the work runs right away (toggling on / saving an interval does something
+/// visible at once), then repeats every `period_secs`. We await the work
+/// *inline* on each tick and use `MissedTickBehavior::Delay` so a scan/sweep
+/// that runs long never re-fires back-to-back when it finishes.
+fn spawn_worker(app: AppHandle, kind: TickKind, period_secs: u64) -> JoinHandle<()> {
     let period = Duration::from_secs(period_secs);
     tokio::task::spawn(async move {
-        if let Err(e) = app.emit(event, ()) {
-            tracing::warn!(error = %e, event, "automatic mode: couldn't emit initial tick");
-        }
         let mut ticker = interval(period);
-        ticker.tick().await; // consume the immediate first tick (we just fired manually)
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
-            if let Err(e) = app.emit(event, ()) {
-                tracing::warn!(error = %e, event, "automatic mode: couldn't emit tick");
+            match kind {
+                TickKind::Scan => run_scan(&app).await,
+                TickKind::Backup => run_backup_sweep(&app).await,
             }
         }
     })
+}
+
+/// Shape of the `automatic-phase` event — mirrors the frontend's
+/// `AutomaticPhase` union so `automatic.ts` can drop it straight into
+/// `automaticState` to animate the sidebar.
+#[derive(Clone, Serialize)]
+struct PhasePayload {
+    kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    done: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total: Option<usize>,
+}
+
+/// Payload of `automatic-scan-complete` — the count of newly-tracked games so
+/// the UI can toast and refresh the library list.
+#[derive(Clone, Serialize)]
+struct ScanComplete {
+    tracked: usize,
+}
+
+fn emit_phase(app: &AppHandle, kind: &'static str, done: Option<usize>, total: Option<usize>) {
+    let _ = app.emit("automatic-phase", PhasePayload { kind, done, total });
+}
+
+/// Headless detection + auto-track pass — the Rust-native replacement for what
+/// the frontend's `runAutomaticSetup` used to do off `automatic-scan-tick`.
+/// Runs detection, tracks every newly-detected high-confidence game with a real
+/// save path, and boots the agent so those saves start being watched. Mirrors
+/// the old frontend filter (`confidence == High && !found_paths.is_empty() &&
+/// !already_tracked`). Errors are logged, never propagated — a background tick
+/// must not take the app down.
+pub async fn run_scan(app: &AppHandle) {
+    emit_phase(app, "detecting", None, None);
+
+    // `scan_library` runs detection, drops ignored slugs, and persists the
+    // cache — same as the user pressing "re-escanear".
+    let report = match crate::commands::library::scan_library(app.clone(), app.state()).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(error = %e, "automatic scan: detection failed");
+            emit_phase(app, "idle", None, None);
+            return;
+        }
+    };
+
+    let tracked = match crate::commands::library::list_tracked_saves(app.state()).await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!(error = %e, "automatic scan: couldn't list tracked saves");
+            emit_phase(app, "idle", None, None);
+            return;
+        }
+    };
+    let tracked_slugs: std::collections::HashSet<String> =
+        tracked.into_iter().map(|t| t.game_slug).collect();
+
+    let candidates: Vec<_> = report
+        .games
+        .into_iter()
+        .filter(|g| {
+            g.confidence == Confidence::High
+                && !g.found_paths.is_empty()
+                && !tracked_slugs.contains(&g.slug)
+        })
+        .collect();
+
+    let total = candidates.len();
+    let mut tracked_count = 0usize;
+    for (i, game) in candidates.into_iter().enumerate() {
+        emit_phase(app, "tracking", Some(i), Some(total));
+        let args = crate::commands::library::AddGameArgs {
+            game_slug: game.slug.clone(),
+            label: None,
+            local_path: game.found_paths[0].to_string_lossy().into_owned(),
+            display_name: Some(game.display_name),
+            steam_app_id: game.steam_app_id.map(|v| v as i64),
+        };
+        // Don't abort the batch over one game — a single 422/409 on an old
+        // server shouldn't stop the other nine from being tracked.
+        match crate::commands::library::add_game_to_tracking(args, app.state()).await {
+            Ok(_) => tracked_count += 1,
+            Err(e) => {
+                tracing::warn!(slug = %game.slug, error = %e, "automatic scan: couldn't track game")
+            }
+        }
+    }
+
+    // Boot the agent (no-op if already running) so newly-tracked saves get
+    // watched immediately — and so a user who left games tracked from a prior
+    // session gets them re-armed even when nothing new was found.
+    emit_phase(app, "starting_agent", None, None);
+    if let Err(e) = crate::commands::agent::start_agent(app.clone(), app.state()).await {
+        tracing::warn!(error = %e, "automatic scan: couldn't boot agent");
+    }
+
+    emit_phase(app, "idle", None, None);
+    let _ = app.emit(
+        "automatic-scan-complete",
+        ScanComplete {
+            tracked: tracked_count,
+        },
+    );
+    tracing::info!(tracked = tracked_count, "automatic scan: done");
+}
+
+/// Headless backup sweep — re-hashes every tracked save through the agent's
+/// staggered window. Replaces the frontend's `runBackupSweep`. No-op (not an
+/// error) when the agent isn't running; the next scan boots it.
+pub async fn run_backup_sweep(app: &AppHandle) {
+    if let Err(e) = crate::commands::agent::sweep_backups(app.state::<AppState>()).await {
+        tracing::warn!(error = %e, "automatic backup sweep failed");
+    }
 }
 
 /// Abort both running schedulers, if any. No-op when nothing is scheduled —

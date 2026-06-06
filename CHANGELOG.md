@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.1] — 2026-06-06
+
+### Fixed
+- **Modo Automático ahora monitoriza de verdad con la ventana minimizada.** El
+  bucle periódico de detectar+trackear+barrer vivía en el frontend, así que solo
+  corría con el WebView vivo; al minimizar a la bandeja mientras juegas, WebView2
+  suspende la ventana y todo se paraba ("da igual cuánto tiempo pase, no hace
+  nada"). Los juegos recién instalados (p. ej. Stellaris) nunca se auto-trackeaban.
+  Ese trabajo se movió **entero a Rust** (`run_scan` / `run_backup_sweep` sobre las
+  tickers de Tokio): corre headless. El UI pasa a ser observador (`automatic-phase`
+  para la animación, `automatic-scan-complete` para el toast solo si hay novedades).
+- **401 en auto-restore/backup cloud tras ~1 h de sesión.** El cliente del agente
+  congelaba el JWT de Supabase al arrancar; al caducar fallaba cada tick ("no se
+  pudo restaurar …"). El token pasa a ser una celda compartida (`Arc<RwLock>`) y el
+  refresco de cloud-pull lo inyecta en el cliente del agente vivo.
+
 ## [2.0.0] — 2026-06-06
 
 ### Added
