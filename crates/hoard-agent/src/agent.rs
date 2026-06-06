@@ -281,6 +281,15 @@ enum AgentCommand {
     /// sweep so any tracked save with an empty local folder gets restored
     /// right away.
     SetAutoRestore(bool),
+    /// DETECCIÓN (fase 3, ADR 0020): lista de carpetas candidatas detectadas
+    /// pero AÚN NO rastreadas, que el escaneo del desktop quiere "sondear".
+    /// El agente las vigila por mtime en cada tick de proceso: si una se
+    /// reescribe mientras un juego está vivo, registra la correlación
+    /// proceso↔escritura — la misma señal +0.50 que hoy sólo obtenían los
+    /// saves ya rastreados. Rompe el huevo-y-gallina: jugar un juego no
+    /// rastreado deja por fin rastro, y el siguiente escaneo lo asciende a
+    /// `High` y lo auto-rastrea. Reemplaza el set entero en cada llamada.
+    SetProbeCandidates(Vec<PathBuf>),
     QueryStatus(oneshot::Sender<Vec<AgentSlotStatus>>),
     Shutdown,
 }
@@ -345,6 +354,14 @@ impl AgentHandle {
     /// for the next fs event / process tick).
     pub async fn set_auto_restore(&self, enabled: bool) -> Result<()> {
         self.tx.send(AgentCommand::SetAutoRestore(enabled)).await?;
+        Ok(())
+    }
+
+    /// Hand the agent the latest set of untracked candidate folders to probe
+    /// for process↔write correlation (ADR 0020 fase 3). The desktop calls
+    /// this after each automatic scan with the detected-but-untracked dirs.
+    pub async fn set_probe_candidates(&self, dirs: Vec<PathBuf>) -> Result<()> {
+        self.tx.send(AgentCommand::SetProbeCandidates(dirs)).await?;
         Ok(())
     }
 }
@@ -486,6 +503,14 @@ async fn run_agent(
         .map(crate::correlation::CorrelationStore::load)
         .unwrap_or_default();
 
+    // DETECCIÓN (fase 3, ADR 0020): sonda de candidatos no-rastreados. Mapea
+    // cada carpeta candidata → su última mtime-máxima observada. Cuando una
+    // sube (escritura nueva) y hay un juego vivo, registra la correlación. El
+    // baseline `None` se siembra en el primer tick sin registrar nada (así no
+    // confundimos un fichero pre-existente reciente con una escritura recién
+    // observada).
+    let mut probes: HashMap<PathBuf, Option<std::time::SystemTime>> = HashMap::new();
+
     tracing::info!(
         debounce_secs = config.debounce_secs,
         poll_secs = config.poll_secs,
@@ -546,6 +571,20 @@ async fn run_agent(
                                 &mut slots, &api, &events_tx, &cmd_tx, &config,
                             );
                         }
+                    }
+                    Some(AgentCommand::SetProbeCandidates(dirs)) => {
+                        // Reemplaza el set conservando los baselines de los que
+                        // siguen; los nuevos arrancan en `None` (se siembran en
+                        // el próximo tick). Drop de los que ya no son candidatos
+                        // (se rastrearon o dejaron de detectarse).
+                        let mut next: HashMap<PathBuf, Option<std::time::SystemTime>> =
+                            HashMap::with_capacity(dirs.len());
+                        for d in dirs {
+                            let baseline = probes.get(&d).copied().flatten();
+                            next.insert(d, baseline);
+                        }
+                        tracing::debug!(count = next.len(), "agent: probe candidates updated");
+                        probes = next;
                     }
                     Some(AgentCommand::RemoveSave(id)) => {
                         if let Some(slot) = slots.remove(&id) {
@@ -696,6 +735,16 @@ async fn run_agent(
                     sweep_for_auto_restore(
                         &mut slots, &api, &events_tx, &cmd_tx, &config,
                     );
+                }
+
+                // DETECCIÓN (fase 3, ADR 0020): sonda de candidatos. `sys` ya
+                // viene refrescado por `process_poll`. Para cada candidato no
+                // rastreado, si su carpeta se reescribió desde el último tick
+                // y hay un juego vivo, registra la correlación. Esto es lo que
+                // rompe el huevo-y-gallina: el siguiente escaneo verá el bonus
+                // +0.50 y ascenderá el candidato a `High`.
+                if !probes.is_empty() {
+                    probe_candidates(&mut probes, &sys, &mut corr_store, corr_path.as_deref());
                 }
             }
 
@@ -1102,6 +1151,84 @@ fn is_path_recently_touched(path: &Path, grace: Duration) -> bool {
     match std::time::SystemTime::now().duration_since(mtime) {
         Ok(age) => age < grace,
         Err(_) => false,
+    }
+}
+
+/// Mayor mtime entre la propia carpeta y sus ficheros inmediatos (no
+/// recursivo — barato y suficiente: un save que se escribe deja un fichero
+/// nuevo/tocado en el primer nivel, p.ej. el `.zip` de Factorio en `saves/`).
+/// `None` si la carpeta no se puede leer.
+fn dir_max_mtime(dir: &Path) -> Option<std::time::SystemTime> {
+    let mut max = std::fs::metadata(dir).ok().and_then(|m| m.modified().ok());
+    if let Ok(read) = std::fs::read_dir(dir) {
+        for entry in read.flatten() {
+            if let Ok(m) = entry.metadata() {
+                if let Ok(t) = m.modified() {
+                    max = Some(match max {
+                        Some(cur) if cur >= t => cur,
+                        _ => t,
+                    });
+                }
+            }
+        }
+    }
+    max
+}
+
+/// Recorre las carpetas candidatas sondeadas, actualiza sus baselines de
+/// mtime y devuelve aquellas reescritas desde el último tick. El baseline
+/// `None` (primer avistamiento) sólo se siembra, sin reportar — evita
+/// atribuir un fichero pre-existente reciente a una escritura no presenciada.
+/// Pura (sin I/O de procesos ni persistencia) para poder testearla.
+fn probe_detect_writes(
+    probes: &mut HashMap<PathBuf, Option<std::time::SystemTime>>,
+) -> Vec<PathBuf> {
+    let mut written = Vec::new();
+    for (dir, baseline) in probes.iter_mut() {
+        let Some(current) = dir_max_mtime(dir) else {
+            continue;
+        };
+        let is_write = matches!(*baseline, Some(prev) if current > prev);
+        *baseline = Some(current);
+        if is_write {
+            written.push(dir.clone());
+        }
+    }
+    written
+}
+
+/// DETECCIÓN (fase 3, ADR 0020): sondea los candidatos y, para los reescritos
+/// desde el último tick, si hay un juego vivo registra la correlación
+/// proceso↔escritura y persiste el store. Es lo que rompe el huevo-y-gallina:
+/// jugar un juego no rastreado deja por fin el rastro +0.50 que el siguiente
+/// escaneo necesita para ascenderlo a `High`.
+fn probe_candidates(
+    probes: &mut HashMap<PathBuf, Option<std::time::SystemTime>>,
+    sys: &System,
+    corr_store: &mut crate::correlation::CorrelationStore,
+    corr_path: Option<&Path>,
+) {
+    let written = probe_detect_writes(probes);
+    if written.is_empty() {
+        return;
+    }
+    // Sólo muestreamos procesos cuando de verdad hubo una escritura (perezoso).
+    let games = crate::correlation::sample_game_processes(sys);
+    if games.is_empty() {
+        return;
+    }
+    for dir in &written {
+        tracing::info!(
+            dir = %dir.display(),
+            process = %games[0].name,
+            "agent: probe write correlated to live game; recording"
+        );
+        corr_store.record(dir, &games);
+    }
+    if let Some(p) = corr_path {
+        if let Err(e) = corr_store.save(p) {
+            tracing::debug!(error = %e, "agent: failed to persist correlation store (probe)");
+        }
     }
 }
 
@@ -2174,6 +2301,33 @@ mod tests {
         assert!(c.debounce_secs <= 120, "too sleepy");
         assert!(c.poll_secs >= 1);
         assert!(c.max_retries >= 1);
+    }
+
+    #[test]
+    fn probe_seeds_baseline_then_reports_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let cand = dir.path().to_path_buf();
+        std::fs::write(cand.join("save1.zip"), b"a").unwrap();
+
+        let mut probes: HashMap<PathBuf, Option<std::time::SystemTime>> = HashMap::new();
+        probes.insert(cand.clone(), None);
+
+        // Primer tick: sólo siembra el baseline, no reporta nada.
+        assert!(probe_detect_writes(&mut probes).is_empty());
+        assert!(probes[&cand].is_some());
+
+        // Una escritura posterior (mtime mayor) sí se reporta.
+        let later = std::time::SystemTime::now() + Duration::from_secs(120);
+        filetime::set_file_mtime(
+            cand.join("save1.zip"),
+            filetime::FileTime::from_system_time(later),
+        )
+        .unwrap();
+        let written = probe_detect_writes(&mut probes);
+        assert_eq!(written, vec![cand.clone()]);
+
+        // Sin nuevos cambios: silencio.
+        assert!(probe_detect_writes(&mut probes).is_empty());
     }
 
     #[test]

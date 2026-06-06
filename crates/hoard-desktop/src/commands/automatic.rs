@@ -178,15 +178,26 @@ pub async fn run_scan(app: &AppHandle) {
     let tracked_slugs: std::collections::HashSet<String> =
         tracked.into_iter().map(|t| t.game_slug).collect();
 
-    let candidates: Vec<_> = report
-        .games
-        .into_iter()
-        .filter(|g| {
-            g.confidence == Confidence::High
-                && !g.found_paths.is_empty()
-                && !tracked_slugs.contains(&g.slug)
-        })
-        .collect();
+    // One pass over the detected games splits them in two:
+    // * `candidates` — High-confidence + untracked + with a real path: these
+    //   get auto-tracked right now (same filter as the old frontend).
+    // * `probe_dirs` — untracked candidates that DIDN'T reach High (Medium /
+    //   Low). They can't be auto-tracked yet, but their save folders are fed
+    //   to the agent to probe for process↔write correlation (ADR 0020 fase 3).
+    //   Playing one of them leaves a +0.50 trail so the next scan promotes it
+    //   to High and auto-tracks it — the fix for the detection chicken-and-egg.
+    let mut candidates = Vec::new();
+    let mut probe_dirs: Vec<std::path::PathBuf> = Vec::new();
+    for g in report.games {
+        if tracked_slugs.contains(&g.slug) || g.found_paths.is_empty() {
+            continue;
+        }
+        if g.confidence == Confidence::High {
+            candidates.push(g);
+        } else {
+            probe_dirs.extend(g.found_paths.iter().cloned());
+        }
+    }
 
     let total = candidates.len();
     let mut tracked_count = 0usize;
@@ -215,6 +226,18 @@ pub async fn run_scan(app: &AppHandle) {
     emit_phase(app, "starting_agent", None, None);
     if let Err(e) = crate::commands::agent::start_agent(app.clone(), app.state()).await {
         tracing::warn!(error = %e, "automatic scan: couldn't boot agent");
+    }
+
+    // Hand the (now-running) agent the untracked candidates to probe for
+    // process↔write correlation. Empty list is fine — it just clears the set.
+    let handle = app.state::<AppState>().agent.lock().unwrap().clone();
+    if let Some(h) = handle {
+        let n = probe_dirs.len();
+        if let Err(e) = h.set_probe_candidates(probe_dirs).await {
+            tracing::warn!(error = %e, "automatic scan: couldn't set probe candidates");
+        } else {
+            tracing::debug!(count = n, "automatic scan: probe candidates sent to agent");
+        }
     }
 
     emit_phase(app, "idle", None, None);

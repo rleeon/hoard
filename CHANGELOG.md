@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.2] — 2026-06-06
+
+### Added
+- **Detección de saves dentro de comprimidos.** Muchos juegos guardan la partida
+  como un `.zip` (Factorio y varios indies), que antes no puntuaba como save. El
+  escáner abre ahora el **índice** del comprimido (sin descomprimir, barato aun en
+  archivos grandes) y, si dentro hay contenido save-like (extensión fuerte/débil o
+  nombres delatores tipo `level.dat`/`control.lua`), suma la misma señal que una
+  extensión de save fuerte. No puntúa por ser comprimido, sino por lo que hay dentro.
+- **Sonda de correlación para juegos no rastreados (rompe el huevo-y-gallina).**
+  La señal de correlación proceso↔escritura (+0.50, la que asciende un candidato a
+  ALTA) solo se grababa para carpetas YA rastreadas, así que jugar un juego sin
+  rastrear nunca dejaba rastro y se quedaba en MEDIA para siempre. Ahora el escaneo
+  pasa al agente las carpetas candidatas no rastreadas; el agente las vigila por
+  mtime en cada tick y, si una se reescribe mientras un proceso de juego está vivo,
+  registra la correlación. El siguiente escaneo asciende el candidato a ALTA y lo
+  auto-rastrea.
+
+### Fixed
+- **El actualizador ya no instala una versión obsoleta.** Al confirmar "Sí" se
+  re-consulta la última release de GitHub; si apareció una más nueva durante la
+  espera, se cancela la operación y se vuelve a ofrecer la nueva en vez de instalar
+  la anterior.
+
 ## [2.0.1] — 2026-06-06
 
 ### Fixed

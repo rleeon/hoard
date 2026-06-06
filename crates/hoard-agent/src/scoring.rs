@@ -80,6 +80,56 @@ const EXT_WEAK: &[&str] = &["dat", "bin", "profile"];
 const EXT_NOISY: &[&str] = &["json", "xml", "ini", "cfg"];
 /// Imágenes: una carpeta sólo-imágenes es screenshots, no un save.
 const EXT_IMAGE: &[&str] = &["png", "jpg", "jpeg", "bmp", "gif", "webp"];
+/// Comprimidos: muchos juegos guardan la partida dentro de un `.zip`
+/// (Factorio, varios indies). NO puntúan por ser comprimidos — se abre el
+/// índice (sin descomprimir) y se puntúa lo que hay DENTRO
+/// (`archive_looks_like_save`).
+const EXT_ARCHIVE: &[&str] = &["zip"];
+
+/// Nombres de entrada que delatan un save dentro de un comprimido,
+/// independientes de la extensión (Factorio: `level.dat`, `control.lua`...).
+const ARCHIVE_SAVE_MARKERS: &[&str] = &[
+    "level.dat",
+    "level-init.dat",
+    "control.lua",
+    "blueprint-storage.dat",
+    "gamestate",
+    "savegame",
+    "save.dat",
+    "player.dat",
+    "world.dat",
+];
+
+/// Abre un comprimido y mira su ÍNDICE (sin descomprimir) buscando contenido
+/// save-like: una entrada con extensión fuerte/débil de save, o un nombre
+/// marcador. Devuelve `true` al primer indicio. Acotado a las primeras
+/// entradas para no penalizar archivos enormes; leer el directorio central no
+/// inflа bytes, así que es barato aun en `.zip` grandes.
+fn archive_looks_like_save(path: &Path) -> bool {
+    let Ok(file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let Ok(mut zip) = zip::ZipArchive::new(file) else {
+        return false;
+    };
+    let limit = zip.len().min(512);
+    for i in 0..limit {
+        let Ok(entry) = zip.by_index_raw(i) else {
+            continue;
+        };
+        let name = entry.name().to_ascii_lowercase();
+        let leaf = name.rsplit(['/', '\\']).next().unwrap_or(name.as_str());
+        if ARCHIVE_SAVE_MARKERS.contains(&leaf) {
+            return true;
+        }
+        if let Some((_, ext)) = leaf.rsplit_once('.') {
+            if EXT_STRONG.contains(&ext) || EXT_WEAK.contains(&ext) {
+                return true;
+            }
+        }
+    }
+    false
+}
 
 /// Desglose del score de un directorio candidato: el número y la lista de
 /// razones que lo justifican (se reenvía al panel de diagnóstico).
@@ -97,6 +147,8 @@ struct DirContent {
     weak: usize,
     noisy: usize,
     image: usize,
+    /// Comprimidos cuyo índice contiene contenido save-like.
+    archive_save: usize,
 }
 
 fn scan_content(dir: &Path) -> DirContent {
@@ -122,6 +174,9 @@ fn scan_content(dir: &Path) -> DirContent {
             Some(e) if EXT_WEAK.contains(&e) => c.weak += 1,
             Some(e) if EXT_NOISY.contains(&e) => c.noisy += 1,
             Some(e) if EXT_IMAGE.contains(&e) => c.image += 1,
+            Some(e) if EXT_ARCHIVE.contains(&e) && archive_looks_like_save(&path) => {
+                c.archive_save += 1
+            }
             _ => {}
         }
     }
@@ -173,6 +228,11 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
     if content.strong > 0 {
         score += 0.30;
         reasons.push("strong save ext".into());
+    } else if content.archive_save > 0 {
+        // Save dentro de un comprimido (Factorio y cía): el índice del .zip
+        // delata contenido save-like. Mismo peso que la extensión fuerte.
+        score += 0.30;
+        reasons.push("save-like archive content".into());
     } else if content.weak > 0 && has_signal {
         score += 0.08;
         reasons.push("weak ext + other signal".into());
@@ -222,6 +282,54 @@ pub fn name_recognised(name: &str) -> bool {
             .iter()
             .any(|v| v.len() >= 4 && lower.contains(v))
         || crate::detection::name_matches_slot_profile_user(name)
+}
+
+#[cfg(test)]
+mod archive_tests {
+    use super::*;
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+
+    /// Escribe un `.zip` (método Stored, sin codec) con las entradas dadas.
+    fn write_zip(path: &Path, entries: &[&str]) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        for name in entries {
+            zip.start_file(*name, opts).unwrap();
+            zip.write_all(b"x").unwrap();
+        }
+        zip.finish().unwrap();
+    }
+
+    #[test]
+    fn factorio_zip_save_scores_high() {
+        let dir = tempfile::tempdir().unwrap();
+        // Réplica del interior de un save de Factorio.
+        write_zip(
+            &dir.path().join("my-world.zip"),
+            &["my-world/level.dat", "my-world/control.lua"],
+        );
+        let b = score_dir(dir.path(), "saves");
+        assert!(
+            b.reasons.iter().any(|r| r.contains("archive")),
+            "expected archive signal, got {:?}",
+            b.reasons
+        );
+        assert!(b.score >= SCORE_CONFIRMED, "score {} too low", b.score);
+    }
+
+    #[test]
+    fn random_zip_does_not_score() {
+        let dir = tempfile::tempdir().unwrap();
+        write_zip(
+            &dir.path().join("photos.zip"),
+            &["photos/img1.png", "photos/readme.txt"],
+        );
+        // Carpeta sin nombre-save: un zip de fotos no debe puntuar como save.
+        let b = score_dir(dir.path(), "downloads");
+        assert!(b.score < SCORE_POSSIBLE, "score {} too high", b.score);
+    }
 }
 
 #[cfg(test)]

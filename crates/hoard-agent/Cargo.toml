@@ -39,6 +39,14 @@ notify-debouncer-mini = { workspace = true }
 # diff (`agent::local_mtime_wins`), so cloud pulls looked "newer" forever.
 filetime = "0.2"
 
+# Lectura del ÍNDICE de comprimidos (sin descomprimir) para puntuar saves
+# que viven dentro de un .zip (Factorio y varios indies). `default-features
+# = false`: sólo leemos el directorio central (nombres de entrada), nunca
+# inflamos contenido, así que no hace falta arrastrar codecs (deflate, zstd,
+# bzip2...). Único consumidor: `scoring::archive_looks_like_save`, así que
+# se queda fuera de `[workspace.dependencies]`.
+zip = { version = "2", default-features = false }
+
 # OS-native credential storage. Linux uses libsecret via sync-secret-service
 # (no async runtime in the way), Windows uses Credential Manager, macOS uses
 # the Keychain. When none of these are available the desktop client falls
