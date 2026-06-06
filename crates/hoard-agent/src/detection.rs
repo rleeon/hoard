@@ -90,6 +90,15 @@ pub struct DetectedGame {
     /// Empty for Steam-only matches where no save folder has been created yet.
     pub found_paths: Vec<PathBuf>,
     pub confidence: Confidence,
+    /// Per-path confidence, aligned 1:1 with [`found_paths`] and sorted
+    /// strongest-first alongside it. Lets the UI show a distinct grade per
+    /// save folder (e.g. the real `~/Saved Games/.../saves` as `High` vs an
+    /// almost-empty Steam-Cloud stub as `Low`) and lets automatic tracking
+    /// pick the **best** path instead of whichever source happened to be
+    /// pushed first. `confidence` above stays the rolled-up max. `default`
+    /// keeps older cached reports loading without migration.
+    #[serde(default)]
+    pub path_confidences: Vec<Confidence>,
     pub source: DetectionSource,
     /// If we matched via Steam, the app id is preserved so the UI can show it.
     pub steam_app_id: Option<u64>,
@@ -256,6 +265,7 @@ where
                 // UI's track() falls back to the folder picker when this is
                 // empty, instead of silently backing up the install dir.
                 found_paths: Vec::new(),
+                path_confidences: Vec::new(),
                 confidence: Confidence::Medium,
                 source: DetectionSource::SteamLibrary,
                 steam_app_id: Some(app.app_id),
@@ -354,7 +364,7 @@ where
     for t in tasks {
         match t.await {
             Ok(Some((slug, display_name, hits))) => {
-                merge_fs_hit(&mut by_slug, slug, display_name, hits);
+                merge_fs_hit_graded(&mut by_slug, slug, display_name, hits, &corr_store);
             }
             Ok(None) => {}
             Err(e) => {
@@ -529,7 +539,10 @@ where
                 Ok(found) => {
                     for (slug, display_name, hits) in found {
                         generic_hits += 1;
-                        merge_fs_hit(&mut by_slug, slug, display_name, hits);
+                        // Grade the hit's contents so a verified save-like
+                        // archive (Factorio's zipped saves) corroborates `High`
+                        // instead of being stuck at the `Medium` floor.
+                        merge_fs_hit_graded(&mut by_slug, slug, display_name, hits, &corr_store);
                     }
                 }
                 Err(e) => tracing::warn!(error = %e, "generic-prefix scan task panicked"),
@@ -682,6 +695,7 @@ where
                             slug: a.slug,
                             display_name: a.display_name,
                             found_paths: vec![a.path],
+                            path_confidences: vec![a.confidence],
                             confidence: a.confidence,
                             source: DetectionSource::FilesystemHeuristic,
                             steam_app_id: None,
@@ -704,6 +718,15 @@ where
     // Apply user overrides last so they always win, regardless of how strong
     // a heuristic signal the upstream pipeline produced.
     apply_manual_overrides(&state.manual_paths, &mut by_slug);
+
+    // Grade + rank each game's save paths individually. Different sources can
+    // hand the same game wildly different folders — a real `~/Saved Games`
+    // tree full of saves next to an almost-empty Steam-Cloud stub — and until
+    // now they were merged in arbitrary order, so `found_paths[0]` (what
+    // automatic tracking backs up) could be the junk one. Re-score every path
+    // and sort strongest-first, keeping `path_confidences` aligned, so the UI
+    // can show a grade per folder and auto-track picks the best.
+    grade_and_rank_paths(&mut by_slug, &corr_store);
 
     progress(total_tasks, total_tasks);
 
@@ -788,6 +811,7 @@ fn apply_steam_name_fallback(
                 slug: entry.slug.clone(),
                 display_name: entry.display_name.clone(),
                 found_paths: Vec::new(),
+                path_confidences: Vec::new(),
                 confidence: Confidence::Low,
                 source: DetectionSource::SteamLibrary,
                 steam_app_id: Some(app.app_id),
@@ -887,6 +911,7 @@ fn apply_launcher_name_fallback(
                         slug: entry.slug.clone(),
                         display_name: entry.display_name.clone(),
                         found_paths: Vec::new(),
+                        path_confidences: Vec::new(),
                         confidence: Confidence::Low,
                         source: DetectionSource::SteamLibrary,
                         steam_app_id: None,
@@ -999,12 +1024,45 @@ fn merge_fs_hit(
                     slug,
                     display_name,
                     found_paths: hits,
+                    path_confidences: Vec::new(),
                     confidence: Confidence::Medium,
                     source: DetectionSource::FilesystemHeuristic,
                     steam_app_id: None,
                     install_dir: None,
                 },
             );
+        }
+    }
+}
+
+/// Merge a filesystem hit, then upgrade the slug to `High` if any hit's content
+/// grades `High`. `merge_fs_hit` floors a *new* slug at `Medium` and never runs
+/// the scorer; the catalog-template and generic-prefix scans point straight at
+/// a save dir, so without this they'd cap at `Medium` even when the content is
+/// direct evidence (verified archive index, or a rotating ≥3 strong-ext save
+/// set like openttd's `autosave/`). Only ever upgrades — a weak score keeps the
+/// `Medium` floor, never downgrades. A slug already present (e.g. Steam
+/// cross-ref) is left to `merge_fs_hit`'s Both/High promotion.
+fn merge_fs_hit_graded(
+    by_slug: &mut HashMap<String, DetectedGame>,
+    slug: String,
+    display_name: String,
+    hits: Vec<PathBuf>,
+    corr_store: &CorrelationStore,
+) {
+    let graded = hits
+        .iter()
+        .filter_map(|h| {
+            let name = h.file_name()?.to_string_lossy().into_owned();
+            classify_dir_as_save_like(h, &name, corr_store)
+        })
+        .map(|d| d.confidence)
+        .max_by_key(|c| confidence_rank(*c));
+    let existed = by_slug.contains_key(&slug);
+    merge_fs_hit(by_slug, slug.clone(), display_name, hits);
+    if !existed && graded == Some(Confidence::High) {
+        if let Some(g) = by_slug.get_mut(&slug) {
+            g.confidence = Confidence::High;
         }
     }
 }
@@ -1131,6 +1189,7 @@ fn apply_manual_overrides(
                     slug: entry.slug.clone(),
                     display_name: entry.display_name.clone(),
                     found_paths: vec![path.clone()],
+                    path_confidences: vec![Confidence::High],
                     confidence: Confidence::High,
                     source: DetectionSource::ManualOverride,
                     steam_app_id: entry.steam_app_id,
@@ -1892,6 +1951,55 @@ fn is_internal_or_trash(path: &Path) -> bool {
     })
 }
 
+/// Grade a single save folder with the same multi-signal scoring the
+/// discovery walk uses, but never drop it: an already-attributed catalog/Steam
+/// path stays in the list even when it scores low (it's a real candidate, just
+/// weak evidence — a near-empty Steam-Cloud stub *should* read `Low`).
+fn grade_path(path: &Path, store: &CorrelationStore) -> Confidence {
+    let name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    classify_dir_as_save_like(path, name, store)
+        .map(|d| d.confidence)
+        .unwrap_or(Confidence::Low)
+}
+
+/// Re-score every game's `found_paths`, sort them strongest-first, and fill
+/// `path_confidences` aligned 1:1. Single-path games skip the extra I/O and
+/// just inherit the game's rolled-up confidence. Manual-override rows are left
+/// untouched (the user's pick is authoritative and already `High`).
+fn grade_and_rank_paths(
+    by_slug: &mut std::collections::HashMap<String, DetectedGame>,
+    store: &CorrelationStore,
+) {
+    for g in by_slug.values_mut() {
+        if g.found_paths.is_empty() {
+            g.path_confidences.clear();
+            continue;
+        }
+        if matches!(g.source, DetectionSource::ManualOverride) || g.found_paths.len() == 1 {
+            // Trust the existing grade; just make the parallel vec match.
+            g.path_confidences = vec![g.confidence; g.found_paths.len()];
+            continue;
+        }
+        let mut graded: Vec<(PathBuf, Confidence)> = g
+            .found_paths
+            .iter()
+            .map(|p| (p.clone(), grade_path(p, store)))
+            .collect();
+        // Strongest first; stable so equal grades keep discovery order.
+        graded.sort_by(|a, b| confidence_rank(b.1).cmp(&confidence_rank(a.1)));
+        g.confidence = graded
+            .iter()
+            .map(|(_, c)| *c)
+            .max_by_key(|c| confidence_rank(*c))
+            .unwrap_or(g.confidence);
+        g.found_paths = graded.iter().map(|(p, _)| p.clone()).collect();
+        g.path_confidences = graded.into_iter().map(|(_, c)| c).collect();
+    }
+}
+
 /// If a dir's name + contents look save-like, return a
 /// [`DiscoveredSavePath`] graded by [`scoring::score_dir`] (fase 1, ADR
 /// 0020). Below `SCORE_POSSIBLE` (0.35) the dir is dropped; `≥ SCORE_CONFIRMED`
@@ -2043,6 +2151,7 @@ mod tests {
                 slug: "x".into(),
                 display_name: "X".into(),
                 found_paths: Vec::new(),
+                path_confidences: Vec::new(),
                 confidence: Confidence::Medium,
                 source: DetectionSource::SteamLibrary,
                 steam_app_id: Some(42),
@@ -2201,6 +2310,7 @@ mod tests {
                 slug: "test-game".into(),
                 display_name: "Test Game".into(),
                 found_paths: Vec::new(),
+                path_confidences: Vec::new(),
                 confidence: Confidence::Medium,
                 source: DetectionSource::SteamLibrary,
                 steam_app_id: Some(999),
@@ -2296,6 +2406,7 @@ mod tests {
                 slug: "stellaris".into(),
                 display_name: "Stellaris".into(),
                 found_paths: vec![PathBuf::from("/wrong/path")],
+                path_confidences: vec![Confidence::Medium],
                 confidence: Confidence::Medium,
                 source: DetectionSource::FilesystemHeuristic,
                 steam_app_id: Some(281990),

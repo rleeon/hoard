@@ -35,6 +35,10 @@ fn root_templates(os: Os) -> &'static [&'static str] {
             "<xdgConfig>", // ~/.config
             "<home>/.local/state",
             "<home>/Documents",
+            // Juegos nativos (no-Proton) que escriben en el "Saved Games" estilo
+            // Windows dentro del HOME (Unity/Unreal multiplataforma, varios
+            // indies). Sin esto, sólo se miraba dentro de prefijos Wine.
+            "<home>/Saved Games",
         ],
         Os::Mac => &["<macAppSupport>", "<macPreferences>", "<home>/Documents"],
     }

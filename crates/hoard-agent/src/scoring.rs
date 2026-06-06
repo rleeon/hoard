@@ -12,6 +12,7 @@
 //! aparte (inglés, match exacto) para la refinación de rutas de catálogo.
 
 use std::path::Path;
+use std::time::SystemTime;
 
 /// Cutoffs del ADR 0020 §2.
 ///
@@ -86,6 +87,33 @@ const EXT_IMAGE: &[&str] = &["png", "jpg", "jpeg", "bmp", "gif", "webp"];
 /// (`archive_looks_like_save`).
 const EXT_ARCHIVE: &[&str] = &["zip"];
 
+/// `true` si la extensión cae en alguna categoría conocida (fuerte/débil/
+/// ruidosa/imagen/comprimido). Lo que NO encaja aquí es una extensión
+/// "desconocida" — candidata al heurístico del conjunto homogéneo.
+fn is_known_ext(e: &str) -> bool {
+    EXT_STRONG.contains(&e)
+        || EXT_WEAK.contains(&e)
+        || EXT_NOISY.contains(&e)
+        || EXT_IMAGE.contains(&e)
+        || EXT_ARCHIVE.contains(&e)
+}
+
+/// `true` si `path` fue modificado dentro de la ventana de recencia de saves
+/// (la misma del pipeline, 180 días). Conservador ante errores de metadata:
+/// si no se puede leer la mtime, cuenta como no-reciente.
+fn file_is_recent(path: &Path) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    let Ok(modified) = meta.modified() else {
+        return false;
+    };
+    match SystemTime::now().duration_since(modified) {
+        Ok(age) => age <= crate::detection::RECENT_SAVE_FILE_WINDOW,
+        Err(_) => true, // mtime en el futuro: trátalo como reciente.
+    }
+}
+
 /// Nombres de entrada que delatan un save dentro de un comprimido,
 /// independientes de la extensión (Factorio: `level.dat`, `control.lua`...).
 const ARCHIVE_SAVE_MARKERS: &[&str] = &[
@@ -137,15 +165,30 @@ fn archive_looks_like_save(path: &Path) -> bool {
 pub struct ScoreBreakdown {
     pub score: f32,
     pub reasons: Vec<String>,
-    /// `true` si abrimos un comprimido y su índice delata un save dentro
-    /// (`level.dat`, `control.lua`, extensión save...). No es una suposición
-    /// por nombre: leímos el contenido del archivo. Cuenta como corroboración
-    /// para conceder `High` igual que Steam o la correlación de proceso (ADR
-    /// 0020), sin necesidad de una sesión de juego observada. Se limita a
-    /// comprimidos (señal deliberada y cara) — los `.sav` sueltos mantienen el
-    /// comportamiento conservador (tope en `Medium` sin correlación).
+    /// `true` cuando el contenido del directorio es evidencia directa de save,
+    /// no una suposición por nombre. Dos fuentes: (a) un comprimido cuyo índice
+    /// delata un save dentro (`level.dat`, `control.lua`, extensión save…), o
+    /// (b) un conjunto rotatorio de ≥3 saves de extensión fuerte (aquí o en una
+    /// subcarpeta tipo `autosave/`). Cuenta como corroboración para conceder
+    /// `High` igual que Steam o la correlación de proceso (ADR 0020), sin una
+    /// sesión de juego observada. Un `.sav` suelto NO corrobora — el caso
+    /// conservador (tope en `Medium` sin correlación) se mantiene.
     pub corroborated_by_content: bool,
 }
+
+/// Umbral del "deque de autosaves": un directorio (o sus subcarpetas
+/// inmediatas tipo `autosave/`, `slot/`) con al menos esta cantidad de saves
+/// de extensión fuerte es, con altísima probabilidad, una carpeta de saves
+/// activa — los juegos rotan autosaves; config/cache no acumulan `.sav`. Sirve
+/// como corroboración para `High` sin aflojar el caso del `.sav` suelto.
+const STRONG_ROTATING_MIN: usize = 3;
+
+/// Profundidad máxima al inspeccionar las subcarpetas de un candidato buscando
+/// saves (p. ej. `save/profiles/slot1/*.sav`). Acota el coste de la recursión.
+const STRONG_SCAN_MAX_DEPTH: usize = 4;
+/// Tope de ficheros visitados al contar saves en subcarpetas, compartido por
+/// todo el escaneo de un candidato. Evita pasear árboles enormes.
+const STRONG_SCAN_FILE_BUDGET: usize = 4096;
 
 /// Conteo barato del contenido inmediato (no recursivo) de un candidato.
 #[derive(Default)]
@@ -157,6 +200,20 @@ struct DirContent {
     image: usize,
     /// Comprimidos cuyo índice contiene contenido save-like.
     archive_save: usize,
+    /// Saves de extensión fuerte hallados en las subcarpetas (recursivo, con
+    /// tope de profundidad/ficheros). Captura `openttd/save/autosave/*.sav` y
+    /// layouts anidados (`save/profiles/slotN/*.sav`), donde la ruta del
+    /// catálogo apunta al contenedor y los saves viven más abajo.
+    strong_subdir: usize,
+    /// Ficheros recientes por extensión DESCONOCIDA (ni fuerte/débil/ruidosa/
+    /// imagen/comprimido). Soporta el heurístico del "conjunto dominante":
+    /// una carpeta con nombre-save exacto que rota ≥3 ficheros recientes de UNA
+    /// misma extensión propietaria (`.pss`, `.rsv`, …) es, casi con seguridad,
+    /// una carpeta de saves real aunque la extensión no esté en el catálogo. Se
+    /// cuenta por extensión (no "homogéneo estricto") para tolerar marcadores
+    /// sueltos que conviven con los saves —típicamente un `steam_autocloud.vdf`
+    /// en la misma carpeta— sin que invaliden el conjunto.
+    unknown_recent_by_ext: std::collections::HashMap<String, usize>,
 }
 
 fn scan_content(dir: &Path) -> DirContent {
@@ -164,10 +221,20 @@ fn scan_content(dir: &Path) -> DirContent {
     let Ok(read) = std::fs::read_dir(dir) else {
         return c;
     };
+    // Presupuesto de ficheros compartido por todas las subcarpetas del
+    // candidato, para acotar el coste total de la recursión.
+    let mut budget = STRONG_SCAN_FILE_BUDGET;
     for entry in read.flatten() {
         let Ok(ft) = entry.file_type() else {
             continue;
         };
+        if ft.is_dir() {
+            // Baja por las subcarpetas (autosave/, profiles/slotN/…) contando
+            // saves de extensión fuerte, con tope de profundidad y de ficheros.
+            c.strong_subdir +=
+                count_strong_recursive(&entry.path(), STRONG_SCAN_MAX_DEPTH, &mut budget);
+            continue;
+        }
         if !ft.is_file() {
             continue;
         }
@@ -185,10 +252,54 @@ fn scan_content(dir: &Path) -> DirContent {
             Some(e) if EXT_ARCHIVE.contains(&e) && archive_looks_like_save(&path) => {
                 c.archive_save += 1
             }
+            Some(e) if !is_known_ext(e) => {
+                // Extensión desconocida: cuenta los recientes por extensión.
+                // La extensión dominante (≥3 recientes) bajo un nombre-save
+                // exacto delata un deque de saves propietarios.
+                if file_is_recent(&path) {
+                    *c.unknown_recent_by_ext.entry(e.to_string()).or_default() += 1;
+                }
+            }
             _ => {}
         }
     }
     c
+}
+
+/// Cuenta ficheros de extensión fuerte bajo `dir` recursivamente, hasta
+/// `depth` niveles y mientras quede `budget` de ficheros. No sigue symlinks
+/// (evita ciclos). Devuelve el número de saves de extensión fuerte hallados.
+fn count_strong_recursive(dir: &Path, depth: usize, budget: &mut usize) -> usize {
+    if depth == 0 || *budget == 0 {
+        return 0;
+    }
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut n = 0usize;
+    for entry in read.flatten() {
+        if *budget == 0 {
+            break;
+        }
+        let Ok(ft) = entry.file_type() else {
+            continue;
+        };
+        if ft.is_symlink() {
+            continue;
+        }
+        let path = entry.path();
+        if ft.is_dir() {
+            n += count_strong_recursive(&path, depth - 1, budget);
+        } else if ft.is_file() {
+            *budget -= 1;
+            if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                if EXT_STRONG.contains(&ext.to_ascii_lowercase().as_str()) {
+                    n += 1;
+                }
+            }
+        }
+    }
+    n
 }
 
 /// Señal de nombre. Exacto en vocab (+0.35) > substring de un token
@@ -232,8 +343,27 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
 
     let content = scan_content(path);
     let has_signal = name_pos > 0.0;
+    let name_exact = SAVE_NAME_VOCAB.iter().any(|v| *v == lower);
+    // Saves de extensión fuerte aquí o un nivel más abajo (autosave/, slot/).
+    let strong_total = content.strong + content.strong_subdir;
 
-    if content.strong > 0 {
+    // Conjunto dominante de extensión desconocida: una carpeta con nombre-save
+    // EXACTO donde alguna extensión propietaria (no fuerte/débil/ruidosa/
+    // imagen/comprimido) acumula ≥3 ficheros recientes. Genérico: no codifica
+    // ninguna extensión concreta, sólo la forma (nombre exacto + rotación
+    // reciente). Conservador por triple compuerta —nombre exacto, recencia y
+    // ≥3 del MISMO tipo— así que una carpeta de config (json/ini mezclados) o
+    // un único marcador suelto (p. ej. un solo `.vdf`) nunca cualifican; pero
+    // sí tolera ese marcador conviviendo con los saves reales.
+    let unknown_dominant_recent = content
+        .unknown_recent_by_ext
+        .values()
+        .copied()
+        .max()
+        .unwrap_or(0);
+    let homogeneous_unknown_set = name_exact && unknown_dominant_recent >= STRONG_ROTATING_MIN;
+
+    if strong_total > 0 {
         score += 0.30;
         reasons.push("strong save ext".into());
     } else if content.archive_save > 0 {
@@ -241,6 +371,11 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
         // delata contenido save-like. Mismo peso que la extensión fuerte.
         score += 0.30;
         reasons.push("save-like archive content".into());
+    } else if homogeneous_unknown_set {
+        // Conjunto rotatorio de saves de extensión propietaria bajo un
+        // nombre-save exacto. Mismo peso que la extensión fuerte.
+        score += 0.30;
+        reasons.push("homogeneous recent save set".into());
     } else if content.weak > 0 && has_signal {
         score += 0.08;
         reasons.push("weak ext + other signal".into());
@@ -276,10 +411,16 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
         score = score.min(SCORE_POSSIBLE - 0.001);
     }
 
-    // Corroboración por contenido: solo un comprimido con índice save-like
-    // (señal verificada y deliberada). No aplica si la hard-rule degradó la
-    // carpeta a no-save.
-    let corroborated_by_content = !(only_images || only_noisy) && content.archive_save > 0;
+    // Corroboración por contenido (habilita `High` sin correlación), siempre
+    // que la hard-rule no haya degradado la carpeta a no-save:
+    //   * un comprimido con índice save-like verificado (Factorio y cía), o
+    //   * un conjunto rotatorio de ≥3 saves de extensión fuerte (autosaves de
+    //     openttd y similares) — un `.sav` suelto NO basta, así que el caso
+    //     conservador se mantiene.
+    let corroborated_by_content = !(only_images || only_noisy)
+        && (content.archive_save > 0
+            || strong_total >= STRONG_ROTATING_MIN
+            || homogeneous_unknown_set);
 
     ScoreBreakdown {
         score,
@@ -336,6 +477,107 @@ mod archive_tests {
         assert!(b.score >= SCORE_CONFIRMED, "score {} too low", b.score);
         // El contenido verificado corrobora → habilita `High` sin correlación.
         assert!(b.corroborated_by_content);
+    }
+
+    #[test]
+    fn rotating_autosave_set_in_subdir_corroborates_high() {
+        // Réplica de openttd: la ruta apunta a `save/`, y los `.sav` viven en
+        // `save/autosave/`. Un deque de autosaves (≥3 ext. fuerte) corrobora.
+        let dir = tempfile::tempdir().unwrap();
+        let auto = dir.path().join("autosave");
+        std::fs::create_dir(&auto).unwrap();
+        for i in 0..12 {
+            std::fs::write(auto.join(format!("autosave{i}.sav")), b"x").unwrap();
+        }
+        let b = score_dir(dir.path(), "save");
+        assert!(b.score >= SCORE_CONFIRMED, "score {} too low", b.score);
+        assert!(
+            b.corroborated_by_content,
+            "rotating save set should corroborate: {:?}",
+            b.reasons
+        );
+    }
+
+    #[test]
+    fn single_loose_sav_does_not_corroborate() {
+        // Un `.sav` suelto sigue siendo conservador: puntúa pero NO corrobora.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("game.sav"), b"x").unwrap();
+        let b = score_dir(dir.path(), "save");
+        assert!(
+            !b.corroborated_by_content,
+            "a single loose .sav must not corroborate: {:?}",
+            b.reasons
+        );
+    }
+
+    #[test]
+    fn homogeneous_unknown_ext_set_corroborates_high() {
+        // Carpeta `saves` con ≥3 ficheros recientes de UNA extensión
+        // propietaria desconocida (`.pss` de Planet S, p. ej.). Debe
+        // auto-confirmar y corroborar, sin codificar la extensión.
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..10 {
+            std::fs::write(dir.path().join(format!("slot{i}.pss")), b"x").unwrap();
+        }
+        let b = score_dir(dir.path(), "saves");
+        assert!(b.score >= SCORE_CONFIRMED, "score {} too low", b.score);
+        assert!(
+            b.corroborated_by_content,
+            "homogeneous recent save set should corroborate: {:?}",
+            b.reasons
+        );
+    }
+
+    #[test]
+    fn single_unknown_marker_file_does_not_corroborate() {
+        // El señuelo de Planet S: una carpeta `saves` con un solo
+        // `steam_autocloud.vdf`. Un único fichero (<3) no cualifica.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("steam_autocloud.vdf"), b"x").unwrap();
+        let b = score_dir(dir.path(), "saves");
+        assert!(
+            !b.corroborated_by_content,
+            "a single marker file must not corroborate: {:?}",
+            b.reasons
+        );
+        assert!(b.score < SCORE_CONFIRMED, "score {} too high", b.score);
+    }
+
+    #[test]
+    fn stray_marker_alongside_real_saves_still_corroborates() {
+        // Caso real de Planet S: 10 `.pss` reales + un `steam_autocloud.vdf`
+        // colado en la misma carpeta. El marcador suelto NO debe invalidar el
+        // conjunto dominante de saves.
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..10 {
+            std::fs::write(dir.path().join(format!("slot{i}.pss")), b"x").unwrap();
+        }
+        std::fs::write(dir.path().join("steam_autocloud.vdf"), b"x").unwrap();
+        let b = score_dir(dir.path(), "saves");
+        assert!(b.score >= SCORE_CONFIRMED, "score {} too low", b.score);
+        assert!(
+            b.corroborated_by_content,
+            "stray marker must not break the dominant save set: {:?}",
+            b.reasons
+        );
+    }
+
+    #[test]
+    fn mixed_unknown_exts_do_not_corroborate() {
+        // Mezcla de extensiones desconocidas (no homogéneo): típico de una
+        // carpeta de datos varios, no un deque de saves. No debe corroborar.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.foo"), b"x").unwrap();
+        std::fs::write(dir.path().join("b.bar"), b"x").unwrap();
+        std::fs::write(dir.path().join("c.baz"), b"x").unwrap();
+        std::fs::write(dir.path().join("d.qux"), b"x").unwrap();
+        let b = score_dir(dir.path(), "saves");
+        assert!(
+            !b.corroborated_by_content,
+            "mixed unknown exts must not corroborate: {:?}",
+            b.reasons
+        );
     }
 
     #[test]

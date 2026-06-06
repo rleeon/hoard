@@ -115,6 +115,8 @@
   "library.found_more": "(+{count} de plus)",
   "library.tracked_badge": "Suivi",
   "library.track_button": "Suivre",
+  "library.track_this_path": "Surveiller ce dossier",
+  "library.show_less": "Afficher moins",
   "library.track_pick_folder_aria": "Suivre avec un autre dossier…",
   "library.no_scan_title": "Aucune analyse pour cette session.",
   "library.no_scan_body": "Hoard vérifiera ~10 000 entrées de catalogue contre votre système et votre bibliothèque Steam. La première analyse prend 10 à 30 secondes.",

@@ -178,6 +178,17 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
             .map(|h| vec![h.join("Saved Games")])
             .unwrap_or_default(),
 
+        // `<winSavedGames>` en Linux nativo. Muchos juegos multiplataforma
+        // (Unity/Unreal y varios indies, p. ej. Planet S) conservan en su
+        // build de Linux la convención Windows de `~/Saved Games`, fuera de
+        // todo prefijo Wine. Sin esto el catálogo no resolvía esa ruta en
+        // nativo y caía al `saves` del install-dir (a menudo un stub de Steam
+        // Cloud). Genérico: si la carpeta no existe o no tiene saves, el
+        // refinamiento la descarta igual que cualquier otro candidato.
+        (Os::Linux, "winSavedGames") => home_dir()
+            .map(|h| vec![h.join("Saved Games")])
+            .unwrap_or_default(),
+
         // -------- Linux / XDG
         (Os::Linux, "xdgData") => {
             xdg_or(home_dir().map(|h| h.join(".local/share")), "XDG_DATA_HOME")
@@ -594,15 +605,15 @@ mod tests {
         );
     }
 
-    /// `<winSavedGames>` is keyed on `(Os::Windows, …)` in the match, so
-    /// asking for it under `Os::Linux` drops the template. That's the
-    /// real-world case on a Linux host: detection passes `Os::Linux` and
-    /// the token is irrelevant.
+    /// `<winSavedGames>` resuelve a `~/Saved Games` también en Linux nativo:
+    /// los builds de Linux de muchos juegos multiplataforma conservan esa
+    /// convención Windows fuera de todo prefijo Wine (Planet S y cía). En Mac
+    /// no hay tal convención, así que ahí el token sigue cayendo.
     #[test]
-    fn winsavedgames_dropped_under_os_linux() {
+    fn winsavedgames_resolves_under_os_linux_drops_on_mac() {
         with_env(&[("HOME", Some("/home/test"))], || {
             let out = expand_path("<winSavedGames>/MyGame", Os::Linux);
-            assert!(out.is_empty(), "got {out:?}");
+            assert_eq!(out, vec![PathBuf::from("/home/test/Saved Games/MyGame")]);
             let out = expand_path("<winSavedGames>/MyGame", Os::Mac);
             assert!(out.is_empty(), "got {out:?}");
         });

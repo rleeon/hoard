@@ -115,6 +115,8 @@
   "library.found_more": "(+{count} more)",
   "library.tracked_badge": "Tracked",
   "library.track_button": "Track",
+  "library.track_this_path": "Monitor this folder",
+  "library.show_less": "Show less",
   "library.track_pick_folder_aria": "Track with a different folder…",
   "library.no_scan_title": "No scan yet on this session.",
   "library.no_scan_body": "Hoard will check ~10,000 catalog entries against your filesystem and Steam library. The first scan takes 10–30 seconds.",

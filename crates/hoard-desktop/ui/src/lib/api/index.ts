@@ -93,6 +93,13 @@ export type DetectedGame = {
    */
   found_paths: string[];
   confidence: Confidence;
+  /**
+   * Per-path confidence, aligned 1:1 with `found_paths` and sorted
+   * strongest-first alongside it. Lets the card grade each save folder on its
+   * own (the real `~/Saved Games/.../saves` as `high` vs an almost-empty
+   * Steam-Cloud stub as `low`). May be empty on reports from older builds.
+   */
+  path_confidences: Confidence[];
   source: DetectionSource;
   steam_app_id: number | null;
   /**

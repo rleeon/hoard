@@ -115,6 +115,8 @@
   "library.found_more": "(+{count} mais)",
   "library.tracked_badge": "Monitorizado",
   "library.track_button": "Monitorizar",
+  "library.track_this_path": "Monitorizar esta pasta",
+  "library.show_less": "Ver menos",
   "library.track_pick_folder_aria": "Monitorizar com outra pasta…",
   "library.no_scan_title": "Sem exame nesta sessão.",
   "library.no_scan_body": "O Hoard verifica ~10.000 entradas contra o teu sistema e biblioteca Steam. O primeiro exame demora 10–30 segundos.",

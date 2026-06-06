@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.4] — 2026-06-06
+
+### Added
+- **Tarjeta de juego agrupada por carpetas de save.** Cuando un juego escribe en
+  varias carpetas (p. ej. la carpeta real de partidas rotatorias y un stub de
+  marcador de Steam Cloud), ahora se muestra una sola tarjeta y cada subcarpeta
+  lleva su propia etiqueta de confianza (ALTA/MEDIA/BAJA) y su botón de
+  monitorización. Así monitorizas solo las carpetas que valen y dejas fuera las
+  inservibles, sin que una ruta ALTA arrastre a una hermana BAJA al rastreo.
+  Colapsada muestra la ruta más fuerte; se expande para ver el resto.
+
+### Changed
+- **Las rutas detectadas se ordenan por confianza por-ruta.** El auto-rastreo
+  toma `found_paths[0]`, que ahora es la carpeta más fuerte (no un stub) gracias
+  al nuevo grado por ruta (`path_confidences`).
+- **Set homogéneo de saves recientes con extensión desconocida corrobora ALTA.**
+  Una carpeta cuyo nombre es de save y está dominada por ≥3 archivos recientes de
+  una misma extensión desconocida (tolerando marcadores sueltos como
+  `steam_autocloud.vdf`) ahora cuenta como corroboración. Genérico: detecta
+  partidas que no usan extensiones conocidas sin tocar nada específico de un juego.
+- **`<winSavedGames>` y `~/Saved Games` también en Linux.** El token expande a
+  `~/Saved Games` en Linux y ese directorio entra en la fase de descubrimiento.
+
+### Fixed
+- **Suscripción cancelada ya no muestra "se renueva" y "se cancela" a la vez.**
+  Al programar la cancelación, Stripe deja la misma fecha como fin de periodo y
+  como cancelación; ahora solo se muestra "se cancela", nunca "se renueva".
+
 ## [2.0.3] — 2026-06-06
 
 ### Changed

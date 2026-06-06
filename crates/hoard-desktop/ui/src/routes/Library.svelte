@@ -97,6 +97,10 @@
   /** Slugs the user dismissed in this session only — wiped on reload. They
    *  reappear on the next scan unless the user also blacklisted them. */
   let sessionDismissed = $state(new Set<string>());
+  /** Slugs whose multi-path detection card is expanded to show every save
+   *  folder (collapsed cards show only the strongest path). Per-session UI
+   *  state, wiped on reload. */
+  let expandedPaths = $state(new Set<string>());
 
   onMount(async () => {
     // Wire the progress event before we trigger anything that emits.
@@ -125,6 +129,10 @@
   async function runScan() {
     scanning = true;
     progress = { done: 0, total: 0 };
+    // An explicit (re)scan means "show me everything again": drop the
+    // in-memory session dismissals so a card the user hid earlier this
+    // session reappears instead of needing an app restart to clear them.
+    sessionDismissed = new Set();
     try {
       // Use rescan when we already have a report — same wire payload, but the
       // explicit intent helps backend logs distinguish "user mashed the
@@ -147,6 +155,7 @@
   async function runDeepScan() {
     scanning = true;
     progress = { done: 0, total: 0 };
+    sessionDismissed = new Set();
     try {
       report = await api.deepScanLibrary();
       toastSuccess(
@@ -160,29 +169,24 @@
     }
   }
 
-  /** "Track" click on a card. If we already have a save-folder candidate
-   *  (filesystem heuristic hit), wire it up directly. Otherwise — Steam-only
-   *  match with no save folder yet — open the alert modal so the user
-   *  understands *why* we don't have a path before the OS file picker pops
-   *  up out of nowhere. */
-  async function track(game: DetectedGame) {
-    const chosen = game.found_paths[0] ?? null;
-    if (!chosen) {
-      alertGame = game;
-      return;
-    }
-    await trackWithPath(game, chosen);
-  }
-
   /** Shared "actually commit the tracking" path. Used by both the auto-track
    *  flow and the explicit "Choose save folder…" button inside the alert
    *  modal. Kept separate so the alert dialog can close itself before the
    *  network call starts. */
-  async function trackWithPath(game: DetectedGame, chosen: string) {
+  async function trackWithPath(
+    game: DetectedGame,
+    chosen: string,
+    label?: string,
+  ) {
     try {
       const saved = await api.addGameToTracking({
         game_slug: game.slug,
         local_path: chosen,
+        // A per-path track of an *additional* save folder needs a distinct
+        // label so the server's UNIQUE(user, slug, label) doesn't collide
+        // with the primary save (both folders often end in `…/saves`). The
+        // first folder keeps the default label; extras carry one.
+        label,
         // Pass the catalog metadata so the server can self-heal its games
         // table when its Ludusavi catalog is older than ours. Older servers
         // (pre-v1.3.0) ignore the extra fields; newer servers insert a
@@ -197,6 +201,35 @@
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
     }
+  }
+
+  /** Track one specific save folder from the per-path list inside a card.
+   *  Unlike the folder-picker flow it does NOT set a manual override — the
+   *  other detected paths must stay visible so the user can monitor them too.
+   *  The first folder tracked for a slug keeps the server default label; any
+   *  extra folder carries its own path as the label to stay collision-free. */
+  async function trackPath(game: DetectedGame, path: string) {
+    const slugHasTracked = tracked.some((t) => t.game_slug === game.slug);
+    await trackWithPath(game, path, slugHasTracked ? path : undefined);
+  }
+
+  function toggleExpand(slug: string) {
+    const next = new Set(expandedPaths);
+    if (next.has(slug)) next.delete(slug);
+    else next.add(slug);
+    expandedPaths = next;
+  }
+
+  /** Per-path confidence, falling back to the game's rolled-up grade when an
+   *  older cached report didn't carry `path_confidences`. */
+  function pathConf(game: DetectedGame, i: number): Confidence {
+    return game.path_confidences?.[i] ?? game.confidence;
+  }
+
+  function sizeForSlug(slug: string): number {
+    return tracked
+      .filter((t) => t.game_slug === slug)
+      .reduce((acc, s) => acc + (s.total_size_bytes ?? 0), 0);
   }
 
   /** "Choose save folder…" button inside the alert modal. Pops the picker
@@ -218,10 +251,19 @@
    *  with custom data. Bypasses the alert modal entirely (that one is for
    *  the no-found-paths case). */
   async function trackWithCustomPath(game: DetectedGame) {
-    const chosen = await pickFolder(game.display_name);
+    const chosen = await pickFolder(game.display_name, saveDirFor(game));
     if (!chosen) return;
     await persistManualPath(game, chosen);
     await trackWithPath(game, chosen);
+  }
+
+  /** Best-known save folder for a game: the tracked local path if it's already
+   *  being monitored, else the detection heuristic's first hit. Used to seed
+   *  the OS folder picker so it opens on the saves instead of Documents. */
+  function saveDirFor(game: DetectedGame): string | undefined {
+    const t = trackedBySlug.get(game.slug);
+    if (t && t.local_path) return t.local_path;
+    return game.found_paths[0] ?? undefined;
   }
 
   /** Persist the user's hand-picked folder as a manual override so a
@@ -425,11 +467,17 @@
   /** Open the OS folder picker. Returns the selected absolute path or null
    *  on cancel. We pass the game's display name as the dialog title so the
    *  user knows which game they're picking the save folder for. */
-  async function pickFolder(displayName: string): Promise<string | null> {
+  async function pickFolder(
+    displayName: string,
+    defaultPath?: string,
+  ): Promise<string | null> {
     try {
       const result = await openDialog({
         directory: true,
         multiple: false,
+        // Open the picker *at* the game's detected/tracked save folder when we
+        // know it, so the user lands on their saves instead of Documents.
+        defaultPath: defaultPath || undefined,
         title: $_("library.pick_folder_title", {
           values: { name: displayName },
         }),
@@ -516,6 +564,14 @@
   const trackedBySlug = $derived.by(() => {
     const m = new Map<string, TrackedSave>();
     for (const s of tracked) m.set(s.game_slug, s);
+    return m;
+  });
+
+  // Map local_path → tracked entry so each per-path row inside a grouped
+  // detection card can tell whether *that specific folder* is monitored.
+  const trackedByPath = $derived.by(() => {
+    const m = new Map<string, TrackedSave>();
+    for (const s of tracked) if (s.local_path) m.set(s.local_path, s);
     return m;
   });
 
@@ -797,57 +853,91 @@
             </div>
 
             {#if game.found_paths.length}
-              <p
-                class="mt-1 truncate font-mono text-[11px] text-zinc-500"
-                title={game.found_paths.join("\n")}
-              >
-                {game.found_paths[0]}
-                {#if game.found_paths.length > 1}
-                  <span class="text-zinc-600">
-                    {$_("library.found_more", { values: { count: game.found_paths.length - 1 } })}
-                  </span>
-                {/if}
-              </p>
-            {:else}
-              <p class="mt-1 text-[11px] italic text-zinc-600">
-                {$_("library.no_save_folder_yet")}
-              </p>
-            {/if}
-
-            <div class="mt-4 flex items-center gap-2">
-              {#if isTracked}
-                {@const t = trackedBySlug.get(game.slug)}
-                <span
-                  class="inline-flex flex-1 items-center gap-1.5 rounded-md bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-500/30"
-                >
-                  <Check size={12} />
-                  {$_("library.tracked_badge")}
-                  {#if t && t.total_size_bytes > 0}
-                    <span class="text-emerald-400/70 tabular-nums">
-                      · {fmtBytes(t.total_size_bytes)}
+              <!-- Grouped per-path list. A game can write to several save
+                   folders with very different confidence (e.g. the real
+                   rotating-save dir vs. a Steam-cloud marker stub). We show
+                   ONE card per game and let each folder carry its own grade +
+                   monitor toggle, so a HIGH path doesn't drag a LOW sibling
+                   into tracking. Collapsed to the strongest path until the
+                   user expands. -->
+              {@const expanded = expandedPaths.has(game.slug)}
+              {@const visible = expanded ? game.found_paths.length : 1}
+              <div class="mt-2 flex flex-col gap-1.5">
+                {#each game.found_paths.slice(0, visible) as path, i (path)}
+                  {@const ts = trackedByPath.get(path)}
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide ring-1 ring-inset {confidenceBadgeClass(
+                        pathConf(game, i),
+                      )}"
+                    >
+                      {confidenceLabel(pathConf(game, i))}
                     </span>
-                  {/if}
-                </span>
-                {#if t}
+                    <span
+                      class="min-w-0 flex-1 truncate font-mono text-[11px] text-zinc-500"
+                      title={path}
+                    >
+                      {path}
+                    </span>
+                    {#if ts}
+                      <span
+                        class="shrink-0 text-emerald-300"
+                        title={$_("library.tracked_badge")}
+                      >
+                        <Check size={13} />
+                      </span>
+                      <button
+                        type="button"
+                        onclick={() => askUntrack(ts)}
+                        aria-label={$_("library.untrack_button")}
+                        title={$_("library.untrack_title")}
+                        class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    {:else}
+                      <button
+                        type="button"
+                        onclick={() => trackPath(game, path)}
+                        aria-label={$_("library.track_this_path")}
+                        title={$_("library.track_this_path")}
+                        class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-emerald-500/10 hover:text-emerald-300"
+                      >
+                        <Plus size={13} />
+                      </button>
+                    {/if}
+                  </div>
+                {/each}
+                {#if game.found_paths.length > 1}
                   <button
                     type="button"
-                    onclick={() => askUntrack(t)}
-                    aria-label={$_("library.untrack_button")}
-                    title={$_("library.untrack_title")}
-                    class="shrink-0 rounded p-1.5 text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+                    onclick={() => toggleExpand(game.slug)}
+                    class="self-start text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
                   >
-                    <Trash2 size={14} />
+                    {expanded
+                      ? $_("library.show_less")
+                      : $_("library.found_more", { values: { count: game.found_paths.length - 1 } })}
                   </button>
                 {/if}
-              {:else if game.found_paths.length}
-                <Button
-                  variant="secondary"
-                  size="md"
-                  onclick={() => track(game)}
-                >
-                  <Plus size={14} />
-                  {$_("library.track_button")}
-                </Button>
+              </div>
+
+              <div class="mt-4 flex items-center gap-2">
+                {#if isTracked}
+                  {@const sz = sizeForSlug(game.slug)}
+                  <span
+                    class="inline-flex flex-1 items-center gap-1.5 rounded-md bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-500/30"
+                  >
+                    <Check size={12} />
+                    {$_("library.tracked_badge")}
+                    {#if sz > 0}
+                      <span class="text-emerald-400/70 tabular-nums">
+                        · {fmtBytes(sz)}
+                      </span>
+                    {/if}
+                  </span>
+                {/if}
+                <!-- Folder picker: hand-pick a save folder we didn't detect.
+                     Sets a manual override so a re-scan keeps it. -->
                 <button
                   type="button"
                   onclick={() => trackWithCustomPath(game)}
@@ -857,39 +947,74 @@
                 >
                   <FolderOpen size={14} />
                 </button>
-              {:else}
-                <!-- Steam-only match with no save folder yet. We surface an
-                     amber alert button instead of either auto-popping the OS
-                     file picker (jarring) or silently doing nothing. Click →
-                     a modal explains the situation and offers an explicit
-                     "pick folder" button so the user knows what they're
-                     consenting to. -->
-                <button
-                  type="button"
-                  onclick={() => (alertGame = game)}
-                  aria-label={$_("library.no_save_alert_aria")}
-                  title={$_("library.no_save_alert_aria")}
-                  class="inline-flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300 ring-1 ring-inset ring-amber-500/30 transition-colors hover:bg-amber-500/20"
-                >
-                  <AlertTriangle size={14} />
-                  {$_("library.no_save_folder_yet")}
-                </button>
-              {/if}
-              {#if !isTracked}
-                <!-- "Dismiss this detected game" — session filter by
-                     default, with an opt-in checkbox in the modal to
-                     promote it to a permanent CliState blacklist entry. -->
-                <button
-                  type="button"
-                  onclick={() => askDismiss(game)}
-                  aria-label={$_("library.ignore_confirm")}
-                  title={$_("library.ignore_confirm")}
-                  class="ml-auto shrink-0 rounded p-1.5 text-rose-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
-                >
-                  <Trash size={14} />
-                </button>
-              {/if}
-            </div>
+                {#if !isTracked}
+                  <button
+                    type="button"
+                    onclick={() => askDismiss(game)}
+                    aria-label={$_("library.ignore_confirm")}
+                    title={$_("library.ignore_confirm")}
+                    class="ml-auto shrink-0 rounded p-1.5 text-rose-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+                  >
+                    <Trash size={14} />
+                  </button>
+                {/if}
+              </div>
+            {:else}
+              <p class="mt-1 text-[11px] italic text-zinc-600">
+                {$_("library.no_save_folder_yet")}
+              </p>
+
+              <div class="mt-4 flex items-center gap-2">
+                {#if isTracked}
+                  {@const t = trackedBySlug.get(game.slug)}
+                  <span
+                    class="inline-flex flex-1 items-center gap-1.5 rounded-md bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-500/30"
+                  >
+                    <Check size={12} />
+                    {$_("library.tracked_badge")}
+                    {#if t && t.total_size_bytes > 0}
+                      <span class="text-emerald-400/70 tabular-nums">
+                        · {fmtBytes(t.total_size_bytes)}
+                      </span>
+                    {/if}
+                  </span>
+                  {#if t}
+                    <button
+                      type="button"
+                      onclick={() => askUntrack(t)}
+                      aria-label={$_("library.untrack_button")}
+                      title={$_("library.untrack_title")}
+                      class="shrink-0 rounded p-1.5 text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  {/if}
+                {:else}
+                  <!-- Steam-only match with no save folder yet. Amber alert
+                       instead of auto-popping the OS picker or doing nothing:
+                       a modal explains why and offers an explicit folder pick. -->
+                  <button
+                    type="button"
+                    onclick={() => (alertGame = game)}
+                    aria-label={$_("library.no_save_alert_aria")}
+                    title={$_("library.no_save_alert_aria")}
+                    class="inline-flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300 ring-1 ring-inset ring-amber-500/30 transition-colors hover:bg-amber-500/20"
+                  >
+                    <AlertTriangle size={14} />
+                    {$_("library.no_save_folder_yet")}
+                  </button>
+                  <button
+                    type="button"
+                    onclick={() => askDismiss(game)}
+                    aria-label={$_("library.ignore_confirm")}
+                    title={$_("library.ignore_confirm")}
+                    class="ml-auto shrink-0 rounded p-1.5 text-rose-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+                  >
+                    <Trash size={14} />
+                  </button>
+                {/if}
+              </div>
+            {/if}
           </div>
         {/each}
         {@render deepScanTile()}

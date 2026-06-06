@@ -343,14 +343,16 @@
               {$_("account.status_" + account.subscription_status, {
                 default: account.subscription_status,
               })}
-              {#if account.renews_at}
-                · {$_("account.renews_on", {
-                  values: { date: fmtDate(account.renews_at) },
-                })}
-              {/if}
               {#if account.cancel_at}
+                <!-- A scheduled cancellation means the period end is NOT a
+                     renewal — it's the end. Show only "cancels on", never
+                     "renews on", so the two dates don't contradict. -->
                 · {$_("account.cancels_on", {
                   values: { date: fmtDate(account.cancel_at) },
+                })}
+              {:else if account.renews_at}
+                · {$_("account.renews_on", {
+                  values: { date: fmtDate(account.renews_at) },
                 })}
               {/if}
             </p>

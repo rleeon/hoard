@@ -115,6 +115,8 @@
   "library.found_more": "（另有 {count} 个）",
   "library.tracked_badge": "已跟踪",
   "library.track_button": "跟踪",
+  "library.track_this_path": "监控此文件夹",
+  "library.show_less": "收起",
   "library.track_pick_folder_aria": "使用其他文件夹跟踪…",
   "library.no_scan_title": "本次会话尚未扫描。",
   "library.no_scan_body": "Hoard 将根据文件系统和 Steam 库检查约 10,000 条目。首次扫描需 10–30 秒。",
