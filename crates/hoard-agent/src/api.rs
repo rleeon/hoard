@@ -112,11 +112,7 @@ impl ApiClient {
     }
 
     fn auth_header(&self) -> String {
-        let token = self
-            .token
-            .read()
-            .map(|t| t.clone())
-            .unwrap_or_default();
+        let token = self.token.read().map(|t| t.clone()).unwrap_or_default();
         format!("Bearer {token}")
     }
 

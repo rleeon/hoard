@@ -90,10 +90,8 @@ fn list_wine_prefixes_mode(os: Os, deep: bool) -> Vec<WinePrefix> {
         // Generic prefixes come last and are deduplicated against everything
         // already found, so a prefix Steam/Lutris/Bottles already own isn't
         // re-reported as Generic.
-        let mut known: std::collections::HashSet<PathBuf> = out
-            .iter()
-            .map(|p| canonical(&p.prefix_root))
-            .collect();
+        let mut known: std::collections::HashSet<PathBuf> =
+            out.iter().map(|p| canonical(&p.prefix_root)).collect();
         for p in discover_generic_prefixes() {
             if known.insert(canonical(&p.prefix_root)) {
                 out.push(p);
@@ -294,10 +292,7 @@ fn parse_wineprefix_assignment(content: &str) -> Option<PathBuf> {
     let value: String = match first {
         '"' => rest[1..].chars().take_while(|c| *c != '"').collect(),
         '\'' => rest[1..].chars().take_while(|c| *c != '\'').collect(),
-        _ => rest
-            .chars()
-            .take_while(|c| !c.is_whitespace())
-            .collect(),
+        _ => rest.chars().take_while(|c| !c.is_whitespace()).collect(),
     };
     if value.is_empty() {
         return None;
@@ -504,9 +499,8 @@ mod tests {
             let prev = std::env::var_os("WINEPREFIX");
             std::env::remove_var("WINEPREFIX");
             let prefixes = list_wine_prefixes(Os::Linux);
-            match prev {
-                Some(v) => std::env::set_var("WINEPREFIX", v),
-                None => {}
+            if let Some(v) = prev {
+                std::env::set_var("WINEPREFIX", v);
             }
             let generic: Vec<&WinePrefix> = prefixes
                 .iter()
@@ -543,9 +537,9 @@ mod tests {
             if let Some(v) = prev {
                 std::env::set_var("WINEPREFIX", v);
             }
-            let found = prefixes
-                .iter()
-                .any(|p| p.kind == PrefixKind::Generic && canonical(&p.prefix_root) == canonical(&prefix));
+            let found = prefixes.iter().any(|p| {
+                p.kind == PrefixKind::Generic && canonical(&p.prefix_root) == canonical(&prefix)
+            });
             assert!(found, "desktop-referenced prefix not found: {prefixes:?}");
         });
     }

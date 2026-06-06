@@ -319,9 +319,7 @@ impl AgentHandle {
     /// so disk I/O stays spread out. Replaces the frontend's old "loop
     /// `backup_now` over every save" burst.
     pub async fn sweep_all(&self, window_secs: u64) -> Result<()> {
-        self.tx
-            .send(AgentCommand::SweepAll { window_secs })
-            .await?;
+        self.tx.send(AgentCommand::SweepAll { window_secs }).await?;
         Ok(())
     }
 
