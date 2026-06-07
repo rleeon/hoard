@@ -77,6 +77,7 @@
   "dashboard.tooltip_paused": "This save is paused — open History to resume",
   "dashboard.tooltip_offline": "Start the agent first",
   "dashboard.tooltip_force": "Force a backup now",
+  "dashboard.tooltip_force_paused": "Upload now (paused — this manual upload is one-off)",
   "dashboard.pill_no_backup": "No backup yet",
   "dashboard.pill_running": "Game running",
   "dashboard.pill_scheduled": "Backup in {seconds}s",

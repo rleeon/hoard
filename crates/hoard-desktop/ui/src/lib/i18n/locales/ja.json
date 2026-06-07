@@ -77,6 +77,7 @@
   "dashboard.tooltip_paused": "このセーブは一時停止中です — 履歴から再開してください",
   "dashboard.tooltip_offline": "先にエージェントを起動してください",
   "dashboard.tooltip_force": "今すぐバックアップ",
+  "dashboard.tooltip_force_paused": "今すぐアップロード（一時停止中 — この手動アップロードは1回限り）",
   "dashboard.pill_no_backup": "バックアップなし",
   "dashboard.pill_running": "ゲーム実行中",
   "dashboard.pill_scheduled": "{seconds} 秒後にバックアップ",

@@ -77,6 +77,7 @@
   "dashboard.tooltip_paused": "此存档已暂停 — 在「历史」中恢复",
   "dashboard.tooltip_offline": "请先启动代理",
   "dashboard.tooltip_force": "立即强制备份",
+  "dashboard.tooltip_force_paused": "立即上传（已暂停 — 此次手动上传为一次性）",
   "dashboard.pill_no_backup": "尚无备份",
   "dashboard.pill_running": "游戏运行中",
   "dashboard.pill_scheduled": "{seconds} 秒后备份",

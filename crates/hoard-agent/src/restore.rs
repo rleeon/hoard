@@ -368,6 +368,54 @@ where
     })
 }
 
+/// Hoard Cloud: list the files inside a version's blob (relative path + size)
+/// without extracting anything to disk. The cloud stores one opaque `.tar.zst`
+/// per version and keeps no per-file index, so the History detail view streams
+/// the blob through the zstd + tar decoders and reads just the entry headers.
+/// File bodies are skipped (`tokio_tar` seeks past them) and nothing touches
+/// the filesystem, so this stays cheap even for large saves. `sha256` is left
+/// empty — the tar header doesn't carry it and the detail view doesn't show it.
+pub async fn list_cloud_version_files(
+    client: &ApiClient,
+    save_id: &str,
+    version: i64,
+) -> Result<Vec<SnapshotFile>> {
+    let meta = client.cloud_download(save_id, version).await?;
+    let resp = client.get_presigned(&meta.download).await?;
+
+    // Adapt the byte stream into an AsyncRead so the archive flows straight
+    // through the decoders without buffering the whole thing in memory.
+    let reader = StreamReader::new(
+        resp.bytes_stream()
+            .map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))),
+    );
+    let zstd = ZstdDecoder::new(BufReader::new(reader));
+    let zstd = BufReader::new(zstd);
+    let mut archive = tokio_tar::Archive::new(zstd);
+
+    let mut entries = archive.entries().context("opening tar archive")?;
+    let mut files = Vec::new();
+    while let Some(entry) = entries.next().await {
+        let entry = entry.context("reading tar entry")?;
+        if entry.header().entry_type().is_dir() {
+            continue;
+        }
+        let path_in_tar = entry.path()?.into_owned();
+        let rel = match sanitize(&path_in_tar) {
+            Some(p) => p.to_string_lossy().into_owned(),
+            None => continue,
+        };
+        let size = entry.header().size().unwrap_or(0) as i64;
+        files.push(SnapshotFile {
+            relative_path: rel,
+            size_bytes: size,
+            sha256: String::new(),
+        });
+    }
+    files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    Ok(files)
+}
+
 /// Re-apply the tar entry's recorded mtime onto the extracted file.
 ///
 /// We write each file with `File::create`, which stamps it with mtime=now.

@@ -77,6 +77,7 @@
   "dashboard.tooltip_paused": "Este save está em pausa — abre o Histórico para retomar",
   "dashboard.tooltip_offline": "Inicia o agente primeiro",
   "dashboard.tooltip_force": "Forçar envio agora",
+  "dashboard.tooltip_force_paused": "Enviar agora (em pausa — este envio manual é pontual)",
   "dashboard.pill_no_backup": "Sem cópia ainda",
   "dashboard.pill_running": "Jogo a correr",
   "dashboard.pill_scheduled": "Cópia em {seconds}s",

@@ -77,6 +77,7 @@
   "dashboard.tooltip_paused": "Esta partida está en pausa — abre el Historial para reanudar",
   "dashboard.tooltip_offline": "Inicia el agente primero",
   "dashboard.tooltip_force": "Forzar subida ahora",
+  "dashboard.tooltip_force_paused": "Subir ahora (en pausa — esta subida manual es puntual)",
   "dashboard.pill_no_backup": "Sin copia aún",
   "dashboard.pill_running": "Juego en curso",
   "dashboard.pill_scheduled": "Copia en {seconds}s",

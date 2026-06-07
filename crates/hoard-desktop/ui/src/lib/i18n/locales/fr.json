@@ -77,6 +77,7 @@
   "dashboard.tooltip_paused": "Cette sauvegarde est en pause — ouvrez l'Historique pour reprendre",
   "dashboard.tooltip_offline": "Démarrez d'abord l'agent",
   "dashboard.tooltip_force": "Forcer une sauvegarde maintenant",
+  "dashboard.tooltip_force_paused": "Envoyer maintenant (en pause — cet envoi manuel est ponctuel)",
   "dashboard.pill_no_backup": "Aucune sauvegarde",
   "dashboard.pill_running": "Jeu en cours",
   "dashboard.pill_scheduled": "Sauvegarde dans {seconds} s",

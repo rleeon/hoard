@@ -283,11 +283,11 @@
               variant="secondary"
               size="md"
               onclick={() => backupNow(save.save_id)}
-              disabled={!$status.running || save.paused}
-              title={save.paused
-                ? $_("dashboard.tooltip_paused")
-                : !$status.running
-                  ? $_("dashboard.tooltip_offline")
+              disabled={!$status.running}
+              title={!$status.running
+                ? $_("dashboard.tooltip_offline")
+                : save.paused
+                  ? $_("dashboard.tooltip_force_paused")
                   : $_("dashboard.tooltip_force")}
             >
               <UploadCloud size={14} />

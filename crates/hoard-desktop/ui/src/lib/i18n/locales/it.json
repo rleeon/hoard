@@ -77,6 +77,7 @@
   "dashboard.tooltip_paused": "Questo salvataggio è in pausa — apri Cronologia per riprendere",
   "dashboard.tooltip_offline": "Avvia prima l'agente",
   "dashboard.tooltip_force": "Forza il backup ora",
+  "dashboard.tooltip_force_paused": "Carica ora (in pausa — questo caricamento manuale è una tantum)",
   "dashboard.pill_no_backup": "Nessun backup",
   "dashboard.pill_running": "Gioco in esecuzione",
   "dashboard.pill_scheduled": "Backup tra {seconds}s",

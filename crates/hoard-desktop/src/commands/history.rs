@@ -100,8 +100,12 @@ pub async fn save_snapshot_detail(
     state: State<'_, AppState>,
 ) -> Result<SnapshotDetailWire, String> {
     let client = current_client(&state)?;
-    // Cloud stores a whole-archive blob with no per-file index, so the detail
-    // view returns the matching version's metadata with an empty file list.
+    // Cloud stores a whole-archive blob with no per-file index. We still want
+    // History to show what's inside, so we fetch the version's metadata from
+    // the history endpoint and stream the blob to read its tar headers (paths +
+    // sizes) without extracting. The listing is best-effort: if the download
+    // fails we fall back to the metadata with an empty file list rather than
+    // erroring the whole detail view.
     if client.is_cloud().await {
         let snap = client
             .cloud_list_versions(&save_id, true)
@@ -110,9 +114,23 @@ pub async fn save_snapshot_detail(
             .into_iter()
             .find(|s| s.version_num == version)
             .ok_or_else(|| "snapshot not found".to_string())?;
+        let files = match restore::list_cloud_version_files(&client, &save_id, version).await {
+            Ok(f) => f
+                .into_iter()
+                .map(|f| SnapshotFileWire {
+                    relative_path: f.relative_path,
+                    size_bytes: f.size_bytes,
+                    sha256: f.sha256,
+                })
+                .collect(),
+            Err(e) => {
+                tracing::warn!(error = %e, save_id = %save_id, version, "cloud snapshot detail: file listing failed");
+                Vec::new()
+            }
+        };
         return Ok(SnapshotDetailWire {
             snapshot: snapshot_to_wire(snap),
-            files: Vec::new(),
+            files,
         });
     }
     let detail = client

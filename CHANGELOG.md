@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.6] — 2026-06-07
+
+### Fixed
+- **El progreso a media partida ya se respalda en sesiones cortas (regresión
+  R.E.P.O.).** El throttle de ahorro de datos ancla en `last_backup_at`, pero
+  el agente lo avanzaba en *cada* fin de backup, incluidos los skips "carpeta
+  vacía/sin cambios" que no suben nada. Con auto-restore re-vaciando la carpeta
+  cada ciclo, ese ancla falsa empujaba el siguiente cambio real un intervalo
+  entero al futuro y la ronda terminaba antes de subir nada. Ahora
+  `last_backup_at` solo avanza con una subida genuina, así que el avance se
+  respalda en cuanto se asienta en vez de esperar un intervalo que nunca llega.
+- **History muestra los archivos dentro de cada save de Hoard Cloud.** Cada
+  versión cloud es un blob `.tar.zst` opaco sin índice por archivo; el detalle
+  ahora descarga el blob por streaming y lista las entradas del tar sin tocar
+  disco, de modo que se ven los archivos de cualquier versión.
+- **El botón "Subir ahora" vuelve a estar disponible en saves en pausa.** Una
+  subida manual es una orden explícita: solo se deshabilita si el agente está
+  desconectado, no por estar la partida en pausa.
+
 ## [2.0.5] — 2026-06-07
 
 ### Added

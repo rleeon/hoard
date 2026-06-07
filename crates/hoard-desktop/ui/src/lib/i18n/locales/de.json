@@ -77,6 +77,7 @@
   "dashboard.tooltip_paused": "Dieser Save ist pausiert — Verlauf öffnen zum Fortsetzen",
   "dashboard.tooltip_offline": "Starte zuerst den Agenten",
   "dashboard.tooltip_force": "Sicherung jetzt erzwingen",
+  "dashboard.tooltip_force_paused": "Jetzt hochladen (pausiert — dieser manuelle Upload ist einmalig)",
   "dashboard.pill_no_backup": "Noch keine Sicherung",
   "dashboard.pill_running": "Spiel läuft",
   "dashboard.pill_scheduled": "Sicherung in {seconds}s",

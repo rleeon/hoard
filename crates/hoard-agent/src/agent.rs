@@ -403,6 +403,15 @@ struct BackupDone {
     /// (unchanged) or the folder was empty, so the slot keeps its previous
     /// signature.
     new_set_hash: Option<String>,
+    /// `true` only when a real snapshot reached the server. The min-interval
+    /// throttle anchors on `last_backup_at`, which must advance **only** on a
+    /// genuine upload. A skip (unchanged bytes) or an empty/missing folder is
+    /// not a backup: if it bumped the anchor, the next real change would be
+    /// throttled a full `min_snapshot_interval_secs` out — and with
+    /// auto-restore re-emptying the folder each cycle, the anchor would keep
+    /// advancing on phantom "backups" and a short play session would never
+    /// flush its progress before the game closed (R.E.P.O. regression).
+    committed: bool,
 }
 
 /// Internal per-save bookkeeping.
@@ -754,7 +763,12 @@ async fn run_agent(
                     slot.has_pending = false;
                     slot.next_scheduled_backup_at = None;
                     slot.first_pending_event_at = None;
-                    slot.last_backup_at = Some(OffsetDateTime::now_utc());
+                    // Advance the throttle anchor only on a real upload — a
+                    // skip/empty must not push the next change a full
+                    // min-interval into the future.
+                    if done.committed {
+                        slot.last_backup_at = Some(OffsetDateTime::now_utc());
+                    }
                     if let Some(h) = done.new_set_hash {
                         slot.last_set_hash = Some(h);
                     }
@@ -1975,6 +1989,7 @@ async fn run_backup_with_retry(
         let _ = done_tx.try_send(BackupDone {
             save_id: save.save_id.clone(),
             new_set_hash: None,
+            committed: false,
         });
         if auto_restore {
             spawn_auto_restore(
@@ -2031,6 +2046,7 @@ async fn run_backup_with_retry(
                 let _ = done_tx.try_send(BackupDone {
                     save_id: save.save_id.clone(),
                     new_set_hash: None,
+                    committed: false,
                 });
                 return;
             }
@@ -2046,6 +2062,7 @@ async fn run_backup_with_retry(
                 let _ = done_tx.try_send(BackupDone {
                     save_id: save.save_id.clone(),
                     new_set_hash: Some(signature),
+                    committed: false,
                 });
                 return;
             }
@@ -2067,6 +2084,7 @@ async fn run_backup_with_retry(
                 let _ = done_tx.try_send(BackupDone {
                     save_id: save.save_id.clone(),
                     new_set_hash: Some(signature),
+                    committed: true,
                 });
                 return;
             }
