@@ -1135,7 +1135,7 @@ pub async fn delete_version(
             .execute(&state.pool)
             .await?;
 
-        release_blobs(&state, user.user_id, shas.iter().map(|(s,)| (s.as_str(), 1))).await;
+        release_blobs(&state, user.user_id, shas.into_iter().map(|(s,)| (s, 1))).await;
     } else {
         if let Err(e) = state.r2.delete_object(&r2_key).await {
             tracing::warn!(error = %e, r2_key = %r2_key, "cloud delete version: R2 object delete failed");
@@ -1232,12 +1232,7 @@ pub async fn delete_save(
         .execute(&state.pool)
         .await?;
 
-    release_blobs(
-        &state,
-        user.user_id,
-        blob_refs.iter().map(|(s, n)| (s.as_str(), *n)),
-    )
-    .await;
+    release_blobs(&state, user.user_id, blob_refs).await;
 
     Ok(StatusCode::NO_CONTENT.into_response())
 }
@@ -1246,9 +1241,9 @@ pub async fn delete_save(
 /// blob's refcount reaches zero (the cloud_blobs trigger credits the freed
 /// storage on the 0-transition). Best-effort: a failure here only leaks a blob,
 /// recoverable by a later sweep, so errors are logged not propagated.
-async fn release_blobs<'a, I>(state: &CloudState, user_id: Uuid, blobs: I)
+async fn release_blobs<I>(state: &CloudState, user_id: Uuid, blobs: I)
 where
-    I: IntoIterator<Item = (&'a str, i64)>,
+    I: IntoIterator<Item = (String, i64)>,
 {
     for (sha, dec) in blobs {
         let row: Result<Option<(i64, String)>, _> = sqlx::query_as(
@@ -1257,7 +1252,7 @@ where
              RETURNING refcount, r2_key",
         )
         .bind(user_id)
-        .bind(sha)
+        .bind(&sha)
         .bind(dec)
         .fetch_optional(&state.pool)
         .await;
@@ -1268,7 +1263,7 @@ where
                 }
                 if let Err(e) = sqlx::query("DELETE FROM cloud_blobs WHERE user_id = $1 AND sha256 = $2")
                     .bind(user_id)
-                    .bind(sha)
+                    .bind(&sha)
                     .execute(&state.pool)
                     .await
                 {
