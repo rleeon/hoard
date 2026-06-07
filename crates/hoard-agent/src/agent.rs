@@ -132,6 +132,15 @@ pub struct WatchedSave {
     /// [`crate::presets`].
     #[serde(default)]
     pub policy: crate::presets::SavePolicy,
+    /// Cloud version this device last committed or restored, read from
+    /// `state.json` (`last_version_num`). Seeds the slot's `known_version`
+    /// so the reconciliation sweep's version-gate is armed from the first
+    /// tick after a restart: without it every restart re-downloads every
+    /// snapshot to diff and drains the bandwidth quota. `None` for a
+    /// freshly tracked save (nothing committed yet) is correct — the gate
+    /// stays open so an empty/new device still pulls.
+    #[serde(default)]
+    pub known_version: Option<i64>,
 }
 
 /// Out-of-agent notifications. Frontend listens to these to drive the
@@ -852,6 +861,7 @@ fn handle_add(
 ) {
     let save_for_restore = save.clone();
     let save_id = save.save_id.clone();
+    let known_version = save.known_version;
     let mut slot = SaveSlot {
         save,
         watcher: None,
@@ -865,7 +875,7 @@ fn handle_add(
         restoring: false,
         next_auto_restore_at: None,
         last_set_hash: None,
-        known_version: None,
+        known_version,
     };
     arm_watcher(&mut slot, fs_tx);
     slots.insert(save_id.clone(), slot);
@@ -2460,6 +2470,7 @@ mod tests {
             steam_install_dir: None,
             processes: vec![],
             policy: Default::default(),
+            known_version: None,
         };
         let mut slots = HashMap::new();
         slots.insert(
@@ -2518,6 +2529,7 @@ mod tests {
             steam_install_dir: None,
             processes: vec![],
             policy: Default::default(),
+            known_version: None,
         };
 
         // Short debounce so the test completes well under the 10s timeout.

@@ -554,6 +554,8 @@
   "map.title": "存档地图",
   "map.subtitle": "你的游戏星座 — 每条分支是一次游玩，每个节点是一个存档。",
   "map.recenter": "重新居中",
+  "map.freeze": "冻结",
+  "map.resume": "恢复",
   "map.empty_title": "暂时没有可显示的内容",
   "map.empty_body": "追踪一个游戏并创建存档，它们会以带分支的球体显示在这里。",
   "map.go_library": "前往库",

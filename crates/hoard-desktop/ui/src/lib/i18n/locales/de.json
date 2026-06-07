@@ -554,6 +554,8 @@
   "map.title": "Spielstand-Karte",
   "map.subtitle": "Eine Konstellation deiner Spiele — jeder Zweig ein Spieldurchgang, jeder Knoten ein Spielstand.",
   "map.recenter": "Zentrieren",
+  "map.freeze": "Einfrieren",
+  "map.resume": "Fortsetzen",
   "map.empty_title": "Noch nichts zu zeigen",
   "map.empty_body": "Verfolge ein Spiel und erstelle Spielstände; sie erscheinen hier als Orbs mit Zweigen.",
   "map.go_library": "Zur Bibliothek",

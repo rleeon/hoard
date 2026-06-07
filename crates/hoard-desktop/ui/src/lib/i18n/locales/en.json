@@ -554,6 +554,8 @@
   "map.title": "Save map",
   "map.subtitle": "A constellation of your games — each branch is a playthrough, each node a save.",
   "map.recenter": "Recenter",
+  "map.freeze": "Freeze",
+  "map.resume": "Resume",
   "map.empty_title": "Nothing to map yet",
   "map.empty_body": "Track a game and create some saves; they will show up here as orbs with branches.",
   "map.go_library": "Go to Library",

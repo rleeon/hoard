@@ -554,6 +554,8 @@
   "map.title": "セーブマップ",
   "map.subtitle": "ゲームの星座 — 各ブランチはプレイ、各ノードはセーブです。",
   "map.recenter": "中央に戻す",
+  "map.freeze": "停止",
+  "map.resume": "再開",
   "map.empty_title": "まだ表示するものがありません",
   "map.empty_body": "ゲームを追跡してセーブを作成すると、ここにブランチ付きのオーブとして表示されます。",
   "map.go_library": "ライブラリへ",

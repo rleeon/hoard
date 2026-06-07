@@ -554,6 +554,8 @@
   "map.title": "Mapa de saves",
   "map.subtitle": "Una constelación de tus juegos — cada rama es una partida, cada nodo un save.",
   "map.recenter": "Centrar",
+  "map.freeze": "Congelar",
+  "map.resume": "Reanudar",
   "map.empty_title": "Aún no hay nada que mapear",
   "map.empty_body": "Sigue un juego y crea algún save; aparecerán aquí como orbes con ramas.",
   "map.go_library": "Ir a la biblioteca",

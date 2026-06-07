@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.2] — 2026-06-07
+
+### Added
+- **Mapa: botón Congelar/Reanudar (abajo a la izquierda).** Pausa la simulación
+  física para poder agarrar y recolocar saves y orbes sin que los resortes y el
+  "respiro" los muevan. Congelado, arrastrar un orbe lo mueve con su rama
+  rígidamente.
+
+### Changed
+- **Mapa: arrastrar un save ahora arrastra la rama por ambos lados.** El resorte
+  de cadena sólo apuntaba al nodo anterior (hacia el juego), así que al mover un
+  save se atraían los de detrás pero no los de delante, que seguían pegados al
+  orbe. Ahora el resorte tira de ambos vecinos: agarra cualquier nodo y todo el
+  brazo lo acompaña.
+- **Mapa: se agranda más.** Una biblioteca pequeña ahora llena la pantalla en
+  vez de quedarse diminuta en el centro (tope de zoom-a-encajar 2→3.6, zoom
+  máximo 4.5→6) y las etiquetas/versiones aparecen antes al acercar.
+
+### Fixed
+- **El version-gate del auto-restore ahora sobrevive a los reinicios.** En 2.1.1
+  el sweep sólo descargaba si otro dispositivo subía una versión más nueva, pero
+  el `known_version` del slot arrancaba en `None` tras cada reinicio del agente,
+  así que el primer barrido volvía a descargar el snapshot completo de cada save
+  para compararlo — agotando otra vez la cuota de 15 min y haciendo fallar
+  `cloud upload init` en bucle (p. ej. Factorio nunca subía). Ahora `WatchedSave`
+  arrastra el `last_version_num` persistido en `state.json` y siembra el slot al
+  registrarse: el gate queda armado desde el primer tick, una partida ya
+  sincronizada en este equipo no se re-descarga, y sólo se baja cuando otro
+  dispositivo subió algo más nuevo. De paso desaparece el "server isn't
+  reachable" intermitente, que venía de saturar la conexión con esas descargas.
+
 ## [2.1.1] — 2026-06-07
 
 ### Added

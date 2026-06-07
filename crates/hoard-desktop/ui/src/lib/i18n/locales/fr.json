@@ -554,6 +554,8 @@
   "map.title": "Carte des sauvegardes",
   "map.subtitle": "Une constellation de vos jeux — chaque branche est une partie, chaque nœud une sauvegarde.",
   "map.recenter": "Recentrer",
+  "map.freeze": "Figer",
+  "map.resume": "Reprendre",
   "map.empty_title": "Rien à afficher pour l’instant",
   "map.empty_body": "Suivez un jeu et créez des sauvegardes ; elles apparaîtront ici sous forme d’orbes avec des branches.",
   "map.go_library": "Aller à la bibliothèque",

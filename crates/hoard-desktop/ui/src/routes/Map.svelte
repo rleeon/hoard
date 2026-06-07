@@ -20,7 +20,7 @@
   import { onMount, onDestroy } from "svelte";
   import { push } from "svelte-spa-router";
   import { _ } from "svelte-i18n";
-  import { Map as MapIcon, History as HistoryIcon, X } from "lucide-svelte";
+  import { Map as MapIcon, History as HistoryIcon, X, Pause, Play } from "lucide-svelte";
 
   import * as api from "../lib/api";
   import type { TrackedSave, SnapshotEntry, DetectedGame } from "../lib/api";
@@ -278,6 +278,17 @@
   // Cleared to `false` by `wake()` (drag, zoom, resize, fresh data); set to
   // `true` by `step()` once the whole system is below `SLEEP_EPS`.
   let settled = false;
+  // User-toggled freeze (bottom-left button). When on, the physics loop stops
+  // integrating entirely — nodes stay exactly where they are so you can grab
+  // and reposition them without the springs and breathing nudging them away.
+  // Dragging still pins a node straight to the cursor, and on release it stays
+  // put (no spring-back) because nothing steps.
+  let frozen = $state(false);
+
+  function toggleFrozen() {
+    frozen = !frozen;
+    if (!frozen) wake();
+  }
 
   function wake() {
     settled = false;
@@ -366,12 +377,26 @@
           nax -= (dx / d) * pull;
           nay -= (dy / d) * pull;
 
-          // (2) light chain spring to the previous save so a branch still reads
-          // as a line — but slack enough to wobble, not a stiff rod.
+          // (2) light chain spring to BOTH chain neighbours so a branch still
+          // reads as a line — but slack enough to wobble, not a stiff rod. The
+          // spring used to point only at the *previous* node (toward the orb),
+          // so dragging a save pulled the nodes behind it but never the ones in
+          // front (toward the game) — they stayed glued to the orb. Springing to
+          // the next node too makes the drag symmetric: grab any save and the
+          // whole arm trails with it on both sides.
           if (n > 0) {
             const prev = b.nodes[n - 1];
             dx = node.x - prev.x;
             dy = node.y - prev.y;
+            d = Math.hypot(dx, dy) || 1;
+            const stretch = d - NODE_STEP;
+            nax -= (dx / d) * stretch * CHAIN_K;
+            nay -= (dy / d) * stretch * CHAIN_K;
+          }
+          if (n < b.nodes.length - 1) {
+            const next = b.nodes[n + 1];
+            dx = node.x - next.x;
+            dy = node.y - next.y;
             d = Math.hypot(dx, dy) || 1;
             const stretch = d - NODE_STEP;
             nax -= (dx / d) * stretch * CHAIN_K;
@@ -483,7 +508,9 @@
     const { minX, minY, maxX, maxY } = worldBounds();
     const w = maxX - minX || 1;
     const h = maxY - minY || 1;
-    scale = clamp(Math.min(cssW / w, cssH / h) * 0.9, 0.2, 2);
+    // Upper clamp raised from 2 → 3.6 so a small library (a handful of games)
+    // actually fills the viewport instead of huddling tiny in the middle.
+    scale = clamp(Math.min(cssW / w, cssH / h) * 0.94, 0.2, 3.6);
     tx = cssW / 2 - ((minX + maxX) / 2) * scale;
     ty = cssH / 2 - ((minY + maxY) / 2) * scale;
   }
@@ -502,8 +529,8 @@
 
     const nodeR = NODE_SCREEN_R / scale;
     const lineW = 1.6 / scale;
-    const showLabels = scale >= 1.15;
-    const showVersions = scale >= 1.7;
+    const showLabels = scale >= 0.85;
+    const showVersions = scale >= 1.3;
 
     // branches + nodes
     for (const o of orbs) {
@@ -653,7 +680,7 @@
       // Only simulate while awake. Once `step()` reports everything below
       // the sleep threshold we stop integrating (but keep drawing once more
       // so the final rest frame is painted). Dragging keeps it awake.
-      if (!reduceMotion && (!settled || draggedOrb || draggedNode)) {
+      if (!frozen && !reduceMotion && (!settled || draggedOrb || draggedNode)) {
         const peak = step();
         if (peak < SLEEP_EPS && !draggedOrb && !draggedNode) settled = true;
       }
@@ -724,7 +751,7 @@
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
     const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    const ns = clamp(scale * factor, 0.18, 4.5);
+    const ns = clamp(scale * factor, 0.18, 6);
     tx = mx - (mx - tx) * (ns / scale);
     ty = my - (my - ty) * (ns / scale);
     scale = ns;
@@ -794,10 +821,13 @@
       const wdy = dy / scale;
       draggedOrb.x += wdx;
       draggedOrb.y += wdy;
+      // Frozen: no spring will catch the nodes up, so move them rigidly with
+      // the orb. Live: carry a fraction and let the chain springs trail them.
+      const carry = frozen ? 1 : 0.25;
       for (const b of draggedOrb.branches)
         for (const n of b.nodes) {
-          n.x += wdx * 0.25;
-          n.y += wdy * 0.25;
+          n.x += wdx * carry;
+          n.y += wdy * carry;
         }
       startX = e.clientX;
       startY = e.clientY;
@@ -1041,9 +1071,25 @@
       </div>
     {/if}
 
+    <!-- freeze / unfreeze physics so nodes can be grabbed without drifting -->
+    <button
+      type="button"
+      onclick={toggleFrozen}
+      class="pointer-events-auto absolute bottom-4 left-6 z-10 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs backdrop-blur transition hover:brightness-125"
+      style={frozen
+        ? "border-color:rgba(245,158,11,0.4);background:rgba(245,158,11,0.1);color:#fcd34d"
+        : "border-color:rgba(255,255,255,0.08);background:rgba(24,24,27,0.7);color:#d4d4d8"}
+    >
+      {#if frozen}
+        <Play size={13} />{$_("map.resume")}
+      {:else}
+        <Pause size={13} />{$_("map.freeze")}
+      {/if}
+    </button>
+
     <!-- legend -->
     <div
-      class="pointer-events-none absolute bottom-4 left-6 z-10 flex gap-3 text-[10px] text-zinc-500"
+      class="pointer-events-none absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 gap-3 text-[10px] text-zinc-500"
     >
       <span class="flex items-center gap-1"
         ><span class="h-2 w-2 rounded-full" style="background:#10b981"></span>{$_("map.status_synced")}</span

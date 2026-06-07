@@ -319,6 +319,7 @@ fn hydrate_watched_saves(_state: &State<'_, AppState>) -> anyhow::Result<Vec<Wat
             steam_install_dir,
             processes: resolve_processes(&save_state.game_slug),
             policy,
+            known_version: save_state.last_version_num,
         });
     }
     Ok(out)
@@ -400,6 +401,10 @@ pub(crate) fn watched_save_from(
         steam_install_dir,
         processes,
         policy,
+        // Freshly tracked or just-added save: nothing committed from here yet,
+        // so leave the gate open. Once the first backup lands, the slot's
+        // `known_version` advances via `BackupDone`.
+        known_version: None,
     }
 }
 

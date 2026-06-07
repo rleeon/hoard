@@ -554,6 +554,8 @@
   "map.title": "Mappa dei salvataggi",
   "map.subtitle": "Una costellazione dei tuoi giochi — ogni ramo è una partita, ogni nodo un salvataggio.",
   "map.recenter": "Centra",
+  "map.freeze": "Blocca",
+  "map.resume": "Riprendi",
   "map.empty_title": "Ancora niente da mostrare",
   "map.empty_body": "Traccia un gioco e crea qualche salvataggio; appariranno qui come orbi con rami.",
   "map.go_library": "Vai alla libreria",
