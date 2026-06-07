@@ -151,6 +151,8 @@
   "history.collapse": "Zuklappen",
   "history.files_count": "{count, plural, one {# Datei} other {# Dateien}}",
   "history.loading_files": "Dateiliste lädt…",
+  "history.no_files": "Keine Dateien in diesem Snapshot.",
+  "history.cloud_no_file_index": "Die Dateiliste dieser Version konnte nicht geladen werden (der Download ist fehlgeschlagen oder hat das Bandbreitenlimit erreicht). Der Snapshot ist intakt.",
   "history.restore_title": "Version {version} wiederherstellen?",
   "history.restore_description": "Dateien in {path} werden mit dem Inhalt dieser Version überschrieben.",
   "history.backup_first_label": "Aktuellen Stand zuerst sichern",

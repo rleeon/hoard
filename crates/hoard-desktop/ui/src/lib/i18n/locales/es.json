@@ -151,6 +151,8 @@
   "history.collapse": "Contraer",
   "history.files_count": "{count, plural, one {# archivo} other {# archivos}}",
   "history.loading_files": "Cargando lista de archivos…",
+  "history.no_files": "No hay archivos en este snapshot.",
+  "history.cloud_no_file_index": "No se pudo cargar la lista de archivos de esta versión (la descarga pudo fallar o llegar al límite de ancho de banda). El snapshot está intacto.",
   "history.restore_title": "¿Restaurar la versión {version}?",
   "history.restore_description": "Los archivos en {path} se sobrescribirán con el contenido de esta versión.",
   "history.backup_first_label": "Subir el estado actual primero",

@@ -233,6 +233,14 @@ async fn download_snapshot_cloud<F>(
 where
     F: Fn(u64, u64) + Send + Sync + 'static,
 {
+    // New uploads are content-addressed: pull the per-file manifest (with
+    // presigned GETs) and download each blob. Legacy archive versions report
+    // `content_addressed = false` and fall through to the whole-archive path.
+    let manifest = client.cloud_version_manifest(save_id, version, true).await?;
+    if manifest.content_addressed {
+        return restore_cloud_cas(client, dest, options, manifest, progress).await;
+    }
+
     let meta = client.cloud_download(save_id, version).await?;
 
     if dest.exists() {
@@ -261,6 +269,109 @@ where
     let result = download_and_extract_cloud(client, &meta, dest, &tmp, &options, progress).await;
     let _ = tokio::fs::remove_file(&tmp).await;
     result
+}
+
+/// Content-addressed restore: each file in the manifest is its own R2 blob.
+/// Stream each to its destination path, verifying the whole-file sha256 and
+/// preserving the recorded mtime (so a cloud pull doesn't always win the
+/// conflict-aware diff). No temp archive — files land directly.
+async fn restore_cloud_cas<F>(
+    client: &ApiClient,
+    dest: &Path,
+    options: RestoreOptions,
+    manifest: crate::api::CloudVersionManifestOut,
+    progress: F,
+) -> Result<RestoreOutcome>
+where
+    F: Fn(u64, u64) + Send + Sync + 'static,
+{
+    if dest.exists() {
+        let empty = std::fs::read_dir(dest)?.next().is_none();
+        if !empty && !options.force {
+            bail!(
+                "destination is not empty: {} (set force = true to extract anyway)",
+                dest.display()
+            );
+        }
+    } else {
+        std::fs::create_dir_all(dest).with_context(|| format!("creating {}", dest.display()))?;
+    }
+
+    let total: u64 = manifest
+        .files
+        .iter()
+        .map(|f| f.size_bytes.max(0) as u64)
+        .sum();
+    let mut downloaded = 0u64;
+    let mut files_extracted = 0usize;
+    let mut bytes_extracted = 0u64;
+    progress(0, total);
+
+    for file in &manifest.files {
+        let safe_rel = sanitize(Path::new(&file.relative_path))
+            .ok_or_else(|| anyhow!("unsafe path in manifest: {}", file.relative_path))?;
+        let dest_path = dest.join(&safe_rel);
+        if let Some(parent) = dest_path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .with_context(|| format!("creating parent {}", parent.display()))?;
+        }
+
+        let presigned = file.download.as_ref().ok_or_else(|| {
+            anyhow!("manifest missing download URL for {}", file.relative_path)
+        })?;
+        let resp = client.get_presigned(presigned).await?;
+
+        let mut out = tokio::fs::File::create(&dest_path)
+            .await
+            .with_context(|| format!("writing {}", dest_path.display()))?;
+        let mut hasher = Sha256::new();
+        let mut stream = resp.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.context("downloading blob")?;
+            if !options.skip_verify {
+                hasher.update(&chunk);
+            }
+            out.write_all(&chunk)
+                .await
+                .with_context(|| format!("writing {}", dest_path.display()))?;
+            downloaded += chunk.len() as u64;
+            progress(downloaded, total);
+        }
+        out.flush().await.context("flushing file")?;
+        drop(out);
+
+        if !options.skip_verify {
+            let got = hex::encode(hasher.finalize());
+            if got != file.sha256 {
+                bail!(
+                    "sha256 mismatch for {}: expected {}, got {}",
+                    file.relative_path,
+                    file.sha256,
+                    got
+                );
+            }
+        }
+
+        // Preserve the recorded mtime — without it every cloud pull would look
+        // strictly newer than the local copy and silently win the auto-restore
+        // diff. Best-effort: a failure only degrades conflict resolution.
+        if let Some(secs) = file.modified_at {
+            if secs > 0 {
+                let ft = filetime::FileTime::from_unix_time(secs, 0);
+                let _ = filetime::set_file_mtime(&dest_path, ft);
+            }
+        }
+
+        bytes_extracted += file.size_bytes.max(0) as u64;
+        files_extracted += 1;
+    }
+
+    Ok(RestoreOutcome {
+        files_extracted,
+        bytes_extracted,
+        destination: dest.to_path_buf(),
+    })
 }
 
 async fn download_and_extract_cloud<F>(
@@ -380,6 +491,24 @@ pub async fn list_cloud_version_files(
     save_id: &str,
     version: i64,
 ) -> Result<Vec<SnapshotFile>> {
+    // Content-addressed versions keep a real per-file index server-side, so the
+    // detail view is a single cheap call — no blob download, no bandwidth. SHAs
+    // come back too. Legacy archive versions fall through to streaming the tar.
+    let manifest = client.cloud_version_manifest(save_id, version, false).await?;
+    if manifest.content_addressed {
+        let mut files: Vec<SnapshotFile> = manifest
+            .files
+            .into_iter()
+            .map(|f| SnapshotFile {
+                relative_path: f.relative_path,
+                size_bytes: f.size_bytes,
+                sha256: f.sha256,
+            })
+            .collect();
+        files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+        return Ok(files);
+    }
+
     let meta = client.cloud_download(save_id, version).await?;
     let resp = client.get_presigned(&meta.download).await?;
 

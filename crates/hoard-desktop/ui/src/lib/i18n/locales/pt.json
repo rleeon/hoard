@@ -151,6 +151,8 @@
   "history.collapse": "Recolher",
   "history.files_count": "{count, plural, one {# ficheiro} other {# ficheiros}}",
   "history.loading_files": "A carregar ficheiros…",
+  "history.no_files": "Sem ficheiros neste snapshot.",
+  "history.cloud_no_file_index": "Não foi possível carregar a lista de ficheiros desta versão (o download pode ter falhado ou atingido o limite de largura de banda). O snapshot está intacto.",
   "history.restore_title": "Restaurar versão {version}?",
   "history.restore_description": "Os ficheiros em {path} serão substituídos pelo conteúdo desta versão.",
   "history.backup_first_label": "Enviar estado atual primeiro",

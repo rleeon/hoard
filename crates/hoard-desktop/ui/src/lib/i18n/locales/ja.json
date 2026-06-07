@@ -151,6 +151,8 @@
   "history.collapse": "折りたたむ",
   "history.files_count": "{count, plural, other {# ファイル}}",
   "history.loading_files": "ファイル一覧を読み込み中…",
+  "history.no_files": "このスナップショットにファイルはありません。",
+  "history.cloud_no_file_index": "このバージョンのファイル一覧を読み込めませんでした（ダウンロードに失敗したか、帯域制限に達した可能性があります）。スナップショット自体は無事です。",
   "history.restore_title": "バージョン {version} をリストアしますか？",
   "history.restore_description": "{path} のファイルがこのバージョンの内容で上書きされます。",
   "history.backup_first_label": "現在の状態を先にバックアップ",

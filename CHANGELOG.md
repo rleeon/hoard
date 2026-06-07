@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-06-07
+
+### Changed
+- **Cloud: subida incremental con deduplicación por archivo (content-addressed).**
+  Hasta ahora cada respaldo en la nube reempaquetaba y resubía la carpeta de save
+  entera como un único `.tar.zst`: cambiar un archivo de una partida de 600 MB
+  significaba resubir 600 MB y agotar la ventana de ancho de banda de 15 minutos.
+  Ahora cada archivo se guarda una sola vez en R2 indexado por su SHA-256 de
+  archivo completo (`blobs/{user}/{sha}`), con un manifiesto por versión que mapea
+  rutas a blobs. El cliente sólo sube los archivos que el servidor aún no tiene, y
+  la descarga sólo trae los bytes únicos. Los `.v3`/zip que escriben los juegos se
+  deduplican enteros, sin descomprimir. Arregla el resubido completo en todos los
+  juegos (Victoria 3, Factorio, etc.).
+
+### Added
+- Mensajes para historial sin archivos / sin índice de archivos en la nube
+  (`history.no_files`, `history.cloud_no_file_index`) en los 8 idiomas.
+
+### Notes
+- Retrocompatible: las versiones antiguas de archivo opaco siguen funcionando con
+  sus rutas de subida/descarga/almacenamiento intactas; sólo las subidas nuevas
+  usan el flujo content-addressed.
+
 ## [2.1.2] — 2026-06-07
 
 ### Added

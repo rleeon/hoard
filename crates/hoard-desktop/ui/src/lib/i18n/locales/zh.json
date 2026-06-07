@@ -151,6 +151,8 @@
   "history.collapse": "收起",
   "history.files_count": "{count, plural, other {# 个文件}}",
   "history.loading_files": "正在加载文件列表…",
+  "history.no_files": "此快照中没有文件。",
+  "history.cloud_no_file_index": "无法加载此版本的文件列表（下载可能失败或达到了带宽上限）。快照本身完好。",
   "history.restore_title": "还原版本 {version}？",
   "history.restore_description": "{path} 中的文件将被此版本的内容覆盖。",
   "history.backup_first_label": "先备份当前状态",

@@ -9,15 +9,15 @@
 //! GUI gets it for free.
 
 use anyhow::{anyhow, bail, Context, Result};
-use async_compression::tokio::write::ZstdEncoder;
 use reqwest::multipart;
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use time::OffsetDateTime;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 
-use crate::api::{ApiClient, CloudUploadCommit, CloudUploadInit, Snapshot};
+use crate::api::{ApiClient, CloudCasFileEntry, CloudCasInit, Snapshot};
 use crate::state::{CliState, SaveState};
 
 /// One file enumerated from the source directory.
@@ -339,13 +339,13 @@ where
     })
 }
 
-/// Hoard Cloud upload: pack → init → presigned PUT → commit.
+/// Hoard Cloud upload (content-addressed): hash each file → declare manifest
+/// → upload only the blobs the server is missing → commit.
 ///
-/// Unlike the self-hosted multipart path, the server never sees the bytes —
-/// they go straight to R2. The init call must declare the *exact* archive
-/// size up front and commit records the sha256 the server later verifies via
-/// R2 HEAD, so we materialise the tar.zst to a temp file first to measure
-/// both before talking to the API.
+/// Unlike the old archive path this never packs the whole save: each file is
+/// its own R2 object keyed by its whole-file SHA-256, so a 600 MB save the
+/// game rewrote in place with 10 MB of real change costs a 10 MB upload. Files
+/// are never decompressed — the game's `.v3`/zip blobs are deduped whole.
 #[allow(clippy::too_many_arguments)]
 async fn upload_directory_cloud<F>(
     client: &ApiClient,
@@ -363,80 +363,78 @@ where
     let file_count = files.len();
     progress(0, total_bytes);
 
-    // 1. Pack into a temp tar.zst. Unique per process+nanos so concurrent
-    //    uploads from the same machine never collide.
-    let suffix = format!(
-        "{}-{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    );
-    let tmp = std::env::temp_dir().join(format!("hoard-upload-{suffix}.tar.zst"));
-
-    let pack_result = pack_tar_zst(files, &tmp).await;
-    if let Err(e) = pack_result {
-        let _ = tokio::fs::remove_file(&tmp).await;
-        return Err(e);
+    // 1. Whole-file SHA-256 of every file — the dedup key.
+    let mut shas: Vec<String> = Vec::with_capacity(file_count);
+    for f in files {
+        shas.push(hash_file(&f.absolute_path).await?);
     }
-    progress(total_bytes, total_bytes);
 
-    // 2. Measure the packed archive.
-    let size_bytes = tokio::fs::metadata(&tmp)
+    // 2. Declare the manifest; the server replies with the blobs it lacks.
+    let manifest: Vec<CloudCasFileEntry> = files
+        .iter()
+        .zip(&shas)
+        .map(|(f, sha)| CloudCasFileEntry {
+            relative_path: f.relative_path.clone(),
+            sha256: sha.clone(),
+            size_bytes: f.size_bytes as i64,
+            modified_at: f
+                .modified
+                .and_then(|m| m.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64),
+        })
+        .collect();
+
+    let init = client
+        .cloud_cas_init(&CloudCasInit {
+            save_id: save_id.to_string(),
+            game_slug: game_slug.to_string(),
+            label: Some(label.to_string()),
+            device_name: None,
+            notes: None,
+            backup_only: false,
+            base_version,
+            files: manifest,
+        })
         .await
-        .with_context(|| format!("stat temp archive {}", tmp.display()))?
-        .len();
-    let sha256 = match hash_file(&tmp).await {
-        Ok(s) => s,
-        Err(e) => {
-            let _ = tokio::fs::remove_file(&tmp).await;
-            return Err(e);
-        }
-    };
+        .context("cloud cas init")?;
 
-    // 3. init → PUT → commit. Clean up the temp file on every exit path.
-    let result = async {
-        let init = client
-            .cloud_init_upload(&CloudUploadInit {
-                save_id: save_id.to_string(),
-                game_slug: game_slug.to_string(),
-                label: Some(label.to_string()),
-                size_bytes,
-                file_count: file_count as i64,
-                device_name: None,
-                notes: None,
-                backup_only: false,
-                base_version,
-            })
-            .await
-            .context("cloud upload init")?;
-
-        let body = file_to_body(&tmp).await?;
-        client
-            .put_presigned(&init.upload, body, size_bytes)
-            .await
-            .context("uploading archive to cloud storage")?;
-
-        let commit = client
-            .cloud_commit(
-                save_id,
-                init.version_num,
-                &CloudUploadCommit { sha256, size_bytes },
-            )
-            .await
-            .context("cloud upload commit")?;
-        Ok::<_, anyhow::Error>(commit)
+    // 3. Upload only the missing blobs. Files sharing a SHA upload once.
+    let mut by_sha: HashMap<&str, &UploadFile> = HashMap::new();
+    for (f, sha) in files.iter().zip(&shas) {
+        by_sha.entry(sha.as_str()).or_insert(f);
     }
-    .await;
+    let upload_total: u64 = init
+        .missing
+        .iter()
+        .map(|b| b.size_bytes.max(0) as u64)
+        .sum();
+    // Progress is reported against the bytes actually transferred, so the bar
+    // reflects the real (deduped) upload rather than the whole save size.
+    let denom = upload_total.max(1);
+    let mut uploaded = 0u64;
+    progress(0, denom);
+    for blob in &init.missing {
+        let Some(f) = by_sha.get(blob.sha256.as_str()) else {
+            bail!("server requested a blob not in the manifest: {}", blob.sha256);
+        };
+        let body = file_to_body(&f.absolute_path).await?;
+        client
+            .put_presigned(&blob.upload, body, f.size_bytes)
+            .await
+            .with_context(|| format!("uploading {}", f.relative_path))?;
+        uploaded += f.size_bytes;
+        progress(uploaded, denom);
+    }
 
-    let _ = tokio::fs::remove_file(&tmp).await;
-    let commit = result?;
+    // 4. Commit — the server verifies the new blobs landed and finalizes.
+    let commit = client
+        .cloud_cas_commit(save_id, init.version_num)
+        .await
+        .context("cloud cas commit")?;
 
-    // Synthesize a Snapshot for the shared `UploadOutcome` shape. The cloud
-    // commit only returns the version number; the rest is what we know
-    // locally. `total_size_bytes` is the *uncompressed* save size, matching
-    // self-hosted snapshot semantics (sum of file sizes, not archive size).
+    // Synthesize a Snapshot for the shared `UploadOutcome` shape.
+    // `total_size_bytes` is the logical save size (sum of file sizes), matching
+    // self-hosted snapshot semantics.
     let snapshot = Snapshot {
         id: String::new(),
         save_id: Some(commit.save_id),
@@ -453,26 +451,6 @@ where
         file_count,
         total_bytes,
     })
-}
-
-/// Build a `.tar.zst` of `files` at `dest`, streaming each file from disk so
-/// a large save never lands wholly in RAM.
-async fn pack_tar_zst(files: &[UploadFile], dest: &Path) -> Result<()> {
-    let out = tokio::fs::File::create(dest)
-        .await
-        .with_context(|| format!("creating temp archive {}", dest.display()))?;
-    let zstd = ZstdEncoder::new(out);
-    let mut tar = tokio_tar::Builder::new(zstd);
-    for f in files {
-        tar.append_path_with_name(&f.absolute_path, &f.relative_path)
-            .await
-            .with_context(|| format!("packing {}", f.relative_path))?;
-    }
-    // Finish the tar (writes the trailing zero blocks), then flush + close
-    // the zstd encoder so the frame footer lands on disk.
-    let mut zstd = tar.into_inner().await.context("finalizing tar")?;
-    zstd.shutdown().await.context("finalizing zstd stream")?;
-    Ok(())
 }
 
 /// SHA-256 of a file's bytes, read in fixed-size chunks.

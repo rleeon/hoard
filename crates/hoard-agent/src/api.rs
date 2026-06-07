@@ -330,6 +330,64 @@ impl ApiClient {
         Ok(resp)
     }
 
+    /// `POST /v1/cloud/cas/init` — declare a content-addressed upload. Returns
+    /// the new version number plus the subset of blobs the server is missing,
+    /// each with a presigned PUT URL.
+    pub async fn cloud_cas_init(&self, init: &CloudCasInit) -> Result<CloudCasInitOut> {
+        let resp = self
+            .http
+            .post(self.url("/v1/cloud/cas/init"))
+            .header("authorization", self.auth_header())
+            .json(init)
+            .send()
+            .await?;
+        let resp = Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
+        Ok(resp.json().await?)
+    }
+
+    /// `POST /v1/cloud/saves/:id/versions/:n/cas/commit` — finalize a content-
+    /// addressed upload once every missing blob has been PUT.
+    pub async fn cloud_cas_commit(
+        &self,
+        save_id: &str,
+        version: i64,
+    ) -> Result<CloudUploadCommitOut> {
+        let resp = self
+            .http
+            .post(self.url(&format!(
+                "/v1/cloud/saves/{save_id}/versions/{version}/cas/commit"
+            )))
+            .header("authorization", self.auth_header())
+            .send()
+            .await?;
+        let resp = Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
+        Ok(resp.json().await?)
+    }
+
+    /// `GET /v1/cloud/saves/:id/versions/:n/manifest` — the per-file manifest
+    /// of a content-addressed version. With `presign = true` each file carries
+    /// a download URL (restore) and bandwidth is charged; with `false` it's a
+    /// cheap listing (History detail). Returns `content_addressed = false` for
+    /// legacy archive versions.
+    pub async fn cloud_version_manifest(
+        &self,
+        save_id: &str,
+        version: i64,
+        presign: bool,
+    ) -> Result<CloudVersionManifestOut> {
+        let resp = self
+            .http
+            .get(self.url(&format!(
+                "/v1/cloud/saves/{save_id}/versions/{version}/manifest"
+            )))
+            .query(&[("presign", presign)])
+            .header("authorization", self.auth_header())
+            .send()
+            .await?;
+        let resp = Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
+        Ok(resp.json().await?)
+    }
+
     pub async fn list_games(&self, query: Option<&str>) -> Result<Vec<Game>> {
         let mut req = self
             .http
@@ -736,4 +794,75 @@ pub struct CloudManifest {
     #[serde(default)]
     pub generated_at: String,
     pub saves: Vec<CloudManifestEntry>,
+}
+
+// ---- Cloud content-addressed (per-file dedup) DTOs ---------------------
+
+/// One file in a content-addressed upload manifest. Mirrors the server's
+/// `CasFileEntry`.
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudCasFileEntry {
+    pub relative_path: String,
+    pub sha256: String,
+    pub size_bytes: i64,
+    /// Source file mtime (unix seconds), preserved on restore. `None` if the
+    /// FS didn't report one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified_at: Option<i64>,
+}
+
+/// Body for `POST /v1/cloud/cas/init`. The client declares the whole-file
+/// manifest; the server replies with the subset of blobs it doesn't have.
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudCasInit {
+    pub save_id: String,
+    pub game_slug: String,
+    pub label: Option<String>,
+    pub device_name: Option<String>,
+    pub notes: Option<String>,
+    pub backup_only: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_version: Option<i64>,
+    pub files: Vec<CloudCasFileEntry>,
+}
+
+/// A blob the server is missing — the client must PUT it to `upload`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CloudCasMissingBlob {
+    pub sha256: String,
+    pub size_bytes: i64,
+    #[serde(default)]
+    pub r2_key: String,
+    pub upload: PresignedUrl,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CloudCasInitOut {
+    pub version_num: i64,
+    pub missing: Vec<CloudCasMissingBlob>,
+    #[allow(dead_code)]
+    pub quota: CloudQuotaInfo,
+}
+
+/// One file in a version manifest. `download` is present only when the
+/// manifest was requested with `presign=true` (the restore path).
+#[derive(Debug, Clone, Deserialize)]
+pub struct CloudManifestFile {
+    pub relative_path: String,
+    pub sha256: String,
+    pub size_bytes: i64,
+    #[serde(default)]
+    pub modified_at: Option<i64>,
+    #[serde(default)]
+    pub download: Option<PresignedUrl>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CloudVersionManifestOut {
+    /// False for legacy archive versions — the caller must fall back to the
+    /// whole-archive `cloud_download` path.
+    #[serde(default)]
+    pub content_addressed: bool,
+    #[serde(default)]
+    pub files: Vec<CloudManifestFile>,
 }

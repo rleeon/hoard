@@ -151,6 +151,8 @@
   "history.collapse": "Comprimi",
   "history.files_count": "{count, plural, one {# file} other {# file}}",
   "history.loading_files": "Caricamento elenco file…",
+  "history.no_files": "Nessun file in questo snapshot.",
+  "history.cloud_no_file_index": "Impossibile caricare l'elenco dei file di questa versione (il download è fallito o ha raggiunto il limite di banda). Lo snapshot è intatto.",
   "history.restore_title": "Ripristinare la versione {version}?",
   "history.restore_description": "I file in {path} verranno sovrascritti con il contenuto di questa versione.",
   "history.backup_first_label": "Backup dello stato attuale prima",

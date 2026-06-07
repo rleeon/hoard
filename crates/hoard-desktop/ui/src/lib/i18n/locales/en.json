@@ -151,6 +151,8 @@
   "history.collapse": "Collapse",
   "history.files_count": "{count, plural, one {# file} other {# files}}",
   "history.loading_files": "Loading file list…",
+  "history.no_files": "No files in this snapshot.",
+  "history.cloud_no_file_index": "Couldn't load the file list for this version (the download may have failed or hit the bandwidth limit). The snapshot is intact.",
   "history.restore_title": "Restore version {version}?",
   "history.restore_description": "Files in {path} will be overwritten with the contents of this version.",
   "history.backup_first_label": "Back up current state first",

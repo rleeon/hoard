@@ -194,6 +194,15 @@ pub fn key_for_export(user_id: uuid::Uuid, job_id: uuid::Uuid) -> String {
     format!("exports/{user_id}/{job_id}.zip")
 }
 
+/// Build a deterministic R2 key for a content-addressed file blob. Keyed by
+/// the whole-file SHA-256 under a per-user prefix, sharded by the first byte
+/// so a single user's blobs spread across 256 folders. Distinct `blobs/`
+/// prefix keeps them apart from the legacy `users/.../v{n}.tar.zst` archives.
+pub fn key_for_blob(user_id: uuid::Uuid, sha256: &str) -> String {
+    let shard = sha256.get(0..2).unwrap_or("00");
+    format!("blobs/{user_id}/{shard}/{sha256}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

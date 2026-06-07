@@ -151,6 +151,8 @@
   "history.collapse": "Réduire",
   "history.files_count": "{count, plural, one {# fichier} other {# fichiers}}",
   "history.loading_files": "Chargement de la liste de fichiers…",
+  "history.no_files": "Aucun fichier dans cet instantané.",
+  "history.cloud_no_file_index": "Impossible de charger la liste des fichiers de cette version (le téléchargement a échoué ou a atteint la limite de bande passante). L'instantané est intact.",
   "history.restore_title": "Restaurer la version {version} ?",
   "history.restore_description": "Les fichiers dans {path} seront écrasés par le contenu de cette version.",
   "history.backup_first_label": "Sauvegarder d'abord l'état actuel",

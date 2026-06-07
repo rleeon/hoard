@@ -120,6 +120,10 @@ pub async fn run(cfg: Config) -> Result<()> {
         .route("/v1/devices/:id", axum::routing::delete(me::delete_device))
         .route("/v1/cloud/checkout", post(checkout::create_checkout))
         .route("/v1/cloud/saves", post(saves::init_upload))
+        // Content-addressed init lives off the `/saves/:save_id` param path on
+        // purpose: matchit 0.7 (axum 0.7) panics on a static `/saves/cas`
+        // colliding with the `:save_id` param at the same position.
+        .route("/v1/cloud/cas/init", post(saves::cas_init))
         .route(
             "/v1/cloud/saves/:save_id",
             axum::routing::delete(saves::delete_save),
@@ -135,6 +139,14 @@ pub async fn run(cfg: Config) -> Result<()> {
         .route(
             "/v1/cloud/saves/:save_id/versions/:version/commit",
             post(saves::commit_upload),
+        )
+        .route(
+            "/v1/cloud/saves/:save_id/versions/:version/cas/commit",
+            post(saves::cas_commit),
+        )
+        .route(
+            "/v1/cloud/saves/:save_id/versions/:version/manifest",
+            get(saves::version_manifest),
         )
         .route(
             "/v1/cloud/saves/:save_id/versions/:version/download",
