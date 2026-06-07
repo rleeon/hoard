@@ -209,6 +209,8 @@ pub fn run() {
             commands::history::restore_snapshot,
             commands::history::set_save_paused,
             commands::history::set_save_local_path,
+            commands::history::list_save_presets,
+            commands::history::set_save_preset,
             commands::history::tail_logs,
             commands::history::logs_path,
             commands::catalog::update_catalog,

@@ -26,6 +26,7 @@ use hoard_agent::api::ApiClient;
 use hoard_agent::config::CliConfig;
 use hoard_agent::manifest::Os;
 use hoard_agent::prefs::Prefs;
+use hoard_agent::presets::{self, SavePolicy};
 use hoard_agent::state::CliState;
 use hoard_agent::steam;
 use serde::Serialize;
@@ -305,6 +306,7 @@ fn hydrate_watched_saves(_state: &State<'_, AppState>) -> anyhow::Result<Vec<Wat
             .find(|a| name_matches(&a.name, &save_state.game_slug))
             .map(|a| a.install_dir.clone());
 
+        let policy = resolve_policy(&save_state.game_slug, save_state.preset.as_deref());
         out.push(WatchedSave {
             save_id,
             game_slug: save_state.game_slug.clone(),
@@ -316,6 +318,7 @@ fn hydrate_watched_saves(_state: &State<'_, AppState>) -> anyhow::Result<Vec<Wat
             local_path: save_state.local_path,
             steam_install_dir,
             processes: Vec::new(),
+            policy,
         });
     }
     Ok(out)
@@ -361,20 +364,32 @@ pub(crate) async fn detach_save_if_running(state: &State<'_, AppState>, save_id:
     }
 }
 
+/// Resolve a save's effective sync policy: the user-pinned preset wins; with
+/// none pinned, fall back to our built-in catalog for known-quirky games
+/// (R.E.P.O. → short-session). An unknown name yields the empty (inherit-all)
+/// policy.
+pub(crate) fn resolve_policy(game_slug: &str, stored_preset: Option<&str>) -> SavePolicy {
+    let name = stored_preset.or_else(|| presets::builtin_preset_for(game_slug));
+    SavePolicy::from_preset(name)
+}
+
 /// Path-aware helper used by the library command when adding a save and the
-/// agent is running. Builds a `WatchedSave` from minimal inputs.
+/// agent is running. Builds a `WatchedSave` from minimal inputs, resolving the
+/// save's sync policy from `preset` (or the built-in catalog).
 pub(crate) fn watched_save_from(
     save_id: String,
     game_slug: String,
     display_name: String,
     label: String,
     local_path: PathBuf,
+    preset: Option<&str>,
 ) -> WatchedSave {
     let steam_apps = steam::list_installed_steam_games(Os::current()).unwrap_or_default();
     let steam_install_dir = steam_apps
         .iter()
         .find(|a| name_matches(&a.name, &game_slug))
         .map(|a| a.install_dir.clone());
+    let policy = resolve_policy(&game_slug, preset);
     WatchedSave {
         save_id,
         game_slug,
@@ -383,6 +398,7 @@ pub(crate) fn watched_save_from(
         local_path,
         steam_install_dir,
         processes: Vec::new(),
+        policy,
     }
 }
 

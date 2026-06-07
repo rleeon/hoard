@@ -19,6 +19,14 @@ pub struct SaveState {
     /// older state files without migration.
     #[serde(default)]
     pub paused: bool,
+    /// Sync preset id for this save (see [`crate::presets`]). Resolves into a
+    /// [`crate::presets::SavePolicy`] of overrides layered on the global
+    /// config. `None`/absent = the implicit `standard` preset (inherit
+    /// everything). Auto-assigned from [`crate::presets::builtin_preset_for`]
+    /// on track for known-quirky games; user-overridable. `default` keeps
+    /// older `state.json` files loading without migration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preset: Option<String>,
     /// Skip-by-set-hash cache (ADR 0019). A cheap signature over the save's
     /// `(relative_path, size, mtime)` set as of the last successful upload.
     /// Before backing up, the agent recomputes the signature; if it's

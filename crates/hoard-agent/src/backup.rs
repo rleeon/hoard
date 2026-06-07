@@ -564,6 +564,7 @@ pub async fn remember_save(
         // Preserve the skip-by-hash signature across a metadata refresh too,
         // so re-remembering a save doesn't force a redundant next upload.
         let prev_hash = state.saves.get(save_id).and_then(|s| s.set_hash.clone());
+        let prev_preset = state.saves.get(save_id).and_then(|s| s.preset.clone());
         state.saves.insert(
             save_id.to_string(),
             SaveState {
@@ -573,6 +574,7 @@ pub async fn remember_save(
                 last_backup_at: Some(OffsetDateTime::now_utc()),
                 last_version_num: Some(last_version_num),
                 paused: was_paused,
+                preset: prev_preset,
                 set_hash: prev_hash,
             },
         );

@@ -126,6 +126,12 @@ pub struct WatchedSave {
     /// in case a future catalog ships process names again.
     #[serde(default)]
     pub processes: Vec<String>,
+    /// Resolved per-save sync overrides (from the save's preset). Empty by
+    /// default = inherit every global `AgentConfig` setting. The agent reads
+    /// `policy.<field>.unwrap_or(config.<field>)` at each decision point. See
+    /// [`crate::presets`].
+    #[serde(default)]
+    pub policy: crate::presets::SavePolicy,
 }
 
 /// Out-of-agent notifications. Frontend listens to these to drive the
@@ -643,7 +649,16 @@ async fn run_agent(
             Some(path) = fs_rx.recv() => {
                 if let Some(save_id) = match_save_for_path(&slots, &path) {
                     let now = OffsetDateTime::now_utc();
-                    let mut delay = Duration::from_secs(config.debounce_secs);
+                    // Per-save preset overrides win over the global config.
+                    let debounce_secs = slots
+                        .get(&save_id)
+                        .and_then(|s| s.save.policy.debounce_secs)
+                        .unwrap_or(config.debounce_secs);
+                    let min_interval_secs = slots
+                        .get(&save_id)
+                        .and_then(|s| s.save.policy.min_snapshot_interval_secs)
+                        .unwrap_or(config.min_snapshot_interval_secs);
+                    let mut delay = Duration::from_secs(debounce_secs);
                     if let Some(slot) = slots.get_mut(&save_id) {
                         slot.has_pending = true;
                         slot.last_fs_event_at = Some(now);
@@ -666,10 +681,10 @@ async fn run_agent(
                         // same fire time instead of drifting. Wins over the
                         // anti-starvation `delay = ZERO` above: we deliberately
                         // wait, and always upload the final state when we do.
-                        if config.min_snapshot_interval_secs > 0 {
+                        if min_interval_secs > 0 {
                             if let Some(last) = slot.last_backup_at {
                                 let earliest = last
-                                    + Duration::from_secs(config.min_snapshot_interval_secs);
+                                    + Duration::from_secs(min_interval_secs);
                                 if now + delay < earliest {
                                     delay = (earliest - now).unsigned_abs();
                                 }
@@ -734,17 +749,18 @@ async fn run_agent(
                     }
                 }
                 // Reconciliation backstop: every tick, look for tracked
-                // saves whose local folder is empty and (a) the user has
-                // auto_restore on, (b) we're not already restoring, and
-                // (c) the cooldown has elapsed. Catches the cases the
-                // event-driven paths miss — uninstall while Hoard was
-                // closed, network came back online after a failed attempt,
-                // user just turned auto_restore on with several stale slots.
-                if config.auto_restore {
-                    sweep_for_auto_restore(
-                        &mut slots, &api, &events_tx, &cmd_tx, &config,
-                    );
-                }
+                // saves whose local folder is empty and (a) restore is enabled
+                // for that save (global default or per-save preset), (b) we're
+                // not already restoring, and (c) the cooldown has elapsed.
+                // Catches the cases the event-driven paths miss — uninstall
+                // while Hoard was closed, network came back online after a
+                // failed attempt, user just turned auto_restore on with several
+                // stale slots. The per-slot filter inside resolves the
+                // effective preference, so we always call (a backup-only save
+                // is filtered out there, not here).
+                sweep_for_auto_restore(
+                    &mut slots, &api, &events_tx, &cmd_tx, &config,
+                );
 
                 // DETECCIÓN (fase 3, ADR 0020): sonda de candidatos. `sys` ya
                 // viene refrescado por `process_poll`. Para cada candidato no
@@ -1069,6 +1085,11 @@ fn sweep_for_auto_restore(
     let candidates: Vec<(String, WatchedSave)> = slots
         .iter()
         .filter(|(id, slot)| {
+            // Per-save preset can opt out of restore (backup-only) or opt in
+            // even when the global default is off.
+            if !slot.save.policy.auto_restore.unwrap_or(config.auto_restore) {
+                return false;
+            }
             if slot.restoring {
                 return false;
             }
@@ -1794,7 +1815,9 @@ fn schedule_backup(
     let save = slot.save.clone();
     let prev_set_hash = slot.last_set_hash.clone();
     let max_retries = config.max_retries;
-    let auto_restore = config.auto_restore;
+    // Per-save preset can force backup-only (`Some(false)`) or force restore
+    // (`Some(true)`) regardless of the global default.
+    let auto_restore = slot.save.policy.auto_restore.unwrap_or(config.auto_restore);
     let conflict_root = config.conflict_root.clone();
     let conflict_retention_days = config.conflict_retention_days;
 
@@ -2201,8 +2224,13 @@ fn process_poll(
             // all veto the pull. The restore itself is conflict-aware
             // (local-newer files win, conflicts are backed up), so even when
             // it does fire it can't lose newer local progress.
-            let barrier_save: Option<WatchedSave> = if config.auto_restore {
+            let barrier_save: Option<WatchedSave> = {
                 slots.get(&id).and_then(|slot| {
+                    // Per-save preset can disable (backup-only) or enable the
+                    // pull barrier regardless of the global default.
+                    if !slot.save.policy.auto_restore.unwrap_or(config.auto_restore) {
+                        return None;
+                    }
                     if slot.restoring {
                         return None;
                     }
@@ -2226,8 +2254,6 @@ fn process_poll(
                     }
                     Some(slot.save.clone())
                 })
-            } else {
-                None
             };
 
             if let Some(slot) = slots.get_mut(&id) {
@@ -2358,6 +2384,7 @@ mod tests {
             local_path: PathBuf::from("/tmp/saves/stardew"),
             steam_install_dir: None,
             processes: vec![],
+            policy: Default::default(),
         };
         let mut slots = HashMap::new();
         slots.insert(
@@ -2414,6 +2441,7 @@ mod tests {
             local_path: save_path.clone(),
             steam_install_dir: None,
             processes: vec![],
+            policy: Default::default(),
         };
 
         // Short debounce so the test completes well under the 10s timeout.

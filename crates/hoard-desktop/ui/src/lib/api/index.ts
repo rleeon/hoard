@@ -136,6 +136,10 @@ export type TrackedSave = {
    *  UI shows a discreet "Sin estado local" badge and disables the local
    *  untrack button — only `deleteSaveCompletely` is meaningful here. */
   orphan: boolean;
+  /** The user's explicitly chosen sync preset, or `null` for "standard /
+   *  inherit". A built-in per-game preset may still apply at the agent
+   *  level when this is `null`; this only reflects the manual override. */
+  preset: string | null;
 };
 
 /** Run a full auto-detection sweep. Subscribe to `library://scan-progress`
@@ -639,6 +643,22 @@ export function setSaveLocalPath(
   newPath: string,
 ): Promise<void> {
   return invoke<void>("set_save_local_path", { saveId, newPath });
+}
+
+/** The catalog of selectable sync presets (slugs). `"standard"` means
+ *  "inherit the global config"; the rest tune auto-restore / snapshot
+ *  cadence for games that misbehave under the defaults. */
+export function listSavePresets(): Promise<string[]> {
+  return invoke<string[]>("list_save_presets");
+}
+
+/** Set (or clear, with `null`) the manual sync preset for a save. Passing
+ *  `"standard"` or `null` clears the override back to the global config. */
+export function setSavePreset(
+  saveId: string,
+  preset: string | null,
+): Promise<void> {
+  return invoke<void>("set_save_preset", { saveId, preset });
 }
 
 export function tailLogs(maxLines?: number): Promise<LogLine[]> {

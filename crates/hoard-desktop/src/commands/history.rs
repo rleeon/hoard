@@ -14,6 +14,7 @@ use std::path::PathBuf;
 
 use hoard_agent::backup;
 use hoard_agent::config::CliConfig;
+use hoard_agent::presets;
 use hoard_agent::restore::{self, RestoreOptions};
 use hoard_agent::state::CliState;
 use serde::Serialize;
@@ -279,6 +280,7 @@ pub async fn restore_snapshot(
                 last_backup_at: None,
                 last_version_num: None,
                 paused: false,
+                preset: None,
                 set_hash: None,
             }
         });
@@ -453,9 +455,61 @@ pub async fn set_save_paused(
         let watched = watched_save_from(
             save_id,
             snapshot.game_slug.clone(),
+            snapshot.game_slug.clone(),
+            snapshot.label,
+            snapshot.local_path,
+            snapshot.preset.as_deref(),
+        );
+        attach_save_if_running(&state, watched).await;
+    }
+    Ok(())
+}
+
+/// The list of selectable sync-preset ids, in display order. The UI renders a
+/// localized label + description for each (`presets.<id>.label` etc.).
+#[tauri::command]
+pub fn list_save_presets() -> Vec<String> {
+    presets::ALL_PRESETS.iter().map(|s| s.to_string()).collect()
+}
+
+/// Pin (or clear) the sync preset for a save. Passing `null`/`"standard"`
+/// clears the override back to the global defaults. Persists to `state.json`
+/// and reseats the live agent so the new policy (interval, debounce, restore
+/// behaviour) takes effect within a tick without an app restart.
+#[tauri::command]
+pub async fn set_save_preset(
+    save_id: String,
+    preset: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    // Normalise: empty / "standard" means "no override".
+    let preset = preset.filter(|p| !p.is_empty() && p != presets::PRESET_STANDARD);
+    if let Some(p) = &preset {
+        if !presets::ALL_PRESETS.contains(&p.as_str()) {
+            return Err(format!("Unknown preset '{p}'."));
+        }
+    }
+
+    let (mut cli_state, path) = CliState::load_default().map_err(|e| e.to_string())?;
+    let entry = cli_state
+        .saves
+        .get_mut(&save_id)
+        .ok_or_else(|| "That save isn't tracked on this machine.".to_string())?;
+    entry.preset = preset.clone();
+    let snapshot = entry.clone();
+    cli_state.save(&path).map_err(|e| e.to_string())?;
+
+    // Reseat the live agent so the resolved policy is applied immediately —
+    // unless the save is paused (the agent isn't watching it anyway).
+    if !snapshot.paused {
+        detach_save_if_running(&state, save_id.clone()).await;
+        let watched = watched_save_from(
+            save_id,
+            snapshot.game_slug.clone(),
             snapshot.game_slug,
             snapshot.label,
             snapshot.local_path,
+            snapshot.preset.as_deref(),
         );
         attach_save_if_running(&state, watched).await;
     }
@@ -501,9 +555,10 @@ pub async fn set_save_local_path(
         let watched = watched_save_from(
             save_id,
             snapshot.game_slug.clone(),
-            snapshot.game_slug,
+            snapshot.game_slug.clone(),
             snapshot.label,
             snapshot.local_path,
+            snapshot.preset.as_deref(),
         );
         attach_save_if_running(&state, watched).await;
     }

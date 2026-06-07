@@ -19,6 +19,7 @@ pub mod logship;
 pub mod manifest;
 pub mod pathexpand;
 pub mod prefs;
+pub mod presets;
 pub mod restore;
 pub mod roots;
 pub mod scoring;

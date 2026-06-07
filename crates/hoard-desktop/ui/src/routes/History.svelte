@@ -84,12 +84,21 @@
   let togglingPause = $state(false);
   let backingUp = $state(false);
 
+  // Sync presets — the catalog comes from the backend; `savingPreset` gates
+  // the selector while a change is in flight.
+  let presets = $state<string[]>([]);
+  let savingPreset = $state(false);
+
   let unlisten: UnlistenFn | null = null;
 
   onMount(async () => {
     unlisten = await listen<RestoreProgress>("restore://progress", (e) => {
       if (e.payload.save_id === saveId) restoreProgress = e.payload;
     });
+    api
+      .listSavePresets()
+      .then((p) => (presets = p))
+      .catch(() => (presets = []));
     await hydrate();
   });
 
@@ -306,6 +315,23 @@
     }
   }
 
+  async function changePreset(value: string) {
+    if (!save) return;
+    // The selector emits "standard" for the inherit-global option; the
+    // backend treats that (and null) as clearing the override.
+    const next = value === "standard" ? null : value;
+    savingPreset = true;
+    try {
+      await api.setSavePreset(saveId, next);
+      toastSuccess($_("presets.updated"));
+      await hydrate();
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    } finally {
+      savingPreset = false;
+    }
+  }
+
   async function commitPath() {
     if (!newPath.trim()) {
       toastError($_("history.path_empty"));
@@ -472,7 +498,28 @@
         <Button variant="secondary" onclick={() => (editingPath = true)}>
           <Edit3 size={14} /> {$_("history.edit_folder")}
         </Button>
+        {#if presets.length > 0}
+          <label class="flex items-center gap-2 text-xs text-zinc-400">
+            <span class="text-zinc-500">{$_("presets.label")}</span>
+            <select
+              class="rounded-md border border-white/[0.08] bg-zinc-900 px-2 py-1.5 text-xs text-zinc-200 focus:border-emerald-500/40 focus:outline-none disabled:opacity-50"
+              disabled={savingPreset}
+              value={save.preset ?? "standard"}
+              onchange={(e) =>
+                changePreset((e.currentTarget as HTMLSelectElement).value)}
+            >
+              {#each presets as p (p)}
+                <option value={p}>{$_(`presets.${p}.label`)}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
       </div>
+      {#if save.preset}
+        <p class="mt-2 text-xs text-zinc-500">
+          {$_(`presets.${save.preset}.desc`)}
+        </p>
+      {/if}
     </header>
 
     <section class="mb-3 flex items-center justify-between">

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-06-07
+
+### Added
+- **Presets de sincronización por save.** Cada partida puede usar un preset que
+  ajusta auto-restore, intervalo mínimo de snapshot y debounce sin tocar la
+  config global: `standard` (hereda lo global), `short_session` (restauraciones
+  y copias frecuentes), `backup_only` (nunca auto-restaura, solo sube) y
+  `data_saver` (menos subidas). Se aplican automáticamente desde una lista
+  propia de juegos que se comportan distinto —R.E.P.O. arranca en
+  `short_session`— y se pueden sobrescribir a mano desde History cuando un
+  juego va raro. El override manual se persiste en `state.json`.
+
 ## [2.0.6] — 2026-06-07
 
 ### Fixed

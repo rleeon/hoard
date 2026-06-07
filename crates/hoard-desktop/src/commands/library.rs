@@ -20,6 +20,7 @@ use hoard_agent::config::CliConfig;
 use hoard_agent::credentials;
 use hoard_agent::detection::{self, DetectionReport, DetectionTrace};
 use hoard_agent::manifest::Os;
+use hoard_agent::presets;
 use hoard_agent::state::{CliState, SaveState};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -145,6 +146,13 @@ pub struct TrackedSave {
     /// so the only sensible action is the full `delete_save_completely`.
     #[serde(default)]
     pub orphan: bool,
+    /// The active sync preset for this save, if the user picked one
+    /// explicitly. `None` means "standard / inherit global config" — note
+    /// that a built-in per-game preset (e.g. R.E.P.O.) may still apply at
+    /// the agent level even when this is `None`; this field only reflects
+    /// the user's manual override so the selector shows the right value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preset: Option<String>,
 }
 
 /// Run a full auto-detection sweep against the **bundled** catalog (no
@@ -325,6 +333,10 @@ pub async fn add_game_to_tracking(
                 last_backup_at: None,
                 last_version_num: None,
                 paused: false,
+                // Auto-assign our built-in preset for known-quirky games so
+                // the right sync behaviour applies from the first backup; the
+                // user can override it later.
+                preset: presets::builtin_preset_for(&args.game_slug).map(str::to_string),
                 set_hash: None,
             },
         );
@@ -336,9 +348,11 @@ pub async fn add_game_to_tracking(
             args.game_slug.clone(),
             label.clone(),
             local_path.clone(),
+            presets::builtin_preset_for(&args.game_slug),
         );
         attach_save_if_running(&state, watched).await;
 
+        let preset = presets::builtin_preset_for(&args.game_slug).map(str::to_string);
         return Ok(TrackedSave {
             save_id,
             game_slug: args.game_slug,
@@ -349,6 +363,7 @@ pub async fn add_game_to_tracking(
             paused: false,
             total_size_bytes: 0,
             orphan: false,
+            preset,
         });
     }
 
@@ -400,6 +415,7 @@ pub async fn add_game_to_tracking(
             last_backup_at: None,
             last_version_num: None,
             paused: false,
+            preset: presets::builtin_preset_for(&save.game_slug).map(str::to_string),
             set_hash: None,
         },
     );
@@ -412,6 +428,7 @@ pub async fn add_game_to_tracking(
         args.game_slug.clone(),
         save.label.clone(),
         local_path.clone(),
+        presets::builtin_preset_for(&save.game_slug),
     );
     attach_save_if_running(&state, watched).await;
 
@@ -420,6 +437,7 @@ pub async fn add_game_to_tracking(
     // retrack) they restore the snapshot history into the Library card.
     let last_version_num = save.latest_version_num;
     let total_size_bytes = save.total_size_bytes.unwrap_or(0);
+    let preset = presets::builtin_preset_for(&save.game_slug).map(str::to_string);
     Ok(TrackedSave {
         save_id: save.id,
         game_slug: save.game_slug,
@@ -430,6 +448,7 @@ pub async fn add_game_to_tracking(
         paused: false,
         total_size_bytes,
         orphan: false,
+        preset,
     })
 }
 
@@ -507,6 +526,7 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
                 paused: st.paused,
                 total_size_bytes: entry.map(|e| e.latest_size_bytes).unwrap_or(0),
                 orphan: false,
+                preset: st.preset.clone(),
             });
         }
         return Ok(out);
@@ -542,6 +562,7 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
                     paused,
                     total_size_bytes: s.total_size_bytes.unwrap_or(0),
                     orphan: false,
+                    preset: st.preset.clone(),
                 });
             }
             None => {
@@ -555,6 +576,7 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
                     paused: false,
                     total_size_bytes: s.total_size_bytes.unwrap_or(0),
                     orphan: true,
+                    preset: None,
                 });
             }
         }
@@ -597,11 +619,14 @@ pub async fn rename_save_label(
     // Update local state with the new label so subsequent backups land in
     // the right directory and the UI doesn't have to refetch.
     let (mut cli_state, path) = CliState::load_default().map_err(|e| e.to_string())?;
-    let local_path_string = if let Some(entry) = cli_state.saves.get_mut(&save_id) {
+    let (local_path_string, preset) = if let Some(entry) = cli_state.saves.get_mut(&save_id) {
         entry.label = updated.label.clone();
-        entry.local_path.to_string_lossy().into_owned()
+        (
+            entry.local_path.to_string_lossy().into_owned(),
+            entry.preset.clone(),
+        )
     } else {
-        String::new()
+        (String::new(), None)
     };
     cli_state.save(&path).map_err(|e| e.to_string())?;
 
@@ -615,6 +640,7 @@ pub async fn rename_save_label(
             updated.game_slug.clone(),
             updated.label.clone(),
             local_path.clone(),
+            preset.as_deref(),
         );
         attach_save_if_running(&state, watched).await;
     }
@@ -629,6 +655,7 @@ pub async fn rename_save_label(
         paused: false,
         total_size_bytes: updated.total_size_bytes.unwrap_or(0),
         orphan: false,
+        preset,
     })
 }
 
