@@ -460,11 +460,27 @@ pub async fn cas_init(
     // and persist. A save rewritten in place with 10 MB of real change costs
     // 10 MB here, not 600 MB.
     if let Err(resp) = bandwidth::check(&state, user.user_id, new_bytes, &limits).await {
+        tracing::warn!(
+            user_id = %user.user_id,
+            requested_save_id = %body.save_id,
+            game_slug = %body.game_slug,
+            new_bytes,
+            "cas_init: rejected by bandwidth window"
+        );
         return Ok(resp);
     }
     let info = match quota::check_storage(&state, user.user_id, new_bytes).await {
         Ok(i) => i,
-        Err(resp) => return Ok(resp),
+        Err(resp) => {
+            tracing::warn!(
+                user_id = %user.user_id,
+                requested_save_id = %body.save_id,
+                game_slug = %body.game_slug,
+                new_bytes,
+                "cas_init: rejected by storage quota"
+            );
+            return Ok(resp);
+        }
     };
 
     // Ensure the saves row exists (same UPSERT semantics as the archive path).
@@ -487,8 +503,43 @@ pub async fn cas_init(
     .await?;
     let head = save_row.1;
 
+    // The client keys saves by its own device-local id; the server keys by
+    // (user, game_slug, label). When two devices track the same game with
+    // different local ids they resolve to one cloud save here — log it loudly,
+    // it's the usual root cause of "another device is ahead" upload failures.
+    if save_row.0 != body.save_id {
+        tracing::warn!(
+            requested_save_id = %body.save_id,
+            canonical_save_id = %save_row.0,
+            game_slug = %body.game_slug,
+            label = %label,
+            head_version = head,
+            "cas_init: save id divergence — client save_id resolved to a different cloud save (cross-device collision)"
+        );
+    }
+
+    tracing::info!(
+        user_id = %user.user_id,
+        save_id = %save_row.0,
+        game_slug = %body.game_slug,
+        files = body.files.len(),
+        unique_blobs = unique.len(),
+        missing_blobs = missing_shas.len(),
+        new_bytes,
+        head_version = head,
+        base_version = ?body.base_version,
+        "cas_init: request"
+    );
+
     if let Some(base) = body.base_version {
         if base != head {
+            tracing::warn!(
+                save_id = %save_row.0,
+                requested_save_id = %body.save_id,
+                head_version = head,
+                base_version = base,
+                "cas_init: rejected non_fast_forward"
+            );
             return Ok(NonFastForwardResponse {
                 error:
                     "non-fast-forward: another device advanced this save since your base version",
@@ -571,6 +622,14 @@ pub async fn cas_init(
         });
     }
 
+    tracing::info!(
+        save_id = %save_row.0,
+        version_num = next_version,
+        missing_blobs = missing.len(),
+        new_bytes,
+        "cas_init: accepted — presigned PUTs minted"
+    );
+
     Ok(Json(CasInitOut {
         version_num: next_version,
         missing,
@@ -610,9 +669,15 @@ pub async fn cas_commit(
     .fetch_optional(&state.pool)
     .await?;
     let Some((cur_sha, content_addressed)) = vrow else {
+        tracing::warn!(
+            save_id = %save_id,
+            version,
+            "cas_commit: version not found (often a cross-device save id mismatch — init landed under a different cloud save)"
+        );
         return Err(CloudError::NotFound("version not found"));
     };
     if !content_addressed {
+        tracing::warn!(save_id = %save_id, version, "cas_commit: version is not content-addressed");
         return Err(CloudError::BadRequest(
             "version is not content-addressed".into(),
         ));
@@ -750,6 +815,14 @@ pub async fn cas_commit(
     if let Err(e) = bandwidth::record(&state.pool, user.user_id, new_bytes).await {
         tracing::warn!(error = %e, user_id = %user.user_id, "bandwidth: record failed on cas commit");
     }
+
+    tracing::info!(
+        save_id = %save_id,
+        version,
+        blobs = unique.len(),
+        new_bytes,
+        "cas_commit: committed"
+    );
 
     Ok(Json(UploadCommitOut {
         save_id,
