@@ -280,6 +280,11 @@ enum AgentCommand {
     AutoRestoreFinished {
         id: String,
         not_on_server: bool,
+        /// The cloud version this slot is now synced to (the latest the restore
+        /// observed), so the slot can remember it and the reconciliation sweep
+        /// skips re-downloading the same version next tick. `None` when the
+        /// attempt didn't reach a known version (404, transient failure).
+        synced_version: Option<i64>,
     },
     /// Live-toggle `config.auto_restore` so the user's Settings change
     /// reaches the running agent without a restart. When flipped from
@@ -418,6 +423,11 @@ struct BackupDone {
     /// advancing on phantom "backups" and a short play session would never
     /// flush its progress before the game closed (R.E.P.O. regression).
     committed: bool,
+    /// Version number of the snapshot just uploaded (`Some` only when
+    /// `committed`). The agent advances the slot's `known_version` to this so
+    /// the reconciliation sweep won't re-download a version this device itself
+    /// just produced. `None` on skip/empty.
+    version_num: Option<i64>,
 }
 
 /// Internal per-save bookkeeping.
@@ -478,6 +488,16 @@ struct SaveSlot {
     /// settle, so the upload is skipped. In-memory only — cross-restart
     /// persistence is the CLI/desktop's job via `state.json`.
     last_set_hash: Option<String>,
+    /// Cloud version this slot is known to be synced to — advanced on a genuine
+    /// upload commit and after a successful auto-restore. The reconciliation
+    /// sweep passes it to `run_auto_restore`, which skips the download-to-diff
+    /// when the server's latest version isn't newer than this. `None` until the
+    /// first commit/restore this session (the first sweep then downloads once to
+    /// establish the baseline). This is what stops the every-tick re-download
+    /// that used to burn the cloud bandwidth quota: a real cross-device update
+    /// (another device committed a higher version) still pulls; our own folder
+    /// churn no longer does.
+    known_version: Option<i64>,
 }
 
 async fn run_agent(
@@ -551,7 +571,7 @@ async fn run_agent(
                             arm_watcher(slot, &fs_tx);
                         }
                     }
-                    Some(AgentCommand::AutoRestoreFinished { id, not_on_server }) => {
+                    Some(AgentCommand::AutoRestoreFinished { id, not_on_server, synced_version }) => {
                         // The background restore task signalled completion
                         // (success or failure). Clear the in-flight flag so
                         // the reconciliation sweep can try again once the
@@ -559,6 +579,12 @@ async fn run_agent(
                         // when we spawned, so we don't reset it here…
                         if let Some(slot) = slots.get_mut(&id) {
                             slot.restoring = false;
+                            // Remember the version we just synced to so the next
+                            // sweep can skip the expensive download-to-diff when
+                            // nothing newer has landed from another device.
+                            if synced_version.is_some() {
+                                slot.known_version = synced_version;
+                            }
                             // …unless the save simply isn't on the server
                             // (404). Retrying every 60s can't conjure a
                             // snapshot that doesn't exist; park it on a long
@@ -784,6 +810,11 @@ async fn run_agent(
                     // min-interval into the future.
                     if done.committed {
                         slot.last_backup_at = Some(OffsetDateTime::now_utc());
+                        // Remember the version we just produced so the sweep
+                        // won't re-download our own upload to diff it.
+                        if done.version_num.is_some() {
+                            slot.known_version = done.version_num;
+                        }
                     }
                     if let Some(h) = done.new_set_hash {
                         slot.last_set_hash = Some(h);
@@ -834,6 +865,7 @@ fn handle_add(
         restoring: false,
         next_auto_restore_at: None,
         last_set_hash: None,
+        known_version: None,
     };
     arm_watcher(&mut slot, fs_tx);
     slots.insert(save_id.clone(), slot);
@@ -875,6 +907,9 @@ fn handle_add(
                 cmd_tx.clone(),
                 config.conflict_root.clone(),
                 config.conflict_retention_days,
+                // Fresh add: no known baseline yet, so this first pull downloads
+                // once to establish it.
+                None,
             );
         }
     }
@@ -933,6 +968,7 @@ fn spawn_auto_restore(
     cmd_tx: mpsc::Sender<AgentCommand>,
     conflict_root: Option<PathBuf>,
     conflict_retention_days: u32,
+    known_version: Option<i64>,
 ) {
     tokio::spawn(async move {
         tracing::debug!(
@@ -943,8 +979,12 @@ fn spawn_auto_restore(
         );
         let retention = Duration::from_secs(u64::from(conflict_retention_days) * 86_400);
         let mut not_on_server = false;
-        match run_auto_restore(&api, &save, conflict_root.as_deref(), retention).await {
+        let mut synced_version: Option<i64> = None;
+        match run_auto_restore(&api, &save, conflict_root.as_deref(), retention, known_version).await {
             Ok(Some(outcome)) => {
+                // We downloaded and diffed against this version; remember it so
+                // the next sweep can short-circuit.
+                synced_version = Some(outcome.version_num);
                 let touched = outcome.files_restored + outcome.conflicts_backed_up;
                 if touched > 0 {
                     tracing::info!(
@@ -1037,6 +1077,7 @@ fn spawn_auto_restore(
             .send(AgentCommand::AutoRestoreFinished {
                 id: save.save_id.clone(),
                 not_on_server,
+                synced_version,
             })
             .await;
     });
@@ -1148,6 +1189,7 @@ fn sweep_for_auto_restore(
         .collect();
 
     for (id, save) in candidates {
+        let known_version = slots.get(&id).and_then(|s| s.known_version);
         if let Some(slot) = slots.get_mut(&id) {
             slot.restoring = true;
             slot.next_auto_restore_at = Some(now + Duration::from_secs(AUTO_RESTORE_COOLDOWN_SECS));
@@ -1163,6 +1205,7 @@ fn sweep_for_auto_restore(
             cmd_tx.clone(),
             config.conflict_root.clone(),
             config.conflict_retention_days,
+            known_version,
         );
     }
 }
@@ -1322,6 +1365,7 @@ async fn run_auto_restore(
     save: &WatchedSave,
     conflict_root: Option<&Path>,
     retention: Duration,
+    known_version: Option<i64>,
 ) -> Result<Option<AutoRestoreOutcome>> {
     let latest = if api.is_cloud().await {
         api.cloud_sync()
@@ -1333,6 +1377,28 @@ async fn run_auto_restore(
     } else {
         api.get_save(&save.save_id).await?.latest_version_num
     };
+    // Version gate: if we're already synced to the server's latest version,
+    // there's nothing newer from another device to pull, so skip the expensive
+    // download-to-diff entirely. This is the fix for the bandwidth blowout —
+    // the sweep used to re-download the full snapshot every ~50s just to diff
+    // it against a folder that hadn't changed, exhausting the 15-min cloud
+    // quota (429 storm) and starving real uploads. A genuine cross-device
+    // update bumps the server version above `known_version` and still pulls.
+    if let (Some(v), Some(known)) = (latest, known_version) {
+        if known >= v {
+            tracing::debug!(
+                save_id = %save.save_id,
+                version = v,
+                "agent: auto-restore — already synced to latest version; skipping download"
+            );
+            if let Some(root) = conflict_root {
+                if let Err(e) = cleanup_old_conflicts(root, retention).await {
+                    tracing::debug!(error = %e, "cleanup_old_conflicts failed (up-to-date path)");
+                }
+            }
+            return Ok(None);
+        }
+    }
     let Some(version) = latest else {
         // Still sweep TTL before bailing — keeps the conflict dir bounded
         // even for saves whose remote has been purged.
@@ -2013,6 +2079,7 @@ async fn run_backup_with_retry(
             save_id: save.save_id.clone(),
             new_set_hash: None,
             committed: false,
+            version_num: None,
         });
         if auto_restore {
             spawn_auto_restore(
@@ -2022,6 +2089,9 @@ async fn run_backup_with_retry(
                 cmd_tx,
                 conflict_root,
                 conflict_retention_days,
+                // Empty/missing folder: we genuinely want the save back, so
+                // don't version-gate this pull.
+                None,
             );
         } else {
             let _ = events_tx
@@ -2070,6 +2140,7 @@ async fn run_backup_with_retry(
                     save_id: save.save_id.clone(),
                     new_set_hash: None,
                     committed: false,
+                    version_num: None,
                 });
                 return;
             }
@@ -2086,6 +2157,7 @@ async fn run_backup_with_retry(
                     save_id: save.save_id.clone(),
                     new_set_hash: Some(signature),
                     committed: false,
+                    version_num: None,
                 });
                 return;
             }
@@ -2108,6 +2180,7 @@ async fn run_backup_with_retry(
                     save_id: save.save_id.clone(),
                     new_set_hash: Some(signature),
                     committed: true,
+                    version_num: Some(o.snapshot.version_num),
                 });
                 return;
             }
@@ -2276,6 +2349,7 @@ fn process_poll(
             // the tablet's progress is already there. Reuses the same
             // conflict-aware restore as the reconciliation sweep.
             if let Some(save) = barrier_save {
+                let known_version = slots.get(&id).and_then(|s| s.known_version);
                 if let Some(slot) = slots.get_mut(&id) {
                     slot.restoring = true;
                     slot.next_auto_restore_at =
@@ -2292,6 +2366,7 @@ fn process_poll(
                     cmd_tx.clone(),
                     config.conflict_root.clone(),
                     config.conflict_retention_days,
+                    known_version,
                 );
             }
         } else {
@@ -2402,6 +2477,7 @@ mod tests {
                 restoring: false,
                 next_auto_restore_at: None,
                 last_set_hash: None,
+                known_version: None,
             },
         );
 

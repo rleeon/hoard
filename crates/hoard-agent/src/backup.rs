@@ -144,6 +144,18 @@ fn join_signature(cheap: &str, content: &str) -> String {
 ///
 /// Symlinks are skipped on purpose: we don't want to follow links out of the
 /// save directory, and tar archives with symlinks make restore ambiguous.
+/// Transient lock files a running game keeps exclusively open. They carry no
+/// save data and on Windows can't even be opened for reading while the game
+/// holds them (sharing violation, os error 32), which used to abort the whole
+/// backup mid-walk — e.g. Minecraft's `.minecraft/saves/<world>/session.lock`.
+/// Matched case-insensitively on the file name.
+const TRANSIENT_LOCK_FILES: &[&str] = &["session.lock"];
+
+fn is_transient_lock(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    TRANSIENT_LOCK_FILES.iter().any(|n| lower == *n)
+}
+
 pub fn walk_source(root: &Path) -> Result<Vec<UploadFile>> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
@@ -157,12 +169,29 @@ pub fn walk_source(root: &Path) -> Result<Vec<UploadFile>> {
             if ft.is_dir() {
                 stack.push(path);
             } else if ft.is_file() {
+                // Skip lock files the game holds open: they're never save data
+                // and trying to read them aborts the backup while the game runs.
+                if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                    if is_transient_lock(name) {
+                        continue;
+                    }
+                }
                 let rel = path
                     .strip_prefix(root)
                     .map_err(|e| anyhow!("strip_prefix: {e}"))?
                     .to_string_lossy()
                     .replace('\\', "/");
-                let meta = entry.metadata()?;
+                // A file we can't stat (locked, vanished mid-walk, permission)
+                // is skipped with a warning rather than failing the whole
+                // upload — one unreadable transient file shouldn't lose the
+                // backup of everything else.
+                let meta = match entry.metadata() {
+                    Ok(m) => m,
+                    Err(e) => {
+                        tracing::warn!(path = %path.display(), error = %e, "skipping unreadable file");
+                        continue;
+                    }
+                };
                 out.push(UploadFile {
                     relative_path: rel,
                     absolute_path: path,

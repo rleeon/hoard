@@ -8,8 +8,11 @@
    * tracked saves grouped by `game_slug` + each save's snapshot history.
    *
    * Rendered on a <canvas> with a lightweight physics loop: orbs repel each
-   * other and drift; save nodes hang off their orb by spring chains, repel
-   * their siblings, and float. Canvas + a single redraw per frame keeps it
+   * other and drift; each save node has its own physics — a radial spring
+   * gravitates it toward its OWN orb, a slack chain spring keeps a branch
+   * legible, and sibling/cross-game repulsion plus gentle breathing keep them
+   * alive. Both orbs and individual saves are draggable. Canvas + a single
+   * redraw per frame keeps it
    * smooth under zoom where the old reactive-SVG version choked. Nodes are
    * drawn at a constant *screen* size so they never shrink into nothing when
    * you zoom out.
@@ -262,8 +265,13 @@
   const ORB_SEP_MARGIN = 36; // extra gap enforced between orb bodies
   const ORB_SEP_K = 0.5; // how hard overlapping orbs push apart
   const NODE_REPULSION = 5200; // short-range, only to fan siblings out
-  const ORB_NODE_REPULSION = 22000;
-  const SPRING_K = 0.08;
+  const OTHER_ORB_REPULSION = 22000; // keep a save clear of a neighbour game
+  const ORB_GRAVITY_K = 0.06; // each save's pull toward its OWN game orb
+  const CHAIN_K = 0.035; // light spring keeping a branch's saves in a line
+  // Gentle perpetual breathing so the constellation never freezes into a
+  // dead, motionless line — every orb and save keeps drifting a little.
+  const IDLE_FORCE = 0.05;
+  const IDLE_SPIN = 0.018;
   const SLEEP_EPS = 0.04; // max speed below which we freeze the sim
 
   let reduceMotion = false;
@@ -314,6 +322,11 @@
         }
       }
 
+      // gentle perpetual breathing so the orb never freezes stone-dead
+      o.phase += IDLE_SPIN;
+      ax += Math.cos(o.phase) * IDLE_FORCE;
+      ay += Math.sin(o.phase) * IDLE_FORCE;
+
       [ax, ay] = clampMag(ax, ay, MAX_ACC);
       o.vx = (o.vx + ax) * DAMP;
       o.vy = (o.vy + ay) * DAMP;
@@ -332,30 +345,43 @@
       for (const b of o.branches) {
         for (let n = 0; n < b.nodes.length; n++) {
           const node = b.nodes[n];
+          if (node === draggedNode) {
+            // pinned under the cursor — no forces, no integration
+            node.vx = 0;
+            node.vy = 0;
+            continue;
+          }
           let nax = 0;
           let nay = 0;
 
-          // spring to parent (orb for first node, previous node otherwise)
-          const px = n === 0 ? o.x : b.nodes[n - 1].x;
-          const py = n === 0 ? o.y : b.nodes[n - 1].y;
-          const rest = n === 0 ? o.r + ARM_GAP : NODE_STEP;
-          let dx = node.x - px;
-          let dy = node.y - py;
+          // (1) gravity toward its OWN orb: a radial spring that pulls the save
+          // back to a rest distance scaled by its depth in the chain, so the
+          // node genuinely orbits the game it belongs to instead of hanging off
+          // a rigid arm.
+          let dx = node.x - o.x;
+          let dy = node.y - o.y;
           let d = Math.hypot(dx, dy) || 1;
-          const stretch = d - rest;
-          nax -= (dx / d) * stretch * SPRING_K;
-          nay -= (dy / d) * stretch * SPRING_K;
+          const restFromOrb = o.r + ARM_GAP + n * NODE_STEP;
+          const pull = (d - restFromOrb) * ORB_GRAVITY_K;
+          nax -= (dx / d) * pull;
+          nay -= (dy / d) * pull;
 
-          // push away from the OWN orb body (unbounded — keeps arms extended)
-          dx = node.x - o.x;
-          dy = node.y - o.y;
-          let d2 = dx * dx + dy * dy + 1;
-          let f = ORB_NODE_REPULSION / d2;
-          let inv = 1 / Math.sqrt(d2);
-          nax += dx * inv * f;
-          nay += dy * inv * f;
+          // (2) light chain spring to the previous save so a branch still reads
+          // as a line — but slack enough to wobble, not a stiff rod.
+          if (n > 0) {
+            const prev = b.nodes[n - 1];
+            dx = node.x - prev.x;
+            dy = node.y - prev.y;
+            d = Math.hypot(dx, dy) || 1;
+            const stretch = d - NODE_STEP;
+            nax -= (dx / d) * stretch * CHAIN_K;
+            nay -= (dy / d) * stretch * CHAIN_K;
+          }
 
-          // avoid OTHER orbs' bodies (local — only when the node drifts close)
+          // (3) avoid OTHER orbs' bodies (local — only when the node drifts close)
+          let d2: number;
+          let f: number;
+          let inv: number;
           for (const ob of orbs) {
             if (ob === o) continue;
             dx = node.x - ob.x;
@@ -363,13 +389,13 @@
             d2 = dx * dx + dy * dy + 1;
             const reach = ob.r + 34;
             if (d2 > reach * reach) continue;
-            f = ORB_NODE_REPULSION / d2;
+            f = OTHER_ORB_REPULSION / d2;
             inv = 1 / Math.sqrt(d2);
             nax += dx * inv * f;
             nay += dy * inv * f;
           }
 
-          // repel every other node within range (own siblings + other games)
+          // (4) repel every other node within range (own siblings + other games)
           for (const other of allNodes) {
             if (other === node) continue;
             dx = node.x - other.x;
@@ -381,6 +407,11 @@
             nax += dx * inv * f;
             nay += dy * inv * f;
           }
+
+          // (5) gentle breathing so saves never freeze into a dead line
+          node.phase += IDLE_SPIN;
+          nax += Math.cos(node.phase) * IDLE_FORCE;
+          nay += Math.sin(node.phase) * IDLE_FORCE;
 
           [nax, nay] = clampMag(nax, nay, MAX_ACC);
           node.vx = (node.vx + nax) * DAMP;
@@ -400,6 +431,7 @@
       }
       for (const b of o.branches)
         for (const node of b.nodes) {
+          if (node === draggedNode) continue;
           node.x += node.vx;
           node.y += node.vy;
           peak = Math.max(peak, Math.abs(node.vx), Math.abs(node.vy));
@@ -621,9 +653,9 @@
       // Only simulate while awake. Once `step()` reports everything below
       // the sleep threshold we stop integrating (but keep drawing once more
       // so the final rest frame is painted). Dragging keeps it awake.
-      if (!reduceMotion && (!settled || draggedOrb)) {
+      if (!reduceMotion && (!settled || draggedOrb || draggedNode)) {
         const peak = step();
-        if (peak < SLEEP_EPS && !draggedOrb) settled = true;
+        if (peak < SLEEP_EPS && !draggedOrb && !draggedNode) settled = true;
       }
       draw();
     }
@@ -647,6 +679,7 @@
 
   let dragging = $state(false); // panning the camera
   let draggedOrb: Orb | null = null; // a game orb being moved by the user
+  let draggedNode: Node | null = null; // a single save node being moved
   let moved = false;
   let startX = 0;
   let startY = 0;
@@ -706,9 +739,16 @@
     const rect = canvasEl.getBoundingClientRect();
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
-    // Pressing directly on a game orb grabs *that orb* to move it; pressing
-    // empty space pans the camera. (Save nodes aren't draggable — they hang
-    // off their orb by springs and follow it.)
+    // Pressing on a save node grabs *that node*; on a game orb grabs the orb;
+    // on empty space pans the camera. Nodes are checked first because they sit
+    // on top of (and near) their orb.
+    const node = hitNode(px, py);
+    if (node) {
+      draggedNode = node.node;
+      dragging = false;
+      wake();
+      return;
+    }
     const orb = hitOrb(px, py);
     if (orb) {
       draggedOrb = orb;
@@ -725,6 +765,21 @@
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
     pointer = { x: px, y: py };
+
+    if (draggedNode) {
+      const ddx = e.clientX - startX;
+      const ddy = e.clientY - startY;
+      if (Math.abs(ddx) > 3 || Math.abs(ddy) > 3) moved = true;
+      // Pin the node straight to the cursor in world space; its chain springs
+      // drag the rest of the branch's saves along behind it.
+      const w = screenToWorld(px, py);
+      draggedNode.x = w.x;
+      draggedNode.y = w.y;
+      draggedNode.vx = 0;
+      draggedNode.vy = 0;
+      wake();
+      return;
+    }
 
     if (draggedOrb) {
       const dx = e.clientX - startX;
@@ -766,6 +821,10 @@
 
   function onPointerUp(e: PointerEvent) {
     dragging = false;
+    if (draggedNode) {
+      draggedNode = null;
+      wake(); // let the branch spring back into place
+    }
     if (draggedOrb) {
       draggedOrb = null;
       wake(); // let neighbours settle around the new position

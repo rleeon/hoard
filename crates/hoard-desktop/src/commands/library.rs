@@ -529,6 +529,32 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
                 preset: st.preset.clone(),
             });
         }
+
+        // Cross-device visibility: a save uploaded from *another* machine lives
+        // in the cloud manifest but has no local CliState row here. Before, the
+        // loop above only emitted locally-tracked saves, so the user's other
+        // machine's saves were invisible on this one — there was no way to pull
+        // them in. Emit each manifest entry without a local row as an orphan so
+        // the Library shows it with a "Sin estado local" badge and the user can
+        // restore it (which mints the local mapping). This is the device sync:
+        // a device missing a save just adds it from the one that has it.
+        for entry in &manifest.saves {
+            if cli_state.saves.contains_key(&entry.save_id) {
+                continue;
+            }
+            out.push(TrackedSave {
+                save_id: entry.save_id.clone(),
+                game_slug: entry.game_slug.clone(),
+                label: entry.label.clone(),
+                local_path: String::new(),
+                last_version_num: Some(entry.latest_version_num),
+                last_backup_at: None,
+                paused: false,
+                total_size_bytes: entry.latest_size_bytes,
+                orphan: true,
+                preset: None,
+            });
+        }
         return Ok(out);
     }
 

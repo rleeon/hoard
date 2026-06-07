@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.1] — 2026-06-07
+
+### Added
+- **Los saves de otros dispositivos ahora se ven en cada máquina.** El listado
+  cloud sólo emitía saves con estado local, así que las partidas subidas desde
+  otra máquina (p. ej. Windows) eran invisibles en la otra (p. ej. Linux). Ahora
+  cada entrada del manifiesto sin fila local aparece como "huérfana" con badge
+  "Sin estado local"; restaurarla la adopta en este dispositivo. Eso es el sync
+  por dispositivos: al que le falta un save, lo añade del que lo tiene.
+- **Detección de "jugando" para Minecraft (TLauncher) y Factorio.** El desktop
+  nunca rellenaba nombres de proceso, así que juegos sin Steam jamás marcaban
+  `is_running`. Catálogo propio: `minecraft` → `javaw.exe`/`java.exe`,
+  `factorio` → `factorio.exe`.
+
+### Fixed
+- **`session.lock` ya no tumba el backup de Minecraft.** Minecraft mantiene
+  `saves/<mundo>/session.lock` bloqueado mientras corre; en Windows leerlo daba
+  error y abortaba la subida entera. Ahora se ignora ese archivo (no es dato de
+  save) y cualquier fichero ilegible se salta con warning en vez de fallar todo.
+- **Fin del storm de 429 "bandwidth quota exceeded".** El sweep de auto-restore
+  re-descargaba el snapshot completo cada ~50 s sólo para compararlo con una
+  carpeta que no había cambiado, agotando la cuota de 15 min y haciendo fallar
+  `cloud upload init` en bucle. Ahora se compara primero el número de versión:
+  sólo se descarga cuando otro dispositivo subió algo más nuevo. El churn de la
+  propia carpeta ya no consume ancho de banda.
+
 ## [2.1.0] — 2026-06-07
 
 ### Added

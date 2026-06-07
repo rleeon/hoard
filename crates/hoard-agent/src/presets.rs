@@ -96,6 +96,24 @@ pub fn builtin_preset_for(slug: &str) -> Option<&'static str> {
     }
 }
 
+/// Process executable names for games the storefront/manifest can't supply on
+/// its own — non-Steam launchers (TLauncher Minecraft → `javaw.exe`) and games
+/// whose binary the catalog doesn't map. The agent's process poll matches these
+/// (case-insensitive) to fire `GameStarted` / `GameStopped`, so "is the game
+/// running" works even without a Steam install dir. Linux-native and Windows
+/// variants are both listed because the match is exact on the process name.
+///
+/// This is the same curated "games that behave differently" list, extended to
+/// the detection side: without it Minecraft and Factorio never register as
+/// "playing" and the running-game guards never engage.
+pub fn builtin_processes_for(slug: &str) -> &'static [&'static str] {
+    match slug {
+        "minecraft" => &["javaw.exe", "java.exe", "minecraft.exe", "minecraft"],
+        "factorio" => &["factorio.exe", "factorio"],
+        _ => &[],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,6 +141,13 @@ mod tests {
     fn repo_is_in_the_quirky_list() {
         assert_eq!(builtin_preset_for("r-e-p-o"), Some(PRESET_SHORT_SESSION));
         assert_eq!(builtin_preset_for("factorio"), None);
+    }
+
+    #[test]
+    fn known_games_carry_process_names() {
+        assert!(builtin_processes_for("minecraft").contains(&"javaw.exe"));
+        assert!(builtin_processes_for("factorio").contains(&"factorio.exe"));
+        assert!(builtin_processes_for("unknown-game").is_empty());
     }
 
     #[test]

@@ -317,7 +317,7 @@ fn hydrate_watched_saves(_state: &State<'_, AppState>) -> anyhow::Result<Vec<Wat
             label: save_state.label,
             local_path: save_state.local_path,
             steam_install_dir,
-            processes: Vec::new(),
+            processes: resolve_processes(&save_state.game_slug),
             policy,
         });
     }
@@ -390,6 +390,7 @@ pub(crate) fn watched_save_from(
         .find(|a| name_matches(&a.name, &game_slug))
         .map(|a| a.install_dir.clone());
     let policy = resolve_policy(&game_slug, preset);
+    let processes = resolve_processes(&game_slug);
     WatchedSave {
         save_id,
         game_slug,
@@ -397,9 +398,19 @@ pub(crate) fn watched_save_from(
         label,
         local_path,
         steam_install_dir,
-        processes: Vec::new(),
+        processes,
         policy,
     }
+}
+
+/// Process names that mark a game as "running" for slugs the storefront can't
+/// supply (TLauncher Minecraft, native Factorio). Pulled from the built-in
+/// catalog so "is the game open" works without a Steam install dir.
+pub(crate) fn resolve_processes(game_slug: &str) -> Vec<String> {
+    presets::builtin_processes_for(game_slug)
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
 }
 
 #[cfg(test)]
