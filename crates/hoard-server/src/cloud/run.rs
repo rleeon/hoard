@@ -125,6 +125,14 @@ pub async fn run(cfg: Config) -> Result<()> {
             axum::routing::delete(saves::delete_save),
         )
         .route(
+            "/v1/cloud/saves/:save_id/versions",
+            get(saves::list_versions),
+        )
+        .route(
+            "/v1/cloud/saves/:save_id/versions/:version",
+            axum::routing::delete(saves::delete_version),
+        )
+        .route(
             "/v1/cloud/saves/:save_id/versions/:version/commit",
             post(saves::commit_upload),
         )

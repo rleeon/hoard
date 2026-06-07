@@ -75,21 +75,14 @@ pub async fn list_save_snapshots(
     state: State<'_, AppState>,
 ) -> Result<Vec<SnapshotWire>, String> {
     let client = current_client(&state)?;
-    // Cloud exposes no snapshot history — only the latest committed version
-    // via the sync manifest. Synthesize a single-row timeline from it.
+    // Cloud now exposes the full version history via a dedicated endpoint
+    // (the sync manifest still only carries the latest). One row per version.
     if client.is_cloud().await {
-        let manifest = client.cloud_sync().await.map_err(pretty_error)?;
-        let Some(entry) = manifest.saves.into_iter().find(|e| e.save_id == save_id) else {
-            return Ok(Vec::new());
-        };
-        return Ok(vec![SnapshotWire {
-            version_num: entry.latest_version_num,
-            file_count: entry.latest_file_count,
-            total_size_bytes: entry.latest_size_bytes,
-            is_pinned: false,
-            created_at: entry.updated_at,
-            deleted_at: None,
-        }]);
+        let snaps = client
+            .cloud_list_versions(&save_id, include_deleted)
+            .await
+            .map_err(pretty_error)?;
+        return Ok(snaps.into_iter().map(snapshot_to_wire).collect());
     }
     let snaps = client
         .list_snapshots(&save_id, include_deleted)
@@ -108,23 +101,17 @@ pub async fn save_snapshot_detail(
 ) -> Result<SnapshotDetailWire, String> {
     let client = current_client(&state)?;
     // Cloud stores a whole-archive blob with no per-file index, so the detail
-    // view falls back to the manifest's latest entry with an empty file list.
+    // view returns the matching version's metadata with an empty file list.
     if client.is_cloud().await {
-        let manifest = client.cloud_sync().await.map_err(pretty_error)?;
-        let entry = manifest
-            .saves
+        let snap = client
+            .cloud_list_versions(&save_id, true)
+            .await
+            .map_err(pretty_error)?
             .into_iter()
-            .find(|e| e.save_id == save_id)
+            .find(|s| s.version_num == version)
             .ok_or_else(|| "snapshot not found".to_string())?;
         return Ok(SnapshotDetailWire {
-            snapshot: SnapshotWire {
-                version_num: entry.latest_version_num,
-                file_count: entry.latest_file_count,
-                total_size_bytes: entry.latest_size_bytes,
-                is_pinned: false,
-                created_at: entry.updated_at,
-                deleted_at: None,
-            },
+            snapshot: snapshot_to_wire(snap),
             files: Vec::new(),
         });
     }
@@ -156,12 +143,12 @@ pub async fn delete_snapshot(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let client = current_client(&state)?;
-    // Cloud keeps no per-snapshot history — only the latest committed version
-    // is surfaced. So "delete a snapshot" on cloud deletes the whole save,
-    // letting the user reclaim storage. `version` is ignored on cloud.
+    // Cloud now deletes a single version (blob + row) and repoints the latest
+    // pointer; the whole save is removed only when no versions remain. The
+    // server handles that fallback, so this stays per-version.
     if client.is_cloud().await {
         return client
-            .cloud_save_delete(&save_id)
+            .cloud_delete_version(&save_id, version)
             .await
             .map_err(pretty_error);
     }

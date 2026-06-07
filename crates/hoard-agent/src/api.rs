@@ -267,9 +267,44 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
+    /// `GET /v1/cloud/saves/:save_id/versions` — the full version history of a
+    /// cloud save (every committed version, newest first). The cloud analogue
+    /// of `list_save_snapshots`; the sync manifest only carries the latest.
+    pub async fn cloud_list_versions(
+        &self,
+        save_id: &str,
+        include_deleted: bool,
+    ) -> Result<Vec<Snapshot>> {
+        let resp = self
+            .http
+            .get(self.url(&format!("/v1/cloud/saves/{save_id}/versions")))
+            .query(&[("include_deleted", include_deleted)])
+            .header("authorization", self.auth_header())
+            .send()
+            .await?;
+        let resp = Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
+        Ok(resp.json().await?)
+    }
+
+    /// `DELETE /v1/cloud/saves/:save_id/versions/:version` — drop a single
+    /// version (blob + row) and repoint `latest_version_num` to the highest
+    /// remaining version. Deletes the whole save only if none remain.
+    pub async fn cloud_delete_version(&self, save_id: &str, version: i64) -> Result<()> {
+        let resp = self
+            .http
+            .delete(self.url(&format!(
+                "/v1/cloud/saves/{save_id}/versions/{version}"
+            )))
+            .header("authorization", self.auth_header())
+            .send()
+            .await?;
+        Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
+        Ok(())
+    }
+
     /// `DELETE /v1/cloud/saves/:save_id` — remove a cloud save and all of its
-    /// versions so the user reclaims storage. Cloud has no per-snapshot
-    /// history, so this is the cloud analogue of `snapshot_delete`.
+    /// versions so the user reclaims storage. The cloud analogue of deleting
+    /// a whole tracked save.
     pub async fn cloud_save_delete(&self, save_id: &str) -> Result<()> {
         let resp = self
             .http

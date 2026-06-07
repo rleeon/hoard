@@ -2842,7 +2842,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-admin"
-version = "2.0.3"
+version = "2.0.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -2864,7 +2864,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-agent"
-version = "2.0.3"
+version = "2.0.4"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -2897,7 +2897,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-cli"
-version = "2.0.3"
+version = "2.0.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -2910,7 +2910,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-core"
-version = "2.0.3"
+version = "2.0.4"
 dependencies = [
  "anyhow",
  "argon2",
@@ -2925,7 +2925,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-desktop"
-version = "2.0.3"
+version = "2.0.4"
 dependencies = [
  "anyhow",
  "futures",
@@ -2958,7 +2958,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-manifest"
-version = "2.0.3"
+version = "2.0.4"
 dependencies = [
  "directories",
  "serde",
@@ -2972,7 +2972,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-server"
-version = "2.0.3"
+version = "2.0.4"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -3011,7 +3011,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-watcher"
-version = "2.0.3"
+version = "2.0.4"
 dependencies = [
  "notify",
  "notify-debouncer-mini",
@@ -4251,6 +4251,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "num_threads"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c7398b9c8b70908f6371f47ed36737907c87c52af34c268fed0bf0ceb92ead9"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -7093,7 +7102,9 @@ checksum = "743bd48c283afc0388f9b8827b976905fb217ad9e647fae3a379a9283c4def2c"
 dependencies = [
  "deranged",
  "itoa",
+ "libc",
  "num-conv",
+ "num_threads",
  "powerfmt",
  "serde_core",
  "time-core",

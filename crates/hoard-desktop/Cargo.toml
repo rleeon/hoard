@@ -57,7 +57,7 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = "0.2"
-time = { workspace = true }
+time = { workspace = true, features = ["local-offset"] }
 uuid = { workspace = true }
 futures = { workspace = true }
 tokio-tungstenite = { workspace = true }

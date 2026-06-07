@@ -414,12 +414,170 @@ pub async fn download(
     .into_response())
 }
 
+/// One row in the cloud version history. Mirrors the self-hosted
+/// `SnapshotSummary` wire shape (and the agent's `Snapshot`) so the desktop's
+/// History view renders cloud and self-hosted snapshots through one type.
+#[derive(Debug, Serialize)]
+pub struct VersionEntry {
+    /// String id for parity with self-hosted (which keys on a UUID). The
+    /// version number is unique within a save and all the client needs.
+    pub id: String,
+    pub save_id: String,
+    pub version_num: i64,
+    pub parent_version: Option<i64>,
+    pub file_count: i64,
+    pub total_size_bytes: i64,
+    pub is_pinned: bool,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: time::OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub deleted_at: Option<time::OffsetDateTime>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListVersionsQuery {
+    #[serde(default)]
+    pub include_deleted: bool,
+}
+
+/// `GET /v1/cloud/saves/:save_id/versions` — full committed version history
+/// for a save. The sync manifest only carries the latest version; this
+/// surfaces every committed one so History can list and restore any of them.
+/// The R2 blobs and `save_versions` rows already persist per version — this
+/// just exposes them. Pending (uncommitted, `sha256 = ''`) rows are excluded.
+pub async fn list_versions(
+    State(state): State<CloudState>,
+    Extension(user): Extension<CloudUser>,
+    Path(save_id): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<ListVersionsQuery>,
+) -> Result<Json<Vec<VersionEntry>>, CloudError> {
+    let owner: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
+        .bind(&save_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some(owner) = owner else {
+        return Err(CloudError::NotFound("save not found"));
+    };
+    if owner != user.user_id {
+        return Err(CloudError::Forbidden("save belongs to a different user"));
+    }
+
+    type Row = (
+        i64,
+        i64,
+        Option<i64>,
+        i64,
+        bool,
+        time::OffsetDateTime,
+        Option<time::OffsetDateTime>,
+    );
+    let rows: Vec<Row> = sqlx::query_as(
+        r#"
+        SELECT version_num, size_bytes, parent_version, file_count, is_pinned, created_at, deleted_at
+          FROM save_versions
+         WHERE save_id = $1
+           AND sha256 <> ''
+           AND ($2 OR deleted_at IS NULL)
+      ORDER BY version_num DESC
+        "#,
+    )
+    .bind(&save_id)
+    .bind(q.include_deleted)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let out = rows
+        .into_iter()
+        .map(
+            |(version_num, size, parent, file_count, is_pinned, created, deleted)| VersionEntry {
+                id: version_num.to_string(),
+                save_id: save_id.clone(),
+                version_num,
+                parent_version: parent,
+                file_count,
+                total_size_bytes: size,
+                is_pinned,
+                created_at: created,
+                deleted_at: deleted,
+            },
+        )
+        .collect();
+    Ok(Json(out))
+}
+
+/// `DELETE /v1/cloud/saves/:save_id/versions/:version` — drop a single
+/// committed version. We delete the R2 blob (best-effort) then the row (the
+/// storage_bytes trigger credits the freed space). If the deleted version was
+/// the save's head, `latest_version_num` is repointed at the highest
+/// remaining committed version; if none remain the whole save row goes so it
+/// stops showing up empty in the manifest.
+pub async fn delete_version(
+    State(state): State<CloudState>,
+    Extension(user): Extension<CloudUser>,
+    Path((save_id, version)): Path<(String, i64)>,
+) -> Result<Response, CloudError> {
+    let owner: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
+        .bind(&save_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some(owner) = owner else {
+        return Err(CloudError::NotFound("save not found"));
+    };
+    if owner != user.user_id {
+        return Err(CloudError::Forbidden("save belongs to a different user"));
+    }
+
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT r2_key FROM save_versions WHERE save_id = $1 AND version_num = $2")
+            .bind(&save_id)
+            .bind(version)
+            .fetch_optional(&state.pool)
+            .await?;
+    let Some((r2_key,)) = row else {
+        return Err(CloudError::NotFound("version not found"));
+    };
+
+    if let Err(e) = state.r2.delete_object(&r2_key).await {
+        tracing::warn!(error = %e, r2_key = %r2_key, "cloud delete version: R2 object delete failed");
+    }
+
+    sqlx::query("DELETE FROM save_versions WHERE save_id = $1 AND version_num = $2")
+        .bind(&save_id)
+        .bind(version)
+        .execute(&state.pool)
+        .await?;
+
+    // Repoint head / drop the save if it's now empty.
+    let new_head: Option<(i64,)> = sqlx::query_as(
+        "SELECT MAX(version_num) FROM save_versions WHERE save_id = $1 AND sha256 <> ''",
+    )
+    .bind(&save_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    match new_head.and_then(|(v,)| (v > 0).then_some(v)) {
+        Some(head) => {
+            sqlx::query("UPDATE saves SET latest_version_num = $1, updated_at = now() WHERE id = $2")
+                .bind(head)
+                .bind(&save_id)
+                .execute(&state.pool)
+                .await?;
+        }
+        None => {
+            sqlx::query("DELETE FROM saves WHERE id = $1 AND user_id = $2")
+                .bind(&save_id)
+                .bind(user.user_id)
+                .execute(&state.pool)
+                .await?;
+        }
+    }
+
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
 /// `DELETE /v1/cloud/saves/:save_id` — wipe a cloud save and every version
-/// it holds so the user can reclaim storage. Cloud keeps no per-snapshot
-/// history (only the latest committed version is surfaced), so "delete a
-/// snapshot" on cloud means "delete the whole save". We drop the R2 blobs
-/// first (best-effort) then cascade-delete the DB rows; the storage_bytes
-/// trigger credits the freed space back as each `save_versions` row goes.
+/// it holds so the user can reclaim storage. We drop the R2 blobs first
+/// (best-effort) then cascade-delete the DB rows; the storage_bytes trigger
+/// credits the freed space back as each `save_versions` row goes.
 pub async fn delete_save(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,

@@ -13,8 +13,39 @@ use hoard_agent::prefs::Prefs;
 use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_deep_link::DeepLinkExt;
+use tracing_subscriber::fmt::format::Writer;
+use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+
+/// Log timestamp timer that renders in the user's local timezone and labels
+/// the offset, so a reader never has to guess what clock a line is on. When
+/// the machine *is* on UTC (offset zero, or the offset couldn't be resolved
+/// and we fell back) the suffix is the literal `UTC`; otherwise it's the
+/// numeric offset, e.g. `+02:00`.
+#[derive(Clone, Copy)]
+struct LocalTimer {
+    offset: time::UtcOffset,
+}
+
+impl FormatTime for LocalTimer {
+    fn format_time(&self, w: &mut Writer<'_>) -> std::fmt::Result {
+        const FMT: &[time::format_description::BorrowedFormatItem<'_>] = time::macros::format_description!(
+            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
+        );
+        let now = time::OffsetDateTime::now_utc().to_offset(self.offset);
+        let body = now.format(&FMT).map_err(|_| std::fmt::Error)?;
+        let secs = self.offset.whole_seconds();
+        if secs == 0 {
+            write!(w, "{body} UTC")
+        } else {
+            let sign = if secs < 0 { '-' } else { '+' };
+            let h = secs.abs() / 3600;
+            let m = (secs.abs() % 3600) / 60;
+            write!(w, "{body} {sign}{h:02}:{m:02}")
+        }
+    }
+}
 
 use crate::commands::automatic::AutomaticScheduler;
 use crate::state::AppState;
@@ -29,9 +60,21 @@ pub fn run() {
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,hoard=debug"));
 
+    // Resolve the local UTC offset *before* any threads spawn — `time`'s
+    // `current_local_offset` refuses to read the environment once the process
+    // is multi-threaded (it's a soundness guard on POSIX). If it fails we fall
+    // back to UTC, which the timer then labels as such.
+    let timer = LocalTimer {
+        offset: time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC),
+    };
+
     let registry = tracing_subscriber::registry()
         .with(env_filter)
-        .with(tracing_subscriber::fmt::layer().with_target(true))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(true)
+                .with_timer(timer),
+        )
         // Ship events to the connected server (best-effort, drop-on-full).
         // Inert until a session + log-accepting server are present.
         .with(hoard_agent::logship::start());
@@ -48,6 +91,7 @@ pub fn run() {
                         tracing_subscriber::fmt::layer()
                             .with_target(true)
                             .with_ansi(false)
+                            .with_timer(timer)
                             .with_writer(nb_writer),
                     )
                     .try_init();

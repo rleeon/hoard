@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.5] — 2026-06-07
+
+### Added
+- **Hoard Cloud expone todas las versiones, no solo la última.** Antes el
+  manifest de sync solo traía la versión cabeza de cada partida, así que History
+  mostraba una sola fila y al restaurar manualmente volvía únicamente esa; el
+  resto del historial quedaba invisible (aunque los blobs v1…vN seguían en R2).
+  Nuevo `GET /v1/cloud/saves/:id/versions` devuelve el historial completo y el
+  cliente lo lista: ahora ves y restauras cualquier versión. Borrar una entrada
+  en History borra esa versión concreta (`DELETE …/versions/:version`), no la
+  partida entera; el save solo se elimina cuando no queda ninguna versión.
+
+### Fixed
+- **Los logs van en la hora local del sistema, etiquetando el huso.** El timer
+  resuelve el offset local antes de arrancar hilos y rotula cada línea con
+  `+02:00` (o `UTC` si el reloj está en cero o no se pudo resolver el offset),
+  para no tener que adivinar en qué reloj está cada evento. Antes todo salía en
+  UTC sin marca, lo que hacía leer dos horas de menos.
+
 ## [2.0.4] — 2026-06-06
 
 ### Added
