@@ -348,10 +348,11 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
         }
     };
 
-    let (new_versions, new_bytes) = {
+    let (new_versions, new_bytes, advanced_ids) = {
         let mut seen_guard = seen.lock().unwrap();
         let mut new_versions: usize = 0;
         let mut new_bytes: i64 = 0;
+        let mut advanced_ids: Vec<String> = Vec::new();
         for entry in &manifest.saves {
             let prev_version = seen_guard
                 .iter()
@@ -361,6 +362,7 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
                 Some(prev) if entry.latest_version_num > prev => {
                     new_versions += 1;
                     new_bytes += entry.latest_size_bytes.max(0);
+                    advanced_ids.push(entry.save_id.clone());
                 }
                 None => {
                     // First time we see this save in this session. We
@@ -383,7 +385,7 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
                 version_num: entry.latest_version_num,
             });
         }
-        (new_versions, new_bytes)
+        (new_versions, new_bytes, advanced_ids)
     };
 
     let _ = app.emit(
@@ -394,4 +396,31 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
             bytes: new_bytes,
         },
     );
+
+    // Sync global: the poller is the cheap "is this device outdated?" detector.
+    // When it's on and a save advanced server-side, ask the agent to pull it
+    // right now — "en el momento", even if the game is running. This is the
+    // low-latency complement to the agent's own sweep (which would catch the
+    // same delta within its cooldown). Off by default and version-gated on the
+    // agent side, so this is a no-op cost when nothing actually changed.
+    if !advanced_ids.is_empty() {
+        let global_sync = hoard_agent::prefs::Prefs::load_default()
+            .map(|(p, _)| p.global_sync)
+            .unwrap_or(false);
+        if global_sync {
+            let handle = app
+                .try_state::<crate::state::AppState>()
+                .and_then(|s| s.agent.lock().unwrap().clone());
+            if let Some(h) = handle {
+                for id in advanced_ids {
+                    if let Err(e) = h.force_restore(id).await {
+                        tracing::warn!(
+                            error = %e,
+                            "cloud-pull: couldn't request force-restore for sync global"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }

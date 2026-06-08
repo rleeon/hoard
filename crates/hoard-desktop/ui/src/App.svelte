@@ -13,6 +13,7 @@
     ScrollText,
     LogIn,
     RotateCw,
+    RefreshCw,
   } from "lucide-svelte";
   import { _ } from "svelte-i18n";
   import { formatBytes } from "./lib/utils/format";
@@ -96,6 +97,8 @@
   let updateModalOpen = $state(false);
   let automaticMode = $state(false);
   let automaticBusy = $state(false);
+  let globalSync = $state(false);
+  let globalSyncBusy = $state(false);
 
   // Self-hosted reachability escape hatch.
   // ---------------------------------------
@@ -249,6 +252,7 @@
     // own errors and falls back to pessimistic defaults.
     await hydratePrefs();
     automaticMode = $prefs?.automatic_mode ?? false;
+    globalSync = $prefs?.global_sync ?? false;
 
     // No startup scan kicked from here anymore: Rust's `restart_if_enabled`
     // (run during Tauri `setup()`) fires the first scan immediately when the
@@ -363,6 +367,26 @@
       showError(e);
     } finally {
       automaticBusy = false;
+    }
+  }
+
+  async function toggleGlobalSync() {
+    if (globalSyncBusy) return;
+    globalSyncBusy = true;
+    try {
+      const next = !globalSync;
+      const updated = await api.setGlobalSync(next);
+      prefs.set(updated);
+      globalSync = updated.global_sync;
+      if (globalSync) {
+        toastSuccess($_("sync.toggled_on"));
+      } else {
+        toastInfo($_("sync.toggled_off"));
+      }
+    } catch (e) {
+      showError(e);
+    } finally {
+      globalSyncBusy = false;
     }
   }
 
@@ -599,6 +623,22 @@
             </div>
           {/if}
         {/if}
+        <button
+          type="button"
+          onclick={toggleGlobalSync}
+          disabled={globalSyncBusy}
+          class="flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors {globalSync
+            ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+            : 'border-rose-500/40 bg-rose-500/15 text-rose-300 hover:bg-rose-500/25'} disabled:cursor-wait disabled:opacity-60"
+          aria-label={$_("sync.aria_toggle")}
+          title={$_("sync.help_tooltip")}
+        >
+          <RefreshCw size={16} class={globalSync ? "animate-pulse" : ""} />
+          <span>
+            {$_("sync.title")} ·
+            {globalSync ? $_("sync.on") : $_("sync.off")}
+          </span>
+        </button>
         <button
           type="button"
           onclick={toggleAutomatic}

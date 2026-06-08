@@ -80,6 +80,17 @@ pub struct Prefs {
     #[serde(default)]
     pub auto_restore: bool,
 
+    /// "Sync global" — distinct from both [`Self::auto_restore`] and
+    /// [`Self::automatic_mode`]. When `true`, the agent downloads a newer
+    /// cloud version the moment it detects the device is outdated, **even
+    /// while a game is running or the save was just written**: the sweep
+    /// bypasses the "user is mid-session" guards. Stays bandwidth-safe via
+    /// the version-gate (never re-pulls a version the device already has) and
+    /// non-destructive via conflict backups under `<state_dir>/conflicts/`.
+    /// Backup-only saves (per-save preset) still opt out. Defaults to `false`.
+    #[serde(default)]
+    pub global_sync: bool,
+
     /// Last desktop-client version we already nudged the user about via a
     /// native OS notification. The update poller checks this before firing
     /// `sendNotification` so the user doesn't get banner-spammed every 30
@@ -209,6 +220,7 @@ impl Default for Prefs {
             anonymous_telemetry: false,
             language: None,
             auto_restore: false,
+            global_sync: false,
             last_update_notified_version: None,
             automatic_mode: false,
             automatic_scan_interval_secs: default_scan_interval_secs(),

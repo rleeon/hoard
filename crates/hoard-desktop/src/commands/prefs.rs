@@ -61,6 +61,53 @@ pub async fn save_prefs(state: State<'_, AppState>, prefs: Prefs) -> Result<Pref
             }
         }
     }
+
+    let global_sync_changed = match &prev {
+        Some(p) => p.global_sync != prefs.global_sync,
+        None => true,
+    };
+    if global_sync_changed {
+        let handle = state.agent.lock().unwrap().clone();
+        if let Some(h) = handle {
+            if let Err(e) = h.set_global_sync(prefs.global_sync).await {
+                tracing::warn!(
+                    error = %e,
+                    "couldn't push global_sync preference to live agent"
+                );
+            }
+        }
+    }
+    Ok(prefs)
+}
+
+/// Flip the sidebar's "Sync" toggle (sync global). Distinct from
+/// `set_automatic_mode`: it doesn't start any scheduler and doesn't cascade
+/// `auto_restore`. It just persists `global_sync` and pushes it into the
+/// live agent so the change takes effect without a restart. On a
+/// `false → true` flip the agent sweeps immediately, pulling any outdated
+/// save even mid-session.
+#[tauri::command]
+pub async fn set_global_sync(
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<Prefs, AppError> {
+    let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
+    let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
+    prefs.global_sync = enabled;
+    prefs
+        .save(&path)
+        .map_err(|e| AppError::plain(e.to_string()))?;
+
+    let handle = state.agent.lock().unwrap().clone();
+    if let Some(h) = handle {
+        if let Err(e) = h.set_global_sync(enabled).await {
+            tracing::warn!(
+                error = %e,
+                "couldn't push global_sync preference to live agent"
+            );
+        }
+    }
+
     Ok(prefs)
 }
 

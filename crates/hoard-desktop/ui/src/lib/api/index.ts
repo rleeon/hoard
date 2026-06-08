@@ -400,6 +400,13 @@ export type Prefs = {
    *  add. Off by default — silent writes under `~` are the kind of thing
    *  that earns trust slowly, so users have to opt in. */
   auto_restore: boolean;
+  /** "Sync global" — distinct from both `auto_restore` and `automatic_mode`.
+   *  When `true`, the agent downloads a newer cloud version the moment it
+   *  detects the device is outdated, even while a game is running or the save
+   *  was just written. Version-gated (never re-pulls a version already held)
+   *  and non-destructive (local-newer files are parked under conflicts).
+   *  Off by default. */
+  global_sync: boolean;
   /** Last desktop-client version we already fired a native notification
    *  about. The update poller compares this against the latest report and
    *  only sends a notification the first time it sees a new version — the
@@ -475,6 +482,14 @@ export function savePrefs(prefs: Prefs): Promise<Prefs> {
  *  call. */
 export function setAutomaticMode(enabled: boolean): Promise<Prefs> {
   return invoke<Prefs>("set_automatic_mode", { enabled });
+}
+
+/** Flip "Sync" (sync global). Distinct from Modo Automático: it doesn't start
+ *  any scheduler and doesn't cascade `auto_restore`. When on, the agent
+ *  downloads a newer cloud version the moment it detects the device is
+ *  outdated — even while a game is running. Returns the updated prefs. */
+export function setGlobalSync(enabled: boolean): Promise<Prefs> {
+  return invoke<Prefs>("set_global_sync", { enabled });
 }
 
 /** Persist a new detection-scan interval (seconds, 60..=3600) for Modo

@@ -195,6 +195,7 @@ pub fn run() {
             commands::prefs::set_autostart,
             commands::prefs::is_autostart_enabled,
             commands::prefs::set_automatic_mode,
+            commands::prefs::set_global_sync,
             commands::prefs::set_scan_interval,
             commands::prefs::set_backup_interval,
             commands::prefs::set_conflict_retention,

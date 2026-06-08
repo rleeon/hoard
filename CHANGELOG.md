@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-06-08
+
+### Added
+- **Sync global.** Nuevo botón "Sync" en la barra lateral, distinto del Modo
+  Automático. Cuando está activo, el agente descarga la versión más reciente de
+  la nube en el momento en que detecta que el dispositivo está desactualizado —
+  da igual que estés jugando o que acabes de tocar el save. El sweep de
+  reconciliación se salta los guardas de "el usuario está en sesión"
+  (`is_running`, escritura reciente), pero sigue protegido por el version-gate
+  (nunca rebaja banda si ya estás al día) y por los respaldos de conflicto
+  (los archivos locales más nuevos se aparcan en `conflicts/` antes de
+  sobrescribir). El poller `cloud_pull` dispara una restauración inmediata
+  (`force_restore`) en cuanto ve que un save avanzó de versión, para latencia
+  "en el momento". Los presets backup-only siguen exentos. Apagado por defecto.
+
 ## [2.2.0] — 2026-06-07
 
 ### Changed

@@ -105,6 +105,10 @@ pub async fn start_agent(
         .as_ref()
         .map(|(p, _)| p.auto_restore)
         .unwrap_or(false);
+    let global_sync = prefs_loaded
+        .as_ref()
+        .map(|(p, _)| p.global_sync)
+        .unwrap_or(false);
     let conflict_retention_days = prefs_loaded
         .as_ref()
         .map(|(p, _)| p.conflict_retention_days)
@@ -123,6 +127,7 @@ pub async fn start_agent(
     let conflict_root = CliConfig::state_dir().ok().map(|d| d.join("conflicts"));
     let config = AgentConfig {
         auto_restore,
+        global_sync,
         conflict_root,
         conflict_retention_days,
         min_snapshot_interval_secs,

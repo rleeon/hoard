@@ -81,6 +81,17 @@ pub struct AgentConfig {
     /// (legacy behaviour — every settle backs up). The desktop derives this
     /// from `Prefs::data_saving` via `lerp(k, 5s, 600s)`.
     pub min_snapshot_interval_secs: u64,
+    /// Mirror of `Prefs::global_sync`. Distinct from [`Self::auto_restore`]:
+    /// when `true` the reconciliation sweep restores a newer cloud version
+    /// **the moment it's detected outdated, regardless of whether the game is
+    /// running or the save was touched recently**. It bypasses the
+    /// "user is mid-session" guards (`is_running`, `has_pending`,
+    /// recent-fs-event, recent-mtime) that `auto_restore` alone respects.
+    /// The version-gate inside `run_auto_restore` (`known >= latest`) still
+    /// holds, so this never re-downloads a save the device is already current
+    /// on — it only ever pulls a genuinely newer cloud version. Backup-only
+    /// presets (`policy.auto_restore == Some(false)`) still opt out.
+    pub global_sync: bool,
 }
 
 impl Default for AgentConfig {
@@ -93,6 +104,7 @@ impl Default for AgentConfig {
             conflict_root: None,
             conflict_retention_days: 14,
             min_snapshot_interval_secs: 0,
+            global_sync: false,
         }
     }
 }
@@ -301,6 +313,17 @@ enum AgentCommand {
     /// sweep so any tracked save with an empty local folder gets restored
     /// right away.
     SetAutoRestore(bool),
+    /// Live-toggle `config.global_sync` (sync global). Distinct from
+    /// `SetAutoRestore`: when flipped `false → true` the agent kicks an
+    /// immediate sweep that pulls any outdated save **even mid-session**,
+    /// bypassing the user-is-here guards. See [`AgentConfig::global_sync`].
+    SetGlobalSync(bool),
+    /// Sync global, ruta de baja latencia: el poller `cloud_pull` detectó que
+    /// un save concreto avanzó de versión en la nube y pide bajarlo **ya**,
+    /// saltándose el cooldown del sweep. Respeta el flag `restoring` (no
+    /// solapa restores) y el opt-out backup-only por preset. El version-gate
+    /// dentro de `run_auto_restore` evita la descarga si ya estamos al día.
+    ForceRestore(String),
     /// DETECCIÓN (fase 3, ADR 0020): lista de carpetas candidatas detectadas
     /// pero AÚN NO rastreadas, que el escaneo del desktop quiere "sondear".
     /// El agente las vigila por mtime en cada tick de proceso: si una se
@@ -374,6 +397,26 @@ impl AgentHandle {
     /// for the next fs event / process tick).
     pub async fn set_auto_restore(&self, enabled: bool) -> Result<()> {
         self.tx.send(AgentCommand::SetAutoRestore(enabled)).await?;
+        Ok(())
+    }
+
+    /// Push a new `global_sync` preference into the running agent. On a
+    /// `false → true` flip the agent immediately sweeps every slot, pulling
+    /// any outdated save even mid-session (the version-gate keeps it free
+    /// when the device is already current). See [`AgentConfig::global_sync`].
+    pub async fn set_global_sync(&self, enabled: bool) -> Result<()> {
+        self.tx.send(AgentCommand::SetGlobalSync(enabled)).await?;
+        Ok(())
+    }
+
+    /// Ask the agent to pull a specific save's latest cloud version right now,
+    /// bypassing the sweep cooldown. Used by the `cloud_pull` poller when sync
+    /// global is on and it spots a save that advanced server-side, so the
+    /// download starts within the poll interval instead of up to a cooldown
+    /// later. No-op on the agent side if the save is unknown or already
+    /// restoring. See [`AgentCommand::ForceRestore`].
+    pub async fn force_restore(&self, save_id: String) -> Result<()> {
+        self.tx.send(AgentCommand::ForceRestore(save_id)).await?;
         Ok(())
     }
 
@@ -620,6 +663,62 @@ async fn run_agent(
                             sweep_for_auto_restore(
                                 &mut slots, &api, &events_tx, &cmd_tx, &config,
                             );
+                        }
+                    }
+                    Some(AgentCommand::SetGlobalSync(enabled)) => {
+                        let was = config.global_sync;
+                        config.global_sync = enabled;
+                        tracing::info!(
+                            global_sync = enabled,
+                            "agent: global_sync preference updated"
+                        );
+                        // Flipping on means "catch me up now, even if I'm
+                        // playing". Kick an immediate sweep; the version-gate
+                        // keeps it free when already current.
+                        if !was && enabled {
+                            sweep_for_auto_restore(
+                                &mut slots, &api, &events_tx, &cmd_tx, &config,
+                            );
+                        }
+                    }
+                    Some(AgentCommand::ForceRestore(id)) => {
+                        // Low-latency pull requested by the cloud_pull poller.
+                        // Honour the backup-only opt-out and the in-flight
+                        // guard, but ignore the cooldown — the poller already
+                        // confirmed a version bump, so this is never spurious.
+                        let eligible = slots.get(&id).is_some_and(|slot| {
+                            slot.save
+                                .policy
+                                .auto_restore
+                                .unwrap_or(config.auto_restore || config.global_sync)
+                                && !slot.restoring
+                        });
+                        if eligible {
+                            let known_version =
+                                slots.get(&id).and_then(|s| s.known_version);
+                            let save = slots.get(&id).map(|s| s.save.clone());
+                            if let Some(slot) = slots.get_mut(&id) {
+                                slot.restoring = true;
+                                slot.next_auto_restore_at = Some(
+                                    TokioInstant::now()
+                                        + Duration::from_secs(AUTO_RESTORE_COOLDOWN_SECS),
+                                );
+                            }
+                            if let Some(save) = save {
+                                tracing::info!(
+                                    save_id = %id,
+                                    "agent: force-restore (sync global, cloud delta)"
+                                );
+                                spawn_auto_restore(
+                                    save,
+                                    api.clone(),
+                                    events_tx.clone(),
+                                    cmd_tx.clone(),
+                                    config.conflict_root.clone(),
+                                    config.conflict_retention_days,
+                                    known_version,
+                                );
+                            }
                         }
                     }
                     Some(AgentCommand::SetProbeCandidates(dirs)) => {
@@ -895,9 +994,12 @@ fn handle_add(
     // mid-session, resurrecting rotated-out autosaves. The recent-touch
     // check is the reliable "user is playing" signal regardless of process
     // detection.
-    if config.auto_restore {
-        let recently_touched =
-            is_path_recently_touched(&save_for_restore.local_path, RECENT_SAVE_GRACE);
+    if config.auto_restore || config.global_sync {
+        // Sync global ignores the recent-touch defer: catch up to the cloud
+        // immediately even if the folder was just written. The version-gate
+        // still spares the download when the device is already current.
+        let recently_touched = !config.global_sync
+            && is_path_recently_touched(&save_for_restore.local_path, RECENT_SAVE_GRACE);
         if recently_touched {
             tracing::debug!(
                 save_id = %save_id,
@@ -1137,8 +1239,15 @@ fn sweep_for_auto_restore(
         .iter()
         .filter(|(id, slot)| {
             // Per-save preset can opt out of restore (backup-only) or opt in
-            // even when the global default is off.
-            if !slot.save.policy.auto_restore.unwrap_or(config.auto_restore) {
+            // even when the global default is off. `global_sync` raises the
+            // floor: it counts as a global opt-in for restore, but a save
+            // explicitly marked backup-only (`Some(false)`) still wins.
+            if !slot
+                .save
+                .policy
+                .auto_restore
+                .unwrap_or(config.auto_restore || config.global_sync)
+            {
                 return false;
             }
             if slot.restoring {
@@ -1148,6 +1257,16 @@ fn sweep_for_auto_restore(
                 if now < t {
                     return false;
                 }
+            }
+            // Sync global: when enabled, pull the newer cloud version "en el
+            // momento", even mid-session. We deliberately skip the
+            // user-is-here guards below; the version-gate in
+            // `run_auto_restore` keeps this bandwidth-safe (it never
+            // downloads unless the cloud is genuinely ahead), and any
+            // local-newer files are parked under `conflict_root` rather than
+            // clobbered, so a folder the user is writing to stays recoverable.
+            if config.global_sync {
+                return true;
             }
             if slot.is_running {
                 tracing::debug!(
@@ -1893,7 +2012,11 @@ fn schedule_backup(
     let max_retries = config.max_retries;
     // Per-save preset can force backup-only (`Some(false)`) or force restore
     // (`Some(true)`) regardless of the global default.
-    let auto_restore = slot.save.policy.auto_restore.unwrap_or(config.auto_restore);
+    let auto_restore = slot
+        .save
+        .policy
+        .auto_restore
+        .unwrap_or(config.auto_restore || config.global_sync);
     let conflict_root = config.conflict_root.clone();
     let conflict_retention_days = config.conflict_retention_days;
 
@@ -2310,8 +2433,14 @@ fn process_poll(
             let barrier_save: Option<WatchedSave> = {
                 slots.get(&id).and_then(|slot| {
                     // Per-save preset can disable (backup-only) or enable the
-                    // pull barrier regardless of the global default.
-                    if !slot.save.policy.auto_restore.unwrap_or(config.auto_restore) {
+                    // pull barrier regardless of the global default. `global_sync`
+                    // counts as a global opt-in.
+                    if !slot
+                        .save
+                        .policy
+                        .auto_restore
+                        .unwrap_or(config.auto_restore || config.global_sync)
+                    {
                         return None;
                     }
                     if slot.restoring {
@@ -2321,6 +2450,12 @@ fn process_poll(
                         if TokioInstant::now() < t {
                             return None;
                         }
+                    }
+                    // Sync global: pull at launch even if the folder was just
+                    // written — skip the user-is-here guards. Version-gated, so
+                    // it's free when already current.
+                    if config.global_sync {
+                        return Some(slot.save.clone());
                     }
                     if slot.has_pending {
                         return None;
@@ -2538,6 +2673,7 @@ mod tests {
             poll_secs: 2,
             max_retries: 0,
             auto_restore: false,
+            global_sync: false,
             conflict_root: None,
             conflict_retention_days: 14,
             min_snapshot_interval_secs: 0,
