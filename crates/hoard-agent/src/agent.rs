@@ -288,7 +288,9 @@ pub struct AgentSlotStatus {
 
 /// Commands the host (Tauri command handlers, tests) sends to the agent.
 enum AgentCommand {
-    AddSave(WatchedSave),
+    // Boxed: `WatchedSave` is much larger than the other variants, so keeping
+    // it inline made every `AgentCommand` value as big as a `WatchedSave`.
+    AddSave(Box<WatchedSave>),
     RemoveSave(String),
     BackupNow(String),
     /// Staggered "backup sweep": re-hash every tracked save to catch changes
@@ -364,7 +366,7 @@ pub struct AgentHandle {
 
 impl AgentHandle {
     pub async fn add_save(&self, save: WatchedSave) -> Result<()> {
-        self.tx.send(AgentCommand::AddSave(save)).await?;
+        self.tx.send(AgentCommand::AddSave(Box::new(save))).await?;
         Ok(())
     }
 
@@ -464,7 +466,7 @@ pub fn spawn(
     if !initial_saves.is_empty() {
         tokio::spawn(async move {
             for s in initial_saves {
-                let _ = cmd_tx_seed.send(AgentCommand::AddSave(s)).await;
+                let _ = cmd_tx_seed.send(AgentCommand::AddSave(Box::new(s))).await;
             }
         });
     }
@@ -631,7 +633,7 @@ async fn run_agent(
                 match cmd {
                     Some(AgentCommand::AddSave(save)) => {
                         handle_add(
-                            &mut slots, save, &fs_tx, &api, &events_tx, &cmd_tx, &config,
+                            &mut slots, *save, &fs_tx, &api, &events_tx, &cmd_tx, &config,
                         );
                     }
                     Some(AgentCommand::RearmWatcher(id)) => {
@@ -1112,7 +1114,15 @@ fn spawn_auto_restore(
         let retention = Duration::from_secs(u64::from(conflict_retention_days) * 86_400);
         let mut not_on_server = false;
         let mut synced_version: Option<i64> = None;
-        match run_auto_restore(&api, &save, conflict_root.as_deref(), retention, known_version).await {
+        match run_auto_restore(
+            &api,
+            &save,
+            conflict_root.as_deref(),
+            retention,
+            known_version,
+        )
+        .await
+        {
             Ok(Some(outcome)) => {
                 // We downloaded and diffed against this version; remember it so
                 // the next sweep can short-circuit.

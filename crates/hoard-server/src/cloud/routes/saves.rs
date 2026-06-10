@@ -441,18 +441,18 @@ pub async fn cas_init(
     // and only presign — the genuinely new bytes.
     let mut unique: BTreeMap<String, i64> = BTreeMap::new();
     for f in &body.files {
-        unique.entry(f.sha256.clone()).or_insert(f.size_bytes.max(0));
+        unique
+            .entry(f.sha256.clone())
+            .or_insert(f.size_bytes.max(0));
     }
     let all_shas: Vec<String> = unique.keys().cloned().collect();
-    let existing: Vec<(String,)> = sqlx::query_as(
-        "SELECT sha256 FROM cloud_blobs WHERE user_id = $1 AND sha256 = ANY($2)",
-    )
-    .bind(user.user_id)
-    .bind(&all_shas)
-    .fetch_all(&state.pool)
-    .await?;
-    let existing: std::collections::HashSet<String> =
-        existing.into_iter().map(|(s,)| s).collect();
+    let existing: Vec<(String,)> =
+        sqlx::query_as("SELECT sha256 FROM cloud_blobs WHERE user_id = $1 AND sha256 = ANY($2)")
+            .bind(user.user_id)
+            .bind(&all_shas)
+            .fetch_all(&state.pool)
+            .await?;
+    let existing: std::collections::HashSet<String> = existing.into_iter().map(|(s,)| s).collect();
 
     let missing_shas: Vec<(&String, &i64)> = unique
         .iter()
@@ -738,15 +738,13 @@ pub async fn cas_commit(
         unique.entry(sha.clone()).or_insert(*size);
     }
     let all_shas: Vec<String> = unique.keys().cloned().collect();
-    let existing: Vec<(String,)> = sqlx::query_as(
-        "SELECT sha256 FROM cloud_blobs WHERE user_id = $1 AND sha256 = ANY($2)",
-    )
-    .bind(user.user_id)
-    .bind(&all_shas)
-    .fetch_all(&state.pool)
-    .await?;
-    let existing: std::collections::HashSet<String> =
-        existing.into_iter().map(|(s,)| s).collect();
+    let existing: Vec<(String,)> =
+        sqlx::query_as("SELECT sha256 FROM cloud_blobs WHERE user_id = $1 AND sha256 = ANY($2)")
+            .bind(user.user_id)
+            .bind(&all_shas)
+            .fetch_all(&state.pool)
+            .await?;
+    let existing: std::collections::HashSet<String> = existing.into_iter().map(|(s,)| s).collect();
 
     // Verify every new blob actually landed in R2 before we reference it.
     let mut new_bytes: u64 = 0;
@@ -926,13 +924,15 @@ pub async fn version_manifest(
     if !q.presign {
         let files = rows
             .into_iter()
-            .map(|(relative_path, sha256, size_bytes, modified_at)| ManifestFile {
-                relative_path,
-                sha256,
-                size_bytes,
-                modified_at,
-                download: None,
-            })
+            .map(
+                |(relative_path, sha256, size_bytes, modified_at)| ManifestFile {
+                    relative_path,
+                    sha256,
+                    size_bytes,
+                    modified_at,
+                    download: None,
+                },
+            )
             .collect();
         return Ok(Json(VersionManifestOut {
             content_addressed: true,
@@ -984,13 +984,15 @@ pub async fn version_manifest(
 
     let files = rows
         .into_iter()
-        .map(|(relative_path, sha256, size_bytes, modified_at)| ManifestFile {
-            download: url_for.get(&sha256).cloned(),
-            relative_path,
-            sha256,
-            size_bytes,
-            modified_at,
-        })
+        .map(
+            |(relative_path, sha256, size_bytes, modified_at)| ManifestFile {
+                download: url_for.get(&sha256).cloned(),
+                relative_path,
+                sha256,
+                size_bytes,
+                modified_at,
+            },
+        )
         .collect();
     Ok(Json(VersionManifestOut {
         content_addressed: true,
@@ -1246,11 +1248,13 @@ pub async fn delete_version(
     .await?;
     match new_head.and_then(|(v,)| (v > 0).then_some(v)) {
         Some(head) => {
-            sqlx::query("UPDATE saves SET latest_version_num = $1, updated_at = now() WHERE id = $2")
-                .bind(head)
-                .bind(&save_id)
-                .execute(&state.pool)
-                .await?;
+            sqlx::query(
+                "UPDATE saves SET latest_version_num = $1, updated_at = now() WHERE id = $2",
+            )
+            .bind(head)
+            .bind(&save_id)
+            .execute(&state.pool)
+            .await?;
         }
         None => {
             sqlx::query("DELETE FROM saves WHERE id = $1 AND user_id = $2")
@@ -1351,11 +1355,12 @@ where
                 if let Err(e) = state.r2.delete_object(&key).await {
                     tracing::warn!(error = %e, r2_key = %key, "cloud blob GC: R2 delete failed");
                 }
-                if let Err(e) = sqlx::query("DELETE FROM cloud_blobs WHERE user_id = $1 AND sha256 = $2")
-                    .bind(user_id)
-                    .bind(&sha)
-                    .execute(&state.pool)
-                    .await
+                if let Err(e) =
+                    sqlx::query("DELETE FROM cloud_blobs WHERE user_id = $1 AND sha256 = $2")
+                        .bind(user_id)
+                        .bind(&sha)
+                        .execute(&state.pool)
+                        .await
                 {
                     tracing::warn!(error = %e, sha = %sha, "cloud blob GC: row delete failed");
                 }

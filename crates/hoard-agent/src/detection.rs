@@ -1989,7 +1989,7 @@ fn grade_and_rank_paths(
             .map(|p| (p.clone(), grade_path(p, store)))
             .collect();
         // Strongest first; stable so equal grades keep discovery order.
-        graded.sort_by(|a, b| confidence_rank(b.1).cmp(&confidence_rank(a.1)));
+        graded.sort_by_key(|p| std::cmp::Reverse(confidence_rank(p.1)));
         g.confidence = graded
             .iter()
             .map(|(_, c)| *c)

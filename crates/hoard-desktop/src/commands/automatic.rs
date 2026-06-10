@@ -180,10 +180,11 @@ pub async fn run_scan(app: &AppHandle) {
     // must NOT count as tracked, or the slug looks monitored and auto-track
     // skips it (the cross-device bug: detected=1, tracked=0). They're collected
     // separately so a High detection can ADOPT them instead.
-    let mut tracked_slugs: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
-    let mut orphans_by_slug: std::collections::HashMap<String, crate::commands::library::TrackedSave> =
-        std::collections::HashMap::new();
+    let mut tracked_slugs: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut orphans_by_slug: std::collections::HashMap<
+        String,
+        crate::commands::library::TrackedSave,
+    > = std::collections::HashMap::new();
     for t in tracked {
         if t.orphan {
             // Prefer the "main" label when a slug has several cloud branches;

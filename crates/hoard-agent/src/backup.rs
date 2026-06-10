@@ -415,7 +415,10 @@ where
     progress(0, denom);
     for blob in &init.missing {
         let Some(f) = by_sha.get(blob.sha256.as_str()) else {
-            bail!("server requested a blob not in the manifest: {}", blob.sha256);
+            bail!(
+                "server requested a blob not in the manifest: {}",
+                blob.sha256
+            );
         };
         let body = file_to_body(&f.absolute_path).await?;
         client

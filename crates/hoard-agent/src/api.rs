@@ -292,9 +292,7 @@ impl ApiClient {
     pub async fn cloud_delete_version(&self, save_id: &str, version: i64) -> Result<()> {
         let resp = self
             .http
-            .delete(self.url(&format!(
-                "/v1/cloud/saves/{save_id}/versions/{version}"
-            )))
+            .delete(self.url(&format!("/v1/cloud/saves/{save_id}/versions/{version}")))
             .header("authorization", self.auth_header())
             .send()
             .await?;

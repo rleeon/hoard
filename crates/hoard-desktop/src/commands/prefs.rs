@@ -87,10 +87,7 @@ pub async fn save_prefs(state: State<'_, AppState>, prefs: Prefs) -> Result<Pref
 /// `false → true` flip the agent sweeps immediately, pulling any outdated
 /// save even mid-session.
 #[tauri::command]
-pub async fn set_global_sync(
-    state: State<'_, AppState>,
-    enabled: bool,
-) -> Result<Prefs, AppError> {
+pub async fn set_global_sync(state: State<'_, AppState>, enabled: bool) -> Result<Prefs, AppError> {
     let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
     let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
     prefs.global_sync = enabled;
@@ -121,10 +118,7 @@ pub async fn set_global_sync(
 /// either changed, mirroring what `save_prefs` does field-by-field — on a flip
 /// into `FullSync` the agent sweeps immediately and pulls any outdated save.
 #[tauri::command]
-pub async fn set_sync_mode(
-    state: State<'_, AppState>,
-    mode: SyncMode,
-) -> Result<Prefs, AppError> {
+pub async fn set_sync_mode(state: State<'_, AppState>, mode: SyncMode) -> Result<Prefs, AppError> {
     let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
     let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
     let prev_auto_restore = prefs.auto_restore;

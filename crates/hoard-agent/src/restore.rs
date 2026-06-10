@@ -236,7 +236,9 @@ where
     // New uploads are content-addressed: pull the per-file manifest (with
     // presigned GETs) and download each blob. Legacy archive versions report
     // `content_addressed = false` and fall through to the whole-archive path.
-    let manifest = client.cloud_version_manifest(save_id, version, true).await?;
+    let manifest = client
+        .cloud_version_manifest(save_id, version, true)
+        .await?;
     if manifest.content_addressed {
         return restore_cloud_cas(client, dest, options, manifest, progress).await;
     }
@@ -317,9 +319,10 @@ where
                 .with_context(|| format!("creating parent {}", parent.display()))?;
         }
 
-        let presigned = file.download.as_ref().ok_or_else(|| {
-            anyhow!("manifest missing download URL for {}", file.relative_path)
-        })?;
+        let presigned = file
+            .download
+            .as_ref()
+            .ok_or_else(|| anyhow!("manifest missing download URL for {}", file.relative_path))?;
         let resp = client.get_presigned(presigned).await?;
 
         let mut out = tokio::fs::File::create(&dest_path)
@@ -494,7 +497,9 @@ pub async fn list_cloud_version_files(
     // Content-addressed versions keep a real per-file index server-side, so the
     // detail view is a single cheap call — no blob download, no bandwidth. SHAs
     // come back too. Legacy archive versions fall through to streaming the tar.
-    let manifest = client.cloud_version_manifest(save_id, version, false).await?;
+    let manifest = client
+        .cloud_version_manifest(save_id, version, false)
+        .await?;
     if manifest.content_addressed {
         let mut files: Vec<SnapshotFile> = manifest
             .files
@@ -516,7 +521,7 @@ pub async fn list_cloud_version_files(
     // through the decoders without buffering the whole thing in memory.
     let reader = StreamReader::new(
         resp.bytes_stream()
-            .map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))),
+            .map(|r| r.map_err(std::io::Error::other)),
     );
     let zstd = ZstdDecoder::new(BufReader::new(reader));
     let zstd = BufReader::new(zstd);

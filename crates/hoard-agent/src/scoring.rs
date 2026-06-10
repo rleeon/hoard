@@ -252,13 +252,11 @@ fn scan_content(dir: &Path) -> DirContent {
             Some(e) if EXT_ARCHIVE.contains(&e) && archive_looks_like_save(&path) => {
                 c.archive_save += 1
             }
-            Some(e) if !is_known_ext(e) => {
-                // Extensión desconocida: cuenta los recientes por extensión.
-                // La extensión dominante (≥3 recientes) bajo un nombre-save
-                // exacto delata un deque de saves propietarios.
-                if file_is_recent(&path) {
-                    *c.unknown_recent_by_ext.entry(e.to_string()).or_default() += 1;
-                }
+            // Extensión desconocida y reciente: cuenta los recientes por
+            // extensión. La extensión dominante (≥3 recientes) bajo un
+            // nombre-save exacto delata un deque de saves propietarios.
+            Some(e) if !is_known_ext(e) && file_is_recent(&path) => {
+                *c.unknown_recent_by_ext.entry(e.to_string()).or_default() += 1;
             }
             _ => {}
         }

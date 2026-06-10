@@ -134,7 +134,10 @@ mod tests {
 
     #[test]
     fn backup_only_disables_restore() {
-        assert_eq!(policy_for_preset(PRESET_BACKUP_ONLY).auto_restore, Some(false));
+        assert_eq!(
+            policy_for_preset(PRESET_BACKUP_ONLY).auto_restore,
+            Some(false)
+        );
     }
 
     #[test]

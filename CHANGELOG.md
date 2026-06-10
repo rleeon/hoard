@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.2] — 2026-06-10
+
 ### Fixed
+- **CI verde: formato y clippy.** Se corrigió el drift de `cargo fmt` y se
+  resolvieron los avisos de `clippy -D warnings` (variante grande de
+  `AgentCommand` boxeada, `sort_by_key`, `io::Error::other`, guard de `match`
+  colapsado) que tenían el workflow de CI en rojo desde 2.3.0. Sin cambios de
+  comportamiento.
 - **Cloud: `cas_init` ya no falla con `db_error` bajo concurrencia.** Dos
   inits simultáneos del mismo save (dos máquinas, o el sweep y un evento de
   fichero a la vez) leían el mismo `head` y el segundo violaba el UNIQUE de
