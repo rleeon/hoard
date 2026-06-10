@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.1] — 2026-06-10
+
 ### Added
 - **Modos de funcionamiento (Solo copia / Sync completo).** Un único selector
   claro en el onboarding y en Ajustes sustituye a los toggles sueltos de
