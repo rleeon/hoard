@@ -146,6 +146,14 @@ pub struct TrackedSave {
     /// so the only sensible action is the full `delete_save_completely`.
     #[serde(default)]
     pub orphan: bool,
+    /// Bytes this save occupies **on this machine** — the recursive size of
+    /// its local folder. `None` for orphan rows (no local folder here) and
+    /// for freshly-created rows whose size the Library refetches. Distinct
+    /// from [`Self::total_size_bytes`], which is the server-side footprint
+    /// across every snapshot. The "Juegos monitorizados" section shows this
+    /// so the user sees what the save costs *here*, not in the cloud.
+    #[serde(default)]
+    pub local_size_bytes: Option<i64>,
     /// The active sync preset for this save, if the user picked one
     /// explicitly. `None` means "standard / inherit global config" — note
     /// that a built-in per-game preset (e.g. R.E.P.O.) may still apply at
@@ -153,6 +161,22 @@ pub struct TrackedSave {
     /// the user's manual override so the selector shows the right value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preset: Option<String>,
+}
+
+/// Fill `local_size_bytes` for every non-orphan row by walking its local
+/// folder (metadata-only, no file reads — cheap even for large saves). Orphan
+/// rows have no local folder on this machine, so they stay `None`. Powers the
+/// "Juegos monitorizados" footprint column (BUG 4).
+fn fill_local_sizes(out: &mut [TrackedSave]) {
+    for t in out.iter_mut() {
+        if t.orphan || t.local_path.is_empty() {
+            continue;
+        }
+        let p = std::path::Path::new(&t.local_path);
+        if p.is_dir() {
+            t.local_size_bytes = Some(hoard_agent::agent::dir_size_bytes(p) as i64);
+        }
+    }
 }
 
 /// Run a full auto-detection sweep against the **bundled** catalog (no
@@ -363,6 +387,7 @@ pub async fn add_game_to_tracking(
             paused: false,
             total_size_bytes: 0,
             orphan: false,
+            local_size_bytes: None,
             preset,
         });
     }
@@ -448,6 +473,91 @@ pub async fn add_game_to_tracking(
         paused: false,
         total_size_bytes,
         orphan: false,
+        local_size_bytes: None,
+        preset,
+    })
+}
+
+/// Args for [`adopt_save`].
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdoptArgs {
+    /// The EXISTING cloud save_id to bind to (from the orphan card). Reusing
+    /// it is what makes this an adoption — one save, a folder per machine —
+    /// instead of a brand-new branch.
+    pub save_id: String,
+    pub game_slug: String,
+    pub label: String,
+    pub local_path: String,
+}
+
+/// Adopt (vincular) a cloud save that belongs to another machine: associate a
+/// local folder on THIS machine with the existing `save_id` instead of minting
+/// a new save. Writes the `CliState` row under that id, creates the folder if
+/// missing, and attaches the save to the running agent — which, in sync mode,
+/// auto-restores the latest snapshot on add (the version-gate is left open);
+/// in backup-only mode it just watches the folder without downloading. This is
+/// the core of cross-device sync (BUG 3): a virgin machine binds to the cloud
+/// save and pulls the other machine's progress without the user saving first.
+#[tauri::command]
+pub async fn adopt_save(
+    args: AdoptArgs,
+    state: State<'_, AppState>,
+) -> Result<TrackedSave, String> {
+    // Ensure a session exists (and surface a clean error if not).
+    let _client = current_client(&state)?;
+
+    let local_path = PathBuf::from(&args.local_path);
+    if local_path.as_os_str().is_empty() {
+        return Err("Save folder path can't be empty.".to_string());
+    }
+    if !local_path.exists() {
+        std::fs::create_dir_all(&local_path)
+            .map_err(|e| format!("Couldn't create {}: {e}", local_path.display()))?;
+    } else if !local_path.is_dir() {
+        return Err(format!("{} isn't a folder.", local_path.display()));
+    }
+
+    let (mut cli_state, path) = CliState::load_default().map_err(|e| e.to_string())?;
+    let preset = presets::builtin_preset_for(&args.game_slug).map(str::to_string);
+    cli_state.saves.insert(
+        args.save_id.clone(),
+        SaveState {
+            local_path: local_path.clone(),
+            game_slug: args.game_slug.clone(),
+            label: args.label.clone(),
+            last_backup_at: None,
+            // Leave the version cursor open so the agent's on-add auto-restore
+            // pulls the latest cloud snapshot (sync mode). A successful restore
+            // then persists the synced version via `SaveAutoRestored` (BUG 1).
+            last_version_num: None,
+            paused: false,
+            preset: preset.clone(),
+            set_hash: None,
+        },
+    );
+    cli_state.save(&path).map_err(|e| e.to_string())?;
+
+    let watched = watched_save_from(
+        args.save_id.clone(),
+        args.game_slug.clone(),
+        args.game_slug.clone(),
+        args.label.clone(),
+        local_path.clone(),
+        preset.as_deref(),
+    );
+    attach_save_if_running(&state, watched).await;
+
+    Ok(TrackedSave {
+        save_id: args.save_id,
+        game_slug: args.game_slug,
+        label: args.label,
+        local_path: local_path.to_string_lossy().into_owned(),
+        last_version_num: None,
+        last_backup_at: None,
+        paused: false,
+        total_size_bytes: 0,
+        orphan: false,
+        local_size_bytes: None,
         preset,
     })
 }
@@ -526,6 +636,7 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
                 paused: st.paused,
                 total_size_bytes: entry.map(|e| e.latest_size_bytes).unwrap_or(0),
                 orphan: false,
+                local_size_bytes: None,
                 preset: st.preset.clone(),
             });
         }
@@ -552,9 +663,11 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
                 paused: false,
                 total_size_bytes: entry.latest_size_bytes,
                 orphan: true,
+                local_size_bytes: None,
                 preset: None,
             });
         }
+        fill_local_sizes(&mut out);
         return Ok(out);
     }
 
@@ -588,6 +701,7 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
                     paused,
                     total_size_bytes: s.total_size_bytes.unwrap_or(0),
                     orphan: false,
+                    local_size_bytes: None,
                     preset: st.preset.clone(),
                 });
             }
@@ -602,11 +716,13 @@ pub async fn list_tracked_saves(state: State<'_, AppState>) -> Result<Vec<Tracke
                     paused: false,
                     total_size_bytes: s.total_size_bytes.unwrap_or(0),
                     orphan: true,
+                    local_size_bytes: None,
                     preset: None,
                 });
             }
         }
     }
+    fill_local_sizes(&mut out);
     Ok(out)
 }
 
@@ -681,6 +797,7 @@ pub async fn rename_save_label(
         paused: false,
         total_size_bytes: updated.total_size_bytes.unwrap_or(0),
         orphan: false,
+        local_size_bytes: None,
         preset,
     })
 }

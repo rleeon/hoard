@@ -203,7 +203,11 @@ export async function subscribeLive() {
     await listen<AgentEvent>("agent://upload-started", (e) => {
       const p = e.payload;
       if (p.type !== "backup_started") return;
-      pushEntry({ kind: "upload_started", save_id: p.save_id });
+      pushEntry({
+        kind: "upload_started",
+        save_id: p.save_id,
+        game_slug: p.game_slug,
+      });
     }),
   );
 

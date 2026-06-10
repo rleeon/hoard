@@ -27,6 +27,7 @@
     Languages,
     Activity,
     DownloadCloud,
+    HardDrive,
     Server,
     ServerCog,
     CloudOff,
@@ -122,6 +123,24 @@
       backupIntervalMin = Math.round(
         ($prefs?.automatic_backup_interval_secs ?? 3600) / 60,
       );
+    } finally {
+      saving = null;
+    }
+  }
+
+  // The single user-facing operating mode, derived from the internal flags.
+  const syncMode = $derived(
+    $prefs ? api.syncModeOf($prefs) : "backup_only",
+  );
+
+  async function commitSyncMode(mode: api.SyncMode) {
+    if (!$prefs || mode === syncMode) return;
+    saving = "sync_mode";
+    try {
+      const updated = await api.setSyncMode(mode);
+      prefs.set(updated);
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
     } finally {
       saving = null;
     }
@@ -481,16 +500,6 @@
       description: $_("settings.close_to_tray_desc"),
       icon: Minimize2,
     },
-    // Auto-restore originally lived in its own "Sync" section, but the user
-    // pointed out it's a one-toggle section masquerading as a category —
-    // promoted into General alongside close-to-tray so all the "how Hoard
-    // behaves day to day" switches live in one card.
-    {
-      field: "auto_restore",
-      label: $_("settings.auto_restore_label"),
-      description: $_("settings.auto_restore_desc"),
-      icon: DownloadCloud,
-    },
   ]);
 
   const startupRows: Row[] = $derived([
@@ -587,6 +596,52 @@
     </Card>
   {:else}
     <div class="space-y-6">
+      <section>
+        <h2
+          class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
+        >
+          {$_("settings.section_mode")}
+        </h2>
+        <Card>
+          <div class="space-y-2">
+            {#each [{ mode: "backup_only", icon: HardDrive, title: $_("settings.mode_backup_title"), desc: $_("settings.mode_backup_desc") }, { mode: "full_sync", icon: DownloadCloud, title: $_("settings.mode_sync_title"), desc: $_("settings.mode_sync_desc") }] as opt (opt.mode)}
+              <button
+                type="button"
+                disabled={saving === "sync_mode"}
+                onclick={() => commitSyncMode(opt.mode as api.SyncMode)}
+                class="flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors disabled:opacity-60 {syncMode ===
+                opt.mode
+                  ? 'border-emerald-500/60 bg-emerald-500/10'
+                  : 'border-white/[0.08] hover:bg-zinc-800/40'}"
+              >
+                <span
+                  class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md {syncMode ===
+                  opt.mode
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : 'bg-zinc-800 text-zinc-400'}"
+                >
+                  <opt.icon size={16} />
+                </span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-zinc-100"
+                      >{opt.title}</span
+                    >
+                    {#if syncMode === opt.mode}
+                      <span
+                        class="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-400"
+                        >{$_("settings.mode_active_badge")}</span
+                      >
+                    {/if}
+                  </div>
+                  <p class="mt-0.5 text-xs text-zinc-400">{opt.desc}</p>
+                </div>
+              </button>
+            {/each}
+          </div>
+        </Card>
+      </section>
+
       <section>
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"

@@ -153,6 +153,14 @@ pub struct WatchedSave {
     /// stays open so an empty/new device still pulls.
     #[serde(default)]
     pub known_version: Option<i64>,
+    /// Skip-by-set-hash signature of the last successful upload, read from
+    /// `state.json` (`set_hash`). Seeds the slot's `last_set_hash` so the
+    /// first backup sweep after a restart can compare against it and skip a
+    /// no-op upload instead of re-pushing an identical snapshot. `None` for a
+    /// freshly tracked save (nothing committed yet). Without this every app
+    /// restart re-uploads every save as a new identical version.
+    #[serde(default)]
+    pub set_hash: Option<String>,
 }
 
 /// Out-of-agent notifications. Frontend listens to these to drive the
@@ -177,11 +185,20 @@ pub enum AgentEvent {
     },
     BackupStarted {
         save_id: String,
+        game_slug: String,
+        /// Human label for the save (the partida name). Lets the UI show
+        /// "Subiendo Factorio…" instead of the raw uuid.
+        label: String,
     },
     BackupSuccess {
         save_id: String,
         version_num: i64,
         total_bytes: u64,
+        /// Composite skip-by-set-hash signature of the snapshot just uploaded
+        /// (`"<cheap>:<content>"`). The desktop persists it into
+        /// `state.json` so the next session can skip a no-op re-upload of the
+        /// same bytes. `None` only if the agent couldn't compute it.
+        set_hash: Option<String>,
     },
     BackupFailed {
         save_id: String,
@@ -961,6 +978,7 @@ fn handle_add(
     let save_for_restore = save.clone();
     let save_id = save.save_id.clone();
     let known_version = save.known_version;
+    let last_set_hash = save.set_hash.clone();
     let mut slot = SaveSlot {
         save,
         watcher: None,
@@ -973,7 +991,7 @@ fn handle_add(
         last_backup_at: None,
         restoring: false,
         next_auto_restore_at: None,
-        last_set_hash: None,
+        last_set_hash,
         known_version,
     };
     arm_watcher(&mut slot, fs_tx);
@@ -2152,7 +2170,7 @@ fn sweep_all(
 /// cheap way to learn a save's footprint for sweep staggering. Unreadable
 /// dirs/entries are skipped rather than erroring; a best-effort estimate is
 /// all the scheduler needs.
-fn dir_size_bytes(root: &Path) -> u64 {
+pub fn dir_size_bytes(root: &Path) -> u64 {
     let mut total = 0u64;
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -2238,12 +2256,6 @@ async fn run_backup_with_retry(
     }
     let mut attempt = 0u32;
     loop {
-        let _ = events_tx
-            .send(AgentEvent::BackupStarted {
-                save_id: save.save_id.clone(),
-            })
-            .await;
-
         let outcome = upload_directory_checked(
             &api,
             &save.save_id,
@@ -2257,6 +2269,17 @@ async fn run_backup_with_retry(
             // the DAG parent; conflict-aware auto-sync is the next step.
             None,
             |_, _| {},
+            // Emit "uploading…" only once the signature checks have decided a
+            // real upload is happening — a Skipped/Unchanged settle stays
+            // quiet in the feed (BUG 2). On a retry this re-fires, which is
+            // intended ("retrying upload").
+            || {
+                let _ = events_tx.try_send(AgentEvent::BackupStarted {
+                    save_id: save.save_id.clone(),
+                    game_slug: save.game_slug.clone(),
+                    label: save.label.clone(),
+                });
+            },
         )
         .await;
 
@@ -2303,6 +2326,7 @@ async fn run_backup_with_retry(
                         save_id: save.save_id.clone(),
                         version_num: o.snapshot.version_num,
                         total_bytes: o.total_bytes,
+                        set_hash: Some(signature.clone()),
                     })
                     .await;
                 // Tell the agent loop to clear has_pending and cache the new
@@ -2606,6 +2630,7 @@ mod tests {
             processes: vec![],
             policy: Default::default(),
             known_version: None,
+            set_hash: None,
         };
         let mut slots = HashMap::new();
         slots.insert(
@@ -2665,6 +2690,7 @@ mod tests {
             processes: vec![],
             policy: Default::default(),
             known_version: None,
+            set_hash: None,
         };
 
         // Short debounce so the test completes well under the 10s timeout.

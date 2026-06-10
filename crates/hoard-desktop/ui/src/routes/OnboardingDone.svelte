@@ -1,17 +1,32 @@
 <script lang="ts">
   import { push } from "svelte-spa-router";
   import { fly } from "svelte/transition";
-  import { ArrowRight, ShieldCheck, Sparkles } from "lucide-svelte";
+  import {
+    ArrowRight,
+    ShieldCheck,
+    Sparkles,
+    HardDrive,
+    DownloadCloud,
+  } from "lucide-svelte";
   import { _ } from "svelte-i18n";
   import Button from "../lib/components/Button.svelte";
   import WizardShell from "../lib/components/WizardShell.svelte";
   import { auth } from "../lib/stores/auth";
   import { clearOnboarding } from "../lib/stores/onboarding";
-  import { updatePrefs } from "../lib/stores/prefs";
+  import { prefs, updatePrefs } from "../lib/stores/prefs";
   import * as api from "../lib/api";
+
+  // Default the onboarding choice to the safer "backup only" mode.
+  let mode = $state<api.SyncMode>("backup_only");
 
   async function finish() {
     await clearOnboarding();
+    try {
+      const updated = await api.setSyncMode(mode);
+      prefs.set(updated);
+    } catch (e) {
+      console.warn("setting sync mode on finish failed:", e);
+    }
     // Turn on autostart by default once setup completes — a save-sync tray
     // app is only useful if it's running. The OS-level enable can fail
     // (sandboxed/headless), so reflect what actually stuck back into prefs
@@ -75,6 +90,35 @@
         {/if}
       </dl>
     {/if}
+
+    <div class="mt-6 space-y-2">
+      <p class="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+        {$_("settings.section_mode")}
+      </p>
+      {#each [{ m: "backup_only", icon: HardDrive, title: $_("settings.mode_backup_title"), desc: $_("settings.mode_backup_desc") }, { m: "full_sync", icon: DownloadCloud, title: $_("settings.mode_sync_title"), desc: $_("settings.mode_sync_desc") }] as opt (opt.m)}
+        <button
+          type="button"
+          onclick={() => (mode = opt.m as api.SyncMode)}
+          class="flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors {mode ===
+          opt.m
+            ? 'border-emerald-500/60 bg-emerald-500/10'
+            : 'border-zinc-800 hover:bg-zinc-800/40'}"
+        >
+          <span
+            class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md {mode ===
+            opt.m
+              ? 'bg-emerald-500/20 text-emerald-400'
+              : 'bg-zinc-800 text-zinc-400'}"
+          >
+            <opt.icon size={16} />
+          </span>
+          <div class="min-w-0 flex-1">
+            <span class="text-sm font-medium text-zinc-100">{opt.title}</span>
+            <p class="mt-0.5 text-xs text-zinc-400">{opt.desc}</p>
+          </div>
+        </button>
+      {/each}
+    </div>
 
     <div class="mt-7 flex justify-center">
       <Button variant="primary" size="lg" onclick={finish}>

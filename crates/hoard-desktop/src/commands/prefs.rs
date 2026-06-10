@@ -9,7 +9,7 @@
 //! mirrors the resulting state into prefs so the UI reflects reality even if
 //! the user disabled the launcher entry from outside Hoard.
 
-use hoard_agent::prefs::Prefs;
+use hoard_agent::prefs::{Prefs, SyncMode};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
@@ -105,6 +105,47 @@ pub async fn set_global_sync(
                 error = %e,
                 "couldn't push global_sync preference to live agent"
             );
+        }
+    }
+
+    Ok(prefs)
+}
+
+/// Set the single user-facing operating mode (`backup_only` / `full_sync`).
+/// This is the onboarding + Settings radio: it maps the chosen [`SyncMode`]
+/// onto the internal `global_sync` / `auto_restore` flags, persists prefs, and
+/// hot-reconfigures the live agent so the change takes effect without a
+/// restart. Per-save presets still override as exceptions.
+///
+/// We push *both* `set_global_sync` and `set_auto_restore` into the agent when
+/// either changed, mirroring what `save_prefs` does field-by-field — on a flip
+/// into `FullSync` the agent sweeps immediately and pulls any outdated save.
+#[tauri::command]
+pub async fn set_sync_mode(
+    state: State<'_, AppState>,
+    mode: SyncMode,
+) -> Result<Prefs, AppError> {
+    let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
+    let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
+    let prev_auto_restore = prefs.auto_restore;
+    let prev_global_sync = prefs.global_sync;
+
+    prefs.set_sync_mode(mode);
+    prefs
+        .save(&path)
+        .map_err(|e| AppError::plain(e.to_string()))?;
+
+    let handle = state.agent.lock().unwrap().clone();
+    if let Some(h) = handle {
+        if prefs.global_sync != prev_global_sync {
+            if let Err(e) = h.set_global_sync(prefs.global_sync).await {
+                tracing::warn!(error = %e, "couldn't push global_sync from set_sync_mode");
+            }
+        }
+        if prefs.auto_restore != prev_auto_restore {
+            if let Err(e) = h.set_auto_restore(prefs.auto_restore).await {
+                tracing::warn!(error = %e, "couldn't push auto_restore from set_sync_mode");
+            }
         }
     }
 

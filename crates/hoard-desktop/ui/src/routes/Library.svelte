@@ -25,6 +25,7 @@
     FolderOpen,
     Pencil,
     RotateCcw,
+    Link,
   } from "lucide-svelte";
   import { _ } from "svelte-i18n";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -209,7 +210,24 @@
    *  The first folder tracked for a slug keeps the server default label; any
    *  extra folder carries its own path as the label to stay collision-free. */
   async function trackPath(game: DetectedGame, path: string) {
-    const slugHasTracked = tracked.some((t) => t.game_slug === game.slug);
+    // Only count THIS machine's own folders as "already tracked" — an orphan
+    // (cloud save from another machine) is not a local branch.
+    const localFolders = tracked.filter(
+      (t) => t.game_slug === game.slug && !t.orphan && t.local_path,
+    );
+    // If the slug lives in the cloud only as an orphan and this machine has no
+    // folder yet, bind to that existing save instead of forking a new branch.
+    if (localFolders.length === 0) {
+      const orphan = orphanForSlug(game.slug);
+      if (orphan) {
+        await adoptOrphan(orphan, path);
+        return;
+      }
+    }
+    // The path becomes the label only when this machine genuinely tracks
+    // another folder for the slug (real multi-folder). The first folder keeps
+    // the default label.
+    const slugHasTracked = localFolders.length > 0;
     await trackWithPath(game, path, slugHasTracked ? path : undefined);
   }
 
@@ -227,9 +245,11 @@
   }
 
   function sizeForSlug(slug: string): number {
-    return tracked
+    // Local footprint on THIS machine (what the user actually pays for here),
+    // not the server-side total across every snapshot.
+    return localSaves
       .filter((t) => t.game_slug === slug)
-      .reduce((acc, s) => acc + (s.total_size_bytes ?? 0), 0);
+      .reduce((acc, s) => acc + (s.local_size_bytes ?? 0), 0);
   }
 
   /** "Choose save folder…" button inside the alert modal. Pops the picker
@@ -493,7 +513,56 @@
 
   // ---- derived views -------------------------------------------------
 
-  const trackedSlugs = $derived(new Set(tracked.map((t) => t.game_slug)));
+  // Slugs THIS machine actually monitors (has a local folder for). Orphan rows
+  // are cloud saves from another machine — they must NOT count as tracked here,
+  // or a detected game shows a lying "Monitorizado" badge and the "+" never
+  // adopts it (BUG 3/4).
+  const trackedSlugs = $derived(
+    new Set(
+      tracked.filter((t) => !t.orphan && t.local_path).map((t) => t.game_slug),
+    ),
+  );
+
+  // Saves with a local folder on this machine vs cloud-only saves from other
+  // machines. Drives the split between "Juegos monitorizados" (this machine,
+  // local size) and "En la nube — otras máquinas" (adoptable) — BUG 4.
+  const localSaves = $derived(tracked.filter((t) => !t.orphan));
+  const cloudOrphans = $derived(tracked.filter((t) => t.orphan));
+
+  /** The cloud orphan for a slug, if any (prefers the "main" label). Lets the
+   *  "+" / track flow adopt an existing cloud save instead of forking a new
+   *  branch (BUG 3). */
+  function orphanForSlug(slug: string): TrackedSave | undefined {
+    const matches = cloudOrphans.filter((t) => t.game_slug === slug);
+    return matches.find((t) => t.label === "main") ?? matches[0];
+  }
+
+  /** Adopt a cloud orphan into a local folder: bind this machine to the
+   *  existing save_id and refresh the list. */
+  async function adoptOrphan(orphan: TrackedSave, path: string) {
+    try {
+      await api.adoptSave({
+        save_id: orphan.save_id,
+        game_slug: orphan.game_slug,
+        label: orphan.label,
+        local_path: path,
+      });
+      tracked = await api.listTrackedSaves();
+      toastSuccess(
+        $_("library.now_linked", { values: { name: orphan.game_slug } }),
+      );
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    }
+  }
+
+  /** "Vincular a esta máquina…" on a cloud-orphan card: pick a folder, then
+   *  adopt the existing save into it. */
+  async function linkOrphan(orphan: TrackedSave) {
+    const chosen = await pickFolder(orphan.game_slug);
+    if (!chosen) return;
+    await adoptOrphan(orphan, chosen);
+  }
 
   const filtered = $derived.by(() => {
     if (!report) return [];
@@ -553,17 +622,23 @@
     return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   }
 
-  // Sum the on-server disk usage of every tracked save so the section
-  // header can show "3 games · 142 MB" at a glance.
+  // Sum the LOCAL disk usage of saves monitored on this machine so the section
+  // header can show "3 games · 142 MB" of real on-disk footprint here.
   const trackedTotalBytes = $derived(
-    tracked.reduce((acc, s) => acc + (s.total_size_bytes ?? 0), 0),
+    localSaves.reduce((acc, s) => acc + (s.local_size_bytes ?? 0), 0),
   );
 
-  // Map slug → tracked entry so the detection cards can show a tiny size
-  // pill on already-tracked games without an extra render pass.
+  // Sum the cloud footprint of saves that live only on other machines, for the
+  // "En la nube — otras máquinas" header.
+  const cloudTotalBytes = $derived(
+    cloudOrphans.reduce((acc, s) => acc + (s.total_size_bytes ?? 0), 0),
+  );
+
+  // Map slug → locally-tracked entry so the detection cards can show a tiny
+  // size pill on already-monitored games without an extra render pass.
   const trackedBySlug = $derived.by(() => {
     const m = new Map<string, TrackedSave>();
-    for (const s of tracked) m.set(s.game_slug, s);
+    for (const s of localSaves) m.set(s.game_slug, s);
     return m;
   });
 
@@ -613,24 +688,24 @@
     </Button>
   </header>
 
-  {#if tracked.length > 0}
-    <!-- Per-game disk-usage strip. Shows what Hoard is actively backing up
-         on this account and how much space each game occupies on the
-         server. Sits above the detection results so the user always sees
-         their commitment first. -->
+  {#if localSaves.length > 0}
+    <!-- Per-game disk-usage strip for THIS machine. Shows what Hoard monitors
+         here and how much space each save occupies *on this device* (local
+         folder size, not the server total). Saves that live only on other
+         machines go in the "En la nube" section below. -->
     <section class="mb-6">
       <div
         class="mb-2 flex items-center justify-between gap-3 text-xs uppercase tracking-wide text-zinc-500"
       >
         <span>{$_("library.tracked_games")}</span>
         <span class="tabular-nums normal-case tracking-normal text-zinc-400">
-          {$_("library.tracked_summary", { values: { count: tracked.length, size: fmtBytes(trackedTotalBytes) } })}
+          {$_("library.tracked_summary", { values: { count: localSaves.length, size: fmtBytes(trackedTotalBytes) } })}
         </span>
       </div>
       <div
         class="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
       >
-        {#each tracked as save (save.save_id)}
+        {#each localSaves as save (save.save_id)}
           <div
             class="group flex items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-zinc-950/40 p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-emerald-500/25 hover:bg-zinc-900/50"
           >
@@ -650,22 +725,13 @@
               <p class="truncate text-[11px] text-zinc-500">
                 {save.label}
               </p>
-              {#if save.orphan}
-                <!-- Save exists server-side but has no local CliState entry
-                     (reinstall, machine switch, manual wipe). Untrack is a
-                     no-op for these — only the new delete button below
-                     actually clears the server row. -->
-                <p class="truncate text-[10px] text-zinc-500">
-                  {$_("library.orphan_badge")}
-                </p>
-              {/if}
             </div>
             <span
               class="shrink-0 rounded bg-zinc-800 px-2 py-0.5 text-xs font-medium tabular-nums text-zinc-300"
-              title={$_("library.tracked_size_title")}
+              title={$_("library.local_size_title")}
             >
-              {save.total_size_bytes > 0
-                ? fmtBytes(save.total_size_bytes)
+              {save.local_size_bytes && save.local_size_bytes > 0
+                ? fmtBytes(save.local_size_bytes)
                 : "—"}
             </span>
             <button
@@ -691,12 +757,80 @@
             <button
               type="button"
               onclick={() => askUntrack(save)}
-              disabled={save.orphan}
               aria-label={$_("library.untrack_button")}
               title={$_("library.untrack_title")}
-              class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-500"
+              class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
             >
               <Trash2 size={14} />
+            </button>
+            <button
+              type="button"
+              onclick={() => askDelete(save)}
+              aria-label={$_("library.delete_button")}
+              title={$_("library.delete_title")}
+              class="shrink-0 rounded p-1 text-rose-500 transition-colors hover:bg-rose-500/20 hover:text-rose-300"
+            >
+              <Trash size={14} />
+            </button>
+          </div>
+        {/each}
+      </div>
+    </section>
+  {/if}
+
+  {#if cloudOrphans.length > 0}
+    <!-- Saves that live in the cloud but on OTHER machines (no local folder
+         here). The primary action is to adopt them — link a folder on this
+         machine to the existing cloud save so it starts syncing here (BUG 3/4). -->
+    <section class="mb-6">
+      <div
+        class="mb-2 flex items-center justify-between gap-3 text-xs uppercase tracking-wide text-zinc-500"
+      >
+        <span>{$_("library.cloud_other_machines")}</span>
+        <span class="tabular-nums normal-case tracking-normal text-zinc-400">
+          {$_("library.tracked_summary", { values: { count: cloudOrphans.length, size: fmtBytes(cloudTotalBytes) } })}
+        </span>
+      </div>
+      <div
+        class="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
+      >
+        {#each cloudOrphans as save (save.save_id)}
+          <div
+            class="group flex items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-zinc-950/40 p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-emerald-500/25 hover:bg-zinc-900/50"
+          >
+            <Cover
+              appId={appIdBySlug.get(save.game_slug) ?? null}
+              name={save.game_slug}
+              class="h-9 w-9 rounded-md"
+              initialClass="text-sm"
+            />
+            <div class="min-w-0 flex-1">
+              <p
+                class="truncate text-sm font-medium text-zinc-100"
+                title={save.game_slug}
+              >
+                {save.game_slug}
+              </p>
+              <p class="truncate text-[11px] text-zinc-500">
+                {save.label} · {$_("library.cloud_only_badge")}
+              </p>
+            </div>
+            <span
+              class="shrink-0 rounded bg-zinc-800 px-2 py-0.5 text-xs font-medium tabular-nums text-zinc-300"
+              title={$_("library.tracked_size_title")}
+            >
+              {save.total_size_bytes > 0
+                ? fmtBytes(save.total_size_bytes)
+                : "—"}
+            </span>
+            <button
+              type="button"
+              onclick={() => linkOrphan(save)}
+              aria-label={$_("library.link_to_machine")}
+              title={$_("library.link_to_machine")}
+              class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-emerald-500/10 hover:text-emerald-300"
+            >
+              <Link size={14} />
             </button>
             <button
               type="button"

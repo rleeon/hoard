@@ -234,7 +234,57 @@ impl Default for Prefs {
     }
 }
 
+/// The two user-facing operating modes. This is a *derived view* over the
+/// internal `auto_restore` / `global_sync` flags — the source of truth stays
+/// those two booleans so per-save presets and the existing agent plumbing keep
+/// working unchanged. The UI only ever shows / sets this binary choice; it
+/// never exposes the two internal toggles directly.
+///
+/// * `BackupOnly` → `global_sync = false`, `auto_restore = false`: uploads
+///   local changes but never downloads automatically. Restoring is always a
+///   manual action.
+/// * `FullSync` → `global_sync = true`: automatic upload **and** download with
+///   the version-gate and mid-session guards. Cross-device adoption downloads
+///   on link.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncMode {
+    BackupOnly,
+    FullSync,
+}
+
 impl Prefs {
+    /// Derive the user-facing [`SyncMode`] from the internal flags. `FullSync`
+    /// the moment `global_sync` is on; `BackupOnly` otherwise. We key off
+    /// `global_sync` alone because that's the flag that opens the
+    /// download/version-gate path (`auto_restore` is the older, narrower
+    /// "restore on add" knob that `global_sync` subsumes).
+    pub fn sync_mode(&self) -> SyncMode {
+        if self.global_sync {
+            SyncMode::FullSync
+        } else {
+            SyncMode::BackupOnly
+        }
+    }
+
+    /// Apply a [`SyncMode`] onto the internal flags. `FullSync` turns both
+    /// `global_sync` and `auto_restore` on (the latter for older code paths
+    /// that still consult it directly); `BackupOnly` turns both off. Per-save
+    /// presets (`policy.auto_restore = Some(false)`) still win as exceptions —
+    /// that logic lives in the agent, not here.
+    pub fn set_sync_mode(&mut self, mode: SyncMode) {
+        match mode {
+            SyncMode::BackupOnly => {
+                self.global_sync = false;
+                self.auto_restore = false;
+            }
+            SyncMode::FullSync => {
+                self.global_sync = true;
+                self.auto_restore = true;
+            }
+        }
+    }
+
     /// Where the prefs file lives. We reuse `CliConfig::state_dir` so the
     /// CLI's `--state-dir` override propagates to the desktop app too.
     pub fn default_path() -> Result<PathBuf> {
@@ -283,6 +333,31 @@ impl Prefs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sync_mode_round_trips_through_internal_flags() {
+        // Default prefs (both flags false) read as backup-only.
+        let mut p = Prefs::default();
+        assert_eq!(p.sync_mode(), SyncMode::BackupOnly);
+
+        // FullSync turns both internal flags on.
+        p.set_sync_mode(SyncMode::FullSync);
+        assert!(p.global_sync);
+        assert!(p.auto_restore);
+        assert_eq!(p.sync_mode(), SyncMode::FullSync);
+
+        // BackupOnly turns both back off.
+        p.set_sync_mode(SyncMode::BackupOnly);
+        assert!(!p.global_sync);
+        assert!(!p.auto_restore);
+        assert_eq!(p.sync_mode(), SyncMode::BackupOnly);
+
+        // global_sync alone (legacy state) still reads as FullSync even if
+        // auto_restore happens to be off — global_sync is the deciding flag.
+        p.global_sync = true;
+        p.auto_restore = false;
+        assert_eq!(p.sync_mode(), SyncMode::FullSync);
+    }
 
     #[test]
     fn defaults_match_documented_values() {

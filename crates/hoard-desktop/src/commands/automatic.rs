@@ -175,34 +175,80 @@ pub async fn run_scan(app: &AppHandle) {
             return;
         }
     };
-    let tracked_slugs: std::collections::HashSet<String> =
-        tracked.into_iter().map(|t| t.game_slug).collect();
+    // Slugs THIS machine actually tracks (has a local folder for). Orphan rows
+    // are cloud saves from *another* machine with no local state here — they
+    // must NOT count as tracked, or the slug looks monitored and auto-track
+    // skips it (the cross-device bug: detected=1, tracked=0). They're collected
+    // separately so a High detection can ADOPT them instead.
+    let mut tracked_slugs: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    let mut orphans_by_slug: std::collections::HashMap<String, crate::commands::library::TrackedSave> =
+        std::collections::HashMap::new();
+    for t in tracked {
+        if t.orphan {
+            // Prefer the "main" label when a slug has several cloud branches;
+            // otherwise keep the first seen.
+            match orphans_by_slug.get(&t.game_slug) {
+                Some(existing) if existing.label == "main" => {}
+                _ => {
+                    orphans_by_slug.insert(t.game_slug.clone(), t);
+                }
+            }
+        } else {
+            tracked_slugs.insert(t.game_slug);
+        }
+    }
 
-    // One pass over the detected games splits them in two:
-    // * `candidates` — High-confidence + untracked + with a real path: these
-    //   get auto-tracked right now (same filter as the old frontend).
-    // * `probe_dirs` — untracked candidates that DIDN'T reach High (Medium /
-    //   Low). They can't be auto-tracked yet, but their save folders are fed
-    //   to the agent to probe for process↔write correlation (ADR 0020 fase 3).
-    //   Playing one of them leaves a +0.50 trail so the next scan promotes it
-    //   to High and auto-tracks it — the fix for the detection chicken-and-egg.
+    // One pass over the detected games splits them three ways:
+    // * `adopt` — High + untracked here + already in the cloud as an orphan
+    //   (another machine has it): bind this machine's detected folder to the
+    //   existing save_id instead of forking a new branch (BUG 3).
+    // * `candidates` — High + untracked + not in the cloud: brand-new save.
+    // * `probe_dirs` — untracked + below High: fed to the agent for process↔
+    //   write correlation (ADR 0020 fase 3) so a future scan promotes them.
     let mut candidates = Vec::new();
+    let mut adopt: Vec<(crate::commands::library::TrackedSave, std::path::PathBuf)> = Vec::new();
     let mut probe_dirs: Vec<std::path::PathBuf> = Vec::new();
     for g in report.games {
         if tracked_slugs.contains(&g.slug) || g.found_paths.is_empty() {
             continue;
         }
         if g.confidence == Confidence::High {
-            candidates.push(g);
+            if let Some(orphan) = orphans_by_slug.remove(&g.slug) {
+                adopt.push((orphan, g.found_paths[0].clone()));
+            } else {
+                candidates.push(g);
+            }
         } else {
             probe_dirs.extend(g.found_paths.iter().cloned());
         }
     }
 
-    let total = candidates.len();
+    let total = candidates.len() + adopt.len();
     let mut tracked_count = 0usize;
-    for (i, game) in candidates.into_iter().enumerate() {
-        emit_phase(app, "tracking", Some(i), Some(total));
+    let mut done = 0usize;
+
+    // Adopt cloud orphans first: vincula la carpeta detectada al save existente.
+    for (orphan, path) in adopt {
+        emit_phase(app, "tracking", Some(done), Some(total));
+        done += 1;
+        let args = crate::commands::library::AdoptArgs {
+            save_id: orphan.save_id.clone(),
+            game_slug: orphan.game_slug.clone(),
+            label: orphan.label.clone(),
+            local_path: path.to_string_lossy().into_owned(),
+        };
+        match crate::commands::library::adopt_save(args, app.state()).await {
+            Ok(_) => tracked_count += 1,
+            Err(e) => {
+                tracing::warn!(slug = %orphan.game_slug, error = %e, "automatic scan: couldn't adopt cloud save")
+            }
+        }
+    }
+
+    for game in candidates.into_iter() {
+        emit_phase(app, "tracking", Some(done), Some(total));
+        done += 1;
         let args = crate::commands::library::AddGameArgs {
             game_slug: game.slug.clone(),
             label: None,

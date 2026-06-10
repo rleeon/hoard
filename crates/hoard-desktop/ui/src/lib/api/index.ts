@@ -136,6 +136,10 @@ export type TrackedSave = {
    *  UI shows a discreet "Sin estado local" badge and disables the local
    *  untrack button — only `deleteSaveCompletely` is meaningful here. */
   orphan: boolean;
+  /** Bytes this save occupies on THIS machine (its local folder, recursive).
+   *  `null` for orphan rows (no local folder here) and freshly-created rows.
+   *  Distinct from {@link total_size_bytes} (server-side footprint). */
+  local_size_bytes: number | null;
   /** The user's explicitly chosen sync preset, or `null` for "standard /
    *  inherit". A built-in per-game preset may still apply at the agent
    *  level when this is `null`; this only reflects the manual override. */
@@ -181,6 +185,19 @@ export function addGameToTracking(args: {
   steam_app_id?: number | null;
 }): Promise<TrackedSave> {
   return invoke<TrackedSave>("add_game_to_tracking", { args });
+}
+
+/** Adopt (vincular) a cloud save from another machine: bind a local folder on
+ *  THIS machine to the existing `save_id` instead of creating a new save. In
+ *  sync mode the agent restores the latest snapshot on attach; in backup-only
+ *  mode it just watches the folder. Core of cross-device sync. */
+export function adoptSave(args: {
+  save_id: string;
+  game_slug: string;
+  label: string;
+  local_path: string;
+}): Promise<TrackedSave> {
+  return invoke<TrackedSave>("adopt_save", { args });
 }
 
 /** List the saves currently tracked for the logged-in user. */
@@ -316,12 +333,13 @@ export type AgentEvent =
       delay_ms: number;
       reason: BackupReason;
     }
-  | { type: "backup_started"; save_id: string }
+  | { type: "backup_started"; save_id: string; game_slug: string; label: string }
   | {
       type: "backup_success";
       save_id: string;
       version_num: number;
       total_bytes: number;
+      set_hash: string | null;
     }
   | {
       type: "backup_failed";
@@ -457,6 +475,18 @@ export type Prefs = {
   data_saving: number;
 };
 
+/** The single user-facing operating mode. Mirrors `hoard_agent::prefs::SyncMode`.
+ *  Derived from / applied onto the internal `global_sync` + `auto_restore`
+ *  flags — the UI only ever shows this binary choice, never the two toggles. */
+export type SyncMode = "backup_only" | "full_sync";
+
+/** Derive the user-facing mode from a Prefs object, mirroring
+ *  `Prefs::sync_mode` on the Rust side: full sync the moment `global_sync` is
+ *  on, backup-only otherwise. */
+export function syncModeOf(p: Prefs): SyncMode {
+  return p.global_sync ? "full_sync" : "backup_only";
+}
+
 export type TrayStateName =
   | "idle"
   | "running"
@@ -490,6 +520,14 @@ export function setAutomaticMode(enabled: boolean): Promise<Prefs> {
  *  outdated — even while a game is running. Returns the updated prefs. */
 export function setGlobalSync(enabled: boolean): Promise<Prefs> {
   return invoke<Prefs>("set_global_sync", { enabled });
+}
+
+/** Set the single user-facing operating mode (onboarding + Settings radio).
+ *  Maps the chosen `SyncMode` onto the internal `global_sync` / `auto_restore`
+ *  flags, persists prefs, and hot-reconfigures the live agent. Returns the
+ *  updated prefs so the caller can hydrate dependent stores. */
+export function setSyncMode(mode: SyncMode): Promise<Prefs> {
+  return invoke<Prefs>("set_sync_mode", { mode });
 }
 
 /** Persist a new detection-scan interval (seconds, 60..=3600) for Modo

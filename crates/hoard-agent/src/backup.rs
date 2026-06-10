@@ -495,7 +495,7 @@ async fn file_to_body(path: &Path) -> Result<reqwest::Body> {
 ///
 /// The signature persisted by the caller is `"<cheap>:<content>"`.
 #[allow(clippy::too_many_arguments)]
-pub async fn upload_directory_checked<F>(
+pub async fn upload_directory_checked<F, G>(
     client: &ApiClient,
     save_id: &str,
     game_slug: &str,
@@ -504,9 +504,11 @@ pub async fn upload_directory_checked<F>(
     prev_signature: Option<&str>,
     base_version: Option<i64>,
     progress: F,
+    on_upload_start: G,
 ) -> Result<BackupResult>
 where
     F: Fn(u64, u64),
+    G: FnOnce(),
 {
     let canonical = source
         .canonicalize()
@@ -534,6 +536,10 @@ where
             signature: join_signature(&cheap, &content),
         });
     }
+    // The bytes genuinely moved: we're about to push a real snapshot. Signal
+    // it now (after every skip/unchanged check) so callers only surface a
+    // "uploading…" notice when something actually uploads.
+    on_upload_start();
     let outcome = upload_directory(
         client,
         save_id,

@@ -70,6 +70,7 @@ pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Re
         prev_sig.as_deref(),
         base_version,
         on_progress,
+        || {},
     )
     .await
     .context("upload failed")?;

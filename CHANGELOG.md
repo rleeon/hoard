@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Modos de funcionamiento (Solo copia / Sync completo).** Un único selector
+  claro en el onboarding y en Ajustes sustituye a los toggles sueltos de
+  auto-restore / sync global que confundían. "Solo copia de seguridad" sube
+  cambios pero nunca descarga ni restaura por su cuenta (restaurar es siempre
+  manual); "Sync completo" activa subida y descarga automáticas con el
+  version-gate y los respaldos de conflicto. El modo se mapea a los flags
+  internos `global_sync` / `auto_restore`, se persiste en `prefs.json` y
+  reconfigura el agente en caliente. Los presets por save siguen ganando como
+  excepción.
+- **Adopción de saves entre máquinas.** Una carpeta local de esta máquina puede
+  vincularse a un save de la nube ya existente (mismo `save_id`) en vez de
+  crear uno nuevo: el escaneo automático y el botón "+" adoptan los huérfanos
+  de la nube de un juego, y las tarjetas de la nube tienen una acción explícita
+  "Vincular a esta máquina…". En modo Solo copia la adopción vincula y vigila
+  pero no descarga nada.
+- **Tamaño local en la biblioteca.** "Juegos monitorizados" muestra solo los
+  saves con carpeta local en esta máquina y su tamaño en disco real; los saves
+  de otras máquinas se mueven a una sección aparte ("En la nube — otras
+  máquinas") cuya acción principal es adoptarlos.
+
+### Fixed
+- **Persistencia de respaldos entre reinicios.** El escritorio ahora guarda en
+  `state.json` el `set_hash`, el número de versión y la fecha tras cada respaldo
+  real (y la versión conocida tras una auto-restauración), y siembra el
+  `set_hash` en los slots del agente al arrancar. Antes, reiniciar la app
+  resubía versiones idénticas y volvía a descargar para diferenciar; ahora
+  arrancar dos veces sin tocar los saves no crea versiones nuevas.
+- **Feed de actividad: "Subiendo…" solo cuando se sube de verdad.** El evento
+  `BackupStarted` se emite únicamente después de que las comprobaciones de
+  firma decidan una subida real, en vez de en cada barrido. El evento incluye
+  el juego para que la UI muestre el nombre en lugar del uuid.
+
 ## [2.3.0] — 2026-06-08
 
 ### Added

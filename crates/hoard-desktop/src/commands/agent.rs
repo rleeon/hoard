@@ -27,10 +27,11 @@ use hoard_agent::config::CliConfig;
 use hoard_agent::manifest::Os;
 use hoard_agent::prefs::Prefs;
 use hoard_agent::presets::{self, SavePolicy};
-use hoard_agent::state::CliState;
+use hoard_agent::state::{CliState, SaveState};
 use hoard_agent::steam;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
+use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 use super::library::current_client;
@@ -64,6 +65,39 @@ pub fn register_agent_client(client: ApiClient) {
 /// Forget the agent's client (logout / agent stop).
 pub fn clear_agent_client() {
     *agent_client_slot().lock().unwrap() = None;
+}
+
+/// Serializes read-modify-write of `state.json` so two backup/restore events
+/// landing back-to-back don't clobber each other (`CliState::load + save` is
+/// not atomic). The forwarder task is already single-threaded, but other Tauri
+/// commands write `state.json` too; the lock keeps the agent's writes consistent.
+static STATE_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn state_write_lock() -> &'static Mutex<()> {
+    STATE_WRITE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// Apply `f` to the `state.json` row for `save_id` and persist, under the
+/// process-wide write lock (BUG 1). Best-effort: a load/save failure or a
+/// missing row (e.g. a cloud-orphan save backed up before adoption wrote a
+/// local row) is logged and skipped — a persistence hiccup must not take the
+/// event forwarder down.
+fn update_save_state(save_id: &str, f: impl FnOnce(&mut SaveState)) {
+    let _guard = state_write_lock().lock().unwrap();
+    let (mut state, path) = match CliState::load_default() {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, "persist: couldn't load state.json");
+            return;
+        }
+    };
+    let Some(entry) = state.saves.get_mut(save_id) else {
+        return;
+    };
+    f(entry);
+    if let Err(e) = state.save(&path) {
+        tracing::warn!(error = %e, "persist: couldn't write state.json");
+    }
 }
 
 /// Push a freshly-rotated bearer token into the running agent's client, if any.
@@ -182,6 +216,43 @@ pub async fn start_agent(
                 AgentEvent::SaveConflictsBackedUp { .. } => "agent://save-conflicts-backed-up",
             };
             let _ = app_for_emit.emit(topic, &ev);
+
+            // Persist the anti-reupload signature + version cursor so the next
+            // session doesn't re-push identical snapshots or re-download to
+            // diff (BUG 1). The agent keeps these in memory only; making them
+            // survive a restart is the desktop's job via `state.json`.
+            match &ev {
+                AgentEvent::BackupSuccess {
+                    save_id,
+                    version_num,
+                    set_hash,
+                    ..
+                } => {
+                    let version_num = *version_num;
+                    let set_hash = set_hash.clone();
+                    update_save_state(save_id, move |s| {
+                        s.last_version_num = Some(version_num);
+                        s.last_backup_at = Some(OffsetDateTime::now_utc());
+                        if let Some(h) = set_hash {
+                            s.set_hash = Some(h);
+                        }
+                    });
+                }
+                AgentEvent::SaveAutoRestored {
+                    save_id,
+                    version_num,
+                    ..
+                } => {
+                    // The slot is now synced to this cloud version; remember it
+                    // so the version-gate survives a restart and we don't
+                    // re-download to diff every launch.
+                    let version_num = *version_num;
+                    update_save_state(save_id, move |s| {
+                        s.last_version_num = Some(version_num);
+                    });
+                }
+                _ => {}
+            }
 
             // Aliases for the new UX surface. Same payload, friendlier
             // channel name. `throttled` only fires for the filesystem-
@@ -325,6 +396,7 @@ fn hydrate_watched_saves(_state: &State<'_, AppState>) -> anyhow::Result<Vec<Wat
             processes: resolve_processes(&save_state.game_slug),
             policy,
             known_version: save_state.last_version_num,
+            set_hash: save_state.set_hash.clone(),
         });
     }
     Ok(out)
@@ -410,6 +482,9 @@ pub(crate) fn watched_save_from(
         // so leave the gate open. Once the first backup lands, the slot's
         // `known_version` advances via `BackupDone`.
         known_version: None,
+        // No persisted signature for a just-added path; the first backup
+        // establishes it.
+        set_hash: None,
     }
 }
 
