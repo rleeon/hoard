@@ -390,6 +390,10 @@ pub struct CasMissingBlob {
 
 #[derive(Debug, Serialize)]
 pub struct CasInitOut {
+    /// Canonical cloud save id. May differ from the id the client sent when
+    /// (user, game_slug, label) already resolves to another save — the client
+    /// must use this id for the commit URL and re-key its local state.
+    pub save_id: String,
     pub version_num: i64,
     /// Blobs the client must upload. The full file set is whatever it declared
     /// in `files`; everything not listed here is already stored server-side.
@@ -484,6 +488,14 @@ pub async fn cas_init(
     };
 
     // Ensure the saves row exists (same UPSERT semantics as the archive path).
+    //
+    // Everything from here to the manifest insert runs in one transaction.
+    // The UPSERT's row lock on the saves row is held until commit, which
+    // serializes concurrent cas_inits for the same save — without it, two
+    // requests read the same head and the second INSERT into save_versions
+    // dies on the (save_id, version_num) unique constraint (the "db_error"
+    // bursts when several devices/sweeps fire at once).
+    let mut tx = state.pool.begin().await?;
     let label = body.label.clone().unwrap_or_else(|| "default".to_string());
     let save_row: (String, i64) = sqlx::query_as(
         r#"
@@ -499,7 +511,7 @@ pub async fn cas_init(
     .bind(&body.game_slug)
     .bind(&label)
     .bind(body.backup_only)
-    .fetch_one(&state.pool)
+    .fetch_one(&mut *tx)
     .await?;
     let head = save_row.1;
 
@@ -561,7 +573,7 @@ pub async fn cas_init(
     )
     .bind(&save_row.0)
     .bind(next_version)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await?;
 
     // Pending content-addressed version. sha256 = '' until commit; r2_key is
@@ -580,7 +592,7 @@ pub async fn cas_init(
     .bind(body.notes.as_deref())
     .bind(parent_version)
     .bind(body.files.len() as i64)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await?;
 
     // Record the manifest in one round-trip via UNNEST.
@@ -602,8 +614,9 @@ pub async fn cas_init(
     .bind(&shas)
     .bind(&sizes)
     .bind(&mtimes)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
 
     // Mint a presigned PUT for each missing blob.
     let mut missing = Vec::with_capacity(missing_shas.len());
@@ -631,6 +644,7 @@ pub async fn cas_init(
     );
 
     Ok(Json(CasInitOut {
+        save_id: save_row.0,
         version_num: next_version,
         missing,
         quota: info,
@@ -794,11 +808,14 @@ pub async fn cas_commit(
         .await?;
     }
 
-    sqlx::query("UPDATE saves SET latest_version_num = $1, updated_at = now() WHERE id = $2")
-        .bind(version)
-        .bind(&save_id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "UPDATE saves SET latest_version_num = $1, updated_at = now()
+            WHERE id = $2 AND latest_version_num < $1",
+    )
+    .bind(version)
+    .bind(&save_id)
+    .execute(&mut *tx)
+    .await?;
     sqlx::query(
         "INSERT INTO sync_log (user_id, save_id, version_num, kind, bytes)
              VALUES ($1, $2, $3, 'upload', $4)",

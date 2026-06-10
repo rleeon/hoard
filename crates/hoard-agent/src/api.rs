@@ -838,6 +838,11 @@ pub struct CloudCasMissingBlob {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CloudCasInitOut {
+    /// Canonical cloud save id (servers ≥ 2.3.2). Differs from the requested
+    /// id when (user, game_slug, label) already maps to another cloud save —
+    /// the commit must target this id or it 404s. `None` on older servers.
+    #[serde(default)]
+    pub save_id: Option<String>,
     pub version_num: i64,
     pub missing: Vec<CloudCasMissingBlob>,
     #[allow(dead_code)]

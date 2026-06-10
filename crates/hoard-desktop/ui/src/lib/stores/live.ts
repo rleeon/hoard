@@ -231,6 +231,7 @@ export async function subscribeLive() {
       pushEntry({
         kind: "upload_failed",
         save_id: p.save_id,
+        game_slug: p.game_slug,
         error: p.error,
       });
     }),

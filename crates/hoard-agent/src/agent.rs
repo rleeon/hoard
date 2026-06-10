@@ -202,6 +202,8 @@ pub enum AgentEvent {
     },
     BackupFailed {
         save_id: String,
+        /// Slug so the feed can show "factorio falló" instead of a raw uuid.
+        game_slug: String,
         error: String,
         will_retry: bool,
     },
@@ -1167,10 +1169,10 @@ fn spawn_auto_restore(
                 // else: every file present and identical — silent no-op.
             }
             Ok(None) => {
-                tracing::debug!(
-                    save_id = %save.save_id,
-                    "agent: auto-restore — server has no snapshots yet; nothing to restore"
-                );
+                // Nothing to pull. `run_auto_restore` already logged which
+                // case it was (already synced vs. no snapshots on the server)
+                // — don't second-guess it here, the old unconditional "no
+                // snapshots yet" line contradicted the up-to-date path.
             }
             Err(e) => {
                 // A 404 means the save has no record/snapshot on the backend
@@ -1185,16 +1187,17 @@ fn spawn_auto_restore(
                         "agent: auto-restore — save not on server (404); backing off"
                     );
                 } else {
+                    let chain = format!("{e:#}");
                     tracing::warn!(
                         save_id = %save.save_id,
-                        error = %e,
+                        error = %chain,
                         "agent: auto-restore failed"
                     );
                     let _ = events_tx
                         .send(AgentEvent::SaveAutoRestoreFailed {
                             save_id: save.save_id.clone(),
                             game_slug: save.game_slug.clone(),
-                            error: e.to_string(),
+                            error: chain,
                         })
                         .await;
                 }
@@ -1547,6 +1550,10 @@ async fn run_auto_restore(
         }
     }
     let Some(version) = latest else {
+        tracing::debug!(
+            save_id = %save.save_id,
+            "agent: auto-restore — server has no snapshots yet; nothing to restore"
+        );
         // Still sweep TTL before bailing — keeps the conflict dir bounded
         // even for saves whose remote has been purged.
         if let Some(root) = conflict_root {
@@ -2271,14 +2278,16 @@ async fn run_backup_with_retry(
             |_, _| {},
             // Emit "uploading…" only once the signature checks have decided a
             // real upload is happening — a Skipped/Unchanged settle stays
-            // quiet in the feed (BUG 2). On a retry this re-fires, which is
-            // intended ("retrying upload").
+            // quiet in the feed (BUG 2). Only on the first attempt: retries
+            // re-firing it filled the feed with "Subiendo… / falló" pairs.
             || {
-                let _ = events_tx.try_send(AgentEvent::BackupStarted {
-                    save_id: save.save_id.clone(),
-                    game_slug: save.game_slug.clone(),
-                    label: save.label.clone(),
-                });
+                if attempt == 0 {
+                    let _ = events_tx.try_send(AgentEvent::BackupStarted {
+                        save_id: save.save_id.clone(),
+                        game_slug: save.game_slug.clone(),
+                        label: save.label.clone(),
+                    });
+                }
             },
         )
         .await;
@@ -2343,17 +2352,35 @@ async fn run_backup_with_retry(
             }
             Err(e) => {
                 let will_retry = attempt < max_retries;
-                let _ = events_tx
-                    .send(AgentEvent::BackupFailed {
-                        save_id: save.save_id.clone(),
-                        error: e.to_string(),
-                        will_retry,
-                    })
-                    .await;
+                // `{:#}` renders the whole anyhow context chain — `.to_string()`
+                // alone collapses it to the outermost label ("cloud cas init"),
+                // which is what made this failure undiagnosable from the feed.
+                let chain = format!("{e:#}");
+                let backoff_secs = (1u64 << attempt.min(8)).min(300);
+                tracing::warn!(
+                    save_id = %save.save_id,
+                    game_slug = %save.game_slug,
+                    attempt,
+                    max_retries,
+                    will_retry,
+                    backoff_secs = if will_retry { backoff_secs } else { 0 },
+                    error = %chain,
+                    "agent: backup attempt failed"
+                );
+                // Feed-visible failure only when the retries are exhausted —
+                // intermediate attempts stay in the log, otherwise one flaky
+                // burst paints the feed with a dozen "falló" rows.
                 if !will_retry {
+                    let _ = events_tx
+                        .send(AgentEvent::BackupFailed {
+                            save_id: save.save_id.clone(),
+                            game_slug: save.game_slug.clone(),
+                            error: chain,
+                            will_retry,
+                        })
+                        .await;
                     return;
                 }
-                let backoff_secs = (1u64 << attempt.min(8)).min(300);
                 tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
                 attempt += 1;
             }

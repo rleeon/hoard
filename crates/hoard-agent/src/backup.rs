@@ -427,8 +427,22 @@ where
     }
 
     // 4. Commit — the server verifies the new blobs landed and finalizes.
+    // The commit must target the *canonical* cloud save id: when another
+    // device already created this (game, label) under a different id, the
+    // server resolved ours to that one at init, and committing against our
+    // local id would 404 forever.
+    let canonical_id = init.save_id.as_deref().unwrap_or(save_id);
+    if canonical_id != save_id {
+        tracing::info!(
+            local_save_id = save_id,
+            canonical_save_id = canonical_id,
+            game_slug,
+            label,
+            "cloud save id diverged — committing against the canonical cloud id"
+        );
+    }
     let commit = client
-        .cloud_cas_commit(save_id, init.version_num)
+        .cloud_cas_commit(canonical_id, init.version_num)
         .await
         .context("cloud cas commit")?;
 

@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Cloud: `cas_init` ya no falla con `db_error` bajo concurrencia.** Dos
+  inits simultáneos del mismo save (dos máquinas, o el sweep y un evento de
+  fichero a la vez) leían el mismo `head` y el segundo violaba el UNIQUE de
+  `save_versions` → 500 intermitente que el cliente mostraba como
+  "falló: cloud cas init" en bucle. Ahora todo el init corre en una
+  transacción: el lock de fila del UPSERT sobre `saves` serializa los inits
+  concurrentes del mismo save. Además `cas_commit` nunca retrocede
+  `latest_version_num` si dos commits llegan desordenados. *(Requiere
+  desplegar el servidor.)*
+- **Cloud: el commit usa el save id canónico.** `cas_init` devuelve ahora el
+  id canónico del save en la nube y el cliente lo usa en la URL del commit.
+  Antes, si otra máquina ya había creado el mismo (juego, label) con otro id,
+  el init resolvía al save existente pero el commit iba contra el id local →
+  404 eterno y el save nunca subía desde esa máquina.
+- **Errores de subida legibles.** Los fallos de respaldo registran y muestran
+  la cadena completa del error (p. ej. `cloud cas init: api error 500:
+  database error`) en vez de solo la etiqueta exterior ("cloud cas init"),
+  y el evento lleva el `game_slug` para que el feed diga el juego y no un
+  uuid recortado.
+- **Feed sin spam de reintentos.** "Subiendo…" se emite solo en el primer
+  intento y "falló" solo al agotar los reintentos; los intentos intermedios
+  quedan en el log. Antes cada reintento pintaba un par "Subiendo… / falló"
+  en el feed.
+- **Log de auto-restore coherente.** Ya no se registra "server has no
+  snapshots yet" cuando en realidad el save estaba sincronizado a la última
+  versión; cada caso loguea lo suyo.
+
 ## [2.3.1] — 2026-06-10
 
 ### Added

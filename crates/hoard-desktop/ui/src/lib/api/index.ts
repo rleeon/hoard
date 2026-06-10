@@ -344,6 +344,7 @@ export type AgentEvent =
   | {
       type: "backup_failed";
       save_id: string;
+      game_slug: string;
       error: string;
       will_retry: boolean;
     }
