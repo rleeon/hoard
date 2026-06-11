@@ -63,7 +63,7 @@ pub async fn health_check(url: String) -> Result<HealthInfo, String> {
     // The token field is unused by `/v1/health`, but `ApiClient::new` requires
     // the field to exist. Pass an empty string — it never goes on the wire.
     let client = ApiClient::new(url, String::new()).map_err(pretty_error)?;
-    let h = client.health().await.map_err(pretty_error)?;
+    let h = client.health().await.map_err(probe_error)?;
     Ok(HealthInfo {
         status: h.status,
         version: h.version,
@@ -91,7 +91,7 @@ pub async fn login(
     }
 
     let client = ApiClient::new(url.clone(), token.clone()).map_err(pretty_error)?;
-    let who = client.whoami().await.map_err(pretty_error)?;
+    let who = client.whoami().await.map_err(probe_error)?;
 
     let user = UserInfo {
         user_id: who.user_id.clone(),
@@ -150,7 +150,7 @@ pub async fn refresh_quota(state: State<'_, AppState>) -> Result<UserInfo, Strin
         .map_err(|e| format!("Couldn't load credentials: {e}"))?
         .ok_or_else(|| "Not logged in.".to_string())?;
     let client = ApiClient::new(creds.url, creds.token).map_err(pretty_error)?;
-    let who = client.whoami().await.map_err(pretty_error)?;
+    let who = client.whoami().await.map_err(probe_error)?;
 
     let updated = UserInfo {
         storage_used_bytes: who.storage_used_bytes,
@@ -248,9 +248,12 @@ pub(crate) fn pretty_error(err: anyhow::Error) -> String {
                 "Your access key is valid but the server isn't letting it do that.".into()
             }
             ApiError::NotFound => {
-                "The server is reachable but it doesn't look like a Hoard server. \
-                 Did you copy the URL correctly?"
-                    .into()
+                // A 404 on a data fetch (history, library, a single save) means
+                // the resource is gone server-side — typically a save that was
+                // deleted, or stale local state pointing at one. The "wrong URL
+                // / not a Hoard server" reading only holds for the setup probe,
+                // which uses `probe_error` instead.
+                "That save no longer exists on the server (it may have been deleted).".into()
             }
             ApiError::Server { status, .. } if *status >= 500 => {
                 format!("The server returned an error ({status}). Try again in a moment.")
@@ -260,6 +263,12 @@ pub(crate) fn pretty_error(err: anyhow::Error) -> String {
             }
             ApiError::Network(e) => network_message(e),
             ApiError::TooLarge => "The server says that's too big to upload.".into(),
+            ApiError::RateLimited {
+                retry_after_seconds,
+                ..
+            } => format!(
+                "You've hit the bandwidth limit for now. Try again in about {retry_after_seconds}s."
+            ),
             ApiError::Conflict(msg) | ApiError::BadRequest(msg) => msg.clone(),
         };
     }
@@ -267,6 +276,21 @@ pub(crate) fn pretty_error(err: anyhow::Error) -> String {
         return network_message(req);
     }
     err.to_string()
+}
+
+/// Error formatter for the URL-validation moments — the wizard health probe,
+/// `login`, and the periodic `whoami`. A 404 *here* means the address doesn't
+/// resolve to a Hoard server (the `/v1/health` or auth route is missing), so we
+/// say exactly that. Every other error shape defers to [`pretty_error`], which
+/// reads a 404 as "the resource is gone" — the right call for data fetches but
+/// wrong when the user is still validating a URL.
+pub(crate) fn probe_error(err: anyhow::Error) -> String {
+    if matches!(err.downcast_ref::<ApiError>(), Some(ApiError::NotFound)) {
+        return "The server is reachable but it doesn't look like a Hoard server. \
+                Did you copy the URL correctly?"
+            .into();
+    }
+    pretty_error(err)
 }
 
 fn network_message(err: &reqwest::Error) -> String {
