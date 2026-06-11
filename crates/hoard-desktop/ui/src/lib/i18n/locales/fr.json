@@ -565,6 +565,7 @@
   "activity.upload_started": "Envoi de {name}…",
   "activity.upload_completed": "{name} v{version} enregistré ({size})",
   "activity.upload_failed": "{name} a échoué : {error}",
+  "activity.bandwidth_throttled": "Limite de bande passante sur {name} — nouvelle tentative dans {seconds}s",
   "activity.auto_restored": "{name} restauré v{version}",
   "activity.cloud_pull": "{count} nouvelles versions de sauvegarde sur le cloud ({size})",
   "activity.quota_reached": "Limité · forfait {plan} · réinitialisation dans {seconds}s",

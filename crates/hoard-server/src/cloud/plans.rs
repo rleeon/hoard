@@ -55,7 +55,7 @@ impl Plan {
                 version_history_forever: true,
                 max_save_size_bytes: 200 * MB,
                 bandwidth_window_secs: 15 * 60,
-                bandwidth_quota_bytes: 500 * MB,
+                bandwidth_quota_bytes: 1 * GB,
             },
             Plan::Pro => PlanLimits {
                 plan: self,
@@ -65,7 +65,12 @@ impl Plan {
                 version_history_forever: true,
                 max_save_size_bytes: 2 * GB,
                 bandwidth_window_secs: 15 * 60,
-                bandwidth_quota_bytes: 1 * GB,
+                // Single 15-min rolling window. Kept well above the 2 GB
+                // max single-save size so a first-time upload of a large
+                // save (whose `requested_bytes` ≈ its full size) can't be
+                // permanently wedged behind the window, and roomy enough that
+                // onboarding several games at once doesn't trip a 429.
+                bandwidth_quota_bytes: 5 * GB,
             },
         }
     }
@@ -107,7 +112,7 @@ mod tests {
         assert!(l.version_history_forever);
         assert_eq!(l.max_save_size_bytes, 200 * MB);
         assert_eq!(l.bandwidth_window_secs, 15 * 60);
-        assert_eq!(l.bandwidth_quota_bytes, 500 * MB);
+        assert_eq!(l.bandwidth_quota_bytes, 1 * GB);
     }
 
     #[test]
@@ -119,7 +124,7 @@ mod tests {
         assert!(l.version_history_forever);
         assert_eq!(l.max_save_size_bytes, 2 * GB);
         assert_eq!(l.bandwidth_window_secs, 15 * 60);
-        assert_eq!(l.bandwidth_quota_bytes, 1 * GB);
+        assert_eq!(l.bandwidth_quota_bytes, 5 * GB);
     }
 
     #[test]

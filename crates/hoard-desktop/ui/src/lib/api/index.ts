@@ -349,6 +349,13 @@ export type AgentEvent =
       will_retry: boolean;
     }
   | {
+      type: "backup_throttled";
+      save_id: string;
+      game_slug: string;
+      label: string;
+      retry_after_secs: number;
+    }
+  | {
       type: "save_auto_restored";
       save_id: string;
       game_slug: string;

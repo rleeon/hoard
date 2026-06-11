@@ -40,3 +40,7 @@ crates/hoard-desktop/ui/.vite/
 # be tracked. pnpm-lock.yaml is the source of truth.
 package-lock.json
 yarn.lock
+
+# Stray archives accidentally dropped in the tree (e.g. an exported
+# `hoard-agent.zip`) — build/scratch artifacts, never source.
+*.zip

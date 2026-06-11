@@ -68,6 +68,17 @@ export async function refreshQuota(): Promise<void> {
   } catch (e) {
     // Network blips shouldn't blow up the UI — keep the last known numbers.
     console.warn("refreshQuota failed:", e);
+    // …but a *dead* self-hosted session (revoked key / reset server) makes
+    // Rust clear the credentials. Re-sync from the source of truth: if the
+    // session is gone, drop to the wizard instead of looping on a dashboard
+    // that can't reach the server. A transient failure leaves the cached
+    // user in place, so this is a no-op for ordinary blips.
+    try {
+      const user = await api.currentUser();
+      if (user === null) internal.set({ user: null, hydrated: true });
+    } catch {
+      /* currentUser shouldn't throw; ignore if it does */
+    }
   }
 }
 

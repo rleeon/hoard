@@ -565,6 +565,7 @@
   "activity.upload_started": "Lade {name} hoch…",
   "activity.upload_completed": "{name} v{version} gesichert ({size})",
   "activity.upload_failed": "{name} fehlgeschlagen: {error}",
+  "activity.bandwidth_throttled": "Bandbreitenlimit bei {name} — neuer Versuch in {seconds}s",
   "activity.auto_restored": "{name} wiederhergestellt v{version}",
   "activity.cloud_pull": "{count} neue Versionen in der Cloud ({size})",
   "activity.quota_reached": "Gedrosselt · Tarif {plan} · Reset in {seconds}s",

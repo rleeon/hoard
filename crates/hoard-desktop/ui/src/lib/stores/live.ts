@@ -46,6 +46,7 @@ export type FeedEntry = {
     | "upload_started"
     | "upload_completed"
     | "upload_failed"
+    | "bandwidth_throttled"
     | "auto_restored"
     | "cloud_pull"
     | "quota_reached"
@@ -233,6 +234,19 @@ export async function subscribeLive() {
         save_id: p.save_id,
         game_slug: p.game_slug,
         error: p.error,
+      });
+    }),
+  );
+
+  unlisteners.push(
+    await listen<AgentEvent>("agent://backup-throttled", (e) => {
+      const p = e.payload;
+      if (p.type !== "backup_throttled") return;
+      pushEntry({
+        kind: "bandwidth_throttled",
+        save_id: p.save_id,
+        game_slug: p.game_slug,
+        retry_in: p.retry_after_secs,
       });
     }),
   );

@@ -150,7 +150,24 @@ pub async fn refresh_quota(state: State<'_, AppState>) -> Result<UserInfo, Strin
         .map_err(|e| format!("Couldn't load credentials: {e}"))?
         .ok_or_else(|| "Not logged in.".to_string())?;
     let client = ApiClient::new(creds.url, creds.token).map_err(pretty_error)?;
-    let who = client.whoami().await.map_err(probe_error)?;
+    let who = match client.whoami().await {
+        Ok(who) => who,
+        Err(e) => {
+            // A self-hosted access key is static — it doesn't expire on a
+            // timer like the cloud JWT. So a 401 here means the key was
+            // revoked or the server was reset/replaced: the session is dead,
+            // not stale. Clear it so the router drops back to the onboarding
+            // wizard instead of looping forever on a dashboard that can't
+            // talk to the server (the "didn't accept that access key" toast
+            // on every 30s poll). Other failures (network blips, 5xx) leave
+            // the session intact and keep the last known numbers on screen.
+            if matches!(e.downcast_ref::<ApiError>(), Some(ApiError::Unauthorized)) {
+                let _ = credentials::clear();
+                *state.user.lock().unwrap() = None;
+            }
+            return Err(pretty_error(e));
+        }
+    };
 
     let updated = UserInfo {
         storage_used_bytes: who.storage_used_bytes,

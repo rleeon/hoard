@@ -565,6 +565,7 @@
   "activity.upload_started": "Carico {name}…",
   "activity.upload_completed": "{name} v{version} salvato ({size})",
   "activity.upload_failed": "{name} fallito: {error}",
+  "activity.bandwidth_throttled": "Limite di banda su {name} — nuovo tentativo tra {seconds}s",
   "activity.auto_restored": "{name} ripristinato v{version}",
   "activity.cloud_pull": "{count} nuove versioni nel cloud ({size})",
   "activity.quota_reached": "Limitato · piano {plan} · reset fra {seconds}s",

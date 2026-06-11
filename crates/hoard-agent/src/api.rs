@@ -25,11 +25,28 @@ pub enum ApiError {
     BadRequest(String),
     #[error("server error ({status}): {body}")]
     Server { status: u16, body: String },
+    /// 429 from the rolling bandwidth limiter. Carries the server's
+    /// `retry_after_seconds` so the caller can wait the *exact* window-slide
+    /// time instead of a short exponential backoff that would just burn every
+    /// retry inside the still-over-quota window. `body` keeps the raw JSON for
+    /// logging/diagnostics.
+    #[error("rate limited (429): retry after {retry_after_seconds}s")]
+    RateLimited {
+        retry_after_seconds: u32,
+        body: String,
+    },
 }
 
 impl ApiError {
     pub async fn from_response(resp: reqwest::Response) -> Self {
         let status = resp.status();
+        // Grab the Retry-After header before consuming the body — it's our
+        // fallback for `retry_after_seconds` if the JSON is unparseable.
+        let retry_after_header = resp
+            .headers()
+            .get("retry-after")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.trim().parse::<u32>().ok());
         let body = resp.text().await.unwrap_or_default();
         match status {
             StatusCode::UNAUTHORIZED => ApiError::Unauthorized,
@@ -38,6 +55,23 @@ impl ApiError {
             StatusCode::PAYLOAD_TOO_LARGE => ApiError::TooLarge,
             StatusCode::CONFLICT => ApiError::Conflict(extract_message(&body)),
             StatusCode::BAD_REQUEST => ApiError::BadRequest(extract_message(&body)),
+            StatusCode::TOO_MANY_REQUESTS => {
+                let retry_after_seconds = serde_json::from_str::<serde_json::Value>(&body)
+                    .ok()
+                    .and_then(|v| {
+                        v.get("retry_after_seconds")
+                            .and_then(|x| x.as_u64())
+                            .map(|n| n as u32)
+                    })
+                    .or(retry_after_header)
+                    // Defensive floor: a 429 with no usable hint still waits a
+                    // sensible spell rather than hammering immediately.
+                    .unwrap_or(60);
+                ApiError::RateLimited {
+                    retry_after_seconds,
+                    body,
+                }
+            }
             _ => ApiError::Server {
                 status: status.as_u16(),
                 body,

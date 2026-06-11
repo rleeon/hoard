@@ -7,7 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [2.3.2] — 2026-06-10
+## [2.3.3] — 2026-06-11
+
+### Fixed
+- **Desktop: un 404 al abrir un juego ya no dice "no parece un servidor
+  Hoard".** Una descarga de datos (historial, biblioteca, un save) que
+  devuelve 404 significa que el recurso ya no existe en el servidor —
+  normalmente un save borrado o estado local obsoleto — así que ahora dice
+  "ese save ya no existe en el servidor". El mensaje "¿copiaste bien la
+  URL?" se reserva para el asistente de conexión, que es donde tiene sentido.
+- **Desktop: una sesión self-hosted muerta vuelve al asistente en vez de
+  repetir un toast.** Una clave revocada o un servidor reseteado/reemplazado
+  responden 401; como las claves self-hosted no caducan solas, eso es una
+  sesión muerta, no caducada. Ahora se borra la credencial y la app cae al
+  asistente de conexión en lugar de mostrar "no aceptó la clave" en cada
+  sondeo de cuota. Los fallos transitorios (red, 5xx) conservan la sesión.
+- **Desktop: un `state.json` corrupto ya no impide arrancar.** Si el archivo
+  de estado está a medio escribir o dañado, se respalda a un lado
+  (`state.json.corrupt-<ts>`) y la app empieza con estado limpio en vez de
+  abortar con "parsing …\\state.json". El estado se reconstruye solo en la
+  siguiente detección.
+
+### Changed
+- **Cloud: ventanas de ancho de banda más holgadas.** El cuota de la ventana
+  móvil de 15 min sube a 5 GB en Pro (antes 1 GB) y a 1 GB en Free (antes
+  500 MB). El límite anterior era incoherente con el tope por partida de Pro
+  (2 GB): un save de 1–2 GB nunca llegaba a subir. Ahora la ventana siempre
+  supera el tamaño máximo de un save. *(Requiere desplegar el servidor.)*
+- **Cloud: las peticiones de 0 bytes no consumen cuota.** Un `cas_init` que
+  no necesita subir nada (todo deduplicado) ya no cuenta contra la ventana
+  ni puede devolver 429. *(Requiere desplegar el servidor.)*
+
+### Fixed
+- **El cliente respeta el `Retry-After` del 429 en vez de marcar "falló".**
+  Cuando el servidor responde 429 por ancho de banda, el agente espera el
+  tiempo indicado y reintenta (hasta 5 veces) en lugar de fallar el backup.
+  El feed muestra una entrada ámbar "en espera" con la cuenta atrás en lugar
+  del error rojo. El backoff del cliente era más corto que la ventana del
+  429, así que reintentaba demasiado pronto y lo mostraba como fallo.
 
 ### Fixed
 - **CI verde: formato y clippy.** Se corrigió el drift de `cargo fmt` y se

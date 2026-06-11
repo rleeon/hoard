@@ -207,6 +207,18 @@ pub enum AgentEvent {
         error: String,
         will_retry: bool,
     },
+    /// The upload was deferred by the server's rolling bandwidth limit (429).
+    /// Not a failure — the agent is waiting `retry_after_secs` for the window
+    /// to slide and will retry automatically. The UI shows an amber
+    /// "en espera, reintento en Xs" entry instead of a red "falló", so a
+    /// first-time onboarding burst that briefly exceeds the window reads as
+    /// throttled rather than broken.
+    BackupThrottled {
+        save_id: String,
+        game_slug: String,
+        label: String,
+        retry_after_secs: u32,
+    },
     /// The agent detected that the save's local folder was missing or empty
     /// on add and `Prefs::auto_restore` was enabled, so it downloaded the
     /// latest server snapshot into the folder. The UI uses this to toast
@@ -2272,6 +2284,13 @@ async fn run_backup_with_retry(
         return;
     }
     let mut attempt = 0u32;
+    // Bandwidth-limit (429) waits are tracked separately from real-failure
+    // retries: a throttle isn't a failure, so it shouldn't eat the small
+    // exponential-backoff budget meant for flaky network. We honour the
+    // server's `retry_after_secs` and cap how many times we'll sit out a
+    // window so a user genuinely parked over quota eventually surfaces.
+    let mut throttle_waits = 0u32;
+    const MAX_THROTTLE_WAITS: u32 = 5;
     loop {
         let outcome = upload_directory_checked(
             &api,
@@ -2361,6 +2380,49 @@ async fn run_backup_with_retry(
                 return;
             }
             Err(e) => {
+                // Bandwidth throttle (429): wait the server's exact
+                // window-slide time and retry without consuming the
+                // network-flake budget. Kept out of the "falló" feed path —
+                // we emit an amber "en espera" entry instead.
+                let retry_after = e
+                    .chain()
+                    .find_map(|c| c.downcast_ref::<crate::api::ApiError>())
+                    .and_then(|api_err| match api_err {
+                        crate::api::ApiError::RateLimited {
+                            retry_after_seconds,
+                            ..
+                        } => Some(*retry_after_seconds),
+                        _ => None,
+                    });
+                if let Some(retry_after) = retry_after {
+                    if throttle_waits < MAX_THROTTLE_WAITS {
+                        // Cap the wait so a bogus huge `retry_after` can't park
+                        // the upload forever; +2s jitter avoids a thundering
+                        // herd of saves all retrying on the same tick.
+                        let wait = (u64::from(retry_after)).clamp(1, 300) + 2;
+                        tracing::info!(
+                            save_id = %save.save_id,
+                            game_slug = %save.game_slug,
+                            throttle_waits,
+                            retry_after,
+                            wait,
+                            "agent: backup throttled by bandwidth limit — waiting to retry"
+                        );
+                        let _ = events_tx
+                            .send(AgentEvent::BackupThrottled {
+                                save_id: save.save_id.clone(),
+                                game_slug: save.game_slug.clone(),
+                                label: save.label.clone(),
+                                retry_after_secs: retry_after,
+                            })
+                            .await;
+                        tokio::time::sleep(Duration::from_secs(wait)).await;
+                        throttle_waits += 1;
+                        continue;
+                    }
+                    // Exhausted our patience for the window — fall through and
+                    // surface it as a normal failure below.
+                }
                 let will_retry = attempt < max_retries;
                 // `{:#}` renders the whole anyhow context chain — `.to_string()`
                 // alone collapses it to the outermost label ("cloud cas init"),

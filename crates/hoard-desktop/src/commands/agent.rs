@@ -210,6 +210,7 @@ pub async fn start_agent(
                 AgentEvent::BackupStarted { .. } => "agent://backup-started",
                 AgentEvent::BackupSuccess { .. } => "agent://backup-success",
                 AgentEvent::BackupFailed { .. } => "agent://backup-failed",
+                AgentEvent::BackupThrottled { .. } => "agent://backup-throttled",
                 AgentEvent::SaveAutoRestored { .. } => "agent://save-auto-restored",
                 AgentEvent::SaveAutoRestoreFailed { .. } => "agent://save-auto-restore-failed",
                 AgentEvent::BackupSkippedEmpty { .. } => "agent://backup-skipped-empty",

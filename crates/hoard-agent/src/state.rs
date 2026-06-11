@@ -73,9 +73,34 @@ impl CliState {
         }
         let text =
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        let st: CliState =
-            serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
-        Ok(st)
+        match serde_json::from_str::<CliState>(&text) {
+            Ok(st) => Ok(st),
+            Err(e) => {
+                // A corrupt state.json (half-written on a crash, disk gremlin,
+                // a hand-edit gone wrong) used to abort startup with a bare
+                // "parsing <path>" error and brick the app. But this file is a
+                // rebuildable cache — every tracked save re-adopts on the next
+                // detection pass — so we self-heal instead: move the bad file
+                // aside for forensics and start from a clean default.
+                let backup = path.with_extension(format!(
+                    "json.corrupt-{}",
+                    OffsetDateTime::now_utc().unix_timestamp()
+                ));
+                match std::fs::rename(path, &backup) {
+                    Ok(()) => tracing::warn!(
+                        error = %e,
+                        backup = %backup.display(),
+                        "state.json was corrupt; backed it up and started fresh"
+                    ),
+                    Err(re) => tracing::warn!(
+                        error = %re,
+                        path = %path.display(),
+                        "state.json is corrupt and couldn't be moved aside; ignoring it"
+                    ),
+                }
+                Ok(Self::default())
+            }
+        }
     }
 
     pub fn load_default() -> Result<(Self, PathBuf)> {

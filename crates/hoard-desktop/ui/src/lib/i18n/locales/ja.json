@@ -565,6 +565,7 @@
   "activity.upload_started": "{name} をアップロード中…",
   "activity.upload_completed": "{name} v{version} を保存 ({size})",
   "activity.upload_failed": "{name} 失敗: {error}",
+  "activity.bandwidth_throttled": "{name} の帯域制限 — {seconds}秒後に再試行",
   "activity.auto_restored": "{name} v{version} を復元",
   "activity.cloud_pull": "クラウドに新規バージョン {count} 件 ({size})",
   "activity.quota_reached": "制限中 · {plan} プラン · {seconds} 秒後にリセット",

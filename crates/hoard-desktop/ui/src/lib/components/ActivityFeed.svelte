@@ -42,6 +42,7 @@
     upload_started: UploadCloud,
     upload_completed: CheckCircle2,
     upload_failed: XCircle,
+    bandwidth_throttled: Clock,
     auto_restored: Download,
     cloud_pull: RefreshCcw,
     quota_reached: Ban,
@@ -57,6 +58,7 @@
     upload_started: "text-emerald-300",
     upload_completed: "text-emerald-400",
     upload_failed: "text-rose-400",
+    bandwidth_throttled: "text-amber-300",
     auto_restored: "text-sky-300",
     cloud_pull: "text-emerald-300",
     quota_reached: "text-amber-400",
@@ -100,6 +102,10 @@
       case "upload_failed":
         return $_("activity.upload_failed", {
           values: { name, error: e.error ?? "" },
+        });
+      case "bandwidth_throttled":
+        return $_("activity.bandwidth_throttled", {
+          values: { name, seconds: e.retry_in ?? 60 },
         });
       case "auto_restored":
         return $_("activity.auto_restored", {

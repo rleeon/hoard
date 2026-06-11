@@ -565,6 +565,7 @@
   "activity.upload_started": "正在上传 {name}…",
   "activity.upload_completed": "{name} v{version} 已保存 ({size})",
   "activity.upload_failed": "{name} 失败:{error}",
+  "activity.bandwidth_throttled": "{name} 达到带宽限制 — {seconds}秒后重试",
   "activity.auto_restored": "{name} 已恢复 v{version}",
   "activity.cloud_pull": "云端新增 {count} 个存档版本 ({size})",
   "activity.quota_reached": "已限流 · {plan} 套餐 · {seconds} 秒后重置",

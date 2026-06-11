@@ -565,6 +565,7 @@
   "activity.upload_started": "Uploading {name}…",
   "activity.upload_completed": "{name} v{version} saved ({size})",
   "activity.upload_failed": "{name} failed: {error}",
+  "activity.bandwidth_throttled": "Bandwidth limit on {name} — retrying in {seconds}s",
   "activity.auto_restored": "{name} restored v{version}",
   "activity.cloud_pull": "{count} new save versions on cloud ({size})",
   "activity.quota_reached": "Throttled · {plan} plan · resets in {seconds}s",

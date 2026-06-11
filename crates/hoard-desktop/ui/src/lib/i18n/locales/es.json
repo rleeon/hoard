@@ -565,6 +565,7 @@
   "activity.upload_started": "Subiendo {name}…",
   "activity.upload_completed": "{name} v{version} guardada ({size})",
   "activity.upload_failed": "{name} falló: {error}",
+  "activity.bandwidth_throttled": "Límite de ancho de banda en {name} — reintento en {seconds}s",
   "activity.auto_restored": "{name} restaurada v{version}",
   "activity.cloud_pull": "{count} versiones nuevas en la nube ({size})",
   "activity.quota_reached": "Limitada · plan {plan} · reinicio en {seconds}s",
