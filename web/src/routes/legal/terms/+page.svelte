@@ -13,19 +13,19 @@
 <section class="mx-auto max-w-3xl px-4 py-16 sm:px-6 sm:py-20">
   <a
     href="/"
-    class="inline-flex items-center gap-1.5 text-sm text-zinc-400 transition-colors hover:text-white"
+    class="ring-focus inline-flex items-center gap-1.5 text-sm text-ink-soft transition-colors hover:text-ink"
   >
     <ArrowLeft class="h-4 w-4" />
     {$_('legal.back_home')}
   </a>
 
-  <h1 class="mt-6 text-balance text-4xl font-bold tracking-tight text-white sm:text-5xl">
+  <h1 class="mt-6 text-balance text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
     {$_('legal.terms_title')}
   </h1>
-  <p class="mt-3 text-sm text-zinc-500">{$_('legal.last_updated')}</p>
+  <p class="mt-3 text-sm text-ink-faint">{$_('legal.last_updated')}</p>
 
   <article
-    class="prose-legal mt-10 space-y-6 text-[15px] leading-relaxed text-zinc-300 [&_h2]:mt-10 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-white [&_h3]:mt-6 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-zinc-100 [&_a]:text-emerald-400 [&_a]:underline [&_a:hover]:text-emerald-300 [&_strong]:text-white [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-1.5 [&_li]:marker:text-zinc-600"
+    class="prose-legal mt-10 space-y-6 text-[15px] leading-relaxed text-ink-soft [&_h2]:mt-10 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-ink [&_h3]:mt-6 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-ink [&_a]:text-accent [&_a]:underline [&_a:hover]:text-emerald-300 [&_strong]:text-ink [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-1.5 [&_li]:marker:text-ink-faint"
   >
     {#if isEs}
       <p>

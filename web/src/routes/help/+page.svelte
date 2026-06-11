@@ -1,7 +1,6 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
   import Button from '$lib/components/Button.svelte';
-  import StatusDot from '$lib/components/StatusDot.svelte';
   import { reveal } from '$lib/actions/reveal';
   import { slide } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
@@ -49,73 +48,64 @@
   <link rel="canonical" href="https://hoard.services/help" />
 </svelte:head>
 
-<section class="relative mx-auto max-w-3xl px-4 py-20 sm:px-6 sm:py-24">
-  <div
-    class="pointer-events-none absolute -top-24 left-1/2 -z-10 h-72 w-[34rem] -translate-x-1/2 rounded-full bg-emerald-500/[0.08] blur-3xl"
-  ></div>
-
+<section class="mx-auto max-w-3xl px-4 py-16 sm:px-6 sm:py-24">
   <div class="text-center">
-    <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400/80">
-      Support
-    </div>
-    <h1 class="mt-3 text-balance text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
+    <p class="kicker justify-center">Support</p>
+    <h1 class="mt-3 text-balance text-4xl font-semibold text-ink sm:text-5xl">
       {$_('help.title')}
     </h1>
-    <p class="mx-auto mt-4 max-w-xl text-pretty text-lg text-zinc-400">
+    <p class="mx-auto mt-4 max-w-xl text-pretty leading-relaxed text-ink-soft">
       {$_('help.subtitle')}
     </p>
-    <div class="mt-6 flex justify-center"><StatusDot /></div>
   </div>
 
   <!-- Search -->
   <div class="reveal relative mt-12" use:reveal>
     <Search
-      class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500"
+      class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint"
     />
     <input
       type="search"
       bind:value={query}
       placeholder={$_('help.search_placeholder')}
-      class="w-full rounded-xl border border-white/[0.06] bg-white/[0.025] py-3 pl-11 pr-4 text-sm text-zinc-100 placeholder:text-zinc-500 ring-focus transition-colors focus:border-emerald-500/50 focus:bg-white/[0.04] focus:outline-none"
+      class="ring-focus w-full rounded-xl border border-line bg-surface py-3 pl-11 pr-4 text-sm text-ink placeholder:text-ink-faint transition-colors focus:border-accent focus:outline-none"
       aria-label={$_('help.search_placeholder')}
     />
   </div>
 
   {#if grouped.length === 0}
-    <p class="reveal mt-10 text-center text-sm text-zinc-400" use:reveal>
+    <p class="reveal mt-10 text-center text-sm text-ink-soft" use:reveal>
       {$_('help.no_results')}
     </p>
   {:else}
     {#each grouped as g (g.group)}
-      <h2
-        class="mt-12 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400/80 first:mt-10"
-      >
+      <h2 class="kicker mt-12 first:mt-10">
         {$_(`help.group_${g.group}`)}
       </h2>
       <div class="mt-4 space-y-2">
         {#each g.items as f, i (f.q)}
           <div
-            class="reveal card-edge overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02] transition-colors hover:border-white/15"
+            class="reveal overflow-hidden rounded-xl border border-line bg-surface transition-colors hover:border-line-strong"
             use:reveal={{ delay: i * 40 }}
           >
             <button
-              class="flex w-full items-center justify-between gap-4 px-5 py-4 text-left ring-focus transition-colors hover:bg-white/[0.04]"
+              class="ring-focus flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-bg"
               onclick={() => (openKey = openKey === f.q ? null : f.q)}
               aria-expanded={openKey === f.q}
               aria-controls={`faq-${f.q}`}
             >
-              <span class="font-medium text-zinc-100">{$_(f.q)}</span>
+              <span class="font-medium text-ink">{$_(f.q)}</span>
               <ChevronDown
-                class="h-4 w-4 flex-none text-zinc-400 transition-transform duration-300 {openKey ===
+                class="h-4 w-4 flex-none text-ink-faint transition-transform duration-300 {openKey ===
                 f.q
-                  ? 'rotate-180 text-emerald-400'
+                  ? 'rotate-180 text-accent'
                   : ''}"
               />
             </button>
             {#if openKey === f.q}
               <div
                 id={`faq-${f.q}`}
-                class="border-t border-white/[0.06] px-5 py-4 text-sm leading-relaxed text-zinc-300"
+                class="border-t border-line px-5 py-4 text-sm leading-relaxed text-ink-soft"
                 transition:slide={{ duration: 220, easing: cubicOut }}
               >
                 {$_(f.a)}
@@ -127,8 +117,8 @@
     {/each}
   {/if}
 
-  <h2 class="mt-16 text-xl font-semibold text-white">{$_('help.contact_title')}</h2>
-  <p class="mt-2 text-sm text-zinc-400">{$_('help.contact_body')}</p>
+  <h2 class="mt-16 text-xl font-semibold text-ink">{$_('help.contact_title')}</h2>
+  <p class="mt-2 text-sm text-ink-soft">{$_('help.contact_body')}</p>
 
   <div class="mt-5 flex flex-col gap-3 sm:flex-row">
     <Button href="mailto:support@hoard.services" variant="primary" full>

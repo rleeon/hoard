@@ -81,19 +81,19 @@
 
 <section class="mx-auto flex max-w-md flex-col items-center px-4 py-32 text-center sm:px-6">
   {#if error}
-    <h1 class="text-2xl font-semibold text-white">{$_('callback.failed_title')}</h1>
-    <p class="mt-2 text-sm text-zinc-400">{error}</p>
-    <a href="/login" class="mt-6 text-sm text-emerald-400 hover:underline">
+    <h1 class="text-2xl font-semibold text-ink">{$_('callback.failed_title')}</h1>
+    <p class="mt-2 text-sm text-ink-soft">{error}</p>
+    <a href="/login" class="mt-6 text-sm text-accent hover:underline">
       {$_('callback.back_to_signin')}
     </a>
   {:else if handoffUrl}
-    <CheckCircle2 size={40} class="text-emerald-400" />
-    <p class="mt-6 text-sm text-zinc-300">{message}</p>
-    <a href={handoffUrl} class="mt-4 text-sm text-emerald-400 hover:underline">
+    <CheckCircle2 size={40} class="text-accent" />
+    <p class="mt-6 text-sm text-ink-soft">{message}</p>
+    <a href={handoffUrl} class="mt-4 text-sm text-accent hover:underline">
       {$_('callback.desktop_reopen')}
     </a>
   {:else}
-    <div class="h-10 w-10 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent"></div>
-    <p class="mt-6 text-sm text-zinc-400">{message}</p>
+    <div class="h-10 w-10 animate-spin rounded-full border-2 border-accent border-t-transparent"></div>
+    <p class="mt-6 text-sm text-ink-soft">{message}</p>
   {/if}
 </section>

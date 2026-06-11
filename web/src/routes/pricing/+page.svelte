@@ -1,13 +1,19 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
   import PlanCard from '$lib/components/PlanCard.svelte';
-  import { PLANS } from '$lib/plans';
+  import { PLANS, formatPlanQuota, formatMaxSaveSize, formatBandwidthQuota } from '$lib/plans';
   import type { BillingCycle, PlanId } from '$lib/types';
   import { goto } from '$app/navigation';
   import { reveal } from '$lib/actions/reveal';
-  import { Check, Minus, Github } from 'lucide-svelte';
+  import { Check, Receipt, Unlock } from 'lucide-svelte';
 
   let cycle = $state<BillingCycle>('monthly');
+
+  // Yearly discount derived from the real prices in plans.ts — never typed
+  // by hand. 12 × 4,49 € = 53,88 € vs 35,99 € ⇒ 33 %.
+  const yearlySavingsPct = Math.round(
+    (1 - PLANS.pro.priceYearly / (PLANS.pro.priceMonthly * 12)) * 100
+  );
   let monthlyBtn = $state<HTMLButtonElement | null>(null);
   let yearlyBtn = $state<HTMLButtonElement | null>(null);
   let trackEl = $state<HTMLDivElement | null>(null);
@@ -58,8 +64,8 @@
   const compareRows: Row[] = $derived([
     {
       label: $_('pricing.compare_storage'),
-      free: '1 GB',
-      pro: '50 GB'
+      free: formatPlanQuota('free'),
+      pro: formatPlanQuota('pro')
     },
     {
       label: $_('pricing.compare_devices'),
@@ -78,13 +84,13 @@
     },
     {
       label: $_('pricing.compare_save_size'),
-      free: '200 MB',
-      pro: '2 GB'
+      free: formatMaxSaveSize('free'),
+      pro: formatMaxSaveSize('pro')
     },
     {
       label: $_('pricing.compare_bandwidth'),
-      free: '500 MB',
-      pro: '1 GB'
+      free: formatBandwidthQuota('free'),
+      pro: formatBandwidthQuota('pro')
     },
     {
       label: $_('pricing.compare_export'),
@@ -93,7 +99,7 @@
     },
     {
       label: $_('pricing.compare_support'),
-      free: $_('pricing.compare_email_basic'),
+      free: $_('pricing.compare_email'),
       pro: $_('pricing.compare_email')
     },
     {
@@ -102,6 +108,12 @@
       pro: $_('pricing.compare_anytime')
     }
   ]);
+
+  const notes = [
+    { icon: Check, title: 'pricing.note_cancel_title', body: 'pricing.note_cancel_body' },
+    { icon: Receipt, title: 'pricing.note_mor_title', body: 'pricing.note_mor_body' },
+    { icon: Unlock, title: 'pricing.note_lockin_title', body: 'pricing.note_lockin_body' }
+  ];
 </script>
 
 <svelte:head>
@@ -109,19 +121,13 @@
   <link rel="canonical" href="https://hoard.services/pricing" />
 </svelte:head>
 
-<section class="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
-  <div
-    class="pointer-events-none absolute -top-24 left-1/2 -z-10 h-80 w-[40rem] -translate-x-1/2 rounded-full bg-emerald-500/[0.10] blur-3xl"
-  ></div>
-
-  <div class="text-center">
-    <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400/80">
-      Pricing
-    </div>
-    <h1 class="mt-3 text-balance text-4xl font-extrabold tracking-tight text-white sm:text-6xl">
+<section class="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+  <div class="mx-auto max-w-2xl text-center">
+    <p class="kicker justify-center">Pricing</p>
+    <h1 class="mt-3 text-balance text-4xl font-semibold text-ink sm:text-5xl">
       {$_('pricing.title')}
     </h1>
-    <p class="mx-auto mt-5 max-w-xl text-pretty text-lg text-zinc-400">
+    <p class="mt-4 text-pretty leading-relaxed text-ink-soft">
       {$_('pricing.subtitle')}
     </p>
   </div>
@@ -129,12 +135,12 @@
   <div class="mt-10 flex flex-col items-center gap-3">
     <div
       bind:this={trackEl}
-      class="relative inline-flex items-center rounded-full border border-white/10 bg-white/[0.03] p-1 backdrop-blur"
+      class="relative inline-flex items-center rounded-full border border-line bg-surface p-1"
       role="tablist"
       aria-label="Billing cycle"
     >
       <span
-        class="absolute inset-y-1 rounded-full bg-gradient-to-b from-emerald-500 to-emerald-600 shadow-[0_6px_20px_-6px_rgba(16,185,129,0.7),inset_0_1px_0_rgba(255,255,255,0.18)] transition-[left,width] duration-300 ease-out"
+        class="absolute inset-y-1 rounded-full bg-accent-deep transition-[left,width] duration-300 ease-out"
         aria-hidden="true"
         style={thumbStyle}
       ></span>
@@ -145,7 +151,7 @@
         class="relative z-10 rounded-full px-6 py-1.5 text-sm font-medium ring-focus transition-colors duration-300 {cycle ===
         'monthly'
           ? 'text-white'
-          : 'text-zinc-400 hover:text-white'}"
+          : 'text-ink-soft hover:text-ink'}"
         onclick={() => (cycle = 'monthly')}
       >
         {$_('pricing.toggle_monthly')}
@@ -157,18 +163,18 @@
         class="relative z-10 rounded-full px-6 py-1.5 text-sm font-medium ring-focus transition-colors duration-300 {cycle ===
         'yearly'
           ? 'text-white'
-          : 'text-zinc-400 hover:text-white'}"
+          : 'text-ink-soft hover:text-ink'}"
         onclick={() => (cycle = 'yearly')}
       >
         {$_('pricing.toggle_yearly')}
       </button>
     </div>
     <span
-      class="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-emerald-200 transition-opacity duration-300"
+      class="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent-tint px-2.5 py-0.5 font-mono text-[11px] font-medium text-accent transition-opacity duration-300"
       style="opacity: {cycle === 'yearly' ? '1' : '0.55'};"
     >
-      <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-      {$_('pricing.save_badge')} {$_('pricing.toggle_yearly').toLowerCase()}
+      {$_('pricing.save_badge', { values: { pct: yearlySavingsPct } })}
+      {$_('pricing.toggle_yearly').toLowerCase()}
     </span>
   </div>
 
@@ -195,77 +201,49 @@
   <!-- Comparison table -->
   <div class="reveal mt-24" use:reveal>
     <div class="mx-auto max-w-2xl text-center">
-      <h2 class="text-balance text-2xl font-bold tracking-tight text-white sm:text-3xl">
+      <h2 class="text-balance text-2xl font-semibold text-ink sm:text-3xl">
         {$_('pricing.compare_title')}
       </h2>
-      <p class="mt-2 text-sm text-zinc-400">{$_('pricing.compare_subtitle')}</p>
+      <p class="mt-2 text-sm text-ink-soft">{$_('pricing.compare_subtitle')}</p>
     </div>
 
-    <div class="mx-auto mt-8 max-w-3xl overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] card-edge">
-      <div class="grid grid-cols-[1.6fr_1fr_1fr] items-center gap-0 border-b border-white/[0.06] bg-zinc-950/40 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+    <div class="mx-auto mt-8 max-w-3xl overflow-hidden rounded-2xl border border-line bg-surface">
+      <div
+        class="grid grid-cols-[1.6fr_1fr_1fr] items-center gap-0 border-b border-line bg-bg px-5 py-3 font-mono text-[11px] font-medium uppercase tracking-wider text-ink-faint"
+      >
         <div>Feature</div>
         <div class="text-center">{$_('plan.free')}</div>
-        <div class="text-center text-emerald-300">{$_('plan.pro')}</div>
+        <div class="text-center text-accent">{$_('plan.pro')}</div>
       </div>
-      {#each compareRows as row, i (row.label)}
+      {#each compareRows as row (row.label)}
         <div
-          class="grid grid-cols-[1.6fr_1fr_1fr] items-center gap-0 border-b border-white/[0.04] px-5 py-3 text-sm last:border-b-0 {i %
-            2 ===
-          0
-            ? ''
-            : 'bg-white/[0.012]'}"
+          class="grid grid-cols-[1.6fr_1fr_1fr] items-center gap-0 border-b border-line px-5 py-3 text-sm last:border-b-0"
         >
-          <div class="text-zinc-200">{row.label}</div>
-          <div class="text-center font-mono text-zinc-400">{row.free}</div>
-          <div class="text-center font-mono text-emerald-200">{row.pro}</div>
+          <div class="text-ink">{row.label}</div>
+          <div class="text-center font-mono text-xs text-ink-soft">{row.free}</div>
+          <div class="text-center font-mono text-xs font-medium text-accent">{row.pro}</div>
         </div>
       {/each}
     </div>
   </div>
 
-  <!-- Notes with icons -->
-  <div class="mt-16 grid gap-5 sm:grid-cols-3 text-sm">
-    <div
-      class="reveal card-edge group rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 transition-colors hover:border-emerald-500/30"
-      use:reveal
-    >
-      <div class="flex items-center gap-2.5">
-        <span
-          class="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500/10 text-emerald-300 ring-1 ring-inset ring-emerald-400/15 transition-transform duration-500 group-hover:rotate-[-6deg]"
-        >
-          <Check class="h-4 w-4" />
-        </span>
-        <h3 class="font-semibold text-zinc-100">{$_('pricing.note_cancel_title')}</h3>
+  <!-- Notes -->
+  <div class="mt-16 grid gap-5 text-sm sm:grid-cols-3">
+    {#each notes as n, i (n.title)}
+      <div
+        class="reveal rounded-2xl border border-line bg-surface p-6"
+        use:reveal={{ delay: i * 80 }}
+      >
+        <div class="flex items-center gap-2.5">
+          <span
+            class="grid h-8 w-8 place-items-center rounded-lg bg-accent-tint text-accent"
+          >
+            <n.icon class="h-4 w-4" />
+          </span>
+          <h3 class="font-semibold text-ink">{$_(n.title)}</h3>
+        </div>
+        <p class="mt-3 leading-relaxed text-ink-soft">{$_(n.body)}</p>
       </div>
-      <p class="mt-3 leading-relaxed text-zinc-400">{$_('pricing.note_cancel_body')}</p>
-    </div>
-    <div
-      class="reveal card-edge group rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 transition-colors hover:border-emerald-500/30"
-      use:reveal={{ delay: 80 }}
-    >
-      <div class="flex items-center gap-2.5">
-        <span
-          class="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500/10 text-emerald-300 ring-1 ring-inset ring-emerald-400/15 transition-transform duration-500 group-hover:rotate-[-6deg]"
-        >
-          <Minus class="h-4 w-4 rotate-90" />
-        </span>
-        <h3 class="font-semibold text-zinc-100">{$_('pricing.note_mor_title')}</h3>
-      </div>
-      <p class="mt-3 leading-relaxed text-zinc-400">{$_('pricing.note_mor_body')}</p>
-    </div>
-    <div
-      class="reveal card-edge group rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 transition-colors hover:border-emerald-500/30"
-      use:reveal={{ delay: 160 }}
-    >
-      <div class="flex items-center gap-2.5">
-        <span
-          class="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500/10 text-emerald-300 ring-1 ring-inset ring-emerald-400/15 transition-transform duration-500 group-hover:rotate-[-6deg]"
-        >
-          <Github class="h-4 w-4" />
-        </span>
-        <h3 class="font-semibold text-zinc-100">{$_('pricing.note_lockin_title')}</h3>
-      </div>
-      <p class="mt-3 leading-relaxed text-zinc-400">{$_('pricing.note_lockin_body')}</p>
-    </div>
+    {/each}
   </div>
 </section>

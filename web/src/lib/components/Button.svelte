@@ -33,16 +33,14 @@
   }: Props = $props();
 
   const base =
-    'group relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-lg font-medium transition-[background-color,border-color,box-shadow,color,filter] duration-300 ring-focus disabled:cursor-not-allowed disabled:opacity-50 active:brightness-95';
+    'group inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors duration-200 ring-focus disabled:cursor-not-allowed disabled:opacity-50 active:brightness-95';
 
   const variants: Record<Variant, string> = {
-    primary:
-      'bg-gradient-to-b from-emerald-500 to-emerald-600 text-white shadow-[0_8px_24px_-10px_rgba(16,185,129,0.7),inset_0_1px_0_rgba(255,255,255,0.18)] hover:from-emerald-400 hover:to-emerald-500 hover:shadow-[0_16px_40px_-12px_rgba(16,185,129,0.9),inset_0_1px_0_rgba(255,255,255,0.22)]',
+    primary: 'bg-accent text-pine hover:bg-emerald-300',
     secondary:
-      'border border-white/10 bg-white/[0.04] text-zinc-100 hover:border-emerald-400/30 hover:bg-white/[0.08] hover:text-white',
-    ghost: 'text-zinc-300 hover:bg-white/[0.05] hover:text-white',
-    danger:
-      'bg-gradient-to-b from-red-500 to-red-600 text-white shadow-[0_8px_24px_-10px_rgba(220,38,38,0.6),inset_0_1px_0_rgba(255,255,255,0.18)] hover:from-red-400 hover:to-red-500 hover:shadow-[0_14px_36px_-12px_rgba(220,38,38,0.8)]'
+      'border border-line-strong bg-surface text-ink hover:border-ink/30 hover:bg-bg',
+    ghost: 'text-ink-soft hover:bg-ink/5 hover:text-ink',
+    danger: 'bg-red-700 text-white hover:bg-red-600'
   };
 
   const sizes: Record<Size, string> = {
@@ -68,15 +66,9 @@
       aria-hidden="true"
     ></span>
   {/if}
-  <span class="relative z-10 inline-flex items-center gap-2">
+  <span class="inline-flex items-center gap-2">
     {@render children()}
   </span>
-  {#if variant === 'primary'}
-    <span
-      aria-hidden="true"
-      class="pointer-events-none absolute inset-y-0 left-0 w-1/2 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-[800ms] ease-out group-hover:translate-x-[220%]"
-    ></span>
-  {/if}
 {/snippet}
 
 {#if href}

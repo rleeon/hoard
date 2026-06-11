@@ -44,6 +44,7 @@ export default defineConfig({
     __HOARD_RELEASE_DATE__: JSON.stringify(releaseDate())
   },
   server: {
+    host: '0.0.0.0',
     port: 5173,
     strictPort: false
   }

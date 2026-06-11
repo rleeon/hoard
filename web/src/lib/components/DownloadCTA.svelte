@@ -26,13 +26,13 @@
     {cta}
     <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
   </Button>
-  <span class="text-sm text-zinc-500">
+  <span class="text-sm text-ink-faint">
     {$_('cta_section.subnote')}
     <a
       href="https://github.com/rleeon/hoard/releases"
       target="_blank"
       rel="noreferrer noopener"
-      class="link-underline inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300"
+      class="link-underline inline-flex items-center gap-1 text-accent hover:text-emerald-300"
     >
       <Github class="h-3.5 w-3.5" />
       GitHub Releases

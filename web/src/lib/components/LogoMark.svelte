@@ -1,9 +1,8 @@
 <script lang="ts">
   interface Props {
     size?: number;
-    animated?: boolean;
   }
-  let { size = 28, animated = false }: Props = $props();
+  let { size = 28 }: Props = $props();
 </script>
 
 <svg
@@ -12,18 +11,16 @@
   width={size}
   height={size}
   aria-hidden="true"
-  class={animated ? 'transition-transform duration-500' : ''}
 >
-  <defs>
-    <linearGradient id="hoard-mark-grad" x1="0.2" y1="0.1" x2="0.85" y2="0.95">
-      <stop offset="0" stop-color="#5eead4" />
-      <stop offset="0.55" stop-color="#34d399" />
-      <stop offset="1" stop-color="#10b981" />
-    </linearGradient>
-  </defs>
-  <rect width="64" height="64" rx="12" fill="#050706" />
-  <path
-    d="M12 8 h9 v16 h22 v-16 h9 v48 h-9 v-16 h-22 v16 h-9 z"
-    fill="url(#hoard-mark-grad)"
+  <rect
+    x="1"
+    y="1"
+    width="62"
+    height="62"
+    rx="13"
+    fill="var(--color-pine-elev, #19231c)"
+    stroke="var(--color-pine-line, #28332b)"
+    stroke-width="2"
   />
+  <path d="M12 8 h9 v16 h22 v-16 h9 v48 h-9 v-16 h-22 v16 h-9 z" fill="#34d399" />
 </svg>

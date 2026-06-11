@@ -2,34 +2,37 @@
   import { _ } from 'svelte-i18n';
   import Button from '$lib/components/Button.svelte';
   import { reveal } from '$lib/actions/reveal';
-  import { spotlight } from '$lib/actions/spotlight';
   import { onMount } from 'svelte';
   import { Apple, Github, Monitor, ArrowRight } from 'lucide-svelte';
-  import { version, RELEASE_DATE, RELEASES_LATEST, ALL_RELEASES, CHANGELOG_URL } from '$lib/version';
+  import { version, release, ALL_RELEASES, CHANGELOG_URL } from '$lib/version';
 
   type Platform = 'windows' | 'macos' | 'linux';
   let detected = $state<Platform | null>(null);
 
-  // Every download button opens the latest release page, so links never go
-  // stale when a new version ships.
-  const RELEASE_BASE = RELEASES_LATEST;
-
   type Asset = {
     label: string;
     sublabel: string;
-    size: string;
     href: string;
   };
 
-  const downloads: Record<Platform, { name: string; assets: Asset[] }> = {
+  const fileName = (url: string) => url.split('/').pop() ?? url;
+
+  // Direct links to the installers of the latest release — clicking starts
+  // the download. URLs come from the `release` store, so they follow GitHub
+  // automatically when a new version ships.
+  let downloads = $derived<Record<Platform, { name: string; assets: Asset[] }>>({
     windows: {
       name: 'Windows',
       assets: [
         {
-          label: 'Hoard-Setup.msi',
+          label: fileName($release.assets.windowsSetup),
           sublabel: 'Windows 10/11 · x64',
-          size: '14.2 MB',
-          href: RELEASE_BASE
+          href: $release.assets.windowsSetup
+        },
+        {
+          label: fileName($release.assets.windowsMsi),
+          sublabel: 'Windows 10/11 · x64 · MSI',
+          href: $release.assets.windowsMsi
         }
       ]
     },
@@ -37,10 +40,9 @@
       name: 'macOS',
       assets: [
         {
-          label: 'Hoard.dmg',
-          sublabel: 'macOS 12+ · Apple Silicon / Intel',
-          size: '16.8 MB',
-          href: RELEASE_BASE
+          label: fileName($release.assets.macosDmg),
+          sublabel: 'macOS 12+ · Apple Silicon',
+          href: $release.assets.macosDmg
         }
       ]
     },
@@ -48,20 +50,23 @@
       name: 'Linux',
       assets: [
         {
-          label: 'hoard.deb',
+          label: fileName($release.assets.linuxDeb),
           sublabel: 'Debian / Ubuntu · x64',
-          size: '12.4 MB',
-          href: RELEASE_BASE
+          href: $release.assets.linuxDeb
         },
         {
-          label: 'hoard.AppImage',
+          label: fileName($release.assets.linuxAppImage),
           sublabel: 'Universal · x64',
-          size: '18.1 MB',
-          href: RELEASE_BASE
+          href: $release.assets.linuxAppImage
+        },
+        {
+          label: fileName($release.assets.linuxRpm),
+          sublabel: 'Fedora / openSUSE · x64',
+          href: $release.assets.linuxRpm
         }
       ]
     }
-  };
+  });
 
   onMount(() => {
     const ua = navigator.userAgent.toLowerCase();
@@ -78,23 +83,17 @@
   <link rel="canonical" href="https://hoard.services/download" />
 </svelte:head>
 
-<section class="relative mx-auto max-w-5xl px-4 py-20 sm:px-6 sm:py-24">
-  <div
-    class="pointer-events-none absolute -top-24 left-1/2 -z-10 h-80 w-[40rem] -translate-x-1/2 rounded-full bg-emerald-500/[0.10] blur-3xl"
-  ></div>
-
-  <div class="text-center">
-    <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400/80">
-      {$_('nav.download')}
-    </div>
-    <h1 class="mt-3 text-balance text-4xl font-extrabold tracking-tight text-white sm:text-6xl">
+<section class="mx-auto max-w-5xl px-4 py-16 sm:px-6 sm:py-24">
+  <div class="mx-auto max-w-2xl text-center">
+    <p class="kicker justify-center">{$_('nav.download')}</p>
+    <h1 class="mt-3 text-balance text-4xl font-semibold text-ink sm:text-5xl">
       {$_('download.title')}
     </h1>
-    <p class="mx-auto mt-5 max-w-xl text-pretty text-lg text-zinc-400">
+    <p class="mt-4 text-pretty leading-relaxed text-ink-soft">
       {$_('download.subtitle')}
     </p>
-    <p class="mt-3 font-mono text-xs text-zinc-500">
-      {$_('download.version', { values: { v: $version, date: RELEASE_DATE } })}
+    <p class="mt-3 font-mono text-xs text-ink-faint">
+      {$_('download.version', { values: { v: $release.v, date: $release.date } })}
     </p>
   </div>
 
@@ -102,12 +101,10 @@
     <div class="reveal mt-10 flex justify-center" use:reveal>
       <a
         href={downloads[detected].assets[0].href}
-        target="_blank"
-        rel="noreferrer"
-        class="group relative inline-flex items-center gap-4 overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-600/15 to-emerald-500/[0.04] px-7 py-5 text-left ring-focus transition-colors hover:border-emerald-400/55 hover:bg-emerald-500/10"
+        class="group inline-flex items-center gap-4 rounded-2xl border border-accent bg-accent-tint px-7 py-5 text-left ring-focus transition-colors hover:bg-accent/15"
       >
         <span
-          class="grid h-14 w-14 place-items-center rounded-xl bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-400/30"
+          class="grid h-14 w-14 place-items-center rounded-xl bg-accent-deep text-white"
         >
           {#if detected === 'macos'}
             <Apple class="h-7 w-7" />
@@ -116,23 +113,19 @@
           {/if}
         </span>
         <span class="flex flex-col">
-          <span class="text-xs uppercase tracking-wider text-emerald-300/80">
+          <span class="font-mono text-[11px] uppercase tracking-wider text-accent">
             {$_('download.detected')}
           </span>
-          <span class="text-xl font-semibold text-white">
+          <span class="text-xl font-semibold text-ink">
             {$_('download.cta_for', { values: { platform: downloads[detected].name } })}
           </span>
-          <span class="font-mono text-xs text-zinc-400">
-            {downloads[detected].assets[0].sublabel} · {downloads[detected].assets[0].size}
+          <span class="font-mono text-xs text-ink-soft">
+            {downloads[detected].assets[0].sublabel}
           </span>
         </span>
         <ArrowRight
-          class="h-5 w-5 flex-none text-emerald-300 transition-transform group-hover:translate-x-1"
+          class="h-5 w-5 flex-none text-accent transition-transform group-hover:translate-x-1"
         />
-        <span
-          aria-hidden="true"
-          class="pointer-events-none absolute inset-y-0 left-0 w-1/2 -translate-x-full bg-gradient-to-r from-transparent via-white/15 to-transparent transition-transform duration-[1000ms] ease-out group-hover:translate-x-[220%]"
-        ></span>
       </a>
     </div>
   {/if}
@@ -140,13 +133,12 @@
   <div class="mt-14 grid gap-5 sm:grid-cols-3">
     {#each order as p, i (p)}
       <article
-        class="reveal spotlight card-edge group flex flex-col rounded-2xl border border-white/[0.06] bg-white/[0.025] p-6 transition-colors duration-500 hover:border-emerald-500/30 hover:bg-white/[0.045]"
+        class="reveal flex flex-col rounded-2xl border border-line bg-surface p-6 transition-colors hover:border-line-strong"
         use:reveal={{ delay: i * 70 }}
-        use:spotlight
       >
         <div class="flex items-center gap-3">
           <div
-            class="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-emerald-500/15 to-emerald-500/[0.04] text-emerald-300 ring-1 ring-inset ring-emerald-400/20 transition-transform duration-500 group-hover:scale-110"
+            class="grid h-10 w-10 place-items-center rounded-xl bg-accent-tint text-accent"
           >
             {#if p === 'macos'}
               <Apple class="h-5 w-5" />
@@ -154,7 +146,7 @@
               <Monitor class="h-5 w-5" />
             {/if}
           </div>
-          <h2 class="text-lg font-semibold text-white">{downloads[p].name}</h2>
+          <h2 class="text-lg font-semibold text-ink">{downloads[p].name}</h2>
         </div>
 
         <ul class="mt-5 space-y-2.5">
@@ -162,15 +154,10 @@
             <li>
               <a
                 href={a.href}
-                target="_blank"
-                rel="noreferrer"
-                class="group/asset block rounded-lg border border-white/[0.06] bg-zinc-900/40 px-4 py-3 transition-colors hover:border-emerald-500/30 hover:bg-emerald-500/[0.06]"
+                class="block rounded-lg border border-line bg-bg px-4 py-3 ring-focus transition-colors hover:border-accent hover:bg-accent-tint"
               >
-                <div class="flex items-center justify-between gap-2">
-                  <span class="font-mono text-sm font-medium text-zinc-100">{a.label}</span>
-                  <span class="font-mono text-[10px] tabular-nums text-zinc-500">{a.size}</span>
-                </div>
-                <span class="mt-0.5 block text-xs text-zinc-500">{a.sublabel}</span>
+                <span class="font-mono text-sm font-medium text-ink">{a.label}</span>
+                <span class="mt-0.5 block text-xs text-ink-faint">{a.sublabel}</span>
               </a>
             </li>
           {/each}
@@ -179,34 +166,36 @@
     {/each}
   </div>
 
-  <!-- changelog highlight -->
+  <!-- changelog -->
   <div
-    class="reveal mt-14 overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-br from-emerald-950/30 via-zinc-950 to-zinc-950 card-edge"
+    class="reveal mt-14 overflow-hidden rounded-2xl border border-pine-line bg-pine"
     use:reveal
   >
     <div class="grid items-center gap-6 p-8 sm:grid-cols-[1fr_auto]">
       <div>
-        <div class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400/80">
-          <span class="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse-glow"></span>
-          v{$version}
-        </div>
-        <h3 class="mt-2 text-xl font-bold text-white">{$_('download.changelog_title')}</h3>
-        <p class="mt-2 text-sm text-zinc-400">{$_('download.changelog_body')}</p>
+        <p class="kicker">v{$version}</p>
+        <h3 class="mt-2 text-xl font-semibold text-white">{$_('download.changelog_title')}</h3>
+        <p class="mt-2 text-sm text-white/60">{$_('download.changelog_body')}</p>
       </div>
-      <Button href={CHANGELOG_URL} target="_blank" variant="secondary" size="lg">
+      <a
+        href={CHANGELOG_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="inline-flex items-center justify-center gap-2 rounded-lg border border-pine-line bg-white/5 px-5 py-2.5 text-sm font-medium text-white ring-focus transition-colors hover:bg-white/10"
+      >
         <Github class="h-4 w-4" />
         {$_('download.changelog_cta')}
-      </Button>
+      </a>
     </div>
   </div>
 
   <div
-    class="reveal mt-6 flex flex-col items-center gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-7 text-center sm:flex-row sm:justify-between sm:text-left card-edge"
+    class="reveal mt-6 flex flex-col items-center gap-4 rounded-2xl border border-line bg-surface p-7 text-center sm:flex-row sm:justify-between sm:text-left"
     use:reveal
   >
     <div>
-      <h3 class="text-lg font-semibold text-white">{$_('download.all_releases_title')}</h3>
-      <p class="mt-1.5 text-sm text-zinc-400">{$_('download.all_releases_body')}</p>
+      <h3 class="text-lg font-semibold text-ink">{$_('download.all_releases_title')}</h3>
+      <p class="mt-1.5 text-sm text-ink-soft">{$_('download.all_releases_body')}</p>
     </div>
     <Button href={ALL_RELEASES} target="_blank" variant="secondary" size="lg">
       <Github class="h-4 w-4" />
@@ -214,13 +203,13 @@
     </Button>
   </div>
 
-  <p class="mt-10 text-center text-xs text-zinc-500">
+  <p class="mt-10 text-center text-xs text-ink-faint">
     {$_('download.selfhost_note')}
     <a
       href="https://github.com/rleeon/hoard#self-host"
-      class="link-underline text-emerald-400 hover:text-emerald-300"
+      class="link-underline text-accent ring-focus hover:text-emerald-300"
     >
-      {$_('hero.cta_selfhost')}
+      GitHub
     </a>.
   </p>
 </section>

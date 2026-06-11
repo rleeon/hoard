@@ -1,69 +1,65 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
   import Button from '$lib/components/Button.svelte';
-  import StatusDot from '$lib/components/StatusDot.svelte';
-  import HeroTerminal from '$lib/components/HeroTerminal.svelte';
-  import MetricStrip from '$lib/components/MetricStrip.svelte';
-  import PlatformMarquee from '$lib/components/PlatformMarquee.svelte';
   import HowItWorks from '$lib/components/HowItWorks.svelte';
-  import SecurityStrip from '$lib/components/SecurityStrip.svelte';
-  import ProductMockup from '$lib/components/ProductMockup.svelte';
   import DownloadCTA from '$lib/components/DownloadCTA.svelte';
   import { reveal } from '$lib/actions/reveal';
-  import { spotlight } from '$lib/actions/spotlight';
   import { version } from '$lib/version';
   import {
     ArrowRight,
-    GitBranch,
-    Shield,
-    Search,
+    RefreshCw,
+    History,
+    Fingerprint,
+    ScanSearch,
     MonitorSmartphone,
-    Download,
-    ServerCog
+    FileDown,
+    Check
   } from 'lucide-svelte';
 
-  const features = [
-    { key: 'versioned', icon: GitBranch, tint: 'emerald' },
-    { key: 'verified', icon: Shield, tint: 'teal' },
-    { key: 'detect', icon: Search, tint: 'emerald' },
-    { key: 'crossplat', icon: MonitorSmartphone, tint: 'emerald' },
-    { key: 'export', icon: Download, tint: 'teal' },
-    { key: 'selfhost', icon: ServerCog, tint: 'emerald' }
+  // Hairline dividers for the 1 / 2 / 3-column grid, spelled out per cell —
+  // overlapping nth-child rules resolve by stylesheet order, which is fragile.
+  const featureCell = [
+    '',
+    'border-t border-line sm:border-l sm:border-t-0',
+    'border-t border-line lg:border-l lg:border-t-0',
+    'border-t border-line sm:border-l lg:border-l-0',
+    'border-t border-line lg:border-l',
+    'border-t border-line sm:border-l'
   ];
+
+  const features = [
+    { key: 'sync', icon: RefreshCw },
+    { key: 'versioned', icon: History },
+    { key: 'verified', icon: Fingerprint },
+    { key: 'detect', icon: ScanSearch },
+    { key: 'crossplat', icon: MonitorSmartphone },
+    { key: 'export', icon: FileDown }
+  ];
+
+  const facts = ['sha', 'agpl', 'eu', 'os'];
 </script>
 
 <svelte:head>
-  <title>Hoard — versioned cloud sync for game saves</title>
+  <title>Hoard — your game saves, on every PC</title>
   <link rel="canonical" href="https://hoard.services/" />
+  <link rel="preload" as="image" href="/app.webp" fetchpriority="high" />
 </svelte:head>
 
 <!-- ───────── HERO ───────── -->
-<section class="relative overflow-hidden">
-  <div class="grid-bg pointer-events-none absolute inset-0 -z-10"></div>
-
-  <div class="mx-auto max-w-6xl px-4 pb-20 pt-14 sm:px-6 sm:pt-20">
+<section class="relative">
+  <div class="mx-auto max-w-6xl px-4 pt-16 sm:px-6 sm:pt-24">
     <div class="flex flex-col items-center text-center">
-      <StatusDot />
-
-      <div class="mt-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.025] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400 backdrop-blur animate-fade-up">
-        <span class="h-1 w-1 rounded-full bg-emerald-400"></span>
-        {$_('hero.eyebrow', { values: { v: $version } })}
-      </div>
-
       <h1
-        class="mt-5 max-w-4xl text-balance text-[2.1rem] font-extrabold leading-[1.04] tracking-[-0.03em] text-white sm:text-[3.4rem] lg:text-[4.25rem] animate-fade-up"
+        class="max-w-4xl text-balance text-[2.4rem] font-semibold leading-[1.05] text-ink sm:text-6xl lg:text-[4.4rem] animate-fade-up"
+        style="animation-delay:0.05s"
       >
         {$_('hero.title_1')}
-        <span class="relative inline-block">
-          <span class="hue-pan font-extrabold">
-            {$_('hero.title_2')}
-          </span>
-        </span>
+        <span class="text-accent">{$_('hero.title_2')}</span>
       </h1>
 
       <p
-        class="mt-6 max-w-3xl text-pretty text-[1.02rem] leading-relaxed text-zinc-400 sm:text-lg animate-fade-up"
-        style="animation-delay:0.1s"
+        class="mt-6 max-w-2xl text-pretty text-[1.05rem] leading-relaxed text-ink-soft sm:text-lg animate-fade-up"
+        style="animation-delay:0.12s"
       >
         {$_('hero.subtitle')}
       </p>
@@ -72,74 +68,139 @@
         class="mt-9 flex flex-col items-center gap-4 sm:flex-row animate-fade-up"
         style="animation-delay:0.2s"
       >
-        <Button href="/pricing" size="lg" variant="primary">
+        <Button href="/download" size="lg" variant="primary">
           {$_('hero.cta_start')}
           <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </Button>
-        <Button
-          href="https://github.com/rleeon/hoard#self-host"
-          target="_blank"
-          size="lg"
-          variant="ghost"
-        >
-          {$_('hero.cta_selfhost')}
+        <Button href="/pricing" size="lg" variant="secondary">
+          {$_('hero.cta_pricing')}
         </Button>
       </div>
 
-      <div
-        class="mt-14 w-full max-w-4xl animate-fade-up"
-        style="animation-delay:0.3s"
-      >
-        <HeroTerminal />
+      <p class="mt-4 font-mono text-xs tracking-wide text-ink-faint animate-fade-up" style="animation-delay:0.26s">
+        {$_('hero.subnote', { values: { v: $version } })}
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── SCREENSHOT ───────── -->
+<section class="relative">
+  <div
+    class="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 border-b border-line bg-surface"
+    aria-hidden="true"
+  ></div>
+  <div class="relative mx-auto max-w-6xl px-4 pt-14 sm:px-6">
+    <img
+      src="/app.webp"
+      alt={$_('hero.screenshot_alt')}
+      width="1533"
+      height="906"
+      fetchpriority="high"
+      decoding="async"
+      class="block w-full rounded-2xl border border-line-strong shadow-[0_40px_80px_-40px_rgba(0,0,0,0.8)] animate-fade-up"
+      style="animation-delay:0.3s"
+    />
+  </div>
+</section>
+
+<!-- ───────── FACT STRIP ───────── -->
+<section class="border-b border-line bg-surface">
+  <div class="mx-auto max-w-6xl px-4 sm:px-6">
+    <dl class="grid grid-cols-2 sm:grid-cols-4">
+      {#each facts as f, i (f)}
+        <div
+          class="px-4 py-6 text-center {i > 0 ? 'border-l border-line' : ''} {i >= 2
+            ? 'max-sm:border-t max-sm:border-line'
+            : ''} {i === 2 ? 'max-sm:border-l-0' : ''}"
+        >
+          <dt class="font-mono text-sm font-medium tracking-tight text-ink">
+            {$_(`facts.${f}.value`)}
+          </dt>
+          <dd class="mt-1 text-xs text-ink-faint">{$_(`facts.${f}.label`)}</dd>
+        </div>
+      {/each}
+    </dl>
+  </div>
+</section>
+
+<!-- ───────── SYNC ───────── -->
+<section class="relative">
+  <div class="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
+    <div class="grid items-center gap-12 lg:grid-cols-2">
+      <div class="reveal" use:reveal>
+        <p class="kicker">{$_('sync.kicker')}</p>
+        <h2 class="mt-3 text-balance text-3xl font-semibold text-ink sm:text-4xl">
+          {$_('sync.title')}
+        </h2>
+        <p class="mt-4 text-pretty leading-relaxed text-ink-soft">
+          {$_('sync.body')}
+        </p>
+        <ul class="mt-6 space-y-3 text-sm">
+          {#each ['p1', 'p2', 'p3'] as p (p)}
+            <li class="flex items-start gap-2.5 text-ink-soft">
+              <Check class="mt-0.5 h-4 w-4 flex-none text-accent" />
+              {$_(`sync.${p}`)}
+            </li>
+          {/each}
+        </ul>
       </div>
 
-      <div
-        class="mt-10 w-full animate-fade-up"
-        style="animation-delay:0.4s"
-      >
-        <MetricStrip />
+      <div class="reveal" use:reveal={{ delay: 100 }}>
+        <div class="rounded-2xl border border-line bg-surface p-6 sm:p-8">
+          <div class="space-y-3 font-mono text-xs">
+            <div class="flex items-center justify-between rounded-lg border border-line bg-bg px-4 py-3">
+              <span class="text-ink">{$_('sync.demo_desktop')}</span>
+              <span class="rounded-full bg-accent-tint px-2 py-0.5 text-[10px] text-accent">
+                v48 · {$_('sync.demo_uploaded')}
+              </span>
+            </div>
+            <div class="flex justify-center text-ink-faint" aria-hidden="true">
+              <svg width="16" height="24" viewBox="0 0 16 24" fill="none">
+                <path d="M8 0v20m0 0l-5-5m5 5l5-5" stroke="currentColor" stroke-width="1.5" />
+              </svg>
+            </div>
+            <div class="flex items-center justify-between rounded-lg border border-accent bg-accent-tint px-4 py-3">
+              <span class="text-ink">{$_('sync.demo_laptop')}</span>
+              <span class="rounded-full bg-accent-deep px-2 py-0.5 text-[10px] text-white">
+                v48 · {$_('sync.demo_synced')}
+              </span>
+            </div>
+          </div>
+          <p class="mt-5 text-center text-xs leading-relaxed text-ink-faint">
+            {$_('sync.demo_note')}
+          </p>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ───────── PLATFORM MARQUEE ───────── -->
-<section class="relative border-t border-white/[0.05]">
-  <div class="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-14">
-    <PlatformMarquee />
-  </div>
-</section>
+<!-- ───────── HOW IT WORKS ───────── -->
+<HowItWorks />
 
 <!-- ───────── FEATURES ───────── -->
-<section class="relative border-t border-white/[0.05]">
+<section class="border-t border-line">
   <div class="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
-    <div class="reveal mx-auto max-w-2xl text-center" use:reveal>
-      <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400/80">
-        Why Hoard
-      </div>
-      <h2 class="mt-3 text-balance text-3xl font-bold tracking-tight text-white sm:text-4xl">
+    <div class="reveal max-w-2xl" use:reveal>
+      <p class="kicker">{$_('features.kicker')}</p>
+      <h2 class="mt-3 text-balance text-3xl font-semibold text-ink sm:text-4xl">
         {$_('features.title')}
       </h2>
-      <p class="mt-3 text-pretty text-zinc-400">{$_('features.subtitle')}</p>
+      <p class="mt-3 text-pretty text-ink-soft">{$_('features.subtitle')}</p>
     </div>
 
-    <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+    <div
+      class="mt-12 grid overflow-hidden rounded-2xl border border-line bg-surface sm:grid-cols-2 lg:grid-cols-3"
+    >
       {#each features as f, i (f.key)}
         <article
-          class="reveal spotlight card-edge group rounded-2xl border border-white/[0.06] bg-white/[0.025] p-6 transition-colors duration-500 hover:border-emerald-500/30 hover:bg-white/[0.045]"
-          use:reveal={{ delay: i * 70 }}
-          use:spotlight
+          class="reveal group p-7 transition-colors hover:bg-bg {featureCell[i]}"
+          use:reveal={{ delay: i * 60 }}
         >
-          <div
-            class="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br {f.tint ===
-            'teal'
-              ? 'from-teal-500/15 to-teal-500/[0.04] text-teal-200 ring-teal-400/25'
-              : 'from-emerald-500/15 to-emerald-500/[0.04] text-emerald-300 ring-emerald-400/20'} ring-1 ring-inset transition-transform duration-500 group-hover:scale-110 group-hover:rotate-[-4deg]"
-          >
-            <f.icon class="h-5 w-5" />
-          </div>
-          <h3 class="font-semibold text-white">{$_(`features.${f.key}.title`)}</h3>
-          <p class="mt-1.5 text-sm leading-relaxed text-zinc-300">
+          <f.icon class="h-5 w-5 text-accent" />
+          <h3 class="mt-4 font-semibold text-ink">{$_(`features.${f.key}.title`)}</h3>
+          <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">
             {$_(`features.${f.key}.body`)}
           </p>
         </article>
@@ -148,54 +209,50 @@
   </div>
 </section>
 
-<!-- ───────── HOW IT WORKS ───────── -->
-<HowItWorks />
-
-<!-- ───────── PRODUCT MOCKUP ───────── -->
-<section class="relative border-t border-white/[0.05]">
-  <div class="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
-    <div class="reveal mx-auto max-w-2xl text-center" use:reveal>
-      <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400/80">
-        A real desktop app
+<!-- ───────── SELF-HOST ───────── -->
+<section class="border-t border-line">
+  <div class="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+    <div class="reveal overflow-hidden rounded-3xl border border-pine-line bg-pine" use:reveal>
+      <div class="grid items-center gap-10 p-10 sm:p-14 lg:grid-cols-2">
+        <div>
+          <p class="kicker">{$_('selfhost.kicker')}</p>
+          <h2 class="mt-3 text-balance text-3xl font-semibold text-white sm:text-4xl">
+            {$_('selfhost.title')}
+          </h2>
+          <p class="mt-4 text-pretty leading-relaxed text-white/60">
+            {$_('selfhost.body')}
+          </p>
+          <a
+            href="https://github.com/rleeon/hoard#self-host"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="link-underline mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-emerald-400 ring-focus hover:text-emerald-300"
+          >
+            {$_('selfhost.cta')}
+            <ArrowRight class="h-4 w-4" />
+          </a>
+        </div>
+        <pre
+          class="overflow-x-auto rounded-xl border border-pine-line bg-black/30 p-5 font-mono text-[13px] leading-relaxed text-white/80"><code
+            >git clone https://github.com/rleeon/hoard.git
+cd hoard/deploy/docker
+docker compose up -d --build</code
+          ></pre>
       </div>
-      <h2 class="mt-3 text-balance text-3xl font-bold tracking-tight text-white sm:text-4xl">
-        Looks like a tool. Acts like one.
-      </h2>
-      <p class="mt-3 text-pretty text-zinc-400">
-        Tray icon, autostart, four tabs. No tutorials, no upsell modals, no toasts that don't say anything.
-      </p>
-    </div>
-
-    <div class="reveal mx-auto mt-12 max-w-5xl" use:reveal={{ delay: 80 }}>
-      <ProductMockup />
     </div>
   </div>
 </section>
 
-<!-- ───────── SECURITY / TRUST ───────── -->
-<SecurityStrip />
-
 <!-- ───────── FINAL CTA ───────── -->
-<section class="border-t border-white/[0.05]">
-  <div class="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-    <div
-      class="reveal relative overflow-hidden rounded-3xl border border-emerald-500/15 bg-gradient-to-br from-emerald-950/40 via-zinc-950 to-zinc-950 p-10 sm:p-14"
-      use:reveal
-    >
-      <div
-        class="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-emerald-500/20 blur-3xl animate-drift"
-      ></div>
-      <div
-        class="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_0%,rgba(16,185,129,0.10),transparent_70%)]"
-      ></div>
-      <div class="relative max-w-2xl">
-        <h2 class="text-balance text-3xl font-bold tracking-tight text-white sm:text-4xl">
-          {$_('cta_section.title')}
-        </h2>
-        <p class="mt-3 text-zinc-400">{$_('cta_section.body')}</p>
-        <div class="mt-7">
-          <DownloadCTA />
-        </div>
+<section class="border-t border-line bg-surface">
+  <div class="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
+    <div class="reveal mx-auto flex max-w-2xl flex-col items-center text-center" use:reveal>
+      <h2 class="text-balance text-3xl font-semibold text-ink sm:text-4xl">
+        {$_('cta_section.title')}
+      </h2>
+      <p class="mt-3 text-pretty text-ink-soft">{$_('cta_section.body')}</p>
+      <div class="mt-8">
+        <DownloadCTA />
       </div>
     </div>
   </div>

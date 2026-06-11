@@ -27,12 +27,12 @@
 </script>
 
 <div
-  class="relative isolate flex min-h-full flex-col text-zinc-100"
+  class="relative isolate flex min-h-full flex-col text-ink"
   data-sveltekit-preload-data="hover"
 >
   <a
     href="#main"
-    class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-emerald-600 focus:px-3 focus:py-2 focus:text-sm focus:text-white"
+    class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent-deep focus:px-3 focus:py-2 focus:text-sm focus:text-white"
   >
     Skip to content
   </a>

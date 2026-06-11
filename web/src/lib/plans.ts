@@ -17,7 +17,7 @@ export const PLANS: Record<PlanId, PlanLimits> = {
     saves: null,
     versionHistoryForever: true,
     maxSaveSizeBytes: 200 * MB,
-    bandwidthQuotaBytes: 500 * MB,
+    bandwidthQuotaBytes: 1 * GB,
     bandwidthWindowSecs: 15 * 60,
     priceMonthly: 0,
     priceYearly: 0
@@ -29,7 +29,7 @@ export const PLANS: Record<PlanId, PlanLimits> = {
     saves: null,
     versionHistoryForever: true,
     maxSaveSizeBytes: 2 * GB,
-    bandwidthQuotaBytes: 1 * GB,
+    bandwidthQuotaBytes: 5 * GB,
     bandwidthWindowSecs: 15 * 60,
     priceMonthly: 4.49,
     priceYearly: 35.99
@@ -58,7 +58,7 @@ export function formatMaxSaveSize(plan: PlanId): string {
   return `${Math.round(limit / MB)} MB`;
 }
 
-/** "500 MB" / "1 GB" — used in plan-card feature list. */
+/** "1 GB" / "5 GB" — used in plan-card feature list. */
 export function formatBandwidthQuota(plan: PlanId): string {
   const limit = PLANS[plan].bandwidthQuotaBytes;
   if (limit >= GB) return `${Math.round(limit / GB)} GB`;

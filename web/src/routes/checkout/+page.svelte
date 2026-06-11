@@ -67,25 +67,19 @@
 {#if $session === undefined || $session === null}
   <div class="grid min-h-[60vh] place-items-center">
     <div
-      class="h-10 w-10 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent"
+      class="h-10 w-10 animate-spin rounded-full border-2 border-accent border-t-transparent"
     ></div>
   </div>
 {:else}
-  <section class="relative mx-auto flex max-w-md flex-col items-center px-4 py-20 sm:px-6">
-    <div
-      class="pointer-events-none absolute -top-24 left-1/2 -z-10 h-72 w-[28rem] -translate-x-1/2 rounded-full bg-emerald-500/10 blur-3xl"
-    ></div>
-
+  <section class="mx-auto flex max-w-md flex-col items-center px-4 py-16 sm:px-6 sm:py-20">
     <LogoMark size={44} />
-    <h1 class="mt-5 text-balance text-center text-3xl font-bold tracking-tight text-white">
+    <h1 class="mt-5 text-balance text-center font-display text-3xl font-semibold tracking-tight text-ink">
       {$_('checkout.title')}
     </h1>
-    <p class="mt-2 text-center text-sm text-zinc-400">{$_('checkout.subtitle')}</p>
+    <p class="mt-2 text-center text-sm text-ink-soft">{$_('checkout.subtitle')}</p>
 
-    <div
-      class="card-edge mt-8 w-full rounded-2xl border border-white/[0.06] bg-white/[0.025] p-6 backdrop-blur-sm"
-    >
-      <div class="flex items-center gap-3 border-b border-white/[0.06] pb-4">
+    <div class="mt-8 w-full rounded-2xl border border-line bg-surface p-6">
+      <div class="flex items-center gap-3 border-b border-line pb-4">
         {#if $session.avatarUrl}
           <img
             src={$session.avatarUrl}
@@ -95,36 +89,36 @@
           />
         {:else}
           <div
-            class="grid h-11 w-11 place-items-center rounded-full bg-emerald-700 text-lg font-semibold text-white"
+            class="grid h-11 w-11 place-items-center rounded-full bg-accent-deep text-lg font-semibold text-white"
           >
             {($session.email[0] ?? '?').toUpperCase()}
           </div>
         {/if}
         <div class="min-w-0">
-          <p class="truncate text-sm font-medium text-white">
+          <p class="truncate text-sm font-medium text-ink">
             {$session.displayName ?? $session.email}
           </p>
-          <p class="truncate text-xs text-zinc-400">{$session.email}</p>
+          <p class="truncate text-xs text-ink-soft">{$session.email}</p>
         </div>
       </div>
 
-      <p class="mt-4 text-sm text-zinc-300">{$_('checkout.question')}</p>
+      <p class="mt-4 text-sm text-ink-soft">{$_('checkout.question')}</p>
 
       <div
-        class="mt-4 flex items-center justify-between rounded-xl border border-emerald-400/20 bg-emerald-500/[0.06] px-4 py-3"
+        class="mt-4 flex items-center justify-between rounded-xl border border-accent bg-accent-tint px-4 py-3"
       >
-        <span class="text-sm font-semibold text-emerald-200">{$_('plan.pro')}</span>
-        <span class="text-sm text-emerald-100">{priceLabel}</span>
+        <span class="text-sm font-semibold text-accent">{$_('plan.pro')}</span>
+        <span class="text-sm text-ink">{priceLabel}</span>
       </div>
 
       {#if error}
         <p class="mt-4 text-sm text-red-400">{$_('checkout.error')}</p>
-        <p class="mt-1 break-words text-xs text-zinc-500">{error}</p>
+        <p class="mt-1 break-words text-xs text-ink-faint">{error}</p>
       {/if}
 
       <div class="mt-6 flex items-center gap-3">
         <button
-          class="ring-focus flex-1 rounded-lg border border-white/10 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800 disabled:opacity-50"
+          class="ring-focus flex-1 rounded-lg border border-line-strong bg-surface px-4 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-bg disabled:opacity-50"
           onclick={changeAccount}
           disabled={busy}
         >
@@ -138,8 +132,8 @@
       </div>
     </div>
 
-    <p class="mt-5 flex items-center gap-1.5 text-xs text-zinc-500">
-      <ShieldCheck class="h-3.5 w-3.5 text-emerald-400/70" />
+    <p class="mt-5 flex items-center gap-1.5 text-xs text-ink-faint">
+      <ShieldCheck class="h-3.5 w-3.5 text-accent" />
       {$_('checkout.secured_by')}
     </p>
   </section>

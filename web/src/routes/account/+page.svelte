@@ -27,22 +27,10 @@
       if (p.status === 'fulfilled') {
         profile = p.value;
       } else {
-        // backend not reachable yet — fall back to a free-plan stub so the
-        // UI still renders meaningfully during development
-        profile = {
-          userId: $session.userId,
-          email: $session.email,
-          displayName: $session.displayName,
-          avatarUrl: $session.avatarUrl,
-          plan: 'free',
-          subscriptionStatus: null,
-          planRenewsAt: null,
-          planCancelAt: null,
-          storageBytes: 0,
-          storageLimitBytes: PLANS.free.storageBytes,
-          devicesCount: 0,
-          devicesLimit: PLANS.free.devices ?? -1
-        };
+        // No invented data: if the API is unreachable we say so instead of
+        // rendering a fake free-plan profile.
+        profile = null;
+        error = (p.reason as Error)?.message ?? 'unreachable';
       }
       devices = d.status === 'fulfilled' ? d.value : [];
     } catch (e) {
@@ -108,7 +96,7 @@
 
 <section class="mx-auto max-w-4xl space-y-6 px-4 py-12 sm:px-6">
   <div class="flex items-center justify-between">
-    <h1 class="text-3xl font-bold text-white">{$_('account.title')}</h1>
+    <h1 class="font-display text-3xl font-semibold text-ink">{$_('account.title')}</h1>
     <Button variant="ghost" onclick={doSignOut}>
       <LogOut class="h-4 w-4" />
       {$_('nav.signout')}
@@ -119,21 +107,36 @@
     {#if $session?.avatarUrl}
       <img src={$session.avatarUrl} alt="" class="h-14 w-14 rounded-full" referrerpolicy="no-referrer" />
     {:else}
-      <div class="grid h-14 w-14 place-items-center rounded-full bg-emerald-700 text-xl font-semibold text-white">
+      <div class="grid h-14 w-14 place-items-center rounded-full bg-accent-deep text-xl font-semibold text-white">
         {($session?.email[0] ?? '?').toUpperCase()}
       </div>
     {/if}
     <div>
-      <p class="text-lg font-medium text-white">
+      <p class="text-lg font-medium text-ink">
         {$session?.displayName ?? $session?.email}
       </p>
-      <p class="text-sm text-zinc-400">{$session?.email}</p>
+      <p class="text-sm text-ink-soft">{$session?.email}</p>
     </div>
   </div>
 
-  {#if loading || !profile}
+  {#if loading}
     <Card>
-      <div class="h-32 shimmer rounded-lg"></div>
+      <div class="h-32 animate-pulse rounded-lg bg-ink/5"></div>
+    </Card>
+  {:else if !profile}
+    <Card>
+      <div class="flex flex-col items-start gap-4">
+        <div>
+          <h2 class="text-base font-semibold text-ink">{$_('account.load_error_title')}</h2>
+          <p class="mt-1 text-sm leading-relaxed text-ink-soft">
+            {$_('account.load_error_body')}
+          </p>
+          {#if error}
+            <p class="mt-2 font-mono text-xs text-ink-faint">{error}</p>
+          {/if}
+        </div>
+        <Button variant="secondary" size="sm" onclick={load}>{$_('common.retry')}</Button>
+      </div>
     </Card>
   {:else}
     {@const p = profile}
@@ -155,9 +158,9 @@
       {/snippet}
 
       <div class="flex flex-wrap items-baseline gap-3">
-        <span class="text-3xl font-bold text-white">{planLabel}</span>
+        <span class="font-display text-3xl font-semibold text-ink">{planLabel}</span>
         {#if p.plan !== 'free'}
-          <span class="text-sm text-zinc-400">
+          <span class="text-sm text-ink-soft">
             {$_('account.price_per_month', {
               values: { price: plan.priceMonthly.toLocaleString('es-ES') }
             })}
@@ -166,13 +169,13 @@
       </div>
 
       {#if p.planCancelAt}
-        <p class="mt-3 text-sm text-amber-300">
+        <p class="mt-3 text-sm text-amber-400">
           {$_('account.cancels_on', {
             values: { date: new Date(p.planCancelAt).toLocaleDateString() }
           })}
         </p>
       {:else if p.planRenewsAt && days !== null}
-        <p class="mt-3 text-sm text-zinc-400">
+        <p class="mt-3 text-sm text-ink-soft">
           {$_('account.renews_in', { values: { days } })}
         </p>
       {/if}
@@ -189,8 +192,8 @@
           })}
         />
         <div class="flex items-baseline justify-between text-sm">
-          <span class="text-zinc-300">{$_('account.devices_label')}</span>
-          <span class="font-medium text-zinc-200 tabular-nums">
+          <span class="text-ink-soft">{$_('account.devices_label')}</span>
+          <span class="font-medium tabular-nums text-ink">
             {#if p.devicesLimit < 0}
               {$_('account.devices_unlimited', { values: { used: p.devicesCount } })}
             {:else}
@@ -203,22 +206,22 @@
 
     <Card title={$_('account.devices_section')}>
       {#if devices.length === 0}
-        <p class="text-sm text-zinc-500">{$_('account.no_devices')}</p>
+        <p class="text-sm text-ink-faint">{$_('account.no_devices')}</p>
       {:else}
-        <ul class="divide-y divide-zinc-800">
+        <ul class="divide-y divide-line">
           {#each devices as d (d.id)}
             <li class="flex items-center justify-between py-3">
               <div class="flex items-center gap-3">
-                <Smartphone class="h-4 w-4 text-zinc-400" />
+                <Smartphone class="h-4 w-4 text-ink-faint" />
                 <div>
-                  <p class="text-sm font-medium text-zinc-100">{d.deviceName}</p>
-                  <p class="text-xs text-zinc-500">
+                  <p class="text-sm font-medium text-ink">{d.deviceName}</p>
+                  <p class="text-xs text-ink-faint">
                     {$_('account.last_seen', { values: { when: timeAgo(d.lastSeenAt) } })}
                   </p>
                 </div>
               </div>
               <button
-                class="text-sm text-zinc-400 transition-colors hover:text-red-400"
+                class="ring-focus text-sm text-ink-soft transition-colors hover:text-red-400"
                 onclick={() => unlink(d.id)}
               >
                 {$_('account.unlink_device')}
@@ -234,17 +237,17 @@
       <div class="space-y-4">
         <div class="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h3 class="text-sm font-semibold text-zinc-100">{$_('account.export_title')}</h3>
-            <p class="text-sm text-zinc-400">{$_('account.export_body')}</p>
+            <h3 class="text-sm font-semibold text-ink">{$_('account.export_title')}</h3>
+            <p class="text-sm text-ink-soft">{$_('account.export_body')}</p>
           </div>
           <Button variant="secondary" size="sm" onclick={exportAll}>
             {$_('account.export_cta')}
           </Button>
         </div>
-        <div class="flex flex-wrap items-start justify-between gap-4 border-t border-zinc-800 pt-4">
+        <div class="flex flex-wrap items-start justify-between gap-4 border-t border-line pt-4">
           <div>
-            <h3 class="text-sm font-semibold text-red-300">{$_('account.delete_title')}</h3>
-            <p class="text-sm text-zinc-400">{$_('account.delete_body')}</p>
+            <h3 class="text-sm font-semibold text-red-400">{$_('account.delete_title')}</h3>
+            <p class="text-sm text-ink-soft">{$_('account.delete_body')}</p>
           </div>
           <Button variant="danger" size="sm" onclick={deleteAccount}>
             <Trash2 class="h-3.5 w-3.5" />
@@ -253,9 +256,5 @@
         </div>
       </div>
     </Card>
-  {/if}
-
-  {#if error}
-    <p class="text-sm text-red-400">{error}</p>
   {/if}
 </section>
