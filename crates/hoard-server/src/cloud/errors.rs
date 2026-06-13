@@ -15,6 +15,8 @@ pub enum CloudError {
     NotFound(&'static str),
     BadRequest(String),
     Conflict(&'static str),
+    /// A Pro feature is locked (not on Pro, no active trial) → HTTP 402.
+    PaymentRequired { feature: &'static str },
     Db(sqlx::Error),
     Internal(anyhow::Error),
 }
@@ -35,6 +37,11 @@ impl IntoResponse for CloudError {
             CloudError::NotFound(m) => (StatusCode::NOT_FOUND, "not_found", (*m).to_string()),
             CloudError::BadRequest(m) => (StatusCode::BAD_REQUEST, "bad_request", m.clone()),
             CloudError::Conflict(m) => (StatusCode::CONFLICT, "conflict", (*m).to_string()),
+            CloudError::PaymentRequired { feature } => (
+                StatusCode::PAYMENT_REQUIRED,
+                "pro_required",
+                format!("Pro feature '{feature}' is locked"),
+            ),
             CloudError::Db(e) => {
                 tracing::error!(error = %e, "db error");
                 (

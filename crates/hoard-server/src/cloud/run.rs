@@ -4,7 +4,9 @@
 use crate::cloud::{
     auth::{require_cloud_auth, JwksCache},
     bandwidth, db, polar, r2,
-    routes::{checkout, logs as log_routes, me, saves, sync as sync_routes},
+    routes::{
+        checkout, entitlements as ent_routes, logs as log_routes, me, saves, sync as sync_routes,
+    },
     state::CloudState,
     webhooks,
 };
@@ -119,6 +121,10 @@ pub async fn run(cfg: Config) -> Result<()> {
         .route("/v1/devices", get(me::list_devices))
         .route("/v1/devices/:id", axum::routing::delete(me::delete_device))
         .route("/v1/cloud/checkout", post(checkout::create_checkout))
+        .route(
+            "/v1/cloud/entitlements",
+            get(ent_routes::get_entitlements),
+        )
         .route("/v1/cloud/saves", post(saves::init_upload))
         // Content-addressed init lives off the `/saves/:save_id` param path on
         // purpose: matchit 0.7 (axum 0.7) panics on a static `/saves/cas`

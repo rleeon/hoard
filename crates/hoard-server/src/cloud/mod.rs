@@ -19,6 +19,7 @@
 pub mod auth;
 pub mod bandwidth;
 pub mod db;
+pub mod entitlements;
 pub mod errors;
 pub mod plans;
 pub mod polar;
