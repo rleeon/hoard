@@ -1159,6 +1159,7 @@ fn is_path_empty_or_missing(path: &Path) -> bool {
 /// into the local path, emit `SaveAutoRestored` on success or
 /// `SaveAutoRestoreFailed` otherwise, and ping the agent loop to re-arm
 /// the watcher against the now-populated folder.
+#[allow(clippy::too_many_arguments)]
 fn spawn_auto_restore(
     save: WatchedSave,
     api: ApiClient,

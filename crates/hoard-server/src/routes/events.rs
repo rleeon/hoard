@@ -88,24 +88,22 @@ pub async fn stream(
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let rx = state.events.subscribe(user.user_id);
     let stream = futures::stream::unfold(rx, |mut rx| async move {
-        loop {
-            match rx.recv().await {
-                Ok(ev) => {
-                    let frame = Event::default()
-                        .event("save")
-                        .json_data(&ev)
-                        .unwrap_or_else(|_| Event::default().comment("encode error"));
-                    return Some((Ok(frame), rx));
-                }
-                // Buffer overflow: we dropped some events. Tell the client to
-                // reconcile from scratch rather than trust the stream.
-                Err(broadcast::error::RecvError::Lagged(_)) => {
-                    return Some((Ok(Event::default().event("lagged").data("")), rx));
-                }
-                // Sender gone (shouldn't happen while ServerState is alive) —
-                // end the stream so the client reconnects.
-                Err(broadcast::error::RecvError::Closed) => return None,
+        match rx.recv().await {
+            Ok(ev) => {
+                let frame = Event::default()
+                    .event("save")
+                    .json_data(&ev)
+                    .unwrap_or_else(|_| Event::default().comment("encode error"));
+                Some((Ok(frame), rx))
             }
+            // Buffer overflow: we dropped some events. Tell the client to
+            // reconcile from scratch rather than trust the stream.
+            Err(broadcast::error::RecvError::Lagged(_)) => {
+                Some((Ok(Event::default().event("lagged").data("")), rx))
+            }
+            // Sender gone (shouldn't happen while ServerState is alive) —
+            // end the stream so the client reconnects.
+            Err(broadcast::error::RecvError::Closed) => None,
         }
     });
     Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(25)).text(""))
