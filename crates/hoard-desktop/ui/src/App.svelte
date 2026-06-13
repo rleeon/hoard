@@ -16,6 +16,8 @@
     RefreshCw,
     Boxes,
     ChevronDown,
+    MonitorPlay,
+    Lock,
   } from "lucide-svelte";
   import { _ } from "svelte-i18n";
   import { formatBytes } from "./lib/utils/format";
@@ -33,6 +35,8 @@
   import LogsRoute from "./routes/Logs.svelte";
   import DiagnosticsRoute from "./routes/Diagnostics.svelte";
   import AccountRoute from "./routes/Account.svelte";
+  import HoardScreenRoute from "./routes/HoardScreen.svelte";
+  import HoardWrappedRoute from "./routes/HoardWrapped.svelte";
 
   import Toaster from "./lib/components/Toaster.svelte";
   import UpdateConfirmModal from "./lib/components/UpdateConfirmModal.svelte";
@@ -55,6 +59,8 @@
     initCloudSessionWatch,
     openUpgradePage,
     planLabel,
+    premiumUnlocked,
+    trialDaysLeft,
   } from "./lib/stores/cloud";
   import {
     automaticState,
@@ -98,6 +104,10 @@
     "/logs": LogsRoute,
     "/diagnostics": DiagnosticsRoute,
     "/account": AccountRoute,
+    // Premium feature placeholders (gated in the sidebar; the routes
+    // themselves are reachable so an unlocked user lands on the empty state).
+    "/hoard-screen": HoardScreenRoute,
+    "/hoard-wrapped": HoardWrappedRoute,
   };
 
   let booted = $state(false);
@@ -427,7 +437,15 @@
     icon: typeof Home;
     children: NavLink[];
   };
-  type NavEntry = NavLink | NavGroup;
+  // A premium feature (Hoard-Screen / Hoard-Wrapped): navigable when
+  // `$premiumUnlocked`, otherwise rendered locked with an upgrade CTA.
+  type NavFeature = {
+    kind: "feature";
+    labelKey: string;
+    icon: typeof Home;
+    route: string;
+  };
+  type NavEntry = NavLink | NavGroup | NavFeature;
 
   // Collapsed/expanded state for the Hoard-Saves group, remembered across
   // sessions. Defaults to open on first run or when storage is unreadable.
@@ -445,6 +463,17 @@
       localStorage.setItem("hoard-nav-saves-open", savesOpen ? "1" : "0");
     } catch {
       /* private mode / storage disabled — toggle still works for the session */
+    }
+  }
+
+  // Click on a locked premium item. A signed-in cloud user is sent to the
+  // pricing page to upgrade; a self-hosted / signed-out user is sent to
+  // /account to sign in to Hoard Cloud first (no plan to upgrade yet).
+  function openPremiumUpsell() {
+    if ($cloud.account) {
+      void openUpgradePage("pro");
+    } else {
+      push("/account");
     }
   }
 
@@ -468,6 +497,8 @@
         { kind: "link", labelKey: "nav.map", icon: MapIcon, route: "/map" },
       ],
     },
+    { kind: "feature", labelKey: "nav.hoard_screen", icon: MonitorPlay, route: "/hoard-screen" },
+    { kind: "feature", labelKey: "nav.hoard_wrapped", icon: Sparkles, route: "/hoard-wrapped" },
     { kind: "link", labelKey: "nav.settings", icon: SettingsIcon, route: "/settings" },
   ]);
 
@@ -483,6 +514,8 @@
     "/logs",
     "/diagnostics",
     "/account",
+    "/hoard-screen",
+    "/hoard-wrapped",
   ];
   const isAppRoute = $derived(
     APP_ROUTE_PREFIXES.some((p) => $location.startsWith(p)),
@@ -593,6 +626,42 @@
         {#each navEntries as entry (entry.kind === "group" ? entry.id : entry.route)}
           {#if entry.kind === "link"}
             {@render navLink(entry, false)}
+          {:else if entry.kind === "feature"}
+            {@const active = $location === entry.route}
+            {#if $premiumUnlocked}
+              <button
+                type="button"
+                aria-label={$_(entry.labelKey)}
+                aria-current={active ? "page" : undefined}
+                onclick={() => push(entry.route)}
+                title={$cloud.account?.plan === "free" && $trialDaysLeft > 0
+                  ? $_("nav.trial_days_left", { values: { n: $trialDaysLeft } })
+                  : undefined}
+                class="group flex w-full items-center gap-3 rounded-md border-l-2 px-3 py-2 text-sm transition-colors duration-150
+                  {active
+                  ? 'border-emerald-500 bg-zinc-800/50 text-zinc-50'
+                  : 'border-transparent text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100'}"
+              >
+                <entry.icon size={18} />
+                <span>{$_(entry.labelKey)}</span>
+              </button>
+            {:else}
+              <!-- Locked: neutral/zinc styling (not amber) + lock glyph. Click
+                   routes to upgrade/sign-in instead of the gated view. -->
+              <button
+                type="button"
+                aria-label={$_(entry.labelKey)}
+                title={$cloud.account
+                  ? $_("nav.locked_pro")
+                  : $_("nav.locked_signin")}
+                onclick={openPremiumUpsell}
+                class="group flex w-full items-center gap-3 rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-zinc-500 transition-colors duration-150 hover:bg-zinc-800/40 hover:text-zinc-300"
+              >
+                <entry.icon size={18} class="opacity-70" />
+                <span class="flex-1 text-left">{$_(entry.labelKey)}</span>
+                <Lock size={14} class="shrink-0 opacity-70" />
+              </button>
+            {/if}
           {:else}
             <!-- A child on the active route forces the group open even if the
                  user had collapsed it, so the highlight is never hidden. -->

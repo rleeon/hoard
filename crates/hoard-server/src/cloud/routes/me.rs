@@ -27,6 +27,9 @@ pub struct Me {
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
     pub plan: String,
+    /// RFC3339 — account creation time. The desktop derives the
+    /// "premium features unlocked for the first 30 days" trial from this.
+    pub created_at: Option<String>,
     pub subscription_status: Option<String>,
     pub renews_at: Option<String>,
     pub cancel_at: Option<String>,
@@ -61,8 +64,16 @@ pub async fn get_me(
     // client that sends no fingerprint (older builds) leaves the count alone.
     register_device(&state, &user, &headers).await?;
 
-    let row: (String, Option<String>, Option<String>, String, i64, i32) = sqlx::query_as(
-        "SELECT email, display_name, avatar_url, plan, storage_bytes, devices_count
+    let row: (
+        String,
+        Option<String>,
+        Option<String>,
+        String,
+        i64,
+        i32,
+        time::OffsetDateTime,
+    ) = sqlx::query_as(
+        "SELECT email, display_name, avatar_url, plan, storage_bytes, devices_count, created_at
            FROM profiles WHERE user_id = $1",
     )
     .bind(user.user_id)
@@ -102,6 +113,7 @@ pub async fn get_me(
         display_name: row.1,
         avatar_url: row.2,
         plan: plan.as_str().to_string(),
+        created_at: Some(format_dt(row.6)),
         subscription_status: sub.as_ref().map(|s| s.0.clone()),
         renews_at: sub.as_ref().and_then(|s| s.1).map(format_dt),
         cancel_at: sub.as_ref().and_then(|s| s.2).map(format_dt),

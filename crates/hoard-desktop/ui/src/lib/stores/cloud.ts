@@ -23,6 +23,9 @@ export type CloudAccount = {
   avatar_url: string | null;
   /** "free" | "pro" */
   plan: string;
+  /** RFC3339 — account creation time. Drives the 30-day premium trial
+   *  (Hoard-Screen / Hoard-Wrapped). `null` on older servers / self-hosted. */
+  created_at: string | null;
   storage_used_bytes: number;
   /** `-1` = unlimited. */
   storage_limit_bytes: number;
@@ -73,6 +76,34 @@ export const cloudPlan: Readable<string | null> = derived(
   internal,
   ($s) => $s.account?.plan ?? null,
 );
+
+/** Length of the premium free trial granted to every new account. */
+const TRIAL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Hoard-Screen / Hoard-Wrapped entitlement. Unlocked on paid plans, or
+ *  during the first 30 days after the account was created (trial, free
+ *  included). A self-hosted-only user (no cloud account) gets `false` and
+ *  sees the items locked behind a "sign in to Hoard Cloud" prompt. */
+export const premiumUnlocked: Readable<boolean> = derived(internal, ($s) => {
+  const plan = $s.account?.plan;
+  if (plan === "pro" || plan === "proplus") return true;
+  const created = $s.account?.created_at;
+  if (!created) return false;
+  const ms = Date.parse(created);
+  return Number.isFinite(ms) && Date.now() < ms + TRIAL_MS;
+});
+
+/** Whole days left in the 30-day trial (rounded up), or 0 once it has lapsed
+ *  or when there's no cloud account. Drives the sidebar tooltip on a free
+ *  plan that's still inside the trial window. */
+export const trialDaysLeft: Readable<number> = derived(internal, ($s) => {
+  const created = $s.account?.created_at;
+  if (!created) return 0;
+  const ms = Date.parse(created);
+  if (!Number.isFinite(ms)) return 0;
+  const remaining = ms + TRIAL_MS - Date.now();
+  return remaining > 0 ? Math.ceil(remaining / (24 * 60 * 60 * 1000)) : 0;
+});
 
 /** One-shot load at app boot. Pulls the cached account from Rust. */
 export async function hydrateCloud(): Promise<void> {
