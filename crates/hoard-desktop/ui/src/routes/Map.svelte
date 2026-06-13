@@ -78,9 +78,9 @@
   // Used only to fetch cover art; absence just means we fall back to the
   // initial-letter orb.
   let appIdBySlug = new Map<string, number>();
-  // appid → lazily-loaded cover <img>. `ready` flips on load; the rAF loop
-  // is always running so the cover pops in on the next frame. A null entry
-  // marks a permanent failure (offline / 404) so we don't retry every frame.
+  // appid → lazily-loaded cover <img>. `ready` flips on load; we request a
+  // one-off repaint so the cover pops in even if the loop is asleep. A null
+  // entry marks a permanent failure (offline / 404) so we don't retry.
   const coverCache = new Map<number, { img: HTMLImageElement; ready: boolean } | null>();
 
   function getCover(appId: number): HTMLImageElement | null {
@@ -98,7 +98,7 @@
       }
       entry.img.onload = () => {
         entry.ready = true;
-        wake(); // the canvas may be asleep; repaint so the cover pops in
+        requestDraw(); // the canvas may be asleep; repaint so the cover pops in
       };
       entry.img.onerror = () => coverCache.set(appId, null);
       entry.img.src = url;
@@ -292,6 +292,7 @@
 
   function wake() {
     settled = false;
+    requestDraw();
   }
 
   function clampMag(ax: number, ay: number, max: number): [number, number] {
@@ -513,6 +514,7 @@
     scale = clamp(Math.min(cssW / w, cssH / h) * 0.94, 0.2, 3.6);
     tx = cssW / 2 - ((minX + maxX) / 2) * scale;
     ty = cssH / 2 - ((minY + maxY) / 2) * scale;
+    requestDraw();
   }
 
   // ---- rendering ----------------------------------------------------------
@@ -673,26 +675,67 @@
 
   let raf = 0;
   let running = false;
+  // A pending one-off repaint asked for by a visual-only change (hover,
+  // selection, pan, zoom, a cover finishing loading). Lets the loop paint a
+  // single frame and go back to sleep without re-running the physics.
+  let needsDraw = false;
 
-  function loop() {
-    if (!running) return;
-    if (!document.hidden) {
-      // Only simulate while awake. Once `step()` reports everything below
-      // the sleep threshold we stop integrating (but keep drawing once more
-      // so the final rest frame is painted). Dragging keeps it awake.
-      if (!frozen && !reduceMotion && (!settled || draggedOrb || draggedNode)) {
-        const peak = step();
-        if (peak < SLEEP_EPS && !draggedOrb && !draggedNode) settled = true;
-      }
-      draw();
-    }
+  // Start the rAF loop if it isn't already spinning and the tab is visible.
+  function ensureLoop() {
+    if (running || document.hidden) return;
+    running = true;
     raf = requestAnimationFrame(loop);
   }
 
-  function startLoop() {
-    if (running) return;
-    running = true;
-    raf = requestAnimationFrame(loop);
+  // Ask for a repaint on the next frame. Cheap and idempotent — the canonical
+  // way to refresh the canvas now that the loop sleeps when nothing moves.
+  function requestDraw() {
+    needsDraw = true;
+    ensureLoop();
+  }
+
+  function hasMotion(): boolean {
+    return !frozen && !reduceMotion && (!settled || !!draggedOrb || !!draggedNode);
+  }
+
+  function loop() {
+    if (!running) return;
+    // Tab hidden mid-flight: park the loop. `visibilitychange` restarts it,
+    // so we never burn rAF frames painting a canvas nobody can see.
+    if (document.hidden) {
+      running = false;
+      raf = 0;
+      return;
+    }
+    if (hasMotion()) {
+      const peak = step();
+      if (peak < SLEEP_EPS && !draggedOrb && !draggedNode) settled = true;
+      draw();
+    } else if (needsDraw) {
+      draw();
+    }
+    needsDraw = false;
+    // Keep the loop alive only while the physics still has work to do.
+    // Otherwise stop entirely — `wake()` / `requestDraw()` restart us — so an
+    // idle Map costs zero CPU instead of redrawing 60×/s forever.
+    if (hasMotion()) {
+      raf = requestAnimationFrame(loop);
+    } else {
+      running = false;
+      raf = 0;
+    }
+  }
+
+  // Pause/resume with tab visibility. Hidden → stop the loop outright; visible
+  // again → repaint and let any in-flight motion finish settling.
+  function onVisibility() {
+    if (document.hidden) {
+      running = false;
+      cancelAnimationFrame(raf);
+      raf = 0;
+    } else {
+      wake();
+    }
   }
 
   // ---- interaction --------------------------------------------------------
@@ -755,6 +798,7 @@
     tx = mx - (mx - tx) * (ns / scale);
     ty = my - (my - ty) * (ns / scale);
     scale = ns;
+    requestDraw();
   }
 
   function onPointerDown(e: PointerEvent) {
@@ -843,10 +887,19 @@
       ty += dy;
       startX = e.clientX;
       startY = e.clientY;
+      requestDraw();
       return;
     }
     const hit = hitNode(px, py);
-    hovered = hit ? { branch: hit.branch, node: hit.node } : null;
+    const next = hit ? { branch: hit.branch, node: hit.node } : null;
+    // Only repaint when the hovered node actually changes — a mousemove over
+    // empty space or the same node shouldn't wake the loop.
+    if ((next?.node ?? null) !== (hovered?.node ?? null)) {
+      hovered = next;
+      requestDraw();
+    } else {
+      hovered = next;
+    }
   }
 
   function onPointerUp(e: PointerEvent) {
@@ -871,6 +924,7 @@
     if (node) {
       selected = node;
       selectedOrb = null;
+      requestDraw(); // the selected node is drawn larger
       return;
     }
     const orb = hitOrb(px, py);
@@ -885,6 +939,7 @@
       // the whole partida set).
       selected = null;
       selectedOrb = orb;
+      requestDraw();
     }
   }
 
@@ -948,7 +1003,7 @@
       resize();
       ro = new ResizeObserver(() => {
         resize();
-        draw();
+        requestDraw();
       });
       ro.observe(canvasEl);
       // pre-relax so the first paint is already tidy
@@ -957,14 +1012,18 @@
         for (let i = 0; i < settle; i++) step();
         frameAll();
       }
-      startLoop();
+      // Kick the loop: with motion left to settle it runs until at rest, then
+      // sleeps; with reduced motion it paints once and stops.
+      requestDraw();
     });
+    document.addEventListener("visibilitychange", onVisibility);
   });
 
   onDestroy(() => {
     running = false;
     cancelAnimationFrame(raf);
     ro?.disconnect();
+    document.removeEventListener("visibilitychange", onVisibility);
   });
 
   function totalVersions(o: Orb): number {
