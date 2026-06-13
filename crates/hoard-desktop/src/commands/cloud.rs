@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::commands::cloud_pull;
 use crate::state::AppState;
@@ -455,7 +455,10 @@ pub fn cloud_is_logged_in(state: State<'_, AppState>) -> bool {
 /// Re-fetch `/v1/me`. Updates the in-memory cache and the persisted
 /// session snapshot. Returns the fresh account.
 #[tauri::command]
-pub async fn cloud_refresh_account(state: State<'_, AppState>) -> Result<CloudAccount, String> {
+pub async fn cloud_refresh_account(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<CloudAccount, String> {
     let Some(creds) = load_creds().map_err(|e| e.to_string())? else {
         return Err("Not signed in to Hoard Cloud.".into());
     };
@@ -465,7 +468,18 @@ pub async fn cloud_refresh_account(state: State<'_, AppState>) -> Result<CloudAc
     let (me, creds) = match fetch_me_raw(&creds.server_url, &creds.access_token).await {
         Ok(me) => (me, creds),
         Err(MeError::Unauthorized) => {
-            let fresh = refresh_active_session().await.map_err(prettify)?;
+            let fresh = match refresh_active_session().await {
+                Ok(f) => f,
+                Err(e) => {
+                    // Terminal stale → sign out now so the "Refrescar" button
+                    // gives instant, honest feedback instead of waiting for the
+                    // poller to notice within its interval.
+                    if is_session_expired(&e) {
+                        handle_session_expired(&app);
+                    }
+                    return Err(prettify(e));
+                }
+            };
             let me = fetch_me(&fresh.server_url, &fresh.access_token)
                 .await
                 .map_err(prettify)?;
@@ -496,6 +510,37 @@ pub fn cloud_logout(app: AppHandle, state: State<'_, AppState>) -> Result<(), St
     cloud_pull::stop(&app);
     crate::commands::cloud_realtime::stop(&app);
     Ok(())
+}
+
+/// Terminal session-expiry detector. `true` when `e` carries
+/// [`RefreshTokenStale`]: Supabase revoked the whole refresh-token family
+/// (reuse-detection / not-found) and no fresh token survived on disk, so the
+/// session is irrecoverable — retrying only spins. Loops that drive a token
+/// refresh use this to tear down cleanly instead of looping forever on a
+/// misleading "server unavailable" dot.
+pub fn is_session_expired(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<RefreshTokenStale>().is_some()
+}
+
+/// Tear down a terminally-expired cloud session: clear the stored creds and the
+/// in-memory account, stop the pull poller and the Realtime subscriber, and
+/// emit `agent://session-expired` so the UI swaps the looping offline dot for a
+/// clear "sign in again" prompt. Idempotent — safe to call from whichever loop
+/// first learns the refresh token is dead (poller, Realtime, or the manual
+/// account refresh).
+pub fn handle_session_expired(app: &AppHandle) {
+    if let Err(e) = clear_creds() {
+        tracing::warn!(error = %e, "cloud: clearing creds during session-expiry teardown failed");
+    }
+    if let Some(state) = app.try_state::<AppState>() {
+        *state.cloud_account.lock().unwrap() = None;
+    }
+    cloud_pull::stop(app);
+    crate::commands::cloud_realtime::stop(app);
+    let _ = app.emit("agent://session-expired", ());
+    tracing::info!(
+        "cloud: session expired (refresh token revoked) — signed out locally, awaiting re-login"
+    );
 }
 
 /// Kick off a server-side export job. Returns the job id; the frontend can

@@ -336,3 +336,11 @@ export function resetLive() {
   cloudLoop.set({ status: "unknown", last_ok_at: null, retry_in: null });
   activityFeed.set([]);
 }
+
+/** Reset only the cloud-loop dot to its neutral baseline, leaving the local
+ *  watcher state and the activity feed intact. Used on terminal session expiry,
+ *  where the cloud half is signed out but the local agent keeps watching — so a
+ *  full `resetLive()` would wrongly blank the watcher dot. */
+export function resetCloudLoop() {
+  cloudLoop.set({ status: "unknown", last_ok_at: null, retry_in: null });
+}

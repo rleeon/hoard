@@ -259,7 +259,11 @@ pub(crate) fn pretty_error(err: anyhow::Error) -> String {
     if let Some(api) = err.downcast_ref::<ApiError>() {
         return match api {
             ApiError::Unauthorized => {
-                "The server didn't accept that access key. Double-check it and try again.".into()
+                // Shared by self-hosted (bearer token) and cloud (expired
+                // Supabase JWT). The old copy assumed a self-hosted "access
+                // key", which read as nonsense to a cloud user whose session had
+                // simply expired — so keep it neutral and cover both.
+                "The server rejected your session. Sign in again — or, on a self-hosted server, double-check your access key.".into()
             }
             ApiError::Forbidden => {
                 "Your access key is valid but the server isn't letting it do that.".into()

@@ -38,7 +38,11 @@
   import LiveStatus from "./lib/components/LiveStatus.svelte";
   import Logo from "./lib/components/Logo.svelte";
   import ActivityFeed from "./lib/components/ActivityFeed.svelte";
-  import { subscribeLive, unsubscribeLive } from "./lib/stores/live";
+  import {
+    subscribeLive,
+    unsubscribeLive,
+    resetCloudLoop,
+  } from "./lib/stores/live";
   import { APP_VERSION } from "./lib/version";
   import { errorDialog, dismissError, showError } from "./lib/stores/error_dialog";
   import { auth, hydrateAuth, signOut } from "./lib/stores/auth";
@@ -46,6 +50,7 @@
     cloud,
     hydrateCloud,
     initCloudDeepLink,
+    initCloudSessionWatch,
     openUpgradePage,
     planLabel,
   } from "./lib/stores/cloud";
@@ -238,6 +243,16 @@
         toastInfo($_("account.signin_failed", { values: { error: msg } }));
       },
     );
+
+    // Terminal cloud session expiry (Supabase revoked the refresh token). The
+    // Rust side already cleared the session + stopped the pollers; here we calm
+    // the cloud dot, tell the user, and — if they're cloud-only — route them to
+    // the welcome screen so they can sign in again. A self-hosted user stays put.
+    initCloudSessionWatch(() => {
+      resetCloudLoop();
+      toastInfo($_("account.session_expired"));
+      if (!$auth.user) replace("/welcome");
+    });
 
     // Register the Tauri listeners exactly once for the lifetime of this
     // app instance. Modo Automático's detect/track/sweep work runs entirely in

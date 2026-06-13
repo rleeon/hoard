@@ -692,6 +692,18 @@ pub async fn create(
         "snapshot created"
     );
 
+    // Push the new version to any of this user's other devices listening on
+    // `/v1/events`, so they pull within ~1s instead of waiting for the agent's
+    // reconciliation sweep. No-op when nobody is connected (incl. cloud, which
+    // never has subscribers here).
+    state.events.publish(
+        user.user_id,
+        crate::routes::events::SaveEvent {
+            save_id: save_id.clone(),
+            version_num: new_version,
+        },
+    );
+
     let now = time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_default();

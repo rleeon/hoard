@@ -18,4 +18,5 @@ pub mod library;
 pub mod loopback;
 pub mod misc;
 pub mod prefs;
+pub mod selfhosted_events;
 pub mod updates;

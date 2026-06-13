@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.4] — 2026-06-13
+
+### Added
+- **Push instantáneo entre dispositivos.** Cuando otro dispositivo sube un
+  save, el resto se entera en ~1 s en vez de esperar al sondeo. En Hoard Cloud
+  llega por Supabase Realtime; en self-hosted se añade un stream SSE
+  `GET /v1/events` que la ruta de commit publica al instante (requiere
+  desactivar el buffering del proxy inverso para esa ruta — ver nota en
+  `events.rs`). El sondeo periódico queda como red de seguridad.
+
+### Changed
+- **El sondeo cloud por defecto pasa de 10 s a 60 s.** Con el push instantáneo
+  ya no hace falta preguntar tan seguido; menos peticiones al servidor sin
+  perder reactividad. Ajustable en Ajustes.
+- **Tras reconciliar un conflicto, un dispositivo que solo iba atrasado ya no
+  re-sube una versión idéntica a la cabeza.** Antes minteaba una versión
+  redundante (cabeza+1) y propagaba un push no-op a todos los demás; ahora
+  hace *settle* sin subir cuando el árbol fusionado coincide con la cabeza.
+  Solo vuelve a subir si el merge dejó contenido local real (archivo más nuevo
+  o exclusivo del dispositivo), para no perder datos.
+
+### Fixed
+- **El backup automático ya no sobrescribe cuando debería restaurar.** El
+  backup automático mandaba `base_version` vacío, saltándose el guard
+  fast-forward del servidor: si otro dispositivo había avanzado el save, lo
+  pisaba en vez de fusionar. Ahora manda la versión base real; el servidor
+  responde 409 *non-fast-forward* y el cliente reconcilia (pull + merge) antes
+  de seguir. La reconciliación se dispara solo ante ese 409 concreto, no ante
+  cualquier conflicto.
+- **Una sesión de Hoard Cloud caducada cierra sesión limpiamente.** Cuando el
+  refresh token queda revocado/rotado sin recuperación, en vez de un bucle
+  infinito de reintentos la app cierra sesión, avisa con un toast y vuelve al
+  login. Los fallos transitorios (red, 5xx) conservan la sesión.
+
 ## [2.3.3] — 2026-06-11
 
 ### Fixed

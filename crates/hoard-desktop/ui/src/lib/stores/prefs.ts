@@ -44,7 +44,7 @@ export async function hydratePrefs(): Promise<void> {
       automatic_backup_interval_secs: 3600,
       conflict_retention_days: 14,
       cloud_savings_mode: false,
-      cloud_poll_interval_secs: 10,
+      cloud_poll_interval_secs: 60,
       live_activity_visible: true,
       data_saving: 0.3,
     });

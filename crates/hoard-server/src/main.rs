@@ -15,8 +15,8 @@ use tracing::info;
 use hoard_server::auth::require_auth;
 use hoard_server::cleanup;
 use hoard_server::routes::{
-    admin as admin_routes, auth as auth_routes, games as game_routes, health, logs as log_routes,
-    saves as save_routes, snapshots as snap_routes,
+    admin as admin_routes, auth as auth_routes, events as event_routes, games as game_routes,
+    health, logs as log_routes, saves as save_routes, snapshots as snap_routes,
 };
 
 #[derive(Parser)]
@@ -102,11 +102,15 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
         pool: pool.clone(),
         config: cfg.clone(),
         start_time: Instant::now(),
+        events: Default::default(),
     });
 
     // Routes that require auth
     let authed = Router::new()
         .route("/v1/auth/whoami", get(auth_routes::whoami))
+        // Server→app push: long-lived SSE stream of this user's save changes
+        // so other devices pull within ~1s instead of waiting for the sweep.
+        .route("/v1/events", get(event_routes::stream))
         // Client diagnostic-log ingest. Smaller body cap than snapshots —
         // applied per-route so it overrides the large snapshot limit below.
         .route(

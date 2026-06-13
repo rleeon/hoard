@@ -339,6 +339,13 @@ enum AgentCommand {
         /// skips re-downloading the same version next tick. `None` when the
         /// attempt didn't reach a known version (404, transient failure).
         synced_version: Option<i64>,
+        /// Post-merge set signature to adopt as the slot's `last_set_hash`.
+        /// Only `Some` when the merged tree equals head exactly (no local
+        /// divergence): adopting it makes the fs events the merge triggered
+        /// settle as a `Skipped` no-op instead of firing a redundant upload of
+        /// content already on the server. `None` leaves `last_set_hash` alone
+        /// so a genuinely-diverged tree still uploads.
+        post_restore_set_hash: Option<String>,
     },
     /// Live-toggle `config.auto_restore` so the user's Settings change
     /// reaches the running agent without a restart. When flipped from
@@ -366,6 +373,14 @@ enum AgentCommand {
     /// rastreado deja por fin rastro, y el siguiente escaneo lo asciende a
     /// `High` y lo auto-rastrea. Reemplaza el set entero en cada llamada.
     SetProbeCandidates(Vec<PathBuf>),
+    /// Latest known cloud version per save id, as last seen by the `cloud_pull`
+    /// poller's manifest. The poller already fetches the full manifest once per
+    /// tick, so it hands the map to the agent and the reconciliation sweep can
+    /// version-gate locally instead of each `run_auto_restore` re-fetching the
+    /// same manifest (cloud) / hitting `get_save` per candidate (the old N+1).
+    /// Replaces the whole map each call. Only populated on cloud; self-hosted
+    /// and headless CLI leave it empty and fall back to the network fetch.
+    SetCloudVersions(HashMap<String, i64>),
     QueryStatus(oneshot::Sender<Vec<AgentSlotStatus>>),
     Shutdown,
 }
@@ -458,6 +473,17 @@ impl AgentHandle {
     /// this after each automatic scan with the detected-but-untracked dirs.
     pub async fn set_probe_candidates(&self, dirs: Vec<PathBuf>) -> Result<()> {
         self.tx.send(AgentCommand::SetProbeCandidates(dirs)).await?;
+        Ok(())
+    }
+
+    /// Feed the agent the latest cloud version per save id, as observed by the
+    /// `cloud_pull` poller's manifest. Lets the reconciliation sweep skip the
+    /// per-save metadata fetch it would otherwise make. See
+    /// [`AgentCommand::SetCloudVersions`].
+    pub async fn set_cloud_versions(&self, versions: HashMap<String, i64>) -> Result<()> {
+        self.tx
+            .send(AgentCommand::SetCloudVersions(versions))
+            .await?;
         Ok(())
     }
 }
@@ -594,6 +620,13 @@ async fn run_agent(
 ) {
     let mut slots: HashMap<String, SaveSlot> = HashMap::new();
 
+    // Latest cloud version per save id, fed by the `cloud_pull` poller via
+    // `SetCloudVersions`. Lets the reconciliation sweep version-gate locally
+    // instead of having each `run_auto_restore` re-fetch the manifest. Empty
+    // on self-hosted / headless CLI (no poller), where we fall back to the
+    // per-save network fetch.
+    let mut latest_versions: HashMap<String, i64> = HashMap::new();
+
     // Channel used by every fs watcher — debounced events all funnel here
     // and we route them by path. mpsc::unbounded would be fine since the
     // debouncer already throttles, but we cap at 256 to be defensive.
@@ -656,7 +689,7 @@ async fn run_agent(
                             arm_watcher(slot, &fs_tx);
                         }
                     }
-                    Some(AgentCommand::AutoRestoreFinished { id, not_on_server, synced_version }) => {
+                    Some(AgentCommand::AutoRestoreFinished { id, not_on_server, synced_version, post_restore_set_hash }) => {
                         // The background restore task signalled completion
                         // (success or failure). Clear the in-flight flag so
                         // the reconciliation sweep can try again once the
@@ -669,6 +702,12 @@ async fn run_agent(
                             // nothing newer has landed from another device.
                             if synced_version.is_some() {
                                 slot.known_version = synced_version;
+                            }
+                            // Adopt the post-merge signature when the tree now
+                            // equals head — stops the merge's own fs writes from
+                            // triggering a redundant re-upload of head's content.
+                            if let Some(h) = post_restore_set_hash {
+                                slot.last_set_hash = Some(h);
                             }
                             // …unless the save simply isn't on the server
                             // (404). Retrying every 60s can't conjure a
@@ -694,7 +733,7 @@ async fn run_agent(
                         // now. Don't wait for the next poll tick.
                         if !was && enabled {
                             sweep_for_auto_restore(
-                                &mut slots, &api, &events_tx, &cmd_tx, &config,
+                                &mut slots, &api, &events_tx, &cmd_tx, &config, &latest_versions,
                             );
                         }
                     }
@@ -710,7 +749,7 @@ async fn run_agent(
                         // keeps it free when already current.
                         if !was && enabled {
                             sweep_for_auto_restore(
-                                &mut slots, &api, &events_tx, &cmd_tx, &config,
+                                &mut slots, &api, &events_tx, &cmd_tx, &config, &latest_versions,
                             );
                         }
                     }
@@ -750,9 +789,20 @@ async fn run_agent(
                                     config.conflict_root.clone(),
                                     config.conflict_retention_days,
                                     known_version,
+                                    // Authoritative path: the poller already
+                                    // confirmed a bump, so fetch the real latest
+                                    // rather than trusting a possibly-stale cache.
+                                    None,
                                 );
                             }
                         }
+                    }
+                    Some(AgentCommand::SetCloudVersions(map)) => {
+                        tracing::debug!(
+                            count = map.len(),
+                            "agent: cloud version cache updated from poller"
+                        );
+                        latest_versions = map;
                     }
                     Some(AgentCommand::SetProbeCandidates(dirs)) => {
                         // Reemplaza el set conservando los baselines de los que
@@ -926,7 +976,7 @@ async fn run_agent(
                 // effective preference, so we always call (a backup-only save
                 // is filtered out there, not here).
                 sweep_for_auto_restore(
-                    &mut slots, &api, &events_tx, &cmd_tx, &config,
+                    &mut slots, &api, &events_tx, &cmd_tx, &config, &latest_versions,
                 );
 
                 // DETECCIÓN (fase 3, ADR 0020): sonda de candidatos. `sys` ya
@@ -1056,6 +1106,8 @@ fn handle_add(
                 // Fresh add: no known baseline yet, so this first pull downloads
                 // once to establish it.
                 None,
+                // No poller cache to consult on a brand-new add either.
+                None,
             );
         }
     }
@@ -1115,6 +1167,11 @@ fn spawn_auto_restore(
     conflict_root: Option<PathBuf>,
     conflict_retention_days: u32,
     known_version: Option<i64>,
+    // Latest cloud version the `cloud_pull` poller last reported for this save,
+    // when known. Lets `run_auto_restore` version-gate without its own metadata
+    // fetch. `None` falls back to the per-save network call (self-hosted,
+    // headless CLI, fresh add, or the authoritative force/barrier paths).
+    cached_latest: Option<i64>,
 ) {
     tokio::spawn(async move {
         tracing::debug!(
@@ -1126,12 +1183,18 @@ fn spawn_auto_restore(
         let retention = Duration::from_secs(u64::from(conflict_retention_days) * 86_400);
         let mut not_on_server = false;
         let mut synced_version: Option<i64> = None;
+        // Adopted as the slot's `last_set_hash` only when the merge left the
+        // tree equal to head (no divergence), so the writes the merge made
+        // don't bounce back as a redundant upload. Stays `None` on a diverged
+        // tree so the genuinely-new local content still uploads.
+        let mut post_restore_set_hash: Option<String> = None;
         match run_auto_restore(
             &api,
             &save,
             conflict_root.as_deref(),
             retention,
             known_version,
+            cached_latest,
         )
         .await
         {
@@ -1139,6 +1202,11 @@ fn spawn_auto_restore(
                 // We downloaded and diffed against this version; remember it so
                 // the next sweep can short-circuit.
                 synced_version = Some(outcome.version_num);
+                // When the merged tree equals head, adopt its signature so the
+                // restore's own writes don't trigger a redundant re-upload.
+                if !outcome.local_diverged {
+                    post_restore_set_hash = outcome.disk_set_hash.clone();
+                }
                 let touched = outcome.files_restored + outcome.conflicts_backed_up;
                 if touched > 0 {
                     tracing::info!(
@@ -1233,6 +1301,7 @@ fn spawn_auto_restore(
                 id: save.save_id.clone(),
                 not_on_server,
                 synced_version,
+                post_restore_set_hash,
             })
             .await;
     });
@@ -1273,6 +1342,7 @@ fn sweep_for_auto_restore(
     events_tx: &mpsc::Sender<AgentEvent>,
     cmd_tx: &mpsc::Sender<AgentCommand>,
     config: &AgentConfig,
+    latest_versions: &HashMap<String, i64>,
 ) {
     let now = TokioInstant::now();
     // Collect candidate save_ids first to keep the borrow checker happy
@@ -1362,6 +1432,7 @@ fn sweep_for_auto_restore(
 
     for (id, save) in candidates {
         let known_version = slots.get(&id).and_then(|s| s.known_version);
+        let cached_latest = latest_versions.get(&id).copied();
         if let Some(slot) = slots.get_mut(&id) {
             slot.restoring = true;
             slot.next_auto_restore_at = Some(now + Duration::from_secs(AUTO_RESTORE_COOLDOWN_SECS));
@@ -1378,6 +1449,7 @@ fn sweep_for_auto_restore(
             config.conflict_root.clone(),
             config.conflict_retention_days,
             known_version,
+            cached_latest,
         );
     }
 }
@@ -1504,6 +1576,20 @@ struct AutoRestoreOutcome {
     /// Total bytes copied. Sum of `restored` + `conflicts_resolved_remote`
     /// file sizes.
     bytes_extracted: u64,
+    /// True when the merged local tree is strictly ahead of the head we pulled:
+    /// some local file was newer (kept on mtime) or local-only. The conflict
+    /// reconcile path uses this to decide whether the follow-up upload carries
+    /// real data (`true` → push it, fast-forwarding from the new head) or would
+    /// just mint a redundant copy of head (`false` → settle without uploading).
+    local_diverged: bool,
+    /// Cheap set signature (`"<paths+sizes+mtimes>:"`, content half empty) of
+    /// the local folder *after* the merge, in the exact format
+    /// `upload_directory_checked` compares against. When the tree matches head
+    /// (`!local_diverged`) the caller stores this as the slot's
+    /// `last_set_hash`, so the fs events the merge itself triggered settle as a
+    /// no-op `Skipped` instead of firing a redundant upload. `None` if the
+    /// post-merge walk failed (best-effort; we just skip the optimisation).
+    disk_set_hash: Option<String>,
 }
 
 /// Per-file outcome accounting for diff-based restore. Returned by
@@ -1530,6 +1616,13 @@ pub(crate) struct RestoreStats {
     /// Total bytes copied across `restored` + `conflicts_resolved_remote`.
     /// Useful for the `SaveAutoRestored` event payload.
     pub bytes_restored: u64,
+    /// Files present locally (`target`) but absent from the remote snapshot
+    /// (`source`) — local-only content the merge left untouched. Together with
+    /// `conflicts_resolved_local` this tells the caller whether the merged tree
+    /// genuinely diverges from the head (a follow-up upload carries real data)
+    /// or matches it exactly (re-uploading would only mint a redundant no-op
+    /// version). Counted with the same recursive walk as the restore itself.
+    pub target_only: usize,
 }
 
 async fn run_auto_restore(
@@ -1538,16 +1631,28 @@ async fn run_auto_restore(
     conflict_root: Option<&Path>,
     retention: Duration,
     known_version: Option<i64>,
+    cached_latest: Option<i64>,
 ) -> Result<Option<AutoRestoreOutcome>> {
-    let latest = if api.is_cloud().await {
-        api.cloud_sync()
-            .await?
-            .saves
-            .into_iter()
-            .find(|e| e.save_id == save.save_id)
-            .map(|e| e.latest_version_num)
-    } else {
-        api.get_save(&save.save_id).await?.latest_version_num
+    // Prefer the version the cloud_pull poller already learned this tick: it
+    // fetched the whole manifest once, so reusing it spares us a per-save
+    // `cloud_sync`/`get_save` round-trip (the old sweep N+1). Only hit the
+    // network when the cache has no entry for this save — self-hosted, the
+    // headless CLI (no poller at all), a fresh add, or the authoritative
+    // force-restore / pre-launch barrier paths that pass `None` deliberately.
+    let latest = match cached_latest {
+        Some(v) => Some(v),
+        None => {
+            if api.is_cloud().await {
+                api.cloud_sync()
+                    .await?
+                    .saves
+                    .into_iter()
+                    .find(|e| e.save_id == save.save_id)
+                    .map(|e| e.latest_version_num)
+            } else {
+                api.get_save(&save.save_id).await?.latest_version_num
+            }
+        }
     };
     // Version gate: if we're already synced to the server's latest version,
     // there's nothing newer from another device to pull, so skip the expensive
@@ -1648,6 +1753,19 @@ async fn run_auto_restore(
         None
     };
 
+    // Did anything local survive the merge that head doesn't have? A newer
+    // local file (kept on mtime) or a local-only file means the merged tree is
+    // ahead of head; otherwise the tree now equals head exactly.
+    let local_diverged = stats.conflicts_resolved_local > 0 || stats.target_only > 0;
+    // Cheap (no byte reads) signature of the merged folder, in the composite
+    // `"<cheap>:"` shape `upload_directory_checked` splits on — the empty
+    // content half is fine because the fast-path skip only compares the cheap
+    // half. Best-effort: a walk error just drops the redundant-upload
+    // optimisation, never blocks the restore.
+    let disk_set_hash = crate::backup::walk_source(&save.local_path)
+        .ok()
+        .map(|files| format!("{}:", crate::backup::compute_set_signature(&files)));
+
     Ok(Some(AutoRestoreOutcome {
         version_num: version,
         files_restored: stats.restored as u64,
@@ -1655,6 +1773,8 @@ async fn run_auto_restore(
         conflicts_backed_up: stats.conflicts_backed_up as u64,
         conflict_dir: dir_used,
         bytes_extracted: stats.bytes_restored,
+        local_diverged,
+        disk_set_hash,
     }))
 }
 
@@ -1786,6 +1906,9 @@ pub(crate) async fn restore_files_into(
 ) -> Result<RestoreStats> {
     let mut stats = RestoreStats::default();
     let mut stack: Vec<PathBuf> = vec![source.to_path_buf()];
+    // Relative paths seen in the remote snapshot. Used after the merge to spot
+    // local-only files (in `target`, not in `source`) → `stats.target_only`.
+    let mut source_rels: HashSet<PathBuf> = HashSet::new();
 
     while let Some(dir) = stack.pop() {
         let mut entries = tokio::fs::read_dir(&dir)
@@ -1806,6 +1929,7 @@ pub(crate) async fn restore_files_into(
             let rel = path
                 .strip_prefix(source)
                 .with_context(|| format!("path {} not under source", path.display()))?;
+            source_rels.insert(rel.to_path_buf());
             let dest = target.join(rel);
             if dest.exists() {
                 if files_have_equal_bytes(&path, &dest).await? {
@@ -1880,6 +2004,37 @@ pub(crate) async fn restore_files_into(
                 .with_context(|| format!("copying {} → {}", path.display(), dest.display()))?;
             stats.restored += 1;
             stats.bytes_restored += copied;
+        }
+    }
+
+    // Second pass over `target`: count files the snapshot didn't carry. These
+    // are local-only and survive the merge, so the merged tree is strictly
+    // ahead of head and a follow-up upload is real, not redundant. We don't
+    // filter transient lock files here — a stray lock counting as divergence
+    // only costs one extra upload (the safe direction), never a skipped one.
+    let mut tstack: Vec<PathBuf> = vec![target.to_path_buf()];
+    while let Some(dir) = tstack.pop() {
+        let mut entries = match tokio::fs::read_dir(&dir).await {
+            Ok(e) => e,
+            // The folder can be empty or vanish mid-walk; treat as no extras.
+            Err(_) => continue,
+        };
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            let file_type = entry.file_type().await?;
+            if file_type.is_dir() {
+                tstack.push(path);
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+            let Ok(rel) = path.strip_prefix(target) else {
+                continue;
+            };
+            if !source_rels.contains(rel) {
+                stats.target_only += 1;
+            }
         }
     }
 
@@ -2056,6 +2211,14 @@ fn schedule_backup(
     let cmd_tx = cmd_tx.clone();
     let save = slot.save.clone();
     let prev_set_hash = slot.last_set_hash.clone();
+    // Fast-forward base for the upload: the version this device believes is the
+    // server head. Sending it lets the server reject (409 non-fast-forward) when
+    // another device advanced the save since we last synced, instead of burying
+    // their version under our stale content. Captured at schedule time; if it's
+    // gone stale by the time the debounced upload runs, the 409 path reconciles
+    // and retries with the fresh head. `None` only for a brand-new save the
+    // device has never synced (no head to fast-forward against yet).
+    let base_version = slot.known_version;
     let max_retries = config.max_retries;
     // Per-save preset can force backup-only (`Some(false)`) or force restore
     // (`Some(true)`) regardless of the global default.
@@ -2075,6 +2238,7 @@ fn schedule_backup(
             api,
             save,
             prev_set_hash,
+            base_version,
             events_tx,
             done_tx,
             cmd_tx,
@@ -2239,6 +2403,13 @@ async fn run_backup_with_retry(
     api: ApiClient,
     save: WatchedSave,
     prev_set_hash: Option<String>,
+    // The version this device believes is the server head. Sent as the upload's
+    // fast-forward base so the server rejects (409 non-fast-forward) when another
+    // device advanced the save since we last synced — see the `ApiError::Conflict`
+    // arm below, which reconciles and retries instead of burying their version.
+    // `None` only for a save never synced from this device (no head yet) and the
+    // empty/missing-folder restore path, which never uploads.
+    mut base_version: Option<i64>,
     events_tx: mpsc::Sender<AgentEvent>,
     done_tx: mpsc::Sender<BackupDone>,
     cmd_tx: mpsc::Sender<AgentCommand>,
@@ -2272,6 +2443,7 @@ async fn run_backup_with_retry(
                 // Empty/missing folder: we genuinely want the save back, so
                 // don't version-gate this pull.
                 None,
+                None,
             );
         } else {
             let _ = events_tx
@@ -2291,6 +2463,12 @@ async fn run_backup_with_retry(
     // window so a user genuinely parked over quota eventually surfaces.
     let mut throttle_waits = 0u32;
     const MAX_THROTTLE_WAITS: u32 = 5;
+    // Fast-forward conflicts (409) are reconciled-then-retried, not backed off.
+    // Cap the reconcile loop so a head that keeps advancing under us (a very
+    // chatty sibling device) can't spin forever — after this many we surface
+    // the conflict as a failure and let the next scheduled backup try fresh.
+    let mut conflict_reconciles = 0u32;
+    const MAX_CONFLICT_RECONCILES: u32 = 3;
     loop {
         let outcome = upload_directory_checked(
             &api,
@@ -2299,11 +2477,11 @@ async fn run_backup_with_retry(
             &save.label,
             &save.local_path,
             prev_set_hash.as_deref(),
-            // base_version: the auto-path doesn't yet track the last-synced
-            // version per save (WatchedSave carries none), so it pushes
-            // without a fast-forward base for now. The server still records
-            // the DAG parent; conflict-aware auto-sync is the next step.
-            None,
+            // Fast-forward base: the version this device last synced. The server
+            // rejects with 409 (non-fast-forward) if the head moved past it,
+            // which the `ApiError::Conflict` arm below catches to reconcile +
+            // retry instead of clobbering the newer remote version.
+            base_version,
             |_, _| {},
             // Emit "uploading…" only once the signature checks have decided a
             // real upload is happening — a Skipped/Unchanged settle stays
@@ -2380,6 +2558,193 @@ async fn run_backup_with_retry(
                 return;
             }
             Err(e) => {
+                // Fast-forward conflict (409 non_fast_forward): another device
+                // advanced this save past our `base_version`. Re-pushing our
+                // stale content with a backoff is exactly how a behind device
+                // used to bury a sibling's version. Instead reconcile — pull the
+                // remote head with the conflict-aware merge (local-newer files
+                // survive, remote-newer overwrite with a backup) — then retry the
+                // upload fast-forwarding from the new head. So on a newer remote
+                // head, restore wins; only genuinely-newer-or-additional local
+                // content goes up afterwards (a purely-stale device matches head
+                // and settles). Bounded by MAX_CONFLICT_RECONCILES.
+                // Only a *non-fast-forward* 409 means "you're behind, reconcile
+                // first" — that's the single 409 the upload path emits today
+                // (`init_upload`/`cas_init`), and the server tags it in the body
+                // (`code: "non_fast_forward"`, surfaced here as the message
+                // "non-fast-forward: …"). Gate on that text so a hypothetical
+                // future 409 on this path doesn't get silently reconciled +
+                // retried as if it were a version conflict; it falls through to
+                // the normal failure handling instead.
+                let is_nff = e.chain().any(|c| {
+                    matches!(
+                        c.downcast_ref::<crate::api::ApiError>(),
+                        Some(crate::api::ApiError::Conflict(m)) if m.contains("non-fast-forward")
+                    )
+                });
+                if is_nff {
+                    if conflict_reconciles >= MAX_CONFLICT_RECONCILES {
+                        let chain = format!("{e:#}");
+                        tracing::warn!(
+                            save_id = %save.save_id,
+                            game_slug = %save.game_slug,
+                            conflict_reconciles,
+                            error = %chain,
+                            "agent: backup conflict — remote head kept moving; giving up after reconcile retries"
+                        );
+                        let _ = events_tx
+                            .send(AgentEvent::BackupFailed {
+                                save_id: save.save_id.clone(),
+                                game_slug: save.game_slug.clone(),
+                                error: chain,
+                                will_retry: false,
+                            })
+                            .await;
+                        return;
+                    }
+                    conflict_reconciles += 1;
+                    tracing::info!(
+                        save_id = %save.save_id,
+                        game_slug = %save.game_slug,
+                        base_version = ?base_version,
+                        conflict_reconciles,
+                        "agent: backup rejected (non-fast-forward) — reconciling remote head before retry"
+                    );
+                    let retention =
+                        Duration::from_secs(u64::from(conflict_retention_days) * 86_400);
+                    // Pass our stale `base_version` as known_version (so the
+                    // version-gate won't trip — remote is strictly ahead) and
+                    // `None` cached_latest so we fetch the authoritative head
+                    // rather than trust a poller cache that may itself be stale.
+                    match run_auto_restore(
+                        &api,
+                        &save,
+                        conflict_root.as_deref(),
+                        retention,
+                        base_version,
+                        None,
+                    )
+                    .await
+                    {
+                        Ok(Some(outcome)) => {
+                            let touched = outcome.files_restored + outcome.conflicts_backed_up;
+                            if touched > 0 {
+                                let _ = events_tx
+                                    .send(AgentEvent::SaveAutoRestored {
+                                        save_id: save.save_id.clone(),
+                                        game_slug: save.game_slug.clone(),
+                                        version_num: outcome.version_num,
+                                        files_extracted: touched,
+                                        bytes_extracted: outcome.bytes_extracted,
+                                    })
+                                    .await;
+                                if outcome.conflicts_backed_up > 0 {
+                                    if let Some(dir) = outcome.conflict_dir.clone() {
+                                        let _ = events_tx
+                                            .send(AgentEvent::SaveConflictsBackedUp {
+                                                save_id: save.save_id.clone(),
+                                                game_slug: save.game_slug.clone(),
+                                                count: outcome.conflicts_backed_up,
+                                                conflict_dir: dir,
+                                            })
+                                            .await;
+                                    }
+                                }
+                                // The merge wrote into the live folder — re-arm
+                                // the watcher so the slot tracks the new state.
+                                let _ = cmd_tx
+                                    .send(AgentCommand::RearmWatcher(save.save_id.clone()))
+                                    .await;
+                            }
+                            if !outcome.local_diverged {
+                                // The merged tree equals the head we just pulled:
+                                // re-uploading would only mint head+1 with
+                                // identical bytes (and fan a no-op realtime push
+                                // out to every other device). Settle instead —
+                                // advance known_version, adopt the post-merge
+                                // signature so the merge's own fs writes don't
+                                // bounce back as an upload, and clear has_pending.
+                                tracing::info!(
+                                    save_id = %save.save_id,
+                                    game_slug = %save.game_slug,
+                                    version_num = outcome.version_num,
+                                    "agent: backup conflict reconciled to head with no local divergence — settled without re-upload"
+                                );
+                                let _ = cmd_tx
+                                    .send(AgentCommand::AutoRestoreFinished {
+                                        id: save.save_id.clone(),
+                                        not_on_server: false,
+                                        synced_version: Some(outcome.version_num),
+                                        post_restore_set_hash: outcome.disk_set_hash.clone(),
+                                    })
+                                    .await;
+                                let _ = done_tx
+                                    .send(BackupDone {
+                                        save_id: save.save_id.clone(),
+                                        new_set_hash: None,
+                                        committed: false,
+                                        version_num: None,
+                                    })
+                                    .await;
+                                return;
+                            }
+                            // Local content survived the merge that head lacks —
+                            // fast-forward from the head we just reconciled to and
+                            // retry so that genuinely-new local data goes up.
+                            // Advance the slot's known_version (and the sweep's
+                            // gate); leave last_set_hash stale so the retry's
+                            // signature check still sees the divergence to upload.
+                            base_version = Some(outcome.version_num);
+                            let _ = cmd_tx
+                                .send(AgentCommand::AutoRestoreFinished {
+                                    id: save.save_id.clone(),
+                                    not_on_server: false,
+                                    synced_version: Some(outcome.version_num),
+                                    post_restore_set_hash: None,
+                                })
+                                .await;
+                            continue;
+                        }
+                        Ok(None) => {
+                            // 409 said we're behind, yet the reconcile found
+                            // nothing newer to pull (remote purged or the head
+                            // raced backwards). We can't pick a safe new base, so
+                            // surface the conflict rather than risk a loop.
+                            let chain = format!("{e:#}");
+                            tracing::warn!(
+                                save_id = %save.save_id,
+                                error = %chain,
+                                "agent: backup conflict but reconcile found nothing to pull — surfacing"
+                            );
+                            let _ = events_tx
+                                .send(AgentEvent::BackupFailed {
+                                    save_id: save.save_id.clone(),
+                                    game_slug: save.game_slug.clone(),
+                                    error: chain,
+                                    will_retry: false,
+                                })
+                                .await;
+                            return;
+                        }
+                        Err(re) => {
+                            let chain = format!("{re:#}");
+                            tracing::warn!(
+                                save_id = %save.save_id,
+                                error = %chain,
+                                "agent: backup conflict — reconcile failed; surfacing"
+                            );
+                            let _ = events_tx
+                                .send(AgentEvent::BackupFailed {
+                                    save_id: save.save_id.clone(),
+                                    game_slug: save.game_slug.clone(),
+                                    error: chain,
+                                    will_retry: false,
+                                })
+                                .await;
+                            return;
+                        }
+                    }
+                }
                 // Bandwidth throttle (429): wait the server's exact
                 // window-slide time and retry without consuming the
                 // network-flake budget. Kept out of the "falló" feed path —
@@ -2635,6 +3000,9 @@ fn process_poll(
                     config.conflict_root.clone(),
                     config.conflict_retention_days,
                     known_version,
+                    // Pre-launch barrier wants the freshest truth before play
+                    // starts — fetch it rather than trust the poller cache.
+                    None,
                 );
             }
         } else {
@@ -2882,6 +3250,68 @@ mod tests {
             std::fs::read(target.join("nested/c.dat")).unwrap(),
             b"gamma"
         );
+    }
+
+    /// Local-only files: a file present in the target but absent from the
+    /// remote snapshot is left untouched and counted under `target_only`.
+    /// This is the divergence signal the conflict/auto-restore path keys on
+    /// to decide it must re-upload rather than settle — getting it wrong
+    /// would silently drop local data, so pin the count explicitly.
+    #[tokio::test(flavor = "current_thread")]
+    async fn restore_files_into_counts_local_only_files() {
+        let source_tmp = tempfile::tempdir().unwrap();
+        let target_tmp = tempfile::tempdir().unwrap();
+        let source = source_tmp.path();
+        let target = target_tmp.path();
+
+        // Remote snapshot has a.dat; target has the same a.dat plus two files
+        // the snapshot knows nothing about (one nested).
+        write_file(&source.join("a.dat"), b"alpha");
+        write_file(&target.join("a.dat"), b"alpha");
+        write_file(&target.join("local-only.sav"), b"unsynced");
+        write_file(&target.join("nested/also-local.sav"), b"more");
+
+        let stats = restore_files_into(target, source, None).await.unwrap();
+
+        assert_eq!(stats.restored, 0, "a.dat is identical, nothing copied");
+        assert_eq!(stats.skipped, 1, "a.dat skipped");
+        assert_eq!(
+            stats.target_only, 2,
+            "two files exist locally but not in the snapshot"
+        );
+        assert_eq!(stats.conflicts_resolved_local, 0);
+        assert_eq!(stats.conflicts_resolved_remote, 0);
+        // Local-only files are never deleted by a restore.
+        assert_eq!(
+            std::fs::read(target.join("local-only.sav")).unwrap(),
+            b"unsynced"
+        );
+        assert_eq!(
+            std::fs::read(target.join("nested/also-local.sav")).unwrap(),
+            b"more"
+        );
+    }
+
+    /// Mirror image: when the target is a strict subset of the snapshot
+    /// (everything local also exists remotely), `target_only` is zero — the
+    /// signal that a purely-behind device can settle without re-uploading.
+    #[tokio::test(flavor = "current_thread")]
+    async fn restore_files_into_no_local_only_when_target_is_subset() {
+        let source_tmp = tempfile::tempdir().unwrap();
+        let target_tmp = tempfile::tempdir().unwrap();
+        let source = source_tmp.path();
+        let target = target_tmp.path();
+
+        write_file(&source.join("a.dat"), b"alpha");
+        write_file(&source.join("sub/b.dat"), b"beta");
+        // Target only has a.dat (subset); b.dat will be copied in.
+        write_file(&target.join("a.dat"), b"alpha");
+
+        let stats = restore_files_into(target, source, None).await.unwrap();
+
+        assert_eq!(stats.restored, 1, "b.dat copied");
+        assert_eq!(stats.skipped, 1, "a.dat identical");
+        assert_eq!(stats.target_only, 0, "no file exists only locally");
     }
 
     /// Conflict case: A exists in both source and target but bytes differ.

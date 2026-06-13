@@ -231,6 +231,27 @@ export async function initCloudDeepLink(
   }
 }
 
+let seUnlisten: UnlistenFn | null = null;
+
+/** Listen for `agent://session-expired`, emitted by the Rust side when the
+ *  Supabase refresh-token family is revoked (terminal expiry). The backend has
+ *  already cleared creds + stopped the pollers; we mirror that here so the
+ *  signed-in shell collapses and the LiveStatus dot stops looping on "server
+ *  unavailable". `onExpired` lets the caller toast + reset the cloud dot +
+ *  route. Idempotent — calling twice replaces the previous subscription. */
+export async function initCloudSessionWatch(
+  onExpired?: () => void,
+): Promise<void> {
+  if (seUnlisten) {
+    seUnlisten();
+    seUnlisten = null;
+  }
+  seUnlisten = await listen<void>("agent://session-expired", () => {
+    internal.set({ account: null, hydrated: true, loading: false });
+    onExpired?.();
+  });
+}
+
 function parseAuthCallback(
   url: string,
 ): { accessToken: string; refreshToken: string } | null {

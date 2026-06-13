@@ -34,6 +34,7 @@
 //!   The LiveStatus widget downgrades to the red "Server unreachable"
 //!   dot until the next successful pull.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -302,6 +303,17 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
                 }
             }
             Err(e) => {
+                // Distinguish a transient refresh failure (network, GoTrue
+                // hiccup → keep polling, dot flaps offline and recovers) from a
+                // terminal one: Supabase revoked the whole refresh-token family,
+                // so every future refresh 401s and the old code looped on
+                // "Servidor no disponible" forever. On terminal expiry, sign out
+                // cleanly and tell the UI to prompt re-login instead of spinning.
+                if crate::commands::cloud::is_session_expired(&e) {
+                    tracing::warn!("cloud-pull: refresh token revoked — signing out (session expired)");
+                    crate::commands::cloud::handle_session_expired(app);
+                    return;
+                }
                 tracing::warn!(error = %e, "cloud-pull: token refresh failed");
                 let _ = app.emit("agent://offline", ());
                 return;
@@ -397,6 +409,29 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
         },
     );
 
+    // Grab the agent handle once: we use it both to refresh its cloud-version
+    // cache (every tick) and to force-restore advanced saves (sync global).
+    let handle = app
+        .try_state::<crate::state::AppState>()
+        .and_then(|s| s.agent.lock().unwrap().clone());
+
+    // Feed the agent the full latest-version map this manifest just gave us.
+    // The reconciliation sweep then version-gates locally instead of each
+    // candidate re-fetching the same manifest — collapsing the old "poller GET
+    // + N sweep GETs" per interval down to the single GET we already did here.
+    // Sent every tick (not just on deltas) so the cache never goes stale and a
+    // save we already pulled stays correctly gated.
+    if let Some(h) = &handle {
+        let latest_versions: HashMap<String, i64> = manifest
+            .saves
+            .iter()
+            .map(|e| (e.save_id.clone(), e.latest_version_num))
+            .collect();
+        if let Err(e) = h.set_cloud_versions(latest_versions).await {
+            tracing::warn!(error = %e, "cloud-pull: couldn't feed version cache to agent");
+        }
+    }
+
     // Sync global: the poller is the cheap "is this device outdated?" detector.
     // When it's on and a save advanced server-side, ask the agent to pull it
     // right now — "en el momento", even if the game is running. This is the
@@ -408,10 +443,7 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
             .map(|(p, _)| p.global_sync)
             .unwrap_or(false);
         if global_sync {
-            let handle = app
-                .try_state::<crate::state::AppState>()
-                .and_then(|s| s.agent.lock().unwrap().clone());
-            if let Some(h) = handle {
+            if let Some(h) = &handle {
                 for id in advanced_ids {
                     if let Err(e) = h.force_restore(id).await {
                         tracing::warn!(

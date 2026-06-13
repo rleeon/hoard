@@ -8,6 +8,11 @@ pub struct ServerState {
     pub pool: SqlitePool,
     pub config: crate::config::Config,
     pub start_time: Instant,
+    /// Per-user SSE fan-out backing `GET /v1/events` (self-hosted push). The
+    /// snapshot-commit path publishes here; listening devices pull on the
+    /// event. Empty/unused on the cloud deployment (Supabase Realtime does the
+    /// equivalent). See [`crate::routes::events`].
+    pub events: crate::routes::events::EventBus,
 }
 
 #[derive(Serialize)]

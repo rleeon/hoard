@@ -211,12 +211,30 @@ async fn connect_once(app: &AppHandle) -> anyhow::Result<()> {
                                     tracing::debug!("cloud-realtime: saves change pushed → kicking pull");
                                     cloud_pull::kick(app);
                                 }
+                                Action::Resubscribed => {
+                                    // Just (re)joined the channel. Anything that
+                                    // changed while the socket was down produced
+                                    // no `postgres_changes` for us, so kick one
+                                    // catch-up pull to close that gap.
+                                    tracing::debug!("cloud-realtime: (re)subscribed → catch-up pull");
+                                    cloud_pull::kick(app);
+                                }
                                 Action::TokenError => {
                                     // The JWT was rejected on join. Refresh it
                                     // and bail so the outer loop reconnects with
-                                    // the rotated token now on disk.
+                                    // the rotated token now on disk. If the
+                                    // refresh is terminally stale (Supabase
+                                    // revoked the token family), don't reconnect
+                                    // into an endless token-error loop — tear the
+                                    // session down so the UI prompts re-login.
                                     tracing::debug!("cloud-realtime: token rejected, refreshing");
-                                    let _ = cloud::refresh_active_session().await;
+                                    if let Err(e) = cloud::refresh_active_session().await {
+                                        if cloud::is_session_expired(&e) {
+                                            tracing::info!("cloud-realtime: refresh token revoked — tearing down session");
+                                            cloud::handle_session_expired(app);
+                                            return Ok(());
+                                        }
+                                    }
                                     anyhow::bail!("token refresh forced reconnect");
                                 }
                             }
@@ -240,6 +258,8 @@ async fn sleep_until(deadline: Instant) {
 enum Action {
     /// A relevant `saves` row changed — refresh state.
     Change,
+    /// The channel join succeeded — (re)subscribed, trigger a catch-up pull.
+    Resubscribed,
     /// The access token was rejected; refresh and reconnect.
     TokenError,
 }
@@ -282,6 +302,16 @@ fn classify(txt: &str) -> Option<Action> {
                     return Some(Action::TokenError);
                 }
                 tracing::debug!(reason = %reason, "cloud-realtime: channel reported error");
+                return None;
+            }
+            // The join we send carries `ref: "1"`; its successful reply means we
+            // are (re)subscribed. Heartbeat acks reuse `phx_reply` too but with
+            // ref 2,3,… so gating on ref "1" fires exactly once per (re)connect.
+            if event == "phx_reply" && status == "ok" {
+                let join_ref = v.get("ref").and_then(|r| r.as_str()).unwrap_or("");
+                if join_ref == "1" {
+                    return Some(Action::Resubscribed);
+                }
             }
             None
         }

@@ -128,6 +128,10 @@ pub async fn start_agent(
     // swap in a fresh JWT as it rotates (see `update_agent_token`). `ApiClient`
     // shares its token cell across clones, so this clone stays in lock-step.
     register_agent_client(client.clone());
+    // Probe once now (before `client` is moved into the agent) whether this is
+    // a self-hosted server. Self-hosted gets server→app push via the `/v1/events`
+    // SSE stream; cloud uses Supabase Realtime instead, so we skip it there.
+    let server_is_cloud = client.is_cloud().await;
     let saves = hydrate_watched_saves(&state).map_err(|e| e.to_string())?;
     let watched_count = saves.len();
 
@@ -278,6 +282,15 @@ pub async fn start_agent(
     });
 
     *state.agent.lock().unwrap() = Some(handle);
+
+    // Self-hosted server→app push. Rides alongside the agent: on each pushed
+    // save it force-restores under sync global (the agent sweep is the airbag
+    // for plain auto-restore). Cloud sessions get this from Supabase Realtime,
+    // so only start it for self-hosted. Best-effort — never blocks agent boot.
+    if !server_is_cloud {
+        crate::commands::selfhosted_events::start(&app);
+    }
+
     Ok(AgentStatus {
         running: true,
         watched_count,
@@ -292,7 +305,11 @@ struct WatcherArmed {
 
 /// Tear the agent down. Used on logout and on app exit (best-effort).
 #[tauri::command]
-pub async fn stop_agent(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn stop_agent(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    // Stop the self-hosted SSE subscriber in lock-step with the agent — it has
+    // nothing to dispatch to once the handle is gone, and on logout the creds
+    // it reads are about to be wiped. No-op when it wasn't running.
+    crate::commands::selfhosted_events::stop(&app);
     let handle = state.agent.lock().unwrap().take();
     clear_agent_client();
     if let Some(h) = handle {

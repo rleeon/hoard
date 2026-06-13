@@ -161,6 +161,7 @@ pub fn run() {
         .manage(AutomaticScheduler::default())
         .manage(commands::cloud_pull::CloudPullScheduler::default())
         .manage(commands::cloud_realtime::RealtimeScheduler::default())
+        .manage(commands::selfhosted_events::SelfHostedEventsScheduler::default())
         .invoke_handler(tauri::generate_handler![
             commands::misc::greet,
             commands::covers::cover_bytes,
