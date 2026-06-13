@@ -20,7 +20,16 @@
   import { onMount, onDestroy } from "svelte";
   import { push } from "svelte-spa-router";
   import { _ } from "svelte-i18n";
-  import { Map as MapIcon, History as HistoryIcon, X, Pause, Play } from "lucide-svelte";
+  import {
+    Map as MapIcon,
+    History as HistoryIcon,
+    X,
+    Pause,
+    Play,
+    Plus,
+    Minus,
+    Maximize,
+  } from "lucide-svelte";
 
   import * as api from "../lib/api";
   import type { TrackedSave, SnapshotEntry, DetectedGame } from "../lib/api";
@@ -478,8 +487,28 @@
   let tx = 0;
   let ty = 0;
 
+  // Interactive zoom limits. Deliberately wide so the constellation can be
+  // pushed far in (inspect a single node) or pulled right out (a huge library).
+  const MIN_ZOOM = 0.1;
+  const MAX_ZOOM = 10;
+
   function clamp(v: number, lo: number, hi: number) {
     return Math.max(lo, Math.min(hi, v));
+  }
+
+  // Zoom keeping the world point under (sx, sy) screen px fixed (cursor-anchored).
+  function zoomAt(sx: number, sy: number, factor: number) {
+    const ns = clamp(scale * factor, MIN_ZOOM, MAX_ZOOM);
+    if (ns === scale) return;
+    tx = sx - (sx - tx) * (ns / scale);
+    ty = sy - (sy - ty) * (ns / scale);
+    scale = ns;
+    requestDraw();
+  }
+
+  // Zoom anchored on the viewport centre — used by the +/− buttons and keys.
+  function zoomByCenter(factor: number) {
+    zoomAt(cssW / 2, cssH / 2, factor);
   }
 
   function worldBounds() {
@@ -788,17 +817,45 @@
   }
 
   function onWheel(e: WheelEvent) {
+    // passive:false (see onMount) so this preventDefault actually sticks —
+    // otherwise a trackpad pinch is swallowed by the browser as page zoom,
+    // which is why it "barely zoomed" before.
     e.preventDefault();
     if (!canvasEl) return;
     const rect = canvasEl.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    const ns = clamp(scale * factor, 0.18, 6);
-    tx = mx - (mx - tx) * (ns / scale);
-    ty = my - (my - ty) * (ns / scale);
-    scale = ns;
-    requestDraw();
+    // Trackpad pinch arrives as wheel + ctrlKey with small, continuous deltas —
+    // map them through exp() for a smooth zoom; a notched mouse wheel uses fixed
+    // steps per click.
+    const factor = e.ctrlKey
+      ? Math.exp(-e.deltaY * 0.01)
+      : e.deltaY < 0
+        ? 1.12
+        : 1 / 1.12;
+    zoomAt(mx, my, factor);
+  }
+
+  function onDblClick(e: MouseEvent) {
+    if (!canvasEl) return;
+    const rect = canvasEl.getBoundingClientRect();
+    zoomAt(e.clientX - rect.left, e.clientY - rect.top, 1.6);
+  }
+
+  function onKeyDown(e: KeyboardEvent) {
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable))
+      return;
+    if (e.key === "+" || e.key === "=") {
+      zoomByCenter(1.2);
+      e.preventDefault();
+    } else if (e.key === "-" || e.key === "_") {
+      zoomByCenter(1 / 1.2);
+      e.preventDefault();
+    } else if (e.key === "0") {
+      frameAll();
+      e.preventDefault();
+    }
   }
 
   function onPointerDown(e: PointerEvent) {
@@ -1000,6 +1057,9 @@
     requestAnimationFrame(() => {
       if (!canvasEl) return;
       ctx = canvasEl.getContext("2d");
+      // Attach wheel manually with passive:false so preventDefault() works and
+      // the browser never hijacks a trackpad pinch as page zoom.
+      canvasEl.addEventListener("wheel", onWheel, { passive: false });
       resize();
       ro = new ResizeObserver(() => {
         resize();
@@ -1017,13 +1077,16 @@
       requestDraw();
     });
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("keydown", onKeyDown);
   });
 
   onDestroy(() => {
     running = false;
     cancelAnimationFrame(raf);
     ro?.disconnect();
+    canvasEl?.removeEventListener("wheel", onWheel);
     document.removeEventListener("visibilitychange", onVisibility);
+    window.removeEventListener("keydown", onKeyDown);
   });
 
   function totalVersions(o: Orb): number {
@@ -1104,7 +1167,7 @@
       class="h-full w-full touch-none select-none"
       class:cursor-grab={!dragging}
       class:cursor-grabbing={dragging}
-      onwheel={onWheel}
+      ondblclick={onDblClick}
       onpointerdown={onPointerDown}
       onpointermove={onPointerMove}
       onpointerup={(e) => {
@@ -1145,6 +1208,37 @@
         <Pause size={13} />{$_("map.freeze")}
       {/if}
     </button>
+
+    <!-- zoom controls -->
+    <div class="pointer-events-auto absolute bottom-4 right-6 z-10 flex flex-col gap-1.5">
+      <button
+        type="button"
+        onclick={() => zoomByCenter(1.4)}
+        title={$_("map.zoom_in")}
+        aria-label={$_("map.zoom_in")}
+        class="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-zinc-900/70 text-zinc-300 backdrop-blur transition hover:border-emerald-500/50 hover:text-emerald-300"
+      >
+        <Plus size={16} />
+      </button>
+      <button
+        type="button"
+        onclick={() => zoomByCenter(1 / 1.4)}
+        title={$_("map.zoom_out")}
+        aria-label={$_("map.zoom_out")}
+        class="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-zinc-900/70 text-zinc-300 backdrop-blur transition hover:border-emerald-500/50 hover:text-emerald-300"
+      >
+        <Minus size={16} />
+      </button>
+      <button
+        type="button"
+        onclick={frameAll}
+        title={$_("map.fit")}
+        aria-label={$_("map.fit")}
+        class="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-zinc-900/70 text-zinc-300 backdrop-blur transition hover:border-emerald-500/50 hover:text-emerald-300"
+      >
+        <Maximize size={16} />
+      </button>
+    </div>
 
     <!-- legend -->
     <div
