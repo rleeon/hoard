@@ -16,6 +16,7 @@
   "nav.home": "Startseite",
   "nav.sign_in": "Anmelden",
   "nav.settings": "Einstellungen",
+  "nav.hoard_saves": "Hoard-Saves",
   "nav.coming_later": "Kommt in einer späteren Phase",
   "quota.label": "Speicher",
   "quota.used": "{size} belegt",

@@ -14,6 +14,8 @@
     LogIn,
     RotateCw,
     RefreshCw,
+    Boxes,
+    ChevronDown,
   } from "lucide-svelte";
   import { _ } from "svelte-i18n";
   import { formatBytes } from "./lib/utils/format";
@@ -405,24 +407,68 @@
     }
   }
 
-  // The `labelKey` is resolved through `$_()` at render time so the sidebar
-  // re-translates instantly when the user switches language in Settings —
-  // hard-coded English here was the long-standing reason German/Spanish UIs
-  // still showed "Library / Dashboard …" in the rail.
-  //
-  // First entry is the account button, sitting above Library: "Iniciar
-  // sesión" when there's no cloud session, "Inicio" (the read-only account /
-  // plan-status view) once signed in. Derived so it swaps the moment the
-  // cloud session hydrates. The old "Historial" item was removed — it just
+  // Sidebar navigation model. Two kinds of entry keep the `{#each}`
+  // declarative: a plain navigable `link`, and a collapsible `group`
+  // (Hoard-Saves) that owns a list of `link` children. `labelKey` is
+  // resolved through `$_()` at render time so the rail re-translates
+  // instantly when the language changes in Settings — hard-coded English
+  // here was the long-standing reason German/Spanish UIs still showed
+  // "Library / Dashboard …" in the rail.
+  type NavLink = {
+    kind: "link";
+    labelKey: string;
+    icon: typeof Home;
+    route: string;
+  };
+  type NavGroup = {
+    kind: "group";
+    id: string;
+    labelKey: string;
+    icon: typeof Home;
+    children: NavLink[];
+  };
+  type NavEntry = NavLink | NavGroup;
+
+  // Collapsed/expanded state for the Hoard-Saves group, remembered across
+  // sessions. Defaults to open on first run or when storage is unreadable.
+  let savesOpen = $state(readSavesOpen());
+  function readSavesOpen(): boolean {
+    try {
+      return localStorage.getItem("hoard-nav-saves-open") !== "0";
+    } catch {
+      return true;
+    }
+  }
+  function toggleSaves() {
+    savesOpen = !savesOpen;
+    try {
+      localStorage.setItem("hoard-nav-saves-open", savesOpen ? "1" : "0");
+    } catch {
+      /* private mode / storage disabled — toggle still works for the session */
+    }
+  }
+
+  // First entry is the account button: "Iniciar sesión" with no cloud
+  // session, "Inicio" (the read-only account/plan view) once signed in.
+  // Biblioteca / Panel / Mapa live under the collapsible Hoard-Saves group;
+  // Ajustes stays last. The old "Historial" item was removed — it just
   // duplicated the Dashboard.
-  const sidebarItems = $derived([
+  const navEntries = $derived<NavEntry[]>([
     $cloud.account
-      ? { labelKey: "nav.home", icon: Home, route: "/account" }
-      : { labelKey: "nav.sign_in", icon: LogIn, route: "/account" },
-    { labelKey: "nav.library", icon: Library, route: "/library" },
-    { labelKey: "nav.dashboard", icon: Archive, route: "/dashboard" },
-    { labelKey: "nav.map", icon: MapIcon, route: "/map" },
-    { labelKey: "nav.settings", icon: SettingsIcon, route: "/settings" },
+      ? { kind: "link", labelKey: "nav.home", icon: Home, route: "/account" }
+      : { kind: "link", labelKey: "nav.sign_in", icon: LogIn, route: "/account" },
+    {
+      kind: "group",
+      id: "saves",
+      labelKey: "nav.hoard_saves",
+      icon: Boxes,
+      children: [
+        { kind: "link", labelKey: "nav.library", icon: Library, route: "/library" },
+        { kind: "link", labelKey: "nav.dashboard", icon: Archive, route: "/dashboard" },
+        { kind: "link", labelKey: "nav.map", icon: MapIcon, route: "/map" },
+      ],
+    },
+    { kind: "link", labelKey: "nav.settings", icon: SettingsIcon, route: "/settings" },
   ]);
 
   // App-shell routes share the persistent sidebar; wizard routes own the
@@ -523,31 +569,61 @@
         {/if}
       </div>
 
+      <!-- Shared button markup for top-level links and indented group
+           children, so the two render paths can't drift apart. -->
+      {#snippet navLink(item: NavLink, indented: boolean)}
+        {@const active = $location === item.route}
+        <button
+          type="button"
+          aria-label={$_(item.labelKey)}
+          aria-current={active ? "page" : undefined}
+          onclick={() => push(item.route)}
+          class="group flex w-full items-center gap-3 rounded-md border-l-2 py-2 text-sm transition-colors duration-150
+            {indented ? 'pl-9 pr-3' : 'px-3'}
+            {active
+            ? 'border-emerald-500 bg-zinc-800/50 text-zinc-50'
+            : 'border-transparent text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100'}"
+        >
+          <item.icon size={indented ? 16 : 18} />
+          <span>{$_(item.labelKey)}</span>
+        </button>
+      {/snippet}
+
       <nav class="flex-1 space-y-1 px-3 py-2">
-        {#each sidebarItems as item (item.route)}
-          {@const active = $location === item.route}
-          {@const enabled =
-            item.route === "/account" ||
-            item.route === "/dashboard" ||
-            item.route === "/library" ||
-            item.route === "/map" ||
-            item.route === "/settings"}
-          <button
-            type="button"
-            disabled={!enabled}
-            aria-disabled={!enabled}
-            aria-label={$_(item.labelKey)}
-            onclick={() => push(item.route)}
-            class="group flex w-full items-center gap-3 rounded-md border-l-2 px-3 py-2 text-sm transition-colors duration-150
-              {active
-              ? 'border-emerald-500 bg-zinc-800/50 text-zinc-50'
-              : 'border-transparent text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100'}
-              disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-400"
-            title={enabled ? undefined : $_("nav.coming_later")}
-          >
-            <item.icon size={18} />
-            <span>{$_(item.labelKey)}</span>
-          </button>
+        {#each navEntries as entry (entry.kind === "group" ? entry.id : entry.route)}
+          {#if entry.kind === "link"}
+            {@render navLink(entry, false)}
+          {:else}
+            <!-- A child on the active route forces the group open even if the
+                 user had collapsed it, so the highlight is never hidden. -->
+            {@const childActive = entry.children.some(
+              (c) => $location === c.route,
+            )}
+            {@const open = savesOpen || childActive}
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-label={$_(entry.labelKey)}
+              onclick={toggleSaves}
+              class="group flex w-full items-center gap-3 rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-zinc-400 transition-colors duration-150 hover:bg-zinc-800/40 hover:text-zinc-100"
+            >
+              <entry.icon size={18} />
+              <span class="flex-1 text-left">{$_(entry.labelKey)}</span>
+              <ChevronDown
+                size={16}
+                class="shrink-0 transition-transform duration-150 {open
+                  ? ''
+                  : '-rotate-90'}"
+              />
+            </button>
+            {#if open}
+              <div class="space-y-1">
+                {#each entry.children as child (child.route)}
+                  {@render navLink(child, true)}
+                {/each}
+              </div>
+            {/if}
+          {/if}
         {/each}
       </nav>
 

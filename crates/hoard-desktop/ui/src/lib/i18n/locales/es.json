@@ -16,6 +16,7 @@
   "nav.home": "Inicio",
   "nav.sign_in": "Iniciar sesión",
   "nav.settings": "Ajustes",
+  "nav.hoard_saves": "Hoard-Saves",
   "nav.coming_later": "Disponible en una fase posterior",
   "quota.label": "Almacenamiento",
   "quota.used": "{size} usado",

@@ -16,6 +16,7 @@
   "nav.home": "Accueil",
   "nav.sign_in": "Se connecter",
   "nav.settings": "Paramètres",
+  "nav.hoard_saves": "Hoard-Saves",
   "nav.coming_later": "Disponible dans une phase ultérieure",
   "quota.label": "Stockage",
   "quota.used": "{size} utilisé",
