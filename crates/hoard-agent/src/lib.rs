@@ -18,6 +18,7 @@ pub mod launchers;
 pub mod logship;
 pub mod manifest;
 pub mod pathexpand;
+pub mod playtime;
 pub mod prefs;
 pub mod presets;
 pub mod restore;

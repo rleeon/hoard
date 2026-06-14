@@ -656,6 +656,14 @@ async fn run_agent(
         .map(crate::correlation::CorrelationStore::load)
         .unwrap_or_default();
 
+    // PLAYTIME: horas reales por día local. Se alimenta en cada tick de poll
+    // con los saves cuyo proceso de juego sigue vivo (ver `process_poll`).
+    let playtime_path = crate::playtime::PlaytimeStore::default_path().ok();
+    let mut playtime = playtime_path
+        .as_deref()
+        .map(crate::playtime::PlaytimeStore::load)
+        .unwrap_or_default();
+
     // DETECCIÓN (fase 3, ADR 0020): sonda de candidatos no-rastreados. Mapea
     // cada carpeta candidata → su última mtime-máxima observada. Cuando una
     // sube (escritura nueva) y hay un juego vivo, registra la correlación. El
@@ -947,7 +955,10 @@ async fn run_agent(
 
             // ----- Process poll tick -----
             _ = poll.tick() => {
-                process_poll(&mut sys, &mut slots, &events_tx, &api, &config, &done_tx, &cmd_tx);
+                process_poll(
+                    &mut sys, &mut slots, &events_tx, &api, &config, &done_tx, &cmd_tx,
+                    &mut playtime, playtime_path.as_deref(),
+                );
                 // Watcher self-healing: a slot whose folder didn't exist when
                 // the game was tracked (freshly installed, save dir created on
                 // first save) never armed its watcher, and nothing rearms it
@@ -2841,6 +2852,8 @@ fn process_poll(
     config: &AgentConfig,
     done_tx: &mpsc::Sender<BackupDone>,
     cmd_tx: &mpsc::Sender<AgentCommand>,
+    playtime: &mut crate::playtime::PlaytimeStore,
+    playtime_path: Option<&std::path::Path>,
 ) {
     // Refresh every process. The `true` flag asks sysinfo to remove
     // entries for processes that have exited since the last refresh,
@@ -2888,6 +2901,19 @@ fn process_poll(
         }
     }
 
+    // PLAYTIME: atribuye el intervalo de este tick a los juegos vivos. El cap
+    // es 4× el poll (mín. 30 s) para no contar un suspend/resume como juego.
+    let running_games: Vec<(String, String)> = running
+        .iter()
+        .filter_map(|id| slots.get(id).map(|s| (id.clone(), s.save.game_slug.clone())))
+        .collect();
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let max_step = config.poll_secs.saturating_mul(4).max(30);
+    playtime.accrue(&running_games, now_ms, max_step);
+
     // Diff against previous tick to fire transition events.
     // We collect first, then mutate, to keep the borrow-checker happy.
     let transitions: Vec<(String, bool)> = slots
@@ -2895,6 +2921,9 @@ fn process_poll(
         .map(|id| (id.clone(), running.contains(id)))
         .filter(|(id, now)| slots.get(id).map(|s| s.is_running != *now).unwrap_or(false))
         .collect();
+    // Persist eagerly when a game just stopped (fresh recap on quit); otherwise
+    // throttle to avoid writing the JSON on every poll.
+    let any_stop = transitions.iter().any(|(_, now)| !*now);
 
     for (id, now_running) in transitions {
         let (game_slug, local_path, had_pending) = {
@@ -3042,6 +3071,13 @@ fn process_poll(
                 );
             }
         }
+    }
+
+    // PLAYTIME: vuelca a disco (inmediato al parar un juego, throttled si no).
+    if any_stop {
+        playtime.flush(playtime_path, now_ms);
+    } else {
+        playtime.flush_if_due(playtime_path, now_ms);
     }
 }
 

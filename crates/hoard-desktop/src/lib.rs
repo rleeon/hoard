@@ -67,6 +67,9 @@ pub fn run() {
     let timer = LocalTimer {
         offset: time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC),
     };
+    // Hand the same pre-thread offset to the playtime tracker so its per-day
+    // buckets land on the user's local calendar, matching the recap's binning.
+    hoard_agent::playtime::set_local_offset(timer.offset);
 
     let registry = tracing_subscriber::registry()
         .with(env_filter)
@@ -209,6 +212,7 @@ pub fn run() {
             commands::prefs::set_live_activity_visible,
             commands::prefs::set_data_saving,
             commands::prefs::set_tray_state,
+            commands::playtime::list_playtime,
             commands::history::list_save_snapshots,
             commands::history::save_snapshot_detail,
             commands::history::delete_snapshot,

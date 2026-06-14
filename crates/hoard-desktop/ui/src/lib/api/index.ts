@@ -753,6 +753,20 @@ export type CatalogUpdateResult = {
   path: string;
 };
 
+/** Real playtime totals, computed locally by the agent from process-running
+ *  time. `days` keys are local `YYYY-MM-DD`; values are seconds played that
+ *  day. Empty until a tracked game has been observed running. Local-only —
+ *  this never hits the network. */
+export type PlaytimeSummary = {
+  days: Record<string, number>;
+  by_game: Record<string, number>;
+  total_secs: number;
+};
+
+export function listPlaytime(): Promise<PlaytimeSummary> {
+  return invoke<PlaytimeSummary>("list_playtime");
+}
+
 export function catalogStatus(): Promise<CatalogStatus> {
   return invoke<CatalogStatus>("catalog_status");
 }
