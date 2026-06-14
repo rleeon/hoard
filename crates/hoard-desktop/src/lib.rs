@@ -156,6 +156,9 @@ pub fn run() {
         // is forwarded to the frontend via the `deep-link://new-url` event
         // and consumed by the cloud store in /account.
         .plugin(tauri_plugin_deep_link::init())
+        // Global hotkey support. No accelerator is bound here; the Pro overlay
+        // UI registers Ctrl+O at runtime when present. Community build: unused.
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(AppState::from_disk())
         .manage(TrayController::default())
         .manage(AutomaticScheduler::default())

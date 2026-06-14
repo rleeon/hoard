@@ -20,6 +20,9 @@
     "os:default",
     "store:default",
     "autostart:default",
-    "deep-link:default"
+    "deep-link:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-is-registered"
   ]
 }
