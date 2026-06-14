@@ -4,14 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hoard Overlay</title>
-    <!-- Transparent window: no body background so the game shows through.
-         The Pro overlay paints its own editable canvas on top. -->
+    <!-- Transparent window: the game must show through. The Svelte bundle
+         imports the main app's `app.css`, which paints an opaque obsidian
+         `body` background + a `body::before` grain layer. That stylesheet is
+         injected after this block, so we override it with `!important` (and
+         drop the grain) to keep the overlay genuinely see-through — only the
+         Pro panels paint on top. -->
     <style>
       html,
-      body {
+      body,
+      #overlay {
         margin: 0;
-        background: transparent;
+        background: transparent !important;
+        background-image: none !important;
         overflow: hidden;
+      }
+      body::before {
+        display: none !important;
       }
     </style>
   </head>

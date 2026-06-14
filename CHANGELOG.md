@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.7] — 2026-06-14
+
+### Fixed
+- **El overlay de Hoard-Screen vuelve a ser transparente.** El entry del overlay
+  importa el `app.css` del programa principal, que pinta un `body` obsidiana
+  opaco más una capa de grano; ese CSS se inyectaba después del estilo en línea
+  de `overlay.html` y lo tapaba, dejando el overlay como una lámina opaca
+  maximizada que ocultaba el juego (y las ventanas de navegador abiertas
+  detrás). Ahora se fuerza el fondo transparente y se desactiva el grano en la
+  ventana del overlay.
+
 ## [2.3.6] — 2026-06-14
 
 ### Added
