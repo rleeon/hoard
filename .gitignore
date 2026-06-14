@@ -35,6 +35,11 @@ crates/hoard-desktop/ui/node_modules/
 crates/hoard-desktop/ui/dist/
 crates/hoard-desktop/ui/.vite/
 
+# Closed-source Pro UI, copied in from the private hoard-pro repo at build
+# time. The public build resolves `$pro` to the inert pro-stub instead — Pro
+# code must never land in this repo.
+crates/hoard-desktop/ui/src/lib/pro/
+
 # This project uses pnpm — npm/yarn lockfiles dropped in by accident
 # (e.g. running `npm install` against the same package.json) shouldn't
 # be tracked. pnpm-lock.yaml is the source of truth.

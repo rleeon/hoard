@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hoard Overlay</title>
+    <!-- Transparent window: no body background so the game shows through.
+         The Pro overlay paints its own editable canvas on top. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body class="text-zinc-100 antialiased">
+    <div id="overlay"></div>
+    <script type="module" src="/src/overlay.ts"></script>
+  </body>
+</html>

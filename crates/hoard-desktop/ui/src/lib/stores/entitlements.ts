@@ -63,3 +63,19 @@ export function featureDaysLeft(fs: FeatureState | null | undefined): number {
   }
   return 0;
 }
+
+/** Whether a feature should render its REAL UI: paid Pro or an active trial.
+ *  `trial_available` is intentionally NOT unlocked — the one-month clock hasn't
+ *  started yet — and `trial_expired` is locked. This is the gate that makes the
+ *  public binary safe: the Pro UI ships inside it, but only the server saying
+ *  "entitled / trial" lets a user actually open it. */
+export function featureUnlocked(fs: FeatureState | null | undefined): boolean {
+  return fs?.state === "entitled" || fs?.state === "trial";
+}
+
+/** Build-time DEV override. A personal/test build sets `HOARD_PRO_UNLOCK=1`
+ *  (see `vite.config.ts`) to open the Pro features without a server entitlement,
+ *  so the owner can try them. It defaults to `false` and the public/CI build
+ *  MUST never set it — the public binary stays server-gated. */
+export const PRO_DEV_UNLOCK: boolean =
+  import.meta.env.VITE_HOARD_PRO_UNLOCK === true;

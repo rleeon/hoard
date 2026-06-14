@@ -68,6 +68,7 @@
   } from "./lib/stores/automatic";
   import { toastInfo, toastSuccess } from "./lib/stores/toasts";
   import { prefs, hydratePrefs } from "./lib/stores/prefs";
+  import { PRO_DEV_UNLOCK } from "./lib/stores/entitlements";
   import * as api from "./lib/api";
   import {
     checkForUpdates,
@@ -628,7 +629,9 @@
             {@render navLink(entry, false)}
           {:else if entry.kind === "feature"}
             {@const active = $location === entry.route}
-            {#if $premiumUnlocked}
+            <!-- Server entitlement (`$premiumUnlocked`) decides; `PRO_DEV_UNLOCK`
+                 is the owner's local test override, never set in public builds. -->
+            {#if PRO_DEV_UNLOCK || $premiumUnlocked}
               <button
                 type="button"
                 aria-label={$_(entry.labelKey)}
