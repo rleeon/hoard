@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.6] — 2026-06-14
+
+### Added
+- **Tiempo de juego real (Pro).** El agente acumula los segundos jugados por
+  cada partida y por día local mientras detecta el juego en ejecución, en un
+  `playtime.json` local (nunca sale del equipo). El recap *Wrapple* deja de
+  estimar y pinta el mapa de calor con horas reales; la portada muestra las
+  horas totales y la tarjeta de identidad el juego más jugado. El conteo
+  empieza desde ahora: no hay histórico retroactivo.
+- **Navegador real en el overlay (Pro).** El botón «Navegador» abre cada sitio
+  en su propia ventana decorada siempre-encima que carga la URL de forma nativa
+  (no iframe), así que funciona con páginas que bloquean el embebido
+  (YouTube, series, etc.). Las ventanas comparten el click-through del overlay:
+  atraviesan el ratón en modo juego y se vuelven interactivas en modo edición.
+  Son ventanas independientes sin acceso a la API de Tauri.
+
+### Changed
+- El overlay sincroniza el click-through de los navegadores abiertos al alternar
+  entre modo juego y edición, y los cierra todos al cerrar el overlay.
+
 ## [2.3.4] — 2026-06-13
 
 ### Added
