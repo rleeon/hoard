@@ -64,7 +64,11 @@ pub enum FeatureState {
 }
 
 /// Pure decision so the branching is unit-testable without a database.
-fn decide(plan: Plan, trial_expires_at: Option<OffsetDateTime>, now: OffsetDateTime) -> FeatureState {
+fn decide(
+    plan: Plan,
+    trial_expires_at: Option<OffsetDateTime>,
+    now: OffsetDateTime,
+) -> FeatureState {
     if plan == Plan::Pro {
         return FeatureState::Entitled;
     }
@@ -104,13 +108,12 @@ pub async fn require_feature(
     .execute(pool)
     .await?;
 
-    let (expires_at,): (OffsetDateTime,) = sqlx::query_as(
-        "SELECT expires_at FROM pro_trials WHERE user_id = $1 AND feature = $2",
-    )
-    .bind(user_id)
-    .bind(feature.as_str())
-    .fetch_one(pool)
-    .await?;
+    let (expires_at,): (OffsetDateTime,) =
+        sqlx::query_as("SELECT expires_at FROM pro_trials WHERE user_id = $1 AND feature = $2")
+            .bind(user_id)
+            .bind(feature.as_str())
+            .fetch_one(pool)
+            .await?;
 
     if now < expires_at {
         Ok(())
@@ -131,13 +134,12 @@ pub async fn feature_state(
     if plan == Plan::Pro {
         return Ok(FeatureState::Entitled);
     }
-    let row: Option<(OffsetDateTime,)> = sqlx::query_as(
-        "SELECT expires_at FROM pro_trials WHERE user_id = $1 AND feature = $2",
-    )
-    .bind(user_id)
-    .bind(feature.as_str())
-    .fetch_optional(pool)
-    .await?;
+    let row: Option<(OffsetDateTime,)> =
+        sqlx::query_as("SELECT expires_at FROM pro_trials WHERE user_id = $1 AND feature = $2")
+            .bind(user_id)
+            .bind(feature.as_str())
+            .fetch_optional(pool)
+            .await?;
     Ok(decide(plan, row.map(|r| r.0), OffsetDateTime::now_utc()))
 }
 

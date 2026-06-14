@@ -2905,7 +2905,11 @@ fn process_poll(
     // es 4× el poll (mín. 30 s) para no contar un suspend/resume como juego.
     let running_games: Vec<(String, String)> = running
         .iter()
-        .filter_map(|id| slots.get(id).map(|s| (id.clone(), s.save.game_slug.clone())))
+        .filter_map(|id| {
+            slots
+                .get(id)
+                .map(|s| (id.clone(), s.save.game_slug.clone()))
+        })
         .collect();
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

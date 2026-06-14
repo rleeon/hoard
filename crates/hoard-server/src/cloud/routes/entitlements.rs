@@ -55,8 +55,7 @@ pub async fn activate_feature(
     Extension(user): Extension<CloudUser>,
     Path(feature): Path<String>,
 ) -> Result<Json<FeatureState>, CloudError> {
-    let feature = Feature::from_str(&feature)
-        .ok_or(CloudError::NotFound("unknown feature"))?;
+    let feature = Feature::from_str(&feature).ok_or(CloudError::NotFound("unknown feature"))?;
     let plan = entitlements::current_plan(&state.pool, user.user_id).await?;
     entitlements::require_feature(&state.pool, user.user_id, plan, feature).await?;
     let st = entitlements::feature_state(&state.pool, user.user_id, plan, feature).await?;

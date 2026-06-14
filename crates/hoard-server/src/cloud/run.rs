@@ -121,10 +121,7 @@ pub async fn run(cfg: Config) -> Result<()> {
         .route("/v1/devices", get(me::list_devices))
         .route("/v1/devices/:id", axum::routing::delete(me::delete_device))
         .route("/v1/cloud/checkout", post(checkout::create_checkout))
-        .route(
-            "/v1/cloud/entitlements",
-            get(ent_routes::get_entitlements),
-        )
+        .route("/v1/cloud/entitlements", get(ent_routes::get_entitlements))
         .route(
             "/v1/cloud/features/:feature/activate",
             post(ent_routes::activate_feature),

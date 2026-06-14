@@ -310,7 +310,9 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
                 // "Servidor no disponible" forever. On terminal expiry, sign out
                 // cleanly and tell the UI to prompt re-login instead of spinning.
                 if crate::commands::cloud::is_session_expired(&e) {
-                    tracing::warn!("cloud-pull: refresh token revoked — signing out (session expired)");
+                    tracing::warn!(
+                        "cloud-pull: refresh token revoked — signing out (session expired)"
+                    );
                     crate::commands::cloud::handle_session_expired(app);
                     return;
                 }

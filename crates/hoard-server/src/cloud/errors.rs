@@ -16,7 +16,9 @@ pub enum CloudError {
     BadRequest(String),
     Conflict(&'static str),
     /// A Pro feature is locked (not on Pro, no active trial) → HTTP 402.
-    PaymentRequired { feature: &'static str },
+    PaymentRequired {
+        feature: &'static str,
+    },
     Db(sqlx::Error),
     Internal(anyhow::Error),
 }

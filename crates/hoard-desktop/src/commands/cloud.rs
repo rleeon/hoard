@@ -681,7 +681,10 @@ async fn fetch_entitlements_raw(base: &str, token: &str) -> Result<CloudEntitlem
 /// comes back from the server as `402`, which we surface as `TrialExpired` so
 /// the UI keeps the lock. Renews the JWT and retries once on a 401.
 #[tauri::command]
-pub async fn cloud_activate_feature(app: AppHandle, feature: String) -> Result<FeatureState, String> {
+pub async fn cloud_activate_feature(
+    app: AppHandle,
+    feature: String,
+) -> Result<FeatureState, String> {
     let Some(creds) = load_creds().map_err(|e| e.to_string())? else {
         return Err("Not signed in to Hoard Cloud.".into());
     };
