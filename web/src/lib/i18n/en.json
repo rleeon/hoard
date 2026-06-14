@@ -196,6 +196,7 @@
   "login.email_placeholder": "you@example.com",
   "login.email_cta": "Send magic link",
   "login.email_sent": "Check your inbox — link sent to {email}.",
+  "login.email_sent_desktop_note": "Open the link on this same computer — the one running Hoard. It won't work from your phone or another device.",
   "login.signed_in_as": "Signed in as",
   "login.connect_app": "Connect this account",
   "login.use_another_account": "Use another account",

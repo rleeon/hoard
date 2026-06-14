@@ -196,6 +196,7 @@
   "login.email_placeholder": "tu@ejemplo.com",
   "login.email_cta": "Enviar enlace mágico",
   "login.email_sent": "Mira tu bandeja — enlace enviado a {email}.",
+  "login.email_sent_desktop_note": "Abre el enlace en este mismo ordenador, el que tiene Hoard abierto. No funcionará desde el móvil ni otro dispositivo.",
   "login.signed_in_as": "Sesión iniciada como",
   "login.connect_app": "Conectar esta cuenta",
   "login.use_another_account": "Usar otra cuenta",

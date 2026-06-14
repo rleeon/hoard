@@ -172,6 +172,13 @@
       >
         {$_('login.email_sent', { values: { email } })}
       </div>
+      {#if desktop}
+        <div
+          class="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-300"
+        >
+          {$_('login.email_sent_desktop_note')}
+        </div>
+      {/if}
     {:else}
       <form class="space-y-3" onsubmit={withEmail}>
         <input
