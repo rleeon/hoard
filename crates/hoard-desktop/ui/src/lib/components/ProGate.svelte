@@ -17,6 +17,7 @@
   import {
     entitlements,
     refreshEntitlements,
+    activateFeature,
     featureDaysLeft,
     type FeatureKey,
   } from "../stores/entitlements";
@@ -32,8 +33,22 @@
   });
 
   const fs = $derived($entitlements?.features[feature] ?? null);
-  const state = $derived(fs?.state ?? "locked");
+  const phase = $derived(fs?.state ?? "locked");
   const days = $derived(featureDaysLeft(fs));
+
+  let starting = $state(false);
+
+  // Start the one-month trial. The server flips the feature to `trial`, which
+  // re-renders the parent gate into the real Pro UI.
+  async function startTrial() {
+    if (starting) return;
+    starting = true;
+    try {
+      await activateFeature(feature);
+    } finally {
+      starting = false;
+    }
+  }
 </script>
 
 <div class="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
@@ -46,7 +61,7 @@
     {$_(titleKey)}
   </h1>
 
-  {#if state === "entitled"}
+  {#if phase === "entitled"}
     <span
       class="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300"
     >
@@ -55,7 +70,21 @@
     <p class="max-w-sm text-sm text-zinc-500">
       {$_("pro.under_construction_desc")}
     </p>
-  {:else if state === "trial_available" || state === "trial"}
+  {:else if phase === "trial_available"}
+    <span
+      class="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300"
+    >
+      {$_("pro.trial_available", { values: { n: days } })}
+    </span>
+    <p class="max-w-sm text-sm text-zinc-500">{$_("pro.trial_desc")}</p>
+    <button
+      onclick={startTrial}
+      disabled={starting}
+      class="mt-1 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-60"
+    >
+      {$_("pro.start_trial")}
+    </button>
+  {:else if phase === "trial"}
     <span
       class="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300"
     >

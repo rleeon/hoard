@@ -29,6 +29,8 @@
   "pro.under_construction": "En construction",
   "pro.under_construction_desc": "Nous développons cette fonctionnalité. Revenez bientôt.",
   "pro.trial_days_left": "Essai : {n} jours restants",
+  "pro.trial_available": "Essai gratuit de {n} jours",
+  "pro.start_trial": "Démarrer l'essai gratuit",
   "pro.trial_desc": "Gratuit pendant l'essai, puis fonctionnalité Pro.",
   "pro.locked_title": "Fonctionnalité Pro",
   "pro.locked_desc": "Cette fonctionnalité est disponible avec le plan Pro.",

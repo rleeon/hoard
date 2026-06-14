@@ -37,6 +37,14 @@ impl Feature {
             Feature::Wrapple => "wrapple",
         }
     }
+
+    pub fn from_str(s: &str) -> Option<Feature> {
+        match s {
+            "screen" => Some(Feature::Screen),
+            "wrapple" => Some(Feature::Wrapple),
+            _ => None,
+        }
+    }
 }
 
 /// Resolved access state for one `(user, feature)`, as sent to the UI.
@@ -72,7 +80,6 @@ fn decide(plan: Plan, trial_expires_at: Option<OffsetDateTime>, now: OffsetDateT
 /// Gate a Pro *content* endpoint. Paid Pro passes immediately. A Free account
 /// gets its trial started on first call (idempotent via `ON CONFLICT`), then is
 /// allowed while inside the window and rejected with `402` once it elapses.
-#[allow(dead_code)] // wired into screen/wrapple endpoints in a later phase
 pub async fn require_feature(
     pool: &PgPool,
     user_id: Uuid,

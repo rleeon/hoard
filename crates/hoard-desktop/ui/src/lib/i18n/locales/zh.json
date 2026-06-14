@@ -29,6 +29,8 @@
   "pro.under_construction": "建设中",
   "pro.under_construction_desc": "此功能正在开发中，敬请期待。",
   "pro.trial_days_left": "试用：剩余 {n} 天",
+  "pro.trial_available": "{n} 天免费试用",
+  "pro.start_trial": "开始免费试用",
   "pro.trial_desc": "试用期内免费，之后为 Pro 功能。",
   "pro.locked_title": "Pro 功能",
   "pro.locked_desc": "此功能在 Pro 套餐中提供。",

@@ -29,6 +29,8 @@
   "pro.under_construction": "En construcción",
   "pro.under_construction_desc": "Estamos construyendo esta función. Vuelve pronto.",
   "pro.trial_days_left": "Prueba: quedan {n} días",
+  "pro.trial_available": "Prueba gratis de {n} días",
+  "pro.start_trial": "Comenzar prueba gratis",
   "pro.trial_desc": "Gratis durante la prueba; después será función Pro.",
   "pro.locked_title": "Función Pro",
   "pro.locked_desc": "Esta función está disponible con el plan Pro.",

@@ -675,6 +675,62 @@ async fn fetch_entitlements_raw(base: &str, token: &str) -> Result<CloudEntitlem
         .map_err(|e| MeError::Other(format!("parsing entitlements response: {e}: {body}")))
 }
 
+/// Open a Pro feature: this is the call that *starts* the one-month trial on a
+/// Free account's first use (the server is idempotent) and reports the resulting
+/// state. A locked feature (paid-only, no active trial, or an elapsed trial)
+/// comes back from the server as `402`, which we surface as `TrialExpired` so
+/// the UI keeps the lock. Renews the JWT and retries once on a 401.
+#[tauri::command]
+pub async fn cloud_activate_feature(app: AppHandle, feature: String) -> Result<FeatureState, String> {
+    let Some(creds) = load_creds().map_err(|e| e.to_string())? else {
+        return Err("Not signed in to Hoard Cloud.".into());
+    };
+    match activate_feature_raw(&creds.server_url, &creds.access_token, &feature).await {
+        Ok(st) => Ok(st),
+        Err(MeError::Unauthorized) => {
+            let fresh = refresh_active_session().await.map_err(|e| {
+                if is_session_expired(&e) {
+                    handle_session_expired(&app);
+                }
+                prettify(e)
+            })?;
+            activate_feature_raw(&fresh.server_url, &fresh.access_token, &feature)
+                .await
+                .map_err(|e| e.into_message())
+        }
+        Err(other) => Err(other.into_message()),
+    }
+}
+
+async fn activate_feature_raw(
+    base: &str,
+    token: &str,
+    feature: &str,
+) -> Result<FeatureState, MeError> {
+    let url = format!("{base}/v1/cloud/features/{feature}/activate");
+    let client = http_client().map_err(|e| MeError::Other(e.to_string()))?;
+    let resp = client
+        .post(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| MeError::Other(format!("Network error: {e}")))?;
+    let status = resp.status();
+    if status == StatusCode::UNAUTHORIZED {
+        return Err(MeError::Unauthorized);
+    }
+    // 402 = locked (no paid Pro, trial elapsed). Keep the UI locked.
+    if status == StatusCode::PAYMENT_REQUIRED {
+        return Ok(FeatureState::TrialExpired);
+    }
+    let body = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(MeError::Other(format_http_error(status, &body)));
+    }
+    serde_json::from_str::<FeatureState>(&body)
+        .map_err(|e| MeError::Other(format!("parsing activate response: {e}: {body}")))
+}
+
 // ---- HTTP helpers -----------------------------------------------------
 
 /// Error from `/v1/me` that distinguishes "token expired" (recoverable via a

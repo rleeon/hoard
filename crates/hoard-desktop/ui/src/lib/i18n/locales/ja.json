@@ -29,6 +29,8 @@
   "pro.under_construction": "開発中",
   "pro.under_construction_desc": "この機能は開発中です。しばらくお待ちください。",
   "pro.trial_days_left": "トライアル: 残り{n}日",
+  "pro.trial_available": "{n}日間の無料トライアル",
+  "pro.start_trial": "無料トライアルを開始",
   "pro.trial_desc": "トライアル中は無料、その後はPro機能になります。",
   "pro.locked_title": "Pro機能",
   "pro.locked_desc": "この機能はProプランで利用できます。",

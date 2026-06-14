@@ -52,6 +52,27 @@ export async function refreshEntitlements(): Promise<Entitlements | null> {
   }
 }
 
+/** Open a feature: this is the call that actually *starts* the one-month trial
+ *  on a Free account's first use, and is what flips `trial_available` →
+ *  `trial`. The server is the source of truth and idempotent (the clock can't be
+ *  restarted by re-opening). Returns the resulting state and patches it into the
+ *  cached snapshot so the gate updates immediately. Returns `null` on failure
+ *  (signed out, offline) so the caller keeps the locked fallback. */
+export async function activateFeature(
+  feature: FeatureKey,
+): Promise<FeatureState | null> {
+  try {
+    const fs = await invoke<FeatureState>("cloud_activate_feature", { feature });
+    internal.update((ent) =>
+      ent ? { ...ent, features: { ...ent.features, [feature]: fs } } : ent,
+    );
+    return fs;
+  } catch (e) {
+    console.warn("cloud_activate_feature failed:", e);
+    return null;
+  }
+}
+
 /** Whole days left for a feature (rounded up). `trial_available` reports the
  *  full window; `trial` counts down from `expires_at`; everything else is 0. */
 export function featureDaysLeft(fs: FeatureState | null | undefined): number {

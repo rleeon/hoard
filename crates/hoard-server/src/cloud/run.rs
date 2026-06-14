@@ -125,6 +125,10 @@ pub async fn run(cfg: Config) -> Result<()> {
             "/v1/cloud/entitlements",
             get(ent_routes::get_entitlements),
         )
+        .route(
+            "/v1/cloud/features/:feature/activate",
+            post(ent_routes::activate_feature),
+        )
         .route("/v1/cloud/saves", post(saves::init_upload))
         // Content-addressed init lives off the `/saves/:save_id` param path on
         // purpose: matchit 0.7 (axum 0.7) panics on a static `/saves/cas`

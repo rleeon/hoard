@@ -29,6 +29,8 @@
   "pro.under_construction": "In Arbeit",
   "pro.under_construction_desc": "Wir entwickeln diese Funktion. Schau bald wieder vorbei.",
   "pro.trial_days_left": "Test: noch {n} Tage",
+  "pro.trial_available": "{n} Tage kostenlos testen",
+  "pro.start_trial": "Kostenlose Testphase starten",
   "pro.trial_desc": "Während des Tests kostenlos – danach eine Pro-Funktion.",
   "pro.locked_title": "Pro-Funktion",
   "pro.locked_desc": "Diese Funktion ist im Pro-Tarif verfügbar.",

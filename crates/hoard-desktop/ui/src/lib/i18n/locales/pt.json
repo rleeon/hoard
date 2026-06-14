@@ -29,6 +29,8 @@
   "pro.under_construction": "Em construção",
   "pro.under_construction_desc": "Estamos a construir este recurso. Volta em breve.",
   "pro.trial_days_left": "Avaliação: faltam {n} dias",
+  "pro.trial_available": "Teste grátis de {n} dias",
+  "pro.start_trial": "Iniciar teste grátis",
   "pro.trial_desc": "Grátis durante a avaliação; depois é um recurso Pro.",
   "pro.locked_title": "Recurso Pro",
   "pro.locked_desc": "Este recurso está disponível no plano Pro.",
