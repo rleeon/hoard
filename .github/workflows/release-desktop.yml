@@ -11,8 +11,12 @@ name: Release (desktop)
 # repository secrets and the Tauri Action will pick them up automatically.
 
 on:
-  push:
-    tags: ["v*.*.*"]
+  # Desktop installers ship from the private `hoard-build` (Pro) pipeline,
+  # which uploads the Pro-capable bundles straight onto the public release.
+  # A plain build here produces the Pro-less STUB; if it ran on the same tag
+  # it would overwrite those Pro installers (identical filenames). So this
+  # workflow no longer runs on tags — desktop releases go through
+  # `hoard-build`. Kept as `workflow_dispatch` for a one-off STUB build.
   workflow_dispatch:
 
 env:
