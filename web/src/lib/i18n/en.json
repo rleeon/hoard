@@ -196,6 +196,9 @@
   "login.email_placeholder": "you@example.com",
   "login.email_cta": "Send magic link",
   "login.email_sent": "Check your inbox — link sent to {email}.",
+  "login.signed_in_as": "Signed in as",
+  "login.connect_app": "Connect this account",
+  "login.use_another_account": "Use another account",
   "login.terms_html": "By continuing you accept the <a href=\"/legal/terms\">Terms</a> and the <a href=\"/legal/privacy\">Privacy Policy</a>.",
 
   "checkout.title": "Upgrade to Pro",

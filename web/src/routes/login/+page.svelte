@@ -12,6 +12,9 @@
   let sent = $state(false);
   let busy = $state(false);
   let error = $state<string | null>(null);
+  // Set when the user picks "use another account": suppresses the auto-forward
+  // so they can sign in as someone else even though a session still lingers.
+  let switching = $state(false);
 
   let next = $derived($page.url.searchParams.get('next') ?? '/account');
   // Desktop login handoff: the Hoard app opens this page with ?desktop=1 and
@@ -39,13 +42,38 @@
     desktop ? `/auth/callback?next=${encodeURIComponent(next)}${dlExtra}` : next
   );
 
+  // Show the account picker when the desktop app sends an already-signed-in
+  // browser here, so the user can connect the app OR switch accounts. We only
+  // auto-forward for plain web browsing.
+  let showAccountChoice = $derived(desktop && !!$session && !switching);
+
+  // Auto-forward an existing session for non-desktop browsing only. For the
+  // desktop handoff we never auto-forward: a lingering browser session
+  // (Supabase persists it in localStorage, which "clear cookies" doesn't touch)
+  // would otherwise log the app into the previous account with no way to switch.
   onMount(() => {
-    if ($session) goto(postLogin);
+    if ($session && !desktop) goto(postLogin);
   });
 
   $effect(() => {
-    if ($session) goto(postLogin);
+    if ($session && !desktop) goto(postLogin);
   });
+
+  function continueAsCurrent() {
+    goto(postLogin);
+  }
+
+  async function useAnotherAccount() {
+    switching = true;
+    sent = false;
+    email = '';
+    error = null;
+    try {
+      await auth.signOut();
+    } catch (e) {
+      error = (e as Error).message;
+    }
+  }
 
   async function withGoogle() {
     error = null;
@@ -83,6 +111,23 @@
   <h1 class="mt-5 font-display text-3xl font-semibold tracking-tight text-ink">{$_('login.title')}</h1>
   <p class="mt-2 text-sm text-ink-soft">{$_('login.subtitle')}</p>
 
+  {#if showAccountChoice}
+    <div class="mt-10 w-full space-y-4">
+      <div class="rounded-xl border border-line bg-surface p-4 text-center">
+        <p class="text-xs text-ink-faint">{$_('login.signed_in_as')}</p>
+        <p class="mt-1 text-sm font-medium text-ink">{$session?.email}</p>
+      </div>
+      <Button variant="primary" full onclick={continueAsCurrent}>
+        {$_('login.connect_app')}
+      </Button>
+      <button
+        class="ring-focus w-full rounded-lg border border-line px-4 py-2.5 text-sm font-medium text-ink-soft transition-colors hover:bg-bg"
+        onclick={useAnotherAccount}
+      >
+        {$_('login.use_another_account')}
+      </button>
+    </div>
+  {:else}
   <div class="mt-10 w-full space-y-5">
     <button
       class="ring-focus flex w-full items-center justify-center gap-3 rounded-lg border border-line-strong bg-surface px-4 py-3 text-sm font-medium text-ink transition-colors hover:bg-bg disabled:opacity-50"
@@ -149,4 +194,5 @@
       {@html $_('login.terms_html')}
     </p>
   </div>
+  {/if}
 </section>

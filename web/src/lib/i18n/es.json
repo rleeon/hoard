@@ -196,6 +196,9 @@
   "login.email_placeholder": "tu@ejemplo.com",
   "login.email_cta": "Enviar enlace mágico",
   "login.email_sent": "Mira tu bandeja — enlace enviado a {email}.",
+  "login.signed_in_as": "Sesión iniciada como",
+  "login.connect_app": "Conectar esta cuenta",
+  "login.use_another_account": "Usar otra cuenta",
   "login.terms_html": "Al continuar aceptas los <a href=\"/legal/terms\">Términos</a> y la <a href=\"/legal/privacy\">Política de Privacidad</a>.",
 
   "checkout.title": "Pasar a Pro",

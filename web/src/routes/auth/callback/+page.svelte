@@ -53,29 +53,49 @@
     goto(next, { replaceState: true });
   }
 
-  onMount(async () => {
+  onMount(() => {
     message = $_('callback.signing_in');
-    try {
-      const { data, error: e } = await supabase.auth.getSession();
-      if (e) throw e;
-      if (data.session) {
-        done(data.session);
-        return;
-      }
-      // Supabase JS handles detectSessionInUrl automatically; give it a moment
-      setTimeout(async () => {
-        const { data: d2 } = await supabase.auth.getSession();
-        if (d2.session) {
-          done(d2.session);
-        } else {
+
+    // Does THIS redirect carry a fresh auth payload? Magic-link / OAuth returns
+    // land here either with `#access_token=…` (implicit) or `?code=…` (PKCE).
+    const href = window.location.href;
+    const hasFreshAuth = href.includes('access_token=') || /[?&]code=/.test(href);
+
+    // No payload → an already-signed-in browser is just bouncing through to
+    // hand its session to the app. The cached session is the right one.
+    if (!hasFreshAuth) {
+      (async () => {
+        const { data } = await supabase.auth.getSession();
+        if (data.session) done(data.session);
+        else {
           error = $_('callback.failed_generic');
           message = '';
         }
-      }, 500);
-    } catch (err) {
-      error = (err as Error).message;
-      message = '';
+      })();
+      return;
     }
+
+    // Fresh sign-in: the session MUST come from this URL, not the one still in
+    // localStorage. Clearing cookies doesn't clear that store, so reading the
+    // cached session here used to forward the *previous* account (and made
+    // switching accounts impossible). Wait for the SIGNED_IN that
+    // detectSessionInUrl fires once it has exchanged the new tokens.
+    let settled = false;
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      if (settled) return;
+      if (event === 'SIGNED_IN' && s) {
+        settled = true;
+        sub.subscription.unsubscribe();
+        done(s);
+      }
+    });
+    setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      sub.subscription.unsubscribe();
+      error = $_('callback.failed_generic');
+      message = '';
+    }, 8000);
   });
 </script>
 
