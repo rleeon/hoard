@@ -232,6 +232,7 @@ pub fn run() {
             commands::cloud::cloud_logout,
             commands::cloud::cloud_export_all,
             commands::cloud::cloud_delete_account,
+            commands::cloud::cloud_entitlements,
         ])
         .setup(|app| {
             // Build the tray as soon as we have an AppHandle. Failures here

@@ -1,24 +1,39 @@
 <script lang="ts">
   // Shared entitlement gate for the Pro features (Hoard-Screen / Hoard-Wrapped).
-  // Three states driven by the cloud account:
-  //   - Pro              → "En construcción" (the feature is being built)
-  //   - Free, in trial   → "Prueba: quedan N días"
-  //   - Free, lapsed     → "Función Pro" + upgrade CTA (also the signed-out case)
+  // Reads the per-feature snapshot from the server (`GET /v1/cloud/entitlements`)
+  // and maps it to one of three views:
+  //   - entitled (paid Pro)          → "En construcción" (the feature is being built)
+  //   - trial_available / trial      → "Prueba: quedan N días"
+  //   - trial_expired / signed-out   → "Función Pro" + upgrade CTA
   //
-  // NOTE: trial days come from the client store (created_at + 30d). The chosen
-  // model is per-feature first-use (server `GET /v1/cloud/entitlements`); wiring
-  // this view to that endpoint is the registered debt for the feature phase.
+  // The trial is one month per feature and starts on first real use; with the
+  // current placeholders a Free account stays in `trial_available`, so it shows
+  // the full window until the real content endpoints exist.
   import type { Snippet } from "svelte";
+  import { onMount } from "svelte";
   import { _ } from "svelte-i18n";
   import { Lock } from "lucide-svelte";
-  import { cloud, trialDaysLeft, openUpgradePage } from "../stores/cloud";
+  import { openUpgradePage } from "../stores/cloud";
+  import {
+    entitlements,
+    refreshEntitlements,
+    featureDaysLeft,
+    type FeatureKey,
+  } from "../stores/entitlements";
 
-  let { titleKey, icon }: { titleKey: string; icon: Snippet } = $props();
+  let {
+    titleKey,
+    feature,
+    icon,
+  }: { titleKey: string; feature: FeatureKey; icon: Snippet } = $props();
 
-  const plan = $derived($cloud.account?.plan ?? null);
-  const isPro = $derived(plan === "pro" || plan === "proplus");
-  const days = $derived($trialDaysLeft);
-  const inTrial = $derived(!isPro && days > 0);
+  onMount(() => {
+    refreshEntitlements();
+  });
+
+  const fs = $derived($entitlements?.features[feature] ?? null);
+  const state = $derived(fs?.state ?? "locked");
+  const days = $derived(featureDaysLeft(fs));
 </script>
 
 <div class="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
@@ -31,7 +46,7 @@
     {$_(titleKey)}
   </h1>
 
-  {#if isPro}
+  {#if state === "entitled"}
     <span
       class="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300"
     >
@@ -40,7 +55,7 @@
     <p class="max-w-sm text-sm text-zinc-500">
       {$_("pro.under_construction_desc")}
     </p>
-  {:else if inTrial}
+  {:else if state === "trial_available" || state === "trial"}
     <span
       class="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300"
     >

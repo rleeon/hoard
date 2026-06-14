@@ -601,6 +601,80 @@ pub async fn cloud_delete_account(state: State<'_, AppState>) -> Result<(), Stri
     Ok(())
 }
 
+// ---- Pro entitlements -------------------------------------------------
+
+/// Per-feature Pro access, mirrored from the server's `GET /v1/cloud/entitlements`.
+/// The server is the source of truth: the trial starts on first *use* of a Pro
+/// content endpoint and locks (402) once the one-month window elapses. This
+/// read-only snapshot only paints the badge/lock; it never starts a trial.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudEntitlements {
+    pub plan: String,
+    pub features: CloudFeatures,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudFeatures {
+    pub screen: FeatureState,
+    pub wrapple: FeatureState,
+}
+
+/// Resolved access state for one feature. Tagged with `state` to match the
+/// server enum (`entitled` / `trial_available` / `trial` / `trial_expired`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum FeatureState {
+    Entitled,
+    TrialAvailable { days: i64 },
+    Trial { expires_at: String },
+    TrialExpired,
+}
+
+/// Fetch the per-feature entitlement snapshot. Transparently renews the JWT and
+/// retries once on a 401, mirroring `cloud_refresh_account`.
+#[tauri::command]
+pub async fn cloud_entitlements(app: AppHandle) -> Result<CloudEntitlements, String> {
+    let Some(creds) = load_creds().map_err(|e| e.to_string())? else {
+        return Err("Not signed in to Hoard Cloud.".into());
+    };
+    match fetch_entitlements_raw(&creds.server_url, &creds.access_token).await {
+        Ok(ent) => Ok(ent),
+        Err(MeError::Unauthorized) => {
+            let fresh = refresh_active_session().await.map_err(|e| {
+                if is_session_expired(&e) {
+                    handle_session_expired(&app);
+                }
+                prettify(e)
+            })?;
+            fetch_entitlements_raw(&fresh.server_url, &fresh.access_token)
+                .await
+                .map_err(|e| e.into_message())
+        }
+        Err(other) => Err(other.into_message()),
+    }
+}
+
+async fn fetch_entitlements_raw(base: &str, token: &str) -> Result<CloudEntitlements, MeError> {
+    let url = format!("{base}/v1/cloud/entitlements");
+    let client = http_client().map_err(|e| MeError::Other(e.to_string()))?;
+    let resp = client
+        .get(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| MeError::Other(format!("Network error: {e}")))?;
+    let status = resp.status();
+    if status == StatusCode::UNAUTHORIZED {
+        return Err(MeError::Unauthorized);
+    }
+    let body = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(MeError::Other(format_http_error(status, &body)));
+    }
+    serde_json::from_str::<CloudEntitlements>(&body)
+        .map_err(|e| MeError::Other(format!("parsing entitlements response: {e}: {body}")))
+}
+
 // ---- HTTP helpers -----------------------------------------------------
 
 /// Error from `/v1/me` that distinguishes "token expired" (recoverable via a

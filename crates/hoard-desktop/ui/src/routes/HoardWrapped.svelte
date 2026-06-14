@@ -6,7 +6,7 @@
   import ProGate from "../lib/components/ProGate.svelte";
 </script>
 
-<ProGate titleKey="hoard_wrapped.title">
+<ProGate titleKey="hoard_wrapped.title" feature="wrapple">
   {#snippet icon()}
     <Sparkles size={30} class="text-emerald-400" />
   {/snippet}

@@ -6,7 +6,7 @@
   import ProGate from "../lib/components/ProGate.svelte";
 </script>
 
-<ProGate titleKey="hoard_screen.title">
+<ProGate titleKey="hoard_screen.title" feature="screen">
   {#snippet icon()}
     <MonitorPlay size={30} class="text-emerald-400" />
   {/snippet}
