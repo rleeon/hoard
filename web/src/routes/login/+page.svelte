@@ -1,6 +1,7 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
   import { onMount } from 'svelte';
+  import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { auth } from '$lib/auth';
@@ -44,8 +45,10 @@
 
   // Show the account picker when the desktop app sends an already-signed-in
   // browser here, so the user can connect the app OR switch accounts. We only
-  // auto-forward for plain web browsing.
-  let showAccountChoice = $derived(desktop && !!$session && !switching);
+  // auto-forward for plain web browsing. `browser &&` short-circuits so the
+  // searchParams-backed `desktop` is never read during prerender (which would
+  // throw "Cannot access url.searchParams on a page with prerendering enabled").
+  let showAccountChoice = $derived(browser && desktop && !!$session && !switching);
 
   // Auto-forward an existing session for non-desktop browsing only. For the
   // desktop handoff we never auto-forward: a lingering browser session
