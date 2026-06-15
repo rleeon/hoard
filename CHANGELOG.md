@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.9] — 2026-06-15
+
+### Fixed
+- **Hoard-Screen: el overlay vuelve a verse y a responder.** Las superficies Pro
+  (overlay, launcher, Wrapped) se copian al construir bajo `src/lib/pro/`, que
+  está en `.gitignore`. Tailwind v4 omite del escaneo de contenido todo lo
+  ignorado por git, así que **nunca se generaban las clases usadas solo en el
+  overlay**: la nota perdía su fondo (`bg-amber-200/95`) y quedaba invisible, y
+  la barra de herramientas perdía su `z-index` y su estilo, quedando debajo de
+  los paneles y sin responder a Editar/Jugar/Cerrar. De ahí también la
+  sensación de que Ctrl+O «no editaba» (sí cambiaba de modo, pero la barra era
+  invisible y había que recurrir al launcher de la app). Se registra
+  `src/lib/pro` explícitamente con `@source`, que en v4 salta la exclusión por
+  `.gitignore`; ahora se generan todas las clases del overlay.
+- **Hoard-Screen: fuera la barra de título gris de las ventanas de navegador.**
+  Las ventanas (YouTube, etc.) se abren sin decoraciones (`decorations:false`):
+  la franja gris enorme que ocupaba parte de la pantalla desaparece. Se enfocan
+  y se cierran desde su chip en la barra del overlay, y siguen siendo
+  redimensionables por los bordes.
+
 ## [2.3.8] — 2026-06-15
 
 ### Fixed

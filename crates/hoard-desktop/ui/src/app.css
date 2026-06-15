@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/* The Pro overlay UI (Screen / Overlay / Wrapped) is copied in from the private
+   hoard-pro repo at build time and lives under `src/lib/pro/`, which is
+   .gitignored. Tailwind v4's automatic content detection skips .gitignored
+   paths, so every class used ONLY by the Pro surfaces (the note's
+   `bg-amber-200/95`, the toolbar `z-[100000]` / shadow, the resize handle,
+   etc.) was being dropped from the bundle — making notes invisible and the
+   overlay toolbar render unstyled and un-clickable. Register the directory
+   explicitly so those classes are generated. In the community build the
+   directory doesn't exist; a glob that matches nothing is a harmless no-op. */
+@source "./lib/pro/**/*.{svelte,ts}";
+
 /* ====================================================================== */
 /*  Hoard — "Obsidian Vault" theme                                        */
 /*  Direction: warm-dark, editorial, emerald-as-gem. Bundled variable     */
