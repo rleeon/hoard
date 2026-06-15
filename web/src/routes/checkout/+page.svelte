@@ -62,6 +62,7 @@
 
 <svelte:head>
   <title>{`${$_('checkout.title')} — Hoard`}</title>
+  <meta name="robots" content="noindex,nofollow" />
 </svelte:head>
 
 {#if $session === undefined || $session === null}

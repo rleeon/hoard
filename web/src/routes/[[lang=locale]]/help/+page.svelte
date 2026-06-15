@@ -1,6 +1,7 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
   import Button from '$lib/components/Button.svelte';
+  import Seo from '$lib/components/Seo.svelte';
   import { reveal } from '$lib/actions/reveal';
   import { slide } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
@@ -19,6 +20,19 @@
   ];
 
   const groupOrder: Faq['group'][] = ['billing', 'privacy', 'selfhost', 'limits'];
+
+  // FAQPage structured data for rich results, in the page's locale.
+  const faqLd = $derived(
+    `<script type="application/ld+json">${JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: faqs.map((f) => ({
+        '@type': 'Question',
+        name: $_(f.q),
+        acceptedAnswer: { '@type': 'Answer', text: $_(f.a) }
+      }))
+    })}<\/script>`
+  );
 
   let query = $state('');
   let openKey = $state<string | null>(faqs[0].q);
@@ -43,9 +57,10 @@
   });
 </script>
 
+<Seo path="/help" key="help" />
 <svelte:head>
-  <title>{`${$_('help.title')} — Hoard`}</title>
-  <link rel="canonical" href="https://hoard.services/help" />
+  <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+  {@html faqLd}
 </svelte:head>
 
 <section class="mx-auto max-w-3xl px-4 py-16 sm:px-6 sm:py-24">

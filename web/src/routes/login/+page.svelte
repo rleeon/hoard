@@ -107,6 +107,7 @@
 
 <svelte:head>
   <title>{`${$_('login.title')} — Hoard`}</title>
+  <meta name="robots" content="noindex,nofollow" />
 </svelte:head>
 
 <section class="mx-auto flex max-w-md flex-col items-center px-4 py-16 sm:px-6 sm:py-20">

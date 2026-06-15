@@ -1,9 +1,13 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
   import Button from '$lib/components/Button.svelte';
+  import Seo from '$lib/components/Seo.svelte';
   import HowItWorks from '$lib/components/HowItWorks.svelte';
   import DownloadCTA from '$lib/components/DownloadCTA.svelte';
   import { reveal } from '$lib/actions/reveal';
+  import { localeHref } from '$lib/i18n/href';
+  import { SITE_URL } from '$lib/i18n/locales';
+  import { PLANS } from '$lib/plans';
   import { version } from '$lib/version';
   import {
     ArrowRight,
@@ -37,12 +41,54 @@
   ];
 
   const facts = ['sha', 'agpl', 'eu', 'os'];
+
+  // Structured data for rich results: the product + its two pricing tiers and
+  // the operating organization. Description tracks the page locale.
+  const jsonLd = $derived(
+    `<script type="application/ld+json">${JSON.stringify({
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'Organization',
+          '@id': `${SITE_URL}/#org`,
+          name: 'Hoard',
+          url: SITE_URL,
+          logo: `${SITE_URL}/icon.png`,
+          founder: { '@type': 'Person', name: 'Raimundo León Oliva' }
+        },
+        {
+          '@type': 'SoftwareApplication',
+          name: 'Hoard',
+          applicationCategory: 'UtilitiesApplication',
+          operatingSystem: 'Windows, macOS, Linux',
+          url: SITE_URL,
+          description: $_('seo.home.desc'),
+          publisher: { '@id': `${SITE_URL}/#org` },
+          offers: [
+            {
+              '@type': 'Offer',
+              name: $_('plan.free'),
+              price: '0',
+              priceCurrency: 'EUR'
+            },
+            {
+              '@type': 'Offer',
+              name: $_('plan.pro'),
+              price: PLANS.pro.priceMonthly.toFixed(2),
+              priceCurrency: 'EUR'
+            }
+          ]
+        }
+      ]
+    })}<\/script>`
+  );
 </script>
 
+<Seo path="/" key="home" />
 <svelte:head>
-  <title>Hoard — your game saves, on every PC</title>
-  <link rel="canonical" href="https://hoard.services/" />
   <link rel="preload" as="image" href="/app.webp" fetchpriority="high" />
+  <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+  {@html jsonLd}
 </svelte:head>
 
 <!-- ───────── HERO ───────── -->
@@ -68,11 +114,11 @@
         class="mt-9 flex flex-col items-center gap-4 sm:flex-row animate-fade-up"
         style="animation-delay:0.2s"
       >
-        <Button href="/download" size="lg" variant="primary">
+        <Button href={$localeHref('/download')} size="lg" variant="primary">
           {$_('hero.cta_start')}
           <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </Button>
-        <Button href="/pricing" size="lg" variant="secondary">
+        <Button href={$localeHref('/pricing')} size="lg" variant="secondary">
           {$_('hero.cta_pricing')}
         </Button>
       </div>
