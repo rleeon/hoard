@@ -94,6 +94,11 @@
   }
 </script>
 
+<svelte:head>
+  <title>{`${$_('account.title')} — Hoard`}</title>
+  <meta name="robots" content="noindex,nofollow" />
+</svelte:head>
+
 <section class="mx-auto max-w-4xl space-y-6 px-4 py-12 sm:px-6">
   <div class="flex items-center justify-between">
     <h1 class="font-display text-3xl font-semibold text-ink">{$_('account.title')}</h1>

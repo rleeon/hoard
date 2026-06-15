@@ -1,6 +1,7 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
   import LogoMark from './LogoMark.svelte';
+  import { localeHref } from '$lib/i18n/href';
   import { version } from '$lib/version';
   const year = new Date().getFullYear();
 </script>
@@ -25,9 +26,9 @@
         {$_('footer.product')}
       </h3>
       <ul class="mt-3 space-y-2 text-sm text-ink-soft">
-        <li><a class="link-underline hover:text-ink" href="/pricing">{$_('nav.pricing')}</a></li>
+        <li><a class="link-underline hover:text-ink" href={$localeHref('/pricing')}>{$_('nav.pricing')}</a></li>
         <li>
-          <a class="link-underline hover:text-ink" href="/download">
+          <a class="link-underline hover:text-ink" href={$localeHref('/download')}>
             {$_('nav.download')}
           </a>
         </li>
@@ -40,7 +41,7 @@
             {$_('footer.changelog')}
           </a>
         </li>
-        <li><a class="link-underline hover:text-ink" href="/help">{$_('footer.status')}</a></li>
+        <li><a class="link-underline hover:text-ink" href={$localeHref('/help')}>{$_('footer.status')}</a></li>
       </ul>
     </div>
 
@@ -54,7 +55,7 @@
             {$_('footer.github')}
           </a>
         </li>
-        <li><a class="link-underline hover:text-ink" href="/help">{$_('footer.contact')}</a></li>
+        <li><a class="link-underline hover:text-ink" href={$localeHref('/help')}>{$_('footer.contact')}</a></li>
       </ul>
     </div>
 
@@ -63,8 +64,8 @@
         {$_('footer.legal')}
       </h3>
       <ul class="mt-3 space-y-2 text-sm text-ink-soft">
-        <li><a class="link-underline hover:text-ink" href="/legal/terms">{$_('footer.terms')}</a></li>
-        <li><a class="link-underline hover:text-ink" href="/legal/privacy">{$_('footer.privacy')}</a></li>
+        <li><a class="link-underline hover:text-ink" href={$localeHref('/legal/terms')}>{$_('footer.terms')}</a></li>
+        <li><a class="link-underline hover:text-ink" href={$localeHref('/legal/privacy')}>{$_('footer.privacy')}</a></li>
       </ul>
     </div>
   </div>

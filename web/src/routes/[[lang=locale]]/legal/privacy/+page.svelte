@@ -1,18 +1,20 @@
 <script lang="ts">
   import { _, locale } from 'svelte-i18n';
+  import Seo from '$lib/components/Seo.svelte';
+  import { localeHref } from '$lib/i18n/href';
   import { ArrowLeft } from 'lucide-svelte';
 
   const isEs = $derived(String($locale ?? 'en').toLowerCase().startsWith('es'));
+  // The binding legal text exists in ES and EN. Other locales render the EN
+  // text with a courtesy notice; the Spanish version prevails.
+  const courtesy = $derived(!['en', 'es'].includes(String($locale ?? 'en').slice(0, 2)));
 </script>
 
-<svelte:head>
-  <title>{$_('legal.privacy_title')} — Hoard</title>
-  <meta name="robots" content="index,follow" />
-</svelte:head>
+<Seo path="/legal/privacy" key="privacy" />
 
 <section class="mx-auto max-w-3xl px-4 py-16 sm:px-6 sm:py-20">
   <a
-    href="/"
+    href={$localeHref('/')}
     class="ring-focus inline-flex items-center gap-1.5 text-sm text-ink-soft transition-colors hover:text-ink"
   >
     <ArrowLeft class="h-4 w-4" />
@@ -23,6 +25,12 @@
     {$_('legal.privacy_title')}
   </h1>
   <p class="mt-3 text-sm text-ink-faint">{$_('legal.last_updated')}</p>
+
+  {#if courtesy}
+    <p class="mt-5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+      {$_('legal.courtesy_notice')}
+    </p>
+  {/if}
 
   <article
     class="prose-legal mt-10 space-y-6 text-[15px] leading-relaxed text-ink-soft [&_h2]:mt-10 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-ink [&_h3]:mt-6 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-ink [&_a]:text-accent [&_a]:underline [&_a:hover]:text-emerald-300 [&_strong]:text-ink [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-1.5 [&_li]:marker:text-ink-faint [&_table]:w-full [&_table]:text-sm [&_th]:text-left [&_th]:font-semibold [&_th]:text-ink [&_th]:py-2 [&_th]:pr-4 [&_td]:py-2 [&_td]:pr-4 [&_td]:text-ink-soft [&_tr]:border-t [&_tr]:border-line"

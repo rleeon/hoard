@@ -262,5 +262,19 @@
   "legal.terms_title": "Terms of Service",
   "legal.privacy_title": "Privacy Policy",
   "legal.last_updated": "Last updated: May 26, 2026",
-  "legal.back_home": "Back home"
+  "legal.back_home": "Back home",
+  "legal.courtesy_notice": "Courtesy translation. This page is shown in English; the Spanish version is the legally binding one.",
+
+  "seo.home.title": "Hoard — Cloud sync and versioned backups for your game saves",
+  "seo.home.desc": "Automatic cloud sync and versioned history for your game saves. Built in Rust, open source, self-hostable. Free 1 GB, Pro 50 GB.",
+  "seo.pricing.title": "Pricing — Hoard",
+  "seo.pricing.desc": "Free with 1 GB or Pro with 50 GB. No lock-in, cancel anytime, export whenever you want. Self-host the open-source server for free.",
+  "seo.help.title": "Help & FAQ — Hoard",
+  "seo.help.desc": "Answers about billing, privacy, self-hosting and limits. Get help with Hoard cloud sync for your game saves.",
+  "seo.download.title": "Download — Hoard",
+  "seo.download.desc": "Download Hoard for Windows, macOS and Linux. Free and open source. Sync and back up your game saves automatically.",
+  "seo.terms.title": "Terms of Service — Hoard",
+  "seo.terms.desc": "The terms governing your use of Hoard.",
+  "seo.privacy.title": "Privacy Policy — Hoard",
+  "seo.privacy.desc": "What data Hoard collects, how it's used and the rights you have. Data stored in the EU."
 }

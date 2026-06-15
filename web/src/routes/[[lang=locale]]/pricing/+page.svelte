@@ -1,10 +1,13 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
   import PlanCard from '$lib/components/PlanCard.svelte';
+  import Seo from '$lib/components/Seo.svelte';
   import { PLANS, formatPlanQuota, formatMaxSaveSize, formatBandwidthQuota } from '$lib/plans';
   import type { BillingCycle, PlanId } from '$lib/types';
   import { goto } from '$app/navigation';
   import { reveal } from '$lib/actions/reveal';
+  import { get } from 'svelte/store';
+  import { localeHref } from '$lib/i18n/href';
   import { Check, Receipt, Unlock } from 'lucide-svelte';
 
   let cycle = $state<BillingCycle>('monthly');
@@ -20,7 +23,7 @@
 
   function choose(plan: PlanId, c: BillingCycle) {
     if (plan === 'free') {
-      goto('/download');
+      goto(get(localeHref)('/download'));
       return;
     }
     // Hand off to the confirmation flow. It checks for a session (bouncing to
@@ -116,10 +119,7 @@
   ];
 </script>
 
-<svelte:head>
-  <title>{`${$_('pricing.title')} — Hoard`}</title>
-  <link rel="canonical" href="https://hoard.services/pricing" />
-</svelte:head>
+<Seo path="/pricing" key="pricing" />
 
 <section class="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
   <div class="mx-auto max-w-2xl text-center">

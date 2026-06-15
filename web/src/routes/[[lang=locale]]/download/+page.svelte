@@ -1,6 +1,7 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
   import Button from '$lib/components/Button.svelte';
+  import Seo from '$lib/components/Seo.svelte';
   import { reveal } from '$lib/actions/reveal';
   import { onMount } from 'svelte';
   import { Apple, Github, Monitor, ArrowRight } from 'lucide-svelte';
@@ -78,10 +79,7 @@
   const order: Platform[] = ['windows', 'macos', 'linux'];
 </script>
 
-<svelte:head>
-  <title>{`${$_('download.title')} — Hoard`}</title>
-  <link rel="canonical" href="https://hoard.services/download" />
-</svelte:head>
+<Seo path="/download" key="download" />
 
 <section class="mx-auto max-w-5xl px-4 py-16 sm:px-6 sm:py-24">
   <div class="mx-auto max-w-2xl text-center">
