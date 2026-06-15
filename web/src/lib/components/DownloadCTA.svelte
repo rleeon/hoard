@@ -1,6 +1,7 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
   import Button from './Button.svelte';
+  import { localeHref } from '$lib/i18n/href';
   import { onMount } from 'svelte';
   import { ArrowRight, Github } from 'lucide-svelte';
 
@@ -22,7 +23,7 @@
 </script>
 
 <div class="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-  <Button href="/download" size="lg" variant="primary">
+  <Button href={$localeHref('/download')} size="lg" variant="primary">
     {cta}
     <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
   </Button>

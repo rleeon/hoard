@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /account
+Disallow: /checkout
+Disallow: /login
+Disallow: /auth
+
+Sitemap: https://hoard.services/sitemap.xml

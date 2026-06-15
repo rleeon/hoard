@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="%lang%">
   <head>
     <meta charset="utf-8" />
     <link rel="icon" type="image/svg+xml" href="%sveltekit.assets%/favicon.svg" />
@@ -9,19 +9,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0b0f0c" />
     <meta name="color-scheme" content="dark" />
-    <meta
-      name="description"
-      content="Hoard syncs your game saves across every PC and keeps a verified version history of each one. Windows, macOS, Linux — free tier, open source, self-hostable."
-    />
-    <meta property="og:title" content="Hoard — your game saves, on every PC" />
-    <meta
-      property="og:description"
-      content="Cross-device sync for game saves with full version history. SHA-256 verified, EU-hosted, AGPL-3.0."
-    />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://hoard.services" />
-    <meta property="og:image" content="https://hoard.services/app.webp" />
-    <meta name="twitter:card" content="summary_large_image" />
+    <!-- Per-page title/description/canonical/OG/hreflang come from <Seo>; see $lib/components/Seo.svelte. -->
     %sveltekit.head%
   </head>
   <body class="antialiased">
