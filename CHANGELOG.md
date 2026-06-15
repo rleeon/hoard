@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.8] — 2026-06-15
+
+### Fixed
+- **Hoard-Screen: las notas y fotos vuelven a aparecer.** Al crear un panel se
+  generaba su id con `crypto.randomUUID()`, que no existe en el origen no
+  seguro de WebView2 (`http://tauri.localhost`) en Windows: la llamada lanzaba
+  excepción y abortaba en silencio añadir nota, foto o web (el navegador real
+  se salvaba porque construye su id con `Date.now()`). Ahora el id usa un
+  generador válido en cualquier contexto.
+- **Hoard-Screen: las ventanas de navegador ya no se tragan la pantalla.** Se
+  desactiva el maximizar de las ventanas (YouTube, etc.): se quedan como un
+  rectángulo flotante, movible por su barra y redimensionable por los bordes,
+  en vez de ocupar todo y estirar la barra de título de lado a lado.
+
+### Added
+- **Hoard-Screen: montajes guardados.** Guarda la disposición actual de paneles
+  con un nombre y alterna entre varios montajes desde la barra del overlay
+  (botón «Capas»): guardar, cargar, sobrescribir y borrar.
+
 ## [2.3.7] — 2026-06-14
 
 ### Fixed
