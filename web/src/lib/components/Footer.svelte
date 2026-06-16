@@ -41,6 +41,9 @@
             {$_('footer.changelog')}
           </a>
         </li>
+        <li>
+          <a class="link-underline hover:text-ink" href={$localeHref('/guides')}>{$_('footer.guides')}</a>
+        </li>
         <li><a class="link-underline hover:text-ink" href={$localeHref('/help')}>{$_('footer.status')}</a></li>
       </ul>
     </div>

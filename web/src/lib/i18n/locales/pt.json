@@ -7,7 +7,6 @@
   "nav.dashboard": "Painel",
   "nav.get_app": "Baixar",
   "nav.download": "Baixar",
-
   "hero.title_1": "Os teus saves,",
   "hero.title_2": "em todos os PCs.",
   "hero.subtitle": "O Hoard sincroniza os teus saves entre dispositivos: para de jogar num PC e o teu jogo está à espera no seguinte. Cada save mantém um histórico completo de versões, verificado ficheiro a ficheiro.",
@@ -15,7 +14,6 @@
   "hero.cta_pricing": "Ver preços",
   "hero.subnote": "v{v} · Windows · macOS · Linux · sem cartão",
   "hero.screenshot_alt": "A app de desktop do Hoard a mostrar a biblioteca de jogos com os saves sincronizados e o histórico de versões",
-
   "facts.sha.value": "SHA-256",
   "facts.sha.label": "cada ficheiro verificado",
   "facts.agpl.value": "AGPL-3.0",
@@ -24,7 +22,6 @@
   "facts.eu.label": "dados alojados na UE",
   "facts.os.value": "Win · macOS · Linux",
   "facts.os.label": "uma app, uma conta",
-
   "sync.kicker": "01 — Sync",
   "sync.title": "Começa no desktop, continua no portátil.",
   "sync.body": "Quando fechas o jogo, o Hoard envia o save; quando abres o teu outro PC, ele traz a versão mais recente. Sem copiar pastas, sem pens USB, sem sobrescrever um bom save com um antigo.",
@@ -36,7 +33,6 @@
   "sync.demo_laptop": "portátil",
   "sync.demo_synced": "atualizado",
   "sync.demo_note": "O cliente compara as versões com o servidor e só transfere o que mudou.",
-
   "how.kicker": "02 — Como funciona",
   "how.title": "Três passos. Sem configuração.",
   "how.subtitle": "Instala a app, entra uma vez e esquece que ela está lá.",
@@ -46,7 +42,6 @@
   "how.s2_body": "O Hoard encontra os teus jogos no Steam, Epic, GOG, prefixos Proton/Wine e mais, e acompanha-os sozinho. Milhares de títulos via o manifesto Ludusavi.",
   "how.s3_title": "Sync e histórico",
   "how.s3_body": "Sempre que paras de jogar, é criado um snapshot e sincronizado para as tuas outras máquinas. Volta a qualquer versão a partir da Biblioteca.",
-
   "features.kicker": "03 — O que vem na caixa",
   "features.title": "Feito como uma ferramenta, não como uma promessa",
   "features.subtitle": "Tudo abaixo já está no produto hoje, nos dois planos.",
@@ -62,18 +57,15 @@
   "features.crossplat.body": "Uma app de desktop, uma conta, um conjunto de saves. Prefixos Proton/Wine detetados como alvos de primeira classe.",
   "features.export.title": "Teus, para levares contigo",
   "features.export.body": "Exporta cada save tal como o jogo o escreveu — sem arquivo, sem formato proprietário. Incluído no plano grátis.",
-
   "selfhost.kicker": "04 — Self-host",
   "selfhost.title": "O mesmo binário, o teu hardware.",
   "selfhost.body": "O servidor é um único binário Rust sob AGPL-3.0. Sem conta, sem quotas, sem outro limite além do teu disco. Corre bem num Raspberry Pi.",
   "selfhost.cta": "Guia de instalação no GitHub",
-
   "cta_section.title": "Grátis até precisares de mais.",
   "cta_section.body": "1 GB, 3 dispositivos, sync e histórico completo, sem cartão. Pro a 4,49 €/mês quando a tua biblioteca pedir.",
   "cta_section.cta": "Baixar grátis",
   "cta_section.cta_os": "Baixar para {platform}",
   "cta_section.subnote": "Ou obtém o binário para qualquer plataforma em",
-
   "pricing.title": "Dois planos. Nada mais.",
   "pricing.subtitle": "O Free é um plano a sério, não uma demo. Passa para Pro quando ficares sem espaço — os teus dados e histórico vão contigo.",
   "pricing.toggle_monthly": "Mensal",
@@ -111,7 +103,6 @@
   "pricing.compare_email": "E-mail e GitHub",
   "pricing.compare_email_basic": "E-mail e GitHub",
   "pricing.compare_anytime": "A qualquer momento, mesmo binário",
-
   "plan.free": "Free",
   "plan.pro": "Pro",
   "plan.tagline.free": "Para um punhado de jogos",
@@ -128,7 +119,6 @@
   "plan.bandwidth": "{amount} / 15 min de largura de banda",
   "plan.export": "Exportar tudo de uma vez",
   "plan.support": "Suporte por e-mail e GitHub",
-
   "account.title": "Conta",
   "account.plan_section": "Plano",
   "account.usage_section": "Utilização",
@@ -167,7 +157,6 @@
   "account.time_days_ago": "há {n} dias",
   "account.load_error_title": "Não foi possível carregar a tua conta",
   "account.load_error_body": "O navegador não conseguiu alcançar a API do Hoard. Tenta de novo daqui a pouco; se persistir, escreve para support@hoard.services.",
-
   "download.title": "Baixar o Hoard",
   "download.subtitle": "A mesma app nos três sistemas. A tua conta e os teus saves mantêm-se iguais.",
   "download.detected": "Detetado",
@@ -181,14 +170,12 @@
   "download.all_releases_body": "Todas as builds e notas de lançamento estão no GitHub Releases.",
   "download.all_releases_cta": "Ver todas as versões",
   "download.selfhost_note": "Preferes correr o teu próprio servidor? O mesmo binário Rust, AGPL-3.0:",
-
   "callback.signing_in": "A iniciar sessão…",
   "callback.failed_title": "Falha ao iniciar sessão",
   "callback.failed_generic": "Não conseguimos concluir o início de sessão. Tenta de novo.",
   "callback.back_to_signin": "Voltar ao início de sessão",
   "callback.desktop_return": "Sessão iniciada! Volta à app Hoard — podes fechar este separador.",
   "callback.desktop_reopen": "Não abriu? Clica aqui para reabrir o Hoard.",
-
   "login.title": "Entrar no Hoard",
   "login.subtitle": "A mesma conta em todos os dispositivos.",
   "login.google": "Continuar com Google",
@@ -201,7 +188,6 @@
   "login.connect_app": "Ligar esta conta",
   "login.use_another_account": "Usar outra conta",
   "login.terms_html": "Ao continuar, aceitas os <a href=\"/legal/terms\">Termos</a> e a <a href=\"/legal/privacy\">Política de Privacidade</a>.",
-
   "checkout.title": "Atualizar para Pro",
   "checkout.subtitle": "Um último passo antes do pagamento.",
   "checkout.question": "É esta a conta que queres atualizar para Pro?",
@@ -211,7 +197,6 @@
   "checkout.price_yearly": "{price} €/ano",
   "checkout.error": "Não foi possível iniciar o pagamento. Tenta de novo daqui a pouco.",
   "checkout.secured_by": "Pagamento seguro tratado pela Polar",
-
   "help.title": "Ajuda",
   "help.subtitle": "A maioria das respostas está abaixo. Para o resto, escreve-nos — lemos tudo.",
   "help.search_placeholder": "Pesquisar nas perguntas…",
@@ -239,7 +224,6 @@
   "help.contact_body": "Escreve para support@hoard.services ou abre uma issue no GitHub. Lemos tudo, em qualquer plano.",
   "help.contact_cta_email": "Escreve-nos",
   "help.contact_cta_github": "Abrir uma issue no GitHub",
-
   "footer.tagline": "Sync e backups versionados para os teus saves. Feito em Rust, open source.",
   "footer.product": "Produto",
   "footer.company": "Empresa",
@@ -252,19 +236,16 @@
   "footer.github": "GitHub",
   "footer.version_label": "v{v}",
   "footer.copyright": "© {year} Hoard · Raimundo León Oliva · AGPL-3.0",
-
   "common.loading": "A carregar…",
   "common.error": "Algo correu mal.",
   "common.retry": "Tentar de novo",
   "common.cancel": "Cancelar",
   "common.confirm": "Confirmar",
-
   "legal.terms_title": "Termos de Serviço",
   "legal.privacy_title": "Política de Privacidade",
   "legal.last_updated": "Última atualização: 26 de maio de 2026",
   "legal.back_home": "Voltar ao início",
   "legal.courtesy_notice": "Tradução de cortesia. Esta página é apresentada em inglês; a versão em espanhol é a juridicamente vinculativa.",
-
   "seo.home.title": "Hoard — Sync na nuvem e backups versionados para os teus saves",
   "seo.home.desc": "Sync na nuvem automático e histórico versionado dos teus saves. Feito em Rust, open source, com self-host. Free 1 GB, Pro 50 GB.",
   "seo.pricing.title": "Preços — Hoard",
@@ -276,5 +257,15 @@
   "seo.terms.title": "Termos de Serviço — Hoard",
   "seo.terms.desc": "Os termos que regem o teu uso do Hoard.",
   "seo.privacy.title": "Política de Privacidade — Hoard",
-  "seo.privacy.desc": "Que dados o Hoard recolhe, como são usados e que direitos tens. Dados guardados na UE."
+  "seo.privacy.desc": "Que dados o Hoard recolhe, como são usados e que direitos tens. Dados guardados na UE.",
+  "nav.guides": "Guias",
+  "footer.guides": "Guias",
+  "seo.guides.title": "Guias — Hoard",
+  "seo.guides.desc": "Guias passo a passo para fazer backup, sincronizar e restaurar os seus saves de jogos com o Hoard no Windows, macOS e Linux.",
+  "guides.index_heading": "Guias",
+  "guides.index_intro": "Guias práticos, passo a passo, para tirar o máximo proveito do Hoard: faça backup, sincronize e restaure os seus saves em todos os PCs.",
+  "guides.back": "Todos os guias",
+  "guides.updated": "Atualizado",
+  "guides.cta_title": "Pronto para proteger os seus saves?",
+  "guides.cta_text": "Baixe o Hoard e configure backups automáticos e versionados em poucos minutos."
 }

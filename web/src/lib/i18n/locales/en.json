@@ -7,7 +7,6 @@
   "nav.dashboard": "Dashboard",
   "nav.get_app": "Download",
   "nav.download": "Download",
-
   "hero.title_1": "Your game saves,",
   "hero.title_2": "on every PC.",
   "hero.subtitle": "Hoard syncs your saves across devices: stop playing on one PC and your game is waiting on the next. Every save keeps a full version history, verified file by file.",
@@ -15,7 +14,6 @@
   "hero.cta_pricing": "See pricing",
   "hero.subnote": "v{v} · Windows · macOS · Linux · no card required",
   "hero.screenshot_alt": "The Hoard desktop app showing the game library with synced saves and version history",
-
   "facts.sha.value": "SHA-256",
   "facts.sha.label": "every file verified",
   "facts.agpl.value": "AGPL-3.0",
@@ -24,7 +22,6 @@
   "facts.eu.label": "data hosted in the EU",
   "facts.os.value": "Win · macOS · Linux",
   "facts.os.label": "one app, one account",
-
   "sync.kicker": "01 — Sync",
   "sync.title": "Start on the desktop, carry on on the laptop.",
   "sync.body": "When you close the game, Hoard uploads the save; when you open your other PC, it pulls the newer version down. No folder copying, no USB sticks, no overwriting a good save with a stale one.",
@@ -36,7 +33,6 @@
   "sync.demo_laptop": "laptop",
   "sync.demo_synced": "up to date",
   "sync.demo_note": "The client compares versions with the server and only transfers what changed.",
-
   "how.kicker": "02 — How it works",
   "how.title": "Three steps. No setup.",
   "how.subtitle": "Install the app, sign in once, and forget it's there.",
@@ -46,7 +42,6 @@
   "how.s2_body": "Hoard finds your games across Steam, Epic, GOG, Proton/Wine prefixes and more, and tracks them on its own. Thousands of titles via the Ludusavi manifest.",
   "how.s3_title": "Sync & history",
   "how.s3_body": "Every time you stop playing, a snapshot is created and synced to your other machines. Roll back to any version from the Library.",
-
   "features.kicker": "03 — What's in the box",
   "features.title": "Built like a tool, not a promise",
   "features.subtitle": "Everything below ships in the product today, on both tiers.",
@@ -62,18 +57,15 @@
   "features.crossplat.body": "One desktop app, one account, one set of saves. Proton/Wine prefixes detected as first-class targets.",
   "features.export.title": "Yours to leave with",
   "features.export.body": "Export every save as the game wrote it — no archive, no proprietary wrapper. Free tier included.",
-
   "selfhost.kicker": "04 — Self-host",
   "selfhost.title": "Same binary, your hardware.",
   "selfhost.body": "The server is a single Rust binary under AGPL-3.0. No account, no quotas, no limit but your disk. Runs fine on a Raspberry Pi.",
   "selfhost.cta": "Install guide on GitHub",
-
   "cta_section.title": "Free until you outgrow it.",
   "cta_section.body": "1 GB, 3 devices, sync and full history, no card. Pro at €4.49/mo when your library asks for it.",
   "cta_section.cta": "Download free",
   "cta_section.cta_os": "Download for {platform}",
   "cta_section.subnote": "Or grab the binary for any platform from",
-
   "pricing.title": "Two plans. Nothing else.",
   "pricing.subtitle": "Free is a real plan, not a trial. Move to Pro when you run out of space — your data and history come with you.",
   "pricing.toggle_monthly": "Monthly",
@@ -111,7 +103,6 @@
   "pricing.compare_email": "Email & GitHub",
   "pricing.compare_email_basic": "Email & GitHub",
   "pricing.compare_anytime": "Anytime, same binary",
-
   "plan.free": "Free",
   "plan.pro": "Pro",
   "plan.tagline.free": "For a handful of games",
@@ -128,7 +119,6 @@
   "plan.bandwidth": "{amount} / 15 min bandwidth",
   "plan.export": "Export everything at once",
   "plan.support": "Email & GitHub support",
-
   "account.title": "Account",
   "account.plan_section": "Plan",
   "account.usage_section": "Usage",
@@ -167,7 +157,6 @@
   "account.time_days_ago": "{n} days ago",
   "account.load_error_title": "Couldn't load your account",
   "account.load_error_body": "The browser couldn't reach the Hoard API. Try again in a moment; if it persists, email support@hoard.services.",
-
   "download.title": "Download Hoard",
   "download.subtitle": "The same app on all three systems. Your account and saves stay the same.",
   "download.detected": "Detected",
@@ -181,14 +170,12 @@
   "download.all_releases_body": "All builds and release notes live on GitHub Releases.",
   "download.all_releases_cta": "See all releases",
   "download.selfhost_note": "Prefer running your own server? Same Rust binary, AGPL-3.0:",
-
   "callback.signing_in": "Signing you in...",
   "callback.failed_title": "Sign-in failed",
   "callback.failed_generic": "We couldn't finish signing you in. Please try again.",
   "callback.back_to_signin": "Back to sign in",
   "callback.desktop_return": "Signed in! Head back to the Hoard app — you can close this tab.",
   "callback.desktop_reopen": "Didn't open? Click here to reopen Hoard.",
-
   "login.title": "Sign in to Hoard",
   "login.subtitle": "The same account on every device.",
   "login.google": "Continue with Google",
@@ -201,7 +188,6 @@
   "login.connect_app": "Connect this account",
   "login.use_another_account": "Use another account",
   "login.terms_html": "By continuing you accept the <a href=\"/legal/terms\">Terms</a> and the <a href=\"/legal/privacy\">Privacy Policy</a>.",
-
   "checkout.title": "Upgrade to Pro",
   "checkout.subtitle": "One last step before payment.",
   "checkout.question": "Is this the account you want to upgrade to Pro?",
@@ -211,7 +197,6 @@
   "checkout.price_yearly": "€{price}/yr",
   "checkout.error": "Couldn't start the checkout. Please try again in a moment.",
   "checkout.secured_by": "Secure checkout handled by Polar",
-
   "help.title": "Help",
   "help.subtitle": "Most answers are below. For everything else, write to us — we read everything.",
   "help.search_placeholder": "Search the questions…",
@@ -239,7 +224,6 @@
   "help.contact_body": "Write to support@hoard.services or open a GitHub issue. We read everything, on any plan.",
   "help.contact_cta_email": "Email us",
   "help.contact_cta_github": "Open a GitHub issue",
-
   "footer.tagline": "Sync and versioned backups for your game saves. Built in Rust, open source.",
   "footer.product": "Product",
   "footer.company": "Company",
@@ -252,19 +236,16 @@
   "footer.github": "GitHub",
   "footer.version_label": "v{v}",
   "footer.copyright": "© {year} Hoard · Raimundo León Oliva · AGPL-3.0",
-
   "common.loading": "Loading…",
   "common.error": "Something went wrong.",
   "common.retry": "Retry",
   "common.cancel": "Cancel",
   "common.confirm": "Confirm",
-
   "legal.terms_title": "Terms of Service",
   "legal.privacy_title": "Privacy Policy",
   "legal.last_updated": "Last updated: May 26, 2026",
   "legal.back_home": "Back home",
   "legal.courtesy_notice": "Courtesy translation. This page is shown in English; the Spanish version is the legally binding one.",
-
   "seo.home.title": "Hoard — Cloud sync and versioned backups for your game saves",
   "seo.home.desc": "Automatic cloud sync and versioned history for your game saves. Built in Rust, open source, self-hostable. Free 1 GB, Pro 50 GB.",
   "seo.pricing.title": "Pricing — Hoard",
@@ -276,5 +257,15 @@
   "seo.terms.title": "Terms of Service — Hoard",
   "seo.terms.desc": "The terms governing your use of Hoard.",
   "seo.privacy.title": "Privacy Policy — Hoard",
-  "seo.privacy.desc": "What data Hoard collects, how it's used and the rights you have. Data stored in the EU."
+  "seo.privacy.desc": "What data Hoard collects, how it's used and the rights you have. Data stored in the EU.",
+  "nav.guides": "Guides",
+  "footer.guides": "Guides",
+  "seo.guides.title": "Guides — Hoard",
+  "seo.guides.desc": "Step-by-step guides to back up, sync and restore your game saves with Hoard on Windows, macOS and Linux.",
+  "guides.index_heading": "Guides",
+  "guides.index_intro": "Practical, step-by-step guides to get the most out of Hoard — back up, sync and restore your game saves across every PC.",
+  "guides.back": "All guides",
+  "guides.updated": "Updated",
+  "guides.cta_title": "Ready to protect your saves?",
+  "guides.cta_text": "Download Hoard and set up automatic, versioned backups in a couple of minutes."
 }
