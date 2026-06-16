@@ -7,7 +7,6 @@
   "nav.dashboard": "仪表盘",
   "nav.get_app": "下载",
   "nav.download": "下载",
-
   "hero.title_1": "你的游戏存档，",
   "hero.title_2": "在每一台电脑上。",
   "hero.subtitle": "Hoard 在你的设备之间同步存档：在一台电脑上停下，下一台电脑上你的游戏正等着你。每个存档都保留完整的版本历史，逐个文件校验。",
@@ -15,7 +14,6 @@
   "hero.cta_pricing": "查看价格",
   "hero.subnote": "v{v} · Windows · macOS · Linux · 无需银行卡",
   "hero.screenshot_alt": "Hoard 桌面应用，显示带有已同步存档和版本历史的游戏库",
-
   "facts.sha.value": "SHA-256",
   "facts.sha.label": "每个文件都校验",
   "facts.agpl.value": "AGPL-3.0",
@@ -24,7 +22,6 @@
   "facts.eu.label": "数据托管在欧盟",
   "facts.os.value": "Win · macOS · Linux",
   "facts.os.label": "一个应用，一个账户",
-
   "sync.kicker": "01 — 同步",
   "sync.title": "在台式机上开始，在笔记本上继续。",
   "sync.body": "当你关闭游戏时，Hoard 上传存档；当你打开另一台电脑时，它会拉取较新的版本。无需复制文件夹，无需 U 盘，也不会用旧存档覆盖好存档。",
@@ -36,7 +33,6 @@
   "sync.demo_laptop": "笔记本",
   "sync.demo_synced": "已是最新",
   "sync.demo_note": "客户端与服务器比对版本，只传输发生变化的部分。",
-
   "how.kicker": "02 — 工作原理",
   "how.title": "三步。无需设置。",
   "how.subtitle": "装好应用，登录一次，然后忘掉它的存在。",
@@ -46,7 +42,6 @@
   "how.s2_body": "Hoard 在 Steam、Epic、GOG、Proton/Wine 前缀等处找到你的游戏，并自行跟踪。通过 Ludusavi 清单支持数千款游戏。",
   "how.s3_title": "同步与历史",
   "how.s3_body": "每次你停止游戏，都会创建一个快照并同步到你的其他机器。可从游戏库回滚到任意版本。",
-
   "features.kicker": "03 — 盒子里有什么",
   "features.title": "像工具一样打造，而非一句承诺",
   "features.subtitle": "下面的一切如今都已在产品中，两个套餐都有。",
@@ -62,18 +57,15 @@
   "features.crossplat.body": "一个桌面应用，一个账户，一套存档。Proton/Wine 前缀被识别为一等目标。",
   "features.export.title": "随时可带走的是你自己的数据",
   "features.export.body": "按游戏写入的原样导出每个存档——无打包，无专有封装。免费套餐也包含。",
-
   "selfhost.kicker": "04 — 自托管",
   "selfhost.title": "同一个二进制，你的硬件。",
   "selfhost.body": "服务器是 AGPL-3.0 下的单个 Rust 二进制文件。无需账户，没有配额，除了你的磁盘没有别的限制。在 Raspberry Pi 上也能流畅运行。",
   "selfhost.cta": "GitHub 上的安装指南",
-
   "cta_section.title": "在你用超之前都免费。",
   "cta_section.body": "1 GB、3 台设备、同步与完整历史，无需银行卡。当你的游戏库需要时，每月 4.49 欧元升级 Pro。",
   "cta_section.cta": "免费下载",
   "cta_section.cta_os": "为 {platform} 下载",
   "cta_section.subnote": "或从这里获取任意平台的二进制文件",
-
   "pricing.title": "两个套餐。仅此而已。",
   "pricing.subtitle": "Free 是真正的套餐，不是试用。空间用完时再升级 Pro——你的数据和历史一起带走。",
   "pricing.toggle_monthly": "按月",
@@ -111,7 +103,6 @@
   "pricing.compare_email": "邮件与 GitHub",
   "pricing.compare_email_basic": "邮件与 GitHub",
   "pricing.compare_anytime": "随时，同一个二进制",
-
   "plan.free": "Free",
   "plan.pro": "Pro",
   "plan.tagline.free": "适合少量游戏",
@@ -128,7 +119,6 @@
   "plan.bandwidth": "{amount} / 15 分钟带宽",
   "plan.export": "一次性全部导出",
   "plan.support": "邮件与 GitHub 支持",
-
   "account.title": "账户",
   "account.plan_section": "套餐",
   "account.usage_section": "用量",
@@ -167,7 +157,6 @@
   "account.time_days_ago": "{n} 天前",
   "account.load_error_title": "无法加载你的账户",
   "account.load_error_body": "浏览器无法连接到 Hoard API。请稍后重试；若持续出现，请发邮件至 support@hoard.services。",
-
   "download.title": "下载 Hoard",
   "download.subtitle": "三个系统上的同一个应用。你的账户和存档保持不变。",
   "download.detected": "已检测",
@@ -181,14 +170,12 @@
   "download.all_releases_body": "所有构建和发布说明都在 GitHub Releases 上。",
   "download.all_releases_cta": "查看所有版本",
   "download.selfhost_note": "更想运行自己的服务器？同一个 Rust 二进制，AGPL-3.0：",
-
   "callback.signing_in": "正在登录…",
   "callback.failed_title": "登录失败",
   "callback.failed_generic": "我们无法完成登录。请重试。",
   "callback.back_to_signin": "返回登录",
   "callback.desktop_return": "已登录！请回到 Hoard 应用——这个标签页可以关闭了。",
   "callback.desktop_reopen": "没有打开？点这里重新打开 Hoard。",
-
   "login.title": "登录 Hoard",
   "login.subtitle": "每台设备上的同一个账户。",
   "login.google": "用 Google 继续",
@@ -201,7 +188,6 @@
   "login.connect_app": "连接此账户",
   "login.use_another_account": "使用其他账户",
   "login.terms_html": "继续即表示你接受<a href=\"/legal/terms\">条款</a>和<a href=\"/legal/privacy\">隐私政策</a>。",
-
   "checkout.title": "升级到 Pro",
   "checkout.subtitle": "付款前的最后一步。",
   "checkout.question": "这是你想升级到 Pro 的账户吗？",
@@ -211,7 +197,6 @@
   "checkout.price_yearly": "{price} 欧元/年",
   "checkout.error": "无法开始结账。请稍后重试。",
   "checkout.secured_by": "安全结账由 Polar 处理",
-
   "help.title": "帮助",
   "help.subtitle": "大多数答案都在下面。其余的，写信给我们——我们会读每一封。",
   "help.search_placeholder": "搜索问题…",
@@ -239,7 +224,6 @@
   "help.contact_body": "写信至 support@hoard.services 或在 GitHub 上开一个 issue。无论哪个套餐，我们都会读每一条。",
   "help.contact_cta_email": "给我们写信",
   "help.contact_cta_github": "在 GitHub 上开 issue",
-
   "footer.tagline": "为你的游戏存档提供同步和带版本的备份。用 Rust 打造，开源。",
   "footer.product": "产品",
   "footer.company": "公司",
@@ -252,19 +236,16 @@
   "footer.github": "GitHub",
   "footer.version_label": "v{v}",
   "footer.copyright": "© {year} Hoard · Raimundo León Oliva · AGPL-3.0",
-
   "common.loading": "加载中…",
   "common.error": "出了点问题。",
   "common.retry": "重试",
   "common.cancel": "取消",
   "common.confirm": "确认",
-
   "legal.terms_title": "服务条款",
   "legal.privacy_title": "隐私政策",
   "legal.last_updated": "最后更新：2026 年 5 月 26 日",
   "legal.back_home": "返回首页",
   "legal.courtesy_notice": "礼节性翻译。本页以英文显示；具有法律约束力的是西班牙文版本。",
-
   "seo.home.title": "Hoard — 游戏存档的云同步与带版本备份",
   "seo.home.desc": "游戏存档的自动云同步和带版本历史。用 Rust 打造，开源，可自托管。Free 1 GB，Pro 50 GB。",
   "seo.pricing.title": "价格 — Hoard",
@@ -276,5 +257,15 @@
   "seo.terms.title": "服务条款 — Hoard",
   "seo.terms.desc": "规范你使用 Hoard 的条款。",
   "seo.privacy.title": "隐私政策 — Hoard",
-  "seo.privacy.desc": "Hoard 收集哪些数据、如何使用以及你拥有的权利。数据存储在欧盟。"
+  "seo.privacy.desc": "Hoard 收集哪些数据、如何使用以及你拥有的权利。数据存储在欧盟。",
+  "nav.guides": "指南",
+  "footer.guides": "指南",
+  "seo.guides.title": "指南 — Hoard",
+  "seo.guides.desc": "分步指南，教你在 Windows、macOS 和 Linux 上使用 Hoard 备份、同步和恢复游戏存档。",
+  "guides.index_heading": "指南",
+  "guides.index_intro": "实用的分步指南，助你充分发挥 Hoard 的作用：在所有电脑上备份、同步和恢复游戏存档。",
+  "guides.back": "所有指南",
+  "guides.updated": "更新于",
+  "guides.cta_title": "准备好保护你的存档了吗？",
+  "guides.cta_text": "下载 Hoard，几分钟即可设置自动、带版本管理的备份。"
 }

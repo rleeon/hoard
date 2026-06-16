@@ -12,7 +12,7 @@ deploy/config.toml
 
 # Local scratch / draft notes that should never be committed.
 # Root-only patterns: docs/**.md and CHANGELOG.md are unaffected.
-guide*
+/guide*.md
 /version*.md
 /plan*.md
 /notes*.md
