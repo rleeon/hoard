@@ -1,10 +1,20 @@
 import { LOCALES, DEFAULT_LOCALE, HREFLANG, SITE_URL, withLocale } from '$lib/i18n/locales';
+import { guideSlugs } from '$lib/guides';
 
 export const prerender = true;
 
 // Indexable marketing pages (paths without locale prefix). Functional routes
 // (login, checkout, account, auth) are noindex and stay out of the sitemap.
-const PATHS = ['/', '/pricing', '/help', '/download', '/legal/terms', '/legal/privacy'];
+const PATHS = [
+  '/',
+  '/pricing',
+  '/help',
+  '/download',
+  '/guides',
+  ...guideSlugs().map((slug) => `/guides/${slug}`),
+  '/legal/terms',
+  '/legal/privacy'
+];
 
 const loc = (path: string, lang: (typeof LOCALES)[number]) =>
   `${SITE_URL}${withLocale(path, lang)}`;

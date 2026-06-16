@@ -7,7 +7,6 @@
   "nav.dashboard": "ダッシュボード",
   "nav.get_app": "ダウンロード",
   "nav.download": "ダウンロード",
-
   "hero.title_1": "あなたのセーブデータを、",
   "hero.title_2": "すべてのPCで。",
   "hero.subtitle": "Hoardはデバイス間でセーブデータを同期します。あるPCでプレイをやめると、次のPCでそのゲームが待っています。すべてのセーブはファイルごとに検証された完全なバージョン履歴を保持します。",
@@ -15,7 +14,6 @@
   "hero.cta_pricing": "料金を見る",
   "hero.subnote": "v{v} · Windows · macOS · Linux · カード不要",
   "hero.screenshot_alt": "同期されたセーブとバージョン履歴を含むゲームライブラリを表示するHoardのデスクトップアプリ",
-
   "facts.sha.value": "SHA-256",
   "facts.sha.label": "すべてのファイルを検証",
   "facts.agpl.value": "AGPL-3.0",
@@ -24,7 +22,6 @@
   "facts.eu.label": "データはEUでホスト",
   "facts.os.value": "Win · macOS · Linux",
   "facts.os.label": "1つのアプリ、1つのアカウント",
-
   "sync.kicker": "01 — 同期",
   "sync.title": "デスクトップで始め、ノートPCで続ける。",
   "sync.body": "ゲームを閉じるとHoardがセーブをアップロードし、もう一方のPCを開くと新しいバージョンを取得します。フォルダのコピーも、USBメモリも、古いセーブで上書きする心配もありません。",
@@ -36,7 +33,6 @@
   "sync.demo_laptop": "ノートPC",
   "sync.demo_synced": "最新",
   "sync.demo_note": "クライアントはサーバーとバージョンを比較し、変更があった分だけを転送します。",
-
   "how.kicker": "02 — 仕組み",
   "how.title": "3ステップ。セットアップ不要。",
   "how.subtitle": "アプリをインストールし、一度ログインすれば、あとはその存在を忘れて大丈夫。",
@@ -46,7 +42,6 @@
   "how.s2_body": "HoardはSteam、Epic、GOG、Proton/Wineプレフィックスなどからゲームを見つけ、自動で追跡します。Ludusaviマニフェスト経由で数千タイトルに対応。",
   "how.s3_title": "同期と履歴",
   "how.s3_body": "プレイをやめるたびにスナップショットが作成され、他のマシンへ同期されます。ライブラリから任意のバージョンに戻せます。",
-
   "features.kicker": "03 — 中身",
   "features.title": "約束ではなく、道具としてつくられた",
   "features.subtitle": "以下のすべては、両プランで今日すでに提供されています。",
@@ -62,18 +57,15 @@
   "features.crossplat.body": "1つのデスクトップアプリ、1つのアカウント、1セットのセーブ。Proton/Wineプレフィックスを一級のターゲットとして検出します。",
   "features.export.title": "持ち出せるのはあなたのもの",
   "features.export.body": "各セーブをゲームが書き込んだそのままの形でエクスポート。アーカイブも独自フォーマットもなし。無料プランにも含まれます。",
-
   "selfhost.kicker": "04 — セルフホスト",
   "selfhost.title": "同じバイナリ、あなたのハードウェア。",
   "selfhost.body": "サーバーはAGPL-3.0の単一Rustバイナリです。アカウント不要、クォータなし、ディスク以外の制限なし。Raspberry Piでも問題なく動きます。",
   "selfhost.cta": "GitHubのインストールガイド",
-
   "cta_section.title": "足りなくなるまで無料。",
   "cta_section.body": "1 GB、3デバイス、同期と完全な履歴、カード不要。ライブラリが求めたら月額4.49ユーロのPro。",
   "cta_section.cta": "無料でダウンロード",
   "cta_section.cta_os": "{platform}用にダウンロード",
   "cta_section.subnote": "または、任意のプラットフォーム向けのバイナリはこちらから",
-
   "pricing.title": "2つのプラン。それだけ。",
   "pricing.subtitle": "Freeは試用版ではなく本物のプランです。容量が足りなくなったらProへ — データも履歴も一緒に移ります。",
   "pricing.toggle_monthly": "月額",
@@ -111,7 +103,6 @@
   "pricing.compare_email": "メールとGitHub",
   "pricing.compare_email_basic": "メールとGitHub",
   "pricing.compare_anytime": "いつでも、同じバイナリ",
-
   "plan.free": "Free",
   "plan.pro": "Pro",
   "plan.tagline.free": "数本のゲームに",
@@ -128,7 +119,6 @@
   "plan.bandwidth": "{amount} / 15分の帯域",
   "plan.export": "一括でエクスポート",
   "plan.support": "メールとGitHubのサポート",
-
   "account.title": "アカウント",
   "account.plan_section": "プラン",
   "account.usage_section": "使用状況",
@@ -167,7 +157,6 @@
   "account.time_days_ago": "{n}日前",
   "account.load_error_title": "アカウントを読み込めませんでした",
   "account.load_error_body": "ブラウザがHoard APIに到達できませんでした。少し待ってから再試行してください。続く場合はsupport@hoard.servicesまで。",
-
   "download.title": "Hoardをダウンロード",
   "download.subtitle": "3つのシステムで同じアプリ。アカウントもセーブもそのままです。",
   "download.detected": "検出",
@@ -181,14 +170,12 @@
   "download.all_releases_body": "すべてのビルドとリリースノートはGitHub Releasesにあります。",
   "download.all_releases_cta": "すべてのリリースを見る",
   "download.selfhost_note": "自分のサーバーを動かしたい？同じRustバイナリ、AGPL-3.0：",
-
   "callback.signing_in": "ログイン中…",
   "callback.failed_title": "ログインに失敗しました",
   "callback.failed_generic": "ログインを完了できませんでした。もう一度お試しください。",
   "callback.back_to_signin": "ログインに戻る",
   "callback.desktop_return": "ログインしました！Hoardアプリに戻ってください — このタブは閉じて構いません。",
   "callback.desktop_reopen": "開きませんでしたか？ここをクリックしてHoardを再度開いてください。",
-
   "login.title": "Hoardにログイン",
   "login.subtitle": "すべてのデバイスで同じアカウント。",
   "login.google": "Googleで続行",
@@ -201,7 +188,6 @@
   "login.connect_app": "このアカウントを接続",
   "login.use_another_account": "別のアカウントを使う",
   "login.terms_html": "続行すると、<a href=\"/legal/terms\">利用規約</a>と<a href=\"/legal/privacy\">プライバシーポリシー</a>に同意したことになります。",
-
   "checkout.title": "Proにアップグレード",
   "checkout.subtitle": "支払いの前に最後のステップです。",
   "checkout.question": "Proにアップグレードするのはこのアカウントでよろしいですか？",
@@ -211,7 +197,6 @@
   "checkout.price_yearly": "{price}ユーロ/年",
   "checkout.error": "チェックアウトを開始できませんでした。少し待ってからもう一度お試しください。",
   "checkout.secured_by": "安全なチェックアウトはPolarが処理します",
-
   "help.title": "ヘルプ",
   "help.subtitle": "ほとんどの答えは下にあります。それ以外はお気軽にご連絡を — すべて目を通します。",
   "help.search_placeholder": "質問を検索…",
@@ -239,7 +224,6 @@
   "help.contact_body": "support@hoard.servicesにメールするか、GitHubでissueを開いてください。どのプランでも、すべて目を通します。",
   "help.contact_cta_email": "メールする",
   "help.contact_cta_github": "GitHubでissueを開く",
-
   "footer.tagline": "ゲームセーブの同期とバージョン管理されたバックアップ。Rust製、オープンソース。",
   "footer.product": "製品",
   "footer.company": "会社",
@@ -252,19 +236,16 @@
   "footer.github": "GitHub",
   "footer.version_label": "v{v}",
   "footer.copyright": "© {year} Hoard · Raimundo León Oliva · AGPL-3.0",
-
   "common.loading": "読み込み中…",
   "common.error": "問題が発生しました。",
   "common.retry": "再試行",
   "common.cancel": "キャンセル",
   "common.confirm": "確認",
-
   "legal.terms_title": "利用規約",
   "legal.privacy_title": "プライバシーポリシー",
   "legal.last_updated": "最終更新：2026年5月26日",
   "legal.back_home": "ホームに戻る",
   "legal.courtesy_notice": "参考訳です。このページは英語で表示されています。法的に有効なのはスペイン語版です。",
-
   "seo.home.title": "Hoard — ゲームセーブのクラウド同期とバージョン管理バックアップ",
   "seo.home.desc": "ゲームセーブの自動クラウド同期とバージョン管理された履歴。Rust製、オープンソース、セルフホスト可能。Free 1 GB、Pro 50 GB。",
   "seo.pricing.title": "料金 — Hoard",
@@ -276,5 +257,15 @@
   "seo.terms.title": "利用規約 — Hoard",
   "seo.terms.desc": "Hoardの利用を規定する規約。",
   "seo.privacy.title": "プライバシーポリシー — Hoard",
-  "seo.privacy.desc": "Hoardが収集するデータ、その利用方法、あなたの権利。データはEUに保存。"
+  "seo.privacy.desc": "Hoardが収集するデータ、その利用方法、あなたの権利。データはEUに保存。",
+  "nav.guides": "ガイド",
+  "footer.guides": "ガイド",
+  "seo.guides.title": "ガイド — Hoard",
+  "seo.guides.desc": "Windows、macOS、Linux で Hoard を使ってゲームのセーブデータをバックアップ・同期・復元する手順を解説するガイド。",
+  "guides.index_heading": "ガイド",
+  "guides.index_intro": "Hoard を最大限に活用するための実践的なステップバイステップガイド。すべての PC でセーブデータをバックアップ・同期・復元できます。",
+  "guides.back": "すべてのガイド",
+  "guides.updated": "更新日",
+  "guides.cta_title": "セーブデータを守る準備はできましたか？",
+  "guides.cta_text": "Hoard をダウンロードして、数分で自動・バージョン管理付きバックアップを設定しましょう。"
 }

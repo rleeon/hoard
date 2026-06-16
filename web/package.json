@@ -15,6 +15,7 @@
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@supabase/supabase-js": "^2.45.4",
     "lucide-svelte": "^0.460.0",
+    "marked": "^18.0.5",
     "svelte-i18n": "^4.0.1"
   },
   "devDependencies": {

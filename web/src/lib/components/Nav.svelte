@@ -88,6 +88,14 @@
         {$_('nav.help')}
       </a>
       <a
+        href={$localeHref('/guides')}
+        class="link-underline ring-focus text-sm transition-colors {isActive('/guides')
+          ? 'text-ink'
+          : 'text-ink-soft hover:text-ink'}"
+      >
+        {$_('nav.guides')}
+      </a>
+      <a
         href={$localeHref('/download')}
         class="link-underline ring-focus text-sm transition-colors {isActive('/download')
           ? 'text-ink'
@@ -198,6 +206,9 @@
         </a>
         <a class="rounded-md px-3 py-2.5 text-ink hover:bg-ink/5" href={$localeHref('/help')} onclick={() => (open = false)}>
           {$_('nav.help')}
+        </a>
+        <a class="rounded-md px-3 py-2.5 text-ink hover:bg-ink/5" href={$localeHref('/guides')} onclick={() => (open = false)}>
+          {$_('nav.guides')}
         </a>
         <a class="rounded-md px-3 py-2.5 text-ink hover:bg-ink/5" href={$localeHref('/download')} onclick={() => (open = false)}>
           {$_('nav.download')}
