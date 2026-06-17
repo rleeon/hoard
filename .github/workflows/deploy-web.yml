@@ -6,6 +6,12 @@ on:
     paths:
       - 'web/**'
       - '.github/workflows/deploy-web.yml'
+  # Rebuild on every published release so the version baked into the site
+  # (the build-time seed from Cargo.toml) tracks the app automatically. A
+  # release only bumps Cargo.toml/CHANGELOG, which the `paths` filter above
+  # ignores, so without this the displayed version would lag behind the app.
+  release:
+    types: [published]
   workflow_dispatch:
 
 concurrency:
