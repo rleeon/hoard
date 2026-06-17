@@ -229,6 +229,13 @@ pub fn find_by_steam_app_id(app_id: u64) -> Option<&'static LudusaviEntry> {
     catalog().iter().find(|e| e.steam_app_id == Some(app_id))
 }
 
+/// Look up a Ludusavi entry by its exact slug. O(N) like the appid lookup;
+/// the callers (cover-art resolution for a handful of tracked saves) hit it
+/// rarely and memoise the result, so indexing the full catalog isn't worth it.
+pub fn find_by_slug(slug: &str) -> Option<&'static LudusaviEntry> {
+    catalog().iter().find(|e| e.slug == slug)
+}
+
 /// Fuzzy lookup by display name using normalised Levenshtein over slugs.
 ///
 /// Used as a last-resort fallback in detection when neither `find_by_steam_app_id`

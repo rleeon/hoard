@@ -44,3 +44,32 @@ export function coverUrl(appId: number): Promise<string | null> {
 export function cachedCoverUrl(appId: number): string | null | undefined {
   return cache.get(appId);
 }
+
+const slugIdCache = new Map<string, number | null>();
+const slugIdInflight = new Map<string, Promise<number | null>>();
+
+/** Resolve a game slug to its Steam app id via the embedded Ludusavi catalog.
+ *  Lets a cover load for a save tracked on another device — one this machine
+ *  never detected, so it has no local app id. Memoised + de-duplicated; a
+ *  `null` marks a slug the catalog doesn't list so we don't ask twice. */
+export function steamIdForSlug(slug: string): Promise<number | null> {
+  const hit = slugIdCache.get(slug);
+  if (hit !== undefined) return Promise.resolve(hit);
+  const pending = slugIdInflight.get(slug);
+  if (pending) return pending;
+
+  const p = (async () => {
+    try {
+      const id = await invoke<number | null>("steam_app_id_for_slug", { slug });
+      slugIdCache.set(slug, id ?? null);
+      return id ?? null;
+    } catch {
+      slugIdCache.set(slug, null);
+      return null;
+    } finally {
+      slugIdInflight.delete(slug);
+    }
+  })();
+  slugIdInflight.set(slug, p);
+  return p;
+}

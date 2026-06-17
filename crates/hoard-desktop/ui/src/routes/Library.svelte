@@ -744,6 +744,7 @@
           >
             <Cover
               appId={appIdBySlug.get(save.game_slug) ?? null}
+              slug={save.game_slug}
               name={save.game_slug}
               class="h-9 w-9 rounded-md"
               initialClass="text-sm"
@@ -833,6 +834,7 @@
           >
             <Cover
               appId={appIdBySlug.get(save.game_slug) ?? null}
+              slug={save.game_slug}
               name={save.game_slug}
               class="h-9 w-9 rounded-md"
               initialClass="text-sm"
@@ -906,6 +908,7 @@
           >
             <Cover
               appId={appIdBySlug.get(game.slug) ?? null}
+              slug={game.slug}
               name={game.display_name}
               class="h-9 w-9 rounded-md"
               initialClass="text-sm"
@@ -1052,6 +1055,7 @@
               <div class="flex min-w-0 items-center gap-2.5">
                 <Cover
                   appId={game.steam_app_id}
+                  slug={game.slug}
                   name={game.display_name}
                   class="h-10 w-10 rounded-md"
                   initialClass="text-base"

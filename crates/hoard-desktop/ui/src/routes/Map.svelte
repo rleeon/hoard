@@ -35,7 +35,7 @@
   import type { TrackedSave, SnapshotEntry, DetectedGame } from "../lib/api";
   import { formatBytes } from "../lib/utils/format";
   import { toastError } from "../lib/stores/toasts";
-  import { coverUrl } from "../lib/stores/covers";
+  import { coverUrl, steamIdForSlug } from "../lib/stores/covers";
   import Cover from "../lib/components/Cover.svelte";
 
   // ---- model --------------------------------------------------------------
@@ -192,7 +192,7 @@
         name: g.display_name || prettify(g.slug),
         saves: [],
         tracked: false,
-        appId: g.steam_app_id,
+        appId: g.steam_app_id ?? appIdBySlug.get(g.slug) ?? null,
         r: 22,
         reach: 22 + 24,
       });
@@ -1045,6 +1045,22 @@
           }
         }),
       );
+
+      // Detection only knew the games installed on THIS machine, so a save
+      // synced from another device (or any catalog-miss) still has no app id.
+      // Recover the rest by slug (catalog → Steam search) before laying out the
+      // orbs, so their covers paint instead of falling back to initials.
+      const needIds = new Set<string>();
+      for (const s of saves) if (!appIdBySlug.has(s.game_slug)) needIds.add(s.game_slug);
+      for (const g of detectedGames)
+        if (g.steam_app_id == null && !appIdBySlug.has(g.slug)) needIds.add(g.slug);
+      await Promise.all(
+        [...needIds].map(async (slug) => {
+          const id = await steamIdForSlug(slug);
+          if (id != null) appIdBySlug.set(slug, id);
+        }),
+      );
+
       orbs = build(saves, snapsBySave, detectedGames);
       isEmpty = orbs.length === 0;
     } catch (e) {
@@ -1265,6 +1281,7 @@
         <div class="flex items-center gap-3">
           <Cover
             appId={selected.orb.steamAppId}
+            slug={selected.orb.slug}
             name={selected.orb.name}
             class="h-11 w-11 rounded-lg"
             initialClass="text-base"
@@ -1325,6 +1342,7 @@
         <div class="flex items-center gap-3">
           <Cover
             appId={selectedOrb.steamAppId}
+            slug={selectedOrb.slug}
             name={selectedOrb.name}
             class="h-12 w-12 rounded-lg"
             initialClass="text-lg"

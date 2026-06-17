@@ -5,10 +5,13 @@
    * The image is loaded lazily via the `covers` store so the same app id is
    * fetched at most once per session.
    */
-  import { coverUrl } from "../stores/covers";
+  import { coverUrl, steamIdForSlug } from "../stores/covers";
 
   let {
     appId = null,
+    /** Game slug, used to recover the Steam app id from the catalog when
+     *  `appId` is null (e.g. a save tracked on another device). */
+    slug = null,
     name = "",
     /** Tailwind size + radius classes for the outer box. */
     class: klass = "h-10 w-10 rounded-lg",
@@ -16,6 +19,7 @@
     initialClass = "text-sm",
   }: {
     appId?: number | null;
+    slug?: string | null;
     name?: string;
     class?: string;
     initialClass?: string;
@@ -26,12 +30,17 @@
 
   $effect(() => {
     url = null;
-    if (appId == null) return;
+    const directId = appId;
+    const s = slug;
     let alive = true;
-    const id = appId;
-    coverUrl(id).then((u) => {
+    (async () => {
+      // Prefer the id detection already resolved; otherwise recover it from the
+      // catalog by slug so cross-device saves still get a cover.
+      const id = directId ?? (s ? await steamIdForSlug(s) : null);
+      if (id == null || !alive) return;
+      const u = await coverUrl(id);
       if (alive) url = u;
-    });
+    })();
     return () => {
       alive = false;
     };

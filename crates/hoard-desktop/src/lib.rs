@@ -171,6 +171,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::misc::greet,
             commands::covers::cover_bytes,
+            commands::covers::steam_app_id_for_slug,
             commands::auth::health_check,
             commands::auth::login,
             commands::auth::logout,

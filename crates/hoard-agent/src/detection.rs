@@ -719,6 +719,26 @@ where
     // a heuristic signal the upstream pipeline produced.
     apply_manual_overrides(&state.manual_paths, &mut by_slug);
 
+    // Backfill Steam app ids from the catalog by exact slug. A game found
+    // purely by filesystem heuristic (a Wine prefix, a native Linux path, a
+    // correlation hit) never carried a Steam appid, so the UI had no capsule to
+    // fetch and fell back to the letter tile — that's why Factorio/OpenTTD (and
+    // every Wrapple cover, since the only logged playtime was Factorio's) showed
+    // no art. The detected slug *is* the Ludusavi slug, so an exact catalog
+    // match is unambiguous. Only fills a missing id; an id already resolved by a
+    // stronger structural signal (Steam install, appid prefix) is left alone.
+    {
+        let catalog_by_slug: HashMap<&str, &LudusaviEntry> =
+            catalog.iter().map(|e| (e.slug.as_str(), e)).collect();
+        for (slug, game) in by_slug.iter_mut() {
+            if game.steam_app_id.is_none() {
+                if let Some(entry) = catalog_by_slug.get(slug.as_str()) {
+                    game.steam_app_id = entry.steam_app_id;
+                }
+            }
+        }
+    }
+
     // Grade + rank each game's save paths individually. Different sources can
     // hand the same game wildly different folders — a real `~/Saved Games`
     // tree full of saves next to an almost-empty Steam-Cloud stub — and until

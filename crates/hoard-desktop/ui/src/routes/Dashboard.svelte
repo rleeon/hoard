@@ -24,6 +24,7 @@
 
   import Button from "../lib/components/Button.svelte";
   import Card from "../lib/components/Card.svelte";
+  import Cover from "../lib/components/Cover.svelte";
   import QuotaBar from "../lib/components/QuotaBar.svelte";
   import * as api from "../lib/api";
   import type { TrackedSave } from "../lib/api";
@@ -238,12 +239,12 @@
         <div
           class="group relative flex items-center gap-4 rounded-xl border border-white/[0.06] bg-zinc-950/40 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-emerald-500/25 hover:bg-zinc-900/50"
         >
-          <span
-            class="font-display flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500/15 to-emerald-500/[0.04] text-lg font-semibold text-emerald-300 ring-1 ring-inset ring-emerald-500/20"
-            aria-hidden="true"
-          >
-            {save.game_slug.charAt(0).toUpperCase()}
-          </span>
+          <Cover
+            slug={save.game_slug}
+            name={save.game_slug}
+            class="h-11 w-11 rounded-xl"
+            initialClass="text-lg"
+          />
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
               <span class="truncate text-[15px] font-medium text-zinc-100">
