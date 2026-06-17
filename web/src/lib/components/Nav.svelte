@@ -146,7 +146,7 @@
         <span class="h-9 w-24 animate-pulse rounded-md bg-ink/5"></span>
       {:else if $session}
         <a
-          href={$localeHref('/account')}
+          href="/account"
           class="group flex items-center gap-2 rounded-full border border-line bg-surface py-1 pl-1 pr-3 ring-focus transition-colors hover:border-line-strong"
         >
           {#if $session.avatarUrl}
@@ -171,7 +171,7 @@
         </a>
       {:else}
         <a
-          href={$localeHref('/login')}
+          href="/login"
           class="inline-flex h-9 items-center rounded-lg bg-accent px-4 text-sm font-medium text-pine ring-focus transition-colors hover:bg-emerald-300"
         >
           {$_('nav.signin')}
@@ -219,7 +219,7 @@
           {$_('nav.download')}
         </a>
         {#if $session}
-          <a class="rounded-md px-3 py-2.5 text-ink hover:bg-ink/5" href={$localeHref('/account')} onclick={() => (open = false)}>
+          <a class="rounded-md px-3 py-2.5 text-ink hover:bg-ink/5" href="/account" onclick={() => (open = false)}>
             {$_('nav.account')}
           </a>
           <button class="rounded-md px-3 py-2.5 text-left text-ink hover:bg-ink/5" onclick={signOut}>
@@ -228,7 +228,7 @@
         {:else}
           <a
             class="mt-1 inline-flex items-center justify-center rounded-md bg-accent px-3 py-2.5 font-medium text-pine hover:bg-emerald-300"
-            href={$localeHref('/login')}
+            href="/login"
             onclick={() => (open = false)}
           >
             {$_('nav.signin')}

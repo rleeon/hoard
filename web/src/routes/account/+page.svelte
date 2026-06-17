@@ -1,7 +1,9 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
+  import { get } from 'svelte/store';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { localeHref } from '$lib/i18n/href';
   import Card from '$lib/components/Card.svelte';
   import Button from '$lib/components/Button.svelte';
   import QuotaBar from '$lib/components/QuotaBar.svelte';
@@ -44,7 +46,7 @@
 
   async function doSignOut() {
     await auth.signOut();
-    goto('/');
+    goto(get(localeHref)('/'));
   }
 
   function gotoBilling() {
@@ -57,7 +59,7 @@
     if (profile?.plan === 'free') {
       goto('/checkout?plan=pro&cycle=monthly');
     } else {
-      goto('/pricing');
+      goto(get(localeHref)('/pricing'));
     }
   }
 
@@ -79,7 +81,7 @@
     if (c !== 'DELETE') return;
     await api.deleteAccount();
     await auth.signOut();
-    goto('/');
+    goto(get(localeHref)('/'));
   }
 
   function timeAgo(iso: string): string {

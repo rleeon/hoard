@@ -31,10 +31,12 @@
   // CSRF nonce the desktop app generated for this login attempt. The loopback
   // listener only accepts the callback if this exact value comes back, so we
   // must thread it through Supabase's redirect to /auth/callback untouched.
-  let state = $derived($page.url.searchParams.get('state') ?? '');
+  // NB: must not be named `state` — that collides with the `$state` rune and
+  // makes the compiler read `$state(...)` above as a store subscription.
+  let csrfState = $derived($page.url.searchParams.get('state') ?? '');
   let dlExtra = $derived(
     `${desktop ? '&desktop=1' : ''}${port ? `&port=${encodeURIComponent(port)}` : ''}` +
-      `${state ? `&state=${encodeURIComponent(state)}` : ''}`
+      `${csrfState ? `&state=${encodeURIComponent(csrfState)}` : ''}`
   );
   let redirectTo = $derived(
     typeof window !== 'undefined'
