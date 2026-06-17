@@ -36,6 +36,13 @@ use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;
 
+/// How far the `webhook-timestamp` may drift from our clock before we reject
+/// the delivery as a possible replay. The timestamp is inside the signed
+/// content (so it's authenticated), but without a freshness window a captured
+/// valid delivery could be re-POSTed forever to re-apply a stale subscription
+/// state. Standard Webhooks recommends ±5 minutes.
+const WEBHOOK_TOLERANCE_SECS: i64 = 5 * 60;
+
 #[derive(Debug, Deserialize)]
 pub struct PolarEvent {
     /// e.g. "subscription.created", "subscription.active", "order.paid".
@@ -134,6 +141,24 @@ pub fn verify_signature(
     false
 }
 
+/// Current Unix time in seconds. Pulled out so tests can inject a fixed `now`.
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Is `webhook_ts` (a Unix-seconds string) within [`WEBHOOK_TOLERANCE_SECS`] of
+/// `now`? An unparsable or empty timestamp fails closed.
+fn timestamp_is_fresh(webhook_ts: &str, now: i64) -> bool {
+    let ts: i64 = match webhook_ts.trim().parse() {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    (now - ts).abs() <= WEBHOOK_TOLERANCE_SECS
+}
+
 /// Map a Polar event (and the subscription's own status) onto our
 /// `subscriptions.status` enum: 'active' | 'grace' | 'expired'.
 ///
@@ -191,6 +216,14 @@ pub async fn handle(
     let signature = hget("webhook-signature");
     if signature.is_empty() {
         return (StatusCode::UNAUTHORIZED, "missing signature").into_response();
+    }
+    // Replay guard: reject deliveries whose timestamp is stale or skewed. Done
+    // before signature verification so we don't even HMAC an obviously-replayed
+    // body. (The signature still covers the timestamp, so this can't be forged
+    // to slip a stale event through.)
+    if !timestamp_is_fresh(webhook_ts, now_unix()) {
+        warn!(webhook_ts, "polar webhook: stale/invalid timestamp, rejecting");
+        return (StatusCode::UNAUTHORIZED, "stale timestamp").into_response();
     }
     if !verify_signature(
         &body,
@@ -381,6 +414,18 @@ mod tests {
         let good = sign(secret, id, ts, body);
         let header = format!("v1,bm90X3ZhbGlk {good}", good = good);
         assert!(verify_signature(body, secret, id, ts, &header));
+    }
+
+    #[test]
+    fn timestamp_freshness_window() {
+        let now = 1_700_000_000;
+        assert!(timestamp_is_fresh("1700000000", now));
+        assert!(timestamp_is_fresh("1699999800", now)); // -200s, within ±300
+        assert!(timestamp_is_fresh("1700000200", now)); // +200s
+        assert!(!timestamp_is_fresh("1699999600", now)); // -400s, stale
+        assert!(!timestamp_is_fresh("1700000400", now)); // +400s, skewed
+        assert!(!timestamp_is_fresh("", now)); // missing → fail closed
+        assert!(!timestamp_is_fresh("not-a-number", now));
     }
 
     #[test]

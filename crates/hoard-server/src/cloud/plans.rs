@@ -1,8 +1,8 @@
 //! Plan limits — single source of truth for what each tier allows.
 //!
 //! Hardcoded on purpose. Pricing is an opinion (see ADR 0015); when it
-//! changes, update here + the landing + the Lemon Squeezy products and
-//! ship a new release. Reading these from the DB would invite drift.
+//! changes, update here + the landing + the Polar products and ship a new
+//! release. Reading these from the DB would invite drift.
 //!
 //! Two tiers post-1.6.1: Free and Pro. Pro+ was removed — the gap
 //! between "I play one game" and "I store every save I've ever made"

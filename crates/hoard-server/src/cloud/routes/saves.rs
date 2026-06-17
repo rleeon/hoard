@@ -247,7 +247,7 @@ pub async fn commit_upload(
     Extension(user): Extension<CloudUser>,
     Path((save_id, version)): Path<(String, i64)>,
     Json(body): Json<UploadCommit>,
-) -> Result<Json<UploadCommitOut>, CloudError> {
+) -> Result<Response, CloudError> {
     // Owner check first — never trust a save_id from the request without
     // verifying the JWT subject owns it.
     let owner: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
@@ -259,6 +259,12 @@ pub async fn commit_upload(
     };
     if owner != user.user_id {
         return Err(CloudError::Forbidden("save belongs to a different user"));
+    }
+
+    // The committed hash is persisted (and, for CAS, addresses R2 objects).
+    // Reject anything that isn't a canonical sha256.
+    if !r2::is_valid_sha256(&body.sha256) {
+        return Err(CloudError::BadRequest("invalid sha256".into()));
     }
 
     // Look up the pending row.
@@ -289,9 +295,53 @@ pub async fn commit_upload(
             body.size_bytes, head_size
         )));
     }
-    if expected_size != head_size {
-        // Adjust pending size to actual, so quota accounting tracks reality.
-        // Storage trigger keeps profiles.storage_bytes coherent on UPDATE.
+
+    // Re-enforce the per-save cap and storage quota against the REAL object
+    // size. `init_upload` only saw the client-declared `size_bytes`, and the
+    // presigned PUT carries no content-length limit, so a client can declare a
+    // tiny size to pass the init gates and then upload an arbitrarily large
+    // object. The pending row already charged the init-declared size; the
+    // final footprint swaps that for `head_size`. On reject, best-effort drop
+    // the R2 object + pending row so a refused commit can't squat storage.
+    let (limits, info) = quota::load(&state.pool, user.user_id)
+        .await?
+        .ok_or(CloudError::NotFound("no profile"))?;
+    let upgrade_url = || {
+        state
+            .config
+            .cloud
+            .as_ref()
+            .map(|c| c.upgrade_url.clone())
+            .unwrap_or_else(|| "https://hoard.services/upgrade".to_string())
+    };
+    let real = head_size.max(0) as u64;
+    let reject = real > limits.max_save_size_bytes
+        || quota::would_exceed(
+            info.used_bytes.saturating_sub(expected_size.max(0) as u64),
+            real,
+            limits.storage_bytes,
+        );
+    if reject {
+        if let Err(e) = state.r2.delete_object(&r2_key).await {
+            tracing::warn!(error = %e, r2_key = %r2_key, "commit_upload: orphan object cleanup after quota reject failed");
+        }
+        sqlx::query("DELETE FROM save_versions WHERE save_id = $1 AND version_num = $2 AND sha256 = ''")
+            .bind(&save_id)
+            .bind(version)
+            .execute(&state.pool)
+            .await?;
+        if real > limits.max_save_size_bytes {
+            return Ok(SaveTooLargeResponse {
+                error: "save exceeds per-save size limit",
+                code: "save_too_large",
+                plan: info.plan,
+                limit_bytes: limits.max_save_size_bytes,
+                actual_bytes: real,
+                upgrade_url: upgrade_url(),
+            }
+            .into_response());
+        }
+        return Ok(quota::quota_response(&info, real, upgrade_url()).into_response());
     }
 
     // Atomically finalize: stamp sha256, bump the parent save's latest_version_num.
@@ -336,7 +386,8 @@ pub async fn commit_upload(
         save_id,
         version_num: version,
         committed: true,
-    }))
+    })
+    .into_response())
 }
 
 // ===========================================================================
@@ -408,6 +459,14 @@ pub async fn cas_init(
 ) -> Result<Response, CloudError> {
     if body.files.is_empty() {
         return Err(CloudError::BadRequest("empty manifest".into()));
+    }
+    // Every content hash is interpolated into an R2 key and stored verbatim —
+    // reject anything that isn't a canonical sha256 before it gets that far.
+    if let Some(bad) = body.files.iter().find(|f| !r2::is_valid_sha256(&f.sha256)) {
+        return Err(CloudError::BadRequest(format!(
+            "invalid sha256 in manifest: {:?}",
+            bad.sha256
+        )));
     }
 
     let plan = match plan_for_user(&state, user.user_id).await? {
@@ -661,7 +720,7 @@ pub async fn cas_commit(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
     Path((save_id, version)): Path<(String, i64)>,
-) -> Result<Json<UploadCommitOut>, CloudError> {
+) -> Result<Response, CloudError> {
     let owner: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
         .bind(&save_id)
         .fetch_optional(&state.pool)
@@ -702,7 +761,8 @@ pub async fn cas_commit(
             save_id,
             version_num: version,
             committed: true,
-        }));
+        })
+        .into_response());
     }
 
     // Full manifest, ordered, for the digest; distinct shas for refcounting.
@@ -746,20 +806,39 @@ pub async fn cas_commit(
             .await?;
     let existing: std::collections::HashSet<String> = existing.into_iter().map(|(s,)| s).collect();
 
-    // Verify every new blob actually landed in R2 before we reference it.
+    // Verify every new blob actually landed in R2 and trust R2's reported
+    // size — never the client's declared manifest size — for accounting.
+    // A malicious client can understate `size_bytes` at init to slip past the
+    // quota check, then PUT arbitrarily large objects to the presigned URLs
+    // (which carry no content-length limit). The real footprint is whatever
+    // bytes actually landed, so that's what we charge and re-check below.
     let mut new_bytes: u64 = 0;
-    for (sha, size) in &unique {
+    let mut actual_size: BTreeMap<String, i64> = BTreeMap::new();
+    for sha in unique.keys() {
         if existing.contains(sha) {
             continue;
         }
         let key = r2::key_for_blob(user.user_id, sha);
-        let head = state.r2.head(&key).await.map_err(CloudError::Internal)?;
-        if head.is_none() {
-            return Err(CloudError::BadRequest(format!(
-                "blob {sha} was not uploaded"
-            )));
+        let landed = state.r2.head(&key).await.map_err(CloudError::Internal)?;
+        let size = landed.ok_or_else(|| {
+            CloudError::BadRequest(format!("blob {sha} was not uploaded"))
+        })?;
+        new_bytes += size.max(0) as u64;
+        actual_size.insert(sha.clone(), size);
+    }
+
+    // Re-enforce the storage quota against the REAL uploaded bytes. `cas_init`
+    // only saw client-declared sizes; this is the authoritative gate before we
+    // reference (and charge) the blobs. On reject, best-effort delete the
+    // orphaned blobs so a refused commit can't squat un-accounted R2 storage.
+    if let Err(resp) = quota::check_storage(&state, user.user_id, new_bytes).await {
+        for sha in actual_size.keys() {
+            let key = r2::key_for_blob(user.user_id, sha);
+            if let Err(e) = state.r2.delete_object(&key).await {
+                tracing::warn!(error = %e, sha = %sha, "cas_commit: orphan blob cleanup after quota reject failed");
+            }
         }
-        new_bytes += *size as u64;
+        return Ok(resp);
     }
 
     // Claim + finalize atomically. The guarded update fences concurrent commits
@@ -782,14 +861,18 @@ pub async fn cas_commit(
             save_id,
             version_num: version,
             committed: true,
-        }));
+        })
+        .into_response());
     }
 
     // Bump refcounts: +1 per distinct blob this version references. New blobs
     // are inserted at refcount 1 (their first reference charges storage via the
-    // cloud_blobs trigger); existing ones just increment.
-    for (sha, size) in &unique {
+    // cloud_blobs trigger) with the size R2 actually reported — never the
+    // client's declared size; existing ones just increment (the bound size is
+    // ignored by the ON CONFLICT path, so their already-charged size stands).
+    for (sha, declared) in &unique {
         let key = r2::key_for_blob(user.user_id, sha);
+        let size = actual_size.get(sha).copied().unwrap_or(*declared);
         sqlx::query(
             r#"
             INSERT INTO cloud_blobs (user_id, sha256, size_bytes, r2_key, refcount)
@@ -800,7 +883,7 @@ pub async fn cas_commit(
         )
         .bind(user.user_id)
         .bind(sha)
-        .bind(*size)
+        .bind(size)
         .bind(&key)
         .execute(&mut *tx)
         .await?;
@@ -843,7 +926,8 @@ pub async fn cas_commit(
         save_id,
         version_num: version,
         committed: true,
-    }))
+    })
+    .into_response())
 }
 
 /// One file in a version manifest response. `download` is populated only when

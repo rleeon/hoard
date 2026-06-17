@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::{Extension, Multipart, Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Json, Response},
 };
 use futures::StreamExt;
@@ -1026,14 +1026,18 @@ pub async fn download(
     let stream = tokio_stream::wrappers::ReceiverStream::new(rx_bytes);
     let body = Body::from_stream(stream);
 
-    let filename = format!("{}-{}-v{}.tar.zst", game_slug, label, version);
+    // `game_slug`/`label` are user-set and not constrained to ASCII, so feeding
+    // them straight into a header value would panic on control chars / non-ASCII
+    // (a client could brick its own download by labeling a save with a newline).
+    // Sanitize to a header-safe filename and fall back rather than `unwrap`.
+    let filename = sanitize_filename(&format!("{}-{}-v{}.tar.zst", game_slug, label, version));
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, "application/zstd".parse().unwrap());
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/zstd"));
+    let disposition = format!("attachment; filename=\"{}\"", filename);
     headers.insert(
         header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{}\"", filename)
-            .parse()
-            .unwrap(),
+        HeaderValue::from_str(&disposition)
+            .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
     );
 
     Ok((StatusCode::OK, headers, body).into_response())
@@ -1154,4 +1158,62 @@ pub async fn restore(
     tx.commit().await.map_err(|_| internal())?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Reduce an arbitrary download filename to a header-safe form. HTTP header
+/// values can't carry control chars or a literal `"`, and `game_slug`/`label`
+/// are user-controlled, so we map anything outside a conservative printable-
+/// ASCII set to `_`. Keeps the download named sensibly without ever producing a
+/// value that `HeaderValue::from_str` would reject.
+fn sanitize_filename(name: &str) -> String {
+    // Trim the *original* first: a name made only of whitespace/control chars
+    // must collapse to the fallback. If we mapped first, each disallowed char
+    // would become `_` and `trim()` would no longer see it as empty.
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return "download.tar.zst".to_string();
+    }
+    let cleaned: String = trimmed
+        .chars()
+        .map(|c| match c {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' | ' ' => c,
+            _ => '_',
+        })
+        .collect();
+    let cleaned = cleaned.trim();
+    if cleaned.is_empty() {
+        "download.tar.zst".to_string()
+    } else {
+        cleaned.to_string()
+    }
+}
+
+#[cfg(test)]
+mod filename_tests {
+    use super::*;
+
+    #[test]
+    fn strips_control_and_non_ascii() {
+        assert_eq!(
+            sanitize_filename("elden\nring-v3.tar.zst"),
+            "elden_ring-v3.tar.zst"
+        );
+        assert_eq!(sanitize_filename("zelda—save"), "zelda_save");
+        assert_eq!(sanitize_filename("ok-name_v1.tar.zst"), "ok-name_v1.tar.zst");
+        // A quote would break the quoted filename; it must be neutralized.
+        assert_eq!(sanitize_filename("a\"b"), "a_b");
+    }
+
+    #[test]
+    fn empty_after_sanitizing_falls_back() {
+        assert_eq!(sanitize_filename("\n\r\t"), "download.tar.zst");
+    }
+
+    #[test]
+    fn sanitized_is_always_a_valid_header_value() {
+        let nasty = "💀\n\r\"\0game-\u{202e}evil";
+        let f = sanitize_filename(nasty);
+        let hv = format!("attachment; filename=\"{f}\"");
+        assert!(HeaderValue::from_str(&hv).is_ok());
+    }
 }

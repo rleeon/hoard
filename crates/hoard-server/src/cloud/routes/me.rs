@@ -1,5 +1,6 @@
 //! `/v1/me*` — account-facing endpoints for the desktop client.
 
+use crate::cloud::abuse;
 use crate::cloud::auth::CloudUser;
 use crate::cloud::errors::CloudError;
 use crate::cloud::plans::Plan;
@@ -61,7 +62,7 @@ pub async fn get_me(
     Extension(user): Extension<CloudUser>,
     headers: HeaderMap,
 ) -> Result<Json<Me>, CloudError> {
-    upsert_profile_for(&state, &user).await?;
+    upsert_profile_for(&state, &user, &headers).await?;
     // Register/refresh this machine in `devices` so the account page's
     // "Dispositivos N/M" reflects reality. Runs before the profile SELECT so
     // the recomputed `devices_count` is the one we return. Best-effort: a
@@ -162,26 +163,121 @@ fn format_dt(dt: OffsetDateTime) -> String {
 /// Create the row if missing. Same effect as the old `POST /v1/profiles/sync`
 /// from the handoff but folded into `GET /v1/me` to keep the client API
 /// flat — the first authenticated GET is always the bootstrap.
-async fn upsert_profile_for(state: &CloudState, user: &CloudUser) -> Result<(), CloudError> {
+///
+/// First provisioning runs the anti-abuse gates (disposable domain, one live
+/// account per canonical email, per-device free-account cap). Returning users
+/// — any row already present — skip every gate: a miscount or a newly added
+/// rule must never lock someone out of an account they already hold.
+async fn upsert_profile_for(
+    state: &CloudState,
+    user: &CloudUser,
+    headers: &HeaderMap,
+) -> Result<(), CloudError> {
+    let canonical = abuse::canonicalize_email(&user.email);
+
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM profiles WHERE user_id = $1)")
+            .bind(user.user_id)
+            .fetch_one(&state.pool)
+            .await?;
+
+    if !exists {
+        if abuse::is_disposable_email(&user.email) {
+            return Err(CloudError::Forbidden(
+                "disposable email addresses aren't allowed for Hoard Cloud",
+            ));
+        }
+        if let Some(canon) = canonical.as_deref() {
+            let dup: Option<Uuid> = sqlx::query_scalar(
+                "SELECT user_id FROM profiles
+                  WHERE email_canonical = $1 AND deleted_at IS NULL
+                  LIMIT 1",
+            )
+            .bind(canon)
+            .fetch_optional(&state.pool)
+            .await?;
+            if dup.is_some() {
+                return Err(CloudError::Forbidden(
+                    "an account already exists for this email address",
+                ));
+            }
+        }
+        enforce_device_account_cap(state, headers).await?;
+    }
+
     // Persist the OAuth provider's name + avatar so /v1/me can return them
     // (this is why the desktop "account photo" was always blank — we only
     // ever wrote the email). COALESCE keeps any value already on the row when
-    // a later token happens to omit the metadata, so the picture doesn't
-    // flicker away on refresh.
-    sqlx::query(
-        "INSERT INTO profiles (user_id, email, display_name, avatar_url)
-             VALUES ($1, $2, $3, $4)
+    // a later token happens to omit the metadata, so the picture (and the
+    // canonical email) doesn't flicker away on a refresh whose token lacks it.
+    let res = sqlx::query(
+        "INSERT INTO profiles (user_id, email, email_canonical, display_name, avatar_url)
+             VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (user_id) DO UPDATE SET
-             email        = EXCLUDED.email,
-             display_name = COALESCE(EXCLUDED.display_name, profiles.display_name),
-             avatar_url   = COALESCE(EXCLUDED.avatar_url, profiles.avatar_url)",
+             email           = EXCLUDED.email,
+             email_canonical = COALESCE(EXCLUDED.email_canonical, profiles.email_canonical),
+             display_name    = COALESCE(EXCLUDED.display_name, profiles.display_name),
+             avatar_url      = COALESCE(EXCLUDED.avatar_url, profiles.avatar_url)",
     )
     .bind(user.user_id)
     .bind(&user.email)
+    .bind(&canonical)
     .bind(&user.display_name)
     .bind(&user.avatar_url)
     .execute(&state.pool)
+    .await;
+
+    // The pre-check above closes the common case; this catches the tiny race
+    // where two new accounts claim the same canonical concurrently. Surface it
+    // as a clean 403 instead of a 500.
+    if let Err(sqlx::Error::Database(ref db)) = res {
+        if db.constraint() == Some("uq_profiles_email_canonical_live") {
+            return Err(CloudError::Forbidden(
+                "an account already exists for this email address",
+            ));
+        }
+    }
+    res?;
+    Ok(())
+}
+
+/// Reject creation of a *new* free account when this device already hosts the
+/// per-device cap of distinct live free accounts. Pro accounts aren't counted
+/// and are never blocked. A client that sends no fingerprint (older builds, or
+/// a machine with neither `/etc/machine-id` nor a hostname) is not gated — the
+/// cap is a speed bump for casual multi-accounting, and we'd rather under-block
+/// than lock out a real user whose machine reports no stable id.
+async fn enforce_device_account_cap(
+    state: &CloudState,
+    headers: &HeaderMap,
+) -> Result<(), CloudError> {
+    let fp = headers
+        .get("x-hoard-device-fp")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let fp = match fp {
+        Some(fp) => fp,
+        None => return Ok(()),
+    };
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT d.user_id)
+           FROM devices d
+           JOIN profiles p ON p.user_id = d.user_id
+          WHERE d.fingerprint = $1
+            AND p.deleted_at IS NULL
+            AND p.plan = 'free'",
+    )
+    .bind(fp)
+    .fetch_one(&state.pool)
     .await?;
+
+    if count >= abuse::MAX_FREE_ACCOUNTS_PER_DEVICE {
+        return Err(CloudError::Forbidden(
+            "too many free accounts on this device — upgrade to Pro to add more",
+        ));
+    }
     Ok(())
 }
 

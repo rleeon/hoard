@@ -9,7 +9,6 @@ use crate::cloud::{
         playtime as playtime_routes, saves, sync as sync_routes,
     },
     state::CloudState,
-    webhooks,
 };
 use crate::config::Config;
 use anyhow::Result;
@@ -179,7 +178,6 @@ pub async fn run(cfg: Config) -> Result<()> {
         ));
 
     let public = Router::new()
-        .route("/v1/webhooks/lemonsqueezy", post(webhooks::handle))
         .route("/v1/webhooks/polar", post(polar::handle))
         // Health is *also* available unauthed in cloud mode so Fly can probe it.
         .route("/v1/health", get(cloud_health));

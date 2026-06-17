@@ -133,12 +133,9 @@ pub struct CloudConfig {
     pub jwks_refresh_secs: u64,
     #[serde(default)]
     pub r2: R2Config,
-    #[serde(default)]
-    pub lemonsqueezy: LemonSqueezyConfig,
-    /// Polar (Merchant of Record) configuration. Coexists with Lemon
-    /// Squeezy — whichever provider sends a webhook is processed; both
-    /// upsert into the same `subscriptions` table keyed on the provider's
-    /// subscription id. Fields usually come from `HOARD__CLOUD__POLAR__*`.
+    /// Polar (Merchant of Record) billing configuration. Webhooks upsert
+    /// into the `subscriptions` table keyed on the provider's subscription
+    /// id. Fields usually come from `HOARD__CLOUD__POLAR__*`.
     #[serde(default)]
     pub polar: PolarConfig,
     /// Public-facing URL of the Hoard Cloud landing/checkout. Embedded in
@@ -179,32 +176,6 @@ fn default_presign_ttl() -> u64 {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
-pub struct LemonSqueezyConfig {
-    #[serde(default)]
-    pub api_key: String,
-    #[serde(default)]
-    pub webhook_secret: String,
-    #[serde(default)]
-    pub store_id: String,
-    /// Map LS product_id -> our plan tier and interval. The store uses
-    /// two separate products (Pro Monthly + Pro Yearly) rather than one
-    /// product with two variants, so webhooks are keyed on `product_id`.
-    /// `plan` stays as a string instead of an enum so an old Pro+ entry
-    /// in a deployed config doesn't fail validation — it just won't
-    /// resolve into the runtime `Plan` enum and will return 400 from
-    /// the webhook.
-    #[serde(default)]
-    pub products: Vec<LemonSqueezyProduct>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct LemonSqueezyProduct {
-    pub product_id: String,
-    pub plan: String,     // 'pro'
-    pub interval: String, // 'month' | 'year'
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct PolarConfig {
     /// Organization access token (OAT). Used for server-initiated Polar API
     /// calls — specifically `POST /v1/checkouts/` to create a checkout
@@ -226,7 +197,7 @@ pub struct PolarConfig {
     #[serde(default)]
     pub success_url: String,
     /// Map Polar product UUID -> our plan tier and interval. Two products:
-    /// Pro Monthly and Pro Yearly, mirroring the Lemon Squeezy setup.
+    /// Pro Monthly and Pro Yearly.
     #[serde(default)]
     pub products: Vec<PolarProduct>,
 }

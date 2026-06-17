@@ -203,6 +203,15 @@ pub fn key_for_blob(user_id: uuid::Uuid, sha256: &str) -> String {
     format!("blobs/{user_id}/{shard}/{sha256}")
 }
 
+/// A client-supplied content hash must be exactly 64 lowercase hex chars before
+/// it's ever interpolated into an R2 key. R2 treats keys literally (no `..`
+/// traversal) and every key is already scoped under the authenticated user's
+/// prefix, so this is defense-in-depth — but it keeps malformed or oversized
+/// values out of the keyspace and out of `cloud_blobs`/`save_version_files`.
+pub fn is_valid_sha256(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,5 +236,20 @@ mod tests {
             k,
             "exports/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000.zip"
         );
+    }
+
+    #[test]
+    fn sha256_validation() {
+        let good = "a".repeat(64);
+        assert!(is_valid_sha256(&good));
+        assert!(is_valid_sha256(
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        ));
+        assert!(!is_valid_sha256(&"a".repeat(63))); // too short
+        assert!(!is_valid_sha256(&"a".repeat(65))); // too long
+        assert!(!is_valid_sha256(&"A".repeat(64))); // uppercase rejected
+        assert!(!is_valid_sha256(&"g".repeat(64))); // non-hex
+        assert!(!is_valid_sha256("../../etc/passwd"));
+        assert!(!is_valid_sha256(""));
     }
 }
