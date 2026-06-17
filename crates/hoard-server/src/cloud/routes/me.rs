@@ -35,6 +35,10 @@ pub struct Me {
     pub cancel_at: Option<String>,
     pub storage_used_bytes: i64,
     pub storage_limit_bytes: i64,
+    /// Total bytes ever stored, monotonic — never credited back on delete or
+    /// purge. Powers the recap's lifetime "Atesorado". Backfilled to the
+    /// current footprint at migration time, so it's only exact going forward.
+    pub lifetime_storage_bytes: i64,
     pub devices_used: i32,
     pub devices_limit: i32,
     pub saves_used: i32,
@@ -72,8 +76,9 @@ pub async fn get_me(
         i64,
         i32,
         time::OffsetDateTime,
+        i64,
     ) = sqlx::query_as(
-        "SELECT email, display_name, avatar_url, plan, storage_bytes, devices_count, created_at
+        "SELECT email, display_name, avatar_url, plan, storage_bytes, devices_count, created_at, lifetime_storage_bytes
            FROM profiles WHERE user_id = $1",
     )
     .bind(user.user_id)
@@ -119,6 +124,7 @@ pub async fn get_me(
         cancel_at: sub.as_ref().and_then(|s| s.2).map(format_dt),
         storage_used_bytes: row.4,
         storage_limit_bytes: bytes_or_unlimited(limits.storage_bytes),
+        lifetime_storage_bytes: row.7,
         devices_used: row.5,
         devices_limit: devices_or_unlimited(limits.devices),
         saves_used: saves_used as i32,

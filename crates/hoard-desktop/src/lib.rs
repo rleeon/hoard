@@ -213,6 +213,9 @@ pub fn run() {
             commands::prefs::set_data_saving,
             commands::prefs::set_tray_state,
             commands::playtime::list_playtime,
+            commands::playtime::list_playtime_games,
+            commands::playtime::exclude_playtime_game,
+            commands::playtime::include_playtime_game,
             commands::history::list_save_snapshots,
             commands::history::save_snapshot_detail,
             commands::history::delete_snapshot,
@@ -241,6 +244,7 @@ pub fn run() {
             commands::cloud::cloud_delete_account,
             commands::cloud::cloud_entitlements,
             commands::cloud::cloud_activate_feature,
+            commands::cloud::cloud_sync_playtime,
         ])
         .setup(|app| {
             // Build the tray as soon as we have an AppHandle. Failures here

@@ -760,11 +760,75 @@ export type CatalogUpdateResult = {
 export type PlaytimeSummary = {
   days: Record<string, number>;
   by_game: Record<string, number>;
+  /** day (`YYYY-MM-DD`) → game_slug → seconds. Per-day game breakdown for the
+   *  recap's day-detail panel. Empty on older builds. */
+  daily_by_game?: Record<string, Record<string, number>>;
   total_secs: number;
 };
 
+/** Minimal view of the Hoard Cloud account, for surfaces that just need the
+ *  identity (name / email / avatar / plan). Full shape lives in
+ *  `stores/cloud.ts`; extra fields the command returns are ignored here. */
+export type CloudAccountInfo = {
+  email: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  plan: string;
+  /** Total bytes ever stored on the server (monotonic, never credited back on
+   *  delete/purge). `0` when the server predates the counter or the cached
+   *  session is stale — callers fall back to the current footprint. */
+  lifetime_storage_bytes: number;
+};
+
+/** Cached cloud account from the on-disk session, or `null` when signed out.
+ *  Cheap; no network. Works from any window (overlay included). */
+export function cloudCurrentAccount(): Promise<CloudAccountInfo | null> {
+  return invoke<CloudAccountInfo | null>("cloud_current_account");
+}
+
+/** Re-fetch `/v1/me` (network), refreshing the cached account. Returns the
+ *  fresh account; throws when signed out / offline. Used by the recap to get a
+ *  current `lifetime_storage_bytes` rather than a possibly-stale cache. */
+export function cloudRefreshAccount(): Promise<CloudAccountInfo> {
+  return invoke<CloudAccountInfo>("cloud_refresh_account");
+}
+
 export function listPlaytime(): Promise<PlaytimeSummary> {
   return invoke<PlaytimeSummary>("list_playtime");
+}
+
+/** A playtime-only game: an always-online title (Fortnite, Rust…) we track
+ *  purely for hours played, never for saves. Auto-enrolled from the installed-
+ *  game scan; `excluded` is the user's opt-out. */
+export type PlaytimeGameInfo = {
+  slug: string;
+  display_name: string;
+  excluded: boolean;
+};
+
+/** Installed playtime-only games (Steam + Epic + GOG + MS Store ∩ catalog),
+ *  minus those already tracked as real saves, plus any excluded-but-uninstalled
+ *  ones so they stay re-enablable. Local-only; no network. */
+export function listPlaytimeGames(): Promise<PlaytimeGameInfo[]> {
+  return invoke<PlaytimeGameInfo[]>("list_playtime_games");
+}
+
+/** Stop counting `slug` toward the recap and detach its live slot. */
+export function excludePlaytimeGame(slug: string): Promise<void> {
+  return invoke<void>("exclude_playtime_game", { slug });
+}
+
+/** Re-allow `slug` for playtime tracking, re-attaching it if installed. */
+export function includePlaytimeGame(slug: string): Promise<void> {
+  return invoke<void>("include_playtime_game", { slug });
+}
+
+/** Push this device's playtime to Hoard Cloud and read back the device-merged
+ *  aggregate (the recap's "multi-equipo" source of truth). Same shape as
+ *  {@link listPlaytime}; the command falls back to the local summary when
+ *  signed out or offline, so this never throws on a missing session. */
+export function syncPlaytime(): Promise<PlaytimeSummary> {
+  return invoke<PlaytimeSummary>("cloud_sync_playtime");
 }
 
 export function catalogStatus(): Promise<CatalogStatus> {

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.10] — 2026-06-17
+
+### Added
+- **Wrapple: mapa de calor con horas reales.** El agente registra el tiempo
+  real que cada juego estuvo en ejecución y lo sincroniza con Hoard Cloud, así
+  que el resumen refleja tus horas de todos tus equipos, no solo de este.
+- **Wrapple: detalle del día más bonito.** Al pulsar un cuadro del calendario
+  se abre el desglose de a qué jugaste ese día, con la portada de Steam de cada
+  juego (o su inicial si no hay portada) y una barra con el reparto de horas.
+- **«Atesorado» de por vida.** Contador monótono del almacenamiento total que
+  has guardado en el servidor, incluyendo lo que llegaste a borrar (cuenta
+  desde esta versión en adelante).
+
+### Fixed
+- **Wrapple: la barra de scroll del calendario ya no tapa los cuadros.** Se
+  dibuja como barra real (no superpuesta), debajo de la última fila de días.
+
 ## [2.3.9] — 2026-06-15
 
 ### Fixed

@@ -26,6 +26,8 @@
     Pencil,
     RotateCcw,
     Link,
+    Clock,
+    X,
   } from "lucide-svelte";
   import { _ } from "svelte-i18n";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -41,6 +43,7 @@
     DetectedGame,
     DetectionReport,
     DetectionSource,
+    PlaytimeGameInfo,
     ScanProgress,
     TrackedSave,
   } from "../lib/api";
@@ -49,6 +52,9 @@
 
   let report = $state<DetectionReport | null>(null);
   let tracked = $state<TrackedSave[]>([]);
+  // Playtime-only games (Fortnite, Rust…): tracked for hours, never backed up.
+  let playtimeGames = $state<PlaytimeGameInfo[]>([]);
+  let playtimeBusy = $state(new Set<string>());
   // slug → Steam app id, sourced from the detection report. Used only to show
   // cover art; absence just falls back to the initial-letter placeholder.
   const appIdBySlug = $derived.by(() => {
@@ -112,16 +118,43 @@
       },
     );
     try {
-      const [cached, t] = await Promise.all([
+      const [cached, t, pg] = await Promise.all([
         api.cachedDetection(),
         api.listTrackedSaves(),
+        api.listPlaytimeGames().catch(() => [] as PlaytimeGameInfo[]),
       ]);
       report = cached;
       tracked = t;
+      playtimeGames = pg;
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
     }
   });
+
+  // Opt a playtime-only game out of (or back into) the recap. Optimistic: we
+  // flip `excluded` locally and reconcile from the backend, so the amber card
+  // updates instantly without a full re-list.
+  async function togglePlaytime(game: PlaytimeGameInfo) {
+    if (playtimeBusy.has(game.slug)) return;
+    playtimeBusy = new Set(playtimeBusy).add(game.slug);
+    const wasExcluded = game.excluded;
+    try {
+      if (wasExcluded) {
+        await api.includePlaytimeGame(game.slug);
+      } else {
+        await api.excludePlaytimeGame(game.slug);
+      }
+      playtimeGames = playtimeGames.map((g) =>
+        g.slug === game.slug ? { ...g, excluded: !wasExcluded } : g,
+      );
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    } finally {
+      const next = new Set(playtimeBusy);
+      next.delete(game.slug);
+      playtimeBusy = next;
+    }
+  }
 
   onDestroy(() => {
     if (unlisten) unlisten();
@@ -841,6 +874,78 @@
             >
               <Trash size={14} />
             </button>
+          </div>
+        {/each}
+      </div>
+    </section>
+  {/if}
+
+  {#if playtimeGames.length > 0}
+    <!-- Playtime-only games: always-online titles (Fortnite, Rust…) with no
+         save worth syncing. We track their hours for the recap but back up
+         NOTHING — amber signals "no copia". Auto-enrolled; the user can drop
+         any of them (and re-add later). -->
+    <section class="mb-6">
+      <div
+        class="mb-2 flex items-center gap-2 text-xs uppercase tracking-wide text-amber-500/80"
+      >
+        <Clock size={13} />
+        <span>{$_("library.playtime_section")}</span>
+      </div>
+      <p class="mb-2 text-[11px] text-zinc-500">
+        {$_("library.playtime_hint")}
+      </p>
+      <div
+        class="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
+      >
+        {#each playtimeGames as game (game.slug)}
+          <div
+            class="group flex items-center justify-between gap-2 rounded-xl border p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 {game.excluded
+              ? 'border-white/[0.06] bg-zinc-950/40 opacity-50'
+              : 'border-amber-500/40 bg-amber-500/10 hover:border-amber-500/60'}"
+          >
+            <Cover
+              appId={appIdBySlug.get(game.slug) ?? null}
+              name={game.display_name}
+              class="h-9 w-9 rounded-md"
+              initialClass="text-sm"
+            />
+            <div class="min-w-0 flex-1">
+              <p
+                class="truncate text-sm font-medium text-zinc-100"
+                title={game.display_name}
+              >
+                {game.display_name}
+              </p>
+              <p class="truncate text-[11px] text-amber-500/70">
+                {game.excluded
+                  ? $_("library.playtime_excluded_badge")
+                  : $_("library.playtime_badge")}
+              </p>
+            </div>
+            {#if game.excluded}
+              <button
+                type="button"
+                disabled={playtimeBusy.has(game.slug)}
+                onclick={() => togglePlaytime(game)}
+                aria-label={$_("library.playtime_include")}
+                title={$_("library.playtime_include")}
+                class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-amber-500/15 hover:text-amber-300 disabled:opacity-40"
+              >
+                <RotateCcw size={14} />
+              </button>
+            {:else}
+              <button
+                type="button"
+                disabled={playtimeBusy.has(game.slug)}
+                onclick={() => togglePlaytime(game)}
+                aria-label={$_("library.playtime_exclude")}
+                title={$_("library.playtime_exclude")}
+                class="shrink-0 rounded p-1 text-amber-500/70 transition-colors hover:bg-amber-500/15 hover:text-amber-200 disabled:opacity-40"
+              >
+                <X size={14} />
+              </button>
+            {/if}
           </div>
         {/each}
       </div>

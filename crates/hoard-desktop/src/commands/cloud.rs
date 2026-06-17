@@ -88,6 +88,12 @@ pub struct CloudAccount {
     pub plan: String,
     pub storage_used_bytes: i64,
     pub storage_limit_bytes: i64,
+    /// Total bytes ever stored on the server (monotonic, never credited back).
+    /// `#[serde(default)]` so a `/v1/me` from a server that predates the
+    /// counter — or a cached session from before this field existed — parses
+    /// to 0 and the recap falls back to the current footprint.
+    #[serde(default)]
+    pub lifetime_storage_bytes: i64,
     pub devices_used: i32,
     pub devices_limit: i32,
     pub saves_used: i32,
@@ -872,6 +878,134 @@ fn format_http_error(status: StatusCode, body: &str) -> String {
 
 fn prettify(err: anyhow::Error) -> String {
     err.to_string()
+}
+
+// ---- Playtime sync ----------------------------------------------------
+
+/// Upload body: this device's full `(day, game, secs)` breakdown plus its
+/// fingerprint so the server keeps each machine's rows separate.
+#[derive(Debug, Serialize)]
+struct PlaytimeUploadBody {
+    device_fp: String,
+    rows: Vec<hoard_agent::playtime::PlaytimeRow>,
+}
+
+/// Push this device's local playtime breakdown to Hoard Cloud, then read back
+/// the device-merged aggregate the recap renders ("multi-equipo": the GET sums
+/// every machine's rows). Falls back to the local summary when signed out or
+/// offline so the recap always shows something. Renews the JWT and retries
+/// once on a 401, mirroring the other cloud commands.
+#[tauri::command]
+pub async fn cloud_sync_playtime(
+    app: AppHandle,
+) -> Result<hoard_agent::playtime::PlaytimeSummary, String> {
+    use hoard_agent::playtime::{PlaytimeStore, PlaytimeSummary};
+
+    let local = || -> Result<PlaytimeSummary, String> {
+        let path = PlaytimeStore::default_path().map_err(|e| e.to_string())?;
+        Ok(PlaytimeStore::load(&path).summary())
+    };
+
+    let Some(creds) = load_creds().map_err(|e| e.to_string())? else {
+        return local();
+    };
+
+    // Build the upload body from the local store.
+    let path = PlaytimeStore::default_path().map_err(|e| e.to_string())?;
+    let store = PlaytimeStore::load(&path);
+    let dev = hoard_agent::logship::device_identity();
+    let body = PlaytimeUploadBody {
+        device_fp: dev.fingerprint,
+        rows: store.upload_rows(),
+    };
+
+    // Push (best-effort): a failed push still lets us read the existing
+    // aggregate. Only a 401 triggers a refresh+retry; other errors fall through.
+    let mut token = creds.access_token.clone();
+    let mut base = creds.server_url.clone();
+    match push_playtime_raw(&base, &token, &body).await {
+        Ok(()) => {}
+        Err(MeError::Unauthorized) => match refresh_active_session().await {
+            Ok(fresh) => {
+                token = fresh.access_token.clone();
+                base = fresh.server_url.clone();
+                let _ = push_playtime_raw(&base, &token, &body).await;
+            }
+            Err(e) => {
+                if is_session_expired(&e) {
+                    handle_session_expired(&app);
+                }
+                return local();
+            }
+        },
+        Err(_other) => {}
+    }
+
+    // Read the device-merged aggregate.
+    match fetch_playtime_raw(&base, &token).await {
+        Ok(sum) => Ok(sum),
+        Err(MeError::Unauthorized) => match refresh_active_session().await {
+            Ok(fresh) => fetch_playtime_raw(&fresh.server_url, &fresh.access_token)
+                .await
+                .or_else(|_| local()),
+            Err(e) => {
+                if is_session_expired(&e) {
+                    handle_session_expired(&app);
+                }
+                local()
+            }
+        },
+        Err(_other) => local(),
+    }
+}
+
+async fn push_playtime_raw(
+    base: &str,
+    token: &str,
+    body: &PlaytimeUploadBody,
+) -> Result<(), MeError> {
+    let url = format!("{base}/v1/cloud/playtime");
+    let client = http_client().map_err(|e| MeError::Other(e.to_string()))?;
+    let resp = client
+        .post(&url)
+        .bearer_auth(token)
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| MeError::Other(format!("Network error: {e}")))?;
+    let status = resp.status();
+    if status == StatusCode::UNAUTHORIZED {
+        return Err(MeError::Unauthorized);
+    }
+    if !status.is_success() {
+        let b = resp.text().await.unwrap_or_default();
+        return Err(MeError::Other(format_http_error(status, &b)));
+    }
+    Ok(())
+}
+
+async fn fetch_playtime_raw(
+    base: &str,
+    token: &str,
+) -> Result<hoard_agent::playtime::PlaytimeSummary, MeError> {
+    let url = format!("{base}/v1/cloud/playtime");
+    let client = http_client().map_err(|e| MeError::Other(e.to_string()))?;
+    let resp = client
+        .get(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| MeError::Other(format!("Network error: {e}")))?;
+    let status = resp.status();
+    if status == StatusCode::UNAUTHORIZED {
+        return Err(MeError::Unauthorized);
+    }
+    let b = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(MeError::Other(format_http_error(status, &b)));
+    }
+    serde_json::from_str::<hoard_agent::playtime::PlaytimeSummary>(&b)
+        .map_err(|e| MeError::Other(format!("parsing playtime response: {e}: {b}")))
 }
 
 /// Restore the in-memory cache at boot. Best-effort; logs and shrugs if

@@ -5,7 +5,8 @@ use crate::cloud::{
     auth::{require_cloud_auth, JwksCache},
     bandwidth, db, polar, r2,
     routes::{
-        checkout, entitlements as ent_routes, logs as log_routes, me, saves, sync as sync_routes,
+        checkout, entitlements as ent_routes, logs as log_routes, me,
+        playtime as playtime_routes, saves, sync as sync_routes,
     },
     state::CloudState,
     webhooks,
@@ -160,6 +161,10 @@ pub async fn run(cfg: Config) -> Result<()> {
             get(saves::download),
         )
         .route("/v1/cloud/sync", get(sync_routes::manifest))
+        .route(
+            "/v1/cloud/playtime",
+            get(playtime_routes::aggregate).post(playtime_routes::upload),
+        )
         // Client diagnostic-log ingest (INFO+ only). Smaller body cap than
         // save uploads — applied per-route.
         .route(

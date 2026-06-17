@@ -29,7 +29,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
 use serde::{Deserialize, Serialize};
-use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System, UpdateKind};
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -45,8 +45,11 @@ use crate::backup::{upload_directory_checked, BackupResult};
 ///   after a save, long enough to coalesce torn writes (Bethesda games,
 ///   Souls games re-write the save file mid-burst). v0.2's 30 s default
 ///   was much more conservative; product call to match the user's ask.
-/// - **2 s process poll**: catches "I quit the game" within seconds
-///   without hammering `/proc`.
+/// - **2 s process poll** *while a game is running*: catches "I quit the
+///   game" within seconds. When idle the poll backs off to
+///   `poll_secs * IDLE_POLL_MULT` (the common case is no game running, so
+///   this keeps `/proc` scans — the agent's dominant idle cost — rare). The
+///   refresh itself is name+exe only, never the full per-process snapshot.
 /// - **5 retries** with exponential backoff covers "wifi blipped"
 ///   without pestering the user forever.
 #[derive(Debug, Clone)]
@@ -117,6 +120,18 @@ pub fn min_snapshot_interval_for(data_saving: f64) -> u64 {
     (5.0 + (600.0 - 5.0) * k).round() as u64
 }
 
+/// The *minimal* process-refresh set the agent actually consumes. The process
+/// poll only reads each process's `name()` (always populated, no flag) and, for
+/// the legacy install-dir fallback, its `exe()`. Everything else
+/// `ProcessRefreshKind::everything()` pulls — CPU, memory, disk I/O, environ,
+/// cmdline, cwd, root, user — is dead weight re-read from `/proc/<pid>/*` for
+/// every process on the box on every 2 s tick, and was the bulk of the agent's
+/// idle CPU. `OnlyIfNotSet` reads each `exe` path exactly once per PID (it never
+/// changes), so steady-state ticks only re-parse `/proc/<pid>/stat` for names.
+fn proc_refresh_kind() -> ProcessRefreshKind {
+    ProcessRefreshKind::new().with_exe(UpdateKind::OnlyIfNotSet)
+}
+
 /// One save the agent is responsible for backing up.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchedSave {
@@ -161,6 +176,15 @@ pub struct WatchedSave {
     /// restart re-uploads every save as a new identical version.
     #[serde(default)]
     pub set_hash: Option<String>,
+    /// PLAYTIME-ONLY tracking: this entry is here purely to count hours played
+    /// for the recap (hoard-wrapple), never to back up a save. A `track_only`
+    /// slot arms no fs watcher and is skipped by every backup/restore/sweep
+    /// path; the process poll still matches it (by `processes` / install dir)
+    /// so [`crate::playtime`] accrues its time. Used for always-online games
+    /// with no local save worth syncing (Fortnite, Rust, Valorant…). Surfaced
+    /// in amber in the UI. `default` keeps older `state.json` files loading.
+    #[serde(default)]
+    pub track_only: bool,
 }
 
 /// Out-of-agent notifications. Frontend listens to these to drive the
@@ -639,10 +663,15 @@ async fn run_agent(
     // Process watcher: periodic poll. We refresh only the bits we care
     // about (process names + exe paths) to keep CPU near zero when idle.
     let mut sys = System::new_with_specifics(
-        RefreshKind::new().with_processes(ProcessRefreshKind::everything()),
+        RefreshKind::new().with_processes(proc_refresh_kind()),
     );
-    let mut poll = tokio::time::interval(Duration::from_secs(config.poll_secs.max(1)));
+    let active_poll = Duration::from_secs(config.poll_secs.max(1));
+    let idle_poll = active_poll.saturating_mul(IDLE_POLL_MULT);
+    let mut poll = tokio::time::interval(active_poll);
     poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // Start fast so a game already open at launch is caught on the first tick;
+    // `process_poll`'s return value drives the fast↔idle cadence thereafter.
+    let mut polling_fast = true;
 
     // DETECCIÓN (fase 3, ADR 0020): store de correlación proceso↔escritura.
     // Cuando un save vigilado se reescribe, registramos qué proceso de juego
@@ -935,7 +964,7 @@ async fn run_agent(
                     sys.refresh_processes_specifics(
                         ProcessesToUpdate::All,
                         true,
-                        ProcessRefreshKind::everything(),
+                        proc_refresh_kind(),
                     );
                     let games = crate::correlation::sample_game_processes(&sys);
                     if !games.is_empty() {
@@ -955,7 +984,7 @@ async fn run_agent(
 
             // ----- Process poll tick -----
             _ = poll.tick() => {
-                process_poll(
+                let any_running = process_poll(
                     &mut sys, &mut slots, &events_tx, &api, &config, &done_tx, &cmd_tx,
                     &mut playtime, playtime_path.as_deref(),
                 );
@@ -967,6 +996,9 @@ async fn run_agent(
                 // exists. Cheap (a stat per tracked save) and silent for the
                 // common already-armed case.
                 for slot in slots.values_mut() {
+                    if slot.save.track_only {
+                        continue;
+                    }
                     if slot.watcher.is_none() && slot.save.local_path.is_dir() {
                         tracing::info!(
                             save_id = %slot.save.save_id,
@@ -998,6 +1030,16 @@ async fn run_agent(
                 // +0.50 y ascenderá el candidato a `High`.
                 if !probes.is_empty() {
                     probe_candidates(&mut probes, &sys, &mut corr_store, corr_path.as_deref());
+                }
+
+                // Adapt the poll cadence to whether anything is running. Only
+                // rebuild the interval on an actual transition so steady state
+                // never churns the timer.
+                if any_running != polling_fast {
+                    polling_fast = any_running;
+                    let period = if any_running { active_poll } else { idle_poll };
+                    poll = tokio::time::interval_at(TokioInstant::now() + period, period);
+                    poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 }
             }
 
@@ -1071,6 +1113,13 @@ fn handle_add(
         last_set_hash,
         known_version,
     };
+    // Playtime-only entries exist purely to be matched by the process poll
+    // so their hours accrue for the recap. They own no save folder, so we
+    // never arm a watcher or run any restore/backup logic for them.
+    if slot.save.track_only {
+        slots.insert(save_id.clone(), slot);
+        return;
+    }
     arm_watcher(&mut slot, fs_tx);
     slots.insert(save_id.clone(), slot);
 
@@ -1130,6 +1179,15 @@ fn handle_add(
 /// available" — possible during a GC race) doesn't get hammered by the
 /// reconciliation sweep.
 const AUTO_RESTORE_COOLDOWN_SECS: u64 = 60;
+
+/// Idle process-poll slowdown factor. When no tracked game is running the agent
+/// polls the process table every `poll_secs * IDLE_POLL_MULT` instead of every
+/// `poll_secs`. Scanning every process on the box is the agent's dominant idle
+/// cost, and while idle there's nothing to detect "stopping" — only launches,
+/// whose detection just gains up to one idle interval of latency (absorbed by
+/// the conflict-aware pre-launch barrier). The first running game snaps the
+/// cadence back to `poll_secs`.
+const IDLE_POLL_MULT: u32 = 4;
 
 /// Backoff applied when an auto-restore fails with a 404: the save is tracked
 /// locally but has no record/snapshot on the backend we're talking to (e.g.
@@ -1363,6 +1421,10 @@ fn sweep_for_auto_restore(
     let candidates: Vec<(String, WatchedSave)> = slots
         .iter()
         .filter(|(id, slot)| {
+            // Playtime-only entries have no save folder to restore into.
+            if slot.save.track_only {
+                return false;
+            }
             // Per-save preset can opt out of restore (backup-only) or opt in
             // even when the global default is off. `global_sync` raises the
             // floor: it counts as a global opt-in for restore, but a save
@@ -2155,6 +2217,11 @@ fn build_watcher(
 /// it was registered for, so this is a direct lookup by canonical prefix.
 fn match_save_for_path(slots: &HashMap<String, SaveSlot>, path: &Path) -> Option<String> {
     for slot in slots.values() {
+        // Playtime-only slots own no folder; their sentinel path is empty,
+        // which `starts_with` would treat as a prefix of *every* path.
+        if slot.save.track_only {
+            continue;
+        }
         if slot.save.local_path == path || path.starts_with(&slot.save.local_path) {
             return Some(slot.save.save_id.clone());
         }
@@ -2299,6 +2366,8 @@ fn sweep_all(
     // `schedule_backup` below.
     let entries: Vec<(String, PathBuf, bool)> = slots
         .values()
+        // Playtime-only entries never back up.
+        .filter(|s| !s.save.track_only)
         .map(|s| {
             (
                 s.save.save_id.clone(),
@@ -2843,6 +2912,9 @@ async fn run_backup_with_retry(
 /// Since 1.4 this no longer touches the fs watcher — the watcher is armed
 /// in `handle_add` and lives for the slot's lifetime. `process_poll` is
 /// pure UI signal (Dashboard pill, "the game just closed → flush" hint).
+///
+/// Returns whether any tracked game is currently running, so the caller can
+/// throttle the poll cadence (fast while a game is up, slow when idle).
 #[allow(clippy::too_many_arguments)]
 fn process_poll(
     sys: &mut System,
@@ -2854,47 +2926,56 @@ fn process_poll(
     cmd_tx: &mpsc::Sender<AgentCommand>,
     playtime: &mut crate::playtime::PlaytimeStore,
     playtime_path: Option<&std::path::Path>,
-) {
+) -> bool {
     // Refresh every process. The `true` flag asks sysinfo to remove
     // entries for processes that have exited since the last refresh,
     // which is exactly what we need to detect "game stopped".
-    sys.refresh_processes_specifics(
-        ProcessesToUpdate::All,
-        true,
-        ProcessRefreshKind::everything(),
-    );
+    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, proc_refresh_kind());
 
     // Build a set of "currently running" save_ids. Two matchers cooperate:
     // process-name match (manifest-driven, storefront-agnostic) takes
     // precedence; install-dir match is the legacy v0.2 fallback for
     // saves registered without a manifest.
-    let mut running: HashSet<String> = HashSet::new();
+    //
+    // Single pass over the process table: invert the slots into a name→ids
+    // index up front so the scan is O(procs + slots) instead of O(procs ×
+    // slots) — the old nested loop re-scanned every process for every slot and
+    // rebuilt a HashSet per slot per tick, which got worse now that playtime-
+    // only games add up to ~16 extra slots.
+    let mut name_index: HashMap<String, Vec<&str>> = HashMap::new();
+    let mut dir_slots: Vec<(&str, &Path)> = Vec::new();
     for slot in slots.values() {
-        let proc_names: HashSet<String> = slot
-            .save
-            .processes
-            .iter()
-            .map(|p| p.to_lowercase())
-            .collect();
-        let install_dir = slot.save.steam_install_dir.as_ref();
-
-        for proc in sys.processes().values() {
-            // Name match — works on every storefront on Windows, and on
-            // Proton/Wine where the wineprefix process keeps the .exe name.
-            if !proc_names.is_empty() {
-                let name = proc.name().to_string_lossy().to_lowercase();
-                if proc_names.contains(&name) {
-                    running.insert(slot.save.save_id.clone());
-                    break;
-                }
+        if slot.save.processes.is_empty() {
+            // Legacy fallback only when no process names are configured.
+            if let Some(dir) = slot.save.steam_install_dir.as_deref() {
+                dir_slots.push((slot.save.save_id.as_str(), dir));
             }
-            // Legacy install-dir fallback. Skipped if name-match is
-            // configured to avoid double counting.
-            if proc_names.is_empty() {
-                if let (Some(exe), Some(dir)) = (proc.exe(), install_dir) {
+            continue;
+        }
+        for p in &slot.save.processes {
+            name_index
+                .entry(p.to_lowercase())
+                .or_default()
+                .push(slot.save.save_id.as_str());
+        }
+    }
+
+    let mut running: HashSet<String> = HashSet::new();
+    for proc in sys.processes().values() {
+        // Name match — works on every storefront on Windows, and on
+        // Proton/Wine where the wineprefix process keeps the .exe name.
+        if !name_index.is_empty() {
+            let name = proc.name().to_string_lossy().to_lowercase();
+            if let Some(ids) = name_index.get(&name) {
+                running.extend(ids.iter().map(|id| id.to_string()));
+            }
+        }
+        // Legacy install-dir fallback for slots without process names.
+        if !dir_slots.is_empty() {
+            if let Some(exe) = proc.exe() {
+                for (id, dir) in &dir_slots {
                     if exe.starts_with(dir) {
-                        running.insert(slot.save.save_id.clone());
-                        break;
+                        running.insert(id.to_string());
                     }
                 }
             }
@@ -2954,6 +3035,10 @@ fn process_poll(
             // it does fire it can't lose newer local progress.
             let barrier_save: Option<WatchedSave> = {
                 slots.get(&id).and_then(|slot| {
+                    // Playtime-only entries have no save folder to pull into.
+                    if slot.save.track_only {
+                        return None;
+                    }
                     // Per-save preset can disable (backup-only) or enable the
                     // pull barrier regardless of the global default. `global_sync`
                     // counts as a global opt-in.
@@ -3083,6 +3168,8 @@ fn process_poll(
     } else {
         playtime.flush_if_due(playtime_path, now_ms);
     }
+
+    !running.is_empty()
 }
 
 #[cfg(test)]
@@ -3139,6 +3226,7 @@ mod tests {
             policy: Default::default(),
             known_version: None,
             set_hash: None,
+            track_only: false,
         };
         let mut slots = HashMap::new();
         slots.insert(
@@ -3199,6 +3287,7 @@ mod tests {
             policy: Default::default(),
             known_version: None,
             set_hash: None,
+            track_only: false,
         };
 
         // Short debounce so the test completes well under the 10s timeout.

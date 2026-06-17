@@ -36,18 +36,23 @@
   let signingOut = $state(false);
   let now = $state(Date.now());
 
-  // Tick once a second so "next backup in 28s" countdowns animate.
+  // Tick once a second so "next backup in 28s" countdowns animate. Skip the
+  // state write while the window is hidden (minimised / in the tray): nobody
+  // can see the countdown, and the write would force a pointless re-render.
   $effect(() => {
-    const id = setInterval(() => (now = Date.now()), 1000);
+    const id = setInterval(() => {
+      if (!document.hidden) now = Date.now();
+    }, 1000);
     return () => clearInterval(id);
   });
 
   // Poll the storage quota every 30s while the dashboard is open so the
   // QuotaBar tracks reality after backups land. The first poll runs
   // immediately on mount via `hydrateAuth`, so this just keeps it warm.
+  // Hidden window → skip the round-trip; the next visible tick refreshes it.
   $effect(() => {
     const id = setInterval(() => {
-      refreshQuota().catch(() => {});
+      if (!document.hidden) refreshQuota().catch(() => {});
     }, 30_000);
     return () => clearInterval(id);
   });

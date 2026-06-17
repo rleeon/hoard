@@ -71,6 +71,12 @@ pub struct PlaytimeStore {
     /// `game_slug` → segundos jugados acumulados (histórico).
     #[serde(default)]
     by_game: BTreeMap<String, u64>,
+    /// Desglose cruzado día → (`game_slug` → segundos) — qué se jugó cada día y
+    /// a qué. Campo nuevo: sólo se rellena de aquí en adelante, así que para
+    /// días viejos la suma de sus juegos puede ser < `days[día]` (ver
+    /// [`Self::upload_rows`], que añade una fila remanente para cuadrar).
+    #[serde(default)]
+    daily_by_game: BTreeMap<String, BTreeMap<String, u64>>,
     /// Segundos jugados acumulados (histórico).
     #[serde(default)]
     total_secs: u64,
@@ -89,7 +95,21 @@ pub struct PlaytimeStore {
 pub struct PlaytimeSummary {
     pub days: BTreeMap<String, u64>,
     pub by_game: BTreeMap<String, u64>,
+    /// Desglose cruzado día → (`game_slug` → segundos): qué se jugó cada día y
+    /// cuánto. Alimenta el detalle por día del recap (clic en un cuadro).
+    #[serde(default)]
+    pub daily_by_game: BTreeMap<String, BTreeMap<String, u64>>,
     pub total_secs: u64,
+}
+
+/// Una fila atómica de tiempo jugado para subir al cloud: "este día, a este
+/// juego, tantos segundos". El servidor las upserta por
+/// `(user_id, device_fp, day, game_slug)`. El recap lee el agregado de vuelta.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaytimeRow {
+    pub day: String,
+    pub game_slug: String,
+    pub secs: u64,
 }
 
 impl PlaytimeStore {
@@ -139,8 +159,15 @@ impl PlaytimeStore {
             if secs > max_step_secs {
                 secs = max_step_secs;
             }
-            *self.days.entry(local_day_key(now)).or_insert(0) += secs;
+            let day = local_day_key(now);
+            *self.days.entry(day.clone()).or_insert(0) += secs;
             *self.by_game.entry(slug.clone()).or_insert(0) += secs;
+            *self
+                .daily_by_game
+                .entry(day)
+                .or_default()
+                .entry(slug.clone())
+                .or_insert(0) += secs;
             self.total_secs += secs;
             self.dirty = true;
         }
@@ -181,8 +208,44 @@ impl PlaytimeStore {
         PlaytimeSummary {
             days: self.days.clone(),
             by_game: self.by_game.clone(),
+            daily_by_game: self.daily_by_game.clone(),
             total_secs: self.total_secs,
         }
+    }
+
+    /// Filas `(día, juego, segundos)` para subir al cloud. Emite el desglose
+    /// real de `daily_by_game` y, por cada día, una fila remanente bajo el slug
+    /// `__other__` con `days[día] − Σ juegos` cuando es positivo: así los días
+    /// anteriores a este desglose (cuyo total vive sólo en `days`) siguen
+    /// cuadrando en el agregado del servidor sin inventar a qué juego fueron.
+    pub fn upload_rows(&self) -> Vec<PlaytimeRow> {
+        let mut rows = Vec::new();
+        for (day, total) in &self.days {
+            let per_game = self.daily_by_game.get(day);
+            let mut attributed = 0u64;
+            if let Some(games) = per_game {
+                for (slug, secs) in games {
+                    if *secs == 0 {
+                        continue;
+                    }
+                    attributed += *secs;
+                    rows.push(PlaytimeRow {
+                        day: day.clone(),
+                        game_slug: slug.clone(),
+                        secs: *secs,
+                    });
+                }
+            }
+            let remainder = total.saturating_sub(attributed);
+            if remainder > 0 {
+                rows.push(PlaytimeRow {
+                    day: day.clone(),
+                    game_slug: "__other__".into(),
+                    secs: remainder,
+                });
+            }
+        }
+        rows
     }
 }
 
@@ -234,6 +297,36 @@ mod tests {
         // Si vuelve, no atribuye el hueco (re-ancla).
         s.accrue(&[("a".into(), "g".into())], 30_000, 60);
         assert_eq!(s.total_secs, 10);
+    }
+
+    #[test]
+    fn upload_rows_split_and_remainder() {
+        let mut s = store();
+        // Día con desglose real: 12 s a "g".
+        s.accrue(&[("a".into(), "g".into())], 10_000, 60);
+        s.accrue(&[("a".into(), "g".into())], 22_000, 60);
+        // Simula un día histórico sin desglose (sólo en `days`).
+        s.days.insert("2020-01-01".into(), 100);
+        let rows = s.upload_rows();
+        // La fila real "g".
+        let g = rows
+            .iter()
+            .find(|r| r.game_slug == "g")
+            .expect("row for g");
+        assert_eq!(g.secs, 12);
+        // El día histórico se vuelca entero como remanente.
+        let other = rows
+            .iter()
+            .find(|r| r.day == "2020-01-01" && r.game_slug == "__other__")
+            .expect("remainder row");
+        assert_eq!(other.secs, 100);
+        // El día con desglose completo no genera remanente.
+        assert!(
+            !rows
+                .iter()
+                .any(|r| r.day != "2020-01-01" && r.game_slug == "__other__"),
+            "fully-attributed day must not emit a remainder"
+        );
     }
 
     #[test]

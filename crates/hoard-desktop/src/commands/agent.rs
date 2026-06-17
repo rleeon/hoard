@@ -377,9 +377,6 @@ pub async fn agent_status(state: State<'_, AppState>) -> Result<Vec<AgentSlotSta
 /// process watcher has something to match against.
 fn hydrate_watched_saves(_state: &State<'_, AppState>) -> anyhow::Result<Vec<WatchedSave>> {
     let (cli_state, _) = CliState::load_default()?;
-    if cli_state.saves.is_empty() {
-        return Ok(Vec::new());
-    }
 
     // Cache Steam apps once — if the user has 100 tracked saves we don't
     // want to scan `appmanifest_*.acf` 100 times. `list_installed_steam_games`
@@ -387,7 +384,15 @@ fn hydrate_watched_saves(_state: &State<'_, AppState>) -> anyhow::Result<Vec<Wat
     // negligible startup cost.
     let steam_apps = steam::list_installed_steam_games(Os::current()).unwrap_or_default();
 
-    let mut out = Vec::with_capacity(cli_state.saves.len());
+    // Playtime-only games (Fortnite, Rust…): seed before consuming
+    // `cli_state.saves`. `tracked_slugs` keeps us from enrolling a
+    // playtime-only duplicate for a game already backed up as a real save.
+    let tracked_slugs: std::collections::HashSet<String> =
+        cli_state.saves.values().map(|s| s.game_slug.clone()).collect();
+    let playtime_saves =
+        crate::commands::playtime::derive_playtime_saves(&cli_state, &tracked_slugs);
+
+    let mut out = Vec::with_capacity(cli_state.saves.len() + playtime_saves.len());
     for (save_id, save_state) in cli_state.saves {
         if save_state.paused {
             // The user has explicitly told us to leave this save alone.
@@ -415,8 +420,10 @@ fn hydrate_watched_saves(_state: &State<'_, AppState>) -> anyhow::Result<Vec<Wat
             policy,
             known_version: save_state.last_version_num,
             set_hash: save_state.set_hash.clone(),
+            track_only: false,
         });
     }
+    out.extend(playtime_saves);
     Ok(out)
 }
 
@@ -503,6 +510,7 @@ pub(crate) fn watched_save_from(
         // No persisted signature for a just-added path; the first backup
         // establishes it.
         set_hash: None,
+        track_only: false,
     }
 }
 

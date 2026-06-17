@@ -139,11 +139,14 @@
   }
 
   // Tick once a second so relative timestamps stay honest. Wrapped in a
-  // counter so Svelte 5 notices the change.
+  // counter so Svelte 5 notices the change. Skipped while the window is hidden
+  // — no visible timestamps to keep honest, so don't force re-renders.
   let tick = $state(0);
   let timer: ReturnType<typeof setInterval>;
   $effect(() => {
-    timer = setInterval(() => (tick = tick + 1), 1000);
+    timer = setInterval(() => {
+      if (!document.hidden) tick = tick + 1;
+    }, 1000);
     return () => clearInterval(timer);
   });
   const _tickRef = $derived(tick); // touched in summary() via relativeTime call below

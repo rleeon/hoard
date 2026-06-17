@@ -59,6 +59,15 @@ pub struct CliState {
     /// files loading without migration.
     #[serde(default)]
     pub ignored_slugs: HashSet<String>,
+    /// Slugs the user has dropped from playtime-only tracking (the amber
+    /// "Jugados, sin copia" list that feeds the recap). Playtime-only games
+    /// are auto-enrolled from the installed-game scan + catalog; this set is
+    /// the opt-out so a game the user doesn't want counted stops being
+    /// re-added on the next scan. Distinct from [`Self::ignored_slugs`] (which
+    /// is about save detection) so excluding one from the recap doesn't hide
+    /// the other. `default` keeps older `state.json` files loading.
+    #[serde(default)]
+    pub playtime_excluded: HashSet<String>,
 }
 
 impl CliState {
@@ -151,6 +160,25 @@ impl CliState {
     /// re-surfaces it. Mirrors `add_ignored_slug`. Idempotent.
     pub fn remove_ignored_slug(&mut self, slug: &str) {
         self.ignored_slugs.remove(slug);
+    }
+
+    /// True when `slug` was dropped from playtime-only tracking via
+    /// [`Self::exclude_playtime`]. The desktop's playtime-game derivation
+    /// filters auto-enroll candidates against this so they stop coming back.
+    pub fn is_playtime_excluded(&self, slug: &str) -> bool {
+        self.playtime_excluded.contains(slug)
+    }
+
+    /// Stop counting `slug` toward the recap. After this the next agent seed
+    /// no longer enrols a playtime-only slot for it. Idempotent.
+    pub fn exclude_playtime(&mut self, slug: String) {
+        self.playtime_excluded.insert(slug);
+    }
+
+    /// Re-allow `slug` for playtime-only tracking. Mirrors
+    /// [`Self::exclude_playtime`]. Idempotent.
+    pub fn include_playtime(&mut self, slug: &str) {
+        self.playtime_excluded.remove(slug);
     }
 }
 
