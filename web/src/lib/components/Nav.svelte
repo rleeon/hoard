@@ -119,8 +119,13 @@
           <Globe class="h-4 w-4" />
           <span class="font-medium">{LOCALE_NAMES[active]}</span>
         </summary>
+        <!-- preload-data="tap" overrides the layout's "hover" default: the
+             locale `load` calls `locale.set(lang)`, so a hover-preload would
+             switch the whole page's language just by mousing over an item.
+             Restrict it to the actual click. -->
         <div
-          class="absolute right-0 z-50 mt-2 min-w-40 overflow-hidden rounded-lg border border-line bg-bg/95 py-1 shadow-lg backdrop-blur-md"
+          data-sveltekit-preload-data="tap"
+          class="lang-menu absolute right-0 z-50 mt-2 min-w-40 overflow-hidden rounded-lg border border-line bg-bg/95 py-1 shadow-lg backdrop-blur-md"
         >
           {#each LOCALES as l (l)}
             <a
@@ -234,7 +239,7 @@
           <p class="px-3 pb-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
             <Globe class="mr-1 inline h-3 w-3" />Language
           </p>
-          <div class="grid grid-cols-2 gap-1">
+          <div class="grid grid-cols-2 gap-1" data-sveltekit-preload-data="tap">
             {#each LOCALES as l (l)}
               <a
                 class="flex items-center justify-between rounded-md px-3 py-2 text-sm hover:bg-ink/5 {l === active
@@ -254,3 +259,19 @@
     </div>
   {/if}
 </header>
+
+<style>
+  /* The locale links live inside a closed <details> so the prerender crawler
+     discovers all 8 URLs in the static HTML. But the panel is positioned
+     absolute, and an absolutely-positioned child escapes the native
+     "hide when closed" behaviour of <details> — so without this it stayed
+     painted on top of the page even while closed (clicking the summary
+     toggled `open` but nothing visibly changed). Gate the panel on the
+     parent's `open` state explicitly; the links stay in the DOM for SEO. */
+  details > .lang-menu {
+    display: none;
+  }
+  details[open] > .lang-menu {
+    display: block;
+  }
+</style>
