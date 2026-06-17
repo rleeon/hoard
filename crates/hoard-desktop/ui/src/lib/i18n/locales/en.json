@@ -421,6 +421,7 @@
   "updates.error.title": "Update error",
   "updates.error.no_installer": "This release is still being built. Please wait about 5 minutes and try again.",
   "updates.error.download_failed": "The installer couldn't be downloaded.",
+  "updates.error.signature_invalid": "The update's signature didn't verify, so it wasn't installed. This can mean a tampered download — try again, and if it keeps failing, get Hoard from the official site.",
   "updates.error.launch_failed": "The installer couldn't be launched.",
   "updates.error.unknown": "An unexpected error occurred during the update.",
   "updates.error.server_unknown": "An unexpected error occurred while upgrading the server.",

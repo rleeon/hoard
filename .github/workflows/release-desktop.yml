@@ -175,6 +175,43 @@ jobs:
           merge-multiple: true
       - name: List
         run: ls -la dist/
+      # Sign every installer with minisign so the in-app auto-updater
+      # (`apply_desktop_update`) can verify it against the public key embedded
+      # in the client before running it as root via pkexec — same key and
+      # fail-closed model the server's `hoard-server upgrade` uses (ADR 0017).
+      # The secret lives only in repo secrets. If it isn't configured we warn
+      # loudly: unsigned installers make the client fall back to a *manual*
+      # download instead of auto-installing, so updates degrade rather than run
+      # an unverified binary.
+      #
+      # NOTE: the production desktop installers ship from the private
+      # `hoard-build` pipeline, which MUST run an equivalent signing step or
+      # those releases won't auto-update. Keep the two in lockstep.
+      - name: Sign bundles (minisign)
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_KEY_PASSWORD: ${{ secrets.MINISIGN_KEY_PASSWORD }}
+        run: |
+          if [ -z "${MINISIGN_SECRET_KEY:-}" ]; then
+            echo "::warning::MINISIGN_SECRET_KEY not set — desktop installers will be UNSIGNED. The in-app updater will refuse to auto-install them and fall back to manual download."
+            exit 0
+          fi
+          sudo apt-get update && sudo apt-get install -y minisign
+          printf '%s' "$MINISIGN_SECRET_KEY" > minisign.key
+          # Sign each installer artifact (not the .sha256 sidecars, not an
+          # existing .minisig). minisign reads the password from stdin.
+          shopt -s nullglob
+          for f in dist/*; do
+            case "$f" in
+              *.sha256|*.minisig) continue ;;
+            esac
+            [ -f "$f" ] || continue
+            printf '%s\n' "${MINISIGN_KEY_PASSWORD:-}" | \
+              minisign -S -s minisign.key -m "$f"
+            test -f "$f.minisig" || { echo "::error::signing produced no .minisig for $f"; exit 1; }
+          done
+          rm -f minisign.key
+          ls -la dist/
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:

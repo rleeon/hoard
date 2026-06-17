@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.11] — 2026-06-17
+
+### Fixed
+- **Portadas en toda la app.** Library, panel, mapa y Wrapple muestran la
+  cápsula de Steam de cada juego en vez de la inicial. La portada ya no depende
+  solo de lo que este equipo detectó: si una partida llega desde otro dispositivo
+  o desde la nube (sin `steam_app_id` local), se resuelve el id por el catálogo
+  Ludusavi (offline) y, si no está, por la búsqueda de la tienda de Steam por
+  nombre. Así aparecen Victoria 3, Europa Universalis o Rust aunque nunca se
+  detectaran aquí.
+- **Portadas de juegos nuevos / sin publicar (p. ej. Europa Universalis V).**
+  Sus imágenes solo viven bajo la ruta `store_item_assets` con hash y el
+  `header.jpg` clásico devuelve 404; ahora, ante un 404, se pide la URL real a
+  la API `appdetails` de Steam y se descarga esa.
+- **Wrapple en Linux: la barra de scroll del calendario ya no tapa los cuadros.**
+  WebKitGTK dibuja scrollbars superpuestas (ignora `::-webkit-scrollbar`, que sí
+  respeta WebView2 en Windows), así que ahora se reserva espacio real debajo de
+  la última fila de días.
+
+### Security
+- **Cerrado un bypass de cuota de almacenamiento en cloud.** Un cliente podía
+  declarar un tamaño pequeño, pasar el chequeo de cuota y luego subir objetos
+  enormes a las URLs presignadas de R2 (que no llevan límite de `content-length`),
+  ocupando almacenamiento sin contabilizar. Ahora la cuota y el tope por partida
+  se vuelven a comprobar contra los bytes reales subidos y, si se rechaza, se
+  borra el objeto/blob huérfano.
+- **Anti-abuso de cuentas cloud.** Tope de cuentas *gratis* por dispositivo
+  (huella del cliente), normalización del email a una identidad canónica para
+  colapsar alias de Gmail (puntos y `+etiquetas` → un solo inbox, una cuenta
+  viva por email) y bloqueo de dominios de correo desechable en el alta. Solo
+  afecta al cloud; el self-hosted no tiene cuentas ni límites.
+- **Nonce CSRF en el login de escritorio.** El listener loopback solo acepta el
+  callback si vuelve el `state` exacto (nonce de un solo uso, 122 bits) que
+  generó la app, hilado intacto a través del redirect de Supabase; cualquier
+  `state` ausente o que no cuadre se descarta.
+- **Instaladores firmados y auto-actualización verificada.** Los instaladores de
+  escritorio se firman con minisign en CI; antes de instalar con privilegios, el
+  updater descarga el `.minisig`, verifica la firma contra la clave pública
+  embebida y **aborta si no cuadra** (descarga manipulada). Una versión aún sin
+  firmar degrada a descarga manual en vez de instalarse sola.
+
 ## [2.3.10] — 2026-06-17
 
 ### Added

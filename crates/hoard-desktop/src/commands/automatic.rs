@@ -35,7 +35,7 @@
 //! survive between Tauri commands.
 
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use hoard_agent::detection::Confidence;
 use serde::Serialize;
@@ -62,6 +62,10 @@ const MIN_BACKUP_INTERVAL_SECS: u64 = 60;
 pub struct AutomaticScheduler {
     scan_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
     backup_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
+    /// When the last event-driven scan (`request_scan`) fired. Debounces a
+    /// burst of `HeavyProcessDetected` signals into a single pass. Independent
+    /// of the periodic ticker, which keeps its own cadence.
+    last_event_scan: Arc<Mutex<Option<Instant>>>,
 }
 
 /// Cancel any in-flight scheduler tasks and start fresh ones: the detection
@@ -94,6 +98,45 @@ pub fn start(app: &AppHandle, scan_interval_secs: u64, backup_interval_secs: u64
 
     *scheduler.scan_handle.lock().unwrap() = Some(scan);
     *scheduler.backup_handle.lock().unwrap() = Some(backup);
+}
+
+/// Minimum gap between event-driven scans. A burst of game launches (or a
+/// process whose CPU flaps around the threshold across an agent restart)
+/// coalesces into one detection pass instead of one per signal. The periodic
+/// timer is the slow backstop; this is the fast path.
+const EVENT_SCAN_DEBOUNCE_SECS: u64 = 60;
+
+/// Fire a detection scan *now*, off the periodic timer, because the agent spotted
+/// a heavy untracked game (`AgentEvent::HeavyProcessDetected`). No-op unless Modo
+/// Automático is on — the periodic scanner only runs then, and auto-tracking
+/// games the user never opted to monitor would surprise them. Debounced to
+/// `EVENT_SCAN_DEBOUNCE_SECS` so repeated signals don't stack scans.
+pub fn request_scan(app: AppHandle) {
+    match Prefs::load_default() {
+        Ok((prefs, _)) if prefs.automatic_mode => {}
+        Ok(_) => return,
+        Err(e) => {
+            tracing::warn!(error = %e, "event scan: couldn't load prefs; skipping");
+            return;
+        }
+    }
+
+    let scheduler = app.state::<AutomaticScheduler>();
+    {
+        let mut last = scheduler.last_event_scan.lock().unwrap();
+        let now = Instant::now();
+        if let Some(prev) = *last {
+            if now.duration_since(prev) < Duration::from_secs(EVENT_SCAN_DEBOUNCE_SECS) {
+                tracing::debug!("event scan: debounced, a scan ran recently");
+                return;
+            }
+        }
+        *last = Some(now);
+    }
+
+    tracing::info!("event scan: heavy untracked game detected; scanning now");
+    let app = app.clone();
+    tokio::task::spawn(async move { run_scan(&app).await });
 }
 
 /// Which half of Modo Automático a worker task drives.

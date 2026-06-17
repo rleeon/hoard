@@ -404,6 +404,7 @@
   "updates.error.title": "Erro de atualização",
   "updates.error.no_installer": "Esta versão ainda está a ser preparada. Aguarda cerca de 5 minutos e tenta novamente.",
   "updates.error.download_failed": "Não foi possível descarregar o instalador.",
+  "updates.error.signature_invalid": "Não foi possível verificar a assinatura da atualização, por isso não foi instalada. Pode indicar uma transferência adulterada: tenta de novo e, se persistir, descarrega o Hoard a partir do site oficial.",
   "updates.error.launch_failed": "Não foi possível iniciar o instalador.",
   "updates.error.unknown": "Ocorreu um erro inesperado durante a atualização.",
   "updates.error.server_unknown": "Ocorreu um erro inesperado ao atualizar o servidor.",

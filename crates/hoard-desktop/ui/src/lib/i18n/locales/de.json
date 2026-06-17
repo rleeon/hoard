@@ -404,6 +404,7 @@
   "updates.error.title": "Update-Fehler",
   "updates.error.no_installer": "Diese Version wird noch erstellt. Bitte warte etwa 5 Minuten und versuche es erneut.",
   "updates.error.download_failed": "Der Installer konnte nicht heruntergeladen werden.",
+  "updates.error.signature_invalid": "Die Signatur des Updates konnte nicht überprüft werden, daher wurde es nicht installiert. Das kann auf einen manipulierten Download hindeuten – versuche es erneut und lade Hoard andernfalls von der offiziellen Seite.",
   "updates.error.launch_failed": "Der Installer konnte nicht gestartet werden.",
   "updates.error.unknown": "Beim Update ist ein unerwarteter Fehler aufgetreten.",
   "updates.error.server_unknown": "Beim Aktualisieren des Servers ist ein unerwarteter Fehler aufgetreten.",

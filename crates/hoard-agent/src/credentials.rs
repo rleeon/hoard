@@ -196,14 +196,31 @@ fn write_session(s: &Session) -> Result<()> {
             .with_context(|| format!("creating {}", parent.display()))?;
     }
     let text = toml::to_string_pretty(s).context("serializing session")?;
-    std::fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
 
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&path)?.permissions();
+        use std::io::Write;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        // Create with owner-only perms BEFORE any (possibly token-bearing) bytes
+        // are written, closing the old write-then-chmod window where the file
+        // was briefly world-readable. `mode` only applies on creation, so for a
+        // pre-existing file we also tighten perms on the open handle first.
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&path)
+            .with_context(|| format!("opening {}", path.display()))?;
+        let mut perms = f.metadata()?.permissions();
         perms.set_mode(0o600);
-        std::fs::set_permissions(&path, perms)?;
+        f.set_permissions(perms)?;
+        f.write_all(text.as_bytes())
+            .with_context(|| format!("writing {}", path.display()))?;
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
     }
     Ok(())
 }

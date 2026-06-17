@@ -76,6 +76,25 @@ const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const GH_RELEASES_URL: &str = "https://api.github.com/repos/rleeon/hoard/releases/latest";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 
+/// minisign public key for Hoard release artifacts — the same key the server's
+/// `hoard-server upgrade` embeds (see `crates/hoard-server/src/upgrade.rs` and
+/// ADR 0017). The matching secret lives only in CI; embedding the public half
+/// pins trust to the release pipeline, so a compromise of the GitHub *account*
+/// (re-uploading a malicious installer) can't produce one this updater will run
+/// as root. Keep in lockstep with the server constant.
+const MINISIGN_PUBKEY: &str = "RWSeOL1nHXZI9oa+WOdrc6yVasLPeBurvGWnERo4tN9F+YIQn7ipx3eO";
+
+/// Result of checking a freshly-downloaded installer against [`MINISIGN_PUBKEY`].
+enum SigCheck {
+    /// A `<asset>.minisig` was present and its signature matched the bytes.
+    Verified,
+    /// The release shipped no signature for this asset. We refuse to *auto*-run
+    /// (pkexec-as-root) an unverified binary, but still hand the user the
+    /// download so they can install it themselves. Transitional: every signed
+    /// release takes the `Verified` path.
+    Unsigned,
+}
+
 /// Tauri command. Pulls the latest GitHub release in parallel with the
 /// server health probe (when logged in). Returns both halves so the UI
 /// can render two badges side-by-side.
@@ -318,11 +337,46 @@ pub async fn apply_desktop_update(
         })?;
     let dest = download_dir.join(&asset.name);
 
-    download_to(&asset.browser_download_url, &dest)
+    // Download into memory first so the signature is checked BEFORE the bytes
+    // ever hit disk or an installer.
+    let bytes = download_bytes(&asset.browser_download_url)
         .await
         .map_err(|e| {
             AppError::new("updates.error.title", "updates.error.download_failed").with_detail(e)
         })?;
+
+    // Gate the privileged auto-install behind a minisign check against the
+    // embedded release key — the same guarantee the server's `upgrade` gives.
+    // A *tampered* artifact (signature present but wrong) aborts here and is
+    // never written; an as-yet-unsigned release degrades to a manual download
+    // rather than being run as root.
+    let sig = verify_installer_signature(&release.assets, &asset.name, &bytes)
+        .await
+        .map_err(|detail| {
+            AppError::new("updates.error.title", "updates.error.signature_invalid")
+                .with_detail(detail)
+        })?;
+
+    tokio::fs::write(&dest, &bytes).await.map_err(|e| {
+        AppError::new("updates.error.title", "updates.error.download_failed")
+            .with_detail(format!("writing {}: {e}", dest.display()))
+    })?;
+
+    let path_str = dest.to_string_lossy().to_string();
+
+    // Unsigned release: we have the file on disk but won't pkexec-install it.
+    // Surface it as a manual download so the user can install it deliberately.
+    if matches!(sig, SigCheck::Unsigned) {
+        tracing::warn!(
+            asset = %asset.name,
+            "release asset has no .minisig; refusing to auto-run the installer as root, \
+             offering manual install instead"
+        );
+        return Ok(ApplyOutcome::Downloaded {
+            path: path_str,
+            version,
+        });
+    }
 
     // Capture our own binary path *before* the installer runs. On Linux the
     // .deb install makes dpkg unlink+recreate /usr/bin/hoard-desktop, after
@@ -336,7 +390,6 @@ pub async fn apply_desktop_update(
     // Try to launch the platform installer. If that fails, we still succeeded
     // at *downloading* the update, so report Downloaded with the path so the
     // user can do it themselves.
-    let path_str = dest.to_string_lossy().to_string();
     match launch_installer(&dest).await {
         Ok(()) => {
             // Quit the old process shortly after we return. Without this the
@@ -447,7 +500,7 @@ fn pick_asset(assets: &[GhAsset]) -> Option<&GhAsset> {
     }
 }
 
-async fn download_to(url: &str, dest: &std::path::Path) -> Result<(), String> {
+async fn download_bytes(url: &str) -> Result<Vec<u8>, String> {
     let client = reqwest::Client::builder()
         .user_agent(concat!("hoard-desktop/", env!("CARGO_PKG_VERSION")))
         .timeout(Duration::from_secs(120))
@@ -463,10 +516,54 @@ async fn download_to(url: &str, dest: &std::path::Path) -> Result<(), String> {
         .bytes()
         .await
         .map_err(|e| e.to_string())?;
-    tokio::fs::write(dest, &bytes)
+    Ok(bytes.to_vec())
+}
+
+/// Download `<asset>.minisig` from the release and verify it against the
+/// downloaded installer `bytes` using the embedded [`MINISIGN_PUBKEY`].
+///
+/// - `Ok(Verified)`  — signature present and valid; safe to auto-install.
+/// - `Ok(Unsigned)`  — no signature asset in the release (caller falls back to
+///   a manual download instead of running the binary as root).
+/// - `Err(detail)`   — a signature WAS present but did not verify, or the
+///   signature couldn't be fetched/parsed. The caller aborts and discards the
+///   download: this is the tampered-artifact case.
+async fn verify_installer_signature(
+    assets: &[GhAsset],
+    asset_name: &str,
+    bytes: &[u8],
+) -> Result<SigCheck, String> {
+    use minisign_verify::{PublicKey, Signature};
+
+    let sig_name = format!("{asset_name}.minisig");
+    let Some(sig_asset) = assets.iter().find(|a| a.name == sig_name) else {
+        return Ok(SigCheck::Unsigned);
+    };
+
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("hoard-desktop/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let sig_text = client
+        .get(&sig_asset.browser_download_url)
+        .send()
         .await
-        .map_err(|e| format!("writing {}: {e}", dest.display()))?;
-    Ok(())
+        .map_err(|e| format!("downloading signature: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("signature download status: {e}"))?
+        .text()
+        .await
+        .map_err(|e| format!("reading signature: {e}"))?;
+
+    let pubkey = PublicKey::from_base64(MINISIGN_PUBKEY)
+        .map_err(|e| format!("embedded minisign key is invalid: {e}"))?;
+    let signature =
+        Signature::decode(&sig_text).map_err(|e| format!("malformed .minisig: {e}"))?;
+    pubkey
+        .verify(bytes, &signature, false)
+        .map_err(|e| format!("signature does NOT match the Hoard release key: {e}"))?;
+    Ok(SigCheck::Verified)
 }
 
 #[cfg(target_os = "linux")]

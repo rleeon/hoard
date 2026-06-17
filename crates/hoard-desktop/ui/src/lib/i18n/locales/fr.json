@@ -404,6 +404,7 @@
   "updates.error.title": "Erreur de mise à jour",
   "updates.error.no_installer": "Cette version est encore en cours de préparation. Patiente environ 5 minutes puis réessaie.",
   "updates.error.download_failed": "Impossible de télécharger l'installeur.",
+  "updates.error.signature_invalid": "La signature de la mise à jour n'a pas pu être vérifiée, elle n'a donc pas été installée. Cela peut indiquer un téléchargement altéré : réessaie, et si le problème persiste, télécharge Hoard depuis le site officiel.",
   "updates.error.launch_failed": "Impossible de lancer l'installeur.",
   "updates.error.unknown": "Une erreur inattendue s'est produite pendant la mise à jour.",
   "updates.error.server_unknown": "Une erreur inattendue s'est produite lors de la mise à jour du serveur.",

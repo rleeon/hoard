@@ -52,6 +52,10 @@ keyring = { version = "3", default-features = false, features = [
     "crypto-rust",
 ] }
 toml = { workspace = true }
+# Ed25519 minisign verifier — gates the auto-updater so an installer is only
+# run (as root, via pkexec) after its signature matches the embedded release
+# key. Same crate/key the server's `hoard-server upgrade` uses. See ADR 0017.
+minisign-verify = "0.2"
 
 reqwest = { workspace = true }
 serde = { workspace = true }

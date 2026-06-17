@@ -116,8 +116,11 @@ pub struct Prefs {
     /// Interval, in seconds, between background detection scans when
     /// `automatic_mode` is on. The scan is the cheap half — a metadata-only
     /// disk walk that cross-references the Ludusavi catalog + Steam against
-    /// the filesystem, reading no file bytes — so it runs often (default
-    /// 300s = 5 min) to pick up newly installed games quickly.
+    /// the filesystem, reading no file bytes. Default `600` (10 min): the
+    /// periodic walk is now a slow backstop because the agent also fires an
+    /// *immediate* scan the moment it spots a heavy CPU process that looks
+    /// like a just-launched game (see `agent::process_poll`), so a new game
+    /// is picked up in seconds rather than waiting out the timer.
     ///
     /// Replaces the pre-1.9.14 `automatic_scan_interval_hours`. That single
     /// knob conflated the cheap scan with the expensive hash sweep, forcing
@@ -191,7 +194,7 @@ fn default_true() -> bool {
 }
 
 fn default_scan_interval_secs() -> u64 {
-    300
+    600
 }
 
 fn default_backup_interval_secs() -> u64 {

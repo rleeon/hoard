@@ -37,15 +37,25 @@ color:#a1a1aa\"><p style=\"padding:2rem\">Esperando el inicio de sesion de Hoard
 </body></html>";
 
 /// Bind an ephemeral loopback port and spawn a one-shot HTTP server that
-/// captures the OAuth callback. Returns the port the web side must redirect to.
-/// The spawned task lives until it captures a callback or the timeout elapses.
-pub async fn start(app: AppHandle) -> Result<u16> {
+/// captures the OAuth callback. Returns the `(port, state)` pair the web side
+/// must echo back: the port to redirect to and the single-use `state` nonce
+/// that proves the callback belongs to *this* login attempt. The spawned task
+/// lives until it captures a matching callback or the timeout elapses.
+///
+/// The `state` nonce is the CSRF guard (RFC 6749 §10.12, RFC 8252 §8.9):
+/// without it, any local process — or a web page that guessed the ephemeral
+/// port — could POST attacker-controlled tokens to `/callback` and silently
+/// log the app into the attacker's account, sending the user's backups to it.
+pub async fn start(app: AppHandle) -> Result<(u16, String)> {
     let listener = TcpListener::bind(("127.0.0.1", 0))
         .await
         .context("binding loopback listener")?;
     let port = listener.local_addr()?.port();
+    // 122 bits of randomness, URL-safe hex. One-shot: a fresh nonce per login.
+    let state = uuid::Uuid::new_v4().simple().to_string();
     tracing::info!(port, "loopback OAuth listener up");
 
+    let expected_state = state.clone();
     tauri::async_runtime::spawn(async move {
         let deadline = tokio::time::sleep(LISTEN_TIMEOUT);
         tokio::pin!(deadline);
@@ -57,7 +67,7 @@ pub async fn start(app: AppHandle) -> Result<u16> {
                 }
                 accepted = listener.accept() => {
                     let Ok((stream, _)) = accepted else { continue };
-                    match serve(stream).await {
+                    match serve(stream, &expected_state).await {
                         Ok(Some((access, refresh))) => {
                             // Reuse the existing deep-link path: synthesize the
                             // same `hoard://auth/callback?…` URL the frontend's
@@ -85,12 +95,15 @@ pub async fn start(app: AppHandle) -> Result<u16> {
         }
     });
 
-    Ok(port)
+    Ok((port, state))
 }
 
-/// Read one HTTP request; if it's the OAuth callback, reply with a small
-/// "you can close this" page and return the decoded `(access, refresh)` tokens.
-async fn serve(mut stream: TcpStream) -> Result<Option<(String, String)>> {
+/// Read one HTTP request; if it's the OAuth callback *with a matching `state`*,
+/// reply with a small "you can close this" page and return the decoded
+/// `(access, refresh)` tokens. A request whose `state` doesn't match (a stray
+/// probe, or a forged callback racing the real one) gets the wait page and
+/// `None`, so the listener keeps waiting for the genuine redirect.
+async fn serve(mut stream: TcpStream, expected_state: &str) -> Result<Option<(String, String)>> {
     // Request line + headers are tiny; one read of the first chunk is enough to
     // see `GET /callback?…` — we never need the (absent) body.
     let mut buf = [0u8; 8192];
@@ -99,15 +112,34 @@ async fn serve(mut stream: TcpStream) -> Result<Option<(String, String)>> {
     let Some(line) = head.lines().next() else {
         return Ok(None);
     };
-    // "GET /callback?access_token=…&refresh_token=… HTTP/1.1"
+    // "GET /callback?access_token=…&refresh_token=…&state=… HTTP/1.1"
     let target = line.split_whitespace().nth(1).unwrap_or("");
     let Some((_, query)) = target.split_once('?') else {
         respond(&mut stream, WAIT_PAGE).await?;
         return Ok(None);
     };
 
+    match parse_callback(query, expected_state) {
+        Some((access, refresh)) => {
+            respond(&mut stream, OK_PAGE).await?;
+            Ok(Some((access, refresh)))
+        }
+        None => {
+            respond(&mut stream, WAIT_PAGE).await?;
+            Ok(None)
+        }
+    }
+}
+
+/// Parse the callback query string and enforce the CSRF `state` nonce. Returns
+/// the tokens only when the echoed `state` matches the one this login attempt
+/// generated; any mismatch, missing state, or empty access token yields `None`.
+/// Split out from [`serve`] so the security-critical check is unit-testable
+/// without a live socket.
+fn parse_callback(query: &str, expected_state: &str) -> Option<(String, String)> {
     let mut access = None;
     let mut refresh = String::new();
+    let mut state: Option<String> = None;
     for pair in query.split('&') {
         let Some((k, v)) = pair.split_once('=') else {
             continue;
@@ -115,19 +147,23 @@ async fn serve(mut stream: TcpStream) -> Result<Option<(String, String)>> {
         match k {
             "access_token" => access = Some(percent_decode(v)),
             "refresh_token" => refresh = percent_decode(v),
+            "state" => state = Some(percent_decode(v)),
             _ => {}
         }
     }
 
+    // Fail closed: an empty expected nonce (shouldn't happen) or a non-matching
+    // echoed state means we never hand back tokens.
+    if expected_state.is_empty() || state.as_deref() != Some(expected_state) {
+        if state.is_some() {
+            tracing::warn!("loopback OAuth: rejected callback with mismatched state nonce");
+        }
+        return None;
+    }
+
     match access {
-        Some(a) if !a.is_empty() => {
-            respond(&mut stream, OK_PAGE).await?;
-            Ok(Some((a, refresh)))
-        }
-        _ => {
-            respond(&mut stream, WAIT_PAGE).await?;
-            Ok(None)
-        }
+        Some(a) if !a.is_empty() => Some((a, refresh)),
+        _ => None,
     }
 }
 
@@ -198,5 +234,33 @@ mod tests {
         // encodeURIComponent never emits a bare '+', but if one slips through it
         // must stay a '+', not become a space.
         assert_eq!(percent_decode("a+b"), "a+b");
+    }
+
+    #[test]
+    fn callback_accepts_matching_state() {
+        let q = "access_token=tok&refresh_token=ref&state=abc123";
+        assert_eq!(
+            parse_callback(q, "abc123"),
+            Some(("tok".to_string(), "ref".to_string()))
+        );
+    }
+
+    #[test]
+    fn callback_rejects_wrong_state() {
+        let q = "access_token=tok&refresh_token=ref&state=evil";
+        assert_eq!(parse_callback(q, "abc123"), None);
+    }
+
+    #[test]
+    fn callback_rejects_missing_state() {
+        // The pre-fix forged-callback shape: tokens with no state must not pass.
+        let q = "access_token=tok&refresh_token=ref";
+        assert_eq!(parse_callback(q, "abc123"), None);
+    }
+
+    #[test]
+    fn callback_rejects_empty_expected_state() {
+        let q = "access_token=tok&state=";
+        assert_eq!(parse_callback(q, ""), None);
     }
 }

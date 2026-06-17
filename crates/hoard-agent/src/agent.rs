@@ -29,7 +29,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
 use serde::{Deserialize, Serialize};
-use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System, UpdateKind};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System, UpdateKind};
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -121,15 +121,20 @@ pub fn min_snapshot_interval_for(data_saving: f64) -> u64 {
 }
 
 /// The *minimal* process-refresh set the agent actually consumes. The process
-/// poll only reads each process's `name()` (always populated, no flag) and, for
-/// the legacy install-dir fallback, its `exe()`. Everything else
-/// `ProcessRefreshKind::everything()` pulls — CPU, memory, disk I/O, environ,
+/// poll reads each process's `name()` (always populated, no flag), its `exe()`
+/// for the legacy install-dir fallback, and its `cpu_usage()` to spot a
+/// just-launched untracked game (see `process_poll`). Everything else
+/// `ProcessRefreshKind::everything()` pulls — memory, disk I/O, environ,
 /// cmdline, cwd, root, user — is dead weight re-read from `/proc/<pid>/*` for
-/// every process on the box on every 2 s tick, and was the bulk of the agent's
+/// every process on the box on every tick, and was the bulk of the agent's
 /// idle CPU. `OnlyIfNotSet` reads each `exe` path exactly once per PID (it never
-/// changes), so steady-state ticks only re-parse `/proc/<pid>/stat` for names.
+/// changes); `with_cpu` adds no per-process file read — utime/stime come from
+/// the same `/proc/<pid>/stat` already parsed for the name, plus a single
+/// global `/proc/stat` read per tick — so steady-state ticks stay cheap.
 fn proc_refresh_kind() -> ProcessRefreshKind {
-    ProcessRefreshKind::new().with_exe(UpdateKind::OnlyIfNotSet)
+    ProcessRefreshKind::new()
+        .with_exe(UpdateKind::OnlyIfNotSet)
+        .with_cpu()
 }
 
 /// One save the agent is responsible for backing up.
@@ -287,6 +292,17 @@ pub enum AgentEvent {
         game_slug: String,
         count: u64,
         conflict_dir: PathBuf,
+    },
+    /// The process poll spotted a heavy-CPU process that looks like a game
+    /// (`correlation::is_game_like`) but matches no tracked save's process
+    /// name — most likely a just-launched, not-yet-tracked game. The desktop
+    /// reacts by firing an immediate detection scan instead of waiting out the
+    /// periodic timer, so a new game lands in the Library within seconds of
+    /// launch. Emitted at most once per PID until that process exits, so a
+    /// game running for hours triggers a single scan, not one per tick.
+    HeavyProcessDetected {
+        /// Process name, for the toast ("Detectado posible juego: …") and logs.
+        name: String,
     },
 }
 
@@ -701,6 +717,12 @@ async fn run_agent(
     // observada).
     let mut probes: HashMap<PathBuf, Option<std::time::SystemTime>> = HashMap::new();
 
+    // PIDs we've already flagged as heavy untracked games this session (see
+    // `AgentEvent::HeavyProcessDetected`). Keeps the immediate-scan trigger to
+    // one event per process; `process_poll` prunes exited PIDs each tick so a
+    // relaunch re-triggers.
+    let mut reported_heavy: HashSet<Pid> = HashSet::new();
+
     tracing::info!(
         debounce_secs = config.debounce_secs,
         poll_secs = config.poll_secs,
@@ -986,7 +1008,7 @@ async fn run_agent(
             _ = poll.tick() => {
                 let any_running = process_poll(
                     &mut sys, &mut slots, &events_tx, &api, &config, &done_tx, &cmd_tx,
-                    &mut playtime, playtime_path.as_deref(),
+                    &mut playtime, playtime_path.as_deref(), &mut reported_heavy,
                 );
                 // Watcher self-healing: a slot whose folder didn't exist when
                 // the game was tracked (freshly installed, save dir created on
@@ -1188,6 +1210,15 @@ const AUTO_RESTORE_COOLDOWN_SECS: u64 = 60;
 /// the conflict-aware pre-launch barrier). The first running game snaps the
 /// cadence back to `poll_secs`.
 const IDLE_POLL_MULT: u32 = 4;
+
+/// CPU floor (sysinfo `cpu_usage()`, where 100.0 = one fully-used core) above
+/// which a *game-like, untracked* process is treated as a just-launched game
+/// worth an immediate detection scan (`AgentEvent::HeavyProcessDetected`). Set
+/// low enough to catch lightweight indie titles, high enough that idle helper
+/// processes that slip past `correlation::is_game_like` don't keep firing. A
+/// false positive only costs one cheap metadata scan (debounced desktop-side),
+/// so we bias toward catching games.
+const HEAVY_PROCESS_CPU_PCT: f32 = 25.0;
 
 /// Backoff applied when an auto-restore fails with a 404: the save is tracked
 /// locally but has no record/snapshot on the backend we're talking to (e.g.
@@ -2926,6 +2957,7 @@ fn process_poll(
     cmd_tx: &mpsc::Sender<AgentCommand>,
     playtime: &mut crate::playtime::PlaytimeStore,
     playtime_path: Option<&std::path::Path>,
+    reported_heavy: &mut HashSet<Pid>,
 ) -> bool {
     // Refresh every process. The `true` flag asks sysinfo to remove
     // entries for processes that have exited since the last refresh,
@@ -2961,11 +2993,11 @@ fn process_poll(
     }
 
     let mut running: HashSet<String> = HashSet::new();
-    for proc in sys.processes().values() {
+    for (pid, proc) in sys.processes() {
+        let name = proc.name().to_string_lossy().to_lowercase();
         // Name match — works on every storefront on Windows, and on
         // Proton/Wine where the wineprefix process keeps the .exe name.
         if !name_index.is_empty() {
-            let name = proc.name().to_string_lossy().to_lowercase();
             if let Some(ids) = name_index.get(&name) {
                 running.extend(ids.iter().map(|id| id.to_string()));
             }
@@ -2980,7 +3012,32 @@ fn process_poll(
                 }
             }
         }
+
+        // Immediate-scan trigger: a process burning real CPU that looks like a
+        // game but matches no tracked save's process name is probably a
+        // just-launched, not-yet-tracked game. Flag it once (deduped by PID) so
+        // the desktop fires a detection scan now instead of waiting out the
+        // 10-min timer. Cheap: `cpu_usage` and `name` come from the same
+        // `/proc/<pid>/stat` already parsed above. Tracked games are skipped
+        // via `name_index` (their launch is already handled by the barrier).
+        if proc.cpu_usage() >= HEAVY_PROCESS_CPU_PCT
+            && !name_index.contains_key(&name)
+            && !reported_heavy.contains(pid)
+            && crate::correlation::is_game_like(&name, proc.exe())
+        {
+            tracing::info!(
+                process = %name,
+                cpu = proc.cpu_usage(),
+                "agent: heavy untracked game-like process; requesting detection scan"
+            );
+            let _ = events_tx.try_send(AgentEvent::HeavyProcessDetected {
+                name: proc.name().to_string_lossy().into_owned(),
+            });
+            reported_heavy.insert(*pid);
+        }
     }
+    // Forget PIDs that have exited so a relaunch of the same game re-triggers.
+    reported_heavy.retain(|pid| sys.processes().contains_key(pid));
 
     // PLAYTIME: atribuye el intervalo de este tick a los juegos vivos. El cap
     // es 4× el poll (mín. 30 s) para no contar un suspend/resume como juego.

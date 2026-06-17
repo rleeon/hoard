@@ -219,8 +219,17 @@ pub async fn start_agent(
                 AgentEvent::SaveAutoRestoreFailed { .. } => "agent://save-auto-restore-failed",
                 AgentEvent::BackupSkippedEmpty { .. } => "agent://backup-skipped-empty",
                 AgentEvent::SaveConflictsBackedUp { .. } => "agent://save-conflicts-backed-up",
+                AgentEvent::HeavyProcessDetected { .. } => "agent://heavy-process-detected",
             };
             let _ = app_for_emit.emit(topic, &ev);
+
+            // A heavy untracked game just appeared — kick off a detection scan
+            // now instead of waiting for the periodic timer. `request_scan`
+            // no-ops unless Modo Automático is on and debounces bursts.
+            if let AgentEvent::HeavyProcessDetected { name } = &ev {
+                tracing::info!(process = %name, "desktop: heavy untracked game suspected; requesting immediate scan");
+                crate::commands::automatic::request_scan(app_for_emit.clone());
+            }
 
             // Persist the anti-reupload signature + version cursor so the next
             // session doesn't re-push identical snapshots or re-download to

@@ -33,9 +33,14 @@
   // concern — 127.0.0.1 stays on the box and `hoard://` never hits a server.
   function bounceToApp(s: Session) {
     const port = $page.url.searchParams.get('port');
+    // CSRF nonce minted by the desktop app; the loopback listener rejects the
+    // handoff unless we echo it back verbatim. Absent only on the legacy
+    // hoard:// fallback (no loopback listener), where there's nothing to match.
+    const state = $page.url.searchParams.get('state') ?? '';
     const qs =
       `access_token=${encodeURIComponent(s.access_token)}` +
-      `&refresh_token=${encodeURIComponent(s.refresh_token ?? '')}`;
+      `&refresh_token=${encodeURIComponent(s.refresh_token ?? '')}` +
+      `${state ? `&state=${encodeURIComponent(state)}` : ''}`;
     const url = port
       ? `http://127.0.0.1:${port}/callback?${qs}`
       : `hoard://auth/callback?${qs}`;

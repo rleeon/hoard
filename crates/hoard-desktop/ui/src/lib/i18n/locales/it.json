@@ -404,6 +404,7 @@
   "updates.error.title": "Errore di aggiornamento",
   "updates.error.no_installer": "Questa versione è ancora in preparazione. Attendi circa 5 minuti e riprova.",
   "updates.error.download_failed": "Non è stato possibile scaricare l'installer.",
+  "updates.error.signature_invalid": "Non è stato possibile verificare la firma dell'aggiornamento, quindi non è stato installato. Può indicare un download manomesso: riprova e, se persiste, scarica Hoard dal sito ufficiale.",
   "updates.error.launch_failed": "Non è stato possibile avviare l'installer.",
   "updates.error.unknown": "Si è verificato un errore inatteso durante l'aggiornamento.",
   "updates.error.server_unknown": "Si è verificato un errore inatteso durante l'aggiornamento del server.",

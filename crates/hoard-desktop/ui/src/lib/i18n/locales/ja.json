@@ -404,6 +404,7 @@
   "updates.error.title": "更新エラー",
   "updates.error.no_installer": "このバージョンはまだ準備中です。5分ほど待ってからもう一度お試しください。",
   "updates.error.download_failed": "インストーラーをダウンロードできませんでした。",
+  "updates.error.signature_invalid": "更新の署名を検証できなかったため、インストールしませんでした。ダウンロードが改ざんされている可能性があります。もう一度お試しいただき、それでも失敗する場合は公式サイトから Hoard を入手してください。",
   "updates.error.launch_failed": "インストーラーを起動できませんでした。",
   "updates.error.unknown": "更新中に予期しないエラーが発生しました。",
   "updates.error.server_unknown": "サーバーの更新中に予期しないエラーが発生しました。",

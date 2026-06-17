@@ -390,7 +390,7 @@ pub async fn cloud_login_url(app: AppHandle) -> String {
     let base = std::env::var("HOARD_CLOUD_PUBLIC_URL")
         .unwrap_or_else(|_| "https://hoard.services".to_string());
     match crate::commands::loopback::start(app).await {
-        Ok(port) => format!("{base}/login?desktop=1&port={port}"),
+        Ok((port, state)) => format!("{base}/login?desktop=1&port={port}&state={state}"),
         Err(e) => {
             tracing::warn!(error = %e, "loopback listener failed; using hoard:// scheme");
             format!("{base}/login?desktop=1")
