@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.12] — 2026-06-18
+
+### Fixed
+- **Hoard Screen: los paneles web ya no salen recortados de más al pasar de
+  Editar a Jugar.** WebKitGTK solo pinta lo que cae dentro del recorte del
+  momento; al revelar luego una franja que nunca pintó (la tira superior, los
+  huecos de los botones) quedaba transparente/rota. Ahora en Editar el panel
+  ocupa toda la caja (se pinta entero) y los controles viven encima de ella, así
+  que Jugar solo recorta un subconjunto ya pintado: sin franjas rotas, y sin
+  recorte fantasma cuando no hay recorte. En Linux se fuerza además el render no
+  DMABUF de WebKitGTK, que provocaba transparencias en negro en X anidado/remoto.
+- **Mover el recorte ahora es independiente de la ventana.** «Mover recorte»
+  coloca el trozo recortado donde quieras —incluso fuera de la caja, arriba a la
+  izquierda o en cualquier sitio— sin mover la ventana ni reflujar la página. Una
+  guía punteada marca dónde aparecerá en modo Jugar.
+
 ## [2.3.11] — 2026-06-17
 
 ### Fixed

@@ -21,3 +21,4 @@ pub mod playtime;
 pub mod prefs;
 pub mod selfhosted_events;
 pub mod updates;
+pub mod web_panel;
