@@ -19,6 +19,6 @@ pub mod loopback;
 pub mod misc;
 pub mod playtime;
 pub mod prefs;
+pub mod screen;
 pub mod selfhosted_events;
 pub mod updates;
-pub mod web_panel;

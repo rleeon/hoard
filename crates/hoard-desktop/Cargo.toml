@@ -30,11 +30,7 @@ tauri-build = { version = "2", features = [] }
 hoard-agent = { path = "../hoard-agent" }
 hoard-manifest = { path = "../hoard-manifest" }
 
-# `unstable` enables the multiwebview API: the Pro overlay embeds real web
-# panels (YouTube/streaming) as child webviews inside its own window so they
-# float over the game like the photo/note panels — community build never uses
-# it but the flag is harmless when unused.
-tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png", "unstable"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-notification = "2"
@@ -73,14 +69,6 @@ time = { workspace = true, features = ["local-offset"] }
 uuid = { workspace = true }
 futures = { workspace = true }
 tokio-tungstenite = { workspace = true }
-
-# Linux-only: the Pro overlay's web panels are glued top-level GTK windows, and
-# "crop" clips them to a sub-rectangle via the X11 SHAPE extension (gdk window
-# shape region). Tauri exposes the underlying GtkWindow on Linux; we reach gdk
-# through it. Pinned to the same 0.18 line tao/wry already resolve so the
-# `gtk::ApplicationWindow` types unify (cargo tree: gtk/gdk 0.18.2).
-[target.'cfg(target_os = "linux")'.dependencies]
-gtk = "0.18"
 
 [dev-dependencies]
 tempfile = { workspace = true }

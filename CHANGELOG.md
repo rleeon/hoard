@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.4.0] — 2026-06-20
+
+### Changed
+- **Hoard Screen reescrito como compositor nativo de captura de ventanas.** El
+  overlay deja de ser una 2ª ventana Tauri (WebKitGTK + SHAPE GTK, que fallaba
+  en Linux) y pasa a ser un proceso nativo `hoard-screen` lanzado como **sidecar
+  de Tauri**. El backend público es genérico (lanza el proceso y le pasa líneas
+  JSON opacas por stdin); el esquema de escena vive solo en la UI Pro y en el
+  binario, así que nada Pro entra en el repo público.
+- **Dos modos en el overlay.** *Juego* compone los paneles y es click-through;
+  *Editar* aparta el overlay y cada app capturada vuelve a ser una ventana normal
+  que se mueve por su barra y se redimensiona por cualquier borde, y al volver a
+  Juego la captura queda donde la dejaste. Ctrl+O / Esc cambian de modo.
+
+### Fixed
+- **Playtime para juegos fuera del catálogo (señal de lanzamiento aprendida por
+  correlación, ADR 0020).** Si Hoard observó un proceso de juego escribiendo en
+  la carpeta de un save, ese proceso pasa a contar como señal de "estás jugando"
+  aunque el exe no caiga bajo `steam_install_dir` (p. ej. EU5 bajo Proton). Se
+  re-valida contra las reglas actuales y exige exe en disco para no acumular
+  horas por entradas basura de versiones previas.
+
 ## [2.3.12] — 2026-06-18
 
 ### Fixed

@@ -36,17 +36,6 @@ export default defineConfig(async () => ({
   // built bundle works when loaded via the file:// scheme.
   base: "./",
   clearScreen: false,
-  build: {
-    rollupOptions: {
-      // Second entry point: the Pro overlay window loads `overlay.html`, kept
-      // isolated from the main app so it never spins up the auth/cloud/agent
-      // pollers. Harmless empty page in the community build.
-      input: {
-        main: here("./index.html"),
-        overlay: here("./overlay.html"),
-      },
-    },
-  },
   server: {
     port: 1420,
     strictPort: true,

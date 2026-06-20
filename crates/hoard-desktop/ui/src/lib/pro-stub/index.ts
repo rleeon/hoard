@@ -11,7 +11,6 @@
  */
 export { default as Screen } from "./Empty.svelte";
 export { default as Wrapped } from "./Empty.svelte";
-export { default as Overlay } from "./Empty.svelte";
 
 /** `true` only when the private Pro UI has been linked into this build. */
 export const PRO: boolean = false;

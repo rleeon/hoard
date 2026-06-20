@@ -40,6 +40,11 @@ crates/hoard-desktop/ui/.vite/
 # code must never land in this repo.
 crates/hoard-desktop/ui/src/lib/pro/
 
+# Compiled Pro sidecar (`hoard-screen-<triple>`), dropped here by the Pro build
+# / `hoard-pro/scripts/local-link.sh`. It's the closed-source Pro artifact — it
+# must never land in this repo.
+crates/hoard-desktop/binaries/
+
 # This project uses pnpm — npm/yarn lockfiles dropped in by accident
 # (e.g. running `npm install` against the same package.json) shouldn't
 # be tracked. pnpm-lock.yaml is the source of truth.

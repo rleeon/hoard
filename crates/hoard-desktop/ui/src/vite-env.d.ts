@@ -18,7 +18,6 @@ declare module "$pro" {
   import type { Component } from "svelte";
   export const Screen: Component;
   export const Wrapped: Component;
-  export const Overlay: Component;
   export const PRO: boolean;
 }
 

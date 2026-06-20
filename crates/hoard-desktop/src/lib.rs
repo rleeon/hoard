@@ -178,6 +178,7 @@ pub fn run() {
         .manage(commands::cloud_pull::CloudPullScheduler::default())
         .manage(commands::cloud_realtime::RealtimeScheduler::default())
         .manage(commands::selfhosted_events::SelfHostedEventsScheduler::default())
+        .manage(commands::screen::ScreenProc::default())
         .invoke_handler(tauri::generate_handler![
             commands::misc::greet,
             commands::covers::cover_bytes,
@@ -256,8 +257,11 @@ pub fn run() {
             commands::cloud::cloud_entitlements,
             commands::cloud::cloud_activate_feature,
             commands::cloud::cloud_sync_playtime,
-            commands::web_panel::open_web_panel,
-            commands::web_panel::set_web_crop,
+            commands::screen::screen_open,
+            commands::screen::screen_send,
+            commands::screen::screen_close,
+            commands::screen::screen_is_open,
+            commands::screen::screen_list_windows,
         ])
         .setup(|app| {
             // Build the tray as soon as we have an AppHandle. Failures here
