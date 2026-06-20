@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.4.1] — 2026-06-21
+
+### Fixed
+- **Hoard Screen: el overlay no arrancaba en el paquete instalado** (`spawn
+  binaries/hoard-screen: os error 2`). El sidecar se nombra ahora sin el prefijo
+  `binaries/` para que coincida con la ubicación donde el bundler lo deja, junto
+  al ejecutable.
+- **Hoard Screen con varios monitores.** El overlay se dibujaba sobre el
+  escritorio virtual completo y un panel colocado en el monitor principal salía
+  desplazado al secundario ("pantalla y media"). Ahora se confina al monitor
+  principal y el editor usa ese mismo espacio de coordenadas.
+
 ## [2.4.0] — 2026-06-20
 
 ### Changed
