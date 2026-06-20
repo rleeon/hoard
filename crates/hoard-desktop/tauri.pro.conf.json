@@ -1,5 +1,5 @@
 {
   "bundle": {
-    "externalBin": ["binaries/hoard-screen"]
+    "externalBin": ["hoard-screen"]
   }
 }

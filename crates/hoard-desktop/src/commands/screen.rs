@@ -8,11 +8,13 @@
 //! supplied at bundle time. Without that binary (community build) every command
 //! just errors and the Hoard Screen section stays gated.
 //!
-//! Sidecar config: `bundle.externalBin = ["binaries/hoard-screen"]` in
-//! `tauri.conf.json` + a `shell:allow-execute` scope for `binaries/hoard-screen`
-//! in `capabilities/default.json`. The platform-suffixed binary
-//! (`hoard-screen-<target-triple>`) is dropped into `binaries/` by the Pro build
-//! (or `scripts/local-link.sh` for local runs).
+//! Sidecar config: `bundle.externalBin = ["hoard-screen"]` in
+//! `tauri.pro.conf.json` + a `shell:allow-execute` scope for `hoard-screen`
+//! in `capabilities/screen.json`. The platform-suffixed binary
+//! (`hoard-screen-<target-triple>`) is dropped next to `tauri.conf.json` (the
+//! src-tauri root) by the Pro build (or `scripts/local-link.sh` for local runs).
+//! A bare name (no `binaries/` subdir) is required so the bundled sidecar — which
+//! the bundler flattens next to the app exe — is found by `exe_dir.join(name)`.
 
 use std::sync::Mutex;
 
@@ -21,7 +23,13 @@ use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
 /// The sidecar name, matching the `externalBin` entry and the capability scope.
-const SIDECAR: &str = "binaries/hoard-screen";
+///
+/// Must be a bare basename (no `binaries/` prefix): the bundler flattens the
+/// external binary next to the app exe (`/usr/bin/hoard-screen`, `Contents/MacOS`,
+/// next to the `.exe`), while the shell plugin resolves a sidecar as
+/// `exe_dir.join(name)`. A subdir prefix here makes runtime look for
+/// `<exe_dir>/binaries/hoard-screen`, which doesn't exist → ENOENT on spawn.
+const SIDECAR: &str = "hoard-screen";
 
 /// Holds the running overlay child so later `screen_send` / `screen_close` reach
 /// it. Managed once in `lib.rs`; cleared when the child exits or is closed.

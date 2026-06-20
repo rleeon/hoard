@@ -42,8 +42,11 @@ crates/hoard-desktop/ui/src/lib/pro/
 
 # Compiled Pro sidecar (`hoard-screen-<triple>`), dropped here by the Pro build
 # / `hoard-pro/scripts/local-link.sh`. It's the closed-source Pro artifact — it
-# must never land in this repo.
+# must never land in this repo. Lives next to tauri.conf.json (src-tauri root)
+# so the bundler flattens it adjacent to the app exe and the runtime sidecar
+# resolver finds it; the old `binaries/` subdir broke runtime resolution.
 crates/hoard-desktop/binaries/
+crates/hoard-desktop/hoard-screen-*
 
 # This project uses pnpm — npm/yarn lockfiles dropped in by accident
 # (e.g. running `npm install` against the same package.json) shouldn't
