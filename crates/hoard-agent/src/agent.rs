@@ -1009,6 +1009,7 @@ async fn run_agent(
                 let any_running = process_poll(
                     &mut sys, &mut slots, &events_tx, &api, &config, &done_tx, &cmd_tx,
                     &mut playtime, playtime_path.as_deref(), &mut reported_heavy,
+                    &corr_store,
                 );
                 // Watcher self-healing: a slot whose folder didn't exist when
                 // the game was tracked (freshly installed, save dir created on
@@ -2958,6 +2959,7 @@ fn process_poll(
     playtime: &mut crate::playtime::PlaytimeStore,
     playtime_path: Option<&std::path::Path>,
     reported_heavy: &mut HashSet<Pid>,
+    corr_store: &crate::correlation::CorrelationStore,
 ) -> bool {
     // Refresh every process. The `true` flag asks sysinfo to remove
     // entries for processes that have exited since the last refresh,
@@ -2978,6 +2980,31 @@ fn process_poll(
     let mut dir_slots: Vec<(&str, &Path)> = Vec::new();
     for slot in slots.values() {
         if slot.save.processes.is_empty() {
+            // Correlation-learned launch signal (ADR 0020, storefront- y
+            // juego-agnóstico): si Hoard ya observó algún proceso de JUEGO
+            // escribiendo en la carpeta de este save, ese proceso es la señal
+            // de "estás jugando". Lo inyectamos en el name_index igual que un
+            // proceso configurado, así el playtime se acumula para CUALQUIER
+            // juego —no sólo el catálogo hardcodeado— en cuanto se haya visto
+            // un guardado durante una sesión. Sin esto, un juego fuera de la
+            // lista (p. ej. EU5 bajo Proton, cuyo exe no cae bajo
+            // `steam_install_dir`) nunca entra en `running` y no suma horas.
+            if let Some(obs) = corr_store.signal_for(&slot.save.local_path) {
+                // Re-valida la observación contra las reglas ACTUALES y exige
+                // un exe en disco: blinda contra entradas basura grabadas por
+                // versiones previas con filtros más laxos (p. ej. el worker de
+                // kernel `ib_srv_wkr-2`, sin exe, que vive 24/7 y acumularía
+                // horas para siempre). En cuanto se re-grabe la correlación
+                // durante una sesión real, queda corregida y se confía en ella.
+                if obs.exe.is_some()
+                    && crate::correlation::is_game_like(&obs.process_name, obs.exe.as_deref())
+                {
+                    name_index
+                        .entry(obs.process_name.to_lowercase())
+                        .or_default()
+                        .push(slot.save.save_id.as_str());
+                }
+            }
             // Legacy fallback only when no process names are configured.
             if let Some(dir) = slot.save.steam_install_dir.as_deref() {
                 dir_slots.push((slot.save.save_id.as_str(), dir));

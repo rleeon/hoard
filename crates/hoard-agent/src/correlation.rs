@@ -88,6 +88,24 @@ const NON_GAME_PROCESS: &[&str] = &[
     "eadesktop",
     "ubisoftconnect",
     "uplay",
+    // Infraestructura Wine/Proton/Steam-runtime en Linux: envuelve al juego
+    // pero no es el juego. Sin esto la atribución `.first()` se queda con un
+    // wrapper (`reaper`, `proton`, `wineserver`) en vez del ejecutable real.
+    // Match por substring, así que `wineserver`, `wine64-preloader`,
+    // `winedevice.exe` caen todos bajo "wine".
+    "wine",
+    "proton",
+    "pressure-vessel",
+    "pv-bwrap",
+    "srt-bwrap",
+    "reaper",
+    "steam-runtime",
+    "gameoverlayui",
+    "steamerrorreporter",
+    "winedevice",
+    "plugplay.exe",
+    "rpcss.exe",
+    "conhost.exe",
     // El propio Hoard.
     "hoard",
 ];
@@ -138,13 +156,31 @@ pub fn is_game_like(name: &str, exe: Option<&Path>) -> bool {
 /// Foto de los procesos vivos que parecen juegos. `sys` debe venir ya
 /// refrescado por el caller — el agente ya mantiene y refresca un `System`
 /// en su tick de actividad, así que la idea es reutilizarlo, no crear otro.
+///
+/// Dos filtros duros además de [`is_game_like`], aprendidos de basura real
+/// observada en producción (hilos de kernel `cpuhp/0`, `nv_open_q`,
+/// `ib_srv_wkr-2`, threads `tokio-runtime-w`… atribuidos como "juego"):
+/// - se descartan los HILOS (kernel y userland): un juego es un PROCESO, no
+///   un hilo de otro; `thread_kind().is_some()` los delata;
+/// - se exige un EJECUTABLE en disco: un juego siempre tiene binario; los
+///   hilos de kernel no (`exe()` es `None`). Esto es load-bearing: la
+///   correlación alimenta el playtime, y atribuir un save a un worker de
+///   kernel —que vive 24/7— acumularía horas para siempre.
 pub fn sample_game_processes(sys: &System) -> Vec<GameProcess> {
     let mut out = Vec::new();
     for proc in sys.processes().values() {
+        if proc.thread_kind().is_some() {
+            continue;
+        }
+        let Some(exe) = proc.exe().map(|p| p.to_path_buf()) else {
+            continue;
+        };
         let name = proc.name().to_string_lossy().to_string();
-        let exe = proc.exe().map(|p| p.to_path_buf());
-        if is_game_like(&name, exe.as_deref()) {
-            out.push(GameProcess { name, exe });
+        if is_game_like(&name, Some(&exe)) {
+            out.push(GameProcess {
+                name,
+                exe: Some(exe),
+            });
         }
     }
     out
@@ -290,6 +326,28 @@ mod tests {
         // Un juego cualquiera pasa.
         assert!(is_game_like("eldenring.exe", None));
         assert!(is_game_like("Hades.exe", None));
+    }
+
+    #[test]
+    fn is_game_like_rejects_wine_proton_infrastructure() {
+        // Los wrappers de Linux conviven con el juego pero no SON el juego;
+        // sin filtrarlos, `.first()` atribuía el save a un wrapper.
+        for n in [
+            "wineserver",
+            "wine64-preloader",
+            "winedevice.exe",
+            "proton",
+            "reaper",
+            "pv-bwrap",
+            "pressure-vessel-wrap",
+            "steam-runtime-launcher-service",
+            "gameoverlayui",
+        ] {
+            assert!(!is_game_like(n, None), "{n} debería filtrarse");
+        }
+        // El ejecutable real del juego (mismo nombre que vería sysinfo bajo
+        // Proton) sigue pasando.
+        assert!(is_game_like("eu5.exe", None));
     }
 
     #[test]
