@@ -210,6 +210,17 @@ async fn purge_tmp(data_dir: &Path, max_age_hours: u64) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A content-addressed object scheduled for file removal after the purge tx
+/// commits. We keep the table + sha so we can re-check the refcount just before
+/// unlinking: a concurrent upload may have re-referenced (and re-created) the
+/// row in the gap between commit and `remove_file`, in which case deleting the
+/// file would corrupt a live blob/chunk.
+struct GcTarget {
+    is_chunk: bool,
+    sha: String,
+    path: PathBuf,
+}
+
 /// Permanently delete snapshots that have outlived the trash window. With the
 /// blob store (ADR 0018, eje C) this is where bytes actually get freed: each
 /// purged snapshot decrements the refcount of every blob it referenced, and a
@@ -267,7 +278,7 @@ async fn purge_trash(
 
         let mut tx = pool.begin().await?;
         let mut freed_bytes: i64 = 0;
-        let mut gc_paths: Vec<PathBuf> = Vec::new();
+        let mut gc_paths: Vec<GcTarget> = Vec::new();
 
         for sha in &shas {
             sqlx::query(
@@ -296,7 +307,11 @@ async fn purge_trash(
                         .execute(&mut *tx)
                         .await?;
                     freed_bytes += size;
-                    gc_paths.push(crate::blobs::blob_path(data_dir, &user_id, sha));
+                    gc_paths.push(GcTarget {
+                        is_chunk: false,
+                        sha: sha.clone(),
+                        path: crate::blobs::blob_path(data_dir, &user_id, sha),
+                    });
                 }
             }
         }
@@ -331,7 +346,11 @@ async fn purge_trash(
                         .execute(&mut *tx)
                         .await?;
                     freed_bytes += size;
-                    gc_paths.push(crate::chunking::chunk_path(data_dir, &user_id, sha));
+                    gc_paths.push(GcTarget {
+                        is_chunk: true,
+                        sha: sha.clone(),
+                        path: crate::chunking::chunk_path(data_dir, &user_id, sha),
+                    });
                 }
             }
         }
@@ -354,9 +373,25 @@ async fn purge_trash(
 
         tx.commit().await?;
 
-        // GC blob files only after the DB committed their removal.
-        for p in gc_paths {
-            let _ = tokio::fs::remove_file(&p).await;
+        // GC blob/chunk files only after the DB committed their removal — and
+        // only if the row is still gone. A concurrent upload can re-reference an
+        // object in the window between commit and unlink, re-creating its row
+        // (refcount > 0) and re-writing the file; deleting it here would corrupt
+        // that live object. Re-check per target and skip any that came back.
+        for t in gc_paths {
+            let table = if t.is_chunk { "chunks" } else { "blobs" };
+            let q = format!("SELECT refcount FROM {table} WHERE user_id = ? AND sha256 = ?");
+            let revived = sqlx::query(&q)
+                .bind(&user_id)
+                .bind(&t.sha)
+                .fetch_optional(pool)
+                .await?
+                .map(|r| r.get::<i64, _>("refcount") > 0)
+                .unwrap_or(false);
+            if revived {
+                continue;
+            }
+            let _ = tokio::fs::remove_file(&t.path).await;
         }
         // Legacy: drop any pre-migration trash folder if it still exists.
         let _ = tokio::fs::remove_dir_all(data_dir.join("trash").join(&snap_id)).await;

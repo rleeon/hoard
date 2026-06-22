@@ -1,0 +1,11 @@
+version: 2
+updates:
+  # Keep the SHA-pinned third-party Actions current. Workflows pin every
+  # `uses:` to a full commit SHA (with the tag in a trailing comment) so a
+  # moved tag can't swap the action out from under us; Dependabot bumps those
+  # SHAs as new releases land and keeps the comment in sync.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5

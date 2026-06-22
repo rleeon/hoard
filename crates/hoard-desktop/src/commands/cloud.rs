@@ -389,11 +389,17 @@ pub async fn refresh_active_session() -> Result<CloudCreds> {
 pub async fn cloud_login_url(app: AppHandle) -> String {
     let base = std::env::var("HOARD_CLOUD_PUBLIC_URL")
         .unwrap_or_else(|_| "https://hoard.services".to_string());
-    match crate::commands::loopback::start(app).await {
-        Ok((port, state)) => format!("{base}/login?desktop=1&port={port}&state={state}"),
+    // Mint a fresh single-use CSRF nonce and remember it as the in-progress
+    // login. Both handoff paths (loopback and the hoard:// fallback) echo it
+    // back, and `cloud_complete_login` re-checks it before accepting tokens —
+    // so a spontaneous deep link carrying attacker tokens has no match.
+    let nonce = uuid::Uuid::new_v4().simple().to_string();
+    *app.state::<AppState>().pending_login_state.lock().unwrap() = Some(nonce.clone());
+    match crate::commands::loopback::start(app.clone(), nonce.clone()).await {
+        Ok(port) => format!("{base}/login?desktop=1&port={port}&state={nonce}"),
         Err(e) => {
             tracing::warn!(error = %e, "loopback listener failed; using hoard:// scheme");
-            format!("{base}/login?desktop=1")
+            format!("{base}/login?desktop=1&state={nonce}")
         }
     }
 }
@@ -406,12 +412,28 @@ pub async fn cloud_complete_login(
     app: AppHandle,
     access_token: String,
     refresh_token: String,
+    callback_state: String,
     state: State<'_, AppState>,
 ) -> Result<CloudAccount, String> {
     let access = access_token.trim().to_string();
     let refresh = refresh_token.trim().to_string();
     if access.is_empty() {
         return Err("Missing access token from auth callback.".into());
+    }
+
+    // CSRF guard: the callback must echo the single-use nonce minted by
+    // `cloud_login_url`. Take it (one-shot) and fail closed on any mismatch or
+    // when no login is in progress — this is what stops a forged
+    // `hoard://auth/callback?access_token=…` from silently logging the app into
+    // an attacker's account.
+    let expected = state.pending_login_state.lock().unwrap().take();
+    let echoed = callback_state.trim();
+    match expected {
+        Some(nonce) if !nonce.is_empty() && nonce == echoed => {}
+        _ => {
+            tracing::warn!("cloud login: rejected auth callback with missing/mismatched state nonce");
+            return Err("auth callback state mismatch".into());
+        }
     }
     let base = cloud_base_url();
     let me = fetch_me(&base, &access).await.map_err(prettify)?;
@@ -833,17 +855,58 @@ async fn refresh_supabase_session(refresh_token: &str) -> Result<(String, String
         anyhow::bail!("no refresh token stored — please sign in again");
     }
     let url = format!("{}/auth/v1/token?grant_type=refresh_token", supabase_url());
-    let client = http_client()?;
-    let resp = client
-        .post(&url)
-        .header("apikey", supabase_anon_key())
-        .json(&serde_json::json!({ "refresh_token": refresh_token }))
-        .send()
-        .await
-        .with_context(|| format!("POST {url}"))?;
-    let status = resp.status();
-    let body = resp.text().await.unwrap_or_default();
-    if !status.is_success() {
+    // Short per-attempt timeout (vs the 30 s default) so a hung request fails
+    // fast enough to retry *inside* GoTrue's 10 s refresh-token reuse grace.
+    let client = Client::builder()
+        .timeout(Duration::from_secs(7))
+        .user_agent(concat!("hoard-desktop/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .context("building refresh HTTP client")?;
+
+    // Why retry on *transient* failures (network/timeout/5xx/429): Supabase
+    // rotates the refresh token on every use and revokes the old one. If a
+    // refresh reaches GoTrue (token rotated server-side) but its response is
+    // lost — a dropped connection, a timeout mid-flight — we'd keep the now-dead
+    // token on disk and only replay it ~1 h later when the access token next
+    // expires, long past the 10 s reuse grace → GoTrue flags "abuse", revokes
+    // the whole family, and the user is silently signed out (observed in prod).
+    // Retrying the *same* token within the grace re-claims the rotated pair
+    // GoTrue already minted (idempotent within 10 s) instead of orphaning it.
+    // A genuine reuse rejection (already_used/not_found) is returned at once and
+    // never retried — there is nothing left to salvage.
+    let mut attempt = 0u32;
+    loop {
+        attempt += 1;
+        let sent = client
+            .post(&url)
+            .header("apikey", supabase_anon_key())
+            .json(&serde_json::json!({ "refresh_token": refresh_token }))
+            .send()
+            .await;
+        let resp = match sent {
+            Ok(r) => r,
+            Err(e) => {
+                if attempt < 3 {
+                    tracing::warn!(attempt, error = %e, "cloud: token refresh transport error; retrying within reuse grace");
+                    tokio::time::sleep(Duration::from_millis(600)).await;
+                    continue;
+                }
+                return Err(anyhow::Error::new(e).context(format!("POST {url}")));
+            }
+        };
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        if status.is_success() {
+            // A successful refresh body carries the new access + refresh tokens;
+            // never interpolate it into an error/log. Surface only status + len.
+            let parsed: RefreshResponse = serde_json::from_str(&body).with_context(|| {
+                format!(
+                    "parsing token refresh response (status {status}, {} bytes)",
+                    body.len()
+                )
+            })?;
+            return Ok((parsed.access_token, parsed.refresh_token));
+        }
         let low = body.to_lowercase();
         if low.contains("already_used")
             || low.contains("already used")
@@ -852,11 +915,15 @@ async fn refresh_supabase_session(refresh_token: &str) -> Result<(String, String
         {
             return Err(anyhow::Error::new(RefreshTokenStale));
         }
+        // 5xx or 429: server hiccup / rate limit — the rotation may still have
+        // landed, so retry within the grace before giving up.
+        if (status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS) && attempt < 3 {
+            tracing::warn!(attempt, %status, "cloud: token refresh server error; retrying within reuse grace");
+            tokio::time::sleep(Duration::from_millis(600)).await;
+            continue;
+        }
         anyhow::bail!("couldn't renew session ({status}): {body}");
     }
-    let parsed: RefreshResponse = serde_json::from_str(&body)
-        .with_context(|| format!("parsing token refresh response: {body}"))?;
-    Ok((parsed.access_token, parsed.refresh_token))
 }
 
 fn format_http_error(status: StatusCode, body: &str) -> String {

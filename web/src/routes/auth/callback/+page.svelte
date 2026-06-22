@@ -4,6 +4,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { supabase } from '$lib/auth/supabase';
+  import { safeNext } from '$lib/safeNext';
   import { CheckCircle2 } from 'lucide-svelte';
   import type { Session } from '@supabase/supabase-js';
 
@@ -33,9 +34,11 @@
   // concern — 127.0.0.1 stays on the box and `hoard://` never hits a server.
   function bounceToApp(s: Session) {
     const port = $page.url.searchParams.get('port');
-    // CSRF nonce minted by the desktop app; the loopback listener rejects the
-    // handoff unless we echo it back verbatim. Absent only on the legacy
-    // hoard:// fallback (no loopback listener), where there's nothing to match.
+    // CSRF nonce minted by the desktop app. Both handoff paths reject the
+    // login unless we echo it back verbatim: the loopback listener checks it
+    // at the socket, and `cloud_complete_login` re-checks it for the hoard://
+    // fallback too. Present for every desktop login now (the app always mints
+    // and threads it); only an old app build would omit it.
     const state = $page.url.searchParams.get('state') ?? '';
     const qs =
       `access_token=${encodeURIComponent(s.access_token)}` +
@@ -54,7 +57,7 @@
       bounceToApp(s);
       return;
     }
-    const next = $page.url.searchParams.get('next') ?? '/account';
+    const next = safeNext($page.url.searchParams.get('next'));
     goto(next, { replaceState: true });
   }
 

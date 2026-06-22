@@ -31,10 +31,51 @@ pub struct ServerConfig {
     /// 0017). Set to false to disable the remote path entirely.
     #[serde(default = "default_allow_remote_upgrade")]
     pub allow_remote_upgrade: bool,
+    /// Per-IP request rate limiting. On by default; tune or disable via the
+    /// `[server.rate_limit]` table. This is an in-process safety net (cheap
+    /// brute-force / accidental-loop protection); production deployments should
+    /// still rate-limit at the reverse proxy.
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
 }
 
 fn default_allow_remote_upgrade() -> bool {
     true
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RateLimitConfig {
+    /// Master switch. Defaults on.
+    #[serde(default = "default_rate_limit_enabled")]
+    pub enabled: bool,
+    /// Sustained allowance: one cell replenishes every `1/per_second` seconds
+    /// per client IP.
+    #[serde(default = "default_rate_limit_per_second")]
+    pub per_second: u64,
+    /// Burst capacity: how many requests can arrive back-to-back before the
+    /// sustained rate kicks in.
+    #[serde(default = "default_rate_limit_burst")]
+    pub burst: u32,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_rate_limit_enabled(),
+            per_second: default_rate_limit_per_second(),
+            burst: default_rate_limit_burst(),
+        }
+    }
+}
+
+fn default_rate_limit_enabled() -> bool {
+    true
+}
+fn default_rate_limit_per_second() -> u64 {
+    20
+}
+fn default_rate_limit_burst() -> u32 {
+    60
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

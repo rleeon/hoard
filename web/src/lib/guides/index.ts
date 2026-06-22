@@ -1,4 +1,4 @@
-import { marked } from 'marked';
+import { marked, type Tokens } from 'marked';
 import { LOCALES, DEFAULT_LOCALE, type Locale } from '$lib/i18n/locales';
 
 /**
@@ -23,6 +23,30 @@ export type GuideMeta = {
 export type Guide = GuideMeta & { html: string };
 
 marked.setOptions({ gfm: true, breaks: false });
+
+// XSS hardening for the guide HTML that ends up in `{@html}`. Guides are
+// authored in-repo, but a content PR (or an external contributor) could smuggle
+// script three ways through Markdown: raw HTML blocks/inline tags
+// (`<script>`, `<img onerror=…>`), or dangerous URL schemes
+// (`javascript:`/`data:`/`vbscript:`) in links and images. `walkTokens` runs
+// before rendering, so we neutralize those tokens in place: drop raw HTML
+// entirely and rewrite any unsafe link/image URL to a harmless anchor. Pure-JS
+// and isomorphic — it holds at prerender (Node) and on client navigation — with
+// no extra runtime dependency (jsdom-based sanitizers break the SSR build).
+const SAFE_URL = /^(?:https?:|mailto:|tel:|#|\/|\.\/|\.\.\/)/i;
+
+marked.use({
+  walkTokens(token) {
+    if (token.type === 'html') {
+      // Both block-level and inline raw-HTML tokens land here; the default
+      // renderer emits `token.text` verbatim, so blanking it strips the HTML.
+      (token as Tokens.HTML).text = '';
+    } else if (token.type === 'link' || token.type === 'image') {
+      const t = token as Tokens.Link | Tokens.Image;
+      if (!t.href || !SAFE_URL.test(t.href.trim())) t.href = '#';
+    }
+  }
+});
 
 const raw = import.meta.glob('./content/*/*.md', {
   query: '?raw',
@@ -65,6 +89,8 @@ for (const [path, src] of Object.entries(raw)) {
     description: meta.description ?? '',
     order: Number(meta.order ?? 999),
     updated: meta.updated ?? '',
+    // Hardened by the `walkTokens` hook above (raw HTML dropped, unsafe URL
+    // schemes neutralized) before it reaches `{@html}`.
     html: marked.parse(body.trim()) as string
   };
 }

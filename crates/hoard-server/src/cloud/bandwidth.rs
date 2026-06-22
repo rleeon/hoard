@@ -153,9 +153,11 @@ pub async fn check(
         Ok(u) => u,
         Err(e) => {
             warn!(error = %e, "bandwidth: window query failed");
-            // Fail open — a DB hiccup shouldn't block a paid customer's
-            // upload. The cron will catch any drift.
-            return Ok(0);
+            // Fail closed: if we can't read the rolling window we can't enforce
+            // the quota, so refuse the transfer rather than grant unmetered
+            // bandwidth (the previous `Ok(0)` did). A DB hiccup is transient —
+            // tell the client to retry shortly.
+            return Err(unavailable_response());
         }
     };
     if used.saturating_add(requested) > limits.bandwidth_quota_bytes {
@@ -173,6 +175,29 @@ pub async fn check(
         return Err(body.into_response());
     }
     Ok(used)
+}
+
+/// 503 returned when the rolling-window query fails: we can't enforce the
+/// quota, so the bandwidth-consuming op is refused (fail closed) with a short
+/// `Retry-After` since the condition is transient.
+fn unavailable_response() -> Response {
+    #[derive(Serialize)]
+    struct Body {
+        error: &'static str,
+        code: &'static str,
+    }
+    let mut resp = (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(Body {
+            error: "bandwidth accounting temporarily unavailable",
+            code: "bandwidth_unavailable",
+        }),
+    )
+        .into_response();
+    if let Ok(v) = "5".parse() {
+        resp.headers_mut().insert("Retry-After", v);
+    }
+    resp
 }
 
 /// Delete rows older than 1h. Keeps the table bounded — at 60 rows/user/h

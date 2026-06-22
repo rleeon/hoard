@@ -16,6 +16,21 @@ public_url = "https://hoard.example.com"
 # restart (see ADR 0017). Set to false to disable the remote path entirely.
 allow_remote_upgrade = true
 
+# Per-IP request rate limiting (token bucket). This is an in-process safety
+# net against accidental request loops and cheap brute force; a production
+# deployment should ALSO rate-limit at the reverse proxy. Behind a proxy the
+# client IP is read from X-Forwarded-For / X-Real-Ip / Forwarded, falling back
+# to the connection peer. Omit this table to keep the defaults below.
+[server.rate_limit]
+# Master switch. Set to false to disable entirely.
+enabled = true
+# Sustained allowance per client IP: one request slot replenishes every
+# 1/per_second seconds.
+per_second = 20
+# Burst capacity: requests allowed back-to-back before the sustained rate
+# applies. Over the limit the server replies 429 Too Many Requests.
+burst = 60
+
 [storage]
 # Directory where all user data, temp uploads and trash are stored.
 # Must be writable by the hoard user.

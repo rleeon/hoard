@@ -5,6 +5,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { auth } from '$lib/auth';
+  import { safeNext } from '$lib/safeNext';
   import { session } from '$lib/stores/session';
   import Button from '$lib/components/Button.svelte';
   import LogoMark from '$lib/components/LogoMark.svelte';
@@ -17,7 +18,7 @@
   // so they can sign in as someone else even though a session still lingers.
   let switching = $state(false);
 
-  let next = $derived($page.url.searchParams.get('next') ?? '/account');
+  let next = $derived(safeNext($page.url.searchParams.get('next')));
   // Desktop login handoff: the Hoard app opens this page with ?desktop=1 and
   // expects the session to bounce back via the `hoard://` deep link instead of
   // staying in the browser. We carry the flag through to /auth/callback, which

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.4.2] — 2026-06-21
+
+### Added
+- **Hoard Screen: elegir en qué pantalla va cada app (y modo espejo).** Cada
+  panel tiene un selector de pantalla; puedes poner una app en un monitor y otra
+  en otro, o marcar "Espejo (todas)" para que se dibuje en todas a la vez. El
+  overlay crea ahora una superficie por monitor y compone en cada una solo lo que
+  le toca; en modo *Editar* arrastras la ventana al monitor que quieras y al
+  volver a *Juego* el panel se queda en esa pantalla. (Windows; en Linux/macOS se
+  mantiene el modo de una sola pantalla.)
+
+### Fixed
+- **La sesión de Hoard Cloud se cerraba sola de vez en cuando.** Si se perdía la
+  respuesta al renovar el token (corte de red / timeout) justo después de que el
+  servidor lo rotara, el token guardado quedaba huérfano y el siguiente intento
+  ~1 h más tarde disparaba la detección de reutilización de Supabase, que revoca
+  toda la familia y obliga a volver a iniciar sesión. Ahora la renovación usa un
+  timeout corto y reintenta los fallos transitorios dentro de la ventana de
+  gracia, recuperando el token ya rotado en vez de dejarlo huérfano.
+
 ## [2.4.1] — 2026-06-21
 
 ### Fixed

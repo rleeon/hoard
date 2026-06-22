@@ -218,11 +218,56 @@ fn write_session(s: &Session) -> Result<()> {
         f.write_all(text.as_bytes())
             .with_context(|| format!("writing {}", path.display()))?;
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        std::fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
+        restrict_acl_windows(&path);
+    }
+    #[cfg(all(not(unix), not(windows)))]
     {
         std::fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
     }
     Ok(())
+}
+
+/// Lock the fallback session file down to the current user on Windows.
+///
+/// Unlike Unix there's no `mode(0o600)`; a fresh file inherits the parent
+/// directory's ACL, which under a roaming/shared profile can be broader than we
+/// want for a token-bearing file. `icacls` is the documented, dependency-free
+/// way to fix this: strip inherited ACEs (`/inheritance:r`) and grant full
+/// control to just this user. Best-effort — the file already sits under the
+/// per-user profile, so a failure only forgoes the extra hardening; we warn and
+/// carry on rather than block login.
+#[cfg(windows)]
+fn restrict_acl_windows(path: &std::path::Path) {
+    let user = match std::env::var("USERNAME") {
+        Ok(u) if !u.is_empty() => u,
+        _ => {
+            tracing::warn!("credentials: USERNAME unset; skipping ACL hardening");
+            return;
+        }
+    };
+    let grant = format!("{user}:F");
+    match std::process::Command::new("icacls")
+        .arg(path)
+        .arg("/inheritance:r")
+        .arg("/grant:r")
+        .arg(&grant)
+        .output()
+    {
+        Ok(out) if out.status.success() => {}
+        Ok(out) => {
+            tracing::warn!(
+                status = ?out.status.code(),
+                stderr = %String::from_utf8_lossy(&out.stderr).trim(),
+                "credentials: icacls did not harden the session file",
+            );
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "credentials: failed to run icacls");
+        }
+    }
 }
 
 fn scrub_file_token() -> Result<()> {

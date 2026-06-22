@@ -145,16 +145,20 @@ export async function startCloudLogin(): Promise<void> {
   await openExternal(url);
 }
 
-/** Complete a sign-in from a parsed deep-link payload. */
+/** Complete a sign-in from a parsed deep-link payload. The `callbackState` is
+ *  the CSRF nonce echoed back by the OAuth handoff; Rust rejects the login
+ *  unless it matches the one minted at `startCloudLogin`. */
 export async function completeCloudLogin(
   accessToken: string,
   refreshToken: string,
+  callbackState: string,
 ): Promise<CloudAccount> {
   internal.update(($s) => ({ ...$s, loading: true }));
   try {
     const account = await invoke<CloudAccount>("cloud_complete_login", {
       accessToken,
       refreshToken,
+      callbackState,
     });
     internal.set({ account, hydrated: true, loading: false });
     return account;
@@ -234,6 +238,7 @@ export async function initCloudDeepLink(
       const account = await completeCloudLogin(
         tokens.accessToken,
         tokens.refreshToken,
+        tokens.state,
       );
       onSignedIn?.(account);
     } catch (e) {
@@ -285,7 +290,7 @@ export async function initCloudSessionWatch(
 
 function parseAuthCallback(
   url: string,
-): { accessToken: string; refreshToken: string } | null {
+): { accessToken: string; refreshToken: string; state: string } | null {
   // Supabase OAuth lands tokens in the URL fragment; we accept either
   // shape so a server-side redirect that copies them to the query string
   // still works.
@@ -301,8 +306,9 @@ function parseAuthCallback(
   }
   const access = kv.get("access_token");
   const refresh = kv.get("refresh_token") ?? "";
+  const state = kv.get("state") ?? "";
   if (!access) return null;
-  return { accessToken: access, refreshToken: refresh };
+  return { accessToken: access, refreshToken: refresh, state };
 }
 
 // ---- presentation helpers --------------------------------------------

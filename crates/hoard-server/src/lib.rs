@@ -4,6 +4,7 @@ pub mod chunking;
 pub mod cleanup;
 pub mod config;
 pub mod db;
+pub mod ratelimit;
 pub mod retention;
 pub mod routes;
 pub mod upgrade;

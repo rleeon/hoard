@@ -31,6 +31,12 @@ pub struct AppState {
     /// after it mounts). The frontend drains this on mount via
     /// `cloud_take_pending_deep_link`. Cleared on a successful login.
     pub pending_deep_link: Mutex<Option<String>>,
+    /// CSRF `state` nonce for the in-progress cloud login. Minted by
+    /// `cloud_login_url` (and echoed through both the loopback and the
+    /// `hoard://` fallback handoffs), validated one-shot by
+    /// `cloud_complete_login`. `None` means "no login in progress", so a
+    /// spontaneous deep link with attacker tokens can never match.
+    pub pending_login_state: Mutex<Option<String>>,
 }
 
 impl AppState {
@@ -70,6 +76,7 @@ impl AppState {
             detection_cache,
             agent: Mutex::new(None),
             pending_deep_link: Mutex::new(None),
+            pending_login_state: Mutex::new(None),
         };
         crate::commands::cloud::rehydrate(&state);
         state

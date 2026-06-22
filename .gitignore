@@ -19,6 +19,10 @@ deploy/config.toml
 /draft*.md
 /scratch*.md
 
+# Security audit: full threat map with exact code paths. Internal only —
+# must never reach the public repo.
+/SECURITY-AUDIT.md
+
 # Private context for Claude Code sessions. Workstation-specific,
 # may reference local paths or tokens — never committed.
 CLAUDE.md

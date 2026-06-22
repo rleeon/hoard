@@ -33,6 +33,31 @@ pub struct RestoreOutcome {
     pub destination: PathBuf,
 }
 
+/// Hard ceiling on the total bytes a single restore may write to disk —
+/// defense-in-depth against a decompression bomb: a tiny `.tar.zst` that
+/// expands to terabytes. Used as-is when the expanded size isn't known ahead of
+/// time (the legacy whole-archive cloud path) and as an upper clamp otherwise.
+const MAX_RESTORE_BYTES: u64 = 64 * 1024 * 1024 * 1024; // 64 GiB
+
+/// Slack factor over the manifest-declared expanded size: enough room for
+/// unlisted sidecar files while still bounding a bomb to ~2× the real payload.
+const RESTORE_SIZE_SLACK: u64 = 2;
+
+/// Per-restore decompression cap derived from the declared expanded size (sum
+/// of manifest file sizes) when known, clamped to `[FLOOR, MAX_RESTORE_BYTES]`.
+/// `None` (size unknown) falls back to the absolute ceiling.
+fn restore_byte_cap(declared_expanded: Option<u64>) -> u64 {
+    // Floor so tiny saves tolerate minor overhead without nuisance failures.
+    const FLOOR: u64 = 256 * 1024 * 1024; // 256 MiB
+    match declared_expanded {
+        Some(n) if n > 0 => n
+            .saturating_mul(RESTORE_SIZE_SLACK)
+            .max(FLOOR)
+            .min(MAX_RESTORE_BYTES),
+        _ => MAX_RESTORE_BYTES,
+    }
+}
+
 /// Resolve the snapshot version to use: the explicit one if supplied, else the
 /// save's `latest_version_num`. Errors if the save has no snapshots yet.
 pub async fn resolve_version(
@@ -119,6 +144,15 @@ where
     let zstd = BufReader::new(zstd);
     let mut archive = tokio_tar::Archive::new(zstd);
 
+    // Decompression-bomb guard: cap total bytes written against the manifest's
+    // declared expanded size (×slack), falling back to the absolute ceiling.
+    let declared: u64 = detail
+        .files
+        .iter()
+        .map(|f| f.size_bytes.max(0) as u64)
+        .sum();
+    let cap = restore_byte_cap(Some(declared));
+
     let mut entries = archive.entries().context("opening tar archive")?;
     let mut files_extracted = 0usize;
     let mut bytes_extracted = 0u64;
@@ -175,6 +209,12 @@ where
                 .await
                 .with_context(|| format!("writing {}", dest_path.display()))?;
             written += n as u64;
+            if bytes_extracted + written > cap {
+                bail!(
+                    "restore aborted: decompressed output exceeds the {cap}-byte limit \
+                     (possible archive bomb)"
+                );
+            }
         }
         out.flush()
             .await
@@ -433,6 +473,11 @@ where
     let zstd = BufReader::new(zstd);
     let mut archive = tokio_tar::Archive::new(zstd);
 
+    // Decompression-bomb guard. This legacy path has no per-file manifest and
+    // `meta.size_bytes` is the *compressed* archive size, so the expanded size
+    // is unknown — fall back to the absolute ceiling.
+    let cap = restore_byte_cap(None);
+
     let mut entries = archive.entries().context("opening tar archive")?;
     let mut files_extracted = 0usize;
     let mut bytes_extracted = 0u64;
@@ -461,9 +506,18 @@ where
         let mut writer = tokio::fs::File::create(&dest_path)
             .await
             .with_context(|| format!("writing {}", dest_path.display()))?;
-        let written = tokio::io::copy(&mut entry, &mut writer)
+        // Cap the copy at the remaining budget +1 so an over-long entry is
+        // caught instead of streamed to disk in full.
+        let remaining = cap.saturating_sub(bytes_extracted);
+        let written = tokio::io::copy(&mut (&mut entry).take(remaining + 1), &mut writer)
             .await
             .with_context(|| format!("extracting {}", dest_path.display()))?;
+        if bytes_extracted + written > cap {
+            bail!(
+                "restore aborted: decompressed output exceeds the {cap}-byte limit \
+                 (possible archive bomb)"
+            );
+        }
         writer
             .flush()
             .await
@@ -587,5 +641,38 @@ pub fn sanitize(p: &Path) -> Option<PathBuf> {
         None
     } else {
         Some(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cap_unknown_size_uses_absolute_ceiling() {
+        assert_eq!(restore_byte_cap(None), MAX_RESTORE_BYTES);
+        assert_eq!(restore_byte_cap(Some(0)), MAX_RESTORE_BYTES);
+    }
+
+    #[test]
+    fn cap_tiny_save_gets_the_floor() {
+        // A few KB declared → the floor still applies, not 2×KB.
+        assert_eq!(restore_byte_cap(Some(4096)), 256 * 1024 * 1024);
+    }
+
+    #[test]
+    fn cap_scales_with_declared_size() {
+        let declared = 4 * 1024 * 1024 * 1024; // 4 GiB
+        assert_eq!(
+            restore_byte_cap(Some(declared)),
+            declared * RESTORE_SIZE_SLACK
+        );
+    }
+
+    #[test]
+    fn cap_is_clamped_to_the_ceiling() {
+        // 2 × 40 GiB = 80 GiB would exceed the 64 GiB hard cap.
+        let declared = 40 * 1024 * 1024 * 1024;
+        assert_eq!(restore_byte_cap(Some(declared)), MAX_RESTORE_BYTES);
     }
 }

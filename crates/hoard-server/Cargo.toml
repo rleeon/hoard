@@ -36,6 +36,12 @@ hoard-core = { path = "../hoard-core" }
 tokio = { workspace = true }
 axum = { workspace = true }
 tower-http = { workspace = true }
+tower = { workspace = true }
+# Per-IP request rate limiting (GovernorLayer). 0.4 tracks the axum 0.7 line;
+# `governor` is its underlying limiter, named directly only to spell out the
+# layer's middleware type in `ratelimit.rs`.
+tower_governor = "0.4"
+governor = "0.6"
 sqlx = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

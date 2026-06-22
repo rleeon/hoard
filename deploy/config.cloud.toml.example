@@ -8,6 +8,13 @@
 host = "0.0.0.0"
 port = 8082
 public_url = "https://api.hoard.services"
+# Per-IP rate limiting. Client IP is taken from X-Forwarded-For (Fly/CDN set
+# it). Defaults shown; omit the table to use them. Still keep limits at the
+# edge (Fly/Cloudflare) — this is only an in-process backstop.
+[server.rate_limit]
+enabled = true
+per_second = 20
+burst = 60
 
 [storage]
 # Not used in cloud mode (snapshots live in R2), but the field is required

@@ -15,9 +15,10 @@ jobs:
     name: cargo fmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
+          toolchain: stable
           components: rustfmt
       - run: cargo fmt --all -- --check
 
@@ -25,20 +26,21 @@ jobs:
     name: cargo clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3
         with:
           version: 9
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
           cache: pnpm
           cache-dependency-path: crates/hoard-desktop/ui/pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
+          toolchain: stable
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: System deps
         run: |
           sudo apt-get update
@@ -75,20 +77,22 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-14]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Install pnpm
         if: runner.os == 'Linux'
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3
         with:
           version: 9
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: runner.os == 'Linux'
         with:
           node-version: "20"
           cache: pnpm
           cache-dependency-path: crates/hoard-desktop/ui/pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: System deps
         if: runner.os == 'Linux'
         run: |
@@ -130,18 +134,20 @@ jobs:
     name: sqlx offline cache
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3
         with:
           version: 9
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
           cache: pnpm
           cache-dependency-path: crates/hoard-desktop/ui/pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       # hoard-desktop is in the workspace and `cargo sqlx prepare --workspace`
       # invokes the build script for every member crate, including the Tauri
       # shell. Without these system libs (and the prebuilt frontend that
@@ -179,8 +185,8 @@ jobs:
     name: cargo deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe # v2
         with:
           command: check bans licenses advisories sources
 
@@ -190,5 +196,5 @@ jobs:
     name: cargo machete
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: bnjbvr/cargo-machete@v0.7.0
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: bnjbvr/cargo-machete@5eaad10acf89fb0c6a31d9b197a2d48ba762d28e # v0.7.0

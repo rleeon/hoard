@@ -23,11 +23,12 @@ jobs:
             artifact: linux-x86_64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: System deps
         # libdbus-1-dev is needed by `libdbus-sys`, which gets pulled in
         # transitively via hoard-cli → hoard-agent → keyring (its
@@ -56,56 +57,77 @@ jobs:
           ( cd dist && sha256sum "$ARTIFACT.tar.gz" > "$ARTIFACT.tar.gz.sha256" )
           echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
 
-      # Sign the tarball with minisign so `hoard-server upgrade` can verify it
-      # against the public key embedded in the binary (ADR 0017). The secret
-      # key lives only in repo secrets and never touches the runner's disk
-      # beyond this ephemeral step. If the signing secret isn't configured we
-      # skip and warn loudly — the release just won't be auto-upgradable
-      # (the client fails closed on the missing/invalid signature).
-      - name: Sign artifact (minisign)
-        id: sign
+      # NOTE: signing happens in the isolated `sign` job below, NOT here. This
+      # `build` job compiles untrusted third-party code (cargo deps + build
+      # scripts) and so must never see MINISIGN_SECRET_KEY — a malicious dep
+      # could otherwise exfiltrate the release-signing key. We only emit the
+      # unsigned tarball + checksum as artifacts.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.package.outputs.artifact }}
+          path: |
+            dist/${{ steps.package.outputs.artifact }}.tar.gz
+            dist/${{ steps.package.outputs.artifact }}.tar.gz.sha256
+          if-no-files-found: warn
+
+  sign:
+    name: Sign artifacts (minisign)
+    needs: build
+    runs-on: ubuntu-latest
+    # Isolated signing job: no checkout, no cargo, no build scripts — the only
+    # code that runs is the trusted `minisign` package and this script, so the
+    # MINISIGN_SECRET_KEY is never exposed to third-party code (ADR 0017). The
+    # secret lives only in repo secrets and only touches this runner's disk for
+    # the lifetime of the step. If the signing secret isn't configured we skip
+    # and warn loudly — the release just won't be auto-upgradable (the client
+    # fails closed on the missing/invalid signature).
+    #
+    # Recommended hardening: gate this job behind a protected GitHub Environment
+    # with required reviewers so the signing key can't be used by an
+    # unreviewed workflow run.
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Sign tarballs
         env:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
           MINISIGN_KEY_PASSWORD: ${{ secrets.MINISIGN_KEY_PASSWORD }}
         run: |
           if [ -z "${MINISIGN_SECRET_KEY:-}" ]; then
             echo "::warning::MINISIGN_SECRET_KEY not set — skipping signature. This release will NOT be installable via the in-app server upgrade."
-            echo "signed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          sudo apt-get install -y minisign
+          sudo apt-get update && sudo apt-get install -y minisign
           printf '%s' "$MINISIGN_SECRET_KEY" > minisign.key
-          TARBALL="dist/${{ steps.package.outputs.artifact }}.tar.gz"
-          # minisign reads the key password from stdin when stdin isn't a TTY.
-          printf '%s\n' "${MINISIGN_KEY_PASSWORD:-}" | \
-            minisign -S -s minisign.key -m "$TARBALL"
+          for TARBALL in dist/*.tar.gz; do
+            # minisign reads the key password from stdin when stdin isn't a TTY.
+            printf '%s\n' "${MINISIGN_KEY_PASSWORD:-}" | \
+              minisign -S -s minisign.key -m "$TARBALL"
+            test -f "$TARBALL.minisig" || { echo "::error::signing produced no .minisig for $TARBALL"; exit 1; }
+          done
           rm -f minisign.key
-          test -f "$TARBALL.minisig" || { echo "::error::signing produced no .minisig"; exit 1; }
-          echo "signed=true" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ${{ steps.package.outputs.artifact }}
-          path: |
-            dist/${{ steps.package.outputs.artifact }}.tar.gz
-            dist/${{ steps.package.outputs.artifact }}.tar.gz.sha256
-            dist/${{ steps.package.outputs.artifact }}.tar.gz.minisig
+          name: signatures
+          path: dist/*.minisig
           if-no-files-found: warn
 
   release:
     name: GitHub Release
-    needs: build
+    needs: [build, sign]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: dist
           merge-multiple: true
       - name: List artifacts
         run: ls -la dist/
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}

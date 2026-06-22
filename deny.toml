@@ -55,11 +55,18 @@ ignore = [
     "RUSTSEC-2026-0098", # name constraints accepted for URI names
     "RUSTSEC-2026-0099", # name constraints accepted for wildcard certs
     "RUSTSEC-2026-0104", # panic on malformed CRL (we don't parse CRLs)
-    # tokio-tar PAX header smuggling. We only extract tarballs that come from
-    # the server we trust (hoard-server) over an authenticated session, so the
-    # smuggling vector doesn't apply to our threat model. Tracked in #upstream
-    # — we'll swap to the maintained `astral-tokio-tar` fork or `tar` (sync,
-    # ran on a blocking task) once 1.5 lands and we touch the restore path.
+    # tokio-tar PAX header smuggling (extended-header path/size confusion).
+    # Threat model + compensating controls in restore.rs:
+    #  - Self-hosted archives come from the trusted hoard-server over an
+    #    authenticated session.
+    #  - Cloud archives are user-uploaded, but every extracted entry path goes
+    #    through `sanitize()` (rejects `..`, absolute and non-normal
+    #    components), so a smuggled path can't escape the destination, and
+    #    per-file SHA-256 is checked against the manifest where one exists.
+    #  - A per-restore decompression cap (H-06) bounds total bytes written, so
+    #    a size-smuggling / bomb archive aborts instead of filling the disk.
+    # Migration to the maintained `astral-tokio-tar` fork (near drop-in) or sync
+    # `tar` on a blocking task is tracked for when the restore path is reworked.
     "RUSTSEC-2025-0111",
 ]
 

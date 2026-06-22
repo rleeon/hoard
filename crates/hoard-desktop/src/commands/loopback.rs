@@ -37,25 +37,24 @@ color:#a1a1aa\"><p style=\"padding:2rem\">Esperando el inicio de sesion de Hoard
 </body></html>";
 
 /// Bind an ephemeral loopback port and spawn a one-shot HTTP server that
-/// captures the OAuth callback. Returns the `(port, state)` pair the web side
-/// must echo back: the port to redirect to and the single-use `state` nonce
-/// that proves the callback belongs to *this* login attempt. The spawned task
-/// lives until it captures a matching callback or the timeout elapses.
+/// captures the OAuth callback. Takes the single-use `state` nonce minted by
+/// `cloud_login_url` (the same nonce is also stored in `AppState` so the final
+/// `cloud_complete_login` re-checks it). Returns the bound `port` the web side
+/// must redirect to. The spawned task lives until it captures a matching
+/// callback or the timeout elapses.
 ///
 /// The `state` nonce is the CSRF guard (RFC 6749 §10.12, RFC 8252 §8.9):
 /// without it, any local process — or a web page that guessed the ephemeral
 /// port — could POST attacker-controlled tokens to `/callback` and silently
 /// log the app into the attacker's account, sending the user's backups to it.
-pub async fn start(app: AppHandle) -> Result<(u16, String)> {
+pub async fn start(app: AppHandle, state: String) -> Result<u16> {
     let listener = TcpListener::bind(("127.0.0.1", 0))
         .await
         .context("binding loopback listener")?;
     let port = listener.local_addr()?.port();
-    // 122 bits of randomness, URL-safe hex. One-shot: a fresh nonce per login.
-    let state = uuid::Uuid::new_v4().simple().to_string();
     tracing::info!(port, "loopback OAuth listener up");
 
-    let expected_state = state.clone();
+    let expected_state = state;
     tauri::async_runtime::spawn(async move {
         let deadline = tokio::time::sleep(LISTEN_TIMEOUT);
         tokio::pin!(deadline);
@@ -72,8 +71,12 @@ pub async fn start(app: AppHandle) -> Result<(u16, String)> {
                             // Reuse the existing deep-link path: synthesize the
                             // same `hoard://auth/callback?…` URL the frontend's
                             // listener already parses, then bring the window up.
+                            // Carry the already-validated `state` so the final
+                            // `cloud_complete_login` re-checks it against the
+                            // pending nonce, exactly like the direct hoard://
+                            // fallback path.
                             let url = format!(
-                                "hoard://auth/callback?access_token={access}&refresh_token={refresh}"
+                                "hoard://auth/callback?access_token={access}&refresh_token={refresh}&state={expected_state}"
                             );
                             if let Some(w) = app.get_webview_window("main") {
                                 let _ = w.unminimize();
@@ -95,7 +98,7 @@ pub async fn start(app: AppHandle) -> Result<(u16, String)> {
         }
     });
 
-    Ok((port, state))
+    Ok(port)
 }
 
 /// Read one HTTP request; if it's the OAuth callback *with a matching `state`*,

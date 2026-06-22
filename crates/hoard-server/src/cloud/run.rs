@@ -196,16 +196,31 @@ pub async fn run(cfg: Config) -> Result<()> {
         .allow_methods([Method::GET, Method::POST, Method::DELETE])
         .allow_headers([header::AUTHORIZATION, header::ACCEPT, header::CONTENT_TYPE]);
 
-    let app = Router::new()
+    let mut app = Router::new()
         .merge(public)
         .merge(authed)
         .with_state(state.clone())
         .layer(cors);
 
+    // Per-IP rate limiting. SmartIpKeyExtractor keys off X-Forwarded-For
+    // (Fly/CDN set it), falling back to the connection peer — which the
+    // `into_make_service_with_connect_info` below provides.
+    if let Some(rl) = crate::ratelimit::layer(&cfg.server.rate_limit) {
+        info!(
+            per_second = cfg.server.rate_limit.per_second,
+            burst = cfg.server.rate_limit.burst,
+            "rate limiting enabled"
+        );
+        app = app.layer(rl);
+    }
+
     let addr: SocketAddr = format!("{}:{}", cfg.server.host, cfg.server.port).parse()?;
     info!(%addr, "cloud mode listening");
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app)
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
         .with_graceful_shutdown(async {
             tokio::signal::ctrl_c().await.ok();
             info!("received ctrl-c, shutting down");

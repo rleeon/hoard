@@ -136,3 +136,24 @@ pub async fn screen_list_windows(app: AppHandle) -> Result<String, String> {
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
+
+/// Enumerate the physical monitors by running the sidecar with
+/// `--list-monitors`. Returns the raw JSON array string
+/// (`[{id,name,x,y,w,h,primary}, …]`) for the Pro UI's per-panel screen picker;
+/// the backend stays agnostic to the shape. Empty array on platforms without
+/// native enumeration (the UI then falls back to its own monitor list).
+#[tauri::command]
+pub async fn screen_list_monitors(app: AppHandle) -> Result<String, String> {
+    let out = app
+        .shell()
+        .sidecar(SIDECAR)
+        .map_err(|e| format!("sidecar {SIDECAR}: {e}"))?
+        .args(["--list-monitors"])
+        .output()
+        .await
+        .map_err(|e| format!("run {SIDECAR} --list-monitors: {e}"))?;
+    if !out.status.success() {
+        tracing::warn!(target: "hoard_screen", "{}", String::from_utf8_lossy(&out.stderr).trim_end());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}

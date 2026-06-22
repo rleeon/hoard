@@ -184,16 +184,31 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
         .await;
     });
 
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/v1/health", get(health::handler))
         .merge(authed)
         .with_state(state);
+
+    // Per-IP rate limiting (covers /v1/health and every authed route). Opt-out
+    // via [server.rate_limit]. SmartIpKeyExtractor needs ConnectInfo, which the
+    // `into_make_service_with_connect_info` below supplies.
+    if let Some(rl) = hoard_server::ratelimit::layer(&cfg.server.rate_limit) {
+        info!(
+            per_second = cfg.server.rate_limit.per_second,
+            burst = cfg.server.rate_limit.burst,
+            "rate limiting enabled"
+        );
+        app = app.layer(rl);
+    }
 
     let addr: SocketAddr = format!("{}:{}", cfg.server.host, cfg.server.port).parse()?;
     info!(%addr, "listening");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app)
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
         .with_graceful_shutdown(async {
             tokio::signal::ctrl_c().await.ok();
             info!("received ctrl-c, shutting down");

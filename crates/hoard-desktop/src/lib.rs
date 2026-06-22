@@ -262,6 +262,7 @@ pub fn run() {
             commands::screen::screen_close,
             commands::screen::screen_is_open,
             commands::screen::screen_list_windows,
+            commands::screen::screen_list_monitors,
         ])
         .setup(|app| {
             // Build the tray as soon as we have an AppHandle. Failures here
