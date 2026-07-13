@@ -117,7 +117,7 @@ jobs:
         run: pnpm --dir crates/hoard-desktop/ui install --frozen-lockfile
 
       - name: Build desktop bundle
-        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           # When we set up code signing, these are the env vars the Tauri
           # action picks up:
