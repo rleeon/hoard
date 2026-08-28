@@ -380,7 +380,14 @@ enum AgentCommand {
     /// `SaveSlot::pull_pending` y se ejecuta al cerrarse el juego. El
     /// version-gate dentro de `run_auto_restore` evita la descarga si ya
     /// estamos al día.
-    ForceRestore(String),
+    ///
+    /// `version_num` is the remote head when the caller already has it (SSE).
+    /// Without it this is only an early tick — the reducer still needs
+    /// `cloud_heads` populated, which self-hosted now fills via `list_saves`.
+    ForceRestore {
+        save_id: String,
+        version_num: Option<i64>,
+    },
     /// DETECCIÓN (fase 3, ADR 0020): lista de carpetas candidatas detectadas
     /// pero AÚN NO rastreadas, que el escaneo del desktop quiere "sondear".
     /// El agente las vigila por mtime en cada tick de proceso: si una se
@@ -446,8 +453,10 @@ enum AgentCommand {
     /// tick, so it hands the map to the agent and the reconciliation sweep can
     /// version-gate locally instead of each `run_auto_restore` re-fetching the
     /// same manifest (cloud) / hitting `get_save` per candidate (the old N+1).
-    /// Replaces the whole map each call. Only populated on cloud; self-hosted
-    /// and headless CLI leave it empty and fall back to the network fetch.
+    /// Replaces the whole map each call. Cloud pollers send the full
+    /// manifest; self-hosted SSE uses [`AgentCommand::ForceRestore`] to merge
+    /// one head instead (must not replace the map). The engine also fills
+    /// this itself via [`AgentCommand::CloudHeadsObserved`].
     ///
     /// Desde ADR 0021 D.12 esto es un **hint de latencia**, no la fuente única:
     /// el motor observa la cabeza por su cuenta ([`Self::CloudHeadsObserved`])
@@ -464,10 +473,10 @@ enum AgentCommand {
     /// **propio motor** dispara desde su tick. La consulta vive en el shell —el
     /// kernel no hace IO— y entra al reductor como parte de la `Observation`.
     CloudHeadsObserved {
-        /// `Some` = el manifiesto llegó (mapa completo `save_id` → versión, que
-        /// reemplaza la caché). `None` = el intento no produjo cabezas (red
-        /// caída, 401, self-hosted): la marca de frescura **no** se sella, así
-        /// que la ceguera sigue siendo visible en vez de disfrazarse de feed.
+        /// `Some` = the list arrived (full `save_id` → version map, replaces
+        /// the cache). `None` = the attempt produced no heads (network, 401,
+        /// unresolved mode): freshness is **not** sealed, so blindness stays
+        /// visible instead of looking like a live feed.
         versions: Option<HashMap<String, i64>>,
         /// `(game_slug, label)` → `save_id`, from the same manifest pass. Lets
         /// the cache answer for a save whose local id the cloud has never seen
@@ -568,7 +577,18 @@ impl AgentHandle {
     /// restoring; deferred to the sweep if the save is mid-session.
     /// See [`AgentCommand::ForceRestore`].
     pub async fn force_restore(&self, save_id: String) -> Result<()> {
-        self.tx.send(AgentCommand::ForceRestore(save_id)).await?;
+        self.force_restore_at(save_id, None).await
+    }
+
+    /// Like [`Self::force_restore`], but merge `version_num` into the head
+    /// cache first so `cloud_ahead` can fire on self-hosted (no cloud manifest).
+    pub async fn force_restore_at(&self, save_id: String, version_num: Option<i64>) -> Result<()> {
+        self.tx
+            .send(AgentCommand::ForceRestore {
+                save_id,
+                version_num,
+            })
+            .await?;
         Ok(())
     }
 
@@ -1096,6 +1116,22 @@ impl CloudHeads {
         (self.is_cloud == Some(true)).then_some(self.expecting_since)
     }
 
+    /// Merge one save's head without replacing the rest of the map.
+    ///
+    /// SSE delivers one `(save_id, version)` per commit. [`Self::feed`]
+    /// replaces the whole map, so a one-row push would wipe every other save.
+    /// Does **not** bump `as_of`: a live SSE stream must not suppress the
+    /// periodic `list_saves` / cloud-sync pass that keeps the rest of the
+    /// library honest.
+    fn merge_version(&mut self, save_id: String, version: i64) {
+        match self.versions.get(&save_id).copied() {
+            Some(known) if known >= version => {}
+            _ => {
+                self.versions.insert(save_id, version);
+            }
+        }
+    }
+
     /// ¿Toca que el motor vaya a buscar la cabeza él mismo? Dos frenos
     /// independientes:
     ///
@@ -1105,11 +1141,10 @@ impl CloudHeads {
     ///   que un backend caído reciba un intento por minuto y medio, no uno por
     ///   tick.
     ///
-    /// Con el contexto ya resuelto como self-hosted no hay nada que observar.
+    /// Self-hosted has heads too (`GET /v1/saves`). Skipping that left
+    /// `cloud_ahead` stuck on `None` so auto-restore never ran unless the
+    /// folder was empty.
     fn due_for_self_observation(&self, now: OffsetDateTime) -> bool {
-        if self.is_cloud == Some(false) {
-            return false;
-        }
         let stale_enough = |t: OffsetDateTime| {
             (now - t).whole_seconds() >= kernel::reconcile::CLOUD_SELF_OBSERVE_AFTER_SECS
         };
@@ -1187,6 +1222,32 @@ async fn ship_playtime(api: ApiClient, path: Option<PathBuf>) {
     }
 }
 
+fn heads_from_selfhosted_saves(
+    saves: Vec<crate::api::Save>,
+) -> (HashMap<String, i64>, HashMap<(String, String), String>) {
+    let mut versions = HashMap::with_capacity(saves.len());
+    let mut aliases = HashMap::with_capacity(saves.len());
+    for e in saves {
+        let Some(v) = e.latest_version_num else {
+            continue;
+        };
+        let id = e.id.to_string();
+        versions.insert(id.clone(), v);
+        aliases.insert(
+            (
+                e.game_slug.to_string(),
+                if e.label.is_empty() {
+                    "default".to_string()
+                } else {
+                    e.label
+                },
+            ),
+            id,
+        );
+    }
+    (versions, aliases)
+}
+
 async fn observe_cloud_heads(api: ApiClient, cmd_tx: mpsc::Sender<AgentCommand>) {
     // Probe cacheado tras el primer éxito; un fallo NO se cachea, así que el
     // siguiente intento vuelve a preguntar.
@@ -1241,10 +1302,20 @@ async fn observe_cloud_heads(api: ApiClient, cmd_tx: mpsc::Sender<AgentCommand>)
                 None
             }
         }
-    } else {
-        if is_cloud.is_none() {
-            tracing::debug!("agent: cloud head observation skipped — server mode unresolved");
+    } else if is_cloud == Some(false) {
+        match api.list_saves(None).await {
+            Ok(saves) => {
+                let (versions, aliases) = heads_from_selfhosted_saves(saves);
+                tracing::debug!(count = versions.len(), "agent: observed self-hosted heads");
+                Some((versions, aliases, HashMap::new()))
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "agent: couldn't observe self-hosted heads");
+                None
+            }
         }
+    } else {
+        tracing::debug!("agent: cloud head observation skipped — server mode unresolved");
         None
     };
     let (versions, aliases, digests) = match observed {
@@ -1674,11 +1745,11 @@ async fn run_agent(
     let mut slots: HashMap<String, SaveSlot> = HashMap::new();
 
     // Latest cloud version per save id. Since ADR 0021 D.12 the engine keeps
-    // this fresh **itself** (`observe_cloud_heads`, one manifest call per
-    // interval); the client-side pollers' `SetCloudVersions` push is a latency
-    // hint on top. Lets the reconciliation sweep version-gate locally instead of
-    // having each `run_auto_restore` re-fetch the manifest. Stays empty on
-    // self-hosted, where we fall back to the per-save network fetch.
+    // this fresh **itself** (`observe_cloud_heads`: cloud `/v1/cloud/sync` or
+    // self-hosted `/v1/saves`); the client-side pollers' `SetCloudVersions`
+    // / SSE `ForceRestore` push is a latency hint on top. Lets the
+    // reconciliation sweep version-gate locally instead of having each
+    // `run_auto_restore` re-fetch the manifest.
     let mut cloud_heads = CloudHeads::new(OffsetDateTime::now_utc());
     // La observación de nube en vuelo, si la hay. Es un `JoinHandle` y no un
     // booleano a propósito: `is_finished()` es cierto también cuando la tarea
@@ -1892,17 +1963,17 @@ async fn run_agent(
                             );
                         }
                     }
-                    Some(AgentCommand::ForceRestore(_id)) => {
-                        // Pull de baja latencia pedido por el poller cloud (o el
-                        // stream SSE self-hosted). En el modelo invertido es un
-                        // *hint que adelanta un tick* (ADR 0021 C.1): el poller ya
-                        // actualizó `latest_versions` (envía `SetCloudVersions`
-                        // antes), así que basta con reconciliar ahora — el reductor
-                        // ve la nube por delante y decide restaurar, o diferir con
-                        // flush si el usuario está en sesión, o retener si el
-                        // cooldown/backoff sigue activo. Toda la elegibilidad
-                        // (track-only, backup-only, in-flight, cooldown, veto) vive
-                        // en el reductor; aquí no queda política.
+                    Some(AgentCommand::ForceRestore {
+                        save_id,
+                        version_num,
+                    }) => {
+                        // Cloud poller sends `SetCloudVersions` first, then this
+                        // as a tick nudge. Self-hosted SSE has no manifest push:
+                        // it carries `version_num` on the event so we merge that
+                        // one head, otherwise `cloud_ahead` stays false.
+                        if let Some(v) = version_num {
+                            cloud_heads.merge_version(save_id, v);
+                        }
                         reconcile_all(
                             &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx,
                             &cloud_heads,
@@ -5643,9 +5714,33 @@ mod tests {
         assert!(!heads.due_for_self_observation(secs(101)));
         assert!(heads.due_for_self_observation(secs(100 + due)));
 
-        // Resuelto como self-hosted no hay nube que observar.
+        // Self-hosted still observes (`GET /v1/saves`). A live feed still
+        // suppresses the extra GET until it goes stale.
         heads.is_cloud = Some(false);
-        assert!(!heads.due_for_self_observation(secs(100_000)));
+        heads.last_attempt_at = Some(secs(100));
+        heads.as_of = Some(secs(100));
+        assert!(!heads.due_for_self_observation(secs(101)));
+        assert!(heads.due_for_self_observation(secs(100 + due)));
+    }
+
+    #[test]
+    fn merge_version_does_not_wipe_or_regress() {
+        let t0 = OffsetDateTime::UNIX_EPOCH;
+        let mut heads = CloudHeads::new(t0);
+        heads.feed(
+            HashMap::from([("a".into(), 2), ("b".into(), 1)]),
+            None,
+            None,
+            t0,
+        );
+        let as_of = heads.as_of;
+        heads.merge_version("b".into(), 4);
+        heads.merge_version("b".into(), 3); // older must not regress
+        heads.merge_version("c".into(), 1);
+        assert_eq!(heads.versions.get("a"), Some(&2));
+        assert_eq!(heads.versions.get("b"), Some(&4));
+        assert_eq!(heads.versions.get("c"), Some(&1));
+        assert_eq!(heads.as_of, as_of, "SSE merge must not suppress list_saves");
     }
 
     /// ADR 0021 D.11 (remate) — el ancla del margen de arranque sólo existe con

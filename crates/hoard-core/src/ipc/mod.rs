@@ -226,6 +226,12 @@ pub enum Request {
     },
     ForceRestore {
         save_id: String,
+        /// Head the caller already knows (SSE `save` frame, cloud poller).
+        /// Kernel `cloud_ahead` needs this in cache; a bare `ForceRestore` is
+        /// only a tick nudge and no-ops on self-hosted when heads were never
+        /// observed. `None` from older clients — engine still reconciles.
+        #[serde(default)]
+        version_num: Option<i64>,
     },
     SetAutoRestore {
         enabled: bool,
@@ -942,6 +948,24 @@ mod tests {
         for (request, op) in cases {
             let json = serde_json::to_value(&request).unwrap();
             assert_eq!(json["op"], op, "wire name changed for {request:?}");
+        }
+    }
+
+    /// Older desktops send `force_restore` without `version_num`. New daemon
+    /// must still accept that — missing field is "tick only", not a handshake
+    /// break.
+    #[test]
+    fn force_restore_version_num_defaults_when_absent() {
+        let v: Request = serde_json::from_str(r#"{"op":"force_restore","save_id":"abc"}"#).unwrap();
+        match v {
+            Request::ForceRestore {
+                save_id,
+                version_num,
+            } => {
+                assert_eq!(save_id, "abc");
+                assert_eq!(version_num, None);
+            }
+            other => panic!("{other:?}"),
         }
     }
 

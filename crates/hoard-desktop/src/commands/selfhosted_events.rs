@@ -46,12 +46,12 @@ const READ_IDLE_SECS: u64 = 60;
 /// unbounded (SSE is long-lived).
 const CONNECT_TIMEOUT_SECS: u64 = 15;
 
-/// Server `event: save` payload. Only `save_id` is acted on; `version_num` is
-/// accepted for shape-compatibility and future short-circuiting.
+/// Server `event: save` payload. `version_num` is merged into the engine's
+/// head cache so `cloud_ahead` can fire — a bare force-restore tick is a
+/// no-op when that cache is empty (self-hosted has no cloud manifest).
 #[derive(Debug, Deserialize)]
 struct SaveEvent {
     save_id: String,
-    #[allow(dead_code)]
     version_num: i64,
 }
 
@@ -220,13 +220,12 @@ async fn connect_once(app: &AppHandle, client: &reqwest::Client) -> anyhow::Resu
 async fn handle_event(app: &AppHandle, ev_type: &str, data: &str) {
     match ev_type {
         "save" => {
-            let Some(save_id) = serde_json::from_str::<SaveEvent>(data)
-                .ok()
-                .map(|e| e.save_id)
-            else {
+            let Some(ev) = serde_json::from_str::<SaveEvent>(data).ok() else {
                 tracing::debug!(data = %data, "selfhosted-events: unparseable save frame");
                 return;
             };
+            let save_id = ev.save_id;
+            let version_num = ev.version_num;
             // Mirror the cloud poller: only the explicit "sync global" path
             // restores in-the-moment. Plain auto-restore is the sweep's job.
             let global_sync = hoard_agent::prefs::Prefs::load_default()
@@ -242,12 +241,19 @@ async fn handle_event(app: &AppHandle, ev_type: &str, data: &str) {
             let Some(state) = app.try_state::<AppState>() else {
                 return;
             };
-            tracing::debug!(save_id = %save_id, "selfhosted-events: push → force-restore");
+            tracing::debug!(
+                save_id = %save_id,
+                version_num,
+                "selfhosted-events: push → force-restore"
+            );
             state
                 .daemon
                 .tell(
                     "force-restore a save the server just advanced",
-                    hoard_core::ipc::Request::ForceRestore { save_id },
+                    hoard_core::ipc::Request::ForceRestore {
+                        save_id,
+                        version_num: Some(version_num),
+                    },
                 )
                 .await;
         }
@@ -255,5 +261,20 @@ async fn handle_event(app: &AppHandle, ev_type: &str, data: &str) {
             tracing::debug!("selfhosted-events: lagged — relying on agent sweep to reconcile");
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn save_event_keeps_version_num() {
+        let ev: SaveEvent = serde_json::from_str(
+            r#"{"save_id":"c9a456a6-0c24-4af3-9b16-2e7a2ccaa1c5","version_num":4}"#,
+        )
+        .unwrap();
+        assert_eq!(ev.save_id, "c9a456a6-0c24-4af3-9b16-2e7a2ccaa1c5");
+        assert_eq!(ev.version_num, 4);
     }
 }

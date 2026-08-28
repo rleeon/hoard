@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   plain-HTTP origin a NAS panel is reached over.
 
 ### Fixed
+- **Self-hosted clients never auto-pulled a save that was ahead on the server.**
+  After ADR 0021 the engine only restores when `cloud_ahead` is true (or the
+  folder is empty). That flag is fed from a head cache the cloud poller fills
+  via `/v1/cloud/sync`. Self-hosted skipped that observation entirely, and the
+  SSE `force-restore` nudge ignored the event's `version_num`, so a non-empty
+  folder stayed stuck on the local version. The engine now lists `/v1/saves`
+  on the same cadence as cloud, and a `save` SSE frame merges that version
+  into the cache before reconcile.
 - **Deleting a user left every byte of their saves on disk.** `hoard-admin user
   delete` removed `data_dir/<user_id>`, a path nothing has written to since the
   content-addressed store landed, and reported success. The blobs and chunks are

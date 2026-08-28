@@ -349,8 +349,11 @@ impl Daemon {
                 self.with_engine(|h| async move { h.sweep_all(window_secs).await })
                     .await
             }
-            Request::ForceRestore { save_id } => {
-                self.with_engine(|h| async move { h.force_restore(save_id).await })
+            Request::ForceRestore {
+                save_id,
+                version_num,
+            } => {
+                self.with_engine(|h| async move { h.force_restore_at(save_id, version_num).await })
                     .await
             }
             Request::SetAutoRestore { enabled } => {
