@@ -570,7 +570,7 @@ pub fn run() {
             // the .desktop file.
             #[cfg(any(target_os = "linux", windows))]
             {
-                if !running_under_flatpak() {
+                if !hoard_agent::install::running_under_flatpak() {
                     if let Err(e) = app.deep_link().register("hoard") {
                         tracing::warn!(error = %e, "couldn't register hoard:// scheme at runtime");
                     }
@@ -631,11 +631,6 @@ pub fn run() {
 /// flags), so we scan rather than index.
 fn first_hoard_url<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
     args.into_iter().find(|a| a.starts_with("hoard://"))
-}
-
-#[cfg(any(target_os = "linux", windows))]
-fn running_under_flatpak() -> bool {
-    std::env::var_os("FLATPAK_ID").is_some() || std::path::Path::new("/.flatpak-info").exists()
 }
 
 /// Stash a `hoard://` URL where the frontend can find it and, optionally,

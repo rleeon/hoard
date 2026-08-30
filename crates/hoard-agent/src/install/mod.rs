@@ -139,6 +139,8 @@ pub struct Probe {
     /// ¿Podemos elevar privilegios **sin colgarnos esperando a un humano**?
     /// Ver [`can_elevate`].
     pub can_elevate: bool,
+    /// Are we inside a Flatpak? See [`running_under_flatpak`].
+    pub sandboxed: bool,
 }
 
 impl Probe {
@@ -152,8 +154,19 @@ impl Probe {
             has_dpkg: bin_exists("dpkg"),
             has_rpm: bin_exists("rpm"),
             can_elevate: can_elevate(),
+            sandboxed: running_under_flatpak(),
         }
     }
+}
+
+/// Are we running inside a Flatpak?
+///
+/// Both signals are the ones `flatpak` itself documents: it exports `FLATPAK_ID`
+/// into the sandbox, and mounts `/.flatpak-info` there. The file is what makes
+/// this true for our sidecars as well — `hoardd` is started by the app, and a
+/// child that had its environment scrubbed would still see the mount.
+pub fn running_under_flatpak() -> bool {
+    std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists()
 }
 
 /// ¿Está `name` en el `PATH`?
@@ -302,6 +315,14 @@ pub fn resolve_components(probe: &Probe) -> Vec<Component> {
 /// tienen que aterrizar sin un caso especial escrito para ellas.
 #[cfg(target_os = "linux")]
 pub fn resolve_delivery(probe: &Probe) -> Delivery {
+    // Inside a Flatpak nothing here is ours to replace: `/app` is read-only and
+    // the version that lands next comes from the remote the user installed
+    // from. This has to be the first question, before the package managers —
+    // the runtime carries neither `dpkg` nor `rpm`, so falling through would
+    // pick the AppImage and aim it at `/app/bin`.
+    if probe.sandboxed {
+        return Delivery::Managed;
+    }
     if probe.immutable_root || !probe.can_elevate {
         return Delivery::AppImage;
     }
@@ -1095,6 +1116,20 @@ fn known_desktop_dirs() -> Vec<PathBuf> {
 /// De dónde salió la app que hay en `path`. Se deduce de dónde vive: es la única
 /// pista que sobrevive a que el instalador la pusiera hace meses.
 fn observed_delivery(path: &Path) -> Delivery {
+    observed_delivery_in(path, running_under_flatpak())
+}
+
+/// [`observed_delivery`] with the sandbox answered for it, so the one case that
+/// can't be expressed as a path is still a test and not a comment.
+fn observed_delivery_in(path: &Path, sandboxed: bool) -> Delivery {
+    // A Flatpak install writes no manifest — it never runs our installer — so
+    // this is the function that names it, and naming it wrong is expensive:
+    // `/app/bin/hoard-desktop` is under neither `$HOME` nor `/usr`, so it used
+    // to fall through to the `AppImage` at the bottom and hand the updater a
+    // read-only directory to overwrite, once an hour, for ever.
+    if sandboxed {
+        return Delivery::Managed;
+    }
     let s = path.to_string_lossy();
     if cfg!(target_os = "windows") {
         return Delivery::Nsis;
@@ -1132,6 +1167,7 @@ mod tests {
     fn desktop_box() -> Probe {
         Probe {
             graphical: true,
+            sandboxed: false,
             immutable_root: false,
             has_dpkg: true,
             has_rpm: false,
@@ -1226,6 +1262,32 @@ mod tests {
                 ..desktop_box()
             };
             assert_eq!(resolve_delivery(&probe), Delivery::AppImage);
+        }
+
+        /// The sandbox outranks the package manager, and the probe it runs on
+        /// is deliberately the friendliest one there is: a writable Debian box
+        /// that can elevate. Order matters here and nothing else would catch
+        /// it — read the checks in the other order and this same probe comes
+        /// back `Deb`.
+        #[test]
+        fn a_flatpak_is_not_ours_to_update() {
+            let probe = Probe {
+                sandboxed: true,
+                ..desktop_box()
+            };
+            assert_eq!(resolve_delivery(&probe), Delivery::Managed);
+            assert!(!resolve_delivery(&probe).is_ours());
+        }
+
+        /// `/app/bin` is under neither `$HOME` nor `/usr`, so the path alone
+        /// says AppImage — which is how the updater ended up aiming at a
+        /// read-only directory. The second half of this test is the bug, kept
+        /// so that removing the flag can't look harmless.
+        #[test]
+        fn the_sandbox_names_the_delivery_the_path_cannot() {
+            let app = Path::new("/app/bin/hoard-desktop");
+            assert_eq!(observed_delivery_in(app, true), Delivery::Managed);
+            assert_eq!(observed_delivery_in(app, false), Delivery::AppImage);
         }
     }
 
