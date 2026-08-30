@@ -59,9 +59,6 @@ deploy/docker/config/config.toml
 # mantiene en local para retomarlo, pero no se publica.
 crates/hoard-desktop/ui/src/routes/Map.svelte
 
-# Se queda fuera hasta que sirva para un contribuidor de verdad.
-CONTRIBUTING.md
-
 # READMEs internos de crate y carpeta.
 /crates/hoard-agent/tests/fixtures/README.md
 /crates/hoard-manifest/data/README.md
