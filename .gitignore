@@ -82,6 +82,13 @@ CONTRIBUTING.md
 *.db-wal
 *.db-shm
 
+# Flatpak
+/flatpak/hoard.deb
+/flatpak/hoard.flatpak
+/flatpak/build-dir/
+/flatpak/repo/
+/flatpak/.flatpak-builder/
+
 # Tauri
 crates/hoard-desktop/gen/
 

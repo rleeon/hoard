@@ -374,12 +374,31 @@ pub fn run() {
             // shouldn't kill the app — Linux desktops without an AppIndicator
             // host (some minimal Wayland sessions) will reject our tray and
             // we want to keep running with just the window visible.
-            if let Err(e) = tray::install(&app.handle().clone()) {
-                tracing::warn!(error = %e, "couldn't install tray icon");
-            } else {
-                // Apply offline as the initial state — the agent forwarder
-                // will recolour to idle as soon as it boots.
-                app.state::<TrayController>().set_state(TrayState::Offline);
+            //
+            // A missing libayatana-appindicator3/libappindicator3 (no distro
+            // package, or a Flatpak runtime that doesn't ship it) doesn't
+            // surface as an `Err` here: `libappindicator-sys` panics straight
+            // out of its dlopen check instead, which skips right past the
+            // `Result` handling below. `catch_unwind` is what actually
+            // delivers on the comment above in that case.
+            let tray_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                tray::install(&app.handle().clone())
+            }));
+            match tray_result {
+                Ok(Ok(())) => {
+                    // Apply offline as the initial state — the agent forwarder
+                    // will recolour to idle as soon as it boots.
+                    app.state::<TrayController>().set_state(TrayState::Offline);
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!(error = %e, "couldn't install tray icon");
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        "tray icon backend panicked (missing libayatana-appindicator3 / \
+                         libappindicator3?) — continuing without a tray icon"
+                    );
+                }
             }
 
             // First-run bootstrap + silent-boot handling. `prefs.json` missing
@@ -546,10 +565,15 @@ pub fn run() {
             // `cargo tauri dev` (no installer) we have to register at
             // runtime so the OS knows to dispatch `hoard://…` to us. This
             // is a no-op when the scheme is already registered.
+            //
+            // Skipped entirely under Flatpak: since flatpak registers through
+            // the .desktop file.
             #[cfg(any(target_os = "linux", windows))]
             {
-                if let Err(e) = app.deep_link().register("hoard") {
-                    tracing::warn!(error = %e, "couldn't register hoard:// scheme at runtime");
+                if !running_under_flatpak() {
+                    if let Err(e) = app.deep_link().register("hoard") {
+                        tracing::warn!(error = %e, "couldn't register hoard:// scheme at runtime");
+                    }
                 }
             }
             Ok(())
@@ -607,6 +631,11 @@ pub fn run() {
 /// flags), so we scan rather than index.
 fn first_hoard_url<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
     args.into_iter().find(|a| a.starts_with("hoard://"))
+}
+
+#[cfg(any(target_os = "linux", windows))]
+fn running_under_flatpak() -> bool {
+    std::env::var_os("FLATPAK_ID").is_some() || std::path::Path::new("/.flatpak-info").exists()
 }
 
 /// Stash a `hoard://` URL where the frontend can find it and, optionally,

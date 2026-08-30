@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metadata for the Hoard Flatpak. Values below are pulled from
+  crates/hoard-desktop/tauri.conf.json (shortDescription, longDescription,
+  homepage, category) and Cargo.toml (license) rather than invented — keep
+  the two in sync when either changes.
+
+  No <screenshots> block: Flathub requires one for submission review, but a
+  local flatpak-builder build doesn't. Add real, hosted screenshot URLs here
+  before submitting.
+-->
+<component type="desktop-application">
+  <id>services.hoard.saves</id>
+  <launchable type="desktop-id">services.hoard.saves.desktop</launchable>
+  <name>Hoard</name>
+  <summary>Self-hosted cloud sync for game saves</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-only</project_license>
+
+  <developer id="dev.hoard">
+    <name>Hoard</name>
+  </developer>
+
+  <url type="homepage">https://github.com/rleeon/hoard</url>
+  <url type="bugtracker">https://github.com/rleeon/hoard/issues</url>
+
+  <description>
+    <p>
+      Hoard syncs your game saves to your own server. Auto-detect games,
+      auto-backup when you stop playing, restore previous versions any time.
+    </p>
+  </description>
+
+  <categories>
+    <category>Utility</category>
+  </categories>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <content_rating type="oars-1.1" />
+
+  <!--
+    Flathub submission requires at least one <release> with a real date; the
+    version numbers in Cargo.toml and CHANGELOG.md aren't the same counter
+    (this is a workspace-wide version, that's a per-app one), so add the
+    actual release you're shipping rather than guessing one here, e.g.:
+    <releases>
+      <release version="7.7.8" date="YYYY-MM-DD" />
+    </releases>
+  -->
+</component>
