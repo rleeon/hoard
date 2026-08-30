@@ -27,12 +27,26 @@ for arg in "$@"; do
 	esac
 done
 
-for tool in flatpak flatpak-builder ar tar pnpm cargo; do
+for tool in flatpak ar tar pnpm cargo; do
 	command -v "$tool" >/dev/null 2>&1 || {
 		echo "ERROR: '$tool' is required but not on PATH." >&2
 		exit 1
 	}
 done
+
+# flatpak-builder from the distro if it's there, and Flathub's own otherwise.
+# The packaged one is what Flathub's docs point people at, it needs no root to
+# install, and on a distro whose package lags the manifest's runtime it's the
+# only one that can read it.
+if command -v flatpak-builder >/dev/null 2>&1; then
+	builder=(flatpak-builder)
+elif flatpak info --user org.flatpak.Builder >/dev/null 2>&1; then
+	builder=(flatpak run org.flatpak.Builder)
+else
+	echo "Installing org.flatpak.Builder (no flatpak-builder on PATH)..."
+	flatpak install --user --noninteractive -y flathub org.flatpak.Builder
+	builder=(flatpak run org.flatpak.Builder)
+fi
 
 if ! flatpak remote-list --user 2>/dev/null | grep -q '^flathub'; then
 	echo "Adding the flathub remote (--user)..."
@@ -67,7 +81,7 @@ cp "$deb" "$FP/hoard.deb"
 
 echo "==> Running flatpak-builder"
 rm -rf "$FP/build-dir"
-flatpak-builder --force-clean --user --install --repo="$FP/repo" \
+"${builder[@]}" --force-clean --user --install --repo="$FP/repo" \
 	"$FP/build-dir" "$FP/$APP_ID.yml"
 
 rm -f "$FP/hoard.deb"
