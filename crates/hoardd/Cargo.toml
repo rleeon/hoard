@@ -44,6 +44,14 @@ libc = "0.2"
 [target.'cfg(target_os = "linux")'.dependencies]
 notify-rust = { workspace = true }
 
+# Cliente de los portales XDG. Sólo se usa dentro de un Flatpak, donde el
+# arranque en sesión no puede pasar por systemd: `background` es la única
+# interfaz sancionada para pedirlo, y el resto de portales no se compilan.
+ashpd = { version = "0.13", default-features = false, features = [
+    "tokio",
+    "background",
+] }
+
 # ACL del named pipe: sin descriptor de seguridad explícito Windows le da a
 # `Everyone` acceso de lectura al pipe, y por ahí viajan nombres de juego, rutas
 # y comandos del sync. La ADR pide permisos solo-usuario (0600 / ACL), así que

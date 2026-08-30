@@ -268,6 +268,15 @@ pub async fn installed() -> bool {
 /// y si no se aparta a tiempo seguimos igual — el arranque de la unidad se
 /// encontrará el socket ocupado y saldrá con 0, que es feo pero no rompe nada.
 async fn hand_over() {
+    // Inside a Flatpak the process that would take over is the one running this
+    // code: the portal starts us back through `flatpak run`, it doesn't own a
+    // second copy waiting to bind. Shutting down here would hand the socket to
+    // nobody, and the `wait_until_serving` that follows would then be waiting on
+    // the service it had just killed.
+    #[cfg(target_os = "linux")]
+    if hoard_agent::install::running_under_flatpak() {
+        return;
+    }
     let Ok(endpoint) = Endpoint::resolve() else {
         return;
     };
@@ -505,6 +514,12 @@ mod platform {
     /// ([`unit_text`]), así que basta con leer la línea y quitarle las comillas
     /// que le pusimos.
     pub fn exec_start() -> Option<PathBuf> {
+        // The portal's entry launches `flatpak run`, not a `hoardd` we could
+        // point at. There is also only ever one candidate inside a sandbox, so
+        // the question this arbitrates doesn't arise.
+        if flatpak::active() {
+            return None;
+        }
         let text = std::fs::read_to_string(unit_path().ok()?).ok()?;
         let raw = text
             .lines()
@@ -517,6 +532,9 @@ mod platform {
     /// Escribe la unidad si hace falta. El `bool` dice si cambió, para que
     /// reafirmarla en cada arranque del desktop no cueste dos subprocesos.
     pub fn declare() -> Result<(Installed, bool)> {
+        if flatpak::active() {
+            return flatpak::declare();
+        }
         ensure_systemd()?;
         let mut exe = service_binary();
         // An AppImage runs from an ephemeral mount, so whatever `service_binary`
@@ -548,6 +566,9 @@ mod platform {
     }
 
     pub async fn enable() -> Result<Option<&'static str>> {
+        if flatpak::active() {
+            return flatpak::enable().await;
+        }
         ensure_systemd()?;
         run_quiet("systemctl", &["--user", "daemon-reload"]).await?;
         if !run_quiet("systemctl", &["--user", "enable", UNIT]).await? {
@@ -560,6 +581,13 @@ mod platform {
     }
 
     pub async fn start() -> Result<()> {
+        // Nothing to start: under the portal the thing that would be started is
+        // this process, and it is already running. Saying so is the whole job —
+        // the caller's next step is to wait for the socket, which is already
+        // being served.
+        if flatpak::active() {
+            return Ok(());
+        }
         if !run_quiet("systemctl", &["--user", "start", UNIT]).await? {
             anyhow::bail!("`systemctl --user start {UNIT}` failed — see `hoard sync`");
         }
@@ -567,6 +595,9 @@ mod platform {
     }
 
     pub async fn restart() -> Result<()> {
+        if flatpak::active() {
+            return flatpak::cannot_restart().await;
+        }
         if !run_quiet("systemctl", &["--user", "restart", UNIT]).await? {
             anyhow::bail!("`systemctl --user restart {UNIT}` failed — see `hoard sync`");
         }
@@ -574,6 +605,9 @@ mod platform {
     }
 
     pub async fn disable() -> Result<()> {
+        if flatpak::active() {
+            return flatpak::disable().await;
+        }
         ensure_systemd()?;
         run_quiet("systemctl", &["--user", "disable", "--now", UNIT]).await?;
         let path = unit_path()?;
@@ -583,6 +617,9 @@ mod platform {
     }
 
     pub async fn installed() -> bool {
+        if flatpak::active() {
+            return flatpak::installed();
+        }
         unit_path().map(|p| p.exists()).unwrap_or(false)
     }
 
@@ -604,6 +641,146 @@ mod platform {
         // El prefijo hay que mirarlo sobre el nombre del componente.
         exe.components()
             .any(|c| c.as_os_str().to_string_lossy().starts_with(".mount_"))
+    }
+
+    /// Login start inside a Flatpak, where systemd is out of reach.
+    ///
+    /// Nothing the path above does works in here. The runtime carries no
+    /// `systemctl`, and `$XDG_CONFIG_HOME` points at the app's own private
+    /// directory, so a unit written there is a unit the host's systemd never
+    /// reads — the switch would go on and nothing would start, which is the
+    /// exact failure [`Unsupported`] exists to stop us shipping.
+    ///
+    /// `org.freedesktop.portal.Background` is the sanctioned replacement: ask,
+    /// and the portal writes a `.desktop` file on the **host** that starts us
+    /// back through `flatpak run`. Portals need no `--talk-name` — Flatpak's
+    /// default bus policy lets every sandbox reach them.
+    pub mod flatpak {
+        use super::*;
+
+        /// What [`Installed::id`] carries here. There is no unit and no task,
+        /// so it names the thing that actually holds the answer.
+        const PORTAL: &str = "org.freedesktop.portal.Background";
+
+        /// Which binary the portal should start. It goes through
+        /// `flatpak run --command=…`, so it is a name inside `/app/bin` and not
+        /// a path on the host.
+        const COMMAND: &str = "hoardd";
+
+        pub fn active() -> bool {
+            hoard_agent::install::running_under_flatpak()
+        }
+
+        /// The file the portal writes when it grants autostart.
+        ///
+        /// Deliberately built from `$HOME` and not from `$XDG_CONFIG_HOME`: the
+        /// latter is redirected into the sandbox, and this file is the host's.
+        /// Reading it needs `--filesystem=host`, which the manifest grants for
+        /// unrelated reasons — if a future manifest narrows that, this answers
+        /// "not installed" and the only cost is asking the portal again, which
+        /// it grants without a prompt once the permission is stored.
+        fn autostart_file() -> Option<PathBuf> {
+            Some(autostart_file_in(
+                &home().ok()?,
+                &std::env::var("FLATPAK_ID").ok()?,
+            ))
+        }
+
+        /// [`autostart_file`] with the two things it reads passed in, so the
+        /// name can be a test. It has to match what the portal writes to the
+        /// letter — get it wrong and autostart reports itself as never
+        /// installed, which is silent and re-asks on every start.
+        fn autostart_file_in(home: &Path, app_id: &str) -> PathBuf {
+            home.join(".config")
+                .join("autostart")
+                .join(format!("{app_id}.desktop"))
+        }
+
+        #[cfg(test)]
+        mod tests {
+            use super::*;
+
+            #[test]
+            fn the_entry_is_named_after_the_flatpak_id() {
+                assert_eq!(
+                    autostart_file_in(Path::new("/home/p"), "services.hoard.saves"),
+                    Path::new("/home/p/.config/autostart/services.hoard.saves.desktop")
+                );
+            }
+        }
+
+        pub fn installed() -> bool {
+            autostart_file().is_some_and(|p| p.exists())
+        }
+
+        /// Nothing is written from in here — the portal owns the file — so this
+        /// only reports where the answer lives and whether it is already there.
+        pub fn declare() -> Result<(Installed, bool)> {
+            Ok((
+                Installed {
+                    manager: "xdg-desktop-portal",
+                    id: PORTAL,
+                    path: autostart_file(),
+                },
+                !installed(),
+            ))
+        }
+
+        pub async fn enable() -> Result<Option<&'static str>> {
+            request(true).await?;
+            Ok(Some("xdg-desktop-portal"))
+        }
+
+        pub async fn disable() -> Result<()> {
+            request(false).await
+        }
+
+        /// A restart would mean stopping the process making the request and
+        /// trusting something to bring it back, and in here there is nothing to
+        /// do the bringing. It never comes up in practice — restarting is what
+        /// follows an upgrade, and a sandboxed install updates through its
+        /// remote (`Delivery::Managed`) — so this says so instead of failing in
+        /// a way that reads like a bug.
+        pub async fn cannot_restart() -> Result<()> {
+            anyhow::bail!(
+                "this copy of Hoard runs inside a Flatpak, where the service can't restart \
+                 itself. Close the app and open it again, or run `flatpak kill {} && flatpak \
+                 run {0}`.",
+                std::env::var("FLATPAK_ID").unwrap_or_else(|_| "services.hoard.saves".into())
+            )
+        }
+
+        /// The one call that matters. `auto_start` is the whole request: `true`
+        /// asks for the entry, `false` withdraws it.
+        ///
+        /// The portal may put a dialog in front of the user the first time, and
+        /// its answer is authoritative — a request that comes back with
+        /// `auto_start` false was refused, and reporting success there would
+        /// leave the switch on over nothing, which is the bug this module was
+        /// written to stop.
+        async fn request(auto_start: bool) -> Result<()> {
+            let response = ashpd::desktop::background::Background::request()
+                .auto_start(auto_start)
+                .command([COMMAND])
+                .reason("Keep syncing your saves after you close the window")
+                .send()
+                .await
+                .context("asking xdg-desktop-portal for background access")?
+                .response()
+                .context("reading the portal's answer")?;
+            if response.auto_start() != auto_start {
+                anyhow::bail!(
+                    "xdg-desktop-portal refused to {} starting Hoard's sync service at login",
+                    if auto_start { "enable" } else { "disable" }
+                );
+            }
+            tracing::info!(
+                auto_start,
+                background = response.run_in_background(),
+                "autostart: the portal answered"
+            );
+            Ok(())
+        }
     }
 }
 
