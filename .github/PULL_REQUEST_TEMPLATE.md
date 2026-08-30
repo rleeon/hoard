@@ -10,16 +10,9 @@ Closes #
 
 ## Checklist
 
-- [ ] I ran `cargo fmt --all`, `cargo clippy --workspace -- -D warnings`,
-      and `cargo test --workspace`.
-- [ ] My commits carry no AI-tool co-author trailers (`Co-authored-by:
-      Cursor`, `Copilot`, …). Credit stays with the humans who wrote
-      the patch.
-- [ ] If I added/changed a `query!` or `query_as!`, I regenerated and
-      committed `.sqlx/`.
-- [ ] If I added a new SQL migration, I did **not** modify any existing
-      released migration.
-- [ ] I updated `CHANGELOG.md` under `[Unreleased]` if this is
-      user-visible.
-- [ ] I updated docs (`docs/`, `README.md`) if this changes user-facing
-      behavior.
+- [ ] I ran `cargo fmt --all`, `cargo clippy --workspace -- -D warnings`, and `cargo test --workspace`.
+- [ ] My commits carry no AI-tool co-author trailers (`Co-authored-by: Cursor`, `Copilot`, …). Credit stays with the humans who wrote the patch.
+- [ ] If I added/changed a `query!` or `query_as!`, I regenerated and committed `.sqlx/`.
+- [ ] If I added a new SQL migration, I did **not** modify any existing released migration.
+- [ ] I updated `CHANGELOG.md` under `[Unreleased]` if this is user-visible.
+- [ ] I updated docs (`docs/`, `README.md`) if this changes user-facing behavior.
