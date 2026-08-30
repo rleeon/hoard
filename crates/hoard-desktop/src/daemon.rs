@@ -56,8 +56,7 @@ use hoard_agent::state::CliState;
 use hoard_agent::supervisor::{self, Finished};
 use hoard_core::ipc::{
     AdoptedSession, AgentSlotStatus, CloudToken, DaemonStatus, EngineDownReason, IpcError,
-    KeyringFault, Payload,
-    Request, ServerSession, UpdateState,
+    KeyringFault, Payload, Request, ServerSession, UpdateState,
 };
 use hoardd::client::{Client, Push};
 use hoardd::endpoint::Endpoint;

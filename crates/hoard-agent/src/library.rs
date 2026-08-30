@@ -640,14 +640,14 @@ fn folder_key(p: &Path) -> String {
 /// keep. `save_id` breaks the remaining ties so a `HashMap`'s order cannot make
 /// this pick a different winner on every pass.
 fn rows_one_per_folder(cli_state: &CliState) -> Vec<(&String, &SaveState)> {
-    let mut rows: Vec<(&String, &SaveState)> = cli_state
-        .saves
-        .iter()
-        .filter(|(_, s)| !s.paused)
-        .collect();
+    let mut rows: Vec<(&String, &SaveState)> =
+        cli_state.saves.iter().filter(|(_, s)| !s.paused).collect();
     rows.sort_by(|(a_id, a), (b_id, b)| {
-        (a.set_hash.is_none(), a.last_version_num.is_none(), *a_id)
-            .cmp(&(b.set_hash.is_none(), b.last_version_num.is_none(), *b_id))
+        (a.set_hash.is_none(), a.last_version_num.is_none(), *a_id).cmp(&(
+            b.set_hash.is_none(),
+            b.last_version_num.is_none(),
+            *b_id,
+        ))
     });
 
     let mut seen: HashSet<(String, String, String)> = HashSet::new();
@@ -2389,10 +2389,10 @@ pub fn set_local_path(save_id: &str, new_path: &str) -> Result<LiveReseat> {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_excluded_paths, auto_track_decision, conflicting_save, detected_paths_in,
-        folder_key, local_detection, manual_override_conflict, occupied_slot,
-        prune_poisoned_rows, reconcile_plan, resolve_processes, row_for_same_folder,
-        rows_one_per_folder, rows_unknown_to_server, spread_allow_device_local, superseded_rows,
+        apply_excluded_paths, auto_track_decision, conflicting_save, detected_paths_in, folder_key,
+        local_detection, manual_override_conflict, occupied_slot, prune_poisoned_rows,
+        reconcile_plan, resolve_processes, row_for_same_folder, rows_one_per_folder,
+        rows_unknown_to_server, spread_allow_device_local, superseded_rows,
         watched_saves_from_state, AutoTrack, CachedDetection, ServerRow, ERR_SLOT_OCCUPIED,
     };
     use crate::detection::{
@@ -2418,7 +2418,6 @@ mod tests {
         }
     }
 
-
     // ---- one folder, one watcher --------------------------------------
 
     /// The bug this exists for (ago-2026, Jurassic World Evolution 3): the same
@@ -2431,9 +2430,10 @@ mod tests {
     fn one_folder_gets_one_row_even_under_two_save_ids() {
         let mut state = CliState::default();
         let path = "/home/u/Saved Games/Jurassic World Evolution 3/76561197960287930/Saves";
-        state
-            .saves
-            .insert("34fb6027".into(), save_state("jurassic-world-evolution-3", path));
+        state.saves.insert(
+            "34fb6027".into(),
+            save_state("jurassic-world-evolution-3", path),
+        );
         let mut local = save_state("jurassic-world-evolution-3", path);
         local.set_hash = Some("abc:def".into());
         local.last_version_num = Some(1);
@@ -2456,9 +2456,10 @@ mod tests {
         let mut a = save_state("factorio", "/home/u/Desktop/saves");
         a.label = "2".into();
         state.saves.insert("row-a".into(), a);
-        state
-            .saves
-            .insert("row-b".into(), save_state("factorio", "/home/u/.factorio/saves"));
+        state.saves.insert(
+            "row-b".into(),
+            save_state("factorio", "/home/u/.factorio/saves"),
+        );
 
         assert_eq!(rows_one_per_folder(&state).len(), 2);
     }
@@ -2469,12 +2470,14 @@ mod tests {
     #[test]
     fn two_games_sharing_a_folder_keep_both_rows() {
         let mut state = CliState::default();
-        state
-            .saves
-            .insert("row-a".into(), save_state("game-one", "/home/u/shared/saves"));
-        state
-            .saves
-            .insert("row-b".into(), save_state("game-two", "/home/u/shared/saves"));
+        state.saves.insert(
+            "row-a".into(),
+            save_state("game-one", "/home/u/shared/saves"),
+        );
+        state.saves.insert(
+            "row-b".into(),
+            save_state("game-two", "/home/u/shared/saves"),
+        );
 
         assert_eq!(rows_one_per_folder(&state).len(), 2);
     }
@@ -2545,12 +2548,14 @@ mod tests {
     #[test]
     fn an_archived_save_is_not_watched() {
         let mut state = CliState::default();
-        state
-            .saves
-            .insert("frozen".into(), save_state("fallout-4", "/home/u/fallout4/Saves"));
-        state
-            .saves
-            .insert("live".into(), save_state("stellaris", "/home/u/stellaris/save games"));
+        state.saves.insert(
+            "frozen".into(),
+            save_state("fallout-4", "/home/u/fallout4/Saves"),
+        );
+        state.saves.insert(
+            "live".into(),
+            save_state("stellaris", "/home/u/stellaris/save games"),
+        );
 
         let archived = std::collections::HashSet::from(["frozen".to_string()]);
         let watched = watched_saves_from_state(&state, &archived);
@@ -2567,9 +2572,10 @@ mod tests {
     #[test]
     fn an_unanswered_archive_query_watches_everything() {
         let mut state = CliState::default();
-        state
-            .saves
-            .insert("a".into(), save_state("fallout-4", "/home/u/fallout4/Saves"));
+        state.saves.insert(
+            "a".into(),
+            save_state("fallout-4", "/home/u/fallout4/Saves"),
+        );
 
         let watched = watched_saves_from_state(&state, &std::collections::HashSet::new());
         assert!(watched.iter().any(|w| w.save_id == "a"));

@@ -2110,7 +2110,11 @@ mod tests {
         std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o000)).unwrap();
 
         let files = walk_source(root, &[]).unwrap();
-        assert_eq!(files.len(), 2, "el walk sí ve el fichero: puede hacerle stat");
+        assert_eq!(
+            files.len(),
+            2,
+            "el walk sí ve el fichero: puede hacerle stat"
+        );
         let sig = compute_content_signature(&files).await;
         // Y es estable mientras siga ilegible: si no lo fuera, cada pasada
         // vería un cambio y volveríamos al bucle de subidas.
@@ -2161,7 +2165,9 @@ mod tests {
         std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o644)).unwrap();
 
         assert_eq!(
-            ok.iter().map(|f| f.relative_path.as_str()).collect::<Vec<_>>(),
+            ok.iter()
+                .map(|f| f.relative_path.as_str())
+                .collect::<Vec<_>>(),
             ["a.sav", "c.sav"],
             "el orden por ruta se conserva: el digest del manifiesto depende de él"
         );

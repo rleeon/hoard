@@ -434,11 +434,8 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
     //
     // The order — limit first, **then** merge the exempt route — is the whole
     // fix, and it lives inside `apply`, with a test that catches an inversion.
-    let app = hoard_server::ratelimit::apply(
-        &cfg.server.rate_limit,
-        app,
-        blob_upload.with_state(state),
-    );
+    let app =
+        hoard_server::ratelimit::apply(&cfg.server.rate_limit, app, blob_upload.with_state(state));
 
     let addr: SocketAddr = format!("{}:{}", cfg.server.host, cfg.server.port).parse()?;
     info!(%addr, "listening");

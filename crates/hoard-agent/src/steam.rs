@@ -793,7 +793,10 @@ mod tests {
         assert!(device_is_gone(&gone));
 
         assert!(!device_is_gone(&Error::from_raw_os_error(13))); // EACCES / access denied
-        assert!(!device_is_gone(&Error::new(ErrorKind::NotFound, "gone mid-scan")));
+        assert!(!device_is_gone(&Error::new(
+            ErrorKind::NotFound,
+            "gone mid-scan"
+        )));
         // No OS code at all (a synthesised error) is never a dead device.
         assert!(!device_is_gone(&Error::other("made up")));
     }
@@ -818,7 +821,10 @@ mod tests {
         assert_eq!(scan.apps.len(), 1, "the good manifest still parses");
         assert_eq!(scan.apps[0].app_id, 220);
         assert_eq!(scan.unreadable, 1);
-        assert!(scan.first_error.is_some(), "the caller needs something to show");
+        assert!(
+            scan.first_error.is_some(),
+            "the caller needs something to show"
+        );
         assert!(!scan.device_gone, "a bad file is not a missing drive");
     }
 
@@ -1061,7 +1067,11 @@ mod tests {
             assert_eq!(libs[0], real, "the real directory is the one kept");
 
             let users = steam_user_dirs(&libs).expect("userdata is readable");
-            assert_eq!(users.len(), 1, "one account, not one per spelling: {users:?}");
+            assert_eq!(
+                users.len(),
+                1,
+                "one account, not one per spelling: {users:?}"
+            );
             assert_eq!(users[0], user);
         });
     }

@@ -596,7 +596,11 @@ fn a_game_with_no_save_folder_says_so() {
 
         // And the games that DID resolve are not tarred with it.
         for g in report.games.iter().filter(|g| !g.found_paths.is_empty()) {
-            assert!(!g.needs_folder, "{} has paths and still asks for one", g.slug);
+            assert!(
+                !g.needs_folder,
+                "{} has paths and still asks for one",
+                g.slug
+            );
         }
     });
 }

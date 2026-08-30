@@ -379,7 +379,7 @@ where
                 steam_app_id: Some(app.app_id),
                 install_dir: Some(app.install_dir.clone()),
                 needs_folder: false,
-            steam_cloud: false,
+                steam_cloud: false,
             },
         );
     }
@@ -997,7 +997,7 @@ where
                             steam_app_id: None,
                             install_dir: None,
                             needs_folder: false,
-            steam_cloud: false,
+                            steam_cloud: false,
                         },
                     );
                     new_games += 1;
@@ -1103,7 +1103,12 @@ where
             suggested = %w.suggested_path.display(),
             "tracked folder looks like the game's own backup mirror; suggest re-pointing"
         );
-        crate::telemetry::tracked_mirror(&w.game_slug, &w.save_id, &w.tracked_path, &w.suggested_path);
+        crate::telemetry::tracked_mirror(
+            &w.game_slug,
+            &w.save_id,
+            &w.tracked_path,
+            &w.suggested_path,
+        );
     }
 
     stats.duration_ms = wall.elapsed().as_millis() as u64;
@@ -1290,7 +1295,7 @@ fn apply_steam_name_fallback(
                 steam_app_id: Some(app.app_id),
                 install_dir: Some(app.install_dir.clone()),
                 needs_folder: false,
-            steam_cloud: false,
+                steam_cloud: false,
             },
         );
         if via_fuzzy {
@@ -1396,7 +1401,7 @@ fn apply_launcher_name_fallback(
                         steam_app_id: None,
                         install_dir: Some(app.install_dir.clone()),
                         needs_folder: false,
-            steam_cloud: false,
+                        steam_cloud: false,
                     },
                 );
             }
@@ -1546,7 +1551,7 @@ fn merge_fs_hit(
                     steam_app_id: None,
                     install_dir: None,
                     needs_folder: false,
-            steam_cloud: false,
+                    steam_cloud: false,
                 },
             );
         }
@@ -1732,11 +1737,7 @@ fn refine_save_dir(slug: &str, hits: Vec<PathBuf>) -> Vec<PathBuf> {
     // folder that merely sits next to a save would be condemned by its name.
     let mirrors: Vec<bool> = refined
         .iter()
-        .map(|c| {
-            refined
-                .iter()
-                .any(|o| o != c && is_backup_mirror(c, o))
-        })
+        .map(|c| refined.iter().any(|o| o != c && is_backup_mirror(c, o)))
         .collect();
     let mut kept: Vec<PathBuf> = Vec::with_capacity(refined.len());
     for (cand, is_mirror) in refined.into_iter().zip(mirrors) {
@@ -1841,7 +1842,7 @@ fn apply_manual_overrides(
                     steam_app_id: entry.steam_app_id,
                     install_dir: None,
                     needs_folder: false,
-            steam_cloud: false,
+                    steam_cloud: false,
                 },
             );
             applied += 1;
@@ -2315,7 +2316,9 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
     if let Some(appid) = entry.steam_app_id {
         let mut step = TraceStep {
             kind: "steam_cloud".into(),
-            template: Some(format!("userdata/<user>/{appid}/remote (or the appid dir itself)")),
+            template: Some(format!(
+                "userdata/<user>/{appid}/remote (or the appid dir itself)"
+            )),
             expanded: Vec::new(),
             kept: Vec::new(),
             dropped: Vec::new(),
@@ -2331,7 +2334,8 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
         let shields = crate::savefilter::shields_for_slug(slug);
         for ud in &user_dirs {
             let app_dir = ud.join(appid.to_string());
-            step.expanded.push(app_dir.join("remote").display().to_string());
+            step.expanded
+                .push(app_dir.join("remote").display().to_string());
             match steam_cloud_dir_for(ud, appid, &shields) {
                 Some(dir) => {
                     step.kept.push(dir.display().to_string());
@@ -4172,7 +4176,12 @@ fn grade_path_reasoned(path: &Path, store: &CorrelationStore) -> (Confidence, St
 ///
 /// `false` means "unknown" — the budget ran out — and callers must treat that
 /// as NO answer: an incomplete listing must never decide a demotion.
-fn collect_file_basenames(dir: &Path, depth: usize, budget: &mut usize, out: &mut HashSet<String>) -> bool {
+fn collect_file_basenames(
+    dir: &Path,
+    depth: usize,
+    budget: &mut usize,
+    out: &mut HashSet<String>,
+) -> bool {
     if depth == 0 || *budget == 0 {
         return false;
     }
@@ -4247,10 +4256,7 @@ pub(crate) fn is_backup_mirror(copy: &Path, original: &Path) -> bool {
         if a.parent() == Some(copy_parent) {
             if let Some(an) = a.file_name().and_then(|s| s.to_str()) {
                 let an = normalize_dir_name(an);
-                if !an.is_empty()
-                    && copy_norm.len() > an.len()
-                    && copy_norm.starts_with(&an)
-                {
+                if !an.is_empty() && copy_norm.len() > an.len() && copy_norm.starts_with(&an) {
                     name_related = true;
                     break;
                 }
@@ -4290,14 +4296,8 @@ pub(crate) fn is_backup_mirror(copy: &Path, original: &Path) -> bool {
 /// full structural twin (name relation + content superset) or, weaker, just
 /// the suffix relation — the reason string says which one fired so the UI and
 /// support can weigh it. Purely read-only: repointing stays a user act.
-fn detect_tracked_mirrors(
-    state: &CliState,
-    games: &[DetectedGame],
-) -> Vec<MirrorWarning> {
-    let mut candidates: Vec<&PathBuf> = games
-        .iter()
-        .flat_map(|g| g.found_paths.iter())
-        .collect();
+fn detect_tracked_mirrors(state: &CliState, games: &[DetectedGame]) -> Vec<MirrorWarning> {
+    let mut candidates: Vec<&PathBuf> = games.iter().flat_map(|g| g.found_paths.iter()).collect();
     candidates.sort();
     candidates.dedup();
 
@@ -4431,12 +4431,7 @@ fn grade_and_rank_paths(
             })
             .collect();
         let mut order: Vec<usize> = (0..graded.len()).collect();
-        order.sort_by_key(|&i| {
-            (
-                mirrors[i],
-                std::cmp::Reverse(confidence_rank(graded[i].1)),
-            )
-        });
+        order.sort_by_key(|&i| (mirrors[i], std::cmp::Reverse(confidence_rank(graded[i].1))));
         let ranked: Vec<_> = order.iter().map(|&i| graded[i].clone()).collect();
 
         // An empty folder never decides the game's grade — see
@@ -4619,7 +4614,7 @@ mod tests {
                 steam_app_id: Some(42),
                 install_dir: Some(PathBuf::from("/steam/x")),
                 needs_folder: false,
-            steam_cloud: false,
+                steam_cloud: false,
             },
         );
 
@@ -5045,7 +5040,7 @@ mod tests {
                 steam_app_id: Some(999),
                 install_dir: Some(PathBuf::from("/steam/Test Game")),
                 needs_folder: false,
-            steam_cloud: false,
+                steam_cloud: false,
             },
         );
 
@@ -5138,13 +5133,8 @@ mod tests {
             let empty = NamedDirs::default();
             assert!(discover_by_name(&empty, "Aven Colony", &[], &[]).is_empty());
 
-            let found = discover_by_install_dir_name(
-                Os::Linux,
-                "aven-colony",
-                Some(&install),
-                None,
-                &[],
-            );
+            let found =
+                discover_by_install_dir_name(Os::Linux, "aven-colony", Some(&install), None, &[]);
             let paths: Vec<&PathBuf> = found.iter().map(|d| &d.path).collect();
             assert_eq!(paths, vec![&saves], "refined down to the save subdir");
             assert_eq!(found[0].confidence, Confidence::High);
@@ -5162,13 +5152,8 @@ mod tests {
             std::fs::write(dir.join("colony1.sav"), "x").unwrap();
 
             let install = PathBuf::from("/lib/steamapps/common/prj_juniper");
-            let found = discover_by_install_dir_name(
-                Os::Linux,
-                "aven-colony",
-                Some(&install),
-                None,
-                &[],
-            );
+            let found =
+                discover_by_install_dir_name(Os::Linux, "aven-colony", Some(&install), None, &[]);
             assert_eq!(found.len(), 1, "{found:?}");
             assert_eq!(found[0].path, dir);
         });
@@ -5296,7 +5281,7 @@ mod tests {
                 steam_app_id: None,
                 install_dir: None,
                 needs_folder: false,
-            steam_cloud: false,
+                steam_cloud: false,
             },
         );
 
@@ -5333,7 +5318,7 @@ mod tests {
                 steam_app_id: None,
                 install_dir: None,
                 needs_folder: false,
-            steam_cloud: false,
+                steam_cloud: false,
             },
         );
 
@@ -5343,7 +5328,11 @@ mod tests {
         assert_eq!(g.found_paths.len(), 2, "the empty one is kept, not hidden");
         assert_eq!(g.found_paths[0], full, "the one with saves leads");
         assert_eq!(g.path_confidences[1], Confidence::Low);
-        assert!(g.path_reasons[1].starts_with("empty:"), "{:?}", g.path_reasons);
+        assert!(
+            g.path_reasons[1].starts_with("empty:"),
+            "{:?}",
+            g.path_reasons
+        );
     }
 
     /// A game whose every candidate was a settings folder keeps its row and
@@ -5370,7 +5359,7 @@ mod tests {
                 steam_app_id: Some(42),
                 install_dir: None,
                 needs_folder: false,
-            steam_cloud: false,
+                steam_cloud: false,
             },
         );
 
@@ -5404,7 +5393,7 @@ mod tests {
                 steam_app_id: None,
                 install_dir: None,
                 needs_folder: false,
-            steam_cloud: false,
+                steam_cloud: false,
             },
         );
 
@@ -5484,7 +5473,7 @@ mod tests {
                 steam_app_id: Some(281990),
                 install_dir: Some(PathBuf::from("/steam/stellaris")),
                 needs_folder: false,
-            steam_cloud: false,
+                steam_cloud: false,
             },
         );
         let mut overrides = HashMap::new();
@@ -5530,13 +5519,13 @@ mod tests {
                 display_name: "Factorio".into(),
                 found_paths: vec![real.clone()],
                 path_confidences: vec![Confidence::High],
-                    path_reasons: vec![String::new()],
+                path_reasons: vec![String::new()],
                 confidence: Confidence::High,
                 source: DetectionSource::FilesystemHeuristic,
                 steam_app_id: None,
                 install_dir: None,
                 needs_folder: false,
-            steam_cloud: false,
+                steam_cloud: false,
             },
         );
         let overrides = HashMap::from([("factorio".to_string(), picked.clone())]);
@@ -5566,7 +5555,7 @@ mod tests {
                 steam_app_id: None,
                 install_dir: None,
                 needs_folder: false,
-            steam_cloud: false,
+                steam_cloud: false,
             },
         );
         let overrides = HashMap::from([("stellaris".to_string(), b.clone())]);
@@ -6949,10 +6938,7 @@ mod tests {
         );
         // Exactly as the pipeline delivers them: the `*.sav` template yields
         // the FILE, and `SaveGamesBackup` the whole directory.
-        let hits = vec![
-            real_dir.join("slot.sav"),
-            mirror.clone(),
-        ];
+        let hits = vec![real_dir.join("slot.sav"), mirror.clone()];
         let refined = refine_save_dir("black-myth-wukong", hits);
         assert_eq!(
             refined,
@@ -7012,9 +6998,7 @@ mod tests {
     fn a_tracked_mirror_warns_with_the_right_sibling() {
         let tmp = tempfile::tempdir().unwrap();
         let real = tmp.path().join("Saved").join("SaveGames").join("uid1");
-        let mirror = tmp.path()
-            .join("Saved")
-            .join("SaveGamesBackup");
+        let mirror = tmp.path().join("Saved").join("SaveGamesBackup");
         write_saves(&real, &["slot.sav", "profile.sav", "meta.sav"]);
         write_saves(
             &mirror.join("03DailyBackup").join("2026-08-20"),

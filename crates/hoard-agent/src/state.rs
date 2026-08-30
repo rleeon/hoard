@@ -991,7 +991,8 @@ mod tests {
         std::fs::create_dir_all(ctx.parent().unwrap()).unwrap();
         std::fs::write(&ctx, b"").unwrap();
 
-        let state = CliState::load_split(&device, &ctx).expect("load must not fail on a 0-byte file");
+        let state =
+            CliState::load_split(&device, &ctx).expect("load must not fail on a 0-byte file");
 
         assert!(state.saves.is_empty());
         let backups: Vec<_> = std::fs::read_dir(ctx.parent().unwrap())
@@ -999,7 +1000,11 @@ mod tests {
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .filter(|n| n.contains(".corrupt-"))
             .collect();
-        assert_eq!(backups.len(), 1, "the corrupt file must be moved aside, not deleted");
+        assert_eq!(
+            backups.len(),
+            1,
+            "the corrupt file must be moved aside, not deleted"
+        );
         assert!(!ctx.exists(), "the corrupt file must not be left in place");
     }
 
@@ -1047,6 +1052,9 @@ mod tests {
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .filter(|n| n.contains(".tmp-"))
             .collect();
-        assert!(leftovers.is_empty(), "temp files left behind: {leftovers:?}");
+        assert!(
+            leftovers.is_empty(),
+            "temp files left behind: {leftovers:?}"
+        );
     }
 }

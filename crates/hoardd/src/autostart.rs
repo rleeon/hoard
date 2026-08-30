@@ -942,7 +942,11 @@ mod platform {
     fn open_run_key(write: bool) -> Result<winreg::RegKey> {
         use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
         let hkcu = winreg::RegKey::predef(HKEY_CURRENT_USER);
-        let access = if write { KEY_READ | KEY_WRITE } else { KEY_READ };
+        let access = if write {
+            KEY_READ | KEY_WRITE
+        } else {
+            KEY_READ
+        };
         // `create_subkey_with_flags` opens a key that already exists; `Run` is
         // in every profile, but one just created by an unattended installer may
         // not have it yet.
@@ -1421,7 +1425,11 @@ mod tests {
         std::fs::write(&bundled, b"#!/bin/sh\nexit 0\n").unwrap();
 
         let staged = temp_env(&data, || platform::stage_stable_daemon(&bundled)).expect("staged");
-        assert!(staged.is_file(), "the copy has to exist: {}", staged.display());
+        assert!(
+            staged.is_file(),
+            "the copy has to exist: {}",
+            staged.display()
+        );
         assert!(
             !platform::is_inside_appimage(&staged),
             "a copy still inside the mount would vanish with the app: {}",
@@ -1431,7 +1439,11 @@ mod tests {
         // only trace is a line in a journal nobody is reading.
         use std::os::unix::fs::PermissionsExt;
         let mode = std::fs::metadata(&staged).unwrap().permissions().mode();
-        assert_eq!(mode & 0o111, 0o111, "staged copy isn't executable: {mode:o}");
+        assert_eq!(
+            mode & 0o111,
+            0o111,
+            "staged copy isn't executable: {mode:o}"
+        );
     }
 
     /// The re-stage path is the one that breaks silently: the destination can be

@@ -657,12 +657,10 @@ mod backup_suffix_tests {
         let lone_mirror = score_dir(lonely.path(), "savegamesxbackup");
         let lone_plain = score_dir(lonely.path(), "savegamesx");
         assert_eq!(lone_mirror.score, lone_plain.score);
-        assert!(
-            !lone_mirror
-                .reasons
-                .iter()
-                .any(|r| r.contains("backup-suffix"))
-        );
+        assert!(!lone_mirror
+            .reasons
+            .iter()
+            .any(|r| r.contains("backup-suffix")));
     }
 
     #[test]

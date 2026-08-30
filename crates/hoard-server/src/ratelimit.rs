@@ -145,7 +145,10 @@ mod tests {
         // Drain the bucket first, so the exemption is the only thing that can
         // explain the PUTs getting through.
         let _ = hit(&app, "GET", "/v1/saves").await;
-        assert_eq!(hit(&app, "GET", "/v1/saves").await, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            hit(&app, "GET", "/v1/saves").await,
+            StatusCode::TOO_MANY_REQUESTS
+        );
 
         for i in 0..200 {
             assert_eq!(

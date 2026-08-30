@@ -305,7 +305,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let app = tmp.path().join("281990");
         touch(&app.join("achievements.json"));
-        assert!(dir_non_empty(&app), "not empty — which is why it used to pass");
+        assert!(
+            dir_non_empty(&app),
+            "not empty — which is why it used to pass"
+        );
         assert!(
             !holds_anything_but_bookkeeping(&app),
             "emulator bookkeeping only: not a save"

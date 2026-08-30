@@ -168,7 +168,12 @@ pub async fn apply(
             ..out
         };
         print_preview(&shown, false);
-        println!("restoring v{} of {} to {}", version, save_id, dest.display());
+        println!(
+            "restoring v{} of {} to {}",
+            version,
+            save_id,
+            dest.display()
+        );
     }
 
     let pb = Arc::new(Mutex::new(ProgressBar::new_spinner()));

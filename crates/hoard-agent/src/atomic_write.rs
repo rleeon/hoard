@@ -56,8 +56,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
 
     if let Err(e) = std::fs::rename(&tmp, path) {
         let _ = std::fs::remove_file(&tmp);
-        return Err(e)
-            .with_context(|| format!("renaming {} -> {}", tmp.display(), path.display()));
+        return Err(e).with_context(|| format!("renaming {} -> {}", tmp.display(), path.display()));
     }
 
     // Best-effort: fsync the directory so the rename itself survives a power

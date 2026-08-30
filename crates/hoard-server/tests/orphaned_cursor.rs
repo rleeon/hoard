@@ -126,9 +126,7 @@ async fn a_deleted_save_does_not_diverge_from_its_own_replacement() {
     assert_eq!(row.1, 0, "a freshly minted row starts at head 0");
 
     assert!(
-        save_has_no_history(&mut conn, &row.0, row.1)
-            .await
-            .unwrap(),
+        save_has_no_history(&mut conn, &row.0, row.1).await.unwrap(),
         "a base of 398 against an empty row is a dead cursor, not a divergence"
     );
 
@@ -268,13 +266,25 @@ async fn a_manifest_holding_the_whole_head_may_fast_forward() {
     .await
     .unwrap();
     drop(conn);
-    seed_version(&pool, &row.0, 2, &[("save.dat", "aaa"), ("meta.json", "bbb")]).await;
+    seed_version(
+        &pool,
+        &row.0,
+        2,
+        &[("save.dat", "aaa"), ("meta.json", "bbb")],
+    )
+    .await;
     let mut conn = pool.acquire().await.unwrap();
 
     // The same two files, plus one the head never had.
-    let push = vec![f("save.dat", "aaa"), f("meta.json", "bbb"), f("new.dat", "ccc")];
+    let push = vec![
+        f("save.dat", "aaa"),
+        f("meta.json", "bbb"),
+        f("new.dat", "ccc"),
+    ];
     assert!(
-        manifest_covers_head(&mut conn, &row.0, 2, &push).await.unwrap(),
+        manifest_covers_head(&mut conn, &row.0, 2, &push)
+            .await
+            .unwrap(),
         "a push that carries the head whole buries nothing"
     );
 

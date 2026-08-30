@@ -977,7 +977,9 @@ mod tests {
         for id in ["flycast", "project64"] {
             let def = find(id).unwrap();
             assert!(
-                def.save_templates.iter().any(|t| app_dir_and_tail(t).is_some()),
+                def.save_templates
+                    .iter()
+                    .any(|t| app_dir_and_tail(t).is_some()),
                 "{id} lost the template that feeds portable detection"
             );
         }

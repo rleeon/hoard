@@ -963,7 +963,10 @@ mod tests {
         ] {
             let engine = down_with(reason, true);
             engine.wake_if_a_session_would_help();
-            assert!(restart_asked(&engine), "{reason:?} lo desbloquea una sesión");
+            assert!(
+                restart_asked(&engine),
+                "{reason:?} lo desbloquea una sesión"
+            );
         }
     }
 
@@ -975,7 +978,10 @@ mod tests {
         for reason in [EngineDownReason::Other, EngineDownReason::Unknown] {
             let engine = down_with(reason, true);
             engine.wake_if_a_session_would_help();
-            assert!(!restart_asked(&engine), "{reason:?} no lo arregla una sesión");
+            assert!(
+                !restart_asked(&engine),
+                "{reason:?} no lo arregla una sesión"
+            );
         }
     }
 

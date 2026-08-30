@@ -236,7 +236,11 @@ pub async fn run(
                         Confidence::Medium => "medium",
                         Confidence::Low => "low",
                     },
-                    paths: g.found_paths.iter().map(|p| p.display().to_string()).collect(),
+                    paths: g
+                        .found_paths
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect(),
                     needs_folder: g.needs_folder,
                     tracked: is_tracked(g),
                 })
@@ -309,6 +313,9 @@ mod tests {
         assert!(should_list_games(false, true), "--json alone");
         assert!(should_list_games(true, true));
         assert!(should_list_games(true, false), "--verbose alone");
-        assert!(!should_list_games(false, false), "plain scan stays a summary");
+        assert!(
+            !should_list_games(false, false),
+            "plain scan stays a summary"
+        );
     }
 }

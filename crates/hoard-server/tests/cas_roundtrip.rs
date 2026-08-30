@@ -430,7 +430,10 @@ async fn a_diverged_base_passes_when_the_manifest_carries_the_whole_head() {
     .await
     .expect("el manifiesto contiene la cabeza entera")
     .0;
-    assert_eq!(out.version_num, 2, "descendemos de la cabeza real, no de la base");
+    assert_eq!(
+        out.version_num, 2,
+        "descendemos de la cabeza real, no de la base"
+    );
 
     // Y quitando el fichero de la cabeza vuelve a ser el entierro de siempre.
     let err = cas::init(

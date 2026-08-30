@@ -293,10 +293,9 @@ async fn poll_loop(
     // a loop that could only panic again. `checked_sub` answers `None` there
     // instead, which [`feed_refresh_is_due`] reads as "never refreshed" — the
     // same first-tick prime the backdating was for, by a route that can't die.
-    let mut last_feed = tokio::time::Instant::now()
-        .checked_sub(Duration::from_secs(
-            crate::commands::cloud_feed::FALLBACK_MIN_SECS,
-        ));
+    let mut last_feed = tokio::time::Instant::now().checked_sub(Duration::from_secs(
+        crate::commands::cloud_feed::FALLBACK_MIN_SECS,
+    ));
     loop {
         ticker.tick().await;
         guarded_pull(app, seen, gate, "timer").await;
@@ -313,9 +312,8 @@ async fn poll_loop(
 /// tick after a start and the cold-start case where [`poll_loop`] couldn't
 /// backdate its clock at all. Both want the refresh to fire.
 fn feed_refresh_is_due(last_feed: Option<tokio::time::Instant>) -> bool {
-    last_feed.is_none_or(|t| {
-        t.elapsed().as_secs() >= crate::commands::cloud_feed::FALLBACK_MIN_SECS
-    })
+    last_feed
+        .is_none_or(|t| t.elapsed().as_secs() >= crate::commands::cloud_feed::FALLBACK_MIN_SECS)
 }
 
 /// Fire a single manifest pull immediately, off the regular cadence.

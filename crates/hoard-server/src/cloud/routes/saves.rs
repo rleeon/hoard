@@ -1615,8 +1615,7 @@ pub async fn list_versions(
                     deleted_at: deleted,
                     // Stored state, so a value this binary can't read is a row
                     // without a label, never a failed listing.
-                    insight: insight
-                        .and_then(|v| serde_json::from_value(v).ok()),
+                    insight: insight.and_then(|v| serde_json::from_value(v).ok()),
                 }
             },
         )
@@ -1943,11 +1942,10 @@ pub async fn save_has_no_history(
     // `latest_version_num` is the fast answer, but it is bookkeeping; the
     // versions are the fact. Only reached on a mismatch against head 0, so this
     // costs nothing on the hot path.
-    let existing: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM save_versions WHERE save_id = $1")
-            .bind(save_id)
-            .fetch_one(&mut *conn)
-            .await?;
+    let existing: i64 = sqlx::query_scalar("SELECT count(*) FROM save_versions WHERE save_id = $1")
+        .bind(save_id)
+        .fetch_one(&mut *conn)
+        .await?;
     Ok(existing == 0)
 }
 
@@ -2006,8 +2004,6 @@ pub async fn manifest_covers_head(
         .all(|(path, sha)| incoming.contains(&(path.as_str(), sha.as_str())));
     Ok(covers_all && incoming.len() > head_files.len())
 }
-
-
 
 /// `UNIQUE(user_id, game_slug, label)` -> 409 on collision. R2 keys are keyed
 /// by `save_id` + version (not by label), so no blob rename is needed ??? just
@@ -2304,4 +2300,3 @@ async fn plan_for_user(state: &CloudState, user_id: Uuid) -> Result<Option<Plan>
         .await?;
     Ok(row.map(|r| Plan::from_str(&r.0).unwrap_or(Plan::Free)))
 }
-

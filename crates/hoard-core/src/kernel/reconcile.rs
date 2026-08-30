@@ -1448,7 +1448,10 @@ mod tests {
             ..quiet_obs()
         };
         let (given_up, ds) = reconcile(&state, &obs, world(clock));
-        assert_eq!(given_up.backup_conflict.consecutive, CONFLICT_STALL_GIVE_UP_AFTER);
+        assert_eq!(
+            given_up.backup_conflict.consecutive,
+            CONFLICT_STALL_GIVE_UP_AFTER
+        );
         assert!(
             given_up.backup_conflict.needs_attention,
             "al quinto, el save pide una persona"
@@ -1513,8 +1516,14 @@ mod tests {
             attempts, CONFLICT_STALL_GIVE_UP_AFTER,
             "el 409 sin salida sólo puede costar el presupuesto, no catorce días de intentos"
         );
-        assert!(state.backup_conflict.needs_attention, "y acaba pidiendo una persona");
-        assert!(state.has_pending, "sin perder los cambios locales por el camino");
+        assert!(
+            state.backup_conflict.needs_attention,
+            "y acaba pidiendo una persona"
+        );
+        assert!(
+            state.has_pending,
+            "sin perder los cambios locales por el camino"
+        );
     }
 
     /// Rendirse no puede ser una condena: si la nube publica otra cabeza, la

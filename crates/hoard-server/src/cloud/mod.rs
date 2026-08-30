@@ -17,8 +17,8 @@
 //! - `run` — top-level `cloud::run(cfg)` invoked by `main` when
 //!   `database.backend = "postgres"`.
 
-pub mod abuse;
 pub mod abandoned;
+pub mod abuse;
 pub mod account_purge;
 pub mod archive;
 pub mod auth;

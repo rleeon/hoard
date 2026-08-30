@@ -615,7 +615,10 @@ mod tests {
 
     #[test]
     fn a_folder_with_no_player_data_has_no_protagonist() {
-        let files = vec![f("settings.ini", 400, 1, true), f("Player.log", 40, 2, true)];
+        let files = vec![
+            f("settings.ini", 400, 1, true),
+            f("Player.log", 40, 2, true),
+        ];
         assert!(pick_protagonist(&files, &[]).is_none());
     }
 

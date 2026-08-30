@@ -308,7 +308,9 @@ fn is_manual(state: &CliState, s: &SaveState) -> bool {
 fn is_empty_dir(p: &Path) -> bool {
     // Unreadable is not empty: saying "nothing to back up" about a folder we
     // failed to open would send the user to untrack a save that is fine.
-    std::fs::read_dir(p).map(|mut d| d.next().is_none()).unwrap_or(false)
+    std::fs::read_dir(p)
+        .map(|mut d| d.next().is_none())
+        .unwrap_or(false)
 }
 
 fn paths_equal(a: &Path, b: &Path) -> bool {
@@ -509,7 +511,10 @@ mod tests {
             .filter(|f| f.code == FindingCode::AlternatePathKnown)
             .collect();
         assert_eq!(f.len(), 1, "the mistrack shape must still be caught");
-        assert_eq!(f[0].suggested_path.as_deref(), Some(real.display().to_string().as_str()));
+        assert_eq!(
+            f[0].suggested_path.as_deref(),
+            Some(real.display().to_string().as_str())
+        );
     }
 
     #[test]
