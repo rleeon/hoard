@@ -80,6 +80,7 @@ crates/hoard-desktop/ui/src/routes/Map.svelte
 *.db-shm
 
 # Flatpak
+/flatpak/flathub/
 /flatpak/hoard.deb
 /flatpak/hoard.flatpak
 /flatpak/build-dir/
