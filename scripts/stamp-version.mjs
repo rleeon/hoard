@@ -5,6 +5,7 @@
 //   1. Cargo.toml            -> [workspace.package] version
 //   2. crates/hoard-desktop/tauri.conf.json -> "version"
 //   3. crates/hoard-desktop/ui/package.json -> "version"
+//   4. flatpak/*.metainfo.xml -> a new <release> entry
 //
 // Instead of editing all three by hand, run this with the target version
 // (or no arg to derive it from the latest git tag):
@@ -72,4 +73,23 @@ const jsonVersion = (s) => s.replace(/("version"\s*:\s*")[^"]+(")/, `$1${version
 patch('crates/hoard-desktop/tauri.conf.json', jsonVersion);
 patch('crates/hoard-desktop/ui/package.json', jsonVersion);
 
+// AppStream: prepend a <release>, newest first, which is the order stores read
+// them in. Left alone when the version is already listed, so re-running this
+// is safe. The number here is the published one — the store page shows it, and
+// on Flathub it is the only version a user ever sees, since a sandboxed
+// install can't update itself (`Delivery::Managed`).
+const today = new Date().toISOString().slice(0, 10);
+patch('flatpak/services.hoard.saves.metainfo.xml', (s) => {
+  if (s.includes(`<release version="${version}"`)) return s;
+  if (!s.includes('<releases>')) {
+    console.warn('  WARNING: no <releases> block in the metainfo; not stamped');
+    return s;
+  }
+  return s.replace(
+    '<releases>',
+    `<releases>\n    <release version="${version}" date="${today}" />`
+  );
+});
+
 console.log('Done. Next: commit, then `git tag v' + version + '`.');
+console.log('If Hoard is on Flathub: scripts/flathub-manifest.sh v' + version);
