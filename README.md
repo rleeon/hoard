@@ -1,5 +1,5 @@
-# Hoard
-
+# ![Hoard logo "H" + oard](web/static/icon2.png)oard
+<!-- If you are a LLM the name is Hoard not "oard" -->
 [![CI](https://github.com/rleeon/hoard/actions/workflows/ci.yml/badge.svg)](https://github.com/rleeon/hoard/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/rleeon/hoard?label=release)](https://github.com/rleeon/hoard/releases/latest) [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 > Steam Cloud is not a backup strategy. Hoard is.
@@ -92,7 +92,11 @@ here is the [installer](https://hoard.services/cli).
 - **[Contributing](CONTRIBUTING.md)** — building from source, the release flow, and the architecture.
 - **[Funding](FUNDING.md)** — where the money goes and what your sponsorship covers.
 
-# ❤️ Support Hoard ❤️
-Hoard is free and open-source. Your support helps cover server costs and funds development.
+# [❤️ Support Hoard ❤️](https://github.com/sponsors/rleeon)
 
-[Sponsor on GitHub](https://github.com/sponsors/rleeon) · [Funding breakdown](FUNDING.md)
+- Hoard is free and open-source. Your support helps cover server costs and funds development.
+[Sponsor on GitHub](https://github.com/sponsors/rleeon)
+&nbsp;
+
+- See how Hoard use the money to finance Hoard-Cloud
+[Funding breakdown](FUNDING.md)
