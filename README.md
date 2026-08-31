@@ -96,7 +96,6 @@ here is the [installer](https://hoard.services/cli).
 
 - Hoard is free and open-source. Your support helps cover server costs and funds development.
 [Sponsor on GitHub](https://github.com/sponsors/rleeon)
-&nbsp;
 
 - See how Hoard use the money to finance Hoard-Cloud
 [Funding breakdown](FUNDING.md)
