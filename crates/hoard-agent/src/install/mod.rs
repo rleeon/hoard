@@ -1,40 +1,40 @@
-//! **Qué piezas de Hoard toca esta máquina, y cómo se actualizan a la vez.**
+//! Which pieces of Hoard this machine needs, and how they update together.
 //!
-//! Hoard no es un programa: es un motor (`hoardd`) y dos caras que lo pilotan
-//! —la terminal (`hoard`) y la app (`hoard-desktop` + `hoard-screen`)—. Hasta
-//! ahora se publicaban cortados por el eje equivocado, "CLI" contra "desktop",
-//! y cada corte dejaba fuera algo imprescindible: el tarball traía terminal sin
-//! motor (inarrancable) y el bundle traía motor sin terminal. Este módulo
-//! recorta por el eje bueno, **componentes**:
+//! Hoard is not a program: it is an engine (`hoardd`) and two faces that drive it,
+//! the terminal (`hoard`) and the app (`hoard-desktop` plus `hoard-screen`). Until
+//! now they were published cut along the wrong axis, "CLI" against "desktop", and
+//! each cut left out something essential: the tarball carried a terminal with no
+//! engine (which cannot start) and the bundle carried an engine with no terminal.
+//! This module cuts along the right axis, components:
 //!
-//! - [`Component::Core`] = `hoardd` + `hoard`. Nunca uno sin el otro, y es lo
-//!   único obligatorio: sin motor no hay producto, y una cara sin motor es un
-//!   binario que no puede hacer nada.
-//! - [`Component::Desktop`] = la app gráfica. Opcional, y sólo donde hay algo
-//!   que enseñar — una NAS no quiere WebKitGTK.
+//! - [`Component::Core`] is `hoardd` plus `hoard`. Never one without the other, and
+//!   the only mandatory piece: with no engine there is no product, and a face with
+//!   no engine is a binary that can do nothing.
+//! - [`Component::Desktop`] is the graphical app. Optional, and only where there is
+//!   something to show; a NAS does not want WebKitGTK.
 //!
-//! La regla que gobierna todo lo de aquí: **se instalan y se actualizan a la
-//! vez, a la misma versión, o no se toca nada.** Un `hoard` 1.2 hablándole a un
-//! `hoardd` 1.1 es peor que no haber actualizado: el handshake lo tolera (ver
-//! `hoard_core::ipc`), así que el desajuste no avisa, sólo se comporta raro.
+//! The rule that governs everything here: they install and update together, at the
+//! same version, or nothing gets touched. A `hoard` 1.2 talking to a `hoardd` 1.1
+//! is worse than not having updated: the handshake tolerates it (see
+//! `hoard_core::ipc`), so the mismatch says nothing and merely behaves oddly.
 //!
-//! ## Se detecta una vez; después manda el manifiesto
+//! ## Detected once; after that the manifest decides
 //!
-//! Qué componentes tocan se decide **en la primera instalación** ([`Probe`] +
-//! [`resolve_components`]) y se anota en el [`Manifest`]. A partir de ahí manda
-//! el fichero, y una actualización actualiza *lo que hay* sin volver a opinar.
-//! No es un detalle: un `hoard upgrade` por SSH contra tu máquina de escritorio
-//! no ve entorno gráfico, y una detección que se re-ejecutara concluiría "aquí
-//! no va la app" — dejándote sin ella por haber actualizado desde una consola.
+//! Which components are needed is decided on the first install ([`Probe`] plus
+//! [`resolve_components`]) and recorded in the [`Manifest`]. From then on the file
+//! decides, and an update updates *what is there* without weighing in again. That
+//! is not a detail: a `hoard upgrade` over SSH against your desktop machine sees no
+//! graphical environment, and a detection that re-ran would conclude "the app does
+//! not belong here", taking it away from you for having updated from a console.
 //!
-//! ## El motor es un componente, no un pasajero
+//! ## The engine is a component, not a passenger
 //!
-//! `hoardd` viajaba dentro del bundle del desktop como sidecar. Eso es lo que
-//! impide que un AppImage arranque el sync al iniciar sesión: su binario vive en
-//! un montaje efímero (`/tmp/.mount_XXXX/…`) que no existe en el siguiente
-//! arranque, y por eso [`crate::install`] existe. Instalado como componente por
-//! derecho propio, en ruta estable, el AppImage se queda de cara gráfica y el
-//! motor arranca en boot igual que con un paquete nativo.
+//! `hoardd` used to travel inside the desktop's bundle as a sidecar. That is what
+//! stops an AppImage starting sync at login: its binary lives on an ephemeral mount
+//! (`/tmp/.mount_XXXX/...`) that does not exist on the next boot, which is why
+//! [`crate::install`] exists. Installed as a component in its own right, on a
+//! stable path, the AppImage stays the graphical face and the engine starts at boot
+//! just as it would from a native package.
 
 pub mod auto;
 pub mod fetch;
@@ -46,8 +46,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-/// Una pieza instalable. El orden importa: [`Component::Core`] se instala y se
-/// actualiza siempre primero, porque es de quien dependen las demás.
+/// An installable piece. The order matters: [`Component::Core`] is always
+/// installed and updated first, because the others depend on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Component {
@@ -58,7 +58,7 @@ pub enum Component {
 }
 
 impl Component {
-    /// Nombre para logs y para el manifiesto.
+    /// The name for logs and for the manifest.
     pub fn as_str(self) -> &'static str {
         match self {
             Component::Core => "core",
@@ -67,9 +67,9 @@ impl Component {
     }
 }
 
-/// Cómo llegó (o llegará) la app gráfica a esta máquina. Determina quién la
-/// actualiza: un paquete nativo lo releva su instalador, un AppImage lo
-/// reemplazamos nosotros, y [`Delivery::Managed`] no se toca en absoluto.
+/// How the graphical app arrived, or will arrive, on this machine. It determines
+/// who updates it: a native package is relieved by its installer, an AppImage is
+/// replaced by us, and [`Delivery::Managed`] is not touched at all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Delivery {
@@ -77,20 +77,20 @@ pub enum Delivery {
     Deb,
     /// `.rpm` por `rpm`/`dnf`.
     Rpm,
-    /// AppImage en el directorio del usuario, sin privilegios.
+    /// An AppImage in the user's directory, with no privileges.
     ///
-    /// El `rename` no es cosmético: `snake_case` sobre `AppImage` da
-    /// `app_image`, y este campo lo leen y lo escriben los instaladores de
-    /// shell, que buscan la cadena literal. Que la forma por cable y
-    /// [`Delivery::as_str`] no coincidieran sería un desajuste mudo.
+    /// The `rename` is not cosmetic: `snake_case` over `AppImage` gives
+    /// `app_image`, and this field is read and written by the shell installers,
+    /// which look for the literal string. The wire shape and [`Delivery::as_str`]
+    /// disagreeing would be a silent mismatch.
     #[serde(rename = "appimage")]
     AppImage,
     /// Instalador NSIS (Windows).
     Nsis,
     /// `.dmg` arrastrado a `/Applications` (macOS).
     Dmg,
-    /// Lo instaló y lo mantiene un tercero: el gestor de paquetes de la distro,
-    /// Flatpak, un `nix`… Aquí no actualizamos nada; se avisa y se sale.
+    /// Installed and maintained by a third party: the distro's package manager,
+    /// Flatpak, a `nix`. We update nothing here; it says so and exits.
     Managed,
 }
 
@@ -106,7 +106,7 @@ impl Delivery {
         }
     }
 
-    /// ¿Lo actualizamos nosotros? `false` para lo que mantiene un tercero.
+    /// Do we update it? `false` for what a third party maintains.
     pub fn is_ours(self) -> bool {
         !matches!(self, Delivery::Managed)
     }
@@ -117,20 +117,18 @@ impl Delivery {
     }
 }
 
-// =======================================================================
-// Lo que el sistema nos cuenta
-// =======================================================================
+// ---- what the system tells us
 
-/// Los hechos del sistema que deciden el plan, recogidos de una vez para que la
-/// política ([`resolve_components`], [`resolve_delivery`]) sea pura y se pueda
-/// probar sin una NAS, un Deck y tres distros delante.
+/// The system facts that decide the plan, gathered in one go so the policy
+/// ([`resolve_components`], [`resolve_delivery`]) stays pure and testable without a
+/// NAS, a Deck and three distros in front of you.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Probe {
-    /// ¿Esta máquina arranca en modo gráfico? No es "¿tengo pantalla ahora
-    /// mismo?" — ver [`graphical`].
+    /// Does this machine boot into graphical mode? Not "do I have a screen right
+    /// now?"; see [`graphical`].
     pub graphical: bool,
-    /// Raíz de sólo lectura (SteamOS, Bazzite y demás imágenes atómicas): el
-    /// gestor de paquetes nativo no puede escribir aunque exista.
+    /// A read-only root (SteamOS, Bazzite and the other atomic images): the native
+    /// package manager cannot write even where it exists.
     pub immutable_root: bool,
     /// `dpkg` disponible.
     pub has_dpkg: bool,
@@ -144,9 +142,9 @@ pub struct Probe {
 }
 
 impl Probe {
-    /// Interroga al sistema. Todo best-effort: cada señal que no se pueda leer
-    /// cuenta como "no", y el peor caso de equivocarse es caer al AppImage, que
-    /// funciona en todas partes.
+    /// Interrogates the system. All best-effort: any signal that cannot be read
+    /// counts as "no", and the worst case of being wrong is falling back to the
+    /// AppImage, which works everywhere.
     pub fn read() -> Self {
         Self {
             graphical: graphical(),
@@ -181,15 +179,16 @@ fn bin_exists(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// ¿Esta máquina es de las que enseñan una ventana?
+/// Is this a machine that shows a window?
 ///
-/// La pregunta **no** es si hay pantalla en este instante, y por eso no se mira
-/// `$DISPLAY`/`$WAYLAND_DISPLAY`: entrar por SSH a tu portátil para actualizar
-/// no convierte al portátil en un servidor, pero esas variables dicen que sí. Lo
-/// que se mira es a qué arranca el sistema — `systemctl get-default` —, que es
-/// una propiedad de la máquina y no de la sesión desde la que preguntas.
+/// The question is NOT whether there is a screen at this instant, which is why
+/// `$DISPLAY` and `$WAYLAND_DISPLAY` are not consulted: SSHing into your laptop to
+/// update it does not turn the laptop into a server, but those variables say it
+/// does. What is consulted is what the system boots into (`systemctl get-default`),
+/// which is a property of the machine rather than of the session you are asking
+/// from.
 ///
-/// Windows y macOS son gráficos por construcción.
+/// Windows and macOS are graphical by construction.
 #[cfg(target_os = "linux")]
 fn graphical() -> bool {
     if let Ok(out) = std::process::Command::new("systemctl")
@@ -202,9 +201,9 @@ fn graphical() -> bool {
             return target.starts_with("graphical");
         }
     }
-    // Sin systemd (contenedor, init alternativo): ¿hay sesiones de escritorio
-    // instaladas? Es más débil, pero sólo se llega aquí cuando la señal buena
-    // no existe.
+    // With no systemd (a container, an alternative init): are there desktop
+    // sessions installed? It is weaker, but we only get here when the good signal
+    // does not exist.
     ["/usr/share/xsessions", "/usr/share/wayland-sessions"]
         .iter()
         .any(|d| {
@@ -219,12 +218,12 @@ fn graphical() -> bool {
     true
 }
 
-/// Raíz inmutable: SteamOS, Bazzite y el resto de imágenes atómicas. Tienen
-/// `rpm` en el `PATH` y aun así `dnf install` no escribe nada, así que sin esta
-/// comprobación el plan elegiría un paquete nativo que no puede aplicarse.
+/// An immutable root: SteamOS, Bazzite and the rest of the atomic images. They
+/// have `rpm` on the `PATH` and `dnf install` still writes nothing, so without this
+/// check the plan would pick a native package that cannot be applied.
 #[cfg(target_os = "linux")]
 fn immutable_root() -> bool {
-    // Las herramientas delatan la imagen antes que ningún montaje.
+    // The tools give the image away before any mount does.
     if bin_exists("rpm-ostree") || bin_exists("steamos-readonly") {
         return true;
     }
@@ -247,17 +246,18 @@ fn immutable_root() -> bool {
     false
 }
 
-/// ¿Podemos elevar **sin bloquearnos a esperar a un humano**?
+/// Can we elevate without blocking to wait for a human?
 ///
-/// El matiz es el que hace que esto funcione dentro de un `curl … | sh`: ahí el
-/// stdin del script es el propio script, así que un `sudo` que pida contraseña
-/// no tiene a quién preguntar y se queda colgado o falla feo. Cuentan sólo las
-/// vías que resuelven solas: ya ser root, un `sudo` con credencial en caché
-/// (`-n`), o `pkexec` **con sesión gráfica**, que abre su propio diálogo y no
-/// depende de esta terminal.
+/// That nuance is what makes this work inside a `curl ... | sh`: there the script's
+/// stdin is the script itself, so a `sudo` that asks for a password has nobody to
+/// ask and either hangs or fails ugly. Only the routes that resolve themselves
+/// count: already being root, a `sudo` with a cached credential (`-n`), or `pkexec`
+/// with a graphical session, which opens its own dialog and does not depend on this
+/// terminal.
 #[cfg(unix)]
 fn can_elevate() -> bool {
-    // SAFETY: `geteuid` no toma argumentos, no falla y no toca memoria nuestra.
+    // SAFETY: `geteuid` takes no arguments, cannot fail and touches no memory of
+    // ours.
     if unsafe { libc::geteuid() } == 0 {
         return true;
     }
@@ -274,10 +274,10 @@ fn can_elevate() -> bool {
             return true;
         }
     }
-    // `pkexec` sí tiene a quién preguntar: pinta su propio diálogo en la sesión
-    // gráfica, no en esta tubería. Sin sesión a la que pintarlo no sirve, y aquí
-    // sí valen `$DISPLAY`/`$WAYLAND_DISPLAY` — la pregunta es justo la que esas
-    // variables responden bien, "¿hay una pantalla ahora mismo?".
+    // `pkexec` does have somebody to ask: it draws its own dialog in the graphical
+    // session rather than in this pipe. With no session to draw it in it is no use,
+    // and here `$DISPLAY` and `$WAYLAND_DISPLAY` do count: the question is exactly
+    // the one those variables answer well, "is there a screen right now?".
     let has_session =
         std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some();
     bin_exists("pkexec") && has_session
@@ -293,11 +293,11 @@ fn can_elevate() -> bool {
 // La política (pura)
 // =======================================================================
 
-/// Qué componentes toca esta máquina en una instalación **nueva**.
+/// Which components this machine needs on a fresh install.
 ///
-/// [`Component::Core`] siempre. La app, sólo donde hay algo que enseñar: es la
-/// diferencia entre la NAS —que se queda con motor y terminal, sin arrastrar
-/// WebKitGTK— y el Deck, que se lleva las dos caras de una sola pasada.
+/// [`Component::Core`] always. The app only where there is something to show: it is
+/// the difference between the NAS, which keeps engine and terminal without dragging
+/// in WebKitGTK, and the Deck, which takes both faces in one pass.
 pub fn resolve_components(probe: &Probe) -> Vec<Component> {
     let mut out = vec![Component::Core];
     if probe.graphical {
@@ -306,20 +306,21 @@ pub fn resolve_components(probe: &Probe) -> Vec<Component> {
     out
 }
 
-/// Cómo entregar la app gráfica: **nativo si de verdad puede, AppImage si no**.
+/// How to deliver the graphical app: native when it really can, AppImage when it
+/// cannot.
 ///
-/// "Si de verdad puede" quiere decir las tres a la vez: que el gestor exista,
-/// que la raíz sea escribible y que podamos elevar sin colgarnos. Falla
-/// cualquiera y cae al AppImage, que no necesita ninguna de las tres. Por eso
-/// SteamOS y Bazzite —`rpm` presente pero raíz de sólo lectura— aterrizan donde
-/// tienen que aterrizar sin un caso especial escrito para ellas.
+/// "Really can" means all three at once: the manager exists, the root is writable,
+/// and we can elevate without hanging. Any one failing falls back to the AppImage,
+/// which needs none of the three. That is why SteamOS and Bazzite, with `rpm`
+/// present but a read-only root, land where they have to without a special case
+/// written for them.
 #[cfg(target_os = "linux")]
 pub fn resolve_delivery(probe: &Probe) -> Delivery {
-    // Inside a Flatpak nothing here is ours to replace: `/app` is read-only and
-    // the version that lands next comes from the remote the user installed
-    // from. This has to be the first question, before the package managers —
-    // the runtime carries neither `dpkg` nor `rpm`, so falling through would
-    // pick the AppImage and aim it at `/app/bin`.
+    // Inside a Flatpak nothing here is ours to replace: `/app` is read-only and the
+    // version that lands next comes from the remote the user installed from. This
+    // has to be the first question, before the package managers, because the
+    // runtime carries neither `dpkg` nor `rpm`, so falling through would pick the
+    // AppImage and aim it at `/app/bin`.
     if probe.sandboxed {
         return Delivery::Managed;
     }
@@ -354,18 +355,18 @@ pub fn resolve_delivery(_probe: &Probe) -> Delivery {
 // El manifiesto
 // =======================================================================
 
-/// Lo instalado en esta máquina: qué componentes, en qué versión y por qué vía.
-/// Es lo que convierte "instalar" y "actualizar" en la misma operación mirada
-/// desde dos momentos distintos.
+/// What is installed on this machine: which components, at which version and by
+/// which route. It is what turns "install" and "update" into the same operation
+/// seen from two different moments.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Manifest {
-    /// Versión a la que se dejaron **todos** los componentes en la última
-    /// operación. Si un binario del disco no coincide con esto, la instalación
-    /// quedó a medias y hay que rehacerla.
+    /// The version every component was left at by the last operation. If a binary
+    /// on disk does not match this, the install was left half done and has to be
+    /// redone.
     pub version: String,
-    /// Qué hay instalado. Ordenado y sin repetidos.
+    /// What is installed. Sorted and deduplicated.
     pub components: Vec<Component>,
-    /// Vía de la app gráfica. `None` si no hay `Desktop`.
+    /// The graphical app's route. `None` when there is no `Desktop`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delivery: Option<Delivery>,
     /// Dónde viven `hoard` y `hoardd`.
@@ -374,31 +375,30 @@ pub struct Manifest {
     /// Ejecutable de la app, cuando lo sabemos.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub desktop_path: Option<PathBuf>,
-    /// ¿El núcleo viaja **dentro** del bundle de la app? Entonces lo releva el
-    /// instalador de la app y el nuestro sólo puede duplicarlo.
+    /// Does the core travel inside the app's bundle? Then the app's installer
+    /// relieves it and ours can only duplicate it.
     ///
-    /// Se anota en vez de deducirse de que las rutas coincidan, y la diferencia
-    /// es la vía AppImage: ahí la app aterriza en `~/.local/bin/hoard-desktop`,
-    /// el mismo directorio donde el instalador dejó el núcleo, así que "están en
-    /// la misma carpeta" daría `true` y una actualización dejaría de tocar el
-    /// núcleo — en el camino de SteamOS, que es justo el que no puede fallar.
-    /// Quién lo puso lo sabe el que lo pone; que lo diga él.
+    /// It is recorded rather than inferred from the paths matching, and the
+    /// difference is the AppImage route: there the app lands in
+    /// `~/.local/bin/hoard-desktop`, the same directory where the installer left
+    /// the core, so "they are in the same folder" would give `true` and an update
+    /// would stop touching the core, on the SteamOS path, which is exactly the one
+    /// that cannot fail. Whoever put it there knows; let them say so.
     #[serde(default)]
     pub core_from_bundle: bool,
 }
 
 impl Manifest {
-    /// `<config>/install.json`. Junto al resto de la config del usuario, y por
-    /// usuario: dos cuentas en la misma máquina pueden tener instalaciones
-    /// distintas.
+    /// `<config>/install.json`. Alongside the rest of the user's config, and per
+    /// user: two accounts on the same machine can have different installs.
     pub fn path() -> Result<PathBuf> {
         Ok(crate::config::CliConfig::project_dirs()?
             .config_dir()
             .join("install.json"))
     }
 
-    /// Lee el manifiesto. `Ok(None)` si no hay ninguno todavía (instalación
-    /// anterior a este módulo, o primera vez).
+    /// Reads the manifest. `Ok(None)` when there is none yet (an install predating
+    /// this module, or a first time).
     pub fn load() -> Result<Option<Self>> {
         let path = Self::path()?;
         let Ok(text) = std::fs::read_to_string(&path) else {
@@ -445,30 +445,30 @@ impl Manifest {
             delivery,
             core_dir: None,
             desktop_path: None,
-            // Un plan lo hace nuestro instalador, así que el núcleo es suyo.
+            // A plan is made by our installer, so the core is ours.
             core_from_bundle: false,
         }
     }
 
-    /// El manifiesto de esta máquina, creándolo por observación si no existe.
+    /// This machine's manifest, created by observation when it does not exist.
     ///
-    /// El caso que obliga a esto: alguien que instaló la app **antes** de que
-    /// hubiera manifiesto (un `.deb` bajado de la web) no tiene fichero, y
-    /// asumir "aquí no hay app" la dejaría fuera de la primera actualización
-    /// unificada. Así que lo primero que se hace es mirar el disco.
+    /// The case that forces this: somebody who installed the app before manifests
+    /// existed (a `.deb` downloaded from the web) has no file, and assuming "there
+    /// is no app here" would leave it out of the first unified update. So the first
+    /// thing done is to look at the disk.
     pub fn load_or_observe() -> Result<Self> {
         if let Some(m) = Self::load()? {
             return Ok(m);
         }
         let m = observe();
-        // Best-effort: sin permiso de escritura seguimos con el observado.
+        // Best-effort: with no write permission we carry on with what we observed.
         let _ = m.save();
         Ok(m)
     }
 
-    /// Reconcilia el manifiesto con la realidad del disco y lo guarda si cambió.
-    /// Lo llaman los frontends al arrancar: es como una app instalada por su
-    /// lado acaba anotada sin que el usuario haga nada.
+    /// Reconciles the manifest with what is on disk and saves it when it changed.
+    /// The frontends call it on start: it is how an app installed on its own ends
+    /// up recorded without the user doing anything.
     pub fn reconcile() -> Result<Self> {
         let observed = observe();
         let mut m = match Self::load()? {
@@ -497,9 +497,9 @@ impl Manifest {
             m.core_dir.clone_from(&observed.core_dir);
             changed = true;
         }
-        // Sólo se sube a `true`: si nuestro instalador ya dijo que el núcleo es
-        // suyo, una observación posterior no puede desdecirlo — la app y el
-        // núcleo pueden acabar en la misma carpeta sin que uno contenga al otro.
+        // It only goes up to `true`: if our installer already said the core is
+        // its own, a later observation cannot take that back, since the app and the
+        // core can end up in the same folder without one containing the other.
         if observed.core_from_bundle && !m.core_from_bundle {
             m.core_from_bundle = true;
             changed = true;
@@ -511,9 +511,7 @@ impl Manifest {
     }
 }
 
-// =======================================================================
-// The swap window — "don't start me right now"
-// =======================================================================
+// ---- the swap window: "don't start me right now"
 
 /// How long a swap marker is believed before it's treated as debris.
 ///
@@ -605,20 +603,18 @@ impl Drop for Swap {
     }
 }
 
-// =======================================================================
-// Que la terminal se pueda escribir
-// =======================================================================
+// ---- making the terminal typable
 
-/// Deja `hoard` **alcanzable desde una terminal**, y dice qué hizo.
+/// Leaves `hoard` reachable from a terminal, and says what it did.
 ///
-/// El bundle de la app lleva el binario, pero llevarlo no basta: en un `.deb`
-/// aterriza en `/usr/bin` y ya está en el `PATH`, mientras que en Windows queda
-/// bajo `%LOCALAPPDATA%` y en macOS dentro de `Hoard.app`, donde nadie lo va a
-/// escribir nunca. Tener el binario y no poder invocarlo es, en la práctica, no
-/// tenerlo — así que la app arregla esto al arrancar.
+/// The app's bundle carries the binary, but carrying it is not enough: in a `.deb`
+/// it lands in `/usr/bin` and is already on the `PATH`, while on Windows it ends up
+/// under `%LOCALAPPDATA%` and on macOS inside `Hoard.app`, where nobody is ever
+/// going to type it. Having the binary and not being able to invoke it is, in
+/// practice, not having it, so the app fixes this on start.
 ///
-/// Idempotente y best-effort: se llama en cada arranque, no pide privilegios y
-/// no falla el arranque de nadie si no puede.
+/// Idempotent and best-effort: it is called on every start, asks for no privileges,
+/// and fails nobody's startup if it cannot.
 pub fn ensure_cli_reachable() -> Result<CliReach> {
     let exe = std::env::current_exe().context("resolving our own path")?;
     let dir = exe.parent().context("our own path has no parent")?;
@@ -733,7 +729,7 @@ fn shell_path(_dir: &Path) -> Result<PathNudge> {
 /// Qué pasó al intentar dejar la terminal a mano.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliReach {
-    /// Ya se podía escribir `hoard`. Nada que hacer.
+    /// `hoard` was already typable. Nothing to do.
     AlreadyReachable,
     /// Se añadió `dir` al `PATH` del usuario. Requiere abrir una terminal nueva.
     AddedToPath(PathBuf),

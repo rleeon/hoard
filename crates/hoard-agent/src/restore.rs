@@ -36,17 +36,16 @@ pub struct RestoreOptions {
     /// bytes worth reusing live in the *live save folder*, not in `dest`. A
     /// direct restore writes straight into the save folder and passes `dest`.
     pub reuse_from: Option<PathBuf>,
-    /// Qué ficheros del snapshot pueden tocar el disco.
+    /// Which of the snapshot's files may touch the disk.
     ///
-    /// El snapshot lleva dentro la configuración de la máquina que lo subió
-    /// (ver [`hoard_core::kernel::fileclass`]): se sube a propósito, para no
-    /// perderla nunca, pero escribirla encima de OTRA máquina es meterle al
-    /// juego una resolución, un GPU o una ruta que ahí no existen. Por defecto
-    /// la puerta está cerrada para esa clase de fichero y sólo la abre el
-    /// usuario a mano (`--allow-ini`, el interruptor del diálogo).
+    /// The snapshot carries inside it the configuration of the machine that
+    /// uploaded it (see [`hoard_core::kernel::fileclass`]): it is uploaded on
+    /// purpose, so it is never lost, but writing it over ANOTHER machine hands
+    /// the game a resolution, a GPU or a path that does not exist there. By
+    /// default the gate is shut for that class of file and only the user opens it
+    /// by hand (`--allow-ini`, the switch in the dialog).
     ///
-    /// [`RestoreGate::permissive`] restaura todo, como antes de que esto
-    /// existiera.
+    /// [`RestoreGate::permissive`] restores everything, as before this existed.
     pub gate: RestoreGate,
 }
 
@@ -66,30 +65,30 @@ pub struct RestoreOutcome {
     pub timings: RestoreTimings,
 }
 
-/// Reparto del tiempo de un restore entre sus fases.
+/// How a restore's time is split between its phases.
 ///
-/// El mismo save puede tardar 25 s, 15 s o nada según qué fase domine —el
-/// manifiesto, el hasheo del disco local, o la transferencia— y sin este
-/// desglose las tres son indistinguibles desde fuera: un usuario solo ve
-/// "a veces va lento". Se rellena en la ruta content-addressed (la de Cloud);
-/// en las otras solo se conoce el total.
+/// The same save can take 25 s, 15 s or no time at all depending on which phase
+/// dominates (the manifest, hashing the local disk, or the transfer) and without
+/// this breakdown all three are indistinguishable from outside: a user only sees
+/// "sometimes it is slow". It is filled in on the content-addressed path, Cloud's;
+/// on the others only the total is known.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RestoreTimings {
-    /// Pedir el manifiesto de la versión (con sus URLs prefirmadas).
+    /// Asking for the version's manifest, with its presigned URLs.
     pub manifest_ms: u64,
-    /// Indexar por contenido lo que ya hay en disco (dedup D.13). Es tiempo de
-    /// CPU/IO local: crece con el tamaño de la carpeta, no con la red.
+    /// Indexing what is already on disk by content (the D.13 dedup). It is local
+    /// CPU and IO time: it grows with the folder's size, not with the network.
     pub index_ms: u64,
-    /// Mover bytes: GETs a R2 más las copias locales que el índice ahorró.
+    /// Moving bytes: GETs to R2 plus the local copies the index saved.
     pub transfer_ms: u64,
     /// De la primera llamada al último byte escrito.
     pub total_ms: u64,
 }
 
-/// Hard ceiling on the total bytes a single restore may write to disk —
-/// defense-in-depth against a decompression bomb: a tiny `.tar.zst` that
-/// expands to terabytes. Used as-is when the expanded size isn't known ahead of
-/// time (the legacy whole-archive cloud path) and as an upper clamp otherwise.
+/// A hard ceiling on the total bytes a single restore may write to disk: defence
+/// in depth against a decompression bomb, a tiny `.tar.zst` that expands to
+/// terabytes. Used as-is when the expanded size is not known ahead of time (the
+/// legacy whole-archive cloud path) and as an upper clamp otherwise.
 const MAX_RESTORE_BYTES: u64 = 64 * 1024 * 1024 * 1024; // 64 GiB
 
 /// Bounded fan-out for the content-addressed restore: how many blob
@@ -98,11 +97,11 @@ const MAX_RESTORE_BYTES: u64 = 64 * 1024 * 1024 * 1024; // 64 GiB
 /// window hides it without hammering the disk with concurrent writes.
 const RESTORE_CONCURRENCY: usize = 4;
 
-/// Override del fan-out, para medirlo. El valor bueno depende de la forma del
-/// save (un monolito no se parte, 4000 chunks sí) y de la línea del usuario, y
-/// hasta que el banco (`hoard-pruebas bench`) no barra el rango no hay motivo
-/// para creer que 4 es el número correcto para todos. Fuera de `[1, 64]` se
-/// ignora: un fan-out absurdo no es una preferencia, es un dedo torcido.
+/// An override for the fan-out, so it can be measured. The right value depends on
+/// the save's shape (a monolith does not split, 4000 chunks do) and on the user's
+/// line, and until the bench (`hoard-pruebas bench`) has swept the range there is
+/// no reason to believe 4 is the right number for everybody. Outside `[1, 64]` it
+/// is ignored: an absurd fan-out is not a preference, it is a slipped finger.
 const CONCURRENCY_ENV: &str = "HOARD_RESTORE_CONCURRENCY";
 
 fn restore_concurrency() -> usize {
@@ -131,21 +130,21 @@ fn restore_byte_cap(declared_expanded: Option<u64>) -> u64 {
     }
 }
 
-/// Dónde se plantan las rutas relativas de un snapshot.
+/// Where a snapshot's relative paths are planted.
 ///
-/// Normalmente es `dest` tal cual. Pero un **save de fichero suelto** guarda
-/// en `local_path` el fichero, no una carpeta, y su snapshot lleva una única
-/// entrada con el nombre base — así que `dest.join("save.dat")` daría
-/// `…/save.dat/save.dat`. En ese caso la raíz es el directorio padre y el
-/// `join` reconstruye exactamente la ruta original.
+/// Normally that is `dest` as-is. But a single-file save keeps the file, rather
+/// than a folder, in `local_path`, and its snapshot carries one entry with the base
+/// name, so `dest.join("save.dat")` would give `.../save.dat/save.dat`. In that
+/// case the root is the parent directory and the `join` rebuilds exactly the
+/// original path.
 ///
-/// Se reconoce por dos vías, porque las dos ocurren: el fichero ya está en
-/// disco (lo normal), o la máquina es nueva y no hay nada — y entonces manda
-/// la forma del snapshot: una sola entrada llamada igual que el destino.
-/// Un snapshot de **fichero suelto** no se filtra nunca, ni al subir ni al
-/// restaurar: el usuario apuntó a ese fichero concreto, y eso pesa más que
-/// cualquier regla por nombre. Sin esta excepción, un save que se llame
-/// `settings.ini` se subiría (el walk ya lo exceptúa) pero no volvería jamás.
+/// It is recognised two ways, because both happen: the file is already on disk
+/// (the normal case), or the machine is new and there is nothing, and then the
+/// snapshot's shape decides, a single entry named the same as the destination.
+/// A single-file snapshot is never filtered, neither on upload nor on restore: the
+/// user pointed at that particular file, and that outweighs any rule by name.
+/// Without this exception, a save called `settings.ini` would upload (the walk
+/// already excepts it) and never come back.
 pub(crate) fn is_single_file_snapshot(dest: &Path, snapshot_names: &[&str]) -> bool {
     extraction_root(dest, snapshot_names) != dest
 }
@@ -212,12 +211,12 @@ pub async fn download_snapshot<F>(
 where
     F: Fn(u64, u64) + Send + Sync + 'static,
 {
-    // Misma regla de forma que el alta, y por el mismo motivo: un restore
-    // sobre `C:\Users\<x>` o sobre `~` volcaría un snapshot encima del perfil
-    // del usuario. Aquí importa más aún que en el alta, porque esto ESCRIBE —
-    // y la ruta puede venir de un `state.json` envenenado por una detección
-    // vieja o de otra máquina. La carpeta puede no existir todavía (equipo
-    // nuevo), así que sólo se comprueba la forma.
+    // The same shape rule as adding, and for the same reason: a restore over
+    // `C:\Users\<x>` or over `~` would dump a snapshot on top of the user's
+    // profile. It matters even more here, because this WRITES, and the path can
+    // come from a `state.json` poisoned by an old detection or from another
+    // machine. The folder may not exist yet (a new machine), so only the shape is
+    // checked.
     crate::library::validate_path_shape(dest)?;
     if client.is_cloud().await {
         return download_snapshot_cloud(client, save_id, version, dest, options, progress).await;
@@ -239,8 +238,8 @@ where
     let single_file = root != dest;
 
     if dest.exists() {
-        // "No vacío" sólo tiene sentido para una carpeta; un save de fichero
-        // suelto que ya existe es exactamente lo que venimos a sustituir.
+        // "Not empty" only makes sense for a folder; a single-file save that
+        // already exists is exactly what we came to replace.
         let empty = !single_file && std::fs::read_dir(dest)?.next().is_none();
         if !empty && !options.force {
             bail!(
@@ -292,9 +291,9 @@ where
         let mut entry = entry.context("reading tar entry")?;
         let path_in_tar = entry.path()?.into_owned();
 
-        // Sanitize: reject anything that escapes the destination. For
-        // directory entries an empty result (e.g. "./") just means the
-        // archive root — nothing to do.
+        // Sanitize: reject anything that escapes the destination. For directory
+        // entries an empty result (`./`, say) just means the archive root, so there
+        // is nothing to do.
         let safe_rel = match sanitize(&path_in_tar) {
             Some(p) => p,
             None if entry.header().entry_type().is_dir() => continue,
@@ -313,8 +312,8 @@ where
         }
 
         let key = safe_rel.to_string_lossy().replace('\\', "/");
-        // Config y basura de la máquina que subió el snapshot no se escriben
-        // encima de ésta salvo que el usuario lo haya pedido.
+        // Config and litter from the machine that uploaded the snapshot are not
+        // written over this one's unless the user asked for it.
         if !single_file && !options.gate.allows(&key) {
             tracing::debug!(path = %key, "restore: skipping device-local file");
             continue;
@@ -362,8 +361,8 @@ where
         if !options.skip_verify {
             if let Some(meta) = expected_file {
                 let got = hex::encode(hasher.finalize());
-                // `None` (digest desconocido) se compara contra "" igual que
-                // antes del newtype: falla cerrado, nunca salta la verificación.
+                // `None` (an unknown digest) is compared against "" just as it was
+                // before the newtype: it fails closed, never skipping verification.
                 let expected = meta.sha256.as_ref().map(Sha256Hex::as_str).unwrap_or("");
                 if got != expected {
                     bail!("sha256 mismatch for {key}: expected {expected}, got {got}");
@@ -387,8 +386,8 @@ where
         files_extracted,
         bytes_extracted,
         destination: dest.to_path_buf(),
-        // El tar entero no tiene fases separables: descarga, descompresión y
-        // escritura van en el mismo bucle. Solo hay total.
+        // A whole tar has no separable phases: download, decompression and writing
+        // all happen in the same loop. There is only a total.
         timings: RestoreTimings {
             total_ms: started.elapsed().as_millis() as u64,
             ..Default::default()
@@ -416,14 +415,14 @@ fn is_retryable_blob_error(e: &anyhow::Error) -> bool {
         || s.contains("sha256 mismatch")
 }
 
-/// Hoard Cloud download: presigned R2 GET → temp tar.zst → verify whole-
-/// archive sha256 → extract.
+/// A Hoard Cloud download: a presigned R2 GET into a temp tar.zst, verifying the
+/// whole archive's sha256, then extracting.
 ///
 /// The cloud server stores one opaque `.tar.zst` per version and exposes no
-/// per-file manifest (`snapshot_detail` doesn't exist there), so verification
-/// is over the whole archive's sha256 — recorded at commit time and returned
-/// in `DownloadOut` — rather than per-file. We download to a temp file first
-/// so the hash check happens before we touch the destination.
+/// per-file manifest (`snapshot_detail` does not exist there), so verification is
+/// over the whole archive's sha256, recorded at commit time and returned in
+/// `DownloadOut`, rather than per file. We download to a temp file first so the
+/// hash check happens before we touch the destination.
 async fn download_snapshot_cloud<F>(
     client: &ApiClient,
     save_id: &str,
@@ -452,8 +451,8 @@ where
 
     let meta = client.cloud_download(save_id, version).await?;
 
-    // Ídem que en la ruta legacy: un save de fichero suelto ya existente no es
-    // un "destino no vacío", es justo lo que venimos a sustituir.
+    // As on the legacy path: an existing single-file save is not a "non-empty
+    // destination", it is exactly what we came to replace.
     let root = extraction_root(dest, &[]);
     if dest.exists() {
         let empty = root != dest || std::fs::read_dir(dest)?.next().is_none();
@@ -494,31 +493,31 @@ type ReuseIndex = HashMap<String, PathBuf>;
 /// Where one manifest entry's bytes come from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ByteSource {
-    /// An identical file is already on disk at this path — copy it.
+    /// An identical file is already on disk at this path, so copy it.
     Reuse(PathBuf),
-    /// Nothing on disk carries these bytes — fetch the blob.
+    /// Nothing on disk carries these bytes, so fetch the blob.
     Download,
 }
 
 /// Index the files under `dir` by the SHA-256 of their contents.
 ///
-/// Only files whose length is one the manifest actually wants get hashed: a
-/// file of a different size can't be the content we're looking for, so the
-/// filter keeps a save folder's unrelated multi-GB neighbours from being read.
-/// Worst case we read as much as the snapshot itself is big — a second or two
-/// of local IO against a minute of network.
+/// Only files whose length is one the manifest actually wants get hashed: a file of
+/// a different size cannot be the content we are looking for, so the filter keeps a
+/// save folder's unrelated multi-GB neighbours from being read. Worst case we read
+/// as much as the snapshot itself is big, a second or two of local IO against a
+/// minute of network.
 ///
 /// Every failure degrades into a *smaller* index rather than an error: an
-/// unreadable file (a lock a running game holds, a permission we don't have)
-/// just means one more blob to download. Never fails the restore.
+/// unreadable file (a lock a running game holds, a permission we do not have) just
+/// means one more blob to download. It never fails the restore.
 async fn build_reuse_index(
     dir: &Path,
     wanted_sizes: &HashSet<u64>,
     shields: &[String],
 ) -> ReuseIndex {
     if wanted_sizes.is_empty() || !dir.exists() {
-        // Empty or missing destination: no index, everything downloads — the
-        // pre-dedup behaviour, bit for bit.
+        // An empty or missing destination: no index, everything downloads, which is
+        // the pre-dedup behaviour, bit for bit.
         return ReuseIndex::new();
     }
     // `walk_source` is the same walk the backup side uses: sorted by relative
@@ -715,15 +714,15 @@ where
         std::fs::create_dir_all(&root).with_context(|| format!("creating {}", root.display()))?;
     }
 
-    // La puerta se aplica **una sola vez y aquí**, y todo lo de abajo —el total
-    // del progreso, los trabajos, el plan de bytes— sale de ESTA lista. Filtrar
-    // sólo los trabajos y dejar que el plan se calculara sobre el manifiesto
-    // entero los desalineaba: `jobs[i]` recibía el `plan[i]` de otro fichero, la
-    // copia local fallaba la verificación de sha y todo caía a la red. No
-    // corrompe (por eso se verifica), pero mata en silencio justo la
-    // deduplicación contra disco de D.13 — los 400 MB→8 MB de Factorio.
+    // The gate is applied once, and here, and everything below (the progress
+    // total, the jobs, the byte plan) comes off THIS list. Filtering only the jobs
+    // and letting the plan be computed over the whole manifest put them out of
+    // step: `jobs[i]` got another file's `plan[i]`, the local copy failed its sha
+    // check and everything fell back to the network. It does not corrupt (which is
+    // why it is verified), but it silently kills exactly D.13's dedup against disk,
+    // the 400 MB to 8 MB Factorio case.
     //
-    // Un save de fichero suelto no se filtra: ver `is_single_file_snapshot`.
+    // A single-file save is not filtered: see `is_single_file_snapshot`.
     let kept: Vec<&crate::api::CloudManifestFile> = if single_file {
         manifest.files.iter().collect()
     } else {
@@ -922,11 +921,11 @@ where
             }
         }
     }
-    // The dogfooding check for D.13: on a save that rotated one file out of a
-    // dozen this should read ~390 MB reused / ~8 MB downloaded, not 400/0.
-    // Las fases van en la misma línea porque la pregunta que sigue a "tardó
-    // 25 s" siempre es "¿en qué?", y responderla con dos líneas separadas
-    // obliga a casarlas por timestamp cuando hay varios saves en vuelo.
+    // The dogfooding check for D.13: on a save that rotated one file out of a dozen
+    // this should read about 390 MB reused and 8 MB downloaded, not 400/0. The
+    // phases go on the same line because the question after "it took 25 s" is
+    // always "doing what?", and answering that on two separate lines forces you to
+    // match them up by timestamp when several saves are in flight.
     tracing::info!(
         files_reused,
         mib_reused = as_mib(bytes_reused),
@@ -985,10 +984,10 @@ async fn download_and_extract_cloud<F>(
 where
     F: Fn(u64, u64) + Send + Sync + 'static,
 {
-    // Ruta legacy (archivo entero, sin manifiesto por fichero): la forma del
-    // snapshot no se conoce de antemano, así que sólo puede reconocerse un
-    // save de fichero suelto porque el fichero ya esté en disco. Basta: esta
-    // ruta sólo la toman versiones antiguas ya subidas.
+    // The legacy path (a whole archive, with no per-file manifest): the snapshot's
+    // shape is not known in advance, so a single-file save can only be recognised
+    // because the file is already on disk. That is enough: only versions uploaded
+    // long ago take this path.
     let root = extraction_root(dest, &[]);
     let single_file = root != dest;
     let resp = client.get_presigned(&meta.download).await?;
@@ -1108,8 +1107,8 @@ where
         // Legacy whole-archive cloud version: no per-file blobs to skip.
         files_reused: 0,
         bytes_reused: 0,
-        // El total lo sella `download_snapshot_cloud`, que es quien arrancó el
-        // cronómetro (incluye pedir el manifiesto).
+        // The total is stamped by `download_snapshot_cloud`, which started the
+        // stopwatch (asking for the manifest included).
         timings: RestoreTimings::default(),
     })
 }
@@ -1139,8 +1138,8 @@ pub async fn list_cloud_version_files(
             .map(|f| SnapshotFile {
                 relative_path: f.relative_path,
                 size_bytes: f.size_bytes,
-                // Un sha con forma inválida entra como "desconocido", que la
-                // verificación trata como fallo — nunca como "sáltatela".
+                // A sha of an invalid shape comes in as "unknown", which
+                // verification treats as a failure, never as "skip it".
                 sha256: Sha256Hex::parse(&f.sha256).ok(),
             })
             .collect();

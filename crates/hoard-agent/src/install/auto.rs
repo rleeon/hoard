@@ -1,49 +1,48 @@
-//! **Cuándo se actualiza Hoard solo, y cuándo deja de ser opcional.**
+//! When Hoard updates itself, and when that stops being optional.
 //!
-//! Hasta aquí actualizar era un botón: la app miraba GitHub cada media hora,
-//! pintaba una insignia ámbar y esperaba. Quien no la pulsaba se quedaba en su
-//! versión para siempre, y como `hoard`, `hoardd` y la app se relevan juntos o
-//! no se relevan (ver [`super`]), "para siempre" significa que un fallo
-//! arreglado hace tres releases sigue vivo en máquinas que llevan meses
-//! encendidas.
+//! Updating used to be a button: the app checked GitHub every half hour, drew an
+//! amber badge and waited. Anybody who did not press it stayed on their version
+//! forever, and since `hoard`, `hoardd` and the app move together or not at all
+//! (see [`super`]), "forever" means a bug fixed three releases ago is still alive
+//! on machines that have been switched on for months.
 //!
-//! Este módulo es la política que convierte aquel botón en lo que hace Steam:
-//! se baja sola, se aplica sola, y si no se puede aplicar sola se aplica al
-//! abrir. La decisión es **pura** —[`decide`] no toca red ni disco— porque el
-//! caso que importa (¿qué pasa el segundo día, con un juego abierto, en una
-//! máquina donde el paquete necesita root?) hay que poder probarlo sin una
-//! máquina así delante.
+//! This module is the policy that turns that button into what Steam does: it
+//! downloads itself, applies itself, and when it cannot apply itself it applies on
+//! open. The decision is pure ([`decide`] touches neither network nor disk)
+//! because the case that matters (what happens on the second day, with a game
+//! open, on a machine where the package needs root?) has to be testable without
+//! such a machine in front of you.
 //!
-//! ## Las dos preguntas
+//! ## The two questions
 //!
-//! Todo sale de separar dos cosas que se confundían:
+//! Everything comes from separating two things that used to be conflated:
 //!
-//! 1. **¿Se puede aplicar sin molestar a nadie?** No lo decide el usuario ni
-//!    una preferencia: lo decide **por dónde llegó la app**
-//!    ([`super::Delivery`]). Un AppImage y un NSIS por-usuario se escriben en
-//!    el home y nadie se entera; un `.deb` necesita un diálogo de polkit y un
-//!    `.dmg` necesita una mano arrastrando. La primera familia se actualiza
-//!    sola de verdad; la segunda sólo puede hacerlo con alguien delante.
-//! 2. **¿Se acabó el plazo?** Desde que se ve una versión nueva corre un reloj
-//!    ([`GRACE`], 48 h). Antes de que suene, una actualización que necesita a
-//!    alguien se **ofrece** y se puede posponer. Después, no.
+//! 1. Can it be applied without bothering anybody? Neither the user nor a
+//!    preference decides that: the route the app arrived by does
+//!    ([`super::Delivery`]). An AppImage and a per-user NSIS write into the home
+//!    and nobody notices; a `.deb` needs a polkit dialog and a `.dmg` needs a hand
+//!    dragging it. The first family really does update itself; the second can only
+//!    do it with somebody present.
+//! 2. Has the deadline passed? A clock starts the moment a new version is seen
+//!    ([`GRACE`], 48 hours). Before it rings, an update that needs somebody is
+//!    offered and can be postponed. Afterwards, it is not.
 //!
-//! El caso silencioso no llega nunca a la ventana: cuando la vía se aplica sola
-//! y la máquina está en reposo, el usuario se entera por el número de versión.
-//! El plazo existe para la otra mitad.
+//! The silent case never reaches the window at all: when the route applies itself
+//! and the machine is idle, the user finds out from the version number. The
+//! deadline exists for the other half.
 //!
-//! ## Lo que el plazo no atropella
+//! ## What the deadline does not run over
 //!
-//! "Obligatorio" no es "ahora mismo pase lo que pase". Relevar el núcleo
-//! reinicia `hoardd`, y hacerlo con una subida a medias deja un blob colgando.
-//! Así que hay dos frenos, y el plazo sólo levanta uno:
+//! "Mandatory" is not "right now whatever happens". Relieving the core restarts
+//! `hoardd`, and doing that with an upload half done leaves a blob dangling. So
+//! there are two brakes, and the deadline only lifts one:
 //!
-//! - **Transferencia en vuelo** — frena siempre, plazo o no. Son segundos o
-//!   minutos; esperarlos no le cuesta nada a nadie.
-//! - **Juego abierto** — frena la actualización silenciosa (reiniciar el motor
-//!   en mitad de una partida es justo el momento en que el sync importa), pero
-//!   no la obligatoria. Si no, quien deja el juego abierto una semana no
-//!   actualiza en una semana, que es el problema que veníamos a resolver.
+//! - A transfer in flight brakes always, deadline or not. It is seconds or
+//!   minutes, and waiting for it costs nobody anything.
+//! - An open game brakes the silent update (restarting the engine mid-game is
+//!   exactly when sync matters) but not the mandatory one. Otherwise somebody who
+//!   leaves a game open for a week does not update for a week, which is the
+//!   problem we came to solve.
 
 use std::time::Duration;
 
@@ -52,14 +51,14 @@ use time::OffsetDateTime;
 
 use super::{Component, Delivery, Manifest};
 
-/// Cuánto se tolera una versión vieja desde que se ve la nueva. Dos días: lo
-/// que el usuario pidió, y lo que deja pasar un fin de semana sin encender el
-/// ordenador sin que la primera sesión del lunes sea una actualización forzosa.
+/// How long an old version is tolerated once the new one is seen. Two days: what
+/// the user asked for, and enough to let a weekend away from the computer pass
+/// without Monday's first session being a forced update.
 pub const GRACE: Duration = Duration::from_secs(48 * 60 * 60);
 
-/// Anula [`GRACE`] (en horas). Para probar el plazo sin esperar dos días y para
-/// una máquina que quiera ser más estricta; no se documenta como opción de
-/// usuario porque el plazo largo es la política, no una preferencia.
+/// Overrides [`GRACE`], in hours. For testing the deadline without waiting two
+/// days, and for a machine that wants to be stricter; it is not documented as a
+/// user option because the long deadline is the policy, not a preference.
 pub const GRACE_ENV: &str = "HOARD_UPDATE_GRACE_HOURS";
 
 /// El plazo efectivo de esta máquina.
@@ -77,35 +76,35 @@ pub fn grace() -> Duration {
 // Qué toca hacer ahora mismo
 // =======================================================================
 
-/// Lo que hay que hacer con la versión nueva **en este instante**.
+/// What to do about the new version at this exact moment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "stance", rename_all = "snake_case")]
 pub enum Stance {
-    /// Nada: o no hay versión nueva, o esta instalación no es nuestra.
+    /// Nothing: either there is no new version, or this install is not ours.
     Idle,
-    /// Hay versión nueva y no está bajada. Bajarla y verificar su firma; no se
-    /// aplica nada todavía.
+    /// There is a new version and it is not downloaded. Download it and verify its
+    /// signature; nothing gets applied yet.
     ///
-    /// Bajar antes de decidir es lo que hace que "actualizar al abrir" dure lo
-    /// que dura un `rename` en vez de lo que dura un bundle de 90 MB.
+    /// Downloading before deciding is what makes "update on open" take as long as a
+    /// `rename` rather than as long as a 90 MB bundle.
     Stage { version: String },
     /// Bajada, verificada, y esta máquina puede relevarse sin pedirle nada a
     /// nadie. Aplicar sin decir nada.
     ApplyQuietly { version: String },
-    /// Bajada, pero aplicarla necesita a alguien delante (polkit, un `.dmg`).
-    /// Se ofrece; se puede posponer.
+    /// Downloaded, but applying it needs somebody present (polkit, a `.dmg`). It
+    /// gets offered, and can be postponed.
     Ask { version: String },
-    /// Se acabó el plazo. Se aplica, y si necesita a alguien delante la ventana
-    /// no deja seguir hasta que se aplique.
+    /// The deadline has passed. It gets applied, and if it needs somebody present
+    /// the window does not let them carry on until it is.
     Force { version: String },
-    /// Toca actualizar y no es el momento. El motivo va dentro porque un freno
-    /// mudo es indistinguible de un updater roto — que es exactamente cómo se
-    /// perdieron 36 minutos en D.12.
+    /// An update is due and this is not the moment. The reason travels inside,
+    /// because a mute brake is indistinguishable from a broken updater, which is
+    /// exactly how 36 minutes were lost in D.12.
     Waiting { version: String, hold: Hold },
 }
 
 impl Stance {
-    /// La versión a la que apunta, si apunta a alguna.
+    /// The version it points at, if it points at one.
     pub fn version(&self) -> Option<&str> {
         match self {
             Stance::Idle => None,
@@ -126,28 +125,27 @@ impl Stance {
     }
 }
 
-/// Por qué se está esperando.
+/// Why it is waiting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Hold {
-    /// Hay una copia o una restauración a medias. Frena siempre.
+    /// A backup or restore is half done. It brakes always.
     TransferInFlight,
-    /// Hay un juego abierto. Frena lo silencioso, no lo obligatorio.
+    /// A game is open. It brakes the silent path, not the mandatory one.
     GameRunning,
 }
 
-/// Los hechos con los que se decide. Todos los saca quien llama (el daemon);
-/// aquí no se mira nada.
+/// The facts the decision is made from. The caller (the daemon) gathers them all;
+/// nothing is inspected here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Situation {
     /// La versión que corre ahora mismo.
     pub current: String,
-    /// La última publicada que sabemos. `None` = no se ha podido preguntar.
+    /// The latest published one we know of. `None` means it could not be asked.
     pub latest: Option<String>,
-    /// Lo que ya está bajado y verificado en disco.
+    /// What is already downloaded and verified on disk.
     pub staged: Option<String>,
-    /// Cuándo se vio [`Situation::latest`] por primera vez. De aquí sale el
-    /// plazo.
+    /// When [`Situation::latest`] was first seen. The deadline comes from this.
     pub first_seen_at: Option<OffsetDateTime>,
     /// ¿Puede esta instalación relevarse entera sin privilegios ni manos?
     /// Sale de [`Manifest::applies_unattended`].
@@ -158,13 +156,13 @@ pub struct Situation {
     pub game_running: bool,
 }
 
-/// Qué hacer ahora. Pura: mismas entradas, misma respuesta.
+/// What to do now. Pure: the same inputs give the same answer.
 ///
-/// El orden de las ramas **es** la política, y hay una que sorprende: el plazo
-/// se comprueba *después* de bajar y *antes* que el reposo. Bajar primero
-/// porque forzar lo que no está en disco es prometer una actualización
-/// instantánea que va a tardar un minuto; el plazo antes que el reposo porque
-/// esperar al reposo es justo lo que el plazo viene a dejar de hacer.
+/// The order of the branches IS the policy, and one of them surprises people: the
+/// deadline is checked *after* downloading and *before* the idle check. Downloading
+/// first because forcing what is not on disk is promising an instant update that is
+/// going to take a minute; the deadline before the idle check because waiting for
+/// idle is exactly what the deadline exists to stop doing.
 pub fn decide(now: OffsetDateTime, s: &Situation) -> Stance {
     let Some(latest) = s.latest.as_deref() else {
         return Stance::Idle;
@@ -174,9 +172,10 @@ pub fn decide(now: OffsetDateTime, s: &Situation) -> Stance {
     }
     let version = latest.to_string();
 
-    // Bajado ≠ bajado *esto*: una release publicada mientras la anterior estaba
-    // en la caché deja `staged` apuntando a la vieja, y aplicarla sería
-    // instalar a sabiendas algo que ya no es lo último.
+    // Downloaded is not the same as *this* being downloaded: a release published
+    // while the previous one sat in the cache leaves `staged` pointing at the old
+    // one, and applying that would knowingly install something that is no longer
+    // the latest.
     if s.staged.as_deref() != Some(latest) {
         return Stance::Stage { version };
     }
@@ -197,8 +196,8 @@ pub fn decide(now: OffsetDateTime, s: &Situation) -> Stance {
         return Stance::Force { version };
     }
 
-    // Un juego abierto sólo frena lo silencioso. Fuera del plazo, esperar a que
-    // cierren el juego es no actualizar nunca.
+    // An open game only brakes the silent path. Past the deadline, waiting for the
+    // game to close is never updating.
     if s.game_running {
         return Stance::Waiting {
             version,
@@ -217,18 +216,18 @@ pub fn decide(now: OffsetDateTime, s: &Situation) -> Stance {
 // El registro en disco
 // =======================================================================
 
-/// Lo que hay que recordar entre arranques: qué se vio, cuándo se vio por
-/// primera vez (el reloj del plazo), y qué hay bajado.
+/// What has to be remembered between starts: what was seen, when it was first seen
+/// (the deadline's clock), and what is downloaded.
 ///
-/// Vive en el directorio de estado y no en las preferencias a propósito: no es
-/// una cosa que el usuario elija, es el cuaderno del updater. Mezclarlo con las
-/// preferencias haría que borrar preferencias reiniciara el plazo.
+/// It lives in the state directory rather than in the preferences on purpose: it is
+/// not something the user chooses, it is the updater's notebook. Mixing it in with
+/// the preferences would make deleting preferences reset the deadline.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ledger {
     /// La última versión publicada que hemos visto.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_seen: Option<String>,
-    /// Cuándo la vimos por primera vez. **El reloj del plazo.**
+    /// When we first saw it. The deadline's clock.
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub first_seen_at: Option<OffsetDateTime>,
     /// Qué versión está bajada y verificada en `staging_dir`.
@@ -236,20 +235,20 @@ pub struct Ledger {
     pub staged: Option<String>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub staged_at: Option<OffsetDateTime>,
-    /// Última vez que se preguntó a GitHub (para no preguntar en bucle).
+    /// The last time GitHub was asked (so it is not asked in a loop).
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub last_check_at: Option<OffsetDateTime>,
-    /// "Ahora no": hasta cuándo se calla lo que se puede posponer. No afecta al
-    /// plazo — posponer retrasa la pregunta, no la fecha límite.
+    /// "Not now": until when what can be postponed stays quiet. It does not affect
+    /// the deadline, since postponing delays the question, not the due date.
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub snoozed_until: Option<OffsetDateTime>,
-    /// De qué versión ya se avisó al usuario. Sólo se usa en el camino que
-    /// necesita a alguien delante; sin esto el aviso saldría en cada ciclo.
+    /// Which version the user has already been told about. Only used on the path
+    /// that needs somebody present; without it the notice would appear every cycle.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notified: Option<String>,
-    /// Qué salió mal en el último intento, y cuántos van seguidos. Lo segundo
-    /// es lo que frena el bucle caliente: una release cuyo asset no existe para
-    /// esta arquitectura fallaría cada cinco minutos para siempre.
+    /// What went wrong on the last attempt, and how many in a row. The second is
+    /// what brakes the hot loop: a release whose asset does not exist for this
+    /// architecture would fail every five minutes forever.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
     #[serde(default)]
@@ -262,9 +261,10 @@ impl Ledger {
         Ok(crate::config::CliConfig::state_dir()?.join("update.json"))
     }
 
-    /// Lee el registro. Un fichero ilegible o corrupto se trata como "no hay
-    /// registro": el peor caso es reiniciar el plazo, y eso es infinitamente
-    /// mejor que un updater que no arranca porque un JSON quedó a medias.
+    /// Reads the record. An unreadable or corrupt file is treated as "there is no
+    /// record": the worst case is resetting the deadline, and that is infinitely
+    /// better than an updater that will not start because a JSON was left half
+    /// written.
     pub fn load() -> Self {
         let Ok(path) = Self::path() else {
             return Self::default();
@@ -284,18 +284,19 @@ impl Ledger {
         Ok(())
     }
 
-    /// Anota lo que GitHub acaba de decir.
+    /// Notes what GitHub just said.
     ///
-    /// El reloj del plazo se reinicia **sólo** cuando cambia la versión. Que se
-    /// reiniciara en cada sondeo es el fallo que dejaría el plazo sin sonar
-    /// jamás; que no se reiniciara al salir una versión más nueva forzaría la
-    /// nueva con el plazo de la anterior, que es lo contrario.
+    /// The deadline's clock resets only when the version changes. Resetting it on
+    /// every poll is the bug that would stop the deadline ever ringing; not
+    /// resetting it when a newer version ships would force the new one on the
+    /// previous one's deadline, which is the opposite.
     pub fn observe(&mut self, latest: &str, now: OffsetDateTime) {
         self.last_check_at = Some(now);
         if self.latest_seen.as_deref() != Some(latest) {
             self.latest_seen = Some(latest.to_string());
             self.first_seen_at = Some(now);
-            // Lo bajado era de la versión anterior: ya no vale.
+            // What was downloaded belonged to the previous version, so it is no
+            // good now.
             if self.staged.as_deref() != Some(latest) {
                 self.staged = None;
                 self.staged_at = None;
@@ -307,8 +308,8 @@ impl Ledger {
         }
     }
 
-    /// Cierra el ciclo: esta versión ya corre. Deja el cuaderno en blanco para
-    /// la siguiente.
+    /// Closes the cycle: this version is running now. It leaves the notebook blank
+    /// for the next one.
     pub fn applied(&mut self, version: &str) {
         if self.latest_seen.as_deref() == Some(version) {
             self.first_seen_at = None;
@@ -321,7 +322,7 @@ impl Ledger {
         self.last_error = None;
     }
 
-    /// Cuándo deja de ser opcional, si es que hay algo pendiente.
+    /// When it stops being optional, if anything is pending at all.
     pub fn deadline(&self) -> Option<OffsetDateTime> {
         let seen = self.first_seen_at?;
         let g: time::Duration = grace().try_into().ok()?;
@@ -334,25 +335,26 @@ impl Ledger {
 // =======================================================================
 
 impl Delivery {
-    /// ¿Se puede relevar esta vía **sin diálogos y sin manos**?
+    /// Can this route be relieved without dialogs and without hands?
     ///
-    /// No es la negación de [`Delivery::needs_elevation`]: un `.dmg` no pide
-    /// privilegios y aun así hace falta una persona arrastrándolo al Finder.
-    /// La pregunta que importa aquí es "¿puede pasar mientras nadie mira?", y
-    /// sólo dos vías la responden que sí.
+    /// It is not the negation of [`Delivery::needs_elevation`]: a `.dmg` asks for no
+    /// privileges and still needs a person dragging it into the Finder. The
+    /// question that matters here is "can this happen while nobody is looking?",
+    /// and only two routes answer yes.
     pub fn applies_unattended(self) -> bool {
         matches!(self, Delivery::AppImage | Delivery::Nsis)
     }
 }
 
 impl Manifest {
-    /// ¿Puede esta máquina relevarse entera sin pedir privilegios ni manos?
+    /// Can this machine relieve itself entirely without asking for privileges or
+    /// hands?
     ///
-    /// **Entera**: la regla de [`super`] es que las piezas van a la misma
-    /// versión o no se toca ninguna, así que basta con que una necesite un
-    /// diálogo para que toda la actualización lo necesite. Aplicar el núcleo en
-    /// silencio y dejar la app esperando a un `pkexec` que el usuario cancela
-    /// es justo el desajuste mudo que este módulo existe para no crear.
+    /// Entirely: [`super`]'s rule is that the pieces go to the same version or none
+    /// of them moves, so one piece needing a dialog is enough for the whole update
+    /// to need one. Applying the core silently and leaving the app waiting on a
+    /// `pkexec` the user cancels is precisely the silent mismatch this module exists
+    /// not to create.
     pub fn applies_unattended(&self) -> bool {
         if let Some(d) = self.delivery {
             if !d.is_ours() {
@@ -362,9 +364,9 @@ impl Manifest {
         if self.has(Component::Desktop) && !self.delivery.is_some_and(|d| d.applies_unattended()) {
             return false;
         }
-        // El núcleo dentro del bundle no se releva por su cuenta: lo trae el
-        // instalador de la app, así que hereda su respuesta (que ya es `true` si
-        // hemos llegado hasta aquí con Desktop instalado).
+        // A core inside the bundle does not relieve itself: the app's installer
+        // brings it, so it inherits that answer (which is already `true` if we got
+        // this far with Desktop installed).
         if self.core_from_bundle {
             return self.has(Component::Desktop);
         }
@@ -372,10 +374,10 @@ impl Manifest {
     }
 }
 
-/// ¿Podemos escribir aquí sin ser root? Se prueba escribiendo, no deduciendo la
-/// respuesta de la ruta: `~/.local/bin` y `/usr/bin` son lo habitual, pero
-/// `HOARD_INSTALL_DIR` deja el núcleo donde el usuario quiera y una lista de
-/// rutas conocidas se equivocaría en silencio justo ahí.
+/// Can we write here without being root? It is tested by writing rather than
+/// inferred from the path: `~/.local/bin` and `/usr/bin` are the usual cases, but
+/// `HOARD_INSTALL_DIR` puts the core wherever the user likes and a list of known
+/// paths would be silently wrong right there.
 fn dir_is_writable(dir: &std::path::Path) -> bool {
     let probe = dir.join(".hoard-write-probe");
     match std::fs::write(&probe, b"") {
@@ -430,8 +432,8 @@ mod tests {
                 version: "1.1.0".into()
             }
         );
-        // Incluso pasado el plazo: forzar lo que no está en disco es prometer
-        // un `rename` y entregar una descarga.
+        // Even past the deadline: forcing what is not on disk is promising a
+        // `rename` and delivering a download.
         assert_eq!(
             decide(at(30), &s),
             Stance::Stage {
@@ -522,8 +524,8 @@ mod tests {
         l.observe("1.1.0", at(0));
         assert_eq!(l.first_seen_at, Some(at(0)));
 
-        // Mismo número, cuatro sondeos después: el reloj no se mueve, que es lo
-        // único que hace que el plazo llegue a sonar.
+        // The same number four polls later: the clock does not move, which is the
+        // only thing that lets the deadline ever ring.
         l.observe("1.1.0", at(1));
         assert_eq!(l.first_seen_at, Some(at(0)));
         assert_eq!(l.last_check_at, Some(at(1)));

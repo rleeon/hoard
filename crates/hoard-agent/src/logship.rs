@@ -1,38 +1,37 @@
 //! Ship `tracing` events to the connected server for centralized diagnostics.
 //!
-//! A [`LogShipLayer`] is added to the process's `tracing` subscriber (desktop
-//! and CLI). Each event is serialized and pushed onto a bounded channel with
-//! **drop-on-full** semantics: a slow or dead network must never block or
-//! crash the app, exactly like the non-blocking local file appender.
+//! A [`LogShipLayer`] is added to the process's `tracing` subscriber (desktop and
+//! CLI). Each event is serialized and pushed onto a bounded channel with
+//! drop-on-full semantics: a slow or dead network must never block or crash the
+//! app, exactly like the non-blocking local file appender.
 //!
-//! Todo lo que entra al canal va **redactado**: el segmento del perfil de
-//! cualquier ruta se sustituye por `<user>` en [`Layer::on_event`], antes de que
-//! la entrada exista siquiera. Se hace ahí y no al enviar para que en este
-//! proceso no llegue a existir un lote sin redactar. El log local en fichero no
-//! pasa por aquí y se queda entero, que es lo que sirve para depurar en la
-//! máquina del usuario.
+//! Everything entering the channel is redacted: the profile segment of any path is
+//! replaced with `<user>` in [`Layer::on_event`], before the entry even exists. It
+//! happens there rather than at send time so an unredacted batch never gets to
+//! exist in this process. The local file log does not pass through here and stays
+//! whole, which is what makes it useful for debugging on the user's machine.
 //!
-//! A dedicated background thread (own current-thread Tokio runtime, so it
-//! works regardless of the host's runtime) drains the channel in batches and
-//! POSTs them to the server. It only ships when the user has opted in
+//! A dedicated background thread (its own current-thread Tokio runtime, so it
+//! works regardless of the host's runtime) drains the channel in batches and POSTs
+//! them to the server. It only ships when the user has opted in
 //! (`prefs.anonymous_telemetry`), a session exists, and the server advertises a
-//! log-ingest level via `/v1/health`; otherwise events are discarded. The opt-in
-//! is read fresh each cycle, so toggling it off stops shipping within a few
-//! seconds without a restart. The server dictates the minimum level
-//! (self-hosted: DEBUG, cloud: WARN), so the client filters at source and never
-//! sends below it — con una excepción: las desmentidas de detección
-//! ([`TELEMETRY_TARGET`]) viajan sea cual sea su nivel.
+//! log-ingest level via `/v1/health`; otherwise events are discarded. The opt-in is
+//! read fresh each cycle, so toggling it off stops shipping within a few seconds
+//! without a restart. The server dictates the minimum level (self-hosted: DEBUG,
+//! cloud: WARN), so the client filters at source and never sends below it, with one
+//! exception: the detection contradictions ([`TELEMETRY_TARGET`]) travel whatever
+//! their level.
 //!
-//! ## De dónde sale la sesión (y por qué esto no enviaba nada)
+//! ## Where the session comes from, and why this used to ship nothing
 //!
-//! [`current_session`] mira **dos** huecos, y ese es el arreglo: la sesión
-//! self-hosted vive en `credentials` y la de Cloud en `cloud_auth`, dos almacenes
-//! disjuntos. Este lector sólo miraba el primero, así que para una máquina
-//! entrada en Cloud —o sea, para la población de la nube entera— resolvía `None`
-//! en cada vuelta y `client_logs` llevaba cero filas desde que existe. Cloud
-//! entra ahora por `credentials::lent_cloud`, el hueco que rellena quien tiene el
-//! JWT fresco (el servicio en cada rotación, un cliente al pedirlo prestado);
-//! seguimos sin poder pedir nada por IPC desde este hilo.
+//! [`current_session`] looks in two slots, and that is the fix: the self-hosted
+//! session lives in `credentials` and the Cloud one in `cloud_auth`, two disjoint
+//! stores. This reader only looked at the first, so for a machine signed into
+//! Cloud, meaning the entire cloud population, it resolved `None` on every pass and
+//! `client_logs` has carried zero rows since it existed. Cloud now comes in through
+//! `credentials::lent_cloud`, the slot filled by whoever holds a fresh JWT (the
+//! service on each rotation, a client when it borrows one); we still cannot ask for
+//! anything over IPC from this thread.
 
 use std::borrow::Cow;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
@@ -53,16 +52,15 @@ const CHANNEL_CAPACITY: usize = 2048;
 const MAX_BATCH: usize = 500;
 /// How long to accumulate before flushing a non-empty batch.
 const FLUSH_INTERVAL: Duration = Duration::from_secs(5);
-/// Espera tras un rechazo de credencial. El rotador del servicio renueva cada
-/// ~45 min; preguntar cada minuto es barato y no machaca el server con un token
-/// que ya sabemos muerto.
+/// The wait after a credential rejection. The service's rotator renews every 45
+/// minutes or so; asking once a minute is cheap and does not hammer the server with
+/// a token we already know is dead.
 const REJECTED_BACKOFF: Duration = Duration::from_secs(60);
 
-// El cuerpo del lote (`LogEntry` / `DeviceMeta` / `LogBatch`) vive en
-// `hoard_core::wire`, compartido con `hoard_server::routes::logs` (ADR 0021
-// C.6). Este par era drift real: aquí `target` y `ts` eran obligatorios y en el
-// server eran `Option`, así que la forma "correcta" dependía del lado que
-// mirases.
+// The batch body (`LogEntry`, `DeviceMeta`, `LogBatch`) lives in
+// `hoard_core::wire`, shared with `hoard_server::routes::logs` (ADR 0021 C.6). This
+// pair was real drift: here `target` and `ts` were required and on the server they
+// were `Option`, so the "correct" shape depended on which side you looked at.
 use hoard_core::wire::{level_rank, ships_at, DeviceMeta, LogBatch, LogEntry};
 
 /// `tracing` layer that forwards events onto the ship channel.
@@ -70,9 +68,9 @@ pub struct LogShipLayer {
     tx: SyncSender<LogEntry>,
 }
 
-/// Build the layer and spawn the background shipper thread. Returns the layer
-/// to be `.with(...)`-ed onto the subscriber registry. Cheap and infallible —
-/// if the thread can't spawn, the layer simply drops everything.
+/// Build the layer and spawn the background shipper thread. Returns the layer to
+/// be `.with(...)`-ed onto the subscriber registry. Cheap and infallible: if the
+/// thread can't spawn, the layer simply drops everything.
 pub fn start() -> LogShipLayer {
     let (tx, rx) = sync_channel::<LogEntry>(CHANNEL_CAPACITY);
     let _ = std::thread::Builder::new()
@@ -88,8 +86,8 @@ where
     fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
         let meta = event.metadata();
         let target = meta.target();
-        // Never ship our own shipper logs — that would feed back into the
-        // channel and (worse) loop network errors into more events.
+        // Never ship our own shipper logs: that would feed back into the channel
+        // and, worse, loop network errors into more events.
         if target.starts_with("hoard_agent::logship") {
             return;
         }
@@ -172,27 +170,27 @@ impl Visit for FieldVisitor {
 
 // ---- redacción ----------------------------------------------------------
 
-/// Lo que sustituye al segmento del perfil. Se conserva la **forma** de la ruta
-/// —que es lo que sirve para arreglar la detección— y se tira el nombre de la
-/// persona, que no sirve para nada.
+/// What replaces the profile segment. The shape of the path is kept, which is what
+/// is useful for fixing detection, and the person's name is thrown away, which is
+/// useful for nothing.
 const PROFILE_TOKEN: &str = "<user>";
 
-/// Las carpetas tras las que viene el nombre de la persona: `/home/x`,
-/// `C:\Users\x`, `/Users/x` de macOS.
+/// The folders the person's name comes after: `/home/x`, `C:\Users\x`, and
+/// macOS's `/Users/x`.
 const PROFILE_DIRS: [&str; 2] = ["home", "users"];
 
 fn is_sep(b: u8) -> bool {
     b == b'/' || b == b'\\'
 }
 
-/// Fin de la tira de separadores que empieza en `from`.
+/// The end of the run of separators starting at `from`.
 ///
-/// Es una **tira** y no un separador porque el texto no siempre trae la ruta tal
-/// cual: `record_debug` renderiza con `{:?}`, y el `Debug` de una cadena escapa
-/// las barras invertidas, así que una ruta de Windows llega como
-/// `C:\\Users\\angel`. Buscar `\Users\` a pelo no casaría con eso y el nombre
-/// saldría de la máquina — que es justo lo que esto existe para impedir. Como
-/// efecto secundario también absorbe `//` y las rutas con separadores mezclados.
+/// A run rather than a separator because the text does not always carry the path
+/// as-is: `record_debug` renders with `{:?}`, and a string's `Debug` escapes
+/// backslashes, so a Windows path arrives as `C:\\Users\\angel`. Looking for a
+/// bare `\Users\` would not match that and the name would leave the machine,
+/// which is exactly what this exists to prevent. As a side effect it also absorbs
+/// `//` and paths with mixed separators.
 fn sep_run_end(bytes: &[u8], from: usize) -> usize {
     let mut i = from;
     while i < bytes.len() && is_sep(bytes[i]) {
@@ -201,7 +199,7 @@ fn sep_run_end(bytes: &[u8], from: usize) -> usize {
     i
 }
 
-/// Fin del segmento que empieza en `from`: el siguiente separador, o el final.
+/// The end of the segment starting at `from`: the next separator, or the end.
 fn segment_end(bytes: &[u8], from: usize) -> usize {
     bytes[from..]
         .iter()
@@ -215,10 +213,10 @@ fn is_profile_dir(segment: &str) -> bool {
         .any(|dir| segment.eq_ignore_ascii_case(dir))
 }
 
-/// Quita el nombre de la persona de cualquier ruta del texto.
+/// Strips the person's name out of any path in the text.
 ///
-/// Devuelve `Cow::Borrowed` cuando no hay nada que redactar, que es el caso
-/// normal: esto corre en `on_event`, o sea en cada línea de log del proceso.
+/// It returns `Cow::Borrowed` when there is nothing to redact, which is the normal
+/// case: this runs in `on_event`, meaning on every log line in the process.
 fn redact(input: &str) -> Cow<'_, str> {
     let shaped = redact_markers(input);
     match home_override() {
@@ -229,16 +227,15 @@ fn redact(input: &str) -> Cow<'_, str> {
     }
 }
 
-/// El paso por carpeta de perfil: `/home/angel/x` → `/home/<user>/x`.
+/// The profile-folder pass: `/home/angel/x` becomes `/home/<user>/x`.
 ///
-/// Recorre bytes, no caracteres: todo lo que se compara —separadores y nombres
-/// de carpeta— es ASCII, así que los índices que salen de aquí caen siempre en
-/// frontera de carácter y las rebanadas son seguras aunque el nombre lleve
-/// acentos.
+/// It walks bytes rather than characters: everything compared, separators and
+/// folder names, is ASCII, so the indices coming out always land on a character
+/// boundary and the slices are safe even when the name carries accents.
 fn redact_markers(input: &str) -> Cow<'_, str> {
     let bytes = input.as_bytes();
     let mut out: Option<String> = None;
-    // Hasta dónde se ha volcado ya el original al buffer de salida.
+    // How much of the original has already been flushed into the output buffer.
     let mut copied = 0usize;
     let mut i = 0usize;
 
@@ -248,8 +245,8 @@ fn redact_markers(input: &str) -> Cow<'_, str> {
             continue;
         }
         let after_sep = sep_run_end(bytes, i);
-        // ¿`home` o `users`, y con separador detrás? Sin separador detrás no hay
-        // segmento de perfil que quitar (una ruta que acaba en `/home`).
+        // `home` or `users`, with a separator behind it? With no separator behind
+        // it there is no profile segment to strip (a path ending in `/home`).
         let Some(dir_len) = PROFILE_DIRS.iter().find_map(|dir| {
             let end = after_sep + dir.len();
             (end < bytes.len()
@@ -264,17 +261,18 @@ fn redact_markers(input: &str) -> Cow<'_, str> {
         let mut seg_start = sep_run_end(bytes, after_sep + dir_len);
         let mut seg_end = segment_end(bytes, seg_start);
 
-        // `/home/users/angel`: lo que sigue a `home` es otra carpeta
-        // contenedora, no la persona. Sin esto se redactaría `users` y el nombre
-        // saldría intacto en el segmento siguiente — el peor de los dos mundos.
-        // Sólo cuando queda ruta detrás: en `/home/users` la persona se llama
-        // así y hay que quitarlo.
+        // `/home/users/angel`: what follows `home` is another containing folder,
+        // not the person. Without this, `users` would be redacted and the name
+        // would come out intact in the next segment, the worst of both worlds.
+        // Only when there is path left behind it: in `/home/users` the person is
+        // called that, and it has to go.
         while seg_end < bytes.len() && is_profile_dir(&input[seg_start..seg_end]) {
             seg_start = sep_run_end(bytes, seg_end);
             seg_end = segment_end(bytes, seg_start);
         }
 
-        // Nada entre separadores, o algo ya redactado: no hay nombre que quitar.
+        // Nothing between separators, or something already redacted: no name to
+        // strip.
         if seg_end == seg_start || &input[seg_start..seg_end] == PROFILE_TOKEN {
             i = seg_end.max(after_sep);
             continue;
@@ -296,13 +294,13 @@ fn redact_markers(input: &str) -> Cow<'_, str> {
     }
 }
 
-/// El home real de este proceso, para los layouts que no caen en ningún
-/// marcador (`/var/home/<user>` de Silverblue, un `$HOME` a medida). Se resuelve
-/// una vez: no cambia mientras el proceso vive.
+/// This process's real home, for the layouts that hit no marker (Silverblue's
+/// `/var/home/<user>`, a custom `$HOME`). Resolved once: it does not change while
+/// the process lives.
 ///
-/// Devuelve el par (home, home con el último segmento redactado), o `None`
-/// cuando el home ya lo cubren los marcadores y volver a pasarlo sería trabajo
-/// por nada.
+/// Returns the pair (home, home with its last segment redacted), or `None` when the
+/// home is already covered by the markers and passing it again would be work for
+/// nothing.
 fn home_override() -> Option<&'static (String, String)> {
     static HOME: OnceLock<Option<(String, String)>> = OnceLock::new();
     HOME.get_or_init(|| {
@@ -378,11 +376,11 @@ fn drain_loop(rx: Receiver<LogEntry>) {
                         device: device.clone(),
                         entries,
                     };
-                    // Un 401 con un JWT de Cloud significa "tu token ya no
-                    // vale", no "se perdió el lote": tragarlo dejaba al
-                    // enviador reintentando contra la nada hasta reiniciar.
-                    // Se vuelve al bucle de fuera, que re-resuelve con el
-                    // token que el servicio haya rotado entre medias.
+                    // A 401 with a Cloud JWT means "your token is no longer
+                    // valid", not "the batch was lost": swallowing it left the
+                    // shipper retrying against nothing until a restart. It goes
+                    // back to the outer loop, which re-resolves with whatever
+                    // token the service has rotated to meanwhile.
                     if let Err(PostError::Rejected) =
                         rt.block_on(post_batch(client, &policy, &body))
                     {
@@ -481,12 +479,13 @@ async fn resolve_policy(client: &reqwest::Client) -> Option<Policy> {
     })
 }
 
-/// A qué servidor y con qué credencial enviamos ahora mismo: `(base_url, token)`.
+/// Which server and which credential we are shipping with right now:
+/// `(base_url, token)`.
 ///
-/// Cloud manda cuando hay sesión Cloud, que es el mismo orden que sigue
-/// `session::resolve_owned` para elegir servidor activo. El hueco Cloud lo pone
-/// quien rota el JWT; el self-hosted sale de `current` —el préstamo en un
-/// cliente, el almacén en el servicio (D.20)— y su token no caduca.
+/// Cloud wins when there is a Cloud session, the same order `session::resolve_owned`
+/// follows to pick the active server. The Cloud slot is filled by whoever rotates
+/// the JWT; the self-hosted one comes from `current` (the loan in a client, the
+/// store in the service, D.20) and its token does not expire.
 fn current_session() -> Option<(String, String)> {
     if let Some(lease) = credentials::lent_cloud() {
         return Some((lease.url.trim_end_matches('/').to_string(), lease.token));
@@ -511,14 +510,15 @@ fn telemetry_enabled() -> bool {
         .unwrap_or(false)
 }
 
-/// Un token Cloud que el server ha rechazado no vale para nadie: se vacía el
-/// hueco para dejar de insistir con él. Lo repone quien tiene uno bueno — el
-/// servicio en su próxima rotación, o un cliente la próxima vez que lo pida
-/// prestado— y hasta entonces este hilo se calla en vez de tocar la puerta cada
-/// minuto con la credencial muerta.
+/// A Cloud token the server has rejected is no use to anybody, so the slot is
+/// emptied to stop insisting with it. Whoever holds a good one puts it back, the
+/// service on its next rotation or a client the next time it borrows one, and until
+/// then this thread stays quiet rather than knocking every minute with a dead
+/// credential.
 ///
-/// Sólo si el rechazado es el que está puesto: entre el POST y esto, el rotador
-/// pudo haber dejado ya uno nuevo, y tirarlo sería tirar el bueno.
+/// Only when the rejected one is the one in place: between the POST and this, the
+/// rotator may already have left a new one, and throwing it away would be throwing
+/// away the good one.
 fn drop_rejected_lease(policy: &Policy) {
     if matches!(credentials::lent_cloud(), Some(lease) if lease.token == policy.token) {
         credentials::set_lent_cloud(None);
@@ -526,20 +526,20 @@ fn drop_rejected_lease(policy: &Policy) {
 }
 
 /// Cheap re-check: is there still a session whose token matches the policy we
-/// resolved? Avoids a full health round-trip on every batch. Con Cloud esto es
-/// además el detector de rotación: el servicio cambia el token del hueco cada
-/// ~45 min y el lote siguiente ya sale con el nuevo.
+/// resolved? Avoids a full health round-trip on every batch. With Cloud it is also
+/// the rotation detector: the service changes the slot's token every 45 minutes or
+/// so and the next batch already goes out with the new one.
 fn session_matches(policy: &Policy) -> bool {
     matches!(current_session(), Some((_, token)) if token == policy.token)
 }
 
-/// Por qué no entró un lote. Sólo se distingue lo accionable: que el servidor
-/// haya rechazado la credencial. Un fallo de red no lo es —el siguiente lote
-/// sale igual— y se traga como siempre.
+/// Why a batch did not get in. Only the actionable case is distinguished: the
+/// server rejecting the credential. A network failure is not actionable, since the
+/// next batch goes out anyway, and gets swallowed as always.
 enum PostError {
-    /// 401/403: el token no vale. Hay que re-resolver.
+    /// 401 or 403: the token is no good. It has to be re-resolved.
     Rejected,
-    /// Red caída, timeout, 5xx: se reintenta solo con el lote siguiente.
+    /// Network down, timeout, 5xx: it retries on its own with the next batch.
     Transient,
 }
 
@@ -570,9 +570,9 @@ fn device_meta() -> DeviceMeta {
     DeviceMeta {
         name: id.name,
         os: Some(id.os),
-        // La huella la calcula `fingerprint()` con `hex::encode` de un SHA-256,
-        // así que siempre pasa la puerta; si algún día dejara de hacerlo, viaja
-        // como ausente en vez de mandar algo que el server no puede casar.
+        // The fingerprint is computed by `fingerprint()` as the `hex::encode` of a
+        // SHA-256, so it always passes the gate; if it ever stopped doing so, it
+        // travels as absent rather than sending something the server cannot match.
         fingerprint: MachineId::parse(&id.fingerprint).ok(),
         app_version: Some(env!("CARGO_PKG_VERSION").to_string()),
     }
@@ -597,18 +597,17 @@ pub fn device_identity() -> DeviceIdentity {
     }
 }
 
-/// El nombre de esta máquina, cacheado.
+/// This machine's name, cached.
 ///
-/// Lo estampa cada subida para que el historial de versiones pueda decir de
-/// **qué** ordenador salió cada copia: con la misma partida sincronizada en dos
-/// sitios, "v77 · hace dos horas" no basta para decidir cuál restaurar. Es el
-/// mismo hostname que ya identifica al dispositivo en la cuenta, así que la
-/// etiqueta del historial y la lista de dispositivos dicen lo mismo.
+/// Every upload stamps it so the version history can say which computer each copy
+/// came from: with the same save synced in two places, "v77, two hours ago" is not
+/// enough to decide which to restore. It is the same hostname that already
+/// identifies the device on the account, so the history's label and the device list
+/// say the same thing.
 ///
-/// Cacheado porque va en el camino de cada backup y el hostname no cambia
-/// dentro de una ejecución (y si cambiara, las copias viejas seguirían
-/// llevando el nombre con el que se hicieron, que es justo lo que un historial
-/// debe conservar).
+/// Cached because it sits on every backup's path and the hostname does not change
+/// within a run (and if it did, the older copies would keep the name they were made
+/// under, which is exactly what a history should preserve).
 pub fn device_name() -> Option<String> {
     static NAME: OnceLock<Option<String>> = OnceLock::new();
     NAME.get_or_init(sysinfo::System::host_name).clone()
@@ -674,10 +673,10 @@ mod tests {
         );
     }
 
-    /// `record_debug` renderiza con `{:?}` y el `Debug` de una cadena **escapa**
-    /// las barras invertidas: una ruta de Windows llega con las barras dobladas.
-    /// Buscar `\Users\` a pelo no casaba con eso y el nombre salía de la
-    /// máquina por cualquier campo que se registrara con `?` en vez de con `%`.
+    /// `record_debug` renders with `{:?}` and a string's `Debug` escapes
+    /// backslashes, so a Windows path arrives with its slashes doubled. Looking for
+    /// a bare `\Users\` did not match that and the name left the machine through
+    /// any field recorded with `?` instead of `%`.
     #[test]
     fn redacts_windows_paths_as_debug_renders_them() {
         // Lo que de verdad produce `format!("{:?}", "C:\\Users\\angel\\AppData")`.
@@ -691,24 +690,24 @@ mod tests {
     fn a_run_of_separators_is_still_one_separator() {
         assert_eq!(redact("/home//angel/x"), "/home//<user>/x");
         assert_eq!(redact("C:\\\\Users\\\\angel"), "C:\\\\Users\\\\<user>");
-        // UNC: el `\\` de cabeza no es un perfil, el `\Users\` de dentro sí.
+        // UNC: the leading `\\` is not a profile, the `\Users\` inside is.
         assert_eq!(
             redact("\\\\nas\\share\\Users\\angel\\Saved Games"),
             "\\\\nas\\share\\Users\\<user>\\Saved Games"
         );
     }
 
-    /// El nombre no siempre cuelga directamente de `home`: hay instalaciones con
-    /// `/home/users/<nombre>`, y ahí lo fácil es redactar la carpeta contenedora
-    /// y dejar pasar a la persona.
+    /// The name does not always hang directly off `home`: some installs use
+    /// `/home/users/<name>`, and there the easy mistake is to redact the containing
+    /// folder and let the person through.
     #[test]
     fn the_name_can_hang_one_level_deeper() {
         assert_eq!(redact("/home/users/angel/save"), "/home/users/<user>/save");
         assert_eq!(redact("/home/home/angel"), "/home/home/<user>");
-        // Pero si la ruta acaba ahí, esa carpeta **es** la persona.
+        // But if the path ends there, that folder IS the person.
         assert_eq!(redact("/home/users"), "/home/<user>");
-        // Proton: `drive_c/users/steamuser` es una constante de Wine, y se
-        // redacta igual. Se pierde poco y la forma sigue diciendo qué es.
+        // Proton: `drive_c/users/steamuser` is a Wine constant, and gets redacted
+        // the same. Little is lost and the shape still says what it is.
         assert_eq!(
             redact("/home/angel/.steam/steamapps/compatdata/1/pfx/drive_c/users/steamuser/AppData"),
             "/home/<user>/.steam/steamapps/compatdata/1/pfx/drive_c/users/<user>/AppData"
@@ -717,26 +716,26 @@ mod tests {
 
     #[test]
     fn a_name_with_accents_survives_the_byte_scan() {
-        // El escaneo va por bytes; un nombre multibyte no debe partir una
-        // rebanada por la mitad (sería un panic, no una fuga).
+        // The scan goes by bytes; a multibyte name must not split a slice down the
+        // middle (that would be a panic, not a leak).
         assert_eq!(redact("/home/ángel/juegos"), "/home/<user>/juegos");
         assert_eq!(redact("/home/日本語/x"), "/home/<user>/x");
     }
 
     #[test]
     fn leaves_alone_what_has_no_name_in_it() {
-        // Sin nada que redactar se devuelve prestado, que es el camino normal.
+        // With nothing to redact it comes back borrowed, which is the normal path.
         assert!(matches!(
             redact("agent: backup committed"),
             Cow::Borrowed(_)
         ));
         assert!(matches!(redact("/usr/share/hoard"), Cow::Borrowed(_)));
-        // El marcador sin segmento detrás no tiene nombre que quitar.
+        // A marker with no segment behind it has no name to strip.
         assert_eq!(redact("/home/"), "/home/");
         assert_eq!(redact("guardado en /home"), "guardado en /home");
-        // Y lo ya redactado no se vuelve a redactar (no gana un `<<user>>`).
+        // And what is already redacted is not redacted again (no `<<user>>`).
         assert_eq!(redact("/home/<user>/x"), "/home/<user>/x");
-        // Una palabra suelta no es una carpeta de perfil.
+        // A loose word is not a profile folder.
         assert_eq!(
             redact("todos los users tienen home"),
             "todos los users tienen home"
@@ -745,27 +744,27 @@ mod tests {
 
     #[test]
     fn keeps_the_shape_that_makes_detection_fixable() {
-        // Lo que se conserva es justo lo que sirve para arreglar la detección:
-        // la forma de la ruta, el juego y el sufijo.
+        // What is kept is exactly what is useful for fixing detection: the shape of
+        // the path, the game and the suffix.
         let shaped = redact("C:\\Users\\angel\\AppData\\LocalLow\\TheGameBakers\\Furi");
         assert!(shaped.contains("AppData\\LocalLow"));
         assert!(shaped.contains("TheGameBakers\\Furi"));
         assert!(!shaped.contains("angel"));
     }
 
-    /// Esto corre dentro de `on_event`, o sea en **cada línea de log** del
-    /// proceso: un índice fuera de frontera de carácter no sería un fallo de
-    /// redacción, sería un panic en cada log de la app. Se machaca con entradas
-    /// aleatorias de un alfabeto hecho a mala idea (separadores pegados,
-    /// multibyte, trozos de marcador sueltos) y se comprueba de paso que el
-    /// resultado no conserva ninguno de los nombres sembrados.
+    /// This runs inside `on_event`, meaning on every log line in the process: an
+    /// index off a character boundary would not be a redaction failure, it would be
+    /// a panic on every log line in the app. It gets hammered with random inputs
+    /// from a deliberately nasty alphabet (separators run together, multibyte, loose
+    /// pieces of markers) and it also checks the result keeps none of the seeded
+    /// names.
     #[test]
     fn random_garbage_never_panics_and_never_keeps_a_name() {
         const ALPHABET: [&str; 14] = [
             "/", "\\", "home", "Users", "users", "HOME", "angel", "ángel", "日本", "<user>", " ",
             ":", "C", "..",
         ];
-        // LCG determinista: un fallo se reproduce con la misma semilla.
+        // A deterministic LCG: a failure reproduces from the same seed.
         let mut seed = 0x2545_F491_4F6C_DD1Du64;
         let mut next = move || {
             seed ^= seed << 13;
@@ -781,8 +780,8 @@ mod tests {
                 input.push_str(ALPHABET[(next() % ALPHABET.len() as u64) as usize]);
             }
             let out = redact(&input);
-            // Un nombre sólo puede sobrevivir si no colgaba de una carpeta de
-            // perfil; lo que no puede es sobrevivir *detrás* de una.
+            // A name can only survive if it did not hang off a profile folder;
+            // what it must not do is survive *behind* one.
             for name in ["angel", "ángel"] {
                 let leaked = out
                     .match_indices(name)
@@ -810,8 +809,8 @@ mod tests {
 
     #[test]
     fn telemetry_rides_below_the_server_minimum() {
-        // WARN (3) es el mínimo que anuncia Cloud: el INFO operativo se queda
-        // fuera y la desmentida entra igual.
+        // WARN (3) is the minimum Cloud advertises: operational INFO stays out and
+        // the contradiction gets in regardless.
         assert!(!ships_at(&entry("info", "hoard_agent::agent"), 3));
         assert!(ships_at(&entry("warn", "hoard_agent::agent"), 3));
         assert!(ships_at(&entry("info", TELEMETRY_TARGET), 3));

@@ -3,7 +3,7 @@
 //! Two pieces are kept on disk:
 //!
 //! * The bearer token, which is sensitive and should live in the OS keychain
-//!   when one is available (Secret Service on Linux, Credential Manager on
+//!   Windows, Keychain on macOS, all surfaced by the `keyring` crate).
 //!   Windows, Keychain on macOS — all surfaced by the `keyring` crate).
 //! * The server URL and a cached copy of the last-seen user info, which are
 //!   not sensitive and live in a TOML file at `<config>/desktop/session.toml`
@@ -18,23 +18,23 @@
 //! The desktop app uses a separate file from `hoard-cli`'s `config.toml` so
 //! that running the CLI does not stomp the GUI's session and vice versa.
 //!
-//! ## Quién escribe, quién lee (D.20)
+//! ## Who writes, who reads (D.20)
 //!
-//! **El dueño es el daemon**, igual que en `cloud_auth`: [`save`] y [`clear`]
-//! tocan el llavero, y en macOS un ítem del llavero sólo autoriza al binario que
-//! lo creó — con la app escribiendo y `hoardd` leyendo, cada lectura del servicio
-//! era un diálogo de contraseña. Un cliente que acaba de validar un token lo
-//! **entrega** (`Request::AdoptServerSession`) y lo pide prestado cuando lo
-//! necesita (`Request::ServerToken`).
+//! The daemon is the owner, as in `cloud_auth`: [`save`] and [`clear`] touch the
+//! keyring, and on macOS a keychain item authorises only the binary that created
+//! it, so with the app writing and `hoardd` reading, every read by the service was
+//! a password dialog. A client that has just validated a token hands it over
+//! (`Request::AdoptServerSession`) and borrows it when it needs it
+//! (`Request::ServerToken`).
 //!
-//! Un cliente, por tanto, **no llama a [`load`]**: usa [`current`], que devuelve
-//! el préstamo que le hayan puesto en el hueco ([`set_lent`]) y sólo cae al
-//! almacén cuando nadie lo ha rellenado — que es el caso del daemon, el dueño.
-//! Para lo que no es secreto (URL y usuario) está [`load_public`], que lee el
-//! fichero y no toca el llavero.
+//! A client therefore does not call [`load`]: it uses [`current`], which returns
+//! the loan somebody put in the slot ([`set_lent`]) and only falls back to the
+//! store when nobody has filled it, which is the daemon's case, the owner's. For
+//! what is not secret (the URL and the user) there is [`load_public`], which reads
+//! the file and never touches the keyring.
 //!
-//! Sin servicio a quien entregar existen [`save_unlocked`] y
-//! [`forget_unlocked`]: fichero 0600 y nunca el llavero.
+//! With no service to hand it to there are [`save_unlocked`] and
+//! [`forget_unlocked`]: the 0600 file and never the keyring.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -74,16 +74,16 @@ struct Session {
     /// operation this is `None` and the token lives in the keyring.
     #[serde(default)]
     auth: Option<AuthSection>,
-    /// El usuario cerró sesión y **nadie ha podido borrar el ítem del llavero**
-    /// (un cliente sin servicio al alcance: borrarlo es del dueño).
+    /// The user signed out and nobody could delete the keychain item (a client
+    /// with no service in reach: deleting is the owner's job).
     ///
-    /// Es load-bearing que exista. [`load`] recupera la sesión del blob del
-    /// llavero cuando el fichero se ha perdido —el arreglo de la ACL que un build
-    /// viejo de Windows dejaba clavada— y eso, sin esta marca, resucitaría la
-    /// sesión que el usuario acaba de cerrar. Un fichero borrado y un fichero
-    /// ilegible se parecen demasiado para distinguirlos por su ausencia, así que
-    /// el logout deja dicho lo que hizo. [`save`] escribe un `Session` nuevo, así
-    /// que el siguiente login la limpia sin acordarse de ella.
+    /// It is load-bearing that this exists. [`load`] recovers the session from the
+    /// keyring blob when the file has been lost, which is the fix for the ACL an
+    /// old Windows build used to clamp down, and without this marker that would
+    /// resurrect the session the user just closed. A deleted file and an unreadable
+    /// one look too alike to tell apart by their absence, so the logout leaves word
+    /// of what it did. [`save`] writes a fresh `Session`, so the next login clears
+    /// it without having to remember it.
     #[serde(default, skip_serializing_if = "is_false")]
     signed_out: bool,
 }
@@ -142,13 +142,14 @@ pub fn session_path() -> Result<PathBuf> {
     Ok(dirs.config_dir().join("desktop").join("session.toml"))
 }
 
-/// Persist credentials. Token goes to the OS keychain when available, with a
+/// Persist credentials. The token goes to the OS keychain when available, with a
 /// transparent file fallback otherwise.
-/// **Sólo el daemon.** Es la escritura que crea el ítem del llavero, y en macOS
-/// su ACL autoriza únicamente al binario que lo crea: si lo escribiera un cliente,
-/// cada lectura del servicio le pediría la contraseña al usuario (D.20). Un
-/// cliente entrega la sesión por IPC (`Request::AdoptServerSession`), o usa
-/// [`save_unlocked`] si no hay servicio a quien entregarla.
+///
+/// Only the daemon. It is the write that creates the keychain item, and on macOS
+/// its ACL authorises only the binary that creates it: if a client wrote it, every
+/// read by the service would ask the user for their password (D.20). A client
+/// hands the session over by IPC (`Request::AdoptServerSession`), or uses
+/// [`save_unlocked`] when there is no service to hand it to.
 pub fn save(creds: &Credentials) -> Result<TokenStorage> {
     let session = Session {
         server: ServerSection {
@@ -183,24 +184,24 @@ pub fn save(creds: &Credentials) -> Result<TokenStorage> {
 }
 
 /// Load credentials if any are stored. Returns `Ok(None)` when no session is
-/// present yet (e.g. fresh install) — that is not an error. Un llavero
-/// bloqueado, en cambio, **sí** lo es: ver [`pick_token`].
+/// present yet (a fresh install, say), and that is not an error. A locked keyring
+/// is one, though: see [`pick_token`].
 pub fn load() -> Result<Option<Credentials>> {
     Ok(load_detailed()?.map(|(creds, _)| creds))
 }
 
-/// Como [`load`], pero diciendo **de dónde** salió el token.
+/// Like [`load`], but saying where the token came from.
 ///
-/// Lo necesita el daemon: un token que venía del fichero significa que el ítem del
-/// llavero no existe o no es suyo, y entonces le toca subirlo él
-/// ([`promote_to_keyring`]) para ser el dueño de la ACL. Sin esa distinción la
-/// promoción tendría que reescribir el llavero en cada arranque —una escritura
-/// inútil por arranque, y en macOS otro diálogo— o no hacerse nunca, que es lo que
-/// deja al usuario de macOS con un ítem que su servicio no puede leer.
+/// The daemon needs it: a token that came from the file means the keychain item
+/// either does not exist or is not its own, and then it has to lift it itself
+/// ([`promote_to_keyring`]) to own the ACL. Without that distinction the promotion
+/// would have to rewrite the keyring on every start, a pointless write per start
+/// and another dialog on macOS, or never happen at all, which is what leaves a
+/// macOS user with an item their service cannot read.
 pub fn load_detailed() -> Result<Option<(Credentials, TokenStorage)>> {
-    // Un logout que no pudo borrar el ítem del llavero (cliente sin servicio) lo
-    // deja dicho aquí. Se comprueba **antes** que nada: la recuperación de más
-    // abajo resucitaría la sesión desde el blob huérfano.
+    // A logout that could not delete the keychain item (a client with no service)
+    // leaves word here. It is checked before anything else: the recovery below
+    // would resurrect the session from the orphaned blob.
     if matches!(read_session(), Ok(Some(s)) if s.signed_out) {
         return Ok(None);
     }
@@ -221,17 +222,16 @@ pub fn load_detailed() -> Result<Option<(Credentials, TokenStorage)>> {
                 None => Ok(None),
             }
         }
-        // Cache absent, empty, or unreadable (e.g. an ACL a previous Windows
-        // build clamped down and `read_session` couldn't repair). Don't drop
-        // the session over a disk hiccup: the keychain now carries the URL too,
-        // so it can restore everything on its own.
+        // Cache absent, empty, or unreadable (an ACL a previous Windows build
+        // clamped down and `read_session` couldn't repair, say). Don't drop the
+        // session over a disk hiccup: the keychain now carries the URL too, so it
+        // can restore everything on its own.
         //
-        // Aquí un fallo del llavero **sí** se traga, al revés que arriba: sin
-        // fichero de sesión nadie ha entrado nunca en esta máquina (`save` lo
-        // escribe siempre, incluso cuando el llavero no está), así que su
-        // ausencia es la respuesta y `Ok(None)` manda al usuario al asistente —
-        // que es lo que quiere en una primera ejecución, con llavero bloqueado o
-        // sin él. Un fichero ilegible sigue devolviendo su error de lectura.
+        // Here a keyring failure IS swallowed, unlike above: with no session file
+        // nobody has ever signed in on this machine (`save` always writes it, even
+        // when the keyring is missing), so its absence is the answer and `Ok(None)`
+        // sends the user to the wizard, which is what they want on a first run,
+        // locked keyring or not. An unreadable file still returns its read error.
         read => {
             if let Ok(Some(blob)) = try_keyring_get() {
                 if !blob.token.is_empty() && !blob.url.is_empty() {
@@ -263,16 +263,16 @@ pub fn load_detailed() -> Result<Option<(Credentials, TokenStorage)>> {
     }
 }
 
-/// Qué token vale: el del llavero cuando contesta, el del fichero 0600 cuando el
-/// llavero falla por algo **reparable** (bloqueado, sin D-Bus en una sesión
-/// headless) — eso no es "no hay sesión".
+/// Which token counts: the keyring's when it answers, the 0600 file's when the
+/// keyring fails for something repairable (locked, no D-Bus in a headless
+/// session). That is not "there is no session".
 ///
-/// Es el gemelo de `cloud_auth::pick_auth`, y por el mismo motivo: tragarse el
-/// `Err` como si fuese `NoEntry` devolvía `Ok(None)` con el token intacto en el
-/// llavero, o sea un usuario que aparece deslogueado sin una línea que lo
-/// explique. Con el fichero de sesión delante (hay URL: aquí **sí** se entró
-/// alguna vez) un llavero mudo y sin fallback en disco tiene que salir entero:
-/// es la única pista de que está bloqueado.
+/// It is `cloud_auth::pick_auth`'s twin, for the same reason: swallowing the `Err`
+/// as though it were `NoEntry` returned `Ok(None)` with the token intact in the
+/// keyring, meaning a user who appears signed out with not a line to explain it.
+/// With the session file in front of us (there is a URL, so somebody did sign in
+/// here once) a mute keyring with no disk fallback has to come out whole: it is
+/// the only clue that it is locked.
 fn pick_token(
     from_keyring: Result<Option<KeyringBlob>>,
     from_file: Option<String>,
@@ -280,16 +280,17 @@ fn pick_token(
     let from_file = from_file.filter(|t| !t.is_empty());
     match from_keyring {
         Ok(Some(blob)) if !blob.token.is_empty() => Ok(Some((blob.token, TokenStorage::Keyring))),
-        // Sin entrada (o con una vacía): no hay fallo que contar, cae al fichero.
+        // No entry, or an empty one: there is no failure to report, so it falls
+        // back to the file.
         Ok(_) => Ok(from_file.map(|t| (t, TokenStorage::File))),
         Err(e) => match from_file {
             Some(token) => {
-                tracing::debug!(error = %e, "keyring ilegible; usando el token del fichero");
+                tracing::debug!(error = %e, "keyring unreadable; using the token from the file");
                 Ok(Some((token, TokenStorage::File)))
             }
-            // Un tope agotado ya se explica solo; a cualquier otro fallo se le
-            // añade el motivo tipado, que es lo que la UI mira para decir "vuelve
-            // a entrar" en vez del banner genérico.
+            // An exhausted cap explains itself; any other failure gets the typed
+            // reason attached, which is what the UI reads to say "sign in again"
+            // instead of the generic banner.
             None if e.is::<KeyringTimeout>() => Err(e),
             None => Err(e.context(KeyringUnreadable {
                 doing: "reading the self-hosted session",
@@ -298,45 +299,43 @@ fn pick_token(
     }
 }
 
-/// Sube al llavero una sesión que estaba sólo en el fichero, **como dueño**.
+/// Lifts a session that was only in the file into the keyring, as its owner.
 ///
-/// La llama el daemon después de arrancar con un token que venía del fichero
-/// 0600: el que dejó ahí un cliente sin servicio ([`save_unlocked`]), o el que
-/// quedó cuando el llavero estaba bloqueado. A partir de la siguiente lectura el
-/// ítem es suyo, que es lo único que en macOS evita el diálogo de contraseña por
-/// arranque (la ACL autoriza al binario que **crea** el ítem, D.20).
+/// The daemon calls it after starting with a token that came from the 0600 file:
+/// the one a client with no service left there ([`save_unlocked`]), or the one
+/// left behind when the keyring was locked. From the next read on the item is its
+/// own, which is the only thing that avoids a password dialog per start on macOS
+/// (the ACL authorises the binary that creates the item, D.20).
 ///
-/// Best-effort de verdad: devuelve `false` y no toca nada más si el llavero no
-/// está. Un servicio que se negara a sincronizar porque no pudo guardar el token
-/// donde prefiere sería mucho peor que uno que sigue leyendo del fichero.
+/// Genuinely best-effort: it returns `false` and touches nothing else when the
+/// keyring is not there. A service that refused to sync because it could not store
+/// the token where it prefers would be far worse than one that carries on reading
+/// from the file.
 ///
-/// **No borra la copia del fichero**, a diferencia de [`save`]. Aquí el llavero
-/// acaba de demostrar que no era legible o no existía, así que quitar el único
-/// respaldo que funciona es exactamente la jugada que deja al usuario sin sync la
-/// próxima vez que se bloquee. El fichero es 0600 y ya contenía ese token.
+/// It does not delete the file's copy, unlike [`save`]. Here the keyring has just
+/// proved it was either unreadable or absent, so removing the one backup that
+/// works is exactly the move that leaves the user with no sync the next time it
+/// locks. The file is 0600 and already held that token.
 pub fn promote_to_keyring(creds: &Credentials) -> bool {
-    // Verified, like `save`: a promotion that reports success on a keyring which
-    // can't read the entry back would have the daemon believe the session moved
-    // and stop looking at the file it actually still lives in.
     match store_in_keyring(creds) {
         Ok(()) => {
             tracing::info!(
-                "credentials: la sesión self-hosted pasa al llavero a nombre del servicio"
+                "credentials: the self-hosted session moves into the keyring in the service's name"
             );
             true
         }
         Err(err) => {
-            tracing::debug!(error = %format!("{err:#}"), "credentials: el llavero no acepta la sesión; se queda en el fichero");
+            tracing::debug!(error = %format!("{err:#}"), "credentials: the keyring will not take the session; it stays in the file");
             false
         }
     }
 }
 
-/// Wipe stored credentials. Idempotent — clearing twice is fine.
+/// Wipe stored credentials. Idempotent: clearing twice is fine.
 ///
-/// **Del daemon**, por lo mismo que [`save`]: borrar un ítem del llavero también
-/// se autoriza. Un cliente manda `Request::ForgetServerSession` y, si no hay
-/// servicio, [`forget_unlocked`].
+/// The daemon's, for the same reason as [`save`]: deleting a keychain item is also
+/// authorised. A client sends `Request::ForgetServerSession` and, with no service,
+/// [`forget_unlocked`].
 pub fn clear() -> Result<()> {
     // Best-effort: errors here mean the entry didn't exist, which is fine.
     let _ = try_keyring_delete();
@@ -347,13 +346,14 @@ pub fn clear() -> Result<()> {
     Ok(())
 }
 
-/// Persiste la sesión **sin tocar el llavero**: fichero 0600 y nada más.
+/// Persists the session without touching the keyring: the 0600 file and nothing
+/// else.
 ///
-/// El camino de un cliente que acaba de validar un token y no tiene servicio a
-/// quien entregarlo. Escribir el llavero aquí sería el bug de D.20 —el ítem
-/// quedaría a nombre del cliente y el servicio pediría permiso en cada lectura—,
-/// mientras que dejándolo en el fichero el daemon lo lee tal cual al arrancar y lo
-/// sube al llavero él mismo, ya como dueño.
+/// The path for a client that has just validated a token and has no service to
+/// hand it to. Writing the keyring here would be D.20's bug, with the item ending
+/// up in the client's name and the service asking permission on every read,
+/// whereas leaving it in the file lets the daemon read it as-is on start and lift
+/// it into the keyring itself, as the owner.
 pub fn save_unlocked(creds: &Credentials) -> Result<()> {
     write_session(&Session {
         server: ServerSection {
@@ -367,14 +367,14 @@ pub fn save_unlocked(creds: &Credentials) -> Result<()> {
     })
 }
 
-/// Cierra sesión **sin tocar el llavero**: deja la tumba (`signed_out`) en el
-/// fichero.
+/// Signs out without touching the keyring: it leaves the tombstone (`signed_out`)
+/// in the file.
 ///
-/// No basta con borrar el fichero, y ésa es la diferencia con Cloud: [`load`]
-/// recupera la sesión del blob del llavero cuando el fichero no está, así que
-/// borrarlo la resucitaría. La marca dice "esto no es un fichero perdido, es un
-/// logout", y el ítem huérfano que quede en el llavero no autoriza nada por su
-/// cuenta — lo pisa el siguiente login, y hasta entonces nadie lo lee.
+/// Deleting the file is not enough, and that is the difference from Cloud: [`load`]
+/// recovers the session from the keyring blob when the file is missing, so deleting
+/// it would resurrect the session. The marker says "this is not a lost file, it is
+/// a logout", and the orphaned item left in the keyring authorises nothing on its
+/// own: the next login overwrites it, and until then nobody reads it.
 pub fn forget_unlocked() -> Result<()> {
     write_session(&Session {
         server: ServerSection::default(),
@@ -384,13 +384,12 @@ pub fn forget_unlocked() -> Result<()> {
     })
 }
 
-/// Lo que **no** es secreto de la sesión: a qué server y quién. Sale del fichero,
-/// sin tocar el llavero.
+/// What is not secret about the session: which server, and who. It comes from the
+/// file, without touching the keyring.
 ///
-/// Es lo que un cliente puede leer por su cuenta, y con lo que le basta para
-/// arrancar: el desktop pinta el usuario y la URL al abrir (síncrono, antes de que
-/// exista el enlace con el servicio) y pide el token prestado cuando de verdad va
-/// a llamar al server.
+/// It is what a client can read on its own, and enough to get going: the desktop
+/// draws the user and the URL on open (synchronously, before the link to the
+/// service exists) and borrows the token when it actually goes to call the server.
 pub fn load_public() -> Result<Option<(String, Option<UserSection>)>> {
     match read_session()? {
         Some(s) if s.signed_out => Ok(None),
@@ -399,35 +398,35 @@ pub fn load_public() -> Result<Option<(String, Option<UserSection>)>> {
     }
 }
 
-/// El hueco del préstamo: la sesión que el servicio nos ha prestado.
+/// The loan slot: the session the service has lent us.
 ///
-/// Existe porque hay un lector que **no puede** pedirla por IPC: el enviador de
-/// logs (`logship`), que corre en su propio hilo con su propio runtime y relee la
-/// sesión cada pocos segundos. En el daemon el hueco está vacío y lee el almacén,
-/// que es suyo; en un cliente lo rellena quien pide el préstamo y así nadie toca
-/// el llavero ajeno.
+/// It exists because there is one reader that cannot ask over IPC: the log shipper
+/// (`logship`), which runs on its own thread with its own runtime and re-reads the
+/// session every few seconds. In the daemon the slot is empty and it reads the
+/// store, which is its own; in a client whoever borrows fills it, and that way
+/// nobody touches somebody else's keyring.
 static LENT: std::sync::RwLock<Option<Credentials>> = std::sync::RwLock::new(None);
 
-/// Guarda (o borra, con `None`) la sesión prestada. La llama el cliente en cuanto
-/// el servicio se la presta, y con `None` al cerrar sesión.
+/// Stores, or clears with `None`, the borrowed session. The client calls it as
+/// soon as the service lends it one, and with `None` on sign-out.
 pub fn set_lent(creds: Option<Credentials>) {
     let mut slot = LENT.write().unwrap_or_else(|p| p.into_inner());
     *slot = creds;
 }
 
-/// El gemelo Cloud del hueco de arriba, y existe por el mismo lector: `logship`.
+/// The Cloud twin of the slot above, and it exists for the same reader: `logship`.
 ///
-/// La sesión Cloud **no vive aquí** —vive en `cloud_auth`/`cloud.toml`, y su JWT
-/// lo rota el servicio— así que un lector que sólo mirase [`current`] no la ve
-/// nunca. Ése era el bug: con la app en Cloud, el enviador de logs resolvía
-/// `None` en cada vuelta y no ha mandado una sola línea desde que existe.
+/// The Cloud session does not live here; it lives in `cloud_auth` and `cloud.toml`,
+/// and its JWT is rotated by the service, so a reader looking only at [`current`]
+/// never sees it. That was the bug: with the app on Cloud, the log shipper resolved
+/// `None` on every pass and has not sent a single line since it existed.
 ///
-/// Lo rellena quien tiene un token fresco: el servicio en cada rotación
-/// ([`crate::session::refresh_loop`]) y un cliente en cuanto se lo prestan. Con
-/// `None` al cerrar sesión.
+/// Whoever holds a fresh token fills it: the service on every rotation
+/// ([`crate::session::refresh_loop`]) and a client as soon as it borrows one. With
+/// `None` on sign-out.
 static LENT_CLOUD: std::sync::RwLock<Option<CloudLease>> = std::sync::RwLock::new(None);
 
-/// A qué Cloud y con qué JWT, para el lector que no puede pedirlo por IPC.
+/// Which Cloud and which JWT, for the reader that cannot ask over IPC.
 #[derive(Debug, Clone)]
 pub struct CloudLease {
     pub url: String,
@@ -445,37 +444,37 @@ pub fn lent_cloud() -> Option<CloudLease> {
     LENT_CLOUD.read().unwrap_or_else(|p| p.into_inner()).clone()
 }
 
-/// Este proceso es un **cliente**: no toca el almacén, sólo el préstamo.
+/// This process is a client: it never touches the store, only the loan.
 static CLIENT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Declara este proceso cliente del servicio, para que [`current`] no caiga nunca
-/// al almacén.
+/// Declares this process a client of the service, so [`current`] never falls back
+/// to the store.
 ///
-/// Lo llama el desktop al arrancar. Sin esto, un lector que corre en los dos
-/// procesos —`logship`— leería el llavero en el cliente durante la ventana en la
-/// que el préstamo aún no está puesto, y en macOS esa lectura **es** el diálogo de
-/// contraseña que D.20 viene a matar. Con la marca, un cliente sin préstamo se
-/// queda sin sesión (y no envía logs) en vez de pedir permiso: perder un lote de
-/// diagnóstico opcional es infinitamente mejor que un diálogo.
+/// The desktop calls it on start. Without this, a reader that runs in both
+/// processes, `logship`, would read the keyring in the client during the window
+/// where the loan is not in place yet, and on macOS that read IS the password
+/// dialog D.20 exists to kill. With the marker, a client with no loan simply has no
+/// session, and ships no logs, rather than asking permission: losing a batch of
+/// optional diagnostics is infinitely better than a dialog.
 ///
-/// `hoardd` no la llama nunca: él es el dueño.
+/// `hoardd` never calls it: it is the owner.
 pub fn mark_client() {
     CLIENT.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// La sesión prestada, sin caer al almacén. La usa un cliente que **no** puede
-/// tocar el llavero: si el hueco está vacío, lo suyo es pedir el préstamo.
+/// The borrowed session, without falling back to the store. Used by a client that
+/// cannot touch the keyring: with an empty slot, the right move is to borrow.
 pub fn lent() -> Option<Credentials> {
     LENT.read().unwrap_or_else(|p| p.into_inner()).clone()
 }
 
-/// La sesión que este proceso puede usar: la prestada si la hay, el almacén si
-/// no.
+/// The session this process may use: the borrowed one when there is one, the store
+/// otherwise.
 ///
-/// Para lectores que corren en los dos procesos y no pueden pedir nada por IPC
-/// (`logship`): en un cliente el hueco está puesto, y en el daemon está vacío y
-/// entonces el almacén es el suyo. Un cliente que llegue aquí con el hueco vacío
-/// leería el llavero ajeno, así que quien pueda esperar debe usar el préstamo.
+/// For readers that run in both processes and cannot ask for anything over IPC
+/// (`logship`): in a client the slot is filled, and in the daemon it is empty and
+/// the store is its own. A client arriving here with an empty slot would read
+/// somebody else's keyring, so whoever can wait should use the loan.
 pub fn current() -> Result<Option<Credentials>> {
     if let Some(creds) = lent() {
         return Ok(Some(creds));
@@ -486,9 +485,8 @@ pub fn current() -> Result<Option<Credentials>> {
     load()
 }
 
-/// Cheap shape check on a token string — `hoard_v1_` followed by 64 lowercase
-/// hex characters. Avoids round-tripping obviously-wrong input through the
-/// network.
+/// A cheap shape check on a token string: `hoard_v1_` followed by 64 lowercase hex
+/// characters. Avoids round-tripping obviously wrong input through the network.
 pub fn is_valid_token(token: &str) -> bool {
     const PREFIX: &str = "hoard_v1_";
     if token.len() != PREFIX.len() + 64 {
@@ -559,15 +557,14 @@ fn write_session(s: &Session) -> Result<()> {
 
 /// Repair a session file a previous build's ACL-hardening left unreadable.
 ///
-/// Older versions ran `icacls /inheritance:r /grant:r %USERNAME%:F` on the
-/// file. When `%USERNAME%` didn't resolve to the process's actual identity
-/// (Microsoft accounts, a same-named local account, roaming/redirected
-/// profiles) the file ended up owned by the user but granting access to the
-/// wrong principal, so a later launch reads it back as "access denied". The
-/// owner keeps the implicit right to rewrite the DACL, so `icacls /reset`
-/// restores the inherited, per-user permissions and the retry read then
-/// succeeds. Best-effort — returns whether the reset ran cleanly so the caller
-/// only retries the read when it's worth it.
+/// Older versions ran `icacls /inheritance:r /grant:r %USERNAME%:F` on the file.
+/// When `%USERNAME%` didn't resolve to the process's actual identity (Microsoft
+/// accounts, a same-named local account, roaming or redirected profiles) the file
+/// ended up owned by the user but granting access to the wrong principal, so a
+/// later launch reads it back as "access denied". The owner keeps the implicit
+/// right to rewrite the DACL, so `icacls /reset` restores the inherited, per-user
+/// permissions and the retry read then succeeds. Best-effort: it returns whether
+/// the reset ran cleanly so the caller only retries the read when it is worth it.
 #[cfg(windows)]
 fn reset_acl_windows(path: &std::path::Path) -> bool {
     match std::process::Command::new("icacls")
@@ -605,17 +602,17 @@ fn scrub_file_token() -> Result<()> {
     Ok(())
 }
 
-// Las tres operaciones van por `keychain::keyring_op`: hilo propio, tope de
-// [`KEYRING_TIMEOUT`] y [`KeyringTimeout`] como motivo cuando se agota. Un
-// llavero bloqueado no falla, se queda esperando un desbloqueo que en una sesión
-// sin escritorio nadie va a contestar, y una llamada síncrona sin tope cuelga a
-// quien la hizo (ADR 0021 D.19 — lo mismo que ya pasaba con la sesión Cloud).
+// All three operations go through `keychain::keyring_op`: its own thread, a
+// [`KEYRING_TIMEOUT`] cap, and [`KeyringTimeout`] as the reason when it runs out. A
+// locked keyring does not fail, it waits for an unlock nobody in a desktop-less
+// session is going to answer, and an uncapped synchronous call hangs whoever made
+// it (ADR 0021 D.19, the same thing that already happened with the Cloud session).
 
 fn try_keyring_set(creds: &Credentials) -> Result<()> {
-    // Store the whole session (token + URL + cached user) as TOML so the
-    // keychain can restore it without the on-disk cache. See `KeyringBlob`.
-    // Se serializa aquí, fuera del hilo del llavero: la operación tiene que ser
-    // `'static` y `creds` es prestado.
+    // Store the whole session (token, URL and cached user) as TOML so the keychain
+    // can restore it without the on-disk cache. See `KeyringBlob`. It is serialised
+    // here, off the keyring thread: the operation has to be `'static` and `creds`
+    // is borrowed.
     let blob = toml::to_string(&KeyringBlob {
         token: creds.token.clone(),
         url: creds.url.clone(),
@@ -714,11 +711,7 @@ mod tests {
         assert!(!is_valid_token(&bad));
     }
 
-    // ---- el llavero bloqueado, ruta self-hosted (D.19) ----------------
-    //
-    // Que la espera esté acotada se prueba en `crate::keychain`, que es el hilo
-    // que comparten las dos sesiones. Aquí, lo que es de ésta: qué token gana y
-    // que "bloqueado" no se lea como "no hay sesión".
+    // ---- the locked keyring, self-hosted path (D.19)
 
     fn stuck() -> anyhow::Error {
         anyhow::Error::new(KeyringTimeout {

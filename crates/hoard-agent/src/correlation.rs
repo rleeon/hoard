@@ -1,24 +1,25 @@
-//! DETECCIÓN — correlación proceso↔escritura (fase 3, ADR 0020). LA JOYA.
+//! Detection: correlating a process with a write (phase 3, ADR 0020). The
+//! strongest signal there is.
 //!
-//! La señal más fiable de que una carpeta es un save: fue reescrita mientras
-//! un proceso de JUEGO (no del sistema) estaba vivo. No depende del nombre
-//! ni de la extensión, así que captura saves con nombres GUID o en idiomas
-//! raros que el name-signal jamás atraparía (el benchmark del manifest mide
-//! ~6% de recall sólo por nombre — ver `scoring::bench`).
+//! The most reliable sign that a folder is a save: it was rewritten while a GAME
+//! process, not a system one, was alive. It depends on neither the name nor the
+//! extension, so it catches saves with GUID names or in languages the name signal
+//! would never touch (the manifest benchmark measures about 6% recall from the
+//! name alone; see `scoring::bench`).
 //!
-//! MECANISMO (este módulo): un store de observaciones persistido. Cuando el
-//! `SaveWatcher` emite una escritura sobre un dir, el agente llama a
-//! [`CorrelationStore::record`] con la foto de procesos vivos
-//! ([`sample_game_processes`]); el store atribuye la escritura al proceso de
-//! juego más probable y la guarda. El scoring consulta
-//! [`CorrelationStore::signal_for`] y suma [`CORRELATION_BONUS`] (+0.50).
+//! The mechanism here is a persisted store of observations. When the
+//! `SaveWatcher` emits a write on a directory, the agent calls
+//! [`CorrelationStore::record`] with a snapshot of the live processes
+//! ([`sample_game_processes`]); the store attributes the write to the most likely
+//! game process and saves it. Scoring asks [`CorrelationStore::signal_for`] and
+//! adds [`CORRELATION_BONUS`] (+0.50).
 //!
-//! NOTA DE INTEGRACIÓN: el bucle observador (cablear `SaveWatcher` sobre los
-//! roots de `roots.rs` + muestreo de `sysinfo` en cada evento) vive en el
-//! scheduler del agente y se cablea en un paso posterior. Este módulo provee
-//! el store, el muestreo y la señal, todo testeable en aislamiento. En frío
-//! (juego nunca observado) la señal vale 0 — es el límite conocido del ADR:
-//! la correlación necesita al menos una sesión de juego observada.
+//! Integration note: the observer loop (wiring `SaveWatcher` over `roots.rs`'
+//! roots plus a `sysinfo` sample on each event) lives in the agent's scheduler and
+//! gets wired up in a later step. This module provides the store, the sampling and
+//! the signal, all testable in isolation. Cold, meaning a game never observed, the
+//! signal is 0. That is the ADR's known limit: correlation needs at least one
+//! observed play session.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -28,14 +29,14 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sysinfo::System;
 
-/// Bonus de score de ADR 0020 §2 para correlación proceso↔escritura. Es la
-/// señal dominante: por sí sola más cualquier evidencia débil ya cruza el
-/// cutoff de auto-confirmado (0.60).
+/// ADR 0020 §2's score bonus for process-to-write correlation. It is the dominant
+/// signal: on its own, plus any weak evidence, it already clears the
+/// auto-confirmed cutoff (0.60).
 pub const CORRELATION_BONUS: f32 = 0.50;
 
-/// Procesos que NUNCA son el juego: sistema, shells, navegadores, el propio
-/// Hoard y los launchers/overlays (que corren junto al juego pero no SON el
-/// juego). Match por substring case-insensitive sobre el nombre del proceso.
+/// Processes that are NEVER the game: system, shells, browsers, Hoard itself, and
+/// the launchers and overlays that run alongside a game without being it. Matched
+/// by case-insensitive substring against the process name.
 const NON_GAME_PROCESS: &[&str] = &[
     // Sistema / shells.
     "svchost",
@@ -66,8 +67,8 @@ const NON_GAME_PROCESS: &[&str] = &[
     "brave",
     "safari",
     "electron",
-    // Demonios del sistema observados colándose como "juego" (atribuían
-    // escrituras a dockerd, avahi, etc.). Match por substring del nombre.
+    // System daemons seen slipping through as "game" (they were attributing
+    // writes to dockerd, avahi and the like). Matched by name substring.
     "dockerd",
     "containerd",
     "multipathd",
@@ -88,18 +89,19 @@ const NON_GAME_PROCESS: &[&str] = &[
     "eadesktop",
     "ubisoftconnect",
     "uplay",
-    // El cliente Ubisoft real que los juegos Ubisoft-en-Steam lanzan dentro del
-    // prefijo: ni "ubisoftconnect" ni "uplay" son substring de
-    // `UbisoftGameLauncher.exe` / `UbisoftGameLauncher64.exe` (el `upc.exe`
-    // hermano va en la lista EXACTA). Reescribe `.../Ubisoft Game
-    // Launcher/savegames/...` con su propio cloud sync y sobrevive al cierre del
-    // juego → correlación eterna. Ver incidente PoP 2008 jul-2026.
+    // The real Ubisoft client that Ubisoft-on-Steam games launch inside the
+    // prefix: neither "ubisoftconnect" nor "uplay" is a substring of
+    // `UbisoftGameLauncher.exe` or `UbisoftGameLauncher64.exe` (its `upc.exe`
+    // sibling goes in the EXACT list). It rewrites
+    // `.../Ubisoft Game Launcher/savegames/...` with its own cloud sync and
+    // outlives the game, so the correlation never ends. See the PoP 2008
+    // incident, jul-2026.
     "ubisoftgamelauncher",
-    // Infraestructura Wine/Proton/Steam-runtime en Linux: envuelve al juego
-    // pero no es el juego. Sin esto la atribución `.first()` se queda con un
-    // wrapper (`reaper`, `proton`, `wineserver`) en vez del ejecutable real.
-    // Match por substring, así que `wineserver`, `wine64-preloader`,
-    // `winedevice.exe` caen todos bajo "wine".
+    // Wine, Proton and Steam-runtime plumbing on Linux: it wraps the game without
+    // being it. Without this the `.first()` attribution keeps a wrapper
+    // (`reaper`, `proton`, `wineserver`) instead of the real executable. Matched
+    // by substring, so `wineserver`, `wine64-preloader` and `winedevice.exe` all
+    // fall under "wine".
     "wine",
     "proton",
     "pressure-vessel",
@@ -113,10 +115,10 @@ const NON_GAME_PROCESS: &[&str] = &[
     "plugplay.exe",
     "rpcss.exe",
     "conhost.exe",
-    // Overlays / utilidades de fondo observadas correlacionándose por error con
-    // carpetas de save (RivaTuner, AMD, herramientas de Windows). Tocan/observan
-    // carpetas (Steam Cloud reescribe el save mientras corren) pero no son el
-    // juego. Match por substring del nombre.
+    // Overlays and background utilities seen correlating wrongly with save folders
+    // (RivaTuner, AMD, Windows tools). They touch and watch folders (Steam Cloud
+    // rewrites the save while they run) without being the game. Matched by name
+    // substring.
     "ctfmon",
     "taskhost",
     "rtss",
@@ -124,18 +126,18 @@ const NON_GAME_PROCESS: &[&str] = &[
     "rivatuner",
     "radeonsoftware",
     "windhawk",
-    // Overlays / helpers de vendor de GPU en Windows: viven en Program Files, así
-    // que la regla de ruta de sistema NO los alcanza y (a diferencia de los de
-    // System32) hay que nombrarlos. Idlean a ~0% CPU, o sea que el orden por CPU
-    // de `sample_game_processes` ya los relega — esto es solo red de seguridad
-    // para el caso raro de juego pausado. "NVIDIA Overlay.exe", "nvcontainer.exe".
+    // GPU vendor overlays and helpers on Windows: they live in Program Files, so
+    // the system-path rule does not reach them and, unlike the System32 ones, they
+    // have to be named. They idle at about 0% CPU, so `sample_game_processes`'
+    // CPU ordering already demotes them; this is only a safety net for the rare
+    // case of a paused game. "NVIDIA Overlay.exe", "nvcontainer.exe".
     "nvidia",
     "nvcontainer",
-    // Apps de chat/dev que viven junto al juego y correlacionaban por error con
-    // carpetas de save (Discord vivo mientras Steam Cloud reescribía el save de
-    // Offworld → atribuido a Discord.exe). Viven en AppData/Local (Windows) o
-    // /usr (Linux), así que la ruta no siempre los alcanza: hay que nombrarlos.
-    // Match por substring.
+    // Chat and dev apps that live alongside the game and correlated wrongly with
+    // save folders (a chat client alive while Steam Cloud rewrote one game's save,
+    // attributed to the chat client). They live in AppData/Local on Windows or
+    // /usr on Linux, so the path does not always reach them and they have to be
+    // named. Matched by substring.
     "discord",
     "slack",
     "claude",
@@ -148,10 +150,9 @@ const NON_GAME_PROCESS: &[&str] = &[
     "xbox",
     "gamingservices",
     "gamebar",
-    // Herramientas de escritorio observadas disparando "heavy untracked
-    // game-like process" en producción (log jul-2026): launchers/managers,
-    // scripting, ofimática, editores y utilidades. Viven fuera de rutas de
-    // sistema, así que hay que nombrarlas.
+    // Desktop tools seen firing "heavy untracked game-like process" in production
+    // (jul-2026 log): launchers and managers, scripting, office software, editors
+    // and utilities. They live outside system paths, so they have to be named.
     "playnite",
     "autohotkey",
     "mspaint",
@@ -165,11 +166,11 @@ const NON_GAME_PROCESS: &[&str] = &[
     "crossdeviceservice",
     "logipluginservice",
     "generate_emu_config",
-    // Apps de IA/escritorio con instalador propio en el perfil del usuario
-    // (`%LOCALAPPDATA%\Programs\...`, `/opt/...`): ni la regla de ruta de
-    // sistema ni "electron" (el nombre del proceso es el de la app, no el del
-    // runtime) las alcanzaban. Informe jul-2026: ChatGPT heredó la carpeta de
-    // Planet S y el auto-track la rastreó con su nombre.
+    // AI and desktop apps with their own installer in the user profile
+    // (`%LOCALAPPDATA%\Programs\...`, `/opt/...`): neither the system-path rule
+    // nor "electron" (the process name is the app's, not the runtime's) reached
+    // them. Reported jul-2026: one of them inherited another game's folder and
+    // auto-track tracked it under its name.
     "chatgpt",
     "copilot",
     "windsurf",
@@ -177,16 +178,16 @@ const NON_GAME_PROCESS: &[&str] = &[
     "lmstudio",
     "notion",
     "obsidian",
-    // Captura/streaming: corren JUNTO al juego y queman CPU, así que el orden
-    // por CPU de `sample_game_processes` no los relega — pueden ganarle la
-    // atribución al juego real.
+    // Capture and streaming: they run alongside the game and burn CPU, so
+    // `sample_game_processes`' CPU ordering does not demote them and they can win
+    // the attribution off the real game.
     "obs64",
     "obs32",
     "obs-studio",
     "streamlabs",
-    // Clientes de sync de ficheros: no son juegos y, peor, REESCRIBEN la
-    // carpeta que vigilamos (que es justo la señal con la que se atribuye la
-    // correlación). OneDrive ya estaba arriba; estos son los otros.
+    // File sync clients: not games and, worse, they REWRITE the folder we watch,
+    // which is the very signal correlation is attributed from. OneDrive was
+    // already above; these are the others.
     "dropbox",
     "nextcloud",
     "megasync",
@@ -197,18 +198,18 @@ const NON_GAME_PROCESS: &[&str] = &[
     "hoard",
 ];
 
-/// Procesos que nunca son juego pero cuyo nombre es demasiado corto para un
-/// match por substring sin falsos positivos (`"code"` colisionaba con
-/// `codename.exe`, `decode.exe`). Se aplica como match EXACTO (case-
-/// insensitive) del basename del proceso y del exe.
+/// Processes that are never a game but whose name is too short for a substring
+/// match without false positives (`"code"` collided with `codename.exe` and
+/// `decode.exe`). Applied as an EXACT, case-insensitive match on the process and
+/// executable basename.
 ///
-/// `"upc"` es el cliente Ubisoft (hermano de `UbisoftGameLauncher.exe`, que sí va
-/// por substring); como substring pescaría exes legítimos tipo `upcoming.exe`.
-/// `"setup"` son instaladores (como substring pescaría juegos con "setup" en la
-/// carpeta); `"achievements"` es el watcher de logros de GSE/Goldberg, que corre
-/// JUNTO al juego emulado pero no es el juego. `"cursor"`/`"zed"` son editores:
-/// como substring se comerían `Precursor.exe` o cualquier juego con "zed"
-/// dentro (`Fuzed.exe`).
+/// `"upc"` is the Ubisoft client (sibling of `UbisoftGameLauncher.exe`, which does
+/// go by substring); as a substring it would catch legitimate exes like
+/// `upcoming.exe`. `"setup"` is installers (as a substring it would catch games
+/// with "setup" in the folder); `"achievements"` is the GSE/Goldberg achievement
+/// watcher, which runs alongside the emulated game without being it. `"cursor"`
+/// and `"zed"` are editors: as substrings they would eat `Precursor.exe` or any
+/// game with "zed" inside it (`Fuzed.exe`).
 const NON_GAME_PROCESS_EXACT: &[&str] = &[
     "code",
     "code.exe",
@@ -224,36 +225,36 @@ const NON_GAME_PROCESS_EXACT: &[&str] = &[
     "zed.exe",
 ];
 
-/// Un proceso nacido dentro de esta ventana tras el arranque del SISTEMA es
-/// infraestructura de autostart (Discord, trays, overlays de GPU, daemons de
-/// `node`, el propio Claude), no un juego que el usuario lanzó. Se veta como
-/// FUENTE de correlación — no como juego a secas: `is_game_like` no se toca, así
-/// que un juego auto-lanzado al boot se sigue detectando por nombre/handle; sólo
-/// no se usa para ATRIBUIR una carpeta de save (que es de donde salía el veneno:
-/// Discord vivo desde el boot heredando el save de Offworld).
+/// A process born inside this window after the SYSTEM booted is autostart
+/// infrastructure (chat clients, trays, GPU overlays, `node` daemons), not a game
+/// the user launched. It is vetoed as a correlation SOURCE rather than as a game
+/// outright: `is_game_like` is untouched, so a game auto-launched at boot is still
+/// detected by name or handle; it just is not used to ATTRIBUTE a save folder,
+/// which is where the poison came from (a chat client alive since boot inheriting
+/// a game's save).
 const BOOT_AUTOSTART_GRACE_SECS: u64 = 120;
 
-/// Cuántos ticks seguidos debe ganar un proceso distinto del atribuido antes de
-/// robarle la atribución a una correlación ya asentada. Sin esto, `record` hacía
-/// last-writer-wins: un solo tick desafortunado (Discord primario mientras Steam
-/// Cloud reescribe el save) machacaba al exe real del juego.
+/// How many consecutive ticks a process other than the attributed one has to win
+/// before it steals an already-settled correlation. Without this, `record` was
+/// last-writer-wins: one unlucky tick (a chat client primary while Steam Cloud
+/// rewrote the save) clobbered the game's real exe.
 const ATTRIBUTION_SWITCH_STREAK: u32 = 3;
 
-/// CPU mínima para que un proceso cuente como FUENTE de una correlación. El que
-/// escribió la carpeta estaba ejecutando; un residente a ~0% no pudo ser — y
-/// justo así se envenenaba el store: la carpeta la reescribía otro (Steam
-/// Cloud, GSE) sin el juego vivo, y la atribución caía en el primer proceso
-/// "con pinta de juego" del sistema aunque llevara horas dormido (el caso
-/// MOUSE: un task horario heredó la carpeta y disparó GameStarted cada hora
-/// durante días). Umbral bajo a propósito: el muestreo llega justo tras la
-/// escritura, cuando el escritor real siempre marca algo de CPU.
+/// Minimum CPU for a process to count as the SOURCE of a correlation. Whatever
+/// wrote the folder was executing; a resident at about 0% cannot have been, and
+/// that is exactly how the store got poisoned: something else rewrote the folder
+/// (Steam Cloud, GSE) with the game not alive, and the attribution fell on the
+/// first "game-like" process on the system even after hours asleep (the MOUSE
+/// case: an hourly task inherited the folder and fired GameStarted every hour for
+/// days). The threshold is low on purpose: the sample arrives just after the
+/// write, when the real writer always shows some CPU.
 const CORRELATION_SOURCE_MIN_CPU_PCT: f32 = 0.5;
 
-/// Sesiones fantasma seguidas (arrancó/paró por señal débil sin UNA SOLA
-/// escritura en la carpeta) que tumban la observación. Un juego de verdad
-/// escribe su save al jugar — y cada escritura re-graba la observación y resetea
-/// los strikes ([`CorrelationStore::record`]) — así que sólo una atribución
-/// envenenada acumula. Ver [`CorrelationStore::strike_phantom`].
+/// Consecutive phantom sessions (started and stopped on a weak signal without a
+/// single write to the folder) that bring the observation down. A real game writes
+/// its save while being played, and every write re-records the observation and
+/// resets the strikes ([`CorrelationStore::record`]), so only a poisoned
+/// attribution accumulates. See [`CorrelationStore::strike_phantom`].
 pub const PHANTOM_SESSION_STRIKES: u32 = 2;
 
 /// Un proceso vivo candidato a juego.
@@ -263,30 +264,30 @@ pub struct GameProcess {
     pub exe: Option<PathBuf>,
 }
 
-/// Prefijos de ruta de SISTEMA: un ejecutable bajo ellos no es un juego
-/// (demonios, librerías, runtimes de apps empaquetadas). Los juegos viven en
-/// el home del usuario (Steam, Wine `~/.wine*`, Lutris, Heroic, Flatpak data)
-/// o en `/opt/<juego>` — nunca en `/usr` ni `/lib`. Filtra el grueso de la
-/// basura observada (hilos de Brave en `/opt/brave.com`, Electron en
-/// `/usr/lib/...`, `gsd-*` en `/usr/libexec`).
-/// Vale para Linux/SteamOS y macOS (`/System/` = daemons del sistema; los juegos
-/// de mac viven en `/Applications/*.app`, no aquí).
+/// SYSTEM path prefixes: an executable under them is not a game (daemons,
+/// libraries, packaged-app runtimes). Games live in the user's home (Steam, Wine
+/// `~/.wine*`, Lutris, Heroic, Flatpak data) or in `/opt/<game>`, never in `/usr`
+/// or `/lib`. This filters the bulk of the observed junk (Brave threads in
+/// `/opt/brave.com`, Electron in `/usr/lib/...`, `gsd-*` in `/usr/libexec`).
+/// It covers Linux, SteamOS and macOS (`/System/` is system daemons; mac games
+/// live in `/Applications/*.app`, not here).
 const SYSTEM_EXE_PREFIXES: &[&str] = &[
     "/usr/", "/lib", "/lib64", "/bin", "/sbin", "/run/", "/System/",
 ];
 
-/// Igual pero para Windows: un exe bajo el directorio de Windows (`C:\Windows\`,
-/// System32, SysWOW64, WinSxS…) es del sistema, nunca un juego. Match por
-/// substring `:\windows\` para cubrir cualquier letra de unidad. Esto filtra
-/// `RuntimeBroker.exe`, `ssh.exe`, `conhost.exe`, etc. que en Windows envenenaban
-/// la correlación porque `SYSTEM_EXE_PREFIXES` solo tenía rutas Linux.
+/// The same for Windows: an exe under the Windows directory (`C:\Windows\`,
+/// System32, SysWOW64, WinSxS) is the system's, never a game. Matched by the
+/// substring `:\windows\` to cover any drive letter. This filters
+/// `RuntimeBroker.exe`, `ssh.exe`, `conhost.exe` and the rest, which on Windows
+/// poisoned correlation because `SYSTEM_EXE_PREFIXES` held only Linux paths.
 fn is_windows_system_exe(exe_str: &str) -> bool {
     exe_str.contains(":\\windows\\")
 }
 
-/// `true` si el proceso parece un juego (no sistema/launcher/navegador).
-/// Usa el nombre y, cuando está, la ruta del ejecutable: un nombre de hilo
-/// genérico (`ThreadPoolForeg`) no delata al navegador, pero su exe sí.
+/// `true` when the process looks like a game rather than system, launcher or
+/// browser. It uses the name and, when available, the executable's path: a generic
+/// thread name (`ThreadPoolForeg`) does not give the browser away, but its exe
+/// does.
 pub fn is_game_like(name: &str, exe: Option<&Path>) -> bool {
     let lower = name.trim().to_lowercase();
     if lower.is_empty() {
@@ -309,8 +310,8 @@ pub fn is_game_like(name: &str, exe: Option<&Path>) -> bool {
         if is_windows_system_exe(&exe_str) {
             return false;
         }
-        // El nombre del proceso puede ser un hilo genérico; mira también el
-        // basename del ejecutable contra la lista negra.
+        // The process name can be a generic thread's, so also check the
+        // executable's basename against the blacklist.
         if let Some(base) = exe.file_name().and_then(|s| s.to_str()) {
             let base = base.to_lowercase();
             if NON_GAME_PROCESS.iter().any(|bad| base.contains(bad)) {
@@ -327,14 +328,14 @@ pub fn is_game_like(name: &str, exe: Option<&Path>) -> bool {
     true
 }
 
-/// Instaladores/desinstaladores multi-palabra que el veto EXACTO de
-/// [`NON_GAME_PROCESS_EXACT`] (solo `setup`/`setup.exe`) no atrapa: un exe como
-/// `Codex Windows Sandbox Setup.exe` o `Elden Ring Installer.exe` pasaba
-/// `is_game_like`, envenenaba la correlación de la carpeta que reescribía y en
-/// `attribute_game_name` bautizaba el save con su nombre. No se puede usar
-/// substring "setup" (pescaría juegos con esa palabra dentro); aquí exigimos que
-/// sea el ÚLTIMO token del basename (o el propio nombre empiece por `unins`), lo
-/// que distingue un instalador de un juego que casualmente mencione la palabra.
+/// Multi-word installers and uninstallers that [`NON_GAME_PROCESS_EXACT`]'s EXACT
+/// veto (only `setup` and `setup.exe`) does not catch: an exe like
+/// `Codex Windows Sandbox Setup.exe` or `Elden Ring Installer.exe` passed
+/// `is_game_like`, poisoned the correlation of the folder it rewrote, and in
+/// `attribute_game_name` christened the save with its name. A "setup" substring
+/// cannot be used, since it would catch games with the word inside; here we demand
+/// it be the LAST token of the basename (or the name itself start with `unins`),
+/// which tells an installer from a game that happens to mention the word.
 pub(crate) fn is_installer_like(name: &str) -> bool {
     let stem = name.strip_suffix(".exe").unwrap_or(name).trim();
     if stem.starts_with("unins") {
@@ -344,19 +345,19 @@ pub(crate) fn is_installer_like(name: &str) -> bool {
     matches!(last, "setup" | "installer" | "install" | "uninstall")
 }
 
-/// Foto de los procesos vivos que parecen juegos. `sys` debe venir ya
-/// refrescado por el caller — el agente ya mantiene y refresca un `System`
-/// en su tick de actividad, así que la idea es reutilizarlo, no crear otro.
+/// A snapshot of the live processes that look like games. `sys` must arrive
+/// already refreshed by the caller: the agent maintains and refreshes a `System`
+/// on its activity tick, so the idea is to reuse it rather than create another.
 ///
-/// Dos filtros duros además de [`is_game_like`], aprendidos de basura real
-/// observada en producción (hilos de kernel `cpuhp/0`, `nv_open_q`,
-/// `ib_srv_wkr-2`, threads `tokio-runtime-w`… atribuidos como "juego"):
-/// - se descartan los HILOS (kernel y userland): un juego es un PROCESO, no
-///   un hilo de otro; `thread_kind().is_some()` los delata;
-/// - se exige un EJECUTABLE en disco: un juego siempre tiene binario; los
-///   hilos de kernel no (`exe()` es `None`). Esto es load-bearing: la
-///   correlación alimenta el playtime, y atribuir un save a un worker de
-///   kernel —que vive 24/7— acumularía horas para siempre.
+/// Two hard filters beyond [`is_game_like`], learned from real junk observed in
+/// production (kernel threads `cpuhp/0`, `nv_open_q`, `ib_srv_wkr-2`, and
+/// `tokio-runtime-w` threads, all attributed as "game"):
+/// - THREADS are discarded, kernel and userland alike: a game is a PROCESS, not
+///   somebody else's thread, and `thread_kind().is_some()` gives them away;
+/// - an EXECUTABLE on disk is required: a game always has a binary, and kernel
+///   threads do not (`exe()` is `None`). This is load-bearing, because correlation
+///   feeds playtime, and attributing a save to a kernel worker, which lives 24/7,
+///   would accumulate hours forever.
 pub fn sample_game_processes(sys: &System) -> Vec<GameProcess> {
     let boot = System::boot_time();
     let mut scored: Vec<(f32, GameProcess)> = Vec::new();
@@ -367,15 +368,15 @@ pub fn sample_game_processes(sys: &System) -> Vec<GameProcess> {
         let Some(exe) = proc.exe().map(|p| p.to_path_buf()) else {
             continue;
         };
-        // Veto de autostart: un residente nacido junto al sistema no es la
-        // fuente de una correlación de save. `start_time`/`boot_time` van en
-        // segundos epoch, así que la resta es la antigüedad tras el boot.
+        // The autostart veto: a resident born alongside the system is not the
+        // source of a save correlation. `start_time` and `boot_time` are in epoch
+        // seconds, so the subtraction is its age after boot.
         if proc.start_time().saturating_sub(boot) < BOOT_AUTOSTART_GRACE_SECS {
             continue;
         }
-        // Veto de residente dormido: el escritor de la carpeta estaba
-        // ejecutando, así que marca CPU en el intervalo del muestreo. Un
-        // proceso a ~0% no escribió nada — atribuirle el save es el veneno.
+        // The sleeping-resident veto: whatever wrote the folder was executing, so
+        // it shows CPU over the sampling interval. A process at about 0% wrote
+        // nothing, and attributing the save to it is the poison.
         if proc.cpu_usage() < CORRELATION_SOURCE_MIN_CPU_PCT {
             continue;
         }
@@ -390,35 +391,37 @@ pub fn sample_game_processes(sys: &System) -> Vec<GameProcess> {
             ));
         }
     }
-    // Orden por CPU descendente: el juego real quema CPU mientras los helpers de
-    // fondo (overlays, brokers, Steam Cloud) están casi a cero. `record()` atribuye
-    // por `.first()`, así que este orden hace que la correlación apunte al juego
-    // y no al primer proceso arbitrario del mapa. Empate ⇒ orden estable.
+    // Ordered by descending CPU: the real game burns CPU while the background
+    // helpers (overlays, brokers, Steam Cloud) sit near zero. `record()` attributes
+    // by `.first()`, so this ordering points the correlation at the game rather
+    // than at whichever process the map happened to yield. Ties keep a stable
+    // order.
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     scored.into_iter().map(|(_, p)| p).collect()
 }
 
-/// Una escritura observada en un dir, atribuida a un proceso de juego.
+/// A write observed on a directory, attributed to a game process.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WriteObservation {
     pub dir: PathBuf,
     pub process_name: String,
     pub exe: Option<PathBuf>,
     pub observed_at_ms: u64,
-    /// Cuántas veces se ha re-observado (más hits ⇒ más confianza).
+    /// How many times it has been re-observed; more hits mean more confidence.
     pub hits: u32,
-    /// Proceso candidato distinto del atribuido y su racha de ticks seguidos
-    /// como primario. Evita que un tick suelto robe la atribución; sólo tras
-    /// `ATTRIBUTION_SWITCH_STREAK` gana. `default` para leer stores antiguos.
+    /// A candidate process other than the attributed one, and its run of
+    /// consecutive ticks as primary. Stops a single tick stealing the attribution;
+    /// it only wins after `ATTRIBUTION_SWITCH_STREAK`. `default` for reading older
+    /// stores.
     #[serde(default)]
     challenger: Option<GameProcess>,
     #[serde(default)]
     challenger_streak: u32,
-    /// Sesiones fantasma acumuladas: el proceso atribuido "arrancó" y "paró"
-    /// sin que la carpeta recibiera una sola escritura. A
-    /// [`PHANTOM_SESSION_STRIKES`] la observación se descarta (atribución
-    /// envenenada). Cualquier escritura real ([`CorrelationStore::record`])
-    /// resetea el contador. `default` para leer stores antiguos.
+    /// Accumulated phantom sessions: the attributed process "started" and
+    /// "stopped" without the folder receiving a single write. At
+    /// [`PHANTOM_SESSION_STRIKES`] the observation is dropped, since the
+    /// attribution is poisoned. Any real write ([`CorrelationStore::record`])
+    /// resets the counter. `default` for reading older stores.
     #[serde(default)]
     phantom_strikes: u32,
 }
@@ -443,8 +446,8 @@ impl CorrelationStore {
         Ok(crate::config::CliConfig::state_dir()?.join("correlation.json"))
     }
 
-    /// Carga el store; un fichero ausente o corrupto produce uno vacío
-    /// (las observaciones son recolectables de nuevo, no son críticas).
+    /// Loads the store; a missing or corrupt file produces an empty one (the
+    /// observations can be collected again, they are not critical).
     pub fn load(path: &Path) -> Self {
         let mut store: Self = std::fs::read_to_string(path)
             .ok()
@@ -454,13 +457,12 @@ impl CorrelationStore {
         store
     }
 
-    /// Descarta observaciones que ya no superan las reglas ACTUALES de
-    /// `is_game_like` o que no tienen exe en disco. Limpia el store envenenado
-    /// por versiones previas con filtros más laxos: utilidades de fondo
-    /// (`ctfmon`, `RTSS`, `taskhostw`, `RadeonSoftware`…) e hilos de kernel sin
-    /// exe (`System`) que se colaban como "juego" y disparaban "arrancó". Es
-    /// self-heal: en cuanto una sesión real reescriba la carpeta, se aprende de
-    /// nuevo la correlación correcta.
+    /// Drops observations that no longer pass `is_game_like`'s CURRENT rules, or
+    /// that have no exe on disk. It cleans a store poisoned by earlier versions
+    /// with looser filters: background utilities (`ctfmon`, `RTSS`, `taskhostw`,
+    /// `RadeonSoftware`) and kernel threads with no exe (`System`) that slipped
+    /// through as "game" and fired "it started". Self-healing: as soon as a real
+    /// session rewrites the folder, the right correlation is learned again.
     fn prune_invalid(&mut self) {
         self.observations
             .retain(|_, o| o.exe.is_some() && is_game_like(&o.process_name, o.exe.as_deref()));
@@ -476,16 +478,16 @@ impl CorrelationStore {
         Ok(())
     }
 
-    /// Registra una escritura en `dir` ocurrida mientras `processes` estaban
-    /// vivos. Si no hay ningún proceso de juego, no hay correlación y no se
-    /// guarda nada. Con varios juegos vivos se atribuye al primero (la
-    /// atribución fina es best-effort; para la señal "esto es un save" basta
-    /// con que CUALQUIER juego estuviera vivo).
+    /// Records a write on `dir` that happened while `processes` were alive. With
+    /// no game process there is no correlation and nothing is stored. With several
+    /// games alive it is attributed to the first (fine-grained attribution is
+    /// best-effort; for the "this is a save" signal it is enough that ANY game was
+    /// alive).
     ///
-    /// La atribución NO es last-writer-wins: una vez asentada, un proceso
-    /// distinto sólo la sustituye si es primario `ATTRIBUTION_SWITCH_STREAK`
-    /// ticks seguidos. Así un hit aislado de un residente (Discord mientras algo
-    /// reescribe el save) no machaca al exe real del juego.
+    /// The attribution is NOT last-writer-wins: once settled, a different process
+    /// only replaces it after being primary for `ATTRIBUTION_SWITCH_STREAK`
+    /// consecutive ticks. That way an isolated hit from a resident (a chat client
+    /// while something rewrites the save) does not clobber the game's real exe.
     pub fn record(&mut self, dir: &Path, processes: &[GameProcess]) {
         let Some(primary) = processes.first() else {
             return;
@@ -505,8 +507,8 @@ impl CorrelationStore {
             });
         entry.observed_at_ms = now_ms();
         entry.hits = entry.hits.saturating_add(1);
-        // Una escritura real absuelve: la carpeta está viva, la atribución se
-        // está re-ganando ahora mismo.
+        // A real write absolves: the folder is alive and the attribution is being
+        // re-earned right now.
         entry.phantom_strikes = 0;
 
         if primary.name == entry.process_name {
@@ -535,16 +537,16 @@ impl CorrelationStore {
         }
     }
 
-    /// Devuelve la observación que corrobora `dir`: coincidencia exacta o
-    /// cualquier dir observado que sea `dir` o un ancestro suyo (el watcher
-    /// es recursivo, así que la escritura puede registrarse en un padre).
+    /// Returns the observation that corroborates `dir`: an exact match, or any
+    /// observed dir that is `dir` or an ancestor of it (the watcher is recursive,
+    /// so the write can be recorded on a parent).
     pub fn signal_for(&self, dir: &Path) -> Option<&WriteObservation> {
         self.observed_key(dir)
             .and_then(|k| self.observations.get(&k))
     }
 
-    /// Clave real del store que corrobora `dir` (la misma resolución por
-    /// ancestros de [`signal_for`], pero devolviendo la clave para mutar).
+    /// The store's real key that corroborates `dir` (the same ancestor resolution
+    /// as [`signal_for`], but returning the key so it can be mutated).
     fn observed_key(&self, dir: &Path) -> Option<PathBuf> {
         let mut cur = Some(dir);
         while let Some(d) = cur {
@@ -556,14 +558,14 @@ impl CorrelationStore {
         None
     }
 
-    /// Registra una sesión fantasma sobre la observación que corrobora `dir`:
-    /// su proceso atribuido nació y murió sin una sola escritura en la
-    /// carpeta. Un juego de verdad escribe al jugar, así que sólo una
-    /// atribución envenenada (un task horario, un residente) acumula strikes;
-    /// a [`PHANTOM_SESSION_STRIKES`] la observación se descarta y la señal
-    /// débil muere con ella (se re-aprende sola en la próxima sesión real).
-    /// Devuelve `Some(true)` si la observación cayó, `Some(false)` si sumó
-    /// strike y sobrevive, `None` si `dir` no tenía observación.
+    /// Records a phantom session against the observation corroborating `dir`: its
+    /// attributed process was born and died without a single write to the folder.
+    /// A real game writes while being played, so only a poisoned attribution (an
+    /// hourly task, a resident) accumulates strikes; at
+    /// [`PHANTOM_SESSION_STRIKES`] the observation is dropped and the weak signal
+    /// dies with it, to be re-learned on its own in the next real session. Returns
+    /// `Some(true)` when the observation fell, `Some(false)` when it took a strike
+    /// and survived, `None` when `dir` had no observation.
     pub fn strike_phantom(&mut self, dir: &Path) -> Option<bool> {
         let key = self.observed_key(dir)?;
         let obs = self.observations.get_mut(&key)?;
@@ -575,8 +577,8 @@ impl CorrelationStore {
         Some(false)
     }
 
-    /// Borra los strikes de la observación que corrobora `dir` — la sesión
-    /// que acaba de cerrar SÍ escribió la carpeta, la atribución es legítima.
+    /// Clears the strikes on the observation corroborating `dir`: the session that
+    /// just closed DID write the folder, so the attribution is legitimate.
     pub fn absolve(&mut self, dir: &Path) {
         if let Some(key) = self.observed_key(dir) {
             if let Some(obs) = self.observations.get_mut(&key) {
@@ -585,8 +587,8 @@ impl CorrelationStore {
         }
     }
 
-    /// Nombre de proceso atribuido a `dir`, sin la extensión `.exe`. Útil
-    /// para la atribución de fase 4 (nombrar el save en la librería).
+    /// The process name attributed to `dir`, without the `.exe` extension. Useful
+    /// for phase 4's attribution (naming the save in the library).
     pub fn attributed_name(&self, dir: &Path) -> Option<String> {
         self.signal_for(dir).map(|o| {
             o.process_name
@@ -596,9 +598,9 @@ impl CorrelationStore {
         })
     }
 
-    /// Itera las observaciones crudas (dir → observación). Lo usa la traza
-    /// de diagnóstico de detección para enseñar qué dirs vigilados atribuye
-    /// el store a un slug (la señal de fase 4).
+    /// Iterates the raw observations (dir to observation). The detection
+    /// diagnostics trace uses it to show which watched dirs the store attributes
+    /// to a slug, which is phase 4's signal.
     pub fn iter(&self) -> impl Iterator<Item = (&PathBuf, &WriteObservation)> {
         self.observations.iter()
     }
@@ -612,9 +614,9 @@ impl CorrelationStore {
     }
 }
 
-/// Scoring estático ([`crate::scoring::score_dir`]) más el bonus de
-/// correlación si el store corrobora el dir. Mantiene `scoring.rs` libre de
-/// dependencias de runtime; el bonus se suma aquí.
+/// Static scoring ([`crate::scoring::score_dir`]) plus the correlation bonus when
+/// the store corroborates the dir. It keeps `scoring.rs` free of runtime
+/// dependencies; the bonus is added here.
 pub fn score_with_correlation(
     path: &Path,
     name: &str,
@@ -647,8 +649,8 @@ mod tests {
 
     #[test]
     fn is_game_like_rejects_background_overlays_and_tools() {
-        // Utilidades de fondo observadas correlacionándose por error con
-        // carpetas de save (caso real del store envenenado).
+        // Background utilities seen correlating wrongly with save folders (the
+        // real poisoned-store case).
         for n in [
             "ctfmon.exe",
             "taskhostw.exe",
@@ -663,7 +665,7 @@ mod tests {
 
     #[test]
     fn load_prunes_poisoned_observations() {
-        // Store con las entradas reales del bug: utils de fondo y sin exe.
+        // A store with the bug's real entries: background utils and no exe.
         let json = r#"{"observations":{
             "/saves/ark":{"dir":"/saves/ark","process_name":"RTSS.exe","exe":"C:/RivaTuner/RTSS.exe","observed_at_ms":1,"hits":9},
             "/saves/repo":{"dir":"/saves/repo","process_name":"ctfmon.exe","exe":"C:/Windows/System32/ctfmon.exe","observed_at_ms":1,"hits":9},
@@ -685,8 +687,8 @@ mod tests {
 
     #[test]
     fn is_game_like_rejects_wine_proton_infrastructure() {
-        // Los wrappers de Linux conviven con el juego pero no SON el juego;
-        // sin filtrarlos, `.first()` atribuía el save a un wrapper.
+        // The Linux wrappers live alongside the game without BEING it; without
+        // filtering them, `.first()` attributed the save to a wrapper.
         for n in [
             "wineserver",
             "wine64-preloader",
@@ -700,14 +702,14 @@ mod tests {
         ] {
             assert!(!is_game_like(n, None), "{n} debería filtrarse");
         }
-        // El ejecutable real del juego (mismo nombre que vería sysinfo bajo
-        // Proton) sigue pasando.
+        // The game's real executable (the same name sysinfo would see under
+        // Proton) still passes.
         assert!(is_game_like("eu5.exe", None));
     }
 
     #[test]
     fn is_game_like_rejects_by_exe_path_and_basename() {
-        // Hilo genérico de Brave: el nombre no delata, el exe sí.
+        // A generic Brave thread: the name does not give it away, the exe does.
         assert!(!is_game_like(
             "ThreadPoolForeg",
             Some(Path::new("/opt/brave.com/brave/brave"))
@@ -744,7 +746,8 @@ mod tests {
             "RuntimeBroker.exe",
             Some(Path::new("C:\\Windows\\System32\\RuntimeBroker.exe"))
         ));
-        // …y overlay de NVIDIA en Program Files (no lo pilla la ruta, sí el nombre).
+        // ...and an NVIDIA overlay in Program Files (the path misses it, the name
+        // does not).
         assert!(!is_game_like(
             "NVIDIA Overlay.exe",
             Some(Path::new(
@@ -784,10 +787,10 @@ mod tests {
 
     #[test]
     fn is_game_like_rejects_desktop_ai_and_sync_apps() {
-        // El caso real (informe jul-2026): ChatGPT vive en
-        // `%LOCALAPPDATA%\Programs\ChatGPT`, así que ninguna regla de RUTA lo
-        // alcanzaba y su nombre de proceso no es "electron" — pasaba el filtro
-        // y heredaba la carpeta de Planet S.
+        // The real case (jul-2026 report): the app lives in
+        // `%LOCALAPPDATA%\Programs\...`, so no PATH rule reached it and its
+        // process name is not "electron". It passed the filter and inherited
+        // another game's folder.
         for n in [
             "ChatGPT.exe",
             "chatgpt",
@@ -802,15 +805,15 @@ mod tests {
         ] {
             assert!(!is_game_like(n, None), "{n} should be filtered");
         }
-        // Los match EXACTOS no pueden comerse un juego que los lleve dentro.
+        // The EXACT matches must not eat a game that contains them.
         assert!(is_game_like("Precursor.exe", None));
         assert!(is_game_like("Fuzed.exe", None));
     }
 
     #[test]
     fn is_game_like_rejects_multiword_installers() {
-        // El caso real: un instalador que el veto EXACTO de "setup" no atrapaba,
-        // envenenaba la carpeta de Plan B Terraform y la rebautizaba.
+        // The real case: an installer the EXACT "setup" veto did not catch, which
+        // poisoned one game's folder and renamed it.
         for n in [
             "Codex Windows Sandbox Setup.exe",
             "Codex Windows Sandbox Setup",
@@ -824,8 +827,8 @@ mod tests {
                 "{n} should be filtered as installer"
             );
         }
-        // Falsos positivos que NO debe tumbar: un juego que menciona la palabra
-        // en medio (no como último token) sigue pasando.
+        // False positives it must NOT bring down: a game that mentions the word in
+        // the middle, rather than as the last token, still passes.
         assert!(is_game_like("Setup Simulator.exe", None));
         assert!(is_game_like("Installer Tycoon.exe", None));
     }
@@ -840,17 +843,18 @@ mod tests {
         // Substring matches that look like "code" but aren't exact still pass.
         assert!(is_game_like("codename.exe", None));
         assert!(is_game_like("decode.exe", None));
-        // Por basename del exe también, que es el caso que el basename existe
-        // para tapar: nombre de hilo genérico (no delata) + exe FUERA de una
-        // ruta de sistema (VSCode instalado en el home, que `SYSTEM_EXE_PREFIXES`
-        // no alcanza). Ojo al escribir estos pins: con `/usr/...` manda la regla
-        // de ruta y con `C:\...` manda el nombre — ninguno llega al basename, así
-        // que ambos pasarían con el bloque de basename borrado.
+        // By the exe's basename too, which is the case the basename exists to
+        // cover: a generic thread name (which gives nothing away) plus an exe
+        // OUTSIDE a system path (VSCode installed in the home, which
+        // `SYSTEM_EXE_PREFIXES` does not reach). Mind how these pins are written:
+        // with `/usr/...` the path rule decides and with `C:\...` the name does,
+        // and neither reaches the basename, so both would pass with the basename
+        // block deleted.
         assert!(!is_game_like(
             "ThreadPoolForeg",
             Some(Path::new("/home/u/.local/share/apps/vscode/code"))
         ));
-        // Un juego cuyo basename NO es "code" sigue pasando desde la misma ruta.
+        // A game whose basename is NOT "code" still passes from the same path.
         assert!(is_game_like(
             "ThreadPoolForeg",
             Some(Path::new(
@@ -861,18 +865,18 @@ mod tests {
 
     #[test]
     fn is_game_like_rejects_ubisoft_client() {
-        // El cliente que los juegos Ubisoft-en-Steam lanzan dentro del prefijo:
-        // reescribe la carpeta de save con su propio cloud sync y sobrevive al
-        // cierre del juego (incidente PoP 2008 jul-2026).
+        // The client Ubisoft-on-Steam games launch inside the prefix: it rewrites
+        // the save folder with its own cloud sync and outlives the game (the PoP
+        // 2008 incident, jul-2026).
         assert!(!is_game_like("upc.exe", None));
         assert!(!is_game_like("UPC.exe", None));
         assert!(!is_game_like("upc", None));
         assert!(!is_game_like("UbisoftGameLauncher.exe", None));
         assert!(!is_game_like("UbisoftGameLauncher64.exe", None));
-        // Por basename del exe también (el nombre puede ser un hilo genérico).
-        // Ruta tal y como la ve el agente en el prefijo Proton de la Deck: el
-        // basename sólo se extrae con separador nativo, así que el path Windows
-        // "Z:\..." no serviría de pin aquí.
+        // By the exe's basename too (the name can be a generic thread's). The path
+        // is as the agent sees it in the Deck's Proton prefix: the basename is only
+        // extracted with the native separator, so a Windows "Z:\..." path would
+        // not work as a pin here.
         let prefix = "/home/deck/.steam/steam/steamapps/compatdata/19900/pfx/drive_c\
             /Program Files (x86)/Ubisoft/Ubisoft Game Launcher";
         assert!(!is_game_like(
@@ -883,8 +887,8 @@ mod tests {
             "ThreadPoolForeg",
             Some(&Path::new(prefix).join("UbisoftGameLauncher64.exe"))
         ));
-        // "upc" va en la lista EXACTA justo por esto: como substring se comería
-        // exes legítimos.
+        // "upc" is in the EXACT list for precisely this reason: as a substring it
+        // would eat legitimate exes.
         assert!(is_game_like("upcoming.exe", None));
     }
 
@@ -903,7 +907,7 @@ mod tests {
         assert!(store.signal_for(&save).is_some());
         // Un hijo del dir observado también corrobora (watcher recursivo).
         assert!(store.signal_for(&save.join("slot1")).is_some());
-        // Un dir no relacionado, no.
+        // An unrelated dir does not.
         assert!(store.signal_for(Path::new("/etc")).is_none());
         assert_eq!(store.attributed_name(&save).as_deref(), Some("game"));
     }
@@ -925,10 +929,10 @@ mod tests {
             store.record(&dir, std::slice::from_ref(&game));
         }
         assert_eq!(store.attributed_name(&dir).as_deref(), Some("game"));
-        // Un tick suelto de un intruso NO roba la atribución…
+        // A single tick from an intruder does NOT steal the attribution...
         store.record(&dir, std::slice::from_ref(&intruder));
         assert_eq!(store.attributed_name(&dir).as_deref(), Some("game"));
-        // …y el juego real, al reaparecer, resetea la racha del intruso.
+        // ...and the real game, on reappearing, resets the intruder's run.
         store.record(&dir, std::slice::from_ref(&game));
         store.record(&dir, std::slice::from_ref(&intruder));
         store.record(&dir, std::slice::from_ref(&game));
@@ -942,9 +946,9 @@ mod tests {
 
     #[test]
     fn is_game_like_rejects_desktop_tools_and_managers() {
-        // Herramientas reales del log jul-2026 que pasaban el filtro y
-        // disparaban "heavy untracked game-like process" (o peor: quedaban
-        // como fuente de correlación).
+        // Real tools from the jul-2026 log that passed the filter and fired "heavy
+        // untracked game-like process", or worse, stayed on as a correlation
+        // source.
         for n in [
             "Playnite.DesktopApp.exe",
             "AutoHotkey64.exe",
@@ -966,7 +970,8 @@ mod tests {
         ] {
             assert!(!is_game_like(n, None), "{n} debería filtrarse");
         }
-        // "setup"/"achievements" van por match EXACTO: no se comen legítimos.
+        // "setup" and "achievements" go by EXACT match: they eat no legitimate
+        // names.
         assert!(is_game_like("setupgame.exe", None));
         assert!(is_game_like("myachievements2.exe", None));
         // Juegos reales siguen pasando.
@@ -989,7 +994,7 @@ mod tests {
         // Segunda seguida: cae. La señal débil muere con ella.
         assert_eq!(store.strike_phantom(&dir), Some(true));
         assert!(store.signal_for(&dir).is_none());
-        // Sin observación, el strike es un no-op.
+        // With no observation, the strike is a no-op.
         assert_eq!(store.strike_phantom(&dir), None);
     }
 
@@ -1003,8 +1008,8 @@ mod tests {
         };
         store.record(&dir, std::slice::from_ref(&game));
         assert_eq!(store.strike_phantom(&dir), Some(false));
-        // Una escritura real (record) absuelve; el siguiente strike vuelve a
-        // ser el primero y la observación sobrevive.
+        // A real write (record) absolves; the next strike is the first again and
+        // the observation survives.
         store.record(&dir, std::slice::from_ref(&game));
         assert_eq!(store.strike_phantom(&dir), Some(false));
         assert!(store.signal_for(&dir).is_some());
@@ -1012,8 +1017,8 @@ mod tests {
         store.absolve(&dir);
         assert_eq!(store.strike_phantom(&dir), Some(false));
         assert!(store.signal_for(&dir).is_some());
-        // El strike resuelve por ancestro igual que `signal_for` (watcher
-        // recursivo: la observación puede vivir en un padre).
+        // The strike resolves by ancestor just as `signal_for` does (the watcher
+        // is recursive, so the observation can live on a parent).
         assert_eq!(store.strike_phantom(&dir.join("slot1")), Some(true));
         assert!(store.signal_for(&dir).is_none());
     }
@@ -1027,16 +1032,16 @@ mod tests {
 
     #[test]
     fn correlation_rescues_invisible_folder() {
-        // Carpeta con nombre opaco (GUID) y vacía: estáticamente es
-        // INVISIBLE — por debajo de SCORE_POSSIBLE, el walker la descarta.
+        // A folder with an opaque name (a GUID) and nothing in it: statically it
+        // is INVISIBLE, below SCORE_POSSIBLE, and the walker discards it.
         let tmp = std::env::temp_dir().join("hoard-corr-test-guid-1234");
         let _ = std::fs::create_dir_all(&tmp);
         let static_only = crate::scoring::score_dir(&tmp, "guid-1234");
         assert!(static_only.score < crate::scoring::SCORE_POSSIBLE);
 
-        // La correlación sola (+0.50) la sube a "posible": deja de ser
-        // descartada. Para AUTO-confirmar (≥0.60) el ADR pide además una
-        // señal débil — eso es deliberado.
+        // Correlation alone (+0.50) lifts it to "possible", so it stops being
+        // discarded. To AUTO-confirm (0.60 or more) the ADR also asks for a weak
+        // signal, which is deliberate.
         let mut store = CorrelationStore::default();
         store.record(
             &tmp,
@@ -1053,8 +1058,8 @@ mod tests {
 
     #[test]
     fn correlation_plus_content_auto_confirms() {
-        // Camino dorado del ADR: nombre opaco + un save reciente +
-        // correlación de proceso ⇒ auto-confirmado con margen holgado.
+        // The ADR's golden path: an opaque name plus one recent save plus process
+        // correlation gives an auto-confirm with room to spare.
         let tmp = std::env::temp_dir().join(format!("hoard-corr-golden-{}", now_ms()));
         let _ = std::fs::create_dir_all(&tmp);
         std::fs::write(tmp.join("game.sav"), b"binary").unwrap();

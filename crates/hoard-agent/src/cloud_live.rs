@@ -337,7 +337,7 @@ async fn connect_once(kick_tx: &mpsc::Sender<()>) -> anyhow::Result<bool> {
                             // refresher to have rotated it. Replaying it would be
                             // reuse detection, and GoTrue answers by revoking the
                             // whole token family.
-                            tracing::debug!("cloud-live: token rechazado, refresco");
+                            tracing::debug!("cloud-live: token rejected, refreshing");
                             match cloud_auth::refresh_freshest().await {
                                 Ok(_) => anyhow::bail!("refresh forzó reconexión"),
                                 Err(e) if e.downcast_ref::<cloud_auth::RefreshTokenStale>().is_some() => {

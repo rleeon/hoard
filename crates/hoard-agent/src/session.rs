@@ -1,26 +1,26 @@
-//! La sesión activa: qué servidor, con qué token, **y quién lo renueva**.
+//! The active session: which server, with which token, and who renews it.
 //!
-//! Implementación **única** compartida por el servicio (`hoardd`) y la CLI
-//! (ADR 0021, Slice 4c). Hasta el 4b había dos copias: la de la CLI y el port que
-//! el 4a hizo en `hoardd/src/session.rs` para no tocarla. Con la CLI convertida
-//! en cliente, esa duplicación no tiene excusa y vive aquí, donde manda la regla
-//! de `CLAUDE.md`: la lógica va en `hoard-agent` y los frontends son vistas.
+//! One implementation shared by the service (`hoardd`) and the CLI (ADR 0021,
+//! Slice 4c). There used to be two copies, the CLI's and the port made into
+//! `hoardd/src/session.rs` so as not to touch it. With the CLI turned into a
+//! client, that duplication has no excuse and it lives here, where `CLAUDE.md`'s
+//! rule applies: the logic goes in `hoard-agent` and the frontends are views.
 //!
-//! ## Dos caminos, y sólo uno rota
+//! ## Two paths, and only one rotates
 //!
-//! - [`resolve_owned`] — **el servicio**. Resuelve las credenciales, refresca el
-//!   JWT de arranque y se queda con el par rotado. Lo acompaña [`refresh_loop`],
-//!   que renueva antes de que expire, y [`lend_token`], que presta un token
-//!   válido a quien lo pida por IPC.
-//! - [`resolve_borrowed`] — **un cliente** (la CLI en un one-shot). Nunca llama a
-//!   GoTrue: usa el token que el servicio le presta y, si no hay servicio, el que
-//!   haya en disco tal cual.
+//! - [`resolve_owned`], the service. It resolves the credentials, refreshes the
+//!   boot JWT and keeps the rotated pair. It comes with [`refresh_loop`], which
+//!   renews before it expires, and [`lend_token`], which lends a valid token to
+//!   whoever asks over IPC.
+//! - [`resolve_borrowed`], a client (the CLI on a one-shot). It never calls
+//!   GoTrue: it uses the token the service lends it and, with no service, whatever
+//!   is on disk as-is.
 //!
-//! Que dos procesos pudieran rotar el mismo refresh token de `cloud.toml` es la
-//! causa raíz de una familia entera de bugs cloud (401 por reuse-detection,
-//! realtime enmudecido); el pidfile lo evitaba por exclusión, no por diseño. Aquí
-//! la separación es de tipos: el único que rota es el que llama a
-//! [`resolve_owned`]/[`refresh_loop`]/[`lend_token`], y eso es el daemon.
+//! Two processes being able to rotate the same `cloud.toml` refresh token is the
+//! root cause of a whole family of cloud bugs (401s from reuse detection, a mute
+//! realtime); the pidfile avoided it by exclusion rather than by design. Here the
+//! separation is in the types: the only thing that rotates is whatever calls
+//! [`resolve_owned`], [`refresh_loop`] and [`lend_token`], and that is the daemon.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -35,33 +35,34 @@ use crate::credentials::{self, Credentials};
 use crate::state;
 use crate::supervisor::Finished;
 
-/// Cadencia normal del refresher: renovar el JWT (~1 h de vida) con margen.
+/// The refresher's normal cadence: renew the JWT (about an hour of life) with
+/// room to spare.
 const REFRESH_EVERY: Duration = Duration::from_secs(45 * 60);
 
-/// Cadencia con la sesión muerta. Sólo relee disco esperando un login nuevo, así
-/// que comprobar a menudo no cuesta nada — y **sin red**: repetir un token
-/// revocado cada pocos minutos es lo que llenaba el journal del sistema con el
-/// mismo WARN durante días.
+/// The cadence with a dead session. It only re-reads the disk waiting for a fresh
+/// login, so checking often costs nothing, and it touches no network: repeating a
+/// revoked token every few minutes is what filled the system journal with the same
+/// WARN for days.
 const RELOGIN_RECHECK_EVERY: Duration = Duration::from_secs(5 * 60);
 
-/// Cuánto insiste el arranque con un fallo *transitorio* del refresh inicial
-/// antes de arrancar con el token guardado.
+/// How long the boot keeps insisting on a *transient* failure of the initial
+/// refresh before starting with the stored token.
 const BOOT_REFRESH_GRACE: Duration = Duration::from_secs(60);
 
-/// Cuánto espera el arranque a que un servidor self-hosted conteste `/v1/health`.
+/// How long the boot waits for a self-hosted server to answer `/v1/health`.
 ///
-/// El servicio arranca en el boot, y un server self-hosted **en la misma caja**
-/// puede estar aún levantándose: sin esta espera el primer auto-restore falla con
-/// "connection refused" para todos los saves. Acotado, para no quedarnos colgados
-/// cuando simplemente no hay server (el motor reintenta por save de todas formas).
+/// The service starts at boot, and a self-hosted server on the same box may still
+/// be coming up: without this wait the first auto-restore fails with "connection
+/// refused" for every save. Bounded, so we do not hang when there simply is no
+/// server (the engine retries per save anyway).
 const SERVER_WAIT: Duration = Duration::from_secs(60);
 
-/// Vida mínima que debe quedarle a un token para prestarlo sin rotar.
+/// The minimum life a token has to have left to be lent without rotating.
 ///
-/// Load-bearing que sea **mayor** que el margen con el que los clientes deciden
-/// "este token está a punto de caducar" (120 s en el realtime del desktop): si
-/// fuese menor, el cliente pediría, recibiría el mismo token y volvería a pedir
-/// cada pocos segundos hasta cruzar nuestro umbral.
+/// It is load-bearing that this be greater than the margin clients use to decide
+/// "this token is about to expire" (120 s in the desktop's realtime): if it were
+/// smaller, the client would ask, receive the same token, and ask again every few
+/// seconds until it crossed our threshold.
 const LEND_MIN_TTL: i64 = 5 * 60;
 
 /// Sesión activa resuelta.
@@ -70,15 +71,15 @@ pub struct Active {
     pub is_cloud: bool,
     /// Descripción legible del destino (banners, logs, `Status` del IPC).
     pub server: String,
-    /// Credenciales Cloud para las llamadas REST que van por fuera del
-    /// `ApiClient` (`hoard cloud`, el refresher). `None` en self-hosted.
+    /// Cloud credentials for the REST calls that go outside the `ApiClient`
+    /// (`hoard cloud`, the refresher). `None` on self-hosted.
     pub cloud: Option<CloudEndpoint>,
 }
 
-/// A qué Cloud y con qué token. El refresh token **sólo** viaja aquí cuando
-/// quien resolvió es el dueño ([`resolve_owned`]): un cliente no rota, así que no
-/// lo recibe, y sin él no puede rotar aunque se despiste. La regla de "un único
-/// rotador" es así una propiedad de los tipos y no un comentario.
+/// Which Cloud and with which token. The refresh token only travels here when the
+/// resolver is the owner ([`resolve_owned`]): a client does not rotate, so it does
+/// not receive one, and without it it cannot rotate even by accident. The "single
+/// rotator" rule is therefore a property of the types rather than a comment.
 pub struct CloudEndpoint {
     pub server_url: String,
     pub access: String,
@@ -86,8 +87,8 @@ pub struct CloudEndpoint {
 }
 
 impl CloudEndpoint {
-    /// La sesión completa, que es lo que [`refresh_loop`] necesita. `None` para
-    /// un endpoint prestado.
+    /// The full session, which is what [`refresh_loop`] needs. `None` for a
+    /// borrowed endpoint.
     pub fn owned(&self) -> Option<cloud_auth::Session> {
         Some(cloud_auth::Session {
             server_url: self.server_url.clone(),
@@ -99,29 +100,29 @@ impl CloudEndpoint {
 
 // ---- el servicio: resolver rotando ------------------------------------
 
-/// Resuelve la sesión **del dueño del token**: Cloud si hay sesión, si no
-/// self-hosted por el token de config. Fija el **contexto de sync**
-/// (`state::set_active_context`) antes de que nadie lea `state.json`: sin eso el
-/// daemon cargaría el mapa de saves de otra cuenta.
+/// Resolves the token owner's session: Cloud when there is one, otherwise
+/// self-hosted through the config's token. It sets the sync context
+/// (`state::set_active_context`) before anybody reads `state.json`; without that
+/// the daemon would load another account's save map.
 ///
-/// Un fallo transitorio del refresh inicial reintenta durante
-/// [`BOOT_REFRESH_GRACE`] y luego arranca con lo que haya en disco. El servicio
-/// arranca en el boot, rutinariamente antes de que el DNS conteste; morir ahí
-/// deja la máquina sin sincronizar nada hasta el siguiente intento, y el
-/// refresher repara el token en cuanto hay red. Una sesión terminalmente
-/// expirada sí es fatal: sólo un login nuevo la arregla y esperar no ayuda.
+/// A transient failure of the initial refresh retries for [`BOOT_REFRESH_GRACE`]
+/// and then starts with whatever is on disk. The service starts at boot, routinely
+/// before DNS answers; dying there leaves the machine syncing nothing until the
+/// next attempt, and the refresher repairs the token as soon as there is network.
+/// A terminally expired session is fatal, though: only a fresh login fixes it and
+/// waiting does not help.
 ///
-/// **Sólo el servicio llama a esto.** Es el camino que rota.
+/// Only the service calls this. It is the path that rotates.
 pub async fn resolve_owned() -> Result<Active> {
-    // `load_session_async` y no `load_session`: la lectura del llavero es síncrona
-    // y este camino corre en la task del keeper, la que el apagado aborta. Con la
-    // lectura en el hilo de la task, un llavero bloqueado dejaba el motor en
-    // `starting` y el daemon sin poder pararse (D.19).
+    // `load_session_async` rather than `load_session`: reading the keyring is
+    // synchronous and this path runs on the keeper's task, the one shutdown
+    // aborts. With the read on the task's thread, a locked keyring left the engine
+    // in `starting` and the daemon unable to stop (D.19).
     if let Some(sess) = cloud_auth::load_session_async().await? {
         return resolve_cloud_owned(sess).await;
     }
     let active = selfhosted_owned().await?;
-    // Cloud siempre está arriba; esperar sólo tiene sentido con un server propio.
+    // Cloud is always up; waiting only makes sense with your own server.
     wait_for_server(&active).await;
     Ok(active)
 }
@@ -152,10 +153,10 @@ async fn resolve_cloud_owned(sess: cloud_auth::Session) -> Result<Active> {
                 cloud,
             })
         }
-        // El mismo corte de red que hundió el refresh. Se fija el contexto desde
-        // el `sub` del JWT guardado — sin red, y es el mismo id que habría dado
-        // `/v1/me`. Si no se puede leer, se aborta: correr bajo el contexto
-        // equivocado sincronizaría el mapa de saves de otra cuenta.
+        // The same network cut that sank the refresh. The context is set from the
+        // stored JWT's `sub`, with no network, and it is the same id `/v1/me`
+        // would have given. If it cannot be read we abort: running under the wrong
+        // context would sync another account's save map.
         Err(err) if degraded => {
             let user_id = cloud_auth::session_user_id()?.context(
                 "Cloud is unreachable and the stored session is unreadable — run `hoard login`",
@@ -173,15 +174,15 @@ async fn resolve_cloud_owned(sess: cloud_auth::Session) -> Result<Active> {
     }
 }
 
-/// El refresh de arranque, reintentado dentro de la gracia. `Ok(None)` = se
-/// agotó la gracia con un fallo transitorio (arranca con el token guardado).
+/// The boot refresh, retried inside the grace window. `Ok(None)` means the grace
+/// ran out on a transient failure, so it starts with the stored token.
 async fn initial_refresh() -> Result<Option<cloud_auth::Tokens>> {
     let deadline = Instant::now() + BOOT_REFRESH_GRACE;
     let mut backoff = Duration::from_secs(2);
     loop {
         match cloud_auth::refresh_freshest().await {
             Ok(tokens) => return Ok(Some(tokens)),
-            // Reuse-detection sin nada que adoptar: reintentar no lo arregla.
+            // Reuse detection with nothing to adopt: retrying does not fix it.
             Err(err) if cloud_auth::is_session_expired(&err) => return Err(err),
             Err(err) => {
                 if Instant::now() >= deadline {
@@ -195,8 +196,8 @@ async fn initial_refresh() -> Result<Option<cloud_auth::Tokens>> {
     }
 }
 
-/// Sondea `/v1/health` hasta que el server conteste, con tope. Si se agota,
-/// avisa y sigue: el motor lo intentará igual.
+/// Probes `/v1/health` until the server answers, with a cap. If it runs out, it
+/// warns and carries on: the engine will try anyway.
 async fn wait_for_server(active: &Active) {
     let deadline = Instant::now() + SERVER_WAIT;
     let mut announced = false;
@@ -223,19 +224,19 @@ async fn wait_for_server(active: &Active) {
     }
 }
 
-// ---- un cliente: resolver con un token prestado -----------------------
+// ---- a client: resolving with a borrowed token
 
-/// Resuelve la sesión de un **cliente**: igual que [`resolve_owned`] en cuanto a
-/// qué servidor y qué contexto, pero **sin rotar nada**.
+/// Resolves a client's session: the same as [`resolve_owned`] as far as which
+/// server and which context, but without rotating anything.
 ///
-/// `lent` es el token Cloud que el servicio ha prestado (`Request::CloudToken`) y
-/// `lent_server` la sesión self-hosted (`Request::ServerToken`); `None` en
-/// cualquiera de los dos significa "no había servicio a quien pedirlo": Cloud usa
-/// el token de disco tal cual y self-hosted cae a `config.toml`. Puede estar caducado —nadie lo ha renovado, justamente porque
-/// el rotador es el servicio— y entonces la llamada fallará con un 401 legible;
-/// [`stale_token_hint`] es la pista que la CLI enseña en ese caso. Degradar así
-/// es a propósito: la alternativa era que un `hoard whoami` arrancara el servicio
-/// de sync como efecto secundario.
+/// `lent` is the Cloud token the service has lent (`Request::CloudToken`) and
+/// `lent_server` the self-hosted session (`Request::ServerToken`); `None` in
+/// either means there was no service to ask, so Cloud uses the on-disk token as-is
+/// and self-hosted falls back to `config.toml`. It may be expired, since nobody
+/// has renewed it precisely because the rotator is the service, and then the call
+/// fails with a readable 401; [`stale_token_hint`] is the hint the CLI shows in
+/// that case. Degrading this way is deliberate: the alternative was a `hoard
+/// whoami` starting the sync service as a side effect.
 pub async fn resolve_borrowed(
     lent: Option<CloudToken>,
     lent_server: Option<hoard_core::ipc::ServerSession>,
@@ -246,10 +247,9 @@ pub async fn resolve_borrowed(
             None => (sess.server_url.clone(), sess.access.clone()),
         };
         let client = ApiClient::new(server_url.clone(), access.clone())?;
-        // `/v1/me` sigue siendo la comprobación de que el token vale y de quién
-        // es —lo mismo que hacía la CLI antes de este slice—; lo que ya no hay
-        // es un refresh antes. Si falla, el contexto se fija igual desde el `sub`
-        // del JWT: un comando que aborta no debe dejar el contexto de otra cuenta.
+        // `/v1/me` is still the check that the token is valid and whose it is;
+        // what is gone is the refresh beforehand. If it fails, the context is set from the JWT's `sub` anyway:
+        // a command that aborts must not leave another account's context behind.
         match cloud_auth::fetch_me(&server_url, &access).await {
             Ok(me) => {
                 state::set_active_context(Some(state::cloud_context(&me.user_id)));
@@ -260,7 +260,8 @@ pub async fn resolve_borrowed(
                     cloud: Some(CloudEndpoint {
                         server_url,
                         access,
-                        // Prestado: sin refresh token, porque un cliente no rota.
+                        // Borrowed: no refresh token, because a client does not
+                        // rotate.
                         refresh: None,
                     }),
                 })
@@ -277,36 +278,35 @@ pub async fn resolve_borrowed(
     }
 }
 
-/// Sesión self-hosted **del dueño** (ni Cloud ni tokens que rotar): del almacén de
-/// sesión y, si ahí no hay nada, de `config.toml`.
+/// The owner's self-hosted session (no Cloud and no tokens to rotate): from the
+/// session store and, failing that, from `config.toml`.
 ///
-/// El orden es el arreglo de D.20, y era un bug de los gordos: hasta aquí esto
-/// leía **sólo** `config.toml`, que escribe únicamente `hoard login --token`. La
-/// app guarda su sesión en `credentials` (llavero + `session.toml`), así que quien
-/// entraba a su server sólo por la app tenía un motor que no resolvía sesión
-/// ninguna: "no session, sign in with `hoard login`" en el `last_error`, cero
-/// sincronización, y una UI que mientras tanto decía "conectado". Dos almacenes
-/// disjuntos y ningún puente.
+/// The order is D.20's fix, and it was a big bug: until now this read only
+/// `config.toml`, which only `hoard login --token` writes. The app stores its
+/// session in `credentials` (keyring plus `session.toml`), so anybody who signed
+/// into their server through the app alone had an engine that resolved no session
+/// at all: "no session, sign in with `hoard login`" in `last_error`, zero syncing,
+/// and a UI meanwhile saying "connected". Two disjoint stores and no bridge.
 ///
-/// Manda [`credentials`] porque es la sesión que el usuario ve en la app y la que
-/// tocan los logins nuevos (el de la app y el de la CLI, que la entrega también).
-/// `config.toml` se queda como el camino headless de siempre —texto plano, sin
-/// llavero, el que documenta la guía de self-hosting— y sirve de fallback para las
-/// instalaciones que ya lo tenían.
+/// [`credentials`] wins because it is the session the user sees in the app and the
+/// one every fresh login touches (the app's, and the CLI's, which hands it over
+/// too). `config.toml` stays the headless path it always was, plain text with no
+/// keyring, the one the self-hosting guide documents, and serves as the fallback
+/// for installs that already had it.
 ///
-/// Es `async` porque el llavero es síncrono y bloquea el hilo mientras espera: en
-/// la task del keeper —la que el apagado aborta— eso es media mitad del fallo de
-/// D.19, así que la lectura va al pool de bloqueo igual que la de Cloud.
+/// It is `async` because the keyring is synchronous and blocks the thread while it
+/// waits: on the keeper's task, the one shutdown aborts, that is half of D.19's
+/// failure, so the read goes to the blocking pool just as Cloud's does.
 async fn selfhosted_owned() -> Result<Active> {
     let stored = tokio::task::spawn_blocking(credentials::load_detailed)
         .await
         .map_err(|join| anyhow::Error::new(join).context("leyendo la sesión self-hosted"))??;
 
-    // El token venía del fichero 0600: o lo dejó ahí un cliente sin servicio, o el
-    // llavero estaba mudo cuando se guardó. Subirlo **ahora**, desde el daemon, es
-    // lo que le da la propiedad del ítem — y en macOS la propiedad es la diferencia
-    // entre leerlo callando y un diálogo de contraseña en cada arranque del motor.
-    // Best-effort y en el pool de bloqueo, como toda escritura del llavero.
+    // The token came from the 0600 file: either a client with no service left it
+    // there, or the keyring was mute when it was stored. Lifting it NOW, from the
+    // daemon, is what gives it ownership of the item, and on macOS ownership is
+    // the difference between reading it quietly and a password dialog on every
+    // engine start. Best-effort and on the blocking pool, like every keyring write.
     if let Some((creds, credentials::TokenStorage::File)) = &stored {
         let creds = creds.clone();
         let _ = tokio::task::spawn_blocking(move || credentials::promote_to_keyring(&creds)).await;
@@ -323,11 +323,11 @@ async fn selfhosted_owned() -> Result<Active> {
     })
 }
 
-/// **La precedencia, y nada más.** Pura y con tests porque este `or` *es* el bug
-/// que rompió el self-hosted en la 1.1.0: el orden vivía implícito en un `if` que
-/// sólo miraba `config.toml`, no había nada que lo fijara, y romperlo no ponía
-/// rojo a nadie. Un test que compila el orden en la suite es lo que impide que
-/// vuelva sin que CI se entere.
+/// The precedence, and nothing else. Pure and tested because this `or` IS the bug
+/// that broke self-hosted in 1.1.0: the order lived implicitly in an `if` that
+/// only looked at `config.toml`, nothing pinned it, and breaking it turned nothing
+/// red. A test compiling the order into the suite is what stops it coming back
+/// without CI noticing.
 fn pick_selfhosted(
     stored: Option<Credentials>,
     from_config: Option<Credentials>,
@@ -337,8 +337,8 @@ fn pick_selfhosted(
         .ok_or_else(|| anyhow::Error::new(NoSession))
 }
 
-/// La sesión de `config.toml`, si la hay. `None` no es un error: es el caso normal
-/// de quien nunca ha usado la CLI.
+/// The session from `config.toml`, if there is one. `None` is not an error: it is
+/// the normal case for somebody who has never used the CLI.
 fn config_session() -> Result<Option<Credentials>> {
     let (cfg, _) = CliConfig::load_default()?;
     Ok(cfg
@@ -352,14 +352,14 @@ fn config_session() -> Result<Option<Credentials>> {
         }))
 }
 
-/// La sesión self-hosted de un **cliente**: la que el servicio le presta, y si no
-/// hay servicio la de `config.toml`.
+/// A client's self-hosted session: the one the service lends it, and with no
+/// service the one in `config.toml`.
 ///
-/// Nunca el llavero, y eso es el punto: el ítem es del daemon, así que un cliente
-/// que lo leyera volvería a pedirle la contraseña al usuario en macOS (D.20). Sin
-/// servicio se degrada a `config.toml` —el camino headless de siempre— y quien
-/// entró sólo por la app verá "no session" hasta que el servicio esté arriba, que
-/// es quien tiene su sesión.
+/// Never the keyring, and that is the point: the item belongs to the daemon, so a
+/// client reading it would ask the user for their password again on macOS (D.20).
+/// With no service it degrades to `config.toml`, the headless path it always was,
+/// and somebody who signed in through the app alone sees "no session" until the
+/// service is up, since the service is what holds their session.
 fn selfhosted_borrowed(lent: Option<hoard_core::ipc::ServerSession>) -> Result<Active> {
     if let Some(lent) = lent {
         state::set_active_context(Some(state::selfhosted_context(&lent.server_url)));
@@ -374,8 +374,8 @@ fn selfhosted_borrowed(lent: Option<hoard_core::ipc::ServerSession>) -> Result<A
     selfhosted_from_config()
 }
 
-/// `config.toml`: el camino headless, texto plano y sin llavero. Lo escribe
-/// `hoard login --token` y lo documenta la guía de self-hosting.
+/// `config.toml`: the headless path, plain text with no keyring. Written by
+/// `hoard login --token` and documented by the self-hosting guide.
 fn selfhosted_from_config() -> Result<Active> {
     let creds = config_session()?.ok_or_else(|| anyhow::Error::new(NoSession))?;
     state::set_active_context(Some(state::selfhosted_context(&creds.url)));
@@ -388,14 +388,14 @@ fn selfhosted_from_config() -> Result<Active> {
     })
 }
 
-/// No hay sesión que usar en esta máquina.
+/// There is no session to use on this machine.
 ///
-/// Tipo propio y no un `anyhow!("no session")` porque el daemon lo clasifica por
-/// downcast para que la ventana pueda decir *esto* en vez de "el servicio está
-/// desconectado" — el banner genérico que costó dos hilos de soporte en julio de
-/// 2026, con dos usuarios que no tenían forma de saber que les faltaba la sesión.
-/// El texto se mantiene igual que el de antes: es el que sale en el `last_error`
-/// y en el log del servicio.
+/// Its own type rather than an `anyhow!("no session")` because the daemon
+/// classifies it by downcast so the window can say *this* instead of "the service
+/// is offline", the generic banner that cost two support threads in July 2026,
+/// with two users who had no way of knowing they were missing a session. The text
+/// stays the same as before: it is what shows up in `last_error` and in the
+/// service's log.
 #[derive(Debug)]
 pub struct NoSession;
 
@@ -410,11 +410,11 @@ impl std::fmt::Display for NoSession {
 
 impl std::error::Error for NoSession {}
 
-/// El token self-hosted que el daemon presta a un cliente
-/// (`Request::ServerToken`). `None` = no hay sesión self-hosted en esta máquina.
+/// The self-hosted token the daemon lends a client (`Request::ServerToken`).
+/// `None` means there is no self-hosted session on this machine.
 ///
-/// Sirve las dos fuentes que resuelve [`selfhosted`], en el mismo orden, para que
-/// lo que el cliente usa y lo que el motor usa no puedan divergir.
+/// It serves the two sources [`selfhosted`] resolves, in the same order, so what
+/// the client uses and what the engine uses cannot diverge.
 pub fn lend_server_session() -> Result<Option<hoard_core::ipc::ServerSession>> {
     if let Some(creds) = credentials::load()? {
         return Ok(Some(hoard_core::ipc::ServerSession {
@@ -435,16 +435,16 @@ pub fn lend_server_session() -> Result<Option<hoard_core::ipc::ServerSession>> {
         .map(|token| hoard_core::ipc::ServerSession {
             server_url: cfg.server.url.clone(),
             token,
-            // `config.toml` no cachea el whoami: el cliente que lo necesite lo
-            // pregunta al server, que es de donde salía antes.
+            // `config.toml` does not cache the whoami: a client that needs it asks
+            // the server, which is where it used to come from.
             user: None,
         }))
 }
 
-/// Fija el contexto de sync **sin red**: Cloud por el `sub` del JWT guardado, si
-/// no self-hosted por la URL de config. Para comandos locales (`hoard saves`) que
-/// deben funcionar sin conexión. Best-effort: si no puede, deja el contexto por
-/// defecto.
+/// Sets the sync context with no network: Cloud through the stored JWT's `sub`,
+/// otherwise self-hosted through the config's URL. For local commands (`hoard
+/// saves`) that have to work offline. Best-effort: if it cannot, it leaves the
+/// default context.
 pub fn set_context_offline() {
     if let Ok(Some(user_id)) = cloud_auth::session_user_id() {
         state::set_active_context(Some(state::cloud_context(&user_id)));
@@ -455,13 +455,13 @@ pub fn set_context_offline() {
     }
 }
 
-/// Pista para el usuario cuando un cliente se queda sin servicio y el token de
-/// disco ya no vale: el arreglo no es volver a entrar, es levantar el servicio
-/// (que es quien renueva). `None` cuando el token sigue siendo usable.
+/// A hint for the user when a client has no service and the on-disk token is no
+/// longer good: the fix is not signing in again, it is bringing the service up,
+/// since that is what renews. `None` when the token is still usable.
 pub fn stale_token_hint(access: &str, now_unix: i64) -> Option<&'static str> {
     let expired = match cloud_auth::jwt_expiry(access) {
         Some(exp) => exp <= now_unix,
-        // Ilegible: no afirmamos nada. Si de verdad no vale, el 401 lo dirá.
+        // Unreadable: we claim nothing. If it really is no good, the 401 will say.
         None => false,
     };
     expired.then_some(
@@ -472,25 +472,25 @@ pub fn stale_token_hint(access: &str, now_unix: i64) -> Option<&'static str> {
 
 // ---- el servicio: prestar el token ------------------------------------
 
-/// Por qué no se pudo prestar un token.
+/// Why a token could not be lent.
 #[derive(Debug, thiserror::Error)]
 pub enum LendError {
-    /// No hay nada que prestar y rotar no lo arreglaría: sin sesión en disco, o
-    /// GoTrue revocó la familia. Sólo un login nuevo.
+    /// There is nothing to lend and rotating would not fix it: no session on disk,
+    /// or GoTrue revoked the family. Only a fresh login.
     #[error("{0}")]
     Gone(String),
-    /// Bache de red / GoTrue de mal humor: el token sigue vivo, reintentar tiene
-    /// sentido. **No** debe hacer que un cliente cierre sesión.
+    /// A network bump or a grumpy GoTrue: the token is still alive and retrying
+    /// makes sense. It must NOT make a client sign out.
     #[error(transparent)]
     Transient(anyhow::Error),
 }
 
-/// Presta un token Cloud válido, rotando **sólo si hace falta**. Responde a
-/// `Request::CloudToken`; **sólo el servicio la llama**, que es lo que hace de
-/// ella el único rotador.
+/// Lends a valid Cloud token, rotating only when it has to. It answers
+/// `Request::CloudToken`, and only the service calls it, which is what makes it
+/// the single rotator.
 ///
-/// `rejected` es el token que al cliente le devolvió un 401. Ver
-/// [`needs_rotation`] para la decisión, que es pura y está testeada.
+/// `rejected` is the token that came back 401 for the client. See
+/// [`needs_rotation`] for the decision, which is pure and tested.
 pub async fn lend_token(rejected: Option<&str>) -> Result<CloudToken, LendError> {
     let session = cloud_auth::load_session()
         .map_err(LendError::Transient)?
@@ -521,16 +521,16 @@ pub async fn lend_token(rejected: Option<&str>) -> Result<CloudToken, LendError>
     }
 }
 
-/// ¿Hay que rotar antes de prestar? Pura, para que la política sea un test y no
-/// un comentario.
+/// Does it have to rotate before lending? Pure, so the policy is a test rather
+/// than a comment.
 ///
-/// - Un token que el cliente ya comió con un 401 **no se le devuelve**: sería un
-///   bucle de reintentos con el mismo token muerto. Si el que tenemos ya es otro,
-///   alguien rotó por nosotros y ese sirve.
-/// - Por debajo de [`LEND_MIN_TTL`] se rota: prestar un token que caduca en
-///   segundos es prestar un 401.
-/// - Caducidad ilegible ⇒ rotar. No sabemos qué le queda, y la ventana de reuso
-///   de `refresh_freshest` colapsa la ráfaga si varios preguntan a la vez.
+/// - A token the client already ate a 401 with is not handed back: that would be a
+///   retry loop with the same dead token. If the one we hold is already a different
+///   one, somebody rotated for us and that one serves.
+/// - Below [`LEND_MIN_TTL`] it rotates: lending a token that expires in seconds is
+///   lending a 401.
+/// - An unreadable expiry means rotate. We do not know what it has left, and
+///   `refresh_freshest`'s reuse window collapses the burst if several ask at once.
 fn needs_rotation(ttl_secs: Option<i64>, stored: &str, rejected: Option<&str>) -> bool {
     if rejected.is_some_and(|r| r == stored) {
         return true;
@@ -551,15 +551,15 @@ fn now_unix() -> i64 {
 enum Phase {
     /// Sesión viva: renovar en la cadencia normal.
     Normal,
-    /// GoTrue revocó la familia de tokens. No hay nada que renovar hasta que
-    /// alguien vuelva a entrar, así que sólo se vigila disco.
+    /// GoTrue revoked the token family. There is nothing to renew until somebody
+    /// signs in again, so only the disk gets watched.
     Expired,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Outcome {
     Renewed,
-    /// Bache de red/GoTrue — el token sigue bueno, reintentar luego.
+    /// A network or GoTrue bump: the token is still good, retry later.
     Transient,
     Expired,
 }
@@ -578,8 +578,8 @@ struct Step {
     announce: Announce,
 }
 
-/// La cadencia del refresher, como función pura: "dilo una vez y luego calla" es
-/// comprobable sin sesión Cloud y sin esperar 45 minutos.
+/// The refresher's cadence as a pure function: "say it once then go quiet" is
+/// checkable without a Cloud session and without waiting 45 minutes.
 fn next_step(phase: Phase, outcome: Outcome) -> Step {
     match (phase, outcome) {
         (Phase::Normal, Outcome::Expired) => Step {
@@ -610,14 +610,14 @@ fn adopt(client: &ApiClient, sess: &mut cloud_auth::Session, tokens: cloud_auth:
     client.set_token(&tokens.access);
     sess.access = tokens.access;
     sess.refresh = tokens.refresh;
-    // El enviador de logs no puede pedir nada por IPC y no ve `cloud.toml`: se
-    // le deja puesto el token recién rotado, o se quedaría enviando con el
-    // viejo hasta comerse un 401.
+    // The log shipper cannot ask for anything over IPC and does not see
+    // `cloud.toml`: it gets the freshly rotated token put in place, or it would
+    // keep shipping with the old one until it ate a 401.
     lend_to_logship(&sess.server_url, &sess.access);
 }
 
-/// Deja la sesión Cloud en el hueco que lee `logship`. La llama **el dueño** (el
-/// servicio) en cuanto tiene un JWT válido: al arrancar y en cada rotación.
+/// Puts the Cloud session in the slot `logship` reads. Called by the owner (the
+/// service) as soon as it has a valid JWT: on start and on every rotation.
 fn lend_to_logship(url: &str, token: &str) {
     credentials::set_lent_cloud(Some(credentials::CloudLease {
         url: url.to_string(),
@@ -625,8 +625,8 @@ fn lend_to_logship(url: &str, token: &str) {
     }));
 }
 
-/// Una sesión en disco cuyo refresh token no es el muerto — o sea, el usuario
-/// volvió a entrar (aquí o en el desktop: comparten fichero de sesión).
+/// A session on disk whose refresh token is not the dead one, meaning the user
+/// signed in again (here or on the desktop: they share the session file).
 fn relogin_tokens(dead: Option<&str>) -> Option<cloud_auth::Tokens> {
     let s = cloud_auth::load_session().ok().flatten()?;
     if s.refresh.trim().is_empty() || Some(s.refresh.as_str()) == dead {
@@ -638,23 +638,23 @@ fn relogin_tokens(dead: Option<&str>) -> Option<cloud_auth::Tokens> {
     })
 }
 
-/// Bucle que renueva el JWT antes de que expire y lo empuja al `ApiClient` vivo.
-/// Sin esto el motor empieza a devolver 401 una hora después de arrancar.
+/// The loop that renews the JWT before it expires and pushes it into the live
+/// `ApiClient`. Without it the engine starts returning 401s an hour after boot.
 ///
-/// La sesión va en un `Arc<Mutex<…>>` para que el bucle pueda reiniciarse bajo
-/// `supervise` sin perder los tokens ya rotados: reiniciar tras un pánico y
-/// volver al par de disco reintroduciría la reuse-detection que este módulo
-/// existe para matar.
+/// The session travels in an `Arc<Mutex<...>>` so the loop can restart under
+/// `supervise` without losing the already-rotated tokens: restarting after a panic
+/// and going back to the pair on disk would reintroduce the reuse detection this
+/// module exists to kill.
 ///
-/// **Sólo el servicio.** Es la otra mitad del único rotador.
+/// Only the service. It is the other half of the single rotator.
 pub async fn refresh_loop(
     client: ApiClient,
     session: Arc<tokio::sync::Mutex<cloud_auth::Session>>,
 ) -> Finished {
     let mut phase = Phase::Normal;
     let mut sleep_for = REFRESH_EVERY;
-    // El refresh token que GoTrue dio por muerto, para distinguir un login nuevo
-    // de la misma sesión muerta seguir en disco.
+    // The refresh token GoTrue declared dead, to tell a fresh login from the same
+    // dead session still sitting on disk.
     let mut dead: Option<String> = None;
 
     loop {
@@ -680,9 +680,9 @@ pub async fn refresh_loop(
                     Outcome::Transient
                 }
             },
-            // Sin red a propósito: repetir un token revocado cada pocos minutos
-            // es lo que llenaba el log del sistema con el mismo WARN durante
-            // días. Sólo un login nuevo ayuda, así que sólo se vigila disco.
+            // No network on purpose: repeating a revoked token every few minutes
+            // is what filled the system log with the same WARN for days. Only a
+            // fresh login helps, so only the disk gets watched.
             Phase::Expired => match relogin_tokens(dead.as_deref()) {
                 Some(tokens) => {
                     dead = None;
@@ -718,14 +718,14 @@ mod tests {
         }
     }
 
-    /// **El test del bug de la 1.1.0.** El motor resolvía la sesión self-hosted
-    /// mirando sólo `config.toml`, que escribe únicamente `hoard login --token`,
-    /// mientras la app guardaba la suya en `credentials`. Quien entraba a su
-    /// servidor sólo por la app tenía un motor sin sesión, cero backups, y una
-    /// ventana que decía "el servicio está desconectado" sin más.
+    /// The 1.1.0 bug's test. The engine resolved the self-hosted session by
+    /// looking only at `config.toml`, which only `hoard login --token` writes,
+    /// while the app stored its own in `credentials`. Anybody who signed into
+    /// their server through the app alone had an engine with no session, zero
+    /// backups, and a window that just said "the service is offline".
     ///
-    /// Que el almacén gane no es una preferencia: es la sesión que el usuario ve
-    /// en la app y la que tocan todos los logins nuevos.
+    /// The store winning is not a preference: it is the session the user sees in
+    /// the app and the one every fresh login touches.
     #[test]
     fn the_session_store_beats_config_toml() {
         let picked = pick_selfhosted(
@@ -737,9 +737,9 @@ mod tests {
         assert_eq!(picked.url, "https://saves.example");
     }
 
-    /// Y `config.toml` sigue siendo el camino headless: sin almacén (una máquina
-    /// donde sólo se ha usado la CLI, que es lo que documenta la guía de
-    /// self-hosting) manda él. Arreglar el bug no podía romper esto.
+    /// And `config.toml` is still the headless path: with no store (a machine
+    /// where only the CLI has been used, which is what the self-hosting guide
+    /// documents) it wins. Fixing the bug could not break this.
     #[test]
     fn config_toml_still_serves_the_headless_path() {
         let picked = pick_selfhosted(None, Some(creds("http://nas.local:12421", "hoard_v1_cli")))
@@ -747,9 +747,9 @@ mod tests {
         assert_eq!(picked.token, "hoard_v1_cli");
     }
 
-    /// Sin ninguna de las dos, el motivo va **tipado**: es lo que el daemon
-    /// clasifica para que la ventana diga "no hay sesión, vuelve a entrar" en vez
-    /// del banner genérico.
+    /// With neither, the reason is typed: it is what the daemon classifies so the
+    /// window can say "there is no session, sign in again" instead of the generic
+    /// banner.
     #[test]
     fn no_session_anywhere_is_typed() {
         let err = pick_selfhosted(None, None).expect_err("no hay sesión");
@@ -802,15 +802,16 @@ mod tests {
         assert_eq!(step.sleep, REFRESH_EVERY);
     }
 
-    /// Un token con vida de sobra se presta tal cual: prestar no es rotar, y
-    /// rotar de más gasta el refresh token (cada rotación revoca el anterior).
+    /// A token with life to spare is lent as-is: lending is not rotating, and
+    /// rotating too often spends the refresh token (each rotation revokes the
+    /// previous one).
     #[test]
     fn a_healthy_token_is_lent_without_rotating() {
         assert!(!needs_rotation(Some(LEND_MIN_TTL + 1), "tok", None));
         assert!(!needs_rotation(Some(3600), "tok", None));
     }
 
-    /// El margen es lo que impide prestar un 401: por debajo, se rota.
+    /// The margin is what stops a 401 being lent: below it, it rotates.
     #[test]
     fn a_token_about_to_die_is_rotated_first() {
         assert!(needs_rotation(Some(LEND_MIN_TTL - 1), "tok", None));
@@ -818,30 +819,31 @@ mod tests {
         assert!(needs_rotation(Some(-10), "tok", None));
     }
 
-    /// El caso que el `rejected` existe para cerrar: el cliente comió un 401 con
-    /// un token que **todavía no ha caducado** (revocado server-side, reloj
-    /// desfasado). Sin esto recibiría el mismo token y reintentaría en bucle.
+    /// The case `rejected` exists to close: the client ate a 401 with a token that
+    /// has NOT expired yet (revoked server-side, a skewed clock). Without this it
+    /// would get the same token and retry in a loop.
     #[test]
     fn a_rejected_token_is_never_handed_back() {
         assert!(needs_rotation(Some(3600), "tok", Some("tok")));
     }
 
-    /// Pero si el que tenemos ya no es el rechazado, alguien rotó por nosotros:
-    /// servirlo es gratis y ahorra una rotación.
+    /// But if the one we hold is no longer the rejected one, somebody rotated for
+    /// us: serving it is free and saves a rotation.
     #[test]
     fn a_rejection_of_someone_elses_token_doesnt_force_a_rotation() {
         assert!(!needs_rotation(Some(3600), "newer", Some("older")));
     }
 
-    /// Caducidad ilegible: no fingimos saber. Rotar es la dirección segura.
+    /// An unreadable expiry: we do not pretend to know. Rotating is the safe
+    /// direction.
     #[test]
     fn an_unreadable_expiry_rotates() {
         assert!(needs_rotation(None, "tok", None));
     }
 
-    /// La pista sólo aparece cuando el token está de verdad caducado; con uno
-    /// vivo (o ilegible) callamos, para no mandar al usuario a arreglar algo que
-    /// no está roto.
+    /// The hint only appears when the token really has expired; with a live one,
+    /// or an unreadable one, we stay quiet, so the user is not sent to fix
+    /// something that is not broken.
     #[test]
     fn the_stale_hint_only_fires_on_an_expired_token() {
         use base64::Engine;

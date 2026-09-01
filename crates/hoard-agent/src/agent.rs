@@ -2823,7 +2823,7 @@ fn spawn_auto_restore(
                     disposition = AutoRestoreDisposition::Unauthorized;
                     tracing::debug!(
                         save_id = %save.save_id,
-                        "agent: auto-restore deferred — session unauthorized (token refresh pending)"
+                        "agent: auto-restore deferred, session unauthorized (token refresh pending)"
                     );
                 } else {
                     let chain = format!("{e:#}");
@@ -5372,7 +5372,7 @@ fn process_poll(
         } else {
             tracing::debug!(
                 save_id = %id,
-                "agent: señal débil/sticky descartada — otro juego corre por señal fuerte"
+                "agent: weak or sticky signal discarded, another game is running on a strong signal"
             );
         }
     }

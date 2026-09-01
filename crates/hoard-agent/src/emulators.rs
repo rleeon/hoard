@@ -1,28 +1,27 @@
-//! Catálogo de emuladores y localización de sus carpetas de save.
+//! The emulator catalogue and where its save folders live.
 //!
-//! Un emulador reutiliza el sistema de ficheros del host, así que el motor ya
-//! sabe respaldarlo en cuanto alguien señala la carpeta. Lo que no puede hacer
-//! solo es *encontrarla*: no hay tienda, ni `install_dir`, ni entrada en el
-//! manifiesto. Este módulo suple eso con un catálogo curado — carpetas de save
-//! nativas y nombres de proceso típicos — y con dos sondeos que lo estiran
-//! hasta donde vive la gente de verdad:
+//! An emulator reuses the host's filesystem, so the engine already knows how to
+//! back one up the moment somebody points at the folder. What it cannot do on its
+//! own is *find* it: there is no storefront, no `install_dir`, no manifest entry.
+//! This module fills that in with a curated catalogue of native save folders and
+//! typical process names, plus two probes that stretch it to where people really
+//! keep things:
 //!
-//! 1. [`resolve_save_paths`] — las plantillas del catálogo expandidas y
-//!    filtradas a lo que existe en este host (instalación normal).
-//! 2. [`portable_save_paths`] — el mismo emulador **descomprimido** en otra
-//!    unidad, que guarda junto al ejecutable en vez de en la carpeta de
-//!    usuario.
-//! 3. [`split_per_title`] — bajar de la raíz de saves de una consola a la
-//!    carpeta de CADA juego, cuando el árbol intermedio lleva un identificador
-//!    que no significa nada en la otra máquina.
+//! 1. [`resolve_save_paths`]: the catalogue's templates expanded and filtered to
+//!    what exists on this host (an ordinary install).
+//! 2. [`portable_save_paths`]: the same emulator unpacked on another drive, which
+//!    saves next to the executable rather than in the user folder.
+//! 3. [`split_per_title`]: descending from a console's save root to EACH game's
+//!    folder, when the intermediate tree carries an identifier that means nothing
+//!    on the other machine.
 //!
-//! Vive en el agente y no en el desktop porque a partir del sondeo de unidades
-//! esto es **detección**, y la detección la comparten los dos frontends: el
-//! diálogo de "añadir emulador" y `hoard scan` preguntan lo mismo.
+//! It lives in the agent rather than the desktop because from the drive probe
+//! onwards this is detection, and detection is shared by both frontends: the "add
+//! emulator" dialog and `hoard scan` ask the same thing.
 //!
-//! El catálogo apunta a **saves nativos** (memory cards, carpetas por título),
-//! nunca a savestates: dependen de la versión exacta del emulador y no
-//! sobreviven a un viaje entre máquinas.
+//! The catalogue points at native saves (memory cards, per-title folders), never
+//! at savestates: those depend on the emulator's exact version and do not survive
+//! a trip between machines.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -30,46 +29,45 @@ use std::path::{Path, PathBuf};
 use crate::manifest::Os;
 use crate::pathexpand::expand_path;
 
-/// Forma del árbol de saves de una consola, cuando ofrecer la raíz entera es
-/// un error. Ver [`split_per_title`] para el porqué de cada una.
+/// The shape of a console's save tree, when offering the whole root is a mistake.
+/// See [`split_per_title`] for the reasoning behind each.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TitleLayout {
-    /// `…/nand/user/save/<cuenta>/<uuid-de-perfil>/<title-id>/` — la estirpe
-    /// de yuzu (y sus forks). El uuid de perfil se genera en la primera
-    /// ejecución, así que es distinto en cada instalación.
+    /// `.../nand/user/save/<account>/<profile-uuid>/<title-id>/`, the yuzu line
+    /// and its forks. The profile uuid is generated on first run, so it differs on
+    /// every install.
     SwitchNand,
-    /// `…/sdmc/Nintendo 3DS/<id0>/<id1>/title/<hi>/<lo>/data/` — Citra y
-    /// Azahar. `id0`/`id1` derivan de las claves de la consola emulada, o sea
-    /// que también son por instalación.
+    /// `.../sdmc/Nintendo 3DS/<id0>/<id1>/title/<hi>/<lo>/data/`, Citra and
+    /// Azahar. `id0` and `id1` derive from the emulated console's keys, so they
+    /// are per-install too.
     Citra3ds,
 }
 
-/// Entrada del catálogo. Se mantiene separada del tipo que sale por el cable
-/// para que las *plantillas* (multiplataforma, placeholders estilo Ludusavi)
-/// vivan aquí y se expandan a rutas reales en el momento de preguntar.
+/// A catalogue entry. Kept separate from the type that goes over the wire so the
+/// templates, which are cross-platform and use Ludusavi-style placeholders, live
+/// here and expand into real paths at the moment of asking.
 pub struct EmulatorDef {
-    /// Id estable; la UI forma el slug sintético del juego como `emu-<id>`.
+    /// A stable id; the UI builds the game's synthetic slug as `emu-<id>`.
     pub id: &'static str,
     pub display_name: &'static str,
     /// Consola / plataforma, como sublínea en el selector.
     pub system: &'static str,
-    /// Nombres de ejecutable que marcan al emulador como "en marcha". El
-    /// agente casa cualquiera de ellos (sin distinguir mayúsculas, nombre
-    /// exacto), así que se listan las variantes de todos los SO y builds.
+    /// Executable names that mark the emulator as running. The agent matches any
+    /// of them (case-insensitive, exact name), so the variants for every OS and
+    /// build are listed.
     pub processes: &'static [&'static str],
-    /// Plantillas de carpeta de save nativa. Se expanden con [`expand_path`] y
-    /// se filtran a las que existen; vacío (o todas ausentes) significa que el
-    /// usuario elige la carpeta a mano — lo normal en emuladores portables que
-    /// guardan junto a la ROM.
+    /// Native save-folder templates. They are expanded with [`expand_path`] and
+    /// filtered to the ones that exist; empty, or all absent, means the user picks
+    /// the folder by hand, which is the norm for portable emulators that save next
+    /// to the ROM.
     pub save_templates: &'static [&'static str],
-    /// Forma del árbol por título, si ofrecer la raíz entera rompe el sync.
+    /// The per-title tree's shape, when offering the whole root breaks sync.
     pub title_layout: Option<TitleLayout>,
 }
 
-/// Conjunto curado. Conservador a propósito: una ruta sugerida incorrecta es
-/// peor que ninguna (el usuario acabaría respaldando una carpeta vacía), así
-/// que sólo se listan carpetas que el emulador usa para saves **nativos** en
-/// una instalación por defecto.
+/// The curated set. Conservative on purpose: a wrong suggested path is worse than
+/// none (the user would end up backing up an empty folder), so only folders the
+/// emulator uses for native saves in a default install are listed.
 pub const CATALOG: &[EmulatorDef] = &[
     EmulatorDef {
         id: "pcsx2",
@@ -202,10 +200,10 @@ pub const CATALOG: &[EmulatorDef] = &[
         display_name: "Ryujinx",
         system: "Switch",
         processes: &["Ryujinx.exe", "Ryujinx.Ava.exe", "Ryujinx"],
-        // `bis/user/save/<save-data-id>`: el id lo asigna el propio emulador y
-        // sólo su base de datos interna sabe a qué título corresponde, así que
-        // NO se puede partir por título mirando el nombre de la carpeta. Se
-        // ofrece la raíz, como siempre.
+        // `bis/user/save/<save-data-id>`: the id is assigned by the emulator
+        // itself and only its internal database knows which title it belongs to,
+        // so it CANNOT be split per title by looking at the folder name. The root
+        // is offered, as usual.
         save_templates: &[
             "<winAppData>/Ryujinx/bis/user/save",
             "<xdgConfig>/Ryujinx/bis/user/save",
@@ -344,7 +342,7 @@ pub const CATALOG: &[EmulatorDef] = &[
         id: "mgba",
         display_name: "mGBA",
         system: "Game Boy Advance",
-        // Guarda junto a la ROM por defecto, así que no hay plantilla fiable.
+        // It saves next to the ROM by default, so there is no reliable template.
         processes: &["mGBA.exe", "mgba-qt", "mgba"],
         save_templates: &[],
         title_layout: None,
@@ -376,16 +374,15 @@ pub const CATALOG: &[EmulatorDef] = &[
     },
 ];
 
-/// Busca una entrada del catálogo por su id.
+/// Looks up a catalogue entry by its id.
 pub fn find(id: &str) -> Option<&'static EmulatorDef> {
     CATALOG.iter().find(|d| d.id == id)
 }
 
-/// Expande las plantillas de una entrada contra este SO y conserva las
-/// carpetas que existen, deduplicadas y en orden. Si no existe ninguna pero
-/// alguna plantilla expande a una ruta concreta, devuelve esa única
-/// mejor-apuesta para que el diálogo tenga algo que enseñar (el usuario puede
-/// corregirla antes de añadir).
+/// Expands an entry's templates against this OS and keeps the folders that exist,
+/// deduplicated and in order. If none exists but some template expands to a
+/// concrete path, it returns that single best guess so the dialog has something to
+/// show (the user can correct it before adding).
 pub fn resolve_save_paths(def: &EmulatorDef) -> Vec<String> {
     let os = Os::current();
     let mut existing: Vec<String> = Vec::new();
@@ -410,17 +407,17 @@ pub fn resolve_save_paths(def: &EmulatorDef) -> Vec<String> {
 
 // ─── Instalaciones portables ────────────────────────────────────────────────
 
-/// Carpetas donde una instalación portable guarda lo que una instalada pondría
-/// en la carpeta de usuario. `""` es la propia raíz de la instalación.
+/// Folders where a portable install keeps what an installed one would put in the
+/// user folder. `""` is the install's own root.
 const PORTABLE_USER_DIRS: &[&str] = &["", "user"];
 
-/// Parte una plantilla anclada en la carpeta de usuario en (carpeta de la app,
-/// cola por debajo). Devuelve `None` para plantillas sin cola —la carpeta de
-/// la app *es* la de saves, no hay nada que reanclar— y para las que no salen
-/// de un root reanclable (Documentos, Saved Games, una raíz de wrapper).
+/// Splits a template anchored in the user folder into (the app's folder, the tail
+/// below it). Returns `None` for templates with no tail, where the app's folder IS
+/// the save folder and there is nothing to re-anchor, and for those that do not
+/// come off a re-anchorable root (Documents, Saved Games, a wrapper root).
 fn app_dir_and_tail(template: &str) -> Option<(&str, &str)> {
-    // Sólo los roots "de aplicación": una plantilla de Documentos no tiene
-    // equivalente portable, y `<home>` es demasiado ancho para deducir nada.
+    // Only the "application" roots: a Documents template has no portable
+    // equivalent, and `<home>` is too wide to infer anything from.
     const REANCHORABLE: &[&str] = &["<winAppData>/", "<xdgData>/", "<xdgConfig>/"];
     let rest = REANCHORABLE.iter().find_map(|p| template.strip_prefix(p))?;
     let (app_dir, tail) = rest.split_once('/')?;
@@ -430,10 +427,9 @@ fn app_dir_and_tail(template: &str) -> Option<(&str, &str)> {
     Some((app_dir, tail))
 }
 
-/// ¿El nombre de este directorio nombra plausiblemente una instalación de
-/// `app_dir`? Coincidencia exacta, o el nombre con un sufijo: las builds que
-/// se descomprimen llegan como `RetroArch-Win64` o `Azahar-2120` mucho más a
-/// menudo que con el nombre pelado.
+/// Does this directory's name plausibly name an install of `app_dir`? An exact
+/// match, or the name with a suffix: builds that get unpacked arrive as
+/// `RetroArch-Win64` or `Azahar-2120` far more often than under the bare name.
 fn looks_like_install_of(dir_name: &str, app_dir: &str) -> bool {
     let d = dir_name.to_lowercase();
     let a = app_dir.to_lowercase();
@@ -443,37 +439,36 @@ fn looks_like_install_of(dir_name: &str, app_dir: &str) -> bool {
     let Some(rest) = d.strip_prefix(&a) else {
         return false;
     };
-    // Exige un separador tras el nombre para que "eden" no case con "edenring".
+    // Demand a separator after the name so "eden" does not match "edenring".
     matches!(
         rest.as_bytes().first(),
         Some(b'-' | b'_' | b' ' | b'.' | b'0'..=b'9')
     )
 }
 
-/// Carpetas de save de este emulador **descomprimido** en algún sitio, en vez
-/// de instalado.
+/// This emulator's save folders when it has been unpacked somewhere rather than
+/// installed.
 ///
-/// El catálogo localiza cada emulador por su carpeta de datos por usuario
-/// (`%APPDATA%\RetroArch` y compañía), que es donde la deja un instalador — y
-/// está en C: viva donde viva el ejecutable. Sólo que muchísima gente no
-/// instala: RetroArch, la estirpe de Citra y la de yuzu se distribuyen como
-/// una carpeta que descomprimes donde quieras, y en ese modo guardan sus datos
-/// **junto al ejecutable**. Quien tiene sus emuladores en `D:\Emulators` no
-/// tiene ningún `%APPDATA%\RetroArch`, el escaneo mira el único sitio donde no
-/// están, y la app parece rota justo para el público con más emuladores.
+/// The catalogue locates each emulator by its per-user data folder
+/// (`%APPDATA%\RetroArch` and friends), which is where an installer leaves it, and
+/// that is on C: wherever the executable lives. Except that a great many people do
+/// not install: RetroArch, the Citra line and the yuzu line all ship as a folder
+/// you unpack wherever you like, and in that mode they keep their data next to the
+/// executable. Somebody with their emulators in `D:\Emulators` has no
+/// `%APPDATA%\RetroArch` at all, the scan looks in the one place they are not, and
+/// the app looks broken for exactly the audience with the most emulators.
 ///
-/// La distribución interna de una instalación portable es la misma que la de
-/// la carpeta de datos, sólo que colgando de otro sitio: o directo bajo la
-/// raíz (los `saves/` de RetroArch) o bajo un `user/` junto al ejecutable (las
-/// estirpes de Citra y yuzu). Así que se reutiliza la **cola** de cada
-/// plantilla, y para dar por buena una candidata se exigen **las dos cosas**:
-/// que la carpeta se llame como el emulador y que esa cola exista de verdad.
-/// La cola sola no es prueba de nada — hay montones de carpetas de juego con
-/// algo llamado `saves` dentro.
+/// A portable install's internal layout is the same as the data folder's, only
+/// hanging off somewhere else: either directly under the root (RetroArch's
+/// `saves/`) or under a `user/` next to the executable (the Citra and yuzu lines).
+/// So each template's tail is reused, and to accept a candidate both things are
+/// demanded: that the folder be named after the emulator, and that the tail really
+/// exist. The tail alone proves nothing, since there are plenty of game folders
+/// with something called `saves` inside.
 ///
-/// Acotado a propósito: un listado por unidad más uno por carpeta-colección,
-/// sin recorrer nada. Un barrido completo de un disco de juegos leería decenas
-/// de miles de directorios para encontrar un puñado de aciertos.
+/// Bounded on purpose: one listing per drive plus one per collection folder, with
+/// nothing walked. A full sweep of a games disk would read tens of thousands of
+/// directories to find a handful of hits.
 pub fn portable_save_paths(def: &EmulatorDef) -> Vec<PathBuf> {
     let tails: Vec<(&str, &str)> = def
         .save_templates
@@ -520,25 +515,24 @@ pub fn portable_save_paths(def: &EmulatorDef) -> Vec<PathBuf> {
 
 // ─── Partición por título ───────────────────────────────────────────────────
 
-/// Una carpeta de save de un juego concreto dentro del árbol de una consola.
+/// One game's save folder inside a console's tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TitleSave {
-    /// Identificador del título tal cual lo nombra la carpeta (16 hex en
-    /// Switch, `<hi>/<lo>` en 3DS). Es lo único que las dos instalaciones
-    /// llaman igual.
+    /// The title's identifier exactly as the folder names it (16 hex on Switch,
+    /// `<hi>/<lo>` on 3DS). It is the only thing both installs call the same.
     pub title_id: String,
     pub path: PathBuf,
 }
 
-/// ¿Es este nombre un id de título de Switch? 16 dígitos hexadecimales.
-/// Casar por forma evita ofrecer como juegos las copias de seguridad y los
-/// directorios de trabajo que el emulador deja al lado.
+/// Is this name a Switch title id? Sixteen hexadecimal digits. Matching by shape
+/// avoids offering as games the backups and working directories the emulator
+/// leaves alongside.
 fn is_switch_title_id(name: &str) -> bool {
     name.len() == 16 && name.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-/// ¿Tiene contenido esta carpeta? El emulador crea una por cada título que se
-/// haya lanzado alguna vez, aunque nunca haya guardado nada.
+/// Does this folder hold anything? The emulator creates one for every title ever
+/// launched, even when nothing was ever saved.
 fn has_any_file(dir: &Path) -> bool {
     let mut stack = vec![dir.to_path_buf()];
     let mut budget = 64; // suficiente para decidir; no es un recorrido completo
@@ -561,25 +555,23 @@ fn has_any_file(dir: &Path) -> bool {
     false
 }
 
-/// Baja de la raíz de saves de una consola a la carpeta de cada juego.
+/// Descends from a console's save root to each game's folder.
 ///
-/// Ofrecer la raíz entera como una sola carpeta de save mete dentro del árbol
-/// sincronizado un identificador que **se genera en cada instalación** — el
-/// uuid del perfil en la estirpe de yuzu, el par `id0`/`id1` derivado de las
-/// claves de consola en Citra. La copia que llega a la otra máquina queda
-/// entonces colgando de un perfil que su emulador no ha visto nunca, y el
-/// emulador informa de un save sin perfil asociado. Nada en ese mensaje apunta
-/// a la sincronización, que es por lo que se lee como un fallo del emulador o
-/// como que uno lo ha configurado mal.
+/// Offering the whole root as a single save folder puts an identifier that is
+/// generated per install inside the synced tree: the profile uuid in the yuzu
+/// line, the `id0`/`id1` pair derived from console keys in Citra. The copy that
+/// reaches the other machine then hangs off a profile its emulator has never seen,
+/// and the emulator reports a save with no associated profile. Nothing in that
+/// message points at syncing, which is why it reads as the emulator being broken
+/// or misconfigured.
 ///
-/// La carpeta del título es la parte en la que las dos instalaciones sí están
-/// de acuerdo, así que es la que se ofrece, una por juego.
+/// The title's folder is the part both installs do agree on, so that is what gets
+/// offered, one per game.
 ///
-/// **Lo importante es el fallback.** Las bifurcaciones y las versiones varían,
-/// y una suposición de distribución que falle deja al usuario sin detección
-/// ninguna — que es peor que el problema del identificador. Así que una forma
-/// que no se reconozca cae a ofrecer la raíz tal cual, y sólo un árbol que
-/// encaje del todo se parte por título.
+/// The fallback is the important part. Forks and versions vary, and a layout guess
+/// that misses leaves the user with no detection at all, which is worse than the
+/// identifier problem. So a shape that is not recognised falls back to offering
+/// the root as-is, and only a tree that fits completely gets split per title.
 pub fn split_per_title(root: &Path, layout: TitleLayout) -> Vec<TitleSave> {
     match layout {
         TitleLayout::SwitchNand => split_switch_nand(root),
@@ -587,9 +579,9 @@ pub fn split_per_title(root: &Path, layout: TitleLayout) -> Vec<TitleSave> {
     }
 }
 
-/// `<raíz>/<cuenta>/<uuid-de-perfil>/<title-id>/`. Dos niveles opacos y luego
-/// el título; se aceptan también árboles con un solo nivel intermedio, que es
-/// como quedan algunas builds.
+/// `<root>/<account>/<profile-uuid>/<title-id>/`. Two opaque levels and then the
+/// title; trees with only one intermediate level are also accepted, which is how
+/// some builds end up.
 fn split_switch_nand(root: &Path) -> Vec<TitleSave> {
     let mut out = Vec::new();
     for level1 in read_dirs(root) {
@@ -623,8 +615,8 @@ fn split_switch_nand(root: &Path) -> Vec<TitleSave> {
     out
 }
 
-/// `<sdmc>/Nintendo 3DS/<id0>/<id1>/title/<hi>/<lo>/data/`. El save vive en
-/// `data`; se ofrece esa carpeta y el título se nombra `<hi><lo>`.
+/// `<sdmc>/Nintendo 3DS/<id0>/<id1>/title/<hi>/<lo>/data/`. The save lives in
+/// `data`; that folder is offered and the title is named `<hi><lo>`.
 fn split_citra_sdmc(root: &Path) -> Vec<TitleSave> {
     let mut out = Vec::new();
     let base = if root.join("Nintendo 3DS").is_dir() {
@@ -659,7 +651,7 @@ fn split_citra_sdmc(root: &Path) -> Vec<TitleSave> {
     out
 }
 
-// ─── La raíz de un emulador, vista desde la detección ───────────────────────
+// ---- an emulator's root, as detection sees it
 
 /// The emulator whose save root this path **is**, if any.
 ///
@@ -683,17 +675,17 @@ pub fn save_root_at(path: &Path) -> Option<&'static EmulatorDef> {
     })
 }
 
-/// La raíz de emulador **por encima** de `path`, con la carpeta de título por
-/// la que se entró.
+/// The emulator root above `path`, along with the title folder it was entered
+/// through.
 ///
-/// El barrido no siempre aterriza en la raíz: baja hasta donde hay ficheros,
-/// así que lo que trae es `…/savedata/BLUS30443` o algo aún más hondo. Sin
-/// esto, esa carpeta se atribuye sola y vuelve a salir nombrada por el árbol
-/// del emulador en vez de por el emulador.
+/// The sweep does not always land on the root: it descends to where the files are,
+/// so what it brings back is `.../savedata/BLUS30443` or something deeper still.
+/// Without this, that folder is attributed on its own and comes back named after
+/// the emulator's tree rather than after the emulator.
 ///
-/// `None` si `path` no cuelga de ninguna raíz conocida, o si ES la raíz —para
-/// eso está [`save_root_at`], y devolver ambas cosas por el mismo sitio haría
-/// que quien pregunta tuviera que desempatar.
+/// `None` when `path` hangs off no known root, or when it IS the root, which is
+/// what [`save_root_at`] is for; returning both through the same place would make
+/// the caller break the tie.
 pub fn save_root_above(path: &Path) -> Option<(&'static EmulatorDef, PathBuf)> {
     let mut title = path;
     while let Some(parent) = title.parent() {
@@ -705,15 +697,15 @@ pub fn save_root_above(path: &Path) -> Option<(&'static EmulatorDef, PathBuf)> {
     None
 }
 
-/// La parte de una plantilla por debajo de su placeholder de raíz.
+/// The part of a template below its root placeholder.
 fn template_tail(template: &str) -> Option<&str> {
     let (_, tail) = template.strip_prefix('<')?.split_once(">/")?;
     Some(tail).filter(|t| !t.is_empty())
 }
 
-/// ¿Termina `path` en esta cola de plantilla? Compara por componentes y sin
-/// distinguir mayúsculas (macOS y Windows no las distinguen, y las plantillas
-/// están escritas con la caja del proyecto de cada emulador).
+/// Does `path` end in this template tail? Compared by component and
+/// case-insensitively (macOS and Windows do not distinguish case, and the
+/// templates are written in each emulator project's own casing).
 fn path_ends_with_tail(path: &Path, tail: &str) -> bool {
     let want: Vec<&str> = tail.split('/').filter(|s| !s.is_empty()).collect();
     let have: Vec<&str> = path
@@ -732,8 +724,8 @@ fn path_ends_with_tail(path: &Path, tail: &str) -> bool {
         .all(|(h, w)| segment_matches(h, w))
 }
 
-/// Un segmento de la plantilla contra uno real. Los identificadores de
-/// cuenta/perfil se comparan por FORMA, no por valor: ver [`save_root_at`].
+/// One template segment against a real one. Account and profile identifiers are
+/// compared by SHAPE rather than by value: see [`save_root_at`].
 fn segment_matches(have: &str, want: &str) -> bool {
     if want.chars().all(|c| c.is_ascii_digit()) {
         return have.len() == want.len() && have.chars().all(|c| c.is_ascii_digit());
@@ -741,12 +733,12 @@ fn segment_matches(have: &str, want: &str) -> bool {
     have.eq_ignore_ascii_case(want)
 }
 
-/// Las carpetas por título que hay dentro de la raíz de saves de `def`.
+/// The per-title folders inside `def`'s save root.
 ///
-/// Vacío significa "esta raíz no se puede partir", y es una respuesta
-/// legítima: una raíz recién creada no tiene ningún título dentro todavía.
-/// Quien pregunta decide qué hacer con eso, pero lo que **no** puede hacer es
-/// ofrecer la raíz entera como si fuera un save — ver [`split_per_title`].
+/// Empty means "this root cannot be split", and that is a legitimate answer: a
+/// freshly created root has no titles in it yet. The caller decides what to do
+/// with that, but what it may NOT do is offer the whole root as though it were a
+/// save; see [`split_per_title`].
 pub fn titles_in(def: &EmulatorDef, root: &Path) -> Vec<TitleSave> {
     if let Some(layout) = def.title_layout {
         return split_per_title(root, layout);

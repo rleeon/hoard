@@ -1,15 +1,15 @@
-//! Bajar y aplicar un componente: qué fichero de la release le toca a esta
-//! máquina, cómo se comprueba que es nuestro, y cómo se instala.
+//! Downloading and applying a component: which release file this machine needs,
+//! how it is checked to be ours, and how it gets installed.
 //!
-//! Vive en el agente y no en un frontend porque lo usan los dos caminos de
-//! actualización —`hoard upgrade` desde la terminal y el botón de la app— y son
-//! **la misma operación**. Duplicar aquí significaría que un día la app instala
-//! un `.deb` donde la terminal instala un AppImage, y el usuario acaba con dos
-//! Hoard distintos en la misma máquina.
+//! It lives in the agent rather than in a frontend because both update paths use
+//! it, `hoard upgrade` from the terminal and the app's button, and they are the
+//! same operation. Duplicating it here would mean that one day the app installs a
+//! `.deb` where the terminal installs an AppImage, and the user ends up with two
+//! different Hoards on the same machine.
 //!
-//! Nada de esto abre una ventana ni la necesita: elegir asset, verificar la
-//! firma y llamar a `dpkg`/`rpm` es lógica de negocio corriente. Lo que se queda
-//! en el desktop es *preguntar* al usuario y pintar el progreso.
+//! None of this opens a window or needs one: picking an asset, verifying the
+//! signature and calling `dpkg` or `rpm` is ordinary business logic. What stays in
+//! the desktop is asking the user and drawing the progress.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -22,14 +22,14 @@ use super::Delivery;
 /// Repo de las releases. Mismo que resuelven `install.sh` / `install.ps1`.
 const REPO: &str = "rleeon/hoard";
 
-/// Clave pública minisign con la que CI firma **todo** lo publicado (ADR 0017;
-/// el job de firma está aislado del que compila para que ninguna dependencia de
-/// terceros vea la clave privada).
+/// The minisign public key CI signs everything published with (ADR 0017; the
+/// signing job is isolated from the building one so no third-party dependency ever
+/// sees the private key).
 ///
-/// Un binario sin firma válida no se instala. Es la única defensa real entre
-/// "bajo un ejecutable de internet" y "lo ejecuto con privilegios": el TLS de
-/// GitHub dice que el fichero llegó entero, no que lo hayamos publicado
-/// nosotros.
+/// A binary without a valid signature is not installed. It is the only real
+/// defence between "I download an executable off the internet" and "I run it with
+/// privileges": GitHub's TLS says the file arrived intact, not that we published
+/// it.
 pub const MINISIGN_PUBKEY: &str = "RWSeOL1nHXZI9oa+WOdrc6yVasLPeBurvGWnERo4tN9F+YIQn7ipx3eO";
 
 /// Un fichero publicado en la release.
@@ -48,7 +48,7 @@ struct Release {
     tag_name: String,
 }
 
-/// Los ficheros de una release. `None` como versión = la última publicada.
+/// A release's files. `None` as the version means the latest published one.
 pub async fn release_assets(version: Option<&str>) -> Result<(String, Vec<Asset>)> {
     let url = match version {
         Some(v) => format!(
@@ -77,25 +77,26 @@ pub async fn release_assets(version: Option<&str>) -> Result<(String, Vec<Asset>
     Ok((rel.tag_name.trim_start_matches('v').to_string(), rel.assets))
 }
 
-/// El fichero que le toca a esta vía de entrega.
+/// The file this delivery route needs.
 ///
-/// Se busca **por vía**, no "a ver qué hay": la vía ya la decidió
-/// [`super::resolve_delivery`] mirando la máquina (raíz inmutable, gestor
-/// disponible, si podemos elevar), y volver a adivinar aquí por sufijos sería
-/// tener la política escrita dos veces y en desacuerdo.
+/// It is looked up by route rather than by "let's see what is there": the route
+/// was already decided by [`super::resolve_delivery`] looking at the machine
+/// (immutable root, available package manager, whether we can elevate), and
+/// guessing again here by suffix would mean the policy is written twice and
+/// disagrees with itself.
 pub fn asset_for(delivery: Delivery, assets: &[Asset]) -> Option<&Asset> {
     let suffixes: &[&str] = match delivery {
         Delivery::Deb => &[".deb"],
         Delivery::Rpm => &[".rpm"],
         Delivery::AppImage => &[".AppImage"],
-        // NSIS antes que MSI, y el orden importa desde que `hoardd` sobrevive a
-        // la ventana: el instalador tiene que sobrescribir un `hoardd.exe` que
-        // el servicio tiene abierto, y sólo el bundle NSIS lleva el hook que lo
-        // para antes (`installer-hooks.nsh`). Por el MSI ese hook no corre y la
-        // actualización muere contra el fichero bloqueado.
+        // NSIS before MSI, and the order matters now that `hoardd` outlives the
+        // window: the installer has to overwrite a `hoardd.exe` the service holds
+        // open, and only the NSIS bundle carries the hook that stops it first
+        // (`installer-hooks.nsh`). Through the MSI that hook never runs and the
+        // update dies against the locked file.
         Delivery::Nsis => &["-setup.exe", ".exe", ".msi"],
         Delivery::Dmg => &[".dmg"],
-        // Lo mantiene un tercero: no hay fichero nuestro que bajar.
+        // Maintained by a third party: there is no file of ours to download.
         Delivery::Managed => return None,
     };
     suffixes.iter().find_map(|suffix| {
@@ -132,7 +133,7 @@ fn is_our_installer(asset: &Asset) -> bool {
     asset.name.to_ascii_lowercase().starts_with("hoardsetup")
 }
 
-/// Tokens con los que los bundles nombran **nuestra** arquitectura.
+/// The tokens the bundles use to name our architecture.
 fn arch_tokens() -> &'static [&'static str] {
     match std::env::consts::ARCH {
         "x86_64" => &["x86_64", "amd64", "x64"],
@@ -141,22 +142,22 @@ fn arch_tokens() -> &'static [&'static str] {
     }
 }
 
-/// Todos los tokens de arquitectura que sabemos reconocer, nuestros o no.
+/// Every architecture token we know how to recognise, ours or not.
 const KNOWN_ARCH_TOKENS: &[&str] = &["x86_64", "amd64", "x64", "aarch64", "arm64"];
 
-/// De varios ficheros del mismo formato, el de esta arquitectura.
+/// Out of several files of the same format, the one for this architecture.
 ///
-/// Hoy cada release publica un solo bundle por sistema, así que "coge el
-/// primero" acierta por casualidad. Deja de acertar en cuanto se publique un
-/// segundo: elegiría por el orden en que GitHub liste los ficheros, y un `.deb`
-/// de amd64 en un ARM no es un fallo ruidoso sino un `dpkg` quejándose de algo
-/// que no parece tener que ver. Y el tarball del núcleo **ya** se publica para
-/// ARM, así que la máquina que puede caer aquí existe hoy.
+/// Today each release publishes a single bundle per system, so "take the first"
+/// is right by luck. It stops being right the moment a second one ships: it would
+/// pick by whichever order GitHub happens to list the files in, and an amd64
+/// `.deb` on an ARM machine is not a loud failure but a `dpkg` complaining about
+/// something that does not look related. And the core tarball already ships for
+/// ARM, so the machine that can land here exists today.
 ///
-/// Si ningún candidato lleva token de arquitectura, la release no distingue y
-/// vale el primero. Si los llevan pero ninguno es el nuestro, se devuelve `None`
-/// a propósito: "no hay paquete para tu arquitectura" es una respuesta útil;
-/// instalar el de otra, no.
+/// If no candidate carries an architecture token, the release does not
+/// distinguish and the first one will do. If they do carry one but none is ours,
+/// `None` comes back on purpose: "there is no package for your architecture" is a
+/// useful answer, and installing somebody else's is not.
 fn pick_for_arch<'a>(candidates: &[&'a Asset]) -> Option<&'a Asset> {
     let ours = arch_tokens();
     if let Some(hit) = candidates
@@ -174,13 +175,13 @@ fn pick_for_arch<'a>(candidates: &[&'a Asset]) -> Option<&'a Asset> {
     candidates.first().copied()
 }
 
-/// ¿Aparece `token` como pieza del nombre y no dentro de otra palabra?
+/// Does `token` appear as a piece of the name rather than inside another word?
 ///
-/// Se comprueban los bordes en vez de trocear por separadores, y no es un
-/// detalle de estilo: el token más importante —`x86_64`— **lleva un `_` dentro**,
-/// así que partir por `_` lo destruye antes de poder buscarlo y ningún fichero
-/// nombrado a la manera habitual casaría jamás. Un borde es cualquier cosa que
-/// no sea alfanumérica, o el principio/fin del nombre.
+/// The boundaries are checked instead of splitting on separators, and that is not
+/// a matter of style: the most important token, `x86_64`, has a `_` inside it, so
+/// splitting on `_` destroys it before it can be looked for and no file named the
+/// usual way would ever match. A boundary is anything non-alphanumeric, or the
+/// start or end of the name.
 fn contains_token(name: &str, token: &str) -> bool {
     let hay = name.to_ascii_lowercase();
     let needle = token.to_ascii_lowercase();
@@ -199,12 +200,12 @@ fn contains_token(name: &str, token: &str) -> bool {
     false
 }
 
-/// Baja un asset y su `.minisig`, verifica la firma y deja el fichero en disco.
-/// Devuelve dónde quedó.
+/// Downloads an asset and its `.minisig`, verifies the signature and leaves the
+/// file on disk. Returns where it landed.
 ///
-/// Falla cerrado: sin `.minisig` publicado, o con una firma que no case, no se
-/// escribe nada aplicable. Un instalador se ejecuta con privilegios; "seguro que
-/// está bien" no es una política.
+/// It fails closed: with no `.minisig` published, or a signature that does not
+/// match, nothing applicable gets written. An installer runs with privileges, and
+/// "it is probably fine" is not a policy.
 pub async fn download_verified(
     asset: &Asset,
     assets: &[Asset],
@@ -266,12 +267,12 @@ pub fn verify(bytes: &[u8], sig_text: &str) -> Result<()> {
     Ok(())
 }
 
-/// Instala el fichero ya verificado según su vía.
+/// Installs the already-verified file according to its route.
 ///
-/// Los paquetes nativos necesitan privilegios; el AppImage no toca nada fuera
-/// del home. `noninteractive` corta cualquier vía que pudiera pararse a
-/// preguntar — dentro de `curl … | sh` no hay a quién preguntar, y colgarse es
-/// peor que no instalar.
+/// Native packages need privileges; the AppImage touches nothing outside the
+/// home. `noninteractive` shuts off any route that could stop to ask: inside
+/// `curl ... | sh` there is nobody to ask, and hanging is worse than not
+/// installing.
 pub async fn apply_desktop(
     delivery: Delivery,
     path: &Path,
@@ -288,8 +289,8 @@ pub async fn apply_desktop(
         }
         Delivery::AppImage => place_appimage(path),
         Delivery::Nsis => {
-            // El instalador se encarga (y lleva el hook que para el servicio
-            // antes de tocar `hoardd.exe`). `/S` = silencioso.
+            // The installer takes care of it (and carries the hook that stops the
+            // service before touching `hoardd.exe`). `/S` means silent.
             let status = tokio::process::Command::new(path)
                 .arg("/S")
                 .status()
@@ -457,21 +458,20 @@ async fn install_dmg(path: &Path) -> Result<PathBuf> {
     )
 }
 
-/// Corre un gestor de paquetes con privilegios: `pkexec` primero (pinta su propio
-/// diálogo, no depende de esta terminal), `sudo -n` si no.
+/// Runs a package manager with privileges: `pkexec` first (it draws its own
+/// dialog and does not depend on this terminal), `sudo -n` otherwise.
 ///
-/// Ninguna de las dos vías puede quedarse esperando a un humano, que es lo que
-/// pasaría dentro de `curl … | sh`, donde el stdin es el propio script: `sudo`
-/// lleva `-n` siempre, así que sin credencial en caché falla al instante, y
-/// `pkexec` sólo se elige cuando hay sesión gráfica a la que pintar el diálogo
-/// (lo comprueba [`super::can_elevate`] antes de que la vía llegue hasta aquí).
+/// Neither route may sit waiting for a human, which is what would happen inside
+/// `curl ... | sh`, where stdin is the script itself: `sudo` always carries `-n`,
+/// so with no cached credential it fails instantly, and `pkexec` is only chosen
+/// when there is a graphical session to draw the dialog on (which
+/// [`super::can_elevate`] checks before the route ever gets here).
 ///
-/// `noninteractive` cierra el hueco que queda: [`super::can_elevate`] da por
-/// bueno `pkexec` cuando hay `$DISPLAY`, pero `$DISPLAY` puede estar puesto sin
-/// que haya un agente de polkit escuchando —SSH con X11 reenviado es el caso
-/// típico— y entonces `pkexec` se queda esperando a un diálogo que nadie va a
-/// pintar. Con la bandera puesta sólo valen root y `sudo -n`: fallar con un
-/// mensaje es siempre mejor que colgar un instalador.
+/// `noninteractive` closes the remaining gap: [`super::can_elevate`] accepts
+/// `pkexec` when `$DISPLAY` is set, but `$DISPLAY` can be set with no polkit agent
+/// listening (SSH with X11 forwarding is the typical case) and then `pkexec` waits
+/// for a dialog nobody is going to draw. With the flag set, only root and
+/// `sudo -n` count: failing with a message always beats hanging an installer.
 async fn elevated(cmd: &[&str], path: &Path, noninteractive: bool) -> Result<()> {
     let mut argv: Vec<String> = cmd.iter().map(|s| s.to_string()).collect();
     argv.push(path.to_string_lossy().to_string());
@@ -530,12 +530,12 @@ fn which(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Coloca el AppImage en el home y le pone entrada de menú.
+/// Puts the AppImage in the home and gives it a menu entry.
 ///
-/// Sin `sudo` y sin gestor de paquetes: es la vía que funciona donde los otros
-/// dos no pueden (SteamOS, Bazzite, Arch). El motor **no** va aquí dentro — lo
-/// puso el instalador en ruta estable —, que es lo que permite que el sync de
-/// esta máquina arranque en boot pese a que la app sea un AppImage.
+/// No `sudo` and no package manager: it is the route that works where the other
+/// two cannot (SteamOS, Bazzite, Arch). The engine does NOT go inside it, since
+/// the installer put it on a stable path, which is what lets this machine's sync
+/// start at boot even though the app is an AppImage.
 fn place_appimage(downloaded: &Path) -> Result<PathBuf> {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -544,12 +544,12 @@ fn place_appimage(downloaded: &Path) -> Result<PathBuf> {
     std::fs::create_dir_all(&bin).with_context(|| format!("creating {}", bin.display()))?;
     let dest = bin.join("hoard-desktop");
 
-    // Se escribe a un temporal y se renombra encima, nunca `copy` directo: si la
-    // app está abierta —y lo normal es actualizar desde la propia app— el kernel
-    // rechaza escribir sobre su ejecutable con `ETXTBSY`. `rename` sobre un
-    // binario en marcha sí vale: el proceso vivo conserva su inode y el nombre
-    // pasa a apuntar al nuevo. Y de paso es atómico, así que un fallo a medias
-    // no deja un AppImage truncado donde había uno que funcionaba.
+    // It writes to a temporary and renames over, never a direct `copy`: if the app
+    // is open, and updating from the app itself is the normal case, the kernel
+    // refuses to write over its own executable with `ETXTBSY`. A `rename` over a
+    // running binary is fine: the live process keeps its inode and the name comes
+    // to point at the new one. And it is atomic into the bargain, so a failure
+    // halfway does not leave a truncated AppImage where a working one was.
     let staging = bin.join(".hoard-desktop.new");
     let _ = std::fs::remove_file(&staging);
     std::fs::copy(downloaded, &staging)
@@ -568,8 +568,8 @@ fn place_appimage(downloaded: &Path) -> Result<PathBuf> {
     Ok(dest)
 }
 
-/// La entrada de menú. Sin ella el AppImage existe pero no se puede lanzar desde
-/// ningún sitio salvo la terminal — y en modo gaming eso es no existir.
+/// The menu entry. Without it the AppImage exists but cannot be launched from
+/// anywhere but a terminal, and in gaming mode that is not existing.
 fn write_desktop_entry(home: &Path, exe: &Path) -> Result<()> {
     let dir = home.join(".local").join("share").join("applications");
     std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
@@ -589,29 +589,27 @@ fn write_desktop_entry(home: &Path, exe: &Path) -> Result<()> {
     Ok(())
 }
 
-// =======================================================================
-// El núcleo: `hoardd` + `hoard`, sin instalador de shell
-// =======================================================================
+// ---- the core: `hoardd` plus `hoard`, with no shell installer
 //
-// `hoard upgrade` relevaba el núcleo tubando `curl … | sh` a un intérprete.
-// Vale para una persona escribiendo en una terminal y no vale para nada más: el
-// servicio no tiene terminal, un `curl` que no está instalado convierte "actualiza
-// solo" en "no actualiza y no lo dice", y el script termina llamando a `hoard
-// install`, o sea a un proceso que acabamos de sustituir en disco. Lo que sigue
-// es la misma operación escrita donde se puede supervisar: bajar el tarball,
-// comprobar su firma, y sustituir los dos binarios.
+// `hoard upgrade` used to relieve the core by piping `curl ... | sh` into an
+// interpreter. That works for a person typing in a terminal and for nothing else:
+// the service has no terminal, a `curl` that is not installed turns "it updates
+// itself" into "it does not update and does not say so", and the script ends by
+// calling `hoard install`, meaning a process we have just replaced on disk. What
+// follows is the same operation written where it can be supervised: download the
+// tarball, check its signature, and replace the two binaries.
 //
-// Nada de esto pide privilegios **cuando el núcleo está donde lo deja el
-// instalador** (`~/.local/bin`, `%LOCALAPPDATA%`). Si está en `/usr/bin` es que
-// lo puso un paquete, y entonces no es nuestro: lo releva el instalador de la
-// app y aquí no se toca (`Manifest::core_from_bundle`).
+// None of this asks for privileges when the core is where the installer leaves it
+// (`~/.local/bin`, `%LOCALAPPDATA%`). If it is in `/usr/bin` then a package put it
+// there, and then it is not ours: the app's installer relieves it and nothing here
+// touches it (`Manifest::core_from_bundle`).
 
-/// Cómo nombra una release al tarball del núcleo de **esta** máquina.
+/// How a release names this machine's core tarball.
 ///
-/// El nombre lo fija CI y lo resuelven también `install.sh` e `install.ps1`; se
-/// escribe aquí una tercera vez porque la alternativa —adivinar por sufijo, como
-/// hace [`asset_for`]— no distingue el tarball de Linux del de Windows: los dos
-/// acaban en `.tar.gz`.
+/// The name is fixed by CI and also resolved by `install.sh` and `install.ps1`; it
+/// is written here a third time because the alternative, guessing by suffix as
+/// [`asset_for`] does, cannot tell the Linux tarball from the Windows one: both
+/// end in `.tar.gz`.
 pub fn core_asset_name(version: &str) -> Option<String> {
     let os = match std::env::consts::OS {
         "linux" => "linux",
@@ -630,25 +628,26 @@ pub fn core_asset_name(version: &str) -> Option<String> {
     ))
 }
 
-/// El tarball del núcleo dentro de una release ya listada.
+/// The core tarball inside an already-listed release.
 pub fn core_asset_for<'a>(version: &str, assets: &'a [Asset]) -> Option<&'a Asset> {
     let want = core_asset_name(version)?;
     assets.iter().find(|a| a.name == want)
 }
 
-/// Los dos binarios que forman el núcleo. El orden no importa aquí; lo que
-/// importa es que estén **los dos** antes de tocar nada (ver [`apply_core`]).
+/// The two binaries that make up the core. The order does not matter here; what
+/// matters is that both are present before anything is touched (see
+/// [`apply_core`]).
 const CORE_BINARIES: [&str; 2] = ["hoard", "hoardd"];
 
-/// Saca `hoard` y `hoardd` del tarball ya verificado y los deja en `dir`,
-/// sustituyendo los que hubiera.
+/// Pulls `hoard` and `hoardd` out of the already-verified tarball and leaves them
+/// in `dir`, replacing whatever was there.
 ///
-/// Devuelve las rutas escritas.
+/// Returns the paths written.
 ///
-/// **Todo o nada**: primero se extraen los dos a ficheros de al lado, y sólo
-/// cuando los dos están enteros en disco se renombran encima. Media
-/// actualización —un `hoard` nuevo hablándole a un `hoardd` viejo— es peor que
-/// ninguna, porque el handshake la tolera y el desajuste no avisa.
+/// All or nothing: first both are extracted to files beside them, and only once
+/// both are whole on disk are they renamed over. Half an update, a new `hoard`
+/// talking to an old `hoardd`, is worse than none, because the handshake tolerates
+/// it and the mismatch says nothing.
 pub async fn apply_core(tarball: &Path, dir: &Path) -> Result<Vec<PathBuf>> {
     let bytes = tokio::fs::read(tarball)
         .await
@@ -664,8 +663,8 @@ pub async fn apply_core(tarball: &Path, dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(written)
 }
 
-/// Extrae los dos binarios a `<dir>/.<nombre>.new`. Falla si falta cualquiera,
-/// y limpia lo que hubiera escrito antes de fallar.
+/// Extracts both binaries to `<dir>/.<name>.new`. It fails when either is missing,
+/// and cleans up whatever it had written before failing.
 async fn extract_core(tarball: &[u8], dir: &Path) -> Result<Vec<(&'static str, PathBuf)>> {
     use async_compression::tokio::bufread::GzipDecoder;
     use futures::StreamExt;
@@ -684,9 +683,9 @@ async fn extract_core(tarball: &[u8], dir: &Path) -> Result<Vec<(&'static str, P
             .path()
             .context("a tarball entry has no path")?
             .into_owned();
-        // El tarball trae un directorio raíz (`hoard-<ver>-<plataforma>/`), pero
-        // no se da por hecho: se mira sólo el último componente, así que un
-        // cambio de empaquetado no rompe la actualización en silencio.
+        // The tarball carries a root directory (`hoard-<ver>-<platform>/`), but
+        // that is not assumed: only the last component is looked at, so a change
+        // in packaging does not break the update silently.
         let stem = path
             .file_name()
             .and_then(|s| s.to_str())
@@ -744,25 +743,23 @@ fn make_executable(_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Pone `src` donde estaba `dest`, **con `dest` en marcha**.
+/// Puts `src` where `dest` was, with `dest` running.
 ///
-/// Es el único sitio donde esto se puede hacer bien, y cada sistema lo hace por
-/// un motivo distinto:
+/// It is the only place this can be done properly, and each system does it for a
+/// different reason:
 ///
-/// - **Unix**: `rename` encima del ejecutable de un proceso vivo es legal. El
-///   proceso conserva su inode (sigue corriendo el binario viejo hasta que
-///   reinicie) y el nombre pasa a apuntar al nuevo. Escribir *dentro* del
-///   fichero no lo es: el kernel contesta `ETXTBSY`, que es lo que rompía una
-///   copia directa.
-/// - **Windows**: no se puede sustituir un `.exe` abierto, pero **sí se puede
-///   renombrar**. Así que el viejo se aparta y el nuevo ocupa su nombre; el
-///   apartado se borra en la siguiente pasada, cuando ya no lo tiene abierto
-///   nadie.
+/// - Unix: a `rename` over a live process's executable is legal. The process keeps
+///   its inode (it carries on running the old binary until it restarts) and the
+///   name comes to point at the new one. Writing *inside* the file is not: the
+///   kernel answers `ETXTBSY`, which is what broke a direct copy.
+/// - Windows: an open `.exe` cannot be replaced, but it can be renamed. So the old
+///   one is moved aside and the new one takes its name; the one moved aside is
+///   deleted on the next pass, once nobody holds it open.
 fn replace_binary(src: &Path, dest: &Path) -> Result<()> {
     #[cfg(windows)]
     {
-        // Barrido del intento anterior. Best-effort: si el proceso viejo sigue
-        // vivo seguirá sin poder borrarse, y no pasa nada.
+        // Sweeping the previous attempt. Best-effort: if the old process is still
+        // alive it will still refuse to be deleted, and that is fine.
         let parked = dest.with_extension("old");
         let _ = std::fs::remove_file(&parked);
         if dest.exists() {
@@ -838,9 +835,9 @@ mod tests {
             .ends_with("-setup.exe"));
     }
 
-    /// La firma nunca puede colarse como el propio artefacto: `.deb.minisig`
-    /// también "acaba en .deb" si se mira con poco cuidado, y hacer `dpkg -i`
-    /// sobre un fichero de firma es un fallo absurdo de diagnosticar.
+    /// The signature can never pass for the artefact itself: `.deb.minisig` also
+    /// "ends in .deb" if you look carelessly, and running `dpkg -i` on a signature
+    /// file is an absurd failure to diagnose.
     #[test]
     fn a_signature_is_never_mistaken_for_the_artifact() {
         let a = assets();
@@ -854,9 +851,9 @@ mod tests {
         }
     }
 
-    /// Una instalación de terceros no tiene fichero nuestro que bajar. Devolver
-    /// `Some` aquí acabaría pisando por debajo lo que puso el gestor de paquetes
-    /// de la distro.
+    /// A third-party install has no file of ours to download. Returning `Some`
+    /// here would end up overwriting from underneath whatever the distro's package
+    /// manager put in place.
     #[test]
     fn a_managed_install_has_nothing_to_fetch() {
         assert!(asset_for(Delivery::Managed, &assets()).is_none());
@@ -871,10 +868,10 @@ mod tests {
         assert!(asset_for(Delivery::Deb, &only_windows).is_none());
     }
 
-    /// Una release con dos arquitecturas no puede resolverse por el orden en que
-    /// GitHub liste los ficheros. Hoy sólo se publica una por sistema, así que
-    /// "el primero" acierta de casualidad; el día que se publique la segunda,
-    /// esto es lo que evita un `.deb` de amd64 aterrizando en un ARM.
+    /// A release with two architectures cannot be resolved by whichever order
+    /// GitHub lists the files in. Today only one per system is published, so "the
+    /// first" is right by luck; the day the second ships, this is what stops an
+    /// amd64 `.deb` landing on an ARM machine.
     #[test]
     fn a_two_arch_release_picks_this_machines_arch() {
         let two = vec![
@@ -898,9 +895,9 @@ mod tests {
         );
     }
 
-    /// Y si la release sólo trae otra arquitectura, mejor decir que no hay nada
-    /// que instalar el paquete equivocado: el error de `dpkg` sobre una
-    /// arquitectura ajena no lleva a ninguna parte.
+    /// And if the release only carries another architecture, better to say there
+    /// is nothing than to install the wrong package: `dpkg`'s error about a
+    /// foreign architecture leads nowhere.
     #[test]
     fn a_release_for_another_arch_only_reports_nothing() {
         let other = if cfg!(target_arch = "x86_64") {
@@ -915,8 +912,8 @@ mod tests {
         assert!(asset_for(Delivery::Deb, &only_other).is_none());
     }
 
-    /// Una release de una sola arquitectura no etiqueta nada, y eso tiene que
-    /// seguir valiendo — es el caso de hoy.
+    /// A single-architecture release labels nothing, and that has to keep working,
+    /// since it is today's case.
     #[test]
     fn an_untagged_release_still_resolves() {
         let untagged = vec![Asset {
@@ -929,11 +926,12 @@ mod tests {
         );
     }
 
-    /// El token es una pieza del nombre, no una subcadena: `x64` no puede casar
-    /// dentro de `x86_64` ni al revés.
+    /// The token is a piece of the name, not a substring: `x64` must not match
+    /// inside `x86_64` or the other way round.
     #[test]
     fn arch_tokens_match_whole_parts_only() {
-        // El token con `_` dentro es el que rompía la primera versión de esto.
+        // The token with a `_` inside it is the one that broke the first version
+        // of this.
         assert!(contains_token("hoard-1.2.0-linux-x86_64.tar.gz", "x86_64"));
         assert!(contains_token("Hoard_1.2.0_x64-setup.exe", "x64"));
         assert!(contains_token("Hoard_1.2.0_amd64.deb", "amd64"));
@@ -943,8 +941,9 @@ mod tests {
         assert!(!contains_token("Hoard_prearm64x.deb", "arm64"));
     }
 
-    /// Falla cerrado: basura por firma no verifica. Es la aserción que separa
-    /// "bajé un fichero" de "bajé *nuestro* fichero".
+    /// It fails closed: junk does not verify against a signature. It is the
+    /// assertion that separates "I downloaded a file" from "I downloaded *our*
+    /// file".
     #[test]
     fn a_bogus_signature_does_not_verify() {
         assert!(verify(b"payload", "untrusted comment: nope\nnot-a-signature\n").is_err());
@@ -956,14 +955,14 @@ mod tests {
         assert!(name.starts_with("hoard-1.1.2-"), "{name}");
         assert!(name.ends_with(".tar.gz"), "{name}");
         assert!(name.contains(std::env::consts::ARCH), "{name}");
-        // El `v` del tag no viaja en el nombre del fichero.
+        // The tag's `v` does not travel in the file name.
         assert_eq!(core_asset_name("v1.1.2"), Some(name));
     }
 
-    /// Un tarball con el mismo reparto que publica CI: un directorio raíz y los
-    /// dos binarios dentro. Se arma con las mismas piezas que lo lee
-    /// ([`tokio_tar`] + gzip de `async-compression`), así que la prueba no
-    /// depende de un empaquetador distinto del que vamos a encontrarnos.
+    /// A tarball laid out the way CI publishes it: a root directory with both
+    /// binaries inside. It is built with the same pieces that read it
+    /// ([`tokio_tar`] plus `async-compression`'s gzip), so the test does not depend
+    /// on a packer other than the one we will actually meet.
     async fn core_tarball(entries: &[(&str, &[u8])]) -> Vec<u8> {
         use async_compression::tokio::write::GzipEncoder;
         use tokio::io::AsyncWriteExt;
@@ -1004,8 +1003,8 @@ mod tests {
     #[tokio::test]
     async fn half_a_core_is_refused_and_leaves_nothing_behind() {
         let dir = tempdir();
-        // Sólo la terminal: un `hoard` nuevo contra un `hoardd` viejo es el
-        // desajuste mudo que todo este módulo existe para no crear.
+        // The terminal only: a new `hoard` against an old `hoardd` is the silent
+        // mismatch this whole module exists not to create.
         let tarball = core_tarball(&[("hoard-9.9.9-linux-x86_64/hoard", b"new-cli")]).await;
         let err = extract_core(&tarball, &dir).await.unwrap_err();
         assert!(err.to_string().contains("hoardd"), "{err}");
@@ -1041,7 +1040,7 @@ mod tests {
             std::fs::read(dir.join(format!("hoardd{exe}"))).unwrap(),
             b"new-engine"
         );
-        // Sin restos: los temporales se consumieron al renombrar.
+        // No leftovers: the temporaries were consumed by the rename.
         assert!(!dir.join(".hoard.new").exists());
         assert!(!dir.join(".hoardd.new").exists());
         std::fs::remove_dir_all(&dir).ok();

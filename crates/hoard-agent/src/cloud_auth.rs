@@ -1,31 +1,31 @@
-//! Hoard Cloud auth, sin navegador y **compartido** entre desktop y CLI.
+//! Hoard Cloud auth, browserless and shared between desktop and CLI.
 //!
-//! El login web del desktop (redirect por browser → `hoard://auth/callback`)
-//! no sirve en una terminal (SteamOS modo gaming, NAS, servidor por SSH). Aquí
-//! vive el camino headless: Supabase GoTrue por **password grant** o por
-//! **código OTP por email** (`/auth/v1/otp` + `/auth/v1/verify`), más el
-//! refresh del JWT y la persistencia de la sesión.
+//! The desktop's web login (a browser redirect to `hoard://auth/callback`) is no
+//! use in a terminal (SteamOS in gaming mode, a NAS, a server over SSH). What
+//! lives here is the headless path: Supabase GoTrue by password grant or by an
+//! emailed OTP code (`/auth/v1/otp` plus `/auth/v1/verify`), along with the JWT
+//! refresh and the session's persistence.
 //!
-//! La persistencia es **interoperable con el desktop a propósito**: mismo
-//! `keyring` (servicio `hoard-desktop-cloud`), mismo fichero
-//! `<config>/desktop/cloud.toml` y misma forma `AuthSection { access_token,
-//! refresh_token }`. Así una sesión iniciada por el CLI la ve el desktop y al
-//! revés — una única sesión Cloud por máquina. El campo `user` (snapshot de
-//! `/v1/me`) se **preserva tal cual** (raw TOML) en las reescrituras del CLI,
-//! para no pisar el cache de cuenta del desktop.
+//! The persistence is deliberately interoperable with the desktop: the same
+//! `keyring` (service `hoard-desktop-cloud`), the same
+//! `<config>/desktop/cloud.toml` file and the same `AuthSection { access_token,
+//! refresh_token }` shape. So a session started by the CLI is seen by the desktop
+//! and the other way round: one Cloud session per machine. The `user` field (a
+//! snapshot of `/v1/me`) is preserved verbatim as raw TOML across the CLI's
+//! rewrites, so the desktop's account cache is never overwritten.
 //!
-//! ## Quién escribe el llavero (D.20)
+//! ## Who writes the keyring (D.20)
 //!
-//! **Sólo el daemon.** Un ítem del llavero en macOS lleva una ACL con los
-//! binarios autorizados, y el único que entra en ella es el que lo **crea**: con
-//! el login escribiéndolo desde la app o la CLI, cada lectura del servicio era un
-//! binario ajeno pidiéndole la contraseña del llavero al usuario — y como el
-//! keeper reintenta el arranque del motor con backoff, salía un diálogo cada
-//! pocos segundos. Por eso [`store_tokens`] y [`clear_session`] son del daemon, y
-//! un cliente que acuña una sesión la entrega por IPC
-//! (`Request::AdoptSession`). Sin servicio a quien entregarla existen
-//! [`store_tokens_unlocked`] y [`forget_tokens_unlocked`], que se quedan en el
-//! fichero 0600 y dejan que el daemon suba el par al llavero cuando arranque.
+//! Only the daemon. A keychain item on macOS carries an ACL of authorised
+//! binaries, and the only one on it is whichever binary creates it: with login
+//! writing it from the app or the CLI, every read by the service was a foreign
+//! binary asking the user for their keychain password, and since the keeper
+//! retries the engine's start with backoff, a dialog came up every few seconds.
+//! That is why [`store_tokens`] and [`clear_session`] belong to the daemon, and a
+//! client that mints a session hands it over by IPC (`Request::AdoptSession`).
+//! With no service to hand it to there are [`store_tokens_unlocked`] and
+//! [`forget_tokens_unlocked`], which stop at the 0600 file and let the daemon lift
+//! the pair into the keyring when it starts.
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -41,10 +41,10 @@ const CLOUD_DEFAULT_URL: &str = "https://api.hoard.services";
 const KEYRING_SERVICE: &str = "hoard-desktop-cloud";
 const KEYRING_USER: &str = "default";
 
-// Proyecto Supabase GoTrue público — el mismo que usan la web y el desktop. La
-// anon key es una credencial pública (viaja en el bundle estático de la web),
-// así que embeberla aquí no expone nada nuevo. Todo overridable por env para
-// que un build de dev apunte a otro proyecto.
+// The public Supabase GoTrue project, the same one the web and the desktop use.
+// The anon key is a public credential (it travels in the web's static bundle), so
+// embedding it here exposes nothing new. All overridable by env so a dev build can
+// point at another project.
 const SUPABASE_DEFAULT_URL: &str = "https://zddepgqdiuhhzqdimsks.supabase.co";
 const SUPABASE_DEFAULT_ANON_KEY: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkZGVwZ3FkaXVoaHpxZGltc2tzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2MzM2MTksImV4cCI6MjA5NTIwOTYxOX0.3nZebGwCzFO1byTqhowq9ip89GE9fMRxPscgYSlPzFk";
 
@@ -71,8 +71,8 @@ pub fn supabase_anon_key() -> String {
         .unwrap_or_else(|| SUPABASE_DEFAULT_ANON_KEY.to_string())
 }
 
-/// Par de tokens de una sesión Supabase. `access` es el JWT corto (~1h);
-/// `refresh` es el de larga vida que lo renueva.
+/// A Supabase session's token pair. `access` is the short JWT (about an hour);
+/// `refresh` is the long-lived one that renews it.
 #[derive(Debug, Clone)]
 pub struct Tokens {
     pub access: String,
@@ -87,10 +87,10 @@ pub struct Session {
     pub refresh: String,
 }
 
-/// Sentinela: Supabase rechazó el refresh porque ya se había rotado
-/// (`refresh_token_already_used`/`not_found`). Se distingue por tipo para que
-/// quien refresca pueda auto-sanar adoptando los tokens que otra ejecución ya
-/// dejó en disco, en vez de tratarlo como sesión muerta.
+/// A sentinel: Supabase rejected the refresh because it had already been rotated
+/// (`refresh_token_already_used` or `not_found`). Distinguished by type so
+/// whoever refreshes can self-heal by adopting the tokens another run already left
+/// on disk, rather than treating it as a dead session.
 #[derive(Debug)]
 pub struct RefreshTokenStale;
 
@@ -118,8 +118,8 @@ struct TokenResponse {
     refresh_token: String,
 }
 
-/// Extrae `(access, refresh)` de una respuesta de GoTrue, o un error legible
-/// con el mensaje que devuelva Supabase.
+/// Extracts `(access, refresh)` from a GoTrue response, or a readable error
+/// carrying whatever message Supabase returned.
 async fn parse_token_response(resp: reqwest::Response) -> Result<Tokens> {
     let status = resp.status();
     let body = resp.text().await.unwrap_or_default();
@@ -138,8 +138,8 @@ async fn parse_token_response(resp: reqwest::Response) -> Result<Tokens> {
     bail!("{}", supabase_error_message(status, &body));
 }
 
-/// Mensaje humano a partir del cuerpo de error de GoTrue. Cubre las formas
-/// habituales (`error_description`, `msg`, `error`) sin volcar JSON crudo.
+/// A human message from GoTrue's error body. Covers the usual shapes
+/// (`error_description`, `msg`, `error`) without dumping raw JSON.
 fn supabase_error_message(status: StatusCode, body: &str) -> String {
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(body) {
         for key in ["error_description", "msg", "error", "message"] {
@@ -151,8 +151,9 @@ fn supabase_error_message(status: StatusCode, body: &str) -> String {
     format!("Supabase devolvió {status}")
 }
 
-/// Login por email + contraseña (`grant_type=password`). Directo si la cuenta
-/// tiene contraseña; las creadas solo con Google/GitHub no la tienen → usa OTP.
+/// Login by email and password (`grant_type=password`). Direct when the account
+/// has a password; accounts created only through Google or GitHub have none, so
+/// they use OTP.
 pub async fn login_password(email: &str, password: &str) -> Result<Tokens> {
     let url = format!("{}/auth/v1/token?grant_type=password", supabase_url());
     let resp = http_client()?
@@ -165,10 +166,10 @@ pub async fn login_password(email: &str, password: &str) -> Result<Tokens> {
     parse_token_response(resp).await
 }
 
-/// Pide a Supabase que envíe un código OTP al email (`/auth/v1/otp`). Que el
-/// email traiga un código de 6 dígitos (además del enlace mágico) depende de la
-/// plantilla de correo del proyecto; si solo trae enlace, este camino no
-/// completa y hay que usar el password grant.
+/// Asks Supabase to email an OTP code (`/auth/v1/otp`). Whether the email carries
+/// a six-digit code as well as the magic link depends on the project's mail
+/// template; if it only carries a link, this path does not complete and the
+/// password grant has to be used.
 pub async fn otp_start(email: &str) -> Result<()> {
     let url = format!("{}/auth/v1/otp", supabase_url());
     let resp = http_client()?
@@ -189,7 +190,7 @@ pub async fn otp_start(email: &str) -> Result<()> {
     );
 }
 
-/// Canjea el código OTP recibido por email por una sesión (`/auth/v1/verify`).
+/// Exchanges the emailed OTP code for a session (`/auth/v1/verify`).
 pub async fn otp_verify(email: &str, code: &str) -> Result<Tokens> {
     let url = format!("{}/auth/v1/verify", supabase_url());
     let resp = http_client()?
@@ -204,9 +205,9 @@ pub async fn otp_verify(email: &str, code: &str) -> Result<Tokens> {
 
 // ---- emparejamiento por móvil (device flow) ---------------------------
 
-/// Respuesta de `/v1/cloud/device/start`. El CLI enseña `user_code` +
-/// `verification_uri` (o el `_complete` con el código ya puesto) y hace polling
-/// con `device_code` hasta que el móvil lo aprueba.
+/// The response of `/v1/cloud/device/start`. The CLI shows `user_code` and
+/// `verification_uri` (or the `_complete` one with the code already filled in) and
+/// polls with `device_code` until the phone approves it.
 #[derive(Debug, Clone, Deserialize)]
 pub struct DeviceStart {
     pub device_code: String,
@@ -232,14 +233,14 @@ pub enum DeviceStatus {
     Expired,
 }
 
-/// Arranca un emparejamiento en el server Cloud (no en Supabase): es el server
-/// quien acuña la sesión cuando el móvil aprueba.
+/// Starts a pairing on the Cloud server rather than on Supabase: it is the server
+/// that mints the session when the phone approves.
 ///
-/// Devuelve `Ok(None)` cuando el server **no soporta** el emparejamiento: una
-/// versión previa sin las rutas `/v1/cloud/device/*` (404), un server que las
-/// deja tras auth (401), o un Cloud sin `service_role` configurado ("not
-/// configured"). En esos casos quien llama debe caer al login por email, no
-/// reventar. `Err` queda para fallos de transporte/parseo reales.
+/// Returns `Ok(None)` when the server does not support pairing: an earlier version
+/// without the `/v1/cloud/device/*` routes (404), a server that puts them behind
+/// auth (401), or a Cloud with no `service_role` configured ("not configured"). In
+/// those cases the caller has to fall back to the email login rather than blow up.
+/// `Err` is left for real transport or parse failures.
 pub async fn device_start(hostname: Option<&str>) -> Result<Option<DeviceStart>> {
     let url = format!("{}/v1/cloud/device/start", cloud_base_url());
     let resp = http_client()?
@@ -249,8 +250,8 @@ pub async fn device_start(hostname: Option<&str>) -> Result<Option<DeviceStart>>
         .await
         .with_context(|| format!("POST {url}"))?;
     let status = resp.status();
-    // Server sin la feature: 404 (ruta inexistente), 401 (tras auth en una
-    // versión previa) o 501. Tratar como "no soportado" → fallback a email.
+    // A server without the feature: 404 (no such route), 401 (behind auth in an
+    // earlier version) or 501. Treated as unsupported, so it falls back to email.
     if matches!(
         status,
         StatusCode::NOT_FOUND | StatusCode::UNAUTHORIZED | StatusCode::NOT_IMPLEMENTED
@@ -259,8 +260,8 @@ pub async fn device_start(hostname: Option<&str>) -> Result<Option<DeviceStart>>
     }
     let body = resp.text().await.unwrap_or_default();
     if !status.is_success() {
-        // Cloud alcanzable pero sin `service_role`: `approve` responde "not
-        // configured"; algunos despliegues lo devuelven ya en `start`.
+        // Cloud reachable but with no `service_role`: `approve` answers "not
+        // configured", and some deployments return it from `start` already.
         if body.contains("not configured") {
             return Ok(None);
         }
@@ -273,8 +274,8 @@ pub async fn device_start(hostname: Option<&str>) -> Result<Option<DeviceStart>>
     Ok(Some(start))
 }
 
-/// Consulta si el emparejamiento ya fue aprobado (`/v1/cloud/device/poll`).
-/// Cuando lo está, devuelve los tokens una única vez (el server borra la fila).
+/// Asks whether the pairing has been approved (`/v1/cloud/device/poll`). Once it
+/// has, it returns the tokens exactly once, since the server deletes the row.
 pub async fn device_poll(device_code: &str) -> Result<DeviceStatus> {
     #[derive(Deserialize)]
     struct PollBody {
@@ -311,14 +312,14 @@ pub async fn device_poll(device_code: &str) -> Result<DeviceStatus> {
     })
 }
 
-/// Canjea el refresh token por un par nuevo (`grant_type=refresh_token`).
+/// Exchanges the refresh token for a new pair (`grant_type=refresh_token`).
 ///
-/// Reintenta ante fallos transitorios (red/timeout/5xx/429) dentro de la ventana
-/// de gracia de reuse de GoTrue: si la rotación llegó al server pero perdimos la
-/// respuesta, reclamar el mismo token en ~10s recupera el par ya minteado en vez
-/// de dejarlo huérfano (que luego dispararía reuse-detection y cerraría sesión).
-/// Un rechazo genuino (`already_used`/`not_found`) se devuelve como
-/// [`RefreshTokenStale`] sin reintentar.
+/// It retries on transient failures (network, timeout, 5xx, 429) inside GoTrue's
+/// reuse grace window: if the rotation reached the server but we lost the
+/// response, claiming the same token within about ten seconds recovers the pair
+/// already minted rather than orphaning it (which would later trip reuse detection
+/// and end the session). A genuine rejection (`already_used` or `not_found`) comes
+/// back as [`RefreshTokenStale`] with no retry.
 pub async fn refresh(refresh_token: &str) -> Result<Tokens> {
     let refresh_token = refresh_token.trim();
     if refresh_token.is_empty() {
@@ -379,8 +380,8 @@ pub async fn refresh(refresh_token: &str) -> Result<Tokens> {
 
 // ---- /v1/me -----------------------------------------------------------
 
-/// Forma mínima de `/v1/me` que necesita el CLI. `serde` ignora los campos que
-/// no listamos, así que no hace falta espejar todo `CloudAccount` del desktop.
+/// The minimal shape of `/v1/me` the CLI needs. `serde` ignores the fields we do
+/// not list, so there is no need to mirror the desktop's whole `CloudAccount`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Me {
     pub user_id: String,
@@ -393,7 +394,7 @@ pub struct Me {
     pub storage_limit_bytes: i64,
 }
 
-/// GET `{base}/v1/me` con el JWT. Valida el token y trae la cuenta.
+/// GET `{base}/v1/me` with the JWT. It validates the token and fetches the account.
 pub async fn fetch_me(base: &str, access: &str) -> Result<Me> {
     let url = format!("{}/v1/me", base.trim_end_matches('/'));
     let resp = http_client()?
@@ -419,11 +420,11 @@ pub async fn fetch_me(base: &str, access: &str) -> Result<Me> {
 struct SessionFile {
     #[serde(default)]
     server_url: String,
-    /// Snapshot de `/v1/me` que escribe el desktop. Lo preservamos tal cual
-    /// (raw TOML) para no pisar su cache; el CLI no lo necesita tipado.
+    /// The `/v1/me` snapshot the desktop writes. We preserve it verbatim (raw
+    /// TOML) so its cache is not overwritten; the CLI does not need it typed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     user: Option<toml::Value>,
-    /// Fallback cuando el keyring no está disponible.
+    /// The fallback for when the keyring is unavailable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     auth: Option<AuthSection>,
 }
@@ -457,8 +458,8 @@ fn write_session_file(s: &SessionFile) -> Result<()> {
         std::fs::create_dir_all(parent).with_context(|| format!("creando {}", parent.display()))?;
     }
     let text = toml::to_string_pretty(s).context("serializando sesión Cloud")?;
-    // Escritura atómica: temp + rename, para que un corte a media escritura no
-    // deje un TOML truncado que al arrancar parezca "sesión rota".
+    // An atomic write, temp plus rename, so a cut halfway through does not leave a
+    // truncated TOML that looks like a broken session on start.
     let tmp = path.with_extension("toml.tmp");
     std::fs::write(&tmp, &text).with_context(|| format!("escribiendo {}", tmp.display()))?;
     #[cfg(unix)]
@@ -473,11 +474,11 @@ fn write_session_file(s: &SessionFile) -> Result<()> {
     Ok(())
 }
 
-// ---- el llavero, siempre acotado --------------------------------------
+// ---- the keyring, always bounded
 //
-// El tope, el hilo propio y el motivo tipado viven en `crate::keychain`, que es
-// el mismo camino que usa el token self-hosted (`credentials`): un solo llavero,
-// un solo hilo.
+// The cap, the dedicated thread and the typed reason live in `crate::keychain`,
+// which is the same path the self-hosted token takes (`credentials`): one keyring,
+// one thread.
 
 fn keyring_set(access: &str, refresh: &str) -> Result<()> {
     let blob = toml::to_string(&AuthSection {
@@ -512,8 +513,8 @@ fn keyring_delete() -> Result<()> {
     })
 }
 
-/// Carga la sesión Cloud activa (keyring primero, fichero como fallback), o
-/// `None` si no hay sesión.
+/// Loads the active Cloud session (the keyring first, the file as a fallback), or
+/// `None` when there is no session.
 pub fn load_session() -> Result<Option<Session>> {
     let Some(file) = read_session_file()? else {
         return Ok(None);
@@ -535,37 +536,37 @@ pub fn load_session() -> Result<Option<Session>> {
     }))
 }
 
-/// [`load_session`] **fuera del hilo del runtime**.
+/// [`load_session`] off the runtime's thread.
 ///
-/// La lectura del llavero es síncrona y, aunque ya está acotada
-/// ([`KEYRING_TIMEOUT`]), bloquea el hilo que la hace mientras espera: en un
-/// runtime de un solo hilo eso para todo lo demás, y en cualquiera un `abort()`
-/// sobre la task que la hizo no se nota hasta que vuelve. Con `spawn_blocking` la
-/// espera vive en el pool de bloqueo y la task que la aguarda se puede cancelar en
-/// el momento — que es lo que hace que el arranque del motor no cuelgue el apagado
-/// del daemon (D.19).
+/// Reading the keyring is synchronous and, although it is already bounded
+/// ([`KEYRING_TIMEOUT`]), it blocks the thread doing it while it waits: on a
+/// single-threaded runtime that stops everything else, and on any runtime an
+/// `abort()` on the task that made the call goes unnoticed until it returns. With
+/// `spawn_blocking` the wait lives on the blocking pool and the task awaiting it
+/// can be cancelled at once, which is what keeps the engine's start from hanging
+/// the daemon's shutdown (D.19).
 ///
-/// Quien resuelva la sesión desde una task —el arranque del motor— usa esto; los
-/// caminos síncronos (comandos locales de la CLI) siguen con [`load_session`], que
-/// tampoco puede esperar para siempre.
+/// Whoever resolves the session from a task, meaning the engine's start, uses this;
+/// the synchronous paths (local CLI commands) stay on [`load_session`], which
+/// cannot wait forever either.
 pub async fn load_session_async() -> Result<Option<Session>> {
     match tokio::task::spawn_blocking(load_session).await {
         Ok(result) => result,
-        // Sólo pasa si `keyring` entró en pánico. Decirlo es infinitamente mejor
-        // que un arranque colgado sin motivo.
+        // Only happens if `keyring` panicked. Saying so is infinitely better than
+        // a start that hangs with no reason.
         Err(join) => Err(anyhow::Error::new(join).context("leyendo la sesión Cloud")),
     }
 }
 
-/// Qué tokens valen: los del llavero cuando contesta, los del fichero cuando el
-/// llavero falla por algo **reparable** (bloqueado, sin D-Bus en una sesión
-/// headless) — eso no es "no hay sesión".
+/// Which tokens count: the keyring's when it answers, the file's when the keyring
+/// fails for something repairable (locked, no D-Bus in a headless session). That
+/// is not "there is no session".
 ///
-/// Tragarse el `Err` como si fuese `NoEntry` caía al fichero, que con keyring sano
-/// lleva `auth = None` (ver `store_tokens`) → `load_session` devolvía `Ok(None)` y
-/// el usuario aparecía deslogueado con sus tokens intactos en el llavero. Sólo
-/// `NoEntry` cae al fichero en silencio; un error real se propaga si el fichero
-/// tampoco tiene tokens que ofrecer.
+/// Swallowing the `Err` as though it were `NoEntry` fell back to the file, which
+/// with a healthy keyring carries `auth = None` (see `store_tokens`), so
+/// `load_session` returned `Ok(None)` and the user appeared signed out with their
+/// tokens intact in the keyring. Only `NoEntry` falls back silently; a real error
+/// propagates if the file has no tokens to offer either.
 fn pick_auth(
     from_keyring: Result<Option<AuthSection>>,
     from_file: Option<AuthSection>,
@@ -575,13 +576,13 @@ fn pick_auth(
         Ok(None) => Ok(from_file),
         Err(e) => match from_file {
             Some(a) => {
-                tracing::debug!(error = %e, "keyring ilegible; usando los tokens del fichero");
+                tracing::debug!(error = %e, "keyring unreadable; using the tokens from the file");
                 Ok(Some(a))
             }
-            // Sin nada en el fichero, el error del llavero **es** la respuesta y
-            // tiene que llegar entero a `last_error` y al log: es la única pista
-            // de que el llavero está bloqueado. Un tope agotado ya se explica
-            // solo; a cualquier otro fallo se le añade el motivo tipado.
+            // With nothing in the file, the keyring's error IS the answer and has
+            // to reach `last_error` and the log whole: it is the only clue that
+            // the keyring is locked. An exhausted cap explains itself; any other
+            // failure gets the typed reason attached.
             //
             // That typed reason is what the Cloud path was missing while the
             // self-hosted one had it: everything that wasn't our own cap arrived
@@ -597,15 +598,15 @@ fn pick_auth(
     }
 }
 
-/// Persiste el par de tokens conservando el `user` y el `server_url` ya en
-/// disco (read-modify-write). Keyring primero; si no hay, cae al fichero 0600.
+/// Persists the token pair, keeping the `user` and `server_url` already on disk
+/// (read-modify-write). The keyring first; failing that, the 0600 file.
 ///
-/// **Sólo el daemon llama a esto.** Es la escritura que crea el ítem del llavero,
-/// y en macOS quien lo crea es el único binario que su ACL autoriza: si lo
-/// escribiera un cliente, cada lectura del servicio sería un binario ajeno
-/// pidiéndole la contraseña al usuario (ADR 0021 D.20). Un cliente que acaba de
-/// acuñar una sesión la **entrega** por IPC (`Request::AdoptSession`); si no hay
-/// servicio a quien entregarla, usa [`store_tokens_unlocked`].
+/// Only the daemon calls this. It is the write that creates the keychain item, and
+/// on macOS whoever creates it is the only binary its ACL authorises: if a client
+/// wrote it, every read by the service would be a foreign binary asking the user
+/// for their password (ADR 0021 D.20). A client that has just minted a session
+/// hands it over by IPC (`Request::AdoptSession`); with no service to hand it to,
+/// it uses [`store_tokens_unlocked`].
 pub fn store_tokens(tokens: &Tokens, server_url: &str) -> Result<()> {
     let mut session = read_session_file()?.unwrap_or_default();
     if session.server_url.is_empty() {
@@ -648,18 +649,18 @@ fn store_in_keyring(tokens: &Tokens) -> Result<()> {
     }
 }
 
-/// Persiste el par **sin tocar el llavero**: fichero 0600 y nada más.
+/// Persists the pair without touching the keyring: the 0600 file and nothing else.
 ///
-/// Es el camino de un cliente que acaba de acuñar una sesión y no tiene servicio
-/// a quien entregarla (el daemon no arrancó, o se está actualizando). Escribir el
-/// llavero aquí "funcionaría" y sería justo el bug de D.20: el ítem quedaría a
-/// nombre del cliente y el servicio pediría permiso en cada lectura. Dejándolo en
-/// el fichero, el daemon lo recoge tal cual al arrancar ([`pick_auth`] cae al
-/// fichero cuando el llavero no tiene entrada) y en su primer refresh lo mueve al
-/// llavero él mismo, ya como dueño. O sea: se cura solo, y sin un diálogo.
+/// This is the path for a client that has just minted a session and has no service
+/// to hand it to (the daemon never started, or is updating). Writing the keyring
+/// here would "work" and would be exactly D.20's bug: the item would end up in the
+/// client's name and the service would ask permission on every read. Leaving it in
+/// the file, the daemon picks it up as-is on start ([`pick_auth`] falls back to the
+/// file when the keyring has no entry) and on its first refresh moves it into the
+/// keyring itself, as the owner. So it heals on its own, and with no dialog.
 ///
-/// El fichero es 0600 en el directorio de config del usuario — la misma
-/// protección que ya tiene el fallback de las máquinas sin llavero.
+/// The file is 0600 in the user's config directory, the same protection the
+/// fallback for keyring-less machines already has.
 pub fn store_tokens_unlocked(tokens: &Tokens, server_url: &str) -> Result<()> {
     let mut session = read_session_file()?.unwrap_or_default();
     if session.server_url.is_empty() {
@@ -672,16 +673,16 @@ pub fn store_tokens_unlocked(tokens: &Tokens, server_url: &str) -> Result<()> {
     write_session_file(&session)
 }
 
-/// Borra la sesión Cloud (keyring + fichero).
+/// Deletes the Cloud session (keyring and file).
 ///
-/// **Del daemon**, por lo mismo que [`store_tokens`]: borrar un ítem del llavero
-/// también se autoriza, y sólo su dueño lo hace sin preguntar. Un cliente manda
-/// `Request::ForgetSession` y, si no hay servicio, [`forget_tokens_unlocked`].
+/// The daemon's, for the same reason as [`store_tokens`]: deleting a keychain item
+/// is also authorised, and only its owner does it without asking. A client sends
+/// `Request::ForgetSession` and, with no service, [`forget_tokens_unlocked`].
 pub fn clear_session() -> Result<()> {
     let _ = keyring_delete();
-    // Y el hueco del enviador de logs: es una copia en memoria del JWT, así que
-    // un logout que no lo vacíe deja enviando con la sesión que se acaba de
-    // cerrar.
+    // And the log shipper's slot: it is an in-memory copy of the JWT, so a logout
+    // that does not empty it leaves the shipper sending with the session that was
+    // just closed.
     crate::credentials::set_lent_cloud(None);
     let path = session_path()?;
     if path.exists() {
@@ -690,18 +691,18 @@ pub fn clear_session() -> Result<()> {
     Ok(())
 }
 
-/// Cierra sesión **sin tocar el llavero**: borra el fichero y ya.
+/// Signs out without touching the keyring: it deletes the file and stops there.
 ///
-/// El pareja de [`store_tokens_unlocked`], para un logout sin servicio. Basta
-/// para que la máquina quede desconectada: sin fichero de sesión no hay sesión
-/// ([`load_session`] arranca por ahí), aunque el ítem del llavero siga existiendo
-/// con un par que ya no vale. Lo pisa el siguiente login, y mientras tanto no
-/// autoriza nada — un refresh token huérfano no es una sesión.
+/// The partner of [`store_tokens_unlocked`], for a logout with no service. It is
+/// enough to leave the machine disconnected: with no session file there is no
+/// session ([`load_session`] starts there), even though the keychain item still
+/// exists holding a pair that is no good. The next login overwrites it, and
+/// meanwhile it authorises nothing: an orphaned refresh token is not a session.
 pub fn forget_tokens_unlocked() -> Result<()> {
-    // El hueco del enviador de logs, igual que en [`clear_session`]: es una
-    // copia en memoria del JWT, y el fichero borrado no la vacía. Los dos
-    // caminos de logout tienen que hacerlo o `hoard logout` sin servicio dejaría
-    // el proceso enviando con la sesión recién cerrada.
+    // The log shipper's slot, as in [`clear_session`]: it is an in-memory copy of
+    // the JWT and deleting the file does not empty it. Both logout paths have to do
+    // it, or `hoard logout` with no service would leave the process shipping with
+    // the session it just closed.
     crate::credentials::set_lent_cloud(None);
     let path = session_path()?;
     if path.exists() {
@@ -710,10 +711,10 @@ pub fn forget_tokens_unlocked() -> Result<()> {
     Ok(())
 }
 
-/// `user_id` (claim `sub`) del JWT de la sesión guardada, **sin red**. Deja que
-/// comandos locales (`hoard saves`) fijen el contexto Cloud correcto sin tener
-/// que refrescar el token ni llamar a `/v1/me`. `None` si no hay sesión o el
-/// JWT no es decodificable.
+/// The stored session's JWT `user_id` (the `sub` claim), with no network. It lets
+/// local commands (`hoard saves`) pin the right Cloud context without refreshing
+/// the token or calling `/v1/me`. `None` when there is no session or the JWT
+/// cannot be decoded.
 pub fn session_user_id() -> Result<Option<String>> {
     let Some(sess) = load_session()? else {
         return Ok(None);
@@ -721,16 +722,16 @@ pub fn session_user_id() -> Result<Option<String>> {
     Ok(jwt_sub(&sess.access))
 }
 
-/// Decodifica el claim `sub` de un JWT (segundo segmento, base64url sin
-/// padding). No verifica la firma — solo lee el `user_id`, que el server
-/// revalida en cada request.
+/// Decodes a JWT's `sub` claim (the second segment, base64url with no padding).
+/// It does not verify the signature; it only reads the `user_id`, which the server
+/// revalidates on every request.
 fn jwt_sub(jwt: &str) -> Option<String> {
     jwt_claims(jwt)?.get("sub")?.as_str().map(String::from)
 }
 
-/// `exp` de un JWT en segundos de época. `None` si el token no es decodificable
-/// o no lo trae — quien decide sobre esto debe tratarlo como "no sé cuánto le
-/// queda", nunca como "le queda mucho".
+/// A JWT's `exp` in epoch seconds. `None` when the token cannot be decoded or does
+/// not carry one, and whoever decides on this has to treat that as "I do not know
+/// how long it has left", never as "it has plenty".
 pub fn jwt_expiry(jwt: &str) -> Option<i64> {
     jwt_claims(jwt)?.get("exp")?.as_i64()
 }
@@ -744,45 +745,44 @@ fn jwt_claims(jwt: &str) -> Option<serde_json::Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
-/// ¿Es este fallo de refresh de los que sólo arregla un `hoard login` nuevo
-/// (GoTrue revocó la familia), frente a un bache de red que merece reintento?
+/// Is this refresh failure one only a fresh `hoard login` fixes (GoTrue revoked
+/// the family), as against a network bump that deserves a retry?
 pub fn is_session_expired(err: &anyhow::Error) -> bool {
     err.downcast_ref::<RefreshTokenStale>().is_some()
 }
 
 // ---- refresh centralizado ---------------------------------------------
 
-/// Ventana en la que un refresh recién completado se reutiliza en vez de pedir
-/// otro. GoTrue rota el refresh token en cada uso y revoca el anterior, así que
-/// una ráfaga de llamantes (el refresher periódico y un token rechazado por el
-/// realtime, p.ej.) tiene que colapsar en un solo viaje: el segundo replay
-/// dispararía reuse-detection sobre un token ya rotado.
+/// The window in which a just-completed refresh is reused rather than another one
+/// being asked for. GoTrue rotates the refresh token on every use and revokes the
+/// previous one, so a burst of callers (the periodic refresher and a token
+/// rejected by realtime, say) has to collapse into a single trip: the second
+/// replay would trip reuse detection on an already-rotated token.
 const REFRESH_REUSE_WINDOW: Duration = Duration::from_secs(30);
 
-/// Serializa **todos** los refresh del proceso y recuerda el último par rotado.
+/// Serialises every refresh in the process and remembers the last rotated pair.
 fn refresh_gate() -> &'static tokio::sync::Mutex<Option<(Instant, Tokens)>> {
     static GATE: OnceLock<tokio::sync::Mutex<Option<(Instant, Tokens)>>> = OnceLock::new();
     GATE.get_or_init(|| tokio::sync::Mutex::new(None))
 }
 
-/// Refresca la sesión Cloud con **el token más fresco que haya en disco** y
-/// persiste el par rotado. Único camino de refresh del proceso, a propósito.
+/// Refreshes the Cloud session with the freshest token on disk and persists the
+/// rotated pair. The process's only refresh path, on purpose.
 ///
-/// El motivo de que no acepte una `Session`: cada llamante refrescaba antes con
-/// su propia copia en memoria, y una copia capturada minutos atrás (el realtime
-/// la toma al conectar y su conexión vive hasta `CONNECTION_MAX_SECS`) podía
-/// replayar un token que el refresher periódico ya había rotado. Fuera de la
-/// ventana de gracia de GoTrue eso no es un reintento sino reuse-detection, y
-/// la respuesta es revocar la **familia entera** de tokens: sesión muerta sin
-/// recuperación posible, ni siquiera reiniciando.
+/// The reason it does not accept a `Session`: each caller used to refresh with its
+/// own in-memory copy, and a copy captured minutes earlier (realtime takes one on
+/// connect and its connection lives up to `CONNECTION_MAX_SECS`) could replay a
+/// token the periodic refresher had already rotated. Outside GoTrue's grace window
+/// that is not a retry but reuse detection, and the answer is to revoke the whole
+/// token family: a dead session with no recovery, not even by restarting.
 ///
-/// Tres capas: el mutex serializa los refresh concurrentes, la relectura de
-/// disco *dentro* del lock impide mandar una copia vieja, y
-/// [`REFRESH_REUSE_WINDOW`] colapsa las ráfagas. El heal cubre lo que queda
-/// fuera del proceso (el desktop comparte el mismo fichero de sesión): si GoTrue
-/// dice stale, se relee disco y se adopta la rotación ajena.
+/// Three layers: the mutex serialises concurrent refreshes, re-reading the disk
+/// inside the lock stops an old copy going out, and [`REFRESH_REUSE_WINDOW`]
+/// collapses bursts. The heal covers what falls outside the process (the desktop
+/// shares the same session file): if GoTrue says stale, the disk is re-read and
+/// somebody else's rotation is adopted.
 pub async fn refresh_freshest() -> Result<Tokens> {
-    // Sostener el lock a través de la llamada de red es lo que serializa.
+    // Holding the lock across the network call is what serialises this.
     let mut last = refresh_gate().lock().await;
 
     if let Some((at, tokens)) = last.as_ref() {
@@ -805,7 +805,7 @@ pub async fn refresh_freshest() -> Result<Tokens> {
             match adoptable(&attempted, load_session().ok().flatten().as_ref()) {
                 Some(tokens) => {
                     tracing::debug!(
-                        "cloud: el refresh token lo rotó otra ejecución; adopto el de disco"
+                        "cloud: another run rotated the refresh token; adopting the one on disk"
                     );
                     *last = Some((Instant::now(), tokens.clone()));
                     Ok(tokens)
@@ -817,9 +817,10 @@ pub async fn refresh_freshest() -> Result<Tokens> {
     }
 }
 
-/// Decide si la sesión en disco sirve para sanar un [`RefreshTokenStale`]: solo
-/// si trae un refresh token no vacío y **distinto** del que se intentó. Si fuera
-/// el mismo, reintentarlo daría stale otra vez — no hay nada que adoptar.
+/// Decides whether the session on disk is any use for healing a
+/// [`RefreshTokenStale`]: only when it carries a non-empty refresh token that is
+/// different from the one just tried. If it were the same, retrying would give
+/// stale again, since there is nothing to adopt.
 fn adoptable(attempted: &str, on_disk: Option<&Session>) -> Option<Tokens> {
     let s = on_disk?;
     (!s.refresh.trim().is_empty() && s.refresh != attempted).then(|| Tokens {
