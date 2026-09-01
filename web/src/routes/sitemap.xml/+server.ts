@@ -1,5 +1,5 @@
 import { LOCALES, DEFAULT_LOCALE, HREFLANG, SITE_URL, withLocale } from '$lib/i18n/locales';
-import { guideSlugs } from '$lib/guides';
+import { getGuide, guideSlugs } from '$lib/guides';
 
 export const prerender = true;
 
@@ -22,6 +22,23 @@ const PATHS = [
 const loc = (path: string, lang: (typeof LOCALES)[number]) =>
   `${SITE_URL}${withLocale(path, lang)}`;
 
+/**
+ * `<lastmod>` for the paths that have a real edit date: the guides, from their
+ * `updated` frontmatter, plus the index, which is as fresh as its newest guide.
+ * The marketing pages get none on purpose: stamping a build date on every URL
+ * every deploy is what teaches a crawler to ignore the field.
+ */
+const lastmod = (path: string, lang: (typeof LOCALES)[number]) => {
+  if (path === '/guides') {
+    const dates = guideSlugs()
+      .map((slug) => getGuide(slug, lang)?.updated)
+      .filter(Boolean) as string[];
+    return dates.sort().at(-1) ?? '';
+  }
+  const slug = path.startsWith('/guides/') ? path.slice('/guides/'.length) : '';
+  return (slug && getGuide(slug, lang)?.updated) || '';
+};
+
 export function GET() {
   const urls = PATHS.flatMap((path) =>
     LOCALES.map((lang) => {
@@ -31,7 +48,10 @@ export function GET() {
         ),
         `    <xhtml:link rel="alternate" hreflang="x-default" href="${loc(path, DEFAULT_LOCALE)}" />`
       ].join('\n');
-      return `  <url>\n    <loc>${loc(path, lang)}</loc>\n${alternates}\n  </url>`;
+      const mod = lastmod(path, lang);
+      return `  <url>\n    <loc>${loc(path, lang)}</loc>\n${
+        mod ? `    <lastmod>${mod}</lastmod>\n` : ''
+      }${alternates}\n  </url>`;
     })
   ).join('\n');
 
