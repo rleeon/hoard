@@ -1,9 +1,8 @@
-//! Lógica de biblioteca/tracking COMPARTIDA por desktop y CLI (paridad
-//! CLI↔desktop). Aquí vive el negocio —mutar `CliState`, hablar con el server,
-//! construir la lista— devolviendo DATOS; cada frontend solo pinta el resultado
-//! y hace el disparo propio (attach/detach al agente vivo en desktop, restart
-//! del daemon en CLI). Antes estaba atrapado en `hoard-desktop/commands/`, con
-//! la CLI reimplementando un trozo en `track.rs` y el daemon copiando el hydrate.
+//! Library and tracking logic shared by desktop and CLI. The business lives here:
+//! mutating `CliState`, talking to the server, building the list, all returning
+//! data. Each frontend only draws the result and does its own follow-up (attaching
+//! or detaching from the live agent on the desktop, restarting the daemon on the
+//! CLI).
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -26,8 +25,8 @@ use crate::{launchers, playtime_catalog, steam};
 
 // ---- tipos de wire compartidos ---------------------------------------------
 
-/// Una fila de la lista "Juegos monitorizados". Idéntico wire para el desktop
-/// (Tauri) y la CLI (impresión).
+/// One row of the "tracked games" list. The same wire shape for the desktop
+/// (Tauri) and the CLI (printing).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrackedSave {
     pub save_id: String,
@@ -47,21 +46,20 @@ pub struct TrackedSave {
     #[serde(default)]
     pub slot: Option<u32>,
     pub local_path: String,
-    /// Cabeza del **server**: la última versión que existe en la nube (o en el
-    /// server self-hosted), venga de donde venga — normalmente de otra máquina.
+    /// The server's head: the latest version that exists in the cloud, or on the
+    /// self-hosted server, wherever it came from, which is usually another machine.
     ///
-    /// Se llamaba `last_version_num`, un nombre que invitaba a leerlo como "la
-    /// versión que tengo". El panel lo rotulaba «Guardado (v138)» con este
-    /// equipo anclado en la v120 y el poller muerto (ADR 0021 D.10): en una
-    /// herramienta de saves eso invita a jugar encima creyendo estar al día, y
-    /// esa partida subiría como v139 haciendo retroceder la cabeza de la nube.
-    /// El par con [`Self::local_version_num`] es lo que impide volver a
-    /// confundirlos.
+    /// It used to be called `last_version_num`, a name that invited reading it as
+    /// "the version I have". The panel labelled it "Saved (v138)" with this machine
+    /// anchored at v120 and the poller dead (ADR 0021 D.10): in a save tool that
+    /// invites playing on top believing you are up to date, and that session would
+    /// upload as v139 and walk the cloud's head backwards. The pair with
+    /// [`Self::local_version_num`] is what stops them being confused again.
     pub cloud_version_num: Option<i64>,
-    /// Versión a la que está sincronizado **este equipo** (el cursor
-    /// `SaveState::last_version_num` del `CliState` local, que es lo que el
-    /// kernel usa como `known_version`). `None` = esta máquina nunca subió ni
-    /// bajó este save: existe en la nube pero no aquí.
+    /// The version *this machine* is synced to (the local `CliState`'s
+    /// `SaveState::last_version_num` cursor, which is what the kernel uses as
+    /// `known_version`). `None` means this machine never uploaded or downloaded this
+    /// save: it exists in the cloud but not here.
     #[serde(default)]
     pub local_version_num: Option<i64>,
     pub last_backup_at: Option<String>,
@@ -69,19 +67,19 @@ pub struct TrackedSave {
     pub paused: bool,
     #[serde(default)]
     pub total_size_bytes: i64,
-    /// `true` cuando el save existe en el server pero esta máquina no tiene fila
-    /// `CliState` (reinstalación, cambio de PC, state borrado). El frontend lo
-    /// marca "Sin estado local".
+    /// `true` when the save exists on the server but this machine has no `CliState`
+    /// row (a reinstall, a new PC, deleted state). The frontend marks it "no local
+    /// state".
     #[serde(default)]
     pub orphan: bool,
-    /// Bytes que ocupa el save EN ESTA máquina (tamaño de su carpeta local).
-    /// `None` para huérfanos y filas recién creadas.
+    /// Bytes the save occupies ON THIS machine (its local folder's size). `None`
+    /// for orphans and freshly created rows.
     #[serde(default)]
     pub local_size_bytes: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preset: Option<String>,
-    /// El "sí" del usuario a que se le escriba la config de este juego al
-    /// restaurar. Ver [`crate::state::SaveState::allow_device_local`].
+    /// The user's yes to this game's config being written on a restore. See
+    /// [`crate::state::SaveState::allow_device_local`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allow_device_local: Option<bool>,
 }
@@ -108,10 +106,9 @@ pub struct AddGameArgs {
     pub preset: Option<String>,
     #[serde(default)]
     pub processes: Option<Vec<String>>,
-    /// Los procesos de este save los comparten otros saves rastreados, así que
-    /// verlos correr no dice que se esté jugando a ÉSTE. Lo marca el alta de
-    /// una consola emulada partida por juego. Ver
-    /// [`crate::state::SaveState::shared_processes`].
+    /// This save's processes are shared with other tracked saves, so seeing them
+    /// run does not say THIS one is being played. Set by adding an emulated console
+    /// split per game. See [`crate::state::SaveState::shared_processes`].
     #[serde(default)]
     pub shared_processes: bool,
     /// What the user calls this folder ("Mods", "Ironman"). Goes into the label
@@ -135,8 +132,8 @@ pub struct AdoptArgs {
     pub local_path: String,
 }
 
-/// Resultado de añadir/adoptar: la fila para pintar y el `WatchedSave` que el
-/// frontend debe enganchar al agente vivo (o ignorar si no corre).
+/// The result of adding or adopting: the row to draw, and the `WatchedSave` the
+/// frontend should attach to the live agent (or ignore when none is running).
 pub struct TrackOutcome {
     pub tracked: TrackedSave,
     pub watched: WatchedSave,
@@ -144,8 +141,8 @@ pub struct TrackOutcome {
 
 // ---- caché de detección en disco (compartida) ------------------------------
 
-/// Snapshot de detección persistido junto a `state.json` para pintar la
-/// biblioteca al instante en frío sin re-escanear.
+/// A detection snapshot persisted next to `state.json` so the library can be drawn
+/// instantly from cold without re-scanning.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedDetection {
     pub report: DetectionReport,
@@ -153,13 +150,13 @@ pub struct CachedDetection {
     pub scanned_at: OffsetDateTime,
 }
 
-/// Ruta del caché de detección (mismo dir que `state.json`).
+/// Path of the detection cache (the same directory as `state.json`).
 pub fn detection_cache_path() -> Result<PathBuf> {
     Ok(CliConfig::state_dir()?.join("detection.json"))
 }
 
-/// Carga el caché de disco. `None` si falta, está corrupto o es ilegible
-/// (se degrada a arranque en frío en vez de crashear).
+/// Loads the on-disk cache. `None` when it is missing, corrupt or unreadable (it
+/// degrades to a cold start rather than crashing).
 pub fn load_detection_from_disk() -> Option<CachedDetection> {
     let path = match detection_cache_path() {
         Ok(p) => p,
@@ -199,62 +196,60 @@ pub fn save_detection_to_disk_atomic(cached: &CachedDetection) -> Result<()> {
     Ok(())
 }
 
-// ---- qué sabe la detección local de UN slug --------------------------------
+// ---- what local detection knows about one slug
 
-/// Una ruta de save que la detección encontró en ESTA máquina, con la
-/// confianza de esa ruta concreta (no la rolled-up del juego).
+/// A save path detection found on THIS machine, with that particular path's
+/// confidence rather than the game's rolled-up one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DetectedPath {
     pub path: PathBuf,
     pub confidence: Confidence,
 }
 
-/// Lo que la detección local sabe de un slug, para vincular un save del cloud
-/// a esta máquina sin obligar al usuario a buscar la carpeta a mano.
+/// What local detection knows about a slug, so a cloud save can be linked to this
+/// machine without making the user hunt for the folder by hand.
 ///
-/// `scanned_at` es `None` cuando no hay caché de detección. Distinguirlo de
-/// `paths` vacío es lo que deja al frontend ofrecer un escaneo en vez de
-/// afirmar "no hay nada": el usuario que nunca activó el Modo Automático llega
-/// aquí con la caché fría, y una lista vacía sin más sería mentira.
+/// `scanned_at` is `None` when there is no detection cache. Telling that apart from
+/// an empty `paths` is what lets the frontend offer a scan instead of claiming
+/// "there is nothing": a user who never turned Automatic Mode on arrives here with
+/// a cold cache, and a bare empty list would be a lie.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalDetection {
     pub game_slug: String,
     /// Candidatas ordenadas strongest-first (mismo orden que `found_paths`).
     pub paths: Vec<DetectedPath>,
-    /// Los **demás** juegos detectados aquí, para vincular por juego cuando el
-    /// slug de la nube no casa con ninguno local. Ver [`link_candidates`].
+    /// The *other* games detected here, for linking by game when the cloud's slug
+    /// matches none locally. See [`link_candidates`].
     #[serde(default)]
     pub candidates: Vec<LinkCandidate>,
     #[serde(with = "time::serde::rfc3339::option")]
     pub scanned_at: Option<OffsetDateTime>,
 }
 
-/// Un juego detectado en ESTA máquina ofrecido como destino de vínculo.
+/// A game detected on THIS machine, offered as a link target.
 ///
-/// El emparejamiento por slug exacto ([`detected_paths_in`]) se rompe en cuanto
-/// las dos máquinas nombran el juego distinto —la misma copia instalada por
-/// caminos distintos, un Steam contra un suelto—, y entonces el usuario se
-/// quedaba con el selector de carpetas como única salida: cazar a mano una ruta
-/// que Hoard ya conoce. Estas son las candidatas para decir "es este juego" en
-/// vez de "es esta carpeta".
+/// Matching by exact slug ([`detected_paths_in`]) breaks the moment two machines
+/// name the game differently (the same copy installed by different routes, a Steam
+/// one against a standalone), and then the user was left with the folder picker as
+/// their only way out: hunting by hand for a path Hoard already knows. These are
+/// the candidates for saying "it is this game" rather than "it is this folder".
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LinkCandidate {
     pub game_slug: String,
     pub display_name: String,
-    /// Rutas de save del juego, strongest-first. Nunca vacío: un juego sin
-    /// carpeta que ofrecer no es candidato.
+    /// The game's save paths, strongest first. Never empty: a game with no folder
+    /// to offer is not a candidate.
     pub paths: Vec<DetectedPath>,
-    /// Parecido entre el nombre del juego local y el slug que viene de la nube:
-    /// `2` mismo nombre normalizado, `1` uno contiene al otro, `0` nada. Ordena
-    /// la lista y deja al frontend destacar lo que casi seguro es el mismo
-    /// juego.
+    /// The likeness between the local game's name and the slug coming from the
+    /// cloud: `2` the same normalised name, `1` one contains the other, `0` nothing.
+    /// It orders the list and lets the frontend highlight what is almost certainly
+    /// the same game.
     pub affinity: u8,
 }
 
 impl LocalDetection {
-    /// La ruta a vincular cuando la detección es **no ambigua**: exactamente
-    /// una candidata. Con dos o más el usuario tiene que elegir, y con cero no
-    /// hay nada que ofrecer.
+    /// The path to link when detection is unambiguous: exactly one candidate. With
+    /// two or more the user has to choose, and with none there is nothing to offer.
     pub fn unambiguous(&self) -> Option<&DetectedPath> {
         match self.paths.as_slice() {
             [only] => Some(only),
@@ -263,10 +258,10 @@ impl LocalDetection {
     }
 }
 
-/// Rutas de save detectadas para `game_slug` dentro de un report ya calculado.
+/// The save paths detected for `game_slug` inside an already-computed report.
 ///
-/// Solo rutas de save: `found_paths` nunca contiene el directorio de instalación
-/// (eso es `install_dir`, y hacer backup del binario del juego sería un bug).
+/// Save paths only: `found_paths` never contains the install directory (that is
+/// `install_dir`, and backing up the game's binary would be a bug).
 pub fn detected_paths_in(report: &DetectionReport, game_slug: &str) -> Vec<DetectedPath> {
     let Some(game) = report.games.iter().find(|g| g.slug == game_slug) else {
         return Vec::new();
@@ -276,9 +271,9 @@ pub fn detected_paths_in(report: &DetectionReport, game_slug: &str) -> Vec<Detec
         .enumerate()
         .map(|(i, path)| DetectedPath {
             path: path.clone(),
-            // `path_confidences` es `default` — una caché escrita por un build
-            // viejo la trae vacía. Caer a la confianza del juego conserva la
-            // ruta en vez de perderla por un campo ausente.
+            // `path_confidences` is `default`, and a cache written by an older
+            // build arrives with it empty. Falling back to the game's confidence
+            // keeps the path rather than losing it over a missing field.
             confidence: game
                 .path_confidences
                 .get(i)
@@ -288,8 +283,8 @@ pub fn detected_paths_in(report: &DetectionReport, game_slug: &str) -> Vec<Detec
         .collect()
 }
 
-/// Normaliza un nombre o un slug a solo alfanuméricos en minúscula, que es lo
-/// único comparable entre "R.E.P.O.", "repo" y "R E P O".
+/// Normalises a name or a slug to lowercase alphanumerics only, which is the only
+/// thing comparable between "R.E.P.O.", "repo" and "R E P O".
 fn normalized_name(s: &str) -> String {
     s.chars()
         .filter(|c| c.is_alphanumeric())
@@ -297,13 +292,14 @@ fn normalized_name(s: &str) -> String {
         .collect()
 }
 
-/// Parecido entre el slug de la nube y un juego local. Ver [`LinkCandidate::affinity`].
+/// The likeness between the cloud's slug and a local game. See
+/// [`LinkCandidate::affinity`].
 ///
-/// Se mira contra el nombre visible **y** contra el slug: el mismo juego puede
-/// llegar como `raccoin` desde una máquina y `Raccoin` / `rac-coin` desde otra,
-/// y los tres normalizan igual. La contención pide 4 caracteres para que un
-/// nombre corto no se declare pariente de media biblioteca ("Ori" dentro de
-/// "Origin", "GTA" dentro de cualquier cosa con esas letras seguidas).
+/// It is checked against the display name *and* the slug: the same game can arrive
+/// as `raccoin` from one machine and `Raccoin` or `rac-coin` from another, and all
+/// three normalise the same. Containment demands four characters so a short name
+/// does not declare itself related to half the library ("Ori" inside "Origin",
+/// "GTA" inside anything with those letters in a row).
 fn name_affinity(cloud_slug: &str, game: &DetectedGame) -> u8 {
     let cloud = normalized_name(cloud_slug);
     if cloud.is_empty() {
@@ -332,19 +328,18 @@ fn name_affinity(cloud_slug: &str, game: &DetectedGame) -> u8 {
     best
 }
 
-/// Los juegos detectados aquí a los que se puede enganchar el save `game_slug`
-/// que vive en la nube, mejor parecido primero.
+/// The games detected here that the cloud-resident `game_slug` save can be attached
+/// to, best likeness first.
 ///
-/// Fuera quedan tres grupos, y por motivos distintos:
+/// Three groups are left out, for different reasons:
 ///
-/// * El propio `game_slug`, que ya va en [`LocalDetection::paths`] y saldría
-///   duplicado.
-/// * Los juegos sin ninguna ruta de save encontrada: no hay carpeta que
-///   vincular, solo un nombre.
-/// * Los que apuntan a una carpeta **ya rastreada** por otro save. Vincular ahí
-///   pondría dos saves distintos a hacer backup de la misma carpeta, que es
-///   justo lo que el escaneo automático evita con `paths_overlap`; ofrecerlo en
-///   un desplegable no lo haría menos roto.
+/// * `game_slug` itself, which already travels in [`LocalDetection::paths`] and
+///   would come out duplicated.
+/// * Games with no save path found: there is no folder to link, only a name.
+/// * Ones pointing at a folder already tracked by another save. Linking there would
+///   put two different saves backing up the same folder, which is exactly what the
+///   automatic scan avoids with `paths_overlap`; offering it in a dropdown would not
+///   make it any less broken.
 pub fn link_candidates(
     report: &DetectionReport,
     game_slug: &str,
@@ -366,8 +361,8 @@ pub fn link_candidates(
             affinity: name_affinity(game_slug, g),
         })
         .collect();
-    // Parecido primero (lo que el usuario venía buscando), y el resto por
-    // nombre: la lista larga se recorre con el ojo, no con la barra de scroll.
+    // Likeness first (what the user came looking for), and the rest by name: a long
+    // list is scanned with the eye, not with the scrollbar.
     out.sort_by(|a, b| {
         b.affinity.cmp(&a.affinity).then_with(|| {
             a.display_name
@@ -378,15 +373,15 @@ pub fn link_candidates(
     out
 }
 
-/// Lo que la detección local sabe de `game_slug` según una caché ya cargada.
-/// `cached` es `None` cuando nadie ha escaneado todavía en esta máquina.
+/// What local detection knows about `game_slug` according to an already-loaded
+/// cache. `cached` is `None` when nobody has scanned on this machine yet.
 ///
-/// El desktop pasa su caché en memoria (`AppState`) y la CLI la de disco
-/// ([`load_detection_from_disk`]); la regla de qué es una candidata vive aquí,
-/// una sola vez.
+/// The desktop passes its in-memory cache (`AppState`) and the CLI the disk one
+/// ([`load_detection_from_disk`]); the rule for what counts as a candidate lives
+/// here, once.
 ///
-/// `tracked_paths` son las carpetas que esta máquina ya rastrea, para no
-/// ofrecer como destino una carpeta que ya tiene dueño ([`link_candidates`]).
+/// `tracked_paths` are the folders this machine already tracks, so a folder that
+/// already has an owner is not offered as a target ([`link_candidates`]).
 pub fn local_detection(
     cached: Option<&CachedDetection>,
     game_slug: &str,
@@ -406,8 +401,8 @@ pub fn local_detection(
 
 // ---- hydrate (UNIFICADO: antes duplicado desktop/daemon) --------------------
 
-/// Match laxo entre el nombre de un juego de Steam ("Stardew Valley") y un slug
-/// de Hoard ("stardew-valley").
+/// A loose match between a Steam game's name ("Stardew Valley") and a Hoard slug
+/// ("stardew-valley").
 pub fn name_matches(steam_name: &str, slug: &str) -> bool {
     let a: String = steam_name
         .chars()
@@ -418,36 +413,36 @@ pub fn name_matches(steam_name: &str, slug: &str) -> bool {
     !a.is_empty() && a == b
 }
 
-/// Política de sync efectiva: el preset fijado por el usuario gana; sin él, cae
-/// al catálogo built-in (R.E.P.O. → short-session). Nombre desconocido ⇒ vacía.
+/// The effective sync policy: the preset the user pinned wins; without one it falls
+/// back to the built-in catalogue. An unknown name gives an empty policy.
 ///
 /// The slot plays no part here on purpose. Slots 2+ briefly forced
-/// `auto_restore = Some(false)`, which overrode the user's own preference and
-/// left the second machine's folder empty while the first uploaded into it —
-/// the opposite of what attaching several folders is for. Device-local files
-/// are already held back per file by [`hoard_core::kernel::fileclass`]; a
-/// per-slot rule on top of that only broke sync.
+/// `auto_restore = Some(false)`, which overrode the user's own preference and left
+/// the second machine's folder empty while the first uploaded into it, the opposite
+/// of what attaching several folders is for. Device-local files are already held
+/// back per file by [`hoard_core::kernel::fileclass`]; a per-slot rule on top of
+/// that only broke sync.
 pub fn resolve_policy(game_slug: &str, stored_preset: Option<&str>) -> SavePolicy {
     let name = stored_preset.or_else(|| presets::builtin_preset_for(game_slug));
     SavePolicy::from_preset(name)
 }
 
-/// Nombres de proceso que marcan "jugando" para este slug.
+/// The process names that mark "playing" for this slug.
 ///
-/// Fuente principal: el bloque `launch:` del manifiesto Ludusavi, que trae el
-/// ejecutable de ~18k juegos. Antes esto sólo devolvía el catálogo built-in —
-/// dos entradas— y todo lo demás dependía del match por tokens del slug o de
-/// una correlación que en frío vale cero; ahora la primera sesión de un juego
-/// del catálogo ya dispara "arrancó" sin haberlo visto nunca.
+/// The main source is the manifest's `launch:` block, which carries the executable
+/// for about 18k games. This used to return only the built-in catalogue, two
+/// entries, and everything else depended on matching slug tokens or on a
+/// correlation that is worth zero from cold; now a catalogue game's first session
+/// fires "it started" without ever having been seen.
 ///
-/// **Sólo se aceptan ejecutables inequívocos**: `hoard_manifest` deja fuera del
-/// índice los nombres que reclaman varios juegos (`game.exe`, `launcher.exe`,
-/// `nw.exe`, `dosbox.exe`…), y aquí se exige además que el nombre resuelva de
-/// vuelta a ESTE slug. Sin ese filtro, un `game.exe` cualquiera pondría a
-/// jugar —y a acumular horas— a un juego al azar.
+/// Only unambiguous executables are accepted: `hoard_manifest` keeps out of the
+/// index the names several games claim (`game.exe`, `launcher.exe`, `nw.exe`,
+/// `dosbox.exe`), and here the name is also required to resolve back to THIS slug.
+/// Without that filter, any old `game.exe` would put a random game into "playing",
+/// accruing hours.
 ///
-/// El catálogo built-in sigue teniendo la última palabra (Minecraft por
-/// TLauncher no sale del manifiesto): se añade siempre, sin duplicar.
+/// The built-in catalogue still has the last word (Minecraft through TLauncher is
+/// not in the manifest): it is always added, without duplicating.
 pub fn resolve_processes(game_slug: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     if let Some(entry) = ludusavi::find_by_slug(game_slug) {
@@ -466,15 +461,14 @@ pub fn resolve_processes(game_slug: &str) -> Vec<String> {
     out
 }
 
-// ---- carpetas descartadas por el usuario -----------------------------------
+// ---- folders the user discarded
 
-/// Descarta una carpeta: la detección deja de ofrecerla, y todo lo que cuelgue
-/// de ella. Idempotente.
+/// Discards a folder: detection stops offering it, and everything under it.
+/// Idempotent.
 ///
-/// Es la respuesta al problema que ignorar-por-slug no resuelve: el nombre de
-/// un hallazgo de fase 4 lo pone la correlación, y cambia entre escaneos, así
-/// que la misma carpeta vuelve con slug nuevo una y otra vez. La ruta no
-/// cambia.
+/// It is the answer to the problem ignoring-by-slug does not solve: a phase-4
+/// find's name is set by correlation and changes between scans, so the same folder
+/// comes back under a new slug over and over. The path does not change.
 pub fn exclude_path(path: &Path) -> Result<()> {
     if path.as_os_str().is_empty() {
         anyhow::bail!("Path can't be empty.");
@@ -494,19 +488,19 @@ pub fn unexclude_path(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Las carpetas descartadas en este equipo, para pintarlas en Ajustes.
+/// The folders discarded on this machine, for drawing in Settings.
 pub fn list_excluded_paths() -> Result<Vec<PathBuf>> {
     Ok(CliState::load_default()?.0.excluded_paths)
 }
 
-/// Quita del informe las rutas que el usuario descartó, y con ellas los juegos
-/// que se quedan sin ninguna.
+/// Removes from the report the paths the user discarded, and with them the games
+/// left with none.
 ///
-/// La sutileza que importa: un juego **sin rutas desde el principio** NO se
-/// toca. Esa fila es deliberada — significa "vi el juego en disco pero no sé
-/// dónde guarda" y es la que pinta la alerta ámbar para que el usuario elija
-/// carpeta. Borrarla le quitaría al usuario la única forma de arreglarlo.
-/// Sólo desaparece el juego al que la exclusión le quitó TODAS las que tenía.
+/// The subtlety that matters: a game with no paths *from the start* is NOT touched.
+/// That row is deliberate, meaning "I saw the game on disk but do not know where it
+/// saves", and it is the one that draws the amber alert so the user can pick a
+/// folder. Deleting it would take away their only way to fix it. Only the game the
+/// exclusion left with NONE of the paths it had disappears.
 pub fn apply_excluded_paths(report: &mut DetectionReport, state: &CliState) {
     if state.excluded_paths.is_empty() {
         return;
@@ -515,7 +509,8 @@ pub fn apply_excluded_paths(report: &mut DetectionReport, state: &CliState) {
         let had = g.found_paths.len();
         g.found_paths.retain(|p| !state.is_path_excluded(p));
         g.path_confidences.truncate(g.found_paths.len());
-        // Tenía rutas y ninguna sobrevivió ⇒ fuera. Nunca tuvo ⇒ se queda.
+        // It had paths and none survived, so out it goes. It never had any, so it
+        // stays.
         had == 0 || !g.found_paths.is_empty()
     });
 }
@@ -525,8 +520,8 @@ fn playtime_save_id(slug: &str) -> String {
     format!("playtime:{slug}")
 }
 
-/// Juegos instalados (cualquier launcher) que casan el catálogo de playtime,
-/// por slug, con el dir de instalación. Primer match por slug gana.
+/// Installed games (from any launcher) that match the playtime catalogue by slug,
+/// through the install dir. The first slug match wins.
 fn installed_catalog_games(os: Os) -> Vec<(&'static str, Option<PathBuf>)> {
     let mut sources: Vec<(String, PathBuf)> = Vec::new();
     for app in steam::list_installed_steam_games(os).unwrap_or_default() {
@@ -553,7 +548,7 @@ fn installed_catalog_games(os: Os) -> Vec<(&'static str, Option<PathBuf>)> {
     out
 }
 
-/// Slot `track_only` para un slug del catálogo de playtime.
+/// A `track_only` slot for a playtime-catalogue slug.
 fn playtime_watched_save(slug: &str, install_dir: Option<PathBuf>) -> WatchedSave {
     let game = playtime_catalog::by_slug(slug);
     let display_name = game
@@ -571,8 +566,8 @@ fn playtime_watched_save(slug: &str, install_dir: Option<PathBuf>) -> WatchedSav
         local_path: PathBuf::new(),
         steam_install_dir: install_dir,
         processes,
-        // Un slot de sólo-horas no comparte proceso con nadie: su lista viene
-        // del catálogo de playtime, que es un juego por entrada.
+        // A hours-only slot shares its process with nobody: its list comes from the
+        // playtime catalogue, which is one game per entry.
         shared_processes: false,
         policy: SavePolicy::default(),
         known_version: None,
@@ -581,8 +576,8 @@ fn playtime_watched_save(slug: &str, install_dir: Option<PathBuf>) -> WatchedSav
     }
 }
 
-/// Slots `track_only` a sembrar: cada juego de catálogo instalado que no esté ya
-/// rastreado como save real y que el usuario no haya excluido.
+/// The `track_only` slots to seed: every installed catalogue game that is not
+/// already tracked as a real save and that the user has not excluded.
 pub fn derive_playtime_saves(
     cli_state: &CliState,
     tracked_slugs: &HashSet<String>,
@@ -600,12 +595,11 @@ pub fn derive_playtime_saves(
 
 /// Comparison key for "the same folder on disk".
 ///
-/// Windows is case-insensitive and the paths in `state.json` mix separators —
-/// `C:\Users\x\Documents\My Games/Fallout4/Saves` is one real directory
-/// written two ways — so comparing the strings would read two spellings of one
-/// folder as two folders. Only normalised on Windows: a backslash is a legal
-/// character in a Unix filename, and folding it there would merge folders that
-/// really are different.
+/// Windows is case-insensitive and the paths in `state.json` mix separators, so
+/// `C:\Users\x\Documents\My Games/Fallout4/Saves` is one real directory written
+/// two ways and comparing the strings would read two spellings of one folder as two
+/// folders. Only normalised on Windows: a backslash is a legal character in a Unix
+/// filename, and folding it there would merge folders that really are different.
 fn folder_key(p: &Path) -> String {
     let raw = p.to_string_lossy();
     let s = if cfg!(windows) {
@@ -623,20 +617,20 @@ fn folder_key(p: &Path) -> String {
 ///
 /// Two rows can name the same directory under two save ids: the local one and
 /// the id the server considers canonical for that `(slug, label)`. The upload
-/// path already knows they are the same — it redirects the commit to the
-/// canonical id rather than 404ing — but nothing upstream ever collapsed them,
+/// path already knows they are the same (it redirects the commit to the
+/// canonical id rather than 404ing) but nothing upstream ever collapsed them,
 /// so both got a watcher, both hashed the folder and both uploaded the same
 /// bytes on every change. Seen ago-2026 on Jurassic World Evolution 3: two
 /// watchers armed on one path 70 ms apart, 5.7 MB sent twice.
 ///
 /// The key is (folder, slug, label), the tightest one that fixes that: a game
 /// tracked in two different folders is a deliberate slot and stays, and two
-/// different games sharing one folder stay too — collapsing those would stop
+/// different games sharing one folder stay too; collapsing those would stop
 /// backing one of them up.
 ///
 /// Which twin wins barely matters for the bytes, since the commit is redirected
 /// either way; it matters for the work. A row carrying a set-hash knows what is
-/// already synced, so it will not re-upload a baseline — that is the one to
+/// already synced, so it will not re-upload a baseline, and that is the one to
 /// keep. `save_id` breaks the remaining ties so a `HashMap`'s order cannot make
 /// this pick a different winner on every pass.
 fn rows_one_per_folder(cli_state: &CliState) -> Vec<(&String, &SaveState)> {
@@ -673,22 +667,22 @@ fn rows_one_per_folder(cli_state: &CliState) -> Vec<(&String, &SaveState)> {
     kept
 }
 
-/// Construye la lista de vigilancia desde `state.json`: saves reales (enriquecidos
-/// con su dir de Steam) + slots playtime-only. Salta los pausados y los
-/// archivados. ÚNICA fuente: antes el desktop (`hydrate_watched_saves`) y el
-/// daemon (`watched_from_state`) tenían dos copias que ya divergían.
+/// Builds the watch list from `state.json`: real saves (enriched with their Steam
+/// dir) plus playtime-only slots. It skips the paused and the archived ones. It is
+/// the single source; the desktop and the daemon used to have two copies that had
+/// already drifted apart.
 ///
-/// `archived` are the save ids parked in the server-side black box. A frozen
-/// save is refused at upload (403) by design, so watching one buys nothing and
-/// costs a full re-hash of its folder on every reconcile plus a "Backing up…"
-/// in the feed for work that was never going to happen. Treated exactly like
-/// `paused`: not watched at all. An empty set is the honest answer when the
-/// server could not be asked — never watch less because a request failed.
+/// `archived` are the save ids parked in the server-side black box. A frozen save is
+/// refused at upload (403) by design, so watching one buys nothing and costs a full
+/// re-hash of its folder on every reconcile plus a "Backing up..." in the feed for
+/// work that was never going to happen. Treated exactly like `paused`: not watched
+/// at all. An empty set is the honest answer when the server could not be asked;
+/// never watch less because a request failed.
 pub fn watched_saves_from_state(
     cli_state: &CliState,
     archived: &HashSet<String>,
 ) -> Vec<WatchedSave> {
-    // Cachea los juegos de Steam una vez (no reescanear `.acf` por save).
+    // Cache the Steam games once, rather than re-scanning `.acf` per save.
     let steam_apps = steam::list_installed_steam_games(Os::current()).unwrap_or_default();
 
     let tracked_slugs: HashSet<String> = cli_state
@@ -739,8 +733,8 @@ pub fn watched_saves_from_state(
     out
 }
 
-/// `WatchedSave` para un save recién añadido/renombrado, desde inputs mínimos.
-/// Resuelve dir de Steam, política y procesos igual que el hydrate.
+/// A `WatchedSave` for a freshly added or renamed save, from minimal inputs. It
+/// resolves the Steam dir, the policy and the processes exactly as the hydrate does.
 #[allow(clippy::too_many_arguments)]
 pub fn watched_save_from(
     save_id: String,
@@ -783,13 +777,12 @@ pub fn watched_save_from(
 
 // ---- add / adopt / list / rename / untrack / delete ------------------------
 
-/// Comprobaciones de FORMA de una ruta de save, sin exigir que exista.
+/// SHAPE checks on a save path, without requiring it to exist.
 ///
-/// Se aplican también al destino de un restore, donde la carpeta legítimamente
-/// puede no existir todavía (máquina nueva). Rechazan lo que no puede ser
-/// nunca la carpeta de un juego: un perfil entero, una raíz de sistema, o el
-/// propio directorio de estado de Hoard —cuyo backup se copiaría a sí mismo
-/// en bucle—.
+/// They also apply to a restore's destination, where the folder legitimately may not
+/// exist yet (a new machine). They reject what can never be a game's folder: a whole
+/// profile, a system root, or Hoard's own state directory, whose backup would copy
+/// itself in a loop.
 pub fn validate_path_shape(local_path: &Path) -> Result<()> {
     if local_path.as_os_str().is_empty() {
         anyhow::bail!("Save folder path can't be empty.");
@@ -811,18 +804,18 @@ pub fn validate_path_shape(local_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Igual que [`validate_path_shape`] y además: la carpeta tiene que existir
-/// (se crea si falta) y no puede estar ya rastreada por otro save.
+/// Like [`validate_path_shape`], and on top of that: the folder has to exist (it is
+/// created when missing) and cannot already be tracked by another save.
 ///
-/// Lo segundo evita dos watchers y dos historiales sobre los mismos bytes. El
-/// escaneo automático ya lo comprobaba por su cuenta, pero un alta manual —o
-/// la CLI— podían duplicar igual.
+/// The second stops two watchers and two histories over the same bytes. The
+/// automatic scan already checked it on its own, but a manual add, or the CLI, could
+/// still duplicate.
 fn validate_folder(local_path: &Path, except_save_ids: &[&str]) -> Result<()> {
     validate_path_shape(local_path)?;
     if !local_path.exists() {
-        // No existe todavía: se asume carpeta. Un save de fichero suelto
-        // siempre se da de alta sobre un fichero que YA está (lo propone la
-        // detección al encontrarlo), así que aquí no hay ambigüedad.
+        // It does not exist yet, so a folder is assumed. A single-file save is
+        // always added over a file that is already there (detection proposes it on
+        // finding it), so there is no ambiguity here.
         std::fs::create_dir_all(local_path)
             .with_context(|| format!("Couldn't create {}", local_path.display()))?;
     } else if !local_path.is_dir() && !local_path.is_file() {
@@ -831,8 +824,8 @@ fn validate_folder(local_path: &Path, except_save_ids: &[&str]) -> Result<()> {
     if let Ok((state, _)) = CliState::load_default() {
         if let Some(other) = conflicting_save(&state, local_path, except_save_ids) {
             // A tracked folder INSIDE the one being added gets its own line.
-            // It is what a game with one folder per save leaves behind — a row
-            // per slot, tracked back when the parent was not on offer — and
+            // It is what a game with one folder per save leaves behind, a row
+            // per slot, tracked back when the parent was not on offer, and
             // "one folder, one game" alone reads like a flat refusal there
             // instead of the two-step it is: untrack the slots, add the folder
             // that holds them.
@@ -847,7 +840,7 @@ fn validate_folder(local_path: &Path, except_save_ids: &[&str]) -> Result<()> {
                 );
             }
             anyhow::bail!(
-                "'{}' already tracks {} — one folder, one game.",
+                "'{}' already tracks {}: one folder, one game.",
                 other.game_slug,
                 other.local_path.display()
             );
@@ -856,27 +849,25 @@ fn validate_folder(local_path: &Path, except_save_ids: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// El save —si lo hay— que ya cubre `local_path` y no es ninguno de los que se
-/// están reapuntando. Puro para poder testearlo: `validate_folder` es un
-/// envoltorio de IO (crea la carpeta, lee el state del disco) y esta decisión es
-/// la que se ha equivocado en producción.
+/// The save, if any, that already covers `local_path` and is none of the ones being
+/// repointed. Pure so it can be tested: `validate_folder` is an IO wrapper (it
+/// creates the folder, reads the state off disk) and this decision is the one that
+/// has been wrong in production.
 ///
-/// `except_save_ids` son varios a propósito. Una adopción releva **dos**
-/// entradas a la vez: el `save_id` que trae la nube y el que esta máquina se
-/// mintó en local para el mismo (juego, etiqueta). Excluyendo sólo el primero,
-/// la entrada local choca contra sí misma y el juego queda encallado.
-/// La entrada que esta máquina ya tiene **para esta misma carpeta**, si la hay.
+/// `except_save_ids` is plural on purpose. An adoption relieves two entries at once:
+/// the `save_id` the cloud brings and the one this machine minted locally for the
+/// same (game, label). Excluding only the first, the local entry collides with
+/// itself and the game gets stuck.
 ///
-/// La identidad de un save rastreado es la carpeta, no el slug. El slug no es
-/// estable entre fuentes: el mismo juego sale `vrising` por el appid de Steam y
-/// `v-rising` por el catálogo, o `dispatch` y `dispatch-2025` según quién lo
-/// nombre. Buscando por slug, dos nombres del mismo juego se tratan como dos
-/// juegos y la regla de "una carpeta, un juego" los bloquea mutuamente — que es
-/// exactamente lo que le pasó a un usuario en ago-2026 con tres juegos a la vez.
+/// The identity of a tracked save is the folder, not the slug. The slug is not
+/// stable between sources: the same game comes out `vrising` through the Steam appid
+/// and `v-rising` through the catalogue, or `dispatch` and `dispatch-2025` depending
+/// who names it. Searching by slug, two names for one game are treated as two games
+/// and the "one folder, one game" rule blocks them against each other, which is
+/// exactly what happened to a user in aug-2026 with three games at once.
 ///
-/// Comparación exacta de carpeta (insensible a caja en Windows), **no**
-/// solapamiento: una carpeta anidada dentro de otra sí es el conflicto legítimo
-/// que la regla debe seguir denunciando.
+/// Exact folder comparison (case-insensitive on Windows), not overlap: a folder
+/// nested inside another IS the legitimate conflict the rule should keep reporting.
 fn row_for_same_folder<'a>(state: &'a CliState, local_path: &Path) -> Option<&'a str> {
     state
         .saves
@@ -885,31 +876,30 @@ fn row_for_same_folder<'a>(state: &'a CliState, local_path: &Path) -> Option<&'a
         .map(|(id, _)| id.as_str())
 }
 
-/// Misma carpeta, con la caja de Windows en cuenta (`C:\Users` y `c:\users` son
-/// la misma). Espeja el criterio de [`crate::detection::paths_overlap`], que ya
-/// baja a minúsculas en Windows por la misma razón.
+/// The same folder, with Windows casing accounted for (`C:\Users` and `c:\users`
+/// are the same). It mirrors [`crate::detection::paths_overlap`]'s criterion, which
+/// already lowercases on Windows for the same reason.
 ///
-/// Delega en [`folder_key`] para que no haya dos reglas de "misma carpeta" en
-/// este fichero: ésta comparaba las cadenas tal cual y por tanto leía
-/// `…\My Games/Fallout4/Saves` y `…\My Games\Fallout4\Saves` como dos sitios
-/// distintos, que es una forma que `state.json` trae de verdad.
+/// It delegates to [`folder_key`] so there are not two "same folder" rules in this
+/// file: this one used to compare the strings as-is and therefore read
+/// `...\My Games/Fallout4/Saves` and `...\My Games\Fallout4\Saves` as two
+/// different places, which is a shape `state.json` really does carry.
 fn same_folder(a: &Path, b: &Path) -> bool {
     folder_key(a) == folder_key(b)
 }
 
-/// El juego —distinto de `slug`— que ya reclama `path`, si lo hay. `None` = el
-/// override manual es legítimo.
+/// The game, other than `slug`, that already claims `path`, if any. `None` means
+/// the manual override is legitimate.
 ///
-/// Un override manual gana a la heurística **para siempre**: vive en
-/// `device.json`, sobrevive a desinstalar con "borrar datos", a borrar el estado
-/// de saves y a dejar de monitorizar el juego, y cada escaneo vuelve a proponer
-/// esa carpeta con confianza alta. Por eso apuntar un juego a la carpeta de otro
-/// no es un error recuperable: es veneno permanente y casi invisible. Pasó en
-/// ago-2026 —`horizon-forbidden-west` → `…\Saved Games\Surviving Mars
-/// Relaunched`— y dejó al juego dueño de esa carpeta sin poder rastrearla.
+/// A manual override beats the heuristic forever: it lives in `device.json`,
+/// survives uninstalling with "delete data", deleting the save state and stopping
+/// tracking the game, and every scan proposes that folder again with high
+/// confidence. That is why pointing one game at another's folder is not a
+/// recoverable mistake: it is permanent, nearly invisible poison. It happened in
+/// aug-2026 and left the folder's rightful game unable to track it.
 ///
-/// Dos árbitros, porque el veneno se puede cuajar antes de que nadie rastree
-/// nada: las filas ya rastreadas y el informe de detección en caché.
+/// Two arbiters, because the poison can set before anybody tracks anything: the
+/// already-tracked rows, and the cached detection report.
 pub fn manual_override_conflict(
     state: &CliState,
     report: Option<&DetectionReport>,
@@ -933,13 +923,13 @@ pub fn manual_override_conflict(
         .map(|g| g.slug.clone())
 }
 
-/// Filas locales que un alta deja obsoletas: las que cubren el mismo (juego,
-/// etiqueta) o **la misma carpeta** con un id distinto del que se va a insertar.
+/// Local rows an add leaves obsolete: the ones covering the same (game, label) or
+/// the same folder under an id different from the one about to be inserted.
 ///
-/// Existe porque en self-hosted el `save_id` lo pone el servidor, no el cliente.
-/// Si su fila para este (juego, etiqueta) ya no es la que esta máquina tenía
-/// mapeada —porque el servidor se reinstaló y repartió ids nuevos— insertar sin
-/// más deja DOS filas sobre la misma carpeta.
+/// It exists because on self-hosted the `save_id` is set by the server, not the
+/// client. If its row for this (game, label) is no longer the one this machine had
+/// mapped, because the server was reinstalled and handed out new ids, inserting
+/// without more leaves TWO rows over the same folder.
 fn superseded_rows(
     state: &CliState,
     slug: &str,
@@ -965,14 +955,14 @@ fn superseded_rows(
         .collect()
 }
 
-/// Filas locales que el servidor no conoce, en self-hosted.
+/// Local rows the server does not know about, on self-hosted.
 ///
-/// Ahí el `save_id` es del servidor: un id que no está en su lista no se puede
-/// subir (todo snapshot contra él es un 404) y la biblioteca —que pinta lo que
-/// lista el servidor— tampoco lo enseña, así que el usuario no puede ni verlo ni
-/// quitarlo. Pero sigue contando para «una carpeta, un juego», de modo que
-/// bloquea para siempre volver a dar de alta esa carpeta. Podarlas es la única
-/// salida sin tocar ficheros a mano.
+/// There the `save_id` is the server's: an id not on its list cannot be uploaded
+/// (every snapshot against it is a 404) and the library, which draws what the server
+/// lists, does not show it either, so the user can neither see it nor remove it. But
+/// it still counts for "one folder, one game", so it blocks that folder from ever
+/// being added again. Pruning them is the only way out short of editing files by
+/// hand.
 fn rows_unknown_to_server(state: &CliState, known: &HashSet<String>) -> Vec<String> {
     let mut stale: Vec<String> = state
         .saves
@@ -1034,8 +1024,8 @@ pub const ERR_SLOT_OCCUPIED: &str = "slot_occupied";
 /// aug-2026 with Factorio, which ended up backing up a loose desktop folder
 /// while the game's real folder stopped uploading with nothing to say so.
 ///
-/// Re-pointing is still legitimate — a game reinstalled on another drive does
-/// move its folder — so this does not forbid it: it takes it out of silence.
+/// Re-pointing is still legitimate, since a game reinstalled on another drive does
+/// move its folder, so this does not forbid it: it takes it out of silence.
 /// The error carries the folder that is there now and the lowest free number,
 /// which is all the UI needs to ask "do I move slot 1, or is this your slot
 /// 2?".
@@ -1049,9 +1039,9 @@ fn occupied_slot(
     if repoint {
         return Ok(());
     }
-    // Por número y no por cadena: desde que la etiqueta lleva nombre, `"2"` y
+    // By number rather than by string: now that the label carries a name, `"2"` and
     // `"2 · Mods"` son la MISMA ranura, y comparar el texto dejaría colar una
-    // segunda carpeta en el 2 sólo por llamarse distinto.
+    // a second folder in slot 2 just because it is named differently.
     let want = slots::slot_of(label);
     let Some(current) = state
         .saves
@@ -1097,17 +1087,17 @@ fn conflicting_save<'a>(
         .map(|(_, st)| st)
 }
 
-/// Registra que el usuario quiere respaldar un juego/carpeta. Crea la fila en el
-/// server (cloud la materializa en el primer upload) y escribe el mapping local.
-/// Devuelve la fila + el `WatchedSave` a enganchar. La CLI (`track.rs`) y el
-/// desktop llaman aquí en vez de reimplementar el flujo.
-/// Reject a save whose slug is plumbing rather than a game — `user`, `desktop`,
+/// Records that the user wants a game or folder backed up. It creates the row on the
+/// server (cloud materialises it on the first upload) and writes the local mapping.
+/// It returns the row plus the `WatchedSave` to attach. The CLI (`track.rs`) and the
+/// desktop both call here rather than reimplementing the flow.
+/// Reject a save whose slug is plumbing rather than a game: `user`, `desktop`,
 /// `appdata` and friends (`GENERIC_IDENTITY_TOKENS`).
 ///
 /// **This is the only gate that can actually prevent one.** `CliState::cleanse`
 /// spots the same slugs, but it runs when the state is *loaded*: by then the
 /// save exists, it has been uploaded, and the server has a row for it. Fourteen
-/// such rows across thirteen accounts reached production that way — the
+/// such rows across thirteen accounts reached production that way, since the
 /// detection was never wrong, it was always too late. Refusing at the door is
 /// what keeps them out.
 ///
@@ -1121,7 +1111,7 @@ fn conflicting_save<'a>(
 fn reject_degenerate_slug(slug: &str) -> Result<()> {
     match hoard_core::ids::GameSlug::repair(slug) {
         hoard_core::ids::Repair::Quarantined { reason, .. } => anyhow::bail!(
-            "'{slug}' doesn't name a game ({reason}) — it looks like part of a folder path. \
+            "'{slug}' doesn't name a game ({reason}): it looks like part of a folder path. \
              Pick the game by name, or point Hoard at the save folder and let it identify it."
         ),
         _ => Ok(()),
@@ -1144,15 +1134,15 @@ pub async fn add_to_tracking(client: &ApiClient, args: AddGameArgs) -> Result<Tr
         .or_else(|| presets::builtin_preset_for(&args.game_slug).map(str::to_string));
 
     let local_path = PathBuf::from(&args.local_path);
-    // Re-añadir el MISMO (juego, etiqueta) es un flujo legítimo (re-track,
-    // re-onboarding, re-alta por detección) y reusa la fila existente más
-    // abajo; sólo tiene que fallar si la carpeta es de OTRO save.
+    // Re-adding the SAME (game, label) is a legitimate flow (re-track,
+    // re-onboarding, a re-add by detection) and reuses the existing row further
+    // down; it only has to fail when the folder belongs to ANOTHER save.
     //
-    // Y "el mismo juego" no se decide sólo por el slug: el mismo título sale
-    // `vrising` o `v-rising`, `dispatch` o `dispatch-2025`, según lo nombre el
-    // appid de Steam, el catálogo o el launcher. Si además de por (slug,
-    // etiqueta) se reconoce **la carpeta**, un re-alta bajo otro nombre reusa
-    // la fila en vez de estrellarse contra ella.
+    // And "the same game" is not decided by the slug alone: the same title comes out
+    // `vrising` or `v-rising`, `dispatch` or `dispatch-2025`, depending on whether
+    // the Steam appid, the catalogue or the launcher named it. If the FOLDER is
+    // recognised as well as the (slug, label), a re-add under another name reuses the
+    // row instead of crashing into it.
     if let Ok((state, _)) = CliState::load_default() {
         occupied_slot(&state, &args.game_slug, &label, &local_path, args.repoint)?;
     }
@@ -1176,9 +1166,9 @@ pub async fn add_to_tracking(client: &ApiClient, args: AddGameArgs) -> Result<Tr
     let except: Vec<&str> = reusing.iter().map(String::as_str).collect();
     validate_folder(&local_path, &except)?;
 
-    // Cloud no tiene `create_save` server-side: la fila se materializa en el
-    // primer upload (UPSERT en (user_id, game_slug, label)). El cliente minta un
-    // save_id local, guarda el path y empieza a vigilar.
+    // Cloud has no server-side `create_save`: the row materialises on the first
+    // upload (an UPSERT on (user_id, game_slug, label)). The client mints a local
+    // save_id, stores the path and starts watching.
     if client.is_cloud().await {
         let (mut cli_state, path) = CliState::load_default()?;
         // Reuse the row this game already has for the slot instead of minting
@@ -1203,7 +1193,7 @@ pub async fn add_to_tracking(client: &ApiClient, args: AddGameArgs) -> Result<Tr
                     }
             })
             .map(|(id, _)| id.clone());
-        // Nothing local, but the cloud may still hold this slot — and if it
+        // Nothing local, but the cloud may still hold this slot, and if it
         // does, that row is the save, not a new one. Local state alone is not
         // enough to answer this: untracking the folder empties it, so the
         // untrack-then-add-again that people reach for after any error found no
@@ -1280,8 +1270,9 @@ pub async fn add_to_tracking(client: &ApiClient, args: AddGameArgs) -> Result<Tr
     {
         Ok(s) => s,
         Err(e) => {
-            // 409 = ya existe la fila (game_slug,label): destrack + retrack.
-            // Recupera vinculando la existente para no perder el histórico.
+            // 409 means the (game_slug, label) row already exists: untrack and
+            // retrack. It recovers by linking the existing one so the history is
+            // not lost.
             let is_conflict = e
                 .downcast_ref::<crate::api::ApiError>()
                 .map(|api| matches!(api, crate::api::ApiError::Conflict(_)))
@@ -1298,14 +1289,15 @@ pub async fn add_to_tracking(client: &ApiClient, args: AddGameArgs) -> Result<Tr
     };
 
     let (mut cli_state, path) = CliState::load_default()?;
-    // El alta self-hosted es un REEMPLAZO, no una suma. La fila la identifica
-    // la carpeta, y el id lo pone el servidor: si reparte uno nuevo para la
-    // misma carpeta —reinstalar el servidor rehace la base y con ella los ids—
-    // insertar sin podar deja dos filas sobre los mismos bytes. La vieja ya no
-    // existe en el servidor (todo lo que suba da 404), no sale en la biblioteca
-    // y aun así hace saltar «una carpeta, un juego» en cada intento posterior:
-    // el juego queda encallado sin ninguna salida por la UI. Le pasó a un
-    // self-hoster en ago-2026 con ~40 juegos a la vez tras rehacer su stack.
+    // A self-hosted add is a REPLACEMENT, not an addition. The row is identified by
+    // the folder and the id is set by the server: if it hands out a new one for the
+    // same folder, which reinstalling the server does by rebuilding the database and
+    // its ids, inserting without pruning leaves two rows over the same bytes. The old
+    // one no longer exists on the server (everything it uploads 404s), does not show
+    // up in the library, and still trips "one folder, one game" on every later
+    // attempt: the game is stuck with no way out through the UI. It happened to a
+    // self-hoster in aug-2026 with about 40 games at once after rebuilding their
+    // stack.
     let new_id = save.id.to_string();
     for stale in superseded_rows(&cli_state, &args.game_slug, &label, &local_path, &new_id) {
         tracing::info!(
@@ -1353,9 +1345,9 @@ pub async fn add_to_tracking(client: &ApiClient, args: AddGameArgs) -> Result<Tr
             label: save.label,
             local_path: local_path.to_string_lossy().into_owned(),
             cloud_version_num: save.latest_version_num,
-            // Recién insertado en `CliState` con el cursor a cero: la cabeza
-            // del server puede existir ya (re-vínculo por 409) pero esta
-            // máquina todavía no tiene ninguna versión.
+            // Freshly inserted into `CliState` with its cursor at zero: the
+            // server's head may already exist (a re-link through a 409) but this
+            // machine has no version yet.
             local_version_num: None,
             last_backup_at: None,
             paused: false,
@@ -1369,33 +1361,33 @@ pub async fn add_to_tracking(client: &ApiClient, args: AddGameArgs) -> Result<Tr
     })
 }
 
-/// Adopta (vincula) un save cloud de otra máquina: asocia una carpeta local de
-/// ESTA máquina al `save_id` existente en vez de mintar uno nuevo. Deja el
-/// cursor de versión abierto para que el auto-restore on-add baje el último
-/// snapshot (sync). Núcleo del cross-device sync.
+/// Adopts (links) a cloud save from another machine: it associates a local folder on
+/// THIS machine with the existing `save_id` rather than minting a new one. It leaves
+/// the version cursor open so the on-add auto-restore pulls the latest snapshot. The
+/// core of cross-device sync.
 pub async fn adopt(client: &ApiClient, args: AdoptArgs) -> Result<TrackOutcome> {
     // Same door, same guard: adopting a cloud row is still how a bad slug
     // enters this machine's state.
     reject_degenerate_slug(&args.game_slug)?;
-    // La sesión debe existir (el caller ya construyó `client`); no hay llamada
-    // server aquí, la fila cloud ya existe.
+    // The session has to exist (the caller already built `client`); there is no
+    // server call here, since the cloud row already exists.
     let _ = client;
     let local_path = PathBuf::from(&args.local_path);
-    // Adoptar es reapuntar un save que ya existe en la nube: solaparse consigo
-    // mismo no es un conflicto de "una carpeta, un juego".
+    // Adopting is repointing a save that already exists in the cloud: overlapping
+    // with itself is not a "one folder, one game" conflict.
     //
-    // Y "consigo mismo" son DOS entradas, no una. Esta máquina pudo dar de alta
-    // el juego por su cuenta —detección, alta manual— mintándose un `save_id`
-    // local; la nube trae el suyo. Mismo juego, misma carpeta, ids distintos:
-    // excluyendo sólo el de la nube, la entrada local se bloquea a sí misma y el
-    // juego queda encallado para siempre. El escaneo automático falla en cada
-    // vuelta con «'furi' already tracks … — one folder, one game» (chocando
-    // contra sí mismo), el "+" manual falla igual, y reapuntar la carpeta desde
-    // la ficha también: no queda ni una vía en la UI para salir del estado.
-    // Y no basta con buscar por slug: el mismo juego llega con nombres distintos
-    // según la fuente (`vrising` por el appid de Steam, `v-rising` por el
-    // catálogo; `dispatch` y `dispatch-2025`). Lo que identifica a la fila que
-    // se está relevando es **la carpeta**, que es la unidad de la propia regla.
+    // And "with itself" is TWO entries, not one. This machine may have added the game
+    // on its own, through detection or a manual add, minting a local `save_id`; the
+    // cloud brings its own. Same game, same folder, different ids: excluding only the
+    // cloud's, the local entry blocks itself and the game is stuck forever. The
+    // automatic scan fails on every pass with "'furi' already tracks ..., one folder,
+    // one game" (colliding with itself), the manual "+" fails the same way, and
+    // repointing the folder from the card does too: there is not one route left in
+    // the UI to get out of that state. And searching by slug is not enough: the same
+    // game arrives under different names depending on the source (`vrising` from the
+    // Steam appid, `v-rising` from the catalogue; `dispatch` and `dispatch-2025`).
+    // What identifies the row being relieved is the FOLDER, which is the rule's own
+    // unit.
     let superseded = CliState::load_default().ok().and_then(|(state, _)| {
         state
             .saves
@@ -1418,10 +1410,10 @@ pub async fn adopt(client: &ApiClient, args: AdoptArgs) -> Result<TrackOutcome> 
     validate_folder(&local_path, &except)?;
 
     let (mut cli_state, path) = CliState::load_default()?;
-    // El relevo es un reemplazo, no una suma: dejar viva la entrada local
-    // dejaría dos watchers y dos historiales sobre los mismos bytes — justo lo
-    // que la regla de "una carpeta, un juego" existe para impedir— y el panel
-    // pintaría el juego dos veces, una de ellas sin versiones ni tamaño.
+    // The relief is a replacement, not an addition: leaving the local entry alive
+    // would leave two watchers and two histories over the same bytes, exactly what
+    // the "one folder, one game" rule exists to prevent, and the panel would draw the
+    // game twice, one of them with no versions and no size.
     if let Some(old) = superseded.as_deref() {
         cli_state.saves.remove(old);
     }
@@ -1483,8 +1475,8 @@ fn format_optional_time(t: Option<OffsetDateTime>) -> Option<String> {
     t.and_then(|x| x.format(&Rfc3339).ok())
 }
 
-/// Rellena `local_size_bytes` de cada fila no huérfana caminando su carpeta
-/// (solo metadata). Los huérfanos se quedan `None`.
+/// Fills in each non-orphan row's `local_size_bytes` by walking its folder (metadata
+/// only). Orphans are left `None`.
 fn fill_local_sizes(out: &mut [TrackedSave]) {
     for t in out.iter_mut() {
         if t.orphan || t.local_path.is_empty() {
@@ -1497,22 +1489,22 @@ fn fill_local_sizes(out: &mut [TrackedSave]) {
     }
 }
 
-/// Poda las filas ENVENENADAS por la correlación y las elimina del estado.
-/// Devuelve sus `save_id` (el caller persiste y las despega del agente vivo).
+/// Prunes the rows POISONED by correlation and removes them from the state. It
+/// returns their `save_id`s (the caller persists and detaches them from the live
+/// agent).
 ///
-/// El nombre de un descubrimiento de fase 4 sale del proceso que la correlación
-/// atribuyó a la carpeta, así que una atribución mala rastrea el save con el
-/// nombre de una app: el informe de jul-2026 traía `ChatGPT`, `opencode` y
-/// `code` apuntando los tres a la carpeta de Planet S. Como cada nombre da un
-/// slug distinto, la poda por (slug,label) no las ve.
+/// A phase-4 discovery's name comes from the process correlation attributed to the
+/// folder, so a bad attribution tracks the save under an app's name: the jul-2026
+/// report had three different apps all pointing at one game's folder. Since each
+/// name gives a different slug, pruning by (slug, label) does not see them.
 ///
-/// Sólo cae lo DEMOSTRABLEMENTE basura: una fila cuyo slug no pasa
-/// [`crate::correlation::is_game_like`] **y** cuya carpeta ya está cubierta por
-/// otra fila que sí parece un juego. Podar sólo por nombre se comería juegos
-/// reales — la lista negra casa por substring, así que "Hoard" o
-/// "Reaper: Tale of a Pale Swordsman" darían falso positivo. Una fila
-/// envenenada que sea la ÚNICA de su carpeta se queda: ahí no hay a quién
-/// devolverle el save, y renombrarla o soltarla es decisión del usuario.
+/// Only the demonstrably junk falls: a row whose slug does not pass
+/// [`crate::correlation::is_game_like`] AND whose folder is already covered by
+/// another row that does look like a game. Pruning by name alone would eat real
+/// games, since the blacklist matches by substring, so "Hoard" or "Reaper: Tale of a
+/// Pale Swordsman" would be false positives. A poisoned row that is the ONLY one for
+/// its folder stays: there is nobody to give the save back to, and renaming it or
+/// letting it go is the user's decision.
 fn prune_poisoned_rows(state: &mut CliState) -> Vec<String> {
     let looks_like_game = |slug: &str| crate::correlation::is_game_like(slug, None);
     let rows: Vec<(String, String, PathBuf)> = state
@@ -1549,33 +1541,32 @@ fn prune_poisoned_rows(state: &mut CliState) -> Vec<String> {
     poisoned
 }
 
-/// Qué hacer con una carpeta recién detectada en un alta **automática**.
+/// What to do with a folder just detected on an automatic add.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutoTrack {
     /// Darla de alta ahora.
     Track,
-    /// Todavía no: no hay ni un fichero dentro y el servidor tampoco tiene nada
-    /// de este juego, así que no hay nada que respaldar ni que restaurar.
+    /// Not yet: there is not one file inside and the server has nothing for this
+    /// game either, so there is nothing to back up and nothing to restore.
     SkipEmpty,
 }
 
-/// Decide si una carpeta detectada se da de alta sola.
+/// Decides whether a detected folder gets added on its own.
 ///
-/// Rastrear una carpeta vacía no respalda nada: el motor la mira, no encuentra
-/// bytes y avisa «nothing to back up and this save has never had a snapshot» en
-/// cada vuelta (72 veces en tres días en el log de un self-hoster, ago-2026,
-/// por carpetas de Goldberg que el juego nunca llegó a usar). No se pierde
-/// nada por esperar: el escaneo automático vuelve a pasar cada pocos minutos y
-/// la da de alta en cuanto el juego escriba su primer fichero — que es también
-/// el primer instante en el que había algo que guardar.
+/// Tracking an empty folder backs nothing up: the engine looks at it, finds no bytes
+/// and warns "nothing to back up and this save has never had a snapshot" on every
+/// pass (72 times in three days in one self-hoster's log, aug-2026, over Goldberg
+/// folders the game never used). Nothing is lost by waiting: the automatic scan comes
+/// round again every few minutes and adds it the moment the game writes its first
+/// file, which is also the first instant there was anything to keep.
 ///
-/// **La excepción que importa**: si el servidor ya tiene ese save (otra máquina
-/// lo subió), la carpeta vacía es justo el caso bueno —máquina nueva esperando
-/// una restauración— y se da de alta igual.
+/// The exception that matters: if the server already has that save, because another
+/// machine uploaded it, the empty folder is exactly the good case, a new machine
+/// waiting for a restore, and it gets added anyway.
 ///
-/// Ante la duda, dar de alta: un error de lectura, un permiso, un árbol
-/// gigantesco… cualquier cosa que impida contestar cuenta como "tiene
-/// contenido". Este filtro sólo puede quitar ruido, nunca vigilancia.
+/// When in doubt, add: a read error, a permission, an enormous tree, anything that
+/// stops the question being answered counts as "it has content". This filter can only
+/// remove noise, never watching.
 pub fn auto_track_decision(path: &Path, has_server_row: bool) -> AutoTrack {
     if has_server_row || dir_has_any_file(path) {
         AutoTrack::Track
@@ -1584,9 +1575,9 @@ pub fn auto_track_decision(path: &Path, has_server_row: bool) -> AutoTrack {
     }
 }
 
-/// ¿Hay al menos un fichero en el árbol? Recorrido acotado —se para en el
-/// primero— y **fail-open**: si no se puede contestar (permisos, un árbol más
-/// grande que los topes) devuelve `true`.
+/// Is there at least one file in the tree? A bounded walk that stops at the first
+/// one, and fail-open: when it cannot answer (permissions, a tree bigger than the
+/// caps) it returns `true`.
 fn dir_has_any_file(root: &Path) -> bool {
     const MAX_ENTRIES: usize = 512;
     const MAX_DEPTH: usize = 6;
@@ -1622,8 +1613,8 @@ fn dir_has_any_file(root: &Path) -> bool {
     false
 }
 
-/// Una fila tal y como la lista el servidor, reducida a lo que decide la
-/// reconciliación. Existe para poder probar la decisión sin un servidor.
+/// A row exactly as the server lists it, reduced to what reconciliation decides on.
+/// It exists so the decision can be tested without a server.
 #[derive(Debug, Clone)]
 pub struct ServerRow {
     pub id: String,
@@ -1631,8 +1622,8 @@ pub struct ServerRow {
     pub label: String,
 }
 
-/// La decisión de [`reconcile_with_server`], sin IO: por cada fila local que el
-/// servidor no conoce, el id al que re-apuntarla — o `None` para tirarla.
+/// [`reconcile_with_server`]'s decision, with no IO: for each local row the server
+/// does not know, the id to repoint it at, or `None` to drop it.
 fn reconcile_plan(state: &CliState, server: &[ServerRow]) -> Vec<(String, Option<String>)> {
     let known: HashSet<String> = server.iter().map(|r| r.id.clone()).collect();
     let by_key: std::collections::HashMap<(&str, &str), &str> = server
@@ -1651,12 +1642,12 @@ fn reconcile_plan(state: &CliState, server: &[ServerRow]) -> Vec<(String, Option
         .collect()
 }
 
-/// Qué hizo [`reconcile_with_server`]. Sólo para el log: el estado ya está en
-/// disco cuando esto vuelve.
+/// What [`reconcile_with_server`] did. For the log only: the state is already on disk
+/// by the time this returns.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Reconciliation {
-    /// Filas re-apuntadas al `save_id` que el servidor tiene ahora para ese
-    /// mismo (juego, etiqueta).
+    /// Rows repointed at the `save_id` the server now has for that same (game,
+    /// label).
     pub relinked: usize,
     /// Filas tiradas: el servidor no sabe nada de ese juego.
     pub dropped: usize,
@@ -1668,23 +1659,23 @@ impl Reconciliation {
     }
 }
 
-/// Cura el estado local contra lo que el servidor dice tener. **Self-hosted
-/// only**; en Cloud el `save_id` lo minta el cliente y no puede quedar huérfano
-/// así, y su duplicado ya lo poda `list_tracked` con el manifiesto.
+/// Heals the local state against what the server says it has. Self-hosted only; on
+/// Cloud the `save_id` is minted by the client and cannot be orphaned this way, and
+/// its duplicates are already pruned by `list_tracked` using the manifest.
 ///
-/// Rehacer el servidor —perder la base, migrar el stack, empezar de cero— le
-/// reparte ids nuevos a los mismos juegos. Las filas locales se quedan
-/// apuntando a ids que ya no existen: cada subida devuelve 404 y se reintenta
-/// en bucle (1.353 intentos en tres días en el caso de ago-2026), el juego no
-/// se pinta en la biblioteca y encima bloquea su carpeta. Reconciliar al
-/// arrancar el motor significa que **actualizar la app repara la máquina sola**,
-/// sin que el usuario tenga que borrar nada a mano.
+/// Rebuilding the server (losing the database, migrating the stack, starting over)
+/// hands out new ids for the same games. The local rows are left pointing at ids
+/// that no longer exist: every upload returns 404 and retries in a loop (1,353
+/// attempts in three days in the aug-2026 case), the game is not drawn in the
+/// library, and on top of that it blocks its folder. Reconciling when the engine
+/// starts means updating the app repairs the machine on its own, with the user
+/// deleting nothing by hand.
 ///
-/// Re-apuntar y no borrar cuando se puede: si el servidor tiene una fila para
-/// el mismo (juego, etiqueta), la fila local se queda con su carpeta y sus
-/// ajustes y sólo cambia de id. Se reinician el cursor de versión y el
-/// `set_hash` porque son del servidor viejo: el nuevo empieza en cero, y con el
-/// `set_hash` puesto la primera subida se saltaría por "bytes sin cambios".
+/// Repoint rather than delete whenever it can: if the server has a row for the same
+/// (game, label), the local row keeps its folder and its settings and only changes
+/// id. The version cursor and the `set_hash` are reset because they belong to the
+/// old server: the new one starts at zero, and with the `set_hash` in place the
+/// first upload would be skipped as "bytes unchanged".
 pub async fn reconcile_with_server(client: &ApiClient) -> Result<Reconciliation> {
     if client.is_cloud().await {
         return Ok(Reconciliation::default());
@@ -1709,9 +1700,9 @@ pub async fn reconcile_with_server(client: &ApiClient) -> Result<Reconciliation>
         let slug = row.game_slug.clone();
         state.saves.remove(&id);
         match reissued {
-            // El servidor tiene el mismo juego con otro id: se releva la fila.
-            // Si el id nuevo ya estaba mapeado (el gemelo del alta), esto
-            // sobreescribe una sola vez y la vieja desaparece igual.
+            // The server has the same game under another id, so the row is
+            // relieved. If the new id was already mapped (the add's twin), this
+            // overwrites once and the old one disappears just the same.
             Some(new_id) => {
                 state.saves.insert(
                     new_id.clone(),
@@ -1742,10 +1733,10 @@ pub async fn reconcile_with_server(client: &ApiClient) -> Result<Reconciliation>
     Ok(out)
 }
 
-/// Lista los saves que Hoard rastrea para el usuario logueado. El server manda
-/// en `latest_version_num`; el path local sale de `CliState`. Devuelve también
-/// los `save_id` "perdedores" que se podaron (duplicados o envenenados) para que
-/// el frontend los despegue del agente vivo.
+/// Lists the saves Hoard tracks for the signed-in user. The server decides
+/// `latest_version_num`; the local path comes from `CliState`. It also returns the
+/// "losing" `save_id`s that were pruned (duplicates or poisoned ones) so the
+/// frontend can detach them from the live agent.
 pub async fn list_tracked(client: &ApiClient) -> Result<(Vec<TrackedSave>, Vec<String>)> {
     let mut detached: Vec<String> = Vec::new();
 
@@ -1753,16 +1744,17 @@ pub async fn list_tracked(client: &ApiClient) -> Result<(Vec<TrackedSave>, Vec<S
         let manifest = client.cloud_sync().await?;
         let (mut cli_state, path) = CliState::load_default()?;
 
-        // Self-heal de filas duplicadas: el cloud fuerza una por (slug,label).
-        // Ganador = con versión subida (en manifest), luego con carpeta local.
+        // Self-healing duplicate rows: cloud forces one per (slug, label). The
+        // winner is the one with an uploaded version (in the manifest), then the one
+        // with a local folder.
         let score = |id: &str, local: &Path| -> u8 {
             let in_manifest = manifest.saves.iter().any(|e| e.save_id == id) as u8;
             let exists = local.exists() as u8;
             in_manifest * 2 + exists
         };
-        // Recorrido ORDENADO por id: el de un HashMap no lo es, así que en un
-        // empate cada listado podaba una fila distinta y el churn no acababa
-        // nunca. Con el orden fijo gana siempre el id menor.
+        // Walked in id ORDER: a HashMap's is not, so on a tie every listing pruned
+        // a different row and the churn never ended. With a fixed order the lowest
+        // id always wins.
         let mut rows: Vec<(String, String, String, PathBuf)> = cli_state
             .saves
             .iter()
@@ -1806,11 +1798,11 @@ pub async fn list_tracked(client: &ApiClient) -> Result<(Vec<TrackedSave>, Vec<S
             detached = losers;
         }
 
-        // The server's label wins over the local copy. A rename travels through
-        // the row, so a machine that keeps its old copy uploads under the old
-        // label, the server UPSERTs on (user, slug, label) and the save forks in
-        // two — one row per machine, each with half the history. Renaming was
-        // rare enough for this to stay hidden; naming a folder makes it routine.
+        // The server's label wins over the local copy. A rename travels through the
+        // row, so a machine that keeps its old copy uploads under the old label, the
+        // server UPSERTs on (user, slug, label) and the save forks in two, one row
+        // per machine, each with half the history. Renaming was rare enough for this
+        // to stay hidden; naming a folder makes it routine.
         let mut relabelled = false;
         for (id, st) in cli_state.saves.iter_mut() {
             let Some(entry) = manifest.saves.iter().find(|e| &e.save_id == id) else {
@@ -1853,9 +1845,9 @@ pub async fn list_tracked(client: &ApiClient) -> Result<(Vec<TrackedSave>, Vec<S
             });
         }
 
-        // Visibilidad cross-device: un save subido desde OTRA máquina vive en el
-        // manifest sin fila local aquí. Emítelo como huérfano para que el usuario
-        // pueda adoptarlo/restaurarlo.
+        // Cross-device visibility: a save uploaded from ANOTHER machine lives in the
+        // manifest with no local row here. Emit it as an orphan so the user can adopt
+        // or restore it.
         for entry in &manifest.saves {
             if cli_state.saves.contains_key(&entry.save_id) {
                 continue;
@@ -1882,17 +1874,17 @@ pub async fn list_tracked(client: &ApiClient) -> Result<(Vec<TrackedSave>, Vec<S
         return Ok((out, detached));
     }
 
-    // Self-hosted: el server lista todas las filas; enriquecemos con CliState.
+    // Self-hosted: the server lists every row; we enrich with CliState.
     let saves = client.list_saves(None).await?;
     let (mut cli_state, state_path) = CliState::load_default()?;
-    // La poda por (slug,label) es cloud-only (el manifest es su árbitro), pero
-    // la de filas envenenadas no necesita nube: su árbitro es el nombre y la
-    // carpeta. Un self-hoster sufre el mismo churn de atribución.
+    // Pruning by (slug, label) is cloud-only (the manifest is its arbiter), but
+    // pruning poisoned rows needs no cloud: its arbiters are the name and the folder.
+    // A self-hoster suffers the same attribution churn.
     let mut pruned = prune_poisoned_rows(&mut cli_state);
-    // Y la poda que el cloud hacía con su manifiesto, aquí con la lista del
-    // servidor: un id que no está en ella es papel mojado —no se puede subir
-    // (404), no se pinta— pero sigue bloqueando su carpeta. La biblioteca es el
-    // único sitio por el que esa fila puede desaparecer sola.
+    // And the pruning cloud did with its manifest, here with the server's list: an id
+    // that is not on it is worthless, since it cannot be uploaded (404) and is not
+    // drawn, and it still blocks its folder. The library is the only place that row
+    // can disappear on its own.
     let known: HashSet<String> = saves.iter().map(|s| s.id.to_string()).collect();
     let unknown = rows_unknown_to_server(&cli_state, &known);
     if !unknown.is_empty() {
@@ -1952,11 +1944,11 @@ pub async fn list_tracked(client: &ApiClient) -> Result<(Vec<TrackedSave>, Vec<S
     Ok((out, detached))
 }
 
-/// Renombra la etiqueta de un save en server + estado local. Un 409 (otra save
-/// del mismo juego ya usa esa etiqueta) sube como `ApiError::Conflict` para que
-/// el frontend muestre el mensaje localizado. Devuelve la fila + el `WatchedSave`
-/// a re-enganchar (la etiqueta es parte de la clave de upload), o `None` si no
-/// hay path local.
+/// Renames a save's label on the server and in the local state. A 409 (another save
+/// of the same game already uses that label) comes up as `ApiError::Conflict` so the
+/// frontend can show the localised message. It returns the row plus the
+/// `WatchedSave` to re-attach (the label is part of the upload key), or `None` when
+/// there is no local path.
 /// Name (or un-name) a folder without touching its number.
 ///
 /// The number is what pairs this folder with the same one on the other
@@ -1981,9 +1973,9 @@ pub async fn set_slot_name(
     rename_label(client, save_id, &label).await
 }
 
-/// Error the UI turns into "that number is already in use". Carries the number
-/// so it can offer linking to it instead — on the machine that owns it, that is
-/// a different folder; in the cloud, it is the folder to pair with.
+/// The error the UI turns into "that number is already in use". It carries the number
+/// so it can offer linking to it instead: on the machine that owns it that is a
+/// different folder; in the cloud, it is the folder to pair with.
 pub const ERR_SLOT_TAKEN: &str = "slot_taken";
 
 /// Move a folder to another number, keeping whatever name it has.
@@ -1991,7 +1983,7 @@ pub const ERR_SLOT_TAKEN: &str = "slot_taken";
 /// Renumbering is how a folder that came out as 3 on the second machine gets
 /// paired with the 2 on the first. It only works while the target number is
 /// free: if the other machine already has a 2, the row for it already exists in
-/// the cloud and *that* row is the one to join — a rename would only collide
+/// the cloud and *that* row is the one to join: a rename would only collide
 /// with it (409 on `UNIQUE(user_id, game_slug, label)`), and joining it means
 /// adopting its history, not renaming into its name.
 pub async fn renumber(
@@ -2088,13 +2080,13 @@ pub async fn rename_label(
     ))
 }
 
-/// Deja de rastrear un save: borra la fila local pero deja los datos del server
-/// intactos. El frontend despega el save del agente vivo.
+/// Stops tracking a save: it deletes the local row and leaves the server's data
+/// intact. The frontend detaches the save from the live agent.
 pub fn untrack(save_id: &str) -> Result<()> {
     let (mut cli_state, path) = CliState::load_default()?;
     let dropped = cli_state.saves.remove(save_id);
     cli_state.save(&path)?;
-    // Una desmentida: el pipeline propuso esta carpeta y el usuario la echó.
+    // A contradiction: the pipeline proposed this folder and the user threw it out.
     if let Some(save) = dropped {
         crate::telemetry::untracked(&save.game_slug, &save.local_path);
     }
@@ -2105,7 +2097,7 @@ pub fn untrack(save_id: &str) -> Result<()> {
 ///
 /// Blacklisting used to be detection-only: the slug was filtered out of every
 /// future scan while the save it named went on being watched, synced and
-/// counted as playing. That reads as a bug from the outside — a user whose
+/// counted as playing. That reads as a bug from the outside: a user whose
 /// library had a bogus game blacklisted it, saw nothing change, and had no way
 /// to tell that the row doing the damage was a *tracked* one, not a detected
 /// one. So the blacklist now means what people take it to mean: this game is
@@ -2158,7 +2150,7 @@ fn ignore_slug_in_state(
 }
 
 /// Undo [`ignore_slug`]: the next scan offers the game again. The saves it
-/// untracked are **not** restored — re-tracking is the user's call, and the
+/// untracked are **not** restored, since re-tracking is the user's call, and the
 /// Library offers the game as soon as detection sees it.
 pub fn unignore_slug(slug: &str) -> Result<()> {
     let slug = slug.trim();
@@ -2171,9 +2163,9 @@ pub fn unignore_slug(slug: &str) -> Result<()> {
     Ok(())
 }
 
-/// Borrado duro: elimina fila + todos los snapshots del server Y purga el estado
-/// local, incluido el override `manual_paths` (para que un re-add no rebote a la
-/// carpeta mala). El frontend despega el save del agente vivo.
+/// A hard delete: it removes the row and every snapshot from the server AND purges
+/// the local state, the `manual_paths` override included, so a re-add does not bounce
+/// back to the bad folder. The frontend detaches the save from the live agent.
 pub async fn delete_completely(client: &ApiClient, save_id: &str) -> Result<()> {
     client.delete_save(save_id).await?;
     let (mut cli_state, path) = CliState::load_default()?;
@@ -2188,24 +2180,24 @@ pub async fn delete_completely(client: &ApiClient, save_id: &str) -> Result<()> 
 
 // ---- ajustes por-save (pausa / preset / ruta) ------------------------------
 
-/// Qué debe hacer el frontend con el agente EN VIVO tras un cambio de ajustes.
-/// La lógica de negocio (mutar estado) ya la hizo la función; el desktop traduce
-/// esto a attach/detach sobre su agente in-process. La CLI lo ignora: un daemon
-/// en otro proceso recoge el cambio en su próximo arranque.
+/// What the frontend should do with the LIVE agent after a settings change. The
+/// business logic (mutating the state) has already been done by the function; the
+/// desktop translates this into an attach or detach on its in-process agent. The CLI
+/// ignores it: a daemon in another process picks the change up on its next start.
 pub enum LiveReseat {
     /// Deja de vigilar este `save_id`.
     Detach(String),
-    /// Empieza a vigilar con este `WatchedSave` (sin detach previo).
+    /// Start watching with this `WatchedSave` (with no detach first).
     Attach(Box<WatchedSave>),
-    /// Despega `save_id` y vuelve a engancharlo con el `WatchedSave` fresco.
+    /// Detach `save_id` and re-attach it with the fresh `WatchedSave`.
     Reseat(String, Box<WatchedSave>),
-    /// Nada que hacer (p.ej. save pausado: el agente no lo vigila igualmente).
+    /// Nothing to do (a paused save, say: the agent is not watching it anyway).
     Noop,
 }
 
-/// Construye el `WatchedSave` fresco desde un snapshot de `SaveState` (reseat
-/// tras editar ajustes). Arrastra los process pins persistidos para que un
-/// emulador re-enganchado conserve su detección sin esperar un reinicio.
+/// Builds a fresh `WatchedSave` from a `SaveState` snapshot (a reseat after editing
+/// settings). It carries the persisted process pins over so a re-attached emulator
+/// keeps its detection without waiting for a restart.
 fn watched_from_snapshot(save_id: String, s: &SaveState) -> WatchedSave {
     watched_save_from(
         save_id,
@@ -2220,14 +2212,14 @@ fn watched_from_snapshot(save_id: String, s: &SaveState) -> WatchedSave {
     )
 }
 
-/// Pausa/reanuda la vigilancia de un save. Pausado sigue en la lista pero el
-/// agente no lo toca (reorganizar ficheros, modding sin backups ruidosos).
+/// Pauses or resumes watching a save. A paused one stays in the list but the agent
+/// does not touch it (reorganising files, modding without noisy backups).
 pub fn set_paused(save_id: &str, paused: bool) -> Result<LiveReseat> {
     let (mut cli_state, path) = CliState::load_default()?;
     let entry = cli_state
         .saves
         .get_mut(save_id)
-        .context("That save isn't tracked on this machine — nothing to pause.")?;
+        .context("That save isn't tracked on this machine, so there is nothing to pause.")?;
     entry.paused = paused;
     let snapshot = entry.clone();
     cli_state.save(&path)?;
@@ -2242,9 +2234,9 @@ pub fn set_paused(save_id: &str, paused: bool) -> Result<LiveReseat> {
     })
 }
 
-/// Fija (o limpia) el preset de sync de un save. `None`/`"standard"` limpia el
-/// override a los defaults globales. Reasienta el agente para aplicar la nueva
-/// política (intervalo, debounce, restore) en el acto — salvo si está pausado.
+/// Pins, or clears, a save's sync preset. `None` or `"standard"` clears the override
+/// back to the global defaults. It reseats the agent so the new policy (interval,
+/// debounce, restore) applies at once, unless it is paused.
 pub fn set_preset(save_id: &str, preset: Option<String>) -> Result<LiveReseat> {
     // Normaliza: vacío / "standard" = sin override.
     let preset = preset.filter(|p| !p.is_empty() && p != presets::PRESET_STANDARD);
@@ -2273,12 +2265,11 @@ pub fn set_preset(save_id: &str, preset: Option<String>) -> Result<LiveReseat> {
     })
 }
 
-/// Decide, para este juego, si un restore escribe su config
-/// (`FileClass::DeviceLocal`) o la deja pasar.
+/// Decides, for this game, whether a restore writes its config
+/// (`FileClass::DeviceLocal`) or lets it through.
 ///
-/// `None` devuelve el save a "sin decidir": no se escribe y el diálogo de
-/// restore vuelve a preguntar cada vez. Ver
-/// [`crate::state::SaveState::allow_device_local`].
+/// `None` puts the save back to "undecided": it is not written and the restore dialog
+/// asks again every time. See [`crate::state::SaveState::allow_device_local`].
 /// Writes the decision onto every row of `slug` and returns one **live**
 /// (non-paused) row to reseat, if there is one.
 ///
@@ -2286,7 +2277,7 @@ pub fn set_preset(save_id: &str, preset: Option<String>) -> Result<LiveReseat> {
 /// `CliState::load_default()`, which reads the user's real paths and takes no
 /// override: without this seam there is no way to test the per-game spread.
 ///
-/// A paused save is not in the agent, so there is nothing to reseat — it
+/// A paused save is not in the agent, so there is nothing to reseat: it
 /// re-reads the state when it resumes, same as `set_preset`. One live row is
 /// enough to make the engine reload all of them.
 fn spread_allow_device_local(
@@ -2323,14 +2314,14 @@ pub fn set_allow_device_local(save_id: &str, allow: Option<bool>) -> Result<Live
         // `state.json`. That is not user error: this machine simply has no
         // folder to apply the decision to, and the message says so.
         .context(
-            "This game isn't tracked on this machine — link a local folder before choosing this.",
+            "This game isn't tracked on this machine; link a local folder before choosing this.",
         )?
         .game_slug
         .clone();
 
     // The decision belongs to **the game**, not the folder. The question it
-    // answers — does this game's config carry this monitor's resolution, or does
-    // it carry the save inside? — has one answer per title, so a game with two
+    // answers (does this game's config carry this monitor's resolution, or does
+    // it carry the save inside?) has one answer per title, so a game with two
     // tracked folders cannot have two. Answering it on one and leaving the other
     // asking would be the same old trap: the user believes they already said it,
     // and the second folder's automatic restore writes them nothing.
@@ -2350,9 +2341,9 @@ pub fn set_allow_device_local(save_id: &str, allow: Option<bool>) -> Result<Live
     })
 }
 
-/// Cambia la ruta local de un save (el usuario movió la carpeta: reinstaló en
-/// otro disco, pasó de Steam a GOG…). Crea la carpeta si falta. Reasienta el
-/// watcher a la nueva ubicación.
+/// Changes a save's local path (the user moved the folder: reinstalled on another
+/// disk, went from Steam to GOG). It creates the folder when missing and reseats the
+/// watcher on the new location.
 pub fn set_local_path(save_id: &str, new_path: &str) -> Result<LiveReseat> {
     let path_buf = PathBuf::from(new_path.trim());
     if path_buf.as_os_str().is_empty() {
@@ -2369,13 +2360,14 @@ pub fn set_local_path(save_id: &str, new_path: &str) -> Result<LiveReseat> {
     let snapshot = entry.clone();
     cli_state.save(&path)?;
 
-    // De dónde a dónde: la desmentida que más enseña, porque trae la respuesta
-    // buena además del fallo. Sólo cuenta si la ruta cambió de verdad.
+    // From where to where: the contradiction that teaches the most, because it
+    // carries the right answer as well as the mistake. It only counts when the path
+    // really changed.
     if previous != snapshot.local_path {
         crate::telemetry::repointed(&snapshot.game_slug, &previous, &snapshot.local_path);
     }
 
-    // Siempre despega; sólo reengancha si no está pausado.
+    // Always detach; only re-attach when it is not paused.
     Ok(if snapshot.paused {
         LiveReseat::Detach(save_id.to_string())
     } else {
@@ -2421,8 +2413,8 @@ mod tests {
     // ---- one folder, one watcher --------------------------------------
 
     /// The bug this exists for (ago-2026, Jurassic World Evolution 3): the same
-    /// folder tracked under two save ids — the local one and the id the server
-    /// calls canonical for that `(slug, label)` — armed two watchers 70 ms
+    /// folder tracked under two save ids, the local one and the id the server
+    /// calls canonical for that `(slug, label)`, armed two watchers 70 ms
     /// apart and uploaded the same 5.7 MB twice on every change. The commit
     /// path already redirected both to the canonical id, so nothing looked
     /// broken on the server; the cost was all on the client.
@@ -2448,7 +2440,7 @@ mod tests {
 
     /// The other half of the same rule: a game deliberately tracked in two
     /// different folders is a slot, not a duplicate. This is what the fix must
-    /// not break — the report that found the bug came from a machine that has
+    /// not break: the report that found the bug came from a machine that has
     /// exactly this (Factorio in `Desktop/saves` and in `AppData/Factorio`).
     #[test]
     fn the_same_game_in_two_folders_keeps_both_rows() {
@@ -2484,7 +2476,7 @@ mod tests {
 
     /// A `HashMap`'s iteration order is not stable, so without an explicit
     /// ordering the surviving twin would differ between two passes over the
-    /// same file — and the engine would drop and re-arm a different watcher on
+    /// same file, and the engine would drop and re-arm a different watcher on
     /// every reload. Ordering by `save_id` after the set-hash preference makes
     /// the answer the same every time.
     #[test]
@@ -2503,7 +2495,7 @@ mod tests {
         assert_eq!(winner(["aaa", "bbb", "ccc"]), "aaa");
     }
 
-    /// A paused row is not watched, so it must not be the twin that survives —
+    /// A paused row is not watched, so it must not be the twin that survives:
     /// otherwise pausing one of two rows on a folder would stop the folder
     /// being backed up at all.
     #[test]
@@ -2521,7 +2513,7 @@ mod tests {
         assert_eq!(kept[0].0, "zzz");
     }
 
-    /// `state.json` really does carry both separators in one path — the rows
+    /// `state.json` really does carry both separators in one path; the rows
     /// this machine wrote include `C:\Users\u\Documents\My Games/Fallout4/Saves`.
     /// On Windows that is one directory spelled two ways and must key the same.
     #[test]
@@ -2541,8 +2533,8 @@ mod tests {
 
     /// A save parked in the server-side black box refuses every upload with a
     /// 403 by design. Watching one bought nothing and cost a full re-hash of
-    /// its folder on every reconcile — 30 of them in two days on the machine
-    /// that reported this — plus a "Backing up…" in the feed that never
+    /// its folder on every reconcile (30 of them in two days on the machine
+    /// that reported this) plus a "Backing up…" in the feed that never
     /// resolved, because the archived branch is the one terminal outcome that
     /// emits no event. Treated like `paused`: not watched at all.
     #[test]
@@ -2564,7 +2556,7 @@ mod tests {
     }
 
     /// The engine asks the server which saves are frozen, and that question can
-    /// go unanswered — no network, a self-hosted server with no black box, a
+    /// go unanswered: no network, a self-hosted server with no black box, a
     /// version that predates the endpoint. All of those mean "I don't know of
     /// any", never "watch nothing": of the two possible mistakes, watching too
     /// much is the cheap one, since a frozen save that slips through is stopped
@@ -2585,7 +2577,7 @@ mod tests {
     /// until aug-2026 it only filtered future scans: the row already tracked
     /// under that slug went on being watched, so the user saw nothing change
     /// (report: a phantom game that kept claiming to be running). Now it
-    /// untracks too — and takes the manual override with it, or a re-add would
+    /// untracks too, and takes the manual override with it, or a re-add would
     /// bounce straight back to the rejected folder.
     #[test]
     fn blacklisting_a_slug_also_stops_tracking_it() {
@@ -2667,7 +2659,7 @@ mod tests {
 
     /// Naming a folder must not mint a second save for it. The local row said
     /// `"2 - shit"`, the add composed `"2 · shit2"`, and matching on the text
-    /// meant no row matched — so out came a fresh uuid and a third cloud row for
+    /// meant no row matched, so out came a fresh uuid and a third cloud row for
     /// one folder, aug-2026.
     #[test]
     fn a_renamed_slot_is_still_the_same_slot() {
@@ -2715,7 +2707,7 @@ mod tests {
             .expect("slot 2 is free");
     }
 
-    /// Un informe de detección con un solo juego en una sola carpeta.
+    /// A detection report with one game in one folder.
     fn report_with(slug: &str, path: &str) -> DetectionReport {
         DetectionReport {
             games: vec![DetectedGame {
@@ -2739,12 +2731,12 @@ mod tests {
         }
     }
 
-    /// El informe de ago-2026 (Furi, Windows + Steam Deck): la máquina ya tenía
-    /// el juego dado de alta con un id local y la nube traía el suyo. Adoptar
-    /// excluía sólo el id de la nube, así que la entrada local **chocaba contra
-    /// sí misma** y saltaba «'furi' already tracks … — one folder, one game».
-    /// El escaneo automático lo reintentaba en cada vuelta, el "+" manual daba
-    /// lo mismo y reapuntar la carpeta también: cero salidas por la UI.
+    /// The aug-2026 report (a game on Windows plus a Steam Deck): the machine
+    /// already had the game added under a local id and the cloud brought its own.
+    /// Adopting excluded only the cloud's id, so the local entry collided with
+    /// itself and raised "already tracks ..., one folder, one game". The automatic
+    /// scan retried it every pass, the manual "+" did the same, and repointing the
+    /// folder too: not one way out through the UI.
     #[test]
     fn adopting_a_cloud_save_doesnt_collide_with_this_machines_own_row() {
         let folder = r"C:\Users\angel\AppData\LocalLow\TheGameBakers\Furi";
@@ -2753,7 +2745,7 @@ mod tests {
             .saves
             .insert("local-minted-id".into(), save_state("furi", folder));
 
-        // Excluyendo sólo el id de la nube: la fila local se interpone.
+        // Excluding only the cloud's id: the local row gets in the way.
         let blocked = conflicting_save(&state, &PathBuf::from(folder), &["cloud-id"]);
         assert_eq!(
             blocked.map(|s| s.game_slug.as_str()),
@@ -2761,7 +2753,8 @@ mod tests {
             "reproduce el bug: sin relevar la fila local, choca consigo misma"
         );
 
-        // Excluyendo ambas —lo que hace `adopt` ahora— la adopción pasa.
+        // Excluding both, which is what `adopt` does now, the adoption goes
+        // through.
         assert!(
             conflicting_save(
                 &state,
@@ -2772,8 +2765,8 @@ mod tests {
             "el mismo juego en la misma carpeta no es un conflicto consigo mismo"
         );
 
-        // Y la regla que de verdad importa sigue en pie: OTRO juego sobre la
-        // misma carpeta se rechaza igual.
+        // And the rule that really matters still stands: ANOTHER game over the same
+        // folder is still rejected.
         state
             .saves
             .insert("otro".into(), save_state("skyrim", folder));
@@ -2789,11 +2782,11 @@ mod tests {
         );
     }
 
-    /// El informe self-hosted de ago-2026: rehizo el servidor de cero y desde
-    /// entonces el escaneo fallaba para ~40 juegos con «ya la rastrea», siempre
-    /// contra el MISMO slug y la MISMA carpeta —o sea, contra su propio gemelo—.
-    /// El id lo pone el servidor y la base nueva repartió otros; el alta
-    /// insertaba el nuevo sin quitar el viejo.
+    /// The aug-2026 self-hosted report: they rebuilt the server from scratch and
+    /// from then on the scan failed for about 40 games with "already tracks it",
+    /// always against the SAME slug and the SAME folder, meaning against its own
+    /// twin. The id is set by the server and the new database handed out different
+    /// ones; the add inserted the new one without removing the old.
     #[test]
     fn a_self_hosted_add_supersedes_the_row_it_replaces() {
         let folder = r"D:\SteamUnlock\userdata\866681748\3768760\remote";
@@ -2815,7 +2808,7 @@ mod tests {
             "la fila vieja se releva; si no, bloquea su propia carpeta para siempre"
         );
 
-        // Y no se lleva por delante a nadie más: otro juego, otra carpeta.
+        // And it takes nobody else with it: another game, another folder.
         state.saves.insert(
             "otro".into(),
             save_state("thymesia", r"C:\Users\angel\AppData\Roaming\FLT\1343240"),
@@ -2829,7 +2822,7 @@ mod tests {
         );
         assert_eq!(relevadas, vec!["id-de-la-base-vieja".to_string()]);
 
-        // Re-alta idéntica (mismo id): no hay nada que relevar.
+        // An identical re-add (same id): there is nothing to relieve.
         assert!(superseded_rows(
             &state,
             "007-first-light",
@@ -2840,16 +2833,15 @@ mod tests {
         .is_empty());
     }
 
-    /// El caso de ago-2026 en la máquina del autor: `horizon-forbidden-west`
-    /// quedó apuntado a `…\Saved Games\Surviving Mars Relaunched` —la carpeta
-    /// madre de los saves de Surviving Mars—, así que Horizon vigilaba bytes
-    /// ajenos y Surviving Mars no podía rastrear los suyos. El override manual
-    /// no lo borra ni desinstalar con "borrar datos": vive en `device.json`.
+    /// The aug-2026 case on the author's own machine: one game ended up pointed at
+    /// another game's save folder, so the first watched somebody else's bytes and
+    /// the second could not track its own. The manual override is not deleted by
+    /// uninstalling with "delete data": it lives in `device.json`.
     #[test]
     fn a_manual_override_cant_steal_another_games_folder() {
-        // Rutas POSIX aunque el caso real fuese en Windows: en un runner Linux
-        // una ruta con `\` es UN componente, así que el anidamiento —que es lo
-        // que se está probando— no existiría. La regla es la misma en ambos.
+        // POSIX paths even though the real case was on Windows: on a Linux runner a
+        // path with `\` is ONE component, so the nesting, which is what is being
+        // tested, would not exist. The rule is the same on both.
         let madre = "/home/u/Saved Games/Surviving Mars Relaunched";
         let hija = "/home/u/Saved Games/Surviving Mars Relaunched/76561197960271";
         let state = CliState::default();
@@ -2867,8 +2859,8 @@ mod tests {
             "la carpeta madre contiene los saves de otro juego: no es de Horizon"
         );
 
-        // Reapuntar el juego a SU propia carpeta sigue siendo legítimo —es para
-        // lo que existe el override— y una carpeta que no reclama nadie también.
+        // Repointing the game at ITS own folder is still legitimate, which is what
+        // the override is for, and so is a folder nobody claims.
         assert!(manual_override_conflict(
             &state,
             Some(&report),
@@ -2885,8 +2877,8 @@ mod tests {
         .is_none());
     }
 
-    /// El otro árbitro: una fila ya rastreada, sin necesidad de caché de
-    /// detección (recién borrada, primer arranque…).
+    /// The other arbiter: an already-tracked row, with no need for a detection cache
+    /// (freshly deleted, a first start).
     #[test]
     fn a_manual_override_respects_whats_already_tracked() {
         let folder = "/home/u/Saved Games/Planet S/saves";
@@ -2905,66 +2897,66 @@ mod tests {
         );
     }
 
-    /// El alta automática espera a que haya algo que guardar. Los cuatro casos
-    /// que decide, sobre carpetas de verdad.
+    /// The automatic add waits until there is something to keep. The four cases it
+    /// decides, over real folders.
     #[test]
     fn empty_folders_wait_but_nothing_else_does() {
         let tmp = tempfile::tempdir().unwrap();
 
-        // 1. Vacía del todo: espera.
+        // 1. Completely empty: wait.
         let vacia = tmp.path().join("magicka-2");
         std::fs::create_dir_all(&vacia).unwrap();
         assert_eq!(auto_track_decision(&vacia, false), AutoTrack::SkipEmpty);
 
-        // 2. Vacía pero el servidor ya tiene el juego: es una máquina nueva
-        //    esperando restaurar. Se da de alta igual — el caso que NO se puede
-        //    romper por quitar ruido.
+        // 2. Empty but the server already has the game: it is a new machine waiting
+        //    to restore. It gets added anyway, the case that must NOT be broken by
+        //    removing noise.
         assert_eq!(auto_track_decision(&vacia, true), AutoTrack::Track);
 
-        // 3. Con un fichero dentro: se da de alta.
+        // 3. With a file inside: it gets added.
         let conmigo = tmp.path().join("celeste");
         std::fs::create_dir_all(&conmigo).unwrap();
         std::fs::write(conmigo.join("save0.celeste"), b"x").unwrap();
         assert_eq!(auto_track_decision(&conmigo, false), AutoTrack::Track);
 
-        // 4. El fichero está en un subdirectorio —la forma real de Goldberg,
-        //    `<appid>/remote/…`—: cuenta igual.
+        // 4. The file is in a subdirectory, which is Goldberg's real shape
+        //    (`<appid>/remote/...`): it counts just the same.
         let anidada = tmp.path().join("962130");
         std::fs::create_dir_all(anidada.join("remote")).unwrap();
         std::fs::write(anidada.join("remote/profile.dat"), b"x").unwrap();
         assert_eq!(auto_track_decision(&anidada, false), AutoTrack::Track);
 
-        // 5. Sólo subcarpetas vacías: sigue sin haber nada que guardar.
+        // 5. Only empty subfolders: still nothing to keep.
         let hueca = tmp.path().join("hueca");
         std::fs::create_dir_all(hueca.join("remote")).unwrap();
         assert_eq!(auto_track_decision(&hueca, false), AutoTrack::SkipEmpty);
 
-        // 6. Y lo que hace que esperar no sea perder: en cuanto el juego
-        //    escribe, el escaneo siguiente la da de alta. No se aplaza nada
-        //    durable, se re-decide cada vuelta.
+        // 6. And what makes waiting not the same as losing: the moment the game
+        //    writes, the next scan adds it. Nothing durable is deferred, it is
+        //    re-decided every pass.
         std::fs::write(vacia.join("Player.sav"), b"x").unwrap();
         assert_eq!(auto_track_decision(&vacia, false), AutoTrack::Track);
     }
 
-    /// Ante la duda, dar de alta. Una carpeta que ni siquiera existe no se puede
-    /// leer, y ese `Err` no puede convertirse en "no la vigiles".
+    /// When in doubt, add. A folder that does not even exist cannot be read, and
+    /// that `Err` must not turn into "do not watch it".
     #[test]
     fn an_unreadable_folder_is_never_skipped() {
         let tmp = tempfile::tempdir().unwrap();
         let fantasma = tmp.path().join("no-existe");
         assert_eq!(auto_track_decision(&fantasma, false), AutoTrack::Track);
-
-        // Un save de fichero suelto tampoco es una carpeta vacía.
+        // A single-file save is not an empty folder either.
+        // A single-file save is not an empty folder either.
         let suelto = tmp.path().join("partida.sav");
         std::fs::write(&suelto, b"x").unwrap();
         assert_eq!(auto_track_decision(&suelto, false), AutoTrack::Track);
     }
 
-    /// La reparación automática: al arrancar el motor —o sea, al actualizar—
-    /// las filas con ids que el servidor ya no conoce se re-apuntan a la fila
-    /// que ese servidor tenga hoy para el mismo (juego, etiqueta), y sólo se
-    /// tiran las que no tienen equivalente. El caso real: doctorase rehízo su
-    /// servidor y furi acabó con DOS ids muertos sobre la misma carpeta.
+    /// The automatic repair: when the engine starts, which means when the app
+    /// updates, the rows with ids the server no longer knows are repointed at the
+    /// row that server has today for the same (game, label), and only the ones with
+    /// no equivalent are dropped. The real case: somebody rebuilt their server and
+    /// one game ended up with TWO dead ids over the same folder.
     #[test]
     fn a_reissued_server_row_relinks_instead_of_dropping() {
         let furi = "/home/angel/AppData/LocalLow/TheGameBakers/Furi";
@@ -2996,7 +2988,7 @@ mod tests {
             "las dos filas de furi convergen en el id nuevo; 007 no existe en el servidor y se tira"
         );
 
-        // Nada que hacer cuando el servidor conoce lo que hay.
+        // Nothing to do when the server knows what is there.
         let server = vec![ServerRow {
             id: "furi-viejo".into(),
             game_slug: "furi".into(),
@@ -3009,9 +3001,9 @@ mod tests {
         assert!(reconcile_plan(&solo_furi, &server).is_empty());
     }
 
-    /// La salida sola: en self-hosted el servidor es el registro, así que una
-    /// fila con un id que él no conoce sólo puede dar 404 al subir, no se pinta
-    /// en la biblioteca —y aun así bloquea su carpeta—. Se poda al listar.
+    /// The way out on its own: on self-hosted the server is the registry, so a row
+    /// with an id it does not know can only 404 on upload and is not drawn in the
+    /// library, and it still blocks its folder. It gets pruned on listing.
     #[test]
     fn rows_the_server_never_heard_of_are_pruned() {
         let mut state = CliState::default();
@@ -3028,21 +3020,21 @@ mod tests {
             vec!["fantasma".to_string()]
         );
 
-        // Servidor con todo: no se toca nada.
+        // A server with everything: nothing is touched.
         let known: std::collections::HashSet<String> = ["viva".to_string(), "fantasma".to_string()]
             .into_iter()
             .collect();
         assert!(rows_unknown_to_server(&state, &known).is_empty());
     }
 
-    /// Los otros dos del mismo informe, que el arreglo por slug NO cubría: el
-    /// mismo juego llega con nombres distintos según la fuente y la regla de
-    /// "una carpeta, un juego" los trataba como juegos distintos.
+    /// The other two from the same report, which the slug-based fix did NOT cover:
+    /// the same game arrives under different names depending on the source and the
+    /// "one folder, one game" rule treated them as different games.
     ///
-    ///   slug=dispatch  ↔ fila `dispatch-2025`  (…\Dispatch\Saved\SaveGames)
-    ///   slug=v-rising  ↔ fila `vrising`        (…\VRising\Saves)
+    ///   slug=dispatch  against row `dispatch-2025`  (...\Dispatch\Saved\SaveGames)
+    ///   slug=v-rising  against row `vrising`        (...\VRising\Saves)
     ///
-    /// La identidad de un save rastreado es la carpeta, no cómo se llame.
+    /// A tracked save's identity is the folder, not what it is called.
     #[test]
     fn the_same_folder_is_the_same_save_however_the_slug_is_spelled() {
         let dispatch = r"C:\Users\angel\AppData\Local\Dispatch\Saved\SaveGames";
@@ -3066,20 +3058,20 @@ mod tests {
             "…y aunque el slug lleve o no el guion"
         );
 
-        // Relevando esa fila, el alta bajo el nombre nuevo ya no choca.
+        // Relieving that row, the add under the new name no longer collides.
         assert!(
             conflicting_save(&state, &PathBuf::from(dispatch), &["row-dispatch"]).is_none(),
             "reusar la fila de la misma carpeta desbloquea el alta"
         );
 
-        // Pero una carpeta ANIDADA sigue siendo el conflicto legítimo: ahí no
-        // hay una fila que reusar, hay dos ámbitos distintos y hay que avisar.
+        // But a NESTED folder is still the legitimate conflict: there is no row to
+        // reuse there, there are two different scopes and it has to be reported.
         //
-        // Con ruta POSIX a propósito: `paths_overlap` compara por COMPONENTES, y
-        // en un runner Linux una ruta con backslashes es un único componente, así
-        // que dos rutas Windows nunca anidarían aquí. En producción no importa
-        // —esas rutas sólo existen en Windows, donde sí anidan— pero el test
-        // tiene que probar el anidamiento de verdad, no un artefacto del host.
+        // With a POSIX path on purpose: `paths_overlap` compares by COMPONENT, and
+        // on a Linux runner a path with backslashes is a single component, so two
+        // Windows paths would never nest here. It does not matter in production
+        // (those paths only exist on Windows, where they do nest) but the test has
+        // to exercise real nesting rather than an artefact of the host.
         let base = "/home/u/.local/share/Dispatch/Saved/SaveGames";
         let mut posix = CliState::default();
         posix
@@ -3098,9 +3090,9 @@ mod tests {
 
     #[test]
     fn prune_poisoned_rows_drops_app_named_rows_sharing_a_tracked_folder() {
-        // El informe de jul-2026: ChatGPT/opencode/code rastreados los tres
-        // sobre la carpeta de Planet S porque la atribución de la correlación
-        // cambió entre escaneos y cada nombre dio un slug nuevo.
+        // The jul-2026 report: three different apps all tracked over one game's
+        // folder because the correlation's attribution changed between scans and
+        // each name gave a new slug.
         let folder = "/home/u/Documentos/Saved Games/PlanetS";
         let mut state = CliState::default();
         state
@@ -3125,8 +3117,8 @@ mod tests {
 
     #[test]
     fn prune_poisoned_rows_keeps_rows_no_real_game_covers() {
-        // Sin un juego que cubra la carpeta no se poda: la lista negra casa por
-        // substring, así que podar sólo por nombre se comería el juego "Hoard".
+        // With no game covering the folder nothing is pruned: the blacklist matches
+        // by substring, so pruning by name alone would eat the game "Hoard".
         let mut state = CliState::default();
         state.saves.insert(
             "a".into(),
@@ -3176,7 +3168,7 @@ mod tests {
     }
 
     /// A paused save is not in the agent, so it must not be picked as the row to
-    /// reseat — but it still has to receive the flag, or resuming it would
+    /// reseat, but it still has to receive the flag, or resuming it would
     /// silently drop the decision.
     #[test]
     fn allowing_config_still_writes_paused_rows_but_reseats_a_live_one() {
@@ -3210,8 +3202,8 @@ mod tests {
 
     #[test]
     fn prune_poisoned_rows_covers_nested_folders_too() {
-        // La fila envenenada puede colgar de la del juego (el walk de fase 4
-        // emite subcarpetas), no sólo coincidir exactamente.
+        // The poisoned row can hang off the game's (the phase-4 walk emits
+        // subfolders) rather than only matching exactly.
         let mut state = CliState::default();
         state
             .saves
@@ -3275,14 +3267,14 @@ mod tests {
         assert_eq!(paths.len(), 2);
         assert_eq!(paths[0].path, PathBuf::from("/saves/sdv"));
         assert_eq!(paths[0].confidence, Confidence::High);
-        // El stub casi vacío de Steam Cloud NO hereda la High del juego.
+        // Steam Cloud's nearly empty stub does NOT inherit the game's High.
         assert_eq!(paths[1].confidence, Confidence::Low);
     }
 
     #[test]
     fn falls_back_to_rolled_up_confidence_on_old_caches() {
-        // Caché escrita por un build sin `path_confidences`: la ruta se
-        // conserva con la confianza del juego en vez de perderse.
+        // A cache written by a build with no `path_confidences`: the path is kept
+        // with the game's confidence rather than lost.
         let r = report(vec![game(
             "hollow-knight",
             &["/saves/hk"],
@@ -3325,7 +3317,7 @@ mod tests {
             &[Confidence::High, Confidence::Medium],
             Confidence::High,
         )]);
-        // Dos candidatas: elige el usuario, la card no ofrece atajo.
+        // Two candidates: the user chooses, and the card offers no shortcut.
         assert!(local_detection(Some(&two), "celeste", &[])
             .unambiguous()
             .is_none());
@@ -3336,8 +3328,8 @@ mod tests {
             .is_none());
     }
 
-    /// Mismo helper que [`game`] pero con nombre visible propio: el parecido se
-    /// mide contra el nombre, no solo contra el slug.
+    /// The same helper as [`game`] but with its own display name: the likeness is
+    /// measured against the name, not only against the slug.
     fn named(slug: &str, display: &str, paths: &[&str]) -> DetectedGame {
         DetectedGame {
             display_name: display.to_string(),
@@ -3345,10 +3337,10 @@ mod tests {
         }
     }
 
-    /// El caso del informe de jul-2026: la misma copia de un juego rastreada en
-    /// dos equipos que la nombran distinto. El slug de la nube no casa con
-    /// ninguno local, y antes de esto la única salida era el selector de
-    /// carpetas — cazar a mano una ruta que la detección ya tenía.
+    /// The jul-2026 report's case: the same copy of a game tracked on two machines
+    /// that name it differently. The cloud's slug matches none locally, and before
+    /// this the only way out was the folder picker, hunting by hand for a path
+    /// detection already had.
     #[test]
     fn offers_other_detected_games_when_the_slug_doesnt_match() {
         let c = cached(vec![
@@ -3358,7 +3350,7 @@ mod tests {
         let d = local_detection(Some(&c), "raccoin", &[]);
         // Nada bajo ese slug exacto…
         assert!(d.paths.is_empty());
-        // …pero sí un juego que se llama igual, y va primero.
+        // ...but a game with the same name does, and it goes first.
         assert_eq!(d.candidates.len(), 2);
         assert_eq!(d.candidates[0].game_slug, "raccoin-gog");
         assert_eq!(d.candidates[0].affinity, 2);
@@ -3369,8 +3361,8 @@ mod tests {
         assert_eq!(d.candidates[1].affinity, 0);
     }
 
-    /// Una carpeta que ya rastrea otro save no se ofrece: dos saves sobre una
-    /// misma carpeta es justo lo que el escaneo automático evita.
+    /// A folder another save already tracks is not offered: two saves over one
+    /// folder is exactly what the automatic scan avoids.
     #[test]
     fn candidates_skip_already_tracked_folders() {
         let c = cached(vec![
@@ -3382,8 +3374,8 @@ mod tests {
         assert_eq!(d.candidates[0].game_slug, "hades");
     }
 
-    /// Sin carpeta que ofrecer no hay candidata, y el propio slug no se
-    /// duplica: ese ya sale en `paths`.
+    /// With no folder to offer there is no candidate, and the slug itself is not
+    /// duplicated: that one already comes out in `paths`.
     #[test]
     fn candidates_exclude_pathless_games_and_the_slug_itself() {
         let c = cached(vec![
@@ -3395,9 +3387,9 @@ mod tests {
         assert!(d.candidates.is_empty());
     }
 
-    /// La contención pide 4 caracteres —si no, un nombre corto se declara
-    /// pariente de media biblioteca—, pero la IGUALDAD no mide longitud: «Ori»
-    /// es «ori» por corto que sea.
+    /// Containment demands four characters, or a short name declares itself related
+    /// to half the library, but EQUALITY does not measure length: "Ori" is "ori"
+    /// however short it is.
     #[test]
     fn short_names_match_exactly_but_never_by_containment() {
         let c = cached(vec![
@@ -3415,20 +3407,20 @@ mod tests {
 
     #[test]
     fn never_scanned_is_distinct_from_scanned_and_empty() {
-        // Sin caché: no lo sabemos ⇒ el frontend ofrece escanear.
+        // No cache: we do not know, so the frontend offers to scan.
         let cold = local_detection(None, "celeste", &[]);
         assert!(cold.scanned_at.is_none());
         assert!(cold.paths.is_empty());
 
-        // Con caché pero sin el slug: sí lo sabemos, y la respuesta es "nada".
+        // With a cache but without the slug: we do know, and the answer is "nothing".
         let scanned = local_detection(Some(&cached(vec![])), "celeste", &[]);
         assert!(scanned.scanned_at.is_some());
         assert!(scanned.paths.is_empty());
     }
 
-    /// El manifiesto declara el ejecutable de ~18k juegos; antes de cablearlo
-    /// esto devolvía lista vacía para todo salvo minecraft y factorio, y la
-    /// primera sesión de un juego nunca disparaba "arrancó".
+    /// The manifest declares the executable for about 18k games; before it was
+    /// wired in, this returned an empty list for everything but two games, and a
+    /// game's first session never fired "it started".
     #[test]
     fn processes_come_from_the_manifest_launch_block() {
         let procs = resolve_processes("stardew-valley");
@@ -3438,7 +3430,8 @@ mod tests {
         );
     }
 
-    /// El catálogo built-in no se pierde al añadir el manifiesto, y no duplica.
+    /// The built-in catalogue is not lost when the manifest is added, and it does
+    /// not duplicate.
     #[test]
     fn builtin_processes_survive_and_dont_duplicate() {
         let procs = resolve_processes("factorio");
@@ -3450,7 +3443,7 @@ mod tests {
         assert_eq!(sorted.len(), procs.len(), "duplicados en {procs:?}");
     }
 
-    /// Un slug que no está en el catálogo no inventa procesos.
+    /// A slug that is not in the catalogue does not invent processes.
     #[test]
     fn an_unknown_slug_yields_no_processes() {
         assert!(resolve_processes("not-a-real-game-slug-xyzzy").is_empty());
@@ -3483,9 +3476,9 @@ mod tests {
         }
     }
 
-    /// Regresión (Windows, 30-jul-2026): el filtro de exclusión borraba también
-    /// las filas que NUNCA tuvieron rutas — que son justo la alerta ámbar "elige
-    /// carpeta". El usuario perdía la única forma de arreglar esos juegos.
+    /// A regression (Windows, 2026-07-30): the exclusion filter also deleted the
+    /// rows that NEVER had paths, which are exactly the amber "pick a folder"
+    /// alert. The user lost the only way to fix those games.
     #[test]
     fn excluding_paths_never_removes_a_pick_a_folder_row() {
         let mut state = CliState::default();
@@ -3505,7 +3498,7 @@ mod tests {
         assert_eq!(parcial.path_confidences.len(), 1);
     }
 
-    /// Sin exclusiones el informe no se toca en absoluto.
+    /// With no exclusions the report is not touched at all.
     #[test]
     fn no_exclusions_is_a_no_op() {
         let before = report_of(vec![excl_game("a", &[]), excl_game("b", &["/x"])]);
@@ -3520,7 +3513,7 @@ mod tests {
 mod slug_gate_tests {
     use super::reject_degenerate_slug;
 
-    /// Los catorce saves basura que llegaron a producción se llamaban así.
+    /// The fourteen junk saves that reached production were named like this.
     #[test]
     fn plumbing_never_gets_tracked() {
         for bad in [
@@ -3550,16 +3543,16 @@ mod slug_gate_tests {
         }
     }
 
-    /// El veredicto no puede depender de esta máquina: la identidad de un save
-    /// es la misma en todos los equipos de la cuenta. `insider` es el usuario
-    /// de la máquina de desarrollo y aun así tiene que pasar, porque en el
-    /// portátil de al lado sería un juego perfectamente válido.
+    /// The verdict cannot depend on this machine: a save's identity is the same on
+    /// every machine on the account. `insider` is the development machine's account
+    /// name and still has to pass, because on the laptop next to it that would be a
+    /// perfectly valid game.
     #[test]
     fn the_local_username_is_not_a_verdict() {
         assert!(reject_degenerate_slug("insider").is_ok());
     }
 
-    /// El mensaje tiene que decir qué hacer, no sólo que no.
+    /// The message has to say what to do, not only no.
     #[test]
     fn the_error_tells_the_user_what_to_do() {
         let err = reject_degenerate_slug("user").expect_err("rejected");
