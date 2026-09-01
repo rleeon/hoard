@@ -105,10 +105,10 @@ pub async fn scan_library(
     // games on the same volume. The filter is purely a UI-edge concern.
     report.games.retain(|g| !cli_state.is_ignored(&g.slug));
 
-    // Y las carpetas descartadas. Se filtran por RUTA, no por slug, porque un
-    // hallazgo de fase 4 se llama como el proceso que la correlación le
-    // atribuyó y ese nombre cambia entre escaneos: descartarlo por slug no
-    // aguanta, vuelve con nombre nuevo.
+    // And the discarded folders. They are filtered by PATH, not by slug, because a
+    // phase-4 find is named after the process the correlation attributed to it and
+    // that name changes between scans: discarding by slug does not hold, it comes
+    // back with a new name.
     hoard_agent::library::apply_excluded_paths(&mut report, &cli_state);
 
     persist_scan(&state, report.clone());
@@ -117,9 +117,9 @@ pub async fn scan_library(
 
 /// Forced re-scan that ignores the in-memory cache. Functionally identical
 /// to `scan_library` today (both always do a fresh sweep), but kept as a
-/// distinct entry point so the UI's "Re-escanear" button maps to an
-/// unambiguous intent — and so future caching layers don't accidentally
-/// short-circuit the user's manual request.
+/// distinct entry point so the UI's rescan button maps to an unambiguous
+/// intent, and so future caching layers don't accidentally short-circuit the
+/// user's manual request.
 #[tauri::command]
 pub async fn rescan_library(
     app: AppHandle,
@@ -128,7 +128,8 @@ pub async fn rescan_library(
     scan_library(app, state).await
 }
 
-/// Deep, user-triggered detection sweep — the Library "deep scan" tile. Runs
+/// The deep, user-triggered detection sweep behind the Library's deep-scan tile. It
+/// runs
 /// [`detection::detect_all_deep`], which on top of the normal pipeline looks
 /// at the expensive places the periodic scan skips: arbitrary Wine prefixes
 /// (Heroic/CrossOver/Flatpak/mounted media), Flatpak/Snap/EmuDeck save roots,
@@ -160,16 +161,16 @@ pub async fn deep_scan_library(
 }
 
 /// "Add from folder": scan ONE user-chosen folder and return the games found
-/// inside it. Backs all three explicit-folder flows in the Library — the "scan
+/// inside it. It backs all three explicit-folder flows in the Library (the "scan
 /// folder" button, "track this game with another folder", and "no save folder
-/// yet" — so pointing Hoard at a place always answers the same way instead of
+/// yet") so pointing Hoard at a place always answers the same way instead of
 /// dropping the user in the OS file picker.
 ///
-/// Never touches the catalog or Steam and never persists into the library
+/// It never touches the catalog or Steam and never persists into the library
 /// cache: it's a one-off lookup whose results the UI shows as "found <Game>
-/// here — track it?". The walk itself ([`detection::discover_in_folder`]) does
-/// NOT apply the periodic scan's precision gate — the user pointing at the
-/// folder is the evidence — so a save folder with a proprietary extension comes
+/// here, track it?". The walk itself ([`detection::discover_in_folder`]) does
+/// NOT apply the periodic scan's precision gate, since the user pointing at the
+/// folder is the evidence, so a save folder with a proprietary extension comes
 /// back like any other.
 ///
 /// Runs on the blocking pool: the walk is synchronous filesystem I/O bounded by
@@ -192,7 +193,7 @@ pub async fn scan_folder(path: String) -> Result<Vec<DetectedGame>, String> {
         .collect();
 
     tokio::task::spawn_blocking(move || {
-        // Correlation store, best-effort (empty if absent) — same as detect_all,
+        // Correlation store, best-effort (empty if absent), the same as detect_all,
         // so a folder the agent has seen a game write to grades higher.
         let store = CorrelationStore::default_path()
             .ok()
@@ -208,14 +209,14 @@ pub async fn scan_folder(path: String) -> Result<Vec<DetectedGame>, String> {
                 path_reasons: vec![a.reason],
                 confidence: a.confidence,
                 source: DetectionSource::FilesystemHeuristic,
-                // Puesto sólo cuando la atribución cayó en una entrada del
-                // catálogo: es lo que le da carátula a la fila del modal.
+                // Set only when the attribution landed on a catalogue entry: it is
+                // what gives the modal's row a cover.
                 steam_app_id: a.steam_app_id,
                 install_dir: None,
-                // La carpeta la señaló el usuario: la ruta es justo lo que hay.
+                // The user pointed at the folder: the path is exactly what is there.
                 needs_folder: false,
-                // Escaneo de una carpeta suelta: no hay entrada de catálogo
-                // resuelta aquí, así que no hay nota que dar.
+                // Scanning a loose folder: no catalogue entry is resolved here, so
+                // there is no note to give.
                 steam_cloud: false,
             })
             .collect()
@@ -237,17 +238,17 @@ pub fn cached_detection(state: State<'_, AppState>) -> Option<DetectionReport> {
         .map(|c| c.report.clone())
 }
 
-/// What local detection already knows about one slug, so "Vincular a esta
-/// máquina" can offer the detected folders as one-click options instead of
-/// sending the user hunting through a folder picker.
+/// What local detection already knows about one slug, so the "link to this machine"
+/// dialog can offer the detected folders as one-click options instead of sending the
+/// user hunting through a folder picker.
 ///
-/// Reads the in-memory cache (fresher than disk: `scan_library` writes it
-/// first). A `scanned_at: None` result means nobody ever scanned here — the UI
-/// offers a scan rather than claiming there's nothing.
+/// Reads the in-memory cache (fresher than disk: `scan_library` writes it first). A
+/// `scanned_at: None` result means nobody ever scanned here, and the UI offers a scan
+/// rather than claiming there's nothing.
 ///
-/// `tracked_paths` (las carpetas que esta máquina ya rastrea) las pone quien
-/// llama: la Biblioteca ya tiene esa lista en pantalla, así que abrir el
-/// diálogo no cuesta ni una petición al server.
+/// `tracked_paths` (the folders this machine already tracks) comes from the caller:
+/// the Library already has that list on screen, so opening the dialog does not cost
+/// one request to the server.
 #[tauri::command]
 pub fn detected_paths_for_game(
     game_slug: String,
@@ -263,7 +264,7 @@ pub fn detected_paths_for_game(
 }
 
 /// Update both the in-memory cache and the on-disk copy. Disk failures are
-/// logged at WARN — the user still has a working session, we just lose the
+/// logged at WARN: the user still has a working session, we just lose the
 /// cold-start optimisation on next launch.
 fn persist_scan(state: &State<'_, AppState>, report: DetectionReport) {
     let cached = CachedDetection {
@@ -333,8 +334,8 @@ pub async fn list_tracked_saves(
 }
 
 /// Name a folder without touching its number. The number is what pairs it with
-/// the same folder on the other machines, so the UI never edits the label whole
-/// — see `hoard_core::kernel::slots`.
+/// the same folder on the other machines, so the UI never edits the label whole;
+/// see `hoard_core::kernel::slots`.
 #[tauri::command]
 pub async fn set_save_slot_name(
     app: AppHandle,
@@ -438,7 +439,7 @@ fn validate_override_path(path: &str) -> Result<PathBuf, String> {
 }
 
 /// Record a manual save-folder override for `slug`. The path must already
-/// exist and be a directory — we validate up-front so an obvious typo in
+/// exist and be a directory: we validate up-front so an obvious typo in
 /// the picker doesn't get persisted and silently fail the next re-scan.
 ///
 /// After the override lands in `state.json`, we kick a background re-scan
@@ -455,9 +456,9 @@ pub async fn set_manual_path(
     let path_buf = validate_override_path(&path)?;
 
     let (mut cli_state, state_path) = CliState::load_default().map_err(|e| e.to_string())?;
-    // Apuntar un juego a la carpeta de OTRO no se puede deshacer solo: el
-    // override vive en `device.json` y sobrevive a todo lo que el usuario sabe
-    // borrar. Se rechaza aquí, con el nombre del juego que ya la reclama.
+    // Pointing one game at ANOTHER's folder cannot undo itself: the override lives
+    // in `device.json` and survives everything the user knows how to delete. It is
+    // rejected here, naming the game that already claims it.
     let cached = state.detection_cache.last.lock().unwrap().clone();
     if let Some(owner) = hoard_agent::library::manual_override_conflict(
         &cli_state,
@@ -466,7 +467,7 @@ pub async fn set_manual_path(
         &path_buf,
     ) {
         return Err(format!(
-            "That folder is '{owner}'s, not {slug}'s — one folder, one game. Pick the folder this game writes to."
+            "That folder is '{owner}'s, not {slug}'s: one folder, one game. Pick the folder this game writes to."
         ));
     }
     cli_state.set_manual_path(&slug, path_buf);
@@ -474,7 +475,7 @@ pub async fn set_manual_path(
 
     // Refresh the detection cache so subsequent renders see source=manual
     // without forcing the user to click "Rescan". A short-circuit failure
-    // here is harmless — the next scheduled rescan will pick up the
+    // here is harmless: the next scheduled rescan will pick up the
     // override either way.
     let app_for_progress = app.clone();
     let progress = move |done: usize, total: usize| {
@@ -520,7 +521,7 @@ pub async fn clear_manual_path(
 
 /// Persistently blacklist a game from the Library page: future scans filter
 /// the slug out **and** any save tracked under it stops being watched here
-/// (server data untouched — see [`hoard_agent::library::ignore_slug`]).
+/// (server data untouched; see [`hoard_agent::library::ignore_slug`]).
 /// Reversible via [`unignore_detected_game`]. Idempotent.
 ///
 /// Returns how many tracked saves it dropped, so the UI can say so.
@@ -536,8 +537,8 @@ pub async fn ignore_detected_game(
     Ok(untracked.len())
 }
 
-/// Descarta una carpeta del escaneo. Wrapper fino sobre el agente: la lógica
-/// (y el estado) viven ahí, como manda la regla de paridad CLI↔desktop.
+/// Drops a folder from the scan. A thin wrapper over the agent: the logic (and the
+/// state) live there, as the CLI/desktop parity rule requires.
 #[tauri::command]
 pub async fn exclude_scan_path(path: String) -> Result<(), AppError> {
     hoard_agent::library::exclude_path(std::path::Path::new(path.trim()))
@@ -577,7 +578,7 @@ pub async fn list_ignored_slugs() -> Result<Vec<String>, AppError> {
 }
 
 /// Replay the detection pipeline for a single slug and return a trace
-/// explaining what every step kept / dropped. Read-only — does not write
+/// explaining what every step kept and dropped. Read-only: it does not write
 /// to the detection cache or `state.json`. Backs the hidden
 /// `/diagnostics` route unlocked by the 5-click sidebar gesture.
 #[tauri::command]
@@ -600,7 +601,7 @@ pub async fn untrack_save(save_id: String, state: State<'_, AppState>) -> Result
 
 /// Hard-delete a save: drop the row + every snapshot on the server **and**
 /// purge any local CliState that referenced it. Sibling of `untrack_save`,
-/// but destructive on purpose — it's what the user clicks when a save was
+/// but destructive on purpose: it's what the user clicks when a save was
 /// tracked against a wrong path and the only way out is to start over
 /// (otherwise `add_game_to_tracking` swallows the next 409 and re-links to
 /// the bad row). The matching `manual_paths` override is also cleared so a
@@ -623,15 +624,15 @@ pub async fn delete_save_completely(
 
 /// Build an `ApiClient` from the credentials on disk. We don't reuse a
 /// long-lived client on `AppState` because the user can log out at any time
-/// and we want fresh creds per command — the cost is negligible (`reqwest`
+/// and we want fresh creds per command; the cost is negligible (`reqwest`
 /// connections are pooled internally).
 pub(crate) async fn current_client(
     app: &AppHandle,
     state: &State<'_, AppState>,
 ) -> Result<ApiClient, String> {
-    // Prefer the self-hosted session: the cached UserInfo gives us the URL and el
-    // token lo presta el servicio (D.20 — el ítem del llavero es suyo, y leerlo
-    // desde aquí es lo que pedía la contraseña en macOS).
+    // Prefer the self-hosted session: the cached UserInfo gives us the URL, and the
+    // service lends the token (D.20: the keyring item is its own, and reading it from
+    // here is what asked for the password on macOS).
     let self_hosted = state.user.lock().unwrap().clone();
     if let Some(user) = self_hosted {
         let creds = crate::commands::auth::server_session(app)
@@ -645,11 +646,11 @@ pub(crate) async fn current_client(
     // token, so the agent and every library/history command can talk to it
     // exactly like a self-hosted server. Without this branch a cloud-only user
     // hit "Not logged in" on every monitor/backup action even though the
-    // sidebar showed "Nube conectada".
+    // sidebar showed the cloud as connected.
     //
-    // El JWT lo presta el servicio (D.20): este proceso no lee el llavero, así que
-    // no puede quedarse con un token viejo ni provocar un diálogo de autorización
-    // en macOS. Y viene siempre fresco, que es lo que la nota de abajo pedía.
+    // The service lends the JWT (D.20): this process does not read the keyring, so it
+    // cannot hold on to a stale token or trigger an authorisation dialog on macOS.
+    // And it always comes fresh, which is what the note below asked for.
     if let Some(cloud) = crate::commands::cloud::active_creds_via(&state.daemon)
         .await
         .map_err(|e| format!("Couldn't get cloud credentials: {e}"))?
@@ -679,13 +680,13 @@ pub(crate) fn sync_active_context(state: &AppState) -> Option<String> {
 /// Spawn a long-lived background task that re-scans the catalog whenever the
 /// persisted cache turns 24 hours old. Wakes every 30 minutes; cheap on a
 /// schedule clock that's "behind" because we just check timestamps. Errors
-/// are logged and swallowed — a transient detection failure must not crash
+/// are logged and swallowed: a transient detection failure must not crash
 /// the app loop.
 pub fn spawn_periodic_rescan(app: AppHandle) {
     // `tauri::async_runtime::spawn`, not `tokio::spawn`: this is called from
     // `setup()`, which runs before Tauri enters its event loop, so there is
     // no ambient Tokio runtime yet. Using `tokio::spawn` here panics with
-    // "there is no reactor running" the instant the app starts — that's how
+    // "there is no reactor running" the instant the app starts, which is how
     // 1.4.0 shipped, which is why the binary refused to launch on every
     // platform after the upgrade until the user reopened it from a terminal
     // and saw the stack trace.
@@ -699,12 +700,12 @@ pub fn spawn_periodic_rescan(app: AppHandle) {
                 match guard.as_ref() {
                     Some(c) => {
                         // Use unix timestamps so we don't depend on time
-                        // crate's Duration arithmetic — it's just a subtraction.
+                        // crate's Duration arithmetic: it's just a subtraction.
                         let age_secs = OffsetDateTime::now_utc().unix_timestamp()
                             - c.scanned_at.unix_timestamp();
                         age_secs >= STALE_AFTER_SECS
                     }
-                    // Nothing cached yet — leave it for the user's first
+                    // Nothing cached yet: leave it for the user's first
                     // explicit scan rather than spinning up detection
                     // silently on a fresh install.
                     None => false,
@@ -726,7 +727,7 @@ pub fn spawn_periodic_rescan(app: AppHandle) {
                     continue;
                 }
             };
-            // No progress emit on the background path — the UI isn't
+            // No progress emit on the background path: the UI isn't
             // listening, and repainting a progress bar while the user is
             // on another page would be noise.
             let mut report = match detection::detect_all(os, &cli_state, |_, _| {}).await {
@@ -736,8 +737,8 @@ pub fn spawn_periodic_rescan(app: AppHandle) {
                     continue;
                 }
             };
-            // Honour the user's blacklist on the background path too —
-            // otherwise the cache flips back to including ignored slugs
+            // Honour the user's blacklist on the background path too, or
+            // the cache flips back to including ignored slugs
             // every time the 24h scheduler fires.
             report.games.retain(|g| !cli_state.is_ignored(&g.slug));
             let cached = CachedDetection {

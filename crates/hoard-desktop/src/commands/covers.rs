@@ -6,12 +6,12 @@
 //! them from there. First sight of a given game downloads once; every
 //! subsequent call (this session or a later launch) reads the local file. The
 //! frontend receives the raw bytes as an `ArrayBuffer` (via
-//! `tauri::ipc::Response`) and wraps them in an object URL — no base64 bloat,
+//! `tauri::ipc::Response`) and wraps them in an object URL: no base64 bloat,
 //! no canvas-tainting cross-origin draws.
 //!
 //! **Covers are keyed by a [`CoverKey`], not by a Steam app id.** They used to
 //! be a bare `u32`, which quietly meant "if it isn't on Steam it has no cover
-//! and you can't even give it one" — the pencil in `Cover.svelte` only appears
+//! and you can't even give it one": the pencil in `Cover.svelte` only appears
 //! for a resolved id. That's 2,316 games in the Ludusavi catalog (10% of it),
 //! Minecraft Java among them, plus every emulator. The key is now a string:
 //! the app id for a Steam game, `slug-<game-slug>` for everything else. Cache
@@ -23,14 +23,14 @@
 //! `header.jpg` is a 460×215 landscape capsule, and framing it as a poster
 //! center-crops ~70% of the art away. So we ask for the portrait first and
 //! only fall back to the header when a game truly has no vertical art. Where
-//! that portrait *lives* is the fiddly part — for newer store items the URL
+//! that portrait *lives* is the fiddly part: for newer store items the URL
 //! is unguessable and has to be read out of the store's asset manifest; see
 //! [`fetch_portrait`].
 //!
 //! Games with no Steam presence get their art from [`index_lookup`]: a small
 //! `slug -> URL` index we host, pointing at each game's art on its own
-//! publisher's CDN (Microsoft Store, GOG, …). We host the *index*, never the
-//! images — an index is a few KB of text we're free to publish, while a folder
+//! publisher's CDN (Microsoft Store, GOG and so on). We host the *index*, never
+//! the images: an index is a few KB of text we're free to publish, while a folder
 //! of box art is redistributing somebody else's copyrighted work.
 //!
 //! A missing game, a 404, or being offline surfaces as an `Err`, which the
@@ -51,8 +51,8 @@ const CUSTOM_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "gif", "bmp",
 ///
 /// `Steam(id)` keeps the historic filenames (`{id}.jpg`, `{id}_600x900.jpg`),
 /// so every cover cached by an older build is still a hit after this change.
-/// `Slug(s)` is everything Steam doesn't know about — Minecraft Java, GOG
-/// classics, emulators — and is where the hosted index comes in.
+/// `Slug(s)` is everything Steam doesn't know about (Minecraft Java, GOG
+/// classics, emulators) and is where the hosted index comes in.
 enum CoverKey {
     Steam(u32),
     Slug(String),
@@ -106,8 +106,8 @@ impl CoverKey {
 ///
 /// The second entry is the bare Steam app id, which is what *all* covers were
 /// filed under before keys existed. Without it this change would silently
-/// orphan every cached cover on every machine — including the custom ones
-/// people picked by hand, which is the kind of loss that reads as a bug.
+/// orphan every cached cover on every machine, including the custom ones people
+/// picked by hand, which is the kind of loss that reads as a bug.
 fn stems_for(cover: &CoverKey) -> Vec<String> {
     let mut stems = vec![cover.stem()];
     if let CoverKey::Slug(slug) = cover {
@@ -135,7 +135,7 @@ fn find_custom_cover(dir: &std::path::Path, stems: &[String]) -> Option<PathBuf>
 
 /// Returns the bytes of a game's cover image, reading from the on-disk cache.
 /// Priority: the user's custom cover (`{key}_custom.*`), then the vertical
-/// 2:3 art (`{key}_600x900.jpg`), then — Steam games only — the landscape
+/// 2:3 art (`{key}_600x900.jpg`), then, for Steam games only, the landscape
 /// capsule (`{key}.jpg`). Each tier downloads and persists on first miss.
 #[tauri::command]
 pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response, String> {
@@ -164,7 +164,7 @@ pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response,
         }
     }
 
-    // Fast path 2: the 2:3 portrait — the shape the UI actually frames. Tried
+    // Fast path 2: the 2:3 portrait, the shape the UI actually frames. Tried
     // under the legacy app-id name too, so an existing cache survives the move
     // to keys instead of every user re-downloading their whole shelf.
     let portrait = dir.join(format!("{stem}{PORTRAIT_SUFFIX}.jpg"));
@@ -180,7 +180,7 @@ pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response,
     let known_artless = marker_still_stands(&marker).await;
 
     // Which game is this, in Steam's terms? Four sources, most trustworthy
-    // first — the order is the whole point:
+    // first, and the order is the whole point:
     //
     //   1. the app id detection already resolved on this machine;
     //   2. the Ludusavi catalog's exact slug -> app id mapping;
@@ -201,8 +201,8 @@ pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response,
     };
 
     // Tier 3: a game with no Steam app id of its own. The hosted index is the
-    // only automatic source, and it only ever points at 2:3 art — no landscape
-    // fallback to be had.
+    // only automatic source, and it only ever points at 2:3 art, so there is no
+    // landscape fallback to be had.
     if app_id.is_none() && !known_artless {
         let slug = slug.clone().unwrap_or_default();
         match index_cover(&slug, &dir).await {
@@ -212,7 +212,7 @@ pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response,
                 let _ = tokio::fs::remove_file(&marker).await;
                 return Ok(Response::new(bytes));
             }
-            // Index in hand, game not in it — fall through to the fuzzy
+            // Index in hand, game not in it: fall through to the fuzzy
             // search, which is all that's left.
             Fetch::Missing => {}
             Fetch::Unavailable => return Err(format!("cover {slug}: index unreachable")),
@@ -235,7 +235,7 @@ pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response,
                     // The one row that turns into work: this slug is what goes
                     // in `covers.json`. Reported here and not at the top of the
                     // function because only here do we know every source came
-                    // back empty — and it rides the marker, so a game already
+                    // back empty, and it rides the marker, so a game already
                     // known to be artless is not re-reported for 30 days.
                     hoard_agent::telemetry::no_cover(&slug, "none");
                     return Err(format!("cover {slug}: no art anywhere"));
@@ -260,13 +260,13 @@ pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response,
                 let _ = tokio::fs::remove_file(&landscape).await;
                 return Ok(Response::new(bytes));
             }
-            // Steam answered "no such asset". Remember it — stamped with the
-            // strategy that concluded it — and fall through to the header.
+            // Steam answered "no such asset". Remember it, stamped with the
+            // strategy that concluded it, and fall through to the header.
             Fetch::Missing => {
                 let _ = tokio::fs::create_dir_all(&dir).await;
                 let _ = tokio::fs::write(&marker, LOOKUP_STRATEGY.to_string()).await;
             }
-            // Offline or a transient error — don't write the marker, or one
+            // Offline or a transient error: don't write the marker, or one
             // flaky launch would pin this game to landscape art for good.
             Fetch::Unavailable => {}
         }
@@ -281,7 +281,7 @@ pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response,
         }
     }
 
-    // Miss. Try the legacy capsule path first — present for the vast majority
+    // Miss. Try the legacy capsule path first: it's present for the vast majority
     // of (older) apps and served straight from the CDN.
     let legacy = format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/header.jpg");
     let bytes = match fetch_image(&legacy).await {
@@ -304,13 +304,13 @@ pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response,
             match fetch_image(&url).await {
                 Some(bytes) => bytes,
                 // A dead URL from a live manifest is a fetch failure, not
-                // "this game has no art" — don't file it as one.
+                // "this game has no art", so don't file it as one.
                 None => return Err(format!("steam cover {app_id}: header fetch failed")),
             }
         }
     };
 
-    // Best-effort write — a failed cache write just means we re-fetch next time.
+    // Best-effort write: a failed cache write just means we re-fetch next time.
     let _ = tokio::fs::create_dir_all(&dir).await;
     let _ = tokio::fs::write(&landscape, &bytes).await;
     Ok(Response::new(bytes))
@@ -326,23 +326,23 @@ const PORTRAIT_SUFFIX: &str = "_600x900";
 /// A "this game has no vertical art" marker is only as true as the search that
 /// produced it, and that bit me the first day: a build that only tried the
 /// guessable URLs marked Europa Universalis V and Surviving Mars: Relaunched
-/// as artless, and the very next build — the one that reads the store manifest
-/// and *can* find their art — never asked again, because the marker was
+/// as artless, and the very next build (the one that reads the store manifest
+/// and *can* find their art) never asked again, because the marker was
 /// already there. Stamping the marker with the strategy makes the old verdicts
 /// expire on their own instead of outliving the code that reached them.
 ///
 /// 3: added the hosted index, so every "artless" verdict reached before it
-/// existed has to be re-asked — that's the whole population this release is
+/// existed has to be re-asked, which is the whole population this release is
 /// for.
 const LOOKUP_STRATEGY: u32 = 3;
 
 /// Steam publishes vertical art for older games later on, so a negative
-/// verdict also expires with time — not just with a better search.
+/// verdict also expires with time, not just with a better search.
 const MARKER_TTL: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 3600);
 
 /// `true` if a "no vertical art" marker is still worth believing: written by
-/// the search we run today, and recent enough. Anything else — missing, older
-/// strategy, stale, unreadable — means ask Steam again.
+/// the search we run today, and recent enough. Anything else (missing, an older
+/// strategy, stale, unreadable) means ask Steam again.
 async fn marker_still_stands(marker: &std::path::Path) -> bool {
     let Ok(body) = tokio::fs::read_to_string(marker).await else {
         return false;
@@ -369,8 +369,8 @@ fn report_no_cover(cover: &CoverKey, source: &str) {
 
 /// Where the `slug -> cover URL` index lives. Static file on the marketing
 /// site, so publishing a cover for a newly-popular game is a web deploy, not
-/// an app release — the whole point of hosting an index instead of baking the
-/// list into the binary.
+/// an app release, which is the whole point of hosting an index instead of baking
+/// the list into the binary.
 const COVER_INDEX_URL: &str = "https://hoard.services/covers.json";
 
 /// How long a downloaded index is trusted before we re-fetch it. A week: the
@@ -379,22 +379,22 @@ const COVER_INDEX_URL: &str = "https://hoard.services/covers.json";
 const INDEX_TTL: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
 
 /// The parsed index, loaded at most once per process. `None` means "not loaded
-/// yet, or the last attempt failed" — a failure must not be memoised, or one
+/// yet, or the last attempt failed": a failure must not be memoised, or one
 /// offline launch would blank every non-Steam cover until the app restarts.
 static COVER_INDEX: tokio::sync::Mutex<Option<std::sync::Arc<serde_json::Value>>> =
     tokio::sync::Mutex::const_new(None);
 
 /// Fetch a non-Steam game's cover through the hosted index.
 ///
-/// [`Fetch::Missing`] means the index loaded and this slug isn't in it — a
-/// real verdict, worth a marker. An unreachable index or a dead URL is
+/// [`Fetch::Missing`] means the index loaded and this slug isn't in it: a real
+/// verdict, worth a marker. An unreachable index or a dead URL is
 /// [`Fetch::Unavailable`]: try again next launch.
 async fn index_cover(slug: &str, dir: &std::path::Path) -> Fetch {
     match index_lookup(slug, dir).await {
         Some(url) => match fetch(&url).await {
             Fetch::Bytes(b) => Fetch::Bytes(b),
             // The index pointed somewhere dead. That's our list being wrong,
-            // not the game having no art — don't burn it in with a marker.
+            // not the game having no art, so don't burn it in with a marker.
             Fetch::Missing | Fetch::Unavailable => Fetch::Unavailable,
         },
         None => match load_index(dir).await {
@@ -473,11 +473,11 @@ async fn index_cache_is_fresh(path: &std::path::Path) -> bool {
 /// 1. **The flat legacy path**, `apps/<id>/library_600x900_2x.jpg`. One
 ///    request, and it answers for most of the catalog. Note the `_2x`: plain
 ///    `library_600x900.jpg` lies, it serves a 300×450 scaled copy, and the
-///    poster is ~300 CSS px wide — on any HiDPI screen that's visibly soft.
+///    poster is about 300 CSS px wide, so on any HiDPI screen that's visibly soft.
 /// 2. **The store's asset manifest** for everything else. Recent releases
-///    (Europa Universalis V, Surviving Mars: Relaunched, …) publish each asset
-///    type under its own hashed directory, so *every* guessable URL 404s and
-///    the old code silently fell back to the landscape header — which is why
+///    (Europa Universalis V, Surviving Mars: Relaunched and friends) publish each
+///    asset type under its own hashed directory, so *every* guessable URL 404s and
+///    the old code silently fell back to the landscape header, which is why
 ///    those games showed up as widescreen rectangles. See
 ///    [`library_capsule_url`].
 ///
@@ -507,7 +507,7 @@ enum Capsule {
     At(String),
     /// The manifest came back and this game has no vertical art at all.
     Absent,
-    /// The manifest was unreachable — no verdict either way.
+    /// The manifest was unreachable: no verdict either way.
     Unavailable,
 }
 
@@ -561,8 +561,8 @@ fn assets_of(json: &serde_json::Value) -> Option<&serde_json::Value> {
 
 /// Resolve an asset manifest to the CDN-relative path of the vertical capsule.
 ///
-/// `asset_url_format` is a template — `steam/apps/<id>/${FILENAME}?t=<epoch>`
-/// — and the capsule entry is the filename to substitute in, itself possibly
+/// `asset_url_format` is a template (`steam/apps/<id>/${FILENAME}?t=<epoch>`) and
+/// the capsule entry is the filename to substitute in, itself possibly
 /// prefixed by that asset's hash directory. Prefers the 2x (the true 600×900)
 /// and falls back to the 1x for games that only ship one.
 fn capsule_path(assets: &serde_json::Value) -> Option<String> {
@@ -661,7 +661,7 @@ enum Fetch {
     Bytes(Vec<u8>),
     /// The CDN answered, and the answer was no (404 / empty body).
     Missing,
-    /// Offline, DNS down, 5xx — no verdict about the asset itself.
+    /// Offline, DNS down, 5xx: no verdict about the asset itself.
     Unavailable,
 }
 
@@ -721,12 +721,12 @@ async fn appdetails_header_url(app_id: u32) -> Option<String> {
 /// Resolve a game slug to its Steam app id so the UI can fetch a cover.
 ///
 /// Covers depend on a Steam app id, but a save tracked on another device
-/// arrives here with only its `game_slug` — this machine never detected it, so
+/// arrives here with only its `game_slug`, and this machine never detected it, so
 /// the local detection report has no id for it. Two layered sources, cheapest
 /// first:
 ///   1. The embedded Ludusavi catalog, keyed by the exact slug (offline,
 ///      instant). Resolves the long tail of catalogued games (Victoria 3,
-///      Europa Universalis, …).
+///      Europa Universalis and the rest).
 ///   2. Steam's store search, queried with the de-slugified name. This catches
 ///      games Ludusavi doesn't list at all (e.g. Rust, which has no documented
 ///      save path) but that still exist on Steam. Best-effort and network-bound;
@@ -754,8 +754,8 @@ fn deslugify(slug: &str) -> String {
 
 /// Ask Steam's public store search for the app id of the best match for
 /// `term`. Returns the top-ranked result's id (Steam orders by relevance, so
-/// the canonical game wins over demos/soundtracks). Any failure — offline, a
-/// non-200, an empty result set — resolves to `None`.
+/// the canonical game wins over demos and soundtracks). Any failure (offline, a
+/// non-200, an empty result set) resolves to `None`.
 async fn steam_store_search_app_id(term: &str) -> Option<u32> {
     if term.is_empty() {
         return None;
@@ -828,9 +828,9 @@ mod tests {
         "library_capsule_2x": "library_600x900_2x.jpg"
     }}]}}"#;
 
-    /// Surviving Mars: Relaunched (3215050). El caso que motivó todo esto:
-    /// cada asset bajo su propio directorio con hash, así que NINGUNA URL
-    /// adivinable existe y sin el manifiesto acabábamos en el header apaisado.
+    /// Surviving Mars: Relaunched (3215050). The case that started all of this:
+    /// every asset under its own hashed directory, so NO guessable URL exists and
+    /// without the manifest we ended up on the landscape header.
     const HASHED: &str = r#"{"response":{"store_items":[{"assets":{
         "asset_url_format": "steam/apps/3215050/${FILENAME}?t=1781089207",
         "header": "80132dfeee2f6463f4c71821edf426af6e8fed97/header.jpg",
@@ -869,9 +869,9 @@ mod tests {
 
     #[tokio::test]
     async fn a_marker_from_an_older_search_is_not_believed() {
-        // El caso real del 28-jul: un build que solo probaba las URLs
-        // adivinables marco Europa Universalis V como "sin vertical", y el
-        // build siguiente —que SI sabe encontrarla— no volvio a preguntar.
+        // The real 28 Jul case: a build that only tried the guessable URLs marked
+        // Europa Universalis V as having no vertical art, and the next build, which
+        // DOES know how to find it, never asked again.
         let dir = tempfile::tempdir().unwrap();
         let marker = dir.path().join("3450310_600x900.none");
 
@@ -896,8 +896,8 @@ mod tests {
     #[tokio::test]
     async fn a_cached_index_answers_without_the_network() {
         // Guards the shape contract with `web/static/covers.json`: the lookup
-        // reads `covers.<slug>`, so a flat `{slug: url}` file — the obvious
-        // thing to write by hand — would silently resolve nothing.
+        // reads `covers.<slug>`, so a flat `{slug: url}` file, the obvious thing to
+        // write by hand, would silently resolve nothing.
         let dir = tempfile::tempdir().unwrap();
         tokio::fs::write(
             dir.path().join("index.json"),

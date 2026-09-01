@@ -4,8 +4,8 @@
 //!
 //! - **Client**: hits `https://api.github.com/repos/rleeon/hoard/releases/latest`
 //!   and compares the tag to our compile-time `CARGO_PKG_VERSION`. We treat a
-//!   newer GitHub release as "update available" without parsing semver — a
-//!   simple string-inequality is enough since our tags are always
+//!   newer GitHub release as "update available" without parsing semver: a
+//!   simple string inequality is enough since our tags are always
 //!   `vMAJOR.MINOR.PATCH` and tag-sort order matches release order.
 //! - **Server**: hits the user's `<server>/v1/health` (anonymous endpoint)
 //!   to read `version`, then compares against the latest known client
@@ -32,7 +32,7 @@ pub struct ComponentUpdate {
     /// `/v1/health` `version` field for the server).
     pub current: String,
     /// Latest known version, if we could fetch it. `None` means the probe
-    /// failed — the UI should fall back to "no update info" rather than
+    /// failed, and the UI should fall back to "no update info" rather than
     /// "you're up to date".
     pub latest: Option<String>,
     /// `true` when `latest` is strictly greater than `current` (string
@@ -60,9 +60,9 @@ struct GhRelease {
     assets: Vec<GhAsset>,
 }
 
-/// Los ficheros de la release los describe `hoard_agent::install::fetch`: es el
-/// mismo JSON de GitHub que lee la terminal, y tener dos structs para él es como
-/// acaban divergiendo dos updaters que deberían hacer lo mismo.
+/// The release's files are described by `hoard_agent::install::fetch`: the same
+/// GitHub JSON the terminal reads, and having two structs for it is how two updaters
+/// that should do the same thing end up drifting apart.
 use hoard_agent::install::fetch::Asset as GhAsset;
 
 /// `/v1/health` shape (mirrors `crates/hoard-server/src/routes/health.rs`).
@@ -75,11 +75,10 @@ const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const GH_RELEASES_URL: &str = "https://api.github.com/repos/rleeon/hoard/releases/latest";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 
-/// Resultado de comprobar el instalador recién bajado contra la clave de release.
+/// The result of checking a freshly downloaded installer against the release key.
 ///
-/// La clave y la verificación viven ahora en `hoard_agent::install::fetch`, una
-/// sola vez: dos copias de una clave de confianza son dos sitios donde rotarla,
-/// y uno donde olvidarse.
+/// The key and the verification live in `hoard_agent::install::fetch`, once: two
+/// copies of a trust key are two places to rotate it, and one place to forget.
 enum SigCheck {
     /// A `<asset>.minisig` was present and its signature matched the bytes.
     Verified,
@@ -90,32 +89,31 @@ enum SigCheck {
     Unsigned,
 }
 
-// ---------------------------------------------------------------------------
-// La actualización automática — la ventana es una vista, no la dueña
-// ---------------------------------------------------------------------------
+// ---- the automatic update: the window is a view, not the owner
 //
-// Quien mira, baja y aplica es el servicio (`hoardd::updater`), por lo mismo
-// que es el dueño del motor: es lo único que está siempre. Una máquina cuya app
-// lleva dos semanas cerrada tiene que actualizarse igual, y una ventana no
-// puede prometer eso.
+// What looks, downloads and applies is the service (`hoardd::updater`), for the
+// same reason it owns the engine: it is the only thing that is always there. A
+// machine whose app has been closed for two weeks has to update anyway, and a
+// window cannot promise that.
 //
-// Lo que se queda aquí son las dos cosas que sólo puede hacer una ventana:
+// What stays here are the two things only a window can do:
 //
-// 1. **Enseñar** en qué punto está, incluido el caso feo — el paquete nativo
-//    que necesita un diálogo de privilegios que el ciclo de fondo no abre.
-// 2. **Estar delante.** `apply_staged_update` es el permiso: cuando lo pide la
-//    ventana, hay un humano al teclado y polkit tiene a quién preguntarle.
+// 1. **Showing** where it stands, including the ugly case: a native package that
+//    needs a privilege dialog the background cycle will not open.
+// 2. **Being in front of somebody.** `apply_staged_update` is the permission: when
+//    the window asks, there is a human at the keyboard and polkit has somebody to
+//    ask.
 //
-// Y de ahí sale "se actualiza al abrirse": al arrancar, la app pregunta el
-// estado y, si hay algo bajado, lo aplica antes de dejar seguir. Al abrir ya no
-// queda descarga — queda un `rename`.
+// That is where "it updates when you open it" comes from: at start the app asks for
+// the state and, when something is downloaded, applies it before letting things
+// carry on. By the time you open it there is no download left, only a `rename`.
 
-/// Cómo va la actualización, tal cual la cuenta el servicio.
+/// How the update is going, exactly as the service tells it.
 ///
-/// Se reenvía la forma de `hoard_core::ipc::UpdateState` en vez de traducirla:
-/// el cable ya está pensado para que lo lea una interfaz (fases con nombre,
-/// motivos tipados, la fecha límite), y una segunda forma sería un sitio más
-/// donde quedarse atrás.
+/// `hoard_core::ipc::UpdateState`'s shape is forwarded rather than translated: the
+/// wire is already designed to be read by an interface (named phases, typed
+/// reasons, the deadline), and a second shape would be one more place to fall
+/// behind.
 #[tauri::command]
 pub async fn update_status(
     state: State<'_, AppState>,
@@ -123,22 +121,23 @@ pub async fn update_status(
     match state.daemon.update_state().await {
         Ok(state) => Ok(Some(state)),
         Err(err) => {
-            // Sin servicio (o con uno más viejo que esta ventana, que dura lo
-            // que tarda su relevo) no hay estado que enseñar. `None` y no un
-            // error: la app arranca igual, y el updater viejo de esta misma
-            // pantalla sigue de red de seguridad.
+            // With no service (or one older than this window, which lasts as long
+            // as its relief takes) there is no state to show. `None` and not an
+            // error: the app starts anyway, and this screen's older updater is still
+            // the safety net.
             tracing::debug!(error = %format!("{err:#}"), "updates: the service didn't report its update state");
             Ok(None)
         }
     }
 }
 
-/// Aplica ya lo que el servicio tenga bajado. **Éste es el camino con humano
-/// delante**: es el único por el que un `.deb` o un `.rpm` llegan a instalarse,
-/// porque es el único en el que el diálogo de polkit tiene a quién preguntar.
+/// Applies whatever the service has downloaded, now. **This is the road with a
+/// human in front of it**: it is the only one a `.deb` or an `.rpm` ever gets
+/// installed down, because it is the only one where polkit's dialog has somebody to
+/// ask.
 ///
-/// Vuelve enseguida con el estado del momento; instalar sigue en marcha y se
-/// sigue con [`update_status`].
+/// It returns straight away with the state of the moment; installing carries on and
+/// is followed with [`update_status`].
 #[tauri::command]
 pub async fn apply_staged_update(
     state: State<'_, AppState>,
@@ -150,9 +149,9 @@ pub async fn apply_staged_update(
     })
 }
 
-/// "Ahora no", durante `hours`. No mueve la fecha límite: posponer retrasa la
-/// pregunta, no el plazo — que es justo lo que hace que el plazo signifique
-/// algo.
+/// "Not now", for `hours`. It does not move the deadline: postponing delays the
+/// question, not the deadline, which is exactly what makes the deadline mean
+/// something.
 #[tauri::command]
 pub async fn snooze_update(
     state: State<'_, AppState>,
@@ -164,15 +163,14 @@ pub async fn snooze_update(
     })
 }
 
-/// Cierra esta ventana y abre la copia recién instalada.
+/// Closes this window and opens the freshly installed copy.
 ///
-/// Lo pide la pantalla de actualización cuando **el servicio ya se relevó y la
-/// ventana se quedó atrás**: el binario nuevo está en disco desde hace un rato,
-/// pero un proceso vivo no cambia de ejecutable. Reutiliza el mismo relevo que
-/// el updater de la propia ventana ([`relaunch_then_exit`]), con el mismo
-/// cuidado con el `" (deleted)"` que el kernel cuelga de `/proc/self/exe`
-/// cuando el fichero que estamos ejecutando ya fue sustituido — que es
-/// exactamente el caso aquí.
+/// The update screen asks for it when **the service has already been relieved and
+/// the window is the one left behind**: the new binary has been on disk for a while,
+/// but a live process does not change its executable. It reuses the same relief the
+/// window's own updater uses ([`relaunch_then_exit`]), with the same care about the
+/// `" (deleted)"` the kernel hangs off `/proc/self/exe` when the file we are running
+/// has already been replaced, which is exactly the case here.
 #[tauri::command]
 pub async fn restart_app(app: AppHandle) {
     let exe_before = std::env::current_exe().ok().map(sanitize_exe_path);
@@ -274,7 +272,7 @@ async fn fetch_gh_latest() -> Result<String, String> {
     Ok(release.tag_name)
 }
 
-/// Full release fetch — used by `apply_desktop_update` to discover the asset
+/// A full release fetch, used by `apply_desktop_update` to discover the asset
 /// list at install time (we don't cache it because the user might leave the
 /// app open for days between detection and applying).
 async fn fetch_gh_release() -> Result<GhRelease, String> {
@@ -313,11 +311,11 @@ async fn fetch_server_health(server_url: &str) -> Result<String, String> {
 }
 
 /// Lexicographic comparison is good enough for our `MAJOR.MINOR.PATCH` tags
-/// because each component is zero-padded only conceptually — we use the
+/// because each component is zero-padded only conceptually: we use the
 /// fact that semver strings up to `9.9.9` sort correctly as long as all
 /// components have the same digit count, which they do for hoard.
 ///
-/// For the rare case of crossing 9 → 10 we'd want a real semver parse,
+/// For the rare case of crossing 9 to 10 we'd want a real semver parse,
 /// but it's not worth pulling a crate for one comparison; we'll switch
 /// when we ship 1.10.0.
 fn is_newer(candidate: &str, baseline: &str) -> bool {
@@ -326,7 +324,7 @@ fn is_newer(candidate: &str, baseline: &str) -> bool {
 
 /// Cheap `(major, minor, patch)` tuple parser. Returns zeros on failure
 /// so a malformed string is treated as "older than everything"; that's
-/// the safer default for an update prompt — never nag on garbage input.
+/// the safer default for an update prompt: never nag on garbage input.
 fn parse_version(s: &str) -> (u32, u32, u32) {
     let s = s.trim_start_matches('v');
     let mut it = s.split('.');
@@ -355,7 +353,7 @@ pub enum ApplyOutcome {
     /// A newer release appeared between the moment the modal showed the user a
     /// version and the moment they confirmed. We abort *without downloading*
     /// the stale one and report the version that's actually latest now so the
-    /// UI can refresh and re-offer it — never install an older build than what
+    /// UI can refresh and re-offer it. Never install an older build than what
     /// GitHub currently calls "latest".
     Superseded { latest: String },
 }
@@ -363,7 +361,7 @@ pub enum ApplyOutcome {
 /// Tauri command. Downloads the right release asset for this OS and tries to
 /// launch the platform installer.
 ///
-/// This is the "Sí" path of the in-app update modal. We deliberately keep
+/// This is the "yes" path of the in-app update modal. We deliberately keep
 /// the privilege-escalation choice on the OS: `pkexec` for Linux .deb,
 /// `msiexec` for Windows .msi, `open` for macOS .dmg. Each pops the system's
 /// usual auth prompt; we never ask the user for a password ourselves.
@@ -382,7 +380,7 @@ pub async fn apply_desktop_update(
 
     // Re-check at confirm time: if a newer release landed since the modal was
     // painted (the badge can be up to 30 min stale, or the user sat on the
-    // dialog), don't silently install the version they *saw* — bail and tell
+    // dialog), don't silently install the version they *saw*: bail and tell
     // the UI to re-offer the now-latest one. `is_newer` is strict, so this
     // only triggers on a genuinely newer tag, not on an equal re-check.
     if let Some(expected) = expected_version {
@@ -434,7 +432,7 @@ pub async fn apply_desktop_update(
     })?;
 
     // Gate the privileged auto-install behind a minisign check against the
-    // embedded release key — the same guarantee the server's `upgrade` gives.
+    // embedded release key, the same guarantee the server's `upgrade` gives.
     // A *tampered* artifact (signature present but wrong) aborts here and is
     // never written; an as-yet-unsigned release degrades to a manual download
     // rather than being run as root.
@@ -469,8 +467,8 @@ pub async fn apply_desktop_update(
     // Capture our own binary path *before* the installer runs. On Linux the
     // .deb install makes dpkg unlink+recreate /usr/bin/hoard-desktop, after
     // which `std::env::current_exe()` resolves to ".../hoard-desktop (deleted)"
-    // — spawning that path fails and the relaunch silently no-ops, which is the
-    // "tengo que cerrar y abrir para que cambie de versión" bug. Snapshotting
+    // and spawning that path fails, so the relaunch silently no-ops. That is the
+    // "I have to close and reopen it for the version to change" bug. Snapshotting
     // the path here (and sanitizing a stale " (deleted)" suffix just in case)
     // gives us a stable path to the freshly-installed binary.
     let exe_before = std::env::current_exe().ok().map(sanitize_exe_path);
@@ -482,14 +480,14 @@ pub async fn apply_desktop_update(
         Ok(()) => {
             // Quit the old process shortly after we return. Without this the
             // user is stuck running 1.3.5 even though dpkg/msiexec already
-            // dropped 1.4.0 on disk — that's exactly what the 1.3.5 → 1.4.0
-            // upgrade looked like in the wild on Linux ("se queda tan
-            // pancho") and is what makes Windows refuse to overlay the .exe
+            // dropped 1.4.0 on disk: that's exactly what the 1.3.5 to 1.4.0
+            // upgrade looked like in the wild on Linux (the app just carried
+            // on regardless) and is what makes Windows refuse to overlay the .exe
             // until the running copy goes away. The small delay lets the
             // frontend paint the "installed, reopen" toast before we cut the
             // process. On Linux we additionally relaunch the freshly-
             // installed binary so the user doesn't have to dig around the
-            // app menu — the .deb sits at the same /usr/bin path so
+            // app menu, since the .deb sits at the same /usr/bin path so
             // `current_exe()` already points at the new binary, and
             // `setsid` detaches it from our dying process group.
             let app2 = app.clone();
@@ -513,11 +511,12 @@ pub async fn apply_desktop_update(
 }
 
 /// Try to spawn the new binary detached from the current process, then exit.
-/// Failures are logged and swallowed — the worst case is the user has to
+/// Failures are logged and swallowed: the worst case is the user has to
 /// reopen the app from their app menu, which is exactly the 1.4.0 status
 /// quo we're trying to improve.
-// `exe_before` solo se consume en la rama Linux (relanzar el binario tras el
-// .deb); en Windows/mac el parámetro no se lee y sería un unused-variable.
+// `exe_before` is only consumed on the Linux branch (relaunching the binary after
+// the .deb); on Windows and macOS the parameter is never read and would be an
+// unused variable.
 #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
 fn relaunch_then_exit(app: &AppHandle, exe_before: Option<std::path::PathBuf>) {
     #[cfg(target_os = "linux")]
@@ -529,7 +528,7 @@ fn relaunch_then_exit(app: &AppHandle, exe_before: Option<std::path::PathBuf>) {
             use std::process::{Command, Stdio};
             // `setsid` puts the child in its own session so it survives our
             // imminent `app.exit(0)`. If `setsid` isn't on PATH (unusual on
-            // any modern Linux) we just skip the relaunch — exit is still
+            // any modern Linux) we just skip the relaunch; exit is still
             // useful on its own because the old process was blocking the
             // user from running the new binary anyway.
             let spawn = Command::new("setsid")
@@ -548,7 +547,7 @@ fn relaunch_then_exit(app: &AppHandle, exe_before: Option<std::path::PathBuf>) {
     // being overwritten races msiexec and usually crashes. The user reopens
     // from the Start menu after the installer finishes.
     //
-    // On macOS we leave it to the user too — `open` on the .dmg pops Finder
+    // On macOS we leave it to the user too: `open` on the .dmg pops Finder
     // and the user drags into Applications.
     app.exit(0);
 }
@@ -566,15 +565,15 @@ fn sanitize_exe_path(exe: std::path::PathBuf) -> std::path::PathBuf {
     exe
 }
 
-/// El fichero de la release que le toca a esta máquina.
+/// The release file this machine should get.
 ///
-/// La elección ya no se hace aquí. `hoard_agent::install` mira la máquina
-/// —gestor de paquetes disponible, raíz de sólo lectura, si se puede elevar sin
-/// bloquearse— y de ahí sale la vía; `fetch::asset_for` traduce esa vía a un
-/// fichero. Antes esto decidía por su cuenta mirando sólo la distro, y por eso
-/// en una imagen atómica (SteamOS, Bazzite) ofrecía un `.rpm` que no hay forma
-/// de aplicar: `rpm` está en el `PATH`, pero `/usr` es de sólo lectura. Ahora
-/// esas máquinas reciben el AppImage, igual que por la terminal.
+/// The choice is not made here. `hoard_agent::install` looks at the machine
+/// (available package manager, read-only root, whether it can elevate without
+/// hanging) and the route comes out of that; `fetch::asset_for` translates the route
+/// into a file. This used to decide on its own by looking only at the distro, which
+/// is why on an atomic image (SteamOS, Bazzite) it offered an `.rpm` there is no way
+/// to apply: `rpm` is on the `PATH`, but `/usr` is read-only. Those machines get the
+/// AppImage now, the same as from the terminal.
 fn pick_asset(assets: &[GhAsset]) -> Option<&GhAsset> {
     let probe = hoard_agent::install::Probe::read();
     let delivery = hoard_agent::install::resolve_delivery(&probe);
@@ -600,17 +599,18 @@ async fn download_bytes(url: &str) -> Result<Vec<u8>, String> {
     Ok(bytes.to_vec())
 }
 
-/// Comprueba el instalador recién bajado contra la clave de release.
+/// Checks the freshly downloaded installer against the release key.
 ///
-/// - `Ok(Verified)`  — firma presente y válida; se puede auto-instalar.
-/// - `Ok(Unsigned)`  — la release no publica firma para este fichero (quien
-///   llama se queda en descarga manual en vez de ejecutar nada como root).
-/// - `Err(detalle)`  — había firma y NO casa, o no se pudo leer. Se aborta y se
-///   descarta la descarga: éste es el caso de artefacto manipulado.
+/// - `Ok(Verified)`: a signature is present and valid, so it can be auto-installed.
+/// - `Ok(Unsigned)`: the release publishes no signature for this file, and the
+///   caller stays on a manual download rather than running anything as root.
+/// - `Err(detail)`: there was a signature and it does NOT match, or it could not be
+///   read. It aborts and the download is discarded: this is the tampered-artifact
+///   case.
 ///
-/// La criptografía y la clave son las de `install::fetch`, compartidas con la
-/// terminal. Lo que se queda aquí es la tolerancia al caso `Unsigned`, que es
-/// una decisión de este updater y no de la verificación.
+/// The cryptography and the key are `install::fetch`'s, shared with the terminal.
+/// What stays here is the tolerance for the `Unsigned` case, which is this updater's
+/// decision and not the verification's.
 async fn verify_installer_signature(
     assets: &[GhAsset],
     asset_name: &str,
@@ -707,15 +707,13 @@ async fn launch_installer(path: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Server upgrade — in-app, for local servers only
-// ---------------------------------------------------------------------------
+// ---- the server upgrade: in-app, for local servers only
 //
 // Why this exists: pre-1.4.7 the Server card in Settings only knew how to
 // *copy* `sudo hoard-server upgrade` to the clipboard. That's a sensible
 // fallback when the server is on another box (you have to SSH anyway), but
 // for the common self-hosted case where the server runs on the same machine
-// as the desktop app it's busywork — the user already has both binaries on
+// as the desktop app it's busywork: the user already has both binaries on
 // disk and just wants a button.
 //
 // We piggy-back on the same `pkexec` flow the desktop installer uses: one
@@ -739,15 +737,15 @@ async fn launch_installer(path: &std::path::Path) -> Result<(), String> {
 /// "up to date"; on `upgraded` it tells the user to restart manually.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-// Sólo la impl de Linux construye estas variantes; en Windows/macOS el stub
-// devuelve error y nunca las crea, pero el tipo debe existir cross-platform
-// (es el retorno del comando Tauri y su forma serde).
+// Only the Linux implementation builds these variants; on Windows and macOS the
+// stub returns an error and never creates them, but the type has to exist
+// cross-platform (it is the Tauri command's return and its serde shape).
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub enum ServerUpgradeOutcome {
     /// The new binary is on disk *and* `systemctl restart hoard-server`
     /// returned 0. The user can keep using the app immediately.
     UpgradedAndRestarted { output: String },
-    /// The new binary is on disk but the service restart didn't succeed —
+    /// The new binary is on disk but the service restart didn't succeed,
     /// usually because the server isn't running under systemd. The user
     /// needs to restart it themselves with whatever supervisor they use.
     Upgraded {
@@ -759,7 +757,7 @@ pub enum ServerUpgradeOutcome {
 /// Tauri command. Runs `hoard-server upgrade` (and `systemctl restart`)
 /// through a single `pkexec` invocation so the user only authenticates
 /// once. Only available on Linux; only meaningful when the server is on
-/// the same machine — the UI is responsible for gating the button on
+/// the same machine. The UI is responsible for gating the button on
 /// `is_local_server`, but we don't *require* it because the call simply
 /// fails on a non-local box (the local `hoard-server` binary either
 /// doesn't exist, or it does and the user is fine to upgrade their copy).
@@ -785,7 +783,7 @@ async fn apply_server_update_impl() -> Result<ServerUpgradeOutcome, AppError> {
             "sh",
             "-c",
             // Resolve `hoard-server` through PATH inside the elevated
-            // shell — polkit doesn't preserve the caller's PATH for the
+            // shell: polkit doesn't preserve the caller's PATH for the
             // binary it spawns, but `sh` does for *its* exec, and `sh`'s
             // default PATH includes the standard system bin dirs we ship to.
             "set -e; hoard-server upgrade",
@@ -821,7 +819,7 @@ async fn apply_server_update_impl() -> Result<ServerUpgradeOutcome, AppError> {
 
     // Try the restart in a second pkexec call. Polkit caches the auth
     // grant for ~5 minutes by default, so this typically won't re-prompt
-    // — but on a stricter polkit policy the user *might* see a second
+    // but on a stricter polkit policy the user *might* see a second
     // prompt. We accept that as a price for keeping the chain trivial to
     // reason about (one pkexec per privileged op, no shell escapes).
     let restart = tokio::process::Command::new("pkexec")
@@ -864,9 +862,7 @@ async fn apply_server_update_impl() -> Result<ServerUpgradeOutcome, AppError> {
     )
 }
 
-// ---------------------------------------------------------------------------
-// Remote-triggered server upgrade — works from any OS, any machine (ADR 0017)
-// ---------------------------------------------------------------------------
+// ---- the remote-triggered server upgrade: any OS, any machine (ADR 0017)
 //
 // Unlike `apply_server_update` (which runs `pkexec hoard-server upgrade` on
 // *this* machine and therefore only helps when the server shares the box),
@@ -886,7 +882,7 @@ pub enum RemoteUpgradeOutcome {
     /// The server came back on a new version within the poll window.
     Confirmed { version: String },
     /// The request was accepted (202) but we couldn't confirm the new
-    /// version before the timeout — the server may still be restarting, or
+    /// version before the timeout: the server may still be restarting, or
     /// it was already on the latest signed release. The UI tells the user to
     /// re-check in a moment rather than treating this as a failure.
     Scheduled,
@@ -910,7 +906,7 @@ pub async fn trigger_server_upgrade(
         .ok_or_else(|| {
             AppError::new("updates.error.title", "updates.error.server_not_logged_in")
         })?;
-    // Prestado por el servicio: el ítem del llavero es suyo (D.20).
+    // Lent by the service: the keyring item is its own (D.20).
     let token = crate::commands::auth::server_session(&app)
         .await
         .ok()
@@ -981,7 +977,7 @@ mod tests {
     /// The architecture token Windows bundles carry on the machine running the
     /// test. Hardcoding `x64` tied the two tests below to an x86 runner: on
     /// aarch64 `pick_for_arch` recognises none of the candidates as its own and
-    /// returns `None` — correct behaviour, failing the test for the wrong
+    /// returns `None`, which is correct behaviour failing the test for the wrong
     /// reason. What is under test is the preference for NSIS over MSI, not the
     /// machine that compiled it.
     fn arch_token() -> &'static str {
@@ -1001,11 +997,11 @@ mod tests {
             .collect()
     }
 
-    /// El release publica los dos y el `.msi` va PRIMERO en la lista, así que
-    /// el orden no puede salir del release: sólo el bundle NSIS trae el hook que
-    /// para `hoardd` antes de pisar su `.exe`. La preferencia vive ahora en
-    /// `install::fetch`, pero el updater es quien se rompe si cambia, así que la
-    /// aserción se queda aquí.
+    /// The release publishes both and the `.msi` comes FIRST in the list, so the
+    /// order cannot come from the release: only the NSIS bundle carries the hook
+    /// that stops `hoardd` before overwriting its `.exe`. The preference lives in
+    /// `install::fetch` now, but the updater is what breaks when it changes, so the
+    /// assertion stays here.
     #[test]
     fn windows_update_takes_the_nsis_installer_not_the_msi() {
         let arch = arch_token();
@@ -1033,11 +1029,11 @@ mod tests {
         );
     }
 
-    /// Cada vía coge su fichero y sólo el suyo. Antes esto se resolvía por una
-    /// lista de sufijos con fallback en cascada (`.deb` → `.rpm` → AppImage),
-    /// que es lo que hacía que una máquina de raíz inmutable acabara con un
-    /// paquete inaplicable: ahora la vía la decide la máquina antes de llegar
-    /// aquí, y aquí no hay cascada que la contradiga.
+    /// Every route takes its own file and no other. This used to be resolved by a
+    /// list of suffixes with a cascading fallback (`.deb`, then `.rpm`, then the
+    /// AppImage), which is what left a machine with an immutable root holding a
+    /// package it could not apply. The machine decides the route before it gets
+    /// here, and there is no cascade here to contradict it.
     #[test]
     fn each_delivery_takes_its_own_file_and_no_other() {
         let rel = assets(&["b.rpm", "a.deb", "c.AppImage"]);

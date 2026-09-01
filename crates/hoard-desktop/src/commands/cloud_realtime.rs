@@ -1,4 +1,4 @@
-//! Supabase Realtime push — the near-instant half of "pim pam pum" sync.
+//! Supabase Realtime push: the near-instant half of the sync.
 //!
 //! Pairs with `commands::cloud_pull`. The poller hits `/v1/cloud/sync` on a
 //! fixed cadence (default 10 s) so the UI is *eventually* honest about server
@@ -10,15 +10,15 @@
 //! Why subscribe to `saves` and not `save_versions`: `save_versions` has no
 //! `user_id` column, so it can't be RLS-scoped per user for Realtime. `saves`
 //! does, and the commit transaction bumps `saves.latest_version_num` in the
-//! same TX as the version insert — so an `UPDATE` on `saves` is the exact
+//! same TX as the version insert, so an `UPDATE` on `saves` is the exact
 //! "there's something new" signal, already owner-scoped by RLS.
 //!
 //! Server-side prerequisites (migration `realtime_saves_push`): `public.saves`
 //! is in the `supabase_realtime` publication and has an owner `SELECT` RLS
 //! policy so the authenticated JWT only ever receives its own rows.
 //!
-//! This is strictly an accelerator. It never restores or mutates anything —
-//! it only nudges the poller. If the socket drops, errors, or the server
+//! This is strictly an accelerator. It never restores or mutates anything, it
+//! only nudges the poller. If the socket drops, errors, or the server
 //! prerequisites aren't in place, the timed poll keeps working unchanged. So
 //! every failure path here is best-effort: log, back off, reconnect.
 
@@ -46,7 +46,7 @@ const HEARTBEAT_SECS: u64 = 25;
 /// Hard cap on a single connection's lifetime. Now just hygiene: token
 /// freshness is maintained *on the live socket* by the in-loop refresh below
 /// (see [`TOKEN_REFRESH_MARGIN`]), so we no longer rely on the recycle to pick
-/// up a fresh JWT — but a periodic clean reconnect is still cheap insurance.
+/// up a fresh JWT, but a periodic clean reconnect is still cheap insurance.
 const CONNECTION_MAX_SECS: u64 = 45 * 60;
 
 /// Reconnect backoff bounds.
@@ -57,8 +57,8 @@ const BACKOFF_MAX_SECS: u64 = 60;
 ///
 /// Why this exists at all: Supabase Realtime authorizes every `postgres_changes`
 /// row against the connection's access token via RLS. The moment that token
-/// expires it **silently** stops delivering changes — no error frame, no close,
-/// and the heartbeats (sent on the tokenless `phoenix` topic) keep succeeding —
+/// expires it **silently** stops delivering changes: no error frame, no close,
+/// and the heartbeats (sent on the tokenless `phoenix` topic) keep succeeding,
 /// so the socket looks perfectly alive while being stone deaf. The REST poller
 /// dodges this by refreshing lazily on each 401, but a long-lived push socket
 /// has no request boundary to hang a lazy refresh on: it must proactively renew
@@ -91,7 +91,7 @@ pub fn start(app: &AppHandle) {
     let new_handle = tokio::task::spawn(async move {
         // Supervised like the poller (ADR 0021 D.12). `run_loop` already
         // reconnects around *errors*, but a panic unwound straight through it
-        // and took the task with it — permanently, since nothing restarts it —
+        // and took the task with it, permanently, since nothing restarts it,
         // so one bad frame cost the session its push channel with no trace in
         // the log. That is exactly how it died on `kick_all` before `CloudFeed`
         // was managed. Signing out still ends it for good (`Finished`); the
@@ -172,14 +172,14 @@ async fn connect_once(app: &AppHandle) -> anyhow::Result<()> {
     // near/at expiry. Refresh before joining so Realtime authorizes our changes
     // from the first frame instead of joining "ok" but deaf.
     if token_near_expiry(&creds.access_token) {
-        // Prestado por el servicio, no rotado aquí: el único rotador es `hoardd`
-        // (ADR 0021, Parte A). Sin `rejected`, porque el token no ha fallado —
-        // sólo le queda poco, y el servicio decide si toca rotar.
+        // Borrowed from the service, not rotated here: the only rotator is `hoardd`
+        // (ADR 0021, Part A). With no `rejected`, because the token has not failed;
+        // it is just close to expiring, and the service decides whether to rotate.
         match cloud::borrow_access_token(app, None).await {
             Ok(fresh) => creds = fresh,
             Err(e) => {
                 if cloud::is_session_expired(&e) {
-                    tracing::info!("cloud-realtime: refresh token revoked — tearing down session");
+                    tracing::info!("cloud-realtime: refresh token revoked, tearing down session");
                     cloud::handle_session_expired(app);
                     return Ok(());
                 }
@@ -197,7 +197,7 @@ async fn connect_once(app: &AppHandle) -> anyhow::Result<()> {
     // subscription (verified empty in `realtime.subscription`), so we received
     // zero change events and fell back to the poll forever. 2.0.0 serialises
     // every frame as a Phoenix array `[join_ref, ref, topic, event, payload]`
-    // (see the sends + `classify` below) — the format supabase-js uses.
+    // (see the sends and `classify` below), the format supabase-js uses.
     let base = cloud::supabase_url();
     let ws_base = base
         .strip_prefix("https://")
@@ -213,13 +213,13 @@ async fn connect_once(app: &AppHandle) -> anyhow::Result<()> {
 
     // Join the channel, subscribing to the three push sources. RLS on the
     // authenticated token guarantees we only ever receive our own rows (for
-    // `notifications` — broadcasts — every authenticated user passes), so no
-    // client-side user_id filter is needed.
+    // `notifications`, which are broadcasts, every authenticated user passes), so
+    // no client-side user_id filter is needed.
     //
-    // - `saves` UPDATE/INSERT   → another device committed; kick a sync pull.
-    // - `devices` UPDATE/INSERT → a sibling's heartbeat / game change; kick
+    // - `saves` UPDATE/INSERT: another device committed, so kick a sync pull.
+    // - `devices` UPDATE/INSERT: a sibling's heartbeat or game change, so kick
     //   the Eye-panel devices feed.
-    // - `notifications` INSERT  → operator broadcast; kick the bell feed.
+    // - `notifications` INSERT: an operator broadcast, so kick the bell feed.
     // Phoenix array frame: [join_ref, ref, topic, event, payload]. The join uses
     // ref "1" (and join_ref "1"); `classify` gates the binding-confirmed check on
     // ref "1", and the access_token push below reuses join_ref "1".
@@ -233,7 +233,7 @@ async fn connect_once(app: &AppHandle) -> anyhow::Result<()> {
                 "broadcast": { "ack": false },
                 "presence": { "key": "" },
                 "private": false,
-                // ONLY `saves` — the sync-critical signal. A multi-table
+                // ONLY `saves`, the sync-critical signal. A multi-table
                 // postgres_changes subscription (saves+devices+notifications in
                 // one channel) was created ("bindings confirmed") but then torn
                 // down by Realtime within minutes, so we received nothing and
@@ -262,7 +262,7 @@ async fn connect_once(app: &AppHandle) -> anyhow::Result<()> {
     let mut next_ref: u64 = 2;
     // Heartbeat liveness: the ref of the last heartbeat we sent, cleared when its
     // `phx_reply` returns. If a new heartbeat is due while the previous is still
-    // unacked, the socket is dead — a half-open connection where Supabase dropped
+    // unacked, the socket is dead: a half-open connection where Supabase dropped
     // us (and our postgres_changes subscription with us) but no close frame ever
     // reached us. Without this the client sat "connected" forever with a dropped
     // subscription, receiving nothing and never reconnecting (observed: bindings
@@ -273,7 +273,7 @@ async fn connect_once(app: &AppHandle) -> anyhow::Result<()> {
     loop {
         tokio::select! {
             _ = sleep_until(deadline) => {
-                // Lifetime cap — recycle to pick up a refreshed token.
+                // Lifetime cap: recycle to pick up a refreshed token.
                 let _ = write.send(Message::Close(None)).await;
                 return Ok(());
             }
@@ -281,9 +281,9 @@ async fn connect_once(app: &AppHandle) -> anyhow::Result<()> {
                 // A still-pending heartbeat means the last one was never acked →
                 // dead socket. Bail so the outer loop reconnects and re-subscribes.
                 if pending_hb.is_some() {
-                    anyhow::bail!("heartbeat unacked — socket dead, reconnecting");
+                    anyhow::bail!("heartbeat unacked, socket dead, reconnecting");
                 }
-                // [join_ref, ref, topic, event, payload] — heartbeats are on the
+                // [join_ref, ref, topic, event, payload]. Heartbeats are on the
                 // tokenless `phoenix` topic, so join_ref is null.
                 let hb_ref = next_ref.to_string();
                 next_ref += 1;
@@ -321,7 +321,7 @@ async fn connect_once(app: &AppHandle) -> anyhow::Result<()> {
                         }
                         Err(e) => {
                             if cloud::is_session_expired(&e) {
-                                tracing::info!("cloud-realtime: refresh token revoked — tearing down session");
+                                tracing::info!("cloud-realtime: refresh token revoked, tearing down session");
                                 cloud::handle_session_expired(app);
                                 return Ok(());
                             }
@@ -362,7 +362,7 @@ async fn connect_once(app: &AppHandle) -> anyhow::Result<()> {
                                     // Just (re)joined the channel. Anything that
                                     // changed while the socket was down produced
                                     // no `postgres_changes` for us, so kick one
-                                    // catch-up pull to close that gap — and prime
+                                    // catch-up pull to close that gap, and prime
                                     // both feeds so the Eye panel and the bell are
                                     // fresh right from sign-in/boot.
                                     tracing::debug!("cloud-realtime: (re)subscribed → catch-up pull");
@@ -375,20 +375,20 @@ async fn connect_once(app: &AppHandle) -> anyhow::Result<()> {
                                     // the rotated token now on disk. If the
                                     // refresh is terminally stale (Supabase
                                     // revoked the token family), don't reconnect
-                                    // into an endless token-error loop — tear the
+                                    // into an endless token-error loop: tear the
                                     // session down so the UI prompts re-login.
                                     tracing::debug!("cloud-realtime: token rejected, borrowing another");
-                                    // Con `rejected`: el token puede estar aún
-                                    // lejos de caducar y aun así ser el que
-                                    // Realtime acaba de rechazar. Sin decirlo, el
-                                    // servicio nos devolvería el mismo y el
-                                    // reconecte sería un bucle.
+                                    // With `rejected`: the token may still be far
+                                    // from expiring and yet be the one Realtime just
+                                    // rejected. Without saying so, the service would
+                                    // hand back the same one and the reconnect would
+                                    // be a loop.
                                     if let Err(e) =
                                         cloud::borrow_access_token(app, Some(current_token.clone()))
                                             .await
                                     {
                                         if cloud::is_session_expired(&e) {
-                                            tracing::info!("cloud-realtime: refresh token revoked — tearing down session");
+                                            tracing::info!("cloud-realtime: refresh token revoked, tearing down session");
                                             cloud::handle_session_expired(app);
                                             return Ok(());
                                         }
@@ -414,7 +414,7 @@ async fn sleep_until(deadline: Instant) {
 }
 
 /// Best-effort `exp` (unix seconds) from a JWT access token. `None` when the
-/// token isn't a decodable JWT — the caller then leans on the connection
+/// token isn't a decodable JWT; the caller then leans on the connection
 /// lifetime cap instead of the exp-driven refresh, rather than treating an
 /// undecodable token as "expired" and hot-looping refreshes.
 fn jwt_exp_unix(token: &str) -> Option<u64> {
@@ -443,14 +443,14 @@ fn token_near_expiry(token: &str) -> bool {
 }
 
 enum Action {
-    /// A relevant `saves` row changed — refresh state.
+    /// A relevant `saves` row changed, so refresh state.
     Change,
-    /// A `devices` row changed (heartbeat / game start / closing beat) —
-    /// refresh the Eye panel's devices feed.
+    /// A `devices` row changed (heartbeat, game start, closing beat), so refresh
+    /// the Eye panel's devices feed.
     DevicesChange,
-    /// A `notifications` row landed — an operator broadcast for the bell.
+    /// A `notifications` row landed: an operator broadcast for the bell.
     NotificationsChange,
-    /// The channel join succeeded — (re)subscribed, trigger a catch-up pull.
+    /// The channel join succeeded: (re)subscribed, so trigger a catch-up pull.
     Resubscribed,
     /// The access token was rejected; refresh and reconnect.
     TokenError,
@@ -523,10 +523,10 @@ fn classify(txt: &str) -> Option<Action> {
                 return None;
             }
             // The join we send carries `ref: "1"`; its successful reply means the
-            // channel is joined. Heartbeat acks reuse `phx_reply` with ref 2,3,…
-            // so gating on ref "1" fires exactly once per (re)connect. On the join
-            // ack the server echoes `response.postgres_changes` WITH assigned ids —
-            // proof the bindings actually registered. Zero bindings = the exact
+            // channel is joined. Heartbeat acks reuse `phx_reply` with ref 2, 3 and
+            // so on, so gating on ref "1" fires exactly once per (re)connect. On the
+            // join ack the server echoes `response.postgres_changes` WITH assigned
+            // ids, proof the bindings actually registered. Zero bindings is the exact
             // silent failure we hit on vsn=1.0.0 (joined "ok" but never subscribed),
             // so surface it loudly instead of masquerading as healthy.
             if event == "phx_reply" && status == "ok" && msg_ref == "1" {
@@ -537,14 +537,14 @@ fn classify(txt: &str) -> Option<Action> {
                     .unwrap_or(0);
                 if bound == 0 {
                     tracing::warn!(
-                        "cloud-realtime: joined but server registered 0 postgres_changes bindings — \
+                        "cloud-realtime: joined but server registered 0 postgres_changes bindings; \
                          realtime push will NOT work (check publication / RLS SELECT policy / \
                          REPLICA IDENTITY FULL on saves+devices)"
                     );
                 } else {
                     tracing::info!(
                         bindings = bound,
-                        "cloud-realtime: postgres_changes bindings confirmed — realtime push live"
+                        "cloud-realtime: postgres_changes bindings confirmed, realtime push live"
                     );
                 }
                 return Some(Action::Resubscribed);

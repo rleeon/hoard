@@ -57,7 +57,7 @@ use crate::tray::{TrayController, TrayState};
 ///
 /// A bundled GUI app has nowhere to print: the default hook writes the panic to
 /// stderr, which on a double-clicked desktop app is `/dev/null`. So a task that
-/// died of a panic left **no trace whatsoever** — the ADR 0021 D.12 poller was
+/// died of a panic left **no trace whatsoever**: the ADR 0021 D.12 poller was
 /// exactly that, a `tokio::spawn` that stopped existing between two log lines,
 /// and reading the log the failure was indistinguishable from a healthy loop
 /// that simply had nothing to say. A background task that dies in silence is a
@@ -79,7 +79,7 @@ fn install_panic_logger() {
             location = %location,
             thread = %thread,
             message = %panic_message(info.payload()),
-            "PANIC — a task or thread died"
+            "PANIC: a task or thread died"
         );
         previous(info);
     }));
@@ -103,7 +103,7 @@ pub fn run() {
     // (NVIDIA, nested/remote X, some Mesa versions): transparent webviews go
     // black and reshaped regions (the Pro overlay's web panels) come back torn.
     // Forcing the non-DMABUF path keeps GL compositing but avoids that buffer
-    // sharing. Linux-only and overridable — only set when the user hasn't.
+    // sharing. Linux-only and overridable: only set when the user hasn't.
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
@@ -116,7 +116,7 @@ pub fn run() {
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,hoard=debug"));
 
-    // Resolve the local UTC offset *before* any threads spawn — `time`'s
+    // Resolve the local UTC offset *before* any threads spawn, because `time`'s
     // `current_local_offset` refuses to read the environment once the process
     // is multi-threaded (it's a soundness guard on POSIX). If it fails we fall
     // back to UTC, which the timer then labels as such.
@@ -138,7 +138,7 @@ pub fn run() {
         // Inert until a session + log-accepting server are present.
         .with(hoard_agent::logship::start());
 
-    // We deliberately let log-init failures fall through to "stdout-only" —
+    // We deliberately let log-init failures fall through to "stdout-only":
     // a corrupt cache_dir shouldn't keep the app from starting.
     let _file_guard = match CliConfig::logs_dir() {
         Ok(dir) => match std::fs::create_dir_all(&dir) {
@@ -168,7 +168,7 @@ pub fn run() {
             None
         }
     };
-    // Hold the non-blocking guard for the lifetime of the process — when it
+    // Hold the non-blocking guard for the lifetime of the process: when it
     // drops the writer thread is joined and any buffered lines flushed.
     // We park it on a `Box::leak` because Tauri's event loop is the actual
     // main loop and we can't easily thread the guard through it. Leaking is
@@ -189,7 +189,7 @@ pub fn run() {
                 let _ = window.set_focus();
             }
             // On Linux/Windows a `hoard://…` deep link opened while the app is
-            // already running arrives as a *second launch* — the OS hands the
+            // already running arrives as a *second launch*, since the OS hands the
             // URL to this callback as an argv entry, NOT through the deep-link
             // plugin's `on_open_url` channel (that one only fires on cold
             // start / macOS). Without forwarding it here the OAuth handoff is
@@ -212,8 +212,8 @@ pub fn run() {
         // Persistent KV store for the frontend (wizard step, UI prefs).
         // We don't read it from Rust today; later phases probably will.
         .plugin(tauri_plugin_store::Builder::default().build())
-        // Deep link — the `hoard://` scheme is owned by this app. The OAuth
-        // callback from Hoard Cloud (`hoard://auth/callback?access_token=…`)
+        // Deep link: the `hoard://` scheme is owned by this app. The OAuth
+        // callback from Hoard Cloud (`hoard://auth/callback?access_token=...`)
         // is forwarded to the frontend via the `deep-link://new-url` event
         // and consumed by the cloud store in /account.
         .plugin(tauri_plugin_deep_link::init())
@@ -227,7 +227,7 @@ pub fn run() {
         .manage(commands::cloud_realtime::RealtimeScheduler::default())
         // Gates of the devices + bell feeds. Missing here until ADR 0021 D.12,
         // and `app.state::<T>()` panics on unmanaged state: every `kick_*` call
-        // took its caller's task down with it — including the cloud-pull timer
+        // took its caller's task down with it, including the cloud-pull timer
         // loop, which is why the poller died after exactly one tick.
         .manage(commands::cloud_feed::CloudFeed::default())
         .manage(commands::selfhosted_events::SelfHostedEventsScheduler::default())
@@ -371,7 +371,7 @@ pub fn run() {
         ])
         .setup(|app| {
             // Build the tray as soon as we have an AppHandle. Failures here
-            // shouldn't kill the app — Linux desktops without an AppIndicator
+            // shouldn't kill the app: Linux desktops without an AppIndicator
             // host (some minimal Wayland sessions) will reject our tray and
             // we want to keep running with just the window visible.
             //
@@ -386,7 +386,7 @@ pub fn run() {
             }));
             match tray_result {
                 Ok(Ok(())) => {
-                    // Apply offline as the initial state — the agent forwarder
+                    // Apply offline as the initial state; the agent forwarder
                     // will recolour to idle as soon as it boots.
                     app.state::<TrayController>().set_state(TrayState::Offline);
                 }
@@ -396,21 +396,21 @@ pub fn run() {
                 Err(_) => {
                     tracing::warn!(
                         "tray icon backend panicked (missing libayatana-appindicator3 / \
-                         libappindicator3?) — continuing without a tray icon"
+                         libappindicator3?), continuing without a tray icon"
                     );
                 }
             }
 
             // First-run bootstrap + silent-boot handling. `prefs.json` missing
             // means a fresh install: apply the shipped defaults to the OS
-            // (autostart on) since the pref alone is just a mirror — the
+            // (autostart on) since the pref alone is just a mirror: the
             // autostart plugin owns the real entry, and the Settings page
             // re-probes it, so without registering here the toggle would snap
             // back to off.
             let first_run = Prefs::default_path().map(|p| !p.exists()).unwrap_or(false);
             if let Ok((mut prefs, path)) = Prefs::load_default() {
                 // Re-assert the OS autostart entry on *every* launch when the
-                // user wants it on — not just first run. The OS entry drifts
+                // user wants it on, not just first run. The OS entry drifts
                 // out of sync behind our back, and since the Settings page
                 // re-probes `is_enabled()` on mount, any drift snaps the toggle
                 // back to off. Concretely:
@@ -419,7 +419,7 @@ pub fn run() {
                 //     entry (StartupApproved\Run), or when an MSI update rewrote
                 //     the install path and dropped the HKCU\...\Run value. This
                 //     is the "toggle keeps turning itself off, only on Windows"
-                //     report — Linux only checks file existence so it doesn't
+                //     report; Linux only checks file existence so it doesn't
                 //     flip, but its `.desktop` Exec can still go stale.
                 //   - Both: after an update the recorded binary path can point
                 //     at a version that no longer exists, so autostart silently
@@ -438,7 +438,7 @@ pub fn run() {
                             // Best-effort: some minimal Linux sessions have no
                             // autostart dir we can write. Only demote the pref on
                             // a fresh install, where the failure means autostart
-                            // truly never took — for an existing install a
+                            // truly never took; for an existing install a
                             // transient failure shouldn't silently wipe intent.
                             tracing::warn!(error = %e, "couldn't re-assert autostart at startup");
                             if first_run {
@@ -450,34 +450,31 @@ pub fn run() {
                     let _ = prefs.save(&path);
                 }
 
-                // Y la otra mitad de "arranca al iniciar sesión": el servicio de
-                // sync (ADR 0021, Slice 4d). La app y el servicio son dos
-                // procesos desde el Slice 4, así que registrar sólo la app
-                // significaría que el sync no corre hasta que alguien abra la
-                // ventana — justo lo que este slice viene a arreglar. Se reafirma
-                // en cada arranque por las mismas razones que la entrada de la
-                // app (una actualización mueve el binario), es idempotente y
-                // barata (no reescribe nada si la unidad ya está igual), y **no**
-                // toca un servicio que ya esté corriendo.
+                // And the other half of "start at login": the sync service (ADR
+                // 0021). The app and the service are two processes, so registering
+                // only the app would mean the sync did not run until somebody opened
+                // the window, which is exactly what this design fixes. It is
+                // reaffirmed on every start for the same reasons as the app's entry
+                // (an update moves the binary), it is idempotent and cheap (it
+                // rewrites nothing when the unit already matches), and it does **not**
+                // touch a service that is already running.
                 commands::prefs::sync_service_autostart(prefs.autostart);
 
-                // Y la tercera pata: dejar constancia de qué componentes hay en
-                // esta máquina y que `hoard` se pueda escribir en una terminal.
-                // Va aquí porque quien instala la app desde la web nunca pasa
-                // por `hoard install`.
+                // And the third leg: recording which components this machine has,
+                // and making `hoard` typeable in a terminal. It goes here because
+                // whoever installs the app from the web never goes through `hoard
+                // install`.
                 commands::prefs::register_installation();
 
-                // Arranque silencioso: la entrada de autostart lanza Hoard con
-                // `--silent` (ver el init del plugin más arriba), así que al
-                // iniciar sesión la app se queda en la bandeja, mientras que un
-                // doble clic manual siempre enseña la UI — incluso con
-                // `start_minimised` puesto. Sin esta condición una instalación
-                // nueva arrancaría invisible.
+                // Silent start: the autostart entry launches Hoard with `--silent`
+                // (see the plugin's init above), so at login the app stays in the
+                // tray, while a manual double-click always shows the UI, even with
+                // `start_minimised` set. Without this condition a fresh install would
+                // start invisible.
                 //
-                // Ya no hace falta esconder la ventana aquí: nace oculta y sólo
-                // se muestra cuando el frontend llama a `ui_ready`. Lo que
-                // marcamos es lo contrario, que en este arranque no debe
-                // mostrarse pase lo que pase.
+                // The window no longer has to be hidden here: it is born hidden and
+                // only shown when the frontend calls `ui_ready`. What gets marked is
+                // the opposite, that on this start it must not be shown at all.
                 let silent = std::env::args().any(|a| a == "--silent");
                 commands::window::mark_start_hidden(
                     &app.handle().clone(),
@@ -491,7 +488,7 @@ pub fn run() {
             commands::window::spawn_fallback_show(app.handle().clone());
 
             // Kick off a background Ludusavi-catalog refresh if the cached
-            // copy is missing or older than a week. Fire-and-forget — the
+            // copy is missing or older than a week. Fire-and-forget: the
             // app keeps running on the embedded catalog while the
             // download happens, and the next launch picks up the fresh
             // override transparently.
@@ -503,7 +500,7 @@ pub fn run() {
             // install (no cache) so we don't spam disk on first launch.
             commands::library::spawn_periodic_rescan(app.handle().clone());
 
-            // Re-arm the Modo Automático scheduler if the user had it on
+            // Re-arm the automatic-mode scheduler if the user had it on
             // before the app last closed. The scheduler state singleton is
             // already managed above; this fire-and-forget task just reads
             // prefs.json and (if the toggle was on) calls `start()`.
@@ -514,7 +511,7 @@ pub fn run() {
                 }
             });
 
-            // Cloud-pull poller — independent cadence from the hourly
+            // The cloud-pull poller, on an independent cadence from the hourly
             // scheduler above. Boots only when a cloud session exists on
             // disk; otherwise lies dormant until the user signs in (the
             // login command starts it explicitly).
@@ -525,7 +522,7 @@ pub fn run() {
                 }
                 // Realtime push rides alongside the poller: it accelerates
                 // "something changed" from up to one poll interval down to
-                // ~1 s. Best-effort — the poll above is the fallback.
+                // about 1 s. Best-effort: the poll above is the fallback.
                 commands::cloud_realtime::restart_if_enabled(&cloud_pull_handle);
             });
 
@@ -550,12 +547,12 @@ pub fn run() {
             });
 
             // Cold start: when the OS launches us *fresh* with the callback URL
-            // (the common Linux/Windows case — the app wasn't running when the
+            // (the common Linux/Windows case, where the app wasn't running when the
             // user clicked the link), the URL arrives as a launch argument and
             // neither the single-instance callback (we ARE the first instance)
             // nor a runtime `on_open_url` necessarily fires before the webview
             // mounts. Scan argv ourselves and buffer the URL; the frontend
-            // drains it on mount. Don't emit — no listener exists yet.
+            // drains it on mount. Don't emit: no listener exists yet.
             if let Some(url) = first_hoard_url(std::env::args()) {
                 tracing::info!(url = %url, "deep link via launch argv (cold start)");
                 capture_deep_link(app.handle(), url, false);
@@ -581,16 +578,15 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    // RunEvent loop — we hijack `WindowEvent::CloseRequested` so the X button
+    // The RunEvent loop: we hijack `WindowEvent::CloseRequested` so the X button
     // hides the window instead of quitting (when the user has opted into
     // close-to-tray, which is the default). Quitting goes through the tray's
     // Quit menu item or `app.exit(0)`.
     app.run(|app_handle, event| {
-        // Salir ya no tiene nada que esperar: hasta el Slice 4c había que
-        // bloquear aquí hasta que ninguna rotación de token estuviera a medias
-        // (GoTrue rota server-side antes de que persistamos, y morir en ese hueco
-        // huerfanaba el par nuevo → sesión perdida al siguiente arranque). Quien
-        // rota es el servicio, que sobrevive a que cerremos.
+        // Quitting has nothing left to wait for. There used to be a block here until
+        // no token rotation was halfway through (GoTrue rotates server-side before we
+        // persist, and dying in that gap orphaned the new pair, losing the session on
+        // the next start). What rotates is the service, and it outlives us closing.
         if let RunEvent::ExitRequested { .. } = event {
             return;
         }
@@ -603,7 +599,7 @@ pub fn run() {
             if label != "main" {
                 return;
             }
-            // Read prefs lazily — the user may have toggled close-to-tray
+            // Read prefs lazily: the user may have toggled close-to-tray
             // between launches. If reading fails for any reason, fall back
             // to the safe default of "hide the window" so a backup in flight
             // isn't dropped.

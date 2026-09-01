@@ -28,7 +28,7 @@ pub fn get_prefs() -> Result<Prefs, String> {
 }
 
 /// Persist a new prefs object. We replace wholesale rather than merging
-/// individual fields — the form on the frontend always submits the full
+/// individual fields: the form on the frontend always submits the full
 /// object so there's nothing to lose, and partial-update semantics tend to
 /// surprise users who edit prefs.json by hand.
 ///
@@ -36,7 +36,7 @@ pub fn get_prefs() -> Result<Prefs, String> {
 /// service's engine (`Request::SetAutoRestore`). The engine applies it to its
 /// config and, on a `false → true` flip, kicks an immediate reconciliation
 /// sweep so the user doesn't have to restart anything to see the new
-/// behaviour. Failures here are non-fatal — prefs.json is already saved, and
+/// behaviour. Failures here are non-fatal: prefs.json is already saved, and
 /// the service reads the same file the next time it starts its engine.
 #[tauri::command]
 pub async fn save_prefs(state: State<'_, AppState>, prefs: Prefs) -> Result<Prefs, String> {
@@ -103,7 +103,7 @@ pub async fn set_global_sync(state: State<'_, AppState>, enabled: bool) -> Resul
 /// restart. Per-save presets still override as exceptions.
 ///
 /// We push *both* flags when either changed, mirroring what `save_prefs` does
-/// field-by-field — on a flip into `FullSync` the engine sweeps immediately and
+/// field by field: on a flip into `FullSync` the engine sweeps immediately and
 /// pulls any outdated save.
 #[tauri::command]
 pub async fn set_sync_mode(state: State<'_, AppState>, mode: SyncMode) -> Result<Prefs, AppError> {
@@ -140,13 +140,13 @@ pub async fn set_sync_mode(state: State<'_, AppState>, mode: SyncMode) -> Result
 }
 
 /// Enable or disable the autostart entry. We toggle via the plugin and only
-/// then mirror the new value into prefs — if the OS rejects the change (no
+/// then mirror the new value into prefs: if the OS rejects the change (no
 /// permission, sandboxed environment) we surface the error and leave prefs
 /// untouched so the UI stays honest.
 #[tauri::command]
 pub async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
     // On Linux the autostart plugin writes `~/.config/autostart/<app>.desktop`
-    // but does *not* create the directory itself — on a fresh XDG profile that
+    // but does *not* create the directory itself, and on a fresh XDG profile that
     // folder often doesn't exist yet, so `enable()` fails and autostart never
     // takes. Create it up front so enabling is reliable.
     #[cfg(target_os = "linux")]
@@ -162,7 +162,7 @@ pub async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String
     };
     result.map_err(|e| format!("Couldn't update autostart: {e}"))?;
 
-    // Re-query rather than trusting our own input — the plugin sometimes
+    // Re-query rather than trusting our own input: the plugin sometimes
     // refuses on Linux distros without a `~/.config/autostart` directory and
     // we want to reflect that.
     let actually_enabled = manager
@@ -174,10 +174,10 @@ pub async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String
     prefs.autostart = actually_enabled;
     prefs.save(&path).map_err(|e| e.to_string())?;
 
-    // El servicio de sync sigue al mismo interruptor que la app: desde el Slice 4
-    // son dos procesos, así que "arranca al iniciar sesión" tiene dos entradas
-    // que registrar, y apagarlo tiene que quitar las dos — si no, el usuario
-    // apaga el arranque automático y el sync sigue arrancando solo.
+    // The sync service follows the same switch as the app: they are two processes,
+    // so "start at login" has two entries to register, and turning it off has to
+    // remove both, or the user turns autostart off and the sync keeps starting on its
+    // own.
     //
     // Awaited, unlike the app-start reaffirmation: the user is standing in front
     // of the switch they just flipped, and a service half that failed has to be
@@ -189,25 +189,17 @@ pub async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String
     Ok(actually_enabled)
 }
 
-/// Registra (o quita) el arranque en boot del **servicio de sync**: la unidad de
-/// usuario que ejecuta `hoardd` (ADR 0021, Slice 4d).
+/// Writes this install into the manifest and leaves the terminal within reach.
 ///
-/// Va en segundo plano y best-effort a propósito: son subprocesos del gestor de
-/// servicios (`systemctl`, `launchctl`, `schtasks`) y ni el arranque de la app ni
-/// el interruptor de Ajustes pueden quedarse esperándolos. Si falla, el sync
-/// sigue funcionando por "spawn if absent" (la app levanta el servicio al
-/// abrirse); lo que se pierde es arrancar sin abrir la ventana, y eso queda
-/// dicho en el log.
-/// Anota esta instalación en el manifiesto y deja la terminal a mano.
+/// The two halves of "installing the app installs the whole of Hoard", and both have
+/// to run **here** and not in the installer: somebody who downloads the `.deb` from
+/// the web never goes through `hoard install`, so if the app did not do this, that
+/// machine would be left with no manifest (and its first `upgrade` would not know
+/// what it updates) and with the terminal inside the bundle, present but
+/// unwritable.
 ///
-/// Las dos mitades de "instalar la app instala Hoard entero", y las dos tienen
-/// que correr **aquí** y no en el instalador: quien baja el `.deb` de la web
-/// nunca pasa por `hoard install`, así que si esto no lo hiciera la app, esa
-/// máquina quedaría sin manifiesto (y su primer `upgrade` no sabría qué
-/// actualiza) y con la terminal dentro del bundle, presente pero inescribible.
-///
-/// En segundo plano y best-effort: ninguna de las dos puede retrasar ni tumbar
-/// el arranque de la ventana.
+/// In the background and best-effort: neither half may delay or bring down the
+/// window's start.
 pub(crate) fn register_installation() {
     tauri::async_runtime::spawn(async move {
         match hoard_agent::install::Manifest::reconcile() {
@@ -235,8 +227,9 @@ pub(crate) fn register_installation() {
                 tracing::info!(path = %path.display(), "linked the bundled `hoard` command")
             }
             Ok(CliReach::AlreadyReachable) | Ok(CliReach::NotBundled) => {}
-            // El caso esperado del AppImage: su copia desaparecería al cerrar la
-            // app, así que ahí la terminal la pone el instalador del núcleo.
+            // The expected AppImage case: its copy would disappear when the app
+            // closed, so there the core installer is what puts the terminal in
+            // place.
             Ok(CliReach::Unreachable(why)) => {
                 tracing::info!(reason = %why, "the bundled `hoard` command stays out of PATH")
             }
@@ -253,7 +246,7 @@ pub(crate) fn register_installation() {
 /// declared at all (an AppImage that can't leave a stable copy of the daemon, a
 /// box without systemd). That used to end in a `tracing::warn!` inside the
 /// service, so the Settings switch read "on" while the sync only ever ran with
-/// the window open — and the user had nothing to look at. It is `None` when
+/// the window open, and the user had nothing to look at. It is `None` when
 /// login start is registered, and when it's off because the user turned it off.
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct ServiceAutostart {
@@ -278,8 +271,8 @@ pub struct ServiceAutostart {
 ///
 /// Cached rather than probed on demand, because probing honestly would mean
 /// doing the work: whether an AppImage can leave a stable copy of the daemon is
-/// only answered by trying. This is what really happened on the last attempt —
-/// at app start, and on every flip of the switch.
+/// only answered by trying. This is what really happened on the last attempt: at
+/// app start, and on every flip of the switch.
 fn service_autostart_slot() -> &'static std::sync::Mutex<ServiceAutostart> {
     static SLOT: std::sync::OnceLock<std::sync::Mutex<ServiceAutostart>> =
         std::sync::OnceLock::new();
@@ -307,7 +300,7 @@ pub fn service_autostart_state() -> ServiceAutostart {
 /// Returns the outcome instead of only logging it. The service manager
 /// subprocesses (`systemctl`, `launchctl`, `schtasks`) are the slow part, but
 /// none of these declare-or-remove calls starts or stops a running service, so
-/// they're a couple of subprocesses and a file write — quick enough for the
+/// they're a couple of subprocesses and a file write, quick enough for the
 /// Settings toggle to wait on, which is the only way its failure can ever be
 /// said out loud.
 pub(crate) async fn apply_service_autostart(enabled: bool) -> ServiceAutostart {
@@ -372,7 +365,7 @@ pub(crate) fn sync_service_autostart(enabled: bool) {
 /// (`$XDG_CONFIG_HOME/autostart`, defaulting to `~/.config/autostart`). The
 /// autostart plugin drops a `.desktop` file in here but won't `mkdir -p` the
 /// parent, so on a clean profile enabling autostart silently fails. We
-/// swallow errors — if we can't create it the subsequent `enable()` will
+/// swallow errors: if we can't create it the subsequent `enable()` will
 /// surface a real error to the caller.
 #[cfg(target_os = "linux")]
 pub(crate) fn ensure_autostart_dir() {
@@ -396,18 +389,17 @@ pub fn is_autostart_enabled(app: AppHandle) -> Result<bool, String> {
         .map_err(|e| format!("Couldn't read autostart status: {e}"))
 }
 
-/// Flip the sidebar's "Modo Automático" toggle. Persists the new value to
+/// Flips the sidebar's automatic-mode toggle. Persists the new value to
 /// `prefs.json`, cascades `auto_restore = true` on activation (and only on
-/// activation — turning the toggle off intentionally leaves `auto_restore`
+/// activation: turning the toggle off intentionally leaves `auto_restore`
 /// alone so the user can keep auto-restore independently), and starts or
 /// stops the background scheduler accordingly.
 ///
-/// The cascade direction was a deliberate choice: activating Modo
-/// Automático implies "do everything for me", so silently enabling
-/// auto-restore is the obvious follow-through. Deactivating it, on the
-/// other hand, is "don't scan periodically" — it shouldn't pull the rug
-/// out from under a user who explicitly toggled auto-restore on a week ago
-/// and forgot.
+/// The cascade direction was a deliberate choice: turning automatic mode on
+/// implies "do everything for me", so silently enabling auto-restore is the
+/// obvious follow-through. Turning it off, on the other hand, is "don't scan
+/// periodically", and it shouldn't pull the rug out from under a user who
+/// explicitly toggled auto-restore on a week ago and forgot.
 ///
 /// Errors are returned as `AppError` so the frontend `showError` flow
 /// handles them uniformly with the rest of the 1.5.3 command surface.
@@ -434,7 +426,7 @@ pub async fn set_automatic_mode(
 
     // Push the new auto_restore into the service's engine if it cascaded on. We
     // mirror the side-effect that `save_prefs` performs for the same field
-    // so toggling Modo Automático behaves identically to flipping the
+    // so toggling automatic mode behaves identically to flipping the
     // auto-restore checkbox in Settings.
     if auto_restore_changed && prefs.auto_restore != prev_auto_restore {
         push_pref(
@@ -459,8 +451,8 @@ pub async fn set_automatic_mode(
     Ok(prefs)
 }
 
-/// Persist a new detection-scan interval (in seconds) for Modo Automático.
-/// Caller is the Settings slider; range is 60..=3600 (1 min .. 1 h) — the
+/// Persist a new detection-scan interval (in seconds) for automatic mode.
+/// Caller is the Settings slider; range is 60..=3600 (1 min to 1 h), and the
 /// scan is the cheap, metadata-only half so it's allowed to run often. If the
 /// toggle is on we restart the schedulers so the new cadence applies
 /// immediately (and, thanks to `automatic::start`'s tick-on-start, a scan
@@ -490,8 +482,8 @@ pub async fn set_scan_interval(app: AppHandle, secs: u64) -> Result<Prefs, AppEr
     Ok(prefs)
 }
 
-/// Persist a new backup-sweep interval (in seconds) for Modo Automático.
-/// Caller is the Settings slider; range is 300..=86400 (5 min .. 24 h) — the
+/// Persist a new backup-sweep interval (in seconds) for automatic mode.
+/// Caller is the Settings slider; range is 300..=86400 (5 min to 24 h), and the
 /// sweep re-hashes file bytes so it's the expensive half and runs rarely. The
 /// agent staggers the per-save work across an effective window that grows with
 /// the total save footprint, so this is the *nominal* cadence, not a hard
@@ -522,7 +514,7 @@ pub async fn set_backup_interval(app: AppHandle, secs: u64) -> Result<Prefs, App
 }
 
 /// Persist whether the floating ActivityFeed panel renders. Pure state
-/// flip — no side effects beyond writing prefs.json. Frontend reads the
+/// flip, with no side effects beyond writing prefs.json. The frontend reads the
 /// new value through the standard prefs store subscription.
 #[tauri::command]
 pub async fn set_live_activity_visible(visible: bool) -> Result<Prefs, AppError> {

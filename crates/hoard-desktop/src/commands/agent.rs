@@ -1,24 +1,24 @@
-//! Comandos del motor de sync — ahora **cliente del servicio**, no dueño.
+//! The sync engine's commands, as a **client of the service** rather than its
+//! owner.
 //!
-//! Hasta el Slice 4b el desktop embebía el motor: `start_agent` hacía
-//! `agent::spawn`, se quedaba el `AgentHandle` en `AppState` y reenviaba los
-//! `AgentEvent` a la UI. Eso ataba el sync a la ventana (cerrar la app paraba el
-//! sync salvo que la CLI tuviera el pidfile) y obligaba a un árbitro entre los
-//! dos motores. Desde este slice el motor vive en `hoardd` —uno por usuario, que
-//! sobrevive a la app— y estos comandos son lo que la ADR 0021 pide: mandarle
-//! peticiones por la IPC y pintar lo que reporte.
+//! The desktop used to embed the engine: `start_agent` called `agent::spawn`, kept
+//! the `AgentHandle` in `AppState` and forwarded the `AgentEvent`s to the UI. That
+//! tied the sync to the window (closing the app stopped the sync unless the CLI held
+//! the pidfile) and demanded an arbiter between two engines. The engine lives in
+//! `hoardd` now, one per user, outliving the app, and these commands are what ADR
+//! 0021 asks for: send it requests over the IPC and paint what it reports.
 //!
-//! Lo que cambia y lo que no:
+//! What changed and what did not:
 //!
-//! - **No cambia** la superficie que ve la UI: mismos `#[tauri::command]`,
-//!   mismos nombres de evento `agent://*`, mismo `AgentStatus`. La restricción
-//!   dura de D.3 es que los stores TS no se enteren del cambio de backend.
-//! - **Cambia** quién hace el trabajo: el conjunto vigilado, la persistencia de
-//!   `state.json` y la presencia son del servicio. El cliente **avisa** de los
-//!   cambios ([`hoard_core::ipc::Request::Reload`]), no manda listas de saves.
-//! - **Desaparece** el pidfile: ya no hay motor que arbitrar aquí, y desde el
-//!   Slice 4d tampoco en ningún otro sitio — `hoard_agent::instance` está
-//!   borrado y el árbitro es la propiedad del socket del servicio.
+//! - **Unchanged**: the surface the UI sees. The same `#[tauri::command]`s, the same
+//!   `agent://*` event names, the same `AgentStatus`. D.3's hard constraint is that
+//!   the TS stores never learn the backend moved.
+//! - **Changed**: who does the work. The watched set, `state.json`'s persistence and
+//!   presence belong to the service. The client **announces** changes
+//!   ([`hoard_core::ipc::Request::Reload`]); it does not send lists of saves.
+//! - **Gone**: the pidfile. There is no engine to arbitrate here, and none anywhere
+//!   else either: `hoard_agent::instance` is deleted and the arbiter is ownership of
+//!   the service's socket.
 
 use std::collections::HashSet;
 use std::sync::OnceLock;
@@ -31,19 +31,19 @@ use tauri::{AppHandle, Manager, State};
 use crate::daemon::{self, AgentStatus};
 use crate::state::AppState;
 
-/// Serializa los arranques concurrentes. El rehidratado de arranque lo dispara
-/// desde dos sitios (el scheduler de Modo Automático y el login cloud), y con un
-/// `await` de por medio los dos podían pasar la comprobación de "¿ya está?" y
-/// duplicar el trabajo. Sigue mereciendo la pena aunque ahora arrancar sea
-/// idempotente: evita dos `ensure_running` a la vez, que lanzarían dos daemons
-/// (uno saldría solo, pero el log queda más limpio así).
+/// Serialises concurrent starts. The startup rehydration is fired from two places
+/// (the automatic-mode scheduler and the cloud login), and with an `await` in the
+/// middle both could pass the "is it up already?" check and duplicate the work. It
+/// is still worth it now that starting is idempotent: it avoids two `ensure_running`
+/// calls at once, which would launch two daemons (one would exit on its own, but the
+/// log reads better this way).
 fn agent_start_gate() -> &'static tokio::sync::Mutex<()> {
     static GATE: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
     GATE.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
-/// Asegura que el servicio está arriba y devuelve el estado de su motor.
-/// Idempotente. El relevo de eventos lo enciende [`attach_agent_events`].
+/// Makes sure the service is up and returns its engine's state. Idempotent. The
+/// event relay is switched on by [`attach_agent_events`].
 #[tauri::command]
 pub async fn start_agent(
     app: AppHandle,
@@ -51,19 +51,18 @@ pub async fn start_agent(
 ) -> Result<AgentStatus, String> {
     let _start = agent_start_gate().lock().await;
 
-    // Levanta el servicio si no lo hay (la conexión de comandos hace "spawn if
-    // absent") y pregunta cómo está. El relevo de eventos **no** se enciende
-    // aquí: lo enciende la UI cuando ya tiene sus oyentes puestos, porque a esta
-    // función también la llama el escaneo de Modo Automático desde Rust y puede
-    // ganarle al montaje del webview.
+    // Brings the service up when there is none (the command connection does "spawn
+    // if absent") and asks how it is. The event relay is **not** switched on here:
+    // the UI does that once its listeners are in place, because this function is also
+    // called by the automatic-mode scan from Rust and can beat the webview's mount.
     let status = state
         .daemon
         .status()
         .await
         .map_err(|e| format!("Couldn't reach the Hoard service: {e:#}"))?;
 
-    // Dot del watcher: lo que el servicio dice estar vigilando de verdad, no lo
-    // que nosotros creemos que debería.
+    // The watcher's dot: what the service says it is really watching, not what we
+    // think it should be.
     let mut seen = HashSet::new();
     daemon::announce_slots(&app, &status.slots, &mut seen);
 
@@ -74,21 +73,21 @@ pub async fn start_agent(
         );
     }
 
-    // Auto-reparación: el servicio dice que no tiene sesión y nosotros tenemos
-    // una puesta. Entonces la entrega anterior se perdió —el servicio se reinstaló
-    // y arrancó de cero, o el login ocurrió mientras estaba caído— y esperar no lo
-    // arregla: sin sesión el motor no vuelve solo por mucho backoff que cumpla.
-    // Volver a entregarla es idempotente y cuesta un round-trip por arranque de la
-    // app, así que se hace sin preguntar.
+    // Self-repair: the service says it has no session and we have one in hand. That
+    // means the earlier handover was lost (the service was reinstalled and started
+    // from scratch, or the login happened while it was down) and waiting does not fix
+    // it: with no session the engine never comes back, however much backoff it
+    // serves. Handing it over again is idempotent and costs one round-trip per app
+    // start, so it is done without asking.
     let status = match maybe_rehand_session(&state, &status).await {
         Some(refreshed) => refreshed,
         None => status,
     };
 
-    // Push servidor→app del self-hosted (SSE). Cloud lo recibe por Supabase
-    // Realtime, así que sólo se levanta con una sesión self-hosted viva. Se
-    // decide con lo que ya hay en memoria: sondear `/v1/health` sólo para esto
-    // era una petición de red en el camino de arranque.
+    // The self-hosted server-to-app push (SSE). Cloud receives it through Supabase
+    // Realtime, so this only comes up with a live self-hosted session. It is decided
+    // from what is already in memory: probing `/v1/health` just for this was one
+    // network request on the startup path.
     let selfhosted = state
         .user
         .lock()
@@ -104,13 +103,14 @@ pub async fn start_agent(
     Ok(reported)
 }
 
-/// Reentrega la sesión self-hosted si el motor está caído **por no tenerla** y
-/// este proceso sí la tiene prestada. Devuelve el estado nuevo cuando la entrega
-/// sale bien; `None` cuando no había nada que hacer o no se pudo.
+/// Re-hands the self-hosted session over when the engine is down **for want of it**
+/// and this process does have it on loan. Returns the new state when the handover
+/// works; `None` when there was nothing to do or it could not be done.
 ///
-/// Sólo actúa sobre [`EngineDownReason::NoSession`], a propósito: con el llavero
-/// ilegible o el token caducado, reentregar lo mismo no arregla nada y sólo
-/// añadiría ruido al log de un servicio que ya está diciendo qué le pasa.
+/// It acts on [`EngineDownReason::NoSession`] only, deliberately: with an unreadable
+/// keyring or an expired token, handing the same thing over again fixes nothing and
+/// would only add noise to the log of a service that is already saying what is wrong
+/// with it.
 async fn maybe_rehand_session(
     state: &State<'_, AppState>,
     status: &hoard_core::ipc::DaemonStatus,
@@ -133,33 +133,33 @@ async fn maybe_rehand_session(
         return None;
     }
     tracing::info!("re-handed our session to a service that had none");
-    // El daemon reinicia el motor al adoptar, así que el estado que acabamos de
-    // leer ya es viejo. Volver a preguntar es lo que hace que la ventana pinte
-    // "arriba" en este mismo arranque en vez de en el siguiente sondeo.
+    // The daemon restarts the engine when it adopts, so the state we just read is
+    // already stale. Asking again is what makes the window paint "up" on this very
+    // start rather than on the next poll.
     state.daemon.status().await.ok()
 }
 
-/// Desengancha la app del servicio (logout, cierre).
+/// Detaches the app from the service (logout, shutdown).
 ///
-/// **El servicio sigue vivo**: ése es el punto del Slice 4. Cerrar la app o
-/// cerrar sesión no puede parar el sync; para eso está `hoard sync stop`, que es
-/// una orden explícita. Aquí sólo se sueltan las conexiones y las tareas de esta
-/// ventana.
+/// **The service stays alive**: that is the whole point. Closing the app or signing
+/// out must not stop the sync; `hoard sync stop` is there for that, and it is an
+/// explicit order. What is released here are this window's connections and tasks.
 #[tauri::command]
 pub async fn stop_agent(app: AppHandle, _state: State<'_, AppState>) -> Result<(), String> {
-    // El subscriptor SSE se para en el mismo paso: no tiene a quién despachar y,
-    // en un logout, las credenciales que lee están a punto de desaparecer.
+    // The SSE subscriber stops in the same step: it has nobody to dispatch to and,
+    // on a logout, the credentials it reads are about to disappear.
     crate::commands::selfhosted_events::stop(&app);
     daemon::detach(&app);
     daemon::emit_status(&app, &AgentStatus::down());
     Ok(())
 }
 
-/// La UI ya tiene puestos sus `listen()` de `agent://*`: empieza a relevarle los
-/// eventos del servicio (backlog desde el cursor + push en vivo).
+/// The UI has its `agent://*` `listen()`s in place: start relaying the service's
+/// events to it (the backlog from the cursor, plus the live push).
 ///
-/// Va aparte de `start_agent` a propósito — ver [`crate::daemon`]: quien enciende
-/// el relevo tiene que ser quien escucha, o el primer backlog se emite al vacío.
+/// It is separate from `start_agent` on purpose (see [`crate::daemon`]): whoever
+/// switches the relay on has to be whoever listens, or the first backlog is emitted
+/// into the void.
 #[tauri::command]
 pub async fn attach_agent_events(app: AppHandle) -> Result<(), String> {
     daemon::attach(&app);
@@ -173,29 +173,29 @@ pub async fn detach_agent_events(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Lo que este proceso ya sabe, copiado tal cual: estado del motor, las últimas
-/// filas del journal y el pulso de la nube.
+/// What this process already knows, copied as it is: the engine's state, the
+/// journal's last rows and the cloud's pulse.
 ///
-/// **No enciende nada.** Ni `attach`, ni `start_agent`, ni una petición al
-/// servicio: es leer tres mutex en memoria. Ésa es toda la gracia — lo pide una
-/// superficie que sólo mira (el HUD del Alt+H), y abrir una ventana para mirar no
-/// puede tener efectos.
+/// **It switches nothing on.** No `attach`, no `start_agent`, no request to the
+/// service: it reads three in-memory mutexes. That is the entire point, since what
+/// asks for it is a surface that only looks (the Alt+H HUD), and opening a window to
+/// look must have no effects.
 ///
-/// Existe porque el otro camino, escuchar, no le sirve a quien llega tarde: el
-/// backlog se emite una sola vez al arrancar la app, [`attach_agent_events`] es
-/// idempotente y `emit_status` sólo habla cuando algo cambia. Una ventana creada
-/// después de todo eso puede tener los oyentes perfectamente puestos y no recibir
-/// jamás una línea.
+/// It exists because the other road, listening, is no use to whoever arrives late:
+/// the backlog is emitted once when the app starts, [`attach_agent_events`] is
+/// idempotent, and `emit_status` only speaks when something changes. A window
+/// created after all that can have its listeners perfectly in place and never
+/// receive a single line.
 ///
-/// Síncrono a propósito: sin `async` no hay dónde meter un `await` al servicio,
-/// así que la garantía de "esto sólo lee" la sostiene el tipo y no la buena fe
-/// de quien lo edite mañana.
+/// Synchronous on purpose: with no `async` there is nowhere to put an `await` to the
+/// service, so "this only reads" is guaranteed by the type and not by the good faith
+/// of whoever edits it tomorrow.
 #[tauri::command]
 pub fn agent_snapshot(state: State<'_, AppState>) -> daemon::UiSnapshot {
     state.daemon.snapshot()
 }
 
-/// Fuerza un backup ya, saltándose el debounce.
+/// Forces a backup now, skipping the debounce.
 #[tauri::command]
 pub async fn backup_now(save_id: String, state: State<'_, AppState>) -> Result<(), String> {
     state
@@ -206,9 +206,8 @@ pub async fn backup_now(save_id: String, state: State<'_, AppState>) -> Result<(
         .map_err(|e| format!("{e:#}"))
 }
 
-/// Barrido escalonado de backups sobre todos los saves rastreados. Lo dispara el
-/// tick de Modo Automático. No es un error que el servicio no tenga motor: el
-/// siguiente tick barrerá.
+/// A staggered backup sweep over every tracked save, fired by the automatic-mode
+/// tick. The service having no engine is not an error: the next tick will sweep.
 #[tauri::command]
 pub async fn sweep_backups(state: State<'_, AppState>) -> Result<(), String> {
     let window_secs = Prefs::load_default()
@@ -221,8 +220,8 @@ pub async fn sweep_backups(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
-/// Foto de diagnóstico de cada slot vigilado. Alimenta el panel oculto de
-/// Ajustes. Vacío = el servicio no tiene motor (la UI muestra "agente parado").
+/// A diagnostic snapshot of every watched slot. It feeds the hidden Settings panel.
+/// Empty means the service has no engine, and the UI shows the agent as stopped.
 #[tauri::command]
 pub async fn agent_status(state: State<'_, AppState>) -> Result<Vec<AgentSlotStatus>, String> {
     match state.daemon.status().await {
@@ -233,12 +232,11 @@ pub async fn agent_status(state: State<'_, AppState>) -> Result<Vec<AgentSlotSta
 
 // ---- pegamento con el resto de comandos --------------------------------
 
-/// Un save nuevo empieza a vigilarse sin reiniciar nada.
+/// A new save starts being watched without restarting anything.
 ///
-/// No manda el `WatchedSave` por el cable a propósito: el dueño del conjunto
-/// vigilado es el servicio, así que el cliente le dice que `state.json` cambió y
-/// él re-hidrata (D.15). Mandar el save sería el cliente decidiendo qué vigila el
-/// motor.
+/// It deliberately does not send the `WatchedSave` over the wire: the service owns
+/// the watched set, so the client tells it `state.json` changed and it re-hydrates
+/// (D.15). Sending the save would be the client deciding what the engine watches.
 pub(crate) async fn attach_save_if_running(state: &State<'_, AppState>, _save: WatchedSave) {
     state.daemon.notify_reload().await;
 }
@@ -249,9 +247,9 @@ pub(crate) async fn detach_save_if_running(state: &State<'_, AppState>, _save_id
     state.daemon.notify_reload().await;
 }
 
-/// Aplica el efecto en vivo de un cambio de ajustes de un save
+/// Applies the live effect of a change to a save's settings
 /// (`hoard_agent::library::set_paused`/`set_preset`/`set_local_path`). Attach,
-/// detach y reseat son la misma cosa vistos desde aquí: el disco cambió.
+/// detach and reseat are the same thing from here: the disk changed.
 pub(crate) async fn apply_reseat(
     state: &State<'_, AppState>,
     reseat: hoard_agent::library::LiveReseat,
@@ -262,11 +260,11 @@ pub(crate) async fn apply_reseat(
     state.daemon.notify_reload().await;
 }
 
-/// Avisa al servicio de que la sesión en disco cambió (login, logout, cambio de
-/// cuenta): que tire el motor y lo levante resolviendo credenciales de nuevo.
+/// Tells the service the session on disk changed (a login, a logout, a change of
+/// account) so it drops the engine and brings it up resolving credentials again.
 ///
-/// Fire-and-forget: quien cierra sesión no debe esperar a un socket, y el keeper
-/// del daemon reintenta por su cuenta.
+/// Fire-and-forget: whoever signs out must not wait on a socket, and the daemon's
+/// keeper retries on its own.
 pub(crate) fn notify_session_changed(app: &AppHandle) {
     let app = app.clone();
     tokio::spawn(async move {
@@ -280,13 +278,13 @@ pub(crate) fn notify_session_changed(app: &AppHandle) {
     });
 }
 
-/// Pasa al motor las carpetas candidatas del último escaneo, para que sondee la
-/// correlación proceso↔escritura. Es lo único que el cliente sí manda como
-/// lista: la detección vive aquí hasta el Slice 8.
+/// Hands the engine the candidate folders from the last scan so it can probe the
+/// process-to-write correlation. It is the one thing the client does send as a list:
+/// detection lives here for now.
 pub(crate) async fn set_probe_candidates(app: &AppHandle, dirs: Vec<std::path::PathBuf>) {
     let count = dirs.len();
-    // El cable es JSON: una ruta que no sea UTF-8 no cabe, y se dice aquí, que
-    // es donde se sabe cuál era.
+    // The wire is JSON: a path that is not UTF-8 does not fit, and it is said here,
+    // which is where we still know which one it was.
     let mut sendable = Vec::with_capacity(dirs.len());
     for dir in dirs {
         match dir.into_os_string().into_string() {
@@ -310,9 +308,9 @@ pub(crate) async fn set_probe_candidates(app: &AppHandle, dirs: Vec<std::path::P
     );
 }
 
-/// Empuja una preferencia al motor. Las prefs ya están guardadas en disco cuando
-/// esto corre, así que un fallo aquí es cosmético: el motor la leerá igual en su
-/// siguiente arranque.
+/// Pushes a preference to the engine. The prefs are already saved to disk by the
+/// time this runs, so a failure here is cosmetic: the engine reads it anyway on its
+/// next start.
 pub(crate) async fn push_pref(state: &State<'_, AppState>, request: Request) {
     state.daemon.tell("push a preference", request).await;
 }

@@ -1,20 +1,20 @@
-//! Background schedulers that back the sidebar's "Modo Automático" toggle.
+//! The background schedulers behind the sidebar's automatic-mode toggle.
 //!
 //! When the user flips the toggle on we persist `prefs.automatic_mode = true`
 //! and start **two** independent Tokio tickers, because the work splits into a
 //! cheap half and an expensive half:
 //!
-//! * **Scan** (default every 5 min) — a metadata-only disk walk that detects
+//! * **Scan** (default every 5 min): a metadata-only disk walk that detects
 //!   newly installed games and tracks the high-confidence ones, then boots the
 //!   agent so they're watched. No file bytes read; safe to run often.
-//! * **Backup sweep** (default every 1 h) — re-hashes tracked saves to catch
+//! * **Backup sweep** (default every 1 h): re-hashes tracked saves to catch
 //!   changes the fs-watcher missed. Reads file bytes, so it's the costly half;
 //!   the agent staggers the per-save work across an effective window so disk
 //!   use never bursts.
 //!
 //! **Both halves run entirely in Rust** ([`run_scan`] / [`run_backup_sweep`]).
 //! This used to live in the frontend (`automatic.ts` reacted to per-tick Tauri
-//! events), but that only worked while the WebView was alive — exactly *not*
+//! events), but that only worked while the WebView was alive, which is *not*
 //! the case while the user is gaming with the window minimized to the tray
 //! (WebView2 suspends background windows). The symptom was "nothing got
 //! monitored no matter how long passed". Driving the work from the Tokio
@@ -70,8 +70,8 @@ pub struct AutomaticScheduler {
 
 /// Cancel any in-flight scheduler tasks and start fresh ones: the detection
 /// scan every `scan_interval_secs`, the backup sweep every
-/// `backup_interval_secs`. Safe to call repeatedly — each call cleanly
-/// replaces the previous handles.
+/// `backup_interval_secs`. Safe to call repeatedly: each call cleanly replaces the
+/// previous handles.
 pub fn start(app: &AppHandle, scan_interval_secs: u64, backup_interval_secs: u64) {
     let scheduler = app.state::<AutomaticScheduler>();
     {
@@ -107,8 +107,8 @@ pub fn start(app: &AppHandle, scan_interval_secs: u64, backup_interval_secs: u64
 const EVENT_SCAN_DEBOUNCE_SECS: u64 = 60;
 
 /// Fire a detection scan *now*, off the periodic timer, because the agent spotted
-/// a heavy untracked game (`AgentEvent::HeavyProcessDetected`). No-op unless Modo
-/// Automático is on — the periodic scanner only runs then, and auto-tracking
+/// a heavy untracked game (`AgentEvent::HeavyProcessDetected`). A no-op unless
+/// automatic mode is on: the periodic scanner only runs then, and auto-tracking
 /// games the user never opted to monitor would surprise them. Debounced to
 /// `EVENT_SCAN_DEBOUNCE_SECS` so repeated signals don't stack scans.
 pub fn request_scan(app: AppHandle) {
@@ -139,7 +139,7 @@ pub fn request_scan(app: AppHandle) {
     tokio::task::spawn(async move { run_scan(&app).await });
 }
 
-/// Which half of Modo Automático a worker task drives.
+/// Which half of automatic mode a worker task drives.
 #[derive(Clone, Copy)]
 enum TickKind {
     Scan,
@@ -166,7 +166,7 @@ fn spawn_worker(app: AppHandle, kind: TickKind, period_secs: u64) -> JoinHandle<
     })
 }
 
-/// Shape of the `automatic-phase` event — mirrors the frontend's
+/// The shape of the `automatic-phase` event. It mirrors the frontend's
 /// `AutomaticPhase` union so `automatic.ts` can drop it straight into
 /// `automaticState` to animate the sidebar.
 #[derive(Clone, Serialize)]
@@ -178,7 +178,7 @@ struct PhasePayload {
     total: Option<usize>,
 }
 
-/// Payload of `automatic-scan-complete` — the count of newly-tracked games so
+/// The payload of `automatic-scan-complete`: the count of newly-tracked games so
 /// the UI can toast and refresh the library list.
 #[derive(Clone, Serialize)]
 struct ScanComplete {
@@ -189,18 +189,18 @@ fn emit_phase(app: &AppHandle, kind: &'static str, done: Option<usize>, total: O
     let _ = app.emit("automatic-phase", PhasePayload { kind, done, total });
 }
 
-/// Headless detection + auto-track pass — the Rust-native replacement for what
-/// the frontend's `runAutomaticSetup` used to do off `automatic-scan-tick`.
+/// The headless detection and auto-track pass, the Rust-native replacement for
+/// what the frontend's `runAutomaticSetup` used to do off `automatic-scan-tick`.
 /// Runs detection, tracks every newly-detected high-confidence game with a real
 /// save path, and boots the agent so those saves start being watched. Mirrors
 /// the old frontend filter (`confidence == High && !found_paths.is_empty() &&
-/// !already_tracked`). Errors are logged, never propagated — a background tick
-/// must not take the app down.
+/// !already_tracked`). Errors are logged, never propagated: a background tick must
+/// not take the app down.
 pub async fn run_scan(app: &AppHandle) {
     emit_phase(app, "detecting", None, None);
 
     // `scan_library` runs detection, drops ignored slugs, and persists the
-    // cache — same as the user pressing "re-escanear".
+    // cache, the same as the user pressing "rescan".
     let report = match crate::commands::library::scan_library(app.clone(), app.state()).await {
         Ok(r) => r,
         Err(e) => {
@@ -220,7 +220,7 @@ pub async fn run_scan(app: &AppHandle) {
         }
     };
     // Slugs THIS machine actually tracks (has a local folder for). Orphan rows
-    // are cloud saves from *another* machine with no local state here — they
+    // are cloud saves from *another* machine with no local state here, and they
     // must NOT count as tracked, or the slug looks monitored and auto-track
     // skips it (the cross-device bug: detected=1, tracked=0). They're collected
     // separately so a High detection can ADOPT them instead.
@@ -249,12 +249,13 @@ pub async fn run_scan(app: &AppHandle) {
     }
 
     // One pass over the detected games splits them three ways:
-    // * `adopt` — High + untracked here + already in the cloud as an orphan
-    //   (another machine has it): bind this machine's detected folder to the
+    // * `adopt`: High, untracked here, already in the cloud as an orphan
+    //   (another machine has it). Bind this machine's detected folder to the
     //   existing save_id instead of forking a new branch (BUG 3).
-    // * `candidates` — High + untracked + not in the cloud: brand-new save.
-    // * `probe_dirs` — untracked + below High: fed to the agent for process↔
-    //   write correlation (ADR 0020 fase 3) so a future scan promotes them.
+    // * `candidates`: High, untracked, not in the cloud. A brand-new save.
+    // * `probe_dirs`: untracked and below High. Fed to the agent for
+    //   process-to-write correlation (ADR 0020 phase 3) so a future scan
+    //   promotes them.
     let mut candidates = Vec::new();
     let mut adopt: Vec<(crate::commands::library::TrackedSave, std::path::PathBuf)> = Vec::new();
     let mut probe_dirs: Vec<std::path::PathBuf> = Vec::new();
@@ -262,12 +263,12 @@ pub async fn run_scan(app: &AppHandle) {
         if tracked_slugs.contains(&g.slug) || g.found_paths.is_empty() {
             continue;
         }
-        // La MISMA carpeta ya rastreada bajo OTRO slug no vuelve a rastrearse.
-        // El nombre de un descubrimiento de fase 4 sale de la atribución de la
-        // correlación, y esa atribución cambia entre escaneos (ChatGPT →
-        // opencode → code sobre la carpeta de Planet S, informe jul-2026): sin
-        // esta puerta, cada nombre nuevo era un slug nuevo y la carpeta acababa
-        // rastreada N veces. El guard por slug no lo ve porque el slug cambia.
+        // The SAME folder already tracked under ANOTHER slug is not tracked again.
+        // A phase-4 discovery's name comes out of the correlation's attribution, and
+        // that attribution changes between scans (ChatGPT, then opencode, then code
+        // over Planet S's folder, reported Jul 2026): without this gate, every new
+        // name was a new slug and the folder ended up tracked N times. The per-slug
+        // guard does not see it because the slug changes.
         if tracked_paths
             .iter()
             .any(|t| hoard_agent::detection::paths_overlap(&g.found_paths[0], t))
@@ -281,10 +282,10 @@ pub async fn run_scan(app: &AppHandle) {
         }
         if g.confidence == Confidence::High {
             let path = g.found_paths[0].clone();
-            // Carpeta sin un solo fichero y sin fila en el servidor: no hay nada
-            // que respaldar ni que restaurar todavía. Se deja para el escaneo
-            // siguiente, que llega en minutos. No se reserva la ruta: si en esta
-            // misma vuelta otro hallazgo la reclama, que la reclame.
+            // A folder with not one file and no row on the server: there is nothing
+            // to back up or restore yet. It is left for the next scan, minutes away.
+            // The path is not reserved: if another find claims it on this same pass,
+            // let it.
             if hoard_agent::library::auto_track_decision(
                 &path,
                 orphans_by_slug.contains_key(&g.slug),
@@ -302,9 +303,9 @@ pub async fn run_scan(app: &AppHandle) {
             } else {
                 candidates.push(g);
             }
-            // Reserva la carpeta dentro de ESTE mismo escaneo: dos hallazgos
-            // distintos sobre la misma ruta (el mismo churn de atribución, sólo
-            // que en un único informe) no deben rastrearla dos veces.
+            // Reserves the folder within THIS scan: two different finds over the
+            // same path (the same attribution churn, only inside a single report)
+            // must not track it twice.
             tracked_paths.push(path);
         } else {
             probe_dirs.extend(g.found_paths.iter().cloned());
@@ -328,11 +329,11 @@ pub async fn run_scan(app: &AppHandle) {
         match crate::commands::library::adopt_save(app.clone(), args, app.state()).await {
             Ok(_) => tracked_count += 1,
             Err(e) => {
-                // "save del servidor", no "cloud": un huérfano es un save que el
-                // servidor conoce y esta máquina no tiene mapeado, y eso pasa
-                // igual en self-hosted. Decir "cloud" aquí mandó un diagnóstico
-                // por el camino equivocado en ago-2026 — el log parecía probar
-                // que el usuario estaba en Cloud cuando self-hosteaba.
+                // "server save", not "cloud": an orphan is a save the server knows
+                // and this machine has not mapped, and that happens on self-hosted
+                // just the same. Saying "cloud" here sent one diagnosis down the
+                // wrong road in Aug 2026, with the log seeming to prove the user was
+                // on Cloud when they were self-hosting.
                 tracing::warn!(slug = %orphan.game_slug, error = %e, "automatic scan: couldn't adopt server-side save")
             }
         }
@@ -353,11 +354,11 @@ pub async fn run_scan(app: &AppHandle) {
             // Auto-detected real games: derive preset/processes from the slug.
             preset: None,
             processes: None,
-            // Un juego detectado es una entrada por juego: su proceso no lo
-            // comparte con nada más rastreado.
+            // A detected game is one entry per game: its process is not shared with
+            // anything else tracked.
             shared_processes: false,
         };
-        // Don't abort the batch over one game — a single 422/409 on an old
+        // Don't abort the batch over one game: a single 422/409 on an old
         // server shouldn't stop the other nine from being tracked.
         match crate::commands::library::add_game_to_tracking(app.clone(), args, app.state()).await {
             Ok(_) => tracked_count += 1,
@@ -368,7 +369,7 @@ pub async fn run_scan(app: &AppHandle) {
     }
 
     // Boot the agent (no-op if already running) so newly-tracked saves get
-    // watched immediately — and so a user who left games tracked from a prior
+    // watched immediately, and so a user who left games tracked from a prior
     // session gets them re-armed even when nothing new was found.
     emit_phase(app, "starting_agent", None, None);
     if let Err(e) = crate::commands::agent::start_agent(app.clone(), app.state()).await {
@@ -376,7 +377,7 @@ pub async fn run_scan(app: &AppHandle) {
     }
 
     // Hand the service's engine the untracked candidates to probe for
-    // process↔write correlation. Empty list is fine — it just clears the set.
+    // process-to-write correlation. An empty list is fine: it just clears the set.
     crate::commands::agent::set_probe_candidates(app, probe_dirs).await;
 
     emit_phase(app, "idle", None, None);
@@ -389,7 +390,7 @@ pub async fn run_scan(app: &AppHandle) {
     tracing::info!(tracked = tracked_count, "automatic scan: done");
 }
 
-/// Headless backup sweep — re-hashes every tracked save through the agent's
+/// The headless backup sweep: re-hashes every tracked save through the agent's
 /// staggered window. Replaces the frontend's `runBackupSweep`. No-op (not an
 /// error) when the service has no engine; the next tick sweeps.
 pub async fn run_backup_sweep(app: &AppHandle) {
@@ -398,8 +399,8 @@ pub async fn run_backup_sweep(app: &AppHandle) {
     }
 }
 
-/// Abort both running schedulers, if any. No-op when nothing is scheduled —
-/// safe to call from any wind-down path (toggle off, app shutdown).
+/// Abort both running schedulers, if any. A no-op when nothing is scheduled, so it
+/// is safe to call from any wind-down path (toggle off, app shutdown).
 pub fn stop(app: &AppHandle) {
     let scheduler = app.state::<AutomaticScheduler>();
     let mut stopped = false;
@@ -416,10 +417,10 @@ pub fn stop(app: &AppHandle) {
     }
 }
 
-/// Re-arm the schedulers if the user had Modo Automático enabled before the
-/// app last closed. Called from the Tauri `setup` closure once the
-/// `AutomaticScheduler` state is managed. Errors are non-fatal — the toggle
-/// still shows the persisted value and the user can re-trigger by flipping it.
+/// Re-arm the schedulers if the user had automatic mode enabled before the app last
+/// closed. Called from the Tauri `setup` closure once the `AutomaticScheduler` state
+/// is managed. Errors are non-fatal: the toggle still shows the persisted value and
+/// the user can re-trigger by flipping it.
 pub async fn restart_if_enabled(app: &AppHandle) -> anyhow::Result<()> {
     let (prefs, _) = Prefs::load_default()?;
     if prefs.automatic_mode {

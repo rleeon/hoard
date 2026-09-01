@@ -1,47 +1,47 @@
-//! Telemetría de **Hoard Screen**: ¿abre alguien el overlay, cuánto lo tiene
-//! puesto y qué monta dentro?
+//! **Hoard Screen**'s telemetry: does anybody open the overlay, how long do they
+//! keep it up, and what do they put inside it?
 //!
-//! Es la pregunta que decide si Screen merece más trabajo, y hasta ahora no
-//! había forma de contestarla: 116 personas han tenido Pro durante siete días y
-//! no existe un solo dato de si llegaron a lanzarlo una vez. Pulir a ciegas una
-//! función que quizá nadie descubre es el trabajo más caro que hay.
+//! That is the question that decides whether Screen deserves more work, and until
+//! now there was no way to answer it: 116 people have had Pro for seven days and
+//! there is not one data point on whether they ever launched it once. Polishing a
+//! feature nobody may be discovering is the most expensive work there is.
 //!
-//! No hay tubería nueva. Son eventos `tracing` con un `target` fijo
-//! ([`SCREEN_TARGET`]), así que viajan por `logship` como todo lo demás —con su
-//! redacción de rutas y su opt-in— y se consultan con un `where target = …`.
-//! Van a INFO porque el filtro del proceso (`info`) tiraría un DEBUG antes de
-//! que ninguna capa lo viera, y `wire::ships_at` los exime del mínimo de Cloud
-//! (WARN) igual que a las desmentidas de detección.
+//! There is no new pipe. These are `tracing` events with a fixed `target`
+//! ([`SCREEN_TARGET`]), so they travel through `logship` like everything else, with
+//! its path redaction and its opt-in, and they are queried with a `where target =
+//! ...`. They go at INFO because the process filter (`info`) would drop a DEBUG
+//! before any layer saw it, and `wire::ships_at` exempts them from Cloud's minimum
+//! (WARN) just as it does the detection verdicts.
 //!
-//! ## Qué NO se manda
+//! ## What is NOT sent
 //!
-//! Ni un título de ventana, ni un nombre de aplicación, ni una miniatura. El
-//! overlay espeja ventanas arbitrarias del escritorio de otra persona: lo que
-//! haya ahí no es asunto nuestro. Sale el **tipo** de panel (ventana / mirilla /
-//! visor) y cuántos hay, que es lo que contesta la pregunta, y nada más.
+//! Not one window title, application name or thumbnail. The overlay mirrors
+//! arbitrary windows on somebody else's desktop: whatever is there is not our
+//! business. What goes out is the panel's **type** (window, crosshair, scope) and
+//! how many there are, which is what answers the question, and nothing else.
 //!
-//! ## Una sesión = una fila de apertura y otra de cierre
+//! ## One session is one open row and one close row
 //!
-//! [`Session`] acumula en memoria mientras el overlay vive y suelta el resumen
-//! al cerrar. Si la app muere de golpe con el overlay puesto, esa sesión pierde
-//! su cierre: por eso el panel enseña aperturas y cierres por separado en vez de
-//! fiarse de que casen. Un hueco visible es mejor que una media silenciosamente
-//! sesgada hacia las sesiones cortas.
+//! [`Session`] accumulates in memory while the overlay lives and releases the
+//! summary on close. If the app dies outright with the overlay up, that session
+//! loses its close: that is why the panel shows opens and closes separately instead
+//! of trusting them to match. A visible gap beats a mean silently skewed towards
+//! short sessions.
 
 use std::sync::Mutex;
 use std::time::Instant;
 
 use hoard_core::wire::SCREEN_TARGET;
 
-/// Por qué se acabó la sesión. Distinguirlas importa: `Crashed` mezclado con
-/// `User` convierte un fallo en "al usuario no le interesó".
+/// Why the session ended. Telling them apart matters: `Crashed` mixed into `User`
+/// turns a failure into "the user wasn't interested".
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EndReason {
-    /// El usuario cerró el overlay desde la app.
+    /// The user closed the overlay from the app.
     User,
-    /// El proceso terminó por su cuenta con código 0 (Esc / quit interno).
+    /// The process ended on its own with code 0 (Esc, or an internal quit).
     SelfQuit,
-    /// El proceso murió con código distinto de 0 o por señal.
+    /// The process died with a non-zero code or on a signal.
     Crashed,
 }
 
@@ -54,9 +54,9 @@ impl EndReason {
         }
     }
 
-    /// Traduce el código de salida del sidecar. `None` (señal, o kill nuestro
-    /// tras pedir el quit) cuenta como cierre limpio: cuando cerramos nosotros
-    /// ya hemos emitido el evento y este camino ni se recorre.
+    /// Translates the sidecar's exit code. `None` (a signal, or our own kill after
+    /// asking it to quit) counts as a clean close: when we close it we have already
+    /// emitted the event and this road is never walked.
     pub fn from_exit_code(code: Option<i32>) -> Self {
         match code {
             Some(0) | None => EndReason::SelfQuit,
@@ -65,9 +65,9 @@ impl EndReason {
     }
 }
 
-/// Qué monta la gente dentro del overlay. Es la pregunta de producto: si todo
-/// el mundo pone mirillas y nadie espeja una ventana, Screen es otra cosa de la
-/// que creemos que es.
+/// What people put inside the overlay. It is the product question: if everybody
+/// places crosshairs and nobody mirrors a window, Screen is something other than
+/// what we think it is.
 #[derive(Clone, Copy, Debug, Default)]
 struct ByKind {
     window: u32,
@@ -91,19 +91,20 @@ impl ByKind {
     }
 }
 
-/// Una sesión de overlay en curso.
+/// An overlay session in progress.
 pub struct Session {
     started: Instant,
-    /// Desde cuándo está en modo edición, si lo está.
+    /// Since when it has been in editor mode, when it is.
     editor_since: Option<Instant>,
-    /// Tiempo acumulado en modo edición (segundos).
+    /// Time accumulated in editor mode, in seconds.
     editor_secs: f64,
-    /// Cuántas veces se ha entrado en modo edición.
+    /// How many times editor mode has been entered.
     editor_flips: u32,
     added: ByKind,
     removed: ByKind,
-    /// Máximo de paneles vivos a la vez. El final no vale: alguien que monta
-    /// cuatro y los quita antes de cerrar ha usado Screen, no lo contrario.
+    /// The peak of panels alive at once. The final count will not do: somebody who
+    /// places four and removes them before closing has used Screen, not the
+    /// opposite.
     peak_panels: u32,
     live_panels: i64,
     /// Escenas empujadas al overlay: mide el trasteo (mover, redimensionar,
@@ -131,7 +132,7 @@ impl Session {
         }
     }
 
-    /// Cierra el tramo de edición abierto, si lo hay, y devuelve el total.
+    /// Closes the open editing stretch, if any, and returns the total.
     fn editor_total(&mut self) -> f64 {
         if let Some(since) = self.editor_since.take() {
             self.editor_secs += since.elapsed().as_secs_f64();
@@ -140,7 +141,7 @@ impl Session {
     }
 }
 
-/// Estado de Tauri: la sesión viva, si la hay. Se registra en `lib.rs` con
+/// Tauri state: the live session, when there is one. Registered in `lib.rs` with
 /// `.manage(ScreenTelemetry::default())`.
 #[derive(Default)]
 pub struct ScreenTelemetry(pub Mutex<Option<Session>>);
@@ -149,9 +150,9 @@ impl ScreenTelemetry {
     /// El overlay acaba de arrancar.
     pub fn opened(&self, monitors: u32) {
         let mut guard = self.0.lock().unwrap();
-        // Una apertura con sesión viva no debería pasar (`screen_open` es
-        // idempotente), pero si pasa, la vieja se pierde sin cierre y prefiero
-        // que eso se vea en el panel a inventarle una duración.
+        // An open with a live session should not happen (`screen_open` is
+        // idempotent), but if it does the old one is lost with no close, and that
+        // showing up in the panel beats inventing a duration for it.
         *guard = Some(Session::new(monitors));
         tracing::info!(
             target: SCREEN_TARGET,
@@ -161,10 +162,10 @@ impl ScreenTelemetry {
         );
     }
 
-    /// El overlay se ha ido. Suelta el resumen de la sesión.
+    /// The overlay is gone. Releases the session's summary.
     ///
-    /// Idempotente: si ya no hay sesión (cierre del usuario seguido del
-    /// `Terminated` del proceso) no emite nada, para no contar dos veces.
+    /// Idempotent: with no session left (the user's close followed by the process's
+    /// `Terminated`) it emits nothing, so nothing gets counted twice.
     pub fn closed(&self, reason: EndReason) {
         let Some(mut s) = self.0.lock().unwrap().take() else {
             return;
@@ -191,8 +192,8 @@ impl ScreenTelemetry {
         );
     }
 
-    /// Modo edición dentro / fuera. Llega del propio overlay por stdout, así
-    /// que cubre los dos caminos: el botón de la app y el Ctrl+O global.
+    /// Editor mode on or off. It comes from the overlay itself over stdout, so it
+    /// covers both roads: the app's button and the global Ctrl+O.
     pub fn editor(&self, on: bool) {
         let mut guard = self.0.lock().unwrap();
         let Some(s) = guard.as_mut() else { return };
@@ -206,14 +207,14 @@ impl ScreenTelemetry {
         }
     }
 
-    /// Un acto del usuario dentro del editor. `kind` sólo tiene sentido para
-    /// `panel_add` / `panel_remove` (`window` / `crosshair` / `scope`) y para
-    /// `binding` (`toggle` / `hold` / `timed`).
+    /// Something the user did inside the editor. `kind` only means anything for
+    /// `panel_add` and `panel_remove` (`window`, `crosshair`, `scope`) and for
+    /// `binding` (`toggle`, `hold`, `timed`).
     ///
-    /// Además de acumular en la sesión, emite su propia fila: el resumen dice
-    /// "esta sesión montó dos visores", y las filas sueltas contestan la otra
-    /// pregunta, la del embudo — cuánta gente ha llegado a usar cada pieza
-    /// alguna vez.
+    /// On top of accumulating into the session it emits a row of its own: the
+    /// summary says "this session placed two scopes", and the loose rows answer the
+    /// other question, the funnel's, of how many people ever got to use each
+    /// piece.
     pub fn action(&self, action: &str, kind: Option<&str>) {
         {
             let mut guard = self.0.lock().unwrap();
@@ -235,9 +236,9 @@ impl ScreenTelemetry {
                 }
             }
         }
-        // `edit` se dispara en cada empujón de escena (arrastrar un panel son
-        // muchos): se acumula en la sesión pero no genera fila propia, o el
-        // vertedero lo montamos nosotros.
+        // `edit` fires on every scene nudge (dragging a panel is many of them): it
+        // accumulates into the session but produces no row of its own, or we would be
+        // the ones building the landfill.
         if action == "edit" {
             return;
         }
@@ -266,9 +267,10 @@ mod tests {
             let mut g = t.0.lock().unwrap();
             g.as_mut().unwrap().editor_total()
         };
-        assert!(acc >= 0.02, "se perdió el tramo de edición: {acc}");
-        // Encender dos veces seguidas no arranca dos cronómetros ni cuenta dos
-        // entradas: el overlay reemite su modo al resincronizar (`get_scene`).
+        assert!(acc >= 0.02, "the editing stretch was lost: {acc}");
+        // Turning it on twice in a row starts no second stopwatch and counts no
+        // second entry: the overlay re-emits its mode when it resyncs
+        // (`get_scene`).
         t.editor(true);
         t.editor(true);
         let g = t.0.lock().unwrap();
@@ -292,9 +294,8 @@ mod tests {
         assert_eq!(s.added.scope, 1);
     }
 
-    /// Quitar más de lo que hay (escena resincronizada, panel borrado dos
-    /// veces) no debe dejar el contador vivo en negativo y falsear el pico
-    /// siguiente.
+    /// Removing more than there is (a resynced scene, a panel deleted twice) must
+    /// not leave the live counter negative and skew the next peak.
     #[test]
     fn live_panels_never_goes_negative() {
         let t = ScreenTelemetry::default();
@@ -312,8 +313,8 @@ mod tests {
         t.opened(1);
         t.closed(EndReason::User);
         assert!(t.0.lock().unwrap().is_none());
-        // El `Terminated` del proceso llega después del cierre del usuario: no
-        // debe emitir una segunda sesión ni entrar en pánico.
+        // The process's `Terminated` arrives after the user's close: it must emit no
+        // second session and must not panic.
         t.closed(EndReason::SelfQuit);
     }
 

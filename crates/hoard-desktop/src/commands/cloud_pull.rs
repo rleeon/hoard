@@ -1,4 +1,4 @@
-//! Cloud-pull poller — the live "is anything new?" loop.
+//! The cloud-pull poller: the live "is anything new?" loop.
 //!
 //! Pairs with `commands::automatic`. The automatic scheduler does the heavy
 //! lifting (scan-library + backup-stale sweep) on the hourly scale; this
@@ -8,8 +8,8 @@
 //! tick only catches a missed push.
 //!
 //! Decoupling the two cadences was an ADR-0016 call. The manifest endpoint
-//! returns <5 KB and is explicitly excluded from the bandwidth quota
-//! (`hoard-server::cloud::routes::sync` — no `bandwidth::check` call). The
+//! returns under 5 KB and is explicitly excluded from the bandwidth quota
+//! (`hoard-server::cloud::routes::sync`, with no `bandwidth::check` call). The
 //! cadence itself stopped being a pref: it has no user-visible effect with
 //! Realtime as the primary trigger, and the old knob let a hand-edited
 //! `prefs.json` hammer the server.
@@ -18,22 +18,22 @@
 //! local save file. The "remote is newer, pull it" pathway still goes
 //! through the agent's auto-restore sweep (triggered by the automatic
 //! scheduler on its hourly tick, or by flipping the toggle off→on). The
-//! poller's role is to make the UI honest about server state — not to
+//! poller's role is to make the UI honest about server state, not to
 //! race the user's keyboard. Forcing pulls from a 10-second loop would
 //! risk overwriting an active edit; ADR 0016 spells out the trade.
 //!
 //! Events emitted (Tauri):
-//! - `agent://cloud-pull-started`  — fired right before the HTTP GET.
+//! - `agent://cloud-pull-started`: fired right before the HTTP GET.
 //! - `agent://cloud-pull-completed { count, new_versions, bytes }`
 //!   `count` = total saves in manifest, `new_versions` = number where the
 //!   remote version_num is strictly greater than the last manifest seen
 //!   in-memory, `bytes` = sum of `latest_size_bytes` of the new ones
-//!   (informational only — nothing was downloaded).
-//! - `agent://quota-reached { reset_in_seconds, plan }` — emitted on a
+//!   (informational only, nothing was downloaded).
+//! - `agent://quota-reached { reset_in_seconds, plan }`: emitted on a
 //!   429 response from the manifest endpoint. Today the manifest is
 //!   excluded from the limiter so this should be a no-op in practice;
 //!   we keep the branch in case the policy changes.
-//! - `agent://offline` — emitted on transport errors (DNS, TCP, TLS).
+//! - `agent://offline`: emitted on transport errors (DNS, TCP, TLS).
 //!   The LiveStatus widget downgrades to the red "Server unreachable"
 //!   dot until the next successful pull.
 
@@ -51,7 +51,7 @@ use crate::daemon::CloudPulse;
 
 /// Lock a mutex, recovering from poisoning instead of panicking.
 ///
-/// Every lock in this module guards *derived, rebuildable* state — the seen-map
+/// Every lock in this module guards *derived, rebuildable* state: the seen-map
 /// reseeds from the next manifest, the gate reseeds from the next tick. A panic
 /// while one was held used to poison it, and the next `.lock().unwrap()` killed
 /// the poller task with no log line at all: one of the two candidate causes of
@@ -79,10 +79,10 @@ pub struct CloudPullScheduler {
     /// Single-flight coalescing gate shared by the timed poller and every
     /// Realtime `kick()`. Without it, a catch-up backup sweep that touches
     /// N saves makes Supabase push N near-simultaneous `saves` UPDATEs, and
-    /// each one used to spawn its own `/v1/cloud/sync` — N concurrent pulls
+    /// each one used to spawn its own `/v1/cloud/sync`: N concurrent pulls
     /// that race on token refresh, so a single transient timeout among them
-    /// emitted `agent://offline` and the LiveStatus dot flapped to "agente
-    /// apagado". With the gate, at most one pull runs at a time and a burst
+    /// emitted `agent://offline` and the LiveStatus dot flapped to "agent
+    /// stopped". With the gate, at most one pull runs at a time and a burst
     /// of kicks collapses into a single follow-up pull.
     gate: Arc<Mutex<PullGate>>,
 }
@@ -97,7 +97,7 @@ struct PullGate {
     /// concurrent kicks into a single re-run).
     rerun: bool,
     /// When the current holder took the gate. Only used to tell a normal
-    /// coalesced kick from a holder that is *stuck* — see [`STUCK_GATE_SECS`].
+    /// coalesced kick from a holder that is *stuck*; see [`STUCK_GATE_SECS`].
     since: Option<Instant>,
 }
 
@@ -112,7 +112,7 @@ const STUCK_GATE_SECS: u64 = 5 * 60;
 /// **This is the D.10 fix.** The gate used to be released by hand at the end of
 /// `guarded_pull`, so a task that got aborted (`start()` aborts the previous
 /// poller) or panicked mid-pull left `running = true` forever, and every later
-/// tick returned through `if g.running { … return; }` — silently, which is why
+/// tick returned through `if g.running { ... return; }`, silently, which is why
 /// a dead poller looked exactly like a healthy one. Dropping is the one thing
 /// that happens on *every* exit path (return, panic-unwind, and abort, which
 /// drops the future's locals), so the gate now cannot leak.
@@ -133,12 +133,12 @@ impl GateGuard {
             if held.as_secs() >= STUCK_GATE_SECS {
                 tracing::warn!(
                     held_secs = held.as_secs(),
-                    "cloud-pull: gate busy — the in-flight pull looks stuck; cloud versions are going stale"
+                    "cloud-pull: gate busy, the in-flight pull looks stuck and cloud versions are going stale"
                 );
             } else {
                 tracing::debug!(
                     held_secs = held.as_secs(),
-                    "cloud-pull: gate busy — coalescing into the in-flight pull"
+                    "cloud-pull: gate busy, coalescing into the in-flight pull"
                 );
             }
             return None;
@@ -193,8 +193,8 @@ struct CloudPullCompleted {
     /// How many of those have a `latest_version_num` strictly greater
     /// than what we saw last time. First poll always reports 0.
     new_versions: usize,
-    /// Sum of `latest_size_bytes` across the newly-versioned saves —
-    /// informational only, nothing was downloaded.
+    /// Sum of `latest_size_bytes` across the newly-versioned saves. Informational
+    /// only: nothing was downloaded.
     bytes: i64,
 }
 
@@ -204,13 +204,13 @@ struct QuotaReached {
     plan: String,
 }
 
-/// Publica el pulso del bucle **y lo recuerda**.
+/// Publishes the loop's pulse **and remembers it**.
 ///
-/// Los tres eventos de abajo son momentáneos: quien no estaba escuchando cuando
-/// pasaron no puede recuperarlos, y una ventana que nace más tarde —el HUD— se
-/// quedaría con el dot de la nube en "no se sabe" hasta la siguiente pasada.
-/// Anotarlo en el mismo gesto que se emite es lo que le deja leer el estado en
-/// vez de tener que escuchar (ver [`crate::daemon::UiSnapshot`]).
+/// The three events below are momentary: anybody who was not listening when they
+/// happened cannot get them back, and a window born later (the HUD) would be left
+/// with the cloud dot on "unknown" until the next pass. Writing it down in the same
+/// gesture that emits it is what lets that window read the state instead of having
+/// to listen (see [`crate::daemon::UiSnapshot`]).
 fn note(app: &AppHandle, pulse: CloudPulse, retry_in: Option<u32>) {
     app.state::<crate::state::AppState>()
         .daemon
@@ -233,7 +233,7 @@ pub fn start(app: &AppHandle) {
         let mut slot = lock(&scheduler.handle);
         if let Some(prev) = slot.take() {
             // The aborted task may have been mid-pull. Its `GateGuard` is
-            // dropped with the future, so the gate reopens on its own — the
+            // dropped with the future, so the gate reopens on its own. The
             // hand-rolled release this replaced did not, and that stuck gate
             // is what silenced the poller for a whole session (D.10).
             prev.abort();
@@ -249,7 +249,7 @@ pub fn start(app: &AppHandle) {
         // Supervised: this loop dying in silence is what left the engine blind
         // for a whole session (ADR 0021 D.12). The gate is RAII (`GateGuard`),
         // so an unwind releases it, and the seen-map is derived state the next
-        // pull replaces wholesale — there is nothing to roll back before the
+        // pull replaces wholesale, so there is nothing to roll back before the
         // supervisor goes again.
         supervisor::supervise("cloud-pull poller", || {
             poll_loop(&app_for_task, &seen, &gate, period)
@@ -278,7 +278,7 @@ async fn poll_loop(
     // First tick fires immediately so the user sees activity on
     // sign-in without waiting a full interval. The built-in
     // zero-delay first tick of `tokio::time::interval` is the right
-    // shape — we don't manually emit before the loop.
+    // shape, so we don't manually emit before the loop.
     let mut ticker = interval(period);
     // Fallback refresh for the Eye-panel devices + bell feeds when the
     // Realtime socket is down. Immediacy comes from Realtime; this only
@@ -287,11 +287,11 @@ async fn poll_loop(
     //
     // Backdated so the first tick primes both feeds. Plain subtraction used to
     // do it and panicked with "overflow when subtracting duration from instant"
-    // whenever the monotonic clock hadn't run `FALLBACK_MIN_SECS` yet — the
+    // whenever the monotonic clock hadn't run `FALLBACK_MIN_SECS` yet: the
     // login autostart, where the poller comes up seconds after the clock's
     // origin. The supervisor caught it four times with `ran_secs: 0`, restarting
     // a loop that could only panic again. `checked_sub` answers `None` there
-    // instead, which [`feed_refresh_is_due`] reads as "never refreshed" — the
+    // instead, which [`feed_refresh_is_due`] reads as "never refreshed", the
     // same first-tick prime the backdating was for, by a route that can't die.
     let mut last_feed = tokio::time::Instant::now().checked_sub(Duration::from_secs(
         crate::commands::cloud_feed::FALLBACK_MIN_SECS,
@@ -401,10 +401,10 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
         Ok(Some(c)) => c,
         Ok(None) => {
             // Session disappeared between polls (user logged out). The logout
-            // path called `stop()` separately, so this is expected — but it
+            // path called `stop()` separately, so this is expected, but it
             // still ends a tick without pulling, and every silent way to end a
             // tick is a place D.10 could hide again.
-            tracing::debug!("cloud-pull: no cloud session on disk — nothing to pull");
+            tracing::debug!("cloud-pull: no cloud session on disk, nothing to pull");
             return;
         }
         Err(e) => {
@@ -438,10 +438,10 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
     };
 
     // The access token is a short-lived Supabase JWT. When it expires the
-    // sync endpoint answers 401 — which previously surfaced as a permanent
-    // "server down" dot. Ask the service for a fresh one (it's the only rotator
-    // since the Slice 4c) and retry once, so the poller keeps working across the
-    // token's lifetime (and across restarts).
+    // sync endpoint answers 401, which previously surfaced as a permanent
+    // "server down" dot. Ask the service for a fresh one (it's the only rotator)
+    // and retry once, so the poller keeps working across the token's lifetime
+    // (and across restarts).
     if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
         match crate::commands::cloud::borrow_access_token(app, Some(access_token.clone())).await {
             Ok(fresh) => {
@@ -464,7 +464,7 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
                 // cleanly and tell the UI to prompt re-login instead of spinning.
                 if crate::commands::cloud::is_session_expired(&e) {
                     tracing::warn!(
-                        "cloud-pull: refresh token revoked — signing out (session expired)"
+                        "cloud-pull: refresh token revoked, signing out (session expired)"
                     );
                     crate::commands::cloud::handle_session_expired(app);
                     return;
@@ -532,7 +532,7 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
                 }
                 None => {
                     // First time we see this save in this session. We
-                    // intentionally do *not* count it as "new" — the
+                    // intentionally do *not* count it as "new": the
                     // user might have logged in to a populated account
                     // and reporting "247 new versions!" right after
                     // sign-in is noisy. The seed pass just records the
@@ -564,13 +564,13 @@ async fn run_one_pull(app: &AppHandle, seen: &Arc<Mutex<Vec<ManifestSeenEntry>>>
         },
     );
 
-    // Aquí acababa el trabajo de motor de este bucle: empujarle al agente el
-    // token rotado, alimentarle el mapa de versiones y pedirle el force-restore
-    // de lo que hubiera avanzado. Desde el Slice 4b nada de eso es del cliente:
-    // el motor vive en `hoardd`, que corre su propio `cloud_live` (Realtime +
-    // poll de respaldo) y hace las tres cosas con menos latencia que nosotros.
-    // Este poller se queda con lo que siempre fue suyo, **pintar**: de él salen
-    // el dot de nube, el contador de versiones y las filas del feed.
+    // This loop's engine work used to end here: pushing the rotated token to the
+    // agent, feeding it the version map and asking it to force-restore whatever had
+    // advanced. None of that belongs to a client any more: the engine lives in
+    // `hoardd`, which runs its own `cloud_live` (Realtime plus a backup poll) and
+    // does all three with less latency than we could. This poller keeps what was
+    // always its own, **painting**: the cloud dot, the version counter and the feed's
+    // rows all come out of here.
 }
 
 #[cfg(test)]

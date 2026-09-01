@@ -1,22 +1,20 @@
-//! Hoard-Wrapped share card — avatar local y "sacar la foto".
+//! The Hoard Wrapped share card: a local avatar and "take the picture".
 //!
-//! Todo lo que toca esta pieza es **de este equipo y solo de este equipo**: la
-//! foto y el nombre de la tarjeta no viajan al servidor ni a la nube, y no van
-//! en el export de la cuenta. La foto vive como un único `avatar.png` bajo el
-//! app-data dir; el resto de la configuración (nombre, frase, rango) la guarda
-//! el frontend en su `store` local. Borrar el fichero es todo el "olvídame"
-//! que hace falta.
+//! Everything this piece touches is **this machine's and this machine's only**: the
+//! card's picture and name never travel to the server or the cloud, and they are not
+//! in the account export. The picture lives as a single `avatar.png` under the
+//! app-data dir; the rest of the configuration (name, phrase, rank) the frontend
+//! keeps in its local store. Deleting the file is all the "forget me" there is.
 //!
-//! El recorte/escalado del avatar se hace en el webview (canvas) antes de
-//! llegar aquí, así que este módulo solo ve PNG ya normalizado: un formato,
-//! un tamaño acotado, nada de adivinar MIME al releerlo.
+//! The avatar's cropping and scaling happen in the webview (canvas) before reaching
+//! here, so this module only ever sees already normalised PNG: one format, a bounded
+//! size, no guessing at MIME types when reading it back.
 //!
-//! `wrapple_save_card` escribe la tarjeta renderizada en la galería del
-//! sistema (`Pictures/Hoard/`) y le inyecta metadatos PNG `tEXt` — título,
-//! autor del software y `https://hoard.services`. Es la parte "SEO" del
-//! encargo: una imagen que se comparte suelta lleva de dónde salió, tanto a la
-//! vista (marca de agua) como en sus metadatos, que es lo que leen los
-//! buscadores de imágenes y los visores.
+//! `wrapple_save_card` writes the rendered card into the system gallery
+//! (`Pictures/Hoard/`) and injects PNG `tEXt` metadata: title, software author and
+//! `https://hoard.services`. That is the SEO half of the brief: an image shared on
+//! its own carries where it came from, both visibly (the watermark) and in its
+//! metadata, which is what image searches and viewers read.
 
 use std::path::{Path, PathBuf};
 
@@ -24,13 +22,13 @@ use base64::Engine;
 use tauri::ipc::Response;
 use tauri::Manager;
 
-/// Extensiones que aceptamos al elegir foto. La lista es la misma que la de
-/// carátulas personalizadas: lo que el webview sabe decodificar.
+/// The extensions accepted when picking a picture. The same list as for custom
+/// covers: whatever the webview knows how to decode.
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "gif", "bmp", "tiff", "tif"];
 
-/// Tope al leer el fichero que elige el usuario. Una foto de móvil ronda los
-/// 5 MB; 32 nos deja sitio de sobra sin permitir que un TIFF de 400 MB entre
-/// entero en la RAM del webview.
+/// The ceiling when reading the file the user picks. A phone photo is around 5 MB;
+/// 32 leaves plenty of room without letting a 400 MB TIFF land whole in the
+/// webview's RAM.
 const MAX_SOURCE_BYTES: u64 = 32 * 1024 * 1024;
 
 /// Tope al guardar. El avatar sale de un canvas de 512×512 (≈300 KB) y la
@@ -57,8 +55,8 @@ fn has_image_extension(path: &Path) -> bool {
 }
 
 fn decode_png(data: &str) -> Result<Vec<u8>, String> {
-    // El frontend manda base64 pelado, pero aceptamos también el data-URL
-    // entero por si alguien pasa el `toDataURL()` tal cual.
+    // The frontend sends bare base64, but the whole data URL is accepted too in
+    // case somebody passes `toDataURL()` through as it is.
     let payload = data.rsplit_once(",").map_or(data, |(_, tail)| tail);
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(payload.trim())
@@ -77,9 +75,9 @@ fn decode_png(data: &str) -> Result<Vec<u8>, String> {
 
 const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
 
-/// Lee un fichero de imagen que ha elegido el usuario y devuelve sus bytes al
-/// webview, que es quien lo recorta y escala. No copiamos nada todavía: hasta
-/// que no confirma el recorte, en disco no queda rastro.
+/// Reads an image file the user picked and hands its bytes back to the webview,
+/// which is what crops and scales it. Nothing is copied yet: until the crop is
+/// confirmed, no trace is left on disk.
 #[tauri::command]
 pub async fn wrapple_read_image(source_path: String) -> Result<Response, String> {
     let src = PathBuf::from(&source_path);
@@ -101,8 +99,8 @@ pub async fn wrapple_read_image(source_path: String) -> Result<Response, String>
         .map_err(|e| format!("no se pudo leer la imagen: {e}"))
 }
 
-/// Guarda el avatar de la tarjeta (PNG ya recortado por el webview). Local y
-/// nada más: nunca se sube.
+/// Stores the card's avatar (PNG already cropped by the webview). Local and nothing
+/// else: it is never uploaded.
 #[tauri::command]
 pub async fn wrapple_set_avatar(app: tauri::AppHandle, png_base64: String) -> Result<(), String> {
     let bytes = decode_png(&png_base64)?;
@@ -110,8 +108,8 @@ pub async fn wrapple_set_avatar(app: tauri::AppHandle, png_base64: String) -> Re
     tokio::fs::create_dir_all(&dir)
         .await
         .map_err(|e| e.to_string())?;
-    // Escritura atómica: un fallo a medias dejaría un PNG truncado que el
-    // webview no sabe pintar y que además persiste entre arranques.
+    // An atomic write: a half-failure would leave a truncated PNG the webview
+    // cannot paint and which persists across starts.
     let dest = dir.join("avatar.png");
     let tmp = dir.join("avatar.png.tmp");
     tokio::fs::write(&tmp, &bytes)
@@ -123,8 +121,8 @@ pub async fn wrapple_set_avatar(app: tauri::AppHandle, png_base64: String) -> Re
     Ok(())
 }
 
-/// Bytes del avatar guardado. `Err` cuando no hay ninguno — el frontend cae a
-/// las iniciales sin más.
+/// The stored avatar's bytes. `Err` when there is none, and the frontend simply
+/// falls back to initials.
 #[tauri::command]
 pub async fn wrapple_avatar_bytes(app: tauri::AppHandle) -> Result<Response, String> {
     let path = avatar_path(&app)?;
@@ -145,13 +143,13 @@ pub async fn wrapple_clear_avatar(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Escribe la tarjeta renderizada en la galería del sistema y devuelve la ruta
-/// final para poder enseñársela al usuario.
+/// Writes the rendered card into the system gallery and returns the final path so
+/// it can be shown to the user.
 ///
-/// Destino: `<Imágenes>/Hoard/hoard-wrapped-<fecha>.png`. Si el sistema no
-/// declara carpeta de imágenes (cuentas de servicio, entornos raros) caemos a
-/// Descargas y luego al home, porque fallar el guardado por no encontrar una
-/// carpeta canónica sería absurdo.
+/// The destination is `<Pictures>/Hoard/hoard-wrapped-<date>.png`. When the system
+/// declares no pictures folder (service accounts, odd environments) it falls back to
+/// Downloads and then to the home directory, because failing a save for want of a
+/// canonical folder would be absurd.
 #[tauri::command]
 pub async fn wrapple_save_card(
     app: tauri::AppHandle,
@@ -193,13 +191,13 @@ fn timestamp_slug() -> String {
     )
 }
 
-/// Inyecta chunks `tEXt` con la procedencia justo detrás del IHDR.
+/// Injects `tEXt` chunks with the provenance right after the IHDR.
 ///
-/// Un PNG es firma + cadena de chunks `[len:u32][tipo:4][datos][crc:u32]`, y
-/// los `tEXt` son legales en cualquier punto entre IHDR e IEND. Metemos los
-/// nuestros pegados al IHDR para que cualquier lector los vea sin recorrerse la
-/// imagen entera. Si el buffer no tiene la pinta esperada devolvemos el PNG
-/// intacto: los metadatos son un extra, nunca un motivo para no guardar.
+/// A PNG is a signature plus a chain of `[len:u32][type:4][data][crc:u32]` chunks,
+/// and `tEXt` chunks are legal anywhere between IHDR and IEND. Ours go right against
+/// the IHDR so any reader sees them without walking the whole image. When the buffer
+/// does not look the way it should, the PNG comes back untouched: the metadata is an
+/// extra, never a reason not to save.
 fn with_seo_metadata(png: Vec<u8>, label: Option<&str>) -> Vec<u8> {
     const IHDR_END: usize = 8 + 4 + 4 + 13 + 4; // firma + len + "IHDR" + datos + crc
     if png.len() < IHDR_END || &png[12..16] != b"IHDR" {
@@ -254,8 +252,8 @@ fn text_chunk(key: &str, value: &str) -> Vec<u8> {
     chunk
 }
 
-/// CRC-32 (IEEE, el del PNG). Sin dependencia: son doce líneas y se llama
-/// cinco veces por imagen guardada.
+/// CRC-32 (IEEE, the PNG one). No dependency: it is twelve lines and gets called
+/// five times per saved image.
 fn crc32(data: &[u8]) -> u32 {
     let mut crc: u32 = 0xffff_ffff;
     for &byte in data {
@@ -292,7 +290,7 @@ mod tests {
         assert_eq!(chunk[14], 0);
     }
 
-    /// Los metadatos entran detrás del IHDR y dejan el resto del fichero igual.
+    /// The metadata goes in after the IHDR and leaves the rest of the file alone.
     #[test]
     fn metadata_goes_after_ihdr() {
         let mut png = Vec::new();
@@ -306,7 +304,7 @@ mod tests {
         let out = with_seo_metadata(png.clone(), Some("Rust"));
         assert!(out.len() > png.len());
         assert_eq!(&out[..33], &png[..33]); // firma + IHDR intactos
-        assert_eq!(&out[37..41], b"tEXt"); // el 1er chunk inyectado va justo detrás
+        assert_eq!(&out[37..41], b"tEXt"); // the first injected chunk goes right behind it
         assert!(out.ends_with(b"IDATTAIL"));
         let text = String::from_utf8_lossy(&out);
         assert!(text.contains("hoard.services"));
@@ -320,7 +318,7 @@ mod tests {
         assert_eq!(with_seo_metadata(junk.clone(), None), junk);
     }
 
-    /// Solo entran PNG: base64 válido pero de otro formato se rechaza.
+    /// PNG only: valid base64 in another format is rejected.
     #[test]
     fn decode_png_rejects_other_formats() {
         let jpeg = base64::engine::general_purpose::STANDARD.encode([0xff, 0xd8, 0xff, 0xe0]);

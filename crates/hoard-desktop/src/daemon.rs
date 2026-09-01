@@ -1,50 +1,49 @@
-//! El enlace del desktop con `hoardd` (ADR 0021, Parte A — Slice 4b).
+//! The desktop's link to `hoardd` (ADR 0021, Part A).
 //!
-//! Hasta el 4a el desktop **embebía** el motor (`agent::spawn` dentro de
-//! `start_agent`), y el árbitro para que no corriera a la vez que el de la CLI
-//! era el pidfile de `hoard_agent::instance`, con sus tres fallos de diseño:
-//! carrera de arranque, cero reclaim y el ciclo de vida del sync atado a una
-//! ventana. Desde este slice el desktop **no tiene motor**: es un cliente del
-//! servicio, le manda comandos por el socket local y pinta lo que el servicio
-//! reporta. Cerrar la app ya no puede parar el sync — que es el punto de todo el
-//! Slice 4.
+//! The desktop used to **embed** the engine (`agent::spawn` inside
+//! `start_agent`), with the pidfile in `hoard_agent::instance` arbitrating against
+//! the CLI's, and its three design faults: a startup race, no reclaim, and the
+//! sync's lifetime tied to a window. The desktop **has no engine** now: it is a
+//! client of the service, sends it commands over the local socket and paints what
+//! the service reports. Closing the app can no longer stop the sync, which is the
+//! whole point.
 //!
-//! ## Dos conexiones, a propósito
+//! ## Two connections, deliberately
 //!
-//! - **Comandos** ([`DaemonLink::request`]): una conexión perezosa bajo mutex.
-//!   Cada `#[tauri::command]` que antes tocaba el `AgentHandle` manda aquí su
-//!   petición.
-//! - **Eventos** ([`pump`]): una conexión dedicada que sólo escucha.
+//! - **Commands** ([`DaemonLink::request`]): one lazy connection under a mutex.
+//!   Every `#[tauri::command]` that used to touch the `AgentHandle` sends its
+//!   request here.
+//! - **Events** ([`pump`]): a dedicated connection that only listens.
 //!
-//! No es una por comodidad: `read_frame` lee cabecera y cuerpo en dos pasos, así
-//! que **no es cancel-safe**. Una sola conexión obligaría a un `select!` entre
-//! "espera un push" y "manda una petición", y cancelar la lectura a medias
-//! dejaría el flujo desincronizado. Dos conexiones cuestan al daemon una task
-//! más por cliente y nos dan lecturas que nunca se cancelan.
+//! It is not one for convenience: `read_frame` reads header and body in two steps,
+//! so it is **not cancel-safe**. A single connection would force a `select!`
+//! between "wait for a push" and "send a request", and cancelling the read halfway
+//! would leave the stream out of step. Two connections cost the daemon one extra
+//! task per client and give us reads that are never cancelled.
 //!
-//! ## Journal + push (D.14.2)
+//! ## Journal plus push (D.14.2)
 //!
-//! Al conectar se pide el backlog desde el cursor y luego se escucha en vivo. El
-//! cursor vive **en memoria**: una ejecución nueva de la app arranca con la UI
-//! vacía, así que pedir el anillo entero es justo lo que reconstruye la historia
-//! que no vio. Dentro de una misma ejecución, el cursor evita repetir lo ya
-//! pintado al reconectar.
+//! On connect it asks for the backlog from the cursor and then listens live. The
+//! cursor lives **in memory**: a new run of the app starts with an empty UI, so
+//! asking for the whole ring is exactly what rebuilds the history it did not see.
+//! Within one run, the cursor avoids repeating what was already painted when it
+//! reconnects.
 //!
-//! Y cuando no se puede afirmar continuidad —el anillo perdió filas (`gap`), el
-//! daemon se reinició (`epoch` distinto) o el canal de push nos dejó atrás
-//! (`Resync`)— se le dice a la UI que **resincronice** en vez de coserlo en
-//! silencio. Fingir continuidad ahí es el bug de las campanas mudas otra vez.
+//! And when continuity cannot be asserted (the ring lost rows, `gap`; the daemon
+//! restarted, a different `epoch`; the push channel left us behind, `Resync`) the
+//! UI is told to **resync** instead of stitching it in silence. Faking continuity
+//! there is the mute-bell bug all over again.
 //!
-//! ## Quién enciende el relevo: la UI, y no antes
+//! ## Who switches the relay on: the UI, and not before
 //!
-//! [`attach`] lo llama el store cuando **ya** tiene sus `listen()` puestos, no
-//! `start_agent`. Es deliberado: `start_agent` también lo llama el escaneo de
-//! Modo Automático, que corre en Rust y puede ganarle al montaje del webview —
-//! y un backlog emitido antes de que exista el oyente es un historial que se
-//! pierde en silencio, exactamente el bug que el journal existe para no tener.
-//! Con el relevo atado a la suscripción, la primera emisión no puede llegar
-//! pronto. (La conexión de comandos es independiente: el escaneo levanta el
-//! servicio igual, sólo que sin nadie escuchando todavía.)
+//! The store calls [`attach`] once it **already** has its `listen()`s in place,
+//! and `start_agent` does not. That is deliberate: `start_agent` is also called by
+//! the automatic-mode scan, which runs in Rust and can beat the webview's mount,
+//! and a backlog emitted before the listener exists is a history lost in silence,
+//! exactly the bug the journal exists not to have. With the relay tied to the
+//! subscription, the first emission cannot arrive early. (The command connection is
+//! independent: the scan brings the service up anyway, only with nobody listening
+//! yet.)
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -66,57 +65,58 @@ use tokio::task::JoinHandle;
 
 use crate::state::AppState;
 
-/// Cómo nos presentamos en el log del daemon.
+/// How we introduce ourselves in the daemon's log.
 fn client_name(role: &str) -> String {
     format!("hoard-desktop {} ({role})", env!("CARGO_PKG_VERSION"))
 }
 
-/// Espera entre reconexiones del bombeo de eventos. El caso normal es que el
-/// daemon siga vivo y esto no llegue a usarse; cubre el reinicio del servicio
-/// (una actualización) sin que la UI se quede muda para siempre.
+/// The wait between reconnects of the event pump. The normal case is a daemon that
+/// stays alive and never reaches this; it covers the service restarting (an update)
+/// without leaving the UI mute for ever.
 const RECONNECT_DELAY: Duration = Duration::from_secs(3);
 
-/// Espera entre reintentos cuando al servicio lo pararon **a propósito**. Ya no
-/// lo relanzamos (ADR 0021 4d), así que reintentar rápido sólo sirve para llenar
-/// el log; sigue reintentándose para engancharse solo si alguien lo arranca.
+/// The wait between retries when the service was stopped **on purpose**. We no
+/// longer relaunch it, so retrying fast only fills the log; it keeps retrying so it
+/// attaches on its own if somebody starts it.
 const STOPPED_RETRY_DELAY: Duration = Duration::from_secs(30);
 
-/// Tope de una petición ya conectada. Generoso para el peor caso real (el
-/// `Status` pregunta al motor, que puede estar hasheando), pero finito: sin él,
-/// un servicio atascado colgaría el comando de la UI y, tras él, todos los que
-/// esperan la conexión de comandos.
+/// The ceiling on an already-connected request. Generous for the real worst case
+/// (the `Status` asks the engine, which may be hashing), but finite: without it a
+/// stuck service would hang the UI's command and, behind it, everything else waiting
+/// on the command connection.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Cada cuánto se re-pregunta el estado del motor.
+/// How often the engine's state is asked for again.
 ///
-/// El motor arriba/abajo **no es un evento del journal** (`AgentEvent` no tiene
-/// esa variante), así que sin esto la UI se quedaría con el estado del instante
-/// en que conectó: un motor que arranca 20 s más tarde —lo normal, el daemon
-/// resuelve la sesión primero— dejaría el icono en "parado" toda la sesión. Es
-/// un round-trip por socket local; el push sigue siendo quien trae los eventos.
+/// The engine being up or down is **not a journal event** (`AgentEvent` has no such
+/// variant), so without this the UI would be stuck with the state of the instant it
+/// connected: an engine that starts 20 s later (the normal case, since the daemon
+/// resolves the session first) would leave the icon on "stopped" for the whole
+/// session. It is one round-trip over a local socket; the push is still what brings
+/// the events.
 const STATUS_EVERY: Duration = Duration::from_secs(20);
 
-/// Lo que la UI conoce como `AgentStatus`. Su forma es contrato con los stores
-/// (`ui/src/lib/stores/agent.ts`), que no deben notar que detrás ya no hay un
-/// motor embebido sino un servicio.
+/// What the UI knows as `AgentStatus`. Its shape is a contract with the stores
+/// (`ui/src/lib/stores/agent.ts`), which must not notice that behind it there is a
+/// service rather than an embedded engine.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AgentStatus {
     pub running: bool,
     pub watched_count: usize,
-    /// El servicio manda él mismo las notificaciones nativas del SO (ADR 0021
-    /// D.14.1), así que la UI **no** debe mandar las suyas o el usuario vería el
-    /// aviso dos veces con la app abierta. En una plataforma donde el servicio
-    /// todavía no sabe notificar (Windows, macOS) llega `false` y el aviso sigue
-    /// siendo del frontend, igual que antes de este slice.
+    /// The service sends the OS's native notifications itself (ADR 0021 D.14.1),
+    /// so the UI must **not** send its own or the user would see the notice twice
+    /// with the app open. On a platform where the service cannot notify yet
+    /// (Windows, macOS) this arrives as `false` and the notice stays the
+    /// frontend's.
     pub service_notifies: bool,
-    /// **Por qué** no hay motor, cuando no lo hay. Hasta la 1.1.0 este dato moría
-    /// aquí: el daemon lo tenía tipado, este struct lo tiraba, y la ventana sólo
-    /// podía enseñar "el servicio está desconectado" — con lo que dos usuarios de
-    /// self-hosted pasaron días sin backups sin manera de saber que lo que les
-    /// faltaba era la sesión. Lo que la UI pinta sale de aquí.
+    /// **Why** there is no engine, when there is none. This used to die here: the
+    /// daemon had it typed, this struct threw it away, and the window could only say
+    /// "the service is disconnected", which left two self-hosted users days without
+    /// backups and no way to know that what they were missing was the session. What
+    /// the UI paints comes from here.
     pub reason: EngineDownReason,
-    /// El texto crudo del último fallo, para el detalle y para que el usuario
-    /// pueda copiarlo en un reporte. La frase traducida sale de `reason`.
+    /// The last failure's raw text, for the detail view and so the user can copy it
+    /// into a report. The translated sentence comes from `reason`.
     pub last_error: Option<String>,
     /// Which way the keyring failed, when `reason` is `KeyringUnreadable`. One
     /// reason, four next steps: a machine with no secret-service daemon is not a
@@ -126,11 +126,11 @@ pub struct AgentStatus {
 }
 
 impl AgentStatus {
-    /// Lo que la UI debe pintar cuando no sabemos nada del motor.
+    /// What the UI should paint when we know nothing about the engine.
     ///
-    /// `service_notifies: false` es el default seguro: sin servicio tampoco
-    /// llegan eventos, así que no hay nada que duplicar, y el peor caso posible
-    /// es un aviso repetido — nunca uno perdido.
+    /// `service_notifies: false` is the safe default: with no service no events
+    /// arrive either, so there is nothing to duplicate, and the worst possible case
+    /// is a repeated notice, never a lost one.
     pub fn down() -> Self {
         Self {
             running: false,
@@ -139,7 +139,7 @@ impl AgentStatus {
             // We never reached the service, so we don't know whether the engine
             // is up either: `Unreachable` says that and nothing more. This used
             // to be `Unknown`, which in the window is the sentence "the sync
-            // service is stopped" — a claim we have no grounds for, and one
+            // service is stopped": a claim we have no grounds for, and one
             // that on 2026-08-28 was simply false: the service had been up for
             // thirteen hours.
             reason: EngineDownReason::Unreachable,
@@ -148,17 +148,17 @@ impl AgentStatus {
         }
     }
 
-    /// Traduce el estado del daemon a lo que la UI conoce. Un solo sitio: había
-    /// dos construcciones a mano y la del bucle de estado se olvidaba de la mitad
-    /// de los campos nuevos.
+    /// Translates the daemon's state into what the UI knows. One place only: there
+    /// were two hand-rolled constructions and the state loop's forgot half the new
+    /// fields.
     pub fn from_daemon(status: &hoard_core::ipc::DaemonStatus) -> Self {
         Self {
             running: status.engine.running,
             watched_count: status.slots.len().max(status.engine.watched),
             service_notifies: status.notifications,
             reason: status.engine.reason,
-            // Sólo cuando hay algo roto: el último error de un motor que ya está
-            // arriba es ruido que la ventana no debe enseñar.
+            // Only when something is broken: the last error of an engine that is
+            // already up is noise the window must not show.
             last_error: (!status.engine.running)
                 .then(|| status.engine.last_error.clone())
                 .flatten(),
@@ -172,15 +172,15 @@ impl AgentStatus {
 /// Una fila del journal camino de la UI.
 #[derive(Debug, Clone, Serialize)]
 pub struct BacklogRow {
-    /// Identidad de la fila dentro de esta ejecución del daemon. La ventana
-    /// principal no la necesita —va cosiendo el feed evento a evento— pero
-    /// cualquier superficie que **relea** la instantánea entera sí: sin una clave
-    /// estable, cada relectura sería una lista nueva para Svelte.
+    /// The row's identity within this run of the daemon. The main window does not
+    /// need it (it stitches the feed event by event) but any surface that **re-reads**
+    /// the whole snapshot does: with no stable key, every re-read would be a new list
+    /// as far as Svelte is concerned.
     pub seq: u64,
-    /// Cuándo pasó, en ms de época. Va incluido porque **la hora importa** al
-    /// reproducir: un `game_started` de hace dos horas tiene que pintar dos
-    /// horas de sesión, no arrancar el contador de cero. Es la última ocurrencia
-    /// (`last_at`), que en una fila colapsada es la que sigue siendo cierta.
+    /// When it happened, in epoch milliseconds. It is here because **the time
+    /// matters** when replaying: a `game_started` from two hours ago has to paint two
+    /// hours of session, not start the counter from zero. It is the last occurrence
+    /// (`last_at`), which on a collapsed row is the one still true.
     pub at: i64,
     pub event: AgentEvent,
 }
@@ -188,10 +188,10 @@ pub struct BacklogRow {
 /// Backlog del journal, tal como lo recibe la UI.
 #[derive(Debug, Clone, Serialize)]
 struct BacklogPayload {
-    /// En orden cronológico (lo más viejo primero), como salió del journal.
+    /// In chronological order (oldest first), as it came out of the journal.
     rows: Vec<BacklogRow>,
-    /// No hay continuidad que respetar: el cliente debe reconstruir su estado
-    /// desde este backlog en vez de parchear el que tenía.
+    /// There is no continuity to respect: the client should rebuild its state from
+    /// this backlog rather than patching the one it had.
     resync: bool,
 }
 
@@ -205,12 +205,12 @@ impl From<hoard_core::ipc::JournalEntry> for BacklogRow {
     }
 }
 
-/// Cuántas filas del journal se guardan aquí para quien llegue tarde.
+/// How many journal rows are kept here for whoever arrives late.
 ///
-/// El anillo del daemon tiene 1024; éste es sólo el espejo local de lo que ya se
-/// relevó, y quien lo lee recorta a `MAX_FEED_ENTRIES` (80). Ciento veinte dejan
-/// margen para las filas que no son de feed sin que la instantánea engorde el
-/// puente del webview, que se cruza entero en cada lectura.
+/// The daemon's ring holds 1024; this is only the local mirror of what has been
+/// relayed, and whoever reads it trims to `MAX_FEED_ENTRIES` (80). A hundred and
+/// twenty leave room for the rows that are not feed rows without fattening the
+/// snapshot that crosses the webview bridge whole on every read.
 const JOURNAL_MIRROR: usize = 120;
 
 /// Estado del bucle de nube tal como lo ve la UI. Es el mismo vocabulario que
@@ -218,7 +218,7 @@ const JOURNAL_MIRROR: usize = 120;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CloudPulse {
-    /// Todavía no ha terminado ninguna pasada.
+    /// No pass has finished yet.
     #[default]
     Unknown,
     Online,
@@ -226,42 +226,42 @@ pub enum CloudPulse {
     Throttled,
 }
 
-/// Lo que la UI sabe **ahora mismo**, sin preguntarle a nadie.
+/// What the UI knows **right now**, without asking anybody.
 ///
-/// Existe para las superficies que sólo leen. La ventana principal construye su
-/// estado escuchando: enciende el relevo, recibe el backlog una vez y va
-/// cosiendo los eventos que llegan. Una ventana que nace después —el HUD— no
-/// puede hacer eso: el backlog ya se emitió, [`attach`] es idempotente y
-/// [`emit_status`] sólo habla cuando algo cambia, así que escuchar le daría un
-/// panel en blanco y una cabecera en rojo con el servicio vivo.
+/// It exists for the surfaces that only read. The main window builds its state by
+/// listening: it switches the relay on, receives the backlog once, and stitches the
+/// events that arrive. A window born later, the HUD, cannot do that: the backlog has
+/// already been emitted, [`attach`] is idempotent and [`emit_status`] only speaks
+/// when something changes, so listening would give it a blank panel and a red header
+/// with the service alive.
 ///
-/// Así que no escucha: lee esto. Es una copia de lo que este proceso ya tenía en
-/// memoria —cero E/S, cero red, cero peticiones al servicio— y por eso abrir el
-/// HUD no puede arrancar, despertar ni alterar nada.
+/// So it does not listen: it reads this. It is a copy of what this process already
+/// had in memory (no I/O, no network, no requests to the service), and that is why
+/// opening the HUD cannot start, wake or alter anything.
 #[derive(Debug, Clone, Serialize)]
 pub struct UiSnapshot {
     pub status: AgentStatus,
-    /// Lo que el servicio dice de cada partida vigilada: si el juego está
-    /// corriendo y cuándo le toca la próxima copia.
+    /// What the service says about each watched save: whether the game is running
+    /// and when its next backup is due.
     ///
-    /// Va aparte del journal a propósito. Quién está jugando y qué copia viene
-    /// son **estado**, no historia: reconstruirlos replicando eventos obliga a
-    /// guardar el `game_started` para siempre, y el día que se caiga del anillo
-    /// el HUD dirá que nadie juega con el juego delante. El servicio ya lleva la
-    /// cuenta; esto la copia.
+    /// It is kept apart from the journal on purpose. Who is playing and which backup
+    /// is coming are **state**, not history: rebuilding them by replaying events means
+    /// keeping the `game_started` for ever, and the day it falls out of the ring the
+    /// HUD will say nobody is playing with the game right there. The service already
+    /// keeps the tally; this copies it.
     pub slots: Vec<AgentSlotStatus>,
-    /// En orden cronológico, lo más viejo primero (como el backlog).
+    /// In chronological order, oldest first (like the backlog).
     pub rows: Vec<BacklogRow>,
     pub cloud: CloudPulse,
     /// Segundos hasta que se levante el freno, cuando `cloud == Throttled`.
     pub cloud_retry_in: Option<u32>,
 }
 
-/// Cursor del journal dentro de **una** ejecución del daemon.
+/// The journal's cursor within **one** run of the daemon.
 #[derive(Debug, Clone)]
 struct Cursor {
-    /// Identidad de la ejecución del daemon. Un `seq` sólo es comparable dentro
-    /// del mismo epoch: si cambió, el daemon se reinició y el cursor no vale.
+    /// The daemon run's identity. A `seq` is only comparable within the same epoch:
+    /// when it changes, the daemon restarted and the cursor is worthless.
     epoch: String,
     seq: u64,
 }
@@ -269,51 +269,51 @@ struct Cursor {
 /// Estado del enlace, vivo mientras viva la app.
 #[derive(Default)]
 pub struct DaemonLink {
-    /// Conexión de comandos. Perezosa: no se abre hasta que hay algo que pedir,
-    /// y se vuelve a abrir sola si el daemon se reinicia.
+    /// The command connection. Lazy: it is not opened until there is something to
+    /// ask for, and it reopens on its own when the daemon restarts.
     cmd: tokio::sync::Mutex<Option<Client>>,
-    /// Bombeo de eventos y refresco de estado. No vacío mientras la UI está
-    /// escuchando (entre [`attach`] y [`detach`]).
+    /// The event pump and the status refresh. Non-empty while the UI is listening
+    /// (between [`attach`] and [`detach`]).
     tasks: Mutex<Vec<JoinHandle<()>>>,
     cursor: Arc<Mutex<Option<Cursor>>>,
-    /// Último estado publicado a la UI. Está aquí y no dentro del bucle de
-    /// estado porque hay **dos** emisores —el bucle y el bombeo, que sabe antes
-    /// que nadie que se cayó el socket— y con una memoria por emisor el segundo
-    /// nunca se entera de lo que publicó el primero: el bombeo pinta "parado", el
-    /// bucle sigue creyendo que ya publicó "arriba" y la UI se queda en parado
-    /// hasta que el motor cambie de estado por su cuenta.
+    /// The last state published to the UI. It lives here and not inside the state
+    /// loop because there are **two** emitters (the loop, and the pump, which knows
+    /// before anybody else that the socket dropped) and with one memory per emitter
+    /// the second never learns what the first published: the pump paints "stopped",
+    /// the loop still believes it published "up", and the UI stays stopped until the
+    /// engine changes state on its own.
     last_status: Mutex<Option<AgentStatus>>,
-    /// Espejo de las últimas filas relevadas, para quien llegue tarde
-    /// ([`UiSnapshot`]). Se escribe en el mismo gesto que se emiten: lo que hay
-    /// aquí es exactamente lo que la ventana principal recibió, ni más ni menos.
+    /// A mirror of the last relayed rows, for whoever arrives late ([`UiSnapshot`]).
+    /// It is written in the same gesture that emits them: what is here is exactly
+    /// what the main window received, no more and no less.
     journal: Mutex<std::collections::VecDeque<BacklogRow>>,
-    /// Últimos slots que reportó el servicio, del mismo `Status` del que sale
-    /// [`Self::last_status`].
+    /// The last slots the service reported, from the same `Status`
+    /// [`Self::last_status`] comes from.
     slots: Mutex<Vec<AgentSlotStatus>>,
-    /// Último pulso del bucle de nube, que vive en `commands::cloud_pull` y
-    /// emite por su cuenta. Mismo motivo que el journal: sus eventos son
-    /// momentáneos y quien no estaba escuchando no puede recuperarlos.
+    /// The cloud loop's last pulse; it lives in `commands::cloud_pull` and emits on
+    /// its own. The same reason as the journal: its events are momentary and whoever
+    /// was not listening cannot get them back.
     cloud: Mutex<(CloudPulse, Option<u32>)>,
 }
 
 impl DaemonLink {
-    /// Endpoint del usuario (o el de `HOARDD_SOCKET`). Se resuelve en cada uso:
-    /// es leer una variable de entorno y componer una ruta, y así un override no
-    /// se queda cacheado de un arranque anterior.
+    /// The user's endpoint (or `HOARDD_SOCKET`'s). Resolved on every use: it is one
+    /// environment read and a path join, and that way an override is never cached
+    /// from an earlier start.
     fn endpoint() -> Result<Endpoint> {
         Endpoint::resolve().context("resolving the hoardd endpoint")
     }
 
-    /// Manda una petición al daemon, levantándolo si no lo hay.
+    /// Sends a request to the daemon, bringing it up when there is none.
     ///
-    /// Un fallo de **transporte** tira la conexión y reintenta una vez: el caso
-    /// real es un servicio que se actualizó y reinició entre dos comandos, y
-    /// quien pulsó el botón no tiene por qué enterarse.
+    /// A **transport** failure drops the connection and retries once: the real case
+    /// is a service that updated and restarted between two commands, and whoever
+    /// pressed the button has no reason to find out.
     ///
-    /// Un [`IpcError`] **no** se reintenta: es un daemon sano contestando "no
-    /// puedo, y por esto". Reintentarlo reconectaría en cada `EngineDown` —dos
-    /// conexiones y dos líneas de log por cada comando mientras no hay motor—
-    /// para volver a recibir exactamente la misma respuesta.
+    /// An [`IpcError`] is **not** retried: that is a healthy daemon answering "I
+    /// cannot, and here is why". Retrying it would reconnect on every `EngineDown`,
+    /// two connections and two log lines per command while there is no engine, only
+    /// to receive exactly the same answer.
     pub async fn request(&self, request: Request) -> Result<Payload> {
         match self.request_once(request.clone()).await {
             Ok(payload) => Ok(payload),
@@ -330,9 +330,10 @@ impl DaemonLink {
         let mut guard = self.cmd.lock().await;
         if guard.is_none() {
             let endpoint = Self::endpoint()?;
-            // `ensure_running` no comprueba "¿hay daemon?" antes de lanzar: eso
-            // es un TOCTOU y produce dos motores. Lanza y reconecta; si dos
-            // clientes lo hacen a la vez, uno gana el bind y el otro sale.
+            // `ensure_running` does not check "is there a daemon?" before
+            // launching: that is a TOCTOU and produces two engines. It launches and
+            // reconnects; if two clients do it at once, one wins the bind and the
+            // other exits.
             *guard = Some(
                 Client::ensure_running(&endpoint, &client_name("commands"))
                     .await
@@ -340,10 +341,10 @@ impl DaemonLink {
             );
         }
         let client = guard.as_mut().expect("just connected");
-        // Con tope: un servicio que acepta la conexión y luego no contesta
-        // colgaría el botón que la disparó **para siempre**, y con él a todos los
-        // comandos que esperan este mutex. Cortar la lectura a medias desordena
-        // el flujo, así que la conexión se tira en el mismo gesto.
+        // With a ceiling: a service that accepts the connection and then does not
+        // answer would hang the button that fired it **for ever**, and with it every
+        // command waiting on this mutex. Cutting the read halfway puts the stream out
+        // of step, so the connection is dropped in the same gesture.
         let result = match tokio::time::timeout(REQUEST_TIMEOUT, client.request(request)).await {
             Ok(result) => result,
             Err(_) => Err(anyhow!(
@@ -356,10 +357,11 @@ impl DaemonLink {
             .err()
             .is_some_and(|err| err.downcast_ref::<IpcError>().is_none())
         {
-            // Un fallo que no es del protocolo casi siempre es la conexión: que
-            // la siguiente petición empiece por reconectar. Un `IpcError` no lo
-            // es —la conexión funcionó y trajo una respuesta— y tirarla sería
-            // reconectar por cada comando que llega con el motor caído.
+            // A failure that is not the protocol's is almost always the connection,
+            // so let the next request start by reconnecting. An `IpcError` is not one
+            // (the connection worked and brought back an answer) and dropping it
+            // would mean reconnecting for every command that arrives with the engine
+            // down.
             *guard = None;
         }
         result
@@ -373,12 +375,12 @@ impl DaemonLink {
         }
     }
 
-    /// Cómo va la actualización, según el servicio.
+    /// How the update is going, according to the service.
     ///
-    /// La ventana no mira GitHub para esto: **el updater es del servicio** (es
-    /// lo único que está siempre, así que es lo único que puede actualizar una
-    /// máquina cuya app lleva dos semanas cerrada). Aquí sólo se lee lo que ya
-    /// sabe y se pinta.
+    /// The window does not look at GitHub for this: **the updater belongs to the
+    /// service** (it is the only thing that is always there, so it is the only thing
+    /// that can update a machine whose app has been closed for two weeks). What
+    /// happens here is reading what it already knows and painting it.
     pub async fn update_state(&self) -> Result<UpdateState> {
         match self.request(Request::UpdateStatus).await? {
             Payload::Update(state) => Ok(state),
@@ -386,12 +388,12 @@ impl DaemonLink {
         }
     }
 
-    /// Dile al servicio que aplique ya lo que tenga bajado.
+    /// Tells the service to apply whatever it has downloaded, now.
     ///
-    /// Lo pide la ventana porque **hay alguien delante**, y esa es toda la
-    /// diferencia: con un humano al teclado el servicio puede abrir el diálogo
-    /// de privilegios que su ciclo de fondo no puede abrir. Vuelve enseguida;
-    /// aplicar sigue en marcha y se sigue con `update_state`.
+    /// The window asks because **there is somebody in front of it**, and that is the
+    /// whole difference: with a human at the keyboard the service can open the
+    /// privilege dialog its background cycle cannot. It returns straight away;
+    /// applying carries on and is followed with `update_state`.
     pub async fn apply_update(&self, version: Option<String>) -> Result<UpdateState> {
         match self.request(Request::ApplyUpdate { version }).await? {
             Payload::Update(state) => Ok(state),
@@ -399,7 +401,7 @@ impl DaemonLink {
         }
     }
 
-    /// "Ahora no", durante `hours`. No mueve la fecha límite.
+    /// "Not now", for `hours`. It does not move the deadline.
     pub async fn snooze_update(&self, hours: u32) -> Result<UpdateState> {
         match self.request(Request::SnoozeUpdate { hours }).await? {
             Payload::Update(state) => Ok(state),
@@ -407,23 +409,22 @@ impl DaemonLink {
         }
     }
 
-    /// Pide prestado un token Cloud válido al servicio.
+    /// Borrows a valid Cloud token from the service.
     ///
-    /// **El desktop ya no rota.** El servicio es el único que toca el refresh
-    /// token de `cloud.toml` (ADR 0021, Parte A: "un único rotador"), así que
-    /// aquí sólo se pide uno prestado y se usa. Que dos procesos rotaran el mismo
-    /// refresh token es la causa raíz de la familia 401/realtime-mudo: GoTrue
-    /// revoca la familia entera al detectar el reuso, y eso no se recupera ni
-    /// reiniciando.
+    /// **The desktop no longer rotates.** The service is the only thing that touches
+    /// `cloud.toml`'s refresh token (ADR 0021, Part A: "one rotator only"), so here a
+    /// token is borrowed and used. Two processes rotating the same refresh token is
+    /// the root cause of the 401 and mute-realtime family: GoTrue revokes the whole
+    /// family when it detects the reuse, and that does not recover even on a restart.
     ///
-    /// `rejected` es el token con el que acabamos de comer un 401: sin él, un
-    /// token revocado server-side pero aún "fresco" volvería una y otra vez.
+    /// `rejected` is the token we just took a 401 with: without it, a token revoked
+    /// server-side but still "fresh" would come back again and again.
     pub async fn cloud_token(&self, rejected: Option<String>) -> Result<CloudToken> {
         match self.request(Request::CloudToken { rejected }).await? {
             Payload::CloudToken(token) => {
-                // De paso se lo dejamos puesto al enviador de logs, que corre en
-                // su propio hilo y no puede pedir nada por IPC. Este es el único
-                // sitio del desktop por donde entra un token Cloud fresco.
+                // While we are at it, it is left in place for the log shipper, which
+                // runs on its own thread and cannot ask for anything over IPC. This is
+                // the only place in the desktop a fresh Cloud token comes in.
                 hoard_agent::credentials::set_lent_cloud(Some(
                     hoard_agent::credentials::CloudLease {
                         url: token.server_url.clone(),
@@ -436,12 +437,12 @@ impl DaemonLink {
         }
     }
 
-    /// Entrega al servicio la sesión Cloud que el OAuth acaba de acuñar.
+    /// Hands the service the Cloud session the OAuth has just minted.
     ///
-    /// El desktop no la escribe: el dueño del secreto es el servicio. En macOS eso
-    /// es la diferencia entre una app que funciona y una que pide la contraseña
-    /// del llavero cada pocos segundos — el ítem lo autoriza sólo el binario que
-    /// lo creó, y el que lo lee (el motor) vive en `hoardd`.
+    /// The desktop does not write it: the secret's owner is the service. On macOS
+    /// that is the difference between an app that works and one that asks for the
+    /// keyring password every few seconds: the item is only authorised for the binary
+    /// that created it, and what reads it (the engine) lives in `hoardd`.
     pub async fn adopt_session(&self, session: AdoptedSession) -> Result<()> {
         match self.request(Request::AdoptSession { session }).await? {
             Payload::Ack => Ok(()),
@@ -449,7 +450,7 @@ impl DaemonLink {
         }
     }
 
-    /// Dile al servicio que olvide la sesión Cloud (logout).
+    /// Tells the service to forget the Cloud session (logout).
     pub async fn forget_session(&self) -> Result<()> {
         match self.request(Request::ForgetSession).await? {
             Payload::Ack => Ok(()),
@@ -457,7 +458,7 @@ impl DaemonLink {
         }
     }
 
-    /// Entrega al servicio la sesión self-hosted que la app acaba de validar.
+    /// Hands the service the self-hosted session the app has just validated.
     pub async fn adopt_server_session(&self, session: ServerSession) -> Result<()> {
         match self
             .request(Request::AdoptServerSession { session })
@@ -470,7 +471,7 @@ impl DaemonLink {
         }
     }
 
-    /// Dile al servicio que olvide la sesión self-hosted (logout).
+    /// Tells the service to forget the self-hosted session (logout).
     pub async fn forget_server_session(&self) -> Result<()> {
         match self.request(Request::ForgetServerSession).await? {
             Payload::Ack => Ok(()),
@@ -480,11 +481,11 @@ impl DaemonLink {
         }
     }
 
-    /// Pide prestada la sesión del server propio: URL, token y quién eres.
+    /// Borrows the own-server session: URL, token and who you are.
     ///
-    /// El token `hoard_v1_` es estático —no caduca ni se rota—, así que esto se
-    /// pide una vez y se guarda en el hueco de `hoard_agent::credentials` para que
-    /// lo vea también el enviador de logs, que no puede pedir nada por IPC.
+    /// A `hoard_v1_` token is static (it neither expires nor rotates), so this is
+    /// asked for once and kept in `hoard_agent::credentials`' slot so the log shipper
+    /// sees it too, since it cannot ask for anything over IPC.
     pub async fn server_session(&self) -> Result<ServerSession> {
         match self.request(Request::ServerToken).await? {
             Payload::ServerSession(session) => Ok(session),
@@ -492,18 +493,17 @@ impl DaemonLink {
         }
     }
 
-    /// Petición best-effort: la loguea y sigue. Para los sitios donde el fallo
-    /// no debe abortar lo que el usuario pidió (persistir una preferencia,
-    /// re-hidratar tras añadir un juego).
+    /// A best-effort request: it logs and carries on. For the places where a failure
+    /// must not abort what the user asked for (persisting a preference, re-hydrating
+    /// after adding a game).
     pub async fn tell(&self, what: &'static str, request: Request) {
         if let Err(err) = self.request(request).await {
             tracing::warn!(error = %format!("{err:#}"), "daemon: couldn't {what}");
         }
     }
 
-    /// El conjunto de saves vigilados cambió en disco: que el daemon lo relea.
-    /// El cliente **avisa**, no manda la lista — el dueño del estado es el
-    /// servicio.
+    /// The watched save set changed on disk, so the daemon should re-read it. The
+    /// client **announces**, it does not send the list: the service owns the state.
     pub async fn notify_reload(&self) {
         self.tell("ask the service to reload its watch list", Request::Reload)
             .await;
@@ -520,9 +520,9 @@ impl DaemonLink {
         });
     }
 
-    /// Guarda una fila ya relevada. `resync` la trata como lo que dice ser: no
-    /// hay continuidad que respetar, así que lo de antes se tira en vez de
-    /// coserse con lo nuevo — igual que hacen los stores.
+    /// Stores an already-relayed row. `resync` treats it as what it says it is:
+    /// there is no continuity to respect, so what came before is dropped rather than
+    /// stitched onto the new, exactly as the stores do.
     fn remember(&self, rows: &[BacklogRow], resync: bool) {
         let mut journal = self.journal.lock().unwrap();
         if resync {
@@ -536,16 +536,16 @@ impl DaemonLink {
         }
     }
 
-    /// Anota el pulso del bucle de nube. Lo llama `commands::cloud_pull` en el
-    /// mismo gesto en que emite, para que el espejo no pueda contar otra cosa
-    /// que lo que oyó la ventana principal.
+    /// Records the cloud loop's pulse. `commands::cloud_pull` calls it in the same
+    /// gesture it emits, so the mirror cannot tell a different story from the one the
+    /// main window heard.
     pub fn note_cloud(&self, pulse: CloudPulse, retry_in: Option<u32>) {
         *self.cloud.lock().unwrap() = (pulse, retry_in);
     }
 
-    /// Anota los slots del último `Status`. Con la lista vacía cuando no hay
-    /// servicio: no saber es un dato, y fingir que los últimos que vimos siguen
-    /// vigentes sería pintar «jugando» sobre un motor que ya no mira nada.
+    /// Records the last `Status`'s slots. With an empty list when there is no
+    /// service: not knowing is data, and pretending the last ones we saw still hold
+    /// would paint "playing" over an engine that is watching nothing.
     fn note_slots(&self, slots: &[AgentSlotStatus]) {
         *self.slots.lock().unwrap() = slots.to_vec();
     }
@@ -569,17 +569,17 @@ impl DaemonLink {
     }
 }
 
-/// Empieza a relevar los eventos del servicio a la UI. Lo llama el store cuando
-/// sus oyentes ya están puestos. Idempotente.
+/// Starts relaying the service's events to the UI. The store calls it once its
+/// listeners are in place. Idempotent.
 pub fn attach(app: &AppHandle) {
     let link = app.state::<AppState>();
     let mut tasks = link.daemon.tasks.lock().unwrap();
     if !tasks.is_empty() {
         return;
     }
-    // Regla de D.12: si vive más que una petición, va supervisado. Un pánico
-    // aquí dejaría la UI muda sin una línea de log, que es exactamente el fallo
-    // invisible que costó dos sesiones.
+    // D.12's rule: if it outlives a request, it runs supervised. A panic here would
+    // leave the UI mute with not one line of log, which is exactly the invisible
+    // failure that cost two sessions.
     tasks.push(tokio::spawn({
         let app = app.clone();
         supervisor::supervise("desktop daemon event pump", move || pump(app.clone()))
@@ -590,15 +590,15 @@ pub fn attach(app: &AppHandle) {
     }));
 }
 
-/// Deja de relevar eventos: para las tasks y cierra la conexión de eventos.
+/// Stops relaying events: it stops the tasks and closes the event connection.
 ///
-/// **No** manda `Shutdown` ni toca el motor. Que el desktop pueda parar el
-/// servicio sería volver al ciclo de vida atado a una ventana; parar el sync es
-/// una orden explícita del usuario (`hoard sync stop`), no un efecto de cerrar
-/// sesión o la app.
+/// It does **not** send `Shutdown` and does not touch the engine. The desktop being
+/// able to stop the service would be going back to a lifetime tied to a window;
+/// stopping the sync is an explicit user order (`hoard sync stop`), not a side
+/// effect of signing out or closing the app.
 ///
-/// El cursor **se conserva**: si la UI se vuelve a suscribir dentro de la misma
-/// ejecución, pedir desde él evita repetirle lo que ya pintó.
+/// The cursor is **kept**: if the UI subscribes again within the same run, asking
+/// from it avoids repeating what it already painted.
 pub fn detach(app: &AppHandle) {
     let state = app.state::<AppState>();
     let tasks: Vec<JoinHandle<()>> = std::mem::take(&mut *state.daemon.tasks.lock().unwrap());
@@ -607,25 +607,25 @@ pub fn detach(app: &AppHandle) {
     }
 }
 
-/// Conecta, pide el backlog y reenvía el push en vivo. No retorna nunca: una
-/// conexión que se cae se reintenta, porque el servicio puede reiniciarse
-/// (actualización) sin que la app se entere de otra forma.
+/// Connects, asks for the backlog and forwards the live push. It never returns: a
+/// connection that drops is retried, because the service can restart (an update)
+/// with the app having no other way to find out.
 async fn pump(app: AppHandle) -> Finished {
     loop {
         if let Err(err) = pump_once(&app).await {
             tracing::warn!(error = %format!("{err:#}"), "daemon: the event stream ended");
         }
-        // La UI no puede quedarse creyendo que el motor sigue: si perdimos el
-        // socket, no sabemos nada de él.
+        // The UI must not be left believing the engine is still there: if we lost
+        // the socket, we know nothing about it.
         app.state::<AppState>().daemon.note_slots(&[]);
         emit_status(&app, &AgentStatus::down());
         tokio::time::sleep(reconnect_delay()).await;
     }
 }
 
-/// Cuánto esperar antes de volver a intentarlo. Con el servicio parado a
-/// propósito no hay prisa: nadie va a contestar hasta que alguien lo arranque, y
-/// nosotros ya no lo arrancamos. Sondear cada 3 s sólo llenaría el log.
+/// How long to wait before trying again. With the service stopped on purpose there
+/// is no hurry: nobody will answer until somebody starts it, and we no longer start
+/// it. Probing every 3 s would only fill the log.
 fn reconnect_delay() -> Duration {
     if hoardd::client::stopped_on_purpose() {
         STOPPED_RETRY_DELAY
@@ -647,17 +647,17 @@ async fn pump_once(app: &AppHandle) -> Result<()> {
     );
 
     let state = app.state::<AppState>();
-    // Un cursor de otra ejecución del daemon no es un cursor: pedir desde él
-    // dejaría a la UI esperando eventos que ya pasaron.
+    // A cursor from another daemon run is not a cursor: asking from it would leave
+    // the UI waiting for events that already happened.
     let since = state
         .daemon
         .cursor()
         .filter(|c| c.epoch == epoch)
         .map(|c| c.seq);
     let fresh = since.is_none();
-    // Con tope, como los comandos: si el servicio acepta y luego calla, la UI se
-    // quedaría sin backlog y sin push, y sin una línea que lo dijera. Al fallar,
-    // el bucle de arriba tira esta conexión y reconecta.
+    // With a ceiling, like the commands: if the service accepts and then goes quiet,
+    // the UI would be left with no backlog and no push, and no line saying so. On
+    // failure the loop above drops this connection and reconnects.
     let backlog = tokio::time::timeout(REQUEST_TIMEOUT, client.subscribe(since))
         .await
         .map_err(|_| anyhow!("the Hoard service didn't answer the subscribe"))??;
@@ -680,17 +680,16 @@ async fn pump_once(app: &AppHandle) -> Result<()> {
         match push {
             Push::Event(entry) => {
                 state.daemon.set_cursor(&epoch, entry.seq);
-                // Guardar y emitir en el mismo gesto, como hace el journal del
-                // daemon: si se separan, un día uno de los dos se olvida y la
-                // superficie que lee la instantánea se queda contando una
-                // historia distinta de la que oyó la ventana principal.
+                // Store and emit in the same gesture, as the daemon's journal does:
+                // separate them and one day one of the two gets forgotten, and the
+                // surface reading the snapshot ends up telling a different story from
+                // the one the main window heard.
                 let row = BacklogRow::from(entry);
                 state.daemon.remember(std::slice::from_ref(&row), false);
                 emit_event(app, &row.event);
             }
-            // Nos hemos retrasado y el canal descartó filas. El daemon lo
-            // confiesa en vez de dejar el hueco invisible; nosotros volvemos a
-            // pedir desde nuestro cursor.
+            // We lagged and the channel dropped rows. The daemon confesses instead
+            // of leaving the gap invisible, and we ask again from our cursor.
             Push::Resync { cursor, dropped } => {
                 tracing::warn!(
                     dropped,
@@ -708,11 +707,10 @@ async fn pump_once(app: &AppHandle) -> Result<()> {
                     true,
                 );
             }
-            // Lo pararon a propósito (`hoard sync stop`, `systemctl --user
-            // stop`). El cliente ya se ha anotado la despedida, así que el
-            // reintento de abajo se limitará a mirar si vuelve: cerrar esta
-            // ventana no puede parar el sync, pero abrirla tampoco puede
-            // deshacer una orden de pararlo.
+            // It was stopped on purpose (`hoard sync stop`, `systemctl --user
+            // stop`). The client has already noted the farewell, so the retry below
+            // will only look for it coming back: closing this window cannot stop the
+            // sync, but opening it cannot undo an order to stop it either.
             Push::Goodbye { reason } => {
                 tracing::info!(reason, "desktop: the Hoard service was stopped on purpose");
                 return Ok(());
@@ -722,9 +720,9 @@ async fn pump_once(app: &AppHandle) -> Result<()> {
     Ok(())
 }
 
-/// Re-pregunta el estado y lo publica cuando cambia. La primera vuelta va sin
-/// esperar: es la que pone el dot del watcher en su sitio justo después de que
-/// la UI se suscriba.
+/// Asks for the state again and publishes it when it changes. The first pass runs
+/// without waiting: it is what puts the watcher's dot in the right place right after
+/// the UI subscribes.
 async fn status_loop(app: AppHandle) -> Finished {
     let mut armed: HashSet<String> = HashSet::new();
     loop {
@@ -742,8 +740,8 @@ async fn status_loop(app: AppHandle) -> Finished {
                 }
                 emit_status(&app, &now);
             }
-            // Sin servicio no sabemos nada del motor, así que la UI tampoco debe
-            // creer que sigue: el icono no puede quedarse en verde por inercia.
+            // With no service we know nothing about the engine, so the UI must not
+            // believe it is still there: the icon cannot stay green out of inertia.
             Err(err) => {
                 tracing::debug!(error = %format!("{err:#}"), "desktop: couldn't read the service status");
                 state.daemon.note_slots(&[]);
@@ -754,8 +752,8 @@ async fn status_loop(app: AppHandle) -> Finished {
     }
 }
 
-/// Publica el estado del motor con la forma que la UI ya conoce, **si cambió**.
-/// Repetirlo cada 20 s despertaría al webview para no decirle nada.
+/// Publishes the engine's state in the shape the UI already knows, **when it
+/// changed**. Repeating it every 20 s would wake the webview to say nothing.
 pub fn emit_status(app: &AppHandle, status: &AgentStatus) {
     let state = app.state::<AppState>();
     {
@@ -768,10 +766,10 @@ pub fn emit_status(app: &AppHandle, status: &AgentStatus) {
     let _ = app.emit("agent://daemon-status", status);
 }
 
-/// Anuncia los slots que el servicio dice estar vigilando.
+/// Announces the slots the service says it is watching.
 ///
-/// El slug lo resuelve el cliente contra `state.json` porque es cosa de
-/// presentación: el daemon reporta por `save_id`, que es su identidad real.
+/// The client resolves the slug against `state.json` because it is presentation: the
+/// daemon reports by `save_id`, which is their real identity.
 pub fn announce_slots(app: &AppHandle, slots: &[AgentSlotStatus], seen: &mut HashSet<String>) {
     let fresh: Vec<&AgentSlotStatus> = slots
         .iter()
@@ -827,12 +825,12 @@ fn emit_backlog(app: &AppHandle, rows: Vec<BacklogRow>, resync: bool) {
     let _ = app.emit("agent://backlog", BacklogPayload { rows, resync });
 }
 
-/// Reenvía un evento del motor a la UI por su canal Tauri de siempre.
+/// Forwards an engine event to the UI over its usual Tauri channel.
 ///
-/// Este mapeo es el contrato con los stores: cambia el backend (motor embebido →
-/// servicio) sin que las pantallas se enteren, que es la restricción dura de
-/// D.3. Sólo los eventos **en vivo** pasan por aquí; el backlog va por su propio
-/// canal para que un historial recuperado no dispare toasts ni escaneos.
+/// This mapping is the contract with the stores: the backend changes (an embedded
+/// engine becomes a service) without the screens finding out, which is D.3's hard
+/// constraint. Only the **live** events come through here; the backlog goes down its
+/// own channel so a recovered history fires no toasts and no scans.
 fn emit_event(app: &AppHandle, ev: &AgentEvent) {
     let topic = match ev {
         AgentEvent::GameStarted { .. } => "agent://game-started",
@@ -859,16 +857,16 @@ fn emit_event(app: &AppHandle, ev: &AgentEvent) {
     };
     let _ = app.emit(topic, ev);
 
-    // Un juego pesado sin rastrear acaba de aparecer: adelanta el escaneo en vez
-    // de esperar al temporizador. `request_scan` no hace nada si Modo Automático
-    // está apagado, y agrupa ráfagas.
+    // A heavy untracked game has just appeared, so bring the scan forward instead of
+    // waiting for the timer. `request_scan` does nothing when automatic mode is off,
+    // and it groups bursts.
     if let AgentEvent::HeavyProcessDetected { name } = ev {
         tracing::info!(process = %name, "desktop: heavy untracked game suspected; requesting immediate scan");
         crate::commands::automatic::request_scan(app.clone());
     }
 
-    // Alias con nombres semánticos para la superficie LiveStatus/ActivityFeed.
-    // Mismo payload, canal más legible; los canales originales siguen vivos.
+    // Aliases with semantic names for the LiveStatus and ActivityFeed surface. The
+    // same payload on a more readable channel; the original channels stay alive.
     match ev {
         AgentEvent::BackupStarted { .. } => {
             let _ = app.emit("agent://upload-started", ev);
@@ -881,25 +879,25 @@ fn emit_event(app: &AppHandle, ev: &AgentEvent) {
             delay_ms,
             ..
         } if *delay_ms > debounce_ms() => {
-            // Sólo cuando el min-interval aplazó la subida más allá del debounce
-            // hay una espera de verdad que enseñar; el debounce rutinario de
-            // cada autosave no es "en cola — esperando".
+            // Only when the min-interval pushed the upload past the debounce is
+            // there a real wait worth showing; the routine debounce of every autosave
+            // is not "queued, waiting".
             //
-            // Esta rama estuvo muerta hasta ago-2026: el único `BackupScheduled`
-            // que se emitía venía del temporizador de debounce y su `delay_ms`
-            // era el debounce exacto, así que nunca lo superaba. Ahora el motor
-            // anuncia también la espera del suelo (`agent::announce_backup_wait`,
-            // 60 s como mínimo), que es la que de verdad hay que enseñar.
+            // This arm was dead until Aug 2026: the only `BackupScheduled` emitted
+            // came from the debounce timer and its `delay_ms` was exactly the
+            // debounce, so it never exceeded it. The engine now also announces the
+            // floor's wait (`agent::announce_backup_wait`, 60 s minimum), which is
+            // the one that really has to be shown.
             let _ = app.emit("agent://throttled", ev);
         }
         _ => {}
     }
 }
 
-/// Debounce con el que corre el motor del servicio. El daemon construye su
-/// `AgentConfig` con `..AgentConfig::default()` para este campo, así que el
-/// default **es** el valor vivo; si algún día lo hace configurable, esto tiene
-/// que venir del `Status` en vez de calcularse aquí.
+/// The debounce the service's engine runs with. The daemon builds its `AgentConfig`
+/// with `..AgentConfig::default()` for this field, so the default **is** the live
+/// value; if it ever becomes configurable, this has to come from the `Status`
+/// instead of being computed here.
 fn debounce_ms() -> u64 {
     AgentConfig::default().debounce_secs.saturating_mul(1000)
 }

@@ -33,16 +33,16 @@ pub struct SnapshotWire {
     pub file_count: i64,
     pub total_size_bytes: i64,
     pub is_pinned: bool,
-    /// De qué máquina salió esta versión. `None` en lo subido antes de que se
-    /// guardara: la etiqueta se queda como estaba en vez de inventarse un
-    /// equipo.
+    /// Which machine this version came from. `None` for anything uploaded before it
+    /// started being recorded: the label stays as it was rather than inventing a
+    /// machine.
     pub device_name: Option<String>,
     pub created_at: String,
     pub deleted_at: Option<String>,
-    /// Qué cuenta esta versión: de qué partida va, qué cambió desde la
-    /// anterior, cuántas partidas hay en la carpeta. Lo deriva el server del
-    /// manifiesto, así que es `None` en todo lo subido antes de que existiera
-    /// y en las versiones sin manifiesto por fichero.
+    /// What this version says: which save it is about, what changed since the
+    /// previous one, how many saves the folder holds. The server derives it from the
+    /// manifest, so it is `None` for everything uploaded before it existed and for
+    /// versions with no per-file manifest.
     pub insight: Option<hoard_core::kernel::insight::VersionInsight>,
 }
 
@@ -104,14 +104,15 @@ pub async fn list_save_snapshots(
     Ok(snaps.into_iter().map(snapshot_to_wire).collect())
 }
 
-/// Qué le hará a la carpeta restaurar esta versión, antes de confirmarla.
-/// No descarga blobs: cruza el manifiesto de la versión con lo que hay en el
-/// destino. Ver [`hoard_agent::preview`].
-/// La puerta del restore para `save_id`: blindaje del manifiesto + el "sí" del
-/// usuario a escribir su config.
+/// What restoring this version will do to the folder, before it is confirmed. It
+/// downloads no blobs: it crosses the version's manifest with what is at the
+/// destination. See [`hoard_agent::preview`].
 ///
-/// La calculan igual el preview y el restore para que el diálogo no prometa
-/// una cosa y el botón haga otra.
+/// The restore gate for `save_id`: the manifest's shield plus the user's "yes" to
+/// writing their config.
+///
+/// The preview and the restore compute it the same way, so the dialog does not
+/// promise one thing and the button do another.
 fn restore_gate(save_id: &str, allow_config: bool) -> hoard_core::kernel::fileclass::RestoreGate {
     let shields = CliState::load_default()
         .ok()
@@ -142,9 +143,9 @@ pub async fn preview_restore(
                 .saves
                 .get(&save_id)
                 .map(|s| s.local_path.clone())
-                // El mismo código que usa `restore_snapshot`: sin carpeta local
-                // la UI abre el selector. Aquí se propaga igual para que el
-                // preview no invente un destino que el restore no usaría.
+                // The same code `restore_snapshot` uses: with no local folder the UI
+                // opens the picker. It is propagated the same way here so the preview
+                // does not invent a destination the restore would not use.
                 .ok_or_else(|| "NEEDS_DESTINATION".to_string())?
         }
     };
@@ -189,8 +190,8 @@ pub async fn save_snapshot_detail(
                 .map(|f| SnapshotFileWire {
                     relative_path: f.relative_path,
                     size_bytes: f.size_bytes,
-                    // `None` = versión legacy sin digest por fichero; el wire de
-                    // la UI lo representaba con la cadena vacía y sigue igual.
+                    // `None` means a legacy version with no per-file digest; the
+                    // UI's wire represented it with an empty string and still does.
                     sha256: f.sha256.map(|s| s.into_inner()).unwrap_or_default(),
                 })
                 .collect(),
@@ -250,9 +251,9 @@ pub async fn delete_snapshot(
 
 /// Current per-user "max versions per save" cap. `None` = unlimited.
 ///
-/// `manual` elige el cupo: el de las copias que pidió el usuario (y la de
-/// seguridad previa a un restore) o el de las automáticas. Se cuentan aparte
-/// para que una ráfaga de autoguardados no eche del historial la deliberada.
+/// `manual` picks the cap: the one for copies the user asked for (and the safety
+/// one before a restore), or the one for the automatic ones. They are counted apart
+/// so a burst of autosaves cannot push the deliberate one out of the history.
 #[tauri::command]
 pub async fn get_max_versions(
     app: AppHandle,
@@ -327,7 +328,7 @@ pub enum RestorePhase {
 }
 
 /// Progress payload emitted on `restore://progress`. `total` is 0 when the
-/// server didn't send Content-Length — the UI should fall back to a
+/// server didn't send Content-Length, and the UI should fall back to a
 /// "still working" spinner in that case.
 #[derive(Debug, Clone, Serialize)]
 pub struct RestoreProgress {
@@ -350,7 +351,7 @@ pub struct RestoreOutcome {
 /// Restore an old snapshot into the local save folder.
 ///
 /// If `backup_first` is true, we synchronously upload the current state as a
-/// fresh snapshot *before* overwriting anything — that's the user's escape
+/// fresh snapshot *before* overwriting anything: that's the user's escape
 /// hatch if they restored the wrong version. The returned `safety_version`
 /// is what they'd restore to undo this.
 ///
@@ -366,8 +367,8 @@ pub async fn restore_snapshot(
     version: i64,
     backup_first: bool,
     destination_override: Option<String>,
-    // El interruptor del diálogo, apagado por defecto: escribir encima la
-    // config de la máquina que subió el snapshot.
+    // The dialog's switch, off by default: overwrite the config of the machine that
+    // uploaded the snapshot.
     allow_config: bool,
     state: State<'_, AppState>,
 ) -> Result<RestoreOutcome, String> {
@@ -383,14 +384,13 @@ pub async fn restore_snapshot(
         if p.as_os_str().is_empty() {
             return Err("Destination path can't be empty.".to_string());
         }
-        // Misma guarda estructural que el alta y que el propio restore: esta
-        // ruta no sólo recibe el snapshot, se **persiste** más abajo como la
-        // carpeta del save, así que un destino imposible (un perfil entero, un
-        // prefijo de Proton) quedaría fijado para todos los backups siguientes.
-        // Aquí no bastaba con la validación del agente: este comando escribe el
-        // `local_path` por su cuenta.
+        // The same structural guard as tracking and as the restore itself: this path
+        // does not only receive the snapshot, it is **persisted** below as the save's
+        // folder, so an impossible destination (a whole profile, a Proton prefix)
+        // would be fixed for every later backup. The agent's validation was not
+        // enough here: this command writes the `local_path` on its own.
         hoard_agent::library::validate_path_shape(&p).map_err(|e| e.to_string())?;
-        // Auto-create the folder if it's missing — the user explicitly
+        // Auto-create the folder if it's missing: the user explicitly
         // picked it as the restore target, so creating an empty dir is
         // less surprising than failing.
         if !p.exists() {
@@ -462,7 +462,7 @@ pub async fn restore_snapshot(
     //    sure the safety net exists before we start overwriting files.
     let mut safety_version = None;
     if backup_first && local_path.exists() {
-        // Walk the directory; if it's empty, skip the pre-backup — there's
+        // Walk the directory; if it's empty, skip the pre-backup, since there's
         // nothing to preserve and `upload_directory` would fail with a
         // "no files found" error which would confuse the user.
         let any_files = std::fs::read_dir(&local_path)
@@ -481,13 +481,13 @@ pub async fn restore_snapshot(
                 // Pre-restore safety backup is an explicit user action; don't
                 // gate it on fast-forward.
                 None,
-                // Ni chequeo anti-relanzamiento (ADR 0021 D.8.3): esta copia de
-                // seguridad tiene que existir como versión propia antes de pisar
-                // la carpeta, aunque su contenido coincida con la cabeza.
+                // No re-upload check either (ADR 0021 D.8.3): this safety copy has
+                // to exist as a version of its own before the folder is overwritten,
+                // even when its content matches the head.
                 None,
-                // La copia de seguridad previa a un restore es la red que
-                // permite deshacerlo. Va etiquetada como deliberada para que
-                // ninguna ráfaga automática pueda echarla del historial.
+                // The safety copy before a restore is the net that makes undoing it
+                // possible. It is labelled deliberate so no automatic burst can push
+                // it out of the history.
                 hoard_core::wire::VersionOrigin::PreRestore,
                 move |uploaded, total| {
                     let _ = app_for_progress.emit(
@@ -575,7 +575,7 @@ fn emit_phase(
 }
 
 /// Pause or resume tracking for a save. Paused saves stay in the list but
-/// the agent won't watch them — useful when the user is reorganising files
+/// the agent won't watch them, which is useful when the user is reorganising files
 /// or modding and doesn't want chatty backups while they work.
 #[tauri::command]
 pub async fn set_save_paused(
@@ -631,7 +631,7 @@ pub async fn set_save_allow_config(
 
 /// Update the local-disk path for a tracked save. Used when the user moves
 /// the game folder (re-installed on a different drive, switched from Steam
-/// to GOG, etc.). The folder is created if missing — that's the friendly
+/// to GOG, etc.). The folder is created if missing, which is the friendly
 /// behaviour for "I haven't installed the game yet but I want my saves
 /// restored here". The agent gets detached + reattached so the FS watcher
 /// rebinds to the new location.
@@ -694,15 +694,15 @@ pub fn tail_logs(max_lines: Option<usize>) -> Result<Vec<LogLine>, String> {
 
 /// Best-effort parse of a tracing pretty-format line into (timestamp, level,
 /// message). The format is roughly `2024-12-31T22:14:33.123456Z  INFO module:
-/// message`. We don't fight too hard for malformed lines — the user just
-/// wants to read them, not query them.
+/// message`. We don't fight too hard for malformed lines: the user just wants to
+/// read them, not query them.
 fn parse_log_line(raw: &str) -> LogLine {
     // Try to split on the first two whitespace runs after the timestamp.
     // Fall back to dumping the whole thing in `message` if that fails.
     let mut parts = raw.splitn(3, ' ');
     let ts = parts.next().unwrap_or("").to_string();
     let mut rest = parts.next().unwrap_or("").trim();
-    // Some log formats put extra spaces between TS and level — eat them.
+    // Some log formats put extra spaces between TS and level, so eat them.
     while rest.is_empty() {
         match parts.next() {
             Some(s) => rest = s.trim(),
@@ -730,8 +730,8 @@ fn parse_log_line(raw: &str) -> LogLine {
 }
 
 /// Where the log file lives, so the Settings page can show "logs are at
-/// /home/.../agent.log" — useful for users who want to attach them to
-/// a bug report.
+/// /home/.../agent.log", which helps users who want to attach them to a bug
+/// report.
 #[tauri::command]
 pub fn logs_path() -> Result<String, String> {
     let dir = CliConfig::logs_dir().map_err(|e| e.to_string())?;
