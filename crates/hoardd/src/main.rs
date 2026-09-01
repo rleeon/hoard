@@ -1,36 +1,36 @@
-//! `hoardd` — el servicio local de sync de Hoard.
+//! `hoardd`, Hoard's local sync service.
 //!
-//! Residente y por usuario: se queda vivo aunque no haya clientes (es sync de
-//! fondo) y sobrevive al cierre de la app. Arranca por dos vías — como servicio
-//! de usuario en el boot, o lanzado por un cliente que no encontró ninguno
-//! ("spawn if absent", ver [`hoardd::client::Client::ensure_running`]).
+//! Resident and per user: it stays alive with no clients around (this is
+//! background sync) and it outlives the app being closed. It starts two ways, as a
+//! user service at boot, or launched by a client that found none ("spawn if
+//! absent", see [`hoardd::client::Client::ensure_running`]).
 
-// Windows: sin consola en release. De las dos vías de arranque, la del cliente
-// ya lanza con `CREATE_NO_WINDOW` (ver `client::detach`), pero la del servicio
-// no puede: el Task Scheduler ejecuta el `.exe` con `InteractiveToken`, o sea
-// dentro de la sesión del usuario, y a un binario del subsistema "console"
-// Windows le asigna una consola. Resultado: una ventana negra con el log del
-// sync cada vez que inicias sesión. El subsistema "windows" la quita de raíz;
-// no se pierde diagnóstico porque `init_tracing` escribe además a fichero (y es
-// lo que lee `hoard sync logs`). En debug se conserva la consola, que es donde
-// sí quieres ver el daemon a mano — mismo criterio que `hoard-desktop`.
+// Windows: no console in release. Of the two ways in, the client's already
+// launches with `CREATE_NO_WINDOW` (see `client::detach`), but the service's
+// cannot: the Task Scheduler runs the `.exe` with `InteractiveToken`, that is,
+// inside the user's session, and Windows hands a "console" subsystem binary a
+// console. The result is a black window with the sync's log every time you sign in.
+// The "windows" subsystem removes it at the root; no diagnostics are lost because
+// `init_tracing` also writes to a file (which is what `hoard sync logs` reads). In
+// debug the console is kept, since that is where you do want to watch the daemon by
+// hand, the same call `hoard-desktop` makes.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use anyhow::Result;
 use clap::Parser;
 use hoardd::endpoint::Endpoint;
 
-/// Env var que apaga el motor sin pasar el flag. Existe porque quien lanza el
-/// daemon casi siempre es un cliente, no una persona: un test de integración no
-/// puede permitir que el daemon que lanza se ponga a sincronizar los saves de
-/// quien ejecuta los tests.
+/// The env var that turns the engine off without passing the flag. It exists
+/// because whoever launches the daemon is almost always a client, not a person: an
+/// integration test cannot let the daemon it launches start syncing the saves of
+/// whoever runs the tests.
 const NO_ENGINE_ENV: &str = "HOARDD_NO_ENGINE";
 
 #[derive(Parser, Debug)]
 #[command(
     name = "hoardd",
     version,
-    about = "Hoard local sync service — owns the sync engine and serves thin clients over IPC"
+    about = "Hoard local sync service: owns the sync engine and serves thin clients over IPC"
 )]
 struct Cli {
     /// Socket (unix) o nombre del named pipe (Windows) donde escuchar. Por
@@ -38,7 +38,7 @@ struct Cli {
     #[arg(long, value_name = "PATH")]
     socket: Option<String>,
 
-    /// Sirve la IPC sin arrancar el motor. Diagnóstico y tests.
+    /// Serves the IPC without starting the engine. Diagnostics and tests.
     #[arg(long)]
     no_engine: bool,
 }
@@ -57,9 +57,9 @@ fn main() -> Result<()> {
         with_engine: !no_engine,
     };
 
-    // Runtime multi-hilo explícito (no `#[tokio::main]`) para poder inicializar el
-    // log y el hook de pánico antes de que exista runtime: un pánico durante el
-    // arranque también tiene que acabar en el fichero.
+    // An explicit multi-threaded runtime (not `#[tokio::main]`) so the log and the
+    // panic hook can be set up before a runtime exists: a panic during startup has to
+    // land in the file too.
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
@@ -67,9 +67,9 @@ fn main() -> Result<()> {
     match outcome {
         hoardd::Outcome::Served => {}
         hoardd::Outcome::AlreadyRunning => {
-            // Salida 0 a propósito: "ya había servicio" es el resultado correcto de
-            // un arranque idempotente, no un fallo que deba manchar el log del
-            // gestor de servicios ni asustar al cliente que nos lanzó.
+            // Exit 0 on purpose: "there was already a service" is the right outcome
+            // of an idempotent start, not a failure that should stain the service
+            // manager's log or scare the client that launched us.
             eprintln!("hoardd: another instance already owns the socket; nothing to do");
         }
         hoardd::Outcome::Relaunching { version } => {
@@ -79,24 +79,22 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Código de salida con el que se pide el relevo. Cualquier valor distinto de 0
-/// vale: lo único que hace falta es que systemd lo vea como un fallo y aplique
-/// su `Restart=on-failure`. Se elige uno improbable para que en un log ponga
-/// "actualización", no "se murió".
+/// The exit code that asks to be relieved. Any non-zero value would do: all that
+/// is needed is for systemd to see a failure and apply its `Restart=on-failure`. An
+/// unlikely one is picked so a log reads "update", not "it died".
 const EXIT_RELAUNCH: i32 = 75;
 
-/// Se acaba de sustituir nuestro propio binario en disco. Alguien tiene que
-/// arrancar el nuevo, y **quién** depende de dónde vivimos:
+/// Our own binary on disk has just been replaced. Somebody has to start the new
+/// one, and **who** depends on where we live:
 ///
-/// - **Bajo un gestor de servicios en Unix** salimos con [`EXIT_RELAUNCH`] y nos
-///   levanta él (systemd por `Restart=on-failure`, launchd por `KeepAlive`).
-///   Lanzar nosotros un hijo aquí no serviría: systemd mata el cgroup entero de
-///   la unidad al pararla, así que el hijo moriría con nosotros por muy
-///   `setsid` que llevara.
-/// - **En cualquier otro caso** —Windows, o un daemon que levantó un cliente sin
-///   servicio instalado— no hay nadie que nos vuelva a arrancar, así que
-///   arrancamos nosotros la copia nueva y salimos. Sin cgroup de por medio, el
-///   hijo sobrevive.
+/// - **Under a service manager on Unix** we exit with [`EXIT_RELAUNCH`] and it
+///   brings us back (systemd through `Restart=on-failure`, launchd through
+///   `KeepAlive`). Spawning a child here would not work: systemd kills the unit's
+///   whole cgroup when it stops it, so the child would die with us however much
+///   `setsid` it carried.
+/// - **In every other case** (Windows, or a daemon a client brought up with no
+///   service installed) there is nobody to start us again, so we start the new copy
+///   ourselves and exit. With no cgroup in the way, the child survives.
 async fn relaunch(version: &str) {
     let managed = cfg!(unix) && hoardd::autostart::installed().await;
     if managed {
@@ -104,8 +102,8 @@ async fn relaunch(version: &str) {
             version,
             "hoardd: exiting so the service manager starts the new binary"
         );
-        // El guard del log se va con el proceso; se le da un respiro para que la
-        // última línea llegue al fichero.
+        // The log guard goes with the process, so it is given a moment for the last
+        // line to reach the file.
         std::thread::sleep(std::time::Duration::from_millis(200));
         std::process::exit(EXIT_RELAUNCH);
     }
@@ -114,16 +112,17 @@ async fn relaunch(version: &str) {
         Err(err) => tracing::error!(
             version,
             error = %format!("{err:#}"),
-            "hoardd: the update is installed but nothing could start the new binary —              it will come up the next time a client needs it"
+            "hoardd: the update is installed but nothing could start the new binary; \
+             it will come up the next time a client needs it"
         ),
     }
 }
 
-/// Log a stderr (que el gestor de servicios captura en Linux/macOS) **y** a
-/// `<cache_dir>/logs/hoardd.log`, porque en Windows el Task Scheduler tira
-/// stdout/stderr y sin fichero no habría forma de leer nada. Devuelve el
-/// `WorkerGuard`, que debe vivir tanto como el proceso para vaciar el fichero al
-/// salir.
+/// Logs to stderr (which the service manager captures on Linux/macOS) **and** to
+/// `<cache_dir>/logs/hoardd.log`, because on Windows the Task Scheduler throws
+/// stdout/stderr away and with no file there would be no way to read anything.
+/// Returns the `WorkerGuard`, which must live as long as the process so the file is
+/// flushed on the way out.
 fn init_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
@@ -143,8 +142,8 @@ fn init_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
         .with(filter)
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .with(file_layer)
-        // Envío de logs al servidor conectado, como en la CLI y el desktop. Se
-        // gobierna con la pref de telemetría, que se relee en cada ciclo.
+        // Log shipping to the connected server, as in the CLI and the desktop. It is
+        // governed by the telemetry pref, which is re-read on every cycle.
         .with(hoard_agent::logship::start())
         .init();
     guard

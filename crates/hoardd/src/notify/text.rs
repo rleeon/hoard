@@ -1,16 +1,16 @@
-//! Qué dice el aviso, y en qué idioma.
+//! What the notification says, and in which language.
 //!
-//! El daemon no puede usar el i18n del frontend (es JSON de Svelte cargado en el
-//! webview), así que las cuatro frases que manda viven aquí, en los mismos ocho
-//! idiomas que la app. Son pocas y no crecen: este slice cambia **quién** avisa,
-//! no de cuántas cosas. Si algún día son muchas, la respuesta es compartir los
-//! `.json` en tiempo de compilación, no dos catálogos que driftan.
+//! The daemon cannot use the frontend's i18n (it is Svelte JSON loaded in the
+//! webview), so the four sentences it sends live here, in the same eight languages
+//! the app has. There are few of them and they do not grow: what moved is **who**
+//! notifies, not how many things are notified about. If one day there are many, the
+//! answer is sharing the `.json` at compile time, not two catalogues that drift.
 //!
-//! El idioma sale de la preferencia que el usuario eligió en Ajustes
-//! (`prefs.language`, que hasta ahora sólo leía el frontend) y, si no la ha
-//! tocado, del entorno (`LC_ALL`/`LC_MESSAGES`/`LANG`). Un servicio de fondo que
-//! avisa en un idioma distinto al de la ventana se lee como si fuera otro
-//! programa.
+//! The language comes from the preference the user picked in Settings
+//! (`prefs.language`, which until now only the frontend read) and, when they have
+//! not touched it, from the environment (`LC_ALL`/`LC_MESSAGES`/`LANG`). A
+//! background service that notifies in a different language from the window reads
+//! like a different program.
 
 use hoard_core::ipc::events::TooLargeKind;
 
@@ -37,9 +37,9 @@ pub enum Lang {
 }
 
 impl Lang {
-    /// El idioma del usuario: primero lo que eligió en la app, y si no lo ha
-    /// elegido, lo que dice el entorno. Cualquier cosa que no reconozcamos cae
-    /// en inglés, que es el idioma fuente.
+    /// The user's language: what they picked in the app first, and failing that,
+    /// what the environment says. Anything we do not recognise falls back to
+    /// English, which is the source language.
     pub fn for_user(pref: Option<&str>) -> Self {
         pref.and_then(Self::parse)
             .or_else(Self::from_env)
@@ -88,8 +88,8 @@ impl Lang {
     }
 }
 
-/// Las frases de un idioma. Los huecos (`{name}`, `{version}`…) los rellena
-/// [`fill`]; un test comprueba que ningún idioma se deja uno por el camino.
+/// One language's sentences. The slots (`{name}`, `{version}`...) are filled in by
+/// [`fill`]; a test checks that no language drops one along the way.
 #[derive(Debug, Clone, Copy)]
 struct Strings {
     saved_title: &'static str,
@@ -102,17 +102,17 @@ struct Strings {
     too_large_title: &'static str,
     /// `{name}`, `{size}`, `{limit}`
     too_large_body: &'static str,
-    /// Sin cifras: el 413 self-hosted no trae límite ni tamaño. `{name}`
+    /// No numbers: a self-hosted 413 carries neither limit nor size. `{name}`
     too_large_body_generic: &'static str,
     /// A 413 from the user's own server: the cap is the operator's
     /// (`storage.max_snapshot_size_mb`), not a plan's, so the sentence must not
-    /// mention plans — and must not print a size. Self-hosted aborts mid-stream
+    /// mention plans, and must not print a size. Self-hosted aborts mid-stream
     /// and reports how far it got, never the save's size. `{name}`, `{limit}`
     too_large_server_title: &'static str,
     too_large_server_body: &'static str,
-    /// Igual, cuando el servidor **sí** dijo el tamaño: el camino direccionado
-    /// por contenido declara la versión entera antes de mover un byte, así que
-    /// ahí la cifra es exacta y no un suelo. `{name}`, `{size}`, `{limit}`
+    /// The same, for when the server **did** say the size: the content-addressed
+    /// path declares the whole version before moving a byte, so there the number is
+    /// exact and not a floor. `{name}`, `{size}`, `{limit}`
     too_large_server_body_sized: &'static str,
     /// A 413 nobody at Hoard wrote: a reverse proxy or tunnel in front of the
     /// server refused the body. Nothing in Hoard's settings changes it. `{name}`
@@ -121,10 +121,10 @@ struct Strings {
     stuck_title: &'static str,
     /// `{name}`, `{count}`
     stuck_body: &'static str,
-    /// Hay versión nueva y esta máquina **no** puede ponérsela sola: hace falta
-    /// que alguien apruebe el diálogo de privilegios. Es el único aviso de
-    /// actualización que se manda, y por eso: en las vías que se aplican solas
-    /// no hay nada que pedirle a nadie, así que avisar sería ruido.
+    /// There is a new version and this machine **cannot** install it on its own:
+    /// somebody has to approve the privilege dialog. It is the only update
+    /// notification that gets sent, and that is why: on the routes that apply
+    /// themselves there is nothing to ask anybody, so notifying would be noise.
     update_ready_title: &'static str,
     /// `{version}`
     update_ready_body: &'static str,
@@ -145,7 +145,8 @@ const EN: Strings = Strings {
     too_large_proxy_title: "Something refused that upload",
     too_large_proxy_body: "{name} was refused as too large — not by Hoard, but by something in front of your server.",
     stuck_title: "Cloud restore is failing",
-    stuck_body: "{name} — failures in a row: {count}. Hoard keeps retrying, less and less often.",    update_ready_title: "An update is waiting",
+    stuck_body: "{name} — failures in a row: {count}. Hoard keeps retrying, less and less often.",
+    update_ready_title: "An update is waiting",
     update_ready_body: "Hoard {version} is downloaded. Open Hoard to install it — your system will ask for permission.",
 };
 
@@ -165,7 +166,8 @@ const ES: Strings = Strings {
     too_large_proxy_body: "{name} se rechazó por grande, y no fue Hoard: fue algo que hay delante de tu servidor.",
     stuck_title: "La restauración desde la nube está fallando",
     stuck_body:
-        "{name} — fallos seguidos: {count}. Hoard sigue reintentando, cada vez con menos frecuencia.",    update_ready_title: "Hay una actualización esperando",
+        "{name} — fallos seguidos: {count}. Hoard sigue reintentando, cada vez con menos frecuencia.",
+    update_ready_title: "Hay una actualización esperando",
     update_ready_body: "Hoard {version} está descargada. Abre Hoard para instalarla; tu sistema te pedirá permiso.",
 };
 
@@ -184,7 +186,8 @@ const DE: Strings = Strings {
     too_large_proxy_title: "Etwas hat den Upload abgelehnt",
     too_large_proxy_body: "{name} wurde als zu groß abgelehnt — nicht von Hoard, sondern von etwas vor deinem Server.",
     stuck_title: "Die Wiederherstellung aus der Cloud schlägt fehl",
-    stuck_body: "{name} — Fehler in Folge: {count}. Hoard versucht es weiter, immer seltener.",    update_ready_title: "Ein Update wartet",
+    stuck_body: "{name} — Fehler in Folge: {count}. Hoard versucht es weiter, immer seltener.",
+    update_ready_title: "Ein Update wartet",
     update_ready_body: "Hoard {version} ist heruntergeladen. Öffne Hoard, um es zu installieren — dein System fragt nach der Berechtigung.",
 };
 
@@ -203,7 +206,8 @@ const FR: Strings = Strings {
     too_large_proxy_title: "Quelque chose a refusé cet envoi",
     too_large_proxy_body: "{name} a été refusé comme trop volumineux — pas par Hoard, mais par quelque chose devant votre serveur.",
     stuck_title: "La restauration depuis le cloud échoue",
-    stuck_body: "{name} — échecs consécutifs : {count}. Hoard réessaie, de moins en moins souvent.",    update_ready_title: "Une mise à jour attend",
+    stuck_body: "{name} — échecs consécutifs : {count}. Hoard réessaie, de moins en moins souvent.",
+    update_ready_title: "Une mise à jour attend",
     update_ready_body: "Hoard {version} est téléchargée. Ouvre Hoard pour l'installer — ton système demandera l'autorisation.",
 };
 
@@ -222,7 +226,8 @@ const IT: Strings = Strings {
     too_large_proxy_title: "Qualcosa ha rifiutato il caricamento",
     too_large_proxy_body: "{name} è stato rifiutato perché troppo grande — non da Hoard, ma da qualcosa davanti al tuo server.",
     stuck_title: "Il ripristino dal cloud sta fallendo",
-    stuck_body: "{name} — errori di fila: {count}. Hoard continua a riprovare, sempre più di rado.",    update_ready_title: "C'è un aggiornamento in attesa",
+    stuck_body: "{name} — errori di fila: {count}. Hoard continua a riprovare, sempre più di rado.",
+    update_ready_title: "C'è un aggiornamento in attesa",
     update_ready_body: "Hoard {version} è scaricato. Apri Hoard per installarlo: il sistema ti chiederà il permesso.",
 };
 
@@ -241,7 +246,8 @@ const JA: Strings = Strings {
     too_large_proxy_title: "アップロードが拒否されました",
     too_large_proxy_body: "{name} はサイズ超過で拒否されました。Hoard ではなく、サーバーの手前にある何かが拒否しています。",
     stuck_title: "クラウドからの復元に失敗しています",
-    stuck_body: "{name} — 連続失敗: {count} 回。Hoard は間隔を空けながら再試行を続けます。",    update_ready_title: "アップデートが待機中です",
+    stuck_body: "{name} — 連続失敗: {count} 回。Hoard は間隔を空けながら再試行を続けます。",
+    update_ready_title: "アップデートが待機中です",
     update_ready_body: "Hoard {version} をダウンロード済みです。Hoard を開いてインストールしてください。システムが許可を求めます。",
 };
 
@@ -261,7 +267,8 @@ const PT: Strings = Strings {
     too_large_proxy_body: "{name} foi recusado por ser grande demais — não pelo Hoard, mas por algo à frente do teu servidor.",
     stuck_title: "O restauro a partir da nuvem está a falhar",
     stuck_body:
-        "{name} — falhas seguidas: {count}. O Hoard continua a tentar, cada vez menos vezes.",    update_ready_title: "Há uma atualização à espera",
+        "{name} — falhas seguidas: {count}. O Hoard continua a tentar, cada vez menos vezes.",
+    update_ready_title: "Há uma atualização à espera",
     update_ready_body: "O Hoard {version} está descarregado. Abre o Hoard para o instalar — o teu sistema vai pedir permissão.",
 };
 
@@ -309,7 +316,7 @@ pub fn render(kind: &Kind, name: &str, lang: Lang) -> Note {
             body: fill(s.failed_body, &[("name", name), ("error", error)]),
         },
         // Three different things answer 413 and only one of them is a plan, so
-        // the sentence follows `kind` — the same split the window makes. It used
+        // the sentence follows `kind`, the same split the window makes. It used
         // to key off `limit_bytes == 0`, back when a self-hosted 413 carried no
         // numbers at all; 1.1.3 gave it `limit_bytes`, which silently turned
         // every self-hosted rejection into the Cloud sentence with a `0 B` size
@@ -323,7 +330,7 @@ pub fn render(kind: &Kind, name: &str, lang: Lang) -> Note {
         } => match kind {
             TooLargeKind::ServerLimit if *limit_bytes > 0 => Note {
                 title: s.too_large_server_title.to_string(),
-                // The size only goes in when the server actually knew it — the
+                // The size only goes in when the server actually knew it: the
                 // content-addressed path declares the whole version up front. A
                 // mid-stream abort only knows how far it got, and printing that
                 // as the save's size is a number that looks precise and lies.
@@ -388,9 +395,9 @@ fn fill(template: &str, values: &[(&str, &str)]) -> String {
     out
 }
 
-/// Tamaño legible, con los mismos cortes que la UI (`formatBytes` en
-/// `stores/agent.ts`) para que el aviso y la ventana no digan cifras distintas
-/// del mismo archivo.
+/// A readable size, with the same cut-off points as the UI (`formatBytes` in
+/// `stores/agent.ts`) so the notification and the window do not quote different
+/// numbers for the same file.
 fn bytes_human(n: u64) -> String {
     const KB: f64 = 1024.0;
     const MB: f64 = 1024.0 * 1024.0;
@@ -422,8 +429,8 @@ mod tests {
         Lang::Zh,
     ];
 
-    /// Un hueco mal escrito no da error de compilación: sale literalmente en la
-    /// notificación del usuario ("{nombre}: falló"). Este test es la red.
+    /// A misspelt slot is not a compile error: it comes out verbatim in the user's
+    /// notification ("{nombre}: failed"). This test is the net.
     #[test]
     fn every_language_keeps_its_placeholders() {
         for lang in ALL {
@@ -460,7 +467,7 @@ mod tests {
         }
     }
 
-    /// Nada de frases vacías: una notificación sin título no se ve en GNOME.
+    /// No empty sentences: a notification with no title is invisible in GNOME.
     #[test]
     fn nothing_renders_empty_and_nothing_leaks_a_hole() {
         let kinds = [

@@ -1,34 +1,34 @@
-//! Socket local: bind exclusivo, permisos solo-usuario, accept y connect.
+//! The local socket: exclusive bind, user-only permissions, accept and connect.
 //!
-//! Dos implementaciones detrás del mismo par de tipos — `UnixListener` en
-//! Linux/macOS, named pipe en Windows —, ambas cumpliendo tres cosas que la ADR
-//! 0021 pide explícitamente:
+//! Two implementations behind the same pair of types (`UnixListener` on
+//! Linux/macOS, a named pipe on Windows), both delivering three things ADR 0021
+//! asks for explicitly:
 //!
-//! 1. **La propiedad del socket es el árbitro.** «El pidfile desaparece: el
-//!    árbitro pasa a ser la *propiedad del socket* del servicio — un mutex real
-//!    con liveness, no un pidfile que se consulta una vez.» Aquí eso es
-//!    literal: [`Listener::bind`] devuelve [`BindError::AlreadyRunning`] cuando
-//!    otro daemon lo tiene, y el que pierde el bind se conecta al que ganó en
-//!    vez de arrancar un segundo motor.
-//! 2. **Liveness de verdad.** En unix el mutex es un `flock` sobre
-//!    `hoardd.lock`: el kernel lo suelta cuando el proceso muere, pase lo que
-//!    pase, así que un daemon que crashea no deja el lock tomado (el fallo
-//!    clásico del pidfile). En Windows lo hace `FILE_FLAG_FIRST_PIPE_INSTANCE`,
-//!    que es atómico y cuya vida es la del handle.
-//! 3. **Solo-usuario.** 0700 en el directorio + 0600 en el socket; en Windows
-//!    una ACL construida desde el SID del usuario (ver [`crate::winsec`]).
+//! 1. **Owning the socket is the arbiter.** "The pidfile goes away: the arbiter
+//!    becomes the service's *ownership of the socket*, a real mutex with liveness
+//!    rather than a pidfile consulted once." Here that is literal:
+//!    [`Listener::bind`] returns [`BindError::AlreadyRunning`] when another daemon
+//!    holds it, and whoever loses the bind connects to the winner instead of
+//!    starting a second engine.
+//! 2. **Real liveness.** On unix the mutex is a `flock` on `hoardd.lock`: the
+//!    kernel releases it when the process dies, whatever happens, so a daemon that
+//!    crashes leaves no lock held (the pidfile's classic failure). On Windows
+//!    `FILE_FLAG_FIRST_PIPE_INSTANCE` does the job, atomically, and its lifetime is
+//!    the handle's.
+//! 3. **User only.** 0700 on the directory plus 0600 on the socket; on Windows an
+//!    ACL built from the user's SID (see [`crate::winsec`]).
 //!
-//! Un socket **stale** (fichero que quedó de un daemon muerto) no se detecta por
-//! heurística: se borra siempre justo después de ganar el lock. Con el mutex en
-//! la mano no puede haber nadie escuchando ahí, así que el fichero es basura por
-//! construcción. Ese orden —lock, luego unlink, luego bind— es lo que hace que
-//! dos daemons arrancando a la vez no puedan pisarse el socket.
+//! A **stale** socket (a file left by a dead daemon) is not detected by heuristic:
+//! it is always deleted right after winning the lock. With the mutex in hand nobody
+//! can be listening there, so the file is garbage by construction. That order (lock,
+//! then unlink, then bind) is what stops two daemons starting at once from treading
+//! on each other's socket.
 
 use crate::endpoint::Endpoint;
 
-/// Por qué no se pudo escuchar. La distinción es la que decide el
-/// comportamiento del daemon: `AlreadyRunning` es un final **correcto** (ya hay
-/// servicio, no hacía falta este proceso), cualquier otra cosa es un fallo.
+/// Why listening failed. The distinction is what decides the daemon's behaviour:
+/// `AlreadyRunning` is a **correct** ending (there is a service already, this
+/// process was not needed), anything else is a failure.
 #[derive(Debug, thiserror::Error)]
 pub enum BindError {
     #[error("another hoardd already owns {address}")]
@@ -59,9 +59,9 @@ mod imp {
     /// `Drop`.
     #[derive(Debug)]
     struct LockFile {
-        /// Sólo se guarda: el lock vive mientras viva el fichero abierto. Nadie
-        /// lo lee, y eso es el punto — a diferencia del pidfile, aquí no hay
-        /// nada que interpretar.
+        /// Just held: the lock lives as long as the open file does. Nobody reads
+        /// it, and that is the point; unlike the pidfile, there is nothing here to
+        /// interpret.
         _file: File,
     }
 
@@ -75,8 +75,8 @@ mod imp {
                 .open(path)
                 .with_context(|| format!("opening the lock file {}", path.display()))?;
             let _ = file.set_permissions(std::fs::Permissions::from_mode(0o600));
-            // SAFETY: `fd` sale de un `File` vivo y `flock` sólo lo usa durante
-            // la llamada.
+            // SAFETY: `fd` comes from a live `File` and `flock` only uses it for
+            // the duration of the call.
             let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
             if rc != 0 {
                 let err = std::io::Error::last_os_error();
@@ -90,9 +90,9 @@ mod imp {
                 ));
             }
             let mut file = file;
-            // El pid es diagnóstico (`ps`, un log, un bug report). El lock NO
-            // depende de leerlo: eso era el pidfile, y por eso un pid reciclado
-            // o un fichero rancio nos daban un dueño fantasma.
+            // The pid is diagnostics (`ps`, a log, a bug report). The lock does NOT
+            // depend on reading it: that was the pidfile, and it is why a recycled
+            // pid or a stale file used to hand us a phantom owner.
             let _ = file.set_len(0);
             let _ = writeln!(file, "{}", std::process::id());
             let _ = file.flush();
@@ -113,21 +113,21 @@ mod imp {
             if let Some(dir) = path.parent() {
                 std::fs::create_dir_all(dir)
                     .with_context(|| format!("creating {}", dir.display()))?;
-                // 0700: nadie más entra en el directorio del socket. Es la
-                // primera de las dos vallas; la otra es el 0600 de abajo.
+                // 0700: nobody else gets into the socket's directory. It is the
+                // first of the two fences; the other is the 0600 below.
                 let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
             }
             let lock = LockFile::acquire(&endpoint.lock_path())?;
-            // Con el lock en la mano, cualquier socket que quede aquí es de un
-            // daemon muerto.
+            // With the lock in hand, any socket left here belongs to a dead
+            // daemon.
             if path.exists() {
                 std::fs::remove_file(&path)
                     .with_context(|| format!("removing the stale socket {}", path.display()))?;
             }
             let inner =
                 UnixListener::bind(&path).with_context(|| format!("binding {}", path.display()))?;
-            // `bind` crea el nodo con 0755 & !umask, así que el 0600 se pone
-            // después. La ventana la cubre el 0700 del directorio.
+            // `bind` creates the node with 0755 & !umask, so the 0600 goes on
+            // afterwards. The directory's 0700 covers the window.
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
                 .with_context(|| format!("tightening permissions on {}", path.display()))?;
             Ok(Self {
@@ -151,13 +151,13 @@ mod imp {
         }
     }
 
-    /// Conecta con el daemon. `Err` con `NotFound`/`ConnectionRefused` es
-    /// "no hay daemon", que es información, no un fallo.
+    /// Connects to the daemon. An `Err` of `NotFound`/`ConnectionRefused` means
+    /// "there is no daemon", which is information, not a failure.
     pub async fn connect(endpoint: &Endpoint) -> std::io::Result<ClientStream> {
         UnixStream::connect(endpoint.path()).await
     }
 
-    /// ¿Merece la pena reintentar la conexión (el daemon está arrancando)?
+    /// Is the connection worth retrying (is the daemon still coming up)?
     pub fn is_transient(err: &std::io::Error) -> bool {
         matches!(
             err.kind(),
@@ -212,9 +212,9 @@ mod imp {
         pub fn bind(endpoint: &Endpoint) -> Result<Self, BindError> {
             let name = endpoint.as_str().to_string();
             let security = SecurityDescriptor::user_only().map_err(BindError::Failed)?;
-            // `first_pipe_instance` es el mutex: si el nombre ya existe, esto
-            // falla con ACCESS_DENIED y quien pierde se conecta al que ganó. No
-            // hay ventana entre "comprobar" y "crear" porque no hay comprobación.
+            // `first_pipe_instance` is the mutex: if the name already exists this
+            // fails with ACCESS_DENIED and the loser connects to the winner. There is
+            // no window between "check" and "create" because there is no check.
             match create(&name, &security, true) {
                 Ok(pending) => {
                     let listener = Self {
@@ -222,9 +222,9 @@ mod imp {
                         security,
                         pending: Some(pending),
                     };
-                    // Del objeto vivo, no del descriptor que le pasamos: así la
-                    // ACL con la que de verdad corre esta máquina queda escrita
-                    // en el log en vez de deducirse del código.
+                    // From the live object, not from the descriptor we handed it, so
+                    // the ACL this machine really runs with ends up written in the log
+                    // instead of being deduced from the code.
                     match listener.dacl_sddl() {
                         Ok(sddl) => tracing::info!(dacl = %sddl, "hoardd: named pipe ACL"),
                         Err(err) => {
@@ -242,8 +242,8 @@ mod imp {
             }
         }
 
-        /// DACL con el que el SO creó **este** pipe, en SDDL. Lo usan el log del
-        /// arranque y el test que afirma que `Everyone` no está dentro.
+        /// The DACL the OS created **this** pipe with, in SDDL. Used by the startup
+        /// log and by the test that asserts `Everyone` is not in it.
         pub fn dacl_sddl(&self) -> Result<String> {
             use std::os::windows::io::AsRawHandle;
             let pipe = self
@@ -261,10 +261,9 @@ mod imp {
                 .take()
                 .context("the named pipe listener has no pending instance")?;
             server.connect().await.context("accepting a client")?;
-            // La siguiente instancia se crea *después* de que el cliente entre:
-            // durante ese instante un cliente nuevo ve ERROR_PIPE_BUSY, que
-            // `is_transient` marca como reintentable (es lo que hace el bucle de
-            // `connect_with_deadline`).
+            // The next instance is created *after* the client is in: for that
+            // instant a new client sees ERROR_PIPE_BUSY, which `is_transient` marks
+            // as retryable (which is what `connect_with_deadline`'s loop does).
             self.pending = Some(
                 create(&self.name, &self.security, false)
                     .with_context(|| format!("re-arming the named pipe {}", self.name))?,
@@ -290,9 +289,9 @@ mod imp {
 
 pub use imp::{connect, is_transient, ClientStream, Listener, ServerStream};
 
-/// Conecta reintentando hasta `deadline`. Es lo que usa "spawn if absent" para
-/// esperar a que el daemon que acabamos de lanzar (o el que ganó la carrera)
-/// abra su socket.
+/// Connects, retrying until `deadline`. This is what "spawn if absent" uses to
+/// wait for the daemon we just launched (or whoever won the race) to open its
+/// socket.
 pub async fn connect_with_deadline(
     endpoint: &Endpoint,
     deadline: std::time::Instant,
@@ -310,16 +309,16 @@ pub async fn connect_with_deadline(
     }
 }
 
-/// Lo que el Slice 4a no pudo comprobar: que la ACL del named pipe es la que
-/// creemos. Corre sólo en Windows, contra un pipe de verdad.
+/// What Slice 4a could not check: that the named pipe's ACL is the one we think it
+/// is. It runs on Windows only, against a real pipe.
 #[cfg(all(test, windows))]
 mod windows_tests {
     use super::*;
 
-    /// Ni `Everyone` (`WD`) ni "usuarios autenticados" (`AU`) en el DACL del
-    /// pipe. Por ahí viajan nombres de juego, rutas locales y los comandos del
-    /// sync: sin descriptor explícito Windows le da lectura a `Everyone`, que es
-    /// exactamente lo que este test impide que vuelva.
+    /// Neither `Everyone` (`WD`) nor "authenticated users" (`AU`) in the pipe's
+    /// DACL. Game names, local paths and the sync's commands travel over it: with no
+    /// explicit descriptor Windows grants `Everyone` read access, which is exactly
+    /// what this test stops from coming back.
     #[tokio::test]
     async fn the_pipe_acl_excludes_everyone() {
         let dir = std::env::temp_dir();
@@ -335,12 +334,12 @@ mod windows_tests {
             !sddl.contains(";;;AU)"),
             "authenticated users must not be in the pipe DACL: {sddl}"
         );
-        // Y lo que sí: nosotros y LocalSystem. El SID propio sale numérico
-        // (`S-1-5-21-…`) salvo cuando es una cuenta con alias conocido, que
-        // SDDL abrevia: en los runners de CI la sesión es el Administrador
-        // integrado y el descriptor se lee `(A;;FA;;;LA)`. `LA` es esa CUENTA,
-        // no el grupo Administradores (`BA`), así que sigue siendo "un usuario
-        // concreto" y la propiedad que este test cuida se mantiene.
+        // And what should be there: us and LocalSystem. Our own SID comes out
+        // numeric (`S-1-5-21-...`) except when it is an account with a known alias,
+        // which SDDL abbreviates: on the CI runners the session is the built-in
+        // Administrator and the descriptor reads `(A;;FA;;;LA)`. `LA` is that
+        // ACCOUNT, not the Administrators group (`BA`), so it is still "one specific
+        // user" and the property this test guards holds.
         assert!(
             sddl.contains(";;;S-1-5-21") || sddl.contains(";;;LA)"),
             "the pipe must be granted to a specific user account: {sddl}"
@@ -358,10 +357,10 @@ mod windows_tests {
 mod tests {
     use super::*;
 
-    /// El segundo bind del mismo endpoint no arranca un segundo servicio: se le
-    /// dice que ya hay dueño. Es la mitad del daemon de la idempotencia de
-    /// "spawn if absent" (la otra mitad, que el perdedor se conecta al ganador,
-    /// la prueba `tests/spawn_if_absent.rs` con procesos de verdad).
+    /// The second bind of the same endpoint does not start a second service: it is
+    /// told there is an owner already. This is the daemon's half of "spawn if
+    /// absent" being idempotent (the other half, the loser connecting to the winner,
+    /// is proved by `tests/spawn_if_absent.rs` with real processes).
     #[tokio::test]
     async fn a_second_bind_reports_the_owner() {
         let dir = tempfile::tempdir().unwrap();
@@ -393,9 +392,9 @@ mod tests {
         assert_eq!(dir_mode, 0o700, "socket dir must be user-only");
     }
 
-    /// Un socket que quedó de un daemon muerto no bloquea el arranque: se borra
-    /// al ganar el lock. Sin esto, un crash dejaba el servicio inarrancable
-    /// hasta que alguien borrara el fichero a mano.
+    /// A socket left by a dead daemon does not block startup: it is deleted on
+    /// winning the lock. Without this, one crash left the service unstartable until
+    /// somebody deleted the file by hand.
     #[tokio::test]
     async fn a_stale_socket_file_does_not_block_the_bind() {
         let dir = tempfile::tempdir().unwrap();
@@ -403,15 +402,16 @@ mod tests {
         let ep = Endpoint::new(path.to_string_lossy().into_owned());
         {
             let listener = Listener::bind(&ep).unwrap();
-            // Simula la muerte sucia: el fichero se queda, el lock lo suelta el
-            // cierre del fd. `mem::forget` evita el `Drop` que lo limpiaría.
+            // Simulating the dirty death: the file stays, and closing the fd is
+            // what releases the lock. `mem::forget` avoids the `Drop` that would
+            // clean it up.
             std::mem::forget(listener);
         }
         assert!(path.exists(), "the stale socket must still be there");
-        // El `flock` sigue tomado por este mismo proceso (lo hemos filtrado), y
-        // flock es por *fichero abierto*: un segundo `open` + `flock` desde el
-        // mismo proceso también bloquea, así que aquí sólo comprobamos lo que
-        // toca — que el fichero rancio se borra cuando el lock se puede tomar.
+        // The `flock` is still held by this very process (we leaked it), and flock
+        // is per *open file*: a second `open` plus `flock` from the same process
+        // blocks too, so what is checked here is the part that matters, that the
+        // stale file is deleted once the lock can be taken.
         std::fs::remove_file(ep.lock_path()).unwrap();
         let _second = Listener::bind(&ep).expect("a stale socket must not block a new daemon");
         assert!(path.exists());

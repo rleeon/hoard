@@ -1,15 +1,14 @@
-//! Un apagado deliberado se queda apagado (ADR 0021, Slice 4d).
+//! A deliberate shutdown stays down (ADR 0021, Slice 4d).
 //!
-//! Hasta el 4c un cliente **enganchado** resucitaba el servicio ~3 s después de
-//! un `hoard sync stop`: su reconexión es "spawn if absent" y no tenía forma de
-//! distinguir "lo pararon" de "se cayó". La distinción la da ahora el daemon con
-//! una despedida explícita, y esto la prueba con procesos de verdad — es un
-//! comportamiento entre dos procesos, así que un mock no probaría nada.
+//! Until 4c an **attached** client brought the service back about 3 s after a
+//! `hoard sync stop`: its reconnect is "spawn if absent" and it had no way to tell
+//! "somebody stopped it" from "it crashed". The daemon now draws that distinction
+//! with an explicit farewell, and this proves it with real processes: it is
+//! behaviour between two processes, so a mock would prove nothing.
 //!
-//! Va en su **propio binario de test** a propósito: el testigo de la despedida es
-//! global al proceso (ver `hoardd::client`), y compartirlo con los tests de
-//! "spawn if absent" —que sí esperan que arrancar funcione— sería una carrera
-//! entre tests.
+//! It gets its **own test binary** on purpose: the farewell flag is process-global
+//! (see `hoardd::client`), and sharing it with the "spawn if absent" tests, which
+//! do expect starting to work, would be a race between tests.
 
 use std::time::{Duration, Instant};
 
@@ -17,8 +16,8 @@ use hoard_core::ipc::Request;
 use hoardd::client::{stopped_on_purpose, Client, Push, DAEMON_BIN_ENV};
 use hoardd::endpoint::{Endpoint, ENDPOINT_ENV};
 
-/// Endpoint propio del test. En Windows el namespace de pipes es global a la
-/// máquina, así que la unicidad va en el nombre, no en el directorio temporal.
+/// The test's own endpoint. On Windows the pipe namespace is global to the
+/// machine, so uniqueness goes in the name, not in the temp directory.
 fn endpoint_in(dir: &std::path::Path) -> Endpoint {
     Endpoint::scoped(dir, &format!("farewell-{}", std::process::id()))
 }
@@ -27,8 +26,8 @@ fn endpoint_in(dir: &std::path::Path) -> Endpoint {
 /// alguien lo arranca → me engancho solo.
 #[tokio::test]
 async fn a_deliberate_shutdown_stays_down() {
-    // El binario recién compilado, con el motor apagado: un test no puede ponerse
-    // a sincronizar los saves de quien lo ejecuta.
+    // The freshly built binary, with the engine off: a test must not start syncing
+    // the saves of whoever runs it.
     std::env::set_var("HOARDD_NO_ENGINE", "1");
     std::env::set_var(DAEMON_BIN_ENV, env!("CARGO_BIN_EXE_hoardd"));
     let dir = tempfile::tempdir().unwrap();
@@ -52,7 +51,7 @@ async fn a_deliberate_shutdown_stays_down() {
         .await
         .expect("the daemon accepts the stop");
 
-    // El enganchado se entera de que fue a propósito, no de que se cayó.
+    // The attached client learns it was deliberate, not a crash.
     let push = tokio::time::timeout(Duration::from_secs(10), attached.next_push())
         .await
         .expect("the farewell must arrive before the socket closes")
@@ -74,17 +73,17 @@ async fn a_deliberate_shutdown_stays_down() {
         format!("{err:#}").contains("stopped"),
         "the error should say the service was stopped: {err:#}"
     );
-    // Ni siquiera de rebote: si hubiera lanzado un daemon, en un segundo estaría
-    // sirviendo.
+    // Not even by accident: had it spawned a daemon, it would be serving within a
+    // second.
     tokio::time::sleep(Duration::from_secs(1)).await;
     assert!(
         Client::connect(&endpoint, "test probe").await.is_err(),
         "nothing may be listening after a deliberate stop"
     );
 
-    // Alguien lo arranca a mano (`hoard sync start`): el cliente se engancha solo
-    // y olvida la despedida — con servicio al que saludar, "está parado" dejó de
-    // ser verdad.
+    // Somebody starts it by hand (`hoard sync start`): the client attaches on its
+    // own and forgets the farewell. With a service to greet, "it is stopped" has
+    // stopped being true.
     let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_hoardd"))
         .env(ENDPOINT_ENV, endpoint.as_str())
         .env("HOARDD_NO_ENGINE", "1")

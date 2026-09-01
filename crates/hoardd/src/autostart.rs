@@ -1,14 +1,14 @@
-//! Arranque en boot como **servicio de usuario** (ADR 0021, Parte A → Slice 4d).
+//! Starting at boot as a **user service** (ADR 0021, Part A).
 //!
-//! El servicio arranca por dos vías. Una es "spawn if absent": un cliente que no
-//! encuentra servicio lo levanta ([`crate::client::Client::ensure_running`]).
-//! La otra es ésta — el gestor de servicios del SO lo arranca al iniciar sesión,
-//! y entonces el sync corre **sin que nadie abra nada**, que es el punto del
-//! Slice 4. Un backend por plataforma, los mismos comandos en las tres:
+//! The service starts two ways. One is "spawn if absent": a client that finds no
+//! service brings it up ([`crate::client::Client::ensure_running`]). The other is
+//! this one, where the OS's service manager starts it at login and the sync then
+//! runs **without anybody opening anything**, which is the whole point. One backend
+//! per platform, the same commands on all three:
 //!
-//! - **Linux**: unidad `systemd --user` (`hoard-sync.service`). Además se intenta
-//!   `loginctl enable-linger`, para que una máquina headless (NAS / SteamOS /
-//!   servidor casero) siga sincronizando sin sesión gráfica abierta. From an
+//! - **Linux**: a `systemd --user` unit (`hoard-sync.service`). It also tries
+//!   `loginctl enable-linger`, so a headless machine (a NAS, SteamOS, a home
+//!   server) keeps syncing with no graphical session open. From an
 //!   AppImage the `ExecStart` is never the binary inside the mount: it is the
 //!   installed `hoardd`, or a stable copy of it.
 //! - **macOS**: LaunchAgent de `launchd` (`com.hoard.sync`).
@@ -22,31 +22,31 @@
 //! "No backend here" is a legitimate answer (a machine without systemd, an
 //! AppImage with a read-only `$HOME`) and it has to **reach the window**:
 //! [`Unsupported`] classifies it and [`unsupported_reason`] recovers it by
-//! downcast. A `tracing::warn!` does not do the job — the switch stays on, the
+//! downcast. A `tracing::warn!` does not do the job: the switch stays on, the
 //! sync doesn't start at the next login, and the user has nothing to look at.
 //!
-//! **Por usuario, nunca system-wide**, y no es una preferencia estética: el token
-//! Cloud vive en el almacén de secretos de *tu* sesión (Secret Service / Keychain
-//! / DPAPI), que un servicio de root no puede leer. Un servicio de máquina
-//! tampoco sabría de quién son los saves.
+//! **Per user, never system-wide**, and that is not an aesthetic preference: the
+//! Cloud token lives in *your* session's secret store (Secret Service, Keychain,
+//! DPAPI), which a root service cannot read. A machine service would not know whose
+//! saves these are either.
 //!
-//! ## Qué ejecuta la unidad, y por qué cambió en el 4d
+//! ## What the unit runs
 //!
-//! El `ExecStart` es **el binario `hoardd`**. Hasta el 4c era `hoard sync run`,
-//! porque el motor vivía dentro de ese proceso; desde el 4b/4c ese comando es un
-//! cliente, así que dejarlo de `ExecStart` significaba que el gestor de servicios
-//! supervisaba a un espectador y no al servicio. Ahora `systemctl --user stop`
-//! manda la señal **al daemon**, que se despide de sus clientes y para el motor
-//! (ver [`hoard_core::ipc::ServerFrame::Goodbye`]).
+//! The `ExecStart` is **the `hoardd` binary**. It used to be `hoard sync run`, back
+//! when the engine lived inside that process; that command is a client now, so
+//! leaving it as the `ExecStart` meant the service manager supervised a spectator
+//! rather than the service. `systemctl --user stop` now sends the signal **to the
+//! daemon**, which says goodbye to its clients and stops the engine (see
+//! [`hoard_core::ipc::ServerFrame::Goodbye`]).
 //!
-//! ## El traspaso: un cliente pudo arrancarlo antes que la unidad
+//! ## The handover: a client may have started it before the unit did
 //!
-//! Sólo hay un daemon por usuario y el árbitro es el bind del socket, así que si
-//! ya hay uno corriendo (lo levantó la app al abrirse) el que lance systemd
-//! **perderá el bind y saldrá con 0** — dejando a la unidad marcada como muerta
-//! aunque el sync funcione. Por eso [`install`] y [`restart`] paran primero el
-//! que haya y esperan a que suelte el socket: es la forma de que el dueño del
-//! proceso pase a ser el gestor de servicios de verdad.
+//! There is only one daemon per user and the arbiter is the socket bind, so when one
+//! is already running (the app brought it up when it opened) the one systemd
+//! launches **loses the bind and exits with 0**, leaving the unit marked dead while
+//! the sync works fine. That is why [`install`] and [`restart`] stop whatever is
+//! there first and wait for it to release the socket: it is how the process's owner
+//! really becomes the service manager.
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use std::path::Path;
@@ -58,21 +58,21 @@ use anyhow::{Context, Result};
 use crate::client::Client;
 use crate::endpoint::Endpoint;
 
-/// Cuánto se espera a que el daemon anterior suelte el socket antes de arrancar
-/// el de la unidad. Su apagado limpio incluye el último latido de presencia (va
-/// por red), así que no es instantáneo.
+/// How long the previous daemon gets to release the socket before the unit's is
+/// started. Its clean shutdown includes the last presence beat (which goes over the
+/// network), so it is not instant.
 const HANDOVER_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// Cuánto se espera a que el servicio recién arrancado escuche.
+/// How long the freshly started service gets to listen.
 const START_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// Nombre de la unidad / label / tarea de este SO. Lo necesita un frontend que
-/// quiera preguntarle al gestor de servicios directamente (`systemctl status`,
-/// `launchctl print`, `schtasks /Query`) — enseñar esa salida tal cual es cosa de
-/// la terminal, no de esta capa.
+/// This OS's unit name, label or task. A frontend that wants to ask the service
+/// manager directly needs it (`systemctl status`, `launchctl print`, `schtasks
+/// /Query`); showing that output verbatim is the terminal's business, not this
+/// layer's.
 pub const UNIT_ID: &str = platform::UNIT;
 
-/// Dónde quedó instalado, para que el frontend pueda decirlo.
+/// Where it ended up installed, so the frontend can say so.
 #[derive(Debug, Clone)]
 pub struct Installed {
     /// Gestor de servicios usado (`"systemd --user"`, `"launchd"`, …).
@@ -88,7 +88,7 @@ pub struct Installed {
 /// Typed because this is what the window has to **say**, and saying it right
 /// depends on which of the two cases it is: one is fixed by installing the core,
 /// the other can't be fixed from the app at all. Both used to end in a
-/// `tracing::warn!` inside the service — nowhere a user looks: the switch stayed
+/// `tracing::warn!` inside the service, nowhere a user looks: the switch stayed
 /// on, the sync didn't start at the next login, and there was nothing to report
 /// beyond "it doesn't work".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,26 +137,25 @@ pub fn unsupported_reason(err: &anyhow::Error) -> Option<Unsupported> {
     err.downcast_ref::<LoginStartUnsupported>().map(|u| u.kind)
 }
 
-/// El binario que la unidad ejecuta: el `hoardd` de **esta** instalación — el
-/// que viaja junto a quien la declara (el bundle del desktop lo empaqueta como
-/// `externalBin`, el tarball lo pone junto a `hoard`), y si no, el del `PATH`.
+/// The binary the unit runs: **this** installation's `hoardd`, the one travelling
+/// beside whoever declares the unit (the desktop bundle packages it as
+/// `externalBin`, the tarball puts it next to `hoard`), and otherwise the `PATH`'s.
 ///
-/// Ciego a propósito a la unidad que ya hubiera: ver
-/// [`crate::client::own_daemon_binary`]. Quien pregunta "¿cuál es el daemon de
-/// esta máquina?" usa [`crate::client::daemon_binary`], que empieza justo por lo
-/// que aquí se escribe.
+/// Deliberately blind to whatever unit was already there: see
+/// [`crate::client::own_daemon_binary`]. Whoever asks "which is this machine's
+/// daemon?" uses [`crate::client::daemon_binary`], which starts from exactly what
+/// gets written here.
 pub fn service_binary() -> PathBuf {
     crate::client::own_daemon_binary()
 }
 
-/// El `hoardd` que ejecuta el servicio ya instalado, leído de la propia
-/// definición del gestor de servicios. `None` si no hay servicio instalado o no
-/// se pudo leer.
+/// The `hoardd` the installed service runs, read from the service manager's own
+/// definition. `None` when no service is installed or it could not be read.
 ///
-/// Es el árbitro de "qué binario es el daemon de esta máquina" cuando hay más
-/// de un candidato en el disco, que es lo normal desde que la app y el
-/// instalador de terminal instalan Hoard entero cada uno: sólo hay un daemon por
-/// usuario, y el que manda es el que ya arranca el sistema.
+/// It is the arbiter of "which binary is this machine's daemon" when there is more
+/// than one candidate on disk, which is normal now that the app and the terminal
+/// installer each install the whole of Hoard: there is one daemon per user, and the
+/// one that counts is the one the system already starts.
 pub fn installed_exec_start() -> Option<PathBuf> {
     platform::exec_start()
 }
@@ -164,33 +163,33 @@ pub fn installed_exec_start() -> Option<PathBuf> {
 /// Instala la unidad y **arranca el servicio ahora**. Idempotente.
 pub async fn install() -> Result<Installed> {
     let installed = ensure_installed().await?;
-    // El dueño del proceso pasa a ser el gestor de servicios: para el daemon que
-    // hubiera levantado un cliente y espera a que suelte el socket, o el que
-    // lance la unidad perderá el bind y saldrá (unidad muerta, sync vivo — el
-    // peor de los dos mundos para diagnosticar).
+    // The process's owner becomes the service manager: stop whatever daemon a client
+    // brought up and wait for it to release the socket, or the one the unit launches
+    // will lose the bind and exit (a dead unit with a live sync, the worst of both
+    // worlds to diagnose).
     hand_over().await;
     start_now().await?;
     Ok(installed)
 }
 
-/// Escribe/actualiza la unidad y la deja habilitada para el próximo inicio de
-/// sesión, **sin tocar** un servicio que ya esté corriendo. Idempotente: la
-/// llama el desktop en cada arranque (igual que reafirma su propio autostart),
-/// donde parar el sync para reinstalarlo sería absurdo.
+/// Writes or updates the unit and leaves it enabled for the next login,
+/// **without touching** a service that is already running. Idempotent: the desktop
+/// calls it on every start (just as it reaffirms its own autostart), where stopping
+/// the sync to reinstall it would be absurd.
 pub async fn ensure_installed() -> Result<Installed> {
-    // Declarar la unidad sin comprobar que el motor está es la forma más cara de
-    // fallar. `own_daemon_binary` cae a un nombre pelado cuando no encuentra el
-    // hermano, así que el `ExecStart` sale como `"hoardd"` a secas, systemd lo
-    // acepta, lo habilita, lo arranca y muere con `203/EXEC` — y lo único que ve
-    // el usuario es «Unable to locate executable 'hoardd'» en el journal, sin
-    // una sola pista de que lo que falta es media instalación. Pasó de verdad:
-    // los tarballs de la CLI desde la 1.1.0 no llevaban `hoardd`, así que todo
-    // el que instaló por `curl | sh` acabó aquí.
+    // Declaring the unit without checking the engine is there is the most expensive
+    // way to fail. `own_daemon_binary` falls back to a bare name when it cannot find
+    // the sibling, so the `ExecStart` comes out as plain `"hoardd"`, systemd accepts
+    // it, enables it, starts it and it dies with `203/EXEC`, and all the user sees is
+    // "Unable to locate executable 'hoardd'" in the journal, with not one hint that
+    // what is missing is half an install. It really happened: the CLI tarballs from
+    // 1.1.0 on carried no `hoardd`, so everybody who installed through `curl | sh`
+    // ended up here.
     ensure_daemon_present()?;
     let (mut installed, changed) = platform::declare()?;
-    // Con la definición intacta y el servicio ya instalado no hay nada que
-    // hacer: esto lo llama el desktop en cada arranque, y dos subprocesos por
-    // arranque para reafirmar lo que ya está es peaje sin contrapartida.
+    // With the definition unchanged and the service already installed there is
+    // nothing to do: the desktop calls this on every start, and two subprocesses per
+    // start to reaffirm what is already there is a toll with nothing in return.
     if changed || !platform::installed().await {
         // The backend can end up using a different mechanism than the one it
         // declared (Windows falls from the Task Scheduler to the Run entry when
@@ -203,19 +202,18 @@ pub async fn ensure_installed() -> Result<Installed> {
     Ok(installed)
 }
 
-/// El binario que va a ir al `ExecStart` tiene que existir *antes* de escribir
-/// la unidad. Acepta una ruta absoluta que sea un fichero, o un nombre pelado
-/// que el `PATH` resuelva — el mismo criterio que aplicará el gestor de
-/// servicios al arrancarlo. Cualquier otra cosa es una instalación a medias, y
-/// se dice con esas palabras en vez de dejar que lo diga systemd en un journal
-/// que nadie está mirando.
+/// The binary going into the `ExecStart` has to exist *before* the unit is written.
+/// It accepts an absolute path that is a file, or a bare name the `PATH` resolves,
+/// which is the same test the service manager will apply when it starts it. Anything
+/// else is half an install, and it is said in those words rather than left for
+/// systemd to say in a journal nobody is watching.
 fn ensure_daemon_present() -> Result<()> {
     let exe = crate::client::own_daemon_binary();
     if exe.is_file() {
         return Ok(());
     }
-    // Nombre pelado (el fallback de `own_daemon_binary`): que decida el `PATH`,
-    // igual que hará el gestor de servicios.
+    // A bare name (`own_daemon_binary`'s fallback): let the `PATH` decide, just as
+    // the service manager will.
     if exe.parent().is_none_or(|p| p.as_os_str().is_empty())
         && std::env::var_os("PATH")
             .is_some_and(|paths| std::env::split_paths(&paths).any(|d| d.join(&exe).is_file()))
@@ -225,16 +223,16 @@ fn ensure_daemon_present() -> Result<()> {
     anyhow::bail!(
         "the sync engine ({}) isn't installed next to this binary or on your PATH, so the \
          service would be declared pointing at something that doesn't exist.\n\
-         `hoard` is a thin client of `hoardd` and the two ship together — reinstall the core \
+         `hoard` is a thin client of `hoardd` and the two ship together, so reinstall the core \
          (https://hoard.services/install.sh) or drop `hoardd` beside `hoard`.",
         exe.display()
     )
 }
 
-/// Quita el arranque automático y para el servicio del gestor. **No** manda
-/// `Shutdown` por IPC: eso es una orden aparte (`hoard sync stop` hace las dos,
-/// por si el servicio lo levantó un cliente y no la unidad). Devuelve `false` si
-/// no había nada instalado.
+/// Removes the login start and stops the manager's service. It does **not** send
+/// `Shutdown` over IPC: that is a separate order (`hoard sync stop` does both, in
+/// case a client and not the unit brought the service up). Returns `false` when
+/// nothing was installed.
 pub async fn uninstall() -> Result<bool> {
     if !installed().await {
         return Ok(false);
@@ -256,17 +254,17 @@ pub async fn restart() -> Result<Installed> {
     Ok(installed)
 }
 
-/// ¿Hay unidad instalada para este usuario?
+/// Is there a unit installed for this user?
 pub async fn installed() -> bool {
     platform::installed().await
 }
 
-/// Para el daemon que esté corriendo y espera a que suelte el socket, para que
-/// el siguiente arranque (el de la unidad) gane el bind.
+/// Stops whatever daemon is running and waits for it to release the socket, so the
+/// next start (the unit's) wins the bind.
 ///
-/// Best-effort de principio a fin: si no hay servicio no hay nada que traspasar,
-/// y si no se aparta a tiempo seguimos igual — el arranque de la unidad se
-/// encontrará el socket ocupado y saldrá con 0, que es feo pero no rompe nada.
+/// Best-effort throughout: with no service there is nothing to hand over, and if it
+/// does not step aside in time we carry on anyway, since the unit's start will find
+/// the socket taken and exit with 0, which is ugly but breaks nothing.
 async fn hand_over() {
     // Inside a Flatpak the process that would take over is the one running this
     // code: the portal starts us back through `flatpak run`, it doesn't own a
@@ -290,10 +288,10 @@ async fn hand_over() {
     drop(client);
     let deadline = Instant::now() + HANDOVER_TIMEOUT;
     while Instant::now() < deadline {
-        // Se sondea el **socket**, no el handshake: lo que tiene que quedar libre
-        // es el bind. Un daemon que ya se despidió sigue teniéndolo tomado
-        // mientras apaga el motor, y darlo por ido ahí es justo lo que dejaría al
-        // siguiente arranque perdiendo la carrera.
+        // The **socket** is probed, not the handshake: what has to come free is the
+        // bind. A daemon that has already said goodbye still holds it while it stops
+        // the engine, and treating it as gone there is exactly what would leave the
+        // next start losing the race.
         if crate::transport::connect(&endpoint).await.is_err() {
             return;
         }
@@ -302,8 +300,9 @@ async fn hand_over() {
     tracing::warn!("autostart: the previous service is still holding the socket");
 }
 
-/// Arranca el servicio por el gestor y confirma que **escucha**. Que la unidad
-/// arranque no basta: si perdió el bind, salió con 0 y no hay servicio nuevo.
+/// Starts the service through the manager and confirms it **listens**. The unit
+/// starting is not enough: if it lost the bind it exited with 0 and there is no new
+/// service.
 async fn start_now() -> Result<()> {
     platform::start().await?;
     wait_until_serving().await
@@ -322,8 +321,8 @@ async fn wait_until_serving() -> Result<()> {
         }
         if Instant::now() >= deadline {
             anyhow::bail!(
-                "the Hoard service was installed but never started listening on {endpoint} \
-                 — see `hoard sync logs`"
+                "the Hoard service was installed but never started listening on {endpoint}, \
+                 see `hoard sync logs`"
             );
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
@@ -332,7 +331,7 @@ async fn wait_until_serving() -> Result<()> {
 
 // ---- helpers de proceso compartidos -----------------------------------
 
-/// Ejecuta un comando tragándose su salida; devuelve si tuvo éxito.
+/// Runs a command, swallowing its output; returns whether it succeeded.
 async fn run_quiet(program: &str, args: &[&str]) -> Result<bool> {
     let out = tokio::process::Command::new(program)
         .args(args)
@@ -350,9 +349,7 @@ fn home() -> Result<PathBuf> {
         .context("no HOME/USERPROFILE in the environment")
 }
 
-// =======================================================================
-// Linux — systemd --user
-// =======================================================================
+// ---- Linux: systemd --user
 
 #[cfg(target_os = "linux")]
 mod platform {
@@ -360,7 +357,7 @@ mod platform {
 
     pub const UNIT: &str = "hoard-sync.service";
 
-    /// True si `name` está en el `PATH` (se comprueba antes de invocarlo).
+    /// True when `name` is on the `PATH` (checked before invoking it).
     fn bin_exists(name: &str) -> bool {
         std::env::var_os("PATH")
             .map(|paths| std::env::split_paths(&paths).any(|d| d.join(name).is_file()))
@@ -468,9 +465,9 @@ mod platform {
     /// Inside an AppImage the binary lives in an ephemeral mount point
     /// (`/tmp/.mount_XXXX/...`) that disappears when the app closes: a unit
     /// pointing there would start at the next login against a path that no
-    /// longer exists. This **used to be a dead end** — it bailed out and the
-    /// user was left with no login start and the switch still on — and it never
-    /// had to be one: the engine is a component in its own right, so either one
+    /// longer exists. This **used to be a dead end** (it bailed out and the user
+    /// was left with no login start and the switch still on) and it never had to
+    /// be one: the engine is a component in its own right, so either one
     /// is installed outside the mount, or a stable copy of the one inside is
     /// left on disk.
     fn stable_exec_start(bundled: &Path) -> Result<PathBuf> {
@@ -510,9 +507,9 @@ mod platform {
         )
     }
 
-    /// El `ExecStart` de la unidad instalada. La unidad la escribimos nosotros
-    /// ([`unit_text`]), así que basta con leer la línea y quitarle las comillas
-    /// que le pusimos.
+    /// The installed unit's `ExecStart`. We wrote the unit ourselves
+    /// ([`unit_text`]), so reading the line and stripping the quotes we put on it is
+    /// enough.
     pub fn exec_start() -> Option<PathBuf> {
         // The portal's entry launches `flatpak run`, not a `hoardd` we could
         // point at. There is also only ever one candidate inside a sandbox, so
@@ -529,8 +526,8 @@ mod platform {
         Some(PathBuf::from(unquoted.unwrap_or(raw)))
     }
 
-    /// Escribe la unidad si hace falta. El `bool` dice si cambió, para que
-    /// reafirmarla en cada arranque del desktop no cueste dos subprocesos.
+    /// Writes the unit when it is needed. The `bool` says whether it changed, so
+    /// reaffirming it on every desktop start does not cost two subprocesses.
     pub fn declare() -> Result<(Installed, bool)> {
         if flatpak::active() {
             return flatpak::declare();
@@ -574,22 +571,22 @@ mod platform {
         if !run_quiet("systemctl", &["--user", "enable", UNIT]).await? {
             anyhow::bail!("`systemctl --user enable {UNIT}` failed");
         }
-        // Que siga sincronizando sin sesión activa (NAS / SteamOS / servidor).
-        // Best-effort: puede pedir un polkit que no hay a quien enseñar.
+        // So it keeps syncing with no active session (a NAS, SteamOS, a server).
+        // Best-effort: it may ask for a polkit there is nobody to show.
         let _ = run_quiet("loginctl", &["enable-linger"]).await;
         Ok(None)
     }
 
     pub async fn start() -> Result<()> {
         // Nothing to start: under the portal the thing that would be started is
-        // this process, and it is already running. Saying so is the whole job —
+        // this process, and it is already running. Saying so is the whole job:
         // the caller's next step is to wait for the socket, which is already
         // being served.
         if flatpak::active() {
             return Ok(());
         }
         if !run_quiet("systemctl", &["--user", "start", UNIT]).await? {
-            anyhow::bail!("`systemctl --user start {UNIT}` failed — see `hoard sync`");
+            anyhow::bail!("`systemctl --user start {UNIT}` failed, see `hoard sync`");
         }
         Ok(())
     }
@@ -599,7 +596,7 @@ mod platform {
             return flatpak::cannot_restart().await;
         }
         if !run_quiet("systemctl", &["--user", "restart", UNIT]).await? {
-            anyhow::bail!("`systemctl --user restart {UNIT}` failed — see `hoard sync`");
+            anyhow::bail!("`systemctl --user restart {UNIT}` failed, see `hoard sync`");
         }
         Ok(())
     }
@@ -623,22 +620,22 @@ mod platform {
         unit_path().map(|p| p.exists()).unwrap_or(false)
     }
 
-    /// ¿Está `exe` dentro del montaje efímero de **este** AppImage?
+    /// Is `exe` inside **this** AppImage's ephemeral mount?
     ///
-    /// Se compara contra `$APPDIR` (lo exporta el runtime del AppImage) y, como
-    /// respaldo, contra el prefijo que usa ese runtime al montar. La distinción
-    /// importa: un `hoardd` en `~/.local/bin` sobrevive al cierre de la app y es
-    /// una ruta perfectamente válida para la unidad, aunque quien la esté
-    /// declarando sea un AppImage.
+    /// It is compared against `$APPDIR` (the AppImage runtime exports it) and, as a
+    /// fallback, against the prefix that runtime mounts under. The distinction
+    /// matters: a `hoardd` in `~/.local/bin` outlives the app being closed and is a
+    /// perfectly valid path for the unit, even when an AppImage is what declares
+    /// it.
     pub fn is_inside_appimage(exe: &Path) -> bool {
         if let Some(appdir) = std::env::var_os("APPDIR").map(PathBuf::from) {
             if exe.starts_with(&appdir) {
                 return true;
             }
         }
-        // Ojo con `Path::starts_with`: compara **componentes**, y el montaje real
-        // se llama `.mount_Hoard1a2b`, así que contra `/tmp/.mount_` nunca casa.
-        // El prefijo hay que mirarlo sobre el nombre del componente.
+        // Careful with `Path::starts_with`: it compares **components**, and the real
+        // mount is called `.mount_Hoard1a2b`, so it never matches `/tmp/.mount_`. The
+        // prefix has to be looked at on the component's name.
         exe.components()
             .any(|c| c.as_os_str().to_string_lossy().starts_with(".mount_"))
     }
@@ -648,12 +645,12 @@ mod platform {
     /// Nothing the path above does works in here. The runtime carries no
     /// `systemctl`, and `$XDG_CONFIG_HOME` points at the app's own private
     /// directory, so a unit written there is a unit the host's systemd never
-    /// reads — the switch would go on and nothing would start, which is the
+    /// reads: the switch would go on and nothing would start, which is the
     /// exact failure [`Unsupported`] exists to stop us shipping.
     ///
     /// `org.freedesktop.portal.Background` is the sanctioned replacement: ask,
     /// and the portal writes a `.desktop` file on the **host** that starts us
-    /// back through `flatpak run`. Portals need no `--talk-name` — Flatpak's
+    /// back through `flatpak run`. Portals need no `--talk-name`, since Flatpak's
     /// default bus policy lets every sandbox reach them.
     pub mod flatpak {
         use super::*;
@@ -676,7 +673,7 @@ mod platform {
         /// Deliberately built from `$HOME` and not from `$XDG_CONFIG_HOME`: the
         /// latter is redirected into the sandbox, and this file is the host's.
         /// Reading it needs `--filesystem=host`, which the manifest grants for
-        /// unrelated reasons — if a future manifest narrows that, this answers
+        /// unrelated reasons: if a future manifest narrows that, this answers
         /// "not installed" and the only cost is asking the portal again, which
         /// it grants without a prompt once the permission is stored.
         fn autostart_file() -> Option<PathBuf> {
@@ -688,7 +685,7 @@ mod platform {
 
         /// [`autostart_file`] with the two things it reads passed in, so the
         /// name can be a test. It has to match what the portal writes to the
-        /// letter — get it wrong and autostart reports itself as never
+        /// letter: get it wrong and autostart reports itself as never
         /// installed, which is silent and re-asks on every start.
         fn autostart_file_in(home: &Path, app_id: &str) -> PathBuf {
             home.join(".config")
@@ -713,7 +710,7 @@ mod platform {
             autostart_file().is_some_and(|p| p.exists())
         }
 
-        /// Nothing is written from in here — the portal owns the file — so this
+        /// Nothing is written from in here (the portal owns the file), so this
         /// only reports where the answer lives and whether it is already there.
         pub fn declare() -> Result<(Installed, bool)> {
             Ok((
@@ -737,9 +734,9 @@ mod platform {
 
         /// A restart would mean stopping the process making the request and
         /// trusting something to bring it back, and in here there is nothing to
-        /// do the bringing. It never comes up in practice — restarting is what
+        /// do the bringing. It never comes up in practice, since restarting is what
         /// follows an upgrade, and a sandboxed install updates through its
-        /// remote (`Delivery::Managed`) — so this says so instead of failing in
+        /// remote (`Delivery::Managed`), so this says so instead of failing in
         /// a way that reads like a bug.
         pub async fn cannot_restart() -> Result<()> {
             anyhow::bail!(
@@ -754,7 +751,7 @@ mod platform {
         /// asks for the entry, `false` withdraws it.
         ///
         /// The portal may put a dialog in front of the user the first time, and
-        /// its answer is authoritative — a request that comes back with
+        /// its answer is authoritative: a request that comes back with
         /// `auto_start` false was refused, and reporting success there would
         /// leave the switch on over nothing, which is the bug this module was
         /// written to stop.
@@ -784,9 +781,7 @@ mod platform {
     }
 }
 
-// =======================================================================
-// macOS — launchd LaunchAgent
-// =======================================================================
+// ---- macOS: a launchd LaunchAgent
 
 #[cfg(target_os = "macos")]
 mod platform {
@@ -855,9 +850,9 @@ mod platform {
         ))
     }
 
-    /// launchd no distingue "instalar" de "cargar": el plist en
-    /// `~/Library/LaunchAgents` ya se carga en el siguiente inicio de sesión, así
-    /// que escribirlo **es** habilitarlo.
+    /// launchd draws no line between "install" and "load": the plist in
+    /// `~/Library/LaunchAgents` is loaded at the next login already, so writing it
+    /// **is** enabling it.
     pub async fn enable() -> Result<Option<&'static str>> {
         Ok(None)
     }
@@ -897,9 +892,9 @@ mod platform {
         plist_path().map(|p| p.exists()).unwrap_or(false)
     }
 
-    /// El ejecutable del LaunchAgent: el primer `<string>` de
-    /// `ProgramArguments`. El plist lo escribimos nosotros ([`plist_text`]), así
-    /// que no hace falta un parser de plists para leer lo que pusimos.
+    /// The LaunchAgent's executable: the first `<string>` in `ProgramArguments`. We
+    /// wrote the plist ourselves ([`plist_text`]), so no plist parser is needed to
+    /// read back what we put there.
     pub fn exec_start() -> Option<PathBuf> {
         let text = std::fs::read_to_string(plist_path().ok()?).ok()?;
         let after_key = text.split("<key>ProgramArguments</key>").nth(1)?;
@@ -910,9 +905,7 @@ mod platform {
     }
 }
 
-// =======================================================================
-// Windows — Task Scheduler (por usuario, al inicio de sesión)
-// =======================================================================
+// ---- Windows: Task Scheduler (per user, at logon)
 
 #[cfg(target_os = "windows")]
 mod platform {
@@ -979,14 +972,14 @@ mod platform {
         }
     }
 
-    /// Dónde anotamos qué ejecutable quedó en la tarea.
+    /// Where we write down which executable the task ended up with.
     ///
-    /// Las otras dos plataformas guardan su definición en un fichero que
-    /// podemos leer; el Task Scheduler la guarda en su propia base, y sacarla de
-    /// ahí es un `schtasks /Query /XML` — un subproceso, y esto lo llama
-    /// [`super::installed_exec_start`] desde caminos síncronos que resuelven la
-    /// ruta del daemon a menudo. Así que se anota al registrarla y se lee de
-    /// aquí, que cuesta una lectura de fichero.
+    /// The other two platforms keep their definition in a file we can read; the Task
+    /// Scheduler keeps it in a database of its own, and getting it out is a `schtasks
+    /// /Query /XML`, which is a subprocess, and [`super::installed_exec_start`] calls
+    /// this from synchronous paths that resolve the daemon's path often. So it is
+    /// written down at registration time and read from here, which costs one file
+    /// read.
     fn recorded_exec_path() -> Option<PathBuf> {
         Some(
             hoard_agent::config::CliConfig::project_dirs()
@@ -1002,8 +995,8 @@ mod platform {
         (!trimmed.is_empty()).then(|| PathBuf::from(trimmed))
     }
 
-    /// Anota el ejecutable de la tarea. Best-effort: si no se puede escribir, la
-    /// resolución del daemon cae al hermano/`PATH` de siempre.
+    /// Writes down the task's executable. Best-effort: when it cannot be written,
+    /// resolving the daemon falls back to the usual sibling or `PATH`.
     fn record_exec(exe: &Path) {
         let Some(path) = recorded_exec_path() else {
             return;
@@ -1014,9 +1007,9 @@ mod platform {
         let _ = std::fs::write(path, exe.to_string_lossy().as_bytes());
     }
 
-    /// La cuenta del que llama, como `DOMINIO\usuario`: a eso se acotan el
-    /// disparador y el principal. Sin dominio vale el nombre a secas (el Task
-    /// Scheduler lo resuelve contra la máquina local).
+    /// The caller's account, as `DOMAIN\user`: that is what the trigger and the
+    /// principal are scoped to. With no domain the bare name will do (the Task
+    /// Scheduler resolves it against the local machine).
     fn current_account() -> Result<String> {
         let user = std::env::var("USERNAME")
             .ok()
@@ -1029,14 +1022,14 @@ mod platform {
         })
     }
 
-    /// La tarea no es un fichero que podamos comparar, así que se declara
-    /// siempre "cambiada" y `enable` la reescribe (`/F`). Es lo que hace que una
-    /// actualización que mueva el `.exe` re-apunte la tarea sola, igual que el
-    /// desktop reafirma su propia entrada de autostart en cada arranque.
+    /// The task is not a file we can compare, so it is always declared "changed"
+    /// and `enable` rewrites it (`/F`). That is what makes an update moving the
+    /// `.exe` re-point the task on its own, just as the desktop reaffirms its own
+    /// autostart entry on every start.
     pub fn declare() -> Result<(Installed, bool)> {
         // A Run entry only exists on a machine that already fell back (`enable`
         // deletes it the moment the task takes), so it is the honest answer for
-        // callers that re-declare without re-enabling — `restart`, which would
+        // callers that re-declare without re-enabling: `restart`, which would
         // otherwise report a Task Scheduler that refused this machine.
         let manager = if run_entry().is_some() {
             RUN_KEY_MANAGER
@@ -1060,7 +1053,7 @@ mod platform {
     /// Explorer that doesn't come up, it has a single-instance policy, and it
     /// can be fired by hand (`/Run`). But **it can say no without an elevated
     /// console**, and that was the end of the road: 81 events across 3 users
-    /// whose only way out was re-running it as administrator — asking someone to
+    /// whose only way out was re-running it as administrator, asking someone to
     /// open a PowerShell so their game saves itself.
     ///
     /// The Run entry never needs elevation (it is the user's own profile) and it
@@ -1074,7 +1067,7 @@ mod platform {
             Ok(()) => {
                 // With the task in place the Run entry is redundant and in the
                 // way: two starts in the same logon means one `hoardd` losing
-                // the socket bind and exiting — an error in the log for nothing.
+                // the socket bind and exiting, an error in the log for nothing.
                 remove_run_entry();
                 record_exec(&exe);
                 Ok(Some(TASK_SCHEDULER))
@@ -1096,9 +1089,9 @@ mod platform {
     async fn create_task(exe: &Path, account: &str) -> Result<()> {
         let xml = super::task_xml(&exe.to_string_lossy(), account);
 
-        // `/XML` lee la definición de un fichero; se escribe junto a los demás
-        // temporales del proceso y con el pid en el nombre, para que dos shells
-        // no se pisen.
+        // `/XML` reads the definition from a file; it is written alongside the
+        // process's other temporaries, with the pid in the name, so two shells do not
+        // tread on each other.
         let path = std::env::temp_dir().join(format!("hoard-sync-{}.xml", std::process::id()));
         std::fs::write(&path, super::to_utf16le_with_bom(&xml))
             .with_context(|| format!("writing {}", path.display()))?;
@@ -1124,14 +1117,14 @@ mod platform {
 
     /// Start the service now.
     ///
-    /// With a task, by firing it. Without one there is nothing to fire — the Run
-    /// entry only acts at logon — so the daemon comes up the same way a client
+    /// With a task, by firing it. Without one there is nothing to fire (the Run
+    /// entry only acts at logon), so the daemon comes up the same way a client
     /// would bring it up. `install` then waits for it to listen, so a failed
     /// start doesn't pass for good down either path.
     pub async fn start() -> Result<()> {
         if task_installed().await {
             if !run_quiet("schtasks", &["/Run", "/TN", UNIT]).await? {
-                anyhow::bail!("`schtasks /Run /TN {UNIT}` failed — see `hoard sync`");
+                anyhow::bail!("`schtasks /Run /TN {UNIT}` failed, see `hoard sync`");
             }
             return Ok(());
         }
@@ -1181,7 +1174,7 @@ mod platform {
     pub fn declare() -> Result<(Installed, bool)> {
         Err(anyhow::Error::new(LoginStartUnsupported {
             kind: Unsupported::NoServiceManager,
-            detail: "no service backend for this OS — run `hoardd` under your own supervisor"
+            detail: "no service backend for this OS; run `hoardd` under your own supervisor"
                 .to_string(),
         }))
     }
@@ -1224,14 +1217,13 @@ fn xml_escape(s: &str) -> String {
     out
 }
 
-/// El XML de `HoardSync`: ejecuta `hoardd` al inicio de sesión de `user`, como
-/// `user` y sin elevar.
+/// `HoardSync`'s XML: runs `hoardd` at `user`'s logon, as `user` and without
+/// elevating.
 ///
-/// `schtasks /Create /SC ONLOGON` exige consola elevada aunque se pase
-/// `/RL LIMITED`; registrar este XML —cuyo disparador y principal están acotados
-/// a la propia cuenta del que llama— no. (Las dos cosas, comprobadas contra una
-/// máquina Windows real con token filtrado: ONLOGON → "Acceso denegado", este
-/// XML → tarea creada.)
+/// `schtasks /Create /SC ONLOGON` demands an elevated console even with `/RL
+/// LIMITED`; registering this XML, whose trigger and principal are scoped to the
+/// caller's own account, does not. (Both checked against a real Windows machine with
+/// a filtered token: ONLOGON gave "Access denied", this XML created the task.)
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 fn task_xml(exe: &str, user: &str) -> String {
     let exe = xml_escape(exe);
@@ -1267,11 +1259,10 @@ fn task_xml(exe: &str, user: &str) -> String {
     )
 }
 
-/// El Task Scheduler sólo ingiere el XML de forma fiable como UTF-16 LE con BOM
-/// — un fichero UTF-8 (aun con la declaración correspondiente) muere dentro de
-/// `schtasks /Create /XML` con "unable to switch the encoding", comprobado
-/// contra una máquina Windows real. La declaración de [`task_xml`] dice UTF-16
-/// para casar.
+/// The Task Scheduler only ingests the XML reliably as UTF-16 LE with a BOM: a
+/// UTF-8 file (even with the matching declaration) dies inside `schtasks /Create
+/// /XML` with "unable to switch the encoding", checked against a real Windows
+/// machine. [`task_xml`]'s declaration says UTF-16 to match.
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 fn to_utf16le_with_bom(s: &str) -> Vec<u8> {
     let mut out = vec![0xFF, 0xFE];
@@ -1300,7 +1291,7 @@ mod tests {
             !unit.contains("sync run"),
             "the unit must not exec a client"
         );
-        // Sin `WantedBy` no hay arranque en boot, que es el punto del módulo.
+        // With no `WantedBy` there is no start at boot, which is the module's point.
         assert!(unit.contains("WantedBy=default.target"));
     }
 
@@ -1334,9 +1325,9 @@ mod tests {
         );
     }
 
-    /// La tarea de Windows: acotada a la cuenta que la crea (nunca máquina) y
-    /// ejecutando el daemon **sin argumentos** — ya no hay un `sync run` de por
-    /// medio.
+    /// The Windows task: scoped to the account that creates it (never the machine)
+    /// and running the daemon **with no arguments**, since there is no `sync run` in
+    /// the way any more.
     #[test]
     fn task_xml_scopes_the_trigger_and_principal_to_the_account() {
         let xml = task_xml(r"C:\Program Files\Hoard\hoardd.exe", r"CORP\ada");
@@ -1370,19 +1361,19 @@ mod tests {
         assert_eq!(String::from_utf16(&units).unwrap(), "<a>ñ</a>");
     }
 
-    /// La unidad declara el daemon **de esta instalación**, no el que hubiera
-    /// declarado otra. Si mirase la unidad instalada, una actualización que
-    /// moviera el binario la reescribiría con la ruta vieja que acaba de leer y
-    /// el servicio arrancaría el binario anterior para siempre.
+    /// The unit declares **this installation's** daemon, not the one another
+    /// installation would have declared. If it looked at the installed unit, an
+    /// update that moved the binary would rewrite it with the old path it had just
+    /// read and the service would start the previous binary for ever.
     #[test]
     fn the_unit_declares_this_installations_daemon() {
         assert_eq!(service_binary(), crate::client::own_daemon_binary());
     }
 
-    /// Y un cliente pregunta por el daemon **de la máquina**, que empieza justo
-    /// por lo que la unidad dice. Son dos preguntas distintas —de ahí dos
-    /// funciones—; lo que no puede pasar es que un cliente levante un `hoardd`
-    /// distinto del que el sistema ya arranca.
+    /// And a client asks for **the machine's** daemon, which starts from exactly
+    /// what the unit says. They are two different questions, hence two functions;
+    /// what must not happen is a client bringing up a `hoardd` different from the one
+    /// the system already starts.
     #[cfg(target_os = "linux")]
     #[test]
     fn the_exec_start_we_write_is_the_one_we_read_back() {
@@ -1412,7 +1403,7 @@ mod tests {
 
     /// An AppImage is no longer a dead end: the daemon it carries gets copied
     /// somewhere that survives closing the app, and *that* is what the unit
-    /// execs. Staging into a Hoard-owned directory is the whole point — the copy
+    /// execs. Staging into a Hoard-owned directory is the whole point: the copy
     /// must never land on top of a `hoardd` the core installer put there.
     #[cfg(target_os = "linux")]
     #[test]

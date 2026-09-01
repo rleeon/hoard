@@ -1,13 +1,13 @@
-//! "Spawn if absent" con procesos de verdad: **dos clientes arrancando a la vez
-//! no crean dos daemons**.
+//! "Spawn if absent" with real processes: **two clients starting at once do not
+//! create two daemons**.
 //!
-//! Es el requisito que la ADR 0021 (Parte A) resuelve sin ningún
-//! "¿hay-daemon?-si-no-arranca": ese patrón es un TOCTOU y produce dos motores.
-//! Aquí el árbitro es el bind del socket, dentro del daemon, así que lanzar dos
-//! procesos a la vez es correcto — uno gana y el otro sale con código 0.
+//! This is the requirement ADR 0021 (Part A) solves without any
+//! "is-there-a-daemon?-if-not-start-one": that pattern is a TOCTOU and produces two
+//! engines. Here the arbiter is the socket bind, inside the daemon, so launching two
+//! processes at once is correct: one wins and the other exits with code 0.
 //!
-//! Los daemons de estos tests van con el motor apagado (`HOARDD_NO_ENGINE`): un
-//! test no puede ponerse a sincronizar los saves de quien lo ejecuta.
+//! These tests' daemons run with the engine off (`HOARDD_NO_ENGINE`): a test must
+//! not start syncing the saves of whoever runs it.
 
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -16,8 +16,8 @@ use hoard_core::ipc::Request;
 use hoardd::client::{Client, DAEMON_BIN_ENV};
 use hoardd::endpoint::{Endpoint, ENDPOINT_ENV};
 
-/// El binario recién compilado + motor apagado, una sola vez por proceso de
-/// test (los tests corren en hilos paralelos y escribir el entorno es global).
+/// The freshly built binary plus the engine off, once per test process (the tests
+/// run on parallel threads and writing the environment is global).
 fn ensure_env() {
     static SETUP: OnceLock<()> = OnceLock::new();
     SETUP.get_or_init(|| {
@@ -26,9 +26,8 @@ fn ensure_env() {
     });
 }
 
-/// Endpoint propio de cada test. En Windows el namespace de pipes es global a la
-/// máquina, así que la unicidad tiene que estar en el nombre y no en el
-/// directorio temporal.
+/// Each test's own endpoint. On Windows the pipe namespace is global to the
+/// machine, so uniqueness has to live in the name and not in the temp directory.
 fn endpoint_in(dir: &std::path::Path) -> Endpoint {
     use std::sync::atomic::{AtomicU32, Ordering};
     static SEQ: AtomicU32 = AtomicU32::new(0);
@@ -59,8 +58,8 @@ async fn two_clients_racing_end_up_on_one_daemon() {
     let (pid_a, epoch_a) = (first.welcome().pid, first.welcome().epoch.clone());
     let (pid_b, epoch_b) = (second.welcome().pid, second.welcome().epoch.clone());
     assert_eq!(pid_a, pid_b, "two daemons would mean two engines");
-    // El epoch es por ejecución: mismo epoch = literalmente el mismo arranque, no
-    // dos daemons que se relevaron.
+    // The epoch is per run: the same epoch means literally the same start, not two
+    // daemons that relieved each other.
     assert_eq!(epoch_a, epoch_b);
     assert_ne!(pid_a, std::process::id(), "the daemon is its own process");
 
@@ -72,8 +71,8 @@ async fn two_clients_racing_end_up_on_one_daemon() {
     wait_until_gone(&endpoint).await;
 }
 
-/// La mitad del daemon: lanzados dos procesos a la vez sobre el mismo socket,
-/// uno sirve y el otro **sale con 0** (no es un error: ya había servicio).
+/// The daemon's half: launch two processes at once on the same socket, and one
+/// serves while the other **exits with 0** (not an error: there was a service).
 #[tokio::test]
 async fn a_second_daemon_exits_instead_of_serving() {
     ensure_env();
@@ -93,7 +92,7 @@ async fn a_second_daemon_exits_instead_of_serving() {
         })
         .collect();
 
-    // Uno de los dos tiene que rendirse, y con éxito.
+    // One of the two has to give up, and to do it successfully.
     let loser = tokio::time::timeout(Duration::from_secs(15), async {
         loop {
             for (index, child) in children.iter_mut().enumerate() {
@@ -114,7 +113,7 @@ async fn a_second_daemon_exits_instead_of_serving() {
     let winner_index = 1 - loser;
     let winner_pid = children[winner_index].id();
 
-    // El que ganó sirve, y es el que sigue vivo.
+    // The winner serves, and it is the one still alive.
     let mut client = Client::connect(&endpoint, "test client")
         .await
         .expect("the winner must be serving");
@@ -133,7 +132,7 @@ async fn a_second_daemon_exits_instead_of_serving() {
     match stopped {
         Ok(status) => assert!(status.success(), "clean shutdown: {status:?}"),
         Err(_) => {
-            // Nunca debería pasar; si pasa, no dejamos el proceso suelto.
+            // This should never happen; if it does, the process is not left loose.
             let _ = children[winner_index].kill();
             panic!("the daemon ignored the shutdown request");
         }

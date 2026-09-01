@@ -1,31 +1,31 @@
-//! Notificaciones nativas del SO, mandadas **por el servicio** (ADR 0021 D.14.1).
+//! The OS's native notifications, sent **by the service** (ADR 0021 D.14.1).
 //!
-//! Hasta este slice las mandaba el desktop desde su store de Svelte, así que
-//! sólo existían con la app abierta — justo cuando menos falta hacen, porque la
-//! ventana ya está contando lo mismo. Desde el Slice 4 el motor vive aquí y
-//! sobrevive al cierre de la app, así que el aviso también tiene que salir de
-//! aquí: es la única forma de enterarse de que una copia falló mientras juegas a
-//! pantalla completa o de que el equipo lleva una hora sin sincronizar.
+//! The desktop used to send them from its Svelte store, so they only existed with
+//! the app open, which is exactly when they are least needed, since the window is
+//! already saying the same thing. The engine lives here now and outlives the app
+//! being closed, so the notification has to come from here too: it is the only way
+//! to learn that a backup failed while you were playing full-screen, or that the
+//! machine has not synced for an hour.
 //!
-//! ## La forma
+//! ## The shape
 //!
-//! Tres piezas, y sólo la última sabe de dbus:
+//! Three pieces, and only the last one knows about dbus:
 //!
-//! - [`Notice`] — *qué* hay que contar, derivado del evento y de las prefs por
-//!   [`notice_for`]. Función pura: los tests de la puerta (qué se avisa y qué
-//!   no) no tocan ni el bus ni el disco.
-//! - [`text`] — cómo se dice, en el idioma que el usuario eligió en la app.
-//! - [`Sink`] — por dónde sale. `platform::sink()` devuelve el de esta
-//!   plataforma o el motivo de que no haya.
+//! - [`Notice`]: *what* has to be said, derived from the event and the prefs by
+//!   [`notice_for`]. A pure function, so the gate's tests (what gets notified and
+//!   what does not) touch neither the bus nor the disk.
+//! - [`text`]: how it is said, in the language the user picked in the app.
+//! - [`Sink`]: where it goes out. `platform::sink()` returns this platform's, or
+//!   the reason there is none.
 //!
-//! **Linux primero, y el resto detrás de la misma interfaz.** En Linux sale por
-//! el bus de sesión (`org.freedesktop.Notifications`, vía `notify-rust`, que es
-//! el mismo camino que usa el plugin de Tauri en el desktop, así que el aviso se
-//! ve idéntico). En Windows y macOS `platform::sink()` devuelve el motivo de que
-//! todavía no haya backend, el daemon lo dice en el log y **el frontend sigue
-//! notificando como hasta ahora**: eso es lo que anuncia
-//! [`hoard_core::ipc::DaemonStatus::notifications`], para que la app no duplique
-//! el aviso donde sí notificamos ni se calle donde no.
+//! **Linux first, and the rest behind the same interface.** On Linux it goes out
+//! over the session bus (`org.freedesktop.Notifications`, through `notify-rust`,
+//! the same road the Tauri plugin takes in the desktop, so the notification looks
+//! identical). On Windows and macOS `platform::sink()` returns the reason there is
+//! no backend yet, the daemon says so in the log, and **the frontend keeps
+//! notifying as it always has**: that is what
+//! [`hoard_core::ipc::DaemonStatus::notifications`] announces, so the app neither
+//! doubles the notification where we do notify nor goes quiet where we do not.
 
 pub mod text;
 
@@ -39,33 +39,33 @@ use hoard_core::ipc::events::TooLargeKind;
 
 use crate::notify::text::{Lang, Note};
 
-/// Cuánto se espera a que el servidor de notificaciones acepte el aviso. Es una
-/// llamada a un bus local: si tarda más que esto, está colgado, y la bomba de
-/// eventos tiene cosas mejores que hacer que esperarlo.
+/// How long the notification server gets to accept the notice. It is a call to a
+/// local bus: taking longer than this means it is hung, and the event pump has
+/// better things to do than wait for it.
 const DELIVERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// ¿Sabe este build mandar notificaciones nativas? Lo anuncia el `Status` del
-/// IPC ([`hoard_core::ipc::DaemonStatus::notifications`]) para que el frontend
-/// se calle donde nosotros hablamos. Es una constante de plataforma, no una
-/// preferencia: las prefs deciden *si* se avisa, esto decide *quién* avisa.
+/// Can this build send native notifications? The IPC's `Status` announces it
+/// ([`hoard_core::ipc::DaemonStatus::notifications`]) so the frontend goes quiet
+/// where we speak. It is a platform constant, not a preference: the prefs decide
+/// *whether* to notify, this decides *who* notifies.
 pub const SUPPORTED: bool = platform::SUPPORTED;
 
 /// Lo que hay que contarle al usuario. No sabe de idiomas ni de transporte.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Notice {
-    /// Nombre del juego, si el evento lo traía. `None` = hay que buscarlo en
-    /// `state.json` (`BackupSuccess` sólo lleva el `save_id`).
+    /// The game's name, when the event carried one. `None` means it has to be
+    /// looked up in `state.json` (`BackupSuccess` only carries the `save_id`).
     pub name: Option<String>,
-    /// A qué save se refiere, para resolver el nombre y para los logs.
+    /// Which save it is about, for resolving the name and for the logs.
     pub save_id: String,
     pub kind: Kind,
 }
 
-/// Los avisos que el servicio manda. Deliberadamente los mismos cuatro que el
-/// desktop mandaba antes: este slice cambia **quién** avisa, no de qué.
+/// The notices the service sends. Deliberately the same four the desktop used to
+/// send: what changed is **who** notifies, not what about.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Kind {
-    /// Copia subida. `bytes` es lo que viajó.
+    /// Backup uploaded. `bytes` is what travelled.
     BackupSaved {
         version: i64,
         bytes: u64,
@@ -74,38 +74,38 @@ pub enum Kind {
         error: String,
         retrying: bool,
     },
-    /// La partida no cabe: no es transitorio, no se reintenta. `kind` dice
-    /// **quién** la rechazó (el plan, el servidor del propio usuario, o un proxy
-    /// delante de él), que es lo que decide la frase — y por tanto adónde se
-    /// manda al usuario a arreglarlo.
+    /// The save does not fit: not transient, not retried. `kind` says **who**
+    /// rejected it (the plan, the user's own server, or a proxy in front of it),
+    /// which is what decides the sentence and therefore where the user is sent to
+    /// fix it.
     BackupTooLarge {
         kind: TooLargeKind,
         limit_bytes: u64,
         actual_bytes: u64,
     },
-    /// La restauración lleva N intentos fallidos seguidos sobre la misma
-    /// versión: esto no se arregla solo.
+    /// The restore has failed N times in a row on the same version: this one does
+    /// not fix itself.
     RestoreStuck {
         failures: u32,
     },
-    /// Hay una actualización bajada que **esta máquina no puede ponerse sola**
-    /// (un paquete nativo que quiere polkit, un `.dmg` que quiere una mano).
+    /// There is a downloaded update **this machine cannot install on its own** (a
+    /// native package that wants polkit, a `.dmg` that wants a hand).
     ///
-    /// No sale de la bomba de eventos: lo manda [`crate::updater`], que es el
-    /// único que lo sabe. Y es el único aviso de actualización que existe, a
-    /// propósito: donde se aplica sola no hay nada que pedir, así que avisar
-    /// sería contarle al usuario un trabajo que ya está hecho.
+    /// It does not come out of the event pump: [`crate::updater`] sends it, being
+    /// the only one that knows. And it is the only update notification there is, on
+    /// purpose: where it applies itself there is nothing to ask for, so notifying
+    /// would be telling the user about a job that is already done.
     UpdateReady {
         version: String,
     },
 }
 
-/// Qué avisar por este evento, o nada.
+/// What to notify about for this event, or nothing.
 ///
-/// **Puro, y es donde vive la puerta de las prefs.** Las dos que ya existían
-/// mandan igual que cuando notificaba el frontend: `notify_on_success` para la
-/// copia guardada y `notify_on_failure` para los tres avisos de problema. No se
-/// inventan preferencias nuevas.
+/// **Pure, and where the prefs gate lives.** The two that already existed rule just
+/// as they did when the frontend notified: `notify_on_success` for the saved
+/// backup and `notify_on_failure` for the three problem notices. No new preferences
+/// are invented.
 pub fn notice_for(event: &AgentEvent, prefs: &Prefs) -> Option<Notice> {
     match event {
         AgentEvent::BackupSuccess {
@@ -116,15 +116,15 @@ pub fn notice_for(event: &AgentEvent, prefs: &Prefs) -> Option<Notice> {
             deliberate,
             ..
         } => {
-            // `already_landed` es un no-op: el contenido ya estaba arriba y no
-            // viajó un byte. Avisar de una copia que no ha ocurrido es la misma
-            // mentira que sonar al reproducir el journal (ADR 0021 D.18).
+            // `already_landed` is a no-op: the content was already up there and not
+            // one byte travelled. Notifying about a backup that never happened is the
+            // same lie as chiming while replaying the journal (ADR 0021 D.18).
             //
-            // `deliberate` se salta la preferencia: está apagada por defecto
-            // porque el motor narrando cada autoguardado es ruido de fondo, y
-            // eso no es lo mismo que tragarse la respuesta a un botón. Pulsar
-            // "copiar ahora" y no recibir señal ninguna deja al usuario sin
-            // saber si se hizo (ago-2026).
+            // `deliberate` skips the preference: it is off by default because the
+            // engine narrating every autosave is background noise, and that is not the
+            // same as swallowing the answer to a button. Pressing "back up now" and
+            // getting no signal at all leaves the user not knowing whether it happened
+            // (Aug 2026).
             if (!prefs.notify_on_success && !*deliberate) || *already_landed {
                 return None;
             }
@@ -183,7 +183,7 @@ pub fn notice_for(event: &AgentEvent, prefs: &Prefs) -> Option<Notice> {
     }
 }
 
-/// La etiqueta que el usuario le puso gana al slug; si está vacía, el slug.
+/// The label the user gave it beats the slug; when it is empty, the slug wins.
 fn pick_name(label: &str, game_slug: &str) -> String {
     if label.trim().is_empty() {
         game_slug.to_string()
@@ -192,8 +192,8 @@ fn pick_name(label: &str, game_slug: &str) -> String {
     }
 }
 
-/// Por dónde sale un aviso. Una implementación por plataforma; en los tests, una
-/// que sólo apunta lo que le mandan.
+/// Where a notice goes out. One implementation per platform; in the tests, one
+/// that only writes down what it is handed.
 pub trait Sink: Send + Sync + 'static {
     fn deliver(&self, note: &Note) -> anyhow::Result<()>;
 }
@@ -201,10 +201,10 @@ pub trait Sink: Send + Sync + 'static {
 /// El que avisa. Vive en el daemon y lo alimenta la bomba de eventos.
 pub struct Notifier {
     sink: Option<Arc<dyn Sink>>,
-    /// Ya nos quejamos una vez de que la entrega falla. En una máquina sin
-    /// servidor de notificaciones (un NAS, una sesión sin escritorio) fallan
-    /// **todas**, y una línea de WARN por copia sería el log lleno de lo mismo.
-    /// La primera va entera; las siguientes, a `debug`.
+    /// We have complained once already that delivery fails. On a machine with no
+    /// notification server (a NAS, a session with no desktop) **all** of them fail,
+    /// and one WARN line per backup would be a log full of the same thing. The first
+    /// goes out in full; the rest go to `debug`.
     complained: AtomicBool,
 }
 
@@ -241,16 +241,16 @@ impl Notifier {
         }
     }
 
-    /// Mira el evento y avisa si toca. Las prefs se leen **frescas** en cada
-    /// aviso: el usuario acaba de tocar el interruptor en Ajustes y el servicio
-    /// no se reinicia por eso. Sólo se leen cuando hay un evento notificable,
-    /// que son unos pocos al día.
+    /// Looks at the event and notifies when it should. The prefs are read **fresh**
+    /// for every notice: the user has just flipped the switch in Settings and the
+    /// service does not restart for that. They are only read when there is a
+    /// notifiable event, which is a handful a day.
     pub async fn consider(&self, event: &AgentEvent) {
         if self.sink.is_none() {
             return;
         }
-        // Barato y sin disco: descarta de un vistazo los eventos que nunca
-        // avisan (la inmensa mayoría) antes de tocar `prefs.json`.
+        // Cheap and disk-free: it discards at a glance the events that never notify
+        // (the vast majority) before touching `prefs.json`.
         if !notifiable(event) {
             return;
         }
@@ -271,14 +271,14 @@ impl Notifier {
         self.send(note).await;
     }
 
-    /// Avisa de algo que no sale de un evento del motor. Hoy sólo el updater
-    /// ([`Kind::UpdateReady`]): no hay `save_id` del que sacar un nombre ni
-    /// preferencia por save que consultar, así que no pasa por
+    /// Notifies about something that does not come from an engine event. Today only
+    /// the updater ([`Kind::UpdateReady`]): there is no `save_id` to get a name from
+    /// and no per-save preference to consult, so it does not go through
     /// [`Self::consider`].
     ///
-    /// La puerta de las prefs sí se respeta, con la misma que gobierna los
-    /// avisos de problema: quien apagó las notificaciones de fallo no quiere
-    /// que le hablemos de nada que necesite su intervención.
+    /// The prefs gate is still honoured, with the same one that governs the problem
+    /// notices: whoever turned failure notifications off does not want us talking to
+    /// them about anything that needs their intervention.
     pub async fn announce(&self, kind: Kind) {
         if self.sink.is_none() {
             return;
@@ -298,10 +298,10 @@ impl Notifier {
         let Some(sink) = self.sink.clone() else {
             return;
         };
-        // `deliver` habla con el bus y bloquea: fuera del reactor. Y con tope,
-        // porque quien nos llama es la bomba de eventos: un servidor de
-        // notificaciones que no conteste no puede atascar el journal —
-        // detrás vienen la persistencia del estado y el push a los clientes.
+        // `deliver` talks to the bus and blocks, so it goes off the reactor. And with
+        // a ceiling, because our caller is the event pump: a notification server that
+        // does not answer must not jam the journal, with state persistence and the
+        // push to the clients queued behind it.
         let delivery = tokio::task::spawn_blocking(move || sink.deliver(&note));
         match tokio::time::timeout(DELIVERY_TIMEOUT, delivery).await {
             Ok(Ok(Ok(()))) => {}
@@ -326,9 +326,8 @@ impl Notifier {
     }
 }
 
-/// ¿Puede este evento acabar en un aviso? Sólo mira la variante, así que no
-/// cuesta ni un `read` — la puerta de verdad es [`notice_for`], que necesita las
-/// prefs.
+/// Can this event end up as a notice? It only looks at the variant, so it does not
+/// cost even one `read`. The real gate is [`notice_for`], which needs the prefs.
 fn notifiable(event: &AgentEvent) -> bool {
     matches!(
         event,
@@ -359,15 +358,13 @@ fn name_from_state(save_id: &str) -> Option<String> {
     Some(pick_name(&entry.label, &entry.game_slug))
 }
 
-/// Último recurso: el save existe pero no está en `state.json` (una partida de
-/// la nube respaldada antes de adoptarla).
+/// Last resort: the save exists but is not in `state.json` (a cloud save backed up
+/// before it was adopted).
 fn short_id(save_id: &str) -> String {
     save_id.chars().take(8).collect()
 }
 
-// =======================================================================
-// Linux — bus de sesión (org.freedesktop.Notifications)
-// =======================================================================
+// ---- Linux: the session bus (org.freedesktop.Notifications)
 
 #[cfg(target_os = "linux")]
 mod platform {
@@ -378,20 +375,20 @@ mod platform {
     pub const SUPPORTED: bool = true;
     pub const TRANSPORT: &str = "D-Bus (org.freedesktop.Notifications)";
 
-    /// El icono que el servidor de notificaciones busca en el tema: el que
-    /// instalan el `.deb`/`.rpm` (`/usr/share/icons/hicolor/*/apps/`). Si no
-    /// está (ejecutando desde `target/`), el servidor pinta el genérico.
+    /// The icon the notification server looks for in the theme: the one the
+    /// `.deb`/`.rpm` install (`/usr/share/icons/hicolor/*/apps/`). When it is missing
+    /// (running from `target/`), the server paints the generic one.
     const ICON: &str = "hoard-desktop";
 
-    /// El nombre que sale en el aviso. El del producto, no el del binario: al
-    /// usuario le avisa Hoard, no un servicio del que no ha oído hablar.
+    /// The name that shows in the notice. The product's, not the binary's: the user
+    /// is being told by Hoard, not by a service they have never heard of.
     const APP_NAME: &str = "Hoard";
 
     pub fn sink() -> Result<Arc<dyn Sink>, String> {
-        // No se comprueba que haya servidor de notificaciones: en una sesión de
-        // escritorio se activa por dbus bajo demanda, así que preguntarlo ahora
-        // sólo daría un "no" que dejaría de ser verdad un segundo después. Si
-        // de verdad no hay, la entrega falla y se dice (una vez).
+        // No check that a notification server exists: in a desktop session it is
+        // dbus-activated on demand, so asking now would only give a "no" that stops
+        // being true a second later. If there really is none, delivery fails and it is
+        // said (once).
         Ok(Arc::new(Dbus))
     }
 
@@ -410,9 +407,7 @@ mod platform {
     }
 }
 
-// =======================================================================
-// Windows / macOS — pendientes, detrás de la misma interfaz
-// =======================================================================
+// ---- Windows and macOS: pending, behind the same interface
 
 #[cfg(not(target_os = "linux"))]
 mod platform {
@@ -423,12 +418,12 @@ mod platform {
     pub const SUPPORTED: bool = false;
     pub const TRANSPORT: &str = "none";
 
-    /// Todavía no hay backend aquí, y el daemon lo dice en vez de tragárselo:
-    /// mientras `SUPPORTED` sea `false`, `DaemonStatus::notifications` viaja en
-    /// `false` y **el frontend sigue mandando el aviso él** (toast de Windows,
-    /// centro de notificaciones de macOS), exactamente como antes de este
-    /// slice. Cuando aterrice el backend, basta con devolver un `Sink` aquí: la
-    /// app se calla sola porque lee la bandera, no una lista de plataformas.
+    /// There is no backend here yet, and the daemon says so instead of swallowing
+    /// it: while `SUPPORTED` is `false`, `DaemonStatus::notifications` travels as
+    /// `false` and **the frontend keeps sending the notice itself** (a Windows toast,
+    /// macOS's notification centre). When the backend lands, returning a `Sink` here
+    /// is enough: the app goes quiet on its own because it reads the flag, not a list
+    /// of platforms.
     pub fn sink() -> Result<Arc<dyn Sink>, String> {
         Err(format!(
             "the Hoard service doesn't send native notifications on {} yet (ADR 0021 D.19)",
@@ -495,8 +490,8 @@ mod tests {
         assert_eq!(notice.name.as_deref(), Some("factorio"));
     }
 
-    /// Una copia que no subió nada no se anuncia: el contenido ya estaba arriba
-    /// (ADR 0021 D.18). El estado sí avanza, el aviso no sale.
+    /// A backup that uploaded nothing is not announced: the content was already up
+    /// there (ADR 0021 D.18). The state does advance, the notice does not go out.
     #[test]
     fn a_backup_that_already_landed_is_not_announced() {
         assert!(notice_for(&success(true), &prefs(true, true)).is_none());
@@ -534,10 +529,10 @@ mod tests {
         }
     }
 
-    /// Con `notify_on_success` apagado —que es el default— una copia automática
-    /// calla y una que pidió el usuario avisa igual. La preferencia existe para
-    /// que el motor no narre cada autoguardado, no para dejar sin respuesta a
-    /// quien pulsa un botón.
+    /// With `notify_on_success` off (the default), an automatic backup stays quiet
+    /// and one the user asked for still notifies. The preference exists so the engine
+    /// does not narrate every autosave, not to leave whoever pressed a button without
+    /// an answer.
     #[test]
     fn a_copy_the_user_asked_for_confirms_even_with_success_notices_off() {
         let prefs = Prefs {
@@ -547,14 +542,14 @@ mod tests {
         };
         assert!(notice_for(&success_with(false, false), &prefs).is_none());
         assert!(notice_for(&success_with(false, true), &prefs).is_some());
-        // Salvo que no haya ocurrido nada: el contenido ya era la cabeza del
-        // server, así que no hay copia de la que avisar.
+        // Unless nothing happened: the content was already the server's head, so
+        // there is no backup to notify about.
         assert!(notice_for(&success_with(true, true), &prefs).is_none());
     }
 
-    /// `notifiable` es el atajo que evita leer `prefs.json` por cada tick, así
-    /// que tiene que cubrir **todo** lo que `notice_for` sabe avisar: si se
-    /// separan, el aviso desaparece sin que nadie lo note.
+    /// `notifiable` is the shortcut that avoids reading `prefs.json` on every tick,
+    /// so it has to cover **everything** `notice_for` knows how to notify about: if
+    /// they drift apart, the notice disappears with nobody noticing.
     #[test]
     fn the_cheap_filter_matches_the_real_gate() {
         let notifying = [
@@ -583,8 +578,8 @@ mod tests {
         }
     }
 
-    /// La etiqueta del usuario gana al slug, y una etiqueta vacía no deja el
-    /// aviso sin nombre.
+    /// The user's label beats the slug, and an empty label does not leave the notice
+    /// without a name.
     #[test]
     fn the_label_wins_but_never_leaves_it_blank() {
         let with_label = AgentEvent::BackupTooLarge {
@@ -631,10 +626,10 @@ mod tests {
         notifier.consider(&failure()).await;
     }
 
-    /// Humo **real** contra el bus de sesión. No corre en `cargo test`: ni CI ni
-    /// una sesión sin escritorio tienen servidor de notificaciones, así que
-    /// fallaría por el entorno y no por el código. Es la comprobación manual de
-    /// que el aviso sale de verdad y se ve donde tiene que verse:
+    /// **Real** smoke against the session bus. It does not run under `cargo test`:
+    /// neither CI nor a session with no desktop has a notification server, so it
+    /// would fail on the environment and not on the code. It is the manual check that
+    /// the notice really goes out and shows up where it should:
     ///
     /// ```text
     /// cargo test -p hoardd -- --ignored --nocapture the_session_bus
@@ -655,9 +650,9 @@ mod tests {
         sink.deliver(&note).expect("the session bus took it");
     }
 
-    /// Lo escrito llega al transporte tal cual. `consider` no vale para esto —
-    /// leería las prefs y el `state.json` de quien ejecuta los tests, así que su
-    /// resultado dependería de la máquina.
+    /// What is written reaches the transport verbatim. `consider` is no good for
+    /// this: it would read the prefs and the `state.json` of whoever runs the tests,
+    /// so its result would depend on the machine.
     #[tokio::test]
     async fn what_gets_written_is_what_gets_delivered() {
         let recorder = Arc::new(Recorder(Mutex::new(Vec::new())));
@@ -671,9 +666,9 @@ mod tests {
         assert_eq!(recorder.0.lock().unwrap().as_slice(), &[note]);
     }
 
-    /// Un evento que las prefs no dejan pasar no llega al transporte. Se prueba
-    /// por la puerta pura ([`notice_for`]) porque es la que decide; `consider`
-    /// sólo le añade el disco.
+    /// An event the prefs do not let through never reaches the transport. It is
+    /// tested through the pure gate ([`notice_for`]) because that is what decides;
+    /// `consider` only adds the disk to it.
     #[tokio::test]
     async fn a_silenced_event_never_reaches_the_sink() {
         let recorder = Arc::new(Recorder(Mutex::new(Vec::new())));

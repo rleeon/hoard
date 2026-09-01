@@ -1,19 +1,18 @@
-//! El servidor IPC: handshake, despacho de peticiones y push de eventos.
+//! The IPC server: handshake, request dispatch and event push.
 //!
-//! Una task por conexión, y dentro de ella dos mitades: el lector de peticiones
-//! y un escritor único alimentado por un canal. Que **todo** lo que sale pase por
-//! un solo escritor es lo que permite que una respuesta y un push del journal no
-//! se entrelacen a media trama.
+//! One task per connection, and two halves inside it: the request reader and a
+//! single writer fed by a channel. **Everything** going out through one writer is
+//! what stops a response and a journal push from interleaving mid-frame.
 //!
-//! ## Qué pasa si una conexión se cae (o entra en pánico)
+//! ## What happens when a connection dies (or panics)
 //!
-//! Se cae **esa** conexión y nada más. El bucle de accept va bajo
-//! `supervisor::supervise` (regla de D.12: si vive más que una petición, va
-//! supervisado), y el `panic hook` del daemon manda cualquier pánico al log, así
-//! que una conexión que muere deja rastro. No se supervisa *cada conexión*
-//! porque reiniciar el cuerpo de una conexión cuyo socket ya no existe no
-//! significa nada: el cliente reconecta y, gracias al cursor del journal,
-//! recupera lo que se perdió sin agujeros.
+//! **That** connection dies and nothing else. The accept loop runs under
+//! `supervisor::supervise` (D.12's rule: anything outliving a request runs
+//! supervised), and the daemon's panic hook sends any panic to the log, so a
+//! connection that dies leaves a trace. *Each connection* is not supervised because
+//! restarting the body of a connection whose socket no longer exists means nothing:
+//! the client reconnects and, thanks to the journal's cursor, recovers what it
+//! missed with no gaps.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -32,40 +31,40 @@ use crate::engine::{self, Engine};
 use crate::journal::EventLog;
 use crate::transport::Listener;
 
-/// Tramas de salida en cola por conexión. Un cliente que no lee se corta cuando
-/// se llena, en vez de hacer crecer la memoria del daemon.
+/// Outbound frames queued per connection. A client that does not read gets cut off
+/// when it fills up, rather than growing the daemon's memory.
 const OUTBOX: usize = 512;
 
-/// Despedidas en cola. Sólo se manda una en toda la vida del proceso; el canal
-/// existe para repartirla a las conexiones vivas, no para acumular.
+/// Farewells queued. Only one is ever sent in the process's life; the channel
+/// exists to hand it to the live connections, not to accumulate.
 const FAREWELL_CHANNEL: usize = 1;
 
-/// Estado compartido que ve cada conexión.
+/// The shared state every connection sees.
 pub struct Daemon {
     pub version: String,
     pub pid: u32,
-    /// Identidad de esta ejecución: los `seq` del journal sólo son comparables
-    /// dentro de un mismo epoch.
+    /// This run's identity: the journal's `seq` values are only comparable within
+    /// the same epoch.
     pub epoch: String,
     pub started: Instant,
     pub log: Arc<EventLog>,
     pub engine: Engine,
     /// Se dispara con `Request::Shutdown`; `main` lo espera.
     shutdown: tokio::sync::Notify,
-    /// Reparte la despedida a las conexiones vivas cuando el apagado es
-    /// deliberado. Cada conexión tiene una tarea esperando aquí que mete el
-    /// [`ServerFrame::Goodbye`] en su cola de salida.
+    /// Hands the farewell to the live connections when the shutdown is deliberate.
+    /// Every connection has a task waiting here that puts the
+    /// [`ServerFrame::Goodbye`] into its outbound queue.
     farewell: broadcast::Sender<String>,
-    /// El motivo, una vez dicho. El canal sólo alcanza a quien ya estaba
-    /// conectado; esto alcanza a **quien llegue después**, durante el rato que
-    /// tardamos en apagarnos (el motor manda su último latido por red, así que
-    /// no es instantáneo). Sin ello, un cliente que conectara en esa ventana
-    /// recibiría un saludo normal, daría por buena la despedida anterior y
-    /// relanzaría el servicio al perder el socket: el bug entero otra vez.
+    /// The reason, once it has been said. The channel only reaches whoever was
+    /// already connected; this reaches **whoever arrives afterwards**, during the
+    /// time we take to shut down (the engine sends its last beat over the network, so
+    /// it is not instant). Without it, a client connecting in that window would get a
+    /// normal greeting, take the earlier farewell as spent and relaunch the service
+    /// when it lost the socket: the whole bug all over again.
     said: std::sync::OnceLock<String>,
-    /// La actualización automática. El daemon no la conduce —eso es
-    /// [`crate::updater::watch`]—, sólo la enseña y le pasa lo que piden los
-    /// clientes.
+    /// The automatic update. The daemon does not drive it (that is
+    /// [`crate::updater::watch`]), it only shows it and passes on what the clients
+    /// ask for.
     pub updater: crate::updater::Updater,
 }
 
@@ -90,21 +89,21 @@ impl Daemon {
         self.shutdown.notified().await;
     }
 
-    /// Despídete de todo cliente enganchado: **esto es un apagado deliberado**.
+    /// Say goodbye to every attached client: **this is a deliberate shutdown**.
     ///
-    /// Se manda antes de tocar el motor, y el llamante le da un respiro al socket
-    /// para que salga (ver `run`). Un daemon que muere de verdad no pasa por
-    /// aquí, y eso es exactamente la distinción que el cliente necesita para
-    /// decidir si relanzarlo (ADR 0021 D.17 → 4d).
+    /// It is sent before the engine is touched, and the caller gives the socket a
+    /// moment for it to get out (see `run`). A daemon that really dies never comes
+    /// through here, and that is exactly the distinction the client needs in order to
+    /// decide whether to relaunch it (ADR 0021 D.17, Slice 4d).
     pub fn say_goodbye(&self, reason: &str) {
         let _ = self.said.set(reason.to_string());
         let listeners = self.farewell.send(reason.to_string()).unwrap_or(0);
         tracing::info!(reason, listeners, "hoardd: saying goodbye to its clients");
     }
 
-    /// El motivo de la despedida si ya la dijimos. Lo consulta el handshake: a
-    /// quien llegue después del adiós se le contesta con el adiós, no con un
-    /// saludo que dentro de un segundo será mentira.
+    /// The farewell's reason, once said. The handshake consults it: whoever arrives
+    /// after the goodbye is answered with the goodbye, not with a greeting that will
+    /// be a lie a second later.
     fn farewell_said(&self) -> Option<&str> {
         self.said.get().map(String::as_str)
     }
@@ -121,8 +120,8 @@ impl Daemon {
 
     async fn status(&self) -> DaemonStatus {
         let mut engine_status = self.engine.status();
-        // Los slots son la verdad viva del motor, así que se preguntan en vez de
-        // servir un contador guardado que puede haber quedado atrás.
+        // The slots are the engine's live truth, so they are asked for rather than
+        // served from a stored counter that may have fallen behind.
         let slots = engine::slot_status(&self.engine).await;
         if engine_status.running {
             engine_status.watched = slots.len();
@@ -143,13 +142,13 @@ impl Daemon {
         }
     }
 
-    /// Guarda la sesión que un cliente acaba de acuñar. **La única escritura del
-    /// par de tokens en todo el sistema**, junto con la del refresher.
+    /// Stores the session a client has just minted. **The only write of the token
+    /// pair in the whole system**, along with the refresher's.
     ///
-    /// Va a `spawn_blocking` porque el llavero es síncrono: aunque ya está
-    /// acotado (`KEYRING_TIMEOUT`), bloquea el hilo mientras espera, y ese hilo
-    /// aquí es el de una conexión IPC — con un llavero lento se quedarían
-    /// esperando también las demás peticiones de ese cliente (D.19).
+    /// It goes to `spawn_blocking` because the keyring is synchronous: even bounded
+    /// (`KEYRING_TIMEOUT`), it blocks the thread while it waits, and that thread here
+    /// is an IPC connection's, so a slow keyring would leave that client's other
+    /// requests waiting too (D.19).
     async fn adopt_session(&self, session: hoard_core::ipc::AdoptedSession) -> Result<()> {
         let tokens = hoard_agent::cloud_auth::Tokens {
             access: session.access_token,
@@ -163,7 +162,7 @@ impl Daemon {
         .context("storing the Cloud session")?
     }
 
-    /// Olvida la sesión Cloud. `spawn_blocking` por lo mismo que
+    /// Forgets the Cloud session. `spawn_blocking` for the same reason as
     /// [`Daemon::adopt_session`].
     async fn forget_session(&self) -> Result<()> {
         tokio::task::spawn_blocking(hoard_agent::cloud_auth::clear_session)
@@ -171,8 +170,8 @@ impl Daemon {
             .context("clearing the Cloud session")?
     }
 
-    /// Guarda la sesión self-hosted que un cliente acaba de validar. El gemelo de
-    /// [`Daemon::adopt_session`], y `spawn_blocking` por el mismo motivo.
+    /// Stores the self-hosted session a client has just validated. The twin of
+    /// [`Daemon::adopt_session`], and `spawn_blocking` for the same reason.
     async fn adopt_server_session(&self, session: hoard_core::ipc::ServerSession) -> Result<()> {
         let creds = hoard_agent::Credentials {
             url: session.server_url,
@@ -189,25 +188,26 @@ impl Daemon {
         Ok(())
     }
 
-    /// Olvida la sesión self-hosted.
+    /// Forgets the self-hosted session.
     async fn forget_server_session(&self) -> Result<()> {
         tokio::task::spawn_blocking(hoard_agent::credentials::clear)
             .await
             .context("clearing the self-hosted session")?
     }
 
-    /// Presta la sesión self-hosted. No rota nada (un token `hoard_v1_` es
-    /// estático), así que es sólo leer el almacén — pero leerlo **aquí**, que es
-    /// donde no hay que autorizar nada.
+    /// Lends the self-hosted session. It rotates nothing (a `hoard_v1_` token is
+    /// static), so it is only a read of the store, but a read **here**, which is
+    /// where nothing has to be authorised.
     async fn lend_server_session(&self) -> Result<Option<hoard_core::ipc::ServerSession>> {
         tokio::task::spawn_blocking(hoard_agent::session::lend_server_session)
             .await
             .context("reading the self-hosted session")?
     }
 
-    /// Despacha todo menos `Subscribe` (que necesita la conexión) y `Shutdown`
-    /// (que la dispara). Cada comando del motor es un envío al `AgentHandle`: lo
-    /// que pasa después llega por el journal, no por la respuesta.
+    /// Dispatches everything except `Subscribe` (which needs the connection) and
+    /// `Shutdown` (which triggers it). Every engine command is a send to the
+    /// `AgentHandle`: what happens next arrives through the journal, not through the
+    /// response.
     async fn dispatch(&self, request: Request) -> Reply {
         match request {
             Request::Ping => Reply::Ok(Payload::Pong {
@@ -225,11 +225,11 @@ impl Daemon {
                 self.with_engine(|h| async move { h.set_probe_candidates(dirs).await })
                     .await
             }
-            // Tampoco pasa por `with_engine`, y es load-bearing: el rotador del
-            // token es **del daemon**, no del motor. Un motor caído por falta de
-            // sesión o por un bache de red no puede dejar al desktop sin poder
-            // hablar con la nube — y menos aún empujarle a rotar por su cuenta,
-            // que es justo lo que este slice viene a matar.
+            // This does not go through `with_engine` either, and that is
+            // load-bearing: the token's rotator belongs to **the daemon**, not to the
+            // engine. An engine down for want of a session or over a network bump must
+            // not leave the desktop unable to talk to the cloud, still less push it
+            // into rotating on its own, which is exactly what this design kills.
             Request::CloudToken { rejected } => {
                 match hoard_agent::session::lend_token(rejected.as_deref()).await {
                     Ok(token) => {
@@ -254,16 +254,16 @@ impl Daemon {
                     }
                 }
             }
-            // Tampoco pasa por `with_engine`, y por el mismo motivo que
-            // `CloudToken`: guardar la sesión es del daemon, no del motor. Es
-            // más: el motor está caído *precisamente* porque no había sesión, y
-            // esto es lo que lo arregla.
+            // Not through `with_engine` either, and for the same reason as
+            // `CloudToken`: storing the session belongs to the daemon, not to the
+            // engine. More than that: the engine is down *precisely* because there was
+            // no session, and this is what fixes it.
             Request::AdoptSession { session } => {
                 match self.adopt_session(session).await {
                     Ok(()) => {
                         tracing::info!("hoardd: adopted a Cloud session handed over by a client");
-                        // Aprender una sesión nueva es un cambio de sesión: el
-                        // motor que hubiera está hablando con la anterior.
+                        // Learning a new session is a session change: whatever engine
+                        // there was is talking to the previous one.
                         self.engine
                             .request_restart("a client handed us a new Cloud session");
                         Reply::Ok(Payload::Ack)
@@ -305,8 +305,9 @@ impl Daemon {
                     Reply::Error(IpcError::Internal { message })
                 }
             },
-            // Como `CloudToken`: es del daemon, no del motor. Un motor caído no
-            // puede dejar a la app sin poder hablar con su propio server.
+            // Like `CloudToken`: it belongs to the daemon, not to the engine. An
+            // engine that is down must not leave the app unable to talk to its own
+            // server.
             Request::ServerToken => match self.lend_server_session().await {
                 Ok(Some(session)) => Reply::Ok(Payload::ServerSession(session)),
                 Ok(None) => Reply::Error(IpcError::NoServerSession {
@@ -332,10 +333,10 @@ impl Daemon {
                     Reply::Error(IpcError::Internal { message })
                 }
             },
-            // No pasa por `with_engine`: reiniciar un motor caído es
-            // precisamente lo que puede hacer que vuelva (el keeper resuelve la
-            // sesión otra vez), así que un `EngineDown` aquí sería contestar
-            // "no puedo arreglarlo porque está roto".
+            // Not through `with_engine`: restarting a downed engine is precisely
+            // what can bring it back (the keeper resolves the session again), so an
+            // `EngineDown` here would be answering "I cannot fix it because it is
+            // broken".
             Request::RestartEngine => {
                 self.engine
                     .request_restart("a client reported a session change");
@@ -364,15 +365,15 @@ impl Daemon {
                 self.with_engine(|h| async move { h.set_global_sync(enabled).await })
                     .await
             }
-            // Cómo va la actualización. No pasa por el motor: el updater es del
-            // daemon, y un motor caído —que suele ser justo el caso en que
-            // actualizar arregla algo— no puede dejar a nadie sin saberlo.
+            // How the update is going. Not through the engine: the updater belongs
+            // to the daemon, and a downed engine (usually the very case where updating
+            // fixes something) must not leave anybody unable to find out.
             Request::UpdateStatus => Reply::Ok(Payload::Update(self.updater.state())),
-            // Aplicar **ahora**. Vuelve al momento con el estado de este
-            // instante: aplicar puede tardar (un instalador nativo, un diálogo
-            // de polkit esperando a un humano) y dejar una petición IPC colgada
-            // todo ese rato bloquearía las demás de ese cliente. Quien pregunta
-            // vuelve a preguntar por `UpdateStatus` y ve la fase avanzar.
+            // Apply **now**. It returns immediately with this instant's state:
+            // applying can take a while (a native installer, a polkit dialog waiting
+            // on a human) and leaving an IPC request hanging all that time would block
+            // that client's others. Whoever asked asks again through `UpdateStatus`
+            // and watches the phase move.
             Request::ApplyUpdate { version } => {
                 tracing::info!(
                     version = version.as_deref().unwrap_or("latest"),
@@ -385,13 +386,13 @@ impl Daemon {
                 self.updater.snooze(hours);
                 Reply::Ok(Payload::Update(self.updater.state()))
             }
-            // Una petición de un cliente más nuevo que este servicio. Se
-            // contesta, no se tira la conexión: el cliente acaba de
-            // actualizarse y a nosotros nos queda un relevo de segundos.
+            // A request from a client newer than this service. It is answered, not
+            // hung up on: the client has just updated and we are seconds from being
+            // relieved.
             Request::Unknown => Reply::Error(IpcError::Unsupported {
                 op: "an operation this version of the Hoard service doesn't know".to_string(),
             }),
-            // Las dos que no llegan aquí.
+            // The two that never get here.
             Request::Subscribe { .. } | Request::Shutdown => Reply::Error(IpcError::Internal {
                 message: "handled by the connection loop".to_string(),
             }),
@@ -414,9 +415,9 @@ impl Daemon {
         }
     }
 
-    /// Un comando que no llega al motor casi siempre significa que el motor se
-    /// fue (canal cerrado), así que se reporta como `EngineDown` con el motivo
-    /// que el keeper haya registrado, no como un `Internal` opaco.
+    /// A command that does not reach the engine almost always means the engine is
+    /// gone (a closed channel), so it is reported as `EngineDown` with whatever reason
+    /// the keeper recorded, not as an opaque `Internal`.
     fn engine_error(&self, err: anyhow::Error) -> Reply {
         tracing::warn!(error = %format!("{err:#}"), "hoardd: a request failed");
         if self.engine.handle().is_none() {
@@ -430,8 +431,9 @@ impl Daemon {
     }
 }
 
-/// Acepta conexiones para siempre. No retorna (no puede producir un `Finished`),
-/// así que `supervise` sólo lo reinicia por pánico y `main` lo mata abortando.
+/// Accepts connections for ever. It does not return (it cannot produce a
+/// `Finished`), so `supervise` only restarts it on a panic and `main` kills it by
+/// aborting.
 pub async fn accept_loop(
     listener: Arc<tokio::sync::Mutex<Listener>>,
     daemon: Arc<Daemon>,
@@ -459,7 +461,7 @@ pub async fn accept_loop(
     }
 }
 
-/// Atiende una conexión: handshake, luego peticiones hasta que el cliente cierre.
+/// Serves one connection: handshake, then requests until the client closes.
 pub async fn serve_connection<S>(stream: S, daemon: Arc<Daemon>) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Send + 'static,
@@ -467,7 +469,7 @@ where
     let (mut reader, mut writer) = tokio::io::split(stream);
     let (out_tx, mut out_rx) = mpsc::channel::<ServerFrame>(OUTBOX);
 
-    // Escritor único: respuestas y pushes salen por aquí, nunca en paralelo.
+    // The single writer: responses and pushes go out through here, never in parallel.
     let writer_task = tokio::spawn(async move {
         while let Some(frame) = out_rx.recv().await {
             if let Err(err) = write_frame(&mut writer, &frame).await {
@@ -477,9 +479,9 @@ where
         }
     });
 
-    // La despedida no puede esperar a que este cliente mande algo: el bucle de
-    // abajo está bloqueado leyendo, y el apagado ocurre sin que nadie escriba.
-    // Por eso va en su propia tarea, encolando en el mismo escritor único.
+    // The farewell cannot wait for this client to send something: the loop below is
+    // blocked on a read, and the shutdown happens with nobody writing. So it lives in
+    // its own task, queueing into the same single writer.
     let farewell_task = tokio::spawn({
         let mut farewell = daemon.farewell.subscribe();
         let out = out_tx.clone();
@@ -507,8 +509,8 @@ where
 {
     let first: Option<ClientFrame> = read_frame(reader).await?;
     let Some(ClientFrame::Hello(hello)) = first else {
-        // Sin handshake no se atiende nada: el protocolo empieza por decir quién
-        // eres y qué versión hablas.
+        // Nothing is served without a handshake: the protocol starts by saying who
+        // you are and which version you speak.
         let _ = out
             .send(ServerFrame::Rejected(Rejected {
                 reason: "the first frame must be a hello".to_string(),
@@ -537,9 +539,9 @@ where
             .await;
         return Ok(());
     }
-    // Nos estamos apagando: la verdad que este cliente necesita no es "hola",
-    // es "adiós" — si no, tomaría por sano un servicio que se va y lo relanzaría
-    // en cuanto perdiera el socket.
+    // We are shutting down: the truth this client needs is not "hello", it is
+    // "goodbye". Otherwise it would take a departing service for a healthy one and
+    // relaunch it the moment it lost the socket.
     if let Some(reason) = daemon.farewell_said() {
         tracing::info!(client = %hello.client, "hoardd: a client connected while stopping; sending the farewell");
         let _ = out
@@ -554,13 +556,13 @@ where
         .await
         .context("sending the welcome")?;
 
-    // Alta en el push: se guarda para cuando llegue el `Subscribe`. `None` hasta
-    // entonces — un cliente que sólo manda comandos no paga el coste.
+    // Signing up to the push: kept for when the `Subscribe` arrives. `None` until
+    // then, so a client that only sends commands pays nothing for it.
     let mut pusher: Option<tokio::task::JoinHandle<()>> = None;
 
     while let Some(frame) = read_frame::<_, ClientFrame>(reader).await? {
         let ClientFrame::Request { id, request } = frame else {
-            // Un segundo hello es ruido; ignorarlo es más amable que cortar.
+            // A second hello is noise; ignoring it is kinder than hanging up.
             continue;
         };
         match request {
@@ -576,10 +578,10 @@ where
                 break;
             }
             Request::Subscribe { since } => {
-                // El orden importa: primero se abre el canal de push, luego se
-                // lee el backlog. Al revés, un evento que ocurriese entre las dos
-                // cosas no aparecería ni en el backlog ni en el push — el hueco
-                // silencioso que este diseño existe para cerrar.
+                // The order matters: the push channel is opened first, then the
+                // backlog is read. The other way round, an event happening between the
+                // two would appear in neither the backlog nor the push, which is the
+                // silent gap this design exists to close.
                 let rx = daemon.log.subscribe();
                 let backlog = daemon.log.since(since.unwrap_or(0));
                 let cursor = backlog.cursor;
@@ -602,8 +604,8 @@ where
                     cursor,
                     daemon.log.clone(),
                 ))) {
-                    // Re-suscribirse reemplaza la suscripción anterior; dos
-                    // pushers por conexión duplicarían cada evento.
+                    // Re-subscribing replaces the previous subscription; two pushers
+                    // per connection would double every event.
                     old.abort();
                 }
             }
@@ -622,17 +624,17 @@ where
     Ok(())
 }
 
-/// ¿Hablamos el mismo protocolo? Hoy es igualdad estricta. Cuando haya una
-/// versión 2 este es el sitio donde decidir qué versiones viejas se siguen
-/// atendiendo — el handshake existe precisamente para poder hacerlo sin que el
-/// cliente vea un error de parseo.
+/// Do we speak the same protocol? Today it is strict equality. When there is a
+/// version 2, this is the place to decide which old versions are still served: the
+/// handshake exists precisely so that can be done without the client seeing a parse
+/// error.
 fn accepts(hello: &Hello) -> bool {
     hello.protocol == PROTOCOL_VERSION
 }
 
-/// Reenvía filas nuevas del journal al cliente. Salta lo que ya iba en el
-/// backlog (por `seq`) y, si el cliente se retrasa tanto que el canal descarta
-/// filas, le manda un `Resync` en vez de dejarle un hueco invisible.
+/// Forwards new journal rows to the client. It skips what was already in the
+/// backlog (by `seq`) and, when the client lags far enough that the channel drops
+/// rows, sends it a `Resync` instead of leaving it an invisible gap.
 async fn push_loop(
     mut rx: broadcast::Receiver<JournalEntry>,
     out: mpsc::Sender<ServerFrame>,

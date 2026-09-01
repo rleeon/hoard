@@ -1,17 +1,17 @@
-//! ACL del named pipe en Windows: sólo este usuario (y SYSTEM).
+//! The named pipe's ACL on Windows: this user only (and SYSTEM).
 //!
-//! Sin descriptor de seguridad explícito, el DACL por defecto de un named pipe
-//! da control total al creador, a los administradores y a LocalSystem, **y
-//! lectura al grupo `Everyone`**. Por ese pipe viajan nombres de juego, rutas
-//! locales y los comandos del sync, así que "lectura para todo el mundo" no vale:
-//! la ADR 0021 pide permisos solo-usuario (0600 en unix / ACL aquí).
+//! With no explicit security descriptor, a named pipe's default DACL grants full
+//! control to the creator, to administrators and to LocalSystem, **and read access
+//! to `Everyone`**. Game names, local paths and the sync's commands travel over
+//! that pipe, so "readable by everybody" will not do: ADR 0021 asks for
+//! user-only permissions (0600 on unix, an ACL here).
 //!
-//! El descriptor se construye desde SDDL con el **SID del usuario actual**, no
-//! con el alias `OW` (CREATOR OWNER). `OW` funcionaría en la mayoría de los
-//! casos, pero su resolución depende de que el dueño del objeto sea quien lo
-//! creó; el SID explícito no depende de nada. `OW` se queda como plan B para el
-//! caso raro de no poder leer el token, y entonces se dice en el log — degradar
-//! en silencio a un pipe abierto es justo lo que no queremos.
+//! The descriptor is built from SDDL with the **current user's SID**, not with the
+//! `OW` (CREATOR OWNER) alias. `OW` would work in most cases, but resolving it
+//! depends on the object's owner being whoever created it; an explicit SID depends
+//! on nothing. `OW` stays as the fallback for the rare case of not being able to
+//! read the token, and then it is said in the log: silently degrading to an open
+//! pipe is exactly what must not happen.
 
 use std::ffi::c_void;
 use std::ptr;
@@ -30,23 +30,23 @@ use windows_sys::Win32::Security::{
 };
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
-/// Descriptor de seguridad "sólo yo y SYSTEM", listo para pasárselo a
-/// `CreateNamedPipe`. Dueño de su memoria (la libera con `LocalFree`).
+/// A "me and SYSTEM only" security descriptor, ready to hand to
+/// `CreateNamedPipe`. It owns its memory (freed with `LocalFree`).
 pub struct SecurityDescriptor {
     psd: PSECURITY_DESCRIPTOR,
 }
 
-// SAFETY: tras construirse, el descriptor es de sólo lectura para nosotros —
-// sólo se lo pasamos a `CreateNamedPipe`, que lo copia al objeto. Nadie lo
-// muta, así que compartirlo entre hilos (el `Listener` vive en una task de
-// tokio) es seguro.
+// SAFETY: once built, the descriptor is read-only as far as we are concerned; it
+// is only handed to `CreateNamedPipe`, which copies it into the object. Nobody
+// mutates it, so sharing it across threads (the `Listener` lives in a tokio task)
+// is safe.
 unsafe impl Send for SecurityDescriptor {}
 unsafe impl Sync for SecurityDescriptor {}
 
 impl SecurityDescriptor {
-    /// `D:P(A;;GA;;;<sid>)(A;;GA;;;SY)`: DACL protegido (`P`, sin herencia),
-    /// acceso total (`GA`) para el usuario actual y para LocalSystem, y **nada**
-    /// para nadie más. Que `Everyone` no aparezca es el punto.
+    /// `D:P(A;;GA;;;<sid>)(A;;GA;;;SY)`: a protected DACL (`P`, no inheritance),
+    /// full access (`GA`) for the current user and for LocalSystem, and **nothing**
+    /// for anybody else. `Everyone` being absent is the whole point.
     pub fn user_only() -> Result<Self> {
         let sddl = match current_user_sid() {
             Ok(sid) => format!("D:P(A;;GA;;;{sid})(A;;GA;;;SY)"),
@@ -61,8 +61,8 @@ impl SecurityDescriptor {
         };
         let wide: Vec<u16> = sddl.encode_utf16().chain(std::iter::once(0)).collect();
         let mut psd: PSECURITY_DESCRIPTOR = ptr::null_mut();
-        // SAFETY: `wide` es una cadena UTF-16 terminada en NUL viva durante la
-        // llamada, y `psd` un puntero de salida válido.
+        // SAFETY: `wide` is a NUL-terminated UTF-16 string that lives for the whole
+        // call, and `psd` is a valid out pointer.
         let ok = unsafe {
             ConvertStringSecurityDescriptorToSecurityDescriptorW(
                 wide.as_ptr() as PCWSTR,
@@ -84,24 +84,24 @@ impl SecurityDescriptor {
         SECURITY_ATTRIBUTES {
             nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
             lpSecurityDescriptor: self.psd,
-            // El pipe no se hereda: un proceso hijo (un instalador, un juego
-            // lanzado desde la app) no tiene por qué heredar el handle del
-            // canal de control del sync.
+            // The pipe is not inherited: a child process (an installer, a game
+            // launched from the app) has no business inheriting the handle to the
+            // sync's control channel.
             bInheritHandle: 0,
         }
     }
 }
 
-/// DACL efectivo de un objeto del kernel, en SDDL.
+/// An kernel object's effective DACL, in SDDL.
 ///
-/// Se lee **del objeto ya creado**, no del descriptor que le pasamos: la ADR
-/// pide permisos solo-usuario y hasta el Slice 4b eso estaba verificado a nivel
-/// de tipos (compilaba), no de ejecución. Esto es lo que permite afirmarlo —
-/// tanto en un test como en el log del arranque, donde queda escrito qué ACL
-/// tiene de verdad el pipe de esta máquina.
+/// It is read **from the object as created**, not from the descriptor we handed
+/// it: the ADR asks for user-only permissions, and that used to be verified at the
+/// type level (it compiled) rather than at run time. This is what makes it
+/// assertable, both in a test and in the startup log, where what ACL this machine's
+/// pipe really has ends up written down.
 ///
 /// # Safety
-/// `handle` debe ser un handle válido a un objeto del kernel vivo.
+/// `handle` must be a valid handle to a live kernel object.
 pub(crate) unsafe fn dacl_sddl(handle: HANDLE) -> Result<String> {
     let mut dacl: *mut ACL = ptr::null_mut();
     let mut psd: PSECURITY_DESCRIPTOR = ptr::null_mut();
@@ -134,8 +134,8 @@ pub(crate) unsafe fn dacl_sddl(handle: HANDLE) -> Result<String> {
     }
     let out = wide_to_string(text);
     LocalFree(text as HLOCAL);
-    // `psd` lo asignó `GetSecurityInfo`, que documenta `LocalFree`. `dacl`
-    // apunta *dentro* de ese bloque: no se libera aparte.
+    // `psd` was allocated by `GetSecurityInfo`, which documents `LocalFree`. `dacl`
+    // points *inside* that block, so it is not freed separately.
     LocalFree(psd as HLOCAL);
     Ok(out)
 }
@@ -143,8 +143,9 @@ pub(crate) unsafe fn dacl_sddl(handle: HANDLE) -> Result<String> {
 impl Drop for SecurityDescriptor {
     fn drop(&mut self) {
         if !self.psd.is_null() {
-            // SAFETY: `psd` lo asignó `ConvertStringSecurityDescriptorToSecurityDescriptorW`,
-            // que documenta `LocalFree` como su liberador.
+            // SAFETY: `psd` was allocated by
+            // `ConvertStringSecurityDescriptorToSecurityDescriptorW`, which documents
+            // `LocalFree` as its deallocator.
             unsafe { LocalFree(self.psd as HLOCAL) };
         }
     }
@@ -156,7 +157,7 @@ struct TokenHandle(HANDLE);
 impl Drop for TokenHandle {
     fn drop(&mut self) {
         if !self.0.is_null() {
-            // SAFETY: handle válido obtenido de `OpenProcessToken`.
+            // SAFETY: a valid handle obtained from `OpenProcessToken`.
             unsafe { CloseHandle(self.0) };
         }
     }
@@ -164,8 +165,8 @@ impl Drop for TokenHandle {
 
 /// SID del usuario de este proceso, en forma de cadena (`S-1-5-21-…`).
 fn current_user_sid() -> Result<String> {
-    // SAFETY: cada llamada se comprueba antes de usar su salida, y los búferes
-    // que se pasan viven más que la llamada.
+    // SAFETY: every call is checked before its output is used, and the buffers
+    // passed in outlive the call.
     unsafe {
         let mut raw: HANDLE = ptr::null_mut();
         if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut raw) == 0 {
@@ -176,7 +177,7 @@ fn current_user_sid() -> Result<String> {
         }
         let token = TokenHandle(raw);
 
-        // Patrón de dos llamadas: la primera sólo devuelve el tamaño.
+        // The two-call pattern: the first one only returns the size.
         let mut needed: u32 = 0;
         GetTokenInformation(token.0, TokenUser, ptr::null_mut(), 0, &mut needed);
         if needed == 0 {
@@ -200,9 +201,9 @@ fn current_user_sid() -> Result<String> {
             );
         }
 
-        // `buf` es un `Vec<u8>` (alineado a 1) y `TOKEN_USER` necesita
-        // alineación de puntero: se lee sin alinear a propósito. El SID en sí
-        // sigue viviendo dentro de `buf`, que está vivo hasta el final.
+        // `buf` is a `Vec<u8>` (aligned to 1) and `TOKEN_USER` needs pointer
+        // alignment, so it is read unaligned on purpose. The SID itself still lives
+        // inside `buf`, which is alive to the end.
         let user: TOKEN_USER = ptr::read_unaligned(buf.as_ptr() as *const TOKEN_USER);
         let mut sid_str: PWSTR = ptr::null_mut();
         if ConvertSidToStringSidW(user.User.Sid, &mut sid_str) == 0 {
@@ -217,10 +218,10 @@ fn current_user_sid() -> Result<String> {
     }
 }
 
-/// Cadena UTF-16 terminada en NUL → `String`.
+/// A NUL-terminated UTF-16 string turned into a `String`.
 ///
 /// # Safety
-/// `ptr` debe apuntar a una cadena UTF-16 válida terminada en NUL.
+/// `ptr` must point at a valid NUL-terminated UTF-16 string.
 pub(crate) unsafe fn wide_to_string(ptr: PWSTR) -> String {
     let mut len = 0usize;
     while *ptr.add(len) != 0 {

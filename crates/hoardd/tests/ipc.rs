@@ -1,23 +1,22 @@
-//! El protocolo de punta a punta sobre un socket de verdad: handshake, comandos,
-//! backlog por cursor y push en vivo.
+//! The protocol end to end over a real socket: handshake, commands, backlog by
+//! cursor and live push.
 //!
-//! El motor **no** se arranca en ningún test: montamos el servidor IPC con un
-//! [`Engine`] vacío y alimentamos el journal a mano. Un test no puede levantar el
-//! motor de verdad — se pondría a sincronizar los saves de quien ejecuta los
-//! tests.
+//! The engine is **not** started in any test: the IPC server is stood up with an
+//! empty [`Engine`] and the journal is fed by hand. A test cannot bring the real
+//! engine up, it would start syncing the saves of whoever runs the tests.
 //!
-//! Por la misma razón no hay aquí un caso de `Request::CloudToken`: prestarlo
-//! lee la sesión Cloud **real** de quien ejecuta los tests (keyring +
-//! `cloud.toml`) y, si le queda poca vida, la **rota** — un `cargo test` no puede
-//! tocar la sesión de nadie. Lo que decide si hay que rotar es puro y está
-//! testeado en `hoard_agent::session` (`needs_rotation`), y la forma de la
-//! petición y de la respuesta, en el golden de `hoard_core::ipc`.
+//! For the same reason there is no `Request::CloudToken` case here: lending it
+//! reads the **real** Cloud session of whoever runs the tests (keyring plus
+//! `cloud.toml`) and, when it is close to expiring, **rotates** it. A `cargo test`
+//! must not touch anybody's session. What decides whether to rotate is pure and
+//! tested in `hoard_agent::session` (`needs_rotation`), and the shapes of the
+//! request and the response are in `hoard_core::ipc`'s golden test.
 //!
-//! `AdoptSession` y `ForgetSession` (D.20) faltan por lo mismo, y con más razón:
-//! **escriben** el llavero y el `cloud.toml` de quien ejecuta los tests, así que
-//! un caso aquí le cambiaría la sesión de verdad. Lo que se puede comprobar sin
-//! tocar secretos está comprobado: la forma por cable y que la sesión entregada
-//! no se imprima nunca (`hoard_core::ipc`), y el camino sin servicio
+//! `AdoptSession` and `ForgetSession` (D.20) are missing for the same reason, and
+//! with more force: they **write** the keyring and the `cloud.toml` of whoever runs
+//! the tests, so a case here would change their real session. What can be checked
+//! without touching secrets is checked: the wire shape and that a handed-over
+//! session is never printed (`hoard_core::ipc`), and the service-less path
 //! (`hoard_agent::cloud_auth`).
 
 use std::sync::Arc;
@@ -54,8 +53,8 @@ struct Fixture {
 impl Fixture {
     fn start() -> Self {
         let dir = tempfile::tempdir().unwrap();
-        // Nombre único: en Windows los pipes comparten un namespace global, así
-        // que dos tests en paralelo (o dos `cargo test` a la vez) chocarían.
+        // A unique name: on Windows pipes share a global namespace, so two tests in
+        // parallel (or two `cargo test` runs at once) would collide.
         let endpoint = Endpoint::scoped(dir.path(), &unique("ipc"));
         let listener = Listener::bind(&endpoint).expect("bind");
         let log = Arc::new(EventLog::new());
@@ -110,9 +109,9 @@ async fn the_handshake_identifies_the_daemon() {
     assert_eq!(version, env!("CARGO_PKG_VERSION"));
 }
 
-/// Un cliente que llega tarde recupera el historial por cursor y **después**
-/// escucha en vivo. Las dos mitades de D.14.2 en un solo test: sólo-push habría
-/// perdido los dos primeros eventos (el bug de las campanas mudas).
+/// A client arriving late recovers the history by cursor and **then** listens live.
+/// Both halves of D.14.2 in one test: push-only would have lost the first two events
+/// (the mute-bell bug).
 #[tokio::test]
 async fn a_late_client_gets_the_backlog_and_then_live_pushes() {
     let fx = Fixture::start();
@@ -143,8 +142,8 @@ async fn a_late_client_gets_the_backlog_and_then_live_pushes() {
     }
 }
 
-/// Reconectar con el cursor guardado no re-entrega lo ya visto ni se salta lo
-/// ocurrido mientras estábamos desconectados.
+/// Reconnecting with the stored cursor neither re-delivers what was already seen
+/// nor skips what happened while we were disconnected.
 #[tokio::test]
 async fn reconnecting_resumes_exactly_at_the_cursor() {
     let fx = Fixture::start();
@@ -159,14 +158,14 @@ async fn reconnecting_resumes_exactly_at_the_cursor() {
 
     let mut second = fx.client().await;
     let backlog = second.subscribe(Some(cursor)).await.unwrap();
-    assert_eq!(backlog.entries.len(), 2, "sólo lo posterior al cursor");
+    assert_eq!(backlog.entries.len(), 2, "only what comes after the cursor");
     assert_eq!(backlog.entries[0].seq, 2);
     assert!(!backlog.gap);
 }
 
-/// Un cliente de otra versión de protocolo se rechaza **diciendo la versión del
-/// daemon**, que es lo que permite a la app decir "reinicia el servicio" en vez
-/// de morir con un error de parseo.
+/// A client on another protocol version is rejected **while stating the daemon's
+/// version**, which is what lets the app say "restart the service" instead of dying
+/// with a parse error.
 #[tokio::test]
 async fn a_foreign_protocol_is_rejected_with_the_daemon_version() {
     let fx = Fixture::start();
@@ -213,9 +212,9 @@ async fn a_request_before_the_handshake_is_rejected() {
     }
 }
 
-/// El daemon sirve la IPC aunque no tenga motor, y un comando dice **por qué** no
-/// hay motor. Un cliente que sólo viera "error" reintentaría para siempre sin
-/// poder contarle nada al usuario.
+/// The daemon serves the IPC with no engine, and a command says **why** there is
+/// none. A client that only saw "error" would retry for ever with nothing to tell
+/// the user.
 #[tokio::test]
 async fn commands_without_an_engine_say_why() {
     let fx = Fixture::start();
@@ -232,10 +231,9 @@ async fn commands_without_an_engine_say_why() {
         })
         .await
         .expect_err("no engine, no backup");
-    // El motivo viaja **dentro del mensaje**, no sólo en la variante: este texto
-    // acaba en un toast del desktop o en el stdout de la CLI, así que un
-    // `EngineDown { reason: … }` volcado con `{:?}` sería lo que leería el
-    // usuario.
+    // The reason travels **inside the message**, not only in the variant: this text
+    // ends up in a desktop toast or in the CLI's stdout, so an `EngineDown { reason:
+    // ... }` dumped with `{:?}` is what the user would read.
     let text = err.to_string();
     assert!(text.contains("no engine"), "{text}");
     assert!(
@@ -244,10 +242,10 @@ async fn commands_without_an_engine_say_why() {
     );
 }
 
-/// Pedir el reinicio del motor **no** se contesta con `EngineDown` cuando no hay
-/// motor: es justo la petición que puede hacer que vuelva (el keeper resuelve la
-/// sesión otra vez). Contestar "no puedo porque está roto" dejaría al desktop sin
-/// forma de decirle al servicio que el usuario acaba de entrar.
+/// Asking for an engine restart is **not** answered with `EngineDown` when there is
+/// no engine: it is precisely the request that can bring it back (the keeper
+/// resolves the session again). Answering "I cannot because it is broken" would
+/// leave the desktop no way to tell the service the user has just signed in.
 #[tokio::test]
 async fn restarting_the_engine_is_accepted_even_without_one() {
     let fx = Fixture::start();
@@ -258,9 +256,10 @@ async fn restarting_the_engine_is_accepted_even_without_one() {
     ));
 }
 
-/// Las candidatas de sondeo sí necesitan motor, y sin él se dice por qué. Este
-/// test existe sobre todo como cable: es la única petición que manda una lista
-/// del cliente al motor, y si alguien la saca del despacho, aquí se ve.
+/// The probe candidates do need an engine, and without one the reason is stated.
+/// This test exists mostly as a wire check: it is the only request that sends a list
+/// from the client to the engine, and if somebody drops it from the dispatch, it
+/// shows up here.
 #[tokio::test]
 async fn probe_candidates_need_an_engine_and_say_so() {
     let fx = Fixture::start();
@@ -274,8 +273,8 @@ async fn probe_candidates_need_an_engine_and_say_so() {
     assert!(err.to_string().contains("no engine"), "{err}");
 }
 
-/// El estado se sirve aunque el journal esté vacío: es el snapshot con el que un
-/// cliente pinta sin haber visto un solo evento.
+/// The status is served with an empty journal: it is the snapshot a client paints
+/// from without having seen a single event.
 #[tokio::test]
 async fn status_answers_on_an_empty_journal() {
     let fx = Fixture::start();

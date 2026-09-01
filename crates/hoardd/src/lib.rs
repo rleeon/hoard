@@ -1,47 +1,43 @@
-//! # `hoardd` — el servicio local dueño del motor (ADR 0021, Parte A)
+//! # `hoardd`, the local service that owns the engine (ADR 0021, Part A)
 //!
-//! Hasta el Slice 4 el motor de sync (`hoard_agent::agent::spawn`) iba embebido
-//! en dos binarios —el desktop y el daemon CLI—, y el árbitro para que no
-//! corrieran dos a la vez era un pidfile con tres fallos de diseño: carrera en el
-//! arranque, cero reclaim (parabas la CLI y el desktop no retomaba el motor), y
-//! el ciclo de vida del sync atado a una UI. Este crate es el motor promovido a
-//! **proceso propio de vida larga**: exactamente uno por usuario, que sobrevive
-//! al cierre de la app y con el que desktop y CLI hablan por un socket local.
+//! The sync engine (`hoard_agent::agent::spawn`) is a **long-lived process of its
+//! own**: exactly one per user, surviving the app being closed, with the desktop
+//! and the CLI talking to it over a local socket. It used to be embedded in two
+//! binaries, arbitrated by a pidfile with three design faults: a startup race, no
+//! reclaim at all (you stopped the CLI and the desktop never took the engine back),
+//! and the sync's lifetime tied to a UI.
 //!
-//! ## Qué hay (Slice 4 cerrado)
+//! What lives here: the binary, the IPC (a user-only socket plus a versioned
+//! handshake plus a journal with a cursor and a live push), starting and
+//! supervising the engine, an idempotent "spawn if absent", **the only rotator of
+//! the refresh token** (which also lends it over IPC to whoever needs it,
+//! `Request::CloudToken`), starting at boot as a user service ([`autostart`]), the
+//! explicit farewell ([`hoard_core::ipc::ServerFrame::Goodbye`]) that tells "it was
+//! stopped" from "it crashed", and the **native notifications** ([`notify`]) the
+//! service sends so they arrive with the app closed. Neither the desktop nor the
+//! CLI carries an engine: `hoard sync` makes sure this service is up and attaches
+//! to its journal. There is no pidfile; the socket is the arbiter.
 //!
-//! El binario, la IPC (socket con permisos solo-usuario + handshake versionado +
-//! journal con cursor y push en vivo), el arranque y la supervisión del motor,
-//! "spawn if absent" idempotente, **el único rotador del refresh token** —que
-//! además lo presta por IPC a quien lo necesite (`Request::CloudToken`)—, el
-//! arranque en boot como servicio de usuario ([`autostart`]), la despedida
-//! explícita ([`hoard_core::ipc::ServerFrame::Goodbye`]) que distingue "lo
-//! pararon" de "se cayó", y las **notificaciones nativas** ([`notify`]), que
-//! manda el servicio para que lleguen con la app cerrada. Desde el 4b el desktop
-//! no tiene motor; desde el 4c tampoco la CLI: `hoard sync` asegura este
-//! servicio y se engancha a su journal. Desde el 4d no queda pidfile: el árbitro
-//! es el socket.
+//! ## Map
 //!
-//! ## Mapa
+//! - [`autostart`]: starting at boot as a user service (systemd user, launchd
+//!   agent, per-user Task Scheduler). Never system-wide.
+//! - [`endpoint`]: where it listens (per-user socket, or named pipe).
+//! - [`transport`]: exclusive bind (the socket **is** the arbiter), permissions,
+//!   accept and connect.
+//! - [`codec`]: frames over the socket (the format lives in `hoard_core::ipc`).
+//! - [`journal`]: a journal with a cursor plus push; it stores transitions and
+//!   actions, not repeated idles.
+//! - [`notify`]: the OS's native notifications (Linux today; Windows and macOS
+//!   behind the same interface).
+//! - [`engine`]: starting, supervising and pumping the engine's events.
+//! - [`server`]: handshake and dispatch.
+//! - [`client`]: the client plus "spawn if absent" (what the desktop and the CLI
+//!   use).
+//! - [`updater`]: the automatic update: look, download, apply, get relieved.
 //!
-//! - [`autostart`] — arranque en boot como servicio de usuario (systemd user /
-//!   launchd agent / Task Scheduler por-usuario). Nunca system-wide.
-//! - [`endpoint`] — dónde escucha (socket por usuario / named pipe).
-//! - [`transport`] — bind exclusivo (el socket **es** el árbitro), permisos,
-//!   accept y connect.
-//! - [`codec`] — tramas sobre el socket (el formato vive en `hoard_core::ipc`).
-//! - [`journal`] — journal con cursor + push; guarda transiciones y acciones, no
-//!   reposos repetidos.
-//! - [`notify`] — notificaciones nativas del SO (Linux hoy; Windows y macOS
-//!   detrás de la misma interfaz).
-//! - [`engine`] — arranque, supervisión y bomba de eventos del motor.
-//! - [`server`] — handshake y despacho.
-//! - [`client`] — cliente + "spawn if absent" (lo que usan el desktop y la CLI).
-//! - [`updater`] — la actualización automática: mirar, bajar, aplicar, relevarse.
-//!
-//! La sesión (resolución, refresher y préstamo del token) vive en
-//! `hoard_agent::session`: el Slice 4a la tenía duplicada aquí para no tocar la
-//! CLI, y el 4c dejó una sola implementación compartida.
+//! The session (resolution, refresher and lending the token) lives in
+//! `hoard_agent::session`, one shared implementation for every client.
 
 pub mod autostart;
 pub mod client;
@@ -75,18 +71,18 @@ use crate::transport::{BindError, Listener};
 /// catch-up de los clientes.
 const EVENT_CHANNEL: usize = 256;
 
-/// Respiro que se le da al socket para que la despedida salga antes de que el
-/// proceso empiece a desmontarse. Es una trama de decenas de bytes a un socket
-/// local: sobra de largo, y sólo se paga una vez, al parar.
+/// The moment the socket is given so the farewell gets out before the process
+/// starts tearing itself down. It is a frame of a few dozen bytes to a local
+/// socket: more than enough, and paid once, on the way out.
 const GOODBYE_FLUSH: std::time::Duration = std::time::Duration::from_millis(50);
 
-/// Cómo arrancar el daemon.
+/// How to start the daemon.
 pub struct Options {
-    /// Endpoint explícito. `None` = el del usuario (o el de `HOARDD_SOCKET`).
+    /// An explicit endpoint. `None` means the user's (or `HOARDD_SOCKET`'s).
     pub endpoint: Option<Endpoint>,
-    /// Arrancar el motor. `false` sirve la IPC y nada más: diagnóstico y tests
-    /// (un test **no** puede levantar el motor de verdad — sincronizaría los
-    /// saves de quien lo ejecuta).
+    /// Start the engine. `false` serves the IPC and nothing else: diagnostics and
+    /// tests (a test **cannot** bring the real engine up, it would sync the saves of
+    /// whoever runs it).
     pub with_engine: bool,
 }
 
@@ -99,26 +95,25 @@ impl Default for Options {
     }
 }
 
-/// Cómo acabó el proceso.
+/// How the process ended.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Outcome {
     /// Servimos hasta que nos pidieron parar.
     Served,
-    /// Ya había un daemon: no hacía falta este proceso. **No es un error** — es
-    /// la mitad "el que pierde el bind" de "spawn if absent".
+    /// There was a daemon already, so this process was not needed. **Not an
+    /// error**: it is the "loses the bind" half of "spawn if absent".
     AlreadyRunning,
-    /// Se aplicó una actualización y hay que arrancar con el binario nuevo. El
-    /// proceso ya soltó el motor y el socket; a quien llama le toca decidir
-    /// **quién** vuelve a arrancarlo (ver `main`).
+    /// An update was applied and the new binary has to be started. The process has
+    /// already released the engine and the socket; the caller decides **who** starts
+    /// it again (see `main`).
     Relaunching { version: String },
 }
 
-/// Cola del relevo. Uno basta: dos actualizaciones aplicadas antes de que el
-/// proceso se entere de la primera no existen — el bucle para al pedir la
-/// primera.
+/// The relief queue. One slot is enough: two updates applied before the process
+/// hears about the first do not exist, since the loop stops on the first request.
 const RELAUNCH_CHANNEL: usize = 1;
 
-/// Arranca el servicio y sirve hasta que se pida el apagado (por IPC o señal).
+/// Starts the service and serves until shutdown is asked for (by IPC or signal).
 pub async fn run(options: Options) -> Result<Outcome> {
     let endpoint = match options.endpoint {
         Some(ep) => ep,
@@ -141,27 +136,26 @@ pub async fn run(options: Options) -> Result<Outcome> {
         "hoardd: listening"
     );
     sweep_legacy_pidfile();
-    // We're serving, so nobody is halfway through replacing the binaries — and
-    // on Windows the installer kills the daemon that set the marker, so the
-    // guard's `Drop` never runs and only a fresh service can say it's over.
+    // We're serving, so nobody is halfway through replacing the binaries, and on
+    // Windows the installer kills the daemon that set the marker, so the guard's
+    // `Drop` never runs and only a fresh service can say it's over.
     hoard_agent::install::Swap::forget();
 
     let log = Arc::new(EventLog::new());
     let engine = Engine::new();
     let daemon = Arc::new(Daemon::new(log.clone(), engine.clone()));
-    // Quien avisa al usuario es el servicio, no la ventana (D.14.1): con la app
-    // cerrada no hay nadie más que pueda.
+    // The service is what tells the user, not the window (D.14.1): with the app
+    // closed there is nobody else who can.
     let notifier = Arc::new(notify::Notifier::for_this_platform());
 
-    // El canal de eventos es del daemon, no del motor: se crea una vez y cada
-    // arranque del motor recibe un clon del emisor. Así un motor reiniciado sigue
-    // escribiendo en el mismo journal y los cursores de los clientes no se rompen.
+    // The event channel belongs to the daemon, not to the engine: it is created once
+    // and every engine start gets a clone of the sender. That way a restarted engine
+    // keeps writing to the same journal and the clients' cursors do not break.
     let (events_tx, events_rx) = mpsc::channel::<AgentEvent>(EVENT_CHANNEL);
     let events_rx = Arc::new(tokio::sync::Mutex::new(events_rx));
 
-    // Regla de D.12: todo lo que vive más que una petición va supervisado. Un
-    // pánico aquí es un incidente logueado y un reinicio con backoff, no un
-    // silencio de 36 minutos.
+    // D.12's rule: anything that outlives a request runs supervised. A panic here is
+    // a logged incident and a restart with backoff, not 36 minutes of silence.
     let mut tasks = Vec::new();
     tasks.push(tokio::spawn({
         let engine = engine.clone();
@@ -198,9 +192,9 @@ pub async fn run(options: Options) -> Result<Outcome> {
         })
     }));
 
-    // La actualización automática. Va supervisada como todo lo demás: un pánico
-    // aquí dejaría la máquina sin actualizarse nunca y sin decirlo, que es
-    // exactamente el fallo que este bucle viene a matar.
+    // The automatic update. Supervised like everything else: a panic here would
+    // leave the machine never updating and never saying so, which is exactly the
+    // failure this loop exists to kill.
     let (relaunch_tx, mut relaunch_rx) = mpsc::channel::<updater::Relaunch>(RELAUNCH_CHANNEL);
     tasks.push(tokio::spawn({
         let updater = daemon.updater.clone();
@@ -229,25 +223,25 @@ pub async fn run(options: Options) -> Result<Outcome> {
         }
         Some(r) = relaunch_rx.recv() => {
             tracing::info!(version = %r.version, "hoardd: stopping to relaunch on the new binary");
-            // **Aquí no hay despedida, y es deliberado.** La despedida significa
-            // "me han parado a propósito, no me relances" (D.17), y esto es lo
-            // contrario: queremos que todo el mundo nos vuelva a levantar. Un
-            // cliente enganchado ve el socket cerrarse sin adiós, lo trata como
-            // una caída y hace "spawn if absent" — que con el binario ya
-            // sustituido en disco arranca la versión nueva.
+            // **There is no farewell here, deliberately.** A farewell means "I was
+            // stopped on purpose, do not relaunch me" (D.17), and this is the
+            // opposite: we want everybody to bring us back. An attached client sees
+            // the socket close with no goodbye, treats it as a crash and does "spawn
+            // if absent", which with the binary already replaced on disk starts the
+            // new version.
             relaunching = Some(r.version);
         }
     }
-    // Las dos vías son deliberadas, así que las dos se despiden: un cliente
-    // enganchado tiene que poder distinguirlas de una caída, o su reconexión
-    // ("spawn if absent") deshace el apagado a los tres segundos. El respiro es
-    // para que la trama salga por el socket antes de que el proceso se vaya;
-    // `engine.shutdown()` de abajo suele tardar bastante más (habla con la red),
-    // pero no *garantiza* tardar nada si no hay motor.
+    // Both routes are deliberate, so both say goodbye: an attached client has to be
+    // able to tell them from a crash, or its reconnect ("spawn if absent") undoes the
+    // shutdown three seconds later. The pause is so the frame gets out of the socket
+    // before the process leaves; `engine.shutdown()` below usually takes considerably
+    // longer (it talks to the network), but it *guarantees* no delay at all when
+    // there is no engine.
     tokio::time::sleep(GOODBYE_FLUSH).await;
 
-    // Orden del apagado: primero el motor (su último latido de presencia necesita
-    // el token vivo y su `shutdown` es limpio), luego las tareas, luego el socket.
+    // Shutdown order: the engine first (its last presence beat needs a live token
+    // and its `shutdown` is clean), then the tasks, then the socket.
     engine.shutdown().await;
     for task in &tasks {
         task.abort();
@@ -255,10 +249,10 @@ pub async fn run(options: Options) -> Result<Outcome> {
     for task in tasks {
         let _ = task.await;
     }
-    // Suelta el socket y el lock: el fichero no queda para que el siguiente
-    // arranque tenga que barrerlo. Con un relevo pendiente esto además es
-    // **condición para que funcione**: el proceso nuevo tiene que poder ganar el
-    // bind, y el árbitro es la propiedad del socket.
+    // Releases the socket and the lock, so the file is not left for the next start
+    // to sweep. With a relief pending this is also **a condition for it to work**:
+    // the new process has to be able to win the bind, and the arbiter is ownership of
+    // the socket.
     drop(listener);
     if let Some(version) = relaunching {
         return Ok(Outcome::Relaunching { version });
@@ -266,12 +260,13 @@ pub async fn run(options: Options) -> Result<Outcome> {
     Ok(Outcome::Served)
 }
 
-/// Borra el `agent.pid` que dejaran las versiones anteriores al Slice 4d.
+/// Deletes the `agent.pid` older versions used to leave behind.
 ///
-/// Ya no lo lee nadie —el árbitro es la propiedad del socket—, así que dejarlo en
-/// disco sólo sirve para que alguien lo vuelva a mirar dentro de un año y crea
-/// que significa algo. Se hace con el bind ya ganado (somos *el* servicio de este
-/// usuario) y es best-effort de principio a fin: si no se puede, no pasa nada.
+/// Nobody reads it any more (ownership of the socket is the arbiter), so leaving it
+/// on disk only serves to have somebody look at it again in a year and believe it
+/// means something. It runs with the bind already won (we are *the* service for
+/// this user) and it is best-effort throughout: if it cannot be done, nothing
+/// happens.
 fn sweep_legacy_pidfile() {
     let Ok(dir) = hoard_agent::config::CliConfig::state_dir() else {
         return;
@@ -290,10 +285,10 @@ fn sweep_legacy_pidfile() {
     }
 }
 
-/// Se resuelve cuando el SO nos pide parar: Ctrl-C, más SIGTERM en unix — la
-/// señal que manda `systemctl --user stop` / `launchctl bootout`. Sin la rama de
-/// SIGTERM el gestor de servicios tendría que mandarnos SIGKILL, saltándose el
-/// apagado limpio del motor.
+/// Resolves when the OS asks us to stop: Ctrl-C, plus SIGTERM on unix, which is
+/// the signal `systemctl --user stop` and `launchctl bootout` send. Without the
+/// SIGTERM arm the service manager would have to send us SIGKILL, skipping the
+/// engine's clean shutdown.
 async fn shutdown_signal() {
     #[cfg(unix)]
     {
@@ -316,12 +311,12 @@ async fn shutdown_signal() {
     }
 }
 
-/// Manda todo pánico al log, no sólo a stderr.
+/// Sends every panic to the log, not just to stderr.
 ///
-/// Misma razón que en el desktop (ADR 0021 D.12): un servicio de usuario no tiene
-/// dónde imprimir —stderr es `/dev/null` bajo systemd sin journal, o la nada bajo
-/// Task Scheduler—, así que una task que muere de pánico no dejaba **ni un
-/// rastro**. Eso fue exactamente el poller de D.11/D.12.
+/// The same reason as in the desktop (ADR 0021 D.12): a user service has nowhere to
+/// print (stderr is `/dev/null` under systemd with no journal, or nothing at all
+/// under Task Scheduler), so a task dying of a panic left **no trace whatsoever**.
+/// That is exactly what D.11/D.12's poller did.
 pub fn install_panic_logger() {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -334,7 +329,7 @@ pub fn install_panic_logger() {
         tracing::error!(
             location = %location,
             thread = %thread,
-            "PANIC — a task or thread died"
+            "PANIC: a task or thread died"
         );
         previous(info);
     }));

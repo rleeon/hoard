@@ -1,19 +1,19 @@
-//! El journal del daemon: el anillo de [`hoard_core::ipc::journal`] más el canal
-//! de push en vivo.
+//! The daemon's journal: the ring from [`hoard_core::ipc::journal`] plus the live
+//! push channel.
 //!
-//! Las dos mitades de la entrega de eventos (ADR 0021 D.14.2) comparten una sola
-//! escritura: [`EventLog::record`] guarda **y** empuja. Guardar sirve al cliente
-//! que no estaba (pide su cursor al conectar); empujar sirve al que está
-//! conectado. Lo que no se empuja es un colapso —una racha del mismo reposo—,
-//! porque por definición no cuenta nada nuevo.
+//! Both halves of event delivery (ADR 0021 D.14.2) share a single write:
+//! [`EventLog::record`] stores **and** pushes. Storing serves the client that was
+//! away (it asks for its cursor on connect); pushing serves the one that is
+//! connected. What never gets pushed is a collapse (a run of the same idle state),
+//! because by definition it says nothing new.
 //!
-//! ## Frontera con el Slice 5
+//! ## The Slice 5 boundary
 //!
-//! Todo el estado está detrás de esta fachada: `record` / `since` / `cursor` /
-//! `subscribe`. Cuando el journal pase a la tabla-anillo de la SQLite privada
-//! del daemon (Slice 5, que es también el log de decisiones de C.5), cambia el
-//! cuerpo de estos cuatro métodos y nada más — el servidor IPC no sabe dónde
-//! viven las filas.
+//! All the state sits behind this facade: `record`, `since`, `cursor`,
+//! `subscribe`. When the journal moves to the ring table in the daemon's private
+//! SQLite (Slice 5, which is also C.5's decision log), the bodies of these four
+//! methods change and nothing else does: the IPC server does not know where the
+//! rows live.
 
 use std::sync::Mutex;
 
@@ -22,10 +22,10 @@ use hoard_core::ipc::AgentEvent;
 use time::OffsetDateTime;
 use tokio::sync::broadcast;
 
-/// Filas en vuelo por suscriptor antes de considerarlo retrasado. Un cliente
-/// normal drena en microsegundos; el tope existe para que uno atascado no crezca
-/// sin límite en memoria del daemon. Al pasarse se le manda un `Resync` y él
-/// vuelve a pedir por cursor, así que quedarse atrás no pierde nada.
+/// Rows in flight per subscriber before it counts as lagging. A normal client
+/// drains in microseconds; the ceiling exists so a stuck one cannot grow without
+/// bound in the daemon's memory. Past it, the client is sent a `Resync` and asks
+/// again by cursor, so falling behind loses nothing.
 const PUSH_BUFFER: usize = 256;
 
 pub struct EventLog {
@@ -46,11 +46,11 @@ impl EventLog {
         }
     }
 
-    /// Registra un evento del motor y, si abrió fila, lo empuja a los
-    /// suscriptores.
+    /// Records an engine event and, when it opened a row, pushes it to the
+    /// subscribers.
     pub fn record(&self, at: OffsetDateTime, event: AgentEvent) {
-        // El lock es sólo alrededor del append (sin await dentro), así que un
-        // suscriptor lento no puede bloquear al motor.
+        // The lock covers the append only (no await inside), so a slow subscriber
+        // cannot block the engine.
         let appended = {
             let mut journal = self.lock();
             journal.append(at, event)
@@ -83,12 +83,12 @@ impl EventLog {
         self.tx.subscribe()
     }
 
-    /// Recupera el mutex envenenado en vez de propagar el pánico. Un pánico
-    /// dentro del append dejaría el journal envenenado y **todos** los eventos
-    /// posteriores caerían — que es exactamente cómo enmudeció el poller de
-    /// D.11 (`.lock().unwrap()` sobre un mutex envenenado). Las filas son
-    /// append-only: lo peor que puede haber pasado es media fila a medio
-    /// escribir, no un estado que envenene lo siguiente.
+    /// Recovers the poisoned mutex instead of propagating the panic. A panic inside
+    /// the append would leave the journal poisoned and **every** later event would
+    /// fall on the floor, which is exactly how D.11's poller went mute
+    /// (`.lock().unwrap()` on a poisoned mutex). The rows are append-only: the worst
+    /// that can have happened is half a row half written, not a state that poisons
+    /// what comes next.
     fn lock(&self) -> std::sync::MutexGuard<'_, Journal> {
         self.journal.lock().unwrap_or_else(|poisoned| {
             tracing::error!("hoardd: the journal mutex was poisoned; recovering");
@@ -130,7 +130,7 @@ mod tests {
 
         log.record(now, started("s1"));
         log.record(now, deferred());
-        // Tres reposos idénticos: una sola fila, un solo push.
+        // Three identical idles: one row, one push.
         log.record(now, deferred());
         log.record(now, deferred());
 
@@ -140,8 +140,7 @@ mod tests {
         assert!(matches!(second.event, AgentEvent::RestoreDeferred { .. }));
         assert!(rx.try_recv().is_err(), "a collapse must not be pushed");
 
-        // Pero el contador sí está en el journal, para el cliente que llegue
-        // tarde.
+        // The counter is in the journal, though, for the client that arrives late.
         let backlog = log.since(0);
         assert_eq!(backlog.entries.len(), 2);
         assert_eq!(backlog.entries[1].repeat, 3);
@@ -155,11 +154,11 @@ mod tests {
         log.record(now, started("a"));
         log.record(now, started("b"));
 
-        // Se suscribe después: el push no le trae nada del pasado…
+        // It subscribes afterwards, so the push brings it nothing from the past...
         let mut rx = log.subscribe();
         assert!(rx.try_recv().is_err());
-        // …y el backlog sí. Es el bug de las campanas mudas, cerrado por
-        // construcción.
+        // ...but the backlog does. That is the mute-bell bug, closed by
+        // construction.
         let backlog = log.since(0);
         assert_eq!(backlog.entries.len(), 2);
         assert!(!backlog.gap);

@@ -1,31 +1,33 @@
-//! El motor dentro del daemon: arrancarlo, mantenerlo vivo y bombear sus
-//! eventos al journal.
+//! The engine inside the daemon: starting it, keeping it alive and pumping its
+//! events into the journal.
 //!
-//! Un motor por usuario, propiedad de este proceso. Tres piezas:
+//! One engine per user, owned by this process. Three pieces:
 //!
-//! - [`Engine`]: la ranura compartida. El servidor IPC pregunta por el
-//!   `AgentHandle` y por el estado; nunca arranca ni para el motor por su cuenta.
-//! - [`keeper`]: bucle supervisado que **asegura** que el motor está arriba —
-//!   resuelve la sesión, hace `agent::spawn`, y si el motor muere lo vuelve a
-//!   levantar. Nada aquí puede morir en silencio (D.12): el keeper detecta un
-//!   `JoinHandle` terminado en vez de fiarse de un booleano, que es exactamente
-//!   cómo se quedó clavado el gate del poller.
-//! - [`pump`]: bucle supervisado que consume `AgentEvent`s, los persiste en
-//!   `state.json` y los mete en el journal (que es quien empuja a los clientes).
+//! - [`Engine`]: the shared slot. The IPC server asks it for the `AgentHandle` and
+//!   for the state; it never starts or stops the engine on its own.
+//! - [`keeper`]: the supervised loop that **makes sure** the engine is up. It
+//!   resolves the session, calls `agent::spawn`, and brings the engine back when it
+//!   dies. Nothing here may die in silence (D.12): the keeper detects a finished
+//!   `JoinHandle` rather than trusting a boolean, which is exactly how the poller's
+//!   gate got stuck.
+//! - [`pump`]: the supervised loop that consumes `AgentEvent`s, persists them into
+//!   `state.json` and puts them in the journal (which is what pushes to the
+//!   clients).
 //!
-//! ## El pidfile, muerto (Slice 4d)
+//! ## The pidfile is dead
 //!
-//! Mientras el desktop (4b) y `hoard sync` (4c) embebían `agent::spawn`, el
-//! árbitro entre daemon y motor embebido era un pidfile (`agent.pid`,
-//! `hoard_agent::instance`): el keeper lo consultaba y, si otro lo tenía tomado,
-//! no arrancaba motor. El 4c le quitó el chequeo (aceptaba como dueño vivo
-//! cualquier proceso cuyo nombre contuviera "hoard", y desde el 4b todos los
-//! clientes lo contienen) y este slice borra el fichero entero: **el árbitro es
-//! la propiedad del socket**, un mutex con liveness real que el kernel suelta al
-//! morir el proceso, no un fichero que hay que adivinar si miente.
+//! While the desktop and `hoard sync` embedded `agent::spawn`, the arbiter between
+//! daemon and embedded engine was a pidfile (`agent.pid`,
+//! `hoard_agent::instance`): the keeper consulted it and started no engine when
+//! somebody else held it. That check rotted (it accepted as a live owner any
+//! process whose name contained "hoard", and every client contains it), and the
+//! file is gone entirely: **the arbiter is ownership of the socket**, a mutex with
+//! real liveness that the kernel releases when the process dies, not a file you
+//! have to guess is lying.
 //!
-//! Por eso [`Running`] ya no guarda ningún lock: lo único que impide dos motores
-//! es que sólo hay un daemon, y de eso responde el bind (`transport::Listener`).
+//! That is why [`Running`] holds no lock any more: the only thing preventing two
+//! engines is that there is only one daemon, and the bind answers for that
+//! (`transport::Listener`).
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -46,14 +48,14 @@ use tokio::task::JoinHandle;
 
 use crate::journal::EventLog;
 
-/// Cada cuánto comprueba el keeper que el motor sigue vivo.
+/// How often the keeper checks the engine is still alive.
 const KEEPER_TICK: Duration = Duration::from_secs(5);
 
-/// Backoff tras un arranque fallido del motor (sin sesión, red caída).
+/// The backoff after a failed engine start (no session, network down).
 const START_BACKOFF_MIN: Duration = Duration::from_secs(5);
 const START_BACKOFF_MAX: Duration = Duration::from_secs(5 * 60);
 
-/// Cada cuánto se comprueba que las tareas del empuje Cloud siguen vivas.
+/// How often the Cloud push's tasks are checked to be alive.
 const CLOUD_LIVE_CHECK: Duration = Duration::from_secs(15);
 
 /// Margen que se le da al motor para atender su `shutdown` antes de abortarlo.
@@ -64,13 +66,13 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 /// contador, no un tiempo de espera de red.
 const TRANSFER_STALE: Duration = Duration::from_secs(30 * 60);
 
-/// Espera máxima a que el motor conteste una consulta de estado. Sin tope, un
-/// motor atascado colgaría al cliente que preguntó (y a la UI detrás).
+/// The longest wait for the engine to answer a status query. With no ceiling, a
+/// stuck engine would hang the client that asked (and the UI behind it).
 const STATUS_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Aborta un grupo de tareas al soltarse. Sin esto, reiniciar el empuje Cloud
-/// dejaría las tareas viejas corriendo: dos pollers es justo el fallo que D.12
-/// documenta.
+/// Aborts a group of tasks when dropped. Without this, restarting the Cloud push
+/// would leave the old tasks running, and two pollers is exactly the failure D.12
+/// documents.
 struct AbortOnDrop(Vec<JoinHandle<()>>);
 
 impl Drop for AbortOnDrop {
@@ -86,11 +88,10 @@ struct Running {
     handle: AgentHandle,
     task: JoinHandle<()>,
     presence: PresenceHandle,
-    /// El cliente del motor vivo. `Reload` reconstruye el conjunto vigilado y
-    /// para eso necesita volver a preguntar qué saves están archivados: sin
-    /// esto, archivar una partida no surtiría efecto hasta el siguiente
-    /// arranque. Comparte la celda del token con el resto de clones, así que
-    /// el JWT que rote el refresher también vale aquí.
+    /// The live engine's client. `Reload` rebuilds the watched set and for that it
+    /// has to ask again which saves are archived: without this, archiving a save
+    /// would have no effect until the next start. It shares its token cell with the
+    /// other clones, so the JWT the refresher rotates is good here too.
     client: ApiClient,
     /// Tareas auxiliares del motor (presencia, empuje Cloud, refresher del JWT).
     aux: Vec<JoinHandle<()>>,
@@ -98,11 +99,11 @@ struct Running {
 
 impl Drop for Running {
     fn drop(&mut self) {
-        // Soltar un `JoinHandle` **no** cancela su task: detachearlas dejaría el
-        // poller, el latido de presencia y el rotador del token del motor viejo
-        // corriendo junto a los del nuevo. Dos pollers y dos rotadores del mismo
-        // refresh token es la familia de bugs que D.12 y la Parte A documentan, así
-        // que morir del todo es parte del contrato de este tipo.
+        // Dropping a `JoinHandle` does **not** cancel its task: detaching them would
+        // leave the old engine's poller, presence beat and token rotator running
+        // alongside the new one's. Two pollers and two rotators of the same refresh
+        // token is the family of bugs D.12 and Part A document, so dying completely is
+        // part of this type's contract.
         for task in &self.aux {
             task.abort();
         }
@@ -114,26 +115,26 @@ impl Drop for Running {
 struct Inner {
     running: Option<Running>,
     status: EngineStatus,
-    /// Paramos a propósito (`Request::Shutdown`): el keeper no debe resucitarlo.
+    /// We stopped on purpose (`Request::Shutdown`): the keeper must not revive it.
     stopping: bool,
-    /// Un cliente pidió levantar el motor de cero (cambió la sesión en disco), y
-    /// por qué. Lo atiende el keeper, que es el único dueño del ciclo de vida.
+    /// A client asked for the engine to be brought up from scratch (the session on
+    /// disk changed), and why. The keeper serves it, being the only owner of the
+    /// lifecycle.
     restart_requested: Option<String>,
-    /// Copias y restauraciones empezadas y todavía sin desenlace.
+    /// Backups and restores started and still without an outcome.
     ///
-    /// Lo lleva la bomba de eventos, que es por donde pasan todas, y lo lee el
-    /// updater: relevar los binarios con una subida a medias mata el proceso que
-    /// la estaba haciendo y deja un blob a medio comprometer en el server. Es el
-    /// único freno que ni siquiera el plazo levanta.
+    /// The event pump keeps it, being where all of them pass, and the updater reads
+    /// it: swapping the binaries with an upload halfway through kills the process
+    /// doing it and leaves a half-committed blob on the server. It is the one brake
+    /// not even the deadline lifts.
     ///
-    /// Vive aquí y no en el motor porque tiene que **sobrevivir a un reinicio
-    /// del motor**: si se fuera con él, un motor que rebota en mitad de una
-    /// subida dejaría el contador clavado en 1 para siempre y el updater no
-    /// volvería a aplicar nada. Al arrancar un motor nuevo se pone a cero (ver
-    /// [`Engine::transfers_reset`]), que es la verdad: lo que hubiera en vuelo se
-    /// fue con el proceso anterior.
+    /// It lives here and not in the engine because it has to **survive an engine
+    /// restart**: were it to go with it, an engine bouncing mid-upload would leave
+    /// the counter stuck at 1 for ever and the updater would never apply anything
+    /// again. Starting a new engine zeroes it (see [`Engine::transfers_reset`]),
+    /// which is the truth: whatever was in flight went with the previous process.
     in_flight: usize,
-    /// Desde cuándo hay algo en vuelo. Lo que hace caducar el contador.
+    /// Since when something has been in flight. What makes the counter expire.
     in_flight_since: Option<Instant>,
 }
 
@@ -141,11 +142,11 @@ struct Inner {
 #[derive(Clone, Default)]
 pub struct Engine {
     inner: Arc<Mutex<Inner>>,
-    /// Despierta al keeper de su espera. Sin esto, un motor caído tras varios
-    /// fallos duerme hasta [`START_BACKOFF_MAX`], y un login recién hecho
-    /// tardaría hasta cinco minutos en sincronizar aunque el cliente ya haya
-    /// avisado. `Notify` guarda el permiso si nadie escucha, así que un aviso
-    /// que llega mientras el keeper trabaja no se pierde.
+    /// Wakes the keeper from its wait. Without this, an engine down after several
+    /// failures sleeps up to [`START_BACKOFF_MAX`], and a login that has just
+    /// happened would take up to five minutes to sync even with the client having
+    /// said so. `Notify` stores the permit when nobody is listening, so a nudge
+    /// arriving while the keeper is working is not lost.
     wake: Arc<tokio::sync::Notify>,
 }
 
@@ -154,7 +155,7 @@ impl Engine {
         Self::default()
     }
 
-    /// Handle del motor, si está arriba.
+    /// The engine's handle, when it is up.
     pub fn handle(&self) -> Option<AgentHandle> {
         self.lock().running.as_ref().map(|r| r.handle.clone())
     }
@@ -172,9 +173,9 @@ impl Engine {
         self.lock().status.clone()
     }
 
-    /// Motivo legible de que no haya motor, para el `IpcError::EngineDown` que
-    /// recibe el cliente. Un cliente que sólo ve "error" reintenta para siempre
-    /// sin poder decirle nada al usuario.
+    /// A readable reason for there being no engine, for the `IpcError::EngineDown`
+    /// the client receives. A client that only sees "error" retries for ever with
+    /// nothing to tell the user.
     pub fn down_reason(&self) -> String {
         let guard = self.lock();
         if guard.stopping {
@@ -191,7 +192,7 @@ impl Engine {
         self.lock().status.watched = count;
     }
 
-    /// Empieza una transferencia (copia o restauración).
+    /// Starts a transfer (a backup or a restore).
     pub fn transfer_started(&self) {
         let mut guard = self.lock();
         if guard.in_flight == 0 {
@@ -200,9 +201,9 @@ impl Engine {
         guard.in_flight += 1;
     }
 
-    /// Termina una transferencia, bien o mal. Satura en 0: un desenlace sin
-    /// comienzo (el motor arrancó con una subida ya en vuelo, D.8.3) no puede
-    /// dejar el contador en negativo y bloquear el updater para siempre.
+    /// Ends a transfer, well or badly. It saturates at 0: an outcome with no start
+    /// (the engine came up with an upload already in flight, D.8.3) must not leave
+    /// the counter negative and block the updater for ever.
     pub fn transfer_finished(&self) {
         let mut guard = self.lock();
         guard.in_flight = guard.in_flight.saturating_sub(1);
@@ -211,22 +212,22 @@ impl Engine {
         }
     }
 
-    /// Olvida lo que hubiera en vuelo. Lo llama el keeper al levantar un motor
-    /// nuevo: lo que estuviera a medias murió con el anterior.
+    /// Forgets whatever was in flight. The keeper calls it when bringing up a new
+    /// engine: anything halfway through died with the previous one.
     pub fn transfers_reset(&self) {
         let mut guard = self.lock();
         guard.in_flight = 0;
         guard.in_flight_since = None;
     }
 
-    /// ¿Hay algo a medias ahora mismo?
+    /// Is anything halfway through right now?
     ///
-    /// **Caduca.** El contador se lleva emparejando eventos, y emparejar eventos
-    /// es exactamente la clase de cuenta que se descuadra en cuanto alguien
-    /// añade una variante terminal y no la suma aquí. Un descuadre de uno
-    /// bloquearía el updater **para siempre** en silencio —el mismo fallo que el
-    /// gate sin RAII del poller (D.10)—, así que pasado [`TRANSFER_STALE`] se da
-    /// por acabado lo que fuera. Ninguna copia legítima dura tanto.
+    /// **It expires.** The counter is kept by pairing events, and pairing events is
+    /// exactly the kind of tally that goes out of balance the moment somebody adds a
+    /// terminal variant and does not count it here. Being out by one would block the
+    /// updater **for ever**, in silence, the same failure as the poller's gate with
+    /// no RAII (D.10), so past [`TRANSFER_STALE`] whatever it was is taken as
+    /// finished. No legitimate backup lasts that long.
     pub fn transfers_in_flight(&self) -> bool {
         let guard = self.lock();
         match guard.in_flight_since {
@@ -235,9 +236,9 @@ impl Engine {
         }
     }
 
-    /// Marca que no habrá motor y por qué (`--no-engine`). El motivo viaja al
-    /// cliente en `EngineDown`: un motor ausente **a propósito** tiene que
-    /// distinguirse de uno que no arranca.
+    /// Marks that there will be no engine, and why (`--no-engine`). The reason
+    /// travels to the client in `EngineDown`: an engine absent **on purpose** has to
+    /// be told apart from one that will not start.
     pub fn disable(&self, reason: &str) {
         let mut guard = self.lock();
         guard.status.running = false;
@@ -248,9 +249,9 @@ impl Engine {
         self.lock().stopping
     }
 
-    /// ¿Motor arriba **y** su task viva? La segunda mitad importa: un pánico
-    /// dentro del bucle del agente deja el handle intacto y los comandos se
-    /// tragarían en un canal que nadie lee.
+    /// Engine up **and** its task alive? The second half matters: a panic inside the
+    /// agent's loop leaves the handle intact and the commands would be swallowed by a
+    /// channel nobody reads.
     pub fn alive(&self) -> bool {
         self.lock()
             .running
@@ -270,8 +271,8 @@ impl Engine {
             reason: EngineDownReason::Unknown,
             keyring: None,
         };
-        // Un motor previo (por ejemplo el que murió y estamos reemplazando) se
-        // tira aquí: `Running::aux` aborta sus tareas al soltarse.
+        // A previous engine (the one that died and is being replaced, say) is dropped
+        // here: `Running::aux` aborts its tasks when released.
         guard.running = Some(running);
         // Lo que estuviera a medias se fue con el motor anterior. Sin esto, un
         // motor que rebota en mitad de una subida deja el contador clavado y el
@@ -292,16 +293,16 @@ impl Engine {
         guard.running = None;
     }
 
-    /// Suelta un motor que ya está muerto **antes** de arrancar otro: su `Drop`
-    /// aborta las tareas auxiliares (rotador del token, poller, presencia), y
-    /// dos juegos de ésas vivos a la vez es la familia 401 que este slice mata.
+    /// Drops an engine that is already dead **before** another is started: its `Drop`
+    /// aborts the auxiliary tasks (token rotator, poller, presence), and two sets of
+    /// those alive at once is the 401 family this design kills.
     fn forget(&self) {
         let mut guard = self.lock();
         guard.status.running = false;
         guard.running = None;
     }
 
-    /// Espera `for_` o hasta que alguien pida atención, lo que llegue antes.
+    /// Waits `for_`, or until somebody asks for attention, whichever comes first.
     async fn nap(&self, for_: Duration) {
         tokio::select! {
             _ = tokio::time::sleep(for_) => {}
@@ -309,19 +310,19 @@ impl Engine {
         }
     }
 
-    /// Pide que el motor se levante de cero con la sesión que haya ahora en
-    /// disco. Responde a [`hoard_core::ipc::Request::RestartEngine`].
+    /// Asks for the engine to be brought up from scratch with whatever session is
+    /// on disk now. It answers [`hoard_core::ipc::Request::RestartEngine`].
     ///
-    /// **Lo pide, no lo hace.** El único que arranca y para el motor es el
-    /// keeper: si el reinicio se ejecutara aquí, entre soltar el motor viejo y
-    /// terminar su apagado el keeper vería la ranura vacía y arrancaría otro —
-    /// y durante esa ventana habría dos motores en el mismo proceso, con dos
-    /// rotadores del mismo refresh token. Dejarlo en una petición mantiene un
-    /// solo dueño del ciclo de vida.
+    /// **It asks, it does not do.** The only thing that starts and stops the engine
+    /// is the keeper: were the restart executed here, between dropping the old engine
+    /// and finishing its shutdown the keeper would see an empty slot and start
+    /// another, and during that window there would be two engines in the same
+    /// process, with two rotators of the same refresh token. Leaving it as a request
+    /// keeps a single owner of the lifecycle.
     ///
-    /// El aviso vale aunque no haya motor: el caso típico es justo ése —no
-    /// arrancaba por falta de sesión y el usuario acaba de entrar—, y esperar el
-    /// backoff sería no enterarse.
+    /// The nudge counts even with no engine: that is the typical case (it would not
+    /// start for want of a session and the user has just signed in), and waiting out
+    /// the backoff would mean never finding out.
     pub fn request_restart(&self, reason: &str) {
         self.lock().restart_requested = Some(reason.to_string());
         self.wake.notify_one();
@@ -329,8 +330,8 @@ impl Engine {
 
     /// A session was signed out. Restart only if it was *this* engine's.
     ///
-    /// The two sessions are independent — a machine can hold a Cloud one and a
-    /// self-hosted one at once — but the engine runs against exactly one of
+    /// The two sessions are independent (a machine can hold a Cloud one and a
+    /// self-hosted one at once) but the engine runs against exactly one of
     /// them, and dropping the other changes nothing it is doing. On 2026-08-28
     /// the desktop forgot the self-hosted session five seconds after the engine
     /// had finally come up on Cloud, and the engine was torn down and rebuilt
@@ -349,19 +350,19 @@ impl Engine {
         } else {
             tracing::info!(
                 signed_out_cloud = was_cloud,
-                "hoardd: a session was signed out, but not the one the engine runs on — leaving it alone"
+                "hoardd: a session was signed out, but not the one the engine runs on, leaving it alone"
             );
         }
     }
 
-    /// The session can be read *right now* — somebody just did it. Wake a
-    /// engine that is down because it couldn't.
+    /// The session can be read *right now*, somebody just did it. Wake an engine
+    /// that is down because it couldn't.
     ///
     /// The backoff after a failed start is five minutes, which is the right
     /// pace for a keyring that keeps refusing and the wrong one for a keyring
     /// that has started answering: on 2026-08-28 the desktop opened at 05:34:48
-    /// and lent a Cloud token successfully, and the engine — down since 05:31:08
-    /// for not being able to read that same session — slept until 05:36:10, its
+    /// and lent a Cloud token successfully, and the engine, down since 05:31:08
+    /// for not being able to read that same session, slept until 05:36:10, its
     /// backoff to the second. Eighty-two seconds of "the sync service is
     /// stopped" with the session sitting there, readable.
     ///
@@ -385,7 +386,7 @@ impl Engine {
         ) {
             tracing::info!(
                 ?reason,
-                "hoardd: the session reads again — waking the engine instead of waiting out its backoff"
+                "hoardd: the session reads again, waking the engine instead of waiting out its backoff"
             );
             self.request_restart("the session became readable");
         }
@@ -395,7 +396,7 @@ impl Engine {
         self.lock().restart_requested.take()
     }
 
-    /// Apagado limpio del motor vivo para volver a arrancarlo. Sólo el keeper.
+    /// A clean shutdown of the live engine so it can be started again. Keeper only.
     async fn stop_for_restart(&self, reason: &str) {
         let running = {
             let mut guard = self.lock();
@@ -408,9 +409,9 @@ impl Engine {
         };
         let Some(mut running) = running else { return };
         tracing::info!(reason, "hoardd: restarting the engine");
-        // Último latido de presencia con el token viejo, que aún vale: deja este
-        // equipo en gris en el panel de las otras máquinas en vez de que se
-        // apague sin decir nada.
+        // One last presence beat with the old token, which is still good: it leaves
+        // this machine greyed out on the other machines' panel instead of going dark
+        // without a word.
         running.presence.closing().await;
         if let Err(err) = running.handle.shutdown().await {
             tracing::warn!(error = %err, "hoardd: the engine didn't acknowledge the restart");
@@ -421,8 +422,8 @@ impl Engine {
         {
             tracing::warn!("hoardd: the engine didn't stop in time; aborting it");
         }
-        // Al soltar `running` aquí se abortan sus tareas auxiliares, así que el
-        // arranque siguiente no convive con el anterior.
+        // Dropping `running` here aborts its auxiliary tasks, so the next start does
+        // not live alongside the previous one.
     }
 
     /// Para el motor. Marca `stopping` **antes** de nada para que el keeper no lo
@@ -435,16 +436,15 @@ impl Engine {
             guard.running.take()
         };
         let Some(mut running) = running else { return };
-        // Último latido de presencia mientras el token vale: pone este equipo en
-        // gris en el panel de las otras máquinas al instante.
+        // One last presence beat while the token is good: it greys this machine out
+        // on the other machines' panel straight away.
         running.presence.closing().await;
         if let Err(err) = running.handle.shutdown().await {
             tracing::warn!(error = %err, "hoardd: the engine didn't acknowledge shutdown");
         }
-        // `shutdown` sólo *manda* el comando: hay que darle al bucle del agente la
-        // vuelta que necesita para atenderlo, o el `abort` del `Drop` lo cortaría
-        // a media limpieza. Acotado, para que un motor colgado no bloquee el
-        // apagado del servicio.
+        // `shutdown` only *sends* the command: the agent's loop needs the one pass it
+        // takes to serve it, or `Drop`'s `abort` would cut it off mid-cleanup.
+        // Bounded, so a hung engine does not block the service's shutdown.
         if tokio::time::timeout(SHUTDOWN_GRACE, &mut running.task)
             .await
             .is_err()
@@ -456,8 +456,8 @@ impl Engine {
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
-        // Igual que en el journal: un pánico ajeno no puede dejar la ranura del
-        // motor inaccesible para siempre.
+        // As in the journal: somebody else's panic must not leave the engine's slot
+        // unreachable for ever.
         self.inner.lock().unwrap_or_else(|poisoned| {
             tracing::error!("hoardd: the engine mutex was poisoned; recovering");
             poisoned.into_inner()
@@ -465,21 +465,23 @@ impl Engine {
     }
 }
 
-/// Bucle que mantiene el motor arriba. No retorna nunca (por eso no puede
-/// producir un [`Finished`] por accidente); `supervise` lo reinicia si entra en
-/// pánico y el `abort()` del apagado lo mata.
+/// The loop that keeps the engine up. It never returns (which is why it cannot
+/// produce a [`Finished`] by accident); `supervise` restarts it on a panic and the
+/// shutdown's `abort()` kills it.
 pub async fn keeper(engine: Engine, events_tx: mpsc::Sender<AgentEvent>) -> Finished {
     let mut backoff = START_BACKOFF_MIN;
     loop {
         if engine.stopping() {
-            // No se retorna `Finished`: apagar es cosa de `main`, que aborta esta
-            // task. Dormir aquí evita quemar CPU en la ventana del apagado.
+            // No `Finished` is returned: shutting down is `main`'s business, and it
+            // aborts this task. Sleeping here avoids burning CPU in the shutdown
+            // window.
             tokio::time::sleep(KEEPER_TICK).await;
             continue;
         }
-        // Un cambio de sesión pedido por un cliente. Se atiende **antes** que
-        // nada: el motor vivo que haya está hablando con la cuenta que ya no es.
-        // Sin `continue`, para caer en el arranque de abajo en la misma vuelta.
+        // A session change asked for by a client. It is served **before** anything
+        // else: whatever live engine there is, is talking to the account that no
+        // longer applies. No `continue`, so the start below happens on the same
+        // pass.
         if let Some(reason) = engine.take_restart_request() {
             engine.stop_for_restart(&reason).await;
             backoff = START_BACKOFF_MIN;
@@ -489,10 +491,10 @@ pub async fn keeper(engine: Engine, events_tx: mpsc::Sender<AgentEvent>) -> Fini
             continue;
         }
         if engine.status().running {
-            // Estaba arriba y su task ha muerto: eso es un incidente, no una
-            // transición normal.
+            // It was up and its task has died: that is an incident, not a normal
+            // transition.
             tracing::error!("hoardd: the engine task is gone; restarting it");
-            // Suelta el cadáver (y sus tareas) antes de intentar otro arranque.
+            // Drop the corpse (and its tasks) before trying another start.
             engine.forget();
         }
         match start(events_tx.clone()).await {
@@ -529,13 +531,13 @@ pub async fn keeper(engine: Engine, events_tx: mpsc::Sender<AgentEvent>) -> Fini
     }
 }
 
-/// Por qué no arrancó, para que la ventana pueda decirlo.
+/// Why it would not start, so the window can say so.
 ///
-/// **Por downcast, nunca por el texto del error.** Un mensaje se reescribe sin
-/// pensar —y este en concreto se ha reescrito ya— y con `contains("no session")`
-/// la clasificación se rompería en silencio, que es justo el fallo invisible que
-/// todo esto viene a matar. Cada rama cuelga de un tipo que existe precisamente
-/// para ser reconocido aquí.
+/// **By downcast, never by the error's text.** A message gets rewritten without a
+/// second thought (this one has been rewritten already) and with
+/// `contains("no session")` the classification would break in silence, which is
+/// exactly the invisible failure all of this exists to kill. Every arm hangs off a
+/// type that exists precisely to be recognised here.
 fn classify(err: &anyhow::Error) -> EngineDownReason {
     if err
         .downcast_ref::<hoard_agent::session::NoSession>()
@@ -543,9 +545,9 @@ fn classify(err: &anyhow::Error) -> EngineDownReason {
     {
         return EngineDownReason::NoSession;
     }
-    // El llavero tiene dos formas de fallar (no contesta / contesta que no) y un
-    // solo consejo para el usuario: vuelve a entrar, que reescribe el ítem a
-    // nombre del servicio. Se separan en el log, no en la pantalla.
+    // The keyring has two ways to fail (it does not answer, or it answers no) and
+    // one piece of advice for the user: sign in again, which rewrites the item in the
+    // service's name. They are separated in the log, not on screen.
     if err
         .downcast_ref::<hoard_agent::keychain::KeyringTimeout>()
         .is_some()
@@ -568,18 +570,17 @@ struct Started {
     watched: usize,
 }
 
-/// Arranca el motor: sesión → saves → `agent::spawn` → presencia, empuje Cloud y
-/// refresher del JWT.
+/// Starts the engine: session, then saves, then `agent::spawn`, then presence, the
+/// Cloud push and the JWT refresher.
 async fn start(events_tx: mpsc::Sender<AgentEvent>) -> anyhow::Result<Started> {
-    // `resolve_owned`: el camino que rota. Es del servicio y de nadie más — los
-    // clientes usan `resolve_borrowed` con el token que les prestamos.
+    // `resolve_owned`: the road that rotates. It belongs to the service and to
+    // nobody else; clients use `resolve_borrowed` with the token we lend them.
     let active = hoard_agent::session::resolve_owned().await?;
-    // Antes de hidratar nada: curar el estado contra el servidor. Es el único
-    // punto por el que pasa toda máquina —arranque, login, actualización (el
-    // instalador reinicia el servicio)— así que actualizar la app repara sola a
-    // quien tenga filas apuntando a ids que su servidor ya no conoce. Un fallo
-    // aquí no puede impedir arrancar: sin red el motor sigue teniendo trabajo
-    // local que hacer.
+    // Before hydrating anything: heal the state against the server. It is the one
+    // point every machine passes through (start, login, update, since the installer
+    // restarts the service), so updating the app repairs anybody with rows pointing
+    // at ids their server no longer knows. A failure here cannot stop the start: with
+    // no network the engine still has local work to do.
     match library::reconcile_with_server(&active.client).await {
         Ok(r) if r.changed() => tracing::info!(
             relinked = r.relinked,
@@ -591,17 +592,17 @@ async fn start(events_tx: mpsc::Sender<AgentEvent>) -> anyhow::Result<Started> {
     }
     let (state, _path) = CliState::load_default()?;
     let archived = archived_save_ids(&active.client).await;
-    // Sin saves rastreados el motor arranca igual (a diferencia de `hoard sync`,
-    // que es un comando y puede abortar): un servicio residente tiene que estar
-    // ahí cuando el usuario rastree el primero, y `Request::Reload` lo recoge.
+    // With no tracked saves the engine starts anyway (unlike `hoard sync`, which is
+    // a command and may abort): a resident service has to be there when the user
+    // tracks their first one, and `Request::Reload` picks it up.
     let saves = library::watched_saves_from_state(&state, &archived);
     let watched = saves.len();
     let config = engine_config();
 
     let (presence_handle, presence_task) = presence::spawn(active.client.clone());
-    // Dos clones antes de que `agent::spawn` consuma el cliente. `ApiClient`
-    // comparte su celda de token entre clones, así que el JWT que rote el
-    // refresher llega también al motor y al empuje Cloud.
+    // Two clones before `agent::spawn` consumes the client. `ApiClient` shares its
+    // token cell across clones, so the JWT the refresher rotates reaches the engine
+    // and the Cloud push too.
     let live_client = active.client.clone();
     let refresh_client = active.client.clone();
     let reload_client = active.client.clone();
@@ -609,13 +610,13 @@ async fn start(events_tx: mpsc::Sender<AgentEvent>) -> anyhow::Result<Started> {
     let (handle, task) = agent::spawn(active.client, config, saves, events_tx);
 
     let mut aux = vec![presence_task];
-    // Empuje Cloud de baja latencia (Realtime + poll de respaldo), igual que el
-    // daemon CLI. Sólo en Cloud y con sync global: `backup_only` nunca escribe.
+    // The low-latency Cloud push (Realtime plus a backup poll). Cloud only, and only
+    // with global sync: `backup_only` never writes.
     if active.is_cloud && global_sync {
         aux.push(spawn_cloud_live(live_client, handle.clone()));
     }
-    // Un solo rotador del refresh token: éste. `owned()` es `Some` sólo porque
-    // resolvimos como dueños; un cliente ni siquiera recibe el refresh token.
+    // One rotator of the refresh token: this one. `owned()` is `Some` only because
+    // we resolved as owners; a client never even receives the refresh token.
     if let Some(session) = active.cloud.as_ref().and_then(|c| c.owned()) {
         let shared = Arc::new(tokio::sync::Mutex::new(session));
         aux.push(tokio::spawn(hoard_agent::supervisor::supervise(
@@ -638,16 +639,16 @@ async fn start(events_tx: mpsc::Sender<AgentEvent>) -> anyhow::Result<Started> {
     })
 }
 
-/// Los saves congelados en la caja negra del servidor, para dejarlos fuera del
-/// conjunto vigilado.
+/// The saves frozen in the server's black box, so they can be left out of the
+/// watched set.
 ///
-/// **Nunca falla hacia arriba.** Un servidor que no contesta, un self-hosted que
-/// no tiene caja negra, una versión vieja sin ese endpoint: todos significan
-/// aquí "no sé de ninguno archivado", que es el comportamiento de siempre.
-/// Devolver un error en su lugar dejaría al motor sin arrancar por una consulta
-/// accesoria, y devolver un conjunto a medias dejaría de vigilar saves que están
-/// perfectamente vivos — de los dos errores posibles, vigilar de más es el
-/// barato: un save archivado que se cuele lo para el 403 como hasta ahora.
+/// **It never fails upwards.** A server that does not answer, a self-hosted one with
+/// no black box, an old version without that endpoint: here they all mean "I know of
+/// none archived", which is the long-standing behaviour. Returning an error instead
+/// would leave the engine unstarted over an incidental query, and returning a partial
+/// set would stop watching saves that are perfectly alive. Of the two possible
+/// mistakes, watching too much is the cheap one: an archived save that slips through
+/// is stopped by the 403, as it always was.
 async fn archived_save_ids(client: &ApiClient) -> HashSet<String> {
     if !client.is_cloud().await {
         return HashSet::new();
@@ -669,14 +670,14 @@ async fn archived_save_ids(client: &ApiClient) -> HashSet<String> {
     }
 }
 
-/// Config del motor a partir de las preferencias del usuario.
+/// The engine's config, built from the user's preferences.
 ///
-/// Mismas prefs que lee el desktop (`prefs.json` es del usuario, no del
-/// frontend), con una excepción deliberada: si **no hay** fichero de prefs, la
-/// máquina nunca ha visto la app de escritorio y estamos en el caso headless, que
-/// es el que `hoard sync` sirve hoy con sync global y auto-restore encendidos. Un
-/// servidor casero que sólo tiene la CLI no puede acabar en "sólo subo" por leer
-/// unos defaults pensados para la GUI.
+/// The same prefs the desktop reads (`prefs.json` belongs to the user, not to the
+/// frontend), with one deliberate exception: when there is **no** prefs file, the
+/// machine has never seen the desktop app and this is the headless case, which is
+/// what `hoard sync` serves today with global sync and auto-restore on. A home
+/// server that only has the CLI must not end up in "upload only" from reading
+/// defaults meant for the GUI.
 fn engine_config() -> AgentConfig {
     let (prefs, path) = Prefs::load_default()
         .map(|(p, path)| (p, Some(path)))
@@ -690,37 +691,35 @@ fn engine_config() -> AgentConfig {
         global_sync: prefs.global_sync || headless,
         conflict_retention_days: prefs.conflict_retention_days,
         // `data_saving` deliberately does NOT feed the floor any more. Its
-        // slider left the UI on 2026-06-14 ("el backend mantiene sus defaults"),
+        // slider left the UI on 2026-06-14 ("the backend keeps its defaults"),
         // but the pref already written to disk stayed at whatever the user had
-        // last dragged it to — and the engine kept honouring it. On one machine
+        // last dragged it to, and the engine kept honouring it. On one machine
         // that was 1.0, a ten-minute floor between uploads that nothing could
         // show or change: edits were picked up in two seconds and then sat in
         // the queue, which reads as "it doesn't detect my changes". Worse, a
         // restore marks the next backup urgent and skips the floor, so changes
         // arriving from the other machine synced instantly while your own
-        // waited — the two halves looked unrelated.
+        // waited, and the two halves looked unrelated.
         //
         // Per-save pacing is still reachable where it is visible: the
         // `data_saver` preset sets its own 600s floor through
         // `SavePolicy::min_snapshot_interval_secs`, and that one the user picks
         // per game and can see.
         min_snapshot_interval_secs: 0,
-        // Aparca la copia local antes de dejar que una remota más nueva la pise
-        // (nunca destruye datos en silencio).
+        // Parks the local copy before letting a newer remote one overwrite it (it
+        // never destroys data in silence).
         conflict_root: CliConfig::state_dir().ok().map(|d| d.join("conflicts")),
         ..AgentConfig::default()
     }
 }
 
-/// Empuje Cloud bajo supervisión. `cloud_live::spawn` monta dos `tokio::spawn`
-/// sueltos (poll + Realtime) que sobreviven a errores pero no a un pánico, así
-/// que el keeper lo cubre desde fuera: si alguna de las dos tareas termina, se
-/// tira el par y se rearma.
+/// The Cloud push, supervised. `cloud_live::spawn` sets up two loose `tokio::spawn`
+/// tasks (poll and Realtime) that survive errors but not a panic, so the keeper
+/// covers it from outside: when either task finishes, the pair is dropped and rearmed.
 ///
-/// Desde el Slice 4c éste es su **único** llamante (el daemon CLI ya no existe),
-/// así que la supervisión se puede meter dentro de `cloud_live` sin romper a
-/// nadie. Se deja para el Slice 7 (cliente cloud único), que va a tocar esa
-/// función entera; envolverla desde fuera ya cumple la regla de D.12.
+/// This is its **only** caller, so the supervision could move inside `cloud_live`
+/// without breaking anybody. It is left for the single cloud client work, which will
+/// rewrite that function entirely; wrapping it from outside already satisfies D.12.
 fn spawn_cloud_live(client: ApiClient, handle: AgentHandle) -> JoinHandle<()> {
     tokio::spawn(hoard_agent::supervisor::supervise(
         "hoardd cloud-live",
@@ -733,8 +732,8 @@ fn spawn_cloud_live(client: ApiClient, handle: AgentHandle) -> JoinHandle<()> {
                     tokio::time::sleep(CLOUD_LIVE_CHECK).await;
                     if tasks.0.iter().any(|t| t.is_finished()) {
                         tracing::warn!("hoardd: a cloud-live task ended; restarting the pair");
-                        // La asignación suelta el grupo anterior, que aborta lo que
-                        // quedara vivo. Nunca dos pollers.
+                        // The assignment drops the previous group, which aborts
+                        // whatever was still alive. Never two pollers.
                         tasks = AbortOnDrop(spawn_cloud_live_pair(&client, &handle));
                     }
                 }
@@ -772,19 +771,19 @@ pub async fn slot_status(engine: &Engine) -> Vec<hoard_core::ipc::AgentSlotStatu
     }
 }
 
-/// Bombea los eventos del motor: presencia, `state.json`, journal y aviso
-/// nativo.
+/// Pumps the engine's events: presence, `state.json`, the journal and the native
+/// notification.
 ///
-/// El canal es **del daemon**, no del motor: se crea una vez y cada arranque del
-/// motor recibe un clon del emisor. Así este bucle puede reiniciarse bajo
-/// `supervise` sin perder el receptor, y un motor reiniciado sigue escribiendo en
-/// el mismo journal (los cursores de los clientes no se rompen porque el motor
-/// haya rebotado).
+/// The channel belongs to **the daemon**, not to the engine: it is created once and
+/// every engine start gets a clone of the sender. That way this loop can restart
+/// under `supervise` without losing the receiver, and a restarted engine keeps
+/// writing to the same journal (the clients' cursors do not break because the engine
+/// bounced).
 ///
-/// Las notificaciones nativas salen de aquí y no del ejecutor de cada acción
-/// porque éste es el **único** sitio por el que pasan todos los eventos del
-/// motor: un aviso colgado de la rama de backup y otro de la de restore es
-/// exactamente cómo el 429 acabó manejado en un camino y no en el otro (D.7).
+/// The native notifications go out from here and not from each action's executor
+/// because this is the **only** place all the engine's events pass through: one
+/// notice hanging off the backup branch and another off the restore branch is
+/// exactly how the 429 ended up handled on one road and not the other (D.7).
 pub async fn pump(
     engine: Engine,
     log: Arc<EventLog>,
@@ -807,10 +806,9 @@ pub async fn pump(
             }
             _ => {}
         }
-        // Lo que el updater necesita saber para no relevar los binarios en mitad
-        // de una subida. Se cuenta aquí, que es el único sitio por el que pasan
-        // **todas** las transferencias — por el mismo motivo por el que se
-        // notifica aquí y no en cada rama (D.7).
+        // What the updater needs to know so it does not swap the binaries mid-upload.
+        // It is counted here, the one place **all** the transfers pass through, for
+        // the same reason the notifying happens here and not in each branch (D.7).
         match &event {
             AgentEvent::BackupStarted { .. } => engine.transfer_started(),
             AgentEvent::BackupSuccess { .. }
@@ -829,15 +827,15 @@ pub async fn pump(
         notifier.consider(&event).await;
         log.record(OffsetDateTime::now_utc(), event);
     }
-    // El canal sólo se cierra cuando ya no queda ningún emisor, y el daemon
-    // guarda uno vivo mientras corre. Llegar aquí es el apagado.
+    // The channel only closes when no sender is left, and the daemon keeps one alive
+    // while it runs. Reaching here is the shutdown.
     tracing::info!("hoardd: the event channel closed");
     Finished
 }
 
-/// Persiste en `state.json` lo que el motor sólo tiene en memoria: el cursor de
-/// versión y la firma anti-resubida. Sin esto, cada reinicio del daemon
-/// re-subiría snapshots idénticos y re-bajaría para diferenciar.
+/// Persists into `state.json` what the engine only holds in memory: the version
+/// cursor and the anti-reupload signature. Without this, every daemon restart would
+/// re-upload identical snapshots and re-download to diff them.
 fn persist(event: &AgentEvent) {
     let (save_id, version, set_hash) = match event {
         AgentEvent::BackupSuccess {
@@ -846,8 +844,8 @@ fn persist(event: &AgentEvent) {
             set_hash,
             ..
         } => (save_id, Some(*version_num), set_hash.clone()),
-        // Tras un restore el slot está sincronizado a esa versión: recordarlo es
-        // lo que hace que el version-gate sobreviva a un reinicio.
+        // After a restore the slot is synced to that version: remembering it is what
+        // makes the version gate survive a restart.
         AgentEvent::SaveAutoRestored {
             save_id,
             version_num,
@@ -881,10 +879,10 @@ fn persist(event: &AgentEvent) {
     }
 }
 
-/// Re-hidrata el conjunto de saves vigilados desde `state.json` y le pasa al
-/// motor la diferencia. Es lo que responde a [`hoard_core::ipc::Request::Reload`]:
-/// el cliente avisa de que el conjunto cambió y el daemon —dueño del estado—
-/// decide qué vigilar.
+/// Re-hydrates the watched save set from `state.json` and hands the engine the
+/// difference. It is what answers [`hoard_core::ipc::Request::Reload`]: the client
+/// says the set changed and the daemon, which owns the state, decides what to
+/// watch.
 pub async fn reload(engine: &Engine) -> anyhow::Result<usize> {
     let Some(handle) = engine.handle() else {
         anyhow::bail!("the engine isn't running");
@@ -923,9 +921,8 @@ pub async fn reload(engine: &Engine) -> anyhow::Result<usize> {
 mod tests {
     use super::*;
 
-    /// Un motor caído con un motivo y sin `Running`, que es como queda tras un
-    /// `note_error`. Suficiente para las dos políticas de abajo, que sólo miran
-    /// el estado.
+    /// An engine down with a reason and no `Running`, which is how a `note_error`
+    /// leaves it. Enough for the two policies below, which only look at the state.
     fn down_with(reason: EngineDownReason, is_cloud: bool) -> Engine {
         let engine = Engine::new();
         {
@@ -951,9 +948,9 @@ mod tests {
         engine.lock().restart_requested.is_some()
     }
 
-    /// Prestar el token prueba que la sesión se lee. Un motor caído por no poder
-    /// leerla tiene que reintentar ya, no agotar cinco minutos de backoff junto a
-    /// una sesión que ya funciona — los 82 s del 28-ago-2026.
+    /// Lending the token proves the session reads. An engine down for not being able
+    /// to read it has to retry now, not burn five minutes of backoff next to a session
+    /// that already works: the 82 s of 2026-08-28.
     #[test]
     fn a_readable_session_wakes_an_engine_that_was_missing_one() {
         for reason in [
@@ -965,14 +962,14 @@ mod tests {
             engine.wake_if_a_session_would_help();
             assert!(
                 restart_asked(&engine),
-                "{reason:?} lo desbloquea una sesión"
+                "{reason:?} is unblocked by a session"
             );
         }
     }
 
-    /// Y sólo esos. Un motor que cayó por otra cosa no se arregla porque alguien
-    /// haya podido leer la sesión, y despertarlo en cada préstamo de token
-    /// convertiría el backoff en un bucle.
+    /// And only those. An engine that went down for something else is not fixed by
+    /// somebody managing to read the session, and waking it on every token loan would
+    /// turn the backoff into a loop.
     #[test]
     fn a_readable_session_doesnt_wake_an_engine_that_failed_for_another_reason() {
         for reason in [EngineDownReason::Other, EngineDownReason::Unknown] {
@@ -980,13 +977,13 @@ mod tests {
             engine.wake_if_a_session_would_help();
             assert!(
                 !restart_asked(&engine),
-                "{reason:?} no lo arregla una sesión"
+                "{reason:?} is not fixed by a session"
             );
         }
     }
 
-    /// Un motor vivo no se toca: el token se presta constantemente, y reiniciar
-    /// en cada préstamo sería cortar la sincronización cada pocos minutos.
+    /// A live engine is left alone: the token is lent constantly, and restarting on
+    /// every loan would cut the sync off every few minutes.
     #[test]
     fn a_live_engine_is_never_woken() {
         let engine = up_on(true);
@@ -1008,8 +1005,8 @@ mod tests {
         assert!(!restart_asked(&engine), "el motor va con el self-hosted");
     }
 
-    /// La suya sí lo tira: está hablando con un servidor cuya sesión ya no
-    /// existe.
+    /// Its own does tear it down: it is talking to a server whose session no longer
+    /// exists.
     #[test]
     fn signing_out_of_its_own_session_restarts_the_engine() {
         let engine = up_on(true);
@@ -1017,8 +1014,8 @@ mod tests {
         assert!(restart_asked(&engine));
     }
 
-    /// Y un motor caído se reinicia venga de donde venga la baja: la sesión que
-    /// queda puede ser justo la que le faltaba.
+    /// And an engine that is down restarts whichever session went: the one left may
+    /// be exactly the one it was missing.
     #[test]
     fn a_down_engine_restarts_on_either_sign_out() {
         let engine = down_with(EngineDownReason::NoSession, true);
@@ -1026,15 +1023,15 @@ mod tests {
         assert!(restart_asked(&engine));
     }
 
-    /// El motivo tiene que sobrevivir a las capas de contexto que le pone el
-    /// camino real: `resolve_owned` envuelve el error un par de veces antes de
-    /// llegar aquí. Si la clasificación sólo mirase la capa de fuera, el caso más
-    /// importante —no hay sesión— saldría como `Other` y la ventana volvería a
-    /// enseñar el banner genérico.
+    /// The reason has to survive the context layers the real road puts on it:
+    /// `resolve_owned` wraps the error a couple of times before it gets here. If the
+    /// classification only looked at the outer layer, the most important case (there
+    /// is no session) would come out as `Other` and the window would show the generic
+    /// banner again.
     #[test]
     fn no_session_survives_the_context_layers() {
         let err = anyhow::Error::new(hoard_agent::session::NoSession)
-            .context("resolviendo la sesión del servicio")
+            .context("resolving the service session")
             .context("arrancando el motor");
         assert_eq!(classify(&err), EngineDownReason::NoSession);
     }
@@ -1047,7 +1044,7 @@ mod tests {
             doing: "reading the self-hosted session",
             after: std::time::Duration::from_secs(5),
         })
-        .context("leyendo la sesión");
+        .context("reading the session");
         assert_eq!(classify(&stuck), EngineDownReason::KeyringUnreadable);
 
         let refused =
@@ -1057,9 +1054,10 @@ mod tests {
         assert_eq!(classify(&refused), EngineDownReason::KeyringUnreadable);
     }
 
-    /// Y lo que no reconocemos se dice que no se reconoce, en vez de disfrazarse
-    /// del último motivo que se nos ocurra: `last_error` lleva el detalle y el
-    /// banner cae al texto genérico, que para un fallo desconocido es honesto.
+    /// And what we do not recognise is said not to be recognised, rather than
+    /// dressed up as the last reason we can think of: `last_error` carries the detail
+    /// and the banner falls back to the generic text, which for an unknown failure is
+    /// honest.
     #[test]
     fn anything_else_stays_other() {
         let err = anyhow::anyhow!("the server hung up").context("arrancando el motor");

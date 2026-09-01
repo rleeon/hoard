@@ -1,12 +1,12 @@
-//! Dónde escucha el daemon: ruta del socket (Linux/macOS) o nombre del named
-//! pipe (Windows), y el fichero de lock que hace de árbitro.
+//! Where the daemon listens: the socket path (Linux/macOS) or the named pipe's
+//! name (Windows), plus the lock file that arbitrates.
 //!
-//! **Por usuario, nunca por máquina.** El daemon necesita el keyring del usuario
-//! y su login cloud, así que en una máquina multiusuario hay un daemon por
-//! sesión (ADR 0021, Parte A). En unix eso sale gratis: el socket vive bajo
-//! `$XDG_RUNTIME_DIR` (o el `state_dir` del usuario), que ya es privado. En
-//! Windows el namespace de pipes es global, así que el nombre lleva el usuario
-//! dentro y la ACL hace el resto (ver `winsec`).
+//! **Per user, never per machine.** The daemon needs the user's keyring and their
+//! cloud login, so on a multi-user machine there is one daemon per session (ADR
+//! 0021, Part A). On unix that comes for free: the socket lives under
+//! `$XDG_RUNTIME_DIR` (or the user's `state_dir`), which is private already. On
+//! Windows the pipe namespace is global, so the name carries the user inside it and
+//! the ACL does the rest (see `winsec`).
 
 use anyhow::Result;
 
@@ -19,12 +19,12 @@ use anyhow::{bail, Context};
 #[cfg(unix)]
 use hoard_agent::config::CliConfig;
 
-/// Override del endpoint, para tests y diagnóstico. Cliente y daemon tienen que
-/// verlo igual, así que se exporta por nombre y no se inventa cada uno el suyo.
+/// The endpoint override, for tests and diagnostics. Client and daemon have to see
+/// the same one, so it is exported by name rather than each inventing its own.
 pub const ENDPOINT_ENV: &str = "HOARDD_SOCKET";
 
-/// Dirección del socket del daemon. En unix es una ruta; en Windows el nombre
-/// del pipe (`\\.\pipe\…`).
+/// The daemon's socket address. On unix it is a path; on Windows it is the pipe's
+/// name (`\\.\pipe\...`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Endpoint(String);
 
@@ -43,15 +43,15 @@ impl Endpoint {
         &self.0
     }
 
-    /// El override de [`ENDPOINT_ENV`], si está puesto y no vacío.
+    /// The [`ENDPOINT_ENV`] override, when it is set and not empty.
     pub fn from_env() -> Option<Self> {
         let raw = std::env::var(ENDPOINT_ENV).ok()?;
         (!raw.trim().is_empty()).then(|| Self::new(raw))
     }
 
-    /// El endpoint de este usuario: el override si existe, y si no el default de
-    /// la plataforma. Es lo que llaman tanto el daemon como los clientes — que
-    /// coincidan no es cortesía, es el mecanismo de exclusión mutua.
+    /// This user's endpoint: the override when there is one, otherwise the
+    /// platform default. Both the daemon and the clients call it, and their agreeing
+    /// is not courtesy, it is the mutual-exclusion mechanism.
     pub fn resolve() -> Result<Self> {
         match Self::from_env() {
             Some(ep) => Ok(ep),
@@ -64,9 +64,9 @@ impl Endpoint {
         std::path::Path::new(&self.0)
     }
 
-    /// Fichero de lock hermano del socket. Se deriva de la dirección (mismo
-    /// directorio, extensión `.lock`) para que un endpoint de test tenga su
-    /// propio lock y no pelee con el del daemon de verdad del usuario.
+    /// A lock file sibling to the socket. It is derived from the address (same
+    /// directory, `.lock` extension) so a test endpoint gets its own lock and does
+    /// not fight the user's real daemon for one.
     #[cfg(unix)]
     pub fn lock_path(&self) -> PathBuf {
         self.path().with_extension("lock")
@@ -75,9 +75,9 @@ impl Endpoint {
     #[cfg(unix)]
     pub fn user_default() -> Result<Self> {
         let path = runtime_dir()?.join("hoardd.sock");
-        // `sockaddr_un.sun_path` son 108 bytes en Linux y 104 en macOS. Pasarse
-        // da un `bind` con error opaco, así que se dice aquí y con la ruta
-        // delante.
+        // `sockaddr_un.sun_path` is 108 bytes on Linux and 104 on macOS. Going over
+        // gives a `bind` with an opaque error, so it is said here, with the path in
+        // front of you.
         let len = path.as_os_str().len();
         if len > 100 {
             bail!(
@@ -94,14 +94,15 @@ impl Endpoint {
         Ok(Self::new(windows_pipe_name(&user)))
     }
 
-    /// Endpoint aislado con nombre propio: el del usuario, pero sin pisarlo.
+    /// An isolated endpoint with a name of its own: the user's, without treading on
+    /// it.
     ///
-    /// En unix cuelga de `dir` (un temporal, típicamente); en Windows el
-    /// namespace de pipes es **plano y global a la máquina**, así que `dir` no
-    /// pinta nada y la unicidad va en el nombre. Que la firma acepte las dos
-    /// cosas es lo que permite escribir **un** test que corra igual en los dos
-    /// sitios: el Slice 4a no lo tenía —sus tests componían rutas de fichero— y
-    /// por eso la ruta del pipe se quedó verificada sólo a nivel de tipos.
+    /// On unix it hangs off `dir` (a temp directory, typically); on Windows the pipe
+    /// namespace is **flat and global to the machine**, so `dir` counts for nothing
+    /// and uniqueness goes in the name. The signature accepting both is what makes it
+    /// possible to write **one** test that runs the same in both places, which Slice
+    /// 4a did not have (its tests composed file paths) and which is why the pipe path
+    /// stayed verified at the type level only.
     pub fn scoped(dir: &std::path::Path, name: &str) -> Self {
         #[cfg(unix)]
         {
@@ -119,10 +120,10 @@ impl Endpoint {
     }
 }
 
-/// Directorio del socket en unix: `$XDG_RUNTIME_DIR/hoard` cuando existe (tmpfs,
-/// 0700 del usuario, se limpia al cerrar sesión — el sitio canónico de un
-/// socket de servicio de usuario), y si no el `state_dir` de siempre (macOS no
-/// define `XDG_RUNTIME_DIR`).
+/// The socket's directory on unix: `$XDG_RUNTIME_DIR/hoard` when it exists (tmpfs,
+/// 0700 for the user, cleaned up at logout, the canonical place for a user
+/// service's socket), and otherwise the usual `state_dir` (macOS does not define
+/// `XDG_RUNTIME_DIR`).
 #[cfg(unix)]
 fn runtime_dir() -> Result<PathBuf> {
     if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()) {
@@ -131,14 +132,14 @@ fn runtime_dir() -> Result<PathBuf> {
     CliConfig::state_dir().context("resolving the state dir for the socket")
 }
 
-/// Nombre del named pipe de un usuario.
+/// A user's named-pipe name.
 ///
-/// El namespace `\\.\pipe\` es **global a la máquina**: dos usuarios en la misma
-/// sesión de servidor de terminal comparten espacio de nombres, así que el
-/// nombre lleva el usuario. Va sanitizado (el nombre de un pipe no puede llevar
-/// `\`) *y* con un hash del nombre original: sin el hash, `José` y `Jose`
-/// colapsarían al mismo pipe y el segundo usuario no podría ni crear el suyo
-/// (la ACL del primero le negaría el acceso) ni usarlo.
+/// The `\\.\pipe\` namespace is **global to the machine**: two users in the same
+/// terminal server session share the namespace, so the name carries the user. It is
+/// sanitised (a pipe name cannot contain `\`) *and* carries a hash of the original
+/// name: without the hash, `José` and `Jose` would collapse onto the same pipe and
+/// the second user could neither create theirs (the first one's ACL would deny
+/// access) nor use it.
 pub fn windows_pipe_name(user: &str) -> String {
     let mut safe: String = user
         .chars()
@@ -152,8 +153,8 @@ pub fn windows_pipe_name(user: &str) -> String {
     format!("\\\\.\\pipe\\hoardd-{safe}-{:08x}", fnv1a(user.as_bytes()))
 }
 
-/// FNV-1a de 32 bits. Sólo se usa para desambiguar el nombre del pipe, así que
-/// no hace falta arrastrar una dep de hashing por doce líneas.
+/// A 32-bit FNV-1a. It only disambiguates the pipe's name, so there is no need to
+/// drag in a hashing dependency for twelve lines.
 fn fnv1a(bytes: &[u8]) -> u32 {
     let mut hash: u32 = 0x811c_9dc5;
     for b in bytes {
@@ -169,8 +170,8 @@ mod tests {
 
     #[test]
     fn the_env_override_wins() {
-        // Sin tocar el entorno del proceso (los tests corren en paralelo):
-        // basta comprobar que `new` no reinterpreta la dirección.
+        // Without touching the process environment (the tests run in parallel):
+        // checking that `new` does not reinterpret the address is enough.
         let ep = Endpoint::new("/tmp/whatever.sock");
         assert_eq!(ep.as_str(), "/tmp/whatever.sock");
     }
@@ -185,8 +186,8 @@ mod tests {
         );
     }
 
-    /// Dos usuarios distintos no pueden colisionar de nombre, ni cuando la
-    /// sanitización los deja iguales.
+    /// Two different users cannot collide on the name, not even when sanitising
+    /// leaves them identical.
     #[test]
     fn pipe_names_are_per_user_and_collision_free() {
         let a = windows_pipe_name("José");
@@ -196,8 +197,8 @@ mod tests {
         assert_eq!(a, windows_pipe_name("José"));
     }
 
-    /// Un nombre de usuario que la sanitización deja vacío (cirílico, CJK) sigue
-    /// dando un nombre de pipe válido y propio.
+    /// A username that sanitising leaves empty (Cyrillic, CJK) still gives a valid
+    /// pipe name of its own.
     #[test]
     fn an_unsanitisable_user_still_gets_a_name() {
         let name = windows_pipe_name("Пользователь");

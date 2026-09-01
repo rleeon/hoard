@@ -1,9 +1,9 @@
-//! Leer y escribir tramas sobre el socket.
+//! Reading and writing frames over the socket.
 //!
-//! El formato (cabecera `u32` big-endian + JSON) y su tope viven en
-//! [`hoard_core::ipc`], que es serde-puro; aquí está lo único que necesita
-//! runtime: mover bytes. Esa división es la del kernel leaf de la ADR — el
-//! contrato no puede depender de `tokio`, y el transporte sí.
+//! The format (a big-endian `u32` header plus JSON) and its ceiling live in
+//! [`hoard_core::ipc`], which is pure serde; what is here is the only part that
+//! needs a runtime: moving bytes. That split is the ADR's leaf kernel: the
+//! contract cannot depend on `tokio`, and the transport can.
 
 use anyhow::{Context, Result};
 use hoard_core::ipc::{decode_frame, encode_frame, frame_len, HEADER_BYTES};
@@ -24,8 +24,8 @@ where
     Ok(())
 }
 
-/// Lee una trama. `Ok(None)` = el otro extremo cerró limpiamente, que para un
-/// cliente que se va es lo normal y no un error que loguear.
+/// Reads a frame. `Ok(None)` means the other end closed cleanly, which for a
+/// client that is leaving is normal and not an error worth logging.
 pub async fn read_frame<R, T>(reader: &mut R) -> Result<Option<T>>
 where
     R: AsyncRead + Unpin,
@@ -87,15 +87,14 @@ mod tests {
         assert!(end.is_none());
     }
 
-    /// Una cabecera que promete más de lo permitido se rechaza sin reservar el
-    /// buffer que promete.
+    /// A header promising more than is allowed is rejected without allocating the
+    /// buffer it promises.
     #[tokio::test]
     async fn an_oversized_header_is_rejected() {
         let (mut client, mut server) = tokio::io::duplex(64);
         tokio::spawn(async move {
             let _ = client.write_all(&u32::MAX.to_be_bytes()).await;
-            // Sin cuerpo: si el lector intentara leerlo, se quedaría colgado en
-            // vez de fallar.
+            // No body: a reader that tried to read it would hang rather than fail.
             futures_keepalive(client).await;
         });
         let err = read_frame::<_, ClientFrame>(&mut server).await.unwrap_err();
