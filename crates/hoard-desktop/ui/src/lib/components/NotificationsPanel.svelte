@@ -11,7 +11,16 @@
    */
   import { _ } from "svelte-i18n";
   import { fly } from "svelte/transition";
-  import { Bell, X, ExternalLink, ShieldAlert, Info, BellOff } from "@lucide/svelte";
+  import {
+    Bell,
+    X,
+    ExternalLink,
+    ShieldAlert,
+    Info,
+    BellOff,
+    Star,
+    Heart,
+  } from "@lucide/svelte";
 
   import {
     notifications,
@@ -51,6 +60,20 @@
     normal: "border-l-emerald-500/40",
     low: "border-l-zinc-700",
   } as const;
+
+  // Button styling by icon name. `heart` gets the same solid-red treatment as
+  // the support button on the website, so someone who has seen the site
+  // recognises it; `star` stays quiet, because asking for a star is a small
+  // favour and shouldn't shout. Anything else, including an icon name this
+  // build doesn't know, renders as the neutral button.
+  function actionClass(icon?: string): string {
+    const base =
+      "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors";
+    if (icon === "heart") {
+      return `${base} bg-red-600 text-white hover:bg-red-500`;
+    }
+    return `${base} bg-white/[0.06] text-zinc-300 ring-1 ring-white/10 hover:bg-white/[0.1] hover:text-zinc-100`;
+  }
 
   // Tick once a second so relative timestamps stay honest.
   let tick = $state(0);
@@ -136,7 +159,7 @@
                 {n.source === "server" ? $_("notifications.from_server") : $_("notifications.from_app")}
                 · {relativeTime(n.at)}
               </span>
-              {#if n.action_url}
+              {#if n.actions?.length ? false : n.action_url}
                 <a
                   href={n.action_url}
                   target="_blank"
@@ -148,6 +171,29 @@
                 </a>
               {/if}
             </div>
+            <!-- Multi-button form. The panel is 288px wide, so two buttons is
+                 the practical ceiling; they wrap rather than overflow if a
+                 message ever sends more. The icon comes across as a NAME and
+                 is resolved here: the server never sends markup. -->
+            {#if n.actions?.length}
+              <div class="mt-2 flex flex-wrap gap-2">
+                {#each n.actions as action (action.url)}
+                  <a
+                    href={action.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class={actionClass(action.icon)}
+                  >
+                    {#if action.icon === "star"}
+                      <Star size={12} class="shrink-0 fill-current text-amber-400" />
+                    {:else if action.icon === "heart"}
+                      <Heart size={12} class="shrink-0 fill-current" />
+                    {/if}
+                    {action.label}
+                  </a>
+                {/each}
+              </div>
+            {/if}
           </div>
         </li>
       {/each}

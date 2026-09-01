@@ -70,6 +70,16 @@ import { writable } from "svelte/store";
 
 export type NotificationPriority = "high" | "normal" | "low";
 
+/** One CTA button. `icon` is a NAME the panel maps to a component, never
+ *  markup, because everything the server sends is escaped before it renders.
+ *  An unknown name draws a plain button, so the server can start sending a new
+ *  icon before the app that knows how to draw it ships. */
+export type NotificationAction = {
+  url: string;
+  label: string;
+  icon?: string;
+};
+
 export type AppNotification = {
   /** Stable id for dedup. Server notifications use the server's id; app-side
    *  ones use a monotonic counter. */
@@ -84,6 +94,10 @@ export type AppNotification = {
   /** Optional URL for a CTA button ("Open dashboard", "Upgrade", etc.). */
   action_url?: string;
   action_label?: string;
+  /** Multi-button form (server migration 0049). When present it replaces the
+   *  single `action_url` pair; when absent that pair is still honoured, so
+   *  messages sent before 0049 keep their button. */
+  actions?: NotificationAction[];
 };
 
 /** Shape of the `hoard://notification` Tauri event payload (from Rust). */
@@ -94,6 +108,7 @@ export type ServerNotification = {
   priority?: NotificationPriority;
   action_url?: string;
   action_label?: string;
+  actions?: NotificationAction[];
 };
 
 const STORAGE_KEY = "hoard-notifications";
@@ -201,6 +216,7 @@ export function pushNotification(
       source: "app",
       action_url: n.action_url,
       action_label: n.action_label,
+      actions: n.actions,
     };
     const next = [entry, ...list].slice(0, MAX_ENTRIES);
     persist(next);
@@ -286,6 +302,7 @@ function reconcileServer(rows: ServerNotification[]): void {
         source: "server",
         action_url: p.action_url,
         action_label: p.action_label,
+        actions: p.actions,
       }));
     // Newest first across both sources.
     const next = [...server, ...app]

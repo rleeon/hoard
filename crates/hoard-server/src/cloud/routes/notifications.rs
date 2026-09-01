@@ -43,6 +43,18 @@ pub struct ListQuery {
     pub since: Option<String>,
 }
 
+/// One call-to-action button. `icon` is a NAME from a fixed client-side set
+/// (`star`, `heart`, ...), never markup: the server picks which icon, the
+/// client owns how it's drawn. An unknown name renders as a plain button, so a
+/// new icon can ship here before the client that draws it.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NotificationAction {
+    pub url: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+}
+
 /// Wire shape matches the UI's `ServerNotification` (stores/notifications.ts)
 /// plus `created_at` for the client's cursor.
 #[derive(Debug, Serialize)]
@@ -53,6 +65,11 @@ pub struct NotificationOut {
     pub priority: String,
     pub action_url: Option<String>,
     pub action_label: Option<String>,
+    /// Multi-button form (migration 0049). Empty for rows that only carry the
+    /// single `action_url`/`action_label` pair, which older clients read and
+    /// newer ones fall back to.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<NotificationAction>,
     pub created_at: String,
 }
 
@@ -81,6 +98,7 @@ pub async fn list(
         String,
         Option<String>,
         Option<String>,
+        Option<serde_json::Value>,
         OffsetDateTime,
     )> = sqlx::query_as(
         // Per-user delivery filter (migration 0033):
@@ -91,11 +109,18 @@ pub async fn list(
         //      the user dismissed is never re-delivered, on any device. The
         //      dismissal is server-side; the client's localStorage tombstones
         //      are an optimistic cache only.
+        //   3. `audience_user_id IS NULL OR = $1` (migration 0049): a row may
+        //      be addressed to ONE account. NULL, which is every row until
+        //      0049 and every operator broadcast, still means everybody, so
+        //      this only ever narrows. It exists so a new message can be
+        //      rehearsed in the real panel without showing a draft to
+        //      everyone.
         // Both scope by the caller's `user_id`; the `since` cursor and the
         // LIMIT cap are unchanged.
-        "SELECT id, title, body, priority, action_url, action_label, created_at
+        "SELECT id, title, body, priority, action_url, action_label, actions, created_at
            FROM notifications
           WHERE (expires_at IS NULL OR expires_at > now())
+            AND (audience_user_id IS NULL OR audience_user_id = $1)
             AND created_at >= (SELECT created_at FROM profiles WHERE user_id = $1)
             AND NOT EXISTS (
                 SELECT 1 FROM notification_dismissals d
@@ -114,16 +139,25 @@ pub async fn list(
     let notifications = rows
         .into_iter()
         .map(
-            |(id, title, body, priority, action_url, action_label, created_at)| NotificationOut {
-                id,
-                title,
-                body,
-                priority,
-                action_url,
-                action_label,
-                created_at: created_at
-                    .format(&time::format_description::well_known::Rfc3339)
-                    .unwrap_or_default(),
+            |(id, title, body, priority, action_url, action_label, actions, created_at)| {
+                NotificationOut {
+                    id,
+                    title,
+                    body,
+                    priority,
+                    action_url,
+                    action_label,
+                    // A malformed `actions` must not take the whole bell down: a
+                    // row we can't read degrades to its single-button form (or to
+                    // no button at all), which is what every client understood
+                    // before 0049 anyway.
+                    actions: actions
+                        .and_then(|v| serde_json::from_value::<Vec<NotificationAction>>(v).ok())
+                        .unwrap_or_default(),
+                    created_at: created_at
+                        .format(&time::format_description::well_known::Rfc3339)
+                        .unwrap_or_default(),
+                }
             },
         )
         .collect();
