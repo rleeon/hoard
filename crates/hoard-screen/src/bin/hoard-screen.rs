@@ -1,14 +1,14 @@
-//! `hoard-screen` — overlay process entrypoint.
+//! `hoard-screen`, overlay process entrypoint.
 //!
 //! Two modes:
 //!
 //! - `--snapshot <file.ppm> [--scene <file.json>] [--width W --height H]`
 //!   Compose a single frame and write it as a PPM (transparent areas flattened
 //!   onto a checkerboard so the crop/scale geometry is visible). This needs no
-//!   display, GPU or capture backend, so it runs anywhere — including CI — and
+//!   display, GPU or capture backend, so it runs anywhere, including CI, and
 //!   is how the full IPC→source→compositor pipeline is validated end to end.
 //!
-//! - (default) `run` — read newline-JSON [`Message`]s from stdin, maintain the
+//! - (default) `run`, read newline-JSON [`Message`]s from stdin, maintain the
 //!   scene, and tick the engine. On-screen presentation is the per-platform
 //!   window layer (winit + GPU surface / native overlay), wired behind the
 //!   `runtime` feature; without it this mode is a headless layout driver.
@@ -197,7 +197,7 @@ fn write_ppm(path: &str, rgba: &[u8], w: u32, h: u32) -> std::io::Result<()> {
 /// Enumerate capturable windows and print them as a JSON array on stdout. Runs
 /// the host OS capture backend (X11 / Wayland portal picked at runtime). On a
 /// backend that can't pre-enumerate (or with no display) prints `[]` and a
-/// diagnostic on stderr — the desktop app treats a non-array as "no windows".
+/// diagnostic on stderr, the desktop app treats a non-array as "no windows".
 fn list_windows() {
     let backend = hoard_screen::capture::backend();
     match backend.list_windows() {
@@ -217,7 +217,7 @@ fn list_windows() {
 fn run_headless() {
     let mut e = Engine::new();
     eprintln!(
-        "hoard-screen {} (capture backend: {}) — headless layout driver; build with --features runtime for the window.",
+        "hoard-screen {} (capture backend: {}): headless layout driver; build with --features runtime for the window.",
         hoard_screen::version(),
         e.backend_name()
     );

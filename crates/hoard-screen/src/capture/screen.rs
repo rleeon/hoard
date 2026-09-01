@@ -6,7 +6,7 @@
 //! needs none of the WGC per-window plumbing. `CAPTUREBLT` includes other
 //! apps' layered windows; the overlay's OWN windows are kept out of the grab
 //! by the runtime setting `WDA_EXCLUDEFROMCAPTURE` on them while a scope
-//! exists — without that the lens would recursively magnify itself.
+//! exists, without that the lens would recursively magnify itself.
 //!
 //! Other platforms return `None` for now (the scope shows a dim glass
 //! placeholder): X11's `GetImage` on the root would capture our own composited

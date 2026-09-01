@@ -1,7 +1,7 @@
 //! macOS window capture via **Core Graphics** window images
 //! (`CGWindowListCopyWindowInfo` to enumerate, `CGWindowListCreateImage` to grab
-//! one window's pixels). This path is synchronous — perfect for the overlay's
-//! per-frame `acquire()` poll — and dramatically simpler to drive than the async,
+//! one window's pixels). This path is synchronous, perfect for the overlay's
+//! per-frame `acquire()` poll, and dramatically simpler to drive than the async,
 //! delegate-based ScreenCaptureKit, which is the eventual upgrade for higher
 //! frame rates. Capturing needs the Screen Recording permission (TCC); the
 //! system prompts on first use. DRM windows capture black by design.

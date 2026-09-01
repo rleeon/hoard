@@ -3,7 +3,7 @@
 //! The sidecar runs as its own process, so its `stderr` is easy to lose. This
 //! writes a dedicated `hoard-screen.log` next to the executable (on Windows that
 //! is `%LOCALAPPDATA%\hoard\hoard-screen.log`) so we can debug the overlay
-//! independently of the desktop app's own logs — especially the GPU/capture path
+//! independently of the desktop app's own logs, especially the GPU/capture path
 //! that can only be exercised on the user's real machine.
 //!
 //! Timestamps are milliseconds since process start: deltas between lines make it

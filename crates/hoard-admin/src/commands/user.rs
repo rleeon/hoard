@@ -23,8 +23,8 @@ pub enum UserCommand {
     /// Until the web panel existed this had no reason to be here: the password
     /// was written once at `create` and never read again, because the API
     /// authenticates with tokens. Now it is what someone types into `/panel`,
-    /// so it needs a way to change and — more to the point — a way to be reset
-    /// by the operator when it is forgotten.
+    /// so it needs a way to change and, more to the point, a way to be reset by the
+    /// operator when it is forgotten.
     Passwd {
         /// Username
         username: String,
@@ -239,7 +239,7 @@ pub async fn run(cmd: UserCommand, cfg: &Config) -> Result<()> {
             let is_admin: i64 = row.get("is_admin");
 
             // The admin flag guards its own route, so a server with zero
-            // admins cannot promote anyone back from the panel — it needs this
+            // admins cannot promote anyone back from the panel: it needs this
             // command and a shell. Deleting the last one is how you lock
             // yourself out of your own server, and nothing used to stop it.
             if is_admin != 0 {
@@ -268,7 +268,7 @@ pub async fn run(cmd: UserCommand, cfg: &Config) -> Result<()> {
             // Stored objects first: the ON DELETE CASCADE below takes the
             // blobs/chunks rows, which are the only record of which keys were
             // theirs. This used to be a `remove_dir_all` of
-            // `data_dir/<user_id>` — a path nothing has written to since the
+            // `data_dir/<user_id>`, a path nothing has written to since the
             // content-addressed store landed, so the command reported success
             // while leaving every byte on disk.
             let store = hoard_server::store::build_store(cfg).await?;

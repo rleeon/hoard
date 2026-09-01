@@ -2,15 +2,15 @@
 //!
 //! The desktop app needs to know save-path templates for ~20k games to
 //! detect installed games offline (no server round-trips). Hand-curating
-//! that many entries is impossible — the [Ludusavi][1] community manifest
+//! that many entries is impossible; the [Ludusavi][1] community manifest
 //! already does the work and is the de-facto standard for save-sync data.
 //!
 //! ## Two datasets
 //!
-//! - [`catalog`] — the games we can back up: save paths plus what it takes
+//! - [`catalog`]: the games we can back up, with save paths plus what it takes
 //!   to resolve them (`install_dirs` for `<base>`) and to recognise the game
 //!   while it runs (`launch_exes`).
-//! - [`titles`] — the two thirds of the manifest with **no** save path. They
+//! - [`titles`]: the two thirds of the manifest with **no** save path. They
 //!   can't be tracked, so keeping them in the catalog would only slow every
 //!   scan down; they exist to put a name on a process or an appid.
 //!
@@ -28,7 +28,7 @@
 //!
 //! Both resolve lazily on first call and cache in a `OnceLock`. After
 //! [`save_runtime_override`] writes a new file, the next *process* picks it
-//! up — we deliberately don't hot-swap the cached slice mid-run because that
+//! up; we deliberately don't hot-swap the cached slice mid-run because that
 //! would make detection results inconsistent across concurrent scans.
 //!
 //! ## Refreshing
@@ -36,15 +36,15 @@
 //! The desktop downloads the upstream YAML and hands it to
 //! [`save_runtime_override`], which runs [`convert_yaml`] and writes both
 //! files to the cache dir. That is the entry point both for the "Update
-//! catalog" button and for the background refresh on app startup — and it is
+//! catalog" button and for the background refresh on app startup, and it is
 //! the *same* conversion the embedded blobs are generated with (see
 //! `data/README.md`), so shipped and refreshed data can't drift apart.
 //!
 //! ## Path syntax
 //!
 //! Ludusavi templates use angle-bracket placeholders (`<winAppData>`,
-//! `<xdgData>`, `<home>`, `<storeUserId>`, …). These are expanded by
-//! `hoard-agent::pathexpand`, **not** by [`crate::placeholders`] — the
+//! `<xdgData>`, `<home>`, `<storeUserId>` and so on). These are expanded by
+//! `hoard-agent::pathexpand`, **not** by [`crate::placeholders`]: the
 //! placeholder vocabulary is different.
 //!
 //! ## Licensing
@@ -57,7 +57,7 @@
 //! That last one is the load-bearing part. "Primarily intended for or
 //! directed toward commercial advantage" is not obviously satisfied by a
 //! build distributed next to a paid subscription, whoever is doing the
-//! distributing — the old note here told *other* distributors to strip the
+//! distributing. The old note here told *other* distributors to strip the
 //! JSON, which quietly assumed this one wasn't commercial.
 //!
 //! The `bundled-catalog` feature (on by default) is the lever: turn it off
@@ -99,8 +99,8 @@ const TITLES_OVERRIDE_REL: &str = "hoard/ludusavi-titles.json";
 #[cfg(feature = "bundled-catalog")]
 const TITLES_ZST: &[u8] = include_bytes!("../data/ludusavi-titles.json.zst");
 
-/// Los dos ficheros de datos, atados a la misma generación. Ver
-/// [`manifest_data`] para por qué no son dos `OnceLock` sueltos.
+/// The two data files, tied to the same generation. See [`manifest_data`] for why
+/// they are not two loose `OnceLock`s.
 static MANIFEST_DATA: OnceLock<(Vec<LudusaviEntry>, Vec<TitleEntry>)> = OnceLock::new();
 
 /// One game from the Ludusavi catalog.
@@ -129,14 +129,14 @@ pub struct LudusaviEntry {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub install_dirs: Vec<String>,
     /// Executable **basenames** (lowercased) taken from the manifest's
-    /// `launch:` block — `<base>/Binaries/Win64/EYE.exe` contributes
+    /// `launch:` block, so `<base>/Binaries/Win64/EYE.exe` contributes
     /// `eye.exe`. This is the community-maintained answer to "which process
     /// means the user is playing this game", which the agent otherwise has
     /// to guess from the slug. Ambiguous names shared by several games are
     /// vetoed at lookup time, not here (see `exe_index`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub launch_exes: Vec<String>,
-    /// Additional Steam appids the same game ships under — regional SKUs,
+    /// Additional Steam appids the same game ships under: regional SKUs,
     /// demos, dev builds (`id.steamExtra` upstream). An installed app whose
     /// id only matches here is still this game, and without them the appid
     /// cross-reference silently misses it.
@@ -148,7 +148,7 @@ pub struct LudusaviEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lutris_slug: Option<String>,
     /// The game declares Steam Cloud support (`cloud.steam` upstream).
-    /// Purely informational — surfaced to the user as "Steam already syncs
+    /// Purely informational, surfaced to the user as "Steam already syncs
     /// this one". It must **never** change detection confidence, ordering,
     /// or auto-track priority.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -159,7 +159,7 @@ pub struct LudusaviEntry {
 ///
 /// Two thirds of the upstream manifest is like this: a title, usually a
 /// Steam appid, and a `launch:` block, but no save path. They can't be
-/// tracked, so they don't belong in [`LudusaviEntry`] — but they answer
+/// tracked, so they don't belong in [`LudusaviEntry`], but they answer
 /// "what game is this process / appid?", which is what phase-4 attribution
 /// and the untracked-process notice need in order to stop naming a save
 /// after whatever happened to be running.
@@ -285,7 +285,7 @@ fn load_titles_override() -> Option<Vec<TitleEntry>> {
 }
 
 /// Try to load a runtime override from the cache dir. Returns `None` if
-/// the file is absent, unreadable, or doesn't parse — in which case the
+/// the file is absent, unreadable, or doesn't parse, in which case the
 /// caller falls back to the embedded catalog.
 fn load_runtime_override() -> Option<Vec<LudusaviEntry>> {
     let path = runtime_override_path()?;
@@ -301,8 +301,8 @@ fn load_runtime_override() -> Option<Vec<LudusaviEntry>> {
         }
     };
     // An override written before the catalog grew `launch_exes` /
-    // `install_dirs` still deserializes cleanly — every new field has a
-    // default — and would silently switch off process matching and every
+    // `install_dirs` still deserializes cleanly (every new field has a
+    // default) and would silently switch off process matching and every
     // `<base>` template until the next refresh. Detect it by shape and
     // ignore it: the embedded catalog is complete, and the daily refresh
     // rewrites the override in the new form.
@@ -333,26 +333,26 @@ fn load_runtime_override() -> Option<Vec<LudusaviEntry>> {
 /// Parse the embedded catalog on first call, then return the cached slice.
 ///
 /// Resolves the *runtime override* (cache dir) first; falls back to the
-/// embedded JSON. The choice is sticky for the lifetime of the process —
-/// updates take effect on the next launch.
+/// embedded JSON. The choice is sticky for the lifetime of the process; updates
+/// take effect on the next launch.
 pub fn catalog() -> &'static [LudusaviEntry] {
     &manifest_data().0
 }
 
-/// Catálogo y títulos **a la vez**, de la misma generación de datos.
+/// The catalog and the titles **at once**, from the same generation of data.
 ///
-/// Eran dos `OnceLock` sueltos, y ahí había un estado mixto real: cada uno se
-/// resuelve la primera vez que alguien lo toca, y entre esos dos momentos el
-/// fichero de override puede aparecer (lo escribe [`save_runtime_override`] con
-/// el proceso vivo) o cambiar el `XDG_CACHE_HOME` que lo localiza. El resultado
-/// era un catálogo de una generación con los títulos de otra, y con él unos
-/// índices que dicen cosas que ninguna de las dos dice: un `mars.exe` que en el
-/// catálogo viejo reclaman dos juegos y en los títulos nuevos sólo uno pasa a
-/// resolver a ese uno, y un save acaba bautizado con el nombre de otro juego.
+/// These used to be two loose `OnceLock`s, and there was a real mixed state there:
+/// each resolves the first time anybody touches it, and between those two moments
+/// the override file can appear ([`save_runtime_override`] writes it with the
+/// process alive) or the `XDG_CACHE_HOME` that locates it can change. The result was
+/// a catalog from one generation with titles from another, and with them indexes
+/// that say things neither of the two says: a `mars.exe` that two games claim in the
+/// old catalog and only one claims in the new titles starts resolving to that one,
+/// and a save ends up named after a different game.
 ///
-/// Resolverlos en el mismo `get_or_init` los ata a un único instante. El
-/// override sigue entrando en el proceso siguiente, que es el contrato de
-/// arriba; lo que ya no puede es entrar a medias.
+/// Resolving them in the same `get_or_init` ties them to a single instant. The
+/// override still lands on the next process, which is the contract above; what it
+/// can no longer do is land halfway.
 fn manifest_data() -> &'static (Vec<LudusaviEntry>, Vec<TitleEntry>) {
     MANIFEST_DATA.get_or_init(|| (load_catalog(), load_titles()))
 }
@@ -376,11 +376,11 @@ fn embedded_catalog() -> Vec<LudusaviEntry> {
     })
 }
 
-/// Sin catálogo empotrado no hay nada que cargar hasta que alguien baje uno:
-/// se devuelve vacío y **no** se entra en pánico. Un catálogo vacío degrada
-/// la detección a lo que el propio sistema sepa deducir (Steam, procesos,
-/// carpetas señaladas a mano), que es poco pero funciona; abortar el arranque
-/// convertiría una decisión de licencia en una app que no abre.
+/// With no embedded catalog there is nothing to load until somebody downloads one:
+/// it returns empty and does **not** panic. An empty catalog degrades detection to
+/// what the system can deduce on its own (Steam, processes, folders pointed at by
+/// hand), which is little but works; aborting the start would turn a licensing
+/// decision into an app that does not open.
 #[cfg(not(feature = "bundled-catalog"))]
 fn embedded_catalog() -> Vec<LudusaviEntry> {
     tracing::warn!(
@@ -445,10 +445,10 @@ struct Indexes {
     exe_to_title: HashMap<&'static str, &'static str>,
     /// Steam appid → display name, across catalog and titles.
     app_id_to_title: HashMap<u64, &'static str>,
-    /// Canonical name → display name, across catalog **and** titles. El gemelo
-    /// de [`Indexes::by_canon`] para *nombrar*: un juego sin ruta de guardado no
-    /// está en el catálogo, así que `by_canon` no lo encuentra y una carpeta que
-    /// se llama como él acababa siendo un juego fantasma con nombre crudo.
+    /// Canonical name to display name, across catalog **and** titles. The twin of
+    /// [`Indexes::by_canon`] for *naming*: a game with no save path is not in the
+    /// catalog, so `by_canon` does not find it and a folder named after it ended up
+    /// as a phantom game with a raw name.
     canon_to_title: HashMap<String, &'static str>,
 }
 
@@ -456,11 +456,12 @@ static INDEXES: OnceLock<Indexes> = OnceLock::new();
 
 /// Build the lookup tables once. The uniqueness rule for executables is
 /// load-bearing: 692 names in the manifest (`game.exe` ×730, `launcher.exe`,
-/// `nw.exe`, `dosbox.exe`, `scummvm.exe`, …) are shared by several games, and
+/// `nw.exe`, `dosbox.exe`, `scummvm.exe` and friends) are shared by several games,
+/// and
 /// treating one of those as "you are playing X" would attribute sessions,
 /// playtime and save folders to an arbitrary title. A name owned by more than
 /// one game is therefore dropped from the index entirely rather than resolved
-/// to a guess — the same rule the agent's correlation filter already applies.
+/// to a guess, the same rule the agent's correlation filter already applies.
 fn indexes() -> &'static Indexes {
     INDEXES.get_or_init(|| {
         let cat = catalog();
@@ -509,7 +510,7 @@ fn indexes() -> &'static Indexes {
         }
 
         // The title index widens the same map: a name is unique only if no
-        // *other* game — catalog or title-only — also claims it.
+        // *other* game, catalog or title-only, also claims it.
         let mut title_owners: HashMap<&str, u32> = exe_owners;
         for t in tit {
             for x in &t.launch_exes {
@@ -536,8 +537,8 @@ fn indexes() -> &'static Indexes {
             }
         }
 
-        // Y el nombre canónico, con la misma regla: primero el catálogo, y las
-        // entradas sólo-título rellenan los huecos que aquél no cubre.
+        // And the canonical name, with the same rule: the catalog first, and the
+        // title-only entries fill the gaps it does not cover.
         let mut canon_to_title: HashMap<String, &'static str> =
             HashMap::with_capacity(cat.len() + tit.len());
         for (name, canon) in cat
@@ -579,14 +580,13 @@ pub fn find_by_canon_name(name: &str) -> Option<&'static LudusaviEntry> {
 }
 
 /// Display name for a **folder-ish** name, from the catalog or the title-only
-/// index. Wider que [`find_by_canon_name`]: también nombra juegos que no
-/// podemos rastrear.
+/// index. Wider than [`find_by_canon_name`]: it also names games we cannot track.
 ///
-/// Es la que hay que usar para *nombrar* una carpeta. `find_by_canon_name`
-/// devuelve una entrada del catálogo —con sus rutas— y por eso sólo ve juegos
-/// con ruta de guardado; una carpeta llamada como un juego sin ruta (una
-/// edición nueva, un juego online) se quedaba sin título y acababa en la
-/// biblioteca con el nombre crudo del proceso o del directorio.
+/// This is the one to use for *naming* a folder. `find_by_canon_name` returns a
+/// catalog entry, with its paths, and therefore only sees games with a save path; a
+/// folder named after a game with no path (a new edition, an online game) was left
+/// without a title and ended up in the library under the raw name of the process or
+/// the directory.
 pub fn title_for_canon_name(name: &str) -> Option<&'static str> {
     let canon = hoard_core::ids::canon_token(name);
     if canon.len() < hoard_core::ids::MIN_IDENTITY_TOKEN_LEN {
@@ -660,13 +660,13 @@ fn exe_leaf(exe: &str) -> String {
 /// Used as a last-resort fallback in detection when neither `find_by_steam_app_id`
 /// nor an exact slug match against the catalog resolves a Steam app. Slugifies
 /// `name` (so casing/punctuation differences don't count as edits), then scans
-/// every catalog slug and keeps the entry with the lowest normalised distance —
-/// `levenshtein / max(len_a, len_b)` — provided it stays strictly below
+/// every catalog slug and keeps the entry with the lowest normalised distance,
+/// `levenshtein / max(len_a, len_b)`, provided it stays strictly below
 /// `threshold`. The recommended default is `0.15` (≈ one edit per 7 characters).
 ///
 /// The threshold alone can't tell sequels apart: "civilization-v" vs
 /// "civilization-vi" is ≈ 0.07, comfortably inside 0.15. A numeral veto
-/// closes that hole — candidates whose numeric/roman tokens differ from the
+/// closes that hole: candidates whose numeric or roman tokens differ from the
 /// query's are rejected outright (see [`numeral_signature`]), no matter how
 /// small the edit distance.
 ///
@@ -680,11 +680,11 @@ pub fn find_by_fuzzy_name(name: &str, threshold: f32) -> Option<&'static Ludusav
 }
 
 /// Look up a catalog entry whose slug is a **token prefix** of `name`, longest
-/// first: `"Surviving Mars Relaunched"` → `Surviving Mars`.
+/// first, so `"Surviving Mars Relaunched"` resolves to `Surviving Mars`.
 ///
 /// This is the case neither exact nor fuzzy matching can reach. Save folders
-/// routinely carry a qualifier the catalog title doesn't have — an edition
-/// (`Relaunched`, `Definitive Edition`), a store suffix, a mod-loader tag — and
+/// routinely carry a qualifier the catalog title doesn't have (an edition like
+/// `Relaunched` or `Definitive Edition`, a store suffix, a mod-loader tag) and
 /// the extra word is far more than the ~1-edit-per-7-chars `find_by_fuzzy_name`
 /// tolerates, so today the folder just becomes its own phantom game.
 ///
@@ -693,7 +693,7 @@ pub fn find_by_fuzzy_name(name: &str, threshold: f32) -> Option<&'static Ludusav
 /// * **Token boundary.** The query must continue with `-` after the match, so
 ///   `civilization-v` never claims `civilization-vi-saves`.
 /// * **At least two tokens.** A one-word title is too generic to swallow a
-///   longer name — `Fallout` must not claim `Fallout New Vegas`. With the
+///   longer name: `Fallout` must not claim `Fallout New Vegas`. With the
 ///   longest-match rule, a real two-token prefix still wins over a shorter one.
 pub fn find_by_name_prefix(name: &str) -> Option<&'static LudusaviEntry> {
     let query = slugify(name);
@@ -719,8 +719,8 @@ pub fn find_by_name_prefix(name: &str) -> Option<&'static LudusaviEntry> {
 
 /// Catalog-agnostic core of [`find_by_fuzzy_name`]. Exposed `pub(crate)` so the
 /// unit tests can drive it against a fixed in-memory slice instead of the
-/// embedded ~20k-entry global catalog — keeps tie-break behaviour deterministic
-/// and the test fast.
+/// embedded ~20k-entry global catalog, which keeps tie-break behaviour
+/// deterministic and the test fast.
 pub(crate) fn fuzzy_match_in<'a>(
     catalog: &'a [LudusaviEntry],
     name: &str,
@@ -742,7 +742,7 @@ pub(crate) fn fuzzy_match_in<'a>(
             continue;
         }
         // Sequel veto: "dark-souls-ii" and "dark-souls-iii" are one edit
-        // apart — far inside any useful threshold — but never the same game.
+        // apart, far inside any useful threshold, but never the same game.
         // A numeral mismatch disqualifies the candidate outright.
         if numeral_signature(&entry.slug) != query_numerals {
             continue;
@@ -766,8 +766,8 @@ pub(crate) fn fuzzy_match_in<'a>(
 }
 
 /// Ordered sequence of numeric tokens in a slug, arabic and roman unified:
-/// `"final-fantasy-x-2"` → `[10, 2]`, `"hitman-2"` == `"hitman-ii"` → `[2]`.
-/// Roman numerals come from a fixed i–xx table — game sequels don't go
+/// `"final-fantasy-x-2"` gives `[10, 2]`, and `"hitman-2"` == `"hitman-ii"` gives
+/// `[2]`. Roman numerals come from a fixed i to xx table: game sequels don't go
 /// higher, and a full parser would happily read words like "mix" as numbers.
 /// Single-letter tokens ("i", "v", "x") can also be genuine words; the veto
 /// only fires when the *signatures* differ, and a same-game pair almost
@@ -824,10 +824,10 @@ struct YamlEntry {
     /// `tags`/`when` payload here and just keep the key.
     #[serde(default)]
     registry: BTreeMap<String, serde::de::IgnoredAny>,
-    /// `installDir:` — a map whose *keys* are the install folder names.
+    /// `installDir:`, a map whose *keys* are the install folder names.
     #[serde(default, rename = "installDir")]
     install_dir: BTreeMap<String, serde::de::IgnoredAny>,
-    /// `launch:` — a map whose *keys* are executable paths, usually
+    /// `launch:`, a map whose *keys* are executable paths, usually
     /// `<base>`-relative. Only the basename is useful to us.
     #[serde(default)]
     launch: BTreeMap<String, serde::de::IgnoredAny>,
@@ -837,7 +837,7 @@ struct YamlEntry {
     id: Option<YamlIds>,
 }
 
-/// `cloud:` — which storefronts' cloud sync the game supports. Only Steam
+/// `cloud:`, which storefronts' cloud sync the game supports. Only Steam
 /// is actionable for us (it's the one that overlaps with what Hoard does).
 #[derive(Debug, Default, Deserialize)]
 struct YamlCloud {
@@ -845,7 +845,7 @@ struct YamlCloud {
     steam: bool,
 }
 
-/// `id:` — extra store identifiers beyond the primary `steam.id`.
+/// `id:`, extra store identifiers beyond the primary `steam.id`.
 #[derive(Debug, Default, Deserialize)]
 struct YamlIds {
     #[serde(default, rename = "steamExtra")]
@@ -889,7 +889,7 @@ pub fn convert_yaml_to_catalog(yaml_text: &str) -> Result<Vec<LudusaviEntry>, Ca
 /// Full conversion: the save-path catalog **and** the title-only index.
 ///
 /// The manifest describes ~53k games but only ~21k of them have a save path
-/// we could ever back up — the rest are entries that carry nothing but a
+/// we could ever back up; the rest are entries that carry nothing but a
 /// title, a Steam appid and a `launch:` block. Those are useless for
 /// detecting *saves*, which is why the catalog drops them, but they are
 /// exactly what's needed to put a **name** on a running process or an appid
@@ -971,7 +971,7 @@ pub fn convert_yaml(
 ///
 /// Keys look like `<base>/Binaries/Win64/Game.exe` or `<base>/run.sh`; only
 /// the leaf identifies the process. Anything that isn't plausibly an
-/// executable leaf is dropped — a launch key can carry a `<base>`-only entry
+/// executable leaf is dropped: a launch key can carry a `<base>`-only entry
 /// or a directory, and those would match every process in that folder.
 fn launch_basenames(launch: &BTreeMap<String, serde::de::IgnoredAny>) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -998,7 +998,7 @@ fn launch_basenames(launch: &BTreeMap<String, serde::de::IgnoredAny>) -> Vec<Str
 /// override at [`runtime_override_path`]. Returns the count of games in
 /// the new catalog so callers can show "Updated to N games" toasts.
 ///
-/// `yaml_text` should be the full upstream manifest body — the desktop
+/// `yaml_text` should be the full upstream manifest body; the desktop
 /// command fetches it via `reqwest` so this crate doesn't grow an HTTP
 /// dependency.
 pub fn save_runtime_override(yaml_text: &str) -> Result<usize, CatalogError> {
@@ -1134,11 +1134,11 @@ fn normalise_os(s: &str) -> Option<&'static str> {
 
 /// Lower-kebab slug. Mirrors `slugify` in `data/convert-ludusavi.py` and
 /// in `hoard-admin::commands::manifest::slugify` so all three stay
-/// byte-compatible — same input always produces the same slug.
+/// byte-compatible, so the same input always produces the same slug.
 ///
 /// Public so detection code can slugify a Steam app's display name and
 /// fall back to a slug-based catalog lookup when the catalog entry lacks
-/// `steam_app_id`. **Never duplicate this algorithm** — divergence here
+/// `steam_app_id`. **Never duplicate this algorithm**: divergence here
 /// silently breaks the cross-reference.
 ///
 /// The implementation moved to `hoard_core::ids::slugify` with the newtype
@@ -1282,7 +1282,7 @@ Game X:
             entry("destiny-2", Some(1085660)),
         ];
         // "civilization" sits within edit distance of "civilization-v"
-        // (0.14 < 0.15) but carries no numeral — the sequel veto rejects it
+        // (0.14 < 0.15) but carries no numeral, so the sequel veto rejects it
         // instead of guessing which entry in the series was meant.
         assert!(fuzzy_match_in(&cat, "civilization", 0.15).is_none());
         // And "destiny" must not match the unrelated "civilization-v".
@@ -1297,7 +1297,7 @@ Game X:
     #[test]
     fn fuzzy_prefers_steam_id() {
         // Two slugs at identical distance from the query; only one has a
-        // steam_app_id — that one must win. Iteration order: the no-id entry
+        // steam_app_id, and that one must win. Iteration order: the no-id entry
         // comes first so the tie-break has to actively replace it.
         let cat = vec![entry("aaa", None), entry("aab", Some(42))];
         // "aac" is exactly 1 edit from each slug ⇒ same normalised distance.
@@ -1316,7 +1316,7 @@ Game X:
     #[test]
     fn fuzzy_vetoes_sequel_numeral_mismatch() {
         // "dark-souls-ii" vs "dark-souls-iii" is one edit over 14 chars
-        // (≈ 0.071 < 0.15) — inside the threshold, but a different game.
+        // (about 0.071 < 0.15): inside the threshold, but a different game.
         let cat = vec![entry("dark-souls-iii", Some(374320))];
         assert!(fuzzy_match_in(&cat, "Dark Souls II", 0.15).is_none());
         // Extra numeral token: "final-fantasy-x-2" vs "final-fantasy-x"
@@ -1328,7 +1328,7 @@ Game X:
     #[test]
     fn fuzzy_accepts_equivalent_numeral_spellings() {
         // Arabic vs roman spellings of the same number are the same
-        // signature — the veto must not fire, only the distance decides.
+        // signature, so the veto must not fire and only the distance decides.
         let cat = vec![entry("hitman-2", Some(863550))];
         let hit = fuzzy_match_in(&cat, "Hitman II", 0.5).expect("fuzzy hit");
         assert_eq!(hit.slug, "hitman-2");
@@ -1534,7 +1534,7 @@ Nameless:
     }
 
     /// Regenerates the embedded catalog + title index from a manifest YAML.
-    /// Not a test — a generator, skipped unless asked:
+    /// Not a test but a generator, skipped unless asked:
     ///
     /// ```sh
     /// GEN_CATALOG=/path/to/manifest.yaml cargo test -p hoard-manifest -- --ignored regenerate

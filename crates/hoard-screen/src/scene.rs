@@ -1,4 +1,4 @@
-//! Scene model — the layout the overlay renders, pushed from the desktop app.
+//! Scene model, the layout the overlay renders, pushed from the desktop app.
 //!
 //! A [`Scene`] is a flat list of [`Panel`]s. Each panel points at a *source*
 //! (an app-window capture, an image, a note) and says where on the overlay it
@@ -12,7 +12,7 @@
 //! Coordinates are **logical overlay pixels** (the overlay surface spans the
 //! game's monitor). A panel never escapes its [`Rect`]: "maximise"/"amplify" a
 //! video means growing its `Rect` or switching to [`ScaleMode::Fill`], not the
-//! OS notion of fullscreen — there is no toplevel to fullscreen, the content is
+//! OS notion of fullscreen, there is no toplevel to fullscreen, the content is
 //! composited into the quad we draw. That is the containment guarantee.
 
 use serde::{Deserialize, Serialize};
@@ -90,8 +90,8 @@ impl Crop {
 }
 
 /// Which monitor a panel is drawn on. Its [`Rect`] is in **monitor-local**
-/// overlay pixels — `(0,0)` is the top-left of the target monitor, not the
-/// virtual desktop — so a layout stays put regardless of how the OS arranges
+/// overlay pixels, `(0,0)` is the top-left of the target monitor, not the
+/// virtual desktop, so a layout stays put regardless of how the OS arranges
 /// monitors in virtual space.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -124,8 +124,8 @@ impl PanelTarget {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ScaleMode {
-    /// Fill the whole panel box, ignoring aspect ratio. This is the "amplía y
-    /// ocupa toda la ventana que el overlay le ofrece" behaviour.
+    /// Fill the whole panel box, ignoring aspect ratio. This is the "blow it up to
+    /// fill whatever window the overlay gives it" behaviour.
     #[default]
     Fill,
     /// Preserve aspect ratio, letterboxed inside the panel box.
@@ -149,13 +149,13 @@ pub enum SourceRef {
     /// A live magnifier lens over the screen region under the panel (see
     /// [`crate::scope`]).
     Scope(crate::scope::ScopeSpec),
-    /// Built-in animated test pattern — lets the full pipeline (window +
+    /// Built-in animated test pattern, lets the full pipeline (window +
     /// compositor + crop) be driven on a real desktop before any capture
     /// backend is finished.
     Test,
     /// Forward-compat safety net: any `kind` this build doesn't know. Renders
     /// as an invisible placeholder instead of failing the whole `set_scene`
-    /// line — an older overlay paired with a newer editor must degrade to
+    /// line, an older overlay paired with a newer editor must degrade to
     /// "that one panel is missing", never to "the entire scene was dropped"
     /// (which also made the next mode-toggle echo the stale scene back and
     /// erase the new panel from the editor).
@@ -203,7 +203,7 @@ pub struct Panel {
     /// DirectComposition surface ignores `SetWindowRgn` and otherwise leaves a
     /// gray border. The real window is parked off-screen (not minimized, not
     /// occluded) so it keeps rendering and its video doesn't go black. Defaults
-    /// to `false` (place the real window — the historical behaviour). See
+    /// to `false` (place the real window, the historical behaviour). See
     /// `docs/hoard-screen-chromium-crop.md`.
     #[serde(default)]
     pub compat: bool,
@@ -263,7 +263,7 @@ pub struct Blit {
 /// Resolve where a panel's cropped, scaled source lands on the overlay, given
 /// the source frame's current pixel size.
 ///
-/// `Fill` makes `dst` exactly the panel box (content stretches to fill — the
+/// `Fill` makes `dst` exactly the panel box (content stretches to fill, the
 /// containment behaviour). `Fit` centres an aspect-correct rect inside the box.
 pub fn resolve_blit(panel: &Panel, src_w: u32, src_h: u32) -> Blit {
     let crop = panel.crop.sanitized();

@@ -1,4 +1,4 @@
-//! Window-capture backends — the "show ANY app over the game" feature.
+//! Window-capture backends, the "show ANY app over the game" feature.
 //!
 //! Every platform exposes the same shape: enumerate capturable windows
 //! ([`CaptureBackend::list_windows`]) and open a live [`Source`] for one
@@ -8,12 +8,12 @@
 //! Each platform module documents the *exact* native API it must drive. The
 //! pixel pump for each is the only code that genuinely needs a real desktop
 //! session to validate, so they are written as honest, clearly-marked stubs
-//! returning [`CaptureError::Unimplemented`] until finished on that OS — never
+//! returning [`CaptureError::Unimplemented`] until finished on that OS, never
 //! as code that silently pretends to work.
 //!
 //! ## DRM caveat (read this)
 //! Protected streaming (Netflix, Prime Video, Disney+) uses HDCP / a protected
-//! media path. Capturing such a window yields **black frames** on every OS —
+//! media path. Capturing such a window yields **black frames** on every OS,
 //! this is by design and not fixable here, exactly as OBS hits it. Ordinary
 //! apps, YouTube, Twitch, native players, browsers, file managers capture fine.
 //! Backends surface a likely-protected window via [`WindowInfo::protected`] so

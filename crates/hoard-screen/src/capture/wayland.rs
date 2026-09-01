@@ -2,14 +2,14 @@
 //!
 //! The only sanctioned path on Wayland: `xdg-desktop-portal`'s **ScreenCast**
 //! interface negotiates a capture (the *compositor* shows the window picker and
-//! the permission prompt — we never reach into another client, which Wayland
+//! the permission prompt, we never reach into another client, which Wayland
 //! forbids), then hands back a **PipeWire** node id plus an fd to the PipeWire
 //! daemon. We connect PipeWire to that fd, attach an input stream to the node,
 //! and copy each frame into RGBA.
 //!
 //! This covers compositors with no `wlr-layer-shell` (GNOME) for the *capture*
 //! half; the *placement* half (an actual always-on-top surface over the game)
-//! is the window layer's job — gamescope for the universal/GNOME case.
+//! is the window layer's job, gamescope for the universal/GNOME case.
 //!
 //! Because the portal pops the compositor's own dialog, `capture` ignores the
 //! requested id and streams whatever the user picks.
@@ -69,7 +69,7 @@ impl WaylandSource {
         let sink = Arc::clone(&shared);
         // Portal negotiation blocks on the user's window pick + permission dialog.
         // Run it (and the PipeWire loop it feeds) on this dedicated thread, never
-        // on the caller's — `capture()` is driven from the overlay's draw loop, so
+        // on the caller's, `capture()` is driven from the overlay's draw loop, so
         // blocking here would freeze the whole overlay until the system picker is
         // dismissed. `acquire()` just returns None until the first frame arrives.
         let thread = std::thread::Builder::new()

@@ -1,7 +1,7 @@
-//! `hoard-admin storage` — migrate/verify/status for the blob storage backends
+//! `hoard-admin storage`: migrate, verify and status for the blob storage backends
 //! (ADR 0020 phase 2).
 //!
-//! All object access goes through the `BlobStore` trait — this module never
+//! All object access goes through the `BlobStore` trait; this module never
 //! touches the filesystem or a bucket directly (beyond staging temp files under
 //! `data_dir/tmp/`, the same spool area the server uses).
 
@@ -25,11 +25,11 @@ use uuid::Uuid;
 pub enum StorageCommand {
     /// Copy every blob/chunk object to another storage backend.
     ///
-    /// STOP THE SERVER FIRST — writes that land during a migration would be
+    /// STOP THE SERVER FIRST: writes that land during a migration would be
     /// missed. Idempotent and resumable: a re-run after a crash skips objects
     /// already copied and continues. Source data is never touched unless you
     /// pass --delete-source (and even then only after the whole pass verifies).
-    /// This does NOT edit config.toml — flip `[storage] backend` yourself when
+    /// This does NOT edit config.toml: flip `[storage] backend` yourself when
     /// it finishes.
     Migrate {
         /// Destination backend. The source is the other one.
@@ -48,7 +48,7 @@ pub enum StorageCommand {
     },
     /// Re-download objects and check their bytes hash to their key.
     ///
-    /// Detects missing or bit-rotted objects — run it periodically as a
+    /// Detects missing or bit-rotted objects. Run it periodically as a
     /// self-hosted integrity check. Exit status is nonzero if anything is
     /// missing or corrupt.
     Verify {
@@ -110,8 +110,8 @@ struct ObjKey {
     size: i64,
 }
 
-/// Enumerate object keys from the DB (`blobs` + `chunks`, refcount > 0) — the
-/// source of truth. Never lists the filesystem or bucket. With `sample`, draws
+/// Enumerate object keys from the DB (`blobs` and `chunks`, refcount > 0), which is
+/// the source of truth. Never lists the filesystem or bucket. With `sample`, draws
 /// a random subset via SQL `RANDOM()`.
 async fn enumerate_keys(pool: &sqlx::SqlitePool, sample: Option<usize>) -> Result<Vec<ObjKey>> {
     let (blob_sql, chunk_sql) = match sample {
@@ -247,8 +247,8 @@ enum MigOutcome {
 }
 
 /// Refuse to migrate while a server looks live: if we can't bind the configured
-/// listen address, assume it's in use. Best-effort — other bind errors (e.g.
-/// permissions) don't block.
+/// listen address, assume it's in use. Best-effort: other bind errors (permissions,
+/// say) don't block.
 fn ensure_server_stopped(cfg: &Config) -> Result<()> {
     let addr = format!("{}:{}", cfg.server.host, cfg.server.port);
     match std::net::TcpListener::bind(&addr) {
@@ -258,7 +258,7 @@ fn ensure_server_stopped(cfg: &Config) -> Result<()> {
         }
         Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => anyhow::bail!(
             "a server appears to be running on {addr} (port in use). Stop it \
-             before migrating — writes during a migration would be lost. Pass \
+             before migrating, or writes during a migration would be lost. Pass \
              --yes to override this check."
         ),
         Err(_) => Ok(()),
@@ -285,7 +285,7 @@ async fn migrate_one(
         // Size mismatch → a partial/incomplete destination object; re-copy.
     }
 
-    // Copy source bytes into a fresh staged temp we own — never hand the real
+    // Copy source bytes into a fresh staged temp we own: never hand the real
     // source path to put_from_file (which consumes/moves it) or we'd destroy
     // the source. Spools through tmp/, bounded memory.
     let r = src
@@ -374,7 +374,7 @@ async fn migrate(
     let total = keys.len();
     let total_bytes: i64 = keys.iter().map(|k| k.size).sum();
     if total == 0 {
-        println!("Nothing to migrate — the database references no stored objects.");
+        println!("Nothing to migrate: the database references no stored objects.");
         return Ok(());
     }
     println!(
@@ -449,7 +449,7 @@ async fn migrate(
         if failures.len() > 20 {
             eprintln!("  … and {} more", failures.len() - 20);
         }
-        eprintln!("Source data was left untouched. Fix the cause and re-run — it resumes.");
+        eprintln!("Source data was left untouched. Fix the cause and re-run; it resumes.");
         anyhow::bail!("{} object(s) failed to migrate", failures.len());
     }
 
@@ -572,7 +572,7 @@ async fn verify(cfg: &Config, sample: Option<usize>) -> Result<()> {
 
     let bad = missing.len() + corrupt.len();
     if bad == 0 {
-        println!("OK — all {total} object(s) present and hash-verified.");
+        println!("OK: all {total} object(s) present and hash-verified.");
         return Ok(());
     }
 
@@ -646,9 +646,9 @@ async fn status(cfg: &Config) -> Result<()> {
     match store::build_store(cfg).await {
         Ok(storeb) => match reachability(&storeb, &cfg.storage.data_dir).await {
             Ok(()) => println!("ok (write+read+delete probe passed)"),
-            Err(e) => println!("FAILED — {e}"),
+            Err(e) => println!("FAILED: {e}"),
         },
-        Err(e) => println!("FAILED — could not build backend: {e}"),
+        Err(e) => println!("FAILED: could not build backend: {e}"),
     }
     Ok(())
 }

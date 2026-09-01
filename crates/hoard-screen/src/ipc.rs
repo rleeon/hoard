@@ -21,7 +21,7 @@ pub enum Message {
     SetEditor { editor: bool },
     /// Ask the overlay to emit its current mode + scene on stdout right now.
     /// The desktop sends this on (re)mount to resync its editor with what the
-    /// overlay is actually showing — its own copy of the scene can go stale
+    /// overlay is actually showing, its own copy of the scene can go stale
     /// (webview reload, missed event), which left panels on screen that the
     /// editor no longer listed and so could never be moved or removed.
     GetScene,

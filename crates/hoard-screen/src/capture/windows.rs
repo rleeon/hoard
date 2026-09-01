@@ -1,4 +1,4 @@
-//! Windows window capture via **Windows.Graphics.Capture** (WGC) — the modern,
+//! Windows window capture via **Windows.Graphics.Capture** (WGC), the modern,
 //! OBS-grade path: a `GraphicsCaptureItem` built from an HWND feeds a
 //! free-threaded `Direct3D11CaptureFramePool`; each captured `IDirect3DSurface`
 //! is copied to a CPU-readable staging texture and swizzled BGRA -> RGBA.
@@ -8,7 +8,7 @@
 //! Capture runs on its own thread per source: it polls `TryGetNextFrame` and
 //! stows the latest frame behind a mutex, so `acquire()` is a cheap clone and
 //! the overlay never blocks on the GPU. DRM-protected windows (Netflix &c.)
-//! capture black by design — see the module note in `mod.rs`.
+//! capture black by design, see the module note in `mod.rs`.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -85,7 +85,7 @@ unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
         return TRUE;
     }
     // Skip DWM-cloaked windows: UWP/background ghosts that report "visible" but
-    // aren't actually on screen — "Windows Input Experience", the suspended
+    // aren't actually on screen, "Windows Input Experience", the suspended
     // "Descargas - Explorador de archivos" the user never opened, etc.
     if is_cloaked(hwnd) {
         return TRUE;
@@ -135,7 +135,7 @@ unsafe fn is_cloaked(hwnd: HWND) -> bool {
     ok && cloaked != 0
 }
 
-/// Friendly app name from the window's owning process — the executable stem with
+/// Friendly app name from the window's owning process, the executable stem with
 /// a capitalized first letter ("brave.exe" -> "Brave"). `None` if we can't open
 /// the process (cross-integrity-level, already gone, …).
 unsafe fn window_app_name(hwnd: HWND) -> Option<String> {
@@ -170,12 +170,12 @@ unsafe fn window_app_name(hwnd: HWND) -> Option<String> {
 }
 
 /// True when the window has opted out of screen capture via display affinity
-/// (`SetWindowDisplayAffinity`): `WDA_MONITOR` (visible on the monitor only — a
+/// (`SetWindowDisplayAffinity`): `WDA_MONITOR` (visible on the monitor only, a
 /// capture sees black) or `WDA_EXCLUDEFROMCAPTURE` (omitted from captures).
 /// Purely informational, so the editor can warn the user; we never try to defeat
 /// it. A failed query (e.g. cross-integrity-level window) is treated as not
-/// protected. Note: this is *not* the only black-capture cause — HDCP / the
-/// protected media path can also yield black with `WDA_NONE` — so a `false` here
+/// protected. Note: this is *not* the only black-capture cause, HDCP / the
+/// protected media path can also yield black with `WDA_NONE`, so a `false` here
 /// is not a guarantee the window captures cleanly.
 unsafe fn is_capture_protected(hwnd: HWND) -> bool {
     let mut affinity: u32 = 0;

@@ -1,4 +1,4 @@
-//! Windowed runtime — the on-screen overlay surface.
+//! Windowed runtime, the on-screen overlay surface.
 //!
 //! Implemented natively per OS; all share the [`crate::engine::Engine`] +
 //! [`crate::compositor`] core, only the surface and click-through differ:
@@ -51,7 +51,7 @@ pub fn run(engine: Engine) -> Result<(), String> {
         let _ = &engine;
         Err(
             "hoard-screen: built with the Wayland backend only, but this is an \
-             X11 session — rebuild with --features runtime"
+             X11 session; rebuild with --features runtime"
                 .into(),
         )
     }
@@ -75,7 +75,7 @@ pub fn run(engine: Engine) -> Result<(), String> {
 pub fn run(_engine: Engine) -> Result<(), String> {
     Err(
         "hoard-screen: on-screen runtime for this OS is not built in this \
-         configuration — see src/runtime.rs for the per-platform plan"
+         configuration; see src/runtime.rs for the per-platform plan"
             .into(),
     )
 }

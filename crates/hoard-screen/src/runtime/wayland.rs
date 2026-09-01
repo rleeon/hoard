@@ -1,7 +1,7 @@
 //! Wayland overlay placement via **wlr-layer-shell** (`feature = "wayland"`).
 //!
-//! Creates a fullscreen surface on the `Overlay` layer — above normal windows,
-//! over the game — and paints the composed [`Engine`] frame into a `wl_shm`
+//! Creates a fullscreen surface on the `Overlay` layer, above normal windows,
+//! over the game, and paints the composed [`Engine`] frame into a `wl_shm`
 //! buffer each vsync. Click-through is the surface's **input region**: empty in
 //! View (all input falls through to the game), full in Editor.
 //!
@@ -9,7 +9,7 @@
 //! `wlr-layer-shell` is implemented by wlroots (Hyprland, sway), KWin (KDE) and
 //! Cosmic, so this path is the native overlay there. **GNOME/Mutter refuses
 //! layer-shell**, and Wayland grants no app-level "always on top over a
-//! fullscreen client" otherwise — so the universal/GNOME route is to run the
+//! fullscreen client" otherwise, so the universal/GNOME route is to run the
 //! game (or this overlay) under **gamescope**, a nested compositor that *does*
 //! speak layer-shell. See [`gamescope_hint`].
 //!

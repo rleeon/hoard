@@ -1,4 +1,4 @@
-//! Monitor enumeration — the list of physical screens the overlay can target.
+//! Monitor enumeration, the list of physical screens the overlay can target.
 //!
 //! A [`Scene`](crate::scene::Scene) panel carries a
 //! [`PanelTarget`](crate::scene::PanelTarget) that names a monitor by **id**.
@@ -10,7 +10,7 @@
 //! Only Windows enumerates real monitors today (where multi-monitor was the
 //! reported pain point). Other platforms return an empty list: the editor then
 //! falls back to the browser's monitor API and their single-surface runtimes
-//! keep drawing every panel on the one screen — a graceful single-monitor mode.
+//! keep drawing every panel on the one screen, a graceful single-monitor mode.
 
 use serde::Serialize;
 
@@ -94,7 +94,7 @@ pub fn list_monitors() -> Vec<MonitorInfo> {
         .collect()
 }
 
-/// No native enumeration compiled in — single-monitor fallback. Covers every
+/// No native enumeration compiled in, single-monitor fallback. Covers every
 /// non-Windows platform and the Windows core build without the `runtime`
 /// feature (which doesn't pull in the `windows` crate).
 #[cfg(not(all(target_os = "windows", feature = "runtime")))]

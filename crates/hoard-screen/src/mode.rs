@@ -5,7 +5,7 @@
 //! - [`Mode::View`] (default): the surface is **click-through**. Every pointer
 //!   and key event goes to the game underneath; the user only *sees* the
 //!   panels. Content keeps running regardless (a captured video keeps playing,
-//!   with its own audio) — the mode only decides who receives input, never
+//!   with its own audio), the mode only decides who receives input, never
 //!   whether sources are live.
 //! - [`Mode::Editor`]: opened with **Ctrl+O** (a global hotkey, so it fires
 //!   even while the surface is click-through). The surface now captures input;

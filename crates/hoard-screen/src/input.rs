@@ -3,7 +3,7 @@
 //! The overlay needs to know whether a given mouse button or key is held
 //! **right now**, while another application (the game) has focus. That rules
 //! out ordinary window events: the overlay's own window is click-through and
-//! never receives them. So this module asks the OS directly, by polling — no
+//! never receives them. So this module asks the OS directly, by polling, no
 //! low-level hook, no event loop of its own. The engine already ticks ~30 fps,
 //! which is plenty to catch a button press and far cheaper than installing a
 //! system-wide hook (which on Windows means every process' input crosses our
@@ -51,7 +51,7 @@ impl Binding {
 /// Is this binding held down right now?
 ///
 /// Returns `false` on any platform or build without input support, which makes
-/// a bound scope simply never activate rather than misbehave — the caller
+/// a bound scope simply never activate rather than misbehave, the caller
 /// treats "no binding" and "can't read the binding" differently (see
 /// [`crate::scope`]).
 pub fn is_down(binding: &Binding) -> bool {
@@ -60,7 +60,7 @@ pub fn is_down(binding: &Binding) -> bool {
 
 /// Whether this build/platform can actually read global input. The scope uses
 /// it to fall back to "always visible" instead of "never visible" where we
-/// cannot poll — a lens that never appears would look like a bug, while one
+/// cannot poll, a lens that never appears would look like a bug, while one
 /// that ignores its binding is merely the old behaviour.
 pub fn available() -> bool {
     imp::AVAILABLE
@@ -84,8 +84,8 @@ mod imp {
             0 => 0x01, // VK_LBUTTON
             1 => 0x04, // VK_MBUTTON
             2 => 0x02, // VK_RBUTTON
-            3 => 0x05, // VK_XBUTTON1 — "back" thumb button
-            4 => 0x06, // VK_XBUTTON2 — "forward" thumb button
+            3 => 0x05, // VK_XBUTTON1, the "back" thumb button
+            4 => 0x06, // VK_XBUTTON2, the "forward" thumb button
             _ => return None,
         })
     }
@@ -102,7 +102,7 @@ mod imp {
             },
         };
         // The high bit is "currently down"; the low bit is "pressed since the
-        // last call", which we deliberately ignore — this is a level query, and
+        // last call", which we deliberately ignore, this is a level query, and
         // consuming the edge here would race with anything else polling.
         unsafe { (GetAsyncKeyState(vk) as u16) & 0x8000 != 0 }
     }
@@ -144,7 +144,7 @@ mod imp {
 
     /// `MouseEvent.button` → X11 physical button number.
     ///
-    /// X numbers the wheel as buttons 4/5, so the thumb buttons land on 8/9 —
+    /// X numbers the wheel as buttons 4/5, so the thumb buttons land on 8/9,
     /// which is exactly why the core protocol can't report them: its
     /// `KeyButMask` only has Button1..Button5. XInput2's `XIQueryPointer`
     /// returns a full bitmask instead, so the side buttons work here.

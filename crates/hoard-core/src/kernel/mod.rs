@@ -352,7 +352,9 @@ pub enum Action {
     /// Throttle backoff after a 429: the shell does not retry the op until
     /// `until`. Symmetric between backup and restore; the deadline also lives in
     /// [`State::next_backup_at`] / [`State::next_restore_at`].
-    Throttle { until: OffsetDateTime },
+    Throttle {
+        until: OffsetDateTime,
+    },
 }
 
 /// The kernel's first-class decision (ADR C.5): either act, or hold with an

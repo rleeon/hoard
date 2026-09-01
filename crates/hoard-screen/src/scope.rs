@@ -3,12 +3,12 @@
 //! procedural [`Source`] riding the engine → CPU-compositor path, but it is
 //! *live*: every tick it re-grabs the screen under the panel and emits a frame
 //! captured at `panel_size / zoom`, which the compositor then stretches over
-//! the panel box — the stretch IS the magnification, reusing the existing
+//! the panel box, the stretch IS the magnification, reusing the existing
 //! bilinear scaler.
 //!
 //! Where the pixels come from is [`crate::capture::screen`]'s per-OS screen
 //! grab. The overlay's own windows must be excluded from that grab or the lens
-//! would recursively magnify itself — on Windows the runtime flips
+//! would recursively magnify itself, on Windows the runtime flips
 //! `WDA_EXCLUDEFROMCAPTURE` on while a scope panel exists.
 //!
 //! The lens needs to know *where* the panel currently is, which a plain
@@ -30,7 +30,7 @@ use crate::source::{Frame, Source};
 #[serde(rename_all = "lowercase")]
 pub enum ScopeShape {
     /// Elliptical lens inscribed in the panel box (a circle when the box is
-    /// square) — the classic sniper look.
+    /// square), the classic sniper look.
     #[default]
     Circle,
     /// The whole panel box.
@@ -39,11 +39,11 @@ pub enum ScopeShape {
 
 /// Where the lens takes its pixels from.
 ///
-/// El defecto histórico —y el que sigue— es `Under`: amplía lo que tiene
-/// debajo. El problema es que entonces, para ampliar el centro de la pantalla,
-/// la lente tiene que ponerse justo encima… y tapa exactamente eso. `Center` y
-/// `Offset` desacoplan *dónde se ve* de *qué se ve*, que es lo que permite
-/// dejar la lente en una esquina.
+/// The historic default, and the one that still holds, is `Under`: it magnifies
+/// whatever is beneath it. The problem is that to magnify the centre of the screen
+/// the lens then has to sit right on top of it, covering exactly that. `Center` and
+/// `Offset` decouple *where you look* from *what you see*, which is what makes it
+/// possible to leave the lens in a corner.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Default)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ScopeAim {
@@ -60,7 +60,7 @@ pub enum ScopeAim {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ActivationMode {
-    /// Press once to show, press again to hide. Survives letting go — the
+    /// Press once to show, press again to hide. Survives letting go, the
     /// default because it's the only mode that leaves a hand free.
     #[default]
     Toggle,
@@ -73,7 +73,7 @@ pub enum ActivationMode {
 
 /// When the lens is visible.
 ///
-/// `binding: None` is the historical behaviour — always on — and stays the
+/// `binding: None` is the historical behaviour, always on, and stays the
 /// default so existing scenes keep working untouched.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub struct ScopeActivation {
@@ -93,7 +93,7 @@ fn default_seconds() -> f32 {
 
 /// Everything that defines a scope's look. All fields default so the desktop
 /// can send just `{"kind":"scope"}`.
-// Ya no es `Copy`: la activación puede llevar el nombre de una tecla.
+// Not `Copy` any more: the activation can carry a key's name.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ScopeSpec {
     #[serde(default)]
@@ -104,7 +104,7 @@ pub struct ScopeSpec {
     /// The ceiling is what the *capture* can still sustain, not a taste call:
     /// at ×20 a 360 px lens grabs an 18 px square, and the floor of 8 px below
     /// stops the region collapsing to nothing on a small panel. Past that the
-    /// grab would be a handful of pixels stretched across the lens — which is
+    /// grab would be a handful of pixels stretched across the lens, which is
     /// exactly what ×20 is for, but there is no point pretending more is
     /// meaningful.
     #[serde(default = "default_zoom")]
@@ -116,8 +116,8 @@ pub struct ScopeSpec {
     ///
     /// Matters most at high zoom: at ×20 the lens stretches an 18 px square
     /// across the whole panel, and smoothing turns that into coloured mush.
-    /// Hard pixels keep the edges readable. Neither is right always — smooth
-    /// reads better for distant text, hard for picking out single pixels — so
+    /// Hard pixels keep the edges readable. Neither is right always, smooth
+    /// reads better for distant text, hard for picking out single pixels, so
     /// it's a choice, defaulting to the historical behaviour.
     #[serde(default = "default_smooth")]
     pub smooth: bool,
@@ -175,7 +175,7 @@ pub struct ScopeSource {
     mons: Option<Vec<MonitorInfo>>,
     last: Option<Instant>,
     /// Activation state. `held` is the previous poll, so a *press* is a rising
-    /// edge — polling level only would re-toggle every tick the button is down.
+    /// edge, polling level only would re-toggle every tick the button is down.
     held: bool,
     /// Toggle latch / timed deadline.
     toggled_on: bool,
@@ -215,7 +215,7 @@ impl ScopeSource {
     /// Is the lens supposed to be visible this tick?
     ///
     /// Unbound scopes are always on (the behaviour that predates bindings), and
-    /// so are scopes on a platform where we can't read global input — a lens
+    /// so are scopes on a platform where we can't read global input, a lens
     /// that never appears reads as a broken feature, while one that ignores its
     /// binding is merely the old behaviour. Editor mode also forces it on, or
     /// the user couldn't see what they're dragging.
@@ -255,8 +255,8 @@ impl ScopeSource {
         }
     }
 
-    /// `(x, y, w, h)` del monitor destino. Hace falta entero y no sólo el
-    /// origen desde que la lente puede apuntar a su centro.
+    /// The target monitor's `(x, y, w, h)`. The whole thing is needed, not just the
+    /// origin, now that the lens can aim at its centre.
     fn monitor_rect(&mut self, mon_id: u32) -> (i32, i32, i32, i32) {
         let mons = self.mons.get_or_insert_with(crate::monitors::list_monitors);
         mons.iter()
@@ -310,8 +310,8 @@ impl Source for ScopeSource {
         let lens_y = oy + (r.y + r.h / 2.0) as i32;
         let (cx, cy) = match self.spec.aim {
             ScopeAim::Under => (lens_x, lens_y),
-            // Si no se conoce el monitor (lista vacía en headless), se cae al
-            // comportamiento de siempre en vez de apuntar a (0,0).
+            // With the monitor unknown (an empty list when headless) it falls back
+            // to the usual behaviour rather than aiming at (0,0).
             ScopeAim::Center if mw > 0 && mh > 0 => (ox + mw / 2, oy + mh / 2),
             ScopeAim::Center => (lens_x, lens_y),
             ScopeAim::Offset { dx, dy } => (lens_x + dx as i32, lens_y + dy as i32),
@@ -351,8 +351,8 @@ fn apply_lens(frame: &mut Frame, spec: &ScopeSpec) {
     let aa = 1.5 / w.min(h) as f32;
     let rim_w = 2.5 / w.min(h) as f32;
     let rim = spec.border;
-    // Retícula, también en unidades normalizadas para que salga con el mismo
-    // grosor en pantalla independientemente del aumento.
+    // The reticle, also in normalised units so it comes out the same thickness on
+    // screen whatever the magnification.
     let reticle = spec.reticle;
     let ret_w = 1.0 / w.min(h) as f32;
     let ret_len = 0.09;
@@ -387,15 +387,16 @@ fn apply_lens(frame: &mut Frame, spec: &ScopeSpec) {
                 buf[i + 2] = 14;
                 buf[i + 3] = buf[i + 3].max(t);
             }
-            // Retícula: cruz fina en el centro exacto de la vista ampliada.
-            // Se puede lograr algo parecido con un panel de mirilla aparte, pero
-            // ése se dibuja SIN aumentar y no sigue a la lente cuando ésta
-            // apunta a otro sitio; esta marca siempre señala el punto que se
-            // está ampliando de verdad.
+            // The reticle: a thin cross at the exact centre of the magnified view.
+            // Something similar can be had with a separate crosshair panel, but that
+            // one is drawn WITHOUT magnification and does not follow the lens when it
+            // aims somewhere else; this mark always points at the spot really being
+            // magnified.
             if reticle && cover > 0.0 {
                 let on_v = nx.abs() <= ret_w && ny.abs() <= ret_len;
                 let on_h = ny.abs() <= ret_w && nx.abs() <= ret_len;
-                // Hueco central: deja ver el píxel exacto que se apunta.
+                // The gap in the middle: it leaves the exact pixel being aimed at
+                // visible.
                 let in_gap = nx.abs() <= ret_gap && ny.abs() <= ret_gap;
                 if (on_v || on_h) && !in_gap {
                     buf[i] = 255;
@@ -493,9 +494,9 @@ mod tests {
         )
     }
 
-    /// El JSON exacto que emite el editor (`Screen.svelte`). Si alguien cambia
-    /// un nombre de campo en cualquiera de los dos lados, esto lo caza aquí en
-    /// vez de dejar un visor que nunca se activa y nadie sabe por qué.
+    /// The exact JSON the editor emits (`Screen.svelte`). If somebody changes a
+    /// field name on either side, this catches it here instead of leaving a scope
+    /// that never activates and nobody knows why.
     #[test]
     fn parses_the_payload_the_editor_actually_sends() {
         let json = r#"{
@@ -511,25 +512,25 @@ mod tests {
         }"#;
         let src: crate::scene::SourceRef = serde_json::from_str(json).unwrap();
         let crate::scene::SourceRef::Scope(spec) = src else {
-            panic!("no se reconoció como visor");
+            panic!("not recognised as a scope");
         };
         assert_eq!(
             spec.activation.binding,
             Some(Binding::Mouse { button: 4 }),
-            "el botón lateral tiene que llegar tal cual"
+            "the side button has to arrive as it is"
         );
         assert_eq!(spec.activation.mode, ActivationMode::Hold);
         assert_eq!(spec.activation.seconds, 3.0);
     }
 
-    /// Una escena de antes de que existieran los vínculos no lleva
-    /// `activation`; tiene que seguir cargando y quedarse "siempre visible".
+    /// A scene from before bindings existed carries no `activation`; it has to keep
+    /// loading and stay "always visible".
     #[test]
     fn an_old_scene_without_activation_still_loads() {
         let src: crate::scene::SourceRef =
             serde_json::from_str(r#"{"kind":"scope","zoom":3}"#).unwrap();
         let crate::scene::SourceRef::Scope(spec) = src else {
-            panic!("no se reconoció como visor");
+            panic!("not recognised as a scope");
         };
         assert_eq!(spec.activation.binding, None);
         assert_eq!(spec.zoom, 3.0);
@@ -539,9 +540,9 @@ mod tests {
         static LAST_GRAB: std::cell::Cell<(i32, i32)> = const { std::cell::Cell::new((0, 0)) };
     }
 
-    /// Registra el origen pedido en vez de codificarlo en el píxel (0,0): ese
-    /// píxel cae en la esquina y la máscara de la lente lo deja transparente,
-    /// así que no se puede leer de vuelta.
+    /// Records the requested origin rather than encoding it into pixel (0,0): that
+    /// pixel falls in the corner and the lens's mask leaves it transparent, so it
+    /// cannot be read back.
     fn recording(x: i32, y: i32, w: u32, h: u32) -> Option<Frame> {
         LAST_GRAB.with(|c| c.set((x, y)));
         Some(Frame::solid(w, h, [10, 10, 10, 255]))
@@ -566,7 +567,7 @@ mod tests {
 
     #[test]
     fn aim_under_grabs_beneath_the_lens() {
-        // centro 120 − mitad de la región (20) = 100.
+        // centre 120 minus half the region (20) = 100.
         assert_eq!(aim_origin(ScopeAim::Under), (100, 100));
     }
 
@@ -600,7 +601,7 @@ mod tests {
                     reticle,
                     ..Default::default()
                 },
-                recording, // fondo oscuro: una retícula blanca se ve
+                recording, // a dark background: a white reticle shows up
             );
             s.set_viewport(Rect::new(100.0, 100.0, 200.0, 200.0), 0);
             s.acquire().unwrap()
@@ -613,14 +614,14 @@ mod tests {
         assert_eq!(
             on.pixel(w / 2, probe_y),
             [255, 255, 255, 255],
-            "el brazo de la retícula se dibuja"
+            "the reticle arm is drawn"
         );
         assert_ne!(
             off.pixel(w / 2, probe_y),
             [255, 255, 255, 255],
-            "sin retícula ese píxel no se toca"
+            "with no reticle that pixel is untouched"
         );
-        // El hueco central deja ver el píxel apuntado.
+        // The gap in the middle leaves the aimed-at pixel visible.
         assert_eq!(
             on.pixel(w / 2, h / 2),
             off.pixel(w / 2, h / 2),
@@ -637,7 +638,7 @@ mod tests {
         )
         .unwrap();
         let crate::scene::SourceRef::Scope(spec) = src else {
-            panic!("no se reconoció como visor");
+            panic!("not recognised as a scope");
         };
         assert!(!spec.smooth);
         assert!(spec.reticle);
@@ -665,12 +666,12 @@ mod tests {
         let mut s = bound(ActivationMode::Toggle, 3.0);
         let t = Instant::now();
         assert!(!s.step(false, t), "arranca oculto");
-        assert!(s.step(true, t), "una pulsación lo enciende");
-        // Mantener pulsado NO debe re-alternar: sólo cuenta el flanco.
+        assert!(s.step(true, t), "one press turns it on");
+        // Holding it down must NOT re-toggle: only the edge counts.
         assert!(s.step(true, t));
         assert!(s.step(true, t));
         assert!(s.step(false, t), "sigue encendido tras soltar");
-        assert!(!s.step(true, t), "la segunda pulsación lo apaga");
+        assert!(!s.step(true, t), "the second press turns it off");
     }
 
     #[test]
@@ -678,10 +679,10 @@ mod tests {
         let mut s = bound(ActivationMode::Timed, 2.0);
         let t0 = Instant::now();
         assert!(!s.step(false, t0));
-        assert!(s.step(true, t0), "la pulsación lo enciende");
+        assert!(s.step(true, t0), "the press turns it on");
         assert!(
             s.step(false, t0 + Duration::from_secs_f32(1.9)),
-            "aún dentro"
+            "still inside"
         );
         assert!(
             !s.step(false, t0 + Duration::from_secs_f32(2.1)),
@@ -723,15 +724,14 @@ mod tests {
     fn a_bound_scope_emits_one_transparent_frame_then_stops() {
         let mut s = bound(ActivationMode::Toggle, 3.0);
         s.set_viewport(Rect::new(0.0, 0.0, 100.0, 100.0), 0);
-        // Sin `input::available()` en el build de test el binding se ignora, así
-        // que forzamos el estado oculto por la vía de la máquina.
+        // Without `input::available()` in the test build the binding is ignored, so
+        // the hidden state is forced through the machine's own route.
         s.spec.activation.binding = Some(Binding::Mouse { button: 3 });
         s.editing = false;
         let f = s.acquire();
-        // El build de test no puede sondear, así que se comporta como "siempre
-        // visible": lo que se comprueba aquí es que ESO es lo que pasa, no un
-        // visor invisible.
-        assert!(f.is_some(), "sin sondeo disponible, sigue mostrándose");
+        // The test build cannot probe, so it behaves as "always visible": what is
+        // checked here is that THAT is what happens, not an invisible scope.
+        assert!(f.is_some(), "with no probing available it keeps showing");
     }
 
     #[test]

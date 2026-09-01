@@ -5,7 +5,7 @@
 //!
 //! * **Capture** ([`GpuCapture`]): a WGC `Direct3D11CaptureFramePool` on the same
 //!   D3D11 device the overlay renders with, polled *on the render thread*. The
-//!   captured `ID3D11Texture2D` is sampled directly — no `Map`, no readback, no
+//!   captured `ID3D11Texture2D` is sampled directly, no `Map`, no readback, no
 //!   swizzle (the `B8G8R8A8_UNORM` SRV does the channel order for free). This is
 //!   what removes the ~10% CPU the old per-pixel swizzle cost.
 //! * **Present** ([`GpuOverlay`]): one `WS_EX_NOREDIRECTIONBITMAP` window per
@@ -112,7 +112,7 @@ struct GpuCapture {
     srv: Option<ID3D11ShaderResourceView>,
     /// Our own texture the captured frame is copied into. The frame-pool textures
     /// must be returned to the pool (by closing each frame) or it stalls after a
-    /// couple of frames — so we never sample them directly; we copy here and keep
+    /// couple of frames, so we never sample them directly; we copy here and keep
     /// this as the stable "latest frame".
     tex: Option<ID3D11Texture2D>,
     src_w: u32,
@@ -171,7 +171,7 @@ impl GpuCapture {
 
     /// Drain to the newest available frame, copy it into our own texture, and
     /// **close each frame** so the pool keeps delivering (not closing stalls WGC
-    /// after a couple of frames — the Discord/Brave black-panel freeze). No-op
+    /// after a couple of frames, the Discord/Brave black-panel freeze). No-op
     /// (keeps the last texture) when nothing new arrived. Returns true if a fresh
     /// frame landed.
     fn poll(&mut self, device: &ID3D11Device, context: &ID3D11DeviceContext) -> bool {
@@ -510,7 +510,7 @@ impl GpuOverlay {
 
     /// Per-capture `(hwnd, total_frames, has_frame)` for diagnostics. A capture
     /// whose `total_frames` stops climbing is frozen (the Discord/Brave black-
-    /// panel symptom — DWM stopped composing the parked window).
+    /// panel symptom, DWM stopped composing the parked window).
     pub fn capture_stats(&self) -> Vec<(isize, u64, bool)> {
         self.captures
             .iter()
@@ -691,7 +691,7 @@ impl GpuOverlay {
         ctx.PSSetShaderResources(0, Some(&[None]));
         ctx.OMSetRenderTargets(Some(&[None]), None);
 
-        // `Present(0)` — do NOT block the thread on vblank. `Present(1)` parked the
+        // `Present(0)`, do NOT block the thread on vblank. `Present(1)` parked the
         // window thread in the driver for up to a frame, during which it couldn't
         // answer `WM_NCHITTEST`; with a full-screen topmost overlay that froze the
         // mouse across the whole desktop. The loop paces itself with a

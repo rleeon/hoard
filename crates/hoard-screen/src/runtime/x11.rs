@@ -1,6 +1,6 @@
 //! X11 on-screen overlay.
 //!
-//! Two layers, by panel kind — the same model as the Windows runtime:
+//! Two layers, by panel kind, the same model as the Windows runtime:
 //!
 //! * **App-window panels are the real windows**, placed over the game, not
 //!   captured pixels. Each window panel's X window is raised
@@ -8,7 +8,7 @@
 //!   View, made **click-through** by emptying its SHAPE *input* region so pointer
 //!   events fall through to the game. Because the real window stays visible on
 //!   top it is never fully obscured, so a browser won't throttle/blank a
-//!   backgrounded video tab — the same reason we place the real window instead of
+//!   backgrounded video tab, the same reason we place the real window instead of
 //!   `GetImage`-capturing it (you can't force a foreign app to keep rendering
 //!   while it's covered, so we never cover it; it also drops the per-frame
 //!   full-window `GetImage` round-trip). Editor mode restores the window's normal
@@ -18,8 +18,8 @@
 //! * **Note / image / test panels** are composited the old way into a
 //!   screen-sized, ARGB32, override-redirect overlay (needs a running X
 //!   compositor for the alpha). To keep that overlay from covering the real
-//!   window panels — override-redirect z-order vs. WM `_ABOVE` windows is not
-//!   guaranteed — its SHAPE *bounding* region is punched with a hole for each
+//!   window panels, override-redirect z-order vs. WM `_ABOVE` windows is not
+//!   guaranteed, its SHAPE *bounding* region is punched with a hole for each
 //!   window panel, so the real windows always show through regardless of stack
 //!   order. With no note/image panels the overlay is simply unmapped.
 //!
@@ -261,10 +261,10 @@ pub fn run(mut engine: Engine) -> Result<(), String> {
                 overlay_shape(&conn, window, sw, sh, &scene)?;
                 shape_dirty = false;
             }
-            // El visor puede estar vinculado a un botón y esconderse solo; en el editor
-            // tiene que verse igualmente para poder colocarlo. Se avisa antes de cada
-            // tick: es poner un bool en un puñado de fuentes, no compensa llevar la
-            // cuenta de si cambió.
+            // The scope can be bound to a button and hide itself; in the editor it
+            // has to be visible anyway so it can be placed. It is told before every
+            // tick: setting a bool on a handful of sources is not worth tracking
+            // whether it changed.
             engine.set_editing(mode == Mode::Editor);
             engine.tick();
             engine.render(&mut buf, sw as u32, sh as u32);

@@ -71,7 +71,7 @@ pub async fn run(cmd: TokenCommand, cfg: &Config) -> Result<()> {
             .execute(&pool)
             .await?;
 
-            println!("\n⚠  Save this token NOW — it cannot be recovered later!\n");
+            println!("\n⚠  Save this token NOW; it cannot be recovered later!\n");
             println!("Token: {}", token);
             // Two lines, and the real key name. This hint used to print
             // `hoard config set server <url> && hoard login --token …`: the key
@@ -139,7 +139,7 @@ pub async fn run(cmd: TokenCommand, cfg: &Config) -> Result<()> {
                 // prefix `token list` prints, so say which one is wanted.
                 anyhow::bail!(
                     "No active token found with prefix '{}'. Use the Prefix column \
-                     from `hoard-admin token list <user>` — it is the start of the \
+                     from `hoard-admin token list <user>`; it is the start of the \
                      token's hash, not of the token itself.",
                     token_prefix
                 );

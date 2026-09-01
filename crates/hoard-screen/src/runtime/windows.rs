@@ -5,7 +5,7 @@
 //! fronted by a DirectComposition swapchain. Panels split by kind:
 //!
 //! * **Non-compat app-window panels are the real windows**, placed over the game
-//!   — not captured pixels. The HWND is moved onto its slot, raised
+//!  , not captured pixels. The HWND is moved onto its slot, raised
 //!   `HWND_TOPMOST`, region-clipped to its crop, and (in View) given
 //!   `WS_EX_TRANSPARENT | WS_EX_NOACTIVATE` so it's click-through and never steals
 //!   focus. Because the window stays genuinely visible on top, it is never
@@ -148,7 +148,7 @@ fn make_lparam(x: i32, y: i32) -> LPARAM {
 
 /// Rebuild the compat slot list from the current scene: every compat panel whose
 /// real window is parked (we're showing the WGC capture). The `passthrough` flag
-/// decides where its clicks go — OFF forwards to the parked capture (interactive),
+/// decides where its clicks go, OFF forwards to the parked capture (interactive),
 /// ON forwards to the window physically behind the panel ("clics pasan al juego").
 unsafe fn rebuild_slots(scene: &Scene, mons: &[MonitorInfo], managed: &HashMap<isize, Managed>) {
     let mut slots = Vec::new();
@@ -188,7 +188,7 @@ fn clear_slots() {
     SLOTS.with(|s| s.borrow_mut().clear());
 }
 
-// DEAD CODE — old toggle-transparency architecture, replaced by per-frame region
+// DEAD CODE, old toggle-transparency architecture, replaced by per-frame region
 // clipping (`apply_overlay_region` / `SetWindowRgn`) + the passthrough lens.
 // Commented out (not deleted) in case the region approach needs to fall back to it.
 // /// Add or drop `WS_EX_TRANSPARENT` on an overlay surface. With it (the default)
@@ -207,7 +207,7 @@ fn clear_slots() {
 
 /// Give the parked (off-screen) compat window real keyboard focus so the user's
 /// keystrokes flow to it NATIVELY (Chromium routes typing/IME to its focused
-/// control — synthetic key posting is unreliable, native focus is not).
+/// control, synthetic key posting is unreliable, native focus is not).
 ///
 /// A plain `SetForegroundWindow` from our overlay is silently refused by Windows:
 /// the overlay is `WS_EX_NOACTIVATE` and never the foreground process, and only
@@ -258,7 +258,7 @@ unsafe fn forward_pointer(message: u32, wparam: WPARAM) {
             .cloned()
     });
     let Some(slot) = slot else { return };
-    // Passthrough ON ("clics pasan al juego"): handled by the click-through hole —
+    // Passthrough ON ("clics pasan al juego"): handled by the click-through hole,
     // a circular cut-out of the overlay follows the cursor over the panel, so the
     // OS delivers clicks NATIVELY to whatever is physically behind (real
     // double-click / drag, correct multi-monitor coords). No synthetic forwarding.
@@ -276,20 +276,20 @@ unsafe fn forward_pointer(message: u32, wparam: WPARAM) {
     let win_w = (wr.right - wr.left).max(1) as f64;
     let win_h = (wr.bottom - wr.top).max(1) as f64;
 
-    // Inverse of the compositor's crop+scale (debe coincidir EXACTAMENTE con
-    // `scene::resolve_blit`): el slot muestra la región recortada, que en `Fill`
-    // se ESTIRA a toda la caja (dst = box, sin conservar aspecto) y en `Fit` se
-    // centra con letterbox. Mapea el punto local del slot a una posición
-    // fraccionaria (cu, cv) dentro de la región recortada.
+    // Inverse of the compositor's crop and scale (it must match `scene::resolve_blit`
+    // EXACTLY): the slot shows the cropped region, which under `Fill` is STRETCHED to
+    // the whole box (dst = box, aspect not preserved) and under `Fit` is centred with
+    // letterboxing. It maps the slot's local point to a fractional position (cu, cv)
+    // inside the cropped region.
     let c = slot.crop.sanitized();
     let lx = (pt.x - vx) as f64;
     let ly = (pt.y - vy) as f64;
     let (cu, cv) = match slot.scale {
-        // Fill: estiramiento lineal a toda la caja, sin offset (antes se invertía
-        // como cover y los clics caían desplazados — el bug reportado).
+        // Fill: a linear stretch across the whole box, with no offset (this used to
+        // be inverted as cover and the clicks landed shifted, the reported bug).
         ScaleMode::Fill => ((lx / vw).clamp(0.0, 1.0), (ly / vh).clamp(0.0, 1.0)),
-        // Fit: imagen centrada con barras de letterbox; un clic en la barra no da
-        // a nada.
+        // Fit: the image centred with letterbox bars; a click on a bar hits
+        // nothing.
         ScaleMode::Fit => {
             let src_w = (1.0 - c.left - c.right).max(0.001) * win_w;
             let src_h = (1.0 - c.top - c.bottom).max(0.001) * win_h;
@@ -311,7 +311,7 @@ unsafe fn forward_pointer(message: u32, wparam: WPARAM) {
     let syp = (wr.top as f64 + fy * win_h).round() as i32;
 
     // While a left-drag is in progress keep posting to the SAME child captured at
-    // button-down — this mirrors `SetCapture` in a real app. Re-running the hit
+    // button-down, this mirrors `SetCapture` in a real app. Re-running the hit
     // test on every move can land on a different (or transparent-skipped) window
     // mid-drag, which breaks text selection / drag-scroll ("no puedo deslizar").
     let dragging = DRAG_CHILD.with(|d| *d.borrow());
@@ -424,7 +424,7 @@ pub fn run(mut engine: Engine) -> Result<(), String> {
 struct OverlayWin {
     hwnd: HWND,
     mon: MonitorInfo,
-    // DEAD CODE — went with the old toggle-transparency path (see
+    // DEAD CODE, went with the old toggle-transparency path (see
     // `set_surface_transparent`); the overlay is now region-clipped per frame.
     // Commented out (not deleted) as a fallback marker.
     // /// Whether the window currently has `WS_EX_TRANSPARENT` (fully click-through).
@@ -435,7 +435,7 @@ struct OverlayWin {
     /// before they're uploaded to the swapchain's notes texture.
     buf: Vec<u8>,
     /// Whether the window is currently visible. It is a full-monitor topmost
-    /// window, so we keep it hidden whenever this monitor has nothing to draw —
+    /// window, so we keep it hidden whenever this monitor has nothing to draw,
     /// otherwise an empty overlay would sit over the whole screen and (any
     /// click-through gap aside) block every click. Shown only while it carries
     /// a compat capture or note/image on this monitor.
@@ -443,7 +443,7 @@ struct OverlayWin {
     /// The monitor-local content rects the window is currently clipped to (its
     /// `SetWindowRgn`). The overlay is a full-monitor topmost window, but we clip
     /// it to just the panel/note areas so everything OUTSIDE a panel has no window
-    /// there at all — clicks fall straight through to the game/background apps
+    /// there at all, clicks fall straight through to the game/background apps
     /// (don't rely on `WS_EX_TRANSPARENT` alone, which a composition overlay does
     /// not honor reliably for routing clicks to other top-level windows).
     region: Vec<SavedRect>,
@@ -453,7 +453,7 @@ struct OverlayWin {
     hole: Option<(i32, i32, i32)>,
     /// Whether the window currently has `WS_EX_LAYERED`. Added while this monitor
     /// shows only engine content (crosshair/notes) so the window is OS-level
-    /// click-through — `HTTRANSPARENT` from our wndproc does NOT route a click to
+    /// click-through, `HTTRANSPARENT` from our wndproc does NOT route a click to
     /// another process's window, it just eats it, which left the mouse "stuck" on
     /// a centred crosshair (games lock the cursor exactly there). Dropped while a
     /// compat panel sits on this monitor: those need the wndproc hit-test to catch
@@ -506,7 +506,7 @@ unsafe fn run_inner(engine: &mut Engine) -> Result<(), String> {
 
     // GPU compositor: one shared D3D11 device used for both WGC capture and the
     // per-monitor DirectComposition swapchains. If it can't be created (very old
-    // GPU/driver with no D3D11 at all — WGC itself wouldn't work either) there is
+    // GPU/driver with no D3D11 at all, WGC itself wouldn't work either) there is
     // nothing to fall back to, so surface the error.
     let mut gpu = GpuOverlay::new()?;
 
@@ -539,13 +539,13 @@ unsafe fn run_inner(engine: &mut Engine) -> Result<(), String> {
         .map_err(err)?;
         gpu.add_monitor(hwnd, mon.w, mon.h)?;
         // Present one transparent frame so the swapchain is clear, but keep the
-        // window HIDDEN until this monitor actually has something to draw — an
+        // window HIDDEN until this monitor actually has something to draw, an
         // always-visible full-screen topmost window would blanket the desktop.
         gpu.render(idx, &[])?;
         overlays.push(OverlayWin {
             hwnd,
             mon: mon.clone(),
-            // transparent: true, // DEAD CODE — see OverlayWin field above
+            // transparent: true, // DEAD CODE, see OverlayWin field above
             buf: vec![0u8; (mon.w as usize) * (mon.h as usize) * 4],
             shown: false,
             region: Vec::new(),
@@ -563,7 +563,7 @@ unsafe fn run_inner(engine: &mut Engine) -> Result<(), String> {
 
     // No low-level mouse hook: an interactive (passthrough-OFF) compat slot is
     // caught by the overlay itself (its `wndproc` returns HTCLIENT over that slot)
-    // and forwarded to the parked capture from the run loop below — a SINGLE,
+    // and forwarded to the parked capture from the run loop below, a SINGLE,
     // clean forward (the old LL hook also forwarded, so moves got posted twice and
     // drag-select broke). A passthrough-ON slot is handled by the circular region
     // hole that follows the cursor (see `passthrough_hole`): the OS routes clicks
@@ -582,7 +582,7 @@ unsafe fn run_inner(engine: &mut Engine) -> Result<(), String> {
     let mut mode = Mode::View;
     // The authoritative full scene (window + non-window panels). The engine only
     // ever gets the note/image/test subset; window panels live either as real
-    // placed windows (`managed`) or — compat in View — as GPU captures.
+    // placed windows (`managed`) or, compat in View, as GPU captures.
     let mut scene = Scene::default();
     let mut managed: HashMap<isize, Managed> = HashMap::new();
 
@@ -712,7 +712,7 @@ unsafe fn run_inner(engine: &mut Engine) -> Result<(), String> {
                     emit_mode(mode);
                     emit_scene(&scene);
                 }
-                // Quit — or the desktop app died (stdin hit EOF, sender gone).
+                // Quit, or the desktop app died (stdin hit EOF, sender gone).
                 // A controllerless overlay must not outlive its app: it kept
                 // running forever with panels nobody could move or close.
                 Ok(Message::Quit) | Err(mpsc::TryRecvError::Disconnected) => {
@@ -743,7 +743,7 @@ unsafe fn run_inner(engine: &mut Engine) -> Result<(), String> {
                 }
             }
         } else {
-            // Editor: windows are real and natively interactive — no forwarding,
+            // Editor: windows are real and natively interactive, no forwarding,
             // no captures. An empty slot list makes `wndproc` fall through
             // (HTTRANSPARENT) everywhere, so the overlay catches nothing.
             clear_slots();
@@ -936,7 +936,7 @@ unsafe fn run_inner(engine: &mut Engine) -> Result<(), String> {
         // Pace the loop WITHOUT ever blocking the thread to vblank: a plain
         // `sleep` can't wake for an incoming `WM_NCHITTEST`, so with a full-screen
         // topmost overlay the mouse would freeze for the whole sleep. Wait on the
-        // message queue instead — `MsgWaitForMultipleObjectsEx` returns the instant
+        // message queue instead, `MsgWaitForMultipleObjectsEx` returns the instant
         // input arrives (so hit-tests are answered immediately) or when the budget
         // elapses (so captures keep polling). Budget: tight while capturing video,
         // relaxed when only static notes are up.
@@ -1036,7 +1036,7 @@ fn overlay_content_rects(
 }
 
 /// Clip `hwnd` to the union of `rects` (monitor-local, i.e. relative to the
-/// window's top-left), minus an optional circular `hole` `(cx, cy, r)` — the
+/// window's top-left), minus an optional circular `hole` `(cx, cy, r)`, the
 /// click-through "lens" that follows the cursor over a passthrough-ON panel so
 /// the OS delivers clicks NATIVELY to whatever sits behind it. Empty `rects` with
 /// no hole clears the clip (whole window visible).
@@ -1140,7 +1140,7 @@ unsafe fn passthrough_hole(mon: &MonitorInfo) -> Option<(i32, i32, i32)> {
 }
 
 /// The panels the compositing engine should render: only note/image/test panels.
-/// Window panels never reach the engine — non-compat ones are real OS windows
+/// Window panels never reach the engine, non-compat ones are real OS windows
 /// placed over the game, and compat ones (in View) are captured straight to the
 /// GPU overlay ([`GpuOverlay`]) instead of going through the CPU compositor.
 fn engine_subset(scene: &Scene) -> Scene {
@@ -1234,7 +1234,7 @@ const CHROME: u32 =
 /// natural size, with its own original styles restored (no clip, no chrome
 /// strip, no layering). DWM keeps composing a non-minimized window even when
 /// it's off-screen, and nothing occludes it there, so Chromium/Electron won't
-/// background it and its video keeps playing — which is the whole point: the
+/// background it and its video keeps playing, which is the whole point: the
 /// engine WGC-captures these live pixels and the compositor draws the cropped
 /// result onto the panel slot. Idempotent: once parked we leave it be.
 unsafe fn park_window(hwnd: HWND, mons: &[MonitorInfo], m: &mut Managed, cap_w: i32, cap_h: i32) {
@@ -1275,10 +1275,10 @@ unsafe fn park_window(hwnd: HWND, mons: &[MonitorInfo], m: &mut Managed, cap_w: 
     // Park it so only a 2px nub at the very bottom-right corner stays on a
     // display. A window that intersects *no* monitor is treated as hidden by
     // Chromium/Electron occlusion (CalculateNativeWinOcclusion) and they throttle
-    // rendering to a stop — which froze the capture at a few frames. Keeping a
+    // rendering to a stop, which froze the capture at a few frames. Keeping a
     // tiny on-screen intersection makes them keep painting, while being
     // effectively invisible. Sized to the slot (`cap_w`×`cap_h`) so WGC captures
-    // at the resolution it's displayed at — crisp, not an upscaled low-res frame.
+    // at the resolution it's displayed at, crisp, not an upscaled low-res frame.
     //
     // The nub must be TOPMOST (below). Occlusion is computed from the *visible*
     // on-screen region: if another window (another Brave/Discord maximised) covers
@@ -1288,9 +1288,9 @@ unsafe fn park_window(hwnd: HWND, mons: &[MonitorInfo], m: &mut Managed, cap_w: 
     // is why they never triggered the freeze.)
     let (w, h) = (cw, ch);
     // Force the window into a NORMAL (non-maximized) state at the park rect.
-    // `SetWindowPos` alone is ignored by a maximized window — it stayed maximized
-    // and fully visible behind the captured panel (the "Brave duplicada
-    // maximizada detrás"). `SetWindowPlacement` with `SW_SHOWNORMAL` reliably
+    // `SetWindowPos` alone is ignored by a maximized window, it stayed maximized
+    // and fully visible behind the captured panel (the "a second, maximised Brave
+    // behind it" report). `SetWindowPlacement` with `SW_SHOWNORMAL` reliably
     // un-maximizes and positions it.
     let mut wp = WINDOWPLACEMENT {
         length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
@@ -1331,7 +1331,7 @@ unsafe fn place_window(
     // Taking the window back from a parked (compat) state: it's a normal placed
     // window again from here on; the style/pos/crop below re-establish it.
     m.parked = false;
-    // A minimized window would show nothing wherever we place it — restore it
+    // A minimized window would show nothing wherever we place it, restore it
     // first, without stealing focus from the game (guarded so we never disturb a
     // normal/maximized window).
     if IsIconic(hwnd).as_bool() {
@@ -1360,14 +1360,14 @@ unsafe fn place_window(
     //   WS_EX_NOACTIVATE` so the window is hit-test-transparent (mouse falls
     //   through to the game below) and never steals focus. The `LAYERED` flag is
     //   load-bearing: for a top-level FOREIGN window, `WS_EX_TRANSPARENT` ALONE
-    //   does not make it click-through — Win32 only routes the click to the
+    //   does not make it click-through, Win32 only routes the click to the
     //   window below when the window is also `WS_EX_LAYERED` (multi-HWND Chromium
     //   apps like Discord/Brave otherwise keep catching the click on their child
     //   render surface). We do NOT paint the layered window ourselves (no
     //   `UpdateLayeredWindow`/alpha set), so DWM composites it at full opacity as
     //   usual; for ordinary apps this is invisible. The known exception is a
     //   window owning a hardware video swapchain (Prime/Netflix, MPO + HW-accel):
-    //   layering can break its composition and show black — that's what the
+    //   layering can break its composition and show black, that's what the
     //   per-panel `passthrough` toggle is for (turn it off on that one panel).
     //
     // * View, `!passthrough`: leave the adopted window's ex-style exactly as we
@@ -1380,7 +1380,7 @@ unsafe fn place_window(
     //   out of our control.
     //
     // Trade-off, stated plainly: there is no single ex-style that both keeps the
-    // game click-through AND guarantees a protected/HW video never goes black —
+    // game click-through AND guarantees a protected/HW video never goes black,
     // click-through *requires* altering the foreign window's hit-testing. So we
     // expose it per panel and default to click-through (gameplay-preserving).
     // A layered window does NOT honor `SetWindowRgn` cleanly: the DWM
@@ -1410,7 +1410,7 @@ unsafe fn place_window(
 
     // Chrome policy: in View strip the title bar + frame so only the app's
     // content shows (a clean panel, no caption to drag, no border bleeding past
-    // the crop — fixes the "se quedó la barra de arriba y el borde" report). In
+    // the crop, and it fixes the "the top bar and the border stayed" report). In
     // Editor restore the real style so the user can drag/resize it natively.
     // Toggling the style requires `SWP_FRAMECHANGED` for the non-client area to
     // recompute, so we only do it on transition (not every frame).
@@ -1427,12 +1427,12 @@ unsafe fn place_window(
         frame_changed = true;
     }
     // A freshly `WS_EX_LAYERED` top-level window renders NOTHING until its layer
-    // attributes are set — without this the adopted app would vanish instead of
+    // attributes are set, without this the adopted app would vanish instead of
     // becoming click-through. Alpha 255 = fully opaque: we use the layer purely
     // to route clicks through, not to fade the window. DWM keeps compositing its
     // real content (the foreign app paints normally; we never call
     // `UpdateLayeredWindow` on it). A protected/HW-video swapchain is the one
-    // case this can black out — handled by turning the panel's `passthrough` off.
+    // case this can black out, handled by turning the panel's `passthrough` off.
     if layered {
         let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
     }
@@ -1448,12 +1448,12 @@ unsafe fn place_window(
     // EVERY `set_scene`, and the editor streams one per pointer-move (~30/s)
     // while the user drags a panel rectangle in the desktop UI. Forcing the
     // adopted window foreground each time yanked focus away from the Hoard
-    // window mid-drag — a focus/z-order war that flickered the panel between its
+    // window mid-drag, a focus/z-order war that flickered the panel between its
     // old and new spot (and, when the adopted window WAS the Hoard editor
     // window, fed the pointer deltas back on themselves into an endless
     // oscillation). The adopted window is already raised `HWND_TOPMOST`, so it's
     // visible; to interact with it (pause a video) the user just clicks it and
-    // Windows focuses it natively — its real ex-style is restored in Editor.
+    // Windows focuses it natively, its real ex-style is restored in Editor.
 }
 
 /// Clip a window to its crop with a window region (a clip, not a zoom). A NONE
@@ -1472,7 +1472,7 @@ unsafe fn apply_crop(hwnd: HWND, w: i32, h: i32, crop: Crop, m: &mut Managed) {
     let r = ((1.0 - c.right) * w as f64).round() as i32;
     let b = ((1.0 - c.bottom) * h as f64).round() as i32;
     let rgn = CreateRectRgn(l.min(r), t.min(b), l.max(r), t.max(b));
-    // SetWindowRgn takes ownership of the region on success — don't delete it.
+    // SetWindowRgn takes ownership of the region on success, don't delete it.
     let _ = SetWindowRgn(hwnd, rgn, TRUE);
     m.cropped = true;
 }
@@ -1487,8 +1487,8 @@ unsafe fn restore_window(hwnd: HWND, m: &Managed) {
     // Put the chrome back (we may have stripped it in View), with FRAMECHANGED so
     // the title bar/border redraw.
     let _ = SetWindowLongW(hwnd, GWL_STYLE, m.style);
-    // Una ventana adoptada estando minimizada (o que la app minimizó mientras
-    // estaba aparcada) debe volver visible.
+    // A window adopted while minimised (or that the app minimised while it was
+    // parked) has to come back visible.
     if IsIconic(hwnd).as_bool() {
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
     }
@@ -1502,11 +1502,11 @@ unsafe fn restore_window(hwnd: HWND, m: &Managed) {
         h,
         SWP_NOACTIVATE | SWP_FRAMECHANGED,
     );
-    // Garantiza visibilidad + repintado: una ventana que estuvo aparcada
-    // off-screen o layered (Steam/CEF, Discord) podía quedarse en negro/invisible
-    // al quitarla de la escena, obligando a reiniciar la app para recuperarla
-    // (P8/P11). Forzar show + redraw del marco y los hijos la trae de vuelta sin
-    // reinicio.
+    // Guarantees visibility and a repaint: a window that was parked off-screen or
+    // layered (Steam/CEF, Discord) could stay black or invisible when it was taken
+    // out of the scene, forcing an app restart to get it back (P8/P11). Forcing a
+    // show plus a redraw of the frame and its children brings it back with no
+    // restart.
     let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
     let _ = RedrawWindow(
         hwnd,
@@ -1521,7 +1521,7 @@ unsafe fn restore_window(hwnd: HWND, m: &Managed) {
 unsafe fn reassert_z(scene: &Scene, managed: &HashMap<isize, Managed>) {
     for p in scene.draw_order() {
         let Some(win) = panel_win(p) else { continue };
-        // A parked (compat) window stays off-screen — never raise it topmost.
+        // A parked (compat) window stays off-screen, never raise it topmost.
         if managed.get(&win).map_or(true, |m| m.parked) {
             continue;
         }
@@ -1563,7 +1563,7 @@ unsafe fn set_mode(
 
 /// After an edit, fold each managed window's on-screen geometry back into its
 /// panel rect (monitor-local), re-homing it onto whichever monitor it now sits
-/// on — dragging a window to another screen reassigns its target. A mirror
+/// on, dragging a window to another screen reassigns its target. A mirror
 /// ("all") panel keeps mirroring; its rect is measured against the primary.
 unsafe fn readback_geometry(
     scene: &mut Scene,
@@ -1635,7 +1635,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
         // so the OS delivers the mouse to this overlay's queue and the run loop can
         // forward it: OFF → to the parked capture, ON → to the window physically
         // behind the panel. (HTTRANSPARENT does NOT route through a composition
-        // overlay to another top-level window — clicks just get lost — so we must
+        // overlay to another top-level window, clicks just get lost, so we must
         // catch and forward ourselves in both modes.) Everywhere else falls through
         // to the game (HTTRANSPARENT).
         let x = (l.0 & 0xffff) as i16 as i32;

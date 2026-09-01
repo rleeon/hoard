@@ -9,7 +9,7 @@
 //! Editor mode follows the Wayland pattern: macOS grants no app-level global
 //! hotkey and we can't relocate *other* apps' windows without Accessibility, so
 //! the toggle arrives over IPC (`set_editor`) and Editor simply hides the
-//! overlay — the real windows are already on screen for the user to move/resize
+//! overlay, the real windows are already on screen for the user to move/resize
 //! natively. On leaving Editor we read each captured window's current bounds
 //! from the window-server list so the panel reappears where it was left.
 

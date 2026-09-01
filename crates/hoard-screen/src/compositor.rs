@@ -1,6 +1,6 @@
 //! CPU compositor: paints a [`Scene`] into an RGBA8 framebuffer.
 //!
-//! Deliberately backend-free — it writes pixels into a plain `&mut [u8]`, so
+//! Deliberately backend-free, it writes pixels into a plain `&mut [u8]`, so
 //! the whole compositing path (crop, scale, alpha, z-order) is unit-testable
 //! with no GPU or window. The windowed runtime ([`crate::runtime`], behind the
 //! `runtime` feature) just hands this its surface buffer and presents it.
@@ -8,9 +8,9 @@
 //! Scaling is bilinear by default. A panel can ask for nearest-neighbour
 //! instead (`smooth: false` on a scope): at high magnification the lens
 //! stretches a handful of pixels across the whole panel, and interpolating
-//! that turns it into coloured mush — hard pixel edges read better. A GPU path
+//! that turns it into coloured mush, hard pixel edges read better. A GPU path
 //! (sampled textures) can replace this later without touching the
-//! scene/geometry model — that is the point of the seam.
+//! scene/geometry model, that is the point of the seam.
 
 use std::collections::HashMap;
 
@@ -74,7 +74,7 @@ fn draw_blit(
     // Valid source sample window (the crop sub-rect), clamped to the frame.
     let sx_max = (sx + sw - 1.0).min((frame.width - 1) as f64).max(sx);
     let sy_max = (sy + sh - 1.0).min((frame.height - 1) as f64).max(sy);
-    // Source units per destination pixel — stepped incrementally below so the
+    // Source units per destination pixel, stepped incrementally below so the
     // inner loop avoids a divide per pixel.
     let step_x = sw / dst.w;
     let step_y = sh / dst.h;
@@ -90,7 +90,7 @@ fn draw_blit(
         let y0s = iy0 as u32;
         let y1s = (iy0 + 1.0).min(sy_max) as u32;
         // Vertical blend weight in 1/256ths (fixed point), so the per-channel
-        // blend below is integer-only — the old per-pixel `f64` math was the
+        // blend below is integer-only, the old per-pixel `f64` math was the
         // compositor's hot spot for a scaled video panel.
         let ty = ((syf - iy0) * 256.0) as u32;
         let ity = 256 - ty;
@@ -103,7 +103,7 @@ fn draw_blit(
 
             // Exact hit (1:1 region or integer-aligned sample): take the texel
             // directly, skipping three lookups and the blend. Nearest-neighbour
-            // takes the same shortcut on purpose — `sxf`/`syf` already sit in
+            // takes the same shortcut on purpose, `sxf`/`syf` already sit in
             // pixel-centre space, so rounding them picks the texel the
             // destination pixel actually lands on.
             let s = if !smooth {

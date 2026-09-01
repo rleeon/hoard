@@ -1,11 +1,11 @@
-//! Procedural crosshair (reticle) rendering — the first non-capture overlay
+//! Procedural crosshair (reticle) rendering, the first non-capture overlay
 //! widget. A [`CrosshairSpec`] travels inside
 //! [`SourceRef::Crosshair`](crate::scene::SourceRef) and is rasterised here
 //! into a single static [`Frame`], so it rides the existing engine →
 //! CPU-compositor path on every platform with no per-OS code. Editing any
 //! knob changes the source descriptor, which makes
 //! [`Engine::set_scene`](crate::engine::Engine::set_scene) reopen the source
-//! and re-render — no invalidation protocol needed.
+//! and re-render, no invalidation protocol needed.
 //!
 //! Shapes are drawn as signed-distance fields with ~1px analytic
 //! anti-aliasing; the optional outline is the same field dilated 1px and
@@ -105,7 +105,7 @@ fn sd_segment(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
     (dx * dx + dy * dy).sqrt()
 }
 
-/// Signed distance from `p` (centre-relative px) to the spec's shape edge —
+/// Signed distance from `p` (centre-relative px) to the spec's shape edge,
 /// negative inside a stroke. This is the single source of truth both the fill
 /// and the outline sample.
 fn distance(spec: &CrosshairSpec, half: f32, p: (f32, f32)) -> f32 {

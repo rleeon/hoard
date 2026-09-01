@@ -20,7 +20,7 @@ use hoard_agent::install::{self, fetch, remove, Component, Manifest, Probe, Swap
 /// What the last screen needs to know.
 pub struct Outcome {
     /// The app, when it was installed and we know where it landed. `None` for a
-    /// core-only install — and then the finished screen has nothing to launch.
+    /// core-only install, and then the finished screen has nothing to launch.
     pub launch: Option<PathBuf>,
 }
 
@@ -50,7 +50,7 @@ pub fn core_dir() -> Result<PathBuf> {
 /// The `hoardd` the service manager should be told about.
 ///
 /// `autostart` looks for its daemon next to the running executable, and the
-/// running executable here is the installer — which sits wherever it happened
+/// running executable here is the installer, which sits wherever it happened
 /// to be downloaded to. Left alone, the unit gets written pointing at a
 /// `hoardd` resolved off the `PATH`, or off nothing, and systemd reports it
 /// hours later in a journal nobody is reading.
@@ -72,7 +72,7 @@ fn staging() -> PathBuf {
 /// The welcome screen starts out labelled with the installer's *own* version,
 /// which is right the day it ships and wrong for every copy that sits in a
 /// downloads folder for a month. This asks, so the label says what will
-/// actually land. A failure is silent on purpose — the network is needed for
+/// actually land. A failure is silent on purpose: the network is needed for
 /// the install itself, and there is a screen that reports that properly.
 pub async fn latest_version() -> Result<String> {
     let (version, _) = fetch::release_assets(None).await?;
@@ -100,10 +100,10 @@ pub async fn run(want_desktop: bool) -> Result<Outcome> {
     // The toggle is a person answering, and it outranks the probe in both
     // directions. `Manifest::planned` only adds the app where the machine
     // *looks* graphical (`systemctl get-default`), which is a good default and a
-    // bad veto: on a box that boots to a console but has a desktop session — a
-    // Deck in some modes, a container, a minimal WM without systemd — the user
-    // ticks "install the desktop app" and silently doesn't get it. Same shape as
-    // `hoard install --with-desktop` / `--headless`.
+    // bad veto: on a box that boots to a console but has a desktop session (a Deck
+    // in some modes, a container, a minimal WM without systemd) the user ticks
+    // "install the desktop app" and silently doesn't get it. Same shape as
+    // `hoard install --with-desktop` and `--headless`.
     let mut manifest = Manifest::planned(&version, &probe);
     manifest.version = version.clone();
     if want_desktop {
@@ -133,9 +133,9 @@ pub async fn run(want_desktop: bool) -> Result<Outcome> {
     // not having it. Best-effort: an install doesn't fail over a shell profile.
     let _ = install::ensure_on_shell_path(&dir);
 
-    // ---- the service ------------------------------------------------------
-    // Which `hoardd` the unit points at was settled in `main`, before any
-    // thread existed — see [`daemon_binary`].
+    // ---- the service
+    // Which `hoardd` the unit points at was settled in `main`, before any thread
+    // existed; see [`daemon_binary`].
     //
     // Not fatal: a machine whose service manager refuses still has a working
     // Hoard. What it loses is starting at login, and `hoard install` fixes that
@@ -174,7 +174,7 @@ pub async fn run(want_desktop: bool) -> Result<Outcome> {
 
 /// What this machine already has, if anything.
 ///
-/// Cheap and synchronous — it only looks at the filesystem — so `main` can ask
+/// Cheap and synchronous (it only looks at the filesystem) so `main` can ask
 /// before the window is even shown and the first screen already knows whether
 /// this is an install or a second visit.
 pub fn detect() -> Option<install::Installed> {
@@ -191,14 +191,14 @@ pub fn detect() -> Option<install::Installed> {
 /// thing it was protecting.
 ///
 /// The order is the whole trick. The service goes first, because a manager that
-/// still has a unit will start the daemon again the moment the socket goes
-/// quiet — and then the binary we are about to delete is in use.
+/// still has a unit will start the daemon again the moment the socket goes quiet,
+/// and then the binary we are about to delete is in use.
 pub async fn uninstall(found: &install::Installed) -> Result<Vec<PathBuf>> {
     // Same marker as an install: it stops any client that notices the missing
     // socket from starting a daemon out of the binaries we are deleting.
     let _swap = Swap::begin();
 
-    // Not fatal on its own — a machine with no unit installed answers `false`
+    // Not fatal on its own: a machine with no unit installed answers `false`
     // and there is still an app and two binaries to take away.
     let _ = hoardd::autostart::uninstall().await;
     remove::stop_running().await;

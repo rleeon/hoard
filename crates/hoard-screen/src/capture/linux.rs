@@ -9,7 +9,7 @@
 //!   `-wlr` is more output/region oriented). To finish: drive the portal over
 //!   D-Bus (`ashpd` crate), then pull buffers from the PipeWire node (`pipewire`
 //!   crate) and convert to RGBA. This path also covers GNOME, which has no
-//!   wlr-layer-shell — see the window/placement layer.
+//!   wlr-layer-shell, see the window/placement layer.
 //!
 //! - **X11** (`XDG_SESSION_TYPE=x11`, or only `DISPLAY` set): redirect the
 //!   target window with **XComposite** (`XCompositeRedirectWindow`), then read

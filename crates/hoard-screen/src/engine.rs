@@ -1,6 +1,6 @@
 //! The frame engine: owns the live sources behind the current [`Scene`], ticks
 //! them, and composites a frame. This is the platform-agnostic heart that both
-//! the headless snapshot tool and the real windowed runtime drive — the only
+//! the headless snapshot tool and the real windowed runtime drive, the only
 //! difference between them is where the composited buffer goes (a file vs an
 //! on-screen surface).
 
@@ -39,7 +39,7 @@ impl Engine {
 
     /// Mutable access to the live scene for in-overlay editing (drag / resize a
     /// panel's `rect` directly). Only geometry is touched here, never a panel's
-    /// `source`, so no source reconciliation is needed — unlike [`set_scene`].
+    /// `source`, so no source reconciliation is needed, unlike [`set_scene`].
     pub fn scene_mut(&mut self) -> &mut Scene {
         &mut self.scene
     }
@@ -48,7 +48,7 @@ impl Engine {
     /// panel id still exists *and* its source descriptor is unchanged, drop the
     /// rest, open new ones. Comparing the whole descriptor (not just the id)
     /// matters when a panel keeps its id but now points at a different
-    /// window/image/note — the stale source must be dropped and reopened.
+    /// window/image/note, the stale source must be dropped and reopened.
     pub fn set_scene(&mut self, scene: Scene) {
         // Source descriptor per panel id from the *outgoing* scene, so we can
         // tell an unchanged source from one swapped under a reused id.
@@ -148,7 +148,7 @@ impl Engine {
 
     /// Composite only the panels targeting monitor `mon_id` (or mirrored to all)
     /// into `out`. Panel rects are monitor-local, so `out` is that monitor's own
-    /// surface with `(0,0)` at its top-left — the multi-monitor render path.
+    /// surface with `(0,0)` at its top-left, the multi-monitor render path.
     pub fn render_monitor(&self, out: &mut [u8], w: u32, h: u32, mon_id: u32) {
         let panels = self
             .scene

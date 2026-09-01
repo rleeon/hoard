@@ -1,4 +1,4 @@
-//! `hoard-admin manifest import` — pull the Ludusavi public manifest into the
+//! `hoard-admin manifest import`: pulls the Ludusavi public manifest into the
 //! games catalog.
 //!
 //! The Ludusavi manifest is a community-maintained YAML file mapping game
@@ -97,7 +97,7 @@ struct LudusaviManifest(BTreeMap<String, LudusaviEntry>);
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
 struct LudusaviEntry {
-    /// If set, this row is a pointer to another entry — skip on import.
+    /// If set, this row is a pointer to another entry, so skip it on import.
     alias: Option<String>,
     files: BTreeMap<String, LudusaviPath>,
     steam: Option<LudusaviSteamRef>,
@@ -106,7 +106,7 @@ struct LudusaviEntry {
     notes: Option<String>,
 }
 
-/// `cloud:` — which storefronts sync this game themselves. Distinct from
+/// `cloud:`, which storefronts sync this game themselves. Distinct from
 /// `steam:`/`gog:`, which only say the game is *sold* there. Deriving the
 /// former from the latter is what made the `games` table claim Steam Cloud
 /// for every game with an appid.
@@ -118,7 +118,7 @@ struct LudusaviCloud {
 }
 
 impl LudusaviEntry {
-    /// `(steam, gog)` — whether each storefront syncs this game itself. A
+    /// `(steam, gog)`: whether each storefront syncs this game itself. A
     /// missing `cloud:` block means neither does.
     fn cloud_flags(&self) -> (bool, bool) {
         self.cloud
@@ -319,7 +319,7 @@ async fn do_import(
             .filter_map(|(s,)| if !to_keep.remove(&s) { Some(s) } else { None })
             .collect();
         for slug in &stale {
-            // Skip if there are saves attached — never lose user data silently.
+            // Skip if there are saves attached: never lose user data silently.
             let saves: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM saves WHERE game_slug = ?")
                 .bind(slug)
                 .fetch_one(&mut *tx)
@@ -375,7 +375,7 @@ fn transform_paths(files: &BTreeMap<String, LudusaviPath>) -> PathsByOs {
     let mut out = PathsByOs::default();
 
     for (path_template, p) in files {
-        // Skip registry-only / save-state-less things — only keep entries
+        // Skip registry-only and save-state-less things: only keep entries
         // tagged "save". (`tags` empty also gets through; many Ludusavi
         // entries lack tags but are clearly saves.)
         if !p.tags.is_empty() && !p.tags.iter().any(|t| t == "save") {

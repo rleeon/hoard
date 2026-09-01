@@ -1,4 +1,4 @@
-//! `hoard-manifest` — Ludusavi save-path catalog.
+//! `hoard-manifest`: the Ludusavi save-path catalog.
 //!
 //! Single source of truth for save-path templates: the [Ludusavi
 //! manifest][1] (~20k games), bulk-imported from PCGamingWiki. The JSON is
@@ -14,7 +14,7 @@
 //! ## Licensing
 //!
 //! Ludusavi data is sourced from [PCGamingWiki][2] and is licensed
-//! **CC BY-NC-SA 3.0** — attribution, share-alike and NonCommercial. Build
+//! **CC BY-NC-SA 3.0**: attribution, share-alike and NonCommercial. Build
 //! with `--no-default-features` (feature `bundled-catalog` off) for a binary
 //! that carries no catalogue and downloads one at first run; see the module
 //! docs of [`ludusavi`] and the root `NOTICE` for why that lever exists and

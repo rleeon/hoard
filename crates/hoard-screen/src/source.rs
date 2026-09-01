@@ -1,4 +1,4 @@
-//! Frame sources — anything that can hand the compositor RGBA pixels.
+//! Frame sources, anything that can hand the compositor RGBA pixels.
 //!
 //! A window capture, a decoded image and a rendered note all implement
 //! [`Source`]. The compositor only ever asks a source for its latest [`Frame`];
@@ -11,7 +11,7 @@
 ///
 /// `rgba` is an `Arc<[u8]>` so handing the latest frame to the compositor
 /// (`Source::acquire` → `Engine::tick`) is a pointer clone, not a multi-MB
-/// memcpy every tick — a 1080p frame is ~8 MB and the old `Vec` clone showed up
+/// memcpy every tick, a 1080p frame is ~8 MB and the old `Vec` clone showed up
 /// directly in the overlay's per-frame CPU cost.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Frame {
@@ -53,7 +53,7 @@ impl Frame {
 }
 
 /// A live producer of frames. `acquire` returns the newest frame if one is
-/// ready, or `None` to mean "no new frame, keep showing the last one" — so a
+/// ready, or `None` to mean "no new frame, keep showing the last one", so a
 /// 24fps capture doesn't force the overlay to redraw at the source's rate.
 pub trait Source: Send {
     fn id(&self) -> &str;
@@ -61,11 +61,11 @@ pub trait Source: Send {
     /// Where this source's panel currently sits (monitor-local rect + target
     /// monitor id). Fed by the engine right before each `acquire`, so a source
     /// that samples the *screen* (the scope/magnifier) tracks its panel as the
-    /// user drags it. Most sources don't care — default is a no-op.
+    /// user drags it. Most sources don't care, default is a no-op.
     fn set_viewport(&mut self, _rect: crate::scene::Rect, _monitor: u32) {}
     /// Whether the overlay is in Editor mode. Fed by the engine when the mode
     /// changes. A source that hides itself behind a binding (the scope) must
-    /// ignore that binding while the user is arranging panels — otherwise the
+    /// ignore that binding while the user is arranging panels, otherwise the
     /// lens is invisible exactly when it needs to be dragged into place.
     /// Default is a no-op; most sources don't care.
     fn set_editing(&mut self, _editing: bool) {}

@@ -1,8 +1,8 @@
-//! **Hoard Setup** — the window, and the thread that does the work behind it.
+//! **Hoard Setup**: the window, and the thread that does the work behind it.
 //!
 //! There is no webview here on purpose. This is the first thing that runs on a
 //! machine where nothing is installed, so it cannot depend on WebView2 or
-//! WebKitGTK being present — those are among the things it is here to install.
+//! WebKitGTK being present: those are among the things it is here to install.
 //! Slint compiles the UI into this binary and the software renderer draws it
 //! without asking the GPU for anything, which is what makes it start inside a
 //! VM, over RDP, and on a handheld in whatever mode it happens to be in.
@@ -22,7 +22,7 @@ slint::include_modules!();
 /// The eight the app itself speaks, in the order the picker lists them.
 ///
 /// `(tag, badge, name)`: the tag selects the bundled `.po`, the badge is what
-/// the button shows, and the name is the language written in itself — someone
+/// the button shows, and the name is the language written in itself, since somebody
 /// looking for Deutsch is not helped by the word "German" in a language they
 /// don't read.
 const LANGUAGES: [(&str, &str, &str); 8] = [
@@ -152,7 +152,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let Some(ui) = weak.upgrade() else {
                 return;
             };
-            // On an update, what to install is what is already there — the
+            // On an update, what to install is what is already there, so the
             // toggle was never shown, so its default must not decide.
             let want_desktop = match found.as_ref() {
                 Some(existing) if ui.get_installed() => existing.has_desktop(),
@@ -175,7 +175,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Err(err) => {
                         // The agent's messages are written for a person, so
-                        // they go through unedited. `{err:#}` keeps the chain —
+                        // they go through unedited. `{err:#}` keeps the chain:
                         // "installing the desktop app: dpkg exited with 1" says
                         // where it broke, which "1" alone does not.
                         ui.set_message(format!("{err:#}").into());
@@ -254,7 +254,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// Once is the whole point. An installer that opens behind the browser that
 /// downloaded it looks broken, and one that stays pinned above everything is
-/// worse — you can't put it aside to read anything while it runs. So it is
+/// worse, since you can't put it aside to read anything while it runs. So it is
 /// raised on the way in and dropped back to an ordinary window a moment later,
 /// after which clicking any other window puts that one in front, as it should.
 ///
