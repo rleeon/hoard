@@ -20,8 +20,14 @@
       : guide.html
   );
 
+  // JSON-LD is emitted as a raw script block, so a closing script tag coming
+  // from guide content would end it early. Escaping `<` keeps the payload inert
+  // and is still valid JSON.
+  const ld = (data: unknown) =>
+    `<script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}<\/script>`;
+
   const articleLd = $derived(
-    `<script type="application/ld+json">${JSON.stringify({
+    ld({
       '@context': 'https://schema.org',
       '@type': 'TechArticle',
       headline: guide.title,
@@ -35,7 +41,25 @@
         name: 'Hoard',
         logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon-512.png` }
       }
-    })}<\/script>`
+    })
+  );
+
+  // A guide that carries an FAQ section also answers as a FAQPage: the pairs
+  // reach a model already split into question and answer, which is the form it
+  // quotes. Empty when the guide has no `<!-- faq -->` block.
+  const faqLd = $derived(
+    guide.faq.length
+      ? ld({
+          '@context': 'https://schema.org',
+          '@type': 'FAQPage',
+          inLanguage: HREFLANG[active],
+          mainEntity: guide.faq.map((f) => ({
+            '@type': 'Question',
+            name: f.question,
+            acceptedAnswer: { '@type': 'Answer', text: f.answer }
+          }))
+        })
+      : ''
   );
 </script>
 
@@ -47,6 +71,7 @@
 />
 <svelte:head>
   {@html articleLd}
+  {@html faqLd}
 </svelte:head>
 
 <article class="mx-auto max-w-2xl px-4 py-16 sm:px-6 sm:py-24">

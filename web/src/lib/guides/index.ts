@@ -22,7 +22,10 @@ export type GuideMeta = {
   updated: string;
 };
 
-export type Guide = GuideMeta & { html: string };
+/** One question/answer pair lifted out of a guide body, for FAQPage JSON-LD. */
+export type Faq = { question: string; answer: string };
+
+export type Guide = GuideMeta & { html: string; faq: Faq[] };
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -76,6 +79,39 @@ function split(src: string): { meta: Record<string, string>; body: string } {
   return { meta, body: m[2] };
 }
 
+/** Strip the inline Markdown a heading may carry, for JSON-LD plain text. */
+const plain = (s: string) =>
+  s
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/[*_`]/g, '')
+    .trim();
+
+/**
+ * Pull the Q/A pairs out of a guide body. Authoring convention: an
+ * `<!-- faq -->` marker, then one `###` heading per question with its answer
+ * below, up to the next `##`. The marker is what anchors this instead of a
+ * heading title, because the titles are translated in eight files; and it never
+ * renders, since `walkTokens` blanks raw HTML. The section deliberately stays
+ * in the body: FAQPage requires the same text to be visible on the page.
+ */
+function extractFaq(body: string): Faq[] {
+  const start = body.indexOf('<!-- faq -->');
+  if (start === -1) return [];
+  return body
+    .slice(start)
+    .split(/^###[ \t]+/m)
+    .slice(1)
+    .map((chunk) => {
+      const nl = chunk.indexOf('\n');
+      const question = plain(nl === -1 ? chunk : chunk.slice(0, nl));
+      const rest = nl === -1 ? '' : chunk.slice(nl + 1);
+      // A later `##` section is no longer part of the FAQ.
+      const answer = rest.split(/^##[ \t]/m)[0].trim();
+      return { question, answer: answer ? (marked.parse(answer) as string) : '' };
+    })
+    .filter((f) => f.question && f.answer);
+}
+
 // registry[slug][locale] = Guide
 const registry: Record<string, Partial<Record<Locale, Guide>>> = {};
 
@@ -94,7 +130,8 @@ for (const [path, src] of Object.entries(raw)) {
     updated: meta.updated ?? '',
     // Hardened by the `walkTokens` hook above (raw HTML dropped, unsafe URL
     // schemes neutralized) before it reaches `{@html}`.
-    html: marked.parse(body.trim()) as string
+    html: marked.parse(body.trim()) as string,
+    faq: extractFaq(body)
   };
 }
 
