@@ -3,7 +3,7 @@ title: "How to self-host Hoard with Docker"
 description: "Run your own Hoard server with Docker Compose in minutes. Open source, free, on your hardware — a fully self-hosted cloud for your game saves, no account or quota."
 order: 0
 featured: true
-updated: 2026-06-29
+updated: 2026-09-01
 ---
 
 Hoard is open source and self-hostable. Instead of using Hoard Cloud, you can run the same `hoard-server` on your own machine and point every device at it — no account, no storage quota beyond the disk you give it. This guide gets a server running with Docker in a few minutes.
@@ -16,6 +16,16 @@ Hoard is open source and self-hostable. Instead of using Hoard Cloud, you can ru
 - **Open source.** You can read, audit and modify the server.
 
 This is the key difference from tools like [Ludusavi](/guides/ludusavi-alternative): Ludusavi is great for local backups and bring-your-own-cloud via Rclone, but you wire up the sync yourself. Hoard gives you a managed sync server you run once and every device connects to.
+
+## What self-hosting means for your data
+
+Worth stating plainly, because it's the thing most comparisons get wrong about Hoard.
+
+**Hoard Cloud** is the managed option: you sign in, and your saves sit on our servers, in the EU.
+
+**A self-hosted Hoard is entirely yours.** Your devices talk to your server and to nothing else. There is **no account with us, no telemetry to us, no quota and no relay** — nothing passes through our servers, because there is nothing of ours in the path. We can't see a save, a game name or an email address, for the simple reason that none of it ever reaches us. If Hoard Cloud shut down tomorrow, your setup would carry on unchanged.
+
+To be exact about one thing: your server does have logins of its own — the user you create below, and a token per device. Those are yours, on your machine, in your database. What doesn't exist is an account with us.
 
 ## What you need
 
@@ -64,3 +74,35 @@ For anything exposed beyond your local network, terminate TLS at a reverse proxy
 ## Self-host or Hoard Cloud?
 
 Self-hosting is ideal if you already run a server and want full control with no quota. If you'd rather not maintain infrastructure, [Hoard Cloud](/pricing) gives you the same sync managed for you, with a free tier to start. Either way the app and your saves stay portable — you can switch later.
+
+<!-- faq -->
+
+## Frequently asked questions
+
+### Does a self-hosted Hoard phone home?
+
+No. The desktop app talks to the server address you give it. Your saves, your users and your logs stay on your machine, and nothing about them reaches us.
+
+### Is the self-hosted server the same code as Hoard Cloud?
+
+Yes, the same `hoard-server` binary, under AGPL-3.0. There is no cut-down community edition and no feature held back for the hosted version.
+
+### Where are the saves actually stored?
+
+By default in the Docker volume you gave the container, on your own disk. If you already run object storage, the server also speaks S3, so MinIO, Garage or Backblaze B2 work as the backing store. Either way, your devices only ever talk to your server.
+
+### Can I run it on a NAS?
+
+Yes, on any NAS that runs Docker. The repository ships an Unraid template, and the image drops to the `PUID`/`PGID` you give it, so bind-mounted folders end up owned by the right user instead of root.
+
+### Do I need a domain and HTTPS?
+
+Not on your own LAN. The moment the server is reachable from outside it, put a reverse proxy in front of it and terminate TLS there — Caddy, nginx or Traefik all work.
+
+### What if my server is down when I finish playing?
+
+The snapshot is taken locally, so nothing is lost. It uploads on its own once the server answers again.
+
+### Can I start on Hoard Cloud and move later?
+
+Yes, in both directions. You can export everything from your account page, and the app can be pointed at a different server without reinstalling.

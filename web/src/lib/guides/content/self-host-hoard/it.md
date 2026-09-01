@@ -3,7 +3,7 @@ title: "Come self-hostare Hoard con Docker"
 description: "Avvia il tuo server Hoard in pochi minuti con Docker Compose. Open source, gratuito, sul tuo hardware: un cloud completamente self-hosted per i salvataggi dei giochi, senza account né limiti di spazio."
 order: 0
 featured: true
-updated: 2026-06-29
+updated: 2026-09-01
 ---
 
 Hoard è open source e self-hostabile. Invece di usare Hoard Cloud, puoi eseguire lo stesso `hoard-server` sulla tua macchina e puntarci ogni dispositivo — senza account e senza limiti di spazio oltre al disco che gli dai. Questa guida mette in piedi un server con Docker in pochi minuti.
@@ -16,6 +16,16 @@ Hoard è open source e self-hostabile. Invece di usare Hoard Cloud, puoi eseguir
 - **Open source.** Puoi leggere, verificare e modificare il server.
 
 È la differenza chiave rispetto a strumenti come [Ludusavi](/guides/ludusavi-alternative): Ludusavi è ottimo per i backup locali e per il cloud «porta il tuo» tramite Rclone, ma la sincronizzazione la configuri tu. Hoard ti dà un server di sync gestito che avvii una volta e a cui si collega ogni dispositivo.
+
+## Cosa significa il self-hosting per i tuoi dati
+
+Vale la pena dirlo chiaramente, perché è il punto su cui quasi tutti i confronti sbagliano riguardo a Hoard.
+
+**Hoard Cloud** è l'opzione gestita: accedi e i tuoi salvataggi stanno sui nostri server, nell'UE.
+
+**Un Hoard self-hosted è interamente tuo.** I tuoi dispositivi parlano con il tuo server e con nient'altro. **Nessun account con noi, nessuna telemetria verso di noi, nessuna quota e nessun relay**: non passa nulla dai nostri server, perché sul percorso non c'è niente di nostro. Non possiamo vedere un salvataggio, il nome di un gioco o un indirizzo email, per il semplice motivo che niente di tutto ciò ci arriva. Se Hoard Cloud chiudesse domani, la tua installazione andrebbe avanti identica.
+
+Una precisazione, per essere esatti: il tuo server ha eccome i suoi accessi — l'utente che crei più sotto e un token per dispositivo. Sono tuoi, sulla tua macchina, nel tuo database. Quello che non esiste è un account con noi.
 
 ## Cosa ti serve
 
@@ -64,3 +74,35 @@ Per tutto ciò che è esposto oltre la rete locale, termina il TLS su un reverse
 ## Self-host o Hoard Cloud?
 
 Il self-hosting è ideale se hai già un server e vuoi controllo totale senza limiti. Se preferisci non gestire infrastruttura, [Hoard Cloud](/pricing) ti dà la stessa sincronizzazione gestita da noi, con un piano gratuito per iniziare. In ogni caso app e salvataggi restano portabili: puoi cambiare in seguito.
+
+<!-- faq -->
+
+## Domande frequenti
+
+### Un Hoard self-hosted comunica con voi?
+
+No. L'app desktop parla con l'indirizzo del server che le indichi tu. I tuoi salvataggi, i tuoi utenti e i tuoi log restano sulla tua macchina, e niente di tutto ciò ci arriva.
+
+### Il server self-hosted è lo stesso codice di Hoard Cloud?
+
+Sì, lo stesso binario `hoard-server`, sotto AGPL-3.0. Non c'è una community edition ridotta né funzioni tenute da parte per la versione ospitata.
+
+### Dove finiscono davvero i salvataggi?
+
+Per impostazione predefinita nel volume Docker che assegni al container, sul tuo disco. Se hai già uno storage a oggetti, il server parla anche S3: MinIO, Garage o Backblaze B2 vanno bene come archivio. In ogni caso i tuoi dispositivi parlano soltanto con il tuo server.
+
+### Posso farlo girare su un NAS?
+
+Sì, su qualsiasi NAS che esegua Docker. Il repository include un template per Unraid, e l'immagine scende ai `PUID`/`PGID` che indichi, così le cartelle montate risultano dell'utente giusto e non di root.
+
+### Servono un dominio e HTTPS?
+
+Sulla tua rete locale no. Non appena il server è raggiungibile dall'esterno, mettici davanti un reverse proxy e termina lì il TLS: vanno bene Caddy, nginx o Traefik.
+
+### E se il server è spento quando smetto di giocare?
+
+Lo snapshot viene preso in locale, quindi non si perde nulla. Sale da solo appena il server torna a rispondere.
+
+### Posso iniziare con Hoard Cloud e spostarmi dopo?
+
+Sì, in entrambe le direzioni. Puoi esportare tutto dalla pagina del tuo account, e l'app può essere puntata su un altro server senza reinstallare niente.

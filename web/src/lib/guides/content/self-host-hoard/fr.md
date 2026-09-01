@@ -3,7 +3,7 @@ title: "Comment auto-héberger Hoard avec Docker (self-hosted)"
 description: "Lancez votre propre serveur Hoard en quelques minutes avec Docker Compose. Open source, gratuit, sur votre matériel : un cloud entièrement auto-hébergé pour vos sauvegardes de jeux, sans compte ni quota."
 order: 0
 featured: true
-updated: 2026-06-29
+updated: 2026-09-01
 ---
 
 Hoard est open source et auto-hébergeable. Au lieu d'utiliser Hoard Cloud, vous pouvez exécuter le même `hoard-server` sur votre propre machine et y connecter chaque appareil — sans compte, sans quota au-delà du disque que vous lui donnez. Ce guide met un serveur en route avec Docker en quelques minutes.
@@ -16,6 +16,16 @@ Hoard est open source et auto-hébergeable. Au lieu d'utiliser Hoard Cloud, vous
 - **Open source.** Vous pouvez lire, auditer et modifier le serveur.
 
 C'est la différence clé avec des outils comme [Ludusavi](/guides/ludusavi-alternative) : Ludusavi est excellent pour les sauvegardes locales et le cloud « apportez le vôtre » via Rclone, mais c'est à vous de câbler la synchro. Hoard vous donne un serveur de synchro géré que vous lancez une fois et auquel chaque appareil se connecte.
+
+## Ce que l'auto-hébergement veut dire pour vos données
+
+Autant le dire franchement, car c'est là que presque toutes les comparaisons se trompent au sujet de Hoard.
+
+**Hoard Cloud** est l'option gérée : vous vous connectez, et vos sauvegardes se trouvent sur nos serveurs, dans l'UE.
+
+**Un Hoard auto-hébergé est entièrement le vôtre.** Vos appareils parlent à votre serveur et à rien d'autre. Il n'y a **aucun compte chez nous, aucune télémétrie vers nous, aucun quota et aucun relais** : rien ne passe par nos serveurs, puisque rien de chez nous n'est sur le chemin. Nous ne pouvons voir ni une sauvegarde, ni un nom de jeu, ni une adresse e-mail, pour la simple raison que rien de tout cela ne nous parvient. Si Hoard Cloud fermait demain, votre installation continuerait à l'identique.
+
+Une précision, pour être exact : votre serveur a bel et bien ses propres accès — l'utilisateur que vous créez plus bas, et un jeton par appareil. Ils sont à vous, sur votre machine, dans votre base. Ce qui n'existe pas, c'est un compte chez nous.
 
 ## Ce qu'il vous faut
 
@@ -64,3 +74,35 @@ Pour tout ce qui dépasse votre réseau local, terminez le TLS sur un reverse pr
 ## Auto-hébergement ou Hoard Cloud ?
 
 L'auto-hébergement est idéal si vous avez déjà un serveur et voulez un contrôle total sans quota. Si vous préférez ne pas gérer d'infrastructure, [Hoard Cloud](/pricing) vous offre la même synchro gérée pour vous, avec une offre gratuite pour démarrer. Dans les deux cas, l'app et vos sauvegardes restent portables — vous pouvez changer plus tard.
+
+<!-- faq -->
+
+## Questions fréquentes
+
+### Un Hoard auto-hébergé communique-t-il avec vous ?
+
+Non. L'application de bureau parle à l'adresse de serveur que vous lui donnez. Vos sauvegardes, vos utilisateurs et vos journaux restent sur votre machine, et rien de tout cela ne nous parvient.
+
+### Le serveur auto-hébergé est-il le même code que Hoard Cloud ?
+
+Oui, le même binaire `hoard-server`, sous AGPL-3.0. Il n'y a pas d'édition communautaire allégée ni de fonction réservée à la version hébergée.
+
+### Où sont réellement stockées les sauvegardes ?
+
+Par défaut dans le volume Docker que vous donnez au conteneur, sur votre propre disque. Si vous avez déjà du stockage objet, le serveur parle aussi S3 : MinIO, Garage ou Backblaze B2 font l'affaire. Dans tous les cas, vos appareils ne parlent qu'à votre serveur.
+
+### Puis-je le faire tourner sur un NAS ?
+
+Oui, sur n'importe quel NAS qui exécute Docker. Le dépôt fournit un modèle Unraid, et l'image bascule sur les `PUID`/`PGID` que vous indiquez, pour que les dossiers montés appartiennent au bon utilisateur plutôt qu'à root.
+
+### Ai-je besoin d'un domaine et de HTTPS ?
+
+Pas sur votre réseau local. Dès que le serveur est joignable de l'extérieur, placez un reverse proxy devant et terminez-y le TLS : Caddy, nginx ou Traefik conviennent.
+
+### Et si mon serveur est éteint quand j'arrête de jouer ?
+
+L'instantané est pris localement, rien n'est perdu. Il s'envoie tout seul dès que le serveur répond à nouveau.
+
+### Puis-je commencer sur Hoard Cloud et migrer plus tard ?
+
+Oui, dans les deux sens. Vous pouvez tout exporter depuis la page de votre compte, et l'application peut pointer vers un autre serveur sans réinstallation.
