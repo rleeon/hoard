@@ -1,48 +1,45 @@
-//! # Tipos de wire compartidos (ADR 0021, C.6 — Slice 3)
+//! Wire types shared by client and server (ADR 0021, C.6).
 //!
-//! Las formas que `hoard_agent::api` y `hoard_server::routes` mantenían **a
-//! mano, por duplicado**. Ahora hay una sola definición y el drift entre
-//! cliente y server es un error de compilación en vez de un 422 en producción.
+//! These shapes used to be maintained by hand on both sides. One definition now
+//! means drift is a compile error instead of a 422 in production, and there was
+//! real drift when this was written: the client sent `LogEntry.target` and `ts`
+//! as required fields while the server declared them `Option`, and the two ends'
+//! save types had been carrying different subsets of the same columns since
+//! 2025.
 //!
-//! Ya había drift real cuando esto se escribió: el cliente enviaba
-//! `LogEntry.target`/`ts` como campos obligatorios y el server los declaraba
-//! `Option`, y `SaveResponse` (server) y `Save` (cliente) llevaban desde 2025
-//! subconjuntos distintos de los mismos campos.
+//! ## Scope
 //!
-//! ## Alcance
+//! The self-hosted contract: `/v1/health`, `/v1/auth/whoami`,
+//! `/v1/me/max-versions`, `/v1/games`, `/v1/saves`, `/v1/saves/*/snapshots` and
+//! `/v1/logs`, which the cloud namespace reuses as-is. The cloud-only DTOs are
+//! still duplicated; they are the obvious next increment, not part of this one.
 //!
-//! El contrato **self-hosted**: `/v1/health`, `/v1/auth/whoami`,
-//! `/v1/me/max-versions`, `/v1/games`, `/v1/saves`, `/v1/saves/*/snapshots` y
-//! `/v1/logs` (que el namespace cloud reusa tal cual). Los DTO exclusivos de
-//! cloud (`Cloud*` en `agent::api` ↔ `server::cloud::routes`) siguen duplicados;
-//! son el siguiente incremento natural, no parte de este slice.
+//! ## Compatibility discipline, read before touching anything
 //!
-//! ## Disciplina de compatibilidad — leer antes de tocar nada
+//! Compiling is not enough, because client and server deploy separately. A
+//! self-hoster runs a server three releases old against a desktop updated this
+//! morning, and Hoard Cloud updates the server without anybody touching the
+//! installed clients. So:
 //!
-//! Que compile no basta: **cliente y server se despliegan por separado**. Un
-//! usuario self-hosted corre un server de hace tres versiones contra un desktop
-//! recién actualizado, y Hoard Cloud actualiza el server sin que nadie toque los
-//! clientes instalados. Por eso:
+//! - Append only. Fields get added, never removed.
+//! - Every new field carries `#[serde(default)]`, and `Option` when there is no
+//!   sensible default, so an older version's JSON still deserialises.
+//! - Never repurpose a field. Changing the meaning or the type of an existing
+//!   one is indistinguishable from corruption at the other end. If the meaning
+//!   changes, it is a new field.
+//! - `#[serde(skip_serializing_if)]` only where the field is not emitted today.
+//!   The golden test (`tests/golden_wire.rs`) pins the last release's bytes; if
+//!   a change moves them, it fails and someone has to justify it.
 //!
-//! - **Append-only.** Se añaden campos; no se quitan.
-//! - **Todo campo nuevo lleva `#[serde(default)]`** (y `Option` si no hay
-//!   default sensato), para que el JSON de una versión vieja siga
-//!   deserializando.
-//! - **Nunca se repurposea un campo.** Cambiar el significado (o el tipo) de uno
-//!   existente es indistinguible de corrupción para la otra punta. Si el
-//!   significado cambia, es un campo nuevo.
-//! - **`#[serde(skip_serializing_if)]` sólo donde el campo hoy no se emite.** El
-//!   test golden (`tests/golden_wire.rs`) fija los bytes de la última release;
-//!   si un cambio los mueve, el test cae y hay que justificarlo.
+//! ## Persisted state is not new data
 //!
-//! ## Estado persistido ≠ dato nuevo
-//!
-//! Los newtypes de [`crate::ids`] llevan la puerta estricta en `serde`, así que
-//! un valor envenenado **no entra por el wire**. Pero el server construye estas
-//! respuestas leyendo su propia DB, que es estado persistido y puede llevar
-//! veneno de años: ahí se usa la puerta indulgente
-//! ([`crate::ids::GameSlug::repair`]), nunca `parse`, o una fila mala tumbaría
-//! el listado entero de un usuario. Misma regla que en `state.json` (ADR C.3).
+//! The newtypes in [`crate::ids`] carry the strict gate in `serde`, so a
+//! poisoned value never arrives over the wire. But the server builds these
+//! responses by reading its own DB, which is persisted state and can hold years
+//! of poison, so there it uses the lenient gate
+//! ([`crate::ids::GameSlug::repair`]) and never `parse`. One bad row would
+//! otherwise take down a user's whole listing. Same rule as `state.json`
+//! (ADR C.3).
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -50,144 +47,135 @@ use time::OffsetDateTime;
 use crate::ids::{GameSlug, MachineId, SaveId, Sha256, Username};
 use crate::kernel::insight::VersionInsight;
 
-/// RFC3339, la misma representación que ya cruzaba el wire.
+/// RFC3339, the representation that already crossed the wire.
 ///
-/// El server self-hosted guarda los timestamps en SQLite con
-/// `strftime('%Y-%m-%dT%H:%M:%SZ','now')` y los devolvía como `String` sin
-/// tocarlos; el cliente los parseaba a `OffsetDateTime` con este mismo
-/// serializador. Unificar el tipo no mueve un byte: `time` emite `Z` para offset
-/// cero, que es exactamente lo que escribe SQLite, y acepta al parsear tanto esa
-/// forma como el `+00:00` que emite el namespace cloud.
+/// The self-hosted server writes timestamps into SQLite with
+/// `strftime('%Y-%m-%dT%H:%M:%SZ','now')` and used to hand them back as a
+/// `String`. Unifying the type moves no bytes: `time` emits `Z` for a zero
+/// offset, which is exactly what SQLite writes, and parses both that and the
+/// `+00:00` the cloud namespace emits.
 use time::serde::rfc3339 as ts;
 
-// ---------------------------------------------------------------------------
-// GET /v1/health
-// ---------------------------------------------------------------------------
+// ---- GET /v1/health
 
-/// Respuesta de `/v1/health`. El cliente ramifica el protocolo entero con
-/// [`Health::mode`] (`"cloud"` vs self-hosted), así que este es el tipo más
-/// load-bearing del contrato.
+/// The client branches its whole protocol on [`Health::mode`], which makes this
+/// the most load-bearing type in the contract.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Health {
-    /// `"ok"` o `"db_error"`.
+    /// `"ok"` or `"db_error"`.
     pub status: String,
-    /// Versión del binario del server.
+    /// The server binary's version.
     pub version: String,
     #[serde(default)]
     pub uptime_secs: u64,
-    /// Nivel mínimo de log que este server acepta en el ingest de logs de
-    /// cliente. Ausente en servers pre-ingest: el cliente lo lee como "este
-    /// server no recibe logs" y desactiva el envío.
+    /// Lowest log level this server accepts on the client log ingest. Absent on
+    /// pre-ingest servers, which the client reads as "this server takes no logs"
+    /// and stops sending.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub log_min_level: Option<String>,
-    /// `"cloud"` en el despliegue SaaS, ausente self-hosted. Selecciona el
-    /// namespace (`/v1/cloud/*` vs `/v1/saves`).
+    /// `"cloud"` on the SaaS deployment, absent self-hosted. Selects the
+    /// namespace: `/v1/cloud/*` or `/v1/saves`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
-    /// Este server habla el protocolo direccionado por contenido
-    /// (`/v1/saves/{id}/cas/*`): el cliente declara el manifiesto y sólo sube
-    /// los blobs que al server le faltan, en vez de mandar la carpeta entera en
-    /// un multipart.
+    /// This server speaks the content-addressed protocol
+    /// (`/v1/saves/{id}/cas/*`): the client declares the manifest and uploads
+    /// only the blobs the server is missing, instead of shipping the whole
+    /// folder in a multipart.
     ///
-    /// **Es una capacidad, no una preferencia.** Ausente = server anterior a
-    /// la 1.1.3, que sólo entiende el multipart; el cliente no puede deducirlo
-    /// de la versión porque la versión del server y la del cliente van por
-    /// separado. Se omite cuando es `false` para que el golden de la release
-    /// siga cuadrando byte a byte.
+    /// A capability, not a preference. Absent means a server older than 1.1.3
+    /// that only understands multipart, and the client cannot infer it from the
+    /// version because server and client versions move independently. Omitted
+    /// when `false` so the release golden still matches byte for byte.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cas: bool,
-    /// Este server lleva registro de dispositivos y presencia en vivo
-    /// (`/v1/devices`, `/v1/presence/heartbeat`). Misma disciplina que
-    /// [`Health::cas`]: capacidad del binario, no ajuste; ausente = server
-    /// anterior a la 1.1.3, al que no hay que mandarle latidos.
+    /// This server keeps a device registry and live presence (`/v1/devices`,
+    /// `/v1/presence/heartbeat`). Same discipline as [`Health::cas`]: a property
+    /// of the binary, not a setting. Absent means a server older than 1.1.3,
+    /// which should not be sent heartbeats.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub devices: bool,
 }
 
-// ---------------------------------------------------------------------------
-// GET /v1/auth/whoami  ·  PUT /v1/me/max-versions
-// ---------------------------------------------------------------------------
+// ---- GET /v1/auth/whoami and PUT /v1/me/max-versions
 
-/// Identidad + cuota del usuario autenticado.
+/// Identity plus quota for the authenticated user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Whoami {
     pub user_id: String,
     pub username: Username,
     pub is_admin: bool,
-    /// Bytes almacenados ahora mismo. Los servers pre-v0.3 lo omiten → 0.
+    /// Bytes stored right now. Servers before v0.3 omit it, so it reads as 0.
     #[serde(default)]
     pub storage_used_bytes: i64,
-    /// Cuota total. Los servers pre-v0.3 lo omiten → 0, que la UI lee como
-    /// "cuota desconocida".
+    /// Total quota. Servers before v0.3 omit it, and the UI reads the resulting
+    /// 0 as "quota unknown".
     #[serde(default)]
     pub storage_quota_bytes: i64,
-    /// Tope de versiones almacenadas por save. `None` = ilimitado (y lo que
-    /// reporta un server sin la feature). Sólo cuenta las **automáticas**.
+    /// Cap on stored versions per save. `None` is unlimited, and also what a
+    /// server without the feature reports. Counts automatic versions only.
     #[serde(default)]
     pub max_versions: Option<i64>,
-    /// Tope de las copias deliberadas (las que pidió el usuario y la red de
-    /// seguridad previa a un restore). `None` = ilimitado, que es el defecto:
-    /// son pocas y son justo las que se quieren conservar. Un server viejo no
-    /// lo manda y se lee como ilimitado, que es como se comportaba.
+    /// Cap on deliberate copies: the ones the user asked for, plus the safety
+    /// net taken before a restore. `None` is unlimited, which is the default,
+    /// because there are few of them and they are precisely the ones worth
+    /// keeping. An older server does not send it and it reads as unlimited,
+    /// which is how it behaved.
     ///
-    /// Se omite cuando no hay tope para que el golden de la release siga
-    /// cuadrando byte a byte; ausente y `null` se leen igual gracias al
-    /// `default`.
+    /// Omitted when there is no cap so the release golden still matches byte for
+    /// byte; absent and `null` read the same thanks to the `default`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_manual_versions: Option<i64>,
     /// This server's per-snapshot ceiling (`storage.max_snapshot_size_mb`, in
     /// bytes). `None` on a server old enough not to report it, and always on
-    /// Cloud — there the equivalent is the plan's per-save cap, which
+    /// Cloud, where the equivalent is the plan's per-save cap that
     /// `/v1/cloud/me` already carries.
     ///
     /// It lives here and not in `/v1/health` on purpose: health is anonymous,
     /// and an operator's ceiling is nobody's business until they authenticate.
     /// The client shows it so the number is on screen *before* a backup bounces
-    /// off it — a self-hoster whose config still had the old 1 GB example spent
-    /// a support round finding out it existed (ago-2026).
+    /// off it. A self-hoster whose config still had the old 1 GB example spent a
+    /// support round finding out it existed (aug-2026).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_snapshot_size_bytes: Option<i64>,
 }
 
-/// Cuerpo de `PUT /v1/me/max-versions`.
+/// Body of `PUT /v1/me/max-versions`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MaxVersionsBody {
-    /// `null` quita el tope (ilimitado).
+    /// `null` removes the cap.
     pub max_versions: Option<i64>,
-    /// A qué cupo se refiere: `true` = el de las copias deliberadas, `false`
-    /// (por defecto) = el de las automáticas. Un cliente viejo omite el campo
-    /// y toca el cupo automático, que es lo que tocaba antes de existir esto.
+    /// Which budget this is about: `true` for deliberate copies, `false` (the
+    /// default) for automatic ones. An older client omits the field and touches
+    /// the automatic budget, which is what it touched before this existed.
     ///
-    /// Se omite cuando es `false` — mismo criterio que [`Health::cas`]: el
-    /// golden de la release sigue cuadrando byte a byte, y el server lee la
-    /// ausencia como el cupo automático de siempre.
+    /// Omitted when `false`, on the same reasoning as [`Health::cas`]: the
+    /// release golden keeps matching, and the server reads absence as the
+    /// automatic budget it always meant.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub manual: bool,
-    /// En seco: no escribe ni borra nada, sólo cuenta cuántos snapshots
-    /// *tiraría* el tope. El cliente lo enseña en la confirmación.
+    /// Dry run: writes and deletes nothing, only counts how many snapshots the
+    /// cap *would* drop. The client shows that in the confirmation.
     #[serde(default)]
     pub dry_run: bool,
 }
 
-/// Respuesta de `PUT /v1/me/max-versions`.
+/// Response of `PUT /v1/me/max-versions`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MaxVersionsResponse {
     pub max_versions: Option<i64>,
-    /// Eco de qué cupo se ha tocado. Omitido cuando es el automático, por lo
-    /// mismo que en [`MaxVersionsBody::manual`].
+    /// Echo of which budget was touched. Omitted for the automatic one, for the
+    /// same reason as in [`MaxVersionsBody::manual`].
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub manual: bool,
-    /// Snapshots tirados a la papelera por pasarse del tope nuevo (o, en
-    /// `dry_run`, los que se tirarían).
+    /// Snapshots binned for exceeding the new cap, or under `dry_run`, the ones
+    /// that would be.
     #[serde(default)]
     pub pruned: u64,
 }
 
-// ---------------------------------------------------------------------------
-// GET /v1/games
-// ---------------------------------------------------------------------------
+// ---- GET /v1/games
 
-/// Una entrada del catálogo de juegos.
+/// One entry of the game catalogue.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Game {
     pub slug: GameSlug,
@@ -197,11 +185,9 @@ pub struct Game {
     pub save_paths_json: Option<String>,
 }
 
-// ---------------------------------------------------------------------------
-// /v1/saves
-// ---------------------------------------------------------------------------
+// ---- /v1/saves
 
-/// Cuerpo de `POST /v1/saves`.
+/// Body of `POST /v1/saves`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSaveRequest {
     pub game_slug: GameSlug,
@@ -210,16 +196,16 @@ pub struct CreateSaveRequest {
     pub local_path_hint: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_os: Option<String>,
-    /// Metadatos opcionales de clientes nuevos. Cuando la tabla `games` del
-    /// server no conoce el slug (server sembrado con un catálogo Ludusavi más
-    /// viejo), con esto hace upsert de una fila stub en vez de devolver 422.
+    /// Optional metadata from newer clients. When the server's `games` table
+    /// does not know the slug (a server seeded from an older catalogue), this
+    /// upserts a stub row instead of returning 422.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub steam_app_id: Option<i64>,
 }
 
-/// Cuerpo de `PATCH /v1/saves/{id}`.
+/// Body of `PATCH /v1/saves/{id}`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PatchSaveRequest {
     #[serde(default)]
@@ -230,17 +216,17 @@ pub struct PatchSaveRequest {
     pub client_os: Option<String>,
 }
 
-/// Un save. Unión de lo que emitía `server::routes::saves::SaveResponse` y lo
-/// que esperaba `agent::api::Save`; los campos que sólo tenía una punta van
-/// `Option` + `default` para que ninguna versión desplegada se rompa.
+/// A save: the union of what the server used to emit and what the client used
+/// to expect. Fields only one end had are `Option` plus `default` so no
+/// deployed version breaks.
 ///
-/// Los campos agregados (`snapshot_count`, `total_size_bytes`) son `Option`
-/// porque cloud no los calcula: `None` es "no lo sé", distinto de `Some(0)`.
+/// The aggregates (`snapshot_count`, `total_size_bytes`) are `Option` because
+/// cloud does not compute them, and `None` ("I don't know") is not `Some(0)`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Save {
     pub id: SaveId,
-    /// Sólo lo emite cloud. Se omite al serializar cuando falta, para que el
-    /// self-hosted siga emitiendo exactamente el JSON de la release.
+    /// Cloud only. Skipped when missing so self-hosted keeps emitting exactly
+    /// the release's JSON.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_id: Option<String>,
     pub game_slug: GameSlug,
@@ -261,38 +247,35 @@ pub struct Save {
     pub updated_at: OffsetDateTime,
 }
 
-// ---------------------------------------------------------------------------
-// /v1/saves/{id}/snapshots
-// ---------------------------------------------------------------------------
+// ---- /v1/saves/{id}/snapshots
 
-/// Quién pidió esta versión.
+/// Who asked for this version.
 ///
-/// Importa para la retención. Una partida que autoguarda cada minuto —Elden
-/// Ring, cualquier factory builder— llena el cupo entero en una sesión, y si
-/// todas las versiones compiten por el mismo hueco, esa ráfaga de copias
-/// automáticas se lleva por delante la que el usuario hizo a propósito antes de
-/// un jefe. Que es justo la que quería conservar. Con el origen anotado, cada
-/// clase tiene su presupuesto y una ráfaga automática sólo puede desplazar a
-/// otras automáticas.
+/// It matters for retention. A game that autosaves every minute fills the whole
+/// budget in one session, and if every version competes for the same slot, that
+/// burst of automatic copies evicts the one the user deliberately made before a
+/// boss. Which is the one they wanted to keep. With the origin recorded, each
+/// class gets its own budget and an automatic burst can only push out other
+/// automatic ones.
 ///
-/// Viaja en el campo `notes` del snapshot, que existía sin usarse desde el
-/// principio. `Automatic` no escribe nada: así todas las filas de antes de esto
-/// —que tienen `notes` a nulo— se leen como automáticas, que es lo que son, y
-/// no hace falta migrar nada.
+/// It travels in the snapshot's `notes` field, which had existed unused from the
+/// start. `Automatic` writes nothing, so every row from before this (with a null
+/// `notes`) reads as automatic, which is what they are, and nothing needs
+/// migrating.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VersionOrigin {
-    /// La hizo el motor solo: el temporizador, el cierre del juego, el barrido.
+    /// The engine did it on its own: the timer, the game closing, the sweep.
     Automatic,
-    /// La pidió el usuario ("copia ahora").
+    /// The user asked for it.
     Manual,
-    /// Red de seguridad antes de sobrescribir la carpeta al restaurar. Cuenta
-    /// como manual: es la copia que permite deshacer un restore equivocado, y
-    /// perderla es perder exactamente lo que la hacía valiosa.
+    /// The safety net taken before overwriting the folder on a restore. Counts
+    /// as manual: it is the copy that lets a wrong restore be undone, and losing
+    /// it means losing exactly what made it valuable.
     PreRestore,
 }
 
 impl VersionOrigin {
-    /// Lo que se guarda en `notes`. `None` para las automáticas.
+    /// What gets stored in `notes`. `None` for automatic ones.
     pub fn as_note(self) -> Option<&'static str> {
         match self {
             Self::Automatic => None,
@@ -301,9 +284,9 @@ impl VersionOrigin {
         }
     }
 
-    /// Lee el origen de un `notes`. Cualquier cosa que no reconozca es
-    /// automática: es lo que eran las filas viejas y lo que debe ser una nota
-    /// escrita por una versión futura que este cliente no entiende.
+    /// Reads the origin off a `notes`. Anything unrecognised is automatic:
+    /// that is what old rows were, and what a note written by some future
+    /// version this client does not understand should be.
     pub fn from_note(note: Option<&str>) -> Self {
         match note.map(str::trim) {
             Some("manual") => Self::Manual,
@@ -312,21 +295,21 @@ impl VersionOrigin {
         }
     }
 
-    /// ¿Cuenta contra el presupuesto de las que el usuario hizo a propósito?
+    /// Does it count against the deliberate budget?
     pub fn is_deliberate(self) -> bool {
         matches!(self, Self::Manual | Self::PreRestore)
     }
 }
 
-/// Resumen de un snapshot (una versión de un save).
+/// Summary of one snapshot, meaning one version of a save.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub save_id: Option<SaveId>,
     pub version_num: i64,
-    /// Padre en el DAG (`None` = raíz). La arista que hace detectable la
-    /// divergencia. Los servers viejos lo omiten → `None`.
+    /// Parent in the DAG, `None` for a root. The edge that makes divergence
+    /// detectable. Older servers omit it and it reads as `None`.
     #[serde(default)]
     pub parent_version: Option<i64>,
     #[serde(default)]
@@ -340,7 +323,7 @@ pub struct Snapshot {
     pub deleted_at: Option<OffsetDateTime>,
     #[serde(with = "ts")]
     pub created_at: OffsetDateTime,
-    /// What this version is *about* — the save's name, what changed since the
+    /// What this version is *about*: the save's name, what changed since the
     /// previous one, how many saves the folder holds. Derived by the server
     /// from the manifest, so an old client that ignores it loses nothing and a
     /// server that doesn't know about it omits the field entirely.
@@ -348,7 +331,7 @@ pub struct Snapshot {
     pub insight: Option<VersionInsight>,
 }
 
-/// Snapshot + su listado de ficheros (`GET /v1/saves/{id}/snapshots/{n}`).
+/// A snapshot plus its file listing (`GET /v1/saves/{id}/snapshots/{n}`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotDetail {
     #[serde(flatten)]
@@ -356,26 +339,26 @@ pub struct SnapshotDetail {
     pub files: Vec<SnapshotFile>,
 }
 
-/// Un fichero dentro de un snapshot.
+/// One file inside a snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotFile {
     pub relative_path: String,
     pub size_bytes: i64,
-    /// `None` = **no se conoce**, no "hash malo". Pasa con las versiones legacy
-    /// de archivo entero, donde el listado se sintetiza leyendo el tar y no hay
-    /// digest por fichero. En el JSON eso es la cadena vacía, que es lo que
-    /// emitía la release: ver [`sha_opt`].
+    /// `None` means *unknown*, not "bad hash". It happens with the legacy
+    /// whole-archive versions, where the listing is synthesised by reading the
+    /// tar and there is no per-file digest. In JSON that is the empty string,
+    /// which is what the release emitted: see [`sha_opt`].
     #[serde(default, with = "sha_opt")]
     pub sha256: Option<Sha256>,
 }
 
-/// `Option<Sha256>` con `""` como forma de `None` en el JSON.
+/// `Option<Sha256>` with `""` as the JSON shape of `None`.
 ///
-/// La release ya usaba la cadena vacía para "sin digest", así que relajar la
-/// puerta de [`Sha256`] para dejarla pasar habría sido meter un valor imposible
-/// dentro del tipo. El sitio correcto para "no aplica" es el `Option`, y este
-/// módulo es el traductor entre las dos representaciones — sin tocar los bytes
-/// que cruzan la red.
+/// The release already used the empty string for "no digest", so relaxing
+/// [`Sha256`]'s gate to let it through would have put an impossible value inside
+/// the type. The right home for "not applicable" is the `Option`, and this
+/// module translates between the two representations without moving a byte on
+/// the wire.
 mod sha_opt {
     use super::Sha256;
     use serde::{de::Error as _, Deserialize, Deserializer, Serializer};
@@ -393,81 +376,79 @@ mod sha_opt {
     }
 }
 
-// ---------------------------------------------------------------------------
-// /v1/saves/{id}/cas/*  ·  subida direccionada por contenido (self-hosted)
-// ---------------------------------------------------------------------------
+// ---- /v1/saves/{id}/cas/*, content-addressed upload (self-hosted)
 //
-// Hasta la 1.1.2 self-hosted sólo sabía subir en multipart: la carpeta **entera**
-// en cada copia, aunque el server ya tuviera el 99% de los bytes. Deduplicaba al
-// guardar (blobs por sha, ADR 0018), no al transmitir. Una partida de 3 GB que
-// cambia 10 MB costaba 3 GB de subida, y encima chocaba contra
-// `storage.max_snapshot_size_mb` y contra cualquier proxy con un límite de
-// cuerpo por delante.
+// Until 1.1.2 self-hosted could only upload multipart: the whole folder on every
+// copy, even when the server already held 99% of the bytes. It deduplicated on
+// store (blobs by sha, ADR 0018), not in transit. A 3 GB save with 10 MB of
+// changes cost 3 GB of upload, and on top of that ran into
+// `storage.max_snapshot_size_mb` and any proxy with a body limit in front.
 //
-// Estas tres llamadas son la negociación que Hoard Cloud ya tenía: declarar el
-// manifiesto, subir sólo lo que falta, confirmar. La diferencia con cloud es
-// dónde aterrizan los bytes — cloud firma URLs de R2 y el cliente escribe en el
-// bucket; aquí el cliente **nunca** habla con el almacenamiento (ADR 0020), así
-// que cada blob que falta se sube al propio server y es él quien lo coloca.
+// These three calls are the negotiation Hoard Cloud already had: declare the
+// manifest, upload what is missing, commit. The difference from cloud is where
+// the bytes land. Cloud signs R2 URLs and the client writes into the bucket;
+// here the client never talks to storage at all (ADR 0020), so every missing
+// blob goes to the server and the server places it.
 
-/// Un fichero del manifiesto: qué ruta, qué contenido, cuánto ocupa.
+/// One manifest file: which path, which content, how big.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CasFile {
     pub relative_path: String,
     pub sha256: Sha256,
     pub size_bytes: i64,
-    /// mtime del fichero en origen, en segundos unix. Es lo que deja al
-    /// historial decir *qué* partida se tocó: sin él, todas las de la carpeta
-    /// se ven igual de recientes. Cloud ya lo guardaba; aquí faltaba.
+    /// Source mtime in unix seconds. This is what lets the history say *which*
+    /// save was touched; without it every file in the folder looks equally
+    /// recent. Cloud already stored it and this end did not.
     ///
-    /// Ausente cuando el sistema de ficheros no lo reporta, y en todo cliente
-    /// anterior a esto — el server lo trata como desconocido, nunca como cero.
+    /// Absent when the filesystem does not report one, and on every client older
+    /// than this. The server treats it as unknown, never as zero.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub modified_at: Option<i64>,
 }
 
-/// Cuerpo de `POST /v1/saves/{id}/cas/init`.
+/// Body of `POST /v1/saves/{id}/cas/init`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CasInit {
-    /// La versión sobre la que el cliente cree estar construyendo. Igual que en
-    /// el multipart: si ya no es la cabeza, otro equipo se adelantó y esto se
-    /// rechaza — aquí **antes** de mover un byte, que es la gracia.
+    /// The version the client believes it is building on. As in the multipart
+    /// path: if it is no longer the head, another machine got there first and
+    /// this is rejected, here *before* a byte moves, which is the whole point.
     #[serde(default)]
     pub base_version: Option<i64>,
     pub files: Vec<CasFile>,
 }
 
-/// Un blob que el server no tiene y el cliente debe subir.
+/// A blob the server does not have and the client must upload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CasMissing {
     pub sha256: Sha256,
     pub size_bytes: i64,
 }
 
-/// Respuesta de `cas/init`.
+/// Response of `cas/init`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CasInitOut {
-    /// Identifica el área de staging de esta subida
-    /// (`PUT /v1/cas/blobs/{upload_id}/{sha}`). La mina el server; caduca con el
-    /// barrido de `tmp/` (`retention.tmp_cleanup_hours`), así que una subida
-    /// abandonada se limpia sola.
+    /// Identifies this upload's staging area
+    /// (`PUT /v1/cas/blobs/{upload_id}/{sha}`). The server mints it, and it
+    /// expires with the `tmp/` sweep (`retention.tmp_cleanup_hours`), so an
+    /// abandoned upload cleans itself up.
     pub upload_id: String,
-    /// La versión que saldrá del commit **si nadie se adelanta**. Orientativa:
-    /// el número de verdad lo asigna el commit, bajo la misma transacción que
-    /// comprueba la cabeza.
+    /// The version the commit will produce if nobody gets there first.
+    /// Indicative: the real number is assigned by the commit, inside the same
+    /// transaction that checks the head.
     pub version_num: i64,
-    /// Lo que hay que subir. Todo lo demás del manifiesto ya está guardado.
+    /// What has to be uploaded. Everything else in the manifest is already
+    /// stored.
     pub missing: Vec<CasMissing>,
-    /// Bytes que se van a transmitir de verdad (suma de `missing`), frente al
-    /// tamaño lógico de la partida. La diferencia es lo que ahorra el dedup, y
-    /// el cliente la usa para que la barra de progreso mida la subida real.
+    /// Bytes that will really travel (the sum of `missing`), against the save's
+    /// logical size. The difference is what dedup saves, and the client uses it
+    /// so the progress bar measures the actual upload.
     pub missing_bytes: i64,
 }
 
-/// Cuerpo de `POST /v1/saves/{id}/cas/commit`. Repite el manifiesto: el server
-/// no guarda nada entre init y commit salvo los bytes en staging, así que un
-/// commit es autosuficiente y un init perdido no deja una fila a medias en la
-/// base (que es lo que obliga a cloud a llevar versiones "pendientes").
+/// Body of `POST /v1/saves/{id}/cas/commit`. It repeats the manifest, because
+/// the server keeps nothing between init and commit except the staged bytes. So
+/// a commit is self-sufficient and a lost init leaves no half-built row in the
+/// database, which is what forces cloud to carry "pending" versions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CasCommit {
     pub upload_id: String,
@@ -480,45 +461,43 @@ pub struct CasCommit {
     pub files: Vec<CasFile>,
 }
 
-// ---------------------------------------------------------------------------
-// GET /v1/devices  ·  POST /v1/presence/heartbeat
-// ---------------------------------------------------------------------------
+// ---- GET /v1/devices and POST /v1/presence/heartbeat
 //
-// Los dos despliegues montan **estas mismas rutas** (no viven bajo
-// `/v1/cloud/`), así que aquí sí compilan las dos puntas contra una única
-// definición. El cliente las usaba ya contra cloud; self-hosted las sirve desde
-// la 1.1.3.
+// Both deployments mount these same routes (they do not live under `/v1/cloud/`),
+// so here both ends really do compile against one definition. The client already
+// used them against cloud; self-hosted serves them from 1.1.3 on.
 //
-// Qué contestan, y por qué importa las tres cosas a la vez: de qué máquina salió
-// cada versión (eso ya lo lleva `Snapshot::device_name`), qué máquinas de la
-// misma cuenta existen, y cuáles están encendidas ahora mismo y jugando a qué.
+// What they answer, and why all three at once matter: which machine each version
+// came from (`Snapshot::device_name` already carries that), which machines on
+// the account exist at all, and which are switched on right now and playing
+// what.
 
-/// Un juego en un latido: slug + segundos que lleva corriendo.
+/// One game in a heartbeat: slug plus how many seconds it has been running.
 ///
-/// Duración y no timestamp a propósito: el server la ancla a **su** reloj
-/// (`ahora - secs`), así un cliente con la hora desviada no puede declarar que
-/// lleva jugando desde dentro de tres minutos.
+/// A duration rather than a timestamp, deliberately. The server anchors it to
+/// *its* clock (`now - secs`), so a client with a skewed clock cannot claim to
+/// have been playing since three minutes into the future.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayingBeat {
     pub slug: String,
     pub for_secs: u64,
 }
 
-/// Cuerpo de `POST /v1/presence/heartbeat`. Todo opcional: un keepalive de una
-/// máquina ociosa es `{}`.
+/// Body of `POST /v1/presence/heartbeat`. Everything optional: an idle machine's
+/// keepalive is `{}`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Heartbeat {
-    /// Juegos corriendo ahora, el más reciente primero. Vacío = ociosa.
+    /// Games running now, most recent first. Empty means idle.
     #[serde(default)]
     pub playing: Vec<PlayingBeat>,
-    /// Latido final del apagado ordenado: apaga el punto al instante en vez de
-    /// esperar a que la máquina envejezca fuera de la ventana.
+    /// The final heartbeat of an orderly shutdown: turns the dot off at once
+    /// instead of waiting for the machine to age out of the window.
     #[serde(default)]
     pub closing: bool,
 }
 
-/// Un juego corriendo en un dispositivo (`GET /v1/devices`): slug + RFC3339 del
-/// arranque de la sesión.
+/// A game running on a device (`GET /v1/devices`): slug plus the RFC3339 start
+/// of the session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DevicePlaying {
     pub slug: String,
@@ -526,7 +505,7 @@ pub struct DevicePlaying {
     pub since: Option<String>,
 }
 
-/// Un dispositivo de la cuenta con su presencia en vivo.
+/// One device on the account, with its live presence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceOut {
     pub id: String,
@@ -539,17 +518,17 @@ pub struct DeviceOut {
     pub last_seen_at: Option<String>,
     #[serde(default)]
     pub created_at: Option<String>,
-    /// Latido fresco y sin latido de cierre. Se calcula **al leer**, no se
-    /// guarda: así una máquina que murió sin despedirse se apaga sola en vez de
-    /// quedarse encendida para siempre.
+    /// A fresh heartbeat and no closing one. Computed on read rather than
+    /// stored, so a machine that died without saying goodbye switches itself off
+    /// instead of staying lit forever.
     #[serde(default)]
     pub online: bool,
-    /// Juegos corriendo ahora mismo (el más reciente primero); sólo viene si
-    /// `online`. Vacío = ociosa.
+    /// Games running right now, most recent first; only present when `online`.
+    /// Empty means idle.
     #[serde(default)]
     pub playing: Vec<DevicePlaying>,
-    /// True en la fila que corresponde al fingerprint de quien pregunta, para
-    /// que la UI se reconozca sin conocer su propio id.
+    /// True on the row matching the caller's own fingerprint, so the UI can
+    /// recognise itself without knowing its own id.
     #[serde(default)]
     pub this_device: bool,
 }
@@ -559,101 +538,100 @@ pub struct DeviceListOut {
     pub devices: Vec<DeviceOut>,
 }
 
-// ---------------------------------------------------------------------------
-// POST /v1/logs  (el namespace cloud monta este mismo cuerpo)
-// ---------------------------------------------------------------------------
+// ---- POST /v1/logs (the cloud namespace mounts this same body)
 
-/// El `target` de las **desmentidas**: los eventos que dicen dónde se equivocó
-/// la detección y qué hizo el humano para arreglarlo (`hoard_agent::telemetry`).
+/// The `target` of the contradictions: events saying where detection got it
+/// wrong and what the human did to fix it (`hoard_agent::telemetry`).
 ///
-/// Vive aquí porque es contrato de los dos lados: el cliente lo exime de su
-/// filtro por nivel y el server lo acepta aunque esté por debajo del mínimo que
-/// anuncia. Un `where target = 'hoard::telemetry'` es toda la consulta.
+/// It lives here because it is a contract on both sides: the client exempts it
+/// from its level filter and the server accepts it below the minimum it
+/// advertises. A `where target = 'hoard::telemetry'` is the whole query.
 pub const TELEMETRY_TARGET: &str = "hoard::telemetry";
 
-/// El `target` de la telemetría de **Hoard Screen**: cuándo se abre el overlay,
-/// cuánto se tiene puesto y qué se monta dentro (`hoard_desktop::screen_telemetry`).
+/// The `target` of Hoard Screen's telemetry: when the overlay opens, how long it
+/// stays up and what gets put inside it (`hoard_desktop::screen_telemetry`).
 ///
-/// Va aparte de [`TELEMETRY_TARGET`] a propósito y no como un `verdict` más: son
-/// dos preguntas distintas —una es "dónde falla la detección", la otra "usa
-/// alguien el overlay"— y mezclarlas obliga a filtrar por `fields` en cada
-/// consulta de las dos. Con un target propio, cada panel es un `where target = …`.
+/// Separate from [`TELEMETRY_TARGET`] on purpose, rather than being one more
+/// `verdict`. They answer two different questions ("where does detection fail"
+/// and "does anyone use the overlay"), and mixing them forces every query on
+/// either to filter by `fields`. With its own target, each panel is one
+/// `where target = ...`.
 pub const SCREEN_TARGET: &str = "hoard::screen";
 
-/// Targets que viajan sea cual sea su nivel.
+/// Targets that travel whatever their level.
 ///
-/// Los dos son INFO y los dos tienen que entrar en Cloud, cuyo mínimo es WARN.
-/// Se listan aquí, en el contrato, para que añadir un tercero no exija tocar el
-/// cliente y el server por separado — que es exactamente cómo se rompió esto la
-/// primera vez.
+/// Both are INFO and both have to reach Cloud, whose minimum is WARN. They are
+/// listed here, in the contract, so adding a third does not mean editing client
+/// and server separately, which is exactly how this broke the first time.
 pub const EXEMPT_TARGETS: [&str; 2] = [TELEMETRY_TARGET, SCREEN_TARGET];
 
-/// La versión de los Términos que el cliente pide aceptar, tal y como la
-/// enseña la web: una **fecha**, no un semver.
+/// The Terms version the client asks people to accept, exactly as the website
+/// shows it: a date, not a semver.
 ///
-/// Es contrato de los dos lados. El cliente la manda a `POST /v1/me/terms` al
-/// entrar y el server la guarda tal cual; `GET /v1/me` devuelve la última
-/// aceptada, y si no coincide con ésta el cliente vuelve a pedir la casilla.
-/// Por eso es una fecha: lo que hay que poder casar el día de una disputa es
-/// "qué texto estaba publicado cuando esta persona dijo que sí", y la fecha es
-/// justo lo que la página enseña.
+/// A contract on both sides. The client sends it to `POST /v1/me/terms` on
+/// login and the server stores it verbatim; `GET /v1/me` returns the last one
+/// accepted, and if it does not match this the client asks for the checkbox
+/// again. That is why it is a date: what has to be matchable on the day of a
+/// dispute is "which text was published when this person said yes", and the date
+/// is what the page shows.
 ///
-/// Súbela **sólo** cuando cambie el fondo del documento. Un cambio de coma que
-/// mueva este literal vuelve a interrumpir a todo el mundo para nada. Va en
-/// pareja con `TERMS_VERSION` de `web/src/lib/legal.ts`.
+/// Bump it only when the substance of the document changes. A comma that moves
+/// this literal interrupts everybody for nothing. It pairs with `TERMS_VERSION`
+/// in `web/src/lib/legal.ts`.
 pub const TERMS_VERSION: &str = "2026-08-11";
 
-/// Metadatos del dispositivo, una vez por lote.
+/// Device metadata, sent once per batch.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DeviceMeta {
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
     pub os: Option<String>,
-    /// Huella de la máquina. Es la misma que usa el alta de dispositivos, así
-    /// que una fila de log y el contador de dispositivos casan por este campo.
+    /// The machine's fingerprint, the same one device registration uses, so a
+    /// log row and the device count join on this field.
     #[serde(default)]
     pub fingerprint: Option<MachineId>,
     #[serde(default)]
     pub app_version: Option<String>,
 }
 
-/// Una línea de log enviada por un cliente.
+/// One log line sent by a client.
 ///
-/// `target` y `ts` son `Option` porque así los declaraba el server: el cliente
-/// los mandaba siempre, pero el contrato tolera su ausencia y romper eso
-/// rechazaría lotes de clientes viejos.
+/// `target` and `ts` are `Option` because that is how the server declared them.
+/// The client always sent both, but the contract tolerates their absence and
+/// breaking that would reject older clients' batches.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     pub level: String,
     #[serde(default)]
     pub target: Option<String>,
     pub message: String,
-    /// Campos estructurados como objeto JSON.
+    /// Structured fields as a JSON object.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fields: Option<serde_json::Value>,
-    /// Timestamp del cliente (RFC3339). Se queda como `String`: es dato de
-    /// diagnóstico de una punta que puede tener el reloj torcido, y el server
-    /// lo guarda tal cual sin interpretarlo.
+    /// The client's timestamp (RFC3339). Kept as a `String`: it is diagnostic
+    /// data from an end whose clock may be wrong, and the server stores it
+    /// verbatim without interpreting it.
     #[serde(default)]
     pub ts: Option<String>,
 }
 
-/// Un lote de logs (`POST /v1/logs`).
+/// A batch of logs (`POST /v1/logs`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogBatch {
     pub device: DeviceMeta,
     pub entries: Vec<LogEntry>,
 }
 
-/// Respuesta del ingest de logs.
+/// Response of the log ingest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogIngestResponse {
     pub accepted: usize,
 }
 
-/// Orden de los niveles, para comparar sin depender de `tracing` (el server no
-/// lo tiene). Un nivel desconocido vale INFO: nunca se tira por no reconocerlo.
+/// Level ordering, so this can compare without depending on `tracing`, which the
+/// server does not have. An unknown level counts as INFO: nothing is dropped for
+/// not being recognised.
 pub fn level_rank(level: &str) -> u8 {
     match level.trim().to_ascii_lowercase().as_str() {
         "trace" => 0,
@@ -664,24 +642,24 @@ pub fn level_rank(level: &str) -> u8 {
     }
 }
 
-/// Mínimo que Cloud guarda: WARN. Con toda la población enviando, el INFO
-/// operativo llena la tabla de ruido y la poda a 14 días se lleva por delante
-/// los casos raros, que son los que sirven.
+/// What Cloud keeps: WARN. With the whole population sending, operational INFO
+/// fills the table with noise and the 14-day prune takes the rare cases with it,
+/// and the rare cases are the useful ones.
 pub const CLOUD_MIN_RANK: u8 = 3;
 
-/// **La** regla de qué línea viaja y cuál se guarda, una sola vez para los dos
-/// lados: el cliente la usa para filtrar en origen y el server para no fiarse
-/// del cliente.
+/// The rule about which line travels and which gets stored, written once for
+/// both sides: the client filters at source with it, and the server uses it
+/// because it does not trust the client.
 ///
-/// Estaba escrita tres veces —agente, server, cloud— y eso es una fuga
-/// esperando: si el cliente filtra a un nivel y el server a otro, o se envía lo
-/// que el server tira (ancho de banda para nada) o se tira lo que el cliente
-/// manda (datos que nadie vuelve a ver), y en los dos casos en silencio. Es el
-/// mismo motivo por el que `LogEntry` vive aquí y no duplicado (ADR 0021 C.6).
+/// It used to be written three times, in the agent, the server and cloud, and
+/// that is a leak waiting to happen. If the client filters at one level and the
+/// server at another, either bandwidth is spent on lines the server throws away
+/// or lines the client sends are dropped, and both silently. Same reason
+/// `LogEntry` lives here rather than duplicated (ADR 0021 C.6).
 ///
-/// La excepción por `target` es el corazón del asunto: las desmentidas de
-/// detección y la telemetría de Screen son INFO y tienen que entrar en Cloud,
-/// cuyo mínimo es WARN. Ver [`EXEMPT_TARGETS`].
+/// The per-target exception is the heart of it: detection contradictions and
+/// Screen telemetry are INFO and have to reach Cloud, whose minimum is WARN. See
+/// [`EXEMPT_TARGETS`].
 pub fn ships_at(entry: &LogEntry, min_rank: u8) -> bool {
     entry
         .target
@@ -704,11 +682,11 @@ mod tests {
         }
     }
 
-    /// La matriz entera de la regla compartida. Cliente y server llaman aquí,
-    /// así que este test es el que impide que vuelvan a separarse.
+    /// The whole matrix of the shared rule. Client and server both call in
+    /// here, so this test is what stops them drifting apart again.
     #[test]
     fn one_rule_decides_what_travels_and_what_is_stored() {
-        // Cloud (WARN): el ruido operativo se queda fuera.
+        // Cloud (WARN): operational noise stays out.
         for level in ["trace", "debug", "info", "notice", "TRACE"] {
             assert!(
                 !ships_at(&entry(level, "hoard_agent::agent"), CLOUD_MIN_RANK),
@@ -721,30 +699,32 @@ mod tests {
                 "{level} sí debería entrar en Cloud"
             );
         }
-        // Las desmentidas entran en Cloud aunque sean INFO, que es su nivel.
+        // Contradictions reach Cloud even at INFO, which is their level.
         assert!(ships_at(&entry("info", TELEMETRY_TARGET), CLOUD_MIN_RANK));
-        // …y hasta un DEBUG con ese target, por si algún día baja de nivel.
+        // ...and even a DEBUG on that target, in case it ever drops a level.
         assert!(ships_at(&entry("debug", TELEMETRY_TARGET), CLOUD_MIN_RANK));
-        // Lo mismo para Screen, y por el mismo motivo: si su INFO no entra en
-        // Cloud, el panel del overlay se queda a cero sin que nada falle.
+        // Same for Screen, for the same reason: if its INFO does not reach
+        // Cloud, the overlay panel reads zero and nothing looks broken.
         for level in ["info", "debug", "trace"] {
             assert!(ships_at(&entry(level, SCREEN_TARGET), CLOUD_MIN_RANK));
         }
-        // Un target parecido pero que no es el nuestro no se cuela.
+        // A target that merely looks like ours does not slip through.
         assert!(!ships_at(
             &entry("info", "hoard::screenshot"),
             CLOUD_MIN_RANK
         ));
-        // Self-hosted (DEBUG) se queda con casi todo, pero no con TRACE.
+        // Self-hosted (DEBUG) keeps almost everything, but not TRACE.
         assert!(ships_at(&entry("debug", "hoard_agent::agent"), 1));
         assert!(!ships_at(&entry("trace", "hoard_agent::agent"), 1));
-        // Sin target (cliente viejo o entrada a medias) manda el nivel.
+        // With no target (an older client, or a half-built entry) the level
+        // decides.
         let mut naked = entry("info", "x");
         naked.target = None;
         assert!(!ships_at(&naked, CLOUD_MIN_RANK));
     }
 
-    /// Un nivel que no conocemos no se tira por no conocerlo: cuenta como INFO.
+    /// A level we do not know is not dropped for being unknown; it counts as
+    /// INFO.
     #[test]
     fn an_unknown_level_ranks_as_info() {
         assert_eq!(level_rank("notice"), level_rank("info"));
@@ -752,8 +732,8 @@ mod tests {
         assert_eq!(level_rank(" WARN "), level_rank("warn"));
     }
 
-    /// Los timestamps salen con el sufijo `Z` de la release, y vuelven a entrar
-    /// tanto en esa forma como en la que emite el namespace cloud (`+00:00`).
+    /// Timestamps go out with the release's `Z` suffix and come back in both
+    /// that shape and the `+00:00` the cloud namespace emits.
     #[test]
     fn timestamps_keep_the_release_shape() {
         let json = r#"{
@@ -772,12 +752,12 @@ mod tests {
         let out = serde_json::to_value(&save).unwrap();
         assert_eq!(out["created_at"], "2026-07-24T12:34:56Z");
         assert_eq!(out["updated_at"], "2026-07-24T12:34:56Z");
-        // `user_id` ausente no se emite: los bytes self-hosted no cambian.
+        // An absent `user_id` is not emitted: the self-hosted bytes do not move.
         assert!(out.get("user_id").is_none());
     }
 
-    /// Un save con el slug envenenado no entra por el wire. Es la mitad
-    /// "estricta" de la ADR C.3: los datos nuevos pasan por la puerta.
+    /// A save with a poisoned slug does not get in over the wire. This is the
+    /// strict half of ADR C.3: new data goes through the gate.
     #[test]
     fn poisoned_slug_never_crosses_the_wire() {
         let json = r#"{
@@ -790,8 +770,8 @@ mod tests {
         assert!(serde_json::from_str::<Save>(json).is_err());
     }
 
-    /// Un JSON de una versión vieja (sin los campos que se añadieron después)
-    /// sigue deserializando. Es la disciplina append-only en forma de test.
+    /// JSON from an older version, without the fields added since, still
+    /// deserialises. The append-only discipline as a test.
     #[test]
     fn older_payloads_still_deserialize() {
         let old_health = r#"{"status":"ok","version":"0.2.0"}"#;
@@ -814,8 +794,8 @@ mod tests {
         assert!(s.save_id.is_none());
     }
 
-    /// `SnapshotDetail` aplana el resumen: los campos del snapshot viven al
-    /// mismo nivel que `files`, como en la release.
+    /// `SnapshotDetail` flattens the summary: the snapshot's fields sit at the
+    /// same level as `files`, as in the release.
     #[test]
     fn snapshot_detail_stays_flat() {
         let json = r#"{

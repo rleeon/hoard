@@ -9,20 +9,20 @@ use time::OffsetDateTime;
 
 /// Process-wide identifier of the sync context whose `saves` map is live.
 ///
-/// The `saves` map (save_id → version cursor + local path) only means anything
-/// for the account/server that owns those saves: a `save_id` and its
+/// The `saves` map (save_id to version cursor plus local path) only means
+/// anything for the account or server that owns those saves: a `save_id` and its
 /// `last_version_num` are minted server-side, so replaying one account's cursors
-/// against another (or against a self-hosted server) makes the next upload claim
-/// a `base_version` the target never had → `non_fast_forward`, and surfaces
-/// "saves from another account/self-hosted" residue. So each context keeps its
-/// `saves` in its own file (`contexts/<id>.json`); device-level prefs
+/// against another, or against a self-hosted server, makes the next upload claim
+/// a `base_version` the target never had, which is a `non_fast_forward`, and
+/// surfaces "saves from another account or self-hosted" residue. So each context
+/// keeps its `saves` in its own file (`contexts/<id>.json`); device-level prefs
 /// (`manual_paths`, `ignored_slugs`, `playtime_excluded`) stay global in
 /// `device.json`.
 ///
-/// The desktop sets this at boot and on every login/logout/account switch
-/// (mirroring `current_client`'s self-hosted-wins-else-cloud selection). When
-/// unset — the headless CLI, which is self-hosted only — the id is derived from
-/// the configured server URL.
+/// The desktop sets this at boot and on every login, logout and account switch
+/// (mirroring `current_client`'s self-hosted-wins-else-cloud selection). When it
+/// is unset, on the headless CLI, which is self-hosted only, the id is derived
+/// from the configured server URL.
 static ACTIVE_CONTEXT: RwLock<Option<String>> = RwLock::new(None);
 
 /// Override the active sync context. `None` clears the override so the id falls
@@ -98,36 +98,35 @@ pub struct SaveState {
     /// loading without migration.
     #[serde(default)]
     pub processes: Vec<String>,
-    /// Estos nombres de proceso los comparten VARIOS saves rastreados, así que
-    /// ver el proceso no dice cuál de ellos se está jugando.
+    /// These process names are shared by SEVERAL tracked saves, so seeing the
+    /// process does not say which of them is being played.
     ///
-    /// Es el caso de una consola emulada partida en una carpeta por juego:
-    /// diez títulos de la misma máquina listan el mismo ejecutable, y contarlos
-    /// todos como "jugando" en cuanto arranca el emulador inventaría horas para
-    /// nueve de ellos y vetaría el sync de nueve partidas que nadie ha tocado.
-    /// Cuando esto está puesto, el nombre de proceso deja de bastar por sí solo
-    /// y hace falta que ADEMÁS haya actividad en esta carpeta concreta (ver
-    /// `sample_running` en `agent.rs`). `default` mantiene cargables los
-    /// `state.json` anteriores.
+    /// It is the case of an emulated console split into one folder per game: ten
+    /// titles from the same machine list the same executable, and counting them
+    /// all as "playing" the moment the emulator starts would invent hours for
+    /// nine of them and veto the sync of nine saves nobody has touched. When this
+    /// is set, the process name stops being enough on its own and there also has
+    /// to be activity in this particular folder (see `sample_running` in
+    /// `agent.rs`). `default` keeps older `state.json` files loadable.
     #[serde(default)]
     pub shared_processes: bool,
     /// Does a restore write this game's config?
     ///
-    /// The files [`hoard_core::kernel::fileclass`] classifies as `DeviceLocal`
-    /// — `graphics.ini`, `settings.cfg`, whatever carries THIS monitor's
-    /// resolution — are always uploaded but by default never written back:
+    /// The files [`hoard_core::kernel::fileclass`] classifies as `DeviceLocal`,
+    /// `graphics.ini`, `settings.cfg`, whatever carries THIS monitor's
+    /// resolution, are always uploaded but by default never written back:
     /// restoring them from one PC onto another is the short road to a game that
-    /// boots to a black screen. The switch in the restore dialog skips that
-    /// once; this settles it for the game.
+    /// boots to a black screen. The switch in the restore dialog skips that once;
+    /// this settles it for the game.
     ///
-    /// It is **per game** because the answer is. In one game the config and the
-    /// save live in the same file and it has to be written; in another it is the
-    /// resolution and it must not be touched. A single global switch would have
-    /// to be right for both at once, which it cannot be.
+    /// It is per game because the answer is. In one game the config and the save
+    /// live in the same file and it has to be written; in another it is the
+    /// resolution and it must not be touched. A single global switch would have to
+    /// be right for both at once, which it cannot be.
     ///
-    /// `None` = undecided: not written, and the dialog keeps asking.
-    /// `Some(true)` writes it **on automatic restores too**, which is what makes
-    /// the setting worth having; `Some(false)` is an explicit no.
+    /// `None` is undecided: not written, and the dialog keeps asking.
+    /// `Some(true)` writes it on automatic restores too, which is what makes the
+    /// setting worth having; `Some(false)` is an explicit no.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allow_device_local: Option<bool>,
 }
@@ -163,31 +162,31 @@ pub struct CliState {
     /// the other. `default` keeps older `state.json` files loading.
     #[serde(default)]
     pub playtime_excluded: HashSet<String>,
-    /// Carpetas que el usuario ha descartado: la detección no vuelve a
-    /// ofrecerlas, ni ellas ni nada por debajo.
+    /// Folders the user has discarded: detection never offers them again, nor
+    /// anything below them.
     ///
-    /// Complementa a [`Self::ignored_slugs`], que no basta para esto: el
-    /// nombre de un hallazgo de fase 4 sale de la atribución, y la atribución
-    /// cambia entre escaneos (la carpeta de Planet S pasó por ChatGPT,
-    /// opencode y code). Con un slug distinto cada vez, ignorar por slug no
-    /// sujeta nada — la misma carpeta reaparece con nombre nuevo. Por ruta sí.
+    /// It complements [`Self::ignored_slugs`], which is not enough for this: a
+    /// phase-4 find's name comes from attribution, and attribution changes
+    /// between scans (one game's folder came out as ChatGPT, then opencode, then
+    /// code). With a different slug every time, ignoring by slug holds nothing
+    /// down and the same folder reappears under a new name. By path it does.
     ///
-    /// `default` mantiene cargando los `state.json` antiguos.
+    /// `default` keeps older `state.json` files loading.
     #[serde(default)]
     pub excluded_paths: Vec<PathBuf>,
-    /// Slugs que [`cleanse`] marcó al cargar: bien formados pero **degenerados**
-    /// (tokens de fontanería o el nombre de usuario del sistema). No se
-    /// persiste (`skip`): se recalcula en cada carga a partir de lo que hay en
-    /// disco, así que el fichero de estado no cambia de forma y el Slice 5
-    /// —dueño de la limpieza durable— no hereda un campo que migrar.
+    /// Slugs [`cleanse`] flagged on load: well formed but degenerate (plumbing
+    /// tokens, or the system account name). Not persisted (`skip`): it is
+    /// recomputed on every load from what is on disk, so the state file's shape
+    /// does not change and Slice 5, which owns the durable cleanup, inherits no
+    /// field to migrate.
     ///
-    /// **Derivado**: lo recalcula [`cleanse`] en cada carga; escribirlo a mano
-    /// no tiene efecto duradero. Consultable con [`Self::is_slug_quarantined`].
+    /// Derived: [`cleanse`] recomputes it on every load, and writing it by hand
+    /// has no lasting effect. Queried with [`Self::is_slug_quarantined`].
     #[serde(skip)]
     pub quarantined_slugs: HashSet<String>,
-    /// Ids de save de `saves` que no son UUID canónicos. Mismo trato: se marcan
-    /// y se dejan donde están (borrarlos dejaría el save sin rastrear y sin
-    /// forma de recuperar su ruta local). **Derivado**, como
+    /// Save ids in `saves` that are not canonical UUIDs. Same treatment: they get
+    /// flagged and left where they are (deleting them would leave the save
+    /// untracked with no way to recover its local path). Derived, like
     /// [`Self::quarantined_slugs`].
     #[serde(skip)]
     pub quarantined_save_ids: HashSet<String>,
@@ -204,9 +203,8 @@ struct DevicePrefs {
     ignored_slugs: HashSet<String>,
     #[serde(default)]
     playtime_excluded: HashSet<String>,
-    /// Carpetas descartadas por el usuario. Es preferencia del DISPOSITIVO,
-    /// no de la cuenta: una carpeta que aquí es basura puede ser legítima en
-    /// otra máquina.
+    /// Folders the user discarded. A DEVICE preference rather than an account
+    /// one: a folder that is junk here can be legitimate on another machine.
     #[serde(default)]
     excluded_paths: Vec<PathBuf>,
 }
@@ -298,24 +296,24 @@ fn migrate_legacy_state(device_path: &Path, context_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Un slug del que ya nos hemos quejado en este proceso.
+/// A slug we have already complained about in this process.
 ///
-/// `cleanse` corre en **cada** carga de `state.json` — unas veinticinco veces
-/// por hora — y el estado no se reescribe, así que el mismo slug envenenado se
-/// redescubre íntegro cada vez. Dos usuarios con un save llamado `user`
-/// generaron 3.669 avisos idénticos en tres días: eso no son 3.669 incidentes,
-/// es uno visto 3.669 veces, y enterró el resto del log.
+/// `cleanse` runs on every load of `state.json`, some twenty-five times an hour,
+/// and the state is not rewritten, so the same poisoned slug is rediscovered whole
+/// each time. Two users with a save called `user` generated 3,669 identical
+/// warnings in three days: that is not 3,669 incidents, it is one seen 3,669
+/// times, and it buried the rest of the log.
 ///
-/// La primera vez se cuenta entera; las siguientes son `debug`. El conjunto es
-/// por proceso: un reinicio del daemon vuelve a avisar una vez, que es
-/// exactamente lo que se quiere de un problema que sigue ahí.
+/// The first time is reported in full; the rest are `debug`. The set is per
+/// process, so restarting the daemon warns once again, which is exactly what you
+/// want from a problem that is still there.
 fn warn_once(slug: &str, emit: impl FnOnce()) {
     use std::sync::{Mutex, OnceLock};
     static SEEN: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     let seen = SEEN.get_or_init(|| Mutex::new(HashSet::new()));
     let first = match seen.lock() {
         Ok(mut g) => g.insert(slug.to_string()),
-        // Un lock envenenado no puede silenciar un aviso: se cuenta.
+        // A poisoned lock must not silence a warning: it gets reported.
         Err(_) => true,
     };
     if first {
@@ -325,35 +323,35 @@ fn warn_once(slug: &str, emit: impl FnOnce()) {
     }
 }
 
-/// Pasa el estado recién leído por la **puerta indulgente** de
-/// `hoard_core::ids` (ADR 0021, C.3).
+/// Puts freshly read state through `hoard_core::ids`' lenient gate (ADR 0021,
+/// C.3).
 ///
-/// El veneno ya está en disco —el save de `GSE Saves` quedó con el slug igual al
-/// nombre de usuario de Windows, y eso convirtió cualquier app del perfil en
-/// señal de "estás jugando"—, así que un `try_from` estricto aquí dejaría el
-/// motor sin arrancar. Tres desenlaces por valor, ninguno es un error:
+/// The poison is already on disk (one save ended up with its slug equal to the
+/// Windows account name, which turned every app in the profile into a "you are
+/// playing" signal) so a strict `try_from` here would leave the engine unable to
+/// start. Three outcomes per value, none of them an error:
 ///
-/// - **Válido** → intacto.
-/// - **Recuperable** (mayúsculas, espacios, basura) → se re-deriva con el mismo
-///   `slugify` que lo mintó, se avisa, y se usa el reparado. Un slug así hoy ni
-///   siquiera podría subirse (la puerta del wire lo rechaza), así que repararlo
-///   es lo único que devuelve ese save al sync.
-/// - **Degenerado** (token de fontanería, nombre de usuario) → **no se toca**:
-///   ya está bien formado y es la identidad `(user, game_slug, label)` que el
-///   server conoce; renombrarlo crearía un save nuevo en la nube. Se marca en
-///   [`CliState::is_slug_quarantined`] para que la correlación lo ignore.
+/// - Valid: untouched.
+/// - Recoverable (uppercase, spaces, junk): re-derived with the same `slugify`
+///   that minted it, warned about, and the repaired one used. A slug like that
+///   could not even be uploaded today, since the wire's gate rejects it, so
+///   repairing it is the only thing that gets that save back into sync.
+/// - Degenerate (a plumbing token, an account name): left alone. It is already
+///   well formed and it is the `(user, game_slug, label)` identity the server
+///   knows; renaming it would create a new save in the cloud. It gets flagged in
+///   [`CliState::is_slug_quarantined`] so correlation ignores it.
 ///
-/// La limpieza durable (reescribir el estado migrado) es del Slice 5; esto es la
-/// reparación en memoria que hace que el motor arranque mientras tanto.
+/// The durable cleanup, rewriting the migrated state, belongs to Slice 5; this is
+/// the in-memory repair that lets the engine start meanwhile.
 ///
-/// **El veredicto es `GameSlug::repair` y sólo él.** Antes se recomprobaba
-/// además con `agent::is_generic_identity_token`, que amplía la lista estática
-/// con los componentes del home de ESTA máquina. Eso es lo correcto para casar
-/// procesos vivos (bajo `C:\Users\<user>\` cuelga todo) y lo incorrecto aquí:
-/// la identidad de un save es `(user, game_slug, label)` en el servidor y tiene
-/// que significar lo mismo en todos los equipos. Con el criterio local, un save
-/// llamado como el usuario quedaba en cuarentena en su portátil y limpio en el
-/// de al lado, para el mismo `state.json` sincronizado.
+/// The verdict is `GameSlug::repair` and nothing else. It used to be re-checked
+/// against `agent::is_generic_identity_token`, which widens the static list with
+/// THIS machine's home components. That is right for matching live processes
+/// (everything hangs under `C:\Users\<user>\`) and wrong here: a save's
+/// identity is `(user, game_slug, label)` on the server and has to mean the same
+/// thing on every machine. With the local criterion, a save named after the user
+/// was quarantined on their laptop and clean on the one next to it, for the same
+/// synced `state.json`.
 fn cleanse(state: &mut CliState) {
     let mut quarantined: HashSet<String> = HashSet::new();
 
@@ -368,9 +366,10 @@ fn cleanse(state: &mut CliState) {
                 Some(value.into_inner())
             }
             Repair::Quarantined { reason, .. } => {
-                // El motivo va en el campo, no en el texto: `Degenerate` y
-                // `Unrecoverable` son cosas distintas y el mensaje llamaba
-                // "irrecuperable" a los degenerados, que son la inmensa mayoría.
+                // The reason goes in the field rather than the text: `Degenerate`
+                // and `Unrecoverable` are different things, and the message
+                // called the degenerate ones, which are the vast majority,
+                // "unrecoverable".
                 warn_once(
                     raw,
                     || tracing::warn!(slug = raw, %reason, "state: slug quarantined at load"),
@@ -386,7 +385,7 @@ fn cleanse(state: &mut CliState) {
             save.game_slug = fixed;
         }
     }
-    // Las prefs de dispositivo van keyed por slug; el mismo veneno vale.
+    // Device prefs are keyed by slug; the same poison applies.
     let manual: Vec<(String, PathBuf)> = state.manual_paths.drain().collect();
     for (slug, path) in manual {
         let key = triage(&slug).unwrap_or(slug);
@@ -399,8 +398,8 @@ fn cleanse(state: &mut CliState) {
         }
     }
 
-    // Un id de save que no es UUID nunca existirá server-side (el churn de
-    // DOOM). Se marca, no se borra: la fila guarda la ruta local del save.
+    // A save id that is not a UUID will never exist server-side (the DOOM churn).
+    // It gets flagged, not deleted: the row holds the save's local path.
     let bad_ids: HashSet<String> = state
         .saves
         .keys()
@@ -437,13 +436,13 @@ impl CliState {
         }
     }
 
-    /// Load by merging the global device prefs with one context's saves. Used
-    /// by [`Self::load_default`]; exposed for tests with explicit paths.
+    /// Load by merging the global device prefs with one context's saves. Used by
+    /// [`Self::load_default`]; exposed for tests with explicit paths.
     ///
-    /// Lo cargado pasa por [`cleanse`] antes de devolverse: el estado en disco
-    /// es anterior a la puerta de `hoard_core::ids` y puede llevar veneno (así
-    /// entró la correlación fantasma), pero cargar **nunca** puede fallar por
-    /// eso — se repara o se marca (ADR 0021, C.3).
+    /// What is loaded goes through [`cleanse`] before being returned: the on-disk
+    /// state predates `hoard_core::ids`' gate and can carry poison (that is how
+    /// the phantom correlation got in), but loading can never fail because of it.
+    /// It is repaired or flagged (ADR 0021, C.3).
     pub fn load_split(device_path: &Path, context_path: &Path) -> Result<Self> {
         let prefs: DevicePrefs = load_json(device_path)?;
         let ctx: ContextSaves = load_json(context_path)?;
@@ -460,18 +459,18 @@ impl CliState {
         Ok(state)
     }
 
-    /// ¿Este slug quedó marcado al cargar? Un slug en cuarentena está bien
-    /// formado pero significa cualquier cosa (`users`, el nombre de usuario del
-    /// perfil…). Para todo lo demás (rutas, subidas, identidad server-side)
-    /// sigue siendo el slug de ese save y se usa tal cual.
+    /// Was this slug flagged on load? A quarantined slug is well formed but means
+    /// anything at all (`users`, the profile's account name). For everything else
+    /// (paths, uploads, server-side identity) it is still that save's slug and is
+    /// used as-is.
     ///
-    /// **No es lo que protege la correlación**, aunque el doc lo prometiera:
-    /// quien casa procesos vivos con saves es `agent::game_identity_tokens`, y
-    /// ése ya descarta el mismo token por su cuenta —con el criterio ampliado
-    /// al home local, que ahí sí corresponde—. Cablear además esta consulta
-    /// sería duplicar la defensa con un criterio más flojo. Vive como
-    /// diagnóstico: qué slugs de este estado no significan nada, para la UI y
-    /// para el log.
+    /// It is not what protects correlation, whatever the doc used to promise:
+    /// what matches live processes to saves is `agent::game_identity_tokens`, and
+    /// that already discards the same token on its own, with the criterion
+    /// widened to the local home, which is right there. Wiring this query in as
+    /// well would duplicate the defence with a weaker criterion. It lives on as
+    /// diagnostics: which slugs in this state mean nothing, for the UI and for
+    /// the log.
     pub fn is_slug_quarantined(&self, slug: &str) -> bool {
         self.quarantined_slugs.contains(slug)
     }
@@ -481,8 +480,8 @@ impl CliState {
         &self.quarantined_slugs
     }
 
-    /// Los ids de save marcados en la última carga: presentes en `saves` pero
-    /// sin forma de UUID canónico, así que el server nunca los reconocerá.
+    /// The save ids flagged on the last load: present in `saves` but with no
+    /// canonical UUID shape, so the server will never recognise them.
     pub fn quarantined_save_ids(&self) -> &HashSet<String> {
         &self.quarantined_save_ids
     }
@@ -522,9 +521,9 @@ impl CliState {
     /// exactly `[path]` and whose source is `ManualOverride`, regardless of
     /// what the heuristics produced.
     pub fn set_manual_path(&mut self, slug: &str, path: PathBuf) {
-        // Fijar la ruta a mano ES la desmentida de la heurística: lo que
-        // propuso no valía y ésta es la respuesta. Se emite aquí, que es por
-        // donde pasan los dos frontends, y no en cada command.
+        // Pinning the path by hand IS the contradiction of the heuristic: what it
+        // proposed was no good and this is the answer. It is emitted here, where
+        // both frontends pass through, rather than in each command.
         crate::telemetry::manual_path(slug, &path);
         self.manual_paths.insert(slug.to_string(), path);
     }
@@ -550,11 +549,11 @@ impl CliState {
         self.ignored_slugs.insert(slug);
     }
 
-    /// `true` si `path` está en una carpeta descartada por el usuario.
+    /// `true` when `path` is inside a folder the user discarded.
     ///
-    /// La comparación es **por frontera de segmento**, así que descartar
-    /// `…/Games` tapa `…/Games/X` pero no `…/GamesOther`. En Windows y macOS
-    /// ignora mayúsculas, como hacen esos sistemas de ficheros.
+    /// The comparison is by segment boundary, so discarding `.../Games` covers
+    /// `.../Games/X` but not `.../GamesOther`. On Windows and macOS it ignores
+    /// case, as those filesystems do.
     pub fn is_path_excluded(&self, path: &Path) -> bool {
         if self.excluded_paths.is_empty() {
             return false;
@@ -567,16 +566,16 @@ impl CliState {
             }
         };
         let target = norm(path);
-        // `starts_with` compara por COMPONENTES, que es justo la semántica de
-        // frontera que queremos (y por eso bajar a minúsculas la cadena entera
-        // no altera nada: los separadores siguen donde estaban).
+        // `starts_with` compares by COMPONENT, which is exactly the boundary
+        // semantics we want (and why lowercasing the whole string changes
+        // nothing: the separators are still where they were).
         self.excluded_paths
             .iter()
             .any(|root| target.starts_with(norm(root)))
     }
 
-    /// Descarta una carpeta. Idempotente, y absorbe lo que ya cubriera:
-    /// excluir un padre deja sin sentido a sus hijas ya excluidas.
+    /// Discards a folder. Idempotent, and it absorbs whatever it already covered:
+    /// excluding a parent makes its already-excluded children pointless.
     pub fn add_excluded_path(&mut self, path: PathBuf) {
         if self.is_path_excluded(&path) {
             return;
@@ -585,7 +584,7 @@ impl CliState {
         self.excluded_paths.push(path);
     }
 
-    /// Deja de descartar exactamente esta carpeta (no las que la contengan).
+    /// Stops discarding exactly this folder, not the ones containing it.
     pub fn remove_excluded_path(&mut self, path: &Path) {
         self.excluded_paths.retain(|p| p != path);
     }
@@ -655,7 +654,7 @@ mod tests {
         a.save_split(&device, &ctx_a).unwrap();
 
         // Account B loads the shared device.json (inheriting A's prefs), adds
-        // its own save, and persists — exactly the load→mutate→save cycle the
+        // its own save, and persists: exactly the load, mutate, save cycle the
         // app runs.
         let mut b = CliState::load_split(&device, &ctx_b).unwrap();
         assert!(b.saves.is_empty(), "B's context starts with no saves");
@@ -752,13 +751,13 @@ mod tests {
         assert!(loaded.is_ignored("dwarf-fortress"));
     }
 
-    /// **El test de no-brickeo (ADR 0021, C.3).** Un `state.json` con el veneno
-    /// que llegó a producción tiene que **cargar**, no reventar: el motor
-    /// arranca, los saves sanos siguen intactos, el slug recuperable sale
-    /// reparado y el degenerado sale marcado sin que le cambien la identidad.
+    /// The no-bricking test (ADR 0021, C.3). A `state.json` carrying the poison
+    /// that reached production has to load, not blow up: the engine starts, the
+    /// healthy saves stay untouched, the recoverable slug comes out repaired and
+    /// the degenerate one comes out flagged with its identity unchanged.
     ///
-    /// Si algún día alguien pone `#[serde(try_from)]` sobre el estado
-    /// persistido, este test cae — que es justo el punto.
+    /// If somebody ever puts a `#[serde(try_from)]` over the persisted state,
+    /// this test fails, which is exactly the point.
     #[test]
     fn poisoned_state_json_loads_and_is_repaired() {
         let tmp = tempfile::tempdir().unwrap();
@@ -766,10 +765,10 @@ mod tests {
         let ctx = tmp.path().join("contexts/cloud-poisoned.json");
         std::fs::create_dir_all(ctx.parent().unwrap()).unwrap();
 
-        // Estado real de julio 2026: un save sano, uno con el slug sin
-        // slugificar ("GSE Saves"), uno con el slug degenerado (el caso
-        // `slug == username`, aquí un token de fontanería que no depende del
-        // entorno de test) y un id local que no es UUID (el churn de DOOM).
+        // Real state from July 2026: one healthy save, one with an unslugified
+        // slug ("GSE Saves"), one with a degenerate slug (the `slug == username`
+        // case, here a plumbing token that does not depend on the test
+        // environment) and one local id that is not a UUID (the DOOM churn).
         std::fs::write(
             &ctx,
             r#"{ "saves": {
@@ -799,7 +798,7 @@ mod tests {
         )
         .unwrap();
 
-        // 1. Carga. Esto es lo que no puede fallar nunca.
+        // 1. Load. This is what can never fail.
         let state = CliState::load_split(&device, &ctx).expect("el estado envenenado debe cargar");
         assert_eq!(state.saves.len(), 4, "no se pierde ninguna fila");
 
@@ -809,15 +808,15 @@ mod tests {
             "stardew-valley"
         );
 
-        // 3. El slug recuperable se re-deriva con el mismo `slugify` que lo
-        //    mintó — sin él ese save ni siquiera podría subirse hoy.
+        // 3. The recoverable slug is re-derived with the same `slugify` that
+        //    minted it; without that, the save could not even upload today.
         assert_eq!(
             state.saves["7c9e6679-7425-40de-944b-e07fc1f90ae7"].game_slug,
             "gse-saves"
         );
 
-        // 4. El degenerado NO se renombra (es la identidad que el server ya
-        //    conoce), pero queda marcado para que la correlación lo ignore.
+        // 4. The degenerate one is NOT renamed (it is the identity the server
+        //    already knows), but it gets flagged so correlation ignores it.
         assert_eq!(
             state.saves["9d1b2c3e-1111-4222-8333-444455556666"].game_slug,
             "savedgames"
@@ -826,16 +825,16 @@ mod tests {
         assert!(!state.is_slug_quarantined("stardew-valley"));
         assert!(!state.is_slug_quarantined("gse-saves"));
 
-        // 5. El id que no es UUID se marca, pero la fila se queda (guarda la
-        //    ruta local del save).
+        // 5. The non-UUID id is flagged, but the row stays (it holds the save's
+        //    local path).
         assert!(state.quarantined_save_ids().contains("local-doom-4"));
         assert_eq!(state.quarantined_save_ids().len(), 1);
 
-        // 6. Las prefs de dispositivo van keyed por slug: mismo tratamiento.
+        // 6. Device prefs are keyed by slug: same treatment.
         assert!(state.manual_paths.contains_key("stardew-valley"));
         assert!(state.is_ignored("dwarf-fortress"));
 
-        // 7. Y el estado reparado persiste y vuelve a cargar sin más avisos.
+        // 7. And the repaired state persists and reloads with no further warnings.
         state.save_split(&device, &ctx).unwrap();
         let again = CliState::load_split(&device, &ctx).unwrap();
         assert_eq!(
@@ -845,8 +844,8 @@ mod tests {
         assert!(again.is_slug_quarantined("savedgames"));
     }
 
-    /// Un estado sano no se toca: `cleanse` es un no-op sobre lo que ya es
-    /// canónico (si no, cada carga movería datos buenos).
+    /// Healthy state is untouched: `cleanse` is a no-op over what is already
+    /// canonical (otherwise every load would move good data).
     #[test]
     fn clean_state_is_untouched_by_the_cleanse() {
         let tmp = tempfile::tempdir().unwrap();
@@ -886,7 +885,7 @@ mod tests {
         state.clear_manual_path("not-there");
     }
 
-    /// Default `CliState` has no blacklisted slugs — the field is purely
+    /// Default `CliState` has no blacklisted slugs; the field is purely
     /// opt-in.
     #[test]
     fn ignored_slugs_default_empty() {

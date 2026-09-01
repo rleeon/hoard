@@ -1,6 +1,6 @@
-//! `hoard saves` — the saves this machine tracks (what `daemon`/`sync` watch).
-//! Purely local: reads `contexts/<id>.json` of the active context (Cloud or
-//! self-host) and doesn't touch the network, so it works offline and is
+//! `hoard saves`: the saves this machine tracks, meaning what `daemon` and `sync`
+//! watch. Purely local: it reads `contexts/<id>.json` of the active context (Cloud
+//! or self-host) and never touches the network, so it works offline and is
 //! instant.
 
 use anyhow::Result;
@@ -19,7 +19,7 @@ pub struct SaveRow {
     pub save_id: String,
     pub game_slug: String,
     pub label: String,
-    /// Absolute, untruncated — the table clips this, JSON must not.
+    /// Absolute and untruncated. The table clips this, JSON must not.
     pub local_path: String,
     pub paused: bool,
     pub last_version_num: Option<i64>,

@@ -1,21 +1,22 @@
-//! Las **desmentidas**: dónde la detección se equivocó y qué hizo el humano
-//! para arreglarlo.
+//! The contradictions: where detection got it wrong and what the human did to
+//! fix it.
 //!
-//! Es el dato que enseña algo. "Rutas detectadas como buenas" es donde no hay
-//! problema y es lo que más volumen genera; lo que arregla el pipeline es el
-//! caso contrario, y hasta ahora sólo llegaba cuando alguien se molestaba en
-//! escribir por Discord.
+//! This is the data that teaches something. "Paths detected correctly" is where
+//! there is no problem and is what generates the most volume; what fixes the
+//! pipeline is the opposite case, and until now it only arrived when somebody
+//! bothered to write in on Discord.
 //!
-//! No hay tubería nueva: son eventos `tracing` normales con un `target` fijo
-//! ([`TELEMETRY_TARGET`]), así que viajan por `logship` como todo lo demás —con
-//! su redacción de rutas incluida— y se consultan con un `where target = …`.
-//! Por eso van a INFO y no a DEBUG: el filtro del proceso (`info` en el
-//! servicio) tiraría un DEBUG antes de que ninguna capa lo viera.
+//! There is no new plumbing: these are ordinary `tracing` events on a fixed
+//! `target` ([`TELEMETRY_TARGET`]), so they travel through `logship` like
+//! everything else, path redaction included, and get queried with a
+//! `where target = ...`. That is why they are INFO rather than DEBUG: the
+//! process filter (`info` in the service) would throw a DEBUG away before any
+//! layer saw it.
 //!
-//! Cuatro campos por evento, que es lo que hace falta: el veredicto, el juego,
-//! la forma de la ruta y —fuera de la línea, una vez por lote— la versión de la
-//! app. Y **nada** que identifique a la persona: el segmento del perfil lo
-//! sustituye `logship::redact` antes de que la línea entre al canal.
+//! Four fields per event, which is what is needed: the verdict, the game, the
+//! shape of the path, and, off the line and once per batch, the app version. And
+//! nothing that identifies the person: `logship::redact` replaces the profile
+//! segment before the line enters the channel.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -23,17 +24,17 @@ use std::sync::{Mutex, OnceLock};
 
 use hoard_core::wire::TELEMETRY_TARGET;
 
-/// ¿Es la primera vez que este proceso ve esta desmentida?
+/// Is this the first time this process has seen this contradiction?
 ///
-/// Las dos que nacen del motor —[`no_snapshots`] y [`rejected_root`]— se repiten
-/// en cada barrido: una carpeta mal apuntada lo sigue estando dentro de diez
-/// minutos. Sin esto, un solo save roto mete un par de miles de filas en los 14
-/// días de retención y convierte la señal en el vertedero que este módulo existe
-/// para no ser. Una vez por arranque del servicio es exactamente lo que hace
-/// falta: el dato es "a este juego le pasa esto", no cuántas veces se reintentó.
+/// The two that come from the engine, [`no_snapshots`] and [`rejected_root`],
+/// repeat on every sweep: a folder pointed at the wrong place is still wrong ten
+/// minutes later. Without this, one broken save puts a couple of thousand rows
+/// into the 14 days of retention and turns the signal into the dump this module
+/// exists not to be. Once per service start is exactly what is needed: the fact
+/// is "this happens to this game", not how many times it was retried.
 ///
-/// Las otras tres son actos del usuario y **no** se filtran: que alguien
-/// re-apunte dos veces el mismo juego es información, no ruido.
+/// The other three are user actions and are not filtered: somebody repointing the
+/// same game twice is information, not noise.
 fn first_time(key: String) -> bool {
     static SEEN: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     SEEN.get_or_init(Default::default)
@@ -42,7 +43,7 @@ fn first_time(key: String) -> bool {
         .unwrap_or(true)
 }
 
-/// El usuario quitó del seguimiento una ruta que el pipeline había propuesto.
+/// The user stopped tracking a path the pipeline had proposed.
 pub fn untracked(slug: &str, path: &Path) {
     tracing::info!(
         target: TELEMETRY_TARGET,
@@ -53,8 +54,8 @@ pub fn untracked(slug: &str, path: &Path) {
     );
 }
 
-/// El usuario re-apuntó un save: de dónde, a dónde. Es la corrección más rica
-/// que hay — dice a la vez qué falló y cuál era la respuesta buena.
+/// The user repointed a save: from where, to where. It is the richest correction
+/// there is, saying both what failed and what the right answer was.
 pub fn repointed(slug: &str, from: &Path, to: &Path) {
     tracing::info!(
         target: TELEMETRY_TARGET,
@@ -66,15 +67,15 @@ pub fn repointed(slug: &str, from: &Path, to: &Path) {
     );
 }
 
-/// El usuario fijó a mano la carpeta de un juego (`manual_paths`). Es la
-/// desmentida directa de la heurística: lo que ésta propuso no valía y hay una
-/// respuesta correcta.
+/// The user pinned a game's folder by hand (`manual_paths`). It is the direct
+/// contradiction of the heuristic: what it proposed was no good and there is a
+/// right answer.
 ///
-/// La carpeta va en `to` y no en `path`, igual que en [`repointed`]: en las dos
-/// `path` es "de dónde" y `to` es "a dónde", y aquí lo que sabemos es el
-/// destino. Ponerlo en `path` haría que el panel lo pintara en la columna de la
-/// ruta mala — el dato correcto en la casilla que significa lo contrario, que es
-/// peor que no tenerlo.
+/// The folder goes in `to` rather than `path`, as in [`repointed`]: in both,
+/// `path` is "from where" and `to` is "to where", and here what we know is the
+/// destination. Putting it in `path` would make the panel draw it in the
+/// bad-path column, the right data in the box that means the opposite, which is
+/// worse than not having it.
 pub fn manual_path(slug: &str, to: &Path) {
     tracing::info!(
         target: TELEMETRY_TARGET,
@@ -85,9 +86,9 @@ pub fn manual_path(slug: &str, to: &Path) {
     );
 }
 
-/// Un save rastreado que **nunca** ha producido un snapshot y sigue vacío: casi
-/// siempre la carpeta no es donde el juego guarda. Una vez por arranque y save
-/// (ver [`first_time`]): el motor lo reintenta en cada barrido.
+/// A tracked save that has never produced a snapshot and is still empty: almost
+/// always the folder is not where the game saves. Once per run and save (see
+/// [`first_time`]), since the engine retries it on every sweep.
 pub fn no_snapshots(slug: &str, path: &Path) {
     if !first_time(format!("no_snapshots|{slug}|{}", path.display())) {
         return;
@@ -101,9 +102,9 @@ pub fn no_snapshots(slug: &str, path: &Path) {
     );
 }
 
-/// Una raíz que `junkdirs::dangerous_sync_root` rechazó, con el motivo. Dice qué
-/// está proponiendo el pipeline que no debería proponer. Una vez por arranque y
-/// raíz, por lo mismo que [`no_snapshots`].
+/// A root `junkdirs::dangerous_sync_root` refused, with the reason. Says what the
+/// pipeline is proposing that it should not. Once per run and root, for the same
+/// reason as [`no_snapshots`].
 pub fn rejected_root(slug: &str, path: &Path, reason: &str) {
     if !first_time(format!("rejected_root|{slug}|{}", path.display())) {
         return;
@@ -118,14 +119,14 @@ pub fn rejected_root(slug: &str, path: &Path, reason: &str) {
     );
 }
 
-/// An emulator's save root the walk found and refused: a container of one
-/// folder per title, with no title inside it yet. Says which emulator, which
-/// is the whole point — the row is a line for the catalog to answer, because
-/// a root that never fills up usually means the template points at the wrong
-/// per-install identifier (rpcs3's `00000001` profile is only the first one).
+/// An emulator's save root the walk found and refused: a container of one folder
+/// per title, with no title inside it yet. Says which emulator, which is the
+/// whole point, because the row is a line for the catalog to answer: a root that
+/// never fills up usually means the template points at the wrong per-install
+/// identifier (rpcs3's `00000001` profile is only the first one).
 ///
-/// Once per run and root, for the same reason as [`no_snapshots`]: the walk
-/// runs again every sweep and the root is still there.
+/// Once per run and root, for the same reason as [`no_snapshots`]: the walk runs
+/// again every sweep and the root is still there.
 pub fn emulator_root_skipped(emulator: &str, path: &Path) {
     if !first_time(format!("emulator_root|{emulator}|{}", path.display())) {
         return;
@@ -145,11 +146,11 @@ pub fn emulator_root_skipped(emulator: &str, path: &Path) {
 /// module for the same reasons the others do: same target, same dedupe, same
 /// query. It is emitted by the desktop (`commands::covers`), not by the engine.
 ///
-/// What makes the row actionable is the `slug` — it is the key of `covers.json`,
+/// What makes the row actionable is the `slug`, which is the key of `covers.json`,
 /// so a row that arrives is a line to fill in. `source` says why there is
 /// nothing: `none` is a game that is neither on Steam nor in our index (fixed by
-/// adding it), `steam` is one that *is* on Steam yet whose CDN served neither
-/// the vertical capsule nor the header, which is rare enough to be worth telling
+/// adding it), `steam` is one that *is* on Steam yet whose CDN served neither the
+/// vertical capsule nor the header, which is rare enough to be worth telling
 /// apart.
 ///
 /// Once per process and game, and upstream only on a fresh verdict: the desktop
@@ -169,9 +170,9 @@ pub fn no_cover(slug: &str, source: &str) {
 }
 
 /// P1: for a slug with several candidate folders, which one led `found_paths`
-/// and why. This is the answer to "why did it pick THIS folder?" — the
-/// breakdown was already computed during ranking and died there. Once per
-/// process and (slug, path): every tick would repeat an identical verdict.
+/// and why. This is the answer to "why did it pick THIS folder?"; the breakdown
+/// was already computed during ranking and died there. Once per process and
+/// (slug, path): every tick would repeat an identical verdict.
 pub fn ranked_choice(slug: &str, chosen: &Path, reason: &str) {
     if !first_time(format!("ranked_choice|{slug}|{}", chosen.display())) {
         return;
@@ -186,8 +187,8 @@ pub fn ranked_choice(slug: &str, chosen: &Path, reason: &str) {
     );
 }
 
-/// P9: an ALREADY-tracked folder looks like the game's own backup mirror,
-/// with what looks like the real save sitting next to it. Repoints nothing —
+/// P9: an ALREADY-tracked folder looks like the game's own backup mirror, with
+/// what looks like the real save sitting next to it. It repoints nothing, since
 /// the warning is the whole act. Once per process and save, like
 /// [`no_snapshots`].
 pub fn tracked_mirror(slug: &str, save_id: &str, tracked: &Path, suggested: &Path) {
@@ -219,10 +220,10 @@ mod tests {
 
     #[test]
     fn the_engine_verdicts_only_count_once_per_run() {
-        // Mismo save mal apuntado, barrido tras barrido: una fila, no mil.
+        // The same misdirected save, sweep after sweep: one row, not a thousand.
         assert!(first_time("no_snapshots|furi|/x".into()));
         assert!(!first_time("no_snapshots|furi|/x".into()));
-        // Otra ruta del mismo juego sí es un dato nuevo.
+        // Another path for the same game is new data.
         assert!(first_time("no_snapshots|furi|/y".into()));
     }
 }

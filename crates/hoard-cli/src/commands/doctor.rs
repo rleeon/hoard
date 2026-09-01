@@ -1,8 +1,8 @@
-//! `hoard doctor` — checks this machine's tracked saves and reports what looks
+//! `hoard doctor`: checks this machine's tracked saves and reports what looks
 //! wrong, with the command that fixes each one.
 //!
-//! Thin wrapper, as usual: the rules live in `hoard_agent::doctor` so the
-//! desktop can show the same findings.
+//! Thin wrapper, as usual: the rules live in `hoard_agent::doctor` so the desktop
+//! can show the same findings.
 
 use anyhow::Result;
 use serde::Serialize;

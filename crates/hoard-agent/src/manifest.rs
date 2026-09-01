@@ -23,7 +23,7 @@ pub enum Os {
 
 impl Os {
     /// The OS we're running on right now. Linux falls into `Linux` even on
-    /// odd Unix targets — we don't pretend to support BSD as a first-class
+    /// odd Unix targets; we don't pretend to support BSD as a first-class
     /// citizen yet.
     pub fn current() -> Self {
         if cfg!(target_os = "windows") {
@@ -91,7 +91,7 @@ pub struct GameManifest {
     #[serde(default)]
     pub manifest_version: Option<String>,
     /// Tagged JSON shape: `{ "windows": [...], "linux": [...], "mac": [...] }`.
-    /// Some hand-added games don't have any paths yet — `Default::default()`
+    /// Some hand-added games don't have any paths yet, so `Default::default()`
     /// keeps callers from having to deal with `null`.
     #[serde(default)]
     pub paths: PathsByOs,

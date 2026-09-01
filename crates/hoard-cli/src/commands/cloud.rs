@@ -1,8 +1,8 @@
-//! `hoard cloud` — cuenta Hoard Cloud desde la terminal. Paridad con lo que el
-//! desktop ofrece en su pantalla de cuenta: export, caja negra (storage /
-//! archive / reactivate), entitlements Pro y recap de playtime. Toda la lógica
-//! vive en [`hoard_agent::cloud_account`]; aquí solo resolvemos la sesión Cloud
-//! e imprimimos.
+//! `hoard cloud`: the Hoard Cloud account from the terminal. Parity with what the
+//! desktop offers on its account screen: export, the black box (storage, archive,
+//! reactivate), Pro entitlements and the playtime recap. All the logic lives in
+//! [`hoard_agent::cloud_account`]; here we only resolve the Cloud session and
+//! print.
 
 use anyhow::{anyhow, bail, Result};
 use clap::Subcommand;
@@ -21,7 +21,7 @@ pub enum CloudCommand {
     ExportStatus,
     /// Archive a game: frees quota now, keeps it downloadable for 7 days
     Archive {
-        /// Save id (UUID) — see `hoard cloud storage`
+        /// Save id (UUID), see `hoard cloud storage`
         save_id: String,
     },
     /// Reactivate an archived game (needs room in the plan, within 7 days)
@@ -29,7 +29,7 @@ pub enum CloudCommand {
         /// Save id (UUID)
         save_id: String,
     },
-    /// Show Pro entitlements: plan + per-feature (screen / wrapple) state
+    /// Show Pro entitlements: plan plus per-feature (screen, wrapple) state
     Entitlements,
     /// Sync + show this account's cross-device playtime recap
     Playtime,
@@ -41,9 +41,9 @@ fn err(e: CloudError) -> anyhow::Error {
 }
 
 pub async fn run(cmd: CloudCommand) -> Result<()> {
-    // El token viene prestado por el servicio (ADR 0021, Slice 4c): la CLI no
-    // rota. Sin servicio se usa el de disco tal cual, y si ya caducó el error lo
-    // dice con la pista de que quien renueva es `hoard sync`.
+    // The token is lent by the service (ADR 0021, Slice 4c): the CLI does not
+    // rotate. With no service the one on disk is used as-is, and if it has already
+    // expired the error says so, with the hint that `hoard sync` is what renews.
     let active = link::resolve_session().await?;
     let Some(sess) = active.cloud else {
         bail!("este comando requiere sesión Hoard Cloud — inicia sesión con `hoard login`");
@@ -152,7 +152,7 @@ pub async fn run(cmd: CloudCommand) -> Result<()> {
                 authoritative: store.is_authoritative(),
                 rows: store.upload_rows(),
             };
-            // Push best-effort; luego lee el agregado multi-equipo del server.
+            // Push best-effort, then read the server's cross-device aggregate.
             let _ = cloud_account::push_playtime(base, "/v1/cloud/playtime", token, &body).await;
             let sum = cloud_account::fetch_playtime(base, "/v1/cloud/playtime", token)
                 .await

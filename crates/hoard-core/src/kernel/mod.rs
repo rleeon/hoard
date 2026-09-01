@@ -1,39 +1,18 @@
-//! # Kernel de dominio sin-IO (ADR 0021, Parte C — Slices 1 y 2)
+//! Sans-IO domain kernel (ADR 0021, part C).
 //!
-//! Este módulo es el kernel que la ADR 0021 (Parte C.0) describe: una función
-//! de dominio **determinista** de `(estado, mundo_observado, now, seed)` que NO
-//! hace IO. Todo lo demás (runtime del daemon, DB, HTTP/reqwest, Axum, Tauri)
-//! son *shells de IO* a su alrededor.
+//! A deterministic function of `(state, observed world, now, seed)` that does no
+//! IO at all. Everything else, the daemon runtime, the DB, HTTP, Axum, Tauri, is
+//! an IO shell wrapped around this.
 //!
-//! Regla dura (guardarraíl D.2): **nada de `Instant::now()`, `thread_rng` ni IO
-//! dentro del kernel.** El instante y la semilla del RNG entran como dato por
-//! [`World`]; el shell los muestrea y los inyecta. El jitter usa
-//! `StdRng::seed_from_u64(world.seed)`, nunca `thread_rng`.
+//! Hard rule (guardrail D.2): no `Instant::now()`, no `thread_rng`, no IO in
+//! here. The instant and the RNG seed arrive as data on [`World`]; the shell
+//! samples them and injects them. Jitter uses `StdRng::seed_from_u64(world.seed)`
+//! and nothing else.
 //!
-//! ## Slice 1 — beachhead (hecho)
-//!
-//! Sembró el vocabulario ([`State`], [`Observation`], [`World`], [`Decision`],
-//! [`Action`]) y movió tras el borde las funciones puras que ya existían:
-//!
-//! - [`session::mid_session_decision`] / [`session::veto_reason`] — el veto "el
-//!   usuario está en sesión".
-//! - [`correlation::accept_correlation_signals`] — filtro anti horas-fantasma.
-//! - [`restore_merge`] — el desempate por mtime del merge conflict-aware.
-//!
-//! ## Slice 2 — invertir la autoridad + sim (este slice)
-//!
-//! Hace crecer esos tipos (journal de hechos de sesión, operaciones en curso,
-//! muestreo por niveles L0/L1, más variantes de [`Action`]) y añade el reductor
-//! reconciliador puro [`reconcile::reconcile`]:
-//!
-//! ```text
-//! reconcile(&State, &Observation, World) -> (State, Vec<Decision>)
-//! ```
-//!
-//! El tick del motor pasará (Slice 2, paso 2) a ser la fuente de verdad: cada
-//! tick muestrea el mundo → construye [`Observation`] → llama a `reconcile` →
-//! ejecuta las [`Decision`]s (`Act` → IO; `Hold` → log del motivo). Los eventos
-//! (fs, realtime) quedan como *hints* que sólo adelantan un tick, nunca deciden.
+//! The engine tick is the source of truth: sample the world, build an
+//! [`Observation`], call [`reconcile::reconcile`], run the [`Decision`]s (`Act`
+//! goes out to IO, `Hold` gets its reason logged). Events from the watcher or
+//! from realtime are hints that pull a tick forward; they never decide anything.
 
 pub mod correlation;
 pub mod fileclass;
@@ -45,381 +24,358 @@ pub mod slots;
 
 use time::OffsetDateTime;
 
-/// El no-determinismo inyectado en el kernel: el instante lógico del tick y la
-/// semilla del RNG. La ADR 0021 (C.2) es tajante: el kernel recibe `now` y
-/// `seed` como entrada y **jamás** llama a `Instant::now()` / `thread_rng`, o
-/// la simulación y el replay dejan de ser deterministas.
+/// The non-determinism injected into the kernel. `now` governs every deadline
+/// (min-interval, cooldown, throttle backoff, the veto grace window); `seed`
+/// feeds the one place with any randomness in it, the jitter on throttle
+/// backoff.
 ///
-/// `now` gobierna todos los deadlines (min-interval, cooldown, backoff de
-/// throttle, ventana de gracia del veto). `seed` alimenta el único punto con
-/// aleatoriedad — el jitter del backoff de throttle — vía
-/// `StdRng::seed_from_u64(seed)`.
+/// ADR 0021 (C.2) is blunt about this: both come in as input, and the kernel
+/// never calls `Instant::now()` or `thread_rng`, or simulation and replay stop
+/// being deterministic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct World {
-    /// Instante lógico de este tick, muestreado por el shell de IO.
     pub now: OffsetDateTime,
-    /// Semilla del RNG para el jitter del backoff de throttle.
     pub seed: u64,
 }
 
-/// Qué operación de IO está en curso para un save (memoria anti-relaunch: sin
-/// esto cada tick relanzaría una subida/bajada de varios GB ya en marcha).
+/// Which IO operation is in flight for a save. This is anti-relaunch memory:
+/// without it every tick would kick off a multi-GB transfer that is already
+/// running.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Op {
-    /// Subida local → nube (backup/push).
     Backup,
-    /// Bajada nube → local (restore/pull).
     Restore,
 }
 
-/// Journal de escalada de fallos de restore, por *versión* cloud (no por save):
-/// una versión nueva es contenido nuevo y una razón fresca para reintentar, así
-/// que resetea la escalada en vez de heredar la penalización de la versión
-/// vieja. Réplica sans-IO de `agent::AutoRestoreFailures`.
+/// Restore failure escalation, keyed by cloud *version* rather than by save: a
+/// new version is new content and a fresh reason to try again, so it resets the
+/// escalation instead of inheriting the old version's penalty. Sans-IO twin of
+/// `agent::AutoRestoreFailures`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct RestoreFailures {
-    /// Fallos consecutivos contra `version`.
     pub consecutive: u32,
-    /// La versión cloud contra la que se cuentan. `None` = desconocida
-    /// (self-hosted, o antes del primer poll).
+    /// `None` means unknown: self-hosted, or before the first poll.
     pub version: Option<i64>,
-    /// Ya se emitió el aviso "stuck" para (este save, `version`).
     pub stuck_notified: bool,
 }
 
-/// La escalada de un backup que choca contra un conflicto **irresoluble**: el
-/// server dice 409 «vas por detrás» y la reconciliación no encuentra nada que
-/// bajar (la cabeza remota se purgó, o retrocedió). Ninguna de las dos partes
-/// puede ceder sola, así que reintentar es repetir la misma pregunta.
+/// Escalation for a backup that runs into an **unresolvable** conflict: the
+/// server says 409 "you are behind" and reconciliation finds nothing to pull.
+/// Neither side can give way on its own, so retrying is asking the same question
+/// over and over.
 ///
-/// Existe porque el shell contestaba a ese caso re-armando el reintento sin
-/// contador ni escalada: 1.701 eventos, 5 usuarios, y un save clavado 14 días a
-/// ~4,5 intentos/h que sobrevivió a tres versiones de la app. El comentario que
-/// había encima decía "surface the conflict rather than risk a loop" y justo
-/// debajo montaba el bucle.
+/// It exists because the shell used to answer that case by re-arming the retry
+/// with no counter and no escalation: 1,701 events, 5 users, one save pinned for
+/// 14 days at roughly 4.5 attempts an hour that outlived three releases of the
+/// app. The comment above it read "surface the conflict rather than risk a loop",
+/// and the code right underneath built the loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ConflictStall {
-    /// Conflictos irresolubles seguidos contra `version`.
     pub consecutive: u32,
-    /// La cabeza de nube contra la que se cuentan. Una versión distinta es
-    /// información nueva —quizá ahora **sí** hay algo que bajar— y resetea la
-    /// escalada entera.
+    /// A different cloud head is new information (maybe now there *is* something
+    /// to pull) and resets the whole escalation.
     pub version: Option<i64>,
-    /// Se agotó el presupuesto: no se reintenta más solo. Sale de aquí por una
-    /// acción del usuario (una copia manual), por un backup con éxito, o porque
-    /// la nube publique otra versión.
+    /// Budget spent, stop retrying on our own. Cleared by a user action such as
+    /// a manual copy, by a backup that succeeds, or by the cloud publishing
+    /// another version.
     ///
-    /// Hace dos trabajos a la vez y a propósito: es la puerta que `decide_backup`
-    /// mira para no volver a emitir la subida, y es el flanco del que el shell
-    /// deriva el aviso de UI (igual que [`RestoreFailures::stuck_notified`], se
-    /// compara antes/después del reductor). Un flag aparte para el aviso podría
-    /// desincronizarse del freno, y entonces la UI diría "atascado" de un save
-    /// que sí sube, o callaría el que no.
+    /// Does two jobs at once, on purpose: it is the gate `decide_backup` checks
+    /// to stop emitting the upload, and it is the edge the shell derives the UI
+    /// warning from (same as [`RestoreFailures::stuck_notified`], compared
+    /// before and after the reducer). A separate flag for the warning could
+    /// drift away from the brake, and then the UI calls a save stuck while it
+    /// uploads happily, or says nothing about one that never will.
     pub needs_attention: bool,
 }
 
-/// Cómo terminó la última operación de IO, reportado por el shell como parte de
-/// la [`Observation`] del tick siguiente. En el modelo invertido la finalización
-/// de una op es una *entrada* del reductor (no un evento que muta estado por su
-/// cuenta): el shell dice "el restore acabó así" y el reductor limpia
-/// `in_flight` y actualiza la contabilidad. Mapea 1:1 a las disposiciones que el
-/// motor ya distinguía (`AutoRestoreDisposition` + `BackupDone`).
+/// How the last IO operation ended, reported by the shell as part of the next
+/// tick's [`Observation`]. With the authority inverted, finishing an op is an
+/// *input* to the reducer rather than an event that mutates state behind its
+/// back: the shell says "the restore ended like this" and the reducer clears
+/// `in_flight` and updates the bookkeeping. Maps 1:1 onto the dispositions the
+/// engine already told apart (`AutoRestoreDisposition` plus `BackupDone`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpResult {
-    /// Terminó sin error. `version`/`fingerprint` son la cabeza a la que
-    /// quedamos sincronizados.
+    /// Finished without error. `version` and `fingerprint` are the head we are
+    /// now synced to.
     ///
-    /// `wrote` es el discriminante **commit vs no-op** (ADR 0021 D.8.2): en un
-    /// backup, `true` = un snapshot nuevo llegó al server; en un restore,
-    /// `true` = se aplicaron ficheros. `false` es el pase no-op — skip por
-    /// firma, carpeta vacía, save archivado, demasiado grande, o "ya
-    /// sincronizado" — y el reductor lo trata distinto: un no-op **no** ancla el
-    /// min-interval (pasarlo como commit es la regresión R.E.P.O.: la siguiente
-    /// subida real se empujaría un intervalo entero y una sesión corta nunca
-    /// volcaría su progreso) ni sella `last_restore_at`.
+    /// `wrote` is the commit-vs-no-op discriminant (ADR 0021 D.8.2): on a backup
+    /// `true` means a new snapshot reached the server, on a restore it means
+    /// files were applied. `false` is the no-op pass, skipped by signature, empty
+    /// folder, archived save, too large, or already in sync, and the reducer
+    /// treats it differently. A no-op does **not** anchor the min-interval
+    /// (passing it off as a commit is the R.E.P.O. regression: the next real
+    /// upload gets pushed out by a whole interval and a short session never
+    /// flushes its progress) and does not stamp `last_restore_at`.
     ///
-    /// Un backup no-op **con** `version` es el caso especial del 409
-    /// non-fast-forward asentado a la cabeza remota: no hubo commit, pero el
-    /// merge escribió en la carpeta como un restore, así que el reductor sí
-    /// sella `last_restore_at` ahí.
+    /// A no-op backup *with* a `version` is the special case of the 409
+    /// non-fast-forward that settled onto the remote head: nothing was committed,
+    /// but the merge wrote into the folder the way a restore does, so the reducer
+    /// does stamp `last_restore_at` there.
     Ok {
         version: Option<i64>,
         fingerprint: Option<u64>,
         wrote: bool,
     },
-    /// 404: el save no existe en el backend. No cuenta como fallo (reintentar no
-    /// invoca un snapshot que no está); se aparca en el backoff largo.
+    /// 404, the save is not on the backend. Not a failure (retrying will not
+    /// conjure a snapshot that is not there); parked on the long backoff.
     NotFound,
-    /// 401: sesión caducada, no es culpa del save. Ni escala ni resetea el
-    /// contador; cooldown corto para reintentar en cuanto refresque el token.
+    /// 401, expired session, not the save's fault. Neither escalates nor resets
+    /// the counter; short cooldown so it retries as soon as the token refreshes.
     Unauthorized,
-    /// 429: límite de ancho de banda. Como 401 **no** toca el contador de fallos
-    /// (contar un throttle como "stuck" era justo el bug del spam). Simétrico
-    /// backup/restore.
+    /// 429, bandwidth limit. Like 401 it leaves the failure counter alone
+    /// (counting a throttle as "stuck" was exactly the notification spam bug).
+    /// Symmetric between backup and restore.
     Throttled { retry_after_secs: u32 },
-    /// 402: la **cuenta** no tiene sitio. A diferencia del 429 no hay ventana
-    /// que espere sola: hasta que el usuario libere o suba de plan, cualquier
-    /// subida choca igual. Aparca la subida en un reposo largo
-    /// ([`reconcile::QUOTA_FULL_BACKOFF_SECS`]) conservando `has_pending` —los
-    /// bytes siguen sólo en disco, y limpiarlo dejaría que un restore los
-    /// pisara— y **no** toca el contador de fallos: la cuenta llena no es un
-    /// save roto.
+    /// 402, the **account** is out of room. Unlike a 429 there is no window that
+    /// waits it out on its own: until the user frees space or upgrades, every
+    /// upload hits the same wall. Parks the upload on a long rest
+    /// ([`reconcile::QUOTA_FULL_BACKOFF_SECS`]) while keeping `has_pending`,
+    /// since the bytes still live only on disk and clearing it would let a
+    /// restore walk over them. Leaves the failure counter alone too: a full
+    /// account is not a broken save.
     QuotaFull,
-    /// 409 **sin salida**: el server dice que vamos por detrás y la
-    /// reconciliación no encuentra nada que bajar. Distinto de [`Self::Failed`]
-    /// porque el remedio es distinto: un fallo normal se cura solo con tiempo
-    /// (vuelve la red, arranca el server) y merece un backoff plano; esto no se
-    /// cura con tiempo ninguno, así que escala por [`ConflictStall`] y a partir
-    /// de [`reconcile::CONFLICT_STALL_GIVE_UP_AFTER`] deja de reintentar y pide
-    /// una persona. Como [`Self::Failed`] en una subida, **conserva**
-    /// `has_pending`: los cambios siguen sin versionar.
+    /// 409 with **no way out**: the server says we are behind and reconciliation
+    /// finds nothing to pull. Different from [`Self::Failed`] because the cure is
+    /// different. An ordinary failure heals with time (the network comes back,
+    /// the server boots) and deserves a flat backoff; this one heals with no
+    /// amount of time, so it escalates through [`ConflictStall`] and past
+    /// [`reconcile::CONFLICT_STALL_GIVE_UP_AFTER`] it stops retrying and asks for
+    /// a human. Like [`Self::Failed`] on an upload it keeps `has_pending`: the
+    /// changes are still unversioned.
     ConflictStalled,
-    /// Cualquier otro error (red, sha, permisos, timeout), tras agotar los
-    /// reintentos internos del ejecutor. Su efecto depende de la op en vuelo: en
-    /// una **bajada** escala el contador de fallos por versión cloud y el
-    /// backoff de restore; en una **subida** re-arma el intento en el backoff
-    /// largo ([`reconcile::BACKUP_FAILURE_BACKOFF_SECS`]) conservando
-    /// `has_pending` — los cambios nunca llegaron a una versión, y limpiarlos
-    /// dejaría que un restore los pisara.
+    /// Anything else (network, sha, permissions, timeout) once the executor has
+    /// burned its internal retries. What it does depends on the op in flight. On
+    /// a **download** it escalates the per-cloud-version failure counter and the
+    /// restore backoff. On an **upload** it re-arms the attempt on the long
+    /// backoff ([`reconcile::BACKUP_FAILURE_BACKOFF_SECS`]) and keeps
+    /// `has_pending`, because the changes never made it into a version and
+    /// dropping them would let a restore overwrite them.
     Failed,
 }
 
-/// La memoria durable propia del kernel (el "spec/status" de la ADR C.1): lo
-/// que el reconciliador recuerda y que **no** se reconstruye mirando la realidad
-/// actual. Distinta del mundo muestreado ([`Observation`]).
+/// The kernel's own durable memory (the "spec/status" of ADR C.1): what the
+/// reconciler remembers and cannot rebuild by looking at the world as it is now.
+/// Distinct from the sampled world, which is [`Observation`].
 ///
-/// Contiene: la política resuelta del save (spec), el status de sesión viva
-/// (durable con stickiness cross-tick), el journal de hechos de sesión
-/// (pull diferido), las operaciones en curso (anti-relaunch) y los deadlines de
-/// ritmo (min-interval, cooldown, backoff) — todos comparados contra `world.now`
-/// para ser sans-IO.
+/// Holds the save's resolved policy, live session status (durable, sticky across
+/// ticks), the deferred-pull journal, the operation in flight, and the pacing
+/// deadlines. Every deadline is compared against `world.now` to stay sans-IO.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct State {
-    // ---- Política resuelta (spec) --------------------------------------
-    /// Entrada playtime-only: no tiene carpeta que sincronizar.
+    // ---- resolved policy
+    /// Playtime-only entry: there is no folder to sync.
     pub track_only: bool,
-    /// El restore está habilitado para este save (default global o preset).
     pub restore_enabled: bool,
-    /// Suelo de intervalo entre backups con commit (ADR 0018, eje A). `0` = sin
-    /// suelo. Se mide desde [`Self::last_backup_at`] —que sólo avanza con un
-    /// commit real— así que un pase no-op no puede empujar el suelo.
+    /// Floor between committing backups (ADR 0018, axis A). `0` means no floor.
+    /// Measured from [`Self::last_backup_at`], which only advances on a real
+    /// commit, so a no-op pass cannot push the floor out.
     pub min_backup_interval_secs: u64,
 
-    // ---- Status de sesión viva (durable cross-tick) --------------------
-    /// El proceso del juego está corriendo (con stickiness: sigue `true`
-    /// durante la ventana de gracia tras dejar de verse, ver
-    /// [`reconcile::RUNNING_STICKY_GRACE_SECS`]).
+    // ---- live session status, durable across ticks
+    /// The game process is running. Sticky: stays `true` through the grace
+    /// window after it stops being visible, see
+    /// [`reconcile::RUNNING_STICKY_GRACE_SECS`].
     pub is_running: bool,
-    /// Última vez que se vio el proceso vivo (ancla de la stickiness).
+    /// Last time the process was seen alive; the anchor for that stickiness.
     pub last_running_seen: Option<OffsetDateTime>,
-    /// Hay cambios locales sin versionar (encolados para backup).
     pub has_pending: bool,
-    /// Última vez que el watcher vio una escritura en la carpeta.
     pub last_fs_event_at: Option<OffsetDateTime>,
-    /// Última vez que ESTE dispositivo restauró en la carpeta (su propio toque,
-    /// que no debe vetar el siguiente pull).
+    /// Last time *this* device restored into the folder. Its own touch, which
+    /// must not veto the next pull.
     pub last_restore_at: Option<OffsetDateTime>,
 
-    // ---- Contabilidad de sync ------------------------------------------
-    /// Versión cloud a la que este dispositivo está sincronizado. `None` hasta
-    /// el primer commit/restore.
+    // ---- sync bookkeeping
+    /// Cloud version this device is synced to. `None` until the first commit or
+    /// restore.
     pub known_version: Option<i64>,
-    /// Fingerprint del contenido local ya sincronizado (subido o bajado). Su
-    /// igualdad con el fingerprint observado es lo que hace "convergido ⇒ 0
-    /// acciones": mata el hot-loop de compresión.
+    /// Fingerprint of the local content already synced, uploaded or downloaded.
+    /// Matching it against the observed fingerprint is what makes "converged
+    /// means zero actions" true, and that is what killed the compression hot
+    /// loop.
     pub synced_fingerprint: Option<u64>,
-    /// Último backup con commit real: **el ancla del min-interval**. Sólo lo
-    /// mueve un `OpResult::Ok { wrote: true }` — un no-op moviéndolo empujaría la
-    /// siguiente subida real un intervalo entero (regresión R.E.P.O.).
+    /// Last backup that actually committed, and the anchor of the min-interval.
+    /// Only an `OpResult::Ok { wrote: true }` moves it; letting a no-op move it
+    /// would push the next real upload out by a whole interval (the R.E.P.O.
+    /// regression).
     pub last_backup_at: Option<OffsetDateTime>,
-    /// Comienzo de la ventana en la que se cuentan los commits de este save, y
-    /// cuántos van dentro. Es la memoria del suelo adaptativo: sin preset que
-    /// fije un intervalo, un save tranquilo sube en cuanto asienta el debounce,
-    /// y uno cuyo juego reescribe el autoguardado cada pocos segundos se agrupa.
+    /// Start of the window this save's commits are counted in, and how many have
+    /// landed inside it. This is the memory behind the adaptive floor: with no
+    /// preset pinning an interval, a quiet save uploads as soon as the debounce
+    /// settles, and one whose game rewrites its autosave every few seconds gets
+    /// batched.
     ///
-    /// Existe porque un suelo fijo para todos ya se probó y hubo que quitarlo:
-    /// era invisible y se leía como "no detecta mis cambios". Éste sólo aparece
-    /// cuando el propio save demuestra que hace falta.
+    /// It exists because a fixed floor for everyone was tried and had to come
+    /// out: it was invisible and read as "it isn't noticing my changes". This one
+    /// only shows up once the save itself proves it is needed.
     pub burst_since: Option<OffsetDateTime>,
     pub burst_backups: u32,
 
-    // ---- Operación en curso (anti-relaunch) ----------------------------
-    /// Hay un backup/restore en vuelo; el tick no debe relanzarlo. Se limpia al
-    /// ingerir el [`OpResult`] correspondiente.
+    // ---- operation in flight (anti-relaunch)
+    /// A backup or restore is running; the tick must not launch it again.
+    /// Cleared when the matching [`OpResult`] is ingested.
     pub in_flight: Option<Op>,
 
-    // ---- Deadlines de ritmo (sans-IO: contra `world.now`) --------------
-    /// Antes de este instante no se lanza otro backup por **backoff de error**:
-    /// throttle 429 de subida, o reintentos de subida agotados. `None` = sin
-    /// freno. El suelo de min-interval **no** vive aquí: se deriva de
-    /// [`Self::last_backup_at`] + [`Self::min_backup_interval_secs`], para poder
-    /// distinguir el pacing de ahorro (que un flush cross-device puede saltarse)
-    /// del backoff de error (que jamás).
+    // ---- pacing deadlines, compared against world.now
+    /// No backup starts before this instant, because of an **error** backoff: a
+    /// 429 on upload, or exhausted upload retries. `None` means no brake. The
+    /// min-interval floor deliberately does not live here, it derives from
+    /// [`Self::last_backup_at`] plus [`Self::min_backup_interval_secs`], so that
+    /// saver pacing (which a cross-device flush may skip) stays distinguishable
+    /// from an error backoff (which it never may).
     pub next_backup_at: Option<OffsetDateTime>,
-    /// Antes de este instante no se lanza otro restore (cooldown / backoff de
-    /// fallo / backoff de throttle de bajada). `None` = sin freno.
+    /// No restore starts before this instant: cooldown, failure backoff or
+    /// download throttle backoff. `None` means no brake.
     pub next_restore_at: Option<OffsetDateTime>,
 
-    // ---- Journal de pull diferido --------------------------------------
-    /// Una actualización cross-device espera pero un pull se vetó mid-session.
-    /// Sobrevive al veto y aterriza al cerrarse el juego (bug del Deck).
+    // ---- deferred pull journal
+    /// A cross-device update is waiting but a pull was vetoed mid-session. It
+    /// survives the veto and lands when the game closes (the Deck bug).
     pub pull_pending: bool,
-    /// Ya se avisó al usuario de este pull en espera. De-duplica **sólo la
-    /// notificación de UI** (una por actualización, no una por tick); jamás la
-    /// acción: guardar una acción en un flag de flanco dentro de un reductor
-    /// level-triggered fue justo el deadlock de D.8.1.
+    /// The user has already been told about this waiting pull. De-duplicates
+    /// **only the UI notification**, one per update rather than one per tick, and
+    /// never the action itself: storing an action in an edge flag inside a
+    /// level-triggered reducer is precisely the D.8.1 deadlock.
     pub deferred_notified: bool,
 
-    // ---- Escalada de fallos de restore ---------------------------------
+    // ---- failure escalation
     pub restore_failures: RestoreFailures,
-
-    // ---- Escalada de conflictos de subida irresolubles -------------------
-    /// Contador + escalada del 409 que la reconciliación no puede resolver. Es
-    /// el freno que impide que ese caso reintente para siempre.
+    /// Counter and escalation for the 409 reconciliation cannot resolve. The
+    /// brake that stops that case retrying forever.
     pub backup_conflict: ConflictStall,
 }
 
-/// El mundo muestreado este tick (ADR C.1): datos leídos del disco/SO/servidor
-/// por el shell y pasados como dato al kernel. Observación **por niveles**:
+/// The world as sampled this tick (ADR C.1): what the shell read off the disk,
+/// the OS and the server, handed to the kernel as plain data. Observation is
+/// **tiered**:
 ///
-/// - **L0** (barato, cada tick): `folder_mtime`, `folder_size`, `local_empty`.
-/// - **L1** (sólo con señal — L0 cambió o un hint enfocó el save):
-///   `local_fingerprint` (hash del set local). Nunca re-hashear todo cada tick.
-/// - **Evidencia de proceso**: `process_alive` (¿el proceso del juego está vivo
-///   este tick?).
-/// - **Cabeza del server**: `cloud_version` (última versión cloud del save),
-///   que el shell del motor consulta él mismo cada intervalo — el poller del
-///   cliente es un *hint* de latencia, no la fuente única (ADR 0021 D.12).
-/// - **Señales puntuales**: `fs_event` (llegó una escritura debounced),
-///   `op_result` (una op terminó), `upload_landed` (check content-addressed).
+/// - **L0**, cheap, every tick: `folder_mtime`, `folder_size`, `local_empty`.
+/// - **L1**, only when there is a signal (L0 moved, or a hint pointed at this
+///   save): `local_fingerprint`, the hash of the local set. Never re-hash
+///   everything every tick.
+/// - **Process evidence**: is the game's process alive this tick?
+/// - **Server head**: `cloud_version`, which the engine shell polls itself on an
+///   interval. The client-side poller is a latency hint, not the only source
+///   (ADR 0021 D.12).
+/// - **One-shot signals**: `fs_event`, `op_result`, `upload_landed`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Observation {
-    // ---- L0 ------------------------------------------------------------
-    /// mtime **propio** de la carpeta del save (su inodo, `metadata(path)`, no
-    /// recursivo), o `None` si no se pudo leer.
+    // ---- L0
+    /// The save folder's **own** mtime (its inode, `metadata(path)`, not
+    /// recursive), or `None` if it could not be read.
     pub folder_mtime: Option<OffsetDateTime>,
-    /// Tamaño agregado L0 de la carpeta (barato), o `None`.
     pub folder_size: Option<u64>,
-    /// La carpeta local está vacía o no existe (dispara restore-en-vacío).
+    /// The local folder is empty or missing, which triggers restore-into-empty.
     pub local_empty: bool,
 
-    // ---- L1 (sólo con señal) -------------------------------------------
-    /// Fingerprint del contenido local, calculado sólo cuando L0 cambió o un
-    /// hint enfocó este save. `None` = no se hasheó este tick.
+    // ---- L1, only on a signal
+    /// Hash of the local content, computed only when L0 moved or a hint pointed
+    /// at this save. `None` means nothing was hashed this tick.
     pub local_fingerprint: Option<u64>,
 
-    // ---- Evidencia de proceso ------------------------------------------
-    /// El proceso del juego está vivo en la tabla de procesos este tick.
+    // ---- process evidence
     pub process_alive: bool,
-    /// Algún fichero del save está **abierto en exclusiva por otro proceso**:
-    /// el juego está escribiendo AHORA MISMO.
+    /// Some file in the save is **held open exclusively by another process**:
+    /// the game is writing right now.
     ///
-    /// Señal independiente de la tabla de procesos, y por eso vale: no depende
-    /// de reconocer el ejecutable, así que cubre el juego cuyo nombre no casa
-    /// con nada y cuya correlación aún no existe. Copiar la carpeta en ese
-    /// momento captura un save a medio escribir; restaurar encima es peor.
+    /// This is independent of the process table, and that is what makes it worth
+    /// having: it does not depend on recognising the executable, so it covers
+    /// the game whose name matches nothing and whose correlation does not exist
+    /// yet. Copying the folder at that moment captures a half-written save;
+    /// restoring over it is worse.
     ///
-    /// Hoy sólo la puede afirmar Windows (`ERROR_SHARING_VIOLATION`); en
-    /// Linux/macOS un `open()` de lectura nunca falla porque otro proceso
-    /// escriba, así que llega `false` y mandan los guards de siempre. Ver
+    /// Only Windows can assert it today (`ERROR_SHARING_VIOLATION`). On Linux and
+    /// macOS a read `open()` never fails just because another process is
+    /// writing, so this arrives `false` and the usual guards decide. See
     /// `hoard_agent::locks`.
     pub save_files_locked: bool,
 
-    // ---- Cabeza del server ---------------------------------------------
-    /// Última versión cloud conocida para este save. `None` = desconocida
-    /// (self-hosted sin poller, o antes del primer poll).
+    // ---- server head
+    /// Latest cloud version known for this save. `None` means unknown:
+    /// self-hosted without a poller, or before the first poll.
     pub cloud_version: Option<i64>,
-    /// **Desde cuándo** [`Self::cloud_version`] es la verdad: el instante del
-    /// último feed del poller de nube. Sin esta marca el kernel no puede
-    /// distinguir "convergido" de "ciego" —las dos cosas se ven como
-    /// `Hold{"converged"}`— y un poller muerto se disfraza de normalidad
-    /// (ADR 0021 D.10: el poller enmudeció y 47 min sin noticias parecieron
-    /// sanos). Cuando envejece más de
-    /// [`reconcile::CLOUD_STALE_AFTER_SECS`] el reductor lo dice en voz alta.
+    /// **Since when** [`Self::cloud_version`] has been the truth: the instant of
+    /// the last cloud poller feed. Without this stamp the kernel cannot tell
+    /// "converged" from "blind", since both look like `Hold{"converged"}`, and a
+    /// dead poller passes for normality. That is ADR 0021 D.10: the poller went
+    /// quiet and 47 minutes of silence looked healthy. Once it ages past
+    /// [`reconcile::CLOUD_STALE_AFTER_SECS`] the reducer says so out loud.
     ///
-    /// `None` = **todavía no ha llegado ningún feed**. Por sí solo no se
-    /// interpreta: lo que decide si eso es normalidad o ceguera es
-    /// [`Self::cloud_feed_expected_since`]. Es una marca de *feed*, no de save:
-    /// el poller trae el manifest entero, así que un save ausente del manifest
-    /// tiene `cloud_version: None` pero la marca del feed igual de fresca.
+    /// `None` means **no feed has arrived yet**, and on its own it means nothing.
+    /// What decides whether that is normality or blindness is
+    /// [`Self::cloud_feed_expected_since`]. It stamps the *feed*, not the save:
+    /// the poller brings the whole manifest, so a save missing from the manifest
+    /// has `cloud_version: None` with the feed stamp just as fresh.
     pub cloud_version_as_of: Option<OffsetDateTime>,
-    /// Desde cuándo este despliegue **espera** cabezas de nube: el instante en
-    /// que el motor empezó a observarla. `None` = no hay nube que observar
-    /// (self-hosted, daemon CLI headless, o contexto aún sin resolver), y
-    /// entonces no hay feed que envejecer.
+    /// Since when this deployment **expects** cloud heads at all: the instant the
+    /// engine started watching. `None` means there is no cloud to watch
+    /// (self-hosted, a headless CLI daemon, or a context not resolved yet), and
+    /// then there is no feed to go stale.
     ///
-    /// Existe por el remate pendiente de ADR 0021 D.11: con sólo
-    /// [`Self::cloud_version_as_of`] la ceguera **más grave** —"nunca supe nada
-    /// de la nube"— era indistinguible del despliegue que legítimamente no tiene
-    /// feed, así que un `None` se colaba como `converged`. La distinción
-    /// correcta no es `None` vs `Some`, es *contexto cloud vs self-hosted*: con
-    /// contexto cloud y sin marca, la obsolescencia se mide desde aquí (el
-    /// margen de arranque), y pasado [`reconcile::CLOUD_STALE_AFTER_SECS`] se
-    /// dice en voz alta igual que un feed rancio.
+    /// It exists because of the loose end in ADR 0021 D.11: with only
+    /// [`Self::cloud_version_as_of`], the worst blindness of all, "I have never
+    /// heard anything from the cloud", was indistinguishable from a deployment
+    /// that legitimately has no feed, so a `None` slipped through as `converged`.
+    /// The right distinction is not `None` versus `Some`, it is cloud context
+    /// versus self-hosted: with a cloud context and no stamp, staleness is
+    /// measured from here (the startup allowance), and past
+    /// [`reconcile::CLOUD_STALE_AFTER_SECS`] it gets called out like any stale
+    /// feed.
     pub cloud_feed_expected_since: Option<OffsetDateTime>,
 
-    // ---- Señales puntuales ---------------------------------------------
-    /// Llegó una escritura debounced en la carpeta este tick (hint que adelanta
-    /// el tick; marca `has_pending`).
+    // ---- one-shot signals
+    /// A debounced write landed in the folder this tick. A hint that pulls the
+    /// tick forward and marks `has_pending`.
     pub fs_event: bool,
-    /// Una operación en vuelo terminó (ver [`OpResult`]).
     pub op_result: Option<OpResult>,
-    /// Resultado del check content-addressed anti-relaunch: `Some(true)` = el
-    /// contenido de la subida en curso ya aterrizó en el server (existe en
-    /// `blobs`/`chunks`), así que no hay que re-subir. `None` = no comprobado.
+    /// Result of the content-addressed anti-relaunch check. `Some(true)` means
+    /// the content of the upload in flight already landed on the server (it
+    /// exists in `blobs`/`chunks`), so there is nothing to re-upload. `None`
+    /// means it was not checked.
     pub upload_landed: Option<bool>,
 }
 
-/// Una acción que el kernel pide ejecutar al shell de IO. Sembrada en el Slice 1
-/// con [`Action::Pull`]; el Slice 2 la hace crecer con las demás. Pierde el
-/// derive `Copy` (D.6: al ganar payload —`Throttle` lleva deadline— se suelta el
-/// `Copy` sin pelear al compilador).
+/// Something the kernel asks the IO shell to do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    /// Permiso de pull emitido por el sub-decisor del veto de sesión
-    /// ([`session::mid_session_decision`]): "el slot está tranquilo, un pull
-    /// PUEDE proceder". Es la salida del *sub*-decisor del veto, no un comando
-    /// de alto nivel — el reconciliador de alto nivel usa [`Action::Restore`].
+    /// Pull permission from the session-veto sub-decider
+    /// ([`session::mid_session_decision`]): "the slot is quiet, a pull *may*
+    /// proceed". It is that sub-decider's output, not a high-level command; the
+    /// high-level reconciler uses [`Action::Restore`].
     Pull,
-    /// Subir los cambios locales a la nube (backup/push).
     Backup,
-    /// Ejecutar un restore ahora (nube → local, conflict-aware).
     Restore,
-    /// Registrar que un pull cross-device espera pero estamos mid-session; se
-    /// ejecuta al cerrarse el juego. El shell además avisa al usuario ("update
-    /// en cola") una sola vez.
+    /// Record that a cross-device pull is waiting while we are mid-session; it
+    /// runs when the game closes. The shell also tells the user once that an
+    /// update is queued.
     DeferPull,
-    /// Backoff de throttle tras un 429: el shell no reintenta la op hasta
-    /// `until`. Simétrico backup/restore; el deadline vive también en
+    /// Throttle backoff after a 429: the shell does not retry the op until
+    /// `until`. Symmetric between backup and restore; the deadline also lives in
     /// [`State::next_backup_at`] / [`State::next_restore_at`].
     Throttle { until: OffsetDateTime },
 }
 
-/// La decisión de primera clase del kernel (ADR C.5): o se **actúa** o se
-/// **retiene** con un motivo explícito. El veto deja de vivir en el "no hacer
-/// nada" y pasa a ser un `Hold` con motivo, chequeable y logueable.
+/// The kernel's first-class decision (ADR C.5): either act, or hold with an
+/// explicit reason. The veto stops living inside "did nothing" and becomes a
+/// `Hold` with a reason you can assert on and log.
 ///
-/// El motivo es `&'static str`: el único dato dinámico que un `Hold` podría
-/// querer (el "hasta {t}" del throttle) vive en [`State::next_restore_at`] /
-/// [`State::next_backup_at`] —su hogar natural, la memoria de ritmo durable— y
-/// en la [`Action::Throttle`], no en el motivo. Así se cumple la condición de
-/// D.6 ("`HoldReason` sólo *si* algún motivo necesita dato dinámico") sin
-/// romper los tests de sesión del Slice 1, que casan contra estos strings.
+/// The reason is a `&'static str` on purpose. The one dynamic thing a `Hold`
+/// might want, the "until {t}" of a throttle, lives in
+/// [`State::next_restore_at`] / [`State::next_backup_at`], its natural home in
+/// the durable pacing memory, and in [`Action::Throttle`]. That satisfies D.6
+/// ("a `HoldReason` type only *if* some reason needs dynamic data") without
+/// breaking the Slice 1 session tests, which match against these strings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
-    /// Ejecutar la acción.
     Act(Action),
-    /// No actuar; `reason` es el motivo (chequeable y logueable).
     Hold { reason: &'static str },
 }
 
 impl Decision {
-    /// ¿Es esta decisión un `Act`? Azúcar para los invariantes.
     pub fn is_act(&self) -> bool {
         matches!(self, Decision::Act(_))
     }
 
-    /// La [`Action`] si es un `Act`, `None` si es `Hold`.
     pub fn action(&self) -> Option<&Action> {
         match self {
             Decision::Act(a) => Some(a),

@@ -1,11 +1,11 @@
-//! `hoard doctor` — the deterministic half of "is anything wrong with my
+//! `hoard doctor`: the deterministic half of "is anything wrong with my
 //! saves?".
 //!
 //! Every rule here fires on a mistake we have actually shipped into someone's
 //! machine: a save pointing at a game's install directory instead of its save
 //! folder, a tracked folder that is really a backup mirror, a row named after
-//! an installer. They are heuristics over data the engine already holds — no
-//! model, no key, no network — and each one carries the command that fixes it,
+//! an installer. They are heuristics over data the engine already holds, with no
+//! model, no key and no network, and each one carries the command that fixes it,
 //! so a caller (the desktop, the CLI, or an assistant driving the CLI) proposes
 //! rather than guesses.
 //!
@@ -43,7 +43,7 @@ pub enum FindingCode {
     /// The tracked folder is gone (uninstalled game, unmounted drive, moved
     /// install).
     MissingFolder,
-    /// Tracked, exists, and holds nothing — there is no save here to upload.
+    /// Tracked, exists, and holds nothing: there is no save here to upload.
     EmptyFolder,
     /// The folder is a backup copy of another one, by name (`Saves.bak`).
     BackupSuffix,
@@ -54,7 +54,7 @@ pub enum FindingCode {
     /// data folder).
     DangerousRoot,
     /// Detection knows a different folder for this game than the one being
-    /// tracked — the shape of the install-dir mistrack.
+    /// tracked: the shape of the install-dir mistrack.
     AlternatePathKnown,
 }
 
@@ -66,7 +66,7 @@ pub struct Finding {
     pub label: String,
     pub code: FindingCode,
     pub severity: Severity,
-    /// The user put this folder here by hand — a manual path override, or a
+    /// The user put this folder here by hand: a manual path override, or a
     /// numbered slot they created. Deliberate oddities still get reported, but
     /// they are reported as theirs: "you set this up this way" reads very
     /// differently from "this is broken", and only one of them is true.
@@ -78,7 +78,7 @@ pub struct Finding {
     /// A better folder, when a rule found one.
     pub suggested_path: Option<String>,
     /// The exact command that would act on this, ready to run after the user
-    /// approves it. Spelled out so a caller never has to assemble one — an
+    /// approves it. Spelled out so a caller never has to assemble one, since an
     /// invented `save_id` or a wrong flag is how a diagnosis becomes damage.
     pub command: String,
 }
@@ -166,8 +166,8 @@ pub fn diagnose_with(
                 Some(v) => (
                     format!(
                         "The folder is empty now, but this save has {v} stored \
-                         version(s). The game may be uninstalled or the files moved \
-                         — the cloud copy is currently the only one."
+                         version(s). The game may be uninstalled or the files moved; \
+                         the cloud copy is currently the only one."
                     ),
                     format!("hoard restore {save_id} --dry-run"),
                 ),
@@ -219,14 +219,14 @@ pub fn diagnose_with(
         //
         // Narrow on purpose, because the first version of this rule told a real
         // user to repoint a 454 MB Factorio save with 284 versions at a Steam
-        // emulator's `remote/` folder — advice that would have pointed the
+        // emulator's `remote/` folder, advice that would have pointed the
         // history at the wrong files. Two guards:
         //
         // - A save that has uploaded a version is watching files the game
         //   really writes. Whatever else detection found, this folder works.
         // - Several rows for one game are deliberate slots (the number lives in
         //   the label), and each one's "different folder" is just its sibling.
-        // Whether this row is one of several the user keeps for one game — the
+        // Whether this row is one of several the user keeps for one game: the
         // saves in one, the config or a debug folder in another.
         let sibling_slots = state
             .saves
@@ -262,7 +262,7 @@ pub fn diagnose_with(
                         Severity::Notice,
                         format!(
                             "Detection also found {} for {}, which is not the tracked \
-                             folder — but {why}, so this is probably how you want it.",
+                             folder, but {why}, so this is probably how you want it.",
                             other.display(),
                             s.game_slug
                         ),
@@ -402,8 +402,8 @@ mod tests {
         assert!(codes.contains(&FindingCode::BackupSuffix));
     }
 
-    /// Two saves for one game are deliberate slots — one for the saves, one
-    /// for the config or a debug folder — and the number lives in the label.
+    /// Two saves for one game are deliberate slots, one for the saves and one
+    /// for the config or a debug folder, and the number lives in the label.
     /// Each one's "detection knows another folder" is just its sibling, so the
     /// rule has to stay quiet.
     #[test]

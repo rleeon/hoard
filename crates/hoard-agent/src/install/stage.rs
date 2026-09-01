@@ -1,26 +1,25 @@
-//! **Bajar antes de decidir, aplicar todo de una vez.**
+//! Download before deciding, apply all at once.
 //!
-//! [`super::auto`] decide *qué* toca; esto lo hace. Son dos operaciones y la
-//! separación no es cosmética:
+//! [`super::auto`] decides *what* is needed; this does it. Two operations, and
+//! the split is not cosmetic:
 //!
-//! - [`stage`] baja y verifica los ficheros de una versión en un directorio
-//!   aparte. No toca nada instalado, así que puede correr con un juego abierto,
-//!   con la app cerrada, y fallar a medias sin consecuencias.
-//! - [`apply`] los pone en su sitio. Es la parte corta —renombrar dos binarios,
-//!   o correr un instalador— y es la única que necesita que el momento sea
-//!   bueno.
+//! - [`stage`] downloads and verifies a version's files into a directory of their
+//!   own. It touches nothing installed, so it can run with a game open, with the
+//!   app closed, and fail halfway with no consequences.
+//! - [`apply`] puts them in place. That is the short part, renaming two binaries
+//!   or running an installer, and the only one that needs the moment to be right.
 //!
-//! Partirlo así es lo que convierte "actualizar al abrir" en algo que se puede
-//! prometer: al abrir ya no queda descarga, queda un `rename`. Es lo mismo que
-//! hacen Steam y Discord, y por el mismo motivo.
+//! Splitting it that way is what makes "update when you open it" something that
+//! can be promised: by the time you open it there is no download left, only a
+//! `rename`. It is what Steam and Discord do, for the same reason.
 //!
-//! ## Una versión, un directorio
+//! ## One version, one directory
 //!
-//! Lo bajado vive en `<cache>/staged/<versión>/`. Con la versión en la ruta, un
-//! reinicio del servicio en mitad de una descarga no deja ficheros de dos
-//! releases mezclados en la misma carpeta, y [`sweep`] puede borrar lo viejo sin
-//! mirar dentro. Cada fichero se comprueba contra la clave de release **antes**
-//! de escribirse, así que en `staged/` no hay nada sin firmar.
+//! What has been downloaded lives in `<cache>/staged/<version>/`. With the version
+//! in the path, a service restart halfway through a download leaves no files from
+//! two releases mixed in one folder, and [`sweep`] can delete the old without
+//! looking inside. Every file is checked against the release key before it is
+//! written, so nothing unsigned ever sits in `staged/`.
 
 use std::path::{Path, PathBuf};
 
@@ -29,36 +28,36 @@ use anyhow::{bail, Context, Result};
 use super::fetch;
 use super::{Component, Delivery, Manifest};
 
-/// Dónde se guarda lo bajado de una versión.
+/// Where a version's downloads are kept.
 pub fn dir(version: &str) -> Result<PathBuf> {
     Ok(crate::config::CliConfig::cache_dir()?
         .join("staged")
         .join(version.trim_start_matches('v')))
 }
 
-/// Los ficheros de una versión, ya en disco y ya verificados.
+/// A version's files, on disk and already verified.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Staged {
     pub version: String,
-    /// El tarball del núcleo. `None` cuando el núcleo no es nuestro (viaja
-    /// dentro del bundle de la app, que lo releva su instalador).
+    /// The core tarball. `None` when the core is not ours (it travels inside the
+    /// app bundle, whose installer relieves it).
     pub core: Option<PathBuf>,
-    /// El instalador de la app. `None` en una máquina sin app.
+    /// The app installer. `None` on a machine with no app.
     pub desktop: Option<PathBuf>,
 }
 
 impl Staged {
-    /// ¿Hay algo que aplicar? Un `Staged` vacío significa que esta instalación
-    /// no tiene ninguna pieza nuestra, y aplicarlo sería subir el número de
-    /// versión del manifiesto sin haber tocado un solo binario.
+    /// Is there anything to apply? An empty `Staged` means this install has none
+    /// of our pieces, and applying it would bump the manifest's version number
+    /// without a single binary having been touched.
     pub fn is_empty(&self) -> bool {
         self.core.is_none() && self.desktop.is_none()
     }
 }
 
-/// Qué ficheros necesita esta instalación para pasar a `version`.
+/// Which files this install needs in order to move to `version`.
 fn wanted(version: &str, manifest: &Manifest) -> Result<(bool, Option<Delivery>)> {
-    // El núcleo se releva por nuestra cuenta salvo que lo traiga el bundle.
+    // We relieve the core ourselves unless the bundle brings it.
     let core = !manifest.core_from_bundle;
     let desktop = if manifest.has(Component::Desktop) {
         let d = manifest
@@ -80,11 +79,11 @@ fn wanted(version: &str, manifest: &Manifest) -> Result<(bool, Option<Delivery>)
     Ok((core, desktop))
 }
 
-/// Lo que ya está bajado para `version`, si está **entero**.
+/// What is already downloaded for `version`, if it is complete.
 ///
-/// Entero importa: una descarga cortada a la mitad deja el tarball del núcleo y
-/// no el instalador de la app, y darla por buena aplicaría media actualización.
-/// Falta un fichero → como si no hubiera nada, y se vuelve a bajar.
+/// Complete matters: a download cut in half leaves the core tarball and not the
+/// app installer, and taking it for good would apply half an update. A missing
+/// file counts as nothing being there, and it gets downloaded again.
 pub fn already_staged(version: &str, manifest: &Manifest) -> Option<Staged> {
     let (want_core, want_desktop) = wanted(version, manifest).ok()?;
     let dir = dir(version).ok()?;
@@ -102,8 +101,8 @@ pub fn already_staged(version: &str, manifest: &Manifest) -> Option<Staged> {
 
     let desktop = match want_desktop {
         Some(_) => {
-            // No se sabe el nombre exacto del bundle sin listar la release, así
-            // que se acepta el único fichero que no sea el tarball del núcleo.
+            // The bundle's exact name is unknown without listing the release, so
+            // the one file that is not the core tarball is accepted.
             let core_name = core
                 .as_ref()
                 .and_then(|p| p.file_name().map(|s| s.to_owned()));
@@ -115,8 +114,8 @@ pub fn already_staged(version: &str, manifest: &Manifest) -> Option<Staged> {
                 .filter(|p| p.file_name().map(|n| Some(n.to_owned()) != core_name) == Some(true));
             let found = others.next()?;
             if others.next().is_some() {
-                // Dos candidatos: no se puede saber cuál es. Rebajar es barato y
-                // adivinar mal es ejecutar un instalador que no era.
+                // Two candidates: there is no telling which. Re-downloading is
+                // cheap and guessing wrong runs an installer that wasn't it.
                 return None;
             }
             Some(found)
@@ -131,10 +130,10 @@ pub fn already_staged(version: &str, manifest: &Manifest) -> Option<Staged> {
     })
 }
 
-/// Baja y verifica todo lo que hace falta para pasar a `version`.
+/// Downloads and verifies everything needed to move to `version`.
 ///
-/// No aplica nada. Idempotente: lo que ya estuviera bajado no se vuelve a
-/// bajar.
+/// It applies nothing. Idempotent: whatever was already downloaded is not
+/// downloaded again.
 pub async fn stage(version: &str, manifest: &Manifest) -> Result<Staged> {
     let version = version.trim_start_matches('v').to_string();
     if let Some(done) = already_staged(&version, manifest) {
@@ -147,8 +146,8 @@ pub async fn stage(version: &str, manifest: &Manifest) -> Result<Staged> {
 
     let (released, assets) = fetch::release_assets(Some(&version)).await?;
     if released != version {
-        // La misma guarda que `hoard install`: bajar "otra cosa" rompe la única
-        // garantía que da todo esto, que las piezas van a la par.
+        // The same guard as `hoard install`: downloading "something else" breaks
+        // the one guarantee all of this gives, that the pieces move together.
         bail!("asked GitHub for {version} but the release is {released}");
     }
 
@@ -185,28 +184,27 @@ pub async fn stage(version: &str, manifest: &Manifest) -> Result<Staged> {
     })
 }
 
-/// Pone lo bajado en su sitio y anota la versión nueva en el manifiesto.
+/// Puts what was downloaded in place and records the new version in the manifest.
 ///
-/// El orden es el de [`super`]: **el núcleo primero**, porque es de quien
-/// dependen las demás piezas, y porque es el que se aplica sin poder fallar por
-/// una cancelación humana. Si después la app falla —un `pkexec` que el usuario
-/// cancela— el manifiesto **no** sube de versión: queda apuntando a la vieja y
-/// el siguiente ciclo lo reintenta entero. Anotar una versión que sólo alcanzó
-/// la mitad de las piezas es fabricar el desajuste mudo que esto viene a
-/// impedir.
+/// The order is [`super`]'s: the core first, because the other pieces depend on
+/// it, and because it is the one that applies without being able to fail on a
+/// human cancellation. If the app then fails, on a `pkexec` the user cancels, the
+/// manifest does not move up a version: it keeps pointing at the old one and the
+/// next cycle retries the whole thing. Recording a version that only reached half
+/// the pieces is manufacturing the silent mismatch this exists to prevent.
 ///
-/// `noninteractive` corta cualquier vía que pudiera pararse a preguntar. El
-/// servicio lo pone siempre: no tiene ventana donde pintar un diálogo, así que
-/// un `pkexec` lanzado desde ahí se quedaría esperando para siempre.
+/// `noninteractive` shuts off any route that could stop to ask. The service always
+/// sets it: it has no window to draw a dialog in, so a `pkexec` launched from
+/// there would wait forever.
 pub async fn apply(staged: &Staged, manifest: &mut Manifest, noninteractive: bool) -> Result<()> {
     if staged.is_empty() {
         bail!("there is nothing staged for {}", staged.version);
     }
 
     // From here to the end of this function the binaries on disk are in motion,
-    // and a client that starts a service off them would either run half an
-    // update or —on Windows— hold open the very file the installer is trying to
-    // write. The guard is what tells those clients to sit still.
+    // and a client that starts a service off them would either run half an update
+    // or, on Windows, hold open the very file the installer is trying to write.
+    // The guard is what tells those clients to sit still.
     let _swap = super::Swap::begin();
 
     if let Some(tarball) = &staged.core {
@@ -248,9 +246,9 @@ pub async fn apply(staged: &Staged, manifest: &mut Manifest, noninteractive: boo
     Ok(())
 }
 
-/// Borra lo bajado de otras versiones. Se llama después de aplicar, cuando ya no
-/// hace falta nada de lo anterior; un bundle son decenas de megas y dejarlos
-/// acumularse en la caché es el fallo que nadie ve hasta que el disco se llena.
+/// Deletes what was downloaded for other versions. Called after applying, when
+/// nothing from before is needed; a bundle is tens of megabytes and letting them
+/// pile up in the cache is the failure nobody sees until the disk fills.
 pub fn sweep(keep: &str) {
     let Ok(cache) = crate::config::CliConfig::cache_dir() else {
         return;
@@ -315,9 +313,9 @@ mod tests {
 
     #[test]
     fn a_bundled_core_with_no_app_is_a_contradiction() {
-        // `core_from_bundle` sin `Desktop` deja cero piezas nuestras: no hay
-        // nada que bajar, y decirlo aquí evita crear un directorio vacío y
-        // "aplicarlo" subiendo la versión del manifiesto a cambio de nada.
+        // `core_from_bundle` with no `Desktop` leaves none of our pieces: there
+        // is nothing to download, and saying so here avoids creating an empty
+        // directory and "applying" it to bump the manifest version for nothing.
         assert!(wanted("1.1.0", &manifest(None, true)).is_err());
     }
 

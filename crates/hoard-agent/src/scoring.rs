@@ -1,30 +1,29 @@
-//! DETECCIÓN — scoring multi-señal (fase 1, ADR 0020).
+//! Detection: multi-signal scoring (phase 1, ADR 0020).
 //!
-//! Reemplaza el booleano name-only del walk agresivo
-//! (`detection::classify_dir_as_save_like`) por un score acumulativo
-//! `S ∈ [0,1]`. Aquí viven las señales **estáticas** — nombre, contenido,
-//! recencia y negativas. La señal dominante de ADR 0020 (correlación
-//! proceso↔escritura, +0.50) llega en la fase 3 y se sumará sobre este
-//! score base.
+//! Replaces the name-only boolean of the aggressive walk
+//! (`detection::classify_dir_as_save_like`) with a cumulative score `S` in
+//! `[0,1]`. What lives here are the static signals: name, content, recency and
+//! the negatives. ADR 0020's dominant signal, the process-to-write correlation
+//! worth +0.50, arrives in phase 3 and will be added on top of this base score.
 //!
-//! No toca el pipeline catalog-first (ADR 0009): su único consumidor es la
-//! ruta de descubrimiento agresivo. `detection::SAVE_PATTERNS` se mantiene
-//! aparte (inglés, match exacto) para la refinación de rutas de catálogo.
+//! It does not touch the catalogue-first pipeline (ADR 0009): its only consumer is
+//! the aggressive discovery route. `detection::SAVE_PATTERNS` stays separate
+//! (English, exact match) for refining catalogue paths.
 
 use std::path::Path;
 use std::time::SystemTime;
 
-/// Cutoffs del ADR 0020 §2.
+/// ADR 0020 §2's cutoffs.
 ///
 /// * `S ≥ 0.60` → save confirmado automáticamente.
-/// * `0.35 ≤ S < 0.60` → "posible": corroborar con catálogo / preguntar.
+/// * `0.35 <= S < 0.60` is "possible": corroborate with the catalogue, or ask.
 /// * `S < 0.35` → descartado.
 pub const SCORE_CONFIRMED: f32 = 0.60;
 pub const SCORE_POSSIBLE: f32 = 0.35;
 
-/// Vocabulario multilingüe de nombres de carpeta-save. Superset de
-/// `detection::SAVE_PATTERNS`; incluye términos de/fr/es/it/ru/ja/zh para
-/// no perder saves cuyo nombre no esté en inglés.
+/// A multilingual vocabulary of save-folder names. A superset of
+/// `detection::SAVE_PATTERNS`, with German, French, Spanish, Italian, Russian,
+/// Japanese and Chinese terms so saves named in another language are not lost.
 pub const SAVE_NAME_VOCAB: &[&str] = &[
     "save",
     "saves",
@@ -56,7 +55,7 @@ pub const SAVE_NAME_VOCAB: &[&str] = &[
     "存档",
 ];
 
-/// Nombres que delatan NO-save (config/cache/logs/...). Señal negativa fuerte.
+/// Names that give away a NON-save (config, cache, logs). A strong negative.
 pub const NEGATIVE_NAME_VOCAB: &[&str] = &[
     "config",
     "cache",
@@ -73,23 +72,22 @@ pub const NEGATIVE_NAME_VOCAB: &[&str] = &[
     "screenshots",
 ];
 
-/// Extensiones que casi siempre son saves.
+/// Extensions that are almost always saves.
 const EXT_STRONG: &[&str] = &["sav", "save", "sl2", "ess", "dsav"];
-/// Extensiones ambiguas: sólo suman si ya hay otra señal.
+/// Ambiguous extensions: they only count when there is already another signal.
 const EXT_WEAK: &[&str] = &["dat", "bin", "profile"];
 /// Extensiones ruidosas: aporte casi nulo, abundan en configs.
 const EXT_NOISY: &[&str] = &["json", "xml", "ini", "cfg"];
-/// Imágenes: una carpeta sólo-imágenes es screenshots, no un save.
+/// Images: a folder of nothing but images is screenshots, not a save.
 const EXT_IMAGE: &[&str] = &["png", "jpg", "jpeg", "bmp", "gif", "webp"];
-/// Comprimidos: muchos juegos guardan la partida dentro de un `.zip`
-/// (Factorio, varios indies). NO puntúan por ser comprimidos — se abre el
-/// índice (sin descomprimir) y se puntúa lo que hay DENTRO
-/// (`archive_looks_like_save`).
+/// Archives: plenty of games keep the save inside a `.zip` (Factorio, several
+/// indies). They score nothing for being archives; the index is opened, without
+/// decompressing, and what is INSIDE gets scored (`archive_looks_like_save`).
 const EXT_ARCHIVE: &[&str] = &["zip"];
 
-/// `true` si la extensión cae en alguna categoría conocida (fuerte/débil/
-/// ruidosa/imagen/comprimido). Lo que NO encaja aquí es una extensión
-/// "desconocida" — candidata al heurístico del conjunto homogéneo.
+/// `true` when the extension falls into a known category (strong, weak, noisy,
+/// image, archive). What does not fit here is an unknown extension, and a
+/// candidate for the homogeneous-set heuristic.
 fn is_known_ext(e: &str) -> bool {
     EXT_STRONG.contains(&e)
         || EXT_WEAK.contains(&e)
@@ -98,9 +96,9 @@ fn is_known_ext(e: &str) -> bool {
         || EXT_ARCHIVE.contains(&e)
 }
 
-/// `true` si `path` fue modificado dentro de la ventana de recencia de saves
-/// (la misma del pipeline, 180 días). Conservador ante errores de metadata:
-/// si no se puede leer la mtime, cuenta como no-reciente.
+/// `true` when `path` was modified inside the save recency window (the same one
+/// the pipeline uses, 180 days). Conservative about metadata errors: when the
+/// mtime cannot be read it counts as not recent.
 fn file_is_recent(path: &Path) -> bool {
     let Ok(meta) = std::fs::metadata(path) else {
         return false;
@@ -114,8 +112,8 @@ fn file_is_recent(path: &Path) -> bool {
     }
 }
 
-/// Nombres de entrada que delatan un save dentro de un comprimido,
-/// independientes de la extensión (Factorio: `level.dat`, `control.lua`...).
+/// Entry names that give away a save inside an archive, whatever the extension
+/// (Factorio: `level.dat`, `control.lua` and so on).
 const ARCHIVE_SAVE_MARKERS: &[&str] = &[
     "level.dat",
     "level-init.dat",
@@ -128,11 +126,11 @@ const ARCHIVE_SAVE_MARKERS: &[&str] = &[
     "world.dat",
 ];
 
-/// Abre un comprimido y mira su ÍNDICE (sin descomprimir) buscando contenido
-/// save-like: una entrada con extensión fuerte/débil de save, o un nombre
-/// marcador. Devuelve `true` al primer indicio. Acotado a las primeras
-/// entradas para no penalizar archivos enormes; leer el directorio central no
-/// inflа bytes, así que es barato aun en `.zip` grandes.
+/// Opens an archive and looks at its INDEX, without decompressing, for save-like
+/// content: an entry with a strong or weak save extension, or a marker name. It
+/// returns `true` on the first sign. Bounded to the first entries so huge archives
+/// are not penalised; reading the central directory inflates no bytes, so it is
+/// cheap even on a large `.zip`.
 fn archive_looks_like_save(path: &Path) -> bool {
     let Ok(file) = std::fs::File::open(path) else {
         return false;
@@ -159,38 +157,38 @@ fn archive_looks_like_save(path: &Path) -> bool {
     false
 }
 
-/// Desglose del score de un directorio candidato: el número y la lista de
-/// razones que lo justifican (se reenvía al panel de diagnóstico).
+/// The breakdown of a candidate directory's score: the number and the list of
+/// reasons behind it (forwarded to the diagnostics panel).
 #[derive(Debug, Clone)]
 pub struct ScoreBreakdown {
     pub score: f32,
     pub reasons: Vec<String>,
-    /// `true` cuando el contenido del directorio es evidencia directa de save,
-    /// no una suposición por nombre. Dos fuentes: (a) un comprimido cuyo índice
-    /// delata un save dentro (`level.dat`, `control.lua`, extensión save…), o
-    /// (b) un conjunto rotatorio de ≥3 saves de extensión fuerte (aquí o en una
-    /// subcarpeta tipo `autosave/`). Cuenta como corroboración para conceder
-    /// `High` igual que Steam o la correlación de proceso (ADR 0020), sin una
-    /// sesión de juego observada. Un `.sav` suelto NO corrobora — el caso
-    /// conservador (tope en `Medium` sin correlación) se mantiene.
+    /// `true` when the directory's content is direct evidence of a save rather
+    /// than a guess from its name. Two sources: an archive whose index gives away
+    /// a save inside (`level.dat`, `control.lua`, a save extension), or a rotating
+    /// set of three or more strong-extension saves, here or in an `autosave/`-style
+    /// subfolder. It counts as corroboration for granting `High` just like Steam
+    /// or process correlation (ADR 0020), with no observed play session. A lone
+    /// `.sav` does not corroborate: the conservative case (capped at `Medium`
+    /// without correlation) stands.
     pub corroborated_by_content: bool,
 }
 
-/// Umbral del "deque de autosaves": un directorio (o sus subcarpetas
-/// inmediatas tipo `autosave/`, `slot/`) con al menos esta cantidad de saves
-/// de extensión fuerte es, con altísima probabilidad, una carpeta de saves
-/// activa — los juegos rotan autosaves; config/cache no acumulan `.sav`. Sirve
-/// como corroboración para `High` sin aflojar el caso del `.sav` suelto.
+/// The "autosave deque" threshold: a directory (or its immediate `autosave/` or
+/// `slot/`-style subfolders) with at least this many strong-extension saves is,
+/// with very high probability, a live save folder. Games rotate autosaves; config
+/// and cache do not accumulate `.sav` files. It serves as corroboration for `High`
+/// without loosening the lone-`.sav` case.
 const STRONG_ROTATING_MIN: usize = 3;
 
-/// Profundidad máxima al inspeccionar las subcarpetas de un candidato buscando
-/// saves (p. ej. `save/profiles/slot1/*.sav`). Acota el coste de la recursión.
+/// Maximum depth when inspecting a candidate's subfolders for saves (for example
+/// `save/profiles/slot1/*.sav`). Bounds the cost of the recursion.
 const STRONG_SCAN_MAX_DEPTH: usize = 4;
-/// Tope de ficheros visitados al contar saves en subcarpetas, compartido por
-/// todo el escaneo de un candidato. Evita pasear árboles enormes.
+/// Cap on files visited while counting saves in subfolders, shared across a
+/// candidate's whole scan. Stops it walking enormous trees.
 const STRONG_SCAN_FILE_BUDGET: usize = 4096;
 
-/// Conteo barato del contenido inmediato (no recursivo) de un candidato.
+/// A cheap count of a candidate's immediate, non-recursive content.
 #[derive(Default)]
 struct DirContent {
     files: usize,
@@ -200,19 +198,19 @@ struct DirContent {
     image: usize,
     /// Comprimidos cuyo índice contiene contenido save-like.
     archive_save: usize,
-    /// Saves de extensión fuerte hallados en las subcarpetas (recursivo, con
-    /// tope de profundidad/ficheros). Captura `openttd/save/autosave/*.sav` y
-    /// layouts anidados (`save/profiles/slotN/*.sav`), donde la ruta del
-    /// catálogo apunta al contenedor y los saves viven más abajo.
+    /// Strong-extension saves found in the subfolders (recursive, with depth and
+    /// file caps). Catches `openttd/save/autosave/*.sav` and nested layouts
+    /// (`save/profiles/slotN/*.sav`), where the catalogue path points at the
+    /// container and the saves live further down.
     strong_subdir: usize,
-    /// Ficheros recientes por extensión DESCONOCIDA (ni fuerte/débil/ruidosa/
-    /// imagen/comprimido). Soporta el heurístico del "conjunto dominante":
-    /// una carpeta con nombre-save exacto que rota ≥3 ficheros recientes de UNA
-    /// misma extensión propietaria (`.pss`, `.rsv`, …) es, casi con seguridad,
-    /// una carpeta de saves real aunque la extensión no esté en el catálogo. Se
-    /// cuenta por extensión (no "homogéneo estricto") para tolerar marcadores
-    /// sueltos que conviven con los saves —típicamente un `steam_autocloud.vdf`
-    /// en la misma carpeta— sin que invaliden el conjunto.
+    /// Recent files with an UNKNOWN extension (neither strong, weak, noisy, image
+    /// nor archive). This backs the "dominant set" heuristic: a folder with an
+    /// exact save name rotating three or more recent files of ONE proprietary
+    /// extension (`.pss`, `.rsv`) is almost certainly a real save folder even when
+    /// the extension is not in the catalogue. It counts per extension rather than
+    /// demanding strict homogeneity, so a stray marker living alongside the saves,
+    /// typically a `steam_autocloud.vdf` in the same folder, does not invalidate
+    /// the set.
     unknown_recent_by_ext: std::collections::HashMap<String, usize>,
 }
 
@@ -221,16 +219,16 @@ fn scan_content(dir: &Path) -> DirContent {
     let Ok(read) = std::fs::read_dir(dir) else {
         return c;
     };
-    // Presupuesto de ficheros compartido por todas las subcarpetas del
-    // candidato, para acotar el coste total de la recursión.
+    // A file budget shared by all of the candidate's subfolders, to bound the
+    // recursion's total cost.
     let mut budget = STRONG_SCAN_FILE_BUDGET;
     for entry in read.flatten() {
         let Ok(ft) = entry.file_type() else {
             continue;
         };
         if ft.is_dir() {
-            // Baja por las subcarpetas (autosave/, profiles/slotN/…) contando
-            // saves de extensión fuerte, con tope de profundidad y de ficheros.
+            // Walk down the subfolders (autosave/, profiles/slotN/) counting
+            // strong-extension saves, with depth and file caps.
             c.strong_subdir +=
                 count_strong_recursive(&entry.path(), STRONG_SCAN_MAX_DEPTH, &mut budget);
             continue;
@@ -252,9 +250,9 @@ fn scan_content(dir: &Path) -> DirContent {
             Some(e) if EXT_ARCHIVE.contains(&e) && archive_looks_like_save(&path) => {
                 c.archive_save += 1
             }
-            // Extensión desconocida y reciente: cuenta los recientes por
-            // extensión. La extensión dominante (≥3 recientes) bajo un
-            // nombre-save exacto delata un deque de saves propietarios.
+            // An unknown, recent extension: count the recent ones per extension.
+            // The dominant extension (three or more recent) under an exact save
+            // name gives away a deque of proprietary saves.
             Some(e) if !is_known_ext(e) && file_is_recent(&path) => {
                 *c.unknown_recent_by_ext.entry(e.to_string()).or_default() += 1;
             }
@@ -300,10 +298,10 @@ fn count_strong_recursive(dir: &Path, depth: usize, budget: &mut usize) -> usize
     n
 }
 
-/// Señal de nombre. Exacto en vocab (+0.35) > substring de un token
-/// (+0.20) > patrón slot/profile/user (+0.15). El substring es un
-/// sustituto barato del `strsim::jaro_winkler` que la fase 1+ usará cuando
-/// se añada la dep.
+/// The name signal. An exact vocabulary hit (+0.35) beats a token substring
+/// (+0.20), which beats a slot, profile or user pattern (+0.15). The substring is
+/// a cheap stand-in for the `strsim::jaro_winkler` phase 1+ will use once the
+/// dependency is added.
 fn name_signal(name: &str, reasons: &mut Vec<String>) -> f32 {
     let lower = name.to_lowercase();
     if SAVE_NAME_VOCAB.iter().any(|v| *v == lower) {
@@ -345,14 +343,14 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
     // Saves de extensión fuerte aquí o un nivel más abajo (autosave/, slot/).
     let strong_total = content.strong + content.strong_subdir;
 
-    // Conjunto dominante de extensión desconocida: una carpeta con nombre-save
-    // EXACTO donde alguna extensión propietaria (no fuerte/débil/ruidosa/
-    // imagen/comprimido) acumula ≥3 ficheros recientes. Genérico: no codifica
-    // ninguna extensión concreta, sólo la forma (nombre exacto + rotación
-    // reciente). Conservador por triple compuerta —nombre exacto, recencia y
-    // ≥3 del MISMO tipo— así que una carpeta de config (json/ini mezclados) o
-    // un único marcador suelto (p. ej. un solo `.vdf`) nunca cualifican; pero
-    // sí tolera ese marcador conviviendo con los saves reales.
+    // A dominant set of an unknown extension: a folder with an EXACT save name
+    // where some proprietary extension (not strong, weak, noisy, image or archive)
+    // accumulates three or more recent files. Generic: it encodes no particular
+    // extension, only the shape, being an exact name plus recent rotation.
+    // Conservative behind a triple gate (exact name, recency, and three of the
+    // SAME type) so a config folder of mixed json and ini, or one stray marker
+    // such as a lone `.vdf`, never qualifies; but it does tolerate that marker
+    // living alongside the real saves.
     let unknown_dominant_recent = content
         .unknown_recent_by_ext
         .values()
@@ -365,13 +363,13 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
         score += 0.30;
         reasons.push("strong save ext".into());
     } else if content.archive_save > 0 {
-        // Save dentro de un comprimido (Factorio y cía): el índice del .zip
-        // delata contenido save-like. Mismo peso que la extensión fuerte.
+        // A save inside an archive (Factorio and company): the `.zip`'s index
+        // gives away save-like content. The same weight as a strong extension.
         score += 0.30;
         reasons.push("save-like archive content".into());
     } else if homogeneous_unknown_set {
-        // Conjunto rotatorio de saves de extensión propietaria bajo un
-        // nombre-save exacto. Mismo peso que la extensión fuerte.
+        // A rotating set of proprietary-extension saves under an exact save name.
+        // The same weight as a strong extension.
         score += 0.30;
         reasons.push("homogeneous recent save set".into());
     } else if content.weak > 0 && has_signal {
@@ -382,7 +380,7 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
         reasons.push("noisy ext only".into());
     }
 
-    // Recencia: reutiliza el chequeo del pipeline (ventana ya subida a 180d).
+    // Recency: reuses the pipeline's check (the window is already up to 180d).
     if crate::detection::dir_has_recent_save_file(path) {
         score += 0.10;
         reasons.push("recent save-like file".into());
@@ -390,7 +388,7 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
 
     // COPY name (P3, DETECCION-REVISION §8): a directory whose name ENDS in a
     // backup suffix (`SaveGamesBackup`, `SavesOld`, `NobodyT-bak`) is the
-    // game's own archive rather than its save — but only when it also holds
+    // game's own archive rather than its save, but only when it also holds
     // rotating content (≥3 strong saves here or one level down). Suffix, never
     // prefix: `BackupSaves` pays nothing. Without the content gate a real
     // folder with an unlucky name would lose 0.20 for free; with it, the
@@ -403,7 +401,7 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
     //
     // And it is capped at the bonus the name actually earned, never taking a
     // folder net-negative. The catalog lists plenty of games whose ONLY save
-    // path is literally a `backup/` — Don't Starve Together, NIMBY Rails,
+    // path is literally a `backup/`: Don't Starve Together, NIMBY Rails,
     // Morbid, Isles of Sea and Sky, The Last Caretaker. Those names score
     // nothing positive to begin with (`backup` is not in the vocabulary), so
     // a flat −0.20 would push the one real folder under the 0.35 floor and
@@ -418,9 +416,9 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
         reasons.push("backup-suffix name on rotating content".into());
     }
 
-    // Negativas de contenido + hard rule (§4): una carpeta sólo-imágenes o
-    // sólo-ruido (config/log) NUNCA se auto-confirma, por más que el nombre
-    // matchee.
+    // Content negatives plus the hard rule: a folder of nothing but images, or
+    // nothing but noise (config, logs), NEVER self-confirms, however well the name
+    // matches.
     let only_images = content.files > 0 && content.image == content.files;
     let only_noisy = content.files > 0
         && content.noisy == content.files
@@ -439,12 +437,12 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
         score = score.min(SCORE_POSSIBLE - 0.001);
     }
 
-    // Corroboración por contenido (habilita `High` sin correlación), siempre
-    // que la hard-rule no haya degradado la carpeta a no-save:
-    //   * un comprimido con índice save-like verificado (Factorio y cía), o
-    //   * un conjunto rotatorio de ≥3 saves de extensión fuerte (autosaves de
-    //     openttd y similares) — un `.sav` suelto NO basta, así que el caso
-    //     conservador se mantiene.
+    // Corroboration by content (which enables `High` without correlation),
+    // provided the hard rule has not already demoted the folder to not-a-save:
+    //   * an archive with a verified save-like index (Factorio and company), or
+    //   * a rotating set of three or more strong-extension saves (openttd-style
+    //     autosaves). A lone `.sav` is not enough, so the conservative case
+    //     stands.
     let corroborated_by_content = !(only_images || only_noisy)
         && (content.archive_save > 0
             || strong_total >= STRONG_ROTATING_MIN
@@ -457,10 +455,10 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
     }
 }
 
-/// `true` si la señal de nombre por sí sola reconoce esta carpeta como
-/// save (exacto, substring de token, o patrón slot/profile/user). Aislado
-/// para el benchmark de §(scoring) — mide el techo de recall del nombre sin
-/// confundirlo con señales de contenido.
+/// `true` when the name signal alone recognises this folder as a save (exact, a
+/// token substring, or a slot, profile or user pattern). Isolated for the scoring
+/// benchmark: it measures the ceiling of name recall without confusing it with
+/// content signals.
 pub fn name_recognised(name: &str) -> bool {
     let lower = name.to_lowercase();
     SAVE_NAME_VOCAB.iter().any(|v| *v == lower)
@@ -476,7 +474,7 @@ mod archive_tests {
     use std::io::Write;
     use zip::write::SimpleFileOptions;
 
-    /// Escribe un `.zip` (método Stored, sin codec) con las entradas dadas.
+    /// Writes a `.zip` (Stored method, no codec) with the given entries.
     fn write_zip(path: &Path, entries: &[&str]) {
         let file = std::fs::File::create(path).unwrap();
         let mut zip = zip::ZipWriter::new(file);
@@ -491,7 +489,7 @@ mod archive_tests {
     #[test]
     fn factorio_zip_save_scores_high() {
         let dir = tempfile::tempdir().unwrap();
-        // Réplica del interior de un save de Factorio.
+        // A replica of the inside of a Factorio save.
         write_zip(
             &dir.path().join("my-world.zip"),
             &["my-world/level.dat", "my-world/control.lua"],
@@ -509,8 +507,9 @@ mod archive_tests {
 
     #[test]
     fn rotating_autosave_set_in_subdir_corroborates_high() {
-        // Réplica de openttd: la ruta apunta a `save/`, y los `.sav` viven en
-        // `save/autosave/`. Un deque de autosaves (≥3 ext. fuerte) corrobora.
+        // The openttd shape: the path points at `save/` and the `.sav` files live
+        // in `save/autosave/`. An autosave deque (three or more strong ext.)
+        // corroborates.
         let dir = tempfile::tempdir().unwrap();
         let auto = dir.path().join("autosave");
         std::fs::create_dir(&auto).unwrap();
@@ -541,9 +540,9 @@ mod archive_tests {
 
     #[test]
     fn homogeneous_unknown_ext_set_corroborates_high() {
-        // Carpeta `saves` con ≥3 ficheros recientes de UNA extensión
-        // propietaria desconocida (`.pss` de Planet S, p. ej.). Debe
-        // auto-confirmar y corroborar, sin codificar la extensión.
+        // A `saves` folder with three or more recent files of ONE unknown
+        // proprietary extension. It has to self-confirm and corroborate, without
+        // the extension being hard-coded.
         let dir = tempfile::tempdir().unwrap();
         for i in 0..10 {
             std::fs::write(dir.path().join(format!("slot{i}.pss")), b"x").unwrap();
@@ -559,8 +558,8 @@ mod archive_tests {
 
     #[test]
     fn single_unknown_marker_file_does_not_corroborate() {
-        // El señuelo de Planet S: una carpeta `saves` con un solo
-        // `steam_autocloud.vdf`. Un único fichero (<3) no cualifica.
+        // The decoy: a `saves` folder with a single `steam_autocloud.vdf`. One
+        // file (fewer than three) does not qualify.
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("steam_autocloud.vdf"), b"x").unwrap();
         let b = score_dir(dir.path(), "saves");
@@ -574,9 +573,9 @@ mod archive_tests {
 
     #[test]
     fn stray_marker_alongside_real_saves_still_corroborates() {
-        // Caso real de Planet S: 10 `.pss` reales + un `steam_autocloud.vdf`
-        // colado en la misma carpeta. El marcador suelto NO debe invalidar el
-        // conjunto dominante de saves.
+        // A real case: 10 genuine proprietary saves plus a `steam_autocloud.vdf`
+        // that slipped into the same folder. The stray marker must not invalidate
+        // the dominant set of saves.
         let dir = tempfile::tempdir().unwrap();
         for i in 0..10 {
             std::fs::write(dir.path().join(format!("slot{i}.pss")), b"x").unwrap();
@@ -593,8 +592,8 @@ mod archive_tests {
 
     #[test]
     fn mixed_unknown_exts_do_not_corroborate() {
-        // Mezcla de extensiones desconocidas (no homogéneo): típico de una
-        // carpeta de datos varios, no un deque de saves. No debe corroborar.
+        // A mix of unknown extensions (not homogeneous): typical of a
+        // miscellaneous data folder, not a save deque. It must not corroborate.
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("a.foo"), b"x").unwrap();
         std::fs::write(dir.path().join("b.bar"), b"x").unwrap();
@@ -615,7 +614,7 @@ mod archive_tests {
             &dir.path().join("photos.zip"),
             &["photos/img1.png", "photos/readme.txt"],
         );
-        // Carpeta sin nombre-save: un zip de fotos no debe puntuar como save.
+        // A folder with no save name: a zip of photos must not score as a save.
         let b = score_dir(dir.path(), "downloads");
         assert!(b.score < SCORE_POSSIBLE, "score {} too high", b.score);
     }
@@ -681,7 +680,7 @@ mod backup_suffix_tests {
     fn wukong_shape_loses_its_static_edge_over_the_real_save() {
         // The incident's shape: the mirror carried a +0.20 name bonus the
         // real save (a numeric id) never had. The penalty cancels it exactly,
-        // so with equal strong content the two TIE — and the tiebreak falls to
+        // so with equal strong content the two TIE, and the tiebreak falls to
         // discovery order (the real one comes first in the catalog) or to P2's
         // structural veto. This test asserts the tie on purpose: an earlier
         // run claimed the mirror ended up lower, and it does not.
@@ -734,10 +733,10 @@ mod bench {
     use super::*;
     use hoard_manifest::ludusavi;
 
-    /// Extrae el nombre de la carpeta-save más profunda de un template
-    /// Ludusavi. Salta segmentos glob (`*`, `**`) y placeholders (`<...>`),
-    /// y descarta el segmento si parece un fichero (tiene extensión).
-    /// Devuelve `None` cuando no queda un nombre de directorio utilizable.
+    /// Extracts the deepest save-folder name from a Ludusavi template. It skips
+    /// glob segments (`*`, `**`) and placeholders (`<...>`), and discards the
+    /// segment when it looks like a file (it has an extension). Returns `None`
+    /// when no usable directory name is left.
     fn leaf_dir_name(template: &str) -> Option<String> {
         for seg in template.split(['/', '\\']).rev() {
             let seg = seg.trim();
@@ -755,15 +754,16 @@ mod bench {
         None
     }
 
-    /// BENCHMARK DETECCIÓN (ADR 0020): techo de recall de la señal de NOMBRE
-    /// sobre los nombres de carpeta-save reales del manifest embebido.
+    /// Detection benchmark (ADR 0020): the recall ceiling of the NAME signal over
+    /// the real save-folder names in the embedded manifest.
     ///
-    /// No mide contenido ni correlación (la joya de fase 3) — sólo cuánto
-    /// recupera el vocabulario por nombre. Esperado/honesto: bajo, porque
-    /// muchísimos juegos nombran la carpeta con el título del juego, no con
-    /// "save". Justamente eso motiva las señales independientes del nombre.
+    /// It measures neither content nor correlation (phase 3's jewel), only how
+    /// much the name vocabulary recovers. Expected to be low, and honestly so,
+    /// because a great many games name the folder after the game's title rather
+    /// than after "save". That is exactly what motivates the name-independent
+    /// signals.
     ///
-    /// Correr: `cargo test -p hoard-agent --lib -- --ignored --nocapture`
+    /// Run with: `cargo test -p hoard-agent --lib -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn name_signal_recall_over_manifest() {

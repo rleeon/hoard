@@ -1,15 +1,15 @@
 //! Clasificación de la URL de un servidor Hoard, sin red. Puro heurístico sobre
 //! el host: ¿es "self-hosted en casa" (LAN/Tailscale/loopback) o un SaaS
 //! externo?, ¿apunta al backend gestionado Hoard Cloud? Vive en el agente para
-//! que desktop y CLI compartan exactamente el mismo criterio (el desktop lo
+//! so desktop and CLI share exactly the same rule (the desktop
 //! re-exporta como `classify_server`/`classify_cloud`).
 
 /// ¿Tratamos `url` como "self-hosted en casa" (tamaños en MB) frente a "SaaS
 /// externo" (porcentaje de cuota)?
 ///
-/// Heurístico: loopback, IP privada RFC1918, bloque CGNAT de Tailscale
-/// (100.64.0.0/10), un `.local` mDNS o un host de una sola etiqueta (LAN /
-/// MagicDNS) → local. Todo lo demás → externo. En el peor caso el usuario ve %
+/// A heuristic: loopback, an RFC1918 private IP, Tailscale's CGNAT block
+/// (100.64.0.0/10), an mDNS `.local`, or a single-label host (a LAN box or a
+/// MagicDNS name).
 /// donde quería MB; ambas vistas muestran el mismo dato.
 pub fn is_local_server(url: &str) -> bool {
     let host = match host_of(url) {
@@ -20,9 +20,9 @@ pub fn is_local_server(url: &str) -> bool {
     if host == "localhost" || host == "127.0.0.1" || host == "::1" || host.ends_with(".local") {
         return true;
     }
-    // Rangos IPv4 privados RFC1918 + CGNAT de Tailscale (100.64.0.0/10), que es
-    // una overlay privada, no SaaS público. Solo v4; un ULA IPv6 (`fc00::/7`)
-    // podría añadirse aquí más adelante.
+    // RFC1918 private IPv4 ranges plus Tailscale's CGNAT (100.64.0.0/10), which
+    // is a private overlay rather than public SaaS. v4 only; an IPv6 ULA
+    // (`fc00::/7`) could be added here later.
     if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
         let octs = ip.octets();
         let private = octs[0] == 10
@@ -31,21 +31,21 @@ pub fn is_local_server(url: &str) -> bool {
             || (octs[0] == 100 && (64..=127).contains(&octs[1]));
         return private;
     }
-    // Host de una sola etiqueta (sin punto, ni IP/IPv6 literal): una caja LAN o
-    // un nombre MagicDNS de Tailscale como `ubserver` / `nas`. Un SaaS público
-    // siempre tiene FQDN con TLD, así que un host pelado se trata como local —
-    // si no, un self-hoster vería una barra de cuota falsa contra el default de
-    // 100 GiB del schema en vez de la línea "X usados" del disco que es suyo.
+    // A single-label host (no dot, and not a literal IP or IPv6): a LAN box, or a
+    // Tailscale MagicDNS name like `ubserver` or `nas`. Public SaaS always has an
+    // FQDN with a TLD, so a bare host is treated as local. Otherwise a self-hoster
+    // would see a fake quota bar against the schema's 100 GiB default instead of
+    // the "X used" line for their own disk.
     if !host.contains('.') && !host.contains(':') {
         return true;
     }
     false
 }
 
-/// ¿`url` apunta al backend gestionado Hoard Cloud? La UI lo usa para ocultar el
-/// panel self-hosted de "actualizar servidor" (el cloud no tiene ruta
-/// `/v1/admin/upgrade` y se actualiza fuera de banda). Casa `hoard.services` /
-/// cualquier subdominio `*.hoard.services` y los hosts de Fly.io (`*.fly.dev`).
+/// Does `url` point at the managed Hoard Cloud backend? The UI uses this to hide
+/// the self-hosted upgrade button (Cloud has no `/v1/admin/upgrade` and updates
+/// out of band). Matches `hoard.services`, any `*.hoard.services` subdomain, and
+/// Fly.io hosts (`*.fly.dev`).
 pub fn is_cloud_host(url: &str) -> bool {
     let host = match host_of(url) {
         Some(h) => h,
@@ -54,13 +54,13 @@ pub fn is_cloud_host(url: &str) -> bool {
     host == "hoard.services" || host.ends_with(".hoard.services") || host.ends_with(".fly.dev")
 }
 
-/// Extrae el host en minúsculas de una URL `http(s)://host[:port][/path]`.
+/// Extracts the lowercase host from an `http(s)://host[:port][/path]` URL.
 /// `None` si no reconoce el esquema.
 /// Drop a `user@` (or `user:pass@`) prefix from a server URL, and any trailing
 /// slash.
 ///
-/// Nothing in Hoard's API uses HTTP Basic auth — the access key travels as a
-/// bearer token — but reqwest turns URL credentials into a `basic_auth` call on
+/// Nothing in Hoard's API uses HTTP Basic auth (the access key travels as a
+/// bearer token) but reqwest turns URL credentials into a `basic_auth` call on
 /// **every** request it builds, and its `header()` *appends*, so the request
 /// goes out with two `Authorization` headers: `Basic` first, then our `Bearer`.
 /// The server reads the first one, sees no bearer token, and answers 401.
@@ -118,7 +118,7 @@ mod tests {
 
     /// A `user@` in the address made every request carry two `Authorization`
     /// headers (reqwest's, from the URL credentials, plus ours) and the server
-    /// read the wrong one — a permanent 401 with a perfectly good token.
+    /// read the wrong one: a permanent 401 with a perfectly good token.
     #[test]
     fn credentials_never_survive_into_the_url() {
         assert_eq!(
@@ -177,7 +177,7 @@ mod tests {
     fn public_hosts_are_external() {
         assert!(!is_local_server("https://saves.example.com"));
         assert!(!is_local_server("https://hoard.services"));
-        // 100.63.x queda justo fuera del bloque CGNAT; 8.8.8.8 es público.
+        // 100.63.x falls just outside the CGNAT block; 8.8.8.8 is public.
         assert!(!is_local_server("http://100.63.0.1"));
         assert!(!is_local_server("http://8.8.8.8"));
     }

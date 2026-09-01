@@ -2,7 +2,7 @@
 //!
 //! When the user adds an emulator save by hand they must tell Hoard which
 //! executable means "I'm playing" (the emulator's process name). Typing it is
-//! error-prone — `pcsx2-qt.exe` vs `pcsx2.exe` — so the UI offers a picker
+//! error-prone (`pcsx2-qt.exe` against `pcsx2.exe`) so the UI offers a picker
 //! populated from this snapshot: open the emulator, hit "detect", and the
 //! active process (highest CPU) floats to the top.
 //!

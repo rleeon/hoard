@@ -1,42 +1,42 @@
-//! # Newtypes de identidad con la puerta en `serde` (ADR 0021, C.3 — Slice 3)
+//! Identity newtypes with the gate in `serde` (ADR 0021, C.3).
 //!
-//! El veneno entró por **datos persistidos**, no por código construyendo mal:
-//! el save de `GSE Saves` quedó rastreado con `game_slug` = nombre de usuario de
-//! Windows, y como el username es componente de ruta de todo ejecutable del
-//! perfil, cualquier app disparaba "estás jugando" (la correlación fantasma de
-//! julio 2026). Un `GameSlug` que valide en `new()` pero derive `Deserialize` a
-//! pelo no habría parado nada: la deserialización es una puerta trasera que
-//! construye el tipo sin pasar por el validador.
+//! The poison came in through *persisted data*, not through code building
+//! things wrong. One save ended up tracked with its `game_slug` set to the
+//! Windows account name, and since the account name is a path component of every
+//! executable in the profile, any app at all triggered "you are playing" (the
+//! phantom correlation of July 2026). A `GameSlug` that validates in `new()` but
+//! derives `Deserialize` plainly would have stopped none of it: deserialisation
+//! is a back door that builds the type without meeting the validator.
 //!
-//! Por eso aquí **no se deriva `Deserialize` a pelo en ningún sitio**: cada
-//! newtype lleva `#[serde(try_from = "String")]`, así que la *única* vía de
-//! construcción —incluida la que usa el JSON de disco y de red— es
-//! `Self::parse`. Es imposible saltarse la puerta sin editar este fichero.
+//! So nothing here derives `Deserialize` plainly. Every newtype carries
+//! `#[serde(try_from = "String")]`, which makes `Self::parse` the only way to
+//! build one, including from JSON off the disk or the network. Skipping the gate
+//! is impossible without editing this file.
 //!
-//! ## Dos puertas, dos trabajos
+//! ## Two gates, two jobs
 //!
 //! | | [`parse`](GameSlug::parse) | [`repair`](GameSlug::repair) |
 //! |---|---|---|
-//! | Quién la usa | `serde` (wire, IPC, datos **nuevos**) | el cargador de estado **ya persistido** |
-//! | Valor inválido | error | se re-deriva o se pone en cuarentena |
+//! | Who uses it | `serde`: wire, IPC, new data | the loader of already-persisted state |
+//! | Invalid value | error | re-derived or quarantined |
 //!
-//! La segunda existe porque el veneno **ya está en disco**: un `try_from`
-//! estricto sobre `state.json` / la DB del server brickearía instalaciones
-//! existentes (el motor no arrancaría). La ADR es explícita (C.3, "hazard de
-//! upgrade"): la puerta estricta protege lo nuevo; lo viejo se limpia al leer —
-//! re-derivar, loggear, marcar— y **nunca** se rechaza en duro. La limpieza
-//! durable definitiva vive en la migración del Slice 5.
+//! The second exists because the poison is *already on disk*. A strict
+//! `try_from` over `state.json` or the server's DB would brick existing installs
+//! (the engine would not start). The ADR is explicit about it (C.3, "upgrade
+//! hazard"): the strict gate protects what is new, what is old gets cleaned on
+//! read by re-deriving, logging and flagging, and is never hard-rejected. The
+//! durable cleanup lives in the Slice 5 migration.
 //!
-//! ## Por qué newtypes y no `String`
+//! ## Why newtypes and not `String`
 //!
-//! Dos capas de protección independientes:
+//! Two independent layers:
 //!
-//! 1. **La forma del valor** la garantiza `parse` (un slug vacío o con basura no
-//!    existe como `GameSlug`).
-//! 2. **La categoría** la garantiza el sistema de tipos: `slug == username` —el
-//!    error real que costó la correlación fantasma— es un error de compilación
-//!    en cuanto los dos lados son [`GameSlug`] y [`Username`], porque no hay
-//!    `PartialEq` entre ellos ni conversión implícita.
+//! 1. `parse` guarantees the *shape* of the value: an empty slug, or one full of
+//!    junk, does not exist as a `GameSlug`.
+//! 2. The type system guarantees the *category*: `slug == username`, the real
+//!    mistake behind the phantom correlation, is a compile error the moment both
+//!    sides are [`GameSlug`] and [`Username`], because there is no `PartialEq`
+//!    between them and no implicit conversion.
 
 use std::borrow::Borrow;
 use std::fmt;
@@ -45,36 +45,37 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize, Serializer};
 use thiserror::Error;
 
-/// Tope de longitud de un slug. Mismo que aplica [`slugify`], que es quien mintó
-/// todos los slugs del catálogo.
+/// Slug length cap, matching [`slugify`], which minted every slug in the
+/// catalogue.
 pub const MAX_SLUG_LEN: usize = 96;
 
-/// Tope de longitud de un nombre de usuario. Generoso a propósito: el server
-/// nunca validó usernames (los crea `hoard-admin user create` con lo que teclee
-/// el operador), así que el tope sólo frena lo absurdo.
+/// Username length cap. Generous on purpose: the server never validated
+/// usernames (`hoard-admin user create` takes whatever the operator types), so
+/// this only stops the absurd.
 pub const MAX_USERNAME_LEN: usize = 128;
 
-/// Slug sintético para el tiempo atribuido a un día pero no a un juego
-/// concreto. Es vocabulario del protocolo de playtime (agente y server lo
-/// declaran por separado hoy), así que [`GameSlug::parse`] lo acepta como
-/// **reservado**: no es un nombre de juego pero sí un valor legítimo del campo.
+/// Synthetic slug for time attributed to a day but not to a particular game.
+/// It is playtime protocol vocabulary, declared separately by agent and server
+/// today, so [`GameSlug::parse`] accepts it as reserved: not a game's name, but
+/// a legitimate value of the field.
 pub const OTHER_SLUG: &str = "__other__";
 
-/// Longitud mínima de un token de identidad para que cuente en el match
-/// genérico. Por debajo (`gta`, `ori`, `ff`) es demasiado corto y colisiona con
-/// carpetas o nombres de proceso cualesquiera.
+/// Shortest an identity token can be and still count in the generic match.
+/// Below this (`gta`, `ori`, `ff`) it is short enough to collide with any old
+/// folder or process name.
 pub const MIN_IDENTITY_TOKEN_LEN: usize = 4;
 
-/// Tokens de fontanería: componentes de perfil de usuario y de rutas de
-/// instalación. Un slug degenerado igual a uno de estos convierte procesos
-/// cualesquiera en señal fuerte de "estás jugando" — la correlación fantasma.
+/// Plumbing tokens: user-profile and install-path components. A degenerate slug
+/// equal to one of these turns arbitrary processes into a strong "you are
+/// playing" signal, which is the phantom correlation.
 ///
-/// La lista es **estática y pura** a propósito: el kernel no puede leer el
-/// entorno. Los componentes del home real (el username incluido, que fue el caso
-/// real) los añade el shell — ver `hoard_agent::agent::is_generic_identity_token`,
-/// que extiende esta lista con `directories::UserDirs`.
+/// The list is static and pure on purpose, because the kernel cannot read the
+/// environment. Components of the real home directory, the account name
+/// included, which was the actual case, are added by the shell; see
+/// `hoard_agent::agent::is_generic_identity_token`, which extends this list with
+/// `directories::UserDirs`.
 pub const GENERIC_IDENTITY_TOKENS: &[&str] = &[
-    // Perfil de usuario y raíces del sistema.
+    // User profile and system roots.
     "users",
     "user",
     "public",
@@ -94,7 +95,7 @@ pub const GENERIC_IDENTITY_TOKENS: &[&str] = &[
     "windows",
     "desktop",
     "downloads",
-    // Contenedores de partidas: dicen que dentro hay saves, no de qué juego.
+    // Save containers: they say there are saves inside, not which game's.
     "savedgames",
     "mygames",
     "save",
@@ -107,7 +108,7 @@ pub const GENERIC_IDENTITY_TOKENS: &[&str] = &[
     "profiles",
     "slot",
     "slots",
-    // Fontanería de instalación y de tienda.
+    // Install and storefront plumbing.
     "games",
     "game",
     "programfiles",
@@ -120,7 +121,7 @@ pub const GENERIC_IDENTITY_TOKENS: &[&str] = &[
     "compatdata",
     "drivec",
     "remote",
-    // Carpetas de servicio que un juego deja junto a sus partidas.
+    // Service folders a game leaves next to its saves.
     "settings",
     "options",
     "data",
@@ -128,15 +129,15 @@ pub const GENERIC_IDENTITY_TOKENS: &[&str] = &[
     "default",
     "logs",
     "crashes",
-    // Handheld / emulator plumbing. `storage` is the one that bit: an
+    // Handheld and emulator plumbing. `storage` is the one that bit: an
     // emulator front-end keeps its per-emulator trees under
     // `~/Emulation/storage`, which is one of our own deep-scan roots, so the
-    // ancestor walk minted a game called "storage" — and on an image-based
-    // Linux distro every containerised process runs out of
-    // `…/containers/storage/overlay/<hash>/merged/…`, whose path components
-    // then matched that slug as a STRONG identity signal. Result: a game that
-    // is "running" forever and can never be closed. `bios` is deliberately
-    // absent — the catalog has a game by that name.
+    // ancestor walk minted a game called "storage". And on an image-based Linux
+    // distro every containerised process runs out of
+    // `.../containers/storage/overlay/<hash>/merged/...`, whose path components
+    // then matched that slug as a STRONG identity signal. Result: a game that is
+    // "running" forever and can never be closed. `bios` is deliberately absent,
+    // because the catalog has a game by that name.
     "storage",
     "emulation",
     "roms",
@@ -149,8 +150,8 @@ pub const GENERIC_IDENTITY_TOKENS: &[&str] = &[
     "merged",
 ];
 
-/// Por qué un valor no pasó la puerta. `kind` nombra el newtype para que el
-/// mensaje sea diagnosticable sin envolverlo.
+/// Why a value failed the gate. `kind` names the newtype so the message is
+/// diagnosable without wrapping it.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum IdError {
     #[error("{kind}: valor vacío")]
@@ -175,19 +176,19 @@ pub enum IdError {
     },
 }
 
-/// Por qué un valor persistido no se pudo reparar y va a cuarentena.
+/// Why a persisted value could not be repaired and goes to quarantine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuarantineReason {
-    /// No quedaba nada tras normalizar (vacío, sólo espacios, sólo símbolos).
-    /// Re-derivar aquí **fabricaría** un identificador que nadie escribió.
+    /// Nothing left after normalising: empty, whitespace, symbols only.
+    /// Re-deriving here would *fabricate* an identifier nobody wrote.
     Empty,
-    /// Sintácticamente válido pero degenerado: coincide con un token de
-    /// fontanería ([`GENERIC_IDENTITY_TOKENS`]). Éste es el veneno de la
-    /// correlación fantasma; repararlo no aplica porque el valor *ya* tiene la
-    /// forma correcta — lo que está mal es que signifique cualquier cosa.
+    /// Syntactically valid but degenerate: it matches a plumbing token
+    /// ([`GENERIC_IDENTITY_TOKENS`]). This is the phantom-correlation poison,
+    /// and repair does not apply because the value already has the right shape.
+    /// What is wrong is that it means anything at all.
     Degenerate,
-    /// La forma es irrecuperable por construcción: no se puede inventar un UUID
-    /// ni un SHA-256 a partir de basura.
+    /// The shape is unrecoverable by construction: you cannot invent a UUID or
+    /// a SHA-256 out of junk.
     Unrecoverable,
 }
 
@@ -202,18 +203,18 @@ impl fmt::Display for QuarantineReason {
     }
 }
 
-/// Resultado de pasar un valor **ya persistido** por la puerta indulgente.
-/// Nunca es un error: cargar estado viejo no puede fallar (ADR 0021 C.3), sólo
-/// puede acabar en uno de estos tres sitios.
+/// The result of putting an already-persisted value through the lenient gate.
+/// Never an error, because loading old state cannot fail (ADR 0021 C.3); it can
+/// only land in one of these three places.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Repair<T> {
-    /// Ya era válido; pasa tal cual.
+    /// Already valid, passed through untouched.
     Clean(T),
-    /// Se re-derivó un valor válido del crudo. `raw` se conserva para el log.
+    /// A valid value was re-derived from the raw one, which is kept for the log.
     Repaired { value: T, raw: String },
-    /// No hay valor de fiar. El llamante decide qué hacer con el crudo (dejarlo
-    /// donde está y marcarlo, o descartar la fila); lo que **no** puede hacer es
-    /// abortar la carga.
+    /// There is no value worth trusting. The caller decides what to do with the
+    /// raw one, either leaving it in place and flagging it or dropping the row.
+    /// What it may not do is abort the load.
     Quarantined {
         raw: String,
         reason: QuarantineReason,
@@ -221,7 +222,7 @@ pub enum Repair<T> {
 }
 
 impl<T> Repair<T> {
-    /// El valor reparado, o `None` si acabó en cuarentena.
+    /// The repaired value, or `None` if it was quarantined.
     pub fn value(&self) -> Option<&T> {
         match self {
             Repair::Clean(v) | Repair::Repaired { value: v, .. } => Some(v),
@@ -229,7 +230,7 @@ impl<T> Repair<T> {
         }
     }
 
-    /// Consume y devuelve el valor reparado, o `None` si acabó en cuarentena.
+    /// Consumes and returns the repaired value, or `None` if quarantined.
     pub fn into_value(self) -> Option<T> {
         match self {
             Repair::Clean(v) | Repair::Repaired { value: v, .. } => Some(v),
@@ -237,23 +238,23 @@ impl<T> Repair<T> {
         }
     }
 
-    /// ¿Pasó sin tocar nada? Útil para no loggear el 99.9% de los casos.
+    /// Did it pass untouched? Useful for not logging 99.9% of cases.
     pub fn is_clean(&self) -> bool {
         matches!(self, Repair::Clean(_))
     }
 
-    /// ¿Acabó en cuarentena?
+    /// Did it end up quarantined?
     pub fn is_quarantined(&self) -> bool {
         matches!(self, Repair::Quarantined { .. })
     }
 }
 
-/// Genera el envoltorio común de un newtype de identidad.
+/// Generates the common wrapper of an identity newtype.
 ///
-/// Lo que **no** genera es `parse`: cada tipo escribe la suya, y el macro la
-/// cablea como única entrada (`TryFrom`, `FromStr` y `Deserialize` pasan todas
-/// por ahí). El campo interno es privado y este módulo es el único sitio del
-/// workspace donde se puede construir uno saltándose `parse`.
+/// What it does *not* generate is `parse`: each type writes its own, and the
+/// macro wires it up as the only entry point, so `TryFrom`, `FromStr` and
+/// `Deserialize` all go through it. The inner field is private, and this module
+/// is the only place in the workspace where one can be built bypassing `parse`.
 macro_rules! newtype_id {
     ($(#[$meta:meta])* $name:ident, $kind:literal) => {
         $(#[$meta])*
@@ -262,16 +263,16 @@ macro_rules! newtype_id {
         pub struct $name(String);
 
         impl $name {
-            /// Nombre del tipo en los mensajes de error.
+            /// The type's name, for error messages.
             pub const KIND: &'static str = $kind;
 
-            /// El valor como `&str`. No hay `From<$name> for String` implícito
-            /// aparte de [`Self::into_inner`]: convertir a texto es explícito.
+            /// The value as a `&str`. There is no implicit `From<$name> for
+            /// String` besides [`Self::into_inner`]: going to text is explicit.
             pub fn as_str(&self) -> &str {
                 &self.0
             }
 
-            /// Consume el newtype y devuelve el `String` de dentro.
+            /// Consumes the newtype and returns the `String` inside.
             pub fn into_inner(self) -> String {
                 self.0
             }
@@ -310,7 +311,7 @@ macro_rules! newtype_id {
             }
         }
 
-        /// Permite `HashMap<$name, _>::get(&str)` sin construir el newtype.
+        /// Lets `HashMap<$name, _>::get(&str)` work without building the newtype.
         impl Borrow<str> for $name {
             fn borrow(&self) -> &str {
                 &self.0
@@ -329,9 +330,9 @@ macro_rules! newtype_id {
             }
         }
 
-        /// A mano y no por `#[serde(transparent)]`/`into = "String"`: serializar
-        /// no debe clonar, y así queda claro que el valor viaja como string
-        /// pelado (el JSON es idéntico al que emitía el `String` que sustituye).
+        /// By hand rather than `#[serde(transparent)]` or `into = "String"`:
+        /// serialising must not clone, and this makes it plain that the value
+        /// travels as a bare string, identical to the `String` it replaced.
         impl Serialize for $name {
             fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
                 s.serialize_str(&self.0)
@@ -340,50 +341,48 @@ macro_rules! newtype_id {
     };
 }
 
-// ---------------------------------------------------------------------------
-// GameSlug
-// ---------------------------------------------------------------------------
+// ---- GameSlug
 
 newtype_id!(
-    /// Identificador estable de un juego en el catálogo: minúsculas ASCII,
-    /// dígitos y guiones (`stardew-valley`, `2064-read-only-memories`).
+    /// Stable identifier for a game in the catalogue: ASCII lowercase, digits
+    /// and hyphens (`stardew-valley`, `2064-read-only-memories`).
     ///
-    /// Es la forma que produce [`slugify`], que es quien mintó el catálogo
-    /// entero, así que la puerta acepta exactamente eso. Normaliza espacios de
-    /// borde y mayúsculas —dos slugs que sólo difieran en caja son el mismo
-    /// juego, y tratarlos como distintos duplicaba filas— y rechaza todo lo
-    /// demás.
+    /// That is the shape [`slugify`] produces, and `slugify` minted the whole
+    /// catalogue, so the gate accepts exactly that. It normalises edge
+    /// whitespace and case, since two slugs differing only in case are the same
+    /// game and treating them as different duplicated rows, and rejects
+    /// everything else.
     GameSlug,
     "game_slug"
 );
 
 impl GameSlug {
-    /// El slug reservado `__other__` (ver [`OTHER_SLUG`]).
+    /// The reserved `__other__` slug (see [`OTHER_SLUG`]).
     pub fn other() -> Self {
         Self(OTHER_SLUG.to_string())
     }
 
-    /// Marcador para un slug persistido **irrecuperable** (vacío, sólo
-    /// símbolos) que aun así hay que emitir por el wire porque la fila existe.
-    /// Es deliberadamente visible y no casa con ningún juego real, así que no
-    /// puede correlacionar con nada: la alternativa —devolver un 500— dejaría al
-    /// usuario sin listado entero por una fila mala.
+    /// Marker for a persisted slug that is unrecoverable (empty, symbols only)
+    /// and still has to go out over the wire because the row exists. It is
+    /// deliberately visible and matches no real game, so it can correlate with
+    /// nothing. The alternative, a 500, would cost the user their entire listing
+    /// over one bad row.
     pub fn unknown() -> Self {
         Self("unknown-game".to_string())
     }
 
-    /// ¿Es el slug sintético `__other__` en vez de un juego real?
+    /// Is this the synthetic `__other__` rather than a real game?
     pub fn is_other(&self) -> bool {
         self.0 == OTHER_SLUG
     }
 
-    /// **La puerta.** `serde`, `TryFrom` y `FromStr` pasan todos por aquí.
+    /// The gate. `serde`, `TryFrom` and `FromStr` all come through here.
     ///
-    /// Normaliza (trim + minúsculas ASCII) y luego exige la forma canónica.
-    /// Normalizar en vez de rechazar es deliberado: es idempotente
-    /// (`parse(parse(x)) == parse(x)`), no puede brickear nada, y elimina la
-    /// clase de bug "el mismo juego con dos cajas distintas". Lo que se rechaza
-    /// es lo que [`slugify`] no puede haber emitido nunca.
+    /// Normalises (trim plus ASCII lowercase) and then demands the canonical
+    /// shape. Normalising rather than rejecting is deliberate: it is idempotent
+    /// (`parse(parse(x)) == parse(x)`), it cannot brick anything, and it kills
+    /// the "same game in two different cases" class of bug. What gets rejected
+    /// is what [`slugify`] could never have emitted.
     pub fn parse(raw: &str) -> Result<Self, IdError> {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
@@ -431,18 +430,19 @@ impl GameSlug {
         Ok(Self(s))
     }
 
-    /// **La puerta indulgente**, sólo para slugs que ya están en disco.
+    /// The lenient gate, only for slugs already on disk.
     ///
-    /// - Válido → [`Repair::Clean`].
-    /// - Recuperable → se re-deriva con [`slugify`] (el mismo algoritmo que lo
-    ///   mintó) → [`Repair::Repaired`].
-    /// - Degenerado ([`GENERIC_IDENTITY_TOKENS`]) o vacío → [`Repair::Quarantined`].
+    /// - Valid becomes [`Repair::Clean`].
+    /// - Recoverable is re-derived with [`slugify`], the same algorithm that
+    ///   minted it, and becomes [`Repair::Repaired`].
+    /// - Degenerate ([`GENERIC_IDENTITY_TOKENS`]) or empty becomes
+    ///   [`Repair::Quarantined`].
     ///
-    /// Un slug degenerado **no se re-deriva**: `users` ya es un slug bien
-    /// formado, el problema es que casa con todo. Fabricarle otro nombre sería
-    /// inventar un juego; lo correcto es marcarlo y dejar que el llamante decida
-    /// (hoy: conservarlo tal cual y excluirlo de la correlación, sin tocar la
-    /// identidad que el server ya conoce).
+    /// A degenerate slug is *not* re-derived: `users` is already well formed,
+    /// the problem is that it matches everything. Making up another name for it
+    /// would be inventing a game. The right move is to flag it and let the
+    /// caller decide, which today means keeping it as-is and excluding it from
+    /// correlation, without touching the identity the server already knows.
     pub fn repair(raw: &str) -> Repair<Self> {
         let degenerate = |s: &str| {
             let tok = canon_token(s);
@@ -457,8 +457,8 @@ impl GameSlug {
             }
             return Repair::Clean(v);
         }
-        // Nada aprovechable: `slugify` devolvería su relleno `game`, que sería
-        // inventarse un juego a partir de la nada.
+        // Nothing usable: `slugify` would return its `game` filler, which is
+        // inventing a game out of thin air.
         if !raw.chars().any(|c| c.is_ascii_alphanumeric()) {
             return Repair::Quarantined {
                 raw: raw.to_string(),
@@ -482,10 +482,10 @@ impl GameSlug {
     }
 }
 
-/// Slug lower-kebab canónico. **Fuente de verdad única** del algoritmo:
-/// `hoard_manifest::ludusavi::slugify` delega aquí, y `data/convert-ludusavi.py`
-/// es su gemelo byte-compatible. Divergir rompe en silencio el cruce
-/// catálogo ↔ detección ↔ server.
+/// Canonical lower-kebab slug. The single source of truth for the algorithm:
+/// `hoard_manifest::ludusavi::slugify` delegates here, and
+/// `data/convert-ludusavi.py` is its byte-compatible twin. Diverging silently
+/// breaks the catalogue-to-detection-to-server join.
 pub fn slugify(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     let mut last_dash = true;
@@ -517,10 +517,10 @@ pub fn slugify(name: &str) -> String {
     out
 }
 
-/// Token canónico de identidad de un juego/proceso: sólo alfanuméricos ASCII en
-/// minúscula, sin separadores ni extensión. Unifica las tres formas en las que
-/// el mismo juego aparece — slug (`victoria-3`), nombre visible (`Victoria 3`) y
-/// ejecutable (`victoria3.exe` → `victoria3`) — en una sola clave comparable.
+/// Canonical identity token for a game or process: ASCII alphanumerics in
+/// lowercase, no separators, no extension. It collapses the three shapes the
+/// same game shows up in (slug `victoria-3`, display name `Victoria 3`,
+/// executable `victoria3.exe`) into one comparable key.
 pub fn canon_token(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -539,21 +539,21 @@ pub const MIN_NAMEABLE_LEN: usize = 3;
 ///
 /// The naming counterpart of [`GENERIC_IDENTITY_TOKENS`]: that list keeps a
 /// degenerate slug from poisoning correlation *after the fact*, this keeps one
-/// from being minted in the first place. Both read the same list on purpose —
+/// from being minted in the first place. Both read the same list on purpose, so
 /// a name this returns `false` for is a name the loader will not quarantine.
 ///
 /// A segment fails in one of three ways:
 ///
 /// * it is plumbing every machine has (`AppData`, `steamapps`, `user`);
-/// * it is an identifier the machine minted for itself — a Steam appid, a
+/// * it is an identifier the machine minted for itself: a Steam appid, a
 ///   SteamID64, a profile uuid, the hex ids Citra derives from console keys.
 ///   None of them is a name, and every one of them differs on the next
 ///   machine, so a save named after one cannot be paired across devices;
 /// * there is not enough of it left to be a title (`cd`).
 ///
 /// Only static text is consulted, so this cannot know the user's own home
-/// path — `C:\Users\<account>` names the account, never the game. Callers with
-/// an environment extend it; see `hoard_agent::agent::is_generic_identity_token`.
+/// path, and `C:\Users\<account>` names the account, never the game. Callers
+/// with an environment extend it; see `hoard_agent::agent::is_generic_identity_token`.
 pub fn is_generic_name(raw: &str) -> bool {
     let tok = canon_token(raw);
     if tok.len() < MIN_NAMEABLE_LEN {
@@ -572,40 +572,38 @@ pub fn is_generic_name(raw: &str) -> bool {
         && tok.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-// ---------------------------------------------------------------------------
-// Username
-// ---------------------------------------------------------------------------
+// ---- Username
 
 newtype_id!(
-    /// Nombre de usuario en un server self-hosted.
+    /// A username on a self-hosted server.
     ///
-    /// La puerta es **deliberadamente permisiva**: el server nunca validó
-    /// usernames (`hoard-admin user create` inserta lo que le den) y hay
-    /// cuentas vivas con espacios o acentos. Una regla de estilo aquí no
-    /// arreglaría ningún bug y sí dejaría a esos usuarios sin poder hacer
-    /// `whoami` — o sea, sin poder entrar.
+    /// The gate is deliberately permissive. The server never validated usernames
+    /// (`hoard-admin user create` inserts whatever it is given) and there are
+    /// live accounts with spaces and accents in them. A style rule here would
+    /// fix no bug and would leave those users unable to call `whoami`, which
+    /// means unable to log in.
     ///
-    /// Lo que sí veta es lo que nunca puede ser un usuario: vacío, sólo
-    /// espacios, caracteres de control (rompen logs y cabeceras) y longitudes
-    /// absurdas. El valor real del tipo no es la validación sino la
-    /// **categoría**: un `Username` no puede acabar en un campo `GameSlug` por
-    /// accidente, que es exactamente lo que produjo la correlación fantasma.
+    /// What it does reject is what can never be a user: empty, whitespace only,
+    /// control characters (they break logs and headers), and absurd lengths. The
+    /// type's real value is not the validation but the *category*: a `Username`
+    /// cannot land in a `GameSlug` field by accident, which is exactly what
+    /// produced the phantom correlation.
     Username,
     "username"
 );
 
 impl Username {
-    /// Marcador para un username persistido irrecuperable (vacío). Mismo
-    /// razonamiento que [`GameSlug::unknown`]: en self-hosted el username es
-    /// dato de presentación —la autorización va por token → `user_id`—, así que
-    /// degradar el nombre visible es infinitamente mejor que un 500 en
-    /// `whoami`, que deja la cuenta sin poder abrir la app.
+    /// Marker for an unrecoverable persisted username (empty). Same reasoning as
+    /// [`GameSlug::unknown`]: on self-hosted the username is presentation data,
+    /// since authorisation goes by token to `user_id`, so degrading the display
+    /// name is infinitely better than a 500 on `whoami`, which leaves the
+    /// account unable to open the app.
     pub fn unknown() -> Self {
         Self("unknown".to_string())
     }
 
-    /// **La puerta.** Normaliza recortando espacios de borde; rechaza vacío,
-    /// caracteres de control y > [`MAX_USERNAME_LEN`].
+    /// The gate. Normalises by trimming edge whitespace; rejects empty, control
+    /// characters and anything over [`MAX_USERNAME_LEN`].
     pub fn parse(raw: &str) -> Result<Self, IdError> {
         let s = raw.trim();
         if s.is_empty() {
@@ -628,8 +626,8 @@ impl Username {
         Ok(Self(s.to_string()))
     }
 
-    /// Puerta indulgente para usernames ya persistidos: quita los caracteres de
-    /// control y trunca; sólo va a cuarentena si no queda nada.
+    /// Lenient gate for already-persisted usernames: strips control characters
+    /// and truncates, and only quarantines when nothing is left.
     pub fn repair(raw: &str) -> Repair<Self> {
         if let Ok(v) = Self::parse(raw) {
             return Repair::Clean(v);
@@ -653,25 +651,24 @@ impl Username {
     }
 }
 
-// ---------------------------------------------------------------------------
-// SaveId
-// ---------------------------------------------------------------------------
+// ---- SaveId
 
 newtype_id!(
-    /// Identificador de un save. Siempre un UUID v4 en forma canónica
-    /// (36 caracteres, minúsculas, con guiones): lo mintan el server
-    /// (`Uuid::new_v4().to_string()`), Postgres en cloud, o el cliente cuando
-    /// crea la fila local antes del primer upload — las tres formas coinciden.
+    /// A save's identifier. Always a canonical v4 UUID: 36 characters,
+    /// lowercase, hyphenated. The server mints it (`Uuid::new_v4().to_string()`),
+    /// or Postgres does on cloud, or the client does when it creates the local
+    /// row before the first upload. All three agree.
     ///
-    /// La puerta exige la forma canónica exacta y **no normaliza**: un id es una
-    /// clave de búsqueda contra el server, y "arreglarlo" (bajar la caja, quitar
-    /// llaves) produciría un id que apunta a otro sitio del que se escribió.
+    /// The gate demands the exact canonical shape and does *not* normalise: an
+    /// id is a lookup key against the server, and "fixing" it (lowering the case,
+    /// stripping braces) would produce an id pointing somewhere other than where
+    /// it was written.
     SaveId,
     "save_id"
 );
 
 impl SaveId {
-    /// **La puerta.** UUID canónico en minúsculas con guiones.
+    /// The gate. Canonical lowercase hyphenated UUID.
     pub fn parse(raw: &str) -> Result<Self, IdError> {
         let s = raw.trim();
         if s.is_empty() {
@@ -687,9 +684,9 @@ impl SaveId {
         Ok(Self(s.to_string()))
     }
 
-    /// Puerta indulgente: sólo recupera la caja (un UUID en mayúsculas sigue
-    /// apuntando al mismo save). Cualquier otra cosa es irrecuperable — no se
-    /// puede inventar un identificador que el server nunca minó.
+    /// Lenient gate: recovers case only, since an uppercase UUID still points at
+    /// the same save. Anything else is unrecoverable, because an identifier the
+    /// server never minted cannot be invented.
     pub fn repair(raw: &str) -> Repair<Self> {
         if let Ok(v) = Self::parse(raw) {
             return Repair::Clean(v);
@@ -708,10 +705,10 @@ impl SaveId {
     }
 }
 
-/// `8-4-4-4-12` en hex minúscula. Se comprueba a mano en vez de con
-/// `uuid::Uuid::parse_str` porque esa función acepta además las formas simple,
-/// con llaves y URN, y aceptarlas aquí dejaría entrar dos strings distintos para
-/// el mismo save (y por tanto dos claves distintas en los mapas de estado).
+/// `8-4-4-4-12` in lowercase hex. Checked by hand rather than with
+/// `uuid::Uuid::parse_str`, because that also accepts the simple, braced and URN
+/// forms, and accepting those would let two different strings in for the same
+/// save, and therefore two different keys in the state maps.
 fn is_canonical_uuid(s: &str) -> bool {
     const GROUPS: [usize; 5] = [8, 4, 4, 4, 12];
     let mut parts = s.split('-');
@@ -728,63 +725,59 @@ fn is_lower_hex(b: u8) -> bool {
     matches!(b, b'0'..=b'9' | b'a'..=b'f')
 }
 
-// ---------------------------------------------------------------------------
-// Sha256
-// ---------------------------------------------------------------------------
+// ---- Sha256
 
 newtype_id!(
-    /// Digest SHA-256 en hex: 64 caracteres, minúsculas. Es lo que emite
-    /// `hex::encode` en las dos puntas (cliente y server), así que la forma
-    /// canónica es la única que existe en la práctica.
+    /// A SHA-256 digest in hex: 64 characters, lowercase. That is what
+    /// `hex::encode` emits on both ends, so the canonical form is the only one
+    /// that exists in practice.
     ///
-    /// Ojo: un campo `sha256` **vacío** en el wire no es un hash malformado sino
-    /// "no aplica" (las versiones content-addressed no tienen digest de archivo
-    /// entero). Eso se modela con `Option<Sha256>` y un deserializador que trata
-    /// `""` como `None`, no relajando esta puerta.
+    /// Note that an *empty* `sha256` field on the wire is not a malformed hash
+    /// but "not applicable": content-addressed versions have no whole-archive
+    /// digest. That is modelled with `Option<Sha256>` and a deserialiser that
+    /// treats `""` as `None`, not by relaxing this gate.
     Sha256,
     "sha256"
 );
 
 impl Sha256 {
-    /// Longitud en hex de un digest SHA-256.
+    /// Hex length of a SHA-256 digest.
     pub const HEX_LEN: usize = 64;
 
-    /// **La puerta.** 64 hex; normaliza la caja porque un digest en mayúsculas
-    /// es el mismo digest (a diferencia de un id, aquí el valor *es* el
-    /// contenido, no una clave ajena).
+    /// The gate. 64 hex characters; normalises case, because an uppercase digest
+    /// is the same digest. Unlike an id, here the value *is* the content rather
+    /// than somebody else's key.
     pub fn parse(raw: &str) -> Result<Self, IdError> {
         parse_hex(raw, Self::HEX_LEN, Self::KIND).map(Self)
     }
 
-    /// Puerta indulgente: normaliza la caja, o cuarentena.
+    /// Lenient gate: normalise the case, or quarantine.
     pub fn repair(raw: &str) -> Repair<Self> {
         repair_hex(raw, Self::parse)
     }
 }
 
-// ---------------------------------------------------------------------------
-// MachineId
-// ---------------------------------------------------------------------------
+// ---- MachineId
 
 newtype_id!(
-    /// Huella estable de una máquina: SHA-256 hex de `/etc/machine-id` (o el
-    /// equivalente por SO) más el hostname. Misma forma que [`Sha256`] pero
-    /// **tipo distinto** a propósito: una huella de máquina y el digest de un
-    /// fichero no son intercambiables, y el compilador debe decirlo.
+    /// A machine's stable fingerprint: hex SHA-256 of `/etc/machine-id` (or the
+    /// per-OS equivalent) plus the hostname. Same shape as [`Sha256`] but a
+    /// deliberately different type: a machine fingerprint and a file's digest are
+    /// not interchangeable, and the compiler should say so.
     MachineId,
     "machine_id"
 );
 
 impl MachineId {
-    /// Longitud en hex de una huella de máquina.
+    /// Hex length of a machine fingerprint.
     pub const HEX_LEN: usize = 64;
 
-    /// **La puerta.** 64 hex, caja normalizada.
+    /// The gate. 64 hex characters, case normalised.
     pub fn parse(raw: &str) -> Result<Self, IdError> {
         parse_hex(raw, Self::HEX_LEN, Self::KIND).map(Self)
     }
 
-    /// Puerta indulgente: normaliza la caja, o cuarentena.
+    /// Lenient gate: normalise the case, or quarantine.
     pub fn repair(raw: &str) -> Repair<Self> {
         repair_hex(raw, Self::parse)
     }
@@ -813,8 +806,8 @@ fn parse_hex(raw: &str, len: usize, kind: &'static str) -> Result<String, IdErro
     Ok(s)
 }
 
-/// `parse` de los tipos hex normaliza la caja, así que "estaba limpio" es "el
-/// crudo ya era idéntico al normalizado".
+/// The hex types' `parse` normalises case, so "it was clean" means "the raw
+/// value already matched the normalised one".
 fn repair_hex<T: AsRef<str>>(raw: &str, parse: fn(&str) -> Result<T, IdError>) -> Repair<T> {
     match parse(raw) {
         Ok(value) if value.as_ref() == raw => Repair::Clean(value),
@@ -833,11 +826,11 @@ fn repair_hex<T: AsRef<str>>(raw: &str, parse: fn(&str) -> Result<T, IdError>) -
 mod tests {
     use super::*;
 
-    // ---- La puerta de serde -------------------------------------------
+    // ---- the serde gate
 
-    /// El punto entero del slice: **no se puede construir un newtype
-    /// deserializando**. Si alguien cambia `try_from` por un derive a pelo, este
-    /// test cae.
+    /// The whole point of the slice: a newtype cannot be built by
+    /// deserialising. If somebody swaps `try_from` for a plain derive, this
+    /// fails.
     #[test]
     fn deserialize_goes_through_the_gate() {
         assert!(serde_json::from_str::<GameSlug>(r#""stardew-valley""#).is_ok());
@@ -861,8 +854,8 @@ mod tests {
         assert!(serde_json::from_str::<MachineId>(r#""zz""#).is_err());
     }
 
-    /// El JSON de un newtype es el mismo string pelado que emitía el `String`
-    /// que sustituye: cambiar el tipo no cambió un byte del wire.
+    /// A newtype's JSON is the same bare string the `String` it replaced
+    /// emitted: changing the type moved not one byte of the wire.
     #[test]
     fn serializes_as_a_bare_string() {
         let slug = GameSlug::parse("stardew-valley").unwrap();
@@ -874,8 +867,8 @@ mod tests {
         );
     }
 
-    /// La normalización es idempotente: `parse(parse(x)) == parse(x)`. Sin esto,
-    /// un round-trip por disco podría mover el valor.
+    /// Normalisation is idempotent: `parse(parse(x)) == parse(x)`. Without that,
+    /// a round trip through disk could move the value.
     #[test]
     fn parse_is_idempotent() {
         for raw in ["  Stardew-Valley ", "STARDEW-VALLEY", "stardew-valley"] {
@@ -890,7 +883,7 @@ mod tests {
         assert_eq!(once.as_str(), "a".repeat(64));
     }
 
-    // ---- Slugs ---------------------------------------------------------
+    // ---- slugs
 
     #[test]
     fn slug_accepts_the_shapes_slugify_emits() {
@@ -907,8 +900,8 @@ mod tests {
         assert!(GameSlug::parse(&"a".repeat(MAX_SLUG_LEN + 1)).is_err());
     }
 
-    /// Todo lo que emite `slugify` pasa la puerta. Es el contrato que hace que
-    /// `repair` pueda re-derivar sin quedarse en bucle.
+    /// Everything `slugify` emits passes the gate. That contract is what lets
+    /// `repair` re-derive without looping.
     #[test]
     fn slugify_output_always_parses() {
         for raw in [
@@ -929,7 +922,7 @@ mod tests {
         }
     }
 
-    // ---- Reparación / cuarentena ---------------------------------------
+    // ---- repair and quarantine
 
     #[test]
     fn repair_rederives_a_recoverable_slug() {
@@ -942,9 +935,9 @@ mod tests {
         }
     }
 
-    /// El veneno de julio 2026: un slug que es un token de fontanería (el caso
-    /// real fue el username de Windows, que el shell añade a la lista). No se
-    /// re-deriva —ya está bien formado— sino que se marca.
+    /// The July 2026 poison: a slug that is a plumbing token. The real case was
+    /// a Windows account name, which the shell adds to the list. It is not
+    /// re-derived, since it is already well formed; it is flagged.
     #[test]
     fn repair_quarantines_a_degenerate_slug() {
         for poison in [
@@ -969,8 +962,8 @@ mod tests {
         }
     }
 
-    /// Sin nada alfanumérico no hay slug que derivar: `slugify` devolvería su
-    /// relleno `game` y estaríamos inventando un juego.
+    /// With nothing alphanumeric there is no slug to derive: `slugify` would
+    /// return its `game` filler and we would be inventing a game.
     #[test]
     fn repair_quarantines_instead_of_fabricating() {
         for empty in ["", "   ", "---", "!!!"] {
@@ -1001,22 +994,22 @@ mod tests {
         assert!(SaveId::repair("save-a").is_quarantined());
     }
 
-    // ---- Categoría -----------------------------------------------------
+    // ---- category
 
-    /// La otra mitad del valor del slice: `slug == username` no compila. Este
-    /// test documenta la intención; el compilador es quien la hace cumplir (una
-    /// comparación directa entre los dos tipos sería un error de tipos).
+    /// The other half of the slice's value: `slug == username` does not compile.
+    /// This test documents the intent; the compiler enforces it, since comparing
+    /// the two types directly is a type error.
     #[test]
     fn slug_and_username_are_different_categories() {
         let slug = GameSlug::parse("jacka").unwrap();
         let user = Username::parse("jacka").unwrap();
-        // Comparar exige bajar explícitamente a `str` — y ese descenso es
-        // justo el sitio donde un humano se pregunta "¿por qué comparo un
-        // usuario con un juego?".
+        // Comparing means explicitly dropping to `str`, and that descent is
+        // exactly where a human asks themselves why they are comparing a user
+        // with a game.
         assert_eq!(slug.as_str(), user.as_str());
     }
 
-    // ---- Formas de identidad -------------------------------------------
+    // ---- identity shapes
 
     #[test]
     fn uuid_gate_is_strict_about_shape() {
@@ -1060,7 +1053,7 @@ mod tests {
         assert_eq!(m.get("doom"), Some(&1));
     }
 
-    // ---- slugify (portados de hoard-manifest, que ahora delega aquí) ----
+    // ---- slugify (ported from hoard-manifest, which now delegates here)
 
     #[test]
     fn slugify_examples() {

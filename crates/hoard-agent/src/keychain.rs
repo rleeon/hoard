@@ -1,14 +1,14 @@
-//! El llavero del sistema, **siempre acotado**.
+//! The system keyring, always bounded.
 //!
-//! Toda llamada a `keyring` del cliente pasa por aquí: la sesión Cloud
-//! ([`crate::cloud_auth`]) y el token self-hosted ([`crate::credentials`]). El
-//! motivo es el fallo de D.19 (ADR 0021): un llavero bloqueado no falla, se queda
-//! esperando, y una llamada síncrona que no vuelve nunca cuelga a quien la hizo.
+//! Every `keyring` call the client makes comes through here: the Cloud session
+//! ([`crate::cloud_auth`]) and the self-hosted token ([`crate::credentials`]).
+//! The reason is the D.19 failure (ADR 0021): a locked keyring does not fail, it
+//! waits, and a synchronous call that never returns hangs whoever made it.
 //!
-//! Las dos sesiones comparten **el mismo hilo y la misma cola** a propósito. No
-//! hay dos llaveros: si `org.freedesktop.secrets` está bloqueado lo está para las
-//! dos, así que un hilo por módulo sólo daría dos hilos colgados en vez de uno.
-//! Con un llavero sano las operaciones tardan milisegundos y la cola no se nota.
+//! Both sessions share one thread and one queue on purpose. There are not two
+//! keyrings: if `org.freedesktop.secrets` is locked it is locked for both, so a
+//! thread per module would only give two hung threads instead of one. With a
+//! healthy keyring the operations take milliseconds and the queue is invisible.
 
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Mutex, OnceLock};
@@ -17,27 +17,27 @@ use std::time::Duration;
 use anyhow::{bail, Result};
 pub use hoard_core::ipc::KeyringFault;
 
-/// Tope de espera de **cualquier** operación del llavero.
+/// The wait cap on any keyring operation at all.
 ///
-/// Un llavero bloqueado no falla: `org.freedesktop.secrets` se queda esperando a
-/// que alguien conteste el prompt de desbloqueo, y en una sesión sin escritorio
-/// (SSH, NAS, el dogfooding de D.19) nadie lo va a contestar nunca. Esa espera sin
-/// tope dejaba el motor en `starting` para siempre y **sin una línea de log**
-/// (`last_error` en `None`, indistinguible de "arrancando") y, peor, hacía que el
-/// daemon no se pudiera parar: `abort()` no desaloja una llamada síncrona, así que
-/// `systemctl --user stop` se quedaba en `deactivating` hasta el SIGKILL.
+/// A locked keyring does not fail: `org.freedesktop.secrets` waits for somebody
+/// to answer the unlock prompt, and in a session with no desktop (SSH, a NAS, the
+/// D.19 dogfooding) nobody ever will. That unbounded wait left the engine in
+/// `starting` forever without a single log line (`last_error` at `None`,
+/// indistinguishable from "starting up") and, worse, made the daemon
+/// unstoppable: `abort()` does not evict a synchronous call, so
+/// `systemctl --user stop` sat in `deactivating` until the SIGKILL.
 ///
-/// Un llavero sano contesta en milisegundos, así que cinco segundos no dan falsos
-/// positivos; y si el usuario tarda en teclear su contraseña, el reintento del
-/// keeper lo recoge en cuanto quede desbloqueado.
+/// A healthy keyring answers in milliseconds, so five seconds gives no false
+/// positives; and if the user is slow typing their password, the keeper's retry
+/// picks it up as soon as it is unlocked.
 pub const KEYRING_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// El llavero no contestó dentro del tope. Es un tipo propio para que "está
-/// bloqueado" no se confunda con "no hay sesión": confundirlos es exactamente lo
-/// que hacía invisible el fallo.
+/// The keyring did not answer inside the cap. Its own type so "it is locked" is
+/// never confused with "there is no session": confusing them is exactly what made
+/// the failure invisible.
 #[derive(Debug)]
 pub struct KeyringTimeout {
-    /// Qué se estaba haciendo, en una frase, para el log y el `last_error`.
+    /// What was being done, in one phrase, for the log and `last_error`.
     pub doing: &'static str,
     pub after: Duration,
 }
@@ -46,7 +46,7 @@ impl std::fmt::Display for KeyringTimeout {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "the system keyring didn't answer in {}s while {} — it is most likely \
+            "the system keyring didn't answer in {}s while {}. It is most likely \
              locked, waiting for an unlock nobody can answer; unlock the login \
              keyring (or sign in again with `hoard login`)",
             self.after.as_secs(),
@@ -57,18 +57,18 @@ impl std::fmt::Display for KeyringTimeout {
 
 impl std::error::Error for KeyringTimeout {}
 
-/// El llavero **contestó**, y dijo que no. Sin D-Bus en una sesión sin escritorio,
-/// entrada corrupta, o —el caso que nos interesa— una ACL de macOS que autoriza
-/// sólo al binario que creó el ítem, que no es el que lo está leyendo.
+/// The keyring answered, and said no. No D-Bus in a session with no desktop, a
+/// corrupt entry, or, the case that matters here, a macOS ACL that authorises only
+/// the binary that created the item, which is not the one reading it.
 ///
-/// Tipo propio por lo mismo que [`KeyringTimeout`]: "no te lo doy" y "no hay
-/// sesión" llevan a consejos opuestos. En el primero el usuario **sí** entró y
-/// volver a entrar lo arregla de raíz (reescribe el ítem a nombre de quien lo
-/// lee); en el segundo no ha entrado nunca. Confundirlos manda al usuario a
-/// buscar un problema que no tiene.
+/// Its own type for the same reason as [`KeyringTimeout`]: "I won't give it to
+/// you" and "there is no session" lead to opposite advice. In the first the user
+/// did sign in, and signing in again fixes it at the root (it rewrites the item in
+/// the name of whoever reads it); in the second they never signed in. Confusing
+/// them sends the user looking for a problem they do not have.
 #[derive(Debug)]
 pub struct KeyringUnreadable {
-    /// Qué se estaba haciendo, para el log y el `last_error`.
+    /// What was being done, for the log and `last_error`.
     pub doing: &'static str,
 }
 
@@ -76,8 +76,8 @@ impl std::fmt::Display for KeyringUnreadable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "the system keyring refused to hand over the saved session while {} \
-             — signing in again rewrites it under the service, which fixes it for good",
+            "the system keyring refused to hand over the saved session while {}. \
+             Signing in again rewrites it under the service, which fixes it for good",
             self.doing
         )
     }
@@ -88,7 +88,7 @@ impl std::error::Error for KeyringUnreadable {}
 /// Which way the keyring failed, for the sentence the window shows.
 ///
 /// [`KeyringUnreadable`] and [`KeyringTimeout`] answer "can Hoard get the saved
-/// session?" — no, and no. This answers "why not", and the four production
+/// session?": no, and no. This answers "why not", and the four production
 /// errors want four different next steps: `DBus error: The name is not
 /// activatable` is a machine with no secret-service daemon, so telling that user
 /// to unlock their login keyring sends them looking for something that isn't
@@ -157,17 +157,17 @@ fn classify_platform(text: &str) -> KeyringFault {
 
 type KeyringJob = Box<dyn FnOnce() + Send>;
 
-/// Cola del **único** hilo que habla con el llavero.
+/// The queue for the single thread that talks to the keyring.
 ///
-/// Un hilo por llamada bastaría para no esperar de más, pero la llamada colgada no
-/// se puede cancelar: con el llavero bloqueado y el keeper reintentando cada pocos
-/// minutos, cada intento dejaría un hilo más colgado para siempre. Serializando,
-/// lo que se acumula es la cola (un `Box` por intento) y no los hilos.
+/// One thread per call would be enough not to over-wait, but a hung call cannot be
+/// cancelled: with the keyring locked and the keeper retrying every few minutes,
+/// each attempt would leave one more thread hung forever. Serialising means what
+/// piles up is the queue (one `Box` per attempt) rather than the threads.
 ///
-/// Y es un hilo **suelto**, no del pool de `spawn_blocking`: al soltarse el
-/// runtime, tokio espera a que terminen sus hilos de bloqueo, así que uno colgado
-/// ahí volvería a impedir que el proceso muera — que es justo la mitad del bug.
-/// A un hilo propio y sin `join` no lo espera nadie al salir.
+/// And it is a loose thread rather than one from the `spawn_blocking` pool: when
+/// the runtime is dropped, tokio waits for its blocking threads to finish, so one
+/// hung there would again stop the process dying, which is half the bug. Nobody
+/// waits on a thread of its own that is never joined.
 fn keyring_queue() -> Option<&'static Mutex<mpsc::Sender<KeyringJob>>> {
     static QUEUE: OnceLock<Option<Mutex<mpsc::Sender<KeyringJob>>>> = OnceLock::new();
     QUEUE
@@ -189,8 +189,8 @@ fn keyring_queue() -> Option<&'static Mutex<mpsc::Sender<KeyringJob>>> {
         .as_ref()
 }
 
-/// Corre `op` en el hilo del llavero y **deja de esperarla** pasado `wait`.
-/// Devuelve lo que devuelva `op`, o [`KeyringTimeout`] si no contestó a tiempo.
+/// Runs `op` on the keyring thread and stops waiting for it after `wait`. Returns
+/// whatever `op` returns, or [`KeyringTimeout`] when it did not answer in time.
 pub(crate) fn keyring_op<T: Send + 'static>(
     doing: &'static str,
     wait: Duration,
@@ -201,12 +201,12 @@ pub(crate) fn keyring_op<T: Send + 'static>(
     };
     let (tx, rx) = mpsc::channel();
     let job: KeyringJob = Box::new(move || {
-        // Si quien preguntó ya se rindió, el envío falla y el resultado se
-        // descarta: nadie se queda esperando a nadie.
+        // If whoever asked has already given up, the send fails and the result is
+        // dropped: nobody is left waiting on anybody.
         let _ = tx.send(op());
     });
-    // Igual que en el journal y en la ranura del motor: un pánico ajeno no puede
-    // dejar el llavero inaccesible para siempre.
+    // As in the journal and the engine slot: somebody else's panic must not leave
+    // the keyring unreachable forever.
     let sender = queue
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -219,7 +219,7 @@ pub(crate) fn keyring_op<T: Send + 'static>(
         Err(RecvTimeoutError::Timeout) => {
             Err(anyhow::Error::new(KeyringTimeout { doing, after: wait }))
         }
-        // El hilo se fue con la operación a medias (un pánico dentro de `keyring`).
+        // The thread left with the operation half done (a panic inside `keyring`).
         Err(RecvTimeoutError::Disconnected) => bail!("the keyring call died while {doing}"),
     }
 }
@@ -229,22 +229,22 @@ mod tests {
     use super::*;
     use std::time::Instant;
 
-    /// Lo que hace un llavero bloqueado: esperar un desbloqueo que nadie va a
-    /// contestar. Se simula con una operación que tarda mucho más que el tope (no
-    /// con una infinita, para no dejar el hilo del llavero ocupado el resto de la
-    /// suite).
+    /// What a locked keyring does: wait for an unlock nobody is going to answer.
+    /// Simulated with an operation that takes far longer than the cap, rather than
+    /// an infinite one, so the keyring thread is not left busy for the rest of the
+    /// suite.
     fn a_locked_keyring() -> impl FnOnce() -> Result<Option<String>> + Send + 'static {
         || {
             std::thread::sleep(Duration::from_millis(300));
-            // A estas alturas ya nadie escucha: el resultado se descarta y el hilo
-            // del llavero queda libre para el siguiente test.
+            // By now nobody is listening: the result is dropped and the keyring
+            // thread is free for the next test.
             Ok(None)
         }
     }
 
-    /// El fallo de D.19: la llamada al llavero no volvía nunca. Ahora se deja de
-    /// esperar, y con un motivo tipado — el que aterriza en `last_error` y en el
-    /// log del servicio.
+    /// The D.19 failure: the keyring call never came back. Now the wait stops,
+    /// and with a typed reason, the one that lands in `last_error` and in the
+    /// service's log.
     #[test]
     fn a_keyring_that_never_answers_gives_up_with_a_reason() {
         let started = Instant::now();
@@ -254,8 +254,8 @@ mod tests {
             a_locked_keyring(),
         )
         .expect_err("tiene que rendirse, no esperar");
-        // Lo que importa no es el número sino que la espera esté acotada: quien
-        // llamó recupera el control muchísimo antes de que la operación termine.
+        // What matters is not the number but that the wait is bounded: the caller
+        // gets control back long before the operation finishes.
         assert!(
             started.elapsed() < Duration::from_millis(250),
             "esperó de más: {:?}",
@@ -273,9 +273,9 @@ mod tests {
         );
     }
 
-    /// Un llavero que sí contesta pasa tal cual, y su fallo propio (sin D-Bus,
-    /// entrada corrupta) no se disfraza de tope: el motivo tiene que ser el de
-    /// verdad.
+    /// A keyring that does answer passes through untouched, and its own failure
+    /// (no D-Bus, a corrupt entry) is not disguised as a timeout: the reason has
+    /// to be the real one.
     #[test]
     fn a_keyring_that_answers_is_passed_through_verbatim() {
         let got = keyring_op("reading the Cloud session", KEYRING_TIMEOUT, || {
@@ -314,8 +314,8 @@ mod tests {
             fault(&platform("Crypto error: Unpad Error")),
             Some(KeyringFault::Damaged)
         );
-        // Our own cap never reaches a `keyring::Error` — the whole point is that
-        // the call didn't come back — so it has to be recognised on its own.
+        // Our own cap never reaches a `keyring::Error`, the whole point being
+        // that the call didn't come back, so it has to be recognised on its own.
         let capped = anyhow::Error::new(KeyringTimeout {
             doing: "reading the Cloud session",
             after: KEYRING_TIMEOUT,
@@ -353,9 +353,9 @@ mod tests {
         assert_eq!(fault(&odd), Some(KeyringFault::Refused));
     }
 
-    /// El tope vale para las dos sesiones, que es el motivo de que el hilo sea
-    /// uno solo: la del token self-hosted se rinde igual que la Cloud, y con su
-    /// propio motivo.
+    /// The cap covers both sessions, which is why there is only one thread: the
+    /// self-hosted token's gives up just like the Cloud one, and with its own
+    /// reason.
     #[test]
     fn the_self_hosted_session_is_bounded_by_the_same_thread() {
         let err = keyring_op(
@@ -368,10 +368,10 @@ mod tests {
         assert_eq!(timeout.doing, "reading the self-hosted session");
     }
 
-    /// La otra mitad de D.19: la espera no puede vivir en el hilo de la task que
-    /// el apagado aborta. Con la lectura en el pool de bloqueo, la task que la
-    /// aguarda se cancela en el momento — el runtime queda libre y el daemon
-    /// parable, aunque el llavero siga sin contestar.
+    /// The other half of D.19: the wait cannot live on the thread of the task the
+    /// shutdown aborts. With the read on the blocking pool, the task awaiting it is
+    /// cancelled at once, so the runtime is free and the daemon stoppable even
+    /// while the keyring still refuses to answer.
     #[tokio::test(flavor = "current_thread")]
     async fn a_task_waiting_on_the_keyring_can_be_aborted_at_once() {
         let task = tokio::spawn(async {
@@ -388,8 +388,8 @@ mod tests {
                 Err(join) => Err(anyhow::Error::new(join)),
             }
         });
-        // Un runtime de un solo hilo: si la espera estuviera en él, este `yield`
-        // no volvería y el `abort` no llegaría a ejecutarse.
+        // A single-threaded runtime: if the wait lived on it, this `yield` would
+        // not come back and the `abort` would never run.
         tokio::task::yield_now().await;
         let started = Instant::now();
         task.abort();

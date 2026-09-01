@@ -15,7 +15,7 @@ version = 2
 # to the tracking issue explaining the exposure.
 yanked = "deny"
 ignore = [
-    # gtk-rs GTK3 bindings — unmaintained but still the only way to render
+    # gtk-rs GTK3 bindings: unmaintained but still the only way to render
     # the Tauri webview on Linux. Pulled in transitively by tauri-runtime-wry
     # → webkit2gtk → atk/gtk/gdk/cairo/glib/pango/etc. Upstream Tauri is
     # tracking the migration to GTK4; until that ships there is no safe
@@ -34,7 +34,7 @@ ignore = [
     # don't control (transitive via tauri-macros or similar).
     "RUSTSEC-2024-0370",
     # number_prefix: unmaintained, transitive via indicatif used by the CLI
-    # progress bars. No safe upgrade — replacement crate isn't drop-in.
+    # progress bars. No safe upgrade; the replacement crate isn't drop-in.
     "RUSTSEC-2025-0119",
     # unic-* family: open-i18n/rust-unic is unmaintained as a group. Pulled
     # transitively by urlpattern → tauri-utils. Tauri's tracking issue:
@@ -45,8 +45,8 @@ ignore = [
     "RUSTSEC-2025-0098", # unic-ucd-version
     "RUSTSEC-2025-0100", # unic-ucd-ident
     # rustls-webpki 0.101.7 advisories. All three share one root: this old
-    # webpki is pulled transitively wherever the aws-sdk-s3 stack builds —
-    # `--features cloud` and the default `s3-backend` (ADR 0020) — via
+    # webpki is pulled transitively wherever the aws-sdk-s3 stack builds, both
+    # `--features cloud` and the default `s3-backend` (ADR 0020), via
     # aws-sdk-s3 → aws-smithy-http-client → rustls 0.21 → rustls-webpki 0.101.
     # rustls 0.21 pins webpki ^0.101, so there's no in-line upgrade without
     # bumping the aws-sdk majors (a separate, larger change). The TLS we do
@@ -59,7 +59,7 @@ ignore = [
     # quick-xml < 0.41: quadratic duplicate-attribute check + unbounded
     # namespace allocation (both DoS-class). Transitive only: 0.39.x via
     # plist ← tauri-utils, 0.37.x via tauri-winrt-notification ←
-    # notify-rust (Windows toasts) — each pins its own minor, so there's no
+    # notify-rust (Windows toasts). Each pins its own minor, so there's no
     # in-line upgrade until upstream bumps. The XML those paths parse is
     # local (bundle plists, toast templates we build ourselves), never
     # attacker-controlled.
@@ -122,7 +122,7 @@ multiple-versions = "warn"
 # `wildcards = "deny"` catches public crates that pin to `version = "*"`,
 # but flags our own intra-workspace path deps (which have no version field
 # and are therefore parsed as `*`). `allow-wildcard-paths = true` exempts
-# path-only deps — those resolve from the workspace, never from the registry,
+# path-only deps, which resolve from the workspace and never from the registry,
 # so the wildcard has no security implication.
 wildcards = "deny"
 allow-wildcard-paths = true

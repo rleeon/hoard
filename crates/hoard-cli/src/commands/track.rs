@@ -1,8 +1,8 @@
-//! `hoard track <game>` — detects a game, creates its save on the server and
-//! remembers the local path in `state.json`. Populates what `hoard daemon` /
-//! `hoard sync` then watch. It's the headless equivalent of the desktop's
-//! `add_game_to_tracking`: same flow (detection → create_save with re-link on
-//! 409 → `CliState.saves.insert`), no GUI.
+//! `hoard track <game>`: detects a game, creates its save on the server and
+//! remembers the local path in `state.json`. Populates what `hoard daemon` and
+//! `hoard sync` then watch. It is the headless equivalent of the desktop's
+//! `add_game_to_tracking`: same flow (detection, `create_save` with re-link on
+//! 409, `CliState.saves.insert`), no GUI.
 
 use anyhow::{bail, Context, Result};
 use std::path::PathBuf;
@@ -30,16 +30,17 @@ pub struct Args {
 pub async fn run(args: Args) -> Result<()> {
     // Resolve the session (Cloud or self-host) and pin the sync context before
     // loading state, so the save is remembered in that account's map. The Cloud
-    // token comes on loan from the service — the CLI doesn't rotate (ADR 0021).
+    // token comes on loan from the service; the CLI does not rotate (ADR 0021).
     let active = link::resolve_session().await?;
     let client = &active.client;
 
     let label = args.label.clone().unwrap_or_else(|| "main".to_string());
     let (state, _) = CliState::load_default()?;
 
-    // No arguments → interactive mode: scan, pick from the list or type a name +
-    // path by hand (any folder, any disk). With arguments → direct resolution
-    // (scriptable). Both branches produce the target and the save folder.
+    // No arguments means interactive mode: scan, pick from the list or type a
+    // name and path by hand (any folder, any disk). With arguments it resolves
+    // directly, which is scriptable. Both branches produce the target and the
+    // save folder.
     let (target, local_path) = if args.query.is_none() && args.slug.is_none() && args.path.is_none()
     {
         interactive_select(&state).await?
@@ -58,9 +59,9 @@ pub async fn run(args: Args) -> Result<()> {
         (target, local_path)
     };
 
-    // Folder creation, cloud/self-hosted branching, dedup and 409 re-link all
-    // live in `hoard_agent::library::add_to_tracking` — the same code the
-    // desktop's `add_game_to_tracking` runs, so the CLI stays in lockstep.
+    // Folder creation, cloud/self-hosted branching, dedup and 409 re-link all live
+    // in `hoard_agent::library::add_to_tracking`, the same code the desktop's
+    // `add_game_to_tracking` runs, so the CLI stays in lockstep.
     let outcome = library::add_to_tracking(
         client,
         AddGameArgs {
@@ -74,15 +75,14 @@ pub async fn run(args: Args) -> Result<()> {
             steam_app_id: target.steam_app_id.map(|id| id as i64),
             preset: None,
             processes: None,
-            // Un juego por entrada: nadie más rastrea su proceso.
+            // One game per entry: nobody else tracks its process.
             shared_processes: false,
         },
     )
     .await?;
 
-    // El conjunto vigilado cambió: que el servicio lo relea. Antes de este slice
-    // el motor iba embebido en `hoard sync` y el save nuevo entraba en su
-    // siguiente arranque; ahora el dueño es el servicio y se le avisa.
+    // The watched set changed, so have the service re-read it. The service owns
+    // that set, so it gets told rather than restarted.
     let applied = link::notify_reload().await;
     println!(
         "tracking {} ({})\n  path:    {}\n  save_id: {}\n  {applied}",
@@ -170,10 +170,10 @@ async fn resolve_target(args: &Args, state: &CliState) -> Result<Target> {
     }
 }
 
-/// `hoard track` with no arguments. Scans, lists the detected games (with the
-/// path found) and lets you pick one by number — or "Other" to type a name +
-/// path by hand, taking any folder on any disk/partition. Returns the target and
-/// the chosen path, which feed the same pipeline as the flag-driven route.
+/// `hoard track` with no arguments. Scans, lists the detected games (with the path
+/// found) and lets you pick one by number, or "Other" to type a name and path by
+/// hand, taking any folder on any disk or partition. Returns the target and the
+/// chosen path, which feed the same pipeline as the flag-driven route.
 async fn interactive_select(state: &CliState) -> Result<(Target, PathBuf)> {
     use std::io::{self, Write};
 

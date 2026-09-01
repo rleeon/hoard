@@ -1,38 +1,38 @@
-//! `hoard install` — deja esta máquina con **todo el Hoard que le toca**, a una
-//! sola versión.
+//! `hoard install`: leaves this machine with all the Hoard it should have, at one
+//! single version.
 //!
-//! Es la segunda mitad del instalador de terminal: el script pone el núcleo
-//! (`hoardd` + `hoard`) y llama aquí, que es donde vive la decisión de si esta
-//! máquina además quiere la app y por qué vía. Que la decisión esté en Rust y no
-//! en el `.sh` no es limpieza: la misma función la usan `hoard upgrade` y el
-//! updater de la app, y tenerla escrita tres veces en tres lenguajes es tenerla
-//! escrita mal.
+//! It is the second half of the terminal installer. The script puts the core
+//! (`hoardd` plus `hoard`) in place and calls in here, which is where the decision
+//! lives about whether this machine also wants the app and by which route. That
+//! the decision is in Rust rather than in the `.sh` is not tidiness: `hoard
+//! upgrade` and the app's updater use the same function, and having it written
+//! three times in three languages is having it written wrong.
 //!
-//! También es el comando que se ejecuta a mano cuando algo quedó a medias —
-//! sin red al instalar, `pkexec` cancelado— sin tener que volver a la web.
+//! It is also the command someone runs by hand when something was left half done,
+//! no network during install, a cancelled `pkexec`, without going back to the web.
 
 use anyhow::{Context, Result};
 
 use hoard_agent::install::{self, Component, Delivery, Manifest, Probe};
 
-/// Qué componentes quiere el usuario, cuando quiere opinar.
+/// Which components the user wants, when they want a say.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Want {
-    /// Lo que decida la máquina (lo normal).
+    /// Whatever the machine decides, which is the usual case.
     Detect,
-    /// Sólo el núcleo, aunque haya entorno gráfico. Para una NAS con escritorio
-    /// instalado, o para quien no quiere la app y punto.
+    /// Core only, even with a graphical environment. For a NAS with a desktop
+    /// installed, or for somebody who simply does not want the app.
     Headless,
-    /// La app también, aunque no se detecte. Para instalar por SSH la máquina
-    /// que luego se usará con pantalla.
+    /// The app too, even if nothing is detected. For installing over SSH on a
+    /// machine that will later be used with a screen.
     Desktop,
 }
 
 pub async fn run(want: Want, version: Option<String>) -> Result<()> {
     let probe = Probe::read();
-    // El manifiesto manda sobre la detección **si ya existe**: reinstalar por
-    // SSH no puede concluir "aquí no hay pantalla" y dejar sin app a una máquina
-    // que la tiene. La detección es para la primera vez.
+    // The manifest beats detection *if it already exists*: reinstalling over SSH
+    // cannot conclude "there is no screen here" and leave a machine that has one
+    // without the app. Detection is for the first time.
     let existing = Manifest::load()?;
     let mut manifest = match (&existing, want) {
         (Some(m), Want::Detect) => m.clone(),
@@ -68,15 +68,15 @@ pub async fn run(want: Want, version: Option<String>) -> Result<()> {
             .join(", ")
     );
 
-    // ---- núcleo -----------------------------------------------------------
-    // Ya está en disco (lo puso el script, o somos nosotros mismos). Lo que
-    // falta es que corra: instalar el servicio es lo que convierte "hay
-    // binarios" en "esto sincroniza solo".
+    // ---- core
+    // It is already on disk (the script put it there, or it is us). What is
+    // missing is for it to run: installing the service is what turns "there are
+    // binaries" into "this syncs on its own".
     match hoardd::autostart::install().await {
         Ok(installed) => println!("  core:    service ready ({})", installed.manager),
         Err(err) => {
-            // No es fatal: el sync sigue arrancando cuando se abre un cliente.
-            // Lo que se pierde es el arranque en boot, y eso se dice claro.
+            // Not fatal: sync still starts when a client opens. What is lost is
+            // starting at boot, and that gets said plainly.
             eprintln!("  core:    the service won't start at login — {err:#}");
         }
     }
@@ -84,7 +84,7 @@ pub async fn run(want: Want, version: Option<String>) -> Result<()> {
         .ok()
         .and_then(|e| e.parent().map(|d| d.to_path_buf()));
 
-    // ---- app --------------------------------------------------------------
+    // ---- app
     if manifest.has(Component::Desktop) {
         let delivery = manifest
             .delivery
@@ -100,10 +100,10 @@ pub async fn run(want: Want, version: Option<String>) -> Result<()> {
                 manifest.desktop_path = Some(path);
             }
             Err(err) => {
-                // El núcleo instalado y funcionando es un resultado válido; la
-                // app se puede reintentar. Anotarla como instalada cuando no lo
-                // está sería peor que no tenerla: el próximo `upgrade` creería
-                // que la actualiza.
+                // A core installed and working is a valid outcome; the app can be
+                // retried. Recording it as installed when it is not would be
+                // worse than not having it, because the next `upgrade` would
+                // believe it was updating it.
                 manifest.components.retain(|c| *c != Component::Desktop);
                 manifest.delivery = None;
                 manifest.save().ok();
@@ -116,11 +116,11 @@ pub async fn run(want: Want, version: Option<String>) -> Result<()> {
         }
     }
 
-    // Quién es el dueño del núcleo, con todo ya resuelto. Se calcula igual que
-    // en `install::observe`: mismo directorio **y** una vía que de verdad
-    // empaqueta. El AppImage comparte carpeta con el núcleo sin contenerlo, y
-    // darlo por empaquetado dejaría al núcleo fuera de toda actualización
-    // posterior justo en la vía de SteamOS.
+    // Who owns the core, with everything resolved. Computed the same way as in
+    // `install::observe`: the same directory *and* a route that really packages.
+    // The AppImage shares a folder with the core without containing it, and taking
+    // it for packaged would leave the core out of every later update on exactly
+    // the SteamOS route.
     manifest.core_from_bundle = match (
         &manifest.core_dir,
         &manifest.desktop_path,
@@ -136,23 +136,23 @@ pub async fn run(want: Want, version: Option<String>) -> Result<()> {
     Ok(())
 }
 
-/// Baja el fichero que le toca a esta vía, verifica su firma y lo aplica.
+/// Downloads the file this route needs, verifies its signature and applies it.
 async fn install_desktop(delivery: Delivery, target: &str) -> Result<std::path::PathBuf> {
     if !delivery.is_ours() {
         anyhow::bail!(
             "the desktop app here is managed by your package manager — update it with that"
         );
     }
-    // Se pide **siempre** la release de `target`, nunca "la última". Con `latest`
-    // esto se rompía solo: `hoard install` a secas —el camino de reparación que
-    // documenta este módulo— resolvía la última publicada, la comparaba con la
-    // versión de este binario y abortaba en cuanto hubiera salido una release
-    // nueva. Lo que hay que instalar es la que casa con el núcleo que ya está
-    // aquí; subir de versión es cosa de `hoard upgrade`.
+    // We always ask for `target`'s release, never "the latest". With `latest` this
+    // broke on its own: a bare `hoard install`, the repair path this module
+    // documents, resolved the newest published version, compared it against this
+    // binary's version and aborted the moment a new release had shipped. What has
+    // to be installed is the one matching the core already here; moving to a new
+    // version is `hoard upgrade`'s job.
     let (released, assets) = install::fetch::release_assets(Some(target)).await?;
     if released != target {
-        // GitHub sirvió otra: instalar a ciegas rompería la única garantía que
-        // da todo esto, que las piezas van a la par.
+        // GitHub served a different one: installing blindly would break the one
+        // guarantee all of this gives, that the pieces move together.
         anyhow::bail!("asked for {target} but the release is {released}");
     }
     let asset = install::fetch::asset_for(delivery, &assets).with_context(|| {
@@ -166,7 +166,7 @@ async fn install_desktop(delivery: Delivery, target: &str) -> Result<std::path::
     let file = install::fetch::download_verified(asset, &assets, &dir).await?;
     let noninteractive = std::env::var_os("HOARD_NONINTERACTIVE").is_some();
     let installed = install::fetch::apply_desktop(delivery, &file, noninteractive).await?;
-    // El instalador ya no hace falta y pesa lo que pesa un bundle.
+    // The installer is no longer needed and weighs what a bundle weighs.
     let _ = std::fs::remove_file(&file);
     Ok(installed)
 }

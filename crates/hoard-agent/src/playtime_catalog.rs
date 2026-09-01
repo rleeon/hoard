@@ -1,28 +1,28 @@
-//! PLAYTIME CATALOG — juegos online (o sin partida local que merezca copia)
-//! cuyo tiempo de juego cuenta para el recap (hoard-wrapple) pero de los que
-//! NO guardamos nada. El poll de procesos del agente los empareja por nombre de
-//! ejecutable (case-insensitive, exacto), así que cuentan en cuanto su binario
-//! corre, venga del launcher que venga (Steam, Epic, Battle.net, standalone).
+//! The playtime catalogue: online games, or games with no local save worth
+//! copying, whose play time counts toward the recap but of which we store
+//! nothing. The agent's process poll matches them by executable name (exact,
+//! case-insensitive), so they count as soon as their binary runs, from whichever
+//! launcher.
 //!
-//! Esto es la contrapartida "solo-tiempo" de la detección de saves: estos
-//! juegos se enrolan como [`crate::agent::WatchedSave`] con `track_only = true`.
-//! La lista es curada a propósito (juegos reconocibles que tienen sentido en un
-//! Wrapped); ampliarla es añadir una fila aquí.
+//! This is the time-only counterpart to save detection: these games get enrolled
+//! as [`crate::agent::WatchedSave`] with `track_only = true`. The list is curated
+//! on purpose, holding recognisable games that make sense in a Wrapped; widening
+//! it means adding a row here.
 
-/// Un juego que rastreamos solo por tiempo de juego.
+/// A game we track for play time only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlaytimeGame {
-    /// Slug estable (clave de atribución de horas y de la lista de exclusión).
+    /// Stable slug: the key for hour attribution and for the exclusion list.
     pub slug: &'static str,
-    /// Nombre legible para la UI y el recap.
+    /// Human-readable name for the UI and the recap.
     pub display_name: &'static str,
-    /// Nombres de ejecutable (en minúsculas) que el poll de procesos empareja.
-    /// Se cubren variantes Windows y nativas porque el match es exacto.
+    /// Lowercase executable names the process poll matches. Windows and native
+    /// variants are both covered, because the match is exact.
     pub processes: &'static [&'static str],
 }
 
-/// Catálogo curado. Nombres de proceso en minúsculas (el match los baja a
-/// minúsculas en ambos lados, pero los guardamos así para el lookup directo).
+/// The curated catalogue. Process names in lowercase (the match lowercases both
+/// sides, but they are stored this way for a direct lookup).
 pub const PLAYTIME_CATALOG: &[PlaytimeGame] = &[
     PlaytimeGame {
         slug: "fortnite",
@@ -106,14 +106,14 @@ pub const PLAYTIME_CATALOG: &[PlaytimeGame] = &[
     },
 ];
 
-/// Entrada del catálogo cuyo `slug` coincide.
+/// The catalogue entry whose `slug` matches.
 pub fn by_slug(slug: &str) -> Option<&'static PlaytimeGame> {
     PLAYTIME_CATALOG.iter().find(|g| g.slug == slug)
 }
 
-/// Entrada del catálogo que declara `proc_name` (comparación en minúsculas)
-/// como uno de sus ejecutables. Permite identificar un juego online por su
-/// proceso vivo aunque el escaneo de instalados no lo haya visto.
+/// The catalogue entry that declares `proc_name` (compared in lowercase) as one
+/// of its executables. Lets an online game be identified by its live process even
+/// when the installed-games scan never saw it.
 pub fn game_for_process(proc_name: &str) -> Option<&'static PlaytimeGame> {
     let lower = proc_name.trim().to_lowercase();
     if lower.is_empty() {
@@ -124,10 +124,9 @@ pub fn game_for_process(proc_name: &str) -> Option<&'static PlaytimeGame> {
         .find(|g| g.processes.iter().any(|p| *p == lower))
 }
 
-/// Entrada del catálogo cuyo nombre legible casa con `name` tras normalizar
-/// (minúsculas, solo alfanuméricos). Empareja el nombre que da el storefront
-/// (Steam "Rust", Epic "Fortnite") con nuestra fila. Devuelve la primera
-/// coincidencia.
+/// The catalogue entry whose readable name matches `name` once normalised
+/// (lowercase, alphanumerics only). Pairs the name the storefront gives with our
+/// row. Returns the first match.
 pub fn game_for_store_name(name: &str) -> Option<&'static PlaytimeGame> {
     let norm = normalize(name);
     if norm.is_empty() {

@@ -26,7 +26,7 @@ The installed binary is always the source of truth. Never edit this file by hand
 
 ## Finding commands
 
-Do not guess flags, and do not rely on any command list — it would go stale.
+Do not guess flags, and do not rely on any command list; it would go stale.
 Read them from the binary:
 
 ```sh
@@ -41,8 +41,8 @@ Not every command speaks JSON yet. The ones that do are named in the error you
 get if you ask one that doesn't (`json_unsupported`), so a wrong guess costs you
 one command and never silently hands you a human table to misparse.
 
-`--json` prints one envelope on stdout — `{"ok":true,"data":…}` or
-`{"ok":false,"error":…}` — and exits non-zero on failure. Human logs go to
+`--json` prints one envelope on stdout, `{"ok":true,"data":…}` or
+`{"ok":false,"error":…}`, and exits non-zero on failure. Human logs go to
 stderr.
 
 Start with `hoard saves --json` to see what this machine tracks.
@@ -50,14 +50,14 @@ Start with `hoard saves --json` to see what this machine tracks.
 ## When the user says something is wrong
 
 Run `hoard doctor --json` before anything else. It checks every tracked save
-against the mistakes that actually break syncing — a folder that no longer
+against the mistakes that actually break syncing: a folder that no longer
 exists, a backup mirror tracked instead of the real save, a row named after an
-installer, a game whose saves detection found somewhere else — and each finding
+installer, a game whose saves detection found somewhere else. Each finding
 carries a `command` field with the exact fix.
 
 To find games that are installed but not backed up, use `hoard scan --json`:
 every detected game is listed, and each carries `tracked`, so the useful set is
-the ones where it is false. `--verbose` is not needed — it only controls how
+the ones where it is false. `--verbose` is not needed; it only controls how
 much the human table prints; under `--json` the list is always there.
 
 A game whose `needs_folder` is true is installed with no save folder located.
@@ -81,15 +81,15 @@ exit status grouped by what to do about it:
 
 | Exit | Meaning |
 |---|---|
-| 2 | Not signed in (`no_session`, `unauthorized`) — tell the user to run `hoard login`; do not attempt it yourself |
-| 3 | It isn't there (`not_found`, `not_tracked`) — re-read `hoard saves --json`, do not retry with a guessed id |
-| 4 | `rate_limited` — the envelope carries `retry_after_seconds`; wait that long, exactly once, and don't loop |
-| 5 | Storage limit (`quota_exceeded`, `too_large`, `archived`) — will fail identically until the user frees space or upgrades |
-| 6 | Network (`network`, `storage_unreachable`) — may work later |
+| 2 | Not signed in (`no_session`, `unauthorized`): tell the user to run `hoard login`; do not attempt it yourself |
+| 3 | It isn't there (`not_found`, `not_tracked`): re-read `hoard saves --json`, do not retry with a guessed id |
+| 4 | `rate_limited`: the envelope carries `retry_after_seconds`; wait that long, exactly once, and don't loop |
+| 5 | Storage limit (`quota_exceeded`, `too_large`, `archived`): will fail identically until the user frees space or upgrades |
+| 6 | Network (`network`, `storage_unreachable`): may work later |
 | 1 | Anything else |
 
 Two codes are about you rather than the user's account: `needs_choice` and
-`needs_input` mean the command wanted to ask a question and found no terminal —
+`needs_input` mean the command wanted to ask a question and found no terminal:
 re-run it with the flags the message names, never by feeding it input.
 `needs_confirmation` means the command destroys something and nobody is there to
 say yes: bring it to the user and let them decide, and only pass `--yes` when
@@ -107,7 +107,7 @@ Other things worth knowing before you act:
 - Each save keeps a **version history**. Restoring means picking a version.
 - The engine is a **resident service**. Changes to what is tracked take effect
   without restarting anything.
-- A tracked folder can be **paused** — still known, not being watched.
+- A tracked folder can be **paused**: still known, not being watched.
 - Some rows exist **only in the cloud**, with no folder on this machine.
   Mutations on those fail; that is expected, not a bug to work around.
 
@@ -119,7 +119,7 @@ dangerous thing here.
 
 1. Always run `hoard restore … --dry-run --json` first. It writes nothing and
    returns the diff file by file: `modified` (overwritten), `added`, and
-   `local_only` — files on disk that the version doesn't have, which are the
+   `local_only`, files on disk that the version doesn't have, which are the
    saves made *after* it. Show the user the names, not just the counts; the
    `*_count` fields carry the real totals when a list is capped.
 2. Only run the real restore after the user confirms that specific save and
@@ -127,7 +127,7 @@ dangerous thing here.
 3. Same for anything that deletes: `hoard snapshots delete`, `hoard save delete`.
    `save delete` removes the save **and its whole history**, not just local
    tracking. To stop watching a folder while keeping every stored version, the
-   command is `hoard save untrack <save_id>` — reach for that one first.
+   command is `hoard save untrack <save_id>`; reach for that one first.
 
 Reading is free: `saves`, `save show`, `snapshots list`, `status`, `devices`,
 `scan`. Prefer reading and proposing over acting.

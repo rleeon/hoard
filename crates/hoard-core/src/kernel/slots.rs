@@ -3,9 +3,9 @@
 //! A game almost never keeps everything in one place. Factorio has the saves in
 //! `Factorio/saves` and the settings in `Factorio/config`; a Paradox game splits
 //! saves and mods; an emulator separates memory cards from BIOS files. Tracking
-//! a single folder per title forces a choice, and making that choice by hand —
-//! pointing at the second folder — is what, until aug-2026, left the card
-//! showing only that one with the real folder nowhere in sight.
+//! a single folder per title forces a choice, and making that choice by hand,
+//! by pointing at the second folder, is what left the card showing only that one
+//! with the real folder nowhere in sight until aug-2026.
 //!
 //! Here a title stops having *one* folder and gets a numbered list. The number
 //! is all Hoard needs to know:
@@ -16,8 +16,8 @@
 //!
 //! Past that, the number changes *nothing* about how a folder is treated. Every
 //! slot backs up and restores down the same path slot 1 does, because "attach
-//! several folders so they all sync" is the whole request — a folder that only
-//! ever uploads is not synced, it is a one-way copy.
+//! several folders so they all sync" is the whole request, and a folder that
+//! only ever uploads is not synced, it is a one-way copy.
 //!
 //! Slots 2+ were briefly made backup-only, out of a worry about one machine's
 //! config landing on another's. That worry is real and it is already handled one
@@ -34,7 +34,7 @@
 //! both of them can work out without talking to each other. The path won't do:
 //! Factorio's config lives in `%APPDATA%\Factorio\config` on Windows and in
 //! `~/.factorio/config` on Linux, so pairing by path pairs nothing. Neither
-//! will a name — that needs someone to type the same thing twice.
+//! will a name, which needs someone to type the same thing twice.
 //!
 //! With a number, machine B can see the title has a slot 2 in the cloud that it
 //! doesn't have locally, and say "this folder here is my 2" with one click.
@@ -44,8 +44,8 @@
 //! And the number has to be **the user's to pick**, not assigned in arrival
 //! order. Auto-numbering was tried first and fails at exactly the job the slots
 //! exist for: the same folder added on two machines came out as 2 on Windows and
-//! 3 on Linux — because by then Linux could already see Windows' 2 taken — so
-//! the two never paired up.
+//! 3 on Linux, because by then Linux could already see Windows' 2 taken, so the
+//! two never paired up.
 //!
 //! ## The number, and the name the user gives it
 //!
@@ -65,9 +65,9 @@
 //!
 //! Because it is one field, the name travels: renaming on one machine patches
 //! the row, and the other machine picks it up the next time it lists. The catch
-//! that comes with that is in [`slot_of`]'s callers — a client that keeps its
-//! own stale copy of the label will upload under the old one and fork the row in
-//! two, so local state has to follow the server's label, never the reverse.
+//! that comes with that is in [`slot_of`]'s callers: a client that keeps its own
+//! stale copy of the label will upload under the old one and fork the row in two,
+//! so local state has to follow the server's label, never the reverse.
 //!
 //! Slot 1's key is `"main"`, not `"1"`, because `"main"` is what every save
 //! tracked so far already carries in the cloud, and renaming those would move
@@ -123,8 +123,8 @@ pub fn sanitise_name(name: &str) -> String {
 /// The name the user gave this slot, if any.
 ///
 /// Lenient in the same way [`slot_of`] is: whatever separator ended up between
-/// the number and the name — the canonical `" · "`, or the `" - "` somebody
-/// typed by hand — the name is what follows it.
+/// the number and the name, the canonical `" · "` or the `" - "` somebody typed
+/// by hand, the name is what follows it.
 pub fn name_of(label: &str) -> Option<&str> {
     let t = label.trim();
     slot_of(t)?;
@@ -154,12 +154,12 @@ pub fn slot_of(label: &str) -> Option<u32> {
     // Read leniently, write canonically. The digits at the front are the slot
     // whatever follows them: `"2"`, `"2 · Mods"`, and the `"2 - shit"` a user
     // typed into the old free-text rename box all mean slot 2. Being strict here
-    // cost a real user their pairing — the hand-typed label parsed as no slot at
+    // cost a real user their pairing: the hand-typed label parsed as no slot at
     // all, the folder dropped out of 2 in silence, and the other machine went on
     // uploading to a row this one no longer recognised as its own.
     let digits: String = t.chars().take_while(char::is_ascii_digit).collect();
     // A name has to be separated from the number, or `"2000AD"` becomes slot
-    // 2000 — the whole label being digits is the only case that needs no gap.
+    // 2000. The whole label being digits is the only case that needs no gap.
     let rest = t[digits.len()..].trim_start();
     if digits.is_empty() || (!rest.is_empty() && t.as_bytes()[digits.len()].is_ascii_alphanumeric())
     {
@@ -221,7 +221,7 @@ mod tests {
         }
     }
 
-    /// Naming a slot must not cost it its number — that is the bug this shape
+    /// Naming a slot must not cost it its number. That is the bug this shape
     /// exists to make impossible.
     #[test]
     fn a_named_slot_keeps_its_number() {

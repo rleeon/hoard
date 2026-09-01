@@ -2,8 +2,8 @@
 //!
 //! A preset is a named bundle of overrides layered on top of the global
 //! [`crate::agent::AgentConfig`] for a single save. They let us special-case
-//! games whose save folders behave oddly — R.E.P.O. wipes its own directory at
-//! the menu and plays in short bursts — without the user hand-tuning raw knobs,
+//! games whose save folders behave oddly (R.E.P.O. wipes its own directory at the
+//! menu and plays in short bursts) without the user hand-tuning raw knobs,
 //! and let the user pin a manual preset when a game "goes weird".
 //!
 //! Flow: the desktop resolves a preset *name* (chosen by the user, or
@@ -97,7 +97,7 @@ pub fn builtin_preset_for(slug: &str) -> Option<&'static str> {
 }
 
 /// Process executable names for games the storefront/manifest can't supply on
-/// its own — non-Steam launchers (TLauncher Minecraft → `javaw.exe`) and games
+/// its own: non-Steam launchers (TLauncher Minecraft to `javaw.exe`) and games
 /// whose binary the catalog doesn't map. The agent's process poll matches these
 /// (case-insensitive) to fire `GameStarted` / `GameStopped`, so "is the game
 /// running" works even without a Steam install dir. Linux-native and Windows

@@ -16,7 +16,7 @@ pub struct StatusOut {
 
 pub async fn run() -> Result<()> {
     let (cfg, _) = CliConfig::load_default()?;
-    // Use whatever token we have (or empty) — /v1/health is unauthenticated.
+    // Use whatever token we have, or none: /v1/health is unauthenticated.
     let token = cfg.auth.token.clone().unwrap_or_default();
     let client = ApiClient::new(cfg.server.url.clone(), token)?;
     let h = client.health().await?;

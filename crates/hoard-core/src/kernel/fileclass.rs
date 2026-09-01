@@ -1,73 +1,70 @@
-//! Qué es cada fichero que vive dentro de una carpeta de save.
+//! What each file inside a save folder actually is.
 //!
-//! Una carpeta de partidas casi nunca contiene sólo partidas. `walk_source` se
-//! llevaba **todo fichero regular** que hubiera dentro, y eso mete en el
-//! snapshot cosas que no son dato del jugador sino dato de *esta máquina*:
-//! el `Player.log` de Unity, la cola de analítica con el GUID de instalación,
-//! la info de shaders de esta GPU, el `steam_autocloud.vdf`, un `graphics.ini`
-//! con la resolución de este monitor.
+//! A save folder almost never holds only saves. `walk_source` used to take every
+//! regular file it found, and that drags into the snapshot things that are not
+//! the player's data but *this machine's*: a Unity `Player.log`, the analytics
+//! queue carrying the install GUID, this GPU's shader info,
+//! `steam_autocloud.vdf`, a `graphics.ini` with this monitor's resolution.
 //!
-//! Dos daños distintos:
+//! Two separate kinds of damage:
 //!
-//! * **Ruido.** El log se reescribe en cada arranque, así que la firma barata
-//!   de `compute_set_signature` se mueve, la de contenido confirma que los
-//!   bytes cambiaron de verdad (cambiaron: es un log) y se corta una versión
-//!   nueva en la nube **cada vez que se abre el juego**, sin que la partida se
-//!   haya tocado.
-//! * **Crash.** Restaurar el `graphics.ini` del PC A sobre el PC B le mete al
-//!   juego una resolución, un GPU o una ruta que en esa máquina no existen.
+//! * Noise. The log is rewritten on every launch, so the cheap signature moves,
+//!   the content signature confirms the bytes really did change (they did, it is
+//!   a log), and a new cloud version gets cut every single time the game opens
+//!   without the save being touched.
+//! * Crashes. Restoring PC A's `graphics.ini` onto PC B hands the game a
+//!   resolution, a GPU or a path that does not exist on that machine.
 //!
-//! ## La escalera, de menos a más destructiva
+//! ## The ladder, least to most destructive
 //!
-//! [`FileClass::Junk`] es lo único que se deja de subir, y por eso la lista es
-//! corta y por nombre exacto siempre que se puede: un fichero que no se sube no
-//! se puede recuperar, así que la duda nunca cae aquí.
+//! [`FileClass::Junk`] is the only thing that stops being uploaded, which is why
+//! the list is short and matches exact names wherever it can: a file that is not
+//! uploaded cannot be recovered, so doubt never lands here.
 //!
-//! [`FileClass::DeviceLocal`] es donde cae la duda: **sí se sube** (si se
-//! quema el disco, está), pero un restore no lo escribe salvo que el usuario lo
-//! pida a mano (`--allow-ini` en la CLI, un interruptor apagado por defecto en
-//! el diálogo del escritorio). Así el fallo de clasificación más caro que puede
-//! ocurrir —llamar config a algo que era la partida— cuesta un clic, no la
-//! partida.
+//! [`FileClass::DeviceLocal`] is where doubt lands. It does get uploaded (if the
+//! disk burns, it is there), but a restore will not write it unless the user
+//! asks by hand (`--allow-ini` on the CLI, a switch that is off by default in
+//! the desktop dialog). That way the most expensive misclassification possible,
+//! calling config something that was the save, costs a click rather than the
+//! save.
 //!
-//! ## El blindaje del manifiesto
+//! ## Shields from the manifest
 //!
-//! El catálogo Ludusavi trae patrón de fichero en 20.499 de sus 47.404
-//! plantillas (`<base>/Saves/*.sav`), y ahí sí sabe la comunidad lo que es dato
-//! de partida. Ese patrón entra aquí como `shields`: lo que casa con él es
-//! partida y **no lo toca ninguna regla de abajo**. Hace falta de verdad —
-//! `.ini` es el patrón de save de 582 plantillas, `.cfg` de 98 y `.log` de 64,
-//! así que sin blindaje las reglas por extensión se llevarían por delante
-//! partidas reales.
+//! The catalogue carries a file pattern in 20,499 of its 47,404 templates
+//! (`<base>/Saves/*.sav`), and there the community does know what save data is.
+//! That pattern arrives here as `shields`: whatever matches one is save data and
+//! no rule below touches it. It is genuinely needed, because `.ini` is the save
+//! pattern of 582 templates, `.cfg` of 98 and `.log` of 64, so without shields
+//! the extension rules would mow down real saves.
 //!
-//! Al revés **no** se usa: que el manifiesto no liste un fichero no lo condena.
-//! El catálogo tiene huecos enormes (Cell to Singularity es un directorio
-//! pelado, sin un solo patrón), y fiarse de él para excluir sería fiarse de un
-//! hueco para borrar.
+//! The reverse is not used: a file the manifest does not list is not thereby
+//! condemned. The catalogue has enormous holes (one game is a bare directory
+//! with not a single pattern), and trusting it to exclude would mean trusting a
+//! hole to delete.
 
-/// Qué es un fichero de dentro de la carpeta de save.
+/// What a file inside the save folder is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileClass {
-    /// Dato del jugador. Se sube y se restaura, como siempre.
+    /// The player's data. Uploaded and restored, as always.
     SaveData,
-    /// Dato de **esta máquina**, no del jugador: config, ajustes, logs
-    /// genéricos. Se sube (para no perderlo nunca) pero un restore no lo
-    /// escribe salvo petición explícita.
+    /// This machine's data rather than the player's: config, settings, generic
+    /// logs. Uploaded so it is never lost, but a restore will not write it
+    /// without an explicit request.
     DeviceLocal,
-    /// Ni dato del jugador ni config que nadie quiera de vuelta: basura del SO,
-    /// temporales, volcados de crash, telemetría del motor. No se sube ni se
-    /// restaura.
+    /// Neither the player's data nor config anyone wants back: OS litter,
+    /// temporaries, crash dumps, engine telemetry. Never uploaded, never
+    /// restored.
     Junk,
 }
 
 impl FileClass {
-    /// ¿Entra en un snapshot nuevo?
+    /// Does it go into a new snapshot?
     pub fn is_backed_up(self) -> bool {
         !matches!(self, FileClass::Junk)
     }
 
-    /// ¿Se escribe en disco al restaurar? `allow_device_local` es el
-    /// interruptor que el usuario enciende a mano.
+    /// Does a restore write it to disk? `allow_device_local` is the switch the
+    /// user turns on by hand.
     pub fn is_restored(self, allow_device_local: bool) -> bool {
         match self {
             FileClass::SaveData => true,
@@ -77,34 +74,34 @@ impl FileClass {
     }
 }
 
-/// Basura del SO y del gestor de ficheros, por nombre exacto.
+/// OS and file-manager litter, by exact name.
 const JUNK_NAMES: &[&str] = &[
     ".ds_store",
     "thumbs.db",
     "ehthumbs.db",
     "desktop.ini",
     ".directory",
-    // Contabilidad de Steam, no del juego: qué ficheros tocaba sincronizar y
-    // cuándo. Restaurarlo en otra máquina le miente al cliente de Steam.
+    // Steam's own bookkeeping, not the game's: which files it had to sync and
+    // when. Restoring it on another machine lies to the Steam client.
     "steam_autocloud.vdf",
     "remotecache.vdf",
-    // Logs de motor por nombre exacto. Genéricos (`*.log`) NO caen aquí sino en
-    // `DeviceLocal`: `.log` es el patrón de save de 64 plantillas del catálogo
-    // y no todas están blindadas.
+    // Engine logs by exact name. Generic `*.log` does not land here but in
+    // `DeviceLocal`, because `.log` is the save pattern of 64 catalogue
+    // templates and not all of them are shielded.
     "player.log",
     "player-prev.log",
     "output_log.txt",
     "output_log_prev.txt",
-    // Cerrojo que el juego mantiene abierto en exclusiva mientras corre. No
-    // lleva dato, y en Windows ni siquiera se puede abrir para leer con el
-    // juego vivo (sharing violation, os error 32), lo que llegó a abortar el
-    // backup entero a mitad del recorrido — el `session.lock` de Minecraft.
+    // A lock the game holds open exclusively while it runs. It carries no data,
+    // and on Windows it cannot even be opened for reading with the game alive
+    // (sharing violation, os error 32), which used to abort the whole backup
+    // halfway through the walk.
     "session.lock",
 ];
 
-/// Extensiones que nunca son dato de partida.
+/// Extensions that are never save data.
 const JUNK_EXTS: &[&str] = &[
-    // Volcados de crash.
+    // Crash dumps.
     "dmp",
     "mdmp",
     "stackdump", // Escrituras a medias y temporales de editores/descargas.
@@ -115,17 +112,16 @@ const JUNK_EXTS: &[&str] = &[
     "swp",
 ];
 
-/// Un segmento de ruta con este nombre cuelga de telemetría del motor, no de la
-/// partida.
+/// A path segment with this name hangs off engine telemetry, not off the save.
 const JUNK_SEGMENTS: &[&str] = &[
-    // Unity: info de shaders y GPU de *esta* máquina.
+    // Unity: shader and GPU info for *this* machine.
     "shadervariantanalytics",
     // Unreal.
     "crashreportclient",
 ];
 
-/// Extensiones de configuración. Sin blindaje, un fichero con una de éstas se
-/// sube pero no se restaura encima de una máquina viva.
+/// Config extensions. Unshielded, a file with one of these uploads but never
+/// gets restored over a live machine.
 const CONFIG_EXTS: &[&str] = &[
     "ini",
     "cfg",
@@ -136,13 +132,12 @@ const CONFIG_EXTS: &[&str] = &[
     "yml",
     "vdf",
     "properties",
-    // Log genérico: se guarda por si acaso, pero no se restaura nunca.
+    // Generic log: kept just in case, never restored.
     "log",
 ];
 
-/// El nombre (sin extensión) **acaba** en esto ⇒ es configuración, tenga la
-/// extensión que tenga. Coge `GraphicsSettings.json`, `Fallout4Prefs.ini`,
-/// `UserOptions.dat`.
+/// A stem ending in one of these is config whatever its extension. Catches
+/// `GraphicsSettings.json`, `Fallout4Prefs.ini`, `UserOptions.dat`.
 const CONFIG_STEM_SUFFIXES: &[&str] = &[
     "settings",
     "config",
@@ -152,9 +147,9 @@ const CONFIG_STEM_SUFFIXES: &[&str] = &[
     "options",
 ];
 
-/// El nombre (sin extensión) **es exactamente** esto ⇒ configuración.
-/// Deliberadamente exacto y no "contiene": `input` es config, pero
-/// `input_puzzle_solved` sería partida.
+/// A stem that is exactly one of these is config. Exact rather than
+/// "contains", deliberately: `input` is config, `input_puzzle_solved` would be
+/// the save.
 const CONFIG_STEMS: &[&str] = &[
     "graphics",
     "graphic",
@@ -173,26 +168,25 @@ const CONFIG_STEMS: &[&str] = &[
     "hardware",
 ];
 
-/// Qué deja escribir un restore en disco.
+/// What a restore is allowed to write to disk.
 ///
-/// Viaja dentro de `RestoreOptions` y acompaña a la previsualización, para que
-/// lo que el `--dry-run` promete y lo que el restore hace salgan de la misma
-/// decisión y no de dos copias que se van separando.
+/// Travels inside `RestoreOptions` and rides along with the preview, so that
+/// what `--dry-run` promises and what the restore does come out of one decision
+/// rather than two copies drifting apart.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RestoreGate {
-    /// Patrones del manifiesto que blindan un fichero como dato de partida.
+    /// Manifest patterns that shield a file as save data.
     pub shields: Vec<String>,
-    /// El usuario ha pedido **a mano** que la config del snapshot se escriba
-    /// encima de la de esta máquina (`--allow-ini`, el interruptor del
-    /// diálogo). Apagado por defecto, y apagado siempre en el auto-restore:
-    /// escribir la config del PC A sobre el PC B es justo el crash que este
-    /// módulo existe para evitar.
+    /// The user asked by hand for the snapshot's config to be written over this
+    /// machine's (`--allow-ini`, the switch in the dialog). Off by default, and
+    /// always off in auto-restore: writing PC A's config onto PC B is precisely
+    /// the crash this module exists to prevent.
     pub allow_device_local: bool,
 }
 
 impl RestoreGate {
-    /// Puerta abierta de par en par: lo que había antes de que esto existiera.
-    /// Para tests y para los sitios donde el llamante ya filtró.
+    /// Wide open, the way things were before any of this existed. For tests and
+    /// for callers that already did their own filtering.
     pub fn permissive() -> Self {
         Self {
             shields: Vec::new(),
@@ -200,32 +194,32 @@ impl RestoreGate {
         }
     }
 
-    /// ¿Se escribe este fichero del snapshot en disco?
+    /// Does this snapshot file get written to disk?
     pub fn allows(&self, rel_path: &str) -> bool {
         classify(rel_path, &self.shields).is_restored(self.allow_device_local)
     }
 }
 
-/// Clasifica un fichero por su ruta **relativa a la raíz del save**, con `/`
-/// como separador (la forma que ya produce `walk_source`).
+/// Classifies a file by its path relative to the save root, `/`-separated, the
+/// shape `walk_source` already produces.
 ///
-/// `shields` son patrones de nombre de fichero sacados del manifiesto
-/// (`*.sav`, `save*`). Lo que case con uno es partida y sale por la puerta de
-/// arriba sin pasar por ninguna otra regla.
+/// `shields` are filename patterns lifted from the manifest (`*.sav`, `save*`).
+/// Anything matching one is save data and leaves by the top door without
+/// meeting another rule.
 pub fn classify(rel_path: &str, shields: &[String]) -> FileClass {
     let lower = rel_path.to_ascii_lowercase();
     let name = lower.rsplit('/').next().unwrap_or(&lower);
 
-    // 1. El manifiesto manda: si dice que esto es un save, es un save.
+    // 1. The manifest rules: if it says this is a save, it is a save.
     if shields.iter().any(|p| glob_match(p, name)) {
         return FileClass::SaveData;
     }
 
-    // 2. Basura inequívoca. Lo único que se deja de subir.
+    // 2. Unambiguous litter, the only thing that stops being uploaded.
     if JUNK_NAMES.contains(&name) {
         return FileClass::Junk;
     }
-    // Los `._foo` de AppleDouble que macOS siembra en volúmenes no-HFS.
+    // The AppleDouble `._foo` files macOS scatters on non-HFS volumes.
     if name.starts_with("._") {
         return FileClass::Junk;
     }
@@ -235,7 +229,7 @@ pub fn classify(rel_path: &str, shields: &[String]) -> FileClass {
         }
     }
     let segments: Vec<&str> = lower.split('/').collect();
-    // Todo lo que cuelga de un directorio de telemetría.
+    // Everything hanging off a telemetry directory.
     if segments
         .iter()
         .take(segments.len().saturating_sub(1))
@@ -243,14 +237,15 @@ pub fn classify(rel_path: &str, shields: &[String]) -> FileClass {
     {
         return FileClass::Junk;
     }
-    // La cola de eventos de Unity Analytics: `Unity/<guid>/Analytics/...`. El
-    // GUID identifica la *instalación*, así que restaurarlo en otra máquina le
-    // clona la identidad de analítica.
+    // The Unity Analytics event queue, `Unity/<guid>/Analytics/...`. The GUID
+    // identifies the *install*, so restoring it onto another machine clones its
+    // analytics identity.
     if is_under_unity_analytics(&segments) {
         return FileClass::Junk;
     }
 
-    // 3. Config y demás dato de esta máquina. Se sube; no se restaura solo.
+    // 3. Config and the rest of this machine's data. Uploaded, never restored
+    //    on its own.
     if let Some(ext) = extension_of(name) {
         if CONFIG_EXTS.contains(&ext) {
             return FileClass::DeviceLocal;
@@ -264,22 +259,21 @@ pub fn classify(rel_path: &str, shields: &[String]) -> FileClass {
     FileClass::SaveData
 }
 
-/// `Unity/<algo>/Analytics/...` en cualquier profundidad: hace falta el
-/// `unity` de ancestro para no confundirse con una carpeta `analytics` que
-/// resulte ser del juego.
+/// `Unity/<something>/Analytics/...` at any depth. The `unity` ancestor is
+/// required so a game's own `analytics` folder is not mistaken for it.
 fn is_under_unity_analytics(segments: &[&str]) -> bool {
     let Some(unity_at) = segments.iter().position(|s| *s == "unity") else {
         return false;
     };
-    // El fichero en sí no cuenta como directorio contenedor.
+    // The file itself does not count as a containing directory.
     segments
         .iter()
         .enumerate()
         .any(|(i, s)| i > unity_at && i + 1 < segments.len() && *s == "analytics")
 }
 
-/// Extensión en minúsculas, sin el punto. `None` si no tiene, o si el punto
-/// abre el nombre (`.bashrc` no tiene extensión, se llama así).
+/// Lowercase extension without the dot. `None` when there is none, or when the
+/// dot opens the name: `.bashrc` has no extension, that is its name.
 fn extension_of(name: &str) -> Option<&str> {
     let (stem, ext) = name.rsplit_once('.')?;
     if stem.is_empty() {
@@ -288,7 +282,7 @@ fn extension_of(name: &str) -> Option<&str> {
     Some(ext)
 }
 
-/// El nombre sin la extensión.
+/// The name without its extension.
 fn stem_of(name: &str) -> &str {
     match name.rsplit_once('.') {
         Some((stem, _)) if !stem.is_empty() => stem,
@@ -296,32 +290,32 @@ fn stem_of(name: &str) -> &str {
     }
 }
 
-/// ¿Este patrón del manifiesto vale como blindaje?
+/// Is this manifest pattern any use as a shield?
 ///
-/// `*` y `*.*` casan con todo, así que blindarían la carpeta entera y dejarían
-/// el filtro en nada. No dicen *qué* es un save, sólo "hay ficheros aquí": no
-/// son información, y 1.519 plantillas del catálogo son exactamente eso.
+/// `*` and `*.*` match everything, so they would shield the whole folder and
+/// leave the filter doing nothing. They do not say *what* a save is, only "there
+/// are files here", and 1,519 catalogue templates are exactly that.
 pub fn is_useful_shield(pattern: &str) -> bool {
     let p = pattern.trim();
     if !p.contains('*') && !p.contains('?') {
-        // Un nombre literal es informativo, pero entonces no hace de comodín:
-        // vale igual como blindaje exacto.
+        // A literal name is informative, and then it is not acting as a
+        // wildcard at all: it still works as an exact shield.
         return !p.is_empty();
     }
     !matches!(p, "*" | "*.*" | "?" | "**")
 }
 
-/// Glob de un solo segmento: `*` = cualquier cosa (incluida vacía), `?` = un
-/// carácter. Sin clases ni alternativas — el manifiesto no las usa en el
-/// último segmento.
+/// Single-segment glob: `*` is anything including empty, `?` is one character.
+/// No classes and no alternatives, because the manifest does not use them in the
+/// last segment.
 ///
-/// Propio y no el de `pathexpand` porque el kernel no depende de `hoard-agent`
-/// (regla dura de ADR 0021: el kernel no importa shells).
+/// Written here rather than reused from `pathexpand` because the kernel does not
+/// depend on `hoard-agent` (ADR 0021's hard rule: the kernel imports no shells).
 fn glob_match(pattern: &str, name: &str) -> bool {
     let p: Vec<char> = pattern.chars().collect();
     let n: Vec<char> = name.chars().collect();
     let (mut pi, mut ni) = (0usize, 0usize);
-    // Última `*` vista y dónde estaba el nombre entonces, para retroceder.
+    // The last `*` seen and where the name was then, so we can backtrack.
     let (mut star, mut backtrack) = (usize::MAX, 0usize);
     while ni < n.len() {
         if pi < p.len() && (p[pi] == '?' || p[pi] == n[ni]) {
@@ -367,8 +361,8 @@ mod tests {
         }
     }
 
-    /// La carpeta real de Cell to Singularity de un usuario, que hoy se
-    /// sincroniza entera. Es el caso que motivó el módulo.
+    /// A real user's folder that currently syncs whole. This is the case that
+    /// motivated the module.
     #[test]
     fn the_unity_folder_that_started_this() {
         assert_eq!(c("Player.log"), FileClass::Junk);
@@ -382,7 +376,7 @@ mod tests {
             c("Unity/ShaderVariantAnalytics/ShaderRuntimeInfoEvent.json"),
             FileClass::Junk
         );
-        // Y las partidas de la misma carpeta salen intactas.
+        // And the saves in the same folder come out untouched.
         assert_eq!(c("savedGames2.gd"), FileClass::SaveData);
         assert_eq!(c("savedGamesDeepBackup.gd.restore"), FileClass::SaveData);
     }
@@ -419,8 +413,8 @@ mod tests {
         }
     }
 
-    /// La regla de la escalera: lo dudoso se sube igual. Sólo la basura
-    /// inequívoca se queda fuera del snapshot.
+    /// The ladder's rule: anything doubtful still uploads. Only unambiguous
+    /// litter stays out of the snapshot.
     #[test]
     fn only_junk_is_dropped_from_the_backup() {
         assert!(!FileClass::Junk.is_backed_up());
@@ -432,13 +426,13 @@ mod tests {
     fn device_local_needs_an_explicit_yes_to_be_restored() {
         assert!(!FileClass::DeviceLocal.is_restored(false));
         assert!(FileClass::DeviceLocal.is_restored(true));
-        // La basura no vuelve ni pidiéndolo: el interruptor es para config.
+        // Litter does not come back even on request; the switch is for config.
         assert!(!FileClass::Junk.is_restored(true));
         assert!(FileClass::SaveData.is_restored(false));
     }
 
-    /// 582 plantillas del catálogo usan `*.ini` como patrón de save. Sin
-    /// blindaje se las llevaría la regla por extensión.
+    /// 582 catalogue templates use `*.ini` as their save pattern. Unshielded,
+    /// the extension rule would take them all.
     #[test]
     fn the_manifest_shield_beats_every_rule_below_it() {
         let shields = vec!["*.ini".to_string()];
@@ -461,7 +455,8 @@ mod tests {
 
     #[test]
     fn degenerate_patterns_are_not_shields() {
-        // Blindarían la carpeta entera y dejarían el filtro en nada.
+        // These would shield the whole folder and leave the filter doing
+        // nothing.
         assert!(!is_useful_shield("*"));
         assert!(!is_useful_shield("*.*"));
         assert!(!is_useful_shield("**"));
@@ -485,7 +480,7 @@ mod tests {
             allow_device_local: true,
         };
         assert!(gate.allows("graphics.ini"));
-        // Basura no vuelve ni pidiéndolo.
+        // Litter does not come back even on request.
         assert!(!gate.allows("Player.log"));
         assert!(!gate.allows(".DS_Store"));
     }
@@ -509,8 +504,8 @@ mod tests {
         assert!(glob_match("*save*.dat", "my_save_2.dat"));
     }
 
-    /// Una carpeta `analytics` que sea del juego no es telemetría de Unity: el
-    /// ancestro `Unity/` es lo que la condena.
+    /// A game's own `analytics` folder is not Unity telemetry. The `Unity/`
+    /// ancestor is what condemns it.
     #[test]
     fn analytics_alone_is_not_enough() {
         assert_eq!(c("analytics/run1.sav"), FileClass::SaveData);

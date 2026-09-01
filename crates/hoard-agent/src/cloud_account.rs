@@ -1,13 +1,12 @@
-//! Cuenta Cloud: llamadas REST portables (export, storage/caja negra,
-//! archive/reactivate, borrar/reactivar cuenta, entitlements, features,
-//! playtime). Es la lógica que antes vivía atrapada en
-//! `hoard-desktop/src/commands/cloud.rs`; aquí no hay Tauri ni keyring.
+//! The Cloud account: portable REST calls (export, the storage black box,
+//! archive and reactivate, deleting and reactivating an account, entitlements,
+//! features, playtime). There is no Tauri and no keyring here.
 //!
-//! Cada función recibe `(base, token)` ya resueltos y devuelve **datos**
-//! (`Result<_, CloudError>`). El desktop resuelve las credenciales por su
-//! sesión Supabase/keyring y mapea el error a i18n; la CLI las resuelve por
-//! [`crate::cloud_auth`] y lo imprime. El reintento-tras-401 se queda en cada
-//! frontend porque cada uno refresca el JWT de forma distinta.
+//! Each function takes `(base, token)` already resolved and returns data
+//! (`Result<_, CloudError>`). The desktop resolves credentials through its
+//! Supabase session and keyring and maps the error to i18n; the CLI resolves them
+//! through [`crate::cloud_auth`] and prints it. The retry-after-401 stays in each
+//! frontend, because each refreshes the JWT differently.
 
 use serde::{Deserialize, Serialize};
 
@@ -15,28 +14,28 @@ use crate::playtime::{PlaytimeRow, PlaytimeSummary};
 
 // ---- error ------------------------------------------------------------
 
-/// Error de una llamada Cloud. Conserva `status`+`body` en el caso HTTP para
-/// que el desktop reproduzca el mensaje exacto (incluido su mapeo `i18n:<key>`)
-/// que ya mostraba, mientras la CLI se queda con [`CloudError::message`].
+/// An error from a Cloud call. It keeps `status` and `body` in the HTTP case so
+/// the desktop can reproduce the exact message it already showed, its `i18n:<key>`
+/// mapping included, while the CLI settles for [`CloudError::message`].
 #[derive(Debug)]
 pub enum CloudError {
-    /// 401 — el JWT caducó. El llamador puede refrescar y reintentar.
+    /// 401: the JWT expired. The caller can refresh and retry.
     Unauthorized,
-    /// Cualquier otro no-2xx (incluido 402 payment-required). `status` es el
-    /// código HTTP crudo.
+    /// Any other non-2xx, 402 payment-required included. `status` is the raw HTTP
+    /// code.
     Http { status: u16, body: String },
     /// Error de red / transporte.
     Network(String),
-    /// Respuesta ilegible (JSON que no parsea).
+    /// An unreadable response (JSON that does not parse).
     Parse(String),
 }
 
 impl CloudError {
-    /// Texto humano neutral (sin i18n). Lo usa la CLI y es el fallback del
-    /// desktop para los casos que no intercepta por código.
+    /// Neutral human text, with no i18n. The CLI uses it, and it is the desktop's
+    /// fallback for the cases it does not intercept by code.
     pub fn message(&self) -> String {
         match self {
-            CloudError::Unauthorized => "la sesión Cloud caducó — vuelve a iniciar sesión".into(),
+            CloudError::Unauthorized => "la sesión Cloud caducó, vuelve a iniciar sesión".into(),
             CloudError::Http { status, body } => {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(body) {
                     if let Some(msg) = v.get("error").and_then(|x| x.as_str()) {
@@ -68,7 +67,7 @@ fn http_client() -> Result<reqwest::Client, CloudError> {
         .map_err(|e| CloudError::Network(e.to_string()))
 }
 
-/// Convierte una respuesta no-exitosa en [`CloudError`], distinguiendo el 401.
+/// Turns an unsuccessful response into a [`CloudError`], singling out the 401.
 async fn into_error(resp: reqwest::Response) -> CloudError {
     let status = resp.status();
     if status == reqwest::StatusCode::UNAUTHORIZED {
@@ -88,16 +87,16 @@ fn parse_json<T: serde::de::DeserializeOwned>(body: &str) -> Result<T, CloudErro
 
 // ---- export -----------------------------------------------------------
 
-/// Job de exportación server-side. El worker construye el ZIP y el cliente
-/// sondea [`export_status`] hasta que aparece el enlace de descarga.
+/// A server-side export job. The worker builds the ZIP and the client polls
+/// [`export_status`] until the download link appears.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportJob {
     pub job_id: String,
     pub status: String,
 }
 
-/// Estado del último job de exportación, con `download_url` presignada cuando el
-/// ZIP está listo. Todos los campos son `None` si el usuario nunca exportó.
+/// The last export job's state, with a presigned `download_url` once the ZIP is
+/// ready. Every field is `None` when the user never exported.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ExportStatus {
     pub job_id: Option<String>,
@@ -109,7 +108,7 @@ pub struct ExportStatus {
     pub error: Option<String>,
 }
 
-/// `POST {base}/v1/me/export` — lanza el job de exportación.
+/// `POST {base}/v1/me/export`: starts the export job.
 pub async fn export_all(base: &str, token: &str) -> Result<ExportJob, CloudError> {
     let url = format!("{base}/v1/me/export");
     let resp = http_client()?
@@ -125,7 +124,7 @@ pub async fn export_all(base: &str, token: &str) -> Result<ExportJob, CloudError
     parse_json(&body)
 }
 
-/// `GET {base}/v1/me/export` — estado del último job.
+/// `GET {base}/v1/me/export`: the last job's state.
 pub async fn export_status(base: &str, token: &str) -> Result<ExportStatus, CloudError> {
     let url = format!("{base}/v1/me/export");
     let resp = http_client()?
@@ -143,51 +142,51 @@ pub async fn export_status(base: &str, token: &str) -> Result<ExportStatus, Clou
 
 // ---- caja negra: storage / archived games -----------------------------
 
-/// Huella liberable de una partida. Espeja `GameFootprint` del server.
+/// A save's freeable footprint. Mirrors the server's `GameFootprint`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageGame {
     pub save_id: String,
     pub game_slug: String,
     pub label: String,
-    /// Bytes que baja la cuota si se archiva (blobs exclusivos deduplicados).
+    /// Bytes archiving would give back to the quota (deduplicated exclusive blobs).
     pub freeable_bytes: i64,
     #[serde(default)]
     pub archived: bool,
-    /// Instante RFC3339 de purga definitiva, presente solo mientras está archivada.
+    /// RFC3339 instant of the final purge, present only while it is archived.
     #[serde(default)]
     pub purge_after: Option<String>,
 }
 
-/// `GET {base}/v1/cloud/storage/games` — huella por partida + cifras de cuota.
+/// `GET {base}/v1/cloud/storage/games`: per-save footprint plus quota figures.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageGames {
     pub plan: String,
     pub used_bytes: u64,
     pub limit_bytes: u64,
-    /// Bytes por encima del límite (0 si dentro).
+    /// Bytes over the limit (0 when inside it).
     pub over_bytes: u64,
     pub games: Vec<StorageGame>,
-    /// Blobs que comparten dos o más partidas vivas, agrupados por el conjunto
-    /// exacto que los comparte. Esos bytes no son exclusivos de ninguna, así que
-    /// no salen en ningún `freeable_bytes`: sólo vuelven si se archivan **todas**
-    /// las del grupo. El caso típico es la misma carpeta trackeada dos veces.
+    /// Blobs two or more live saves share, grouped by the exact set sharing them.
+    /// Those bytes are exclusive to none of them, so they appear in no
+    /// `freeable_bytes`: they only come back if every save in the group is
+    /// archived. The typical case is the same folder tracked twice.
     #[serde(default)]
     pub shared_groups: Vec<SharedGroup>,
 }
 
-/// Un grupo de blobs compartidos y lo que pesan. Espeja `SharedGroup` del server.
+/// A group of shared blobs and what they weigh. Mirrors the server's `SharedGroup`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SharedGroup {
     pub save_ids: Vec<String>,
     pub bytes: i64,
 }
 
-/// Resultado de archivar. Espeja `ArchiveOut` del server.
+/// The result of archiving. Mirrors the server's `ArchiveOut`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchiveResult {
     pub save_id: String,
     pub archived: bool,
-    /// RFC3339 — cuándo se purga la copia congelada (instante + 7d).
+    /// RFC3339: when the frozen copy is purged (the instant plus 7 days).
     pub purge_after: String,
     pub freed_bytes: i64,
 }
@@ -208,8 +207,8 @@ pub async fn storage_games(base: &str, token: &str) -> Result<StorageGames, Clou
     parse_json(&body)
 }
 
-/// `POST {base}/v1/cloud/saves/:id/archive` — aparca una partida en la caja
-/// negra: libera cuota ya, la deja descargable 7 días, luego un cron la purga.
+/// `POST {base}/v1/cloud/saves/:id/archive`: parks a save in the black box,
+/// freeing quota now, leaving it downloadable for 7 days, then a cron purges it.
 pub async fn archive_save(
     base: &str,
     token: &str,
@@ -229,7 +228,7 @@ pub async fn archive_save(
     parse_json(&body)
 }
 
-/// `POST {base}/v1/cloud/saves/:id/reactivate` — recupera una partida archivada.
+/// `POST {base}/v1/cloud/saves/:id/reactivate`: recovers an archived save.
 pub async fn reactivate_save(base: &str, token: &str, save_id: &str) -> Result<(), CloudError> {
     let url = format!("{base}/v1/cloud/saves/{save_id}/reactivate");
     let resp = http_client()?
@@ -244,11 +243,10 @@ pub async fn reactivate_save(base: &str, token: &str, save_id: &str) -> Result<(
     Ok(())
 }
 
-/// `POST {base}/v1/notifications/:id/dismiss` — registra el descarte de un
-/// broadcast para que el server no lo vuelva a entregar a ese usuario (en
-/// ningún dispositivo ni tras reinstalar). Idempotente server-side; un solo
-/// intento, el reintento-tras-401 lo hace el llamador (igual que
-/// `entitlements`).
+/// `POST {base}/v1/notifications/:id/dismiss`: records that a broadcast was
+/// dismissed so the server never delivers it to that user again, on any device or
+/// after a reinstall. Idempotent server-side; a single attempt, with the
+/// retry-after-401 left to the caller, as in `entitlements`.
 pub async fn dismiss_notification(base: &str, token: &str, id: &str) -> Result<(), CloudError> {
     let url = format!("{base}/v1/notifications/{id}/dismiss");
     let resp = http_client()?
@@ -265,23 +263,23 @@ pub async fn dismiss_notification(base: &str, token: &str, id: &str) -> Result<(
 
 // ---- términos ---------------------------------------------------------
 
-/// Lo que el server sabe de la aceptación de esta cuenta.
+/// What the server knows about this account's acceptance.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TermsStatus {
     pub accepted_version: Option<String>,
     pub accepted_at: Option<String>,
     pub current_version: String,
-    /// `true` cuando hay que enseñar la casilla otra vez.
+    /// `true` when the checkbox has to be shown again.
     pub needs_acceptance: bool,
 }
 
-/// `POST {base}/v1/me/terms` — deja constancia de la aceptación.
+/// `POST {base}/v1/me/terms`: records the acceptance.
 ///
-/// La versión no la elige quien llama: es la que este binario tiene compilada
-/// ([`hoard_core::wire::TERMS_VERSION`]), que es la única que el usuario ha
-/// podido ver desde aquí. El server rechaza cualquier otra, así que un cliente
-/// viejo se lleva un 400 en vez de dejar registrada una aceptación de un texto
-/// que ya no existe.
+/// The caller does not choose the version: it is the one this binary has compiled
+/// in ([`hoard_core::wire::TERMS_VERSION`]), which is the only one the user can
+/// have seen from here. The server rejects any other, so an older client gets a
+/// 400 rather than leaving an acceptance on record for a text that no longer
+/// exists.
 pub async fn accept_terms(
     base: &str,
     token: &str,
@@ -307,7 +305,7 @@ pub async fn accept_terms(
     parse_json(&body)
 }
 
-/// `GET {base}/v1/me/terms` — qué aceptó esta cuenta y si toca preguntar.
+/// `GET {base}/v1/me/terms`: what this account accepted and whether to ask again.
 pub async fn terms_status(base: &str, token: &str) -> Result<TermsStatus, CloudError> {
     let url = format!("{base}/v1/me/terms");
     let resp = http_client()?
@@ -325,8 +323,8 @@ pub async fn terms_status(base: &str, token: &str) -> Result<TermsStatus, CloudE
 
 // ---- cuenta -----------------------------------------------------------
 
-/// `DELETE {base}/v1/me` — soft-delete + freeze de la cuenta (gracia 30 días).
-/// Limpiar la sesión local es glue de cada frontend.
+/// `DELETE {base}/v1/me`: soft-deletes and freezes the account (30 days' grace).
+/// Clearing the local session is each frontend's glue.
 pub async fn delete_account(base: &str, token: &str) -> Result<(), CloudError> {
     let url = format!("{base}/v1/me");
     let resp = http_client()?
@@ -341,8 +339,8 @@ pub async fn delete_account(base: &str, token: &str) -> Result<(), CloudError> {
     Ok(())
 }
 
-/// `POST {base}/v1/me/reactivate` — cancela un soft-delete pendiente. El
-/// frontend re-lee `/v1/me` después para refrescar su snapshot de cuenta.
+/// `POST {base}/v1/me/reactivate`: cancels a pending soft-delete. The frontend
+/// re-reads `/v1/me` afterwards to refresh its account snapshot.
 pub async fn reactivate_account(base: &str, token: &str) -> Result<(), CloudError> {
     let url = format!("{base}/v1/me/reactivate");
     let resp = http_client()?
@@ -359,7 +357,7 @@ pub async fn reactivate_account(base: &str, token: &str) -> Result<(), CloudErro
 
 // ---- entitlements / features ------------------------------------------
 
-/// Acceso Pro por feature, espejo de `GET /v1/cloud/entitlements`.
+/// Per-feature Pro access, mirroring `GET /v1/cloud/entitlements`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudEntitlements {
     pub plan: String,
@@ -372,8 +370,8 @@ pub struct CloudFeatures {
     pub wrapple: FeatureState,
 }
 
-/// Estado de acceso de una feature. `tag = "state"` para casar con el enum del
-/// server (`entitled` / `trial_available` / `trial` / `trial_expired`).
+/// A feature's access state. `tag = "state"` to match the server's enum
+/// (`entitled`, `trial_available`, `trial`, `trial_expired`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum FeatureState {
@@ -383,8 +381,8 @@ pub enum FeatureState {
     TrialExpired,
 }
 
-/// `GET {base}/v1/cloud/entitlements` — snapshot de solo lectura (no arranca
-/// trial). Un solo intento; el reintento-tras-401 lo hace el llamador.
+/// `GET {base}/v1/cloud/entitlements`: a read-only snapshot that starts no trial.
+/// A single attempt; the retry-after-401 is the caller's.
 pub async fn entitlements(base: &str, token: &str) -> Result<CloudEntitlements, CloudError> {
     let url = format!("{base}/v1/cloud/entitlements");
     let resp = http_client()?
@@ -400,10 +398,10 @@ pub async fn entitlements(base: &str, token: &str) -> Result<CloudEntitlements, 
     parse_json(&body)
 }
 
-/// `POST {base}/v1/cloud/features/:feature/activate` — abre una feature Pro:
-/// arranca el trial de un mes en el primer uso (el server es idempotente). Un
-/// `402` (bloqueada: sin Pro, trial agotado) se traduce a `TrialExpired` para
-/// que la UI mantenga el candado, no a error.
+/// `POST {base}/v1/cloud/features/:feature/activate`: opens a Pro feature,
+/// starting the one-month trial on first use (the server is idempotent). A `402`
+/// (locked: no Pro, trial spent) is translated to `TrialExpired` so the UI keeps
+/// the padlock rather than showing an error.
 pub async fn activate_feature(
     base: &str,
     token: &str,
@@ -432,24 +430,25 @@ pub async fn activate_feature(
 
 // ---- playtime ---------------------------------------------------------
 
-/// Cuerpo de subida: el desglose `(día, juego, secs)` de este equipo + su
-/// fingerprint para que el server separe las filas por máquina.
+/// The upload body: this machine's `(day, game, secs)` breakdown plus its
+/// fingerprint, so the server can keep the rows apart per machine.
 #[derive(Debug, Serialize)]
 pub struct PlaytimeUploadBody {
     pub device_fp: String,
-    /// Este equipo afirma conocer **todo** su pasado, porque su store salió de
-    /// un fichero que existía ([`crate::playtime::PlaytimeStore::is_authoritative`]).
+    /// This machine claims to know all of its own past, because its store came
+    /// off a file that existed
+    /// ([`crate::playtime::PlaytimeStore::is_authoritative`]).
     ///
-    /// Con `false` el servidor sólo toca los días que van en `rows`: un cliente
-    /// que perdió su fichero no afirma nada sobre los días viejos, así que no
-    /// puede borrarlos. Con `true` reemplaza el dispositivo entero, que es lo
-    /// que hace falta para que retirar un juego del cómputo lo retire de verdad.
+    /// With `false` the server only touches the days carried in `rows`: a client
+    /// that lost its file claims nothing about the older days, so it cannot delete
+    /// them. With `true` it replaces the whole device, which is what it takes for
+    /// dropping a game from the count to really drop it.
     pub authoritative: bool,
     pub rows: Vec<PlaytimeRow>,
 }
 
-/// `POST {base}{path}` — sube el desglose de playtime de este equipo. `path` es
-/// `/v1/cloud/playtime` (Cloud) o `/v1/playtime` (self-hosted).
+/// `POST {base}{path}`: uploads this machine's playtime breakdown. `path` is
+/// `/v1/cloud/playtime` (Cloud) or `/v1/playtime` (self-hosted).
 pub async fn push_playtime(
     base: &str,
     path: &str,
@@ -470,7 +469,7 @@ pub async fn push_playtime(
     Ok(())
 }
 
-/// `GET {base}{path}` — lee el agregado de playtime fusionado por dispositivo.
+/// `GET {base}{path}`: reads the playtime aggregate merged across devices.
 pub async fn fetch_playtime(
     base: &str,
     path: &str,

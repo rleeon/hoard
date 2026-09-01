@@ -21,8 +21,8 @@ use crate::output;
 #[derive(Serialize)]
 pub struct PreviewOut {
     /// Files the version brings with different bytes: these get overwritten.
-    /// Listed individually — a count is not enough when the answer decides
-    /// whether someone loses a session.
+    /// Listed individually, because a count is not enough when the answer
+    /// decides whether someone loses a session.
     pub modified: Vec<String>,
     pub added: Vec<String>,
     /// On disk and not in the version. **Nothing deletes them**, but they are
@@ -97,9 +97,10 @@ pub async fn apply(
         }
     };
 
-    // Qué se deja escribir. Los patrones del manifiesto sólo se pueden mirar si
-    // sabemos de qué juego es la carpeta; un `--to` a pelo sobre un save que no
-    // está en el estado local se queda sin blindaje y decide el kernel solo.
+    // What is allowed to be written. The manifest's patterns can only be
+    // consulted when we know which game the folder belongs to; a bare `--to` over
+    // a save that is not in the local state gets no shields and the kernel
+    // decides on its own.
     let shields = {
         let slug = CliState::load_default()
             .ok()
@@ -112,10 +113,10 @@ pub async fn apply(
         allow_device_local: allow_ini,
     };
 
-    // Qué le va a pasar a la carpeta. No descarga nada: cruza el manifiesto de
-    // la versión con lo que hay en disco. Se enseña siempre, porque restaurar
-    // sobrescribe y merece decir antes qué sobrescribe; con `--dry-run` es todo
-    // lo que hace el comando.
+    // What is going to happen to the folder. Nothing is downloaded: it crosses
+    // the version's manifest with what is on disk. Always shown, because
+    // restoring overwrites and that deserves saying beforehand; with `--dry-run`
+    // it is all the command does.
     let (preview, preview_error) =
         match hoard_agent::preview::restore_preview(&client, &save_id, version, &dest, &gate).await
         {
@@ -133,7 +134,8 @@ pub async fn apply(
                 }),
                 None,
             ),
-            // No poder mirar qué cambia no es motivo para bloquear el restore.
+            // Not being able to look at what changes is no reason to block a
+            // restore.
             Err(e) => (None, Some(format!("{e:#}"))),
         };
 
@@ -160,8 +162,8 @@ pub async fn apply(
             preview_error: None,
             restored: None,
         };
-        // Se enseña siempre, porque restaurar sobrescribe y merece decir antes
-        // qué sobrescribe.
+        // Always shown, because restoring overwrites and that deserves saying
+        // beforehand.
         let shown = RestoreOut {
             preview: preview.as_ref().map(clone_preview),
             preview_error: preview_error.clone(),
@@ -267,10 +269,10 @@ fn clone_preview(p: &PreviewOut) -> PreviewOut {
 
 /// The human rendering of what a restore would do.
 ///
-/// `full` (i.e. `--dry-run`) names every file, because the whole point of the
-/// dry run is to decide, and "3 files overwritten" doesn't say whether one of
-/// them is the campaign you played last night. Without it, the same figures
-/// stay on one line above the restore that follows.
+/// `full` (that is, `--dry-run`) names every file, because the whole point of the
+/// dry run is to decide, and "3 files overwritten" does not say whether one of
+/// them is the campaign you played last night. Without it, the same figures stay
+/// on one line above the restore that follows.
 fn print_preview(out: &RestoreOut, full: bool) {
     if let Some(e) = &out.preview_error {
         println!("couldn't check what changes ({e})");

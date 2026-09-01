@@ -1,9 +1,9 @@
-//! `hoard agents` — how an AI assistant learns to drive Hoard.
+//! `hoard agents`: how an AI assistant learns to drive Hoard.
 //!
 //! The skill file ships **inside the binary** (`include_str!`), so an update of
 //! Hoard is an update of the skill: the copy the user installed can never
 //! describe a version they don't have. That is also why the file carries the
-//! version it was generated from — an assistant compares it against
+//! version it was generated from. An assistant compares it against
 //! `hoard --version` and regenerates on mismatch, which costs one command.
 //!
 //! We deliberately don't write to the assistant's config ourselves. Those

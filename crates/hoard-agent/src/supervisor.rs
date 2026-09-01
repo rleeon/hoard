@@ -1,15 +1,15 @@
 //! Keep a long-lived background loop alive, and say so when it dies.
 //!
 //! Vivía en `hoard-desktop/src/commands/supervisor.rs`. Subió aquí en el Slice
-//! 4a porque la regla de D.12 —«si vive más que una petición, va bajo
-//! `supervise`»— también aplica al daemon (`hoardd`), y un módulo privado del
-//! desktop no le sirve. El desktop lo re-exporta desde su ruta de siempre, así
-//! que sus llamantes no cambiaron.
+//! 4a because D.12's rule ("if it outlives a request, it goes under
+//! `supervise`") applies to the daemon too, and a module private to
+//! the desktop is no use to it. The desktop re-exports it from its old path, so
+//! its callers did not change.
 //!
 //! **Why this exists (ADR 0021 D.12).** The cloud-pull poller stopped after two
 //! ticks and *nothing in the log said so*: no `gate busy`, no second `started`,
 //! no `stopped`. A `tokio::spawn` that panics is reaped by the runtime, and the
-//! error is parked in a `JoinHandle` nobody joins — so a dead loop and a healthy
+//! error is parked in a `JoinHandle` nobody joins, so a dead loop and a healthy
 //! but quiet one read identically. The engine was blind for the rest of the
 //! session with no autorecovery. The concrete panic (a `state::<CloudFeed>()`
 //! against unmanaged state) is fixed at its source, but chasing one panic only
@@ -17,12 +17,12 @@
 //!
 //! So every supervised loop gets the same contract: a panic is an incident,
 //! logged at `error` and retried with backoff. Ending on purpose is a
-//! *declaration* — the body has to hand back a [`Finished`], which a loop that
+//! *declaration*: the body has to hand back a [`Finished`], which a loop that
 //! never returns can never produce. "Stopped by accident" is therefore not
 //! representable, which beats catching it at runtime.
 //!
-//! **One task, not two.** The obvious shape — `tokio::spawn` the loop and join
-//! its handle to catch the panic — is wrong here: the schedulers `abort()` the
+//! One task, not two. The obvious shape, `tokio::spawn` the loop and join its
+//! handle to catch the panic, is wrong here: the schedulers `abort()` the
 //! handle they hold, and an inner task would survive that abort as an orphan.
 //! Two pollers racing is precisely the class of bug this module exists to stop.
 //! `catch_unwind` over the future keeps everything in the one task the caller
@@ -43,7 +43,7 @@ const RESTART_BACKOFF_MAX_SECS: u64 = 5 * 60;
 /// bottom of the backoff instead of inheriting an old escalation.
 const HEALTHY_RUN_SECS: u64 = 10 * 60;
 
-/// Proof that a supervised loop ended **on purpose** — the realtime subscriber
+/// Proof that a supervised loop ended on purpose: the realtime subscriber
 /// returning because the user signed out. The supervisor ends with it; whoever
 /// owns the lifecycle starts a fresh one when it's relevant again.
 ///
@@ -76,7 +76,7 @@ where
                 name,
                 ran_secs = ran_secs(),
                 panic = %panic_text(&payload),
-                "supervisor: loop panicked — restarting"
+                "supervisor: loop panicked, restarting"
             ),
         }
         if started.elapsed() >= Duration::from_secs(HEALTHY_RUN_SECS) {

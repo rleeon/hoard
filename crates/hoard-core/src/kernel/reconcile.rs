@@ -1,29 +1,29 @@
-//! El reductor reconciliador puro (ADR 0021, C.1 + C.2 — Slice 2, paso 1).
+//! The pure reconciling reducer (ADR 0021, C.1 and C.2).
 //!
 //! ```text
 //! reconcile(&State, &Observation, World) -> (State, Vec<Decision>)
 //! ```
 //!
-//! Determinista y sans-IO: toda la no-determinación entra por [`World`] (`now`,
-//! `seed`). La autoridad está **invertida**: el tick es la fuente de verdad. Cada
-//! tick el shell muestrea el mundo → construye una [`Observation`] → llama a
-//! `reconcile` → ejecuta las [`Decision`]s. Los eventos (fs, realtime) son
-//! *hints* que sólo adelantan un tick (llegan como `obs.fs_event` /
-//! `obs.op_result`), nunca deciden por su cuenta.
+//! Deterministic and sans-IO: every bit of non-determinism comes in through
+//! [`World`] (`now`, `seed`). Authority is inverted, so the tick is the source of
+//! truth. Each tick the shell samples the world, builds an [`Observation`], calls
+//! `reconcile`, and runs the [`Decision`]s. Events from the watcher or realtime
+//! are hints that only pull a tick forward (they arrive as `obs.fs_event` and
+//! `obs.op_result`); they never decide anything on their own.
 //!
-//! El veto de sesión se compone reusando [`session::veto_reason`]: `reconcile`
-//! **es** el reconciliador de alto nivel; el veto es su sub-decisor.
+//! The session veto composes by reusing [`session::veto_reason`]. `reconcile` is
+//! the high-level reconciler; the veto is its sub-decider.
 //!
-//! ## Invariantes (property tests con shrinking, más abajo)
-//! - convergido ⇒ sólo `Hold` (cero `Act`).
-//! - ninguna `Act` sin un delta en la entrada que la cause (`now` cruzando un
-//!   deadline **es** delta → el retry tras un 429 no la viola).
-//! - nunca `Act(Backup)` a la vez que `Act(Restore)` (no se pelean por la
-//!   carpeta) y nunca `Act(Restore)` mid-session (data-loss REPO).
-//! - nunca perder un local más nuevo que el remoto (`Restore` ⇒ sin
+//! ## Invariants (property tests with shrinking, further down)
+//! - converged means `Hold` only, and zero `Act`.
+//! - no `Act` without a delta in the input to cause it (`now` crossing a deadline
+//!   *is* a delta, so the retry after a 429 does not violate this).
+//! - never `Act(Backup)` and `Act(Restore)` at once (they must not fight over the
+//!   folder), and never `Act(Restore)` mid-session (the R.E.P.O. data loss).
+//! - never lose a local newer than the remote (`Restore` implies no
 //!   `has_pending`).
-//! - `Act` de storage acotadas por tick (≤ 1).
-//! - un pull diferido nunca encalla la subida que lo destrabaría (D.8.1).
+//! - at most one storage `Act` per tick.
+//! - a deferred pull never stalls the upload that would unblock it (D.8.1).
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use time::{Duration, OffsetDateTime};
@@ -33,64 +33,65 @@ use super::{
     World,
 };
 
-// ---- Constantes de ritmo (réplica sans-IO de las de `agent.rs`) ------------
+// ---- pacing constants (sans-IO twins of the ones in `agent.rs`)
 
-/// Cooldown mínimo entre intentos de restore (éxito o fallo), igual que
+/// Minimum cooldown between restore attempts, success or failure. Matches
 /// `agent::AUTO_RESTORE_COOLDOWN_SECS`.
 pub const RESTORE_COOLDOWN_SECS: i64 = 60;
 
-/// Backoff largo cuando el restore da 404 (el save no está en el backend), igual
-/// que `agent::AUTO_RESTORE_NOT_FOUND_BACKOFF_SECS`.
+/// Long backoff when a restore 404s, meaning the save is not on the backend.
+/// Matches `agent::AUTO_RESTORE_NOT_FOUND_BACKOFF_SECS`.
 pub const NOT_FOUND_BACKOFF_SECS: i64 = 60 * 60;
 
-/// Escalada del backoff de restore que sigue fallando en la MISMA versión cloud:
-/// 60 s → 5 min → 15 min → 60 min, luego 60 min para siempre. Igual que
+/// Escalation for a restore that keeps failing against the SAME cloud version:
+/// 60 s, 5 min, 15 min, 60 min, then 60 min forever. Matches
 /// `agent::AUTO_RESTORE_FAILURE_BACKOFF_SECS`.
 pub const FAILURE_BACKOFF_SECS: [i64; 4] = [60, 5 * 60, 15 * 60, 60 * 60];
 
-/// Fallos consecutivos en la misma versión antes de marcar el save "stuck".
+/// Consecutive failures on one version before a save is called stuck.
 pub const STUCK_AFTER: u32 = 3;
 
-/// Backoff largo tras agotar el presupuesto de reintentos internos de una
-/// **subida**. Diez minutos, deliberadamente mucho más lento que ese presupuesto
-/// (segundos): lo que sobrevive a los reintentos no es un paquete perdido sino
-/// una avería real —server caído, sin red, disco ilegible, token caducado— y eso
-/// se resuelve en la escala de minutos u horas. Largo para no martillear un
-/// backend muerto (y no pintar el feed de rojo), corto para que la recuperación
-/// sea desatendida. Era `agent::BACKUP_RETRY_BACKOFF`, política en el shell
-/// (ADR 0021 D.8.2).
+/// Long backoff after an *upload* burns its internal retry budget. Ten minutes,
+/// deliberately far slower than that budget (seconds): what survives the retries
+/// is not a lost packet but a real fault, a downed server, no network, an
+/// unreadable disk, an expired token, and those resolve on the scale of minutes
+/// or hours. Long enough not to hammer a dead backend or paint the feed red,
+/// short enough that recovery is unattended. This was `agent::BACKUP_RETRY_BACKOFF`,
+/// policy living in the shell (ADR 0021 D.8.2).
 pub const BACKUP_FAILURE_BACKOFF_SECS: i64 = 10 * 60;
 
-/// Escalada de la subida que choca contra un conflicto **irresoluble** (409 «vas
-/// por detrás» + reconciliación sin nada que bajar): 10 min → 20 → 40 → 80.
+/// Escalation for an upload hitting an *unresolvable* conflict (409 "you are
+/// behind" plus a reconcile with nothing to pull): 10, 20, 40, 80 minutes.
 ///
-/// Exponencial y no plana como [`BACKUP_FAILURE_BACKOFF_SECS`] porque no es la
-/// misma avería. Un fallo normal se cura solo —vuelve la red, arranca el
-/// server— y el backoff sólo tiene que no martillear mientras tanto. Un
-/// conflicto sin salida no se cura con tiempo: cada reintento vuelve a hacer la
-/// misma pregunta y recibe la misma respuesta. Reintentar sirve por si la nube
-/// se mueve, y eso pasa en la escala de una sesión de juego, no de diez minutos.
+/// Exponential rather than flat like [`BACKUP_FAILURE_BACKOFF_SECS`], because it
+/// is not the same fault. An ordinary failure heals on its own (the network
+/// comes back, the server boots) and the backoff only has to avoid hammering
+/// meanwhile. A conflict with no way out does not heal with time: every retry
+/// asks the same question and gets the same answer. Retrying is worth it in case
+/// the cloud moves, and that happens on the scale of a play session, not of ten
+/// minutes.
 pub const CONFLICT_STALL_BACKOFF_SECS: [i64; 4] = [10 * 60, 20 * 60, 40 * 60, 80 * 60];
 
-/// Conflictos irresolubles seguidos contra la misma cabeza de nube tras los
-/// cuales se deja de reintentar y el save pasa a pedir una persona.
+/// Consecutive unresolvable conflicts against the same cloud head after which
+/// retrying stops and the save asks for a person.
 ///
-/// Cinco: los cuatro escalones de arriba (dos horas y media en total) y basta.
-/// El caso real llevaba 14 días a ~4,5 intentos/h y sobrevivió a tres versiones
-/// de la app sin que nadie lo mirara, porque nada lo enseñaba. Un reintento
-/// silencioso infinito no es tolerancia a fallos: es un fallo escondido.
+/// Five: the four rungs above, two and a half hours in total, and that is
+/// enough. The real case ran for 14 days at about 4.5 attempts an hour and
+/// survived three releases of the app with nobody looking at it, because nothing
+/// showed it. An infinite silent retry is not fault tolerance, it is a hidden
+/// fault.
 pub const CONFLICT_STALL_GIVE_UP_AFTER: u32 = 5;
 
-/// Motivo del `Hold` de una subida que agotó su presupuesto de conflictos. La
-/// UI lo enseña como "necesita que mires esto", así que es una constante y no un
-/// literal (mismo trato que [`HOLD_BACKUP_MIN_INTERVAL`]).
+/// The `Hold` reason for an upload that spent its conflict budget. The UI shows
+/// it as "this needs you to look at it", so it is a constant rather than a
+/// literal, same as [`HOLD_BACKUP_MIN_INTERVAL`].
 pub const HOLD_BACKUP_NEEDS_ATTENTION: &str = "backup conflict needs the user";
 
-/// Reposo tras un 402 (cuenta llena). Mucho más largo que el de un fallo
-/// normal: liberar espacio es una acción humana —archivar juegos, subir a
-/// Pro—, no una racha de red que se cura sola en diez minutos. Con veinte
-/// saves en la biblioteca, el backoff de fallo normal serían ~120 POST a la
-/// hora que ya sabemos que van a devolver 402.
+/// Rest after a 402 (account full). Far longer than an ordinary failure's:
+/// freeing space is a human action (archiving games, upgrading), not a network
+/// blip that clears itself in ten minutes. With twenty saves in the library, the
+/// ordinary failure backoff would be about 120 POSTs an hour that we already
+/// know will come back 402.
 pub const QUOTA_FULL_BACKOFF_SECS: i64 = 60 * 60;
 
 /// Ceiling on the wait a 429 can ask this client to sit out.
@@ -98,8 +99,8 @@ pub const QUOTA_FULL_BACKOFF_SECS: i64 = 60 * 60;
 /// The cap exists so a malformed or hostile `retry_after` can't park a save
 /// until the next restart, not to second-guess our own server. It used to be
 /// 300 s, which did second-guess it: `loopguard::QUOTA_WAIT_SECS` answers a full
-/// account with 3600 — the same hour as [`QUOTA_FULL_BACKOFF_SECS`], picked so
-/// both ends behave alike — and the client silently shortened it to five
+/// account with 3600, the same hour as [`QUOTA_FULL_BACKOFF_SECS`], picked so
+/// both ends behave alike, and the client silently shortened it to five
 /// minutes. One account spent four days at ~170 refusals an hour against a
 /// brake that had already told it to come back in one.
 ///
@@ -108,133 +109,135 @@ pub const QUOTA_FULL_BACKOFF_SECS: i64 = 60 * 60;
 /// stays a wall) and drifting apart would put the loop straight back.
 pub const MAX_THROTTLE_WAIT_SECS: i64 = QUOTA_FULL_BACKOFF_SECS;
 
-/// Cadencia fija del poll airbag a `/v1/cloud/sync`. **Fuente de verdad del
-/// número**: `hoard_agent::prefs::CLOUD_POLL_INTERVAL_SECS` la re-exporta, para
-/// que el umbral de obsolescencia de abajo se derive de la cadencia real en vez
-/// de duplicar un literal que puede driftar.
+/// Fixed cadence of the airbag poll to `/v1/cloud/sync`. The source of truth for
+/// the number: `hoard_agent::prefs::CLOUD_POLL_INTERVAL_SECS` re-exports it, so
+/// the staleness threshold below derives from the real cadence instead of
+/// duplicating a literal that can drift.
 pub const CLOUD_POLL_INTERVAL_SECS: i64 = 60;
 
-/// Cuántos intervalos de poll pueden perderse antes de declarar ciega la
-/// observación de nube. Cinco: uno o dos fallos seguidos son un hipo de red o
-/// una suspensión corta y no merecen ruido; cinco minutos sin contacto ya no son
-/// un hipo, son una avería (ADR 0021 D.10 — el poller murió y estuvo 47 min sin
-/// que nada lo dijera).
+/// How many poll intervals may be missed before cloud observation is declared
+/// blind. Five: one or two failures in a row are a network hiccup or a short
+/// suspend and do not deserve noise, while five minutes without contact is no
+/// longer a hiccup but a fault (ADR 0021 D.10, where the poller died and went 47
+/// minutes without anything saying so).
 pub const CLOUD_STALE_AFTER_POLLS: i64 = 5;
 
-// Un solo poll perdido jamás puede declarar ciega la observación: la red hipa.
-// Chequeado en compilación, no en test, para que ni siquiera compile mal.
+// A single missed poll can never declare the observation blind, because networks
+// hiccup. Checked at compile time rather than in a test, so it cannot even build
+// wrong.
 const _: () = assert!(CLOUD_STALE_AFTER_POLLS >= 2);
 
-/// Edad a partir de la cual [`Observation::cloud_version_as_of`] deja de ser
-/// creíble y el reductor emite [`CLOUD_STALE_REASON`] en vez de `"converged"`.
+/// The age past which [`Observation::cloud_version_as_of`] stops being credible
+/// and the reducer emits [`CLOUD_STALE_REASON`] instead of `"converged"`.
 pub const CLOUD_STALE_AFTER_SECS: i64 = CLOUD_POLL_INTERVAL_SECS * CLOUD_STALE_AFTER_POLLS;
 
-/// Motivo del `Hold` cuando la caché de versiones de nube envejeció: no estamos
-/// convergidos, estamos **ciegos**. Mismo principio que loguear los vetos — un
-/// fallo invisible pasa a ser observable.
+/// The `Hold` reason when the cloud version cache has aged out: we are not
+/// converged, we are blind. Same principle as logging vetoes, which is that an
+/// invisible failure becomes an observable one.
 pub const CLOUD_STALE_REASON: &str = "cloud state stale";
 
-/// Edad de [`Observation::cloud_version_as_of`] a partir de la cual **el motor
-/// va a buscar la cabeza de nube él mismo** (ADR 0021 D.12), en vez de esperar
-/// a que el poller del cliente se la empuje.
+/// The age of [`Observation::cloud_version_as_of`] past which the engine goes and
+/// fetches the cloud head itself (ADR 0021 D.12), rather than waiting for the
+/// client's poller to push it.
 ///
-/// Por encima de la cadencia del poller a propósito: un poller vivo rejuvenece
-/// la marca antes de llegar aquí, así que su feed *suprime* esta consulta y el
-/// coste se queda en UN manifiesto por intervalo, no dos. Cuando el poller muere
-/// —la avería de D.12, la tarea desaparecía sin un log— el motor cubre el hueco
-/// solo: la degradación es "tardo hasta el siguiente tick", no "ciego para
-/// siempre". Vive aquí, junto a la cadencia de la que se deriva, aunque quien
-/// hace la consulta sea el shell (el kernel no hace IO).
+/// Above the poller's cadence on purpose: a live poller refreshes the stamp
+/// before this is reached, so its feed *suppresses* the query and the cost stays
+/// at one manifest per interval rather than two. When the poller dies, which was
+/// the D.12 fault where the task vanished without a log, the engine covers the
+/// gap on its own and the degradation is "I take until the next tick" rather
+/// than "blind forever". It lives here, next to the cadence it derives from, even
+/// though the shell is what makes the query (the kernel does no IO).
 pub const CLOUD_SELF_OBSERVE_AFTER_SECS: i64 = CLOUD_POLL_INTERVAL_SECS * 3 / 2;
 
-// El motor SIEMPRE intenta refrescar antes de declararse ciego. Si esta relación
-// se invirtiera, el `Hold{"cloud state stale"}` acusaría una obsolescencia que
-// nadie ha intentado remediar todavía. Chequeado en compilación.
+// The engine ALWAYS tries to refresh before declaring itself blind. If this
+// relation were inverted, the `Hold{"cloud state stale"}` would be accusing a
+// staleness nobody has tried to fix yet. Checked at compile time.
 const _: () = assert!(CLOUD_SELF_OBSERVE_AFTER_SECS < CLOUD_STALE_AFTER_SECS);
-// Y nunca por debajo de la cadencia del poller: si no, un poller sano y el motor
-// se pisarían el manifiesto cada intervalo (dos GET donde debe haber uno).
+// And never below the poller's cadence, or a healthy poller and the engine would
+// tread on each other's manifest every interval: two GETs where there should be
+// one.
 const _: () = assert!(CLOUD_SELF_OBSERVE_AFTER_SECS >= CLOUD_POLL_INTERVAL_SECS);
 
-/// Ventana de gracia (sticky) tras dejar de ver el proceso vivo antes de
-/// declararlo parado. 6 s — bajada desde los 90 s históricos
-/// (`agent::STRONG_STOP_GRACE_FLOOR_SECS`, "Was 90 s"): como el veto de sesión
-/// se ancla en `is_running`, esos 90 s se sumaban a CADA GameStopped, inflando
-/// la latencia de detección de cierre y la de restore cross-device (el receptor
-/// seguía vetando pulls 90 s tras cerrarse el juego). Este es el corpus D.4
-/// «sticky 90s→6s»: aquí es un invariante testeable de latencia de veto.
+/// Sticky grace window after the process stops being seen, before it is declared
+/// stopped. Six seconds, down from the historical 90
+/// (`agent::STRONG_STOP_GRACE_FLOOR_SECS`): since the session veto anchors on
+/// `is_running`, those 90 seconds were added to EVERY GameStopped, inflating both
+/// close-detection latency and cross-device restore latency, because the
+/// receiving machine kept vetoing pulls for 90 seconds after the game closed.
 pub const RUNNING_STICKY_GRACE_SECS: i64 = 6;
 
-// ---- El reductor -----------------------------------------------------------
+// ---- the reducer
 
-/// Reconcilia el estado durable con el mundo muestreado y devuelve el nuevo
-/// estado más las decisiones a ejecutar este tick. Determinista: mismas
-/// entradas ⇒ misma salida (incluido el jitter, vía `StdRng::seed_from_u64`).
+/// Reconciles the durable state with the sampled world and returns the new state
+/// plus the decisions to run this tick. Deterministic: the same inputs give the
+/// same output, jitter included, via `StdRng::seed_from_u64`.
 pub fn reconcile(state: &State, obs: &Observation, world: World) -> (State, Vec<Decision>) {
     let mut next = state.clone();
     let mut decisions: Vec<Decision> = Vec::new();
     let now = world.now;
 
-    // Entrada playtime-only: no tiene carpeta que sincronizar, nunca.
+    // A playtime-only entry has no folder to sync, ever.
     if next.track_only {
         return (next, vec![hold("track-only entry")]);
     }
 
-    // Hint fs (una escritura debounced aterrizó este tick): marca pendiente.
-    // Es un *hint* — sólo adelanta el tick, no decide.
+    // The fs hint (a debounced write landed this tick) marks pending. It is a
+    // hint: it pulls the tick forward, it does not decide.
     if obs.fs_event {
         next.has_pending = true;
         next.last_fs_event_at = Some(now);
     }
 
-    // Status de sesión viva desde la evidencia de proceso, con stickiness.
+    // Live session status from process evidence, with stickiness.
     apply_running_stickiness(&mut next, obs, now);
 
-    // La nube publicó una versión distinta de la que venía fallando: es
-    // información nueva, no un reintento, así que la escalada de fallos muere y
-    // el freno se suelta (D.8.2). Antes lo hacía el shell al recibir
-    // `SetCloudVersions` — política fuera del kernel, invisible al replay de C.5.
+    // The cloud published a different version from the one that kept failing, so
+    // that is new information rather than a retry: the failure escalation dies
+    // and the brake comes off (D.8.2). The shell used to do this on
+    // `SetCloudVersions`, which was policy outside the kernel and invisible to
+    // the C.5 replay.
     clear_restore_backoff_on_new_version(&mut next, obs);
     clear_conflict_stall_on_new_version(&mut next, obs);
 
-    // Ingerir el resultado de una op en vuelo que acaba de terminar. Limpia
-    // `in_flight` y actualiza contabilidad/backoff. Puede emitir `Throttle`.
+    // Ingest the result of an in-flight op that just finished. Clears
+    // `in_flight` and updates the bookkeeping and backoff. May emit `Throttle`.
     if let Some(result) = obs.op_result {
         ingest_op_result(&mut next, result, obs, now, world.seed, &mut decisions);
     }
 
-    // Anti-relaunch: si sigue habiendo una op en vuelo (no llegó resultado este
-    // tick), NO relanzar — subir/bajar GB tarda minutos. Retén con motivo.
+    // Anti-relaunch: if there is still an op in flight (no result this tick), do
+    // NOT relaunch. Moving GBs takes minutes. Hold, with a reason.
     if next.in_flight.is_some() {
         decisions.push(hold("operation in flight"));
         return (next, decisions);
     }
 
-    // ---- Decisión de restore (nube → local) --------------------------------
-    // Se restaura si la carpeta local está vacía (desinstalada/fresca), la nube
-    // va por delante (otro dispositivo subió una versión mayor) o quedó un pull
-    // diferido de un tick anterior: `cloud_ahead` puede haber dejado de ser
-    // demostrable desde la caché, pero `pull_pending` recuerda la intención (el
-    // pull sobrevive al veto y aterriza al cerrarse el juego — bug del Deck).
+    // ---- restore decision (cloud to local)
+    // We restore when the local folder is empty (uninstalled, or fresh), when the
+    // cloud is ahead (another device uploaded a higher version), or when a
+    // deferred pull is left over from an earlier tick. `cloud_ahead` may have
+    // stopped being provable from the cache, but `pull_pending` remembers the
+    // intent: the pull survives the veto and lands when the game closes.
     let ahead = cloud_ahead(&next, obs);
     let want_restore = next.restore_enabled && (obs.local_empty || ahead || next.pull_pending);
     if want_restore {
-        // Cooldown / backoff de restore todavía activo (el 429 tras throttle
-        // aterriza aquí; `now` cruzando el deadline es el delta que lo libera).
+        // Restore cooldown or backoff still active. The 429 after a throttle
+        // lands here, and `now` crossing the deadline is the delta that frees it.
         let cooling = next.next_restore_at.is_some_and(|t| now < t);
         if cooling {
             decisions.push(hold("restore cooldown"));
         } else {
             match session::veto_reason(&next, obs, &world) {
-                // Mid-session: nunca pull dentro de una carpeta viva (data-loss
-                // REPO). Si hay una actualización real esperando, el pull se
-                // DIFIERE en vez de perderse.
+                // Mid-session: never pull into a live folder (the R.E.P.O. data
+                // loss). If there is a real update waiting, the pull is DEFERRED
+                // rather than lost.
                 Some(reason) => {
                     if ahead || next.pull_pending {
                         next.pull_pending = true;
-                        // `deferred_notified` de-duplica SÓLO el aviso de UI, no
-                        // la acción: guardar la *acción* dentro de un reductor
-                        // level-triggered era el one-shot de flanco que
-                        // encallaba el par (has_pending, cloud_ahead) (D.8.1).
+                        // `deferred_notified` de-duplicates ONLY the UI notice,
+                        // never the action. Storing the *action* in an edge flag
+                        // inside a level-triggered reducer is the one-shot that
+                        // stalled the (has_pending, cloud_ahead) pair (D.8.1).
                         if next.deferred_notified {
                             decisions.push(hold(reason));
                         } else {
@@ -245,7 +248,7 @@ pub fn reconcile(state: &State, obs: &Observation, world: World) -> (State, Vec<
                         decisions.push(hold(reason));
                     }
                 }
-                // Tranquilo: restaura ahora.
+                // Quiet: restore now.
                 None => {
                     start_restore(&mut next, now);
                     decisions.push(Decision::Act(Action::Restore));
@@ -253,15 +256,15 @@ pub fn reconcile(state: &State, obs: &Observation, world: World) -> (State, Vec<
                 }
             }
         }
-        // El pull no procede este tick (cooldown o veto) — pero el backup SÍ
-        // puede: `has_pending` sólo lo limpia una subida, así que retornar aquí
-        // dejaba el slot encallado mientras la nube fuese por delante (el veto
-        // mira `has_pending`, y `has_pending` esperaba un backup que nunca se
-        // emitía). Ése era el deadlock que el ejecutor de `DeferPull`
-        // desatascaba a mano en el shell — política fuera del kernel (D.8.1).
-        // El backup mid-session es la feature (autobackup con debounce mientras
-        // juegas), no un bug: el invariante duro es que no se restaure, no que
-        // no se suba. Y es *urgente*: mientras no aterrice, el pull sigue vetado.
+        // The pull does not proceed this tick (cooldown or veto), but the backup
+        // still can. Only an upload clears `has_pending`, so returning here left
+        // the slot stalled for as long as the cloud was ahead: the veto looks at
+        // `has_pending`, and `has_pending` was waiting on a backup that never got
+        // emitted. That was the deadlock the `DeferPull` executor used to break by
+        // hand in the shell, policy outside the kernel (D.8.1). A mid-session
+        // backup is the feature (debounced autobackup while you play), not a bug:
+        // the hard invariant is that nothing gets restored, not that nothing gets
+        // uploaded. And it is *urgent*: until it lands, the pull stays vetoed.
         let urgent = ahead || next.pull_pending;
         if let Some(d) = decide_backup(&mut next, obs, now, urgent) {
             decisions.push(d);
@@ -269,16 +272,15 @@ pub fn reconcile(state: &State, obs: &Observation, world: World) -> (State, Vec<
         return (next, decisions);
     }
 
-    // ---- Decisión de backup (local → nube) ---------------------------------
-    // Convergido si no hay nada que subir: nada que hacer (invariante base C.1).
-    // Salvo que no estemos convergidos sino **ciegos**: si la observación de la
-    // nube envejeció —o nunca llegó, teniendo nube que observar—,
-    // `cloud_version` es una entrada mentirosa y el
-    // `cloud_ahead = false` de arriba no demuestra nada. Se dice con su propio
-    // motivo (ADR 0021 D.10) — el fallo del poller deja de disfrazarse de
-    // normalidad. Sólo cambia el motivo del reposo: la subida no se toca, que un
-    // poller muerto detenga los backups sería cambiar un fallo invisible por
-    // pérdida de datos.
+    // ---- backup decision (local to cloud)
+    // Converged if there is nothing to upload, so nothing to do (the base C.1
+    // invariant). Unless we are not converged but *blind*: if the cloud
+    // observation aged out, or never arrived while there was a cloud to observe,
+    // then `cloud_version` is a lying input and the `cloud_ahead = false` above
+    // proves nothing. That gets said with its own reason (ADR 0021 D.10), so the
+    // poller's failure stops passing for normality. Only the rest's reason
+    // changes; the upload is untouched, because letting a dead poller stop
+    // backups would trade an invisible failure for data loss.
     let idle = if cloud_state_stale(obs, now) {
         hold(CLOUD_STALE_REASON)
     } else {
@@ -288,27 +290,27 @@ pub fn reconcile(state: &State, obs: &Observation, world: World) -> (State, Vec<
     (next, decisions)
 }
 
-// ---- Helpers puros ---------------------------------------------------------
+// ---- pure helpers
 
 fn hold(reason: &'static str) -> Decision {
     Decision::Hold { reason }
 }
 
-/// Decide la subida local→nube, aislada para poder tomarse también cuando el
-/// pull no procede (ver el deadlock de D.8.1). Devuelve:
+/// Decides the local-to-cloud upload, split out so it can also be taken when the
+/// pull does not proceed (see the D.8.1 deadlock). Returns:
 ///
-/// - `Some(Act(Backup))` con un delta de contenido REAL (fingerprint distinto
-///   del ya sincronizado) y el ritmo cumplido — marca la op en vuelo;
-/// - `Some(Hold(...))` si un freno de ritmo aún no venció;
-/// - `None` si no hay nada que subir (el llamante decide qué motivo poner).
+/// - `Some(Act(Backup))` with a REAL content delta (a fingerprint different from
+///   the synced one) and pacing satisfied, marking the op in flight;
+/// - `Some(Hold(...))` when a pacing brake has not expired yet;
+/// - `None` when there is nothing to upload, leaving the caller to pick a reason.
 ///
-/// Exigir divergencia real es lo que mata el hot-loop de compresión: un
-/// `has_pending` espurio con contenido idéntico NO sube (convergido ⇒ 0
-/// acciones).
+/// Demanding real divergence is what kills the compression hot loop: a spurious
+/// `has_pending` with identical content does not upload, because converged means
+/// zero actions.
 ///
-/// `urgent` = esta subida es el *flush* que destraba un pull cross-device
-/// (nube por delante o pull diferido en espera). Sólo entonces se salta el suelo
-/// de ahorro de datos — nunca un backoff de error.
+/// `urgent` means this upload is the flush that unblocks a cross-device pull
+/// (the cloud is ahead, or a deferred pull is waiting). Only then does it skip
+/// the data-saving floor, and never an error backoff.
 fn decide_backup(
     next: &mut State,
     obs: &Observation,
@@ -318,35 +320,35 @@ fn decide_backup(
     if !(next.has_pending && local_diverged(next, obs)) {
         return None;
     }
-    // La subida agotó su presupuesto de conflictos irresolubles: se para y se
-    // pide una persona. Antes que cualquier freno de ritmo porque no es un
-    // freno de ritmo — no hay deadline que cruzar que lo levante, sólo una
-    // acción del usuario, un backup con éxito o una cabeza de nube nueva.
+    // The upload spent its budget of unresolvable conflicts: it stops and asks
+    // for a person. Ahead of any pacing brake because it is not a pacing brake.
+    // There is no deadline to cross that lifts it, only a user action, a
+    // successful backup, or a new cloud head.
     if next.backup_conflict.needs_attention {
         return Some(hold(HOLD_BACKUP_NEEDS_ATTENTION));
     }
-    // El juego está escribiendo el save ahora mismo: subirlo capturaría un
-    // fichero a medias. Es un freno de ritmo, no un error — en cuanto suelte
-    // el fichero, el siguiente tick sube. Antes que los backoffs porque es más
-    // específico: da el motivo real en vez de "esperando".
+    // The game is writing the save right now, so uploading would capture a
+    // half-written file. This is a pacing brake, not an error: as soon as it lets
+    // go of the file, the next tick uploads. Ahead of the backoffs because it is
+    // more specific, and gives the real reason instead of "waiting".
     if obs.save_files_locked {
         return Some(hold("save files are open in another process"));
     }
-    // Backoff de error (429 de subida / reintentos de backup agotados): nunca se
-    // salta — saltárselo es martillear un backend caído o quemar la cuota.
+    // Error backoff (an upload 429, or exhausted backup retries): never skipped.
+    // Skipping it means hammering a dead backend or burning the quota.
     if next.next_backup_at.is_some_and(|t| now < t) {
         return Some(hold("backup backoff"));
     }
-    // Suelo de min-interval (ahorro de datos, ADR 0018 eje A): pacing, no error.
-    // Un flush que destraba un pull sí puede saltárselo — si no, el progreso
-    // local se queda sin versionar, el veto por `has_pending` sigue en pie y la
-    // actualización cross-device espera un intervalo entero (hasta 10 min en el
-    // preset `data_saver`) antes de poder aterrizar.
+    // The min-interval floor (data saving, ADR 0018 axis A) is pacing, not error.
+    // A flush that unblocks a pull may skip it; otherwise local progress stays
+    // unversioned, the `has_pending` veto stands, and the cross-device update
+    // waits a whole interval (up to 10 minutes on the `data_saver` preset) before
+    // it can land.
     if !urgent && backup_floor(next).is_some_and(|t| now < t) {
-        // Dos motivos distintos a propósito: uno es el ritmo que el usuario
-        // eligió, el otro es el que le pusimos nosotros por cómo se comporta su
-        // juego. En un log valen lo mismo hasta que hay que explicarle a alguien
-        // por qué su partida "tarda" — y entonces valen cosas muy distintas.
+        // Two different reasons on purpose: one is the pace the user chose, the
+        // other is the one we imposed because of how their game behaves. In a log
+        // they look the same, right up until somebody has to be told why their
+        // save is "slow", and then they mean very different things.
         return Some(hold(if next.min_backup_interval_secs > 0 {
             HOLD_BACKUP_MIN_INTERVAL
         } else {
@@ -357,41 +359,41 @@ fn decide_backup(
     Some(Decision::Act(Action::Backup))
 }
 
-/// Los dos motivos de retención que significan "hay algo que subir y sube en un
-/// rato", frente a los que significan "no se puede subir" (backoff de error,
-/// fichero abierto). Son constantes y no literales porque el shell decide por
-/// ellos si enseñar la espera en la UI, y un motivo que se renombra aquí y no
-/// allí devuelve el suelo a ser invisible — que es justo por lo que hubo que
-/// revertir el primero.
+/// The two hold reasons that mean "there is something to upload and it will go up
+/// shortly", as against the ones that mean "it cannot be uploaded" (error
+/// backoff, open file). Constants rather than literals because the shell decides
+/// off them whether to show the wait in the UI, and a reason renamed here and not
+/// there puts the floor back to being invisible, which is exactly why the first
+/// attempt had to be reverted.
 pub const HOLD_BACKUP_MIN_INTERVAL: &str = "backup min-interval";
 pub const HOLD_BACKUP_BURST: &str = "backup autosave burst";
 
-/// ¿Es este motivo una espera con hora, que la UI debería poder enseñar?
+/// Is this reason a wait with a time on it that the UI should be able to show?
 pub fn hold_is_paced_backup(reason: &str) -> bool {
     reason == HOLD_BACKUP_MIN_INTERVAL || reason == HOLD_BACKUP_BURST
 }
 
-/// Ventana en la que se cuentan los commits de un save para decidir si el juego
-/// está reescribiendo su autoguardado en bucle.
+/// Window over which a save's commits are counted to decide whether the game is
+/// rewriting its autosave in a loop.
 pub const BURST_WINDOW_SECS: i64 = 600;
-/// Commits dentro de esa ventana a partir de los cuales se impone el suelo. Tres
-/// en diez minutos ya es más de lo que ningún historial aprovecha.
+/// Commits inside that window from which the floor is imposed. Three in ten
+/// minutes is already more than any history makes use of.
 pub const BURST_THRESHOLD: u32 = 3;
-/// El suelo que se impone entonces, y el **único** escalón que hay: no escala
-/// con la frecuencia. Un juego que autoguarda cada seis segundos pasa de una
-/// versión cada seis segundos a una por minuto, y ahí se queda.
+/// The floor imposed then, and the only rung there is: it does not scale with
+/// frequency. A game autosaving every six seconds goes from one version every six
+/// seconds to one a minute, and stays there.
 pub const BURST_FLOOR_SECS: u64 = 60;
 
-/// El suelo que rige de verdad para este save.
+/// The floor that actually governs this save.
 ///
-/// Un intervalo explícito manda siempre: lo puso un preset que el usuario ve y
-/// eligió (`short_session` 30 s para un juego que se borra la carpeta entre
-/// rondas, `data_saver` 600 s), y subírselo por su cuenta traicionaría justo lo
-/// que se pidió. El adaptativo sólo rellena el hueco de "sin suelo ninguno", que
-/// es el default y hasta ahora significaba literalmente ninguno: un save llegó a
-/// 2.233 versiones en un día, 1.027 subidas en cuatro horas y media, porque el
-/// juego reescribía `auto.sav` cada pocos segundos y cada reescritura era una
-/// versión en la nube (ago-2026).
+/// An explicit interval always wins: a preset the user can see and chose put it
+/// there (`short_session` at 30 s for a game that wipes its folder between
+/// rounds, `data_saver` at 600 s), and raising it unasked would betray exactly
+/// what was requested. The adaptive one only fills the "no floor at all" gap,
+/// which is the default and until now meant literally none: one save reached
+/// 2,233 versions in a day and 1,027 uploads in four and a half hours, because
+/// the game rewrote `auto.sav` every few seconds and every rewrite was a version
+/// in the cloud (aug-2026).
 fn effective_min_interval(state: &State) -> u64 {
     if state.min_backup_interval_secs > 0 {
         return state.min_backup_interval_secs;
@@ -403,13 +405,12 @@ fn effective_min_interval(state: &State) -> u64 {
     }
 }
 
-/// El suelo de min-interval, **derivado** de `last_backup_at +
-/// [`effective_min_interval`]` en vez de almacenado en `next_backup_at`.
-/// Separarlo del backoff es lo que permite distinguir "pacing de ahorro"
-/// (saltable por un flush cross-device) de "backoff de error" (jamás), y de paso
-/// hace del ancla —`last_backup_at`, que sólo avanza con un commit real— la
-/// única memoria del suelo: un no-op no puede empujarlo (regresión R.E.P.O.,
-/// D.8.2).
+/// The min-interval floor, *derived* from `last_backup_at` plus
+/// [`effective_min_interval`] rather than stored in `next_backup_at`. Keeping it
+/// apart from the backoff is what makes "saver pacing" (skippable by a
+/// cross-device flush) distinguishable from "error backoff" (never), and it makes
+/// the anchor, `last_backup_at`, which only advances on a real commit, the single
+/// memory of the floor: a no-op cannot push it (the R.E.P.O. regression, D.8.2).
 ///
 /// Public because the shell needs the same number to *show* it: a wait nobody
 /// can see reads as "Hoard isn't picking up my changes", which is why the first
@@ -426,10 +427,10 @@ pub fn backup_floor(state: &State) -> Option<OffsetDateTime> {
         .map(|t| t + Duration::seconds(secs as i64))
 }
 
-/// Cuenta este commit en la ventana de ráfaga, abriéndola de cero si la anterior
-/// ya venció. Se llama **sólo** con un commit real, por lo mismo que
-/// `last_backup_at`: un no-op no es actividad del juego y no puede empujar a un
-/// save tranquilo al suelo adaptativo.
+/// Counts this commit into the burst window, opening a fresh one if the previous
+/// has expired. Called ONLY with a real commit, for the same reason as
+/// `last_backup_at`: a no-op is not the game being active and cannot push a quiet
+/// save onto the adaptive floor.
 fn count_burst(state: &mut State, now: OffsetDateTime) {
     let open = state
         .burst_since
@@ -442,11 +443,11 @@ fn count_burst(state: &mut State, now: OffsetDateTime) {
     }
 }
 
-/// Suelta la escalada de fallos de restore cuando la nube publica una versión
-/// distinta de aquella contra la que se estaba fallando (D.8.2). El backoff era
-/// sobre *esa* versión; una nueva es contenido nuevo y una razón fresca para
-/// reintentar ya, no para heredar la penalización. Sólo actúa con una escalada
-/// viva, para no pisar el cooldown normal post-restore.
+/// Releases the restore failure escalation when the cloud publishes a version
+/// different from the one it was failing against (D.8.2). The backoff was about
+/// *that* version; a new one is new content and a fresh reason to try now, not to
+/// inherit the penalty. It only acts on a live escalation, so it does not tread
+/// on the ordinary post-restore cooldown.
 fn clear_restore_backoff_on_new_version(next: &mut State, obs: &Observation) {
     let active = next.restore_failures.consecutive > 0 || next.restore_failures.stuck_notified;
     if active && next.restore_failures.version != obs.cloud_version {
@@ -455,8 +456,8 @@ fn clear_restore_backoff_on_new_version(next: &mut State, obs: &Observation) {
     }
 }
 
-/// Arranca un restore: marca la op en vuelo y arma el cooldown. Un pull diferido
-/// pendiente se considera consumido (lo estamos ejecutando).
+/// Starts a restore: marks the op in flight and arms the cooldown. A pending
+/// deferred pull counts as consumed, since we are executing it.
 fn start_restore(next: &mut State, now: OffsetDateTime) {
     next.in_flight = Some(Op::Restore);
     next.next_restore_at = Some(now + Duration::seconds(RESTORE_COOLDOWN_SECS));
@@ -464,10 +465,10 @@ fn start_restore(next: &mut State, now: OffsetDateTime) {
     next.deferred_notified = false;
 }
 
-/// ¿La caché del poller dice que el save avanzó más allá de lo que este
-/// dispositivo tiene? Una versión cacheada sin `known_version` cuenta como
-/// adelantada (nunca sincronizamos este save). Sin entrada de caché: no sabemos,
-/// nunca lo afirmamos. Réplica de `agent::cloud_ahead`.
+/// Does the poller's cache say the save moved past what this device holds? A
+/// cached version with no `known_version` counts as ahead, because we never
+/// synced this save. With no cache entry we do not know, and never claim it.
+/// Twin of `agent::cloud_ahead`.
 fn cloud_ahead(state: &State, obs: &Observation) -> bool {
     match obs.cloud_version {
         Some(latest) => state.known_version.is_none_or(|known| latest > known),
@@ -475,22 +476,23 @@ fn cloud_ahead(state: &State, obs: &Observation) -> bool {
     }
 }
 
-/// ¿La observación de la nube dejó de ser creíble? `true` cuando lo último que
-/// sabemos de ella es más viejo que [`CLOUD_STALE_AFTER_SECS`].
+/// Has the cloud observation stopped being credible? `true` when the latest thing
+/// we know about it is older than [`CLOUD_STALE_AFTER_SECS`].
 ///
-/// Dos formas de estar ciego, una sola cuenta atrás:
+/// Two ways to be blind, one countdown:
 ///
-/// - **Feed rancio** — hubo cabezas y dejaron de llegar: envejece desde la
-///   marca ([`Observation::cloud_version_as_of`]).
-/// - **Nunca hubo feed** — la ceguera más grave, y la que se colaba como
-///   `converged` hasta el remate de D.11: envejece desde
-///   [`Observation::cloud_feed_expected_since`], el momento en que el motor
-///   empezó a esperar cabezas. Sin ese ancla (self-hosted, daemon CLI, contexto
-///   sin resolver) no hay nube que observar y no se reporta nada: la distinción
-///   es *contexto cloud vs self-hosted*, no `None` vs `Some`.
+/// - A stale feed. There were heads and they stopped arriving, so it ages from
+///   the stamp ([`Observation::cloud_version_as_of`]).
+/// - No feed ever. The worst blindness, and the one that slipped through as
+///   `converged` until D.11 was finished off. It ages from
+///   [`Observation::cloud_feed_expected_since`], the moment the engine started
+///   expecting heads. Without that anchor (self-hosted, a CLI daemon, an
+///   unresolved context) there is no cloud to observe and nothing gets reported:
+///   the distinction is cloud context versus self-hosted, not `None` versus
+///   `Some`.
 ///
-/// Un `now` anterior al ancla (salto de reloj hacia atrás) tampoco es
-/// obsolescencia — la resta sale negativa.
+/// A `now` earlier than the anchor (a clock jumping backwards) is not staleness
+/// either, since the subtraction comes out negative.
 fn cloud_state_stale(obs: &Observation, now: OffsetDateTime) -> bool {
     let anchor = match obs.cloud_version_as_of {
         Some(as_of) => Some(as_of),
@@ -499,10 +501,11 @@ fn cloud_state_stale(obs: &Observation, now: OffsetDateTime) -> bool {
     anchor.is_some_and(|t| (now - t).whole_seconds() > CLOUD_STALE_AFTER_SECS)
 }
 
-/// ¿El contenido local difiere del ya sincronizado? Con fingerprint L1 calculado,
-/// compara; sin él (no se hasheó este tick), confía en `has_pending` (el hint fs
-/// dijo que algo cambió). El caso `Some(fp) == synced` es el que hace convergido
-/// ⇒ 0 acciones aunque `has_pending` esté puesto por un settle espurio.
+/// Does the local content differ from what is already synced? With an L1
+/// fingerprint computed it compares; without one (nothing was hashed this tick)
+/// it trusts `has_pending`, since the fs hint said something changed. The
+/// `Some(fp) == synced` case is what makes converged mean zero actions even when
+/// `has_pending` was set by a spurious settle.
 fn local_diverged(state: &State, obs: &Observation) -> bool {
     match obs.local_fingerprint {
         Some(fp) => state.synced_fingerprint != Some(fp),
@@ -510,10 +513,11 @@ fn local_diverged(state: &State, obs: &Observation) -> bool {
     }
 }
 
-/// Deriva `is_running` (status durable) de la evidencia de proceso con ventana
-/// de gracia sticky: un match por correlación es CPU-gated y puede caer bajo el
-/// umbral un tick; sin gracia eso flapea GameStarted/Stopped. Mantiene el slot
-/// "corriendo" hasta que `last_running_seen` supere [`RUNNING_STICKY_GRACE_SECS`].
+/// Derives `is_running` (durable status) from process evidence with a sticky
+/// grace window. A correlation match is CPU-gated and can drop below the
+/// threshold for one tick, and without grace that flaps GameStarted and
+/// GameStopped. Keeps the slot running until `last_running_seen` is older than
+/// [`RUNNING_STICKY_GRACE_SECS`].
 fn apply_running_stickiness(next: &mut State, obs: &Observation, now: OffsetDateTime) {
     if obs.process_alive {
         next.is_running = true;
@@ -528,11 +532,12 @@ fn apply_running_stickiness(next: &mut State, obs: &Observation, now: OffsetDate
     }
 }
 
-/// Ingiere el resultado de una op terminada: limpia `in_flight` y aplica la
-/// disposición. Mapea 1:1 a `agent`'s `AutoRestoreDisposition` + `BackupDone`.
-/// El 429 (`Throttled`) es **simétrico** backup/restore: frena la op correcta y
-/// **no** toca el contador de fallos; `Failed` también distingue op (una subida
-/// fallida se re-arma en su backoff largo, no escala la escalada del restore).
+/// Ingests a finished op's result: clears `in_flight` and applies the
+/// disposition. Maps 1:1 onto `agent`'s `AutoRestoreDisposition` plus
+/// `BackupDone`. The 429 (`Throttled`) is symmetric between backup and restore:
+/// it brakes the right op and leaves the failure counter alone. `Failed` also
+/// distinguishes the op, since a failed upload re-arms on its own long backoff
+/// rather than escalating the restore ladder.
 fn ingest_op_result(
     next: &mut State,
     result: OpResult,
@@ -548,19 +553,19 @@ fn ingest_op_result(
             fingerprint,
             wrote,
         } => {
-            // Un restore puede volver `Ok` sin haber movido nada: se baja el
-            // snapshot, se difunde contra la carpeta y el diff decide que no hay
-            // que escribir. Si además la carpeta sigue vacía, el disparador que
-            // lo trajo —`local_empty`, que puentea a propósito la puerta de
-            // versión— sigue siendo cierto en el tick siguiente y volvemos a
-            // bajar el mismo snapshot. Para siempre, y al precio completo de la
-            // descarga: un cliente se comió así 3.752 bajadas y 10,6 GB entre el
-            // 2026-07-27 y el 08-03 sin escribir un byte en disco.
+            // A restore can come back `Ok` without moving anything: the snapshot
+            // is downloaded, diffed against the folder, and the diff decides
+            // there is nothing to write. If the folder is still empty on top of
+            // that, the trigger that brought it (`local_empty`, which
+            // deliberately bypasses the version gate) is still true next tick and
+            // we download the same snapshot again. Forever, and at the full price
+            // of the download: one client ate 3,752 downloads and 10.6 GB between
+            // 2026-07-27 and 08-03 without writing a byte to disk.
             //
-            // La escalada de fallos es lo único capaz de frenar eso, así que un
-            // "éxito" que no progresa no puede limpiarla. `!wrote` y carpeta
-            // vacía es la única combinación inequívoca: si se escribió algo,
-            // hubo progreso aunque la observación llegue tarde.
+            // The failure escalation is the only thing that can brake that, so a
+            // "success" that makes no progress must not clear it. `!wrote` plus an
+            // empty folder is the only unambiguous combination: if something was
+            // written there was progress, even if the observation arrives late.
             let restore_stalled = matches!(op, Some(Op::Restore)) && !wrote && obs.local_empty;
             if !restore_stalled {
                 next.restore_failures = RestoreFailures::default();
@@ -573,60 +578,61 @@ fn ingest_op_result(
             }
             match op {
                 Some(Op::Backup) => {
-                    // El contenido llegó a una versión (o ya estaba en una): los
-                    // cambios dejan de estar sin versionar en ambos casos.
+                    // The content reached a version, or already was in one, so
+                    // either way the changes stop being unversioned.
                     next.has_pending = false;
-                    // Y sea commit o no-op, la subida ya no está atascada: el
-                    // 409 irresoluble se resolvió. Se suelta la escalada entera,
-                    // que es también lo que apaga el aviso en la UI.
+                    // And commit or no-op, the upload is no longer stuck: the
+                    // unresolvable 409 resolved. The whole escalation is released,
+                    // which is also what turns the warning off in the UI.
                     next.backup_conflict = ConflictStall::default();
                     if wrote {
-                        // Commit real: mueve el ancla del min-interval (ADR 0018).
-                        // El suelo se deriva de ella ([`backup_floor`]); no hace
-                        // falta —ni conviene— escribirlo en `next_backup_at`, que
-                        // es el carril de los backoffs de error.
+                        // A real commit moves the min-interval anchor (ADR 0018).
+                        // The floor derives from it ([`backup_floor`]); there is
+                        // no need, and no benefit, to writing it into
+                        // `next_backup_at`, which is the error backoff lane.
                         next.last_backup_at = Some(now);
                         count_burst(next, now);
                     } else {
-                        // No-op (skip por firma, vacío, archived, too-large, el
-                        // 409 asentado a la cabeza, o la subida que ya había
-                        // aterrizado): **no** es un backup, así que no mueve el
-                        // ancla del min-interval — hacerlo empujaría la siguiente
-                        // subida real un intervalo entero y una sesión corta
-                        // nunca volcaría su progreso (regresión R.E.P.O., D.8.2).
+                        // A no-op (skipped by signature, empty, archived, too
+                        // large, the 409 settled onto the head, or an upload that
+                        // had already landed) is not a backup, so it does not move
+                        // the min-interval anchor. Moving it would push the next
+                        // real upload out by a whole interval and a short session
+                        // would never flush its progress (the R.E.P.O. regression,
+                        // D.8.2).
                         //
-                        // Un no-op CON versión es normalmente el 409
-                        // non-fast-forward asentado a la cabeza: el merge
-                        // escribió en la carpeta igual que un restore, así que se
-                        // sella `last_restore_at` para que ese toque nuestro no
-                        // vete el siguiente pull.
+                        // A no-op WITH a version is normally the 409
+                        // non-fast-forward settled onto the head: the merge wrote
+                        // into the folder just as a restore does, so
+                        // `last_restore_at` gets stamped and that touch of ours
+                        // does not veto the next pull.
                         //
-                        // Salvo que la respuesta del chequeo content-addressed
-                        // diga que el contenido **ya estaba** arriba (D.8.3): ahí
-                        // no se escribió un solo byte en la carpeta, y sellar un
-                        // toque que no existió falsearía la ventana de gracia del
-                        // veto — el kernel se creería autor de una escritura
-                        // ajena y dejaría pasar un pull que debía esperar.
+                        // Unless the content-addressed check says the content was
+                        // already up there (D.8.3). Then not a single byte was
+                        // written to the folder, and stamping a touch that never
+                        // happened would falsify the veto's grace window: the
+                        // kernel would believe itself the author of somebody
+                        // else's write and let through a pull that should wait.
                         if version.is_some() && obs.upload_landed != Some(true) {
                             next.last_restore_at = Some(now);
                         }
                     }
                 }
                 Some(Op::Restore) => {
-                    // Sólo un write real toca la carpeta y debe sellar
-                    // `last_restore_at` (evita auto-vetar el siguiente pull).
+                    // Only a real write touches the folder and should stamp
+                    // `last_restore_at`, which avoids self-vetoing the next pull.
                     if wrote {
                         next.last_restore_at = Some(now);
                     }
                     next.pull_pending = false;
                     next.deferred_notified = false;
-                    // Bajada que no progresó: escala por la misma escalera que un
-                    // fallo (60 s → 5 min → 15 min → 60 min). No es un error —el
-                    // servidor respondió— pero repetirlo cada tick tampoco es
-                    // sincronizar, y la carpeta vacía volverá a pedirlo igual.
-                    // Una versión cloud nueva resetea la escalada por
-                    // `clear_restore_backoff_on_new_version`, así que un pull
-                    // legítimo posterior no queda castigado.
+                    // A download that made no progress escalates up the same
+                    // ladder as a failure (60 s, 5 min, 15 min, 60 min). It is not
+                    // an error, since the server answered, but repeating it every
+                    // tick is not syncing either, and the empty folder will ask
+                    // for it again anyway. A new cloud version resets the
+                    // escalation through `clear_restore_backoff_on_new_version`,
+                    // so a legitimate later pull is not punished.
                     if restore_stalled {
                         let delay = record_failure(&mut next.restore_failures, obs.cloud_version);
                         next.next_restore_at = Some(now + Duration::seconds(delay));
@@ -635,15 +641,15 @@ fn ingest_op_result(
                 None => {}
             }
         }
-        // 404: aparcar en el backoff largo (concepto de restore).
+        // 404: park on the long backoff (a restore concept).
         OpResult::NotFound => {
             next.next_restore_at = Some(now + Duration::seconds(NOT_FOUND_BACKOFF_SECS));
         }
-        // 401: no es culpa del save. Cooldown corto, contador intacto.
+        // 401: not the save's fault. Short cooldown, counter untouched.
         OpResult::Unauthorized => {
             next.next_restore_at = Some(now + Duration::seconds(RESTORE_COOLDOWN_SECS));
         }
-        // 429: backoff simétrico según la op; contador de fallos intacto.
+        // 429: symmetric backoff by op; failure counter untouched.
         OpResult::Throttled { retry_after_secs } => {
             let until = throttle_until(now, retry_after_secs, seed);
             match op {
@@ -652,32 +658,32 @@ fn ingest_op_result(
             }
             decisions.push(Decision::Act(Action::Throttle { until }));
         }
-        // 402: la cuenta está llena. Sólo frena subidas —una bajada no consume
-        // cuota, así que un restore pendiente debe seguir su camino— y deja
-        // `has_pending` intacto para que el slot siga vetado del pull mientras
-        // los cambios estén sólo en disco.
+        // 402: the account is full. It brakes uploads only, since a download
+        // consumes no quota and a pending restore should carry on, and it leaves
+        // `has_pending` alone so the slot stays vetoed from pulls while the
+        // changes are only on disk.
         OpResult::QuotaFull => {
             if matches!(op, Some(Op::Backup)) {
                 next.next_backup_at = Some(now + Duration::seconds(QUOTA_FULL_BACKOFF_SECS));
             }
         }
-        // 409 sin salida: el server dice que vamos por detrás y no hay nada que
-        // bajar. Escala por su propia escalera y, agotada, deja de reintentar:
-        // `needs_attention` es lo que `decide_backup` mira para no volver a
-        // emitir la subida. Como el `Failed` de una subida, conserva
-        // `has_pending` — los cambios locales siguen sin versionar.
+        // 409 with no way out: the server says we are behind and there is nothing
+        // to pull. It escalates up its own ladder and, once spent, stops
+        // retrying: `needs_attention` is what `decide_backup` reads to stop
+        // emitting the upload. Like an upload's `Failed`, it keeps `has_pending`,
+        // because the local changes are still unversioned.
         OpResult::ConflictStalled => {
             if let Some(delay) = record_conflict(&mut next.backup_conflict, obs.cloud_version) {
                 next.next_backup_at = Some(now + Duration::seconds(delay));
             }
         }
-        // Otro error, según la op:
-        // - subida: agotó su presupuesto de reintentos internos → se re-arma en
-        //   el backoff largo y **conserva** `has_pending` (los cambios nunca
-        //   llegaron a una versión; perderlos dejaría que un restore los pisara).
-        //   Antes lo hacía el shell en `RetryBackupAfterFailure` (D.8.2).
-        // - bajada (o sin op en vuelo, como antes): escala el contador de fallos
-        //   por versión cloud y el backoff de restore.
+        // Any other error, depending on the op:
+        // - upload: it spent its internal retry budget, so it re-arms on the long
+        //   backoff and KEEPS `has_pending` (the changes never reached a version,
+        //   and dropping them would let a restore walk over them). The shell used
+        //   to do this in `RetryBackupAfterFailure` (D.8.2).
+        // - download (or no op in flight, as before): escalate the per-cloud-
+        //   version failure counter and the restore backoff.
         OpResult::Failed => match op {
             Some(Op::Backup) => {
                 next.next_backup_at = Some(now + Duration::seconds(BACKUP_FAILURE_BACKOFF_SECS));
@@ -690,13 +696,13 @@ fn ingest_op_result(
     }
 }
 
-/// Registra un fallo de restore contra la versión cloud observada
-/// (`obs.cloud_version` — la cabeza que intentábamos traernos, igual que el
-/// `latest_versions.get(id)` del motor original) y devuelve el backoff a
-/// aplicar. Réplica sans-IO de `AutoRestoreFailures::record_failure`: una versión
-/// distinta resetea la escalada, que es la otra mitad de
-/// [`clear_restore_backoff_on_new_version`]. El segundo valor de la tupla del
-/// original —"emit stuck"— lo decide el shell leyendo `stuck_notified`.
+/// Records a restore failure against the observed cloud version
+/// (`obs.cloud_version`, the head we were trying to fetch, same as the original
+/// engine's `latest_versions.get(id)`) and returns the backoff to apply. Sans-IO
+/// twin of `AutoRestoreFailures::record_failure`: a different version resets the
+/// escalation, which is the other half of
+/// [`clear_restore_backoff_on_new_version`]. The original tuple's second value,
+/// "emit stuck", is decided by the shell reading `stuck_notified`.
 fn record_failure(f: &mut RestoreFailures, latest: Option<i64>) -> i64 {
     if f.version != latest {
         f.version = latest;
@@ -710,13 +716,13 @@ fn record_failure(f: &mut RestoreFailures, latest: Option<i64>) -> i64 {
     backoff_secs(f.consecutive)
 }
 
-/// Registra un conflicto irresoluble contra la cabeza de nube observada y
-/// devuelve el backoff a aplicar, o `None` cuando el presupuesto se agotó y hay
-/// que dejar de reintentar.
+/// Records an unresolvable conflict against the observed cloud head and returns
+/// the backoff to apply, or `None` when the budget is spent and retrying has to
+/// stop.
 ///
-/// Una cabeza distinta de la contada resetea la escalada, por el mismo motivo
-/// que en [`record_failure`]: la nube se movió, así que la pregunta ya no es la
-/// misma y quizá ahora sí haya algo que bajar.
+/// A head different from the counted one resets the escalation, for the same
+/// reason as in [`record_failure`]: the cloud moved, so it is no longer the same
+/// question and maybe now there *is* something to pull.
 fn record_conflict(c: &mut ConflictStall, latest: Option<i64>) -> Option<i64> {
     if c.version != latest {
         *c = ConflictStall {
@@ -733,12 +739,12 @@ fn record_conflict(c: &mut ConflictStall, latest: Option<i64>) -> Option<i64> {
     Some(CONFLICT_STALL_BACKOFF_SECS[idx])
 }
 
-/// Suelta la escalada de conflictos cuando la nube publica una cabeza distinta
-/// de aquella contra la que se atascó. Gemelo de
-/// [`clear_restore_backoff_on_new_version`], y hace falta por separado: un save
-/// que ya se rindió no vuelve a ingerir un `ConflictStalled` —deja de
-/// reintentar—, así que sin esto nada podría desatascarlo salvo el usuario, ni
-/// siquiera el otro dispositivo publicando la versión que faltaba.
+/// Releases the conflict escalation when the cloud publishes a head different
+/// from the one it stalled against. Twin of
+/// [`clear_restore_backoff_on_new_version`], and needed separately: a save that
+/// already gave up never ingests another `ConflictStalled`, because it stopped
+/// retrying, so without this nothing could unstick it except the user, not even
+/// the other device publishing the missing version.
 fn clear_conflict_stall_on_new_version(next: &mut State, obs: &Observation) {
     let active = next.backup_conflict.consecutive > 0 || next.backup_conflict.needs_attention;
     if active && next.backup_conflict.version != obs.cloud_version {
@@ -747,18 +753,18 @@ fn clear_conflict_stall_on_new_version(next: &mut State, obs: &Observation) {
     }
 }
 
-/// Backoff dado el nº de fallos consecutivos (1-based). Satura en el último
-/// escalón. Igual que `agent::auto_restore_backoff`.
+/// Backoff for a given number of consecutive failures (1-based). Saturates on
+/// the last rung. Same as `agent::auto_restore_backoff`.
 fn backoff_secs(failures: u32) -> i64 {
     let idx = (failures.max(1) as usize - 1).min(FAILURE_BACKOFF_SECS.len() - 1);
     FAILURE_BACKOFF_SECS[idx]
 }
 
-/// Deadline del backoff de throttle: espera del server (clamp 1..=300, +2) más
-/// jitter por-save. El jitter usa `StdRng::seed_from_u64(seed)` — **nunca**
-/// `thread_rng` (ADR C.2: la sim y el replay deben ser deterministas). En el
-/// motor invertido el shell deriva `seed` del `save_id`, replicando el
-/// `hash(id) % 6` original de forma inyectable.
+/// Throttle backoff deadline: the server's wait (clamped to 1..=300, plus 2) plus
+/// per-save jitter. The jitter uses `StdRng::seed_from_u64(seed)` and never
+/// `thread_rng` (ADR C.2: simulation and replay have to be deterministic). In the
+/// inverted engine the shell derives `seed` from the `save_id`, reproducing the
+/// original `hash(id) % 6` in an injectable way.
 fn throttle_until(now: OffsetDateTime, retry_after_secs: u32, seed: u64) -> OffsetDateTime {
     let wait = (u64::from(retry_after_secs)).clamp(1, MAX_THROTTLE_WAIT_SECS as u64) + 2;
     let mut rng = StdRng::seed_from_u64(seed);
@@ -784,7 +790,7 @@ mod tests {
         }
     }
 
-    /// Slot real (no track-only) con restore habilitado y nada en curso.
+    /// A real slot (not track-only) with restore enabled and nothing in flight.
     fn base_state() -> State {
         State {
             restore_enabled: true,
@@ -792,8 +798,9 @@ mod tests {
         }
     }
 
-    /// Observación "quiescente": sin señales puntuales (fs/op), carpeta poblada,
-    /// nube no adelantada, proceso muerto. El punto de partida de "convergido".
+    /// A quiescent observation: no one-shot signals (fs, op), a populated
+    /// folder, the cloud not ahead, the process dead. The starting point for
+    /// "converged".
     fn quiet_obs() -> Observation {
         Observation {
             folder_mtime: Some(at(-10_000)), // muy vieja: el fallback de disco no salta
@@ -811,12 +818,12 @@ mod tests {
             .count()
     }
 
-    // ==== Corpus D.4 (escenarios deterministas fijos) =======================
+    // ---- D.4 corpus (fixed deterministic scenarios)
 
-    /// D.4 — «hot-loop de compresión (1,29M ops R2)»: convergido ⇒ 0 acciones.
-    /// El bug: se emitían acciones (comprimir/subir) sin ningún delta de entrada.
-    /// Aquí, con el fingerprint local IGUAL al sincronizado, ni un `has_pending`
-    /// espurio dispara backup: sólo `Hold { "converged" }`.
+    /// The compression hot loop (1.29M R2 ops): converged means zero actions.
+    /// The bug emitted actions (compress, upload) with no input delta at all.
+    /// Here, with the local fingerprint EQUAL to the synced one, not even a
+    /// spurious `has_pending` fires a backup: only `Hold { "converged" }`.
     #[test]
     fn d4_converged_emits_zero_actions() {
         let state = State {
@@ -838,9 +845,9 @@ mod tests {
         assert_eq!(ds, vec![hold("converged")]);
     }
 
-    /// D.4 — «hot-loop», forma dinámica: dos ticks idénticos seguidos no emiten
-    /// una segunda acción (ninguna `Act` sin delta). Un backup arranca una vez;
-    /// el segundo tick lo ve en vuelo y retiene.
+    /// The hot loop in its dynamic form: two identical ticks in a row do not emit
+    /// a second action. A backup starts once; the second tick sees it in flight
+    /// and holds.
     #[test]
     fn d4_no_action_without_a_delta() {
         let state = State {
@@ -854,7 +861,7 @@ mod tests {
         };
         let (s1, d1) = reconcile(&state, &obs, world(0));
         assert_eq!(acts(&d1), vec![&Action::Backup], "el delta real sube");
-        // Mismo mundo, mismo now: sin nuevo delta no hay segunda acción.
+        // Same world, same now: with no new delta there is no second action.
         let (_s2, d2) = reconcile(&s1, &obs, world(0));
         assert!(
             acts(&d2).is_empty(),
@@ -863,9 +870,9 @@ mod tests {
         assert_eq!(d2, vec![hold("operation in flight")]);
     }
 
-    /// D.4 — «429 en restore» + simetría backup/restore. El throttle frena la op
-    /// correcta y NO toca el contador de fallos; `now` cruzando el deadline lo
-    /// libera. Antes el throttle sólo se manejaba en backup (asimétrico).
+    /// A 429 on restore, plus backup/restore symmetry. The throttle brakes the
+    /// right op and does NOT touch the failure counter, and `now` crossing the
+    /// deadline frees it. Throttles used to be handled on backup only.
     #[test]
     fn d4_throttle_is_symmetric_and_does_not_count_as_failure() {
         // Restore throttled.
@@ -900,7 +907,7 @@ mod tests {
             .expect("restore frenado hasta un deadline");
         assert!(until > at(0), "el backoff mira al futuro");
 
-        // Antes del deadline: cooldown, sin restore.
+        // Before the deadline: cooldown, no restore.
         let obs_after = Observation {
             local_empty: true,
             cloud_version: Some(5),
@@ -910,7 +917,7 @@ mod tests {
         let (_n, ds_mid) = reconcile(&next, &obs_after, world(mid));
         assert_eq!(ds_mid, vec![hold("restore cooldown")]);
 
-        // Cruzado el deadline (delta legítimo): el restore procede.
+        // Past the deadline (a legitimate delta): the restore proceeds.
         let past = (until - at(0)).whole_seconds() + 1;
         let (_n2, ds_past) = reconcile(&next, &obs_after, world(past));
         assert_eq!(
@@ -919,8 +926,8 @@ mod tests {
             "tras el backoff, restaura"
         );
 
-        // Simetría: el MISMO throttle en un backup frena `next_backup_at`, no el
-        // restore.
+        // Symmetry: the SAME throttle on a backup brakes `next_backup_at`, not
+        // the restore.
         let bstate = State {
             in_flight: Some(Op::Backup),
             has_pending: true,
@@ -949,8 +956,8 @@ mod tests {
 
     /// The hour the server's brake asks for has to survive the cap.
     ///
-    /// `loopguard::QUOTA_WAIT_SECS` answers a full account with 3600 —
-    /// deliberately the same as [`QUOTA_FULL_BACKOFF_SECS`] — and the 300 s cap
+    /// `loopguard::QUOTA_WAIT_SECS` answers a full account with 3600,
+    /// deliberately the same as [`QUOTA_FULL_BACKOFF_SECS`], and the 300 s cap
     /// that used to live here silently shortened it to five minutes: twelve
     /// retries an hour, per save, against a wall only a person can move.
     #[test]
@@ -989,9 +996,9 @@ mod tests {
         );
     }
 
-    /// Cuenta llena (402): aparca la subida una hora, conserva `has_pending`
-    /// (los bytes siguen sólo en disco) y no cuenta como fallo del save. Y no
-    /// toca el lado restore: bajar no consume cuota.
+    /// A full account (402) parks the upload for an hour, keeps `has_pending`
+    /// (the bytes are still only on disk) and does not count as the save
+    /// failing. And it leaves the restore side alone: downloading costs no quota.
     #[test]
     fn quota_full_parks_the_upload_without_blaming_the_save() {
         let state = State {
@@ -1018,7 +1025,7 @@ mod tests {
             "una cuenta llena NO es un save roto"
         );
 
-        // Antes del deadline no se reintenta; cruzado, la subida vuelve a salir.
+        // Before the deadline there is no retry; past it, the upload goes again.
         let obs_quiet = quiet_obs();
         let (_m, ds_mid) = reconcile(&next, &obs_quiet, world(QUOTA_FULL_BACKOFF_SECS / 2));
         assert!(
@@ -1032,12 +1039,12 @@ mod tests {
         );
     }
 
-    /// D.4 — «deferred-pull que no aterrizaba». Mid-session con la nube por
-    /// delante ⇒ se DIFIERE (una sola notificación) y sobrevive al veto; al
-    /// cerrarse el juego (sin pendientes) el pull ATERRIZA.
+    /// The deferred pull that never landed. Mid-session with the cloud ahead, it
+    /// gets DEFERRED (one notification only) and survives the veto; when the game
+    /// closes with nothing pending, the pull LANDS.
     #[test]
     fn d4_deferred_pull_survives_veto_and_lands_on_close() {
-        // Mid-session: proceso vivo, nube por delante.
+        // Mid-session: process alive, cloud ahead.
         let state = State {
             is_running: true,
             last_running_seen: Some(at(0)),
@@ -1057,13 +1064,13 @@ mod tests {
         );
         assert!(s1.pull_pending && s1.deferred_notified);
 
-        // Sigue jugando: ya no re-notifica, retiene con el motivo del veto.
+        // Still playing: no re-notification, holds with the veto's reason.
         let (s2, d2) = reconcile(&s1, &obs_playing, world(1));
         assert!(acts(&d2).is_empty(), "no re-notifica cada tick");
         assert_eq!(d2, vec![hold("game process is running")]);
         assert!(s2.pull_pending, "el pull diferido sobrevive");
 
-        // Juego cerrado hace >6 s (sticky expira) y nada pendiente: aterriza.
+        // Game closed over 6 s ago (sticky expired) and nothing pending: it lands.
         let obs_closed = Observation {
             process_alive: false,
             cloud_version: Some(6),
@@ -1078,9 +1085,9 @@ mod tests {
         assert!(!s3.pull_pending && !s3.deferred_notified, "consumido");
     }
 
-    /// D.4 — «sticky 90s→6s» como invariante de latencia de veto. El proceso
-    /// muere; dentro de la ventana de 6 s el veto de sesión aún retiene (gracia
-    /// anti-flapeo), pero JUSTO pasada la ventana se levanta — no a los 90 s.
+    /// The sticky window as a veto-latency invariant. The process dies; inside
+    /// the 6 s window the session veto still holds (anti-flap grace), but just
+    /// past the window it lifts, and not at 90 s.
     #[test]
     fn d4_veto_latency_is_six_seconds_not_ninety() {
         let state = State {
@@ -1095,13 +1102,13 @@ mod tests {
             cloud_version: Some(2),
             ..quiet_obs()
         };
-        // A los 5 s: dentro de la gracia, sigue "corriendo" → difiere/retiene.
+        // At 5 s: inside the grace, still "running", so it defers and holds.
         let (_n5, d5) = reconcile(&state, &obs, world(5));
         assert!(
             !acts(&d5).contains(&&Action::Restore),
             "dentro de la gracia el veto aún retiene: {d5:?}"
         );
-        // A los 7 s: pasada la gracia de 6 s, el veto se levanta y restaura.
+        // At 7 s: past the 6 s grace, the veto lifts and it restores.
         let (n7, d7) = reconcile(&state, &obs, world(7));
         assert!(!n7.is_running, "pasada la gracia, deja de correr");
         assert_eq!(
@@ -1111,12 +1118,12 @@ mod tests {
         );
     }
 
-    /// Regresión: un restore que vuelve `Ok` sin escribir y deja la carpeta
-    /// vacía NO es progreso. `local_empty` puentea la puerta de versión a
-    /// propósito, así que sin frenar aquí el tick siguiente vuelve a pedir el
-    /// mismo snapshot y el par (bajar, no escribir) se repite eternamente al
-    /// precio completo de la descarga — 3.752 bajadas / 10,6 GB en producción
-    /// entre 2026-07-27 y 08-03.
+    /// Regression: a restore that comes back `Ok` without writing and leaves the
+    /// folder empty is NOT progress. `local_empty` bypasses the version gate on
+    /// purpose, so without braking here the next tick asks for the same snapshot
+    /// and the (download, don't write) pair repeats forever at the full price of
+    /// the download: 3,752 downloads and 10.6 GB in production between 2026-07-27
+    /// and 08-03.
     #[test]
     fn restore_ok_sin_escribir_y_carpeta_vacia_no_reintenta_de_inmediato() {
         let state = State {
@@ -1124,7 +1131,7 @@ mod tests {
             in_flight: Some(Op::Restore),
             ..base_state()
         };
-        // La op vuelve OK, sin escribir, y la carpeta sigue vacía.
+        // The op comes back OK, without writing, and the folder is still empty.
         let obs = Observation {
             local_empty: true,
             cloud_version: Some(2),
@@ -1146,8 +1153,8 @@ mod tests {
         );
         assert!(n1.next_restore_at.is_some(), "queda un backoff armado");
 
-        // Tick siguiente con la carpeta aún vacía: retenido por el cooldown, no
-        // otra descarga.
+        // Next tick with the folder still empty: held by the cooldown, not
+        // another download.
         let obs2 = Observation {
             local_empty: true,
             cloud_version: Some(2),
@@ -1159,8 +1166,8 @@ mod tests {
             "sigue frenado mientras dura el backoff: {d2:?}"
         );
 
-        // Y un restore que SÍ escribe limpia la escalada: el freno es sólo para
-        // el que no progresa.
+        // And a restore that DOES write clears the escalation: the brake is only
+        // for the one that makes no progress.
         let obs_ok = Observation {
             local_empty: false,
             cloud_version: Some(2),
@@ -1178,11 +1185,11 @@ mod tests {
         );
     }
 
-    /// D.4 — nunca `Act(Restore)` con cambios locales sin versionar (never lose
-    /// newer local): `has_pending` es motivo de veto; con la nube por delante se
-    /// difiere en vez de pisar el progreso local. Y —desde D.8.1— el mismo tick
-    /// suelta la subida: diferir el pull no puede dejar el progreso local sin
-    /// versionar, porque `has_pending` sólo lo limpia un backup.
+    /// Never `Act(Restore)` with unversioned local changes (never lose newer
+    /// local): `has_pending` is a veto reason, and with the cloud ahead it defers
+    /// rather than walking over local progress. And since D.8.1, the same tick
+    /// releases the upload: deferring the pull cannot leave local progress
+    /// unversioned, because only a backup clears `has_pending`.
     #[test]
     fn d4_never_restore_over_unflushed_local() {
         let state = State {
@@ -1207,20 +1214,19 @@ mod tests {
         );
     }
 
-    // ==== Corpus D.8 (revisión de 2b: la política que faltaba en el kernel) ==
+    // ---- D.8 corpus (the policy the kernel was missing)
 
-    /// D.8.1 — «deadlock `has_pending` + `cloud_ahead`». Dos adelantos de nube
-    /// en la MISMA sesión, sin cierre de juego de por medio, no encallan el slot.
+    /// The `has_pending` plus `cloud_ahead` deadlock. Two cloud advances in the
+    /// SAME session, with no game close in between, must not stall the slot.
     ///
-    /// El bug: el reductor retenía el pull (correcto) y retornaba antes de la
-    /// rama de backup, así que `has_pending` —que sólo limpia una subida— se
-    /// quedaba puesto para siempre; y como `has_pending` es a su vez motivo de
-    /// veto, ni se subía ni se bajaba. Lo desatascaba el *ejecutor* de
-    /// `DeferPull` en el shell (`agent.rs`), política fuera del kernel e
-    /// invisible al replay de C.5.
+    /// The bug: the reducer held the pull (correctly) and returned before the
+    /// backup branch, so `has_pending`, which only an upload clears, stayed set
+    /// forever; and since `has_pending` is itself a veto reason, nothing went up
+    /// and nothing came down. The `DeferPull` *executor* in the shell (`agent.rs`)
+    /// unstuck it, policy outside the kernel and invisible to the C.5 replay.
     #[test]
     fn d8_two_cloud_advances_in_one_session_do_not_wedge() {
-        // Sesión viva: el juego corre y hay progreso local sin versionar.
+        // Live session: the game is running and there is unversioned progress.
         let state = State {
             is_running: true,
             last_running_seen: Some(at(0)),
@@ -1229,7 +1235,7 @@ mod tests {
             synced_fingerprint: Some(1),
             ..base_state()
         };
-        // 1er adelanto de nube (v6 > v4) mientras se juega.
+        // First cloud advance (v6 > v4) while playing.
         let obs1 = Observation {
             process_alive: true,
             cloud_version: Some(6),
@@ -1248,8 +1254,8 @@ mod tests {
         assert!(s1.pull_pending, "el pull diferido sobrevive");
         assert_eq!(s1.in_flight, Some(Op::Backup));
 
-        // La subida choca 409 y se asienta a la cabeza remota (v7): sin commit,
-        // pero `known_version` avanza y `has_pending` se limpia.
+        // The upload hits a 409 and settles onto the remote head (v7): no commit,
+        // but `known_version` advances and `has_pending` clears.
         let obs_done = Observation {
             process_alive: true,
             cloud_version: Some(6),
@@ -1269,8 +1275,8 @@ mod tests {
             "el pull sigue pendiente: el juego no ha cerrado"
         );
 
-        // El usuario sigue jugando y guarda otra vez; la nube se adelanta OTRA
-        // vez (v8) sin cierre de juego de por medio. El slot NO debe encallarse.
+        // The user keeps playing and saves again; the cloud advances AGAIN (v8)
+        // with no game close in between. The slot must not stall.
         let s3 = State {
             has_pending: true,
             ..s2
@@ -1297,10 +1303,10 @@ mod tests {
         assert!(s4.pull_pending, "la intención de pull sigue viva");
     }
 
-    /// D.8.1, la otra mitad: entre dos adelantos, con el pull ya diferido y la
-    /// nube ya NO por delante, el autobackup mid-session sigue funcionando (antes
-    /// la rama de `pull_pending` también retornaba antes del backup, matando la
-    /// subida durante el resto de la sesión).
+    /// The other half: between two advances, with the pull already deferred and
+    /// the cloud no longer ahead, the mid-session autobackup keeps working. The
+    /// `pull_pending` branch used to return before the backup too, killing the
+    /// upload for the rest of the session.
     #[test]
     fn d8_deferred_pull_does_not_starve_mid_session_backups() {
         let state = State {
@@ -1327,10 +1333,10 @@ mod tests {
         assert!(next.pull_pending, "y el pull sigue esperando al cierre");
     }
 
-    /// D.8.2 — backoff de fallo de *backup* dentro del kernel. Antes lo reponía
-    /// el shell (`RetryBackupAfterFailure`): limpiaba `in_flight`, armaba el
-    /// backoff largo y conservaba `has_pending`. Un fallo de subida no escala la
-    /// escalada del restore.
+    /// The *backup* failure backoff, now inside the kernel. The shell used to
+    /// restore it (`RetryBackupAfterFailure`): clear `in_flight`, arm the long
+    /// backoff, keep `has_pending`. An upload failure does not escalate the
+    /// restore ladder.
     #[test]
     fn d8_backup_failure_backs_off_inside_the_kernel() {
         let state = State {
@@ -1367,7 +1373,7 @@ mod tests {
             "no se relanza dentro del backoff: {ds:?}"
         );
 
-        // Cruzado el backoff (`now` cruzando un deadline ES delta): reintenta.
+        // Past the backoff (`now` crossing a deadline IS a delta): it retries.
         let obs_after = Observation {
             local_fingerprint: Some(2),
             ..quiet_obs()
@@ -1376,13 +1382,13 @@ mod tests {
         assert_eq!(acts(&ds_after), vec![&Action::Backup]);
     }
 
-    /// **El bug del 409 sin salida**: el shell contestaba a "vas por detrás,
-    /// pero no hay nada que bajar" reponiendo el reintento cada diez minutos,
-    /// sin contador y sin escalada. 1.701 eventos, 5 usuarios, y un save clavado
-    /// 14 días a ~4,5 intentos/h que sobrevivió a tres versiones de la app.
+    /// The 409-with-no-way-out bug: the shell answered "you are behind, but there
+    /// is nothing to pull" by restoring the retry every ten minutes, with no
+    /// counter and no escalation. 1,701 events, 5 users, and one save pinned for
+    /// 14 days at about 4.5 attempts an hour that outlived three releases.
     ///
-    /// Ahora escala 10 → 20 → 40 → 80 min y, al quinto, para: `needs_attention`
-    /// y ni una `Act(Backup)` más por su cuenta.
+    /// Now it escalates 10, 20, 40, 80 minutes and stops at the fifth:
+    /// `needs_attention` and not one more `Act(Backup)` on its own.
     #[test]
     fn an_unresolvable_conflict_escalates_and_then_stops() {
         let mut state = State {
@@ -1392,7 +1398,7 @@ mod tests {
         };
         let mut clock = 0i64;
         for (attempt, backoff) in CONFLICT_STALL_BACKOFF_SECS.iter().enumerate() {
-            // La subida sale, choca contra el conflicto y vuelve con él.
+            // The upload goes out, hits the conflict, and comes back with it.
             state.in_flight = Some(Op::Backup);
             let obs = Observation {
                 local_fingerprint: Some(2),
@@ -1420,7 +1426,7 @@ mod tests {
                 !acts(&ds).contains(&&Action::Backup),
                 "no se relanza dentro del backoff: {ds:?}"
             );
-            // Y dentro del backoff sigue callado, aunque pase el tiempo.
+            // And inside the backoff it stays quiet, however much time passes.
             let quiet = Observation {
                 local_fingerprint: Some(2),
                 ..quiet_obs()
@@ -1430,7 +1436,7 @@ mod tests {
                 !acts(&mid).contains(&&Action::Backup),
                 "el backoff manda hasta que vence: {mid:?}"
             );
-            // Vencido, sí reintenta: `now` cruzando el deadline ES delta.
+            // Expired, so it retries: `now` crossing the deadline IS a delta.
             clock += backoff + 1;
             let (after, retried) = reconcile(&next, &quiet, world(clock));
             assert!(
@@ -1440,7 +1446,7 @@ mod tests {
             state = after;
         }
 
-        // Quinto choque: se acabó el presupuesto.
+        // Fifth collision: the budget is spent.
         state.in_flight = Some(Op::Backup);
         let obs = Observation {
             local_fingerprint: Some(2),
@@ -1458,7 +1464,7 @@ mod tests {
         );
         assert_eq!(ds.last(), Some(&hold(HOLD_BACKUP_NEEDS_ATTENTION)));
 
-        // Y ya no reintenta **nunca** solo: ni al minuto ni a la semana.
+        // And it never retries on its own again: not in a minute, not in a week.
         let quiet = Observation {
             local_fingerprint: Some(2),
             ..quiet_obs()
@@ -1473,13 +1479,13 @@ mod tests {
         }
     }
 
-    /// El número que lo destapó, puesto a prueba: catorce días de reloj con el
-    /// conflicto respondiendo siempre lo mismo. Antes eran ~1.500 intentos (uno
-    /// cada diez minutos, para siempre); ahora son cinco y se acabó.
+    /// The number that exposed it, put to the test: fourteen days on the clock
+    /// with the conflict always answering the same. It used to be about 1,500
+    /// attempts (one every ten minutes, forever); now it is five and done.
     ///
-    /// Se simula tick a tick en vez de razonar sobre el backoff porque el bucle
-    /// vivía precisamente en la costura entre "el reductor arma el deadline" y
-    /// "el tick siguiente lo cruza".
+    /// Simulated tick by tick rather than reasoned about from the backoff,
+    /// because the loop lived precisely in the seam between "the reducer arms the
+    /// deadline" and "the next tick crosses it".
     #[test]
     fn fourteen_days_of_the_same_conflict_cost_five_attempts() {
         let mut state = State {
@@ -1498,7 +1504,7 @@ mod tests {
 
         let mut attempts = 0;
         let mut in_flight = false;
-        // Un tick por minuto durante 14 días.
+        // One tick a minute for 14 days.
         for minute in 0..(14 * 24 * 60) {
             let now = minute * 60;
             let obs = if in_flight { &conflicted } else { &quiet };
@@ -1506,7 +1512,7 @@ mod tests {
             in_flight = false;
             if acts(&ds).contains(&&Action::Backup) {
                 attempts += 1;
-                // La subida sale y vuelve con el mismo conflicto de siempre.
+                // The upload goes out and comes back with the same old conflict.
                 in_flight = true;
             }
             state = next;
@@ -1526,10 +1532,11 @@ mod tests {
         );
     }
 
-    /// Rendirse no puede ser una condena: si la nube publica otra cabeza, la
-    /// pregunta ya no es la misma —quizá ahora sí hay algo que bajar— y el save
-    /// vuelve a intentarlo solo. Sin esto nada podría desatascarlo salvo el
-    /// usuario, ni siquiera el otro dispositivo subiendo lo que faltaba.
+    /// Giving up cannot be a life sentence: if the cloud publishes another head,
+    /// the question is no longer the same (maybe now there *is* something to
+    /// pull) and the save tries again on its own. Without this nothing could
+    /// unstick it except the user, not even the other device uploading what was
+    /// missing.
     #[test]
     fn a_new_cloud_head_un_stalls_a_save_that_gave_up() {
         let state = State {
@@ -1555,14 +1562,14 @@ mod tests {
             ConflictStall::default(),
             "la escalada muere con la cabeza contra la que se contaba"
         );
-        // La nube va por delante, así que este tick toca bajar; lo que importa
-        // es que el freno de la subida se soltó.
+        // The cloud is ahead, so this tick is a download; what matters is that
+        // the upload's brake came off.
         assert!(next.next_backup_at.is_none(), "y su freno con ella");
         assert!(!ds.is_empty());
     }
 
-    /// Una copia que sale bien suelta la escalada entera — incluido el no-op,
-    /// que también significa que el conflicto se resolvió.
+    /// A copy that succeeds releases the whole escalation, the no-op included,
+    /// since that also means the conflict resolved.
     #[test]
     fn a_backup_that_lands_clears_the_conflict_escalation() {
         let state = State {
@@ -1588,16 +1595,16 @@ mod tests {
         assert_eq!(next.backup_conflict, ConflictStall::default());
     }
 
-    /// D.8.2 — commit vs no-op en `OpResult::Ok`. **La** regresión R.E.P.O.: un
-    /// pase no-op no es un backup y no debe mover el ancla del min-interval, o
-    /// la siguiente subida real se empuja un intervalo entero (y con la carpeta
-    /// vaciándose por restore, el ancla avanzaba sobre backups fantasma y una
-    /// sesión corta nunca volcaba su progreso).
+    /// Commit versus no-op in `OpResult::Ok`. THE R.E.P.O. regression: a no-op
+    /// pass is not a backup and must not move the min-interval anchor, or the next
+    /// real upload gets pushed out by a whole interval. With the folder being
+    /// emptied by a restore, the anchor advanced on phantom backups and a short
+    /// session never flushed its progress.
     #[test]
     fn a_calm_save_never_waits() {
-        // Lo que se rompió en junio y no se puede volver a romper: sin preset y
-        // sin ráfaga, una copia sale en cuanto el debounce asienta. Un suelo que
-        // nadie ve ni puede cambiar se lee como "no detecta mis cambios".
+        // What broke in June and must not break again: with no preset and no
+        // burst, a copy goes out as soon as the debounce settles. A floor nobody
+        // can see or change reads as "it isn't noticing my changes".
         let state = State {
             min_backup_interval_secs: 0,
             burst_since: Some(at(0)),
@@ -1608,9 +1615,10 @@ mod tests {
         assert_eq!(backup_floor(&state), None);
     }
 
-    /// Un juego que reescribe su autoguardado cada pocos segundos: al tercer
-    /// commit dentro de la ventana entra el suelo, y se queda en 60 s por muchos
-    /// más que haga. Ghost of Tsushima hizo 1.027 subidas en 4½ h sin esto.
+    /// A game rewriting its autosave every few seconds: on the third commit
+    /// inside the window the floor kicks in, and stays at 60 s however many more
+    /// it makes. One game managed 1,027 uploads in four and a half hours
+    /// without this.
     #[test]
     fn an_autosave_burst_gets_one_minute_and_no_more() {
         let mut state = State {
@@ -1623,15 +1631,15 @@ mod tests {
         assert_eq!(state.burst_backups, 3);
         assert_eq!(effective_min_interval(&state), BURST_FLOOR_SECS);
 
-        // Diez commits más no lo suben ni un segundo: un solo escalón.
+        // Ten more commits do not raise it by a second: one rung only.
         for i in 3..13 {
             count_burst(&mut state, at(i * 6));
         }
         assert_eq!(effective_min_interval(&state), BURST_FLOOR_SECS);
     }
 
-    /// Al pasar la ventana sin actividad la cuenta se abre de cero, así que el
-    /// save vuelve a subir inmediato: el suelo dura lo que dura la ráfaga.
+    /// Past the window with no activity the count opens fresh, so the save goes
+    /// back to uploading immediately: the floor lasts as long as the burst does.
     #[test]
     fn the_burst_forgets_itself_once_the_game_calms_down() {
         let mut state = State {
@@ -1648,10 +1656,10 @@ mod tests {
         assert_eq!(effective_min_interval(&state), 0);
     }
 
-    /// El preset que el usuario eligió manda sobre el adaptativo, en los dos
-    /// sentidos: `short_session` mantiene sus 30 s aunque el juego esté en plena
-    /// ráfaga (es un juego que se borra la carpeta entre rondas y perder una es
-    /// perder la partida), y `data_saver` mantiene sus 600 s.
+    /// The preset the user chose beats the adaptive floor in both directions:
+    /// `short_session` keeps its 30 s even mid-burst (it is a game that wipes its
+    /// folder between rounds, and losing one round is losing the run), and
+    /// `data_saver` keeps its 600 s.
     #[test]
     fn an_explicit_preset_wins_over_the_adaptive_floor() {
         let mut short = State {
@@ -1681,7 +1689,7 @@ mod tests {
             ..base_state()
         };
 
-        // No-op puro (skip por firma / vacío / archived): sin versión.
+        // A pure no-op (skipped by signature, empty, archived): no version.
         let obs_noop = Observation {
             local_fingerprint: Some(2),
             op_result: Some(OpResult::Ok {
@@ -1704,7 +1712,7 @@ mod tests {
             "un no-op sin versión no tocó la carpeta"
         );
 
-        // Commit real: ancla el suelo.
+        // A real commit anchors the floor.
         let obs_commit = Observation {
             local_fingerprint: Some(2),
             op_result: Some(OpResult::Ok {
@@ -1718,10 +1726,10 @@ mod tests {
         assert_eq!(committed.last_backup_at, Some(at(0)));
         assert_eq!(committed.known_version, Some(9));
 
-        // Y ese ancla es lo que frena de verdad la siguiente subida: escritura
-        // nueva a los 100 s ⇒ retenida; pasado el suelo (600 s) ⇒ sube. Con el
-        // ancla del no-op (nunca puesta) no habría freno ninguno, que es
-        // justamente lo correcto: nada se subió.
+        // And that anchor is what really brakes the next upload: a new write at
+        // 100 s is held, and past the floor (600 s) it goes up. With the no-op's
+        // anchor (never set) there would be no brake at all, which is exactly
+        // right, because nothing was uploaded.
         let obs_more = Observation {
             fs_event: true,
             local_fingerprint: Some(7),
@@ -1738,9 +1746,10 @@ mod tests {
             "un no-op no dejó ancla, así que no frena nada"
         );
 
-        // No-op CON versión = 409 asentado a la cabeza: el merge escribió en la
-        // carpeta como un restore → sella `last_restore_at` (que ese toque
-        // nuestro no vete el siguiente pull) pero sigue sin anclar el suelo.
+        // A no-op WITH a version is the 409 settled onto the head: the merge wrote
+        // into the folder like a restore, so it stamps `last_restore_at` (so that
+        // touch of ours does not veto the next pull) but still does not anchor the
+        // floor.
         let obs_settled = Observation {
             local_fingerprint: Some(2),
             op_result: Some(OpResult::Ok {
@@ -1759,18 +1768,18 @@ mod tests {
         );
     }
 
-    /// D.8.3 — anti-relanzamiento **contra la verdad del server**.
+    /// Anti-relaunch against the server's truth.
     ///
-    /// El caso real: el daemon se reinicia (rutina desde el Slice 4) con una
-    /// subida en vuelo que sí llegó a comprometerse. El `in_flight` en memoria se
-    /// perdió, así que el motor vuelve a lanzar la subida; el chequeo
-    /// content-addressed descubre que ese contenido **ya es la cabeza** y no sube
-    /// nada. Lo que el reductor tiene que hacer con esa respuesta:
+    /// The real case: the daemon restarts (routine since Slice 4) with an upload
+    /// in flight that did commit. The in-memory `in_flight` is gone, so the engine
+    /// launches the upload again; the content-addressed check discovers that
+    /// content is already the head and uploads nothing. What the reducer has to do
+    /// with that answer:
     ///
-    /// - adoptar la versión y la firma (converger),
-    /// - **no** anclar el min-interval (no hubo commit propio: R.E.P.O.),
-    /// - y **no** sellar `last_restore_at`, porque a diferencia del 409 asentado
-    ///   a la cabeza aquí no se escribió un solo byte en la carpeta.
+    /// - adopt the version and the signature (converge),
+    /// - do NOT anchor the min-interval (there was no commit of ours: R.E.P.O.),
+    /// - and do NOT stamp `last_restore_at`, because unlike the 409 settled onto
+    ///   the head, not a byte was written to the folder here.
     #[test]
     fn d8_3_an_upload_that_already_landed_converges_without_faking_a_local_touch() {
         let state = State {
@@ -1816,10 +1825,10 @@ mod tests {
             "y sobre todo: no se relanza la subida ({ds:?})"
         );
 
-        // El tick siguiente, ya sin op en vuelo y con el mismo contenido:
-        // convergido ⇒ cero acciones. Es la mitad que importa — si el reductor no
-        // hubiera adoptado versión y firma, aquí volvería a emitir `Backup` y
-        // tendríamos el bucle que D.8.3 viene a matar.
+        // Next tick, with no op in flight and the same content: converged means
+        // zero actions. That is the half that matters. If the reducer had not
+        // adopted the version and signature, it would emit `Backup` again here and
+        // we would have the very loop D.8.3 exists to kill.
         let quiet = Observation {
             local_fingerprint: Some(2),
             cloud_version: Some(9),
@@ -1829,14 +1838,14 @@ mod tests {
         assert_eq!(ds_after, vec![hold("converged")]);
     }
 
-    /// D.8.1/D.8.2 — el flush que destraba un pull cross-device se salta el suelo
-    /// de *ahorro de datos* (como hacía el ejecutor de 2b, que iba directo al
-    /// backup), pero NO un backoff de error. Sin esto, con el preset `data_saver`
-    /// (600 s) la actualización de otro dispositivo esperaría el intervalo entero:
-    /// el pull sigue vetado mientras `has_pending` no se limpie.
+    /// The flush that unblocks a cross-device pull skips the *data saving* floor
+    /// (as the executor used to, going straight to the backup) but NOT an error
+    /// backoff. Without this, on the `data_saver` preset (600 s) another device's
+    /// update would wait the whole interval, because the pull stays vetoed until
+    /// `has_pending` clears.
     #[test]
     fn d8_cross_device_flush_skips_the_savings_floor_but_not_a_backoff() {
-        // Commit hace 100 s con suelo de 600 s, y el usuario ha vuelto a guardar.
+        // A commit 100 s ago with a 600 s floor, and the user has saved again.
         let state = State {
             is_running: true,
             last_running_seen: Some(at(100)),
@@ -1860,7 +1869,7 @@ mod tests {
             "sin urgencia el suelo de ahorro manda"
         );
 
-        // La nube se adelanta: el flush ya no es pacing, es lo que destraba el pull.
+        // The cloud advances: the flush is no longer pacing, it unblocks the pull.
         let ahead = Observation {
             cloud_version: Some(6),
             ..quiet_cloud.clone()
@@ -1871,7 +1880,7 @@ mod tests {
             "el flush cross-device no espera al suelo de ahorro: {ds_urgent:?}"
         );
 
-        // Pero un backoff de error sí lo frena: eso no es pacing.
+        // But an error backoff does brake it: that is not pacing.
         let backing_off = State {
             next_backup_at: Some(at(700)),
             ..state
@@ -1884,13 +1893,12 @@ mod tests {
         assert_eq!(ds_backoff.last(), Some(&hold("backup backoff")));
     }
 
-    /// D.8.2 — una versión cloud nueva limpia el backoff de restore. El backoff
-    /// era sobre la versión que fallaba; que el server publique otra es
-    /// información nueva, no un reintento. Antes lo hacía el shell al recibir
-    /// `SetCloudVersions`.
+    /// A new cloud version clears the restore backoff. The backoff was about the
+    /// version that was failing; the server publishing another is new information,
+    /// not a retry. The shell used to do this on `SetCloudVersions`.
     #[test]
     fn d8_new_cloud_version_clears_the_restore_backoff() {
-        // Tres fallos contra v5 → stuck y aparcado una hora.
+        // Three failures against v5: stuck and parked for an hour.
         let state = State {
             known_version: Some(3),
             restore_failures: RestoreFailures {
@@ -1902,7 +1910,7 @@ mod tests {
             ..base_state()
         };
 
-        // Misma versión: la escalada aguanta y el freno sigue.
+        // Same version: the escalation holds and so does the brake.
         let obs_same = Observation {
             local_empty: true,
             cloud_version: Some(5),
@@ -1915,7 +1923,7 @@ mod tests {
         );
         assert_eq!(ds_same, vec![hold("restore cooldown")]);
 
-        // El server publica v6: la escalada muere y el pull sale ya.
+        // The server publishes v6: the escalation dies and the pull goes now.
         let obs_new = Observation {
             local_empty: true,
             cloud_version: Some(6),
@@ -1934,9 +1942,9 @@ mod tests {
         );
     }
 
-    /// D.8.2 — la escalada de fallos de restore se ancla en la versión CLOUD
-    /// observada (la cabeza que intentábamos traernos), no en la local: es lo
-    /// que hace coherente el reseteo por versión nueva.
+    /// The restore failure escalation anchors on the observed CLOUD version, the
+    /// head we were trying to fetch, not on the local one. That is what makes the
+    /// reset-on-new-version coherent.
     #[test]
     fn d8_restore_failures_anchor_on_the_observed_cloud_version() {
         let state = State {
@@ -1960,13 +1968,12 @@ mod tests {
         );
     }
 
-    // ==== Corpus D.10 (el poller de nube enmudece) ==========================
+    // ---- D.10 corpus (the cloud poller goes quiet)
 
-    /// D.10 — «convergido» vs «ciego». Con la caché de versiones de nube
-    /// envejecida, el reposo deja de rotularse `converged` y pasa a decir por
-    /// qué no sabe nada: es el fallo invisible (poller muerto) hecho
-    /// observable. Sin marca de feed —self-hosted/CLI, sin poller— no se
-    /// reporta obsolescencia ninguna.
+    /// Converged versus blind. With the cloud version cache aged out, the rest
+    /// stops being labelled `converged` and says why it knows nothing: the
+    /// invisible failure (a dead poller) made observable. With no feed stamp
+    /// (self-hosted, CLI, no poller) no staleness is reported at all.
     #[test]
     fn d10_stale_cloud_cache_is_not_convergence() {
         let state = State {
@@ -1981,13 +1988,13 @@ mod tests {
             ..quiet_obs()
         };
 
-        // Feed recién llegado: convergido de verdad.
+        // A feed that just arrived: genuinely converged.
         let (_n, fresh) = reconcile(&state, &fed_at(0), world(1));
         assert_eq!(fresh, vec![hold("converged")]);
 
-        // Justo en el umbral: todavía se le concede el beneficio de la duda
-        // (la comparación es estrictamente mayor, así que el tick que cae
-        // exacto sobre el deadline aún no acusa).
+        // Right on the threshold, it still gets the benefit of the doubt: the
+        // comparison is strictly greater, so the tick landing exactly on the
+        // deadline does not accuse yet.
         let (_n, edge) = reconcile(&state, &fed_at(0), world(CLOUD_STALE_AFTER_SECS));
         assert_eq!(
             edge,
@@ -1995,7 +2002,7 @@ mod tests {
             "el umbral no muerde antes de tiempo"
         );
 
-        // Un segundo más: ciego, con motivo propio.
+        // One second later: blind, with its own reason.
         let (_n, stale) = reconcile(&state, &fed_at(0), world(CLOUD_STALE_AFTER_SECS + 1));
         assert_eq!(
             stale,
@@ -2007,8 +2014,8 @@ mod tests {
             "pero sigue sin inventarse acciones"
         );
 
-        // Sin nube que observar (self-hosted / daemon CLI): no hay nada que
-        // declarar obsoleto, por muy lejos que esté `now` del epoch.
+        // With no cloud to observe (self-hosted, CLI daemon) there is nothing to
+        // declare stale, however far `now` is from the epoch.
         let no_feed = Observation {
             local_fingerprint: Some(0xABCD),
             ..quiet_obs()
@@ -2021,11 +2028,10 @@ mod tests {
         );
     }
 
-    /// D.11, remate — «nunca supe nada de la nube» es la ceguera MÁS grave y
-    /// hasta aquí era la única que se colaba como `converged`: el viejo
-    /// `is_some_and` sobre la marca del feed dejaba pasar el `None`. Con
-    /// contexto cloud, la cuenta atrás corre desde que el motor empezó a
-    /// esperar cabezas.
+    /// "I have never heard anything from the cloud" is the worst blindness of
+    /// all, and until this it was the only one slipping through as `converged`:
+    /// the old `is_some_and` over the feed stamp let the `None` past. With a cloud
+    /// context, the countdown runs from when the engine started expecting heads.
     #[test]
     fn d11_never_heard_from_the_cloud_is_stale_too() {
         let state = State {
@@ -2033,14 +2039,14 @@ mod tests {
             synced_fingerprint: Some(0xABCD),
             ..base_state()
         };
-        // Contexto cloud, cero feeds: el motor arrancó en `at(0)`.
+        // Cloud context, zero feeds: the engine started at `at(0)`.
         let blind = Observation {
             local_fingerprint: Some(0xABCD),
             cloud_feed_expected_since: Some(at(0)),
             ..quiet_obs()
         };
 
-        // Dentro del margen de arranque: silencio, todavía es normal.
+        // Inside the startup allowance: silence, still normal.
         let (_n, booting) = reconcile(&state, &blind, world(CLOUD_STALE_AFTER_SECS));
         assert_eq!(
             booting,
@@ -2048,8 +2054,8 @@ mod tests {
             "el margen de arranque no acusa antes de tiempo"
         );
 
-        // Pasado el margen sin una sola cabeza: ciego, con el mismo motivo que
-        // un feed rancio (para la UI y el replay es la misma avería).
+        // Past the allowance with not one head: blind, with the same reason as a
+        // stale feed (to the UI and to the replay it is the same fault).
         let (_n, blind_ds) = reconcile(&state, &blind, world(CLOUD_STALE_AFTER_SECS + 1));
         assert_eq!(blind_ds, vec![hold(CLOUD_STALE_REASON)]);
         assert!(
@@ -2057,8 +2063,8 @@ mod tests {
             "y sigue sin inventarse acciones"
         );
 
-        // Un feed real manda sobre el ancla de arranque: la marca fresca
-        // rejuvenece la observación aunque el motor lleve horas arriba.
+        // A real feed beats the startup anchor: the fresh stamp rejuvenates the
+        // observation even with the engine up for hours.
         let fed = Observation {
             cloud_version_as_of: Some(at(10_000)),
             ..blind.clone()
@@ -2066,8 +2072,8 @@ mod tests {
         let (_n, ds_fed) = reconcile(&state, &fed, world(10_001));
         assert_eq!(ds_fed, vec![hold("converged")]);
 
-        // Y sin contexto cloud (self-hosted), el mismo silencio no acusa nunca:
-        // la distinción es el contexto, no `None` vs `Some`.
+        // And with no cloud context (self-hosted), the same silence never
+        // accuses: the distinction is the context, not `None` versus `Some`.
         let selfhosted = Observation {
             cloud_feed_expected_since: None,
             ..blind
@@ -2076,13 +2082,13 @@ mod tests {
         assert_eq!(ds_self, vec![hold("converged")]);
     }
 
-    /// D.12 — la relación "el motor refresca antes de declararse ciego" NO vive
-    /// aquí: es un `const _: () = assert!(…)` junto a
-    /// [`CLOUD_SELF_OBSERVE_AFTER_SECS`], que es estrictamente más fuerte que un
-    /// test (el crate no compila si alguien invierte los números). Este test
-    /// sólo fija que el umbral nuevo sigue derivándose de la cadencia real del
-    /// poll (como el de obsolescencia, ver el test de D.10) y no de un literal
-    /// suelto que pueda driftar.
+    /// The "the engine refreshes before declaring itself blind" relation does NOT
+    /// live here: it is a `const _: () = assert!(...)` next to
+    /// [`CLOUD_SELF_OBSERVE_AFTER_SECS`], which is strictly stronger than a test,
+    /// since the crate does not compile if anyone inverts the numbers. This test
+    /// only pins that the new threshold still derives from the real poll cadence
+    /// (like the staleness one, see the D.10 test) and not from a loose literal
+    /// that can drift.
     #[test]
     fn d12_self_observation_threshold_derives_from_the_poll_cadence() {
         assert_eq!(
@@ -2091,10 +2097,9 @@ mod tests {
         );
     }
 
-    /// D.10 — el umbral se deriva de la cadencia del poll, no de un número
-    /// suelto: si mañana cambia el intervalo, el umbral lo sigue. (El suelo de
-    /// "más de un poll perdido" se chequea en compilación, junto a la
-    /// constante.)
+    /// The threshold derives from the poll cadence, not from a loose number: if
+    /// the interval changes tomorrow, the threshold follows. (The "more than one
+    /// missed poll" floor is checked at compile time, next to the constant.)
     #[test]
     fn d10_stale_threshold_derives_from_the_poll_cadence() {
         assert_eq!(
@@ -2103,15 +2108,14 @@ mod tests {
         );
     }
 
-    /// D.10 — la obsolescencia **sólo** cambia el motivo del reposo. Un poller
-    /// muerto no puede frenar la subida: eso cambiaría un fallo invisible por
-    /// pérdida de datos (el progreso local se quedaría sin versionar). Ni frena
-    /// un restore que ya sabemos que toca.
+    /// Staleness ONLY changes the rest's reason. A dead poller cannot brake the
+    /// upload: that would trade an invisible failure for data loss, leaving local
+    /// progress unversioned. Nor does it brake a restore we already know is due.
     #[test]
     fn d10_stale_cloud_cache_does_not_stop_syncing() {
         let ancient = Some(at(-10 * CLOUD_STALE_AFTER_SECS));
 
-        // Hay progreso local divergente: se sube igual.
+        // There is divergent local progress: it uploads regardless.
         let pending = State {
             has_pending: true,
             synced_fingerprint: Some(1),
@@ -2131,8 +2135,8 @@ mod tests {
             "una caché ciega no puede dejar el progreso local sin versionar: {ds:?}"
         );
 
-        // Y la carpeta vacía sigue disparando el restore con la caché vieja: lo
-        // que sabemos sigue valiendo, sólo que sabemos que puede haber más.
+        // And an empty folder still fires the restore off the old cache: what we
+        // know still counts, we just know there may be more.
         let empty = Observation {
             local_empty: true,
             cloud_version: Some(121),
@@ -2143,7 +2147,7 @@ mod tests {
         assert_eq!(acts(&ds_empty), vec![&Action::Restore]);
     }
 
-    /// track-only: nunca sincroniza nada.
+    /// track-only: never syncs anything.
     #[test]
     fn track_only_never_acts() {
         let state = State {
@@ -2162,7 +2166,7 @@ mod tests {
         assert_eq!(ds, vec![hold("track-only entry")]);
     }
 
-    // ==== Invariantes (proptest + shrinking) ================================
+    // ---- invariants (proptest with shrinking)
 
     prop_compose! {
         fn arb_failures()(
@@ -2175,9 +2179,9 @@ mod tests {
     }
 
     prop_compose! {
-        /// Escalada de conflictos arbitraria. Entra en el generador porque su
-        /// `needs_attention` **frena la subida**: los invariantes tienen que
-        /// aguantar un slot rendido igual que uno sano.
+        /// An arbitrary conflict escalation. It goes into the generator because
+        /// its `needs_attention` brakes the upload: the invariants have to hold
+        /// for a slot that gave up as well as a healthy one.
         fn arb_conflicts()(
             consecutive in 0u32..8,
             version in prop::option::of(0i64..20),
@@ -2188,7 +2192,7 @@ mod tests {
     }
 
     prop_compose! {
-        /// Estado arbitrario con tiempos anclados a `BASE` (offsets acotados).
+        /// Arbitrary state with times anchored to `BASE` (bounded offsets).
         fn arb_state()(
             track_only in any::<bool>(),
             restore_enabled in any::<bool>(),
@@ -2206,9 +2210,9 @@ mod tests {
             pull_pending in any::<bool>(),
             deferred_notified in any::<bool>(),
             min_interval in 0u64..120,
-            // La ráfaga entra en el generador y no como default: el suelo
-            // adaptativo cambia cuándo se puede subir, así que los invariantes
-            // (idempotencia, convergencia) tienen que aguantarlo también.
+            // The burst goes into the generator rather than being a default: the
+            // adaptive floor changes when an upload may go, so the invariants
+            // (idempotence, convergence) have to survive it too.
             burst_since in prop::option::of(-1200i64..0),
             burst_backups in 0u32..8,
             failures in arb_failures(),
@@ -2240,9 +2244,9 @@ mod tests {
     }
 
     prop_compose! {
-        /// Observación arbitraria. `quiescent` fuerza a `false`/`None` las
-        /// señales puntuales (fs/op/upload) — el mundo estable para el invariante
-        /// de idempotencia.
+        /// An arbitrary observation. `quiescent` forces the one-shot signals (fs,
+        /// op, upload) to `false`/`None`: the stable world for the idempotence
+        /// invariant.
         fn arb_obs(quiescent: bool)(
             mtime in prop::option::of(-100i64..100),
             size in prop::option::of(0u64..1_000),
@@ -2250,11 +2254,11 @@ mod tests {
             local_fp in prop::option::of(0u64..8),
             process_alive in any::<bool>(),
             cloud_version in prop::option::of(0i64..20),
-            // Cubre el feed fresco, el rancio y el despliegue sin poller, para
-            // que los invariantes valgan también con la caché de nube ciega.
+            // Covers the fresh feed, the stale one and the deployment with no
+            // poller, so the invariants hold with a blind cloud cache too.
             cloud_as_of in prop::option::of(-2 * CLOUD_STALE_AFTER_SECS..100),
-            // Ídem para el contexto: con nube que observar (dentro y fuera del
-            // margen de arranque) y sin ella.
+            // Same for the context: with a cloud to observe (inside and outside
+            // the startup allowance) and without one.
             cloud_expected in prop::option::of(-2 * CLOUD_STALE_AFTER_SECS..100),
             fs_event in any::<bool>(),
             retry in 0u32..600,
@@ -2281,10 +2285,9 @@ mod tests {
                 local_empty,
                 local_fingerprint: local_fp,
                 process_alive,
-                // El proptest no modela la sonda de bloqueo: es un freno de
-                // ritmo del shell (sólo Windows la puede afirmar) y dejarla
-                // siempre en falso mantiene el espacio de estados en lo que
-                // este test cubre.
+                // The proptest does not model the lock probe: it is a shell-side
+                // pacing brake (only Windows can assert it) and leaving it always
+                // false keeps the state space to what this test covers.
                 save_files_locked: false,
                 cloud_version,
                 cloud_version_as_of: cloud_as_of.map(at),
@@ -2304,14 +2307,14 @@ mod tests {
     }
 
     proptest! {
-        /// Invariante: ≤ 1 acción de storage (Backup/Restore) por tick.
+        /// At most one storage action (Backup or Restore) per tick.
         #[test]
         fn inv_storage_acts_bounded(state in arb_state(), obs in arb_obs(false), w in arb_world()) {
             let (_n, ds) = reconcile(&state, &obs, w);
             prop_assert!(storage_act_count(&ds) <= 1, "más de una acción de storage: {ds:?}");
         }
 
-        /// Invariante: Backup y Restore nunca en el mismo tick (no se pelean).
+        /// Backup and Restore never in the same tick; they must not fight.
         #[test]
         fn inv_backup_restore_mutually_exclusive(
             state in arb_state(), obs in arb_obs(false), w in arb_world()
@@ -2324,9 +2327,9 @@ mod tests {
             );
         }
 
-        /// Invariante: nunca `Act(Restore)` mid-session / sobre local sin
-        /// versionar (data-loss REPO + never-lose-newer-local). Si se restaura,
-        /// el estado resultante no está corriendo ni tiene pendientes.
+        /// Never `Act(Restore)` mid-session or over unversioned local content
+        /// (the R.E.P.O. data loss plus never-lose-newer-local). If it restores,
+        /// the resulting state is neither running nor pending.
         #[test]
         fn inv_restore_never_mid_session(
             state in arb_state(), obs in arb_obs(false), w in arb_world()
@@ -2338,11 +2341,11 @@ mod tests {
             }
         }
 
-        /// Invariante base + dinámico (C.1/C.2): bajo entrada quiescente el
-        /// reductor es idempotente — reaplicarlo sobre su propia salida, mismo
-        /// `now`, no emite ninguna `Act`. Mata el hot-loop: ninguna acción sin un
-        /// delta nuevo. (Los deltas de un tick —fs/op— se excluyen por ser justo
-        /// eso, deltas.)
+        /// The base and dynamic invariant (C.1/C.2): under quiescent input the
+        /// reducer is idempotent. Re-applying it to its own output at the same
+        /// `now` emits no `Act` at all. This kills the hot loop: no action without
+        /// a new delta. (A tick's deltas, fs and op, are excluded for being
+        /// exactly that.)
         #[test]
         fn inv_idempotent_under_quiescence(
             state in arb_state(), obs in arb_obs(true), w in arb_world()
@@ -2355,17 +2358,17 @@ mod tests {
             );
         }
 
-        /// Invariante D.8.1: con cambios locales sin versionar, contenido
-        /// divergente, nada en vuelo y el ritmo cumplido, el tick **siempre**
-        /// emite la subida — la única forma de limpiar `has_pending`. Ninguna
-        /// rama de restore (cooldown, veto, pull diferido) puede tragársela: eso
-        /// era el deadlock que el shell desatascaba a mano.
+        /// D.8.1: with unversioned local changes, divergent content, nothing in
+        /// flight and pacing satisfied, the tick ALWAYS emits the upload, which is
+        /// the only way to clear `has_pending`. No restore branch (cooldown, veto,
+        /// deferred pull) may swallow it: that was the deadlock the shell unstuck
+        /// by hand.
         ///
-        /// La **única** excepción es un save rendido (`needs_attention`): ahí no
-        /// emitir la subida es la decisión, no un descuido. Es la diferencia
-        /// entre las dos formas de estar parado — encallado sin que nada lo diga
-        /// (el bug) frente a parado, dicho en voz alta y con tres salidas
-        /// (copia manual, copia con éxito, cabeza de nube nueva).
+        /// The only exception is a save that gave up (`needs_attention`), where
+        /// not emitting the upload is the decision rather than an oversight. That
+        /// is the difference between the two ways of being stopped: stalled with
+        /// nothing saying so (the bug), and stopped, said out loud, with three
+        /// ways out (a manual copy, a successful copy, a new cloud head).
         #[test]
         fn inv_pending_local_changes_always_get_a_backup(
             state in arb_state(), obs in arb_obs(false), w in arb_world()
@@ -2387,8 +2390,8 @@ mod tests {
             }
         }
 
-        /// Invariante: nunca `Act(Backup)` con un restore en vuelo (no subir
-        /// mientras se baja). El anti-relaunch retiene toda op en vuelo.
+        /// Never `Act(Backup)` with a restore in flight; do not upload while
+        /// downloading. Anti-relaunch holds every op in flight.
         #[test]
         fn inv_no_backup_while_restoring(
             state in arb_state(), obs in arb_obs(true), w in arb_world()

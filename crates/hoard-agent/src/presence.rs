@@ -1,27 +1,23 @@
-//! Presencia en vivo para el Eye panel: heartbeats a
-//! `POST /v1/presence/heartbeat`.
+//! Live presence for the Eye panel: heartbeats to
+//! `/v1/presence/heartbeat`.
 //!
-//! Una única implementación que comparten los dos frontends (desktop y
-//! daemon CLI): se hace `spawn` junto al agente, se le reenvían los
-//! `AgentEvent::GameStarted/GameStopped` que ya consumen sus event loops, y
-//! el resto es autónomo:
+//! One implementation shared by both frontends (desktop and CLI daemon): it is
+//! spawned alongside the agent, the `AgentEvent::GameStarted` and `GameStopped`
+//! their event loops already consume get forwarded to it, and:
 //!
-//! - **Latido inmediato** cuando cambia el juego reportado — arrancar una
-//!   partida en esta máquina se pinta en el Eye panel de las demás en ~1-2s
-//!   (el server empuja el UPDATE de `devices` por Supabase Realtime).
-//! - **Keepalive cada 30s** mientras el agente vive; el server marca offline
-//!   a los 90s sin latido (3 perdidos), así que un crash envejece solo.
-//! - **Latido final `closing`** en el shutdown ordenado, para que el dot se
-//!   apague al instante en vez de esperar el umbral.
+//! - An immediate beat when the reported game changes, so starting a game on this
+//!   machine shows up in every other machine's Eye panel in a second or two (the
+//!   server pushes the `devices` UPDATE over Supabase Realtime).
+//! - A keepalive every [`KEEPALIVE_SECS`], because the server ages a device out
+//!   after 90 s with no beat (three missed), so a crash expires on its own.
+//! - A final `closing` beat on an orderly shutdown, so the dot goes out at once.
 //!
-//! Todo best-effort: un latido fallido se loguea en debug y el siguiente tick
-//! reintenta. El gate es la capacidad que anuncia el server
-//! ([`ApiClient::has_presence`], sobre el probe cacheado de `/v1/health`), no el
-//! despliegue: desde la 1.1.3 un server self-hosted también lleva el censo, y
-//! contra uno anterior no se emite nada.
+//! All best-effort: a failed beat is logged at debug and the next tick retries.
+//! The gate is the capability the server advertises, so nothing is emitted
+//! against an older one.
 //!
-//! En self-hosted esto no habla con Hoard ni con nadie de fuera: los latidos van
-//! al servidor del propio usuario y sólo los ve él.
+//! On self-hosted this talks to neither Hoard nor anybody outside: the beats go
+//! to the user's own server and only they see them.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -32,13 +28,13 @@ use tokio::time::{interval, Instant, MissedTickBehavior};
 
 use crate::api::ApiClient;
 
-/// Cadencia del keepalive. El umbral server-side de "online" es 90s
-/// (`PRESENCE_ONLINE_WINDOW_SECS` en cloud/routes/me.rs) = 3 latidos
+/// Keepalive cadence. The server-side "online" threshold is 90 s, so this leaves
+/// room for missed beats.
 /// perdidos; si tocas uno, toca el otro.
 const KEEPALIVE_SECS: u64 = 30;
 
-/// Máximo que un `closing()` espera por su latido antes de rendirse: el quit
-/// de la app nunca debe colgarse de una red muerta.
+/// The longest a `closing()` waits for its beat before giving up: quitting the
+/// app must never hang on a dead network.
 const CLOSING_TIMEOUT_SECS: u64 = 3;
 
 enum Cmd {
@@ -47,26 +43,26 @@ enum Cmd {
     Closing { done: oneshot::Sender<()> },
 }
 
-/// Handle barato de clonar. Los frontends lo llaman desde sus event loops.
+/// A cheap handle to clone. The frontends call it from their event loops.
 #[derive(Clone)]
 pub struct PresenceHandle {
     tx: mpsc::Sender<Cmd>,
 }
 
 impl PresenceHandle {
-    /// Un juego rastreado arrancó. `try_send` a propósito: si el canal está
-    /// lleno perdemos un beat, nunca bloqueamos el event loop del frontend.
+    /// A tracked game started. `try_send` on purpose: if the channel is full we
+    /// lose a beat rather than ever blocking the frontend's event loop.
     pub fn game_started(&self, slug: impl Into<String>) {
         let _ = self.tx.try_send(Cmd::Started { slug: slug.into() });
     }
 
-    /// Un juego rastreado paró.
+    /// A tracked game stopped.
     pub fn game_stopped(&self, slug: impl Into<String>) {
         let _ = self.tx.try_send(Cmd::Stopped { slug: slug.into() });
     }
 
     /// Latido final en el shutdown ordenado: marca este device offline ya.
-    /// Espera acotada ([`CLOSING_TIMEOUT_SECS`]) — llamable desde el path de
+    /// A bounded wait ([`CLOSING_TIMEOUT_SECS`]), callable from the quit path.
     /// quit sin miedo a colgarlo.
     pub async fn closing(&self) {
         let (done_tx, done_rx) = oneshot::channel();
@@ -76,9 +72,8 @@ impl PresenceHandle {
     }
 }
 
-/// Arranca la tarea de presencia sobre el mismo `ApiClient` del agente (el
-/// token compartido tras el `RwLock` la mantiene autenticada cuando el
-/// desktop rota el JWT). La tarea muere sola cuando todos los handles caen, o
+/// Starts the presence task on the agent's own `ApiClient` (the desktop rotates
+/// the JWT). The task dies on its own once every handle is dropped, or
 /// inmediatamente tras el beat de un `closing()`.
 pub fn spawn(api: ApiClient) -> (PresenceHandle, JoinHandle<()>) {
     let (tx, rx) = mpsc::channel(64);
@@ -87,10 +82,10 @@ pub fn spawn(api: ApiClient) -> (PresenceHandle, JoinHandle<()>) {
 }
 
 async fn run(api: ApiClient, mut rx: mpsc::Receiver<Cmd>) {
-    // slug → (refcount, arranque). Refcount porque dos saves rastreados del
-    // mismo juego disparan dos GameStarted; el juego sigue "vivo" hasta que
-    // caen ambos. Se reporta la lista COMPLETA en cada latido — jugar a dos
-    // juegos a la vez pinta dos filas en el Eye panel de las otras máquinas.
+    // slug to (refcount, start). A refcount because two tracked saves of the same
+    // game must not double-count, and the entry only goes when both drop. The
+    // FULL list is reported on every beat, so playing two games at once draws two
+    // rows in the other machines' Eye panels.
     let mut running: HashMap<String, (u32, Instant)> = HashMap::new();
 
     let mut tick = interval(Duration::from_secs(KEEPALIVE_SECS));
@@ -104,8 +99,8 @@ async fn run(api: ApiClient, mut rx: mpsc::Receiver<Cmd>) {
                     let entry = running.entry(slug).or_insert((0, Instant::now()));
                     entry.0 += 1;
                     // Latido inmediato solo cuando el SET visible cambia (el
-                    // juego acaba de aparecer); el segundo save del mismo
-                    // juego no cambia nada que se vea.
+                    // the game has just appeared); the same game's second save
+                    // changes nothing anybody can see.
                     if entry.0 == 1 {
                         beat(&api, &running, false).await;
                     }
@@ -134,14 +129,14 @@ async fn run(api: ApiClient, mut rx: mpsc::Receiver<Cmd>) {
 }
 
 async fn beat(api: &ApiClient, running: &HashMap<String, (u32, Instant)>, closing: bool) {
-    // Gate por capacidad, no por despliegue: cloud siempre la tiene y
-    // self-hosted desde la 1.1.3, que es cuando su server empezó a llevar censo
-    // de dispositivos. El probe se cachea al primer éxito, así que en régimen
+    // Gated on capability rather than on deployment: cloud always has it, and
+    // self-hosted since 1.1.3, which is when its server started keeping a device
+    // census. The probe is cached on first success, so in the steady state
     // esto no cuesta red; un server viejo (o un probe fallido) → silencio.
     if !api.has_presence().await {
         return;
     }
-    // Lista completa, la más reciente primero — el mismo orden en que el
+    // The full list, most recent first, in the same order the
     // server la guarda y el Eye panel la pinta.
     let mut games: Vec<(&String, &Instant)> = running.iter().map(|(s, (_, at))| (s, at)).collect();
     games.sort_by_key(|(_, started)| std::cmp::Reverse(**started));

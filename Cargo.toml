@@ -16,7 +16,7 @@ members = [
 # The benchmark harness is a development tool and is never published, so it is
 # not a member either. A member missing from a clean clone doesn't just fail to
 # build itself: `cargo build --workspace` aborts before compiling anything, so
-# the whole tree — server included — stops building. Excluded, its absence goes
+# the whole tree, server included, stops building. Excluded, its absence goes
 # unnoticed; it carries its own `[workspace]` table to still build standalone.
 exclude = ["crates/hoard-pruebas"]
 
@@ -46,7 +46,7 @@ tower-http = { version = "0.5", features = ["trace", "cors"] }
 # machine's libssl, which carries that machine's OPENSSLDIR baked in
 # (`/usr/lib/ssl` on Ubuntu). The `.deb` gets away with it because it runs on
 # the same family, but the AppImage bundles that libssl and travels: on
-# Arch-derived systems — SteamOS, Bazzite — nothing lives at `/usr/lib/ssl`, so
+# Arch-derived systems (SteamOS, Bazzite) keep nothing at `/usr/lib/ssl`, so
 # every handshake dies with `certificate verify failed` plus a `stat
 # (/usr/lib/ssl/certs)` in the error, and the app can reach nothing at all.
 #
@@ -143,11 +143,11 @@ sysinfo = { version = "0.32", default-features = false, features = ["system"] }
 notify = "6"
 notify-debouncer-mini = "0.4"
 
-# Notificaciones nativas del SO desde `hoardd` (ADR 0021 D.14.1). Ojo al nombre:
-# `notify` (arriba) vigila el sistema de ficheros y `notify-rust` avisa al
-# usuario — no tienen nada que ver. Ya estaba en el árbol como dependencia
-# transitiva de `tauri-plugin-notification`, así que el servicio y la app usan
-# exactamente el mismo camino a `org.freedesktop.Notifications`.
+# Native OS notifications from `hoardd` (ADR 0021 D.14.1). Mind the names:
+# `notify` above watches the filesystem and `notify-rust` tells the user, and they
+# have nothing to do with each other. It was already in the tree as a transitive
+# dependency of `tauri-plugin-notification`, so the service and the app take
+# exactly the same path to `org.freedesktop.Notifications`.
 notify-rust = "4"
 
 # Object-safe async traits (`hoard-server` BlobStore abstraction).
@@ -158,7 +158,7 @@ async-trait = "0.1"
 # refuses to register a task without an elevated console.
 winreg = "0.52"
 
-# Test-only — used by per-crate `[dev-dependencies]` blocks.
+# Test-only, used by per-crate `[dev-dependencies]` blocks.
 tempfile = "3"
 
 # Property-based testing with automatic shrinking. Test-only; drives the
@@ -168,12 +168,12 @@ proptest = "1"
 
 # ZIP writer for cloud account exports (server, `cloud` feature). No default
 # features: game saves are already compressed, so export entries are `Stored`
-# (no re-deflate) — we only need the archive container, not compression.
+# (no re-deflate): we only need the archive container, not compression.
 zip = { version = "2", default-features = false }
 
 # Smaller, slightly faster release binaries (desktop bundle, server, sidecar).
 # Thin LTO + one codegen unit trade release-build time for output quality;
-# strip drops the symbol table — panics still print message + file:line, which
+# strip drops the symbol table; panics still print message and file:line, which
 # is what we actually read in the field.
 [profile.release]
 lto = "thin"

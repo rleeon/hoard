@@ -22,7 +22,7 @@ crates/hoard-desktop/ui/.svelte-kit/
 crates/hoard-desktop/src-tauri/target/
 
 # Git + local config (we still need .git when cargo wants vcs metadata,
-# but Fly's distroless runtime never needs it — keep .git out of context)
+# but Fly's distroless runtime never needs it, so keep .git out of context)
 .git/
 .github/
 .gitignore

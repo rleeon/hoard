@@ -1,19 +1,19 @@
-//! PLAYTIME — horas reales jugadas, atribuidas por día local.
+//! Playtime: real hours played, attributed by local day.
 //!
-//! El poll de procesos del agente ([`crate::agent::process_poll`]) ya sabe qué
-//! saves rastreados tienen su proceso de juego vivo en cada tick. Este módulo
-//! acumula ese tiempo: en cada tick suma el intervalo transcurrido a los juegos
-//! que siguen vivos, agrupado por día local y por juego. Es la fuente de verdad
-//! de "horas jugadas" que consume el recap (hoard-wrapple) vía
-//! `list_playtime` — datos 100% locales, nada sale de la máquina.
+//! The agent's process poll ([`crate::agent::process_poll`]) already knows which
+//! tracked saves have their game process alive on each tick. This module
+//! accumulates that time: every tick it adds the elapsed interval to the games
+//! still alive, grouped by local day and by game. It is the source of truth for
+//! "hours played" that the recap consumes through `list_playtime`, and the data
+//! is entirely local; nothing leaves the machine.
 //!
-//! MODELO DE ACUMULACIÓN (anclas): por cada save vivo guardamos el instante de
-//! la última atribución (`anchors`, sólo en memoria). En el tick siguiente, si
-//! el juego sigue vivo, sumamos `now - ancla` a la cubeta del día y movemos el
-//! ancla a `now`. Un juego que deja de estar vivo pierde su ancla (su cola
-//! final, ≤ un intervalo de poll, no se cuenta — error acotado e irrelevante a
-//! escala de horas). El salto se capa (`max_step_secs`) para que un suspend/
-//! resume no cuente horas de máquina dormida como tiempo de juego.
+//! The accumulation model is anchors: for each live save we keep the instant of
+//! the last attribution (`anchors`, in memory only). On the next tick, if the game
+//! is still alive, we add `now - anchor` to the day's bucket and move the anchor to
+//! `now`. A game that stops being alive loses its anchor, and its final tail, at
+//! most one poll interval, is not counted, which is a bounded error and irrelevant
+//! at the scale of hours. The step is capped (`max_step_secs`) so a suspend and
+//! resume does not count hours of a sleeping machine as play time.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -22,29 +22,30 @@ use std::sync::OnceLock;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-/// Offset local capturado una sola vez. El desktop lo siembra desde `run()`
-/// *antes* de arrancar hilos (ver `lib.rs`), porque `time`'s
-/// `current_local_offset` se niega a leer el entorno en un proceso ya
-/// multi-hilo. Si nadie lo siembra (CLI headless), caemos a UTC — el recap es
-/// una función de escritorio, así que el CLI no pierde nada visible.
+/// The local offset, captured once. The desktop seeds it from `run()` before
+/// starting any threads (see `lib.rs`), because `time`'s `current_local_offset`
+/// refuses to read the environment in an already multi-threaded process. If
+/// nobody seeds it (the headless CLI) we fall back to UTC; the recap is a desktop
+/// feature, so the CLI loses nothing visible.
 static LOCAL_OFFSET: OnceLock<time::UtcOffset> = OnceLock::new();
 
-/// Siembra el offset local. Idempotente; sólo el primer valor cuenta.
+/// Seeds the local offset. Idempotent; only the first value counts.
 pub fn set_local_offset(off: time::UtcOffset) {
     let _ = LOCAL_OFFSET.set(off);
 }
 
 fn local_offset() -> time::UtcOffset {
-    // Sin sembrar (CLI headless, o el desktop no llamó a `set_local_offset`)
-    // caemos a UTC. No usamos `current_local_offset` aquí: requiere la feature
-    // `local-offset` de `time` y, además, falla en un proceso multi-hilo — por
-    // eso el desktop captura el offset pre-hilos y lo siembra.
+    // Unseeded (the headless CLI, or a desktop that did not call
+    // `set_local_offset`) we fall back to UTC. `current_local_offset` is not used
+    // here: it needs `time`'s `local-offset` feature and, on top of that, fails in
+    // a multi-threaded process, which is why the desktop captures the offset
+    // before its threads and seeds it.
     *LOCAL_OFFSET.get_or_init(|| time::UtcOffset::UTC)
 }
 
-/// Clave de día local `YYYY-MM-DD` para un instante en epoch-ms. Usa el mismo
-/// reloj local que la UI (misma máquina), así las cubetas casan con el binning
-/// por día del heatmap.
+/// The `YYYY-MM-DD` local day key for an epoch-ms instant. It uses the same local
+/// clock as the UI (same machine), so the buckets line up with the heatmap's
+/// per-day binning.
 fn local_day_key(now_ms: u64) -> String {
     let secs = (now_ms / 1000) as i64;
     let dt = time::OffsetDateTime::from_unix_timestamp(secs)
@@ -65,16 +66,16 @@ fn now_ms() -> u64 {
 /// Cubetas de tiempo jugado persistidas en disco, más anclas en memoria.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PlaytimeStore {
-    /// Día local `YYYY-MM-DD` → segundos jugados ese día (todos los juegos).
+    /// Local day `YYYY-MM-DD` to seconds played that day, across all games.
     #[serde(default)]
     days: BTreeMap<String, u64>,
     /// `game_slug` → segundos jugados acumulados (histórico).
     #[serde(default)]
     by_game: BTreeMap<String, u64>,
-    /// Desglose cruzado día → (`game_slug` → segundos) — qué se jugó cada día y
-    /// a qué. Campo nuevo: sólo se rellena de aquí en adelante, así que para
-    /// días viejos la suma de sus juegos puede ser < `days[día]` (ver
-    /// [`Self::upload_rows`], que añade una fila remanente para cuadrar).
+    /// The cross breakdown of day to (`game_slug` to seconds): what was played
+    /// each day, and at what. A newer field, only filled in from here on, so for
+    /// older days the sum of its games can be less than `days[day]` (see
+    /// [`Self::upload_rows`], which adds a remainder row to balance it).
     #[serde(default)]
     daily_by_game: BTreeMap<String, BTreeMap<String, u64>>,
     /// Segundos jugados acumulados (histórico).
@@ -89,36 +90,36 @@ pub struct PlaytimeStore {
     #[serde(skip)]
     last_flush_ms: u64,
 
-    /// Sólo memoria: este store **se leyó de un fichero que existía**.
+    /// In memory only: this store was read from a file that existed.
     ///
-    /// Distingue "este equipo no ha jugado a nada" de "este equipo no sabe lo
-    /// que ha jugado". Parecen lo mismo —los dos son un store vacío— y no lo
-    /// son: el segundo pasa cuando el fichero no está, y entonces las horas
-    /// están en otro sitio (o ya no están), no es que sean cero.
+    /// It tells "this machine has played nothing" from "this machine does not know
+    /// what it has played". They look the same, both being an empty store, and
+    /// they are not: the second happens when the file is missing, and then the
+    /// hours are somewhere else, or gone, rather than being zero.
     ///
-    /// La diferencia importa porque el servidor **reemplaza** las filas de este
-    /// dispositivo con lo que le mandemos. Subir un vacío sin saber si es un
-    /// vacío de verdad es cómo se pierde un historial: ver
-    /// [`Self::is_authoritative`].
+    /// The difference matters because the server replaces this device's rows with
+    /// whatever we send. Uploading an empty one without knowing whether it is
+    /// genuinely empty is how a history gets lost: see [`Self::is_authoritative`].
     #[serde(skip)]
     from_disk: bool,
 }
 
-/// Forma serializable que el comando `list_playtime` devuelve a la UI.
+/// The serialisable shape the `list_playtime` command returns to the UI.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PlaytimeSummary {
     pub days: BTreeMap<String, u64>,
     pub by_game: BTreeMap<String, u64>,
-    /// Desglose cruzado día → (`game_slug` → segundos): qué se jugó cada día y
-    /// cuánto. Alimenta el detalle por día del recap (clic en un cuadro).
+    /// The cross breakdown of day to (`game_slug` to seconds): what was played
+    /// each day and for how long. Feeds the recap's per-day detail (a click on a
+    /// square).
     #[serde(default)]
     pub daily_by_game: BTreeMap<String, BTreeMap<String, u64>>,
     pub total_secs: u64,
 }
 
-/// Una fila atómica de tiempo jugado para subir al cloud: "este día, a este
-/// juego, tantos segundos". El servidor las upserta por
-/// `(user_id, device_fp, day, game_slug)`. El recap lee el agregado de vuelta.
+/// One atomic row of play time to upload to the cloud: "this day, this game, this
+/// many seconds". The server upserts them by `(user_id, device_fp, day,
+/// game_slug)`. The recap reads the aggregate back.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaytimeRow {
     pub day: String,
@@ -127,43 +128,43 @@ pub struct PlaytimeRow {
 }
 
 impl PlaytimeStore {
-    /// Ruta del store para el contexto de sincronización activo (la cuenta
-    /// logueada / servidor self-hosted). Cada cuenta tiene su propio histórico,
-    /// igual que los `saves` viven en `contexts/<id>.json`: así el recap de una
-    /// cuenta no muestra —ni sube— las horas de otra en la misma máquina.
+    /// The store's path for the active sync context (the signed-in account or
+    /// self-hosted server). Each account has its own history, just as the `saves`
+    /// live in `contexts/<id>.json`, so one account's recap does not show, or
+    /// upload, another's hours on the same machine.
     pub fn default_path() -> Result<PathBuf> {
         Self::path_for_context(&crate::state::current_context_id())
     }
 
-    /// Ruta del store para un contexto concreto: `playtime/<ctx>.json`.
+    /// The store's path for a given context: `playtime/<ctx>.json`.
     pub fn path_for_context(ctx: &str) -> Result<PathBuf> {
         Ok(crate::config::CliConfig::state_dir()?
             .join("playtime")
             .join(format!("{ctx}.json")))
     }
 
-    /// Ruta del fichero monolítico pre-partición (una sola historia global de
-    /// la máquina). Sólo se usa para migrarlo una vez al contexto activo.
+    /// The path of the pre-partition monolithic file (one global history for the
+    /// machine). Only used to migrate it once into the active context.
     fn legacy_path() -> Result<PathBuf> {
         Ok(crate::config::CliConfig::state_dir()?.join("playtime.json"))
     }
 
-    /// Adopta una sola vez el `playtime.json` monolítico pre-partición.
+    /// Adopts the pre-partition monolithic `playtime.json`, once.
     ///
-    /// Antes de 1.0 el histórico del recap vivía en un único fichero global de
-    /// la máquina. Cuando el estado de sync se particionó por cuenta
-    /// (`contexts/<id>.json`) el playtime se quedó fuera, así que cada cuenta
-    /// que abría el recap veía —y resubía— la misma historia de toda la
-    /// máquina. En el primer arranque tras la actualización movemos ese fichero
-    /// legacy al contexto *activo* (la cuenta logueada al arrancar, o sea la
-    /// principal del usuario): su recap sobrevive y cualquier otra cuenta parte
-    /// de un histórico vacío y sin contaminar.
+    /// Before 1.0 the recap's history lived in a single global file for the
+    /// machine. When the sync state was partitioned per account
+    /// (`contexts/<id>.json`) playtime was left out, so every account that opened
+    /// the recap saw, and re-uploaded, the whole machine's history. On the first
+    /// start after the update we move that legacy file into the *active* context
+    /// (the account signed in at boot, which is the user's main one): their recap
+    /// survives and any other account starts from an empty, uncontaminated
+    /// history.
     ///
-    /// Idempotente por `fs::rename`: cuando el legacy ya no está, la llamada no
-    /// hace nada, así que nunca puede readoptarse en otro contexto en un cambio
-    /// posterior. Si el contexto activo ya tuviera su propio fichero (no debería
-    /// en una primera actualización), el legacy se aparta como `.bak` en lugar
-    /// de pisarlo.
+    /// Idempotent through `fs::rename`: once the legacy file is gone the call does
+    /// nothing, so it can never be re-adopted into another context on a later
+    /// switch. If the active context somehow already had its own file, which it
+    /// should not on a first update, the legacy one is set aside as `.bak` rather
+    /// than overwriting it.
     pub fn migrate_legacy_into_current_context() -> Result<()> {
         let legacy = Self::legacy_path()?;
         if !legacy.exists() {
@@ -171,7 +172,7 @@ impl PlaytimeStore {
         }
         // Don't bury the history in the signed-out `default` bucket, where no
         // account would ever surface it. Wait until a real context (a cloud
-        // account or a self-hosted server) is active — the agent re-runs this
+        // account or a self-hosted server) is active; the agent re-runs this
         // after login, and the recap commands run it too.
         let ctx = crate::state::current_context_id();
         if ctx == "default" {
@@ -183,8 +184,9 @@ impl PlaytimeStore {
                 .with_context(|| format!("creating {}", parent.display()))?;
         }
         if target.exists() {
-            // El contexto activo ya tiene su propio playtime; no lo pisamos.
-            // Apartamos el legacy para que deje de adoptarse en cambios futuros.
+            // The active context already has its own playtime, so we do not
+            // overwrite it. The legacy file is set aside so it stops being adopted
+            // on future switches.
             let bak = legacy.with_extension("pre-partition.bak");
             let _ = std::fs::rename(&legacy, &bak);
             return Ok(());
@@ -194,10 +196,10 @@ impl PlaytimeStore {
         Ok(())
     }
 
-    /// Carga el store; un fichero ausente o corrupto produce uno vacío (las
-    /// horas son acumulables de nuevo, no son críticas).
+    /// Loads the store; a missing or corrupt file produces an empty one (hours
+    /// can be accumulated again, they are not critical).
     ///
-    /// Ese vacío queda marcado como **no** autoritativo — ver [`Self::from_disk`].
+    /// That empty one is marked NOT authoritative; see [`Self::from_disk`].
     pub fn load(path: &Path) -> Self {
         match std::fs::read_to_string(path) {
             Ok(text) => match serde_json::from_str::<Self>(&text) {
@@ -206,9 +208,9 @@ impl PlaytimeStore {
                     store
                 }
                 Err(e) => {
-                    // Un JSON roto no es "cero horas": es un historial que no
-                    // sabemos leer. Se sigue con un store vacío para poder
-                    // acumular, pero sin derecho a borrar nada en el servidor.
+                    // Broken JSON is not "zero hours": it is a history we cannot
+                    // read. We carry on with an empty store so time can still
+                    // accumulate, but with no right to delete anything server-side.
                     tracing::warn!(
                         error = %e,
                         path = %path.display(),
@@ -221,16 +223,15 @@ impl PlaytimeStore {
         }
     }
 
-    /// ¿Puede este store hablar por el pasado de este equipo?
+    /// Can this store speak for this machine's past?
     ///
-    /// Sólo si salió de un fichero que existía y se pudo leer. Un store recién
-    /// nacido —instalación limpia, `AppData` borrado, cuenta nueva— no sabe
-    /// nada de los días anteriores, así que el servidor **no** debe tomarse su
-    /// silencio como "esos días no existieron".
+    /// Only if it came off a file that existed and could be read. A newborn store,
+    /// from a clean install, a deleted `AppData` or a new account, knows nothing
+    /// about the earlier days, so the server must not take its silence for "those
+    /// days did not happen".
     ///
-    /// Esto es la mitad cliente del arreglo; la otra mitad está en la ruta
-    /// `/v1/playtime`, que sin esta bandera sólo borra los días que el envío
-    /// menciona.
+    /// This is the client half of the fix; the other half is in the `/v1/playtime`
+    /// route, which without this flag only deletes the days the upload mentions.
     pub fn is_authoritative(&self) -> bool {
         self.from_disk
     }
@@ -245,16 +246,16 @@ impl PlaytimeStore {
         Ok(())
     }
 
-    /// Acumula tiempo para los saves vivos este tick. `running` son pares
-    /// `(save_id, game_slug)`. `max_step_secs` capa el salto por ancla (anti
-    /// suspend/resume).
+    /// Accumulates time for the saves alive this tick. `running` are
+    /// `(save_id, game_slug)` pairs. `max_step_secs` caps the per-anchor step,
+    /// which is the suspend-and-resume guard.
     pub fn accrue(&mut self, running: &[(String, String)], now: u64, max_step_secs: u64) {
         let live: HashSet<&str> = running.iter().map(|(id, _)| id.as_str()).collect();
         for (id, slug) in running {
             let prev = self.anchors.insert(id.clone(), now);
             let Some(prev) = prev else {
-                // Primera observación: sólo ancla, sin atribuir (no sabemos
-                // cuánto llevaba vivo antes de que lo viéramos).
+                // First observation: anchor only, attribute nothing, because we do
+                // not know how long it had been alive before we saw it.
                 continue;
             };
             if now <= prev {
@@ -279,12 +280,12 @@ impl PlaytimeStore {
             self.total_secs += secs;
             self.dirty = true;
         }
-        // Olvida las anclas de juegos que ya no están vivos.
+        // Forget the anchors of games that are no longer alive.
         self.anchors.retain(|id, _| live.contains(id.as_str()));
     }
 
-    /// Persiste si hay cambios y han pasado al menos 30 s desde el último
-    /// flush — evita escribir el JSON en cada tick.
+    /// Persists when there are changes and at least 30 s have passed since the
+    /// last flush, so the JSON is not written on every tick.
     pub fn flush_if_due(&mut self, path: Option<&Path>, now: u64) {
         if !self.dirty {
             return;
@@ -295,8 +296,8 @@ impl PlaytimeStore {
         self.flush(path, now);
     }
 
-    /// Persiste ya (lo llama el agente al parar un juego, para que el recap
-    /// esté fresco nada más salir).
+    /// Persists now (the agent calls it when a game stops, so the recap is fresh
+    /// the moment you leave).
     pub fn flush(&mut self, path: Option<&Path>, now: u64) {
         if !self.dirty {
             return;
@@ -311,7 +312,7 @@ impl PlaytimeStore {
         self.last_flush_ms = now;
     }
 
-    /// Copia serializable para la UI.
+    /// A serialisable copy for the UI.
     pub fn summary(&self) -> PlaytimeSummary {
         PlaytimeSummary {
             days: self.days.clone(),
@@ -321,11 +322,12 @@ impl PlaytimeStore {
         }
     }
 
-    /// Filas `(día, juego, segundos)` para subir al cloud. Emite el desglose
-    /// real de `daily_by_game` y, por cada día, una fila remanente bajo el slug
-    /// `__other__` con `days[día] − Σ juegos` cuando es positivo: así los días
-    /// anteriores a este desglose (cuyo total vive sólo en `days`) siguen
-    /// cuadrando en el agregado del servidor sin inventar a qué juego fueron.
+    /// `(day, game, seconds)` rows to upload to the cloud. It emits the real
+    /// breakdown from `daily_by_game` and, per day, a remainder row under the
+    /// `__other__` slug carrying `days[day]` minus the sum of the games when that
+    /// is positive: that way the days from before this breakdown existed, whose
+    /// total lives only in `days`, still balance in the server's aggregate without
+    /// inventing which game they went to.
     pub fn upload_rows(&self) -> Vec<PlaytimeRow> {
         let mut rows = Vec::new();
         for (day, total) in &self.days {
@@ -388,7 +390,7 @@ mod tests {
     fn caps_implausible_jumps() {
         let mut s = store();
         s.accrue(&[("a".into(), "g".into())], 0, 40);
-        // Una hora después (máquina dormida): sólo cuenta el cap.
+        // An hour later (machine asleep): only the cap counts.
         s.accrue(&[("a".into(), "g".into())], 3_600_000, 40);
         assert_eq!(s.total_secs, 40);
     }
@@ -410,22 +412,22 @@ mod tests {
     #[test]
     fn upload_rows_split_and_remainder() {
         let mut s = store();
-        // Día con desglose real: 12 s a "g".
+        // A day with a real breakdown: 12 s on "g".
         s.accrue(&[("a".into(), "g".into())], 10_000, 60);
         s.accrue(&[("a".into(), "g".into())], 22_000, 60);
-        // Simula un día histórico sin desglose (sólo en `days`).
+        // Simulates a historical day with no breakdown (only in `days`).
         s.days.insert("2020-01-01".into(), 100);
         let rows = s.upload_rows();
         // La fila real "g".
         let g = rows.iter().find(|r| r.game_slug == "g").expect("row for g");
         assert_eq!(g.secs, 12);
-        // El día histórico se vuelca entero como remanente.
+        // The historical day is dumped whole as the remainder.
         let other = rows
             .iter()
             .find(|r| r.day == "2020-01-01" && r.game_slug == "__other__")
             .expect("remainder row");
         assert_eq!(other.secs, 100);
-        // El día con desglose completo no genera remanente.
+        // A day with a complete breakdown produces no remainder.
         assert!(
             !rows
                 .iter()

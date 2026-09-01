@@ -63,34 +63,34 @@ pub enum SaveCommand {
     /// Pause automatic tracking for a save (the sync service stops watching it
     /// right away). Local-only; no server needed.
     Pause {
-        /// Save id (UUID) — see `hoard saves`
+        /// Save id (UUID), see `hoard saves`
         id: String,
     },
     /// Resume automatic tracking for a paused save. Local-only.
     Resume {
-        /// Save id (UUID) — see `hoard saves`
+        /// Save id (UUID), see `hoard saves`
         id: String,
     },
     /// Pin (or clear) the sync preset for a save. Omit `--preset` to clear back
     /// to the global defaults. Local-only.
     Preset {
-        /// Save id (UUID) — see `hoard saves`
+        /// Save id (UUID), see `hoard saves`
         id: String,
         /// Preset id (see `hoard save preset --help`); omit to clear the override.
         #[arg(long)]
         preset: Option<String>,
     },
     /// Stop watching a save on THIS machine. The cloud copy and its whole
-    /// version history stay untouched — this is not `delete`. Re-add it later
-    /// from the Library or with `hoard track`. Local-only.
+    /// version history stay untouched; this is not `delete`. Re-add it later from
+    /// the Library or with `hoard track`. Local-only.
     Untrack {
-        /// Save id (UUID) — see `hoard saves`
+        /// Save id (UUID), see `hoard saves`
         id: String,
     },
     /// Change the local save folder for a save (moved install, new drive). The
     /// folder is created if missing. Local-only.
     Path {
-        /// Save id (UUID) — see `hoard saves`
+        /// Save id (UUID), see `hoard saves`
         id: String,
         /// New save folder on this machine
         path: String,
@@ -98,13 +98,13 @@ pub enum SaveCommand {
 }
 
 pub async fn run(cmd: SaveCommand) -> Result<()> {
-    // Local-only commands mutate `state.json` and need no server session (a
-    // Cloud user has no self-host token). Handle them before building a client.
+    // Local-only commands mutate `state.json` and need no server session (a Cloud
+    // user has no self-host token). Handle them before building a client.
     //
-    // Los cuatro cambian **qué vigila el motor**, así que desde el Slice 4c se lo
-    // dicen al servicio (`Request::Reload`) en vez de pedirle al usuario que
-    // reinicie `hoard sync` — que además ya no reiniciaría ningún motor, porque
-    // el motor dejó de vivir en este proceso.
+    // All four change *what the engine watches*, so since Slice 4c they tell the
+    // service (`Request::Reload`) instead of asking the user to restart `hoard
+    // sync`, which would no longer restart any engine anyway, because the engine
+    // stopped living in this process.
     match &cmd {
         SaveCommand::Pause { id } => {
             library::set_paused(id, true)?;

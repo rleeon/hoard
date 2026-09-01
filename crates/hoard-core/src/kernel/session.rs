@@ -1,48 +1,38 @@
-//! El veto "el usuario está en sesión" — núcleo puro de
-//! `agent::mid_session_reason`.
-//!
-//! Antes vivía en `hoard-agent/src/agent.rs`, mezclando la decisión con dos
-//! lecturas de reloj (`OffsetDateTime::now_utc()`, `SystemTime::now()`) y un
-//! `stat` de disco. Aquí la decisión es sans-IO: el shell muestrea `now` y el
-//! mtime de la carpeta y los pasa como dato ([`World`] / [`Observation`]); esta
-//! función sólo decide. El shell (`agent.rs`) conserva un wrapper fino con la
-//! firma original para no tocar `run_agent`.
+//! The "user is mid-session" veto. The shell samples `now` and the folder mtime
+//! and passes them in as data ([`World`] / [`Observation`]); this decides.
 
 use time::{Duration, OffsetDateTime};
 
 use super::{Action, Decision, Observation, State, World};
 
-/// Ventana de gracia del heurístico "save tocado hace poco". Cinco minutos,
-/// igual que la aceptación de la ADR 0014: mientras se juega, el poll de
-/// procesos normalmente marca el slot `is_running`; esto cubre el caso en que
-/// el slot no casa con ningún proceso del catálogo.
+/// Grace window for the "save was touched recently" heuristic. Five minutes, as
+/// accepted in ADR 0014: while someone is playing, the process poll usually
+/// marks the slot `is_running` anyway, so this covers the slot that matches no
+/// process in the catalogue.
 pub const RECENT_SAVE_GRACE_SECS: i64 = 5 * 60;
 
-/// La misma ventana como [`Duration`], para la comparación de precisión
-/// completa del mtime de la carpeta (réplica exacta de `is_path_recently_touched`).
+/// The same window as a [`Duration`], for the full-precision folder mtime
+/// comparison.
 const RECENT_SAVE_GRACE: Duration = Duration::seconds(RECENT_SAVE_GRACE_SECS);
 
-/// ¿Está el usuario "en mitad de una sesión", de modo que un pull podría
-/// pisar progreso que el backup aún no ha capturado?
+/// Is the user mid-session, such that a pull could walk over progress the backup
+/// has not captured yet?
 ///
-/// Devuelve [`Decision::Hold`] con el primer guard que salta (el motivo
-/// exacto que el motor ya logueaba) o [`Decision::Act`]`(`[`Action::Pull`]`)`
-/// cuando el slot está tranquilo y el pull puede proceder.
+/// Guards fire in order:
+///  1. `is_running`, the game is running right now.
+///  2. `save_files_locked`, a save file is held open elsewhere.
+///  3. `has_pending`, unversioned local changes.
+///  4. a recent `last_fs_event_at`, the watcher saw a write (inotify catches
+///     in-place rewrites that never move the directory mtime).
+///  5. a recent folder mtime, the fallback for the startup window before the
+///     agent has any fs history.
 ///
-/// Los guards, en orden (idéntico al original):
-///  1. `is_running` — el juego corre ahora mismo.
-///  2. `has_pending` — cambios locales sin versionar.
-///  3. `last_fs_event_at` reciente — el watcher vio una escritura (inotify caza
-///     reescrituras in-place que no mueven el mtime del directorio).
-///  4. mtime de la carpeta reciente — fallback para la ventana de arranque,
-///     antes de que el agente tenga historial fs.
-///
-/// El guard "toque nuestro" (`last_restore_at` reciente) suprime 3 y 4: nuestra
-/// propia auto-restauración toca la carpeta y emite eventos fs; sin esto un
-/// restore vetaría el SIGUIENTE pull durante toda la ventana de gracia,
-/// estrangulando saves cross-device a uno por ventana (bug jul-2026: v101
-/// restaurado, v102 bloqueado ~5 min). Los guards de sesión viva (1 y 2) no se
-/// suprimen: `is_running`/`has_pending` significan progreso real en riesgo.
+/// A recent `last_restore_at` suppresses 4 and 5: our own auto-restore touches
+/// the folder and emits fs events, and without that suppression a restore would
+/// veto the *next* pull for the whole grace window, throttling cross-device
+/// saves to one per window (v101 restored, v102 blocked for five minutes). The
+/// live-session guards are never suppressed, because `is_running` and
+/// `has_pending` mean real progress is at stake.
 pub fn mid_session_decision(state: &State, obs: &Observation, world: &World) -> Decision {
     if let Some(reason) = veto_reason(state, obs, world) {
         Decision::Hold { reason }
@@ -51,17 +41,17 @@ pub fn mid_session_decision(state: &State, obs: &Observation, world: &World) -> 
     }
 }
 
-/// Núcleo del veto: el primer guard que salta, o `None` si el slot está quieto.
-/// Separado para que el wrapper de `agent.rs` pueda seguir devolviendo
-/// `Option<&'static str>` sin remapear la decisión.
+/// The first guard that fires, or `None` when the slot is quiet. Split out so
+/// the wrapper in `agent.rs` can keep returning `Option<&'static str>` without
+/// remapping the decision.
 pub fn veto_reason(state: &State, obs: &Observation, world: &World) -> Option<&'static str> {
     if state.is_running {
         return Some("game process is running");
     }
-    // Un fichero del save abierto en exclusiva es "el juego está escribiendo",
-    // afirmado por el sistema de ficheros y no por reconocer un proceso. Va
-    // justo detrás de `is_running` porque significa lo mismo, y cubre el caso
-    // que `is_running` no ve: el juego cuyo ejecutable no casa con nada.
+    // A save file held open exclusively means "the game is writing", asserted by
+    // the filesystem rather than by recognising a process. It sits right behind
+    // `is_running` because it means the same thing, and it covers what
+    // `is_running` cannot see: the game whose executable matches nothing.
     if obs.save_files_locked {
         return Some("save files are open in another process");
     }
@@ -85,10 +75,9 @@ pub fn veto_reason(state: &State, obs: &Observation, world: &World) -> Option<&'
     None
 }
 
-/// Réplica sans-IO de `is_path_recently_touched`: el mtime cuenta como
-/// "reciente" sólo si no está en el futuro (`mtime <= now`, igual que
-/// `SystemTime::duration_since` devolviendo `Ok`) y su antigüedad cabe en la
-/// ventana de gracia, con precisión completa.
+/// An mtime counts as recent only if it is not in the future (`mtime <= now`,
+/// matching `SystemTime::duration_since` returning `Ok`) and its age fits inside
+/// the grace window at full precision.
 fn folder_touched_recently(folder_mtime: Option<OffsetDateTime>, now: OffsetDateTime) -> bool {
     match folder_mtime {
         Some(mtime) => {
@@ -104,13 +93,11 @@ mod tests {
     use super::*;
 
     fn quiet() -> State {
-        // Todos los campos de sesión en su default (los que crecieron en el
-        // Slice 2 no los mira el veto); `State::default()` es exactamente eso.
         State::default()
     }
 
-    /// Carpeta envejecida (mtime muy viejo) → el fallback de disco no salta por
-    /// sí solo, para aislar los otros guards.
+    /// An aged folder, so the disk fallback does not fire on its own and the
+    /// other guards can be tested in isolation.
     fn aged_folder(now: OffsetDateTime) -> Observation {
         Observation {
             folder_mtime: Some(now - Duration::hours(1)),
@@ -124,11 +111,9 @@ mod tests {
         World { now, seed: 0 }
     }
 
-    /// El guard compartido por el sweep, el force-restore y la barrera de
-    /// lanzamiento (regresión data-loss REPO, 2026-07-05): cualquier señal de
-    /// sesión viva veta un pull; un slot genuinamente tranquilo, no.
-    /// (Movido de `agent::tests::mid_session_reason_flags_live_session_signals`,
-    /// ahora determinista: `now` inyectado en vez de leído del reloj.)
+    /// The guard shared by the sweep, the forced restore and the launch barrier,
+    /// after the 2026-07-05 data-loss regression: any sign of a live session
+    /// vetoes a pull, and a genuinely quiet slot does not.
     #[test]
     fn flags_live_session_signals() {
         let w = world(NOW);
@@ -172,12 +157,9 @@ mod tests {
         );
     }
 
-    /// Movido de `agent::tests::mid_session_reason_ignores_own_restore_touch`.
-    /// El toque de nuestra propia restauración no debe vetar el siguiente pull.
     #[test]
     fn ignores_own_restore_touch() {
         let w = world(NOW);
-        // Carpeta recién tocada (mtime = now) → por defecto veta.
         let fresh = Observation {
             folder_mtime: Some(NOW),
             ..Default::default()
@@ -188,21 +170,19 @@ mod tests {
             Some("save folder touched recently"),
             "a just-touched folder vetoes by default"
         );
-        // Un restore reciente: el toque es nuestro, no veta.
         state.last_restore_at = Some(NOW);
         assert_eq!(
             veto_reason(&state, &fresh, &w),
             None,
             "our own recent restore must not veto the next pull"
         );
-        // Un cambio pendiente real gana igual (se comprueba antes del gate).
+        // A real pending change still wins; it is checked before the gate.
         state.has_pending = true;
         assert_eq!(
             veto_reason(&state, &fresh, &w),
             Some("un-flushed local changes pending"),
         );
         state.has_pending = false;
-        // Un sello de restore viejo ya no tapa el veto del toque.
         state.last_restore_at = Some(NOW - Duration::hours(1));
         assert_eq!(
             veto_reason(&state, &fresh, &w),
@@ -211,7 +191,6 @@ mod tests {
         );
     }
 
-    /// Movido de `agent::tests::mid_session_reason_falls_back_to_disk_mtime`.
     #[test]
     fn falls_back_to_disk_mtime() {
         let w = world(NOW);
@@ -227,15 +206,13 @@ mod tests {
         ));
     }
 
-    // ---- Corpus D.4 (escenarios deterministas fijos) --------------------
+    // ---- D.4 corpus
 
-    /// D.4 — «restore que se auto-vetaba 5 min». El bug real: un restore marca
-    /// `last_restore_at`; el mtime de la carpeta queda fresco por ese mismo
-    /// restore; sin el guard "toque nuestro" el pull siguiente se vetaba a sí
-    /// mismo durante toda la ventana (v101 restaurado, v102 bloqueado ~5 min).
-    /// Invariante: dentro de la ventana el toque propio NO veta; justo al
-    /// cruzar la ventana (`now` es un delta que cruza el deadline) el sello
-    /// caduca y el fallback de disco vuelve a vetar.
+    /// The restore that vetoed itself for five minutes: a restore stamps
+    /// `last_restore_at` and leaves the folder mtime fresh, and without the
+    /// "our own touch" guard the next pull vetoed itself for the whole window.
+    /// Inside the window the touch must not veto; one second past it the stamp
+    /// expires and the disk fallback vetoes again.
     #[test]
     fn d4_restore_does_not_self_veto_within_grace() {
         let restore_at = OffsetDateTime::UNIX_EPOCH;
@@ -243,25 +220,22 @@ mod tests {
             last_restore_at: Some(restore_at),
             ..quiet()
         };
-        // La carpeta quedó tocada por el propio restore (mtime ~= restore_at).
         let obs = Observation {
             folder_mtime: Some(restore_at),
             ..Default::default()
         };
 
-        // Un pull 30 s después del restore: el toque es nuestro → NO veta.
         let w = world(restore_at + Duration::seconds(30));
         assert_eq!(
             mid_session_decision(&state, &obs, &w),
             Decision::Act(Action::Pull),
-            "el restore no debe auto-vetar el siguiente pull dentro de la ventana",
+            "a restore must not self-veto the next pull inside the window",
         );
 
-        // Time-travel al otro lado del deadline (5 min + 1 s): el sello de
-        // restore caduca. `now` cruzando el deadline ES un delta que justifica
-        // reevaluar (ADR C.2). Con el sello ya viejo, una escritura REAL
-        // fresca (mtime = now) vuelve a vetar, como debe: el guard "toque
-        // nuestro" sólo cubre la ventana, no tapa para siempre.
+        // Past the deadline the restore stamp expires. `now` crossing a deadline
+        // is itself a delta worth re-evaluating (ADR C.2), and with the stamp
+        // stale a genuinely fresh write vetoes again, as it should: the guard
+        // covers the window, it does not paper over the folder forever.
         let later = restore_at + Duration::seconds(RECENT_SAVE_GRACE_SECS + 1);
         let w_later = world(later);
         let obs_fresh = Observation {
@@ -273,13 +247,12 @@ mod tests {
             Decision::Hold {
                 reason: "save folder touched recently"
             },
-            "pasada la ventana un toque real vuelve a vetar (el sello no tapa para siempre)",
+            "past the window a real touch vetoes again",
         );
     }
 
-    /// D.4 — `Hold` con el motivo correcto. Los guards de sesión viva ganan a
-    /// los de recencia y cada uno reporta su propio motivo, para que el veto
-    /// aparezca en el log con la causa (ADR C.5).
+    /// Live-session guards beat the recency ones, and each reports its own
+    /// reason so the veto shows up in the log with a cause (ADR C.5).
     #[test]
     fn d4_hold_carries_the_right_reason() {
         let w = world(NOW);
@@ -311,9 +284,8 @@ mod tests {
         );
     }
 
-    /// D.4 — un mtime en el futuro (skew de reloj / share de red) no debe
-    /// contar como "tocado hace poco": réplica del `Err` de
-    /// `SystemTime::duration_since`, que devolvía `false`.
+    /// Clock skew on a network share can put the mtime in the future, and that
+    /// is not evidence of a recent write.
     #[test]
     fn d4_future_folder_mtime_does_not_veto() {
         let w = world(NOW);
@@ -324,13 +296,13 @@ mod tests {
         assert_eq!(
             mid_session_decision(&quiet(), &future, &w),
             Decision::Act(Action::Pull),
-            "un mtime en el futuro no es evidencia de escritura reciente",
+            "a future mtime is not evidence of a recent write",
         );
     }
 
-    /// Un fichero del save abierto en exclusiva veta el pull aunque NINGÚN
-    /// otro guard salte: es el caso que los demás no ven — el juego cuyo
-    /// ejecutable no casa con nada, guardando la partida ahora mismo.
+    /// A locked save file vetoes on its own, with no other guard firing. That is
+    /// the case the others miss: the game whose executable matches nothing,
+    /// saving right now.
     #[test]
     fn a_locked_save_file_vetoes_the_pull_on_its_own() {
         let w = world(NOW);
@@ -344,7 +316,6 @@ mod tests {
                 reason: "save files are open in another process"
             },
         );
-        // Y sin bloqueo, el mismo slot es perfectamente pulleable.
         assert_eq!(
             mid_session_decision(&quiet(), &aged_folder(NOW), &w),
             Decision::Act(Action::Pull),

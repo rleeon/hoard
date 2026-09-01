@@ -1,24 +1,26 @@
-//! Empuje Cloud de baja latencia para el motor headless (`hoard daemon`) — lo
-//! mismo que la app de escritorio consigue con `cloud_pull` + `cloud_realtime`,
-//! pero sin Tauri y operando directo sobre el [`AgentHandle`].
+//! Low-latency Cloud push for the headless engine (`hoard daemon`): the same
+//! thing the desktop app gets from `cloud_pull` plus `cloud_realtime`, but with no
+//! Tauri and operating directly on the [`AgentHandle`].
 //!
-//! Dos mitades que se complementan:
-//! - **Realtime** (`realtime_loop`): un WebSocket a Supabase Realtime suscrito a
-//!   la tabla `saves` (RLS acota a tu usuario). En cuanto otro dispositivo hace
-//!   commit, la transacción sube `saves.latest_version_num` y Supabase empuja un
-//!   `UPDATE`; lo convertimos en un pull inmediato (~1s en vez de esperar al
-//!   poll). El servidor Hoard ni se entera: el mensajero es Supabase.
-//! - **Poll de respaldo** (`poll_loop`): pega a `/v1/cloud/sync` cada
-//!   `poll_interval` por si el socket se cae o el push se pierde. El manifest
-//!   va excluido de la cuota de banda, así que es gratis en dinero y bytes.
+//! Two halves that complement each other:
+//! - Realtime (`realtime_loop`): a WebSocket to Supabase Realtime subscribed to
+//!   the `saves` table (RLS scopes it to your user). As soon as another device
+//!   commits, the transaction raises `saves.latest_version_num` and Supabase
+//!   pushes an `UPDATE`; we turn that into an immediate pull, around a second
+//!   instead of waiting for the poll. The Hoard server never hears about it: the
+//!   messenger is Supabase.
+//! - The backup poll (`poll_loop`): it hits `/v1/cloud/sync` every
+//!   `poll_interval` in case the socket drops or a push is lost. The manifest is
+//!   excluded from the bandwidth quota, so it is free in both money and bytes.
 //!
-//! Ambas desembocan en lo mismo: se alimenta la caché de versiones del agente
-//! (`set_cloud_versions`) y, con sync global, se pide `force_restore` de los
-//! saves que avanzaron en el servidor. El version-gate y los vetos mid-session
-//! viven dentro del agente, así que pedir de más nunca pisa datos.
+//! Both end in the same place: the agent's version cache is fed
+//! (`set_cloud_versions`) and, with global sync on, a `force_restore` is asked for
+//! the saves that moved forward on the server. The version gate and the
+//! mid-session vetoes live inside the agent, so asking for too much never walks
+//! over data.
 //!
-//! Todo es best-effort: si el socket falla se reconecta con backoff, y si el
-//! poll falla se reintenta al siguiente tick. El daemon nunca se cae por esto.
+//! All best-effort: a failing socket reconnects with backoff and a failing poll
+//! retries on the next tick. The daemon never dies over this.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -38,37 +40,37 @@ use crate::cloud_auth;
 /// latido en el topic `phoenix`.
 const HEARTBEAT_SECS: u64 = 25;
 
-/// Vida máxima de una conexión. El JWT de Supabase dura ~1h; reciclamos el
-/// socket bien dentro de esa ventana para reconectar con un token fresco de
-/// disco en vez de rastrear su expiración exacta.
+/// A connection's maximum life. A Supabase JWT lasts about an hour; we recycle
+/// the socket well inside that window so it reconnects with a fresh token off
+/// disk rather than tracking its exact expiry.
 const CONNECTION_MAX_SECS: u64 = 45 * 60;
 
-/// Límites del backoff de reconexión.
+/// Bounds on the reconnection backoff.
 const BACKOFF_MIN_SECS: u64 = 2;
 const BACKOFF_MAX_SECS: u64 = 60;
 
-/// Cadencia del modo aparcado: sin sesión utilizable, el realtime solo relee el
-/// fichero de sesión esperando un login nuevo. Espeja el recheck del refresher
-/// periódico del daemon (session.rs::RELOGIN_RECHECK_EVERY) — mismo evento, no
-/// tiene sentido enterarse a ritmos distintos.
+/// The parked mode's cadence: with no usable session, realtime only re-reads the
+/// session file waiting for a fresh login. It mirrors the daemon's periodic
+/// refresher recheck (session.rs::RELOGIN_RECHECK_EVERY), since it is the same
+/// event and there is no sense in learning about it at two different rates.
 const RELOGIN_RECHECK_SECS: u64 = 5 * 60;
 
-/// Ajustes del empuje Cloud.
+/// Settings for the Cloud push.
 pub struct Config {
-    /// Periodo del poll de respaldo a `/v1/cloud/sync`.
+    /// Period of the backup poll to `/v1/cloud/sync`.
     pub poll_interval: Duration,
-    /// Sync global: cuando un save avanza en el servidor, forzar su restore ya
-    /// (no solo alimentar la caché de versiones). Espejo de `Prefs::global_sync`.
+    /// Global sync: when a save moves forward on the server, force its restore now
+    /// rather than only feeding the version cache. Mirrors `Prefs::global_sync`.
     pub global_sync: bool,
 }
 
-/// Arranca poll + realtime y devuelve sus tasks. El daemon las guarda para que
-/// vivan tanto como él; abortan solo si se las aborta explícitamente (o al morir
-/// el proceso).
+/// Starts the poll and realtime loops and returns their tasks. The daemon keeps
+/// them so they live as long as it does; they only stop if explicitly aborted, or
+/// when the process dies.
 pub fn spawn(client: ApiClient, handle: AgentHandle, cfg: Config) -> Vec<JoinHandle<()>> {
-    // Canal de "kick" de capacidad 1: un push del realtime pide un pull fuera de
-    // cadencia. Si ya hay uno pendiente, el `try_send` lo descarta → una ráfaga
-    // de cambios colapsa en un solo pull extra.
+    // A "kick" channel of capacity 1: a realtime push asks for a pull off cadence.
+    // With one already pending, the `try_send` drops it, so a burst of changes
+    // collapses into a single extra pull.
     let (kick_tx, kick_rx) = mpsc::channel::<()>(1);
 
     let poll = tokio::spawn(poll_loop(client, handle, cfg, kick_rx));
@@ -76,9 +78,9 @@ pub fn spawn(client: ApiClient, handle: AgentHandle, cfg: Config) -> Vec<JoinHan
     vec![poll, realtime]
 }
 
-/// Poll de respaldo + consumidor de kicks. Corre un pull en cada tick del timer
-/// y en cada empujón del realtime, serializados por el `select!` (nunca dos a la
-/// vez). Mantiene el mapa `save_id → version_num` visto para detectar avances.
+/// The backup poll plus the kick consumer. It runs a pull on every timer tick and
+/// on every realtime nudge, serialised by the `select!` so never two at once. It
+/// keeps the `save_id` to `version_num` map it has seen, to spot advances.
 async fn poll_loop(
     client: ApiClient,
     handle: AgentHandle,
@@ -91,13 +93,13 @@ async fn poll_loop(
         "cloud-live: empuje Cloud arrancado"
     );
 
-    // El mapa vive en memoria: una sesión nueva parte de cero y la primera
-    // pasada solo fija la línea base (nada cuenta como "avanzado"), igual que el
-    // desktop, para no forzar restores masivos justo al arrancar.
+    // The map lives in memory: a new session starts from nothing and the first
+    // pass only sets the baseline, with nothing counting as "advanced", the same
+    // as the desktop, so no mass restore is forced right at startup.
     let mut seen: HashMap<String, i64> = HashMap::new();
 
-    // El primer tick de `interval` es inmediato: sembramos la línea base nada
-    // más arrancar. `Skip` evita ráfagas si el sistema se congela un rato.
+    // `interval`'s first tick is immediate, so the baseline is seeded on start.
+    // `Skip` avoids bursts if the system freezes for a while.
     let mut ticker = interval(cfg.poll_interval);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
@@ -106,7 +108,7 @@ async fn poll_loop(
             _ = ticker.tick() => {}
             k = kick_rx.recv() => {
                 if k.is_none() {
-                    // El emisor murió (no debería mientras corre el realtime).
+                    // The sender died (which should not happen while realtime runs).
                     return;
                 }
             }
@@ -118,8 +120,8 @@ async fn poll_loop(
     }
 }
 
-/// Un pull del manifest: alimenta la caché de versiones del agente y, con sync
-/// global, fuerza el restore de los saves que avanzaron desde la última pasada.
+/// One manifest pull: it feeds the agent's version cache and, with global sync,
+/// forces the restore of the saves that advanced since the last pass.
 async fn run_pull(
     client: &ApiClient,
     handle: &AgentHandle,
@@ -129,9 +131,9 @@ async fn run_pull(
     let manifest = match client.cloud_sync().await {
         Ok(m) => m,
         Err(e) => {
-            // Un 401 transitorio (token en el filo) o un corte de red se
-            // recupera solo en el siguiente tick; el refresco periódico del
-            // daemon mantiene el token del cliente al día.
+            // A transient 401 (a token on the edge) or a network drop recovers on
+            // its own next tick; the daemon's periodic refresh keeps the client's
+            // token current.
             tracing::debug!(error = %format!("{e:#}"), "cloud-live: pull falló");
             return;
         }
@@ -157,8 +159,8 @@ async fn run_pull(
             ),
             e.save_id.clone(),
         );
-        // Solo cuenta como avance si ya teníamos una versión previa y subió.
-        // Los que vemos por primera vez (`None`) solo fijan línea base.
+        // It only counts as an advance when we already had a previous version and
+        // it went up. The ones seen for the first time (`None`) only set a baseline.
         if let Some(prev) = seen.get(&e.save_id) {
             if e.latest_version_num > *prev {
                 advanced.push(e.save_id.clone());
@@ -167,15 +169,16 @@ async fn run_pull(
     }
     *seen = latest.clone();
 
-    // Alimenta la caché de versiones del agente en cada pasada (no solo en
-    // deltas) para que el sweep de reconciliación gatee por versión sin re-pedir
-    // el manifest por cada save.
+    // Feed the agent's version cache on every pass rather than only on deltas, so
+    // the reconciliation sweep can gate by version without re-fetching the
+    // manifest for each save.
     if let Err(e) = handle.set_cloud_versions(latest, aliases).await {
         tracing::warn!(error = %format!("{e:#}"), "cloud-live: no pude alimentar la caché de versiones");
     }
 
-    // Sync global: pide el pull inmediato de lo que avanzó. El agente gatea por
-    // versión y respeta los vetos mid-session, así que esto nunca pisa datos.
+    // Global sync: ask for the immediate pull of whatever advanced. The agent
+    // gates by version and honours the mid-session vetoes, so this never walks
+    // over data.
     if global_sync {
         for id in advanced {
             if let Err(e) = handle.force_restore(id).await {
@@ -185,28 +188,28 @@ async fn run_pull(
     }
 }
 
-/// Bucle externo de reconexión del WebSocket. Nunca termina por sí solo: si la
-/// sesión Cloud desaparece o GoTrue revoca la familia de tokens, en vez de
-/// morir se aparca vigilando el fichero de sesión (sin red) hasta que un
-/// `hoard login` — aquí o en el desktop, comparten fichero — deje una sesión
-/// nueva, y entonces reconecta. Antes retornaba: el refresher periódico sí
-/// readoptaba el re-login (Expired→Normal) pero el realtime ya no existía, y
-/// el daemon se quedaba en latencia de poll (≤60s) hasta reiniciarlo.
+/// The WebSocket's outer reconnection loop. It never ends on its own: if the
+/// Cloud session disappears or GoTrue revokes the token family, instead of dying
+/// it parks watching the session file, with no network, until a `hoard login`
+/// (here or on the desktop, which share the file) leaves a new session, and then
+/// it reconnects. It used to return: the periodic refresher did re-adopt the
+/// re-login (Expired to Normal) but realtime no longer existed, and the daemon was
+/// left at poll latency (up to 60 s) until somebody restarted it.
 async fn realtime_loop(kick_tx: mpsc::Sender<()>) {
     let mut backoff = BACKOFF_MIN_SECS;
     loop {
         match connect_once(&kick_tx).await {
             Ok(true) => {
-                // Fin de ciclo limpio (tope de vida): reconecta ya con el token
-                // fresco que ha quedado en disco.
+                // A clean end of cycle (the life cap): reconnect now with the
+                // fresh token left on disk.
                 backoff = BACKOFF_MIN_SECS;
             }
             Ok(false) => {
-                // Sin sesión utilizable (ausente o revocada). Vigila el disco
-                // sin tocar red: replayar un token revocado cada pocos minutos
-                // contra GoTrue es justo el ruido que se le quitó al refresher.
+                // No usable session (absent or revoked). Watch the disk without
+                // touching the network: replaying a revoked token against GoTrue
+                // every few minutes is exactly the noise the refresher shed.
                 let dead = cloud_auth::load_session().ok().flatten().map(|s| s.refresh);
-                tracing::info!("cloud-live: realtime en pausa — esperando un login nuevo");
+                tracing::info!("cloud-live: realtime parked, waiting for a fresh login");
                 loop {
                     sleep(Duration::from_secs(RELOGIN_RECHECK_SECS)).await;
                     let disk = cloud_auth::load_session().ok().flatten();
@@ -214,7 +217,7 @@ async fn realtime_loop(kick_tx: mpsc::Sender<()>) {
                         break;
                     }
                 }
-                tracing::info!("cloud-live: sesión nueva en disco — realtime reconecta");
+                tracing::info!("cloud-live: new session on disk, realtime reconnecting");
                 backoff = BACKOFF_MIN_SECS;
             }
             Err(e) => {
@@ -226,9 +229,9 @@ async fn realtime_loop(kick_tx: mpsc::Sender<()>) {
     }
 }
 
-/// ¿Lo que hay en disco ya no es la sesión que murió? Solo entonces merece
-/// reconectar: un refresh token distinto (o una sesión donde no había ninguna)
-/// es un login nuevo; la misma sesión muerta seguiría rebotando en el join.
+/// Is what is on disk no longer the session that died? Only then is reconnecting
+/// worth it: a different refresh token, or a session where there was none, is a
+/// fresh login; the same dead session would keep bouncing off the join.
 fn session_renewed(dead: Option<&str>, disk: Option<&cloud_auth::Session>) -> bool {
     let Some(s) = disk else { return false };
     if s.refresh.trim().is_empty() {
@@ -237,10 +240,10 @@ fn session_renewed(dead: Option<&str>, disk: Option<&cloud_auth::Session>) -> bo
     dead != Some(s.refresh.as_str())
 }
 
-/// Un ciclo de conexión: conecta, se une al canal `saves` y bombea heartbeats y
-/// cambios hasta que el socket muere o vence el tope de vida. `Ok(true)` = fin
-/// limpio (reconecta), `Ok(false)` = sin sesión utilizable, ausente o revocada
-/// (el caller se aparca a esperar un login nuevo).
+/// One connection cycle: connect, join the `saves` channel, and pump heartbeats
+/// and changes until the socket dies or the life cap expires. `Ok(true)` is a
+/// clean end (reconnect), `Ok(false)` is no usable session, absent or revoked (the
+/// caller parks to wait for a new login).
 async fn connect_once(kick_tx: &mpsc::Sender<()>) -> anyhow::Result<bool> {
     let sess = match cloud_auth::load_session()? {
         Some(s) => s,
@@ -261,8 +264,9 @@ async fn connect_once(kick_tx: &mpsc::Sender<()>) -> anyhow::Result<bool> {
     let (ws, _resp) = tokio_tungstenite::connect_async(&url).await?;
     let (mut write, mut read) = ws.split();
 
-    // Únete al canal suscribiendo UPDATE/INSERT de public.saves. La RLS del token
-    // garantiza que solo llegan filas propias — sin filtro de user_id en cliente.
+    // Join the channel subscribing to UPDATE and INSERT on public.saves. The
+    // token's RLS guarantees only our own rows arrive, with no client-side
+    // user_id filter.
     let join = json!({
         "topic": "realtime:hoard",
         "event": "phx_join",
@@ -290,7 +294,7 @@ async fn connect_once(kick_tx: &mpsc::Sender<()>) -> anyhow::Result<bool> {
     loop {
         tokio::select! {
             _ = tokio::time::sleep_until(deadline) => {
-                // Tope de vida: recicla para tomar un token fresco.
+                // The life cap: recycle to pick up a fresh token.
                 let _ = write.send(Message::Close(None)).await;
                 return Ok(true);
             }
@@ -315,28 +319,29 @@ async fn connect_once(kick_tx: &mpsc::Sender<()>) -> anyhow::Result<bool> {
                             let _ = kick_tx.try_send(());
                         }
                         Some(Action::Resubscribed) => {
-                            // Recién (re)unidos: lo que cambió con el socket caído
-                            // no generó `postgres_changes`, así que un pull de
-                            // recuperación cierra ese hueco.
+                            // Just (re)joined: whatever changed while the socket
+                            // was down produced no `postgres_changes`, so a
+                            // recovery pull closes that gap.
                             tracing::debug!("cloud-live: (re)suscrito → pull de recuperación");
                             let _ = kick_tx.try_send(());
                         }
                         Some(Action::TokenError) => {
-                            // JWT rechazado al unirse: refresca (queda en disco) y
-                            // reconecta con el token rotado. Si el refresh está
-                            // terminalmente caducado, deja de intentar.
+                            // The JWT was rejected on join: refresh (it lands on
+                            // disk) and reconnect with the rotated token. If the
+                            // refresh is terminally expired, stop trying.
                             //
-                            // Vía `refresh_freshest`, nunca con la `sess` de esta
-                            // conexión: se capturó al conectar y para cuando llega
-                            // un TokenError puede tener hasta CONNECTION_MAX_SECS,
-                            // tiempo de sobra para que el refresher periódico la
-                            // haya rotado. Replayarla sería reuse-detection, y GoTrue
-                            // responde revocando la familia entera de tokens.
+                            // Through `refresh_freshest`, never with this
+                            // connection's `sess`: it was captured on connect and
+                            // by the time a TokenError arrives it can be up to
+                            // CONNECTION_MAX_SECS old, ample time for the periodic
+                            // refresher to have rotated it. Replaying it would be
+                            // reuse detection, and GoTrue answers by revoking the
+                            // whole token family.
                             tracing::debug!("cloud-live: token rechazado, refresco");
                             match cloud_auth::refresh_freshest().await {
                                 Ok(_) => anyhow::bail!("refresh forzó reconexión"),
                                 Err(e) if e.downcast_ref::<cloud_auth::RefreshTokenStale>().is_some() => {
-                                    tracing::info!("cloud-live: refresh token revocado — realtime se aparca hasta un login nuevo");
+                                    tracing::info!("cloud-live: refresh token revoked, realtime parks until a fresh login");
                                     return Ok(false);
                                 }
                                 Err(_) => anyhow::bail!("refresh forzó reconexión"),
@@ -356,7 +361,7 @@ async fn connect_once(kick_tx: &mpsc::Sender<()>) -> anyhow::Result<bool> {
 }
 
 enum Action {
-    /// Cambió una fila relevante de `saves` — refrescar.
+    /// A relevant row of `saves` changed, so refresh.
     Change,
     /// El join tuvo éxito: (re)suscrito, disparar pull de recuperación.
     Resubscribed,
@@ -364,8 +369,8 @@ enum Action {
     TokenError,
 }
 
-/// Interpreta un frame de Realtime. `None` para los que no accionamos
-/// (heartbeat, presence, status del sistema…).
+/// Interprets a Realtime frame. `None` for the ones we do not act on (heartbeat,
+/// presence, system status).
 fn classify(txt: &str) -> Option<Action> {
     let v: Value = serde_json::from_str(txt).ok()?;
     let event = v.get("event").and_then(|e| e.as_str()).unwrap_or("");
@@ -393,9 +398,9 @@ fn classify(txt: &str) -> Option<Action> {
                     || reason.contains("unauthorized");
                 return token_ish.then_some(Action::TokenError);
             }
-            // El join lleva `ref: "1"`; su reply "ok" significa (re)suscrito. Los
-            // acks de heartbeat reusan `phx_reply` con ref 2,3,… así que gatear
-            // en ref "1" dispara exactamente una vez por (re)conexión.
+            // The join carries `ref: "1"`, and its "ok" reply means (re)subscribed.
+            // Heartbeat acks reuse `phx_reply` with refs 2, 3 and so on, so gating
+            // on ref "1" fires exactly once per (re)connection.
             if event == "phx_reply" && status == "ok" {
                 let join_ref = v.get("ref").and_then(|r| r.as_str()).unwrap_or("");
                 if join_ref == "1" {
@@ -421,11 +426,11 @@ mod tests {
         }
     }
 
-    /// El aparcado solo despierta ante una sesión que NO sea la muerta: la
-    /// misma que reventó el join no puede hacer nada mejor la segunda vez.
+    /// The parked loop only wakes for a session that is NOT the dead one: the same
+    /// one that blew up the join cannot do any better the second time.
     #[test]
     fn session_renewed_ignores_the_dead_session_and_wakes_on_a_new_one() {
-        // Sin nada en disco, o con un refresh vacío: sigue esperando.
+        // With nothing on disk, or an empty refresh: keep waiting.
         assert!(!session_renewed(Some("rt-dead"), None));
         assert!(!session_renewed(Some("rt-dead"), Some(&disk("  "))));
         // La misma sesión muerta sigue en disco: sigue esperando.
@@ -434,8 +439,8 @@ mod tests {
         assert!(session_renewed(Some("rt-dead"), Some(&disk("rt-new"))));
     }
 
-    /// Caso "no había sesión al aparcar" (logout en caliente): cualquier
-    /// sesión con refresh no vacío cuenta como login nuevo.
+    /// The "there was no session when we parked" case (a logout mid-flight): any
+    /// session with a non-empty refresh counts as a new login.
     #[test]
     fn session_renewed_wakes_on_any_session_when_none_was_dead() {
         assert!(!session_renewed(None, None));

@@ -1,4 +1,4 @@
-//! Unified enumerator for Wine/Proton-style prefixes — Steam (Proton),
+//! Unified enumerator for Wine and Proton-style prefixes: Steam (Proton),
 //! Lutris and Bottles.
 //!
 //! `steam::list_proton_prefixes` keeps its existing shape and remains the
@@ -14,7 +14,7 @@
 //!   (`~/.var/app/com.usebottles.bottles/data/bottles/bottles/<bottle>/`).
 //!
 //! Failures (missing `HOME`, unreadable directories, missing `drive_c/`)
-//! collapse to an empty vector for that source — never a panic. On
+//! collapse to an empty vector for that source, never a panic. On
 //! non-Linux hosts only the Proton wrapper contributes.
 //!
 //! Identifiers: the Proton wrapper passes the Steam appid as a string;
@@ -34,7 +34,7 @@ pub enum PrefixKind {
     Bottles,
     /// A plain Wine prefix not managed by any of the launchers above:
     /// `$WINEPREFIX`, the default `~/.wine*`, PlayOnLinux, or any prefix a
-    /// `.desktop` launcher references. Not tied to a single game — the whole
+    /// `.desktop` launcher references. Not tied to a single game: the whole
     /// `drive_c/` may hold saves for any number of catalog titles.
     Generic,
 }
@@ -72,7 +72,7 @@ pub fn list_wine_prefixes_deep(os: Os) -> Vec<WinePrefix> {
 fn list_wine_prefixes_mode(os: Os, deep: bool) -> Vec<WinePrefix> {
     let mut out: Vec<WinePrefix> = Vec::new();
 
-    // Proton (Steam) — wrapper over the existing, well-tested API.
+    // Proton (Steam): a wrapper over the existing, well-tested API.
     for p in steam::list_proton_prefixes(os) {
         out.push(WinePrefix {
             kind: PrefixKind::Proton,
@@ -118,7 +118,7 @@ fn canonical(p: &Path) -> PathBuf {
 /// Discover plain Wine prefixes from every general source we know, regardless
 /// of which launcher (if any) created them:
 ///
-/// - `$WINEPREFIX` — the prefix the user's shell currently points at.
+/// - `$WINEPREFIX`: the prefix the user's shell currently points at.
 /// - Default locations: `~/.wine`, `~/.wine32`, `~/.wine64`.
 /// - PlayOnLinux: `~/.PlayOnLinux/wineprefix/<name>/`.
 /// - Any prefix referenced by a `WINEPREFIX=…` assignment inside a desktop
@@ -250,7 +250,7 @@ fn prefixes_from_desktop_files(home: &Path) -> Vec<PathBuf> {
         home.join(".local/share/applications"),
         PathBuf::from("/usr/share/applications"),
     ];
-    // The user's desktop dir (localized — `~/Desktop`, `~/Escritorio`, …).
+    // The user's desktop dir, localized: `~/Desktop`, `~/Escritorio` and so on.
     if let Some(d) = std::env::var_os("XDG_DESKTOP_DIR") {
         dirs.push(PathBuf::from(d));
     }

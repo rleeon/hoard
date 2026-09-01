@@ -50,7 +50,7 @@ pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Re
 
     println!("uploading from {}", source.display());
     let prev_sig = state.saves.get(&save_id).and_then(|s| s.set_hash.clone());
-    // Our last-synced version for this save → the server's fast-forward base.
+    // Our last-synced version for this save is the server's fast-forward base.
     let base_version = state.saves.get(&save_id).and_then(|s| s.last_version_num);
     let game_slug = state
         .saves
@@ -70,14 +70,15 @@ pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Re
         &source,
         prev_sig.as_deref(),
         base_version,
-        // Sin cabeza que comparar: el chequeo anti-relanzamiento de D.8.3 existe
-        // para el motor, que reinicia solo y ya trae el manifiesto observado.
-        // Un `hoard backup` es una orden explícita y puntual del usuario; pedir
-        // el manifiesto sólo para adivinar si puede ahorrársela sería una
-        // petición extra en el camino de un comando que ya sabe lo que quiere.
+        // With no head to compare against: the D.8.3 anti-relaunch check exists
+        // for the engine, which restarts on its own and already brings the
+        // observed manifest. A `hoard backup` is an explicit one-off order from
+        // the user, and fetching the manifest just to guess whether it could be
+        // skipped would be an extra request on a command that already knows what
+        // it wants.
         None,
-        // `hoard backup` lo teclea una persona: es una copia deliberada, y la
-        // retención debe tratarla como tal.
+        // `hoard backup` is typed by a person: it is a deliberate copy, and
+        // retention should treat it as one.
         VersionOrigin::Manual,
         on_progress,
         || {},
@@ -103,8 +104,8 @@ pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Re
             return Ok(());
         }
         BackupResult::Uploaded { outcome, signature } => (outcome, signature),
-        // Inalcanzable con `head: None` (arriba), pero el compilador no lo sabe
-        // y el día que lo sea, decirlo es la respuesta correcta.
+        // Unreachable with `head: None` above, but the compiler does not know
+        // that, and the day it is reachable, saying so is the right answer.
         BackupResult::AlreadyLanded {
             version_num,
             signature,

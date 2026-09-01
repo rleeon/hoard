@@ -1,34 +1,33 @@
-//! Journal append-only con cursor — la mitad "el cliente que no estaba" de la
-//! entrega de eventos (ADR 0021, D.14.2).
+//! Append-only journal with a cursor: the "client that wasn't there" half of
+//! event delivery (ADR 0021, D.14.2).
 //!
-//! El push por el socket sirve al cliente conectado *ahora*. No sirve al que
-//! arranca tarde: sólo-push es exactamente el bug de las campanas mudas (la UI
-//! sin snapshot ni backlog). Así que el daemon guarda lo que pasa y el cliente
-//! pide "todo lo posterior al cursor N" antes de escuchar en vivo. Misma forma
-//! que ya tienen Supabase Realtime + el airbag del poll.
+//! Pushing over the socket serves the client connected *now*. It does nothing
+//! for the one that starts late, and push-only is exactly the silent-bell bug,
+//! a UI with neither a snapshot nor a backlog. So the daemon records what
+//! happens and the client asks for "everything after cursor N" before it starts
+//! listening live.
 //!
-//! ## Lo que NO se guarda: reposos repetidos
+//! ## What does not get recorded: repeated rests
 //!
-//! Guardar cada decisión de cada tick amplifica escritura de forma absurda —
-//! medido en este repo el 2026-07-25: **3015 `cloud state stale` en 36 minutos**
-//! (~84/min, >100k/día) con tick de 2 s, y el disco a proteger es el SSD del
-//! Deck. La regla de la ADR es «guardar transiciones y acciones, no reposos
-//! repetidos; y colapsar rachas del mismo motivo en una fila con contador».
+//! Recording every decision of every tick amplifies writes absurdly. Measured in
+//! this repo on 2026-07-25: 3015 `cloud state stale` entries in 36 minutes,
+//! about 84 a minute, over 100k a day on a 2 s tick, and the disk being
+//! protected is the Deck's SSD. The rule is to record transitions and actions,
+//! not repeated rests, and to collapse runs of the same reason into one row with
+//! a counter.
 //!
-//! Eso es [`collapse_key`]: los eventos de *reposo/veto* (el motor está
-//! esperando por algo, y sigue esperando por lo mismo) colapsan sobre la fila
-//! de la cola con un contador; las **transiciones** (juego arranca/para) y las
-//! **acciones** (subida, restore) siempre generan fila propia. Un colapso no se
-//! empuja en vivo: por definición no hay información nueva que contar.
+//! That is [`collapse_key`]. Rest and veto events (the engine is waiting on
+//! something, and is still waiting on the same thing) collapse onto the tail row
+//! with a counter; transitions and actions always get their own row. A collapse
+//! is never pushed live, because by definition there is nothing new to say.
 //!
-//! ## Frontera con el Slice 5 (SQLite)
+//! ## Where Slice 5 takes over
 //!
-//! Aquí no hay IO: [`JournalEntry`] es el tipo de wire, [`collapse_key`] es la
-//! política y [`Journal`] es un anillo en memoria con tope. El Slice 5 cambia
-//! **sólo** el almacén (tabla-anillo en la SQLite privada del daemon, que es
-//! también el log de decisiones de C.5): el tipo y la política se quedan tal
-//! cual, y `Journal` pasa a ser la implementación en memoria o desaparece. No
-//! meter aquí nada que necesite disco.
+//! No IO here: [`JournalEntry`] is the wire type, [`collapse_key`] is the
+//! policy, [`Journal`] is a capped in-memory ring. Slice 5 swaps the *store*
+//! only, for a ring table in the daemon's private SQLite, which is also the C.5
+//! decision log. The type and the policy stay put. Nothing that needs a disk
+//! belongs in this file.
 
 use std::collections::VecDeque;
 
@@ -37,63 +36,60 @@ use time::OffsetDateTime;
 
 use super::events::AgentEvent;
 
-/// Filas retenidas por el anillo en memoria. Dimensionado para el hueco que de
-/// verdad tiene que cubrir: un cliente que se reconecta tarda segundos, no
-/// horas. Si un cliente pide más atrás de lo que queda, se le dice
-/// ([`Backlog::gap`]) en vez de mentirle con un historial parcial.
+/// Sized for the gap it actually has to cover: a reconnecting client takes
+/// seconds, not hours. A client asking for further back than the ring still
+/// holds is told so ([`Backlog::gap`]) rather than handed a partial history and
+/// left to believe it is complete.
 pub const DEFAULT_CAPACITY: usize = 1024;
 
-/// Una fila del journal. `seq` es el cursor: monótono, sin huecos, por
-/// ejecución del daemon (ver `epoch` en [`super::Welcome`] — un daemon
-/// reiniciado empieza de nuevo en 1, y el epoch es lo que le dice al cliente
-/// que su cursor viejo ya no vale).
+/// `seq` is the cursor: monotonic, gapless, per daemon run. A restarted daemon
+/// starts over at 1, and the `epoch` in [`super::Welcome`] is what tells the
+/// client its old cursor is worthless.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JournalEntry {
     pub seq: u64,
-    /// Cuándo se vio la **primera** ocurrencia de esta fila.
     #[serde(with = "time::serde::rfc3339")]
     pub at: OffsetDateTime,
-    /// Cuándo se vio la **última** (igual a `at` mientras `repeat == 1`).
+    /// When the *last* occurrence was seen; equal to `at` while `repeat == 1`.
     #[serde(with = "time::serde::rfc3339")]
     pub last_at: OffsetDateTime,
-    /// Ocurrencias colapsadas en esta fila, empezando en 1. `> 1` sólo puede
-    /// pasarle a un evento de reposo (ver [`collapse_key`]).
+    /// Occurrences collapsed into this row, starting at 1. Only a rest event can
+    /// ever go above 1 (see [`collapse_key`]).
     pub repeat: u32,
     pub event: AgentEvent,
 }
 
-/// Resultado de [`Journal::append`].
 #[derive(Debug, Clone)]
 pub enum Appended {
-    /// Fila nueva. **Esto es lo que se empuja en vivo.**
+    /// A new row, and the only thing that gets pushed live.
     Recorded(JournalEntry),
-    /// Racha del mismo reposo: se sumó al contador de la fila `seq`. No se
-    /// empuja (el cliente ya sabe que el motor está esperando por eso).
+    /// A run of the same rest, added to row `seq`'s counter. Not pushed: the
+    /// client already knows the engine is waiting on that.
     Collapsed { seq: u64, repeat: u32 },
 }
 
-/// Respuesta a "dame todo lo posterior al cursor N".
+/// The answer to "give me everything after cursor N".
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Backlog {
     pub entries: Vec<JournalEntry>,
-    /// Cursor tras aplicar `entries` (el `seq` de la última fila del journal,
-    /// haya o no filas nuevas).
+    /// Cursor after applying `entries`: the last row's `seq`, whether or not
+    /// anything new came back.
     pub cursor: u64,
-    /// El journal ya no tiene todo lo que el cliente pedía: se cayó del anillo,
-    /// o el cursor es de otra ejecución del daemon. El cliente debe re-sembrar
-    /// su estado con [`super::Request::Status`] en vez de asumir continuidad —
-    /// mentirle aquí es cómo se pierde un historial sin que nadie se entere.
+    /// The journal no longer holds everything the client asked for, either
+    /// because it fell off the ring or because the cursor belongs to another
+    /// daemon run. The client must re-seed with [`super::Request::Status`]
+    /// instead of assuming continuity. Lying here is how a history goes missing
+    /// with nobody noticing.
     #[serde(default)]
     pub gap: bool,
 }
 
-/// Anillo append-only en memoria.
 #[derive(Debug)]
 pub struct Journal {
     entries: VecDeque<JournalEntry>,
     capacity: usize,
-    /// Próximo `seq` a asignar. Empieza en 1 para que `cursor == 0` signifique
-    /// sin ambigüedad "nunca he visto nada".
+    /// Starts at 1 so that `cursor == 0` unambiguously means "I have never seen
+    /// anything".
     next_seq: u64,
     dropped: u64,
 }
@@ -114,13 +110,12 @@ impl Journal {
         }
     }
 
-    /// Cursor actual: `seq` de la última fila, o 0 si el journal está vacío.
     pub fn cursor(&self) -> u64 {
         self.next_seq - 1
     }
 
-    /// Filas caídas del anillo desde el arranque. Diagnóstico (y la señal de
-    /// que el tope está mal dimensionado).
+    /// Rows that fell off the ring since startup. Diagnostic, and the signal
+    /// that the cap is sized wrong.
     pub fn dropped(&self) -> u64 {
         self.dropped
     }
@@ -133,8 +128,8 @@ impl Journal {
         self.entries.is_empty()
     }
 
-    /// Registra `event`. Si es un reposo idéntico al de la fila de la cola,
-    /// suma al contador de esa fila en vez de crear una nueva.
+    /// Records `event`, or bumps the tail row's counter when it is a rest
+    /// identical to the one already there.
     pub fn append(&mut self, at: OffsetDateTime, event: AgentEvent) -> Appended {
         if let Some(key) = collapse_key(&event) {
             if let Some(tail) = self.entries.back_mut() {
@@ -164,8 +159,8 @@ impl Journal {
         Appended::Recorded(entry)
     }
 
-    /// Todo lo posterior a `cursor`. Marca [`Backlog::gap`] cuando no puede
-    /// servir el tramo completo.
+    /// Everything after `cursor`, flagging [`Backlog::gap`] when the full
+    /// stretch cannot be served.
     pub fn since(&self, cursor: u64) -> Backlog {
         let entries: Vec<JournalEntry> = self
             .entries
@@ -173,10 +168,10 @@ impl Journal {
             .filter(|e| e.seq > cursor)
             .cloned()
             .collect();
-        // Hueco por dos motivos distintos: el tramo pedido ya se cayó del
-        // anillo, o el cursor viene del futuro (típicamente el cliente guardó
-        // el cursor de un daemon anterior; el `epoch` del handshake es la
-        // detección buena, esto es el cinturón).
+        // Two different reasons for a gap: the stretch asked for already fell
+        // off the ring, or the cursor comes from the future, which usually means
+        // the client kept a previous daemon's cursor. The handshake `epoch` is
+        // the real detection; this is the belt to its braces.
         let oldest = self.entries.front().map(|e| e.seq);
         let lost = match oldest {
             Some(first) => cursor + 1 < first,
@@ -191,54 +186,48 @@ impl Journal {
     }
 }
 
-/// Clave de colapso: `Some` para eventos de **reposo** (el motor sigue
-/// esperando por lo mismo), `None` para transiciones y acciones, que siempre
-/// generan fila.
+/// `Some` for rest events, where the engine is still waiting on the same thing,
+/// `None` for transitions and actions, which always earn a row.
 ///
-/// La clave es el JSON del propio evento, así que sólo colapsan repeticiones
-/// **idénticas**: si cambia el motivo del veto, el error o el juego, la fila es
-/// nueva. Usar la serialización en vez de listar campos a mano es a propósito —
-/// añadir un campo a una variante no puede olvidarse de la clave.
+/// The key is the event's own JSON, so only *identical* repetitions collapse: a
+/// different veto reason, error or game opens a new row. Serialising instead of
+/// listing fields by hand is deliberate, since adding a field to a variant then
+/// cannot forget to update the key.
 ///
-/// Qué entra y por qué:
+/// What collapses, and why:
 ///
-/// - `RestoreDeferred` — el veto mid-session. El sweep lo re-evalúa cada tick y
-///   lo re-emite mientras el juego siga vivo: es el caso 3015-en-36-minutos en
-///   miniatura.
-/// - `SaveAutoRestoreFailed` — el mismo error una y otra vez es el sweep
-///   reintentando, no N incidencias distintas (fue lo que llenó el feed en el
-///   incidente de julio-2026).
-/// - `SaveAutoRestoreStuck` — de por sí one-shot por (save, versión); el
-///   colapso lo hace idempotente si el shell lo re-emite.
-/// - `BackupNeedsAttention` — igual: one-shot por flanco, y el colapso lo hace
-///   idempotente si el flanco se repite (un reinicio del motor rehace el estado
-///   del slot desde cero y puede volver a cruzarlo).
-/// - `BackupThrottled` — esperas por la ventana de banda del server. Reposo con
-///   motivo; sólo cambia de fila si cambia el `retry_after_secs`.
-/// - `BackupQuotaFull` — la cuenta está llena. Cada save lo descubre por su
-///   cuenta y el park lo re-emite cada hora: son N informes del mismo hecho,
-///   no N incidencias. Colapsa por cifras, así que la fila se refresca cuando
-///   el usuario libera algo y sigue sin llegar.
-/// - `BackupFilesUnreadable` — el mismo fichero que no se deja leer sale otra
-///   vez en cada copia mientras dure la causa (un proveedor de ficheros bajo
-///   demanda parado puede durar semanas). Un aviso, no uno por copia. Colapsa
-///   por contenido, así que si aparece otro fichero —o cambia el error— la fila
-///   es nueva.
-/// - `HeavyProcessDetected` — el mismo proceso pesado visto otra vez no es un
-///   descubrimiento nuevo.
+/// - `RestoreDeferred`, the mid-session veto. The sweep re-evaluates it every
+///   tick and re-emits it while the game lives; this is the 3015-in-36-minutes
+///   case in miniature.
+/// - `SaveAutoRestoreFailed`. The same error over and over is the sweep
+///   retrying, not N separate incidents. This is what flooded the feed in July.
+/// - `SaveAutoRestoreStuck`, already one-shot per (save, version); collapsing
+///   makes it idempotent if the shell re-emits.
+/// - `BackupNeedsAttention`, the same: one-shot per edge, and a restarted engine
+///   rebuilds the slot state from scratch and can cross the edge again.
+/// - `BackupThrottled`, waiting on the server's bandwidth window. A rest with a
+///   reason; only a different `retry_after_secs` opens a row.
+/// - `BackupQuotaFull`. Every save discovers a full account on its own and the
+///   park re-emits hourly, so these are N reports of one fact rather than N
+///   incidents. It collapses on the figures, so the row refreshes once the user
+///   frees something and it still is not enough.
+/// - `BackupFilesUnreadable`. The same unreadable file comes back on every copy
+///   for as long as the cause lasts, and a stalled on-demand file provider can
+///   last weeks. One warning, not one per copy. It collapses on content, so a
+///   different file or a different error opens a row.
+/// - `HeavyProcessDetected`. Seeing the same heavy process again is not a new
+///   discovery.
 ///
-/// Qué NO entra, aunque se repita: `BackupScheduled`. Parece reposo pero cada
-/// emisión es información nueva — el debounce **se reinició** y la cuenta atrás
-/// de la UI arranca otra vez. Colapsarlo silenciaría ese refresco (los
-/// colapsos no se empujan). Las transiciones (`GameStarted`/`GameStopped`) y
-/// las acciones (`Backup*` de verdad, `SaveAutoRestored`,
-/// `SaveConflictsBackedUp`) tampoco: son el historial.
+/// What does not collapse even when it repeats: `BackupScheduled`. It looks like
+/// a rest, but every emission is new information, because the debounce *reset*
+/// and the countdown in the UI starts over. Collapsing it would silence that
+/// refresh, since collapses are never pushed. Transitions and real actions do
+/// not collapse either; they are the history.
 pub fn collapse_key(event: &AgentEvent) -> Option<String> {
-    // `BackupQuotaFull` es el único que colapsa **entre saves distintos**: el
-    // hecho es de la cuenta, no del save, así que veinte juegos chocando contra
-    // el mismo muro son una fila, no veinte. Por eso su clave se construye a
-    // mano en vez de serializar el evento entero (que incluiría el `save_id` y
-    // los volvería a separar).
+    // `BackupQuotaFull` is the only one that collapses *across* saves: the fact
+    // belongs to the account, not to the save, so twenty games hitting the same
+    // wall are one row rather than twenty. Hence the hand-built key; serialising
+    // the whole event would drag in `save_id` and split them apart again.
     if let AgentEvent::BackupQuotaFull {
         plan,
         used_bytes,
@@ -297,8 +286,8 @@ mod tests {
         assert_eq!(j.cursor(), 2);
     }
 
-    /// El caso medido: una racha de reposos idénticos es UNA fila con contador.
-    /// 3015 holds en 36 min no pueden ser 3015 escrituras.
+    /// The measured case: a run of identical rests is one row with a counter.
+    /// 3015 holds in 36 minutes cannot be 3015 writes.
     #[test]
     fn a_run_of_the_same_rest_collapses_into_one_row() {
         let mut j = Journal::default();
@@ -321,7 +310,7 @@ mod tests {
         assert_eq!(row.last_at, ts(3014));
     }
 
-    /// Cambiar el motivo es información nueva: fila nueva.
+    /// A different reason is new information, so it gets its own row.
     #[test]
     fn a_different_reason_opens_a_new_row() {
         let mut j = Journal::default();
@@ -330,8 +319,8 @@ mod tests {
         assert_eq!(j.len(), 2);
     }
 
-    /// Transiciones y acciones nunca colapsan: son el historial que el cliente
-    /// tardío viene a buscar.
+    /// Transitions and actions never collapse. They are the history the late
+    /// client came for.
     #[test]
     fn transitions_never_collapse() {
         let mut j = Journal::default();
@@ -351,9 +340,8 @@ mod tests {
         .is_none());
     }
 
-    /// Un reposo entre medias no impide que el siguiente igual colapse, pero sí
-    /// rompe la racha cuando hay otra fila detrás (sólo se colapsa contra la
-    /// cola, nunca contra una fila enterrada — eso reordenaría el historial).
+    /// Collapsing only ever looks at the tail, never at a buried row, because
+    /// reaching back would reorder the history.
     #[test]
     fn collapsing_only_looks_at_the_tail() {
         let mut j = Journal::default();
@@ -375,13 +363,13 @@ mod tests {
         assert_eq!(back.entries[0].seq, 2);
         assert_eq!(back.cursor, 3);
         assert!(!back.gap);
-        // Al día: nada nuevo, y sin hueco.
+        // Up to date: nothing new, and no gap.
         let none = j.since(3);
         assert!(none.entries.is_empty());
         assert!(!none.gap);
     }
 
-    /// Lo que el anillo tira se reporta como hueco, no se disimula.
+    /// What the ring throws away is reported as a gap, not papered over.
     #[test]
     fn dropping_old_rows_reports_a_gap() {
         let mut j = Journal::with_capacity(2);
@@ -393,12 +381,12 @@ mod tests {
         let from_scratch = j.since(0);
         assert!(from_scratch.gap);
         assert_eq!(from_scratch.entries.len(), 2);
-        // Un cliente que ya tenía la fila 1 no perdió nada.
+        // A client that already had row 1 lost nothing.
         assert!(!j.since(1).gap);
     }
 
-    /// Cursor del futuro (típicamente de un daemon anterior): hueco, para que
-    /// el cliente re-siembre en vez de quedarse esperando eventos que ya pasaron.
+    /// A cursor from the future, usually a previous daemon's, is a gap, so the
+    /// client re-seeds instead of waiting for events that already happened.
     #[test]
     fn a_cursor_from_the_future_is_a_gap() {
         let mut j = Journal::default();

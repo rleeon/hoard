@@ -1,26 +1,25 @@
-//! Filtro anti horas-fantasma de las señales de correlación carpeta→proceso.
-//!
-//! Movido verbatim de `hoard-agent/src/agent.rs` (ya era una función pura, sin
-//! IO/reloj/RNG). Su sitio natural es el kernel leaf.
+//! Phantom-hours filter for folder-to-process correlation signals.
 
 use std::collections::{HashMap, HashSet};
 
-/// Filtra las señales de correlación carpeta→proceso para que sólo cuenten
-/// PLAYTIME las fiables, eliminando las horas-fantasma. `candidates` son tuplas
-/// `(proc_name_lower, save_id, game_slug)` de saves SIN manifest cuya carpeta
-/// tiene una observación de correlación válida; `configured` son los
-/// process-names ya declarados por juegos CON manifest.
+/// Keeps only the correlation signals trustworthy enough to count as playtime.
+/// `candidates` are `(proc_name_lower, save_id, game_slug)` tuples for saves
+/// with no manifest whose folder has a valid correlation observation;
+/// `configured` are the process names games with a manifest already declare.
 ///
-/// Dos vetos, derivados del bug real (un proceso de Rust acumulando horas para
-/// Ark/Minecraft/Offworld/REPO porque algo de fondo —Steam Cloud— reescribió
-/// sus carpetas de save mientras Rust corría):
-///  (a) un proceso ya configurado en OTRO juego con manifest pertenece a ESE
-///      juego, no a la carpeta que casualmente tocó;
-///  (b) un proceso atado a varios `game_slug` distintos es ruido de fondo, no
-///      "estás jugando" a ninguno de ellos.
-/// Devuelve `(proc_name_lower, save_id)` aceptadas, un único save por proceso
-/// (un juego con varias carpetas no duplica horas). Las observaciones quedan
-/// intactas para la detección de carpetas, que es revisable.
+/// Two vetoes, both learned the hard way from one process racking up hours for
+/// Ark, Minecraft, Offworld and REPO because something in the background
+/// rewrote their save folders while it happened to be running:
+///
+///  (a) a process already configured for another game with a manifest belongs
+///      to that game, not to whichever folder it brushed against;
+///  (b) a process bound to several different `game_slug`s is background noise,
+///      not "you are playing" any of them.
+///
+/// Returns the accepted `(proc_name_lower, save_id)` pairs, one save per
+/// process, so a game with several folders does not double its hours. The
+/// observations themselves stay untouched for folder detection, which the user
+/// can review.
 pub fn accept_correlation_signals<'a>(
     candidates: &[(String, &'a str, &'a str)],
     configured: &HashSet<String>,
@@ -49,11 +48,10 @@ pub fn accept_correlation_signals<'a>(
 mod tests {
     use super::*;
 
-    /// D.4 — «correlación fantasma»: un proceso compartido por varios juegos no
-    /// genera horas fantasma. El bug real: el proceso de Rust quedó
-    /// correlacionado con las carpetas de save de cuatro juegos NO jugados
-    /// (Steam Cloud las reescribió mientras Rust corría). Un proceso atado a >1
-    /// juego es ruido: no debe dar horas a ninguno.
+    /// The phantom-correlation bug (D.4): one game's process ended up
+    /// correlated with the save folders of four games nobody had played,
+    /// because a background sync rewrote them while it ran. A process bound to
+    /// more than one game is noise and must give hours to none of them.
     #[test]
     fn correlation_rejects_shared_process_phantom_hours() {
         let configured: HashSet<String> = ["rustclient.exe".to_string()].into_iter().collect();
@@ -66,15 +64,15 @@ mod tests {
         let accepted = accept_correlation_signals(&candidates, &configured);
         assert!(
             accepted.is_empty(),
-            "un proceso compartido por varios juegos no debe acumular horas: {accepted:?}"
+            "a process shared by several games must not accrue hours: {accepted:?}"
         );
     }
 
     #[test]
     fn correlation_accepts_exclusive_off_catalog_game() {
-        // El caso legítimo que la correlación existe para rescatar: un juego sin
-        // manifest (EU5 bajo Proton) cuyo propio exe escribió su save. Proceso
-        // exclusivo de un juego y no configurado en ningún otro ⇒ cuenta.
+        // The legitimate case correlation exists to rescue: a game with no
+        // manifest whose own exe wrote its save. Exclusive to one game and not
+        // configured anywhere else, so it counts.
         let configured: HashSet<String> = HashSet::new();
         let candidates = vec![("eu5.exe".to_string(), "eu5-save", "europa-universalis-5")];
         let accepted = accept_correlation_signals(&candidates, &configured);
@@ -83,9 +81,9 @@ mod tests {
 
     #[test]
     fn correlation_one_save_per_process_no_double_count() {
-        // Un mismo juego con dos carpetas rastreadas: el proceso es exclusivo de
-        // ese slug, pero sólo debe inyectarse UNA vez (marcar las dos duplicaría
-        // las horas del mismo juego).
+        // One game with two tracked folders. The process is exclusive to that
+        // slug, but it may only be injected once; marking both would double the
+        // same game's hours.
         let configured: HashSet<String> = HashSet::new();
         let candidates = vec![
             ("eu5.exe".to_string(), "save-a", "eu5"),
@@ -98,9 +96,9 @@ mod tests {
 
     #[test]
     fn correlation_rejects_configured_process_of_another_game() {
-        // Aunque el proceso de Rust sólo hubiera ensuciado UNA carpeta ajena,
-        // está configurado como proceso de Rust (manifest): pertenece a Rust,
-        // no a la carpeta que tocó.
+        // Even if it had dirtied only one foreign folder, the process is
+        // declared by its own game's manifest. It belongs to that game, not to
+        // the folder it touched.
         let configured: HashSet<String> = ["rustclient.exe".to_string()].into_iter().collect();
         let candidates = vec![("rustclient.exe".to_string(), "ark", "ark-survival-ascended")];
         let accepted = accept_correlation_signals(&candidates, &configured);

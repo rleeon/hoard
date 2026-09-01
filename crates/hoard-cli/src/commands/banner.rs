@@ -1,5 +1,5 @@
 //! Bare `hoard`: instead of dumping clap's help, it paints a fastfetch-style
-//! panel — the **H** logo in emerald green on the left, and on the right the
+//! panel, with the H logo in emerald green on the left and, on the right, the
 //! name, version and on/off status of each area (cli, desktop, server, session,
 //! daemon). Below that, the command cheat-sheet. It only touches the network for
 //! the server: a short probe to the `/v1/health` of whatever server you connect
@@ -55,7 +55,7 @@ fn dim(s: &str, color: bool) -> String {
     }
 }
 
-/// Amber-500 (#f59e0b): "on, but needs attention" — an outdated CLI.
+/// Amber-500 (#f59e0b) for "on, but needs attention": an outdated CLI.
 fn amber(s: &str, color: bool) -> String {
     if color {
         format!("\x1b[38;2;245;158;11m{s}\x1b[0m")
@@ -79,14 +79,14 @@ fn component(label: &str, ver: &str, on: bool, status: &str, color: bool) -> Str
     format!("{label:<8} {ver:<9} {} {status}", dot(on, color))
 }
 
-/// The `cli` row. Green ● + "in use" normally; amber ● + what the update is
-/// doing when there's a newer release.
+/// The `cli` row. Green dot plus "in use" normally; amber dot plus what the
+/// update is doing when there's a newer release.
 ///
-/// Desde que el servicio actualiza solo, "update available" era una media
-/// verdad que invitaba a hacer algo que ya está pasando. Lo que se dice ahora es
-/// **en qué punto está**: bajándose, esperando a que cierres el juego, o
-/// esperando a alguien que apruebe el diálogo de privilegios — que es el único
-/// caso en el que hay algo que teclear.
+/// Since the service updates itself, "update available" was a half-truth that
+/// invited people to do something already happening. What it says now is where
+/// the update has got to: downloading, waiting for you to close the game, or
+/// waiting for somebody to approve the privilege dialog, which is the one case
+/// where there is anything to type.
 fn cli_component(ver: &str, update: Option<&UpdateLine>, color: bool) -> String {
     match update {
         Some(u) => format!("{:<8} {:<9} {} {}", "cli", ver, amber("●", color), u.text),
@@ -94,14 +94,14 @@ fn cli_component(ver: &str, update: Option<&UpdateLine>, color: bool) -> String 
     }
 }
 
-/// Lo que la fila `cli` tiene que decir sobre la actualización.
+/// What the `cli` row has to say about the update.
 struct UpdateLine {
     text: String,
 }
 
-/// Traduce el estado del servicio a una línea. Sin servicio se cae a la
-/// comprobación local de siempre, que es lo que ve quien tiene sólo la terminal
-/// instalada y el servicio parado.
+/// Turns the service's state into one line. With no service it falls back to the
+/// usual local check, which is what somebody with only the terminal installed and
+/// the service stopped sees.
 async fn update_line() -> Option<UpdateLine> {
     use hoard_core::ipc::{UpdateHold, UpdatePhase};
 
@@ -123,8 +123,8 @@ async fn update_line() -> Option<UpdateLine> {
         UpdatePhase::Waiting {
             hold: UpdateHold::TransferInFlight,
         } => format!("v{latest} — installs when the current backup finishes"),
-        // Un motivo que este binario no conoce: lo manda un servicio más nuevo,
-        // y durante el relevo eso es lo normal.
+        // A reason this binary does not know, sent by a newer service. During a
+        // handover that is normal.
         UpdatePhase::Waiting {
             hold: UpdateHold::Unknown,
         } => format!("v{latest} — waiting for the right moment"),
@@ -135,8 +135,8 @@ async fn update_line() -> Option<UpdateLine> {
             Some(err) => format!("v{latest} — last attempt failed: {err}"),
             None => format!("v{latest} — last attempt failed"),
         },
-        // Bajado y a la espera. Que haga falta teclear algo o no lo decide si
-        // esta máquina puede relevarse sola.
+        // Downloaded and waiting. Whether anything has to be typed is decided by
+        // whether this machine can relieve itself.
         UpdatePhase::Ready if state.unattended => format!("v{latest} — ready, installing shortly"),
         UpdatePhase::Ready => format!("v{latest} — ready (run `hoard upgrade` to install it)"),
         UpdatePhase::UpToDate | UpdatePhase::Unknown => format!("v{latest} available"),
@@ -189,7 +189,7 @@ fn desktop_installed() -> bool {
                 return true;
             }
         }
-        // Start Menu shortcut — Tauri's MSI/NSIS installers create one.
+        // Start Menu shortcut: Tauri's MSI and NSIS installers create one.
         if let Some(appdata) = std::env::var_os("APPDATA") {
             let start = PathBuf::from(&appdata)
                 .join("Microsoft")
@@ -204,7 +204,7 @@ fn desktop_installed() -> bool {
     }
     #[cfg(not(windows))]
     {
-        // Unix already covered by the `in_path` check above.
+        // Unix is already covered by the `in_path` check above.
     }
     false
 }
@@ -218,10 +218,10 @@ fn with_v(ver: &str) -> String {
     }
 }
 
-/// Probe the server **you connect to** via `/v1/health` (no auth needed). It's
-/// the only correct way to read its version: the server may run in Docker, on
-/// local bare metal or on another machine — a local binary tells you nothing
-/// about that. Short timeout so the banner never hangs. Returns
+/// Probe the server you actually connect to via `/v1/health` (no auth needed).
+/// It is the only correct way to read its version, since the server may run in
+/// Docker, on local bare metal or on another machine, and a local binary tells
+/// you nothing about that. Short timeout so the banner never hangs. Returns
 /// `(online, version, mode)`.
 async fn probe_server(url: &str) -> (bool, String, Option<String>) {
     let Ok(client) = ApiClient::new(url, "") else {
@@ -233,13 +233,13 @@ async fn probe_server(url: &str) -> (bool, String, Option<String>) {
     }
 }
 
-/// La fila `sync`: se la preguntamos **al servicio**, que es quien sincroniza.
+/// The `sync` row: we ask the service, which is what does the syncing.
 ///
-/// Hasta el Slice 4c esto leía el pidfile y comprobaba que el proceso siguiera
-/// vivo. Ya no: el motor vive en `hoardd` y la verdad es su respuesta, que además
-/// distingue "el servicio está arriba" de "el servicio tiene motor" — un pidfile
-/// nunca supo la diferencia. Conectar no arranca nada: un panel de estado que
-/// levantara el servicio sería el peor efecto secundario posible.
+/// Until Slice 4c this read the pidfile and checked the process was still alive.
+/// Not any more: the engine lives in `hoardd` and its answer is the truth, and it
+/// also tells "the service is up" from "the service has an engine", which a
+/// pidfile never could. Connecting starts nothing: a status panel that brought
+/// the service up would be the worst possible side effect.
 async fn sync_row() -> (bool, String) {
     let Some(status) = crate::commands::link::status().await else {
         return (false, "stopped".to_string());
@@ -270,9 +270,9 @@ pub async fn show(full: bool) -> Result<()> {
     let color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
     let cli_ver = format!("v{}", env!("CARGO_PKG_VERSION"));
 
-    // ¿Hay algo más nuevo, y qué está pasando con ello? Se le pregunta al
-    // servicio (que es quien lo está haciendo) y se cae a la comprobación local
-    // cacheada si no hay servicio. Best-effort: un fallo deja el punto verde.
+    // Is there anything newer, and what is happening with it? Ask the service,
+    // which is the one doing it, and fall back to the cached local check with no
+    // service. Best-effort: a failure leaves the dot green.
     let cli_update = update_line().await;
 
     // Session: Cloud wins over self-host (same as when resolving). Best-effort,
@@ -291,10 +291,10 @@ pub async fn show(full: bool) -> Result<()> {
         (false, "signed out".to_string())
     };
 
-    // Server: probe the one you'll **actually** use (Cloud if there's a Cloud
-    // session; otherwise the self-host URL from your config) via `/v1/health`.
+    // Server: probe the one you'll actually use (Cloud if there's a Cloud
+    // session, otherwise the self-host URL from your config) via `/v1/health`.
     // That way the version and status hold whether it's in Docker, on bare metal
-    // or on another machine — we don't depend on having a local binary installed.
+    // or on another machine; we don't depend on a local binary being installed.
     let server_url = if cloud {
         Some(hoard_agent::cloud_auth::cloud_base_url())
     } else {

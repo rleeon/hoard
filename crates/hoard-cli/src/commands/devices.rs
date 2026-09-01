@@ -1,9 +1,9 @@
-//! `hoard devices` — las máquinas de la cuenta y cuál está encendida.
+//! `hoard devices`: the machines on the account, and which one is switched on.
 //!
-//! Paridad con el panel del Ojo del escritorio (ADR: la lógica vive en
-//! `hoard-agent`, los dos frontends sólo pintan). Importa más aquí que allí: un
-//! self-hoster suele tener el servidor en una máquina sin pantalla, y hasta
-//! ahora la única forma de ver el censo era abrir la app en otra.
+//! Parity with the desktop's Eye panel (the logic lives in `hoard-agent`, both
+//! frontends only draw). It matters more here than there: a self-hoster usually
+//! keeps the server on a machine with no screen, and until now the only way to see
+//! the census was to open the app on another one.
 
 use anyhow::Result;
 use serde::Serialize;
@@ -56,8 +56,8 @@ pub async fn run() -> Result<()> {
                 })
                 .collect(),
         },
-        // Server anterior a la 1.1.3: no lleva censo. Decirlo, en vez de
-        // imprimir una lista vacía que se lee como "no tienes máquinas".
+        // A server older than 1.1.3 keeps no census. Say so, rather than print an
+        // empty list that reads as "you have no machines".
         Err(e) if matches!(e.downcast_ref::<ApiError>(), Some(ApiError::NotFound)) => DevicesOut {
             supported: false,
             devices: Vec::new(),
@@ -86,8 +86,8 @@ pub async fn run() -> Result<()> {
             } else {
                 d.playing.join(", ")
             };
-            // La máquina desde la que se pregunta se marca, para no tener que
-            // adivinar cuál es la propia en una lista de nombres parecidos.
+            // The machine we are asking from gets marked, so nobody has to guess
+            // which one is theirs in a list of similar names.
             let name = if d.this_device {
                 format!("{} *", d.device_name)
             } else {

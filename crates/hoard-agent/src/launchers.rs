@@ -38,7 +38,7 @@ pub enum LauncherKind {
 /// One installed game discovered through a non-Steam launcher.
 ///
 /// `app_id` is the launcher's stable identifier (Epic CatalogItemId, GOG
-/// productId stringified, MS package family name) — used as the key when
+/// productId stringified, MS package family name), used as the key when
 /// merging into the by-slug map in `detect_all`. `install_dir` is the
 /// path the launcher itself recorded; the aggressive walker scans it for
 /// save files in step 5 of the pipeline.
@@ -55,7 +55,7 @@ pub struct LauncherApp {
 /// JSON shape of an Epic `.item` manifest, trimmed to the fields we need.
 ///
 /// Epic ships many additional fields per manifest (LaunchExecutable,
-/// AppCategories, FormatVersion, etc.) — `serde` ignores unknown fields
+/// AppCategories, FormatVersion and so on); `serde` ignores unknown fields
 /// by default so this minimal struct survives schema additions.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -73,7 +73,7 @@ struct EpicManifest {
 /// Reads `%PROGRAMDATA%\Epic\EpicGamesLauncher\Data\Manifests\*.item` and
 /// returns one entry per valid manifest. Manifests missing
 /// `InstallLocation`, or pointing at a path that is not a directory, are
-/// skipped. The reader is cross-platform — tests can prepare a fixture
+/// skipped. The reader is cross-platform, so tests can prepare a fixture
 /// tree on Linux and call `list_installed_epic_games(Os::Windows)`.
 pub fn list_installed_epic_games(os: Os) -> Vec<LauncherApp> {
     if !matches!(os, Os::Windows) {
@@ -161,7 +161,7 @@ pub fn list_installed_epic_games(os: Os) -> Vec<LauncherApp> {
 /// Reads `%LOCALAPPDATA%\GOG.com\Galaxy\storage\galaxy-2.0.db` in
 /// read-only mode and probes the tables the various Galaxy releases use
 /// to record installed products. Returns `Vec::new()` if the database is
-/// absent, unreadable, or none of the probed shapes are present — never
+/// absent, unreadable, or none of the probed shapes are present, and never
 /// panics, never propagates a sqlite error.
 ///
 /// Like the Epic reader this runs on any host: tests can hand-build a
@@ -171,7 +171,7 @@ pub fn list_installed_gog_games(os: Os) -> Vec<LauncherApp> {
         return Vec::new();
     }
     // `rusqlite` is a `cfg(windows)` prod dep and a `cfg(not(windows))`
-    // dev-dep — the reader is available in real Windows builds and in
+    // dev-dep; the reader is available in real Windows builds and in
     // tests on any host, but not in a non-Windows release build (the
     // function still honours its public contract because the caller
     // already has to claim `Os::Windows` to reach this branch).
@@ -290,8 +290,8 @@ fn gog_read_db(db: &std::path::Path) -> Vec<LauncherApp> {
 /// is the package family name and doubles as the app id; without
 /// AppxManifest metadata the display name falls back to that same value.
 ///
-/// Unlike Epic and GOG this reader cannot be exercised cross-platform —
-/// `winreg::RegKey` does not compile on non-Windows targets — so the
+/// Unlike Epic and GOG this reader cannot be exercised cross-platform, because
+/// `winreg::RegKey` does not compile on non-Windows targets, so the
 /// real implementation is `#[cfg(windows)]` and the non-Windows build
 /// gets a vec-empty stub.
 pub fn list_installed_msstore_games(os: Os) -> Vec<LauncherApp> {
@@ -497,7 +497,7 @@ mod tests {
             )
             .unwrap();
             // A second row pointing at a path that does not exist must be
-            // dropped — GOG sometimes keeps stale install rows after a
+            // dropped: GOG sometimes keeps stale install rows after a
             // delete.
             conn.execute(
                 "INSERT INTO Builds (productId, productName, installationPath) VALUES (?1, ?2, ?3)",
@@ -525,7 +525,7 @@ mod tests {
         let db_path = db_dir.join("galaxy-2.0.db");
 
         // Database opens fine but contains no table the reader knows
-        // about — must collapse to vec empty without panic.
+        // about, so it must collapse to an empty vec without a panic.
         {
             let conn = rusqlite::Connection::open(&db_path).unwrap();
             conn.execute("CREATE TABLE Unrelated (x INTEGER)", [])
@@ -547,7 +547,7 @@ mod tests {
 
     /// On a real Windows host the user's `HKCU` may carry MS Store
     /// entries we cannot synthesise without writing to the real registry
-    /// (which would pollute the user's machine). Ignored by default —
+    /// (which would pollute the user's machine). Ignored by default,
     /// run with `cargo test -- --ignored` on a Windows box that has at
     /// least one MS Store game installed to smoke-test the reader.
     #[cfg(windows)]

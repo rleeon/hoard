@@ -2,11 +2,11 @@
 //!
 //! `tokio_tungstenite::connect_async` builds its `ClientConfig` with
 //! `ClientConfig::builder()`, which asks rustls for the *process-level* crypto
-//! provider. rustls picks one from its own crate features — and only when
+//! provider. rustls picks one from its own crate features, and only when
 //! exactly one is enabled. Our tree enables two: reqwest pulls `ring`, the AWS
 //! SDK (S3, used by the server) pulls `aws-lc-rs`, and cargo unifies features
 //! across a workspace build, so both land in the same `rustls`. With two
-//! candidates rustls refuses to guess and `builder()` panics — not at startup,
+//! candidates rustls refuses to guess and `builder()` panics, not at startup
 //! but the first time Realtime tries to connect.
 //!
 //! So we name one. `ring` matches what reqwest already uses for every HTTPS

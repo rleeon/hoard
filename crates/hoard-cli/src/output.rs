@@ -1,16 +1,16 @@
-//! Machine-readable output (`--json`) — the contract agents parse.
+//! Machine-readable output (`--json`): the contract agents parse.
 //!
 //! With `--json`, stdout carries exactly one JSON envelope and nothing else:
-//! `{"ok":true,"data":…}` when the command succeeds, `{"ok":false,"error":…}`
-//! when it fails, with a non-zero exit code. Human logs keep going to stderr,
-//! so an agent that reads only stdout always gets valid JSON — including on
-//! failure, which is why the error envelope goes to stdout too.
+//! `{"ok":true,"data":...}` when the command succeeds, `{"ok":false,"error":...}`
+//! when it fails, with a non-zero exit code. Human logs keep going to stderr, so
+//! an agent that reads only stdout always gets valid JSON, failure included, which
+//! is why the error envelope goes to stdout too.
 //!
-//! **The shapes live here, never borrowed from `hoard-agent`.** Serializing an
-//! engine struct straight to stdout would turn its fields into public API and
-//! make every refactor a breaking change for the agents parsing us. Same
-//! append-only discipline as the IPC wire: add fields, never repurpose or
-//! remove one, and bump the agent contract when the surface really changes.
+//! The shapes live here and are never borrowed from `hoard-agent`. Serializing an
+//! engine struct straight to stdout would turn its fields into public API and make
+//! every refactor a breaking change for the agents parsing us. Same append-only
+//! discipline as the IPC wire: add fields, never repurpose or remove one, and bump
+//! the agent contract when the surface really changes.
 
 use anyhow::Result;
 use hoard_agent::api::ApiError;
@@ -66,9 +66,9 @@ pub fn emit<T: Serialize>(value: &T, human: impl FnOnce(&T)) -> Result<()> {
     Ok(())
 }
 
-/// An error the CLI raises itself, carrying the stable `code` callers branch
-/// on. Errors that come up from the agent are classified in [`classify`]
-/// instead — this is for the cases only the CLI knows about.
+/// An error the CLI raises itself, carrying the stable `code` callers branch on.
+/// Errors coming up from the agent are classified in [`classify`] instead; this is
+/// for the cases only the CLI knows about.
 #[derive(Debug)]
 pub struct Coded {
     pub code: &'static str,
@@ -93,13 +93,13 @@ pub fn err(code: &'static str, message: impl Into<String>) -> anyhow::Error {
 
 /// Whether a prompt would actually reach a person.
 ///
-/// False under `--json`, in a pipe, or with stdin redirected — where a prompt
-/// is not a question but a hang: the caller is a script or an assistant, and it
-/// will sit there until something times out. Commands ask this before printing
-/// anything that waits on stdin, and fail with a coded error instead.
+/// False under `--json`, in a pipe, or with stdin redirected, where a prompt is
+/// not a question but a hang: the caller is a script or an assistant, and it will
+/// sit there until something times out. Commands ask this before printing anything
+/// that waits on stdin, and fail with a coded error instead.
 ///
-/// This doubles as the guard on destructive commands: no terminal means no one
-/// is there to say yes, so `--yes` has to be explicit.
+/// This doubles as the guard on destructive commands: no terminal means nobody is
+/// there to say yes, so `--yes` has to be explicit.
 pub fn interactive() -> bool {
     use std::io::IsTerminal;
     !json() && std::io::stdin().is_terminal()
@@ -120,12 +120,12 @@ pub struct Classified {
     /// Stable vocabulary. New codes may appear; existing ones don't change
     /// meaning.
     pub code: &'static str,
-    /// Grouped so a shell script can branch without parsing JSON. Codes within
-    /// a group share a reaction, which is the whole point of the grouping:
-    /// 2 sign in · 3 it isn't there · 4 wait · 5 free space or upgrade ·
-    /// 6 the network · 1 everything else.
+    /// Grouped so a shell script can branch without parsing JSON. Codes within a
+    /// group share a reaction, which is the whole point of the grouping:
+    /// 2 sign in, 3 it isn't there, 4 wait, 5 free space or upgrade,
+    /// 6 the network, 1 everything else.
     pub exit: i32,
-    /// Present on 429 — how long the server asked us to wait.
+    /// Present on 429: how long the server asked us to wait.
     pub retry_after_seconds: Option<u32>,
 }
 

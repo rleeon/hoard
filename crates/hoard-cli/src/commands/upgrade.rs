@@ -1,23 +1,23 @@
-//! `hoard upgrade`: sube **todo lo instalado** a la última release, junto.
+//! `hoard upgrade`: brings everything installed up to the latest release,
+//! together.
 //!
-//! No actualiza "el CLI": actualiza los componentes que el manifiesto
-//! (`hoard_agent::install::Manifest`) dice que hay en esta máquina, todos a la
-//! misma versión. Es la misma operación que `hoard install`, mirada desde
-//! después: allí se decide qué toca, aquí se releva lo que ya estaba.
+//! It does not update "the CLI": it updates the components the manifest
+//! (`hoard_agent::install::Manifest`) says exist on this machine, all to the same
+//! version. The same operation as `hoard install`, seen from afterwards: there it
+//! decides what is needed, here it relieves what was already there.
 //!
-//! ## Por qué mira el manifiesto antes de tocar nada
+//! ## Why it reads the manifest before touching anything
 //!
-//! El instalador de terminal deja el núcleo en un directorio del usuario
-//! (`~/.local/bin`); un paquete nativo lo deja dentro del bundle de la app
-//! (`/usr/bin`). Re-ejecutar el instalador a ciegas en el segundo caso no
-//! actualiza nada: **instala un segundo núcleo** en el home que eclipsa al del
-//! paquete según el orden del `PATH`, y a partir de ahí qué versión corre
-//! depende de quién arranque el proceso. Es el mismo fallo que el `hoard-server`
-//! viejo del `PATH`, y por eso aquí se pregunta primero de quién es cada pieza.
+//! The terminal installer leaves the core in a user directory (`~/.local/bin`); a
+//! native package leaves it inside the app's bundle (`/usr/bin`). Re-running the
+//! installer blindly in the second case updates nothing: it installs a *second*
+//! core in the home that shadows the packaged one depending on `PATH` order, and
+//! from then on which version runs depends on who started the process. It is the
+//! same failure as the old `hoard-server` on `PATH`, which is why this asks first
+//! who owns each piece.
 //!
-//! No sobrescribimos nuestro propio ejecutable en marcha: el instalador escribe
-//! en el directorio estándar y el binario nuevo toma el relevo a la siguiente
-//! invocación.
+//! We do not overwrite our own running executable: the installer writes to the
+//! standard directory and the new binary takes over on the next invocation.
 
 use anyhow::{bail, Result};
 
@@ -28,23 +28,22 @@ use hoard_core::ipc::{UpdatePhase, UpdateState};
 /// Canonical installer host (same one printed by `install.sh`).
 const BASE: &str = "https://hoard.services";
 
-/// `hoard upgrade` (no args): check, then upgrade only if there's something
-/// newer. `--version` pins a specific release and always runs the installer
-/// (lets you re-install or roll back).
+/// `hoard upgrade` (no args): check, then upgrade only if there is something
+/// newer. `--version` pins a specific release and always runs the installer, so
+/// you can re-install or roll back.
 ///
-/// **Lo normal es que aquí no haya nada que hacer.** Desde que el servicio
-/// actualiza solo (`hoardd::updater`), este comando es sobre todo la forma de
-/// *no esperar*: si hay algo bajado, se le dice al servicio que lo aplique ya —
-/// y con una persona delante puede además abrir el diálogo de privilegios que
-/// el ciclo de fondo no puede abrir. Sólo cuando no hay servicio al que
-/// pedírselo se cae al instalador de siempre.
+/// Normally there is nothing to do here. Since the service updates itself
+/// (`hoardd::updater`), this command is mostly the way to *not wait*: if something
+/// is downloaded, it tells the service to apply it now, and with a person present
+/// it can also open the privilege dialog the background cycle cannot. Only when
+/// there is no service to ask does it fall back to the usual installer.
 pub async fn run(version: Option<String>) -> Result<()> {
     let current = update::current();
 
-    // Pinned: skip the "is there anything new" check — the user asked for a
-    // specific version explicitly (install / reinstall / downgrade). No pasa por
-    // el servicio: el servicio sólo sabe ir hacia adelante, y esto es también
-    // cómo se vuelve atrás.
+    // Pinned: skip the "is there anything new" check, since the user asked for a
+    // specific version explicitly (install, reinstall, downgrade). It does not go
+    // through the service: the service only knows how to move forward, and this is
+    // also how you go back.
     if let Some(v) = version {
         println!("hoard {current} → {v} (pinned)");
         return install(Some(&v)).await;
@@ -65,7 +64,7 @@ pub async fn run(version: Option<String>) -> Result<()> {
             Ok(())
         }
         None => {
-            // Couldn't reach GitHub. Don't guess — tell the user and let them
+            // Couldn't reach GitHub. Don't guess: tell the user and let them
             // force it if they want.
             bail!(
                 "couldn't check the latest version (no network, or GitHub is \
@@ -76,7 +75,8 @@ pub async fn run(version: Option<String>) -> Result<()> {
     }
 }
 
-/// El camino normal: el servicio ya sabe qué hay y ya lo tiene bajado.
+/// The normal path: the service already knows what there is and has it
+/// downloaded.
 async fn through_the_service(current: &str, state: UpdateState) -> Result<()> {
     let Some(latest) = state.latest.clone() else {
         println!("hoard {current} — the sync service hasn't been able to check yet.");
@@ -113,9 +113,10 @@ async fn through_the_service(current: &str, state: UpdateState) -> Result<()> {
 
     println!("hoard {current} → {latest} — applying the staged update…");
     let after = crate::commands::link::apply_update(Some(latest.clone())).await?;
-    // Aplicar sigue en marcha cuando el servicio contesta: un instalador nativo
-    // tarda, y un `pkexec` tarda lo que tarde el humano. Se sondea el estado en
-    // vez de dejar la petición colgada bloqueando las demás de esta conexión.
+    // Applying carries on after the service answers: a native installer takes
+    // time, and a `pkexec` takes as long as the human does. We poll the state
+    // rather than leave the request hanging and blocking the rest of this
+    // connection.
     match wait_for(&latest).await {
         Applied::Done => {
             println!("\n✓ hoard {latest} installed. The service is restarting on it.");
@@ -134,18 +135,19 @@ async fn through_the_service(current: &str, state: UpdateState) -> Result<()> {
     }
 }
 
-/// Cómo acabó la espera.
+/// How the wait ended.
 enum Applied {
     Done,
     Failed(String),
     StillGoing,
 }
 
-/// Sondea al servicio hasta que la actualización llega a un desenlace.
+/// Polls the service until the update reaches an outcome.
 ///
-/// El tope no es generoso por gusto: por debajo hay un `dpkg` o un diálogo de
-/// polkit esperando a que alguien escriba su contraseña, y cortar eso a los diez
-/// segundos con un "falló" sería mentir sobre algo que está pasando bien.
+/// The cap is not generous for its own sake: underneath it there is a `dpkg` or a
+/// polkit dialog waiting for somebody to type their password, and cutting that off
+/// after ten seconds with a "it failed" would be lying about something that is
+/// going fine.
 async fn wait_for(version: &str) -> Applied {
     const DEADLINE: std::time::Duration = std::time::Duration::from_secs(180);
     const TICK: std::time::Duration = std::time::Duration::from_secs(2);
@@ -154,9 +156,9 @@ async fn wait_for(version: &str) -> Applied {
     while started.elapsed() < DEADLINE {
         tokio::time::sleep(TICK).await;
         let Some(state) = crate::commands::link::update_state().await else {
-            // El servicio dejó de contestar. Con la actualización recién
-            // aplicada eso es **lo esperado**: se está relevando con el binario
-            // nuevo, y el socket se cae mientras tanto.
+            // The service stopped answering. With an update just applied that is
+            // expected: it is relieving itself with the new binary, and the
+            // socket drops meanwhile.
             return Applied::Done;
         };
         match state.phase {
@@ -168,8 +170,8 @@ async fn wait_for(version: &str) -> Applied {
                         .unwrap_or_else(|| "no reason given".to_string()),
                 )
             }
-            // Aplicó, pero mientras tanto salió otra: sigue habiendo trabajo, y
-            // no es un fallo de éste.
+            // It applied, but another one shipped meanwhile: there is still work
+            // to do, and it is not this one's failure.
             UpdatePhase::Ready if state.staged.as_deref() != Some(version) => return Applied::Done,
             _ => {}
         }
@@ -177,18 +179,18 @@ async fn wait_for(version: &str) -> Applied {
     Applied::StillGoing
 }
 
-/// Releva todos los componentes instalados a `version`.
+/// Relieves every installed component to `version`.
 ///
-/// El pin deja de ser opcional en la práctica aunque la firma lo permita: si el
-/// núcleo se resolviera contra "latest" y la app contra un número concreto,
-/// bastaría con que se publicara una release entre las dos descargas para dejar
-/// la máquina con piezas de versiones distintas. Un solo número para todo.
+/// The pin stops being optional in practice even though the signature allows it:
+/// if the core resolved against "latest" and the app against a specific number, a
+/// release shipping between the two downloads would be enough to leave the machine
+/// with pieces from different versions. One number for everything.
 async fn install(version: Option<&str>) -> Result<()> {
     let manifest = Manifest::load_or_observe()?;
 
-    // El núcleo dentro del bundle de la app lo releva el instalador de la app,
-    // no el nuestro. Correr el instalador de terminal aquí no actualizaría el
-    // que corre: pondría otro al lado.
+    // A core inside the app's bundle is relieved by the app's installer, not by
+    // ours. Running the terminal installer here would not update the one running:
+    // it would put another one beside it.
     if manifest.core_from_bundle {
         println!(
             "this core ships inside the desktop app ({}), so the app's own \
@@ -227,9 +229,9 @@ async fn install(version: Option<&str>) -> Result<()> {
     // noise) unless the sync service is actually installed here.
     crate::commands::service::reload_after_upgrade().await;
 
-    // El instalador termina llamando a `hoard install`, que releva la app si la
-    // hay — así que llegados aquí ya está todo a la misma versión y sólo queda
-    // decirlo.
+    // The installer ends by calling `hoard install`, which relieves the app if
+    // there is one, so by the time we get here everything is at the same version
+    // and all that is left is to say so.
     if manifest.has(Component::Desktop) {
         println!("✓ desktop app upgraded alongside it.");
     }
@@ -237,8 +239,8 @@ async fn install(version: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// El caso en que el núcleo no es nuestro: se releva la app, y su bundle trae el
-/// núcleo nuevo consigo.
+/// The case where the core is not ours: the app gets relieved, and its bundle
+/// brings the new core with it.
 async fn upgrade_desktop_only(manifest: &Manifest, version: Option<&str>) -> Result<()> {
     let Some(delivery) = manifest.delivery else {
         bail!(
@@ -263,8 +265,8 @@ async fn upgrade_desktop_only(manifest: &Manifest, version: Option<&str>) -> Res
 
 #[cfg(unix)]
 fn installer_command(version: Option<&str>) -> std::process::Command {
-    // Pipe the installer straight into a POSIX shell — same as
-    // `curl -fsSL …/install.sh | sh`. `HOARD_VERSION` is read by the script.
+    // Pipe the installer straight into a POSIX shell, same as
+    // `curl -fsSL .../install.sh | sh`. `HOARD_VERSION` is read by the script.
     let mut script = format!("curl -fsSL {BASE}/install.sh | sh");
     if let Some(v) = version {
         script = format!("HOARD_VERSION={} {script}", shell_escape(v));
@@ -276,7 +278,7 @@ fn installer_command(version: Option<&str>) -> std::process::Command {
 
 #[cfg(not(unix))]
 fn installer_command(version: Option<&str>) -> std::process::Command {
-    // `irm …/install.ps1 | iex`, with the pin set as an env var beforehand.
+    // `irm .../install.ps1 | iex`, with the pin set as an env var beforehand.
     let mut ps = String::new();
     if let Some(v) = version {
         ps.push_str(&format!(

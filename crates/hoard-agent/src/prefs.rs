@@ -1,6 +1,6 @@
 //! User preferences for the desktop app.
 //!
-//! These are settings the user chooses through the Settings page — things like
+//! These are settings the user chooses through the Settings page: things like
 //! "minimise to tray when I close the window" or "show me a notification when
 //! a backup finishes". They live in their own JSON file next to the rest of
 //! Hoard's state so the user can wipe them independently of credentials and
@@ -8,7 +8,7 @@
 //!
 //! Defaults are picked to be safe and unsurprising for first-run users:
 //! native notifications off (the in-app feed carries the news), close-to-tray
-//! on, and — since the "arranque silencioso" change — autostart + start-minimised
+//! on, and since the silent-start change, autostart plus start-minimised
 //! on, so Hoard runs at login as a background tray app. The desktop only hides
 //! the window when launched via the autostart `--silent` flag, so a manual
 //! first launch still shows the UI. Diagnostic log shipping is on by default
@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 /// Fixed cadence for the `/v1/cloud/sync` airbag poll (desktop poller and
 /// CLI daemon). Deliberately **not** a pref: Realtime push is the primary
 /// trigger and the poll only catches the rare missed push, so there's no
-/// user-visible gain in going faster — but a hand-edited `prefs.json`
+/// user-visible gain in going faster, but a hand-edited `prefs.json`
 /// could hammer the server (2 s ≈ 43k req/day per client). Server cost is
 /// not a user knob. Was `cloud_poll_interval_secs` in prefs; old files
 /// keep loading because serde ignores unknown keys.
@@ -58,8 +58,8 @@ pub struct Prefs {
     pub notify_on_failure: bool,
 
     /// When `true`, the launcher integration registers Hoard to start on
-    /// login. We don't read this directly — the autostart plugin owns the
-    /// truth — but we mirror it so the Settings page can render without an
+    /// login. We don't read this directly (the autostart plugin owns the truth)
+    /// but we mirror it so the Settings page can render without an
     /// extra IPC round-trip.
     #[serde(default)]
     pub autostart: bool,
@@ -74,19 +74,18 @@ pub struct Prefs {
     #[serde(default)]
     pub seen_tray_hint: bool,
 
-    /// Consentimiento para compartir logs de diagnóstico con el servidor
-    /// conectado. Con `true`, el enviador (`logship.rs`) manda los eventos a
-    /// `/v1/cloud/logs` (cloud) o `/v1/logs` (self-hosted) al nivel que el
-    /// servidor anuncia, etiquetados con hostname, SO, versión de la app y una
-    /// huella `SHA256(machine-id|hostname)`. Con `false` no sale nada — la
-    /// bandera se relee en cada ciclo, así que apagarla para el envío en
-    /// segundos, sin reiniciar.
+    /// Consent to share diagnostic logs with the connected server. With `true`,
+    /// the shipper (`logship.rs`) sends events to `/v1/cloud/logs` (cloud) or
+    /// `/v1/logs` (self-hosted) at the level the server advertises, tagged with
+    /// hostname, OS, app version and a `SHA256(machine-id|hostname)` fingerprint.
+    /// With `false` nothing goes out. The flag is re-read every cycle, so turning
+    /// it off stops the shipping within seconds and needs no restart.
     ///
-    /// **Es opt-out: por defecto está a `true`** (ver [`Prefs::default`]). El
-    /// nombre del campo dice "anonymous" y el payload lleva una huella de
-    /// dispositivo, así que no lo es; lo que sí garantiza el enviador es que las
-    /// rutas salen sin el segmento del perfil (`logship::redact`), y eso es lo
-    /// que la etiqueta de Ajustes cuenta ahora tal cual.
+    /// It is opt-out: the default is `true` (see [`Prefs::default`]). The field
+    /// name says "anonymous" and the payload carries a device fingerprint, so it
+    /// is not. What the shipper does guarantee is that paths go out without the
+    /// profile segment (`logship::redact`), and that is what the Settings label
+    /// now says, in those words.
     #[serde(default)]
     pub anonymous_telemetry: bool,
 
@@ -101,7 +100,7 @@ pub struct Prefs {
     /// send game names; playtime is game names by construction, and it is a
     /// feature the user consumes rather than a measurement we take. One switch
     /// could not honestly describe both, so there are two, and turning this one
-    /// off sends nothing at all — not even a note saying it is off.
+    /// off sends nothing at all, not even a note saying it is off.
     ///
     /// Opt-out (`true` by default) so Wrapple works out of the box; the copy in
     /// Settings states that turning it off disables the recap.
@@ -109,7 +108,7 @@ pub struct Prefs {
     pub wrapple_telemetry: bool,
 
     /// ISO-639 code for the desktop UI's display language (e.g. "en", "fr",
-    /// "ja"). `None` means "follow the browser/OS locale" — the desktop
+    /// "ja"). `None` means "follow the browser or OS locale"; the desktop
     /// frontend falls back to that on first run. The agent itself doesn't
     /// look at this field; it only exists so the Settings page can persist
     /// the user's language choice across restarts.
@@ -119,15 +118,15 @@ pub struct Prefs {
     /// When `true`, the agent restores the latest server snapshot into a
     /// tracked save's local path whenever that path is missing or empty on
     /// add (typical scenarios: fresh install of the game, new machine,
-    /// user accidentally wiped the save folder). Defaults to `false` —
+    /// user accidentally wiped the save folder). Defaults to `false`,
     /// silently writing files under the user's `~` is exactly the kind
     /// of thing that earns trust slowly, so we make it opt-in.
     #[serde(default)]
     pub auto_restore: bool,
 
-    /// "Sync global" — distinct from both [`Self::auto_restore`] and
+    /// "Sync global", distinct from both [`Self::auto_restore`] and
     /// [`Self::automatic_mode`]. When `true`, the agent downloads a newer
-    /// cloud version as soon as it detects the device is outdated — unless a
+    /// cloud version as soon as it detects the device is outdated, unless a
     /// game session is live (`is_running`, un-flushed changes, recent write):
     /// then the pull defers until the save settles, so it can never overwrite
     /// progress the backup hasn't captured yet (that race erased a live
@@ -142,7 +141,7 @@ pub struct Prefs {
     /// Last desktop-client version we already nudged the user about via a
     /// native OS notification. The update poller checks this before firing
     /// `sendNotification` so the user doesn't get banner-spammed every 30
-    /// minutes that 1.5.0 is out — once they've seen the notification for a
+    /// minutes that 1.5.0 is out. Once they've seen the notification for a
     /// given version we leave them alone (the amber sidebar badge still
     /// shows). Reset to `None` after the user installs an update (the new
     /// client doesn't match this string anymore, so the next *newer* release
@@ -156,13 +155,13 @@ pub struct Prefs {
     /// games, and an expensive hash sweep (every
     /// `automatic_backup_interval_secs`) that catches save changes the
     /// fs-watcher missed. Activating the toggle also cascades
-    /// `auto_restore = true`. Defaults to `false` — the schedulers are
+    /// `auto_restore = true`. Defaults to `false`, because the schedulers are
     /// fully opt-in, just like `auto_restore`.
     #[serde(default)]
     pub automatic_mode: bool,
 
     /// Interval, in seconds, between background detection scans when
-    /// `automatic_mode` is on. The scan is the cheap half — a metadata-only
+    /// `automatic_mode` is on. The scan is the cheap half, a metadata-only
     /// disk walk that cross-references the Ludusavi catalog + Steam against
     /// the filesystem, reading no file bytes. Default `600` (10 min): the
     /// periodic walk is now a slow backstop because the agent also fires an
@@ -172,8 +171,8 @@ pub struct Prefs {
     ///
     /// Replaces the pre-1.9.14 `automatic_scan_interval_hours`. That single
     /// knob conflated the cheap scan with the expensive hash sweep, forcing
-    /// a 6h compromise. The old field is intentionally *not* migrated — its
-    /// value encoded the conflated cadence we're splitting apart — so older
+    /// a 6h compromise. The old field is intentionally *not* migrated, because
+    /// its value encoded the conflated cadence we're splitting apart, so older
     /// `prefs.json` files simply pick up the new defaults (serde ignores the
     /// now-unknown key).
     #[serde(default = "default_scan_interval_secs")]
@@ -183,8 +182,8 @@ pub struct Prefs {
     /// `automatic_mode` is on. The sweep re-hashes each tracked save to
     /// catch changes the fs-watcher missed; it reads file bytes, so it's the
     /// expensive half and runs rarely (default 3600s = 1h). The agent
-    /// staggers the per-save work across an effective window — which grows
-    /// past this interval when there are tens of GB of saves — so sustained
+    /// staggers the per-save work across an effective window, which grows past
+    /// this interval when there are tens of GB of saves, so sustained
     /// disk use stays spread out instead of bursting all saves at once.
     #[serde(default = "default_backup_interval_secs")]
     pub automatic_backup_interval_secs: u64,
@@ -192,12 +191,12 @@ pub struct Prefs {
     /// Days to keep per-save conflict backups under
     /// `<state_dir>/conflicts/<save_id>/<rfc3339>/`. The agent sweeps and
     /// removes older subdirs at the start of every auto-restore tick.
-    /// Defaults to 14 — long enough for the user to notice and recover a
+    /// Defaults to 14, long enough for the user to notice and recover a
     /// lost local edit, short enough not to balloon disk usage.
     #[serde(default = "default_conflict_retention_days")]
     pub conflict_retention_days: u32,
 
-    /// DEAD CODE — reserved for possible future use (2026-07-04).
+    /// DEAD CODE, reserved for possible future use (2026-07-04).
     /// Was the global "Modo ahorro (solo subida)" toggle: `true` would flag
     /// every new cloud upload `backup_only` (uploads but hidden from other
     /// devices' manifest pull). The toggle was removed from the desktop UI
@@ -209,26 +208,26 @@ pub struct Prefs {
 
     /// When `true`, the floating ActivityFeed panel is rendered next to
     /// the sidebar so the user sees a live stream of upload / pull /
-    /// throttle events. Default `true` — it's the most useful first
+    /// throttle events. Default `true`, since it's the most useful first
     /// impression of Modo Automático working. Users who find it noisy
     /// can hide it from Settings → Cloud.
     #[serde(default = "default_true")]
     pub live_activity_visible: bool,
 
-    /// "Ahorro de datos" knob `k ∈ [0,1]` (ADR 0018 Decisión 4). `0` =
-    /// "guardar todo" (cadencia agresiva, retención larga); `1` = "máximo
-    /// ahorro" (intervalo mínimo de hasta 10 min entre snapshots, retención
-    /// agresiva). Escala dos ejes: el `min_snapshot_interval` del cliente
-    /// (eje A, vía `agent::min_snapshot_interval_for`) y la `RetentionPolicy`
-    /// del server (eje B). Default `0.3` — un poco de ahorro de fábrica
-    /// porque "guardar todo" sorprende mal al usuario (caso OpenTTD).
+    /// The data-saving knob `k` in `[0,1]` (ADR 0018, decision 4). `0` is "keep
+    /// everything" (aggressive cadence, long retention); `1` is maximum saving (a
+    /// minimum interval of up to 10 minutes between snapshots, aggressive
+    /// retention). It scales two axes: the client's `min_snapshot_interval`
+    /// (axis A, via `agent::min_snapshot_interval_for`) and the server's
+    /// `RetentionPolicy` (axis B). Default `0.3`, a little saving out of the box,
+    /// because "keep everything" surprises users badly (the OpenTTD case).
     ///
-    /// El eje A ya **no** se aplica: `hoardd::engine` dejó de derivar el suelo
-    /// de aquí cuando se vio lo que costaba un ajuste sin interfaz. El slider
-    /// salió de Ajustes el 2026-06-14 y el valor que cada uno tuviera escrito se
-    /// quedó mandando para siempre; en una máquina eran 1.0, diez minutos de
-    /// espera entre subidas que nada podía enseñar ni cambiar. Si vuelve el
-    /// control, vuelve el eje A con él — no antes.
+    /// Axis A is no longer applied: `hoardd::engine` stopped deriving the floor
+    /// from here once it was clear what a setting with no interface costs. The
+    /// slider left Settings on 2026-06-14 and whatever value each person had
+    /// written kept ruling forever; on one machine that was 1.0, ten minutes of
+    /// waiting between uploads that nothing could show or change. If the control
+    /// comes back, axis A comes back with it, and not before.
     #[serde(default = "default_data_saving")]
     pub data_saving: f64,
 }
@@ -270,7 +269,7 @@ impl Default for Prefs {
             // Default on: diagnostic log shipping is enabled out of the box so
             // crashes/errors reach the server. Read fresh each ship cycle, so
             // a user can turn it off in Settings and the stream stops within
-            // seconds. NOTE: payload carries a device fingerprint — the consent
+            // seconds. NOTE: the payload carries a device fingerprint, and the consent
             // copy must say so (it's diagnostics, not anonymous counters).
             anonymous_telemetry: true,
             // Default on: Wrapple is the whole reason the playtime store
@@ -294,7 +293,7 @@ impl Default for Prefs {
 }
 
 /// The two user-facing operating modes. This is a *derived view* over the
-/// internal `auto_restore` / `global_sync` flags — the source of truth stays
+/// internal `auto_restore` and `global_sync` flags; the source of truth stays
 /// those two booleans so per-save presets and the existing agent plumbing keep
 /// working unchanged. The UI only ever shows / sets this binary choice; it
 /// never exposes the two internal toggles directly.
@@ -329,7 +328,7 @@ impl Prefs {
     /// Apply a [`SyncMode`] onto the internal flags. `FullSync` turns both
     /// `global_sync` and `auto_restore` on (the latter for older code paths
     /// that still consult it directly); `BackupOnly` turns both off. Per-save
-    /// presets (`policy.auto_restore = Some(false)`) still win as exceptions —
+    /// presets (`policy.auto_restore = Some(false)`) still win as exceptions,
     /// that logic lives in the agent, not here.
     pub fn set_sync_mode(&mut self, mode: SyncMode) {
         match mode {
@@ -352,7 +351,7 @@ impl Prefs {
     }
 
     /// Load prefs, returning defaults if the file is missing. A malformed
-    /// file is logged but doesn't kill the app — a fresh defaults struct is
+    /// file is logged but doesn't kill the app: a fresh defaults struct is
     /// returned and the next save will overwrite the corrupt version.
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() {
@@ -375,7 +374,7 @@ impl Prefs {
         Ok((Self::load(&path)?, path))
     }
 
-    /// Atomically write the prefs file — temp sibling, fsync, rename over the
+    /// Atomically write the prefs file: temp sibling, fsync, rename over the
     /// target (see [`crate::atomic_write`]). The parent is created on the way
     /// through, so first-run writes succeed before the rest of state has been
     /// touched.
@@ -412,7 +411,7 @@ mod tests {
         assert_eq!(p.sync_mode(), SyncMode::BackupOnly);
 
         // global_sync alone (legacy state) still reads as FullSync even if
-        // auto_restore happens to be off — global_sync is the deciding flag.
+        // auto_restore happens to be off; global_sync is the deciding flag.
         p.global_sync = true;
         p.auto_restore = false;
         assert_eq!(p.sync_mode(), SyncMode::FullSync);
@@ -421,7 +420,7 @@ mod tests {
     #[test]
     fn defaults_match_documented_values() {
         let p = Prefs::default();
-        // Existing defaults stay stable — guards against an accidental flip
+        // Existing defaults stay stable. Guards against an accidental flip
         // of a `default_true` when somebody adds a new field.
         assert!(p.close_to_tray);
         // 1.0.0: success notifications are opt-in (the in-app feed + toasts are
@@ -482,7 +481,7 @@ mod tests {
     /// 1.9.14: a `prefs.json` written by 1.9.13 still carries the old
     /// `automatic_scan_interval_hours` key. We deliberately *don't* migrate
     /// it (its value conflated scan + hash), so it's an unknown field serde
-    /// must silently drop — the new interval fields take their defaults.
+    /// must silently drop, and the new interval fields take their defaults.
     #[test]
     fn pre_1914_scan_interval_hours_is_dropped_not_migrated() {
         let legacy = r#"{
@@ -512,9 +511,9 @@ mod tests {
         assert_eq!(back.automatic_backup_interval_secs, 7200);
     }
 
-    /// 1.5.5 retro-compat: un `prefs.json` escrito por 1.5.4 (sin
-    /// `conflict_retention_days`) debe seguir cargando y rellenar el
-    /// default 14d sin perder el resto de los campos.
+    /// 1.5.5 backwards compatibility: a `prefs.json` written by 1.5.4, without
+    /// the new field, still loads and takes the 14-day default without losing the
+    /// rest of its fields.
     #[test]
     fn pre_155_json_deserialises_with_conflict_retention_default() {
         let legacy = r#"{
@@ -548,11 +547,11 @@ mod tests {
     /// `automatic_mode` y `auto_restore`. La cascada "activar Modo Automático
     /// ⇒ encender auto_restore" vive en el comando Tauri `set_automatic_mode`
     /// (`crates/hoard-desktop/src/commands/prefs.rs`), no en `Prefs`. Si un
-    /// día alguien intenta "simplificar" derivando una de la otra en el
-    /// tipo, este test debe romper para forzar una conversación.
+    /// day somebody tries to "simplify" by deriving one from the other in the
+    /// type, this test has to break and force a conversation.
     #[test]
     fn automatic_mode_true_in_json_does_not_force_auto_restore() {
-        // Sólo `automatic_mode = true` — todo lo demás default.
+        // Only `automatic_mode = true`; everything else defaults.
         let json = r#"{"automatic_mode": true}"#;
         let parsed: Prefs = serde_json::from_str(json)
             .expect("minimal prefs.json with only automatic_mode should parse");

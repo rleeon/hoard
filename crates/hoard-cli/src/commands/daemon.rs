@@ -1,35 +1,33 @@
-//! `hoard sync run` — la CLI enganchada al servicio (ADR 0021, Slice 4c).
+//! `hoard sync run`: the CLI attached to the service (ADR 0021, Slice 4c).
 //!
-//! Antes de este slice esto **era** el motor: `agent::spawn` sobre los saves de
-//! `state.json`, el pidfile, el rotador del token Cloud, el poller y el latido de
-//! presencia, todo dentro del proceso de la CLI. Ahora nada de eso vive aquí: el
-//! motor es de `hoardd` (uno por usuario, residente, sobrevive a cerrar la app),
-//! y este comando hace lo mismo que el desktop desde el 4b — **asegura el
-//! servicio y se engancha a su journal** — sólo que imprimiendo líneas en vez de
-//! pintar una ventana.
+//! No engine lives here. It belongs to `hoardd`, one per user, resident, and
+//! outliving the app, and this command does what the desktop does: ensure the
+//! service and attach to its journal, only printing lines instead of drawing a
+//! window.
 //!
-//! ## Enganchar es seguir, no releer
+//! ## Attaching is following, not re-reading
 //!
-//! Nos suscribimos desde el cursor que el daemon reporta en el `Welcome`, así que
-//! sólo se imprime lo que pasa **a partir de ahora**. El desktop sí pide el
-//! backlog entero, y con razón: tiene estado en pantalla que reconstruir. Aquí no
-//! hay estado; volcar el anillo al arrancar sólo haría pasar por actual un
-//! historial de ayer. (El hueco entre el `Welcome` y el `Subscribe` sí viaja: el
-//! cursor es del `Welcome`, no del momento de suscribirse.)
+//! We subscribe from the cursor the daemon reports in the `Welcome`, so only what
+//! happens from now on gets printed. The desktop does ask for the whole backlog,
+//! and rightly: it has state on screen to rebuild. There is no state here, and
+//! dumping the ring on start would only pass yesterday's history off as current.
+//! (The gap between the `Welcome` and the `Subscribe` does travel: the cursor is
+//! the `Welcome`'s, not the moment of subscribing.)
 //!
-//! ## Parar esto sí para el sync; que paren el sync termina esto
+//! ## Stopping this stops sync, and stopping sync stops this
 //!
-//! Al recibir la señal se manda `Shutdown` por IPC. Es la excepción a "cerrar un
-//! cliente nunca mata el motor", y sigue siendo deliberada: quien escribe
-//! `hoard sync run` y lo corta pidió parar el sync — y hasta el Slice 4d este
-//! proceso *era* el `ExecStart` de la unidad, así que las unidades instaladas por
-//! versiones anteriores siguen dependiendo de ello (desde el 4d la unidad apunta
-//! a `hoardd`, que atiende la señal él mismo).
+//! On a signal we send `Shutdown` over IPC. It is the exception to "closing a
+//! client never kills the engine", and it is still deliberate: whoever types
+//! `hoard sync run` and cuts it asked to stop syncing. Until Slice 4d this
+//! process *was* the unit's `ExecStart`, so units installed by earlier versions
+//! still depend on it (from 4d the unit points at `hoardd`, which handles the
+//! signal itself).
 //!
-//! Y al revés, desde el 4d: si el servicio se despide
-//! ([`hoard_core::ipc::ServerFrame::Goodbye`]) este comando **termina** en vez de
-//! reconectar. Seguir reconectando sería relanzarlo —la reconexión es "spawn if
-//! absent"—, o sea deshacer el `hoard sync stop` que alguien acaba de dar.
+//! And the other way round, since 4d: if the service says goodbye
+//! ([`hoard_core::ipc::ServerFrame::Goodbye`]) this command *ends* rather than
+//! reconnecting. Carrying on reconnecting would relaunch it, since the reconnect
+//! is spawn-if-absent, and that would undo the `hoard sync stop` somebody just
+//! issued.
 
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -46,23 +44,23 @@ use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 
 use crate::commands::link;
 
-/// Espera entre reintentos del enganche. El caso normal es que el servicio siga
-/// vivo y esto no llegue a usarse; cubre que se reinicie (una actualización) sin
-/// que el stream se quede mudo para siempre.
+/// Wait between attach retries. Normally the service stays alive and this never
+/// gets used; it covers a restart (an update) without leaving the stream mute
+/// forever.
 const RECONNECT_DELAY: Duration = Duration::from_secs(3);
 
-/// Cuánto se espera al motor para aplicarle `--backup-only`. El servicio resuelve
-/// la sesión antes de tener motor, así que en el boot la orden llega antes que el
-/// motor: sin esta espera, la bandera se perdería en silencio y el servicio
-/// escribiría en disco justo cuando el usuario pidió que no lo hiciera.
+/// How long to wait for the engine before applying `--backup-only`. The service
+/// resolves the session before it has an engine, so at boot the order arrives
+/// first: without this wait the flag would be lost in silence and the service
+/// would write to disk at exactly the moment the user asked it not to.
 const BACKUP_ONLY_DEADLINE: Duration = Duration::from_secs(120);
 
-/// Ruta del log del servicio de sync escrito por *este* proceso
-/// (`<state_dir>/logs/sync.log`). El Task Scheduler de Windows tira
-/// stdout/stderr, así que sin fichero no quedaría rastro de los eventos que
-/// imprimimos; launchd redirige por el plist y systemd captura en journald, donde
-/// el fichero extra es inofensivo. El log del **servicio** es otro
-/// (`hoardd.log`); ver [`super::service`].
+/// Path of the sync service log written by *this* process
+/// (`<state_dir>/logs/sync.log`). Windows' Task Scheduler throws stdout and
+/// stderr away, so without a file there would be no trace of the events we print;
+/// launchd redirects through the plist and systemd captures into journald, where
+/// the extra file is harmless. The *service's* own log is a different one
+/// (`hoardd.log`); see [`super::service`].
 pub fn sync_log_path() -> Option<std::path::PathBuf> {
     CliConfig::state_dir()
         .ok()
@@ -83,9 +81,9 @@ pub fn sync_log_writer() -> Option<(NonBlocking, WorkerGuard)> {
 
 /// Reads the last `n` lines of `path`. Efficient for large files: only the
 /// trailing 256 KiB is read and the partial line at the chunk boundary is
-/// dropped. Portable (no `tail` subprocess) so it works on Windows too — and
-/// since the Slice 4c it's what `hoard sync logs` uses on every platform to tail
-/// the service's own log.
+/// dropped. Portable (no `tail` subprocess) so it works on Windows too, and since
+/// Slice 4c it is what `hoard sync logs` uses on every platform to tail the
+/// service's own log.
 pub(crate) fn tail_last_n_lines(path: &Path, n: usize) -> Result<Vec<String>> {
     let mut file =
         std::fs::File::open(path).with_context(|| format!("opening {}", path.display()))?;
@@ -104,7 +102,7 @@ pub(crate) fn tail_last_n_lines(path: &Path, n: usize) -> Result<Vec<String>> {
     let text = String::from_utf8_lossy(&buf);
     let mut lines: Vec<&str> = text.lines().collect();
     // If we sliced into the middle of the file, the first line is likely a
-    // partial fragment — drop it so only whole lines are returned.
+    // partial fragment, so drop it and return whole lines only.
     if start > 0 && !lines.is_empty() {
         lines.remove(0);
     }
@@ -112,9 +110,9 @@ pub(crate) fn tail_last_n_lines(path: &Path, n: usize) -> Result<Vec<String>> {
     Ok(lines[drop..].iter().map(|s| s.to_string()).collect())
 }
 
-/// `hoard sync run`: asegura el servicio y sigue su journal hasta que nos manden
-/// parar. `backup_only` le pide al motor que no restaure ni abra los caminos de
-/// pull (sólo sube, nunca escribe en tu disco).
+/// `hoard sync run`: ensures the service and follows its journal until we are
+/// told to stop. `backup_only` asks the engine not to restore and not to open the
+/// pull paths, so it only uploads and never writes to your disk.
 pub async fn run(backup_only: bool) -> Result<()> {
     let mut commands = link::ensure("commands").await?;
     let welcome = commands.welcome().clone();
@@ -129,22 +127,23 @@ pub async fn run(backup_only: bool) -> Result<()> {
     }
 
     if backup_only {
-        // Una bandera de este proceso sobre un motor que es de otro: se aplica en
-        // cuanto haya motor y se deshace al parar (paramos el servicio al salir).
+        // A flag from this process over an engine that belongs to another: it
+        // applies as soon as there is an engine and is undone on stop, since we
+        // stop the service on the way out.
         tokio::spawn(apply_backup_only());
         println!("  backup only: never restores or writes to your disk");
     }
     println!("Ctrl-C (or `hoard sync stop`) to stop.\n");
 
-    // Dos formas de acabar, y sólo una para el servicio: si nos paran a nosotros
-    // (Ctrl-C, o el `systemctl --user stop` de una unidad heredada que todavía
-    // apunta a este comando) el usuario pidió parar el sync; si el que se para es
-    // el servicio, ya está parado y no hay nada que pedirle.
+    // Two ways to end, and only one of them stops the service. If we are stopped
+    // (Ctrl-C, or the `systemctl --user stop` of an inherited unit still pointing
+    // at this command) the user asked to stop syncing; if it is the service that
+    // stops, it is already stopped and there is nothing to ask it.
     let stop_the_service = tokio::select! {
         _ = shutdown_signal() => true,
-        // Sólo retorna si el servicio se despide; una conexión caída la
-        // reintenta sola, porque el servicio puede reiniciarse (una
-        // actualización) sin que este proceso tenga otra forma de enterarse.
+        // Only returns when the service says goodbye; a dropped connection
+        // retries on its own, because the service can restart (an update) with
+        // this process having no other way to find out.
         _ = follow() => false,
     };
 
@@ -155,8 +154,9 @@ pub async fn run(backup_only: bool) -> Result<()> {
     Ok(())
 }
 
-/// Línea de estado del motor dentro del servicio. Un motor caído **con motivo**
-/// es diagnosticable; sin motivo es el fallo invisible que costó D.11/D.12.
+/// The engine's status line inside the service. An engine that is down *with a
+/// reason* is diagnosable; without one it is the invisible failure D.11 and D.12
+/// cost.
 fn print_engine(status: &DaemonStatus) {
     if status.engine.running {
         println!(
@@ -176,10 +176,10 @@ fn print_engine(status: &DaemonStatus) {
     }
 }
 
-/// Le pide al motor el modo "sólo subida" en cuanto exista. Ver
-/// [`BACKUP_ONLY_DEADLINE`]: en el arranque el motor llega después que nosotros,
-/// y una bandera perdida en silencio aquí significa escribir en el disco del
-/// usuario contra lo que pidió.
+/// Asks the engine for upload-only mode as soon as one exists. See
+/// [`BACKUP_ONLY_DEADLINE`]: at boot the engine arrives after we do, and a flag
+/// silently lost here means writing to the user's disk against what they asked
+/// for.
 async fn apply_backup_only() {
     let deadline = Instant::now() + BACKUP_ONLY_DEADLINE;
     loop {
@@ -207,10 +207,9 @@ async fn apply_backup_only() {
     }
 }
 
-/// Sigue el journal del servicio e imprime lo que llega. Sólo retorna cuando el
-/// servicio se **despide**: una conexión caída se reintenta, porque el servicio
-/// puede reiniciarse (una actualización) sin que este proceso tenga otra forma de
-/// enterarse.
+/// Follows the service's journal and prints what arrives. Only returns when the
+/// service says goodbye: a dropped connection is retried, because the service can
+/// restart (an update) with this process having no other way to find out.
 async fn follow() {
     loop {
         match follow_once().await {
@@ -224,18 +223,20 @@ async fn follow() {
     }
 }
 
-/// Por qué se acabó el seguimiento.
+/// Why the following ended.
 enum Followed {
-    /// Se perdió la conexión: hay que reintentar.
+    /// The connection dropped, so retry.
     Disconnected,
-    /// El servicio dijo que lo paraban. No hay nada que seguir ni que relanzar.
+    /// The service said it was being stopped. Nothing to follow, nothing to
+    /// relaunch.
     Farewell,
 }
 
 async fn follow_once() -> Result<Followed> {
     let mut events = link::ensure("events").await?;
-    // Desde el cursor del `Welcome`: seguir, no releer. Lo que ocurra entre el
-    // saludo y la suscripción sí viene en el backlog, así que no hay hueco.
+    // From the `Welcome`'s cursor: follow, don't re-read. Whatever happens
+    // between the greeting and the subscription does come in the backlog, so
+    // there is no gap.
     let since = events.welcome().cursor;
     let backlog = link::ask(&mut events, Request::Subscribe { since: Some(since) }).await?;
     if let Payload::Backlog(backlog) = backlog {
@@ -246,9 +247,9 @@ async fn follow_once() -> Result<Followed> {
     while let Some(push) = events.next_push().await? {
         match push {
             Push::Event(entry) => print_event(&entry.event),
-            // Nos retrasamos y el canal descartó filas. El daemon lo confiesa en
-            // vez de dejar el hueco invisible; para un stream de terminal basta
-            // con decirlo y seguir desde el cursor nuevo.
+            // We fell behind and the channel dropped rows. The daemon owns up to
+            // it rather than leaving the gap invisible; for a terminal stream,
+            // saying so and carrying on from the new cursor is enough.
             Push::Resync { cursor, dropped } => {
                 eprintln!("warning: fell behind the service's events ({dropped} dropped)");
                 let _ = link::ask(
@@ -259,9 +260,9 @@ async fn follow_once() -> Result<Followed> {
                 )
                 .await?;
             }
-            // Lo pararon a propósito. Seguir reconectando sería esperar eventos
-            // de un sync que ya no corre, y relanzarlo (nuestra reconexión es
-            // "spawn if absent") sería deshacer un `hoard sync stop`.
+            // Stopped on purpose. Carrying on reconnecting would mean waiting for
+            // events from a sync that is not running, and relaunching it (our
+            // reconnect is spawn-if-absent) would undo a `hoard sync stop`.
             Push::Goodbye { reason } => {
                 println!("the Hoard service stopped ({reason}).");
                 return Ok(Followed::Farewell);
@@ -277,9 +278,10 @@ fn print_event(event: &AgentEvent) {
     }
 }
 
-/// Para el servicio. Conexión nueva a propósito: si el daemon se reinició
-/// mientras seguíamos su journal, la orden tiene que llegarle **al que está
-/// ahora**. No lo arranca: no tendría sentido levantar un servicio para pararlo.
+/// Stops the service. A fresh connection on purpose: if the daemon restarted
+/// while we were following its journal, the order has to reach the one running
+/// now. It does not start it: bringing a service up in order to stop it makes no
+/// sense.
 async fn stop_service() {
     let Some(mut client) = link::attached("stop").await else {
         println!("the Hoard service wasn't running.");
@@ -292,9 +294,9 @@ async fn stop_service() {
 }
 
 /// Resolves when the process is asked to stop: Ctrl-C anywhere, plus SIGTERM on
-/// unix — the signal `systemctl --user stop` / `launchctl bootout` send. Without
+/// unix, the signal `systemctl --user stop` and `launchctl bootout` send. Without
 /// the SIGTERM arm the service manager would have to SIGKILL us, skipping the
-/// clean shutdown of the service.
+/// service's clean shutdown.
 async fn shutdown_signal() {
     #[cfg(unix)]
     {
@@ -317,17 +319,17 @@ async fn shutdown_signal() {
     }
 }
 
-/// Human-readable line for an agent event. `None` = internal event not worth
-/// showing (scheduled, skipped, heavy-process…).
+/// Human-readable line for an agent event. `None` means an internal event not
+/// worth showing (scheduled, skipped, heavy process).
 fn render(ev: &AgentEvent) -> Option<String> {
     use AgentEvent::*;
     Some(match ev {
         GameStarted { game_slug, .. } => format!("▶  {game_slug} running"),
         GameStopped { game_slug, .. } => format!("■  {game_slug} closed"),
         BackupStarted { label, .. } => format!("…  backing up {label}"),
-        // `already_landed`: el contenido ya era la cabeza del server, así que no
-        // se subió nada (D.8.3). Decir "backup 0B" sería confuso; lo que pasó es
-        // que no hacía falta.
+        // `already_landed`: the content already was the server's head, so nothing
+        // was uploaded (D.8.3). Saying "backup 0B" would be confusing; what
+        // happened is that it was not needed.
         BackupSuccess {
             version_num,
             already_landed: true,

@@ -1,75 +1,74 @@
-# ─── Todo lo privado, en un sitio ────────────────────────────────────
-# Notas de trabajo, ADRs, auditoría de seguridad, legal, investigación.
-# Índice en `.local/README.md`. Nunca sale de la máquina.
+# ---- everything private, in one place
+# Working notes, ADRs, the security audit, legal, research. Index in
+# `.local/README.md`. It never leaves the machine.
 /.local/
 
-# El contexto para las sesiones de IA: uno en la raíz y uno por crate.
-# Sin slash: ignora el fichero a cualquier nivel del árbol.
+# Context for AI sessions: one at the root and one per crate. No leading
+# slash, so the file is ignored at any depth.
 CLAUDE.md
 .claude/
 
-# Hooks de git locales (espejo de la CI).
+# Local git hooks (a mirror of CI).
 /.githooks/
 
-# Metadatos del editor (bóveda de Obsidian sobre el repo).
+# Editor metadata (an Obsidian vault over the repo).
 .obsidian/
 
-# ─── Secretos y config de máquina ────────────────────────────────────
+# ---- secrets and per-machine config
 .env
 .env.local
 .info
 deploy/config.toml
 
-# El config del stack de Docker es del usuario, no del repo: versionarlo
-# hacía que un `git pull` le pisara su configuración (y con ella el
-# `data_dir`), que fue como un self-hoster perdió de vista su base en
-# ago-2026. La guía ya dice `cp deploy/config.toml.example ...`.
+# The Docker stack's config belongs to the user, not to the repo. Versioning it
+# meant a `git pull` walked over their configuration, `data_dir` included, which
+# is how a self-hoster lost track of their database in aug-2026. The guide already
+# says `cp deploy/config.toml.example ...`.
 deploy/docker/config/config.toml
 
-# Bot de estado de Discord: infra local con secretos.
+# Discord status bot: local infra with secrets in it.
 /deploy/.env.discord-bot
 /deploy/scripts/discord-status-bot.py
 /deploy/systemd/hoard-discord-bot.service
 
-# Panel de métricas admin (usa service_role).
+# Admin metrics panel (uses service_role).
 /tools/admin-dashboard.html
 /tools/serve-dashboard.sh
 
-# ─── Migraciones con el uid del usuario empotrado ────────────────────
-# Se aplican a mano en producción. `sqlx::migrate!` empotra la carpeta en
-# tiempo de compilación y aborta el arranque con `VersionMissing` si la
-# base tiene una versión que el binario no trae — por eso el server cloud
-# se construye desde este árbol (deploy/fly/Dockerfile), donde sí están
-# en disco, y no desde un clon limpio. Desde 2026-08-13 el migrador va
-# con `set_ignore_missing(true)`, así que un build sin ellas arranca en
-# vez de quedarse en bucle de reinicios. Costó una mañana de servicio
-# aprenderlo: despliegue desde un worktree, `VersionMissing(30)`, y la
-# API abajo hasta el rollback.
+# ---- migrations with the user's uid baked in
+# Applied by hand in production. `sqlx::migrate!` embeds the folder at compile
+# time and aborts the boot with `VersionMissing` when the database holds a version
+# the binary does not carry, which is why the cloud server is built from this tree
+# (deploy/fly/Dockerfile), where they are on disk, and not from a clean clone.
+# Since 2026-08-13 the migrator runs with `set_ignore_missing(true)`, so a build
+# without them boots instead of sitting in a restart loop. Learning that cost a
+# morning of service: a deploy from a worktree, `VersionMissing(30)`, and the API
+# down until the rollback.
 /crates/hoard-server/migrations/postgres/0030_admin_metrics.sql
 /crates/hoard-server/migrations/postgres/0039_admin_metrics_v2.sql
 /crates/hoard-server/migrations/postgres/0044_admin_metrics_screen.sql
 
-# ─── Fuera del repo a propósito ──────────────────────────────────────
-# Banco de pruebas del motor: herramienta de desarrollo, nunca se publica
-# ni se empaqueta. Vive fuera del workspace (`exclude` en el Cargo.toml
-# raíz) para que su ausencia no rompa un clon limpio.
+# ---- out of the repo on purpose
+# The engine's test bench: a development tool, never published and never packaged.
+# It lives outside the workspace (`exclude` in the root Cargo.toml) so its absence
+# does not break a clean clone.
 /crates/hoard-pruebas/
 
-# Mapa de saves: prototipo aparcado (defectuoso, fuera de 1.0). Se
-# mantiene en local para retomarlo, pero no se publica.
+# Save map: a parked prototype, flawed and out of 1.0. Kept locally to pick back
+# up, not published.
 crates/hoard-desktop/ui/src/routes/Map.svelte
 
-# READMEs internos de crate y carpeta.
+# Internal per-crate and per-folder READMEs.
 /crates/hoard-agent/tests/fixtures/README.md
 /crates/hoard-manifest/data/README.md
 /crates/hoard-screen/README.md
 /deploy/docker/README.md
 
-# Listas que sólo escribe el usuario.
+# Lists only the user writes.
 /rleeon.md
 /vista.md
 
-# ─── Artefactos de build ─────────────────────────────────────────────
+# ---- build artefacts
 /target
 /dist
 /dist-v1
@@ -95,27 +94,27 @@ crates/hoard-desktop/ui/node_modules/
 crates/hoard-desktop/ui/dist/
 crates/hoard-desktop/ui/.vite/
 
-# Sidecars compilados (`hoard-screen-<triple>`, `hoardd-<triple>`,
-# `hoard-<triple>`), que `scripts/build-sidecar.sh` deja junto a
-# `tauri.conf.json` para que el bundler los aplane al lado del exe — el
-# resolver de runtime los busca ahí, y el viejo subdirectorio `binaries/`
-# rompía esa resolución. Las fuentes viven en `crates/`.
+# Compiled sidecars (`hoard-screen-<triple>`, `hoardd-<triple>`,
+# `hoard-<triple>`), which `scripts/build-sidecar.sh` leaves next to
+# `tauri.conf.json` so the bundler flattens them beside the exe. The runtime
+# resolver looks for them there, and the old `binaries/` subdirectory broke that
+# resolution. The sources live in `crates/`.
 crates/hoard-desktop/binaries/
 crates/hoard-desktop/hoard-screen-*
 crates/hoard-desktop/hoardd-*
 crates/hoard-desktop/hoard-x86_64-*
 crates/hoard-desktop/hoard-aarch64-*
 
-# Este proyecto usa pnpm: los lockfiles de npm/yarn caídos por accidente
-# no se trackean. `pnpm-lock.yaml` es la fuente de verdad.
+# This project uses pnpm: npm and yarn lockfiles dropped here by accident are not
+# tracked. `pnpm-lock.yaml` is the source of truth.
 package-lock.json
 yarn.lock
 
-# Archivos sueltos dejados en el árbol por accidente.
+# Loose files left in the tree by accident.
 *.zip
 
-# ─── Borradores en la raíz ───────────────────────────────────────────
-# Sólo raíz: CHANGELOG.md y los demás principales no se ven afectados.
+# ---- drafts at the root
+# Root only, so CHANGELOG.md and the other main documents are unaffected.
 /guide*.md
 /version*.md
 /plan*.md

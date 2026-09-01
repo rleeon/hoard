@@ -51,9 +51,9 @@ pub fn run(cmd: ConfigCommand) -> Result<()> {
             let mut cfg = CliConfig::load(&path)?;
             match key.as_str() {
                 // A `user@` here would end up as an HTTP Basic header that
-                // shadows the access key on every request — a 401 that blames
-                // the token. Clean it on the way in, so what lands in
-                // config.toml is what the client will actually talk to.
+                // shadows the access key on every request: a 401 that blames the
+                // token. Clean it on the way in, so what lands in config.toml is
+                // what the client will actually talk to.
                 "server.url" => {
                     cfg.server.url = hoard_agent::serverclass::normalize_server_url(&value)
                 }

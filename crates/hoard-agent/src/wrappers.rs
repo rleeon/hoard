@@ -1,46 +1,45 @@
-//! DETECCIÓN — carpetas contenedoras: emuladores de Steam / repacks.
+//! Detection: container folders, meaning Steam emulators and repacks.
 //!
-//! Un "wrapper" es una carpeta que agrupa **un subdirectorio por juego**,
-//! normalmente nombrado con el AppID de Steam:
+//! A "wrapper" is a folder that groups one subdirectory per game, usually named
+//! after the Steam AppID:
 //!
 //! ```text
 //! %APPDATA%/Goldberg SteamEmu Saves/413150/remote/...
 //! %PUBLIC%/Documents/Steam/CODEX/1091500/remote/...
 //! ```
 //!
-//! Sin esta etapa esas carpetas sólo las alcanzaba el walk genérico de fase 4,
-//! que no sabe que el subdirectorio es un AppID ni que el save real está en
-//! `remote/`. De ahí salieron dos bugs reales: `GSE Saves` acabó rastreado con
-//! el slug del nombre de usuario de Windows, y un save quedó rotulado con el
-//! nombre de un instalador. Aquí el AppID se resuelve contra el catálogo, así
-//! que el juego sale con su nombre y su carátula, y la carpeta ofrecida es la
-//! de los saves, no el contenedor.
+//! Without this stage those folders were only ever reached by the generic phase-4
+//! walk, which does not know the subdirectory is an AppID or that the real save is
+//! in `remote/`. Two real bugs came out of that: `GSE Saves` ended up tracked
+//! under a slug made from the Windows account name, and a save was labelled with
+//! an installer's name. Here the AppID is resolved against the catalogue, so the
+//! game comes out with its own name and cover art, and the folder offered is the
+//! one with the saves rather than the container.
 //!
-//! El contenedor importa además por una razón de sync: junto a `remote/`
-//! conviven `remotecache.vdf`, logros, estadísticas y contadores de tiempo
-//! jugado que **cambian en cada sesión y son distintos en cada máquina**.
-//! Rastrear el padre convierte eso en un conflicto permanente entre dispositivos
-//! sin que ningún save se haya movido.
+//! The container also matters for a sync reason: alongside `remote/` there are
+//! `remotecache.vdf`, achievements, statistics and playtime counters that change
+//! every session and differ on every machine. Tracking the parent turns that into
+//! a permanent conflict between devices without a single save having moved.
 
 use std::path::{Path, PathBuf};
 
 use crate::manifest::Os;
 use crate::pathexpand::{expand_path, expand_path_in_prefix_as_user};
 
-/// Un wrapper conocido: dónde vive y cómo se llama en la UI.
+/// A known wrapper: where it lives and what it is called in the UI.
 struct Wrapper {
     /// Plantilla estilo Ludusavi, resuelta igual en el host y dentro de un
     /// prefijo Wine.
     template: &'static str,
-    /// Etiqueta para el log y para el nombre de un hallazgo sin AppID.
+    /// Label for the log and for naming a find with no AppID.
     label: &'static str,
 }
 
-/// Los emuladores de Steam y repacks que agrupan saves por AppID.
+/// The Steam emulators and repacks that group saves by AppID.
 ///
-/// Todas son convenciones de Windows; en Linux los mismos juegos corren bajo
-/// Proton y estas rutas viven dentro del prefijo, que es justo por lo que
-/// [`discover_wrappers_in_prefix`] existe.
+/// All of them are Windows conventions; on Linux the same games run under Proton
+/// and these paths live inside the prefix, which is exactly why
+/// [`discover_wrappers_in_prefix`] exists.
 const WRAPPERS: &[Wrapper] = &[
     Wrapper {
         template: "<winAppData>/Goldberg SteamEmu Saves",
@@ -102,35 +101,35 @@ const WRAPPERS: &[Wrapper] = &[
         template: "<winProgramData>/Steam/RLD!",
         label: "RELOADED",
     },
-    // El genérico va el último: `%PUBLIC%/Documents/Steam` contiene a CODEX y
-    // RUNE como subcarpetas, y quien mira primero gana (ver `is_app_id`, que
-    // descarta esos nombres por no ser numéricos).
+    // The generic one goes last: `%PUBLIC%/Documents/Steam` contains CODEX and
+    // RUNE as subfolders, and whoever looks first wins (see `is_app_id`, which
+    // discards those names for not being numeric).
     Wrapper {
         template: "<winPublic>/Documents/Steam",
         label: "Steam emu",
     },
 ];
 
-/// Subcarpetas de un wrapper que son configuración del propio emulador, no
-/// un juego. `saves`/`remote` aparecen cuando el emulador guarda en plano en
-/// vez de por AppID; ahí el contenedor entero ES el save y lo trata el walk
-/// normal, no esta etapa.
+/// Subfolders of a wrapper that are the emulator's own configuration rather than
+/// a game. `saves` and `remote` show up when the emulator stores flat instead of
+/// by AppID; there the whole container IS the save and the ordinary walk handles
+/// it, not this stage.
 const WRAPPER_SYSTEM_DIRS: &[&str] = &["settings", "remote", "saves", "stats", "storage"];
 
 /// Un save encontrado dentro de un wrapper.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WrapperHit {
-    /// AppID de Steam cuando la subcarpeta es numérica, que es lo normal.
+    /// The Steam AppID when the subfolder is numeric, which is the usual case.
     pub app_id: Option<u64>,
-    /// La carpeta que de verdad tiene los saves (ya estrechada).
+    /// The folder that really holds the saves, already narrowed.
     pub path: PathBuf,
-    /// Nombre de la subcarpeta, para nombrar el hallazgo si no hay AppID.
+    /// The subfolder's name, for naming the find when there is no AppID.
     pub folder: String,
     pub wrapper: &'static str,
 }
 
-/// Wrappers en las rutas nativas del host. Vacío fuera de Windows: las
-/// plantillas son `<win*>` y `expand_path` no las resuelve en otros SO.
+/// Wrappers on the host's native paths. Empty outside Windows: the templates are
+/// `<win*>` and `expand_path` does not resolve them on other systems.
 pub fn discover_wrappers(os: Os) -> Vec<WrapperHit> {
     let mut out = Vec::new();
     let mut seen: Vec<PathBuf> = Vec::new();
@@ -142,9 +141,9 @@ pub fn discover_wrappers(os: Os) -> Vec<WrapperHit> {
     out
 }
 
-/// Los mismos wrappers **dentro de un prefijo Wine/Proton**, que es donde
-/// caen en Linux y en la Steam Deck: el repack corre bajo Proton y escribe en
-/// el `drive_c` del prefijo, no en el home nativo.
+/// The same wrappers inside a Wine or Proton prefix, which is where they land on
+/// Linux and on the Steam Deck: the repack runs under Proton and writes into the
+/// prefix's `drive_c`, not into the native home.
 pub fn discover_wrappers_in_prefix(prefix_root: &Path, user: &str) -> Vec<WrapperHit> {
     let mut out = Vec::new();
     let mut seen: Vec<PathBuf> = Vec::new();
@@ -156,8 +155,8 @@ pub fn discover_wrappers_in_prefix(prefix_root: &Path, user: &str) -> Vec<Wrappe
     out
 }
 
-/// Lista los juegos de un wrapper. `seen` evita que el wrapper genérico
-/// `.../Documents/Steam` vuelva a ofrecer lo que CODEX y RUNE ya dieron.
+/// Lists a wrapper's games. `seen` stops the generic `.../Documents/Steam`
+/// wrapper re-offering what CODEX and RUNE already gave.
 fn collect(root: &Path, label: &'static str, out: &mut Vec<WrapperHit>, seen: &mut Vec<PathBuf>) {
     let Ok(read) = std::fs::read_dir(root) else {
         return;
@@ -178,8 +177,8 @@ fn collect(root: &Path, label: &'static str, out: &mut Vec<WrapperHit>, seen: &m
             continue;
         }
         let container = entry.path();
-        // Un subdirectorio ya cubierto por un wrapper más específico
-        // (CODEX/RUNE dentro de `Documents/Steam`) no se repite.
+        // A subdirectory already covered by a more specific wrapper (CODEX or
+        // RUNE inside `Documents/Steam`) is not repeated.
         if seen.iter().any(|s| s == &container) {
             continue;
         }
@@ -197,24 +196,23 @@ fn collect(root: &Path, label: &'static str, out: &mut Vec<WrapperHit>, seen: &m
     }
 }
 
-/// `true` si el nombre de carpeta es un AppID de Steam: sólo dígitos.
+/// `true` when the folder name is a Steam AppID: digits only.
 fn is_app_id(name: &str) -> bool {
     !name.is_empty() && name.len() <= 10 && name.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// Estrecha una carpeta CONTENEDORA a la que de verdad guarda los saves.
+/// Narrows a CONTAINER folder down to the one that really holds the saves.
 ///
-/// Dos formas cubren lo que hay ahí dentro:
+/// Two shapes cover what is in there:
 ///
-/// * `remote/` — el layout de Steam Cloud, que todos los emuladores copian.
-/// * un único subdirectorio con nombre de save (`Saves`, `SaveData`, la forma
-///   `Saved/SaveGames` de Unreal…) cuando el contenedor envuelve el árbol
-///   propio del juego.
+/// * `remote/`, the Steam Cloud layout every emulator copies.
+/// * a single subdirectory with a save-like name (`Saves`, `SaveData`, Unreal's
+///   `Saved/SaveGames` shape) when the container wraps the game's own tree.
 ///
-/// Si no hay ninguna de las dos, se devuelve el contenedor: muchos juegos y
-/// emuladores escriben directamente ahí. Y si hay **varias** candidatas no se
-/// adivina — acertar a medias es peor que ofrecer el contenedor, que el
-/// usuario ve y puede corregir.
+/// With neither, the container itself is returned: plenty of games and emulators
+/// write straight into it. And when there are several candidates nothing is
+/// guessed, because being half right is worse than offering the container, which
+/// the user can see and correct.
 pub fn resolve_game_container_dir(dir: &Path) -> PathBuf {
     let remote = dir.join("remote");
     if remote.is_dir() {
@@ -248,15 +246,13 @@ const WRAPPER_BOOKKEEPING_FILES: &[&str] = &[
 /// `true` if the folder holds anything that could be a saved game.
 ///
 /// [`dir_non_empty`] wasn't enough, and Stellaris is the case that showed it: a
-/// Goldberg repack leaves `GSE Saves/281990/achievements.json` **with no
-/// `remote/`**, because the real saves live where the game has always put them
+/// Goldberg repack leaves `GSE Saves/281990/achievements.json` with no `remote/`,
+/// because the real saves live where the game has always put them
 /// (`Documents/Paradox Interactive/Stellaris/save games`). That folder isn't
-/// empty, so it was offered as the game's save on every sweep — a log line
-/// every ten minutes, forever, about a directory with no game in it.
-///
-/// Deliberately conservative: it only rejects when **everything** there is
+/// empty, so it was offered as the game's save on every sweep: a log line every
+/// ten minutes, forever, about a directory with no game in it.
 /// known emulator bookkeeping. One unknown file, one subdirectory, anything off
-/// the list, and the folder passes — missing a real save is far worse than one
+/// the list, and the folder passes: missing a real save is far worse than one
 /// spurious offer.
 fn holds_anything_but_bookkeeping(p: &Path) -> bool {
     let Ok(read) = std::fs::read_dir(p) else {
@@ -272,7 +268,7 @@ fn holds_anything_but_bookkeeping(p: &Path) -> bool {
             return true;
         }
     }
-    // Nothing worth offering — including the empty case. `dir_non_empty` also
+    // Nothing worth offering, the empty case included. `dir_non_empty` also
     // rejects that one, and the two agreeing is the point: a caller that ever
     // drops the other check doesn't silently start offering empty folders.
     false
@@ -292,7 +288,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let app = tmp.path().join("413150");
         touch(&app.join("remote/save.dat"));
-        // Justo la basura que hace divergir dos máquinas si se rastrea el padre.
+        // Exactly the litter that makes two machines diverge if the parent is
+        // tracked.
         touch(&app.join("remotecache.vdf"));
         touch(&app.join("playtime.txt"));
         assert_eq!(resolve_game_container_dir(&app), app.join("remote"));
@@ -307,7 +304,7 @@ mod tests {
         touch(&app.join("achievements.json"));
         assert!(
             dir_non_empty(&app),
-            "not empty — which is why it used to pass"
+            "not empty, which is why it used to pass"
         );
         assert!(
             !holds_anything_but_bookkeeping(&app),
@@ -335,12 +332,12 @@ mod tests {
     #[test]
     fn container_stays_put_when_ambiguous_or_flat() {
         let tmp = tempfile::tempdir().unwrap();
-        // Plano: el save cuelga directamente del contenedor.
+        // Flat: the save hangs directly off the container.
         let flat = tmp.path().join("flat");
         touch(&flat.join("game.sav"));
         assert_eq!(resolve_game_container_dir(&flat), flat);
 
-        // Ambiguo: dos candidatas, no se adivina.
+        // Ambiguous: two candidates, so nothing is guessed.
         let ambiguous = tmp.path().join("ambiguous");
         touch(&ambiguous.join("saves/a.sav"));
         touch(&ambiguous.join("savedata/b.sav"));
@@ -374,7 +371,7 @@ mod tests {
         assert!(is_app_id("413150"));
         assert!(!is_app_id("CODEX"));
         assert!(!is_app_id(""));
-        // Un nombre absurdamente largo no es un AppID aunque sea numérico.
+        // An absurdly long name is not an AppID even when it is numeric.
         assert!(!is_app_id("12345678901234"));
     }
 }

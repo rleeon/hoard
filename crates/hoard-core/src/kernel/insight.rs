@@ -2,7 +2,7 @@
 //!
 //! The timeline used to label every row `save_v47 · 2026-08-06 04:16`, which is
 //! the one thing the user already knows: that it is a backup, and when. What it
-//! never said is *what changed* — which of the 70 Factorio worlds in that folder
+//! never said is *what changed*: which of the 70 Factorio worlds in that folder
 //! moved, and by how much. This module derives that from data the server already
 //! stores (the per-version file manifests) with no per-game knowledge at all.
 //!
@@ -14,7 +14,7 @@
 //! that is real player data ([`FileClass::SaveData`]).
 //!
 //! Its name is the title, because in practice the save's *name* almost never
-//! lives inside the binary — it is the file or the folder: `adwdaw.zip`,
+//! lives inside the binary. It is the file or the folder: `adwdaw.zip`,
 //! `SavedGame0/sav.dat`, `Farm_123456/SaveGameInfo`. That makes the generic
 //! layer right far more often than it has any business being, and it is the
 //! fallback a per-game probe falls back *to* when its parser gives up.
@@ -42,7 +42,7 @@ use super::fileclass::{classify, FileClass};
 /// the rules that derive it get better, and a label computed by an older
 /// version of them should not outlive the improvement.
 ///
-/// * 2 — display names drop the game's own bookkeeping (`murray
+/// * 2, display names drop the game's own bookkeeping (`murray
 ///   heath_31852938(m)` → `murray heath`).
 pub const SCHEMA: u8 = 2;
 
@@ -58,7 +58,7 @@ pub struct FileFacts {
     pub relative_path: String,
     pub size_bytes: i64,
     /// Source mtime in unix seconds. `None` when the filesystem didn't report
-    /// one — those files can still be picked, they just lose every tie.
+    /// one. Those files can still be picked, they just lose every tie.
     pub modified_at: Option<i64>,
     /// Did this file appear or change content in this version? `false` for
     /// every file when there is no previous version to compare against, which
@@ -110,7 +110,7 @@ pub struct VersionInsight {
     /// which blob to fetch without walking the manifest again.
     #[serde(rename = "p", default, skip_serializing_if = "Option::is_none")]
     pub primary_path: Option<String>,
-    /// Distinct save entries in the folder — worlds, characters, slots. `1`
+    /// Distinct save entries in the folder: worlds, characters, slots. `1`
     /// means the version is about the one thing the title names.
     #[serde(rename = "n", default, skip_serializing_if = "is_zero_u32")]
     pub entries: u32,
@@ -186,7 +186,7 @@ pub struct Protagonist {
 /// against the previous version; `removed` and `delta_bytes` are the parts of
 /// the diff that don't survive in the manifest and so have to be passed in.
 /// `shields` are the manifest's save-file patterns, same as [`classify`] takes
-/// — empty is fine and only makes the classifier slightly more suspicious.
+/// Empty is fine and only makes the classifier slightly more suspicious.
 pub fn generic_insight(
     files: &[FileFacts],
     shields: &[String],
@@ -218,8 +218,8 @@ pub struct ManifestFile {
 /// Derive a version's insight from its manifest and the previous version's.
 ///
 /// This is the whole generic layer in one call, and the reason it takes
-/// manifests rather than a diff: the server holds both — `save_version_files`
-/// is exactly this — so it can compute the insight for a version uploaded long
+/// manifests rather than a diff: the server holds both, `save_version_files`
+/// being exactly this, so it can compute the insight for a version uploaded long
 /// before any of this existed, without asking a client for anything.
 ///
 /// `prev` empty means there is no previous version: nothing is "changed", the
@@ -369,7 +369,7 @@ fn stem_of(name: &str) -> &str {
 ///
 /// The last path component without its extension, unless that name says nothing
 /// about which save this is (`sav.dat`, `level.dat`, `save1`), in which case the
-/// folder holding it is the name — which is where Cyberpunk, Stardew and
+/// folder holding it is the name, which is where Cyberpunk, Stardew and
 /// Minecraft keep it.
 fn display_name(rel_path: &str) -> String {
     let stem = stem_of(file_name(rel_path));
@@ -391,7 +391,7 @@ fn display_name(rel_path: &str) -> String {
 ///
 /// The Universim writes `murray heath_31852938(m)`, Stardew writes
 /// `<farm name>_150130751`: an id and a marker that mean something to the game
-/// and nothing to the person reading a row. What is left — `murray heath` —
+/// and nothing to the person reading a row. What is left, `murray heath`,
 /// is what they actually named it.
 ///
 /// Two saves can tidy down to the same name. That is fine for a label: the row
@@ -400,14 +400,14 @@ fn display_name(rel_path: &str) -> String {
 fn tidy_name(name: &str) -> String {
     let trimmed = name.trim();
     // A short parenthesised suffix: `(m)`/`(a)` for manual and auto, `(1)` for
-    // a copy. Long ones are left alone — they may be the name.
+    // a copy. Long ones are left alone, since they may be the name.
     let without_marker = match trimmed.strip_suffix(')').and_then(|s| s.rsplit_once('(')) {
         Some((head, marker)) if marker.len() <= 3 && !head.trim().is_empty() => head.trim(),
         _ => trimmed,
     };
     // A trailing run of digits behind a separator, six or more of them: an id
     // or a timestamp. Below six it is a number the player can read and may have
-    // chosen — `mipartida-12379`, `world2`, `save01` — and it stays.
+    // chosen (`mipartida-12379`, `world2`, `save01`) and it stays.
     let cleaned = match without_marker.rsplit_once(|c| c == '_' || c == '-' || c == ' ') {
         Some((head, tail))
             if tail.len() >= 6 && tail.chars().all(|c| c.is_ascii_digit()) && !head.is_empty() =>
@@ -426,7 +426,7 @@ fn tidy_name(name: &str) -> String {
 
 /// How much a name tells you about *which* save this is.
 ///
-/// `2` a name someone chose, `1` a numbered slot (`SavedGame0`, `world2` —
+/// `2` a name someone chose, `1` a numbered slot (`SavedGame0`, `world2`:
 /// generic, but it still picks one out of the folder), `0` a name that only
 /// says what kind of file it is and would read the same for every save.
 fn name_quality(name: &str) -> u8 {
@@ -577,7 +577,7 @@ mod tests {
         let p = pick_protagonist(&files, &[]).expect("a save is present");
         assert_eq!(p.display_name, "SavedGame0");
 
-        // Y el id que Stardew le cuelga detrás no es parte del nombre.
+        // And the id Stardew hangs off the end is not part of the name.
         let files = vec![f("Farm_123456/SaveGameInfo", 4_000, 5_000, true)];
         let p = pick_protagonist(&files, &[]).expect("a save is present");
         assert_eq!(p.display_name, "Farm");

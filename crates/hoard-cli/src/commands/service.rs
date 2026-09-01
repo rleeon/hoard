@@ -1,15 +1,14 @@
-//! `hoard sync` — el sync residente (la app de escritorio sin ventana), corriendo
-//! como **servicio de usuario** en vez de como proceso en primer plano.
+//! `hoard sync`: the resident sync (the desktop app without a window), running as
+//! a user service rather than as a foreground process.
 //!
-//! Desde el Slice 4d este fichero no sabe nada de systemd, launchd ni del Task
-//! Scheduler: la unidad la define y la maneja [`hoardd::autostart`], que es donde
-//! tiene que estar — la instalan igual el desktop y la CLI, y el `ExecStart` es
-//! el binario del servicio. Aquí queda lo que es propio de una terminal:
-//! **enseñar** (estado, logs) y traducir lo que el usuario teclea.
+//! Since Slice 4d this file knows nothing about systemd, launchd or the Task
+//! Scheduler: the unit is defined and managed by [`hoardd::autostart`], which is
+//! where it belongs, since the desktop and the CLI install the same one and the
+//! `ExecStart` is the service's binary. What stays here is what is proper to a
+//! terminal: showing things (status, logs) and translating what the user types.
 //!
-//! Lo que el usuario escribe (`start`/`stop`/`status`/…) gobierna el gestor de
-//! servicios del SO; lo que el *servicio* está haciendo lo cuenta el servicio por
-//! IPC.
+//! What the user types (`start`, `stop`, `status`) governs the OS service
+//! manager; what the *service* is doing is reported by the service over IPC.
 
 use anyhow::{Context, Result};
 
@@ -39,7 +38,8 @@ pub async fn run(action: Option<SyncCommand>) -> Result<()> {
     match action {
         None => {
             // Paint the overall status panel first, then the service detail
-            // below it — the banner gives cli/server/session/sync at a glance.
+            // below it: the banner gives cli, server, session and sync at a
+            // glance.
             let _ = crate::commands::banner::show(false).await;
             service_detail().await;
             status().await
@@ -48,22 +48,21 @@ pub async fn run(action: Option<SyncCommand>) -> Result<()> {
         Some(SyncCommand::Stop) => stop().await,
         Some(SyncCommand::Restart) => restart().await,
         Some(SyncCommand::Logs) => {
-            // Dos mitades, y las dos importan: el diagnóstico del motor está en
-            // el log del servicio (que corre desasido cuando lo levanta un
-            // cliente, así que no cae en el journal de la unidad ni en la consola
-            // de nadie), y la crónica de eventos, en lo que imprime el cliente.
+            // Two halves, and both matter: the engine's diagnosis is in the
+            // service's log (it runs detached when a client brings it up, so it
+            // lands neither in the unit's journal nor in anybody's console), and
+            // the chronicle of events is in what the client prints.
             service_logs();
             logs().await
         }
-        // Ya no es el `ExecStart` de la unidad (eso es `hoardd` desde el 4d):
-        // queda como la forma de ver el sync pasar por una terminal, y como el
-        // comando al que apuntan las unidades instaladas por versiones
-        // anteriores.
+        // No longer the unit's `ExecStart` (that is `hoardd` since 4d): it stays
+        // as the way to watch sync go by in a terminal, and as the command the
+        // units installed by earlier versions point at.
         Some(SyncCommand::Run { backup_only }) => daemon::run(backup_only).await,
     }
 }
 
-/// `hoard sync start`: instala la unidad y deja el servicio corriendo bajo ella.
+/// `hoard sync start`: installs the unit and leaves the service running under it.
 async fn start() -> Result<()> {
     let installed = hoardd::autostart::install()
         .await
@@ -79,13 +78,13 @@ async fn start() -> Result<()> {
     Ok(())
 }
 
-/// `hoard sync stop`: quita el autostart **y** para el servicio.
+/// `hoard sync stop`: removes the autostart *and* stops the service.
 ///
-/// Los dos pasos, y en este orden. Quitar la unidad sin más dejaría a `hoardd`
-/// sincronizando —sobrevive a sus clientes por diseño, y pudo arrancarlo un
-/// cliente en vez de la unidad—, así que "stop" habría dejado de significar lo
-/// que significaba. Y al revés: parar el servicio sin quitar la unidad lo
-/// resucitaría en el siguiente login.
+/// Both steps, in this order. Removing the unit alone would leave `hoardd`
+/// syncing (it outlives its clients by design, and a client may have started it
+/// rather than the unit), so "stop" would have stopped meaning what it meant. And
+/// the other way round: stopping the service without removing the unit would
+/// resurrect it at the next login.
 async fn stop() -> Result<()> {
     let removed = hoardd::autostart::uninstall()
         .await
@@ -93,18 +92,18 @@ async fn stop() -> Result<()> {
     let was_running = stop_service().await;
     match (removed, was_running) {
         (true, _) => println!("hoard sync stopped and removed from autostart."),
-        // Sin unidad pero con servicio: lo había levantado un cliente (la app al
-        // abrirse, un `hoard track`). Pararlo es igual de válido, pero conviene
-        // decir que aquí no había nada instalado que quitar.
+        // No unit but a live service: a client brought it up (the app on open, a
+        // `hoard track`). Stopping it is just as valid, but it is worth saying
+        // there was nothing installed here to remove.
         (false, true) => println!("the Hoard service stopped (it wasn't set to start at login)."),
         (false, false) => println!("hoard sync wasn't running."),
     }
     Ok(())
 }
 
-/// Para el servicio si está arriba; devuelve si había alguno. El gestor de
-/// servicios sólo mata al proceso que lanzó, y a `hoardd` puede haberlo
-/// levantado un cliente. No lo arranca para pararlo, obviamente.
+/// Stops the service if it is up; returns whether there was one. The service
+/// manager only kills the process it launched, and `hoardd` may have been brought
+/// up by a client. It does not start it in order to stop it, obviously.
 async fn stop_service() -> bool {
     let Some(mut client) = crate::commands::link::attached("stop").await else {
         return false;
@@ -130,10 +129,10 @@ async fn restart() -> Result<()> {
 
 /// Bounce the resident sync service after `hoard upgrade` has swapped the binary,
 /// so the daemon re-execs the new code. Best-effort and conservative:
-/// - only when the OS service is actually installed on this machine — an upgrade
-///   must never install/start sync as a side effect;
-/// - a restart hiccup is a warning, not a failure: the upgrade already
-///   succeeded, so we never return `Err` here.
+/// - only when the OS service is actually installed on this machine, since an
+///   upgrade must never install or start sync as a side effect;
+/// - a restart hiccup is a warning, not a failure: the upgrade already succeeded,
+///   so we never return `Err` here.
 pub async fn reload_after_upgrade() {
     if !hoardd::autostart::installed().await {
         return;
@@ -145,10 +144,10 @@ pub async fn reload_after_upgrade() {
     }
 }
 
-/// Lo que el **servicio** dice de sí mismo, que es distinto de lo que el gestor
-/// de servicios sabe: el gestor sólo conoce el proceso que él lanzó, y a `hoardd`
-/// puede haberlo levantado un cliente. No lo arranca — un panel de estado que
-/// levanta un servicio sería el peor efecto secundario posible.
+/// What the *service* says about itself, which is different from what the service
+/// manager knows: the manager only knows the process it launched, and `hoardd` may
+/// have been brought up by a client. It does not start it; a status panel that
+/// brings a service up would be the worst possible side effect.
 async fn service_detail() {
     let Some(status) = crate::commands::link::status().await else {
         println!("  service: not running");
@@ -167,8 +166,8 @@ async fn service_detail() {
             status.engine.server.as_deref().unwrap_or("unknown server")
         );
     } else {
-        // Un motor caído **con motivo** es diagnosticable; sin motivo es el fallo
-        // invisible que costó dos sesiones (D.11/D.12).
+        // An engine that is down *with a reason* is diagnosable; without one it
+        // is the invisible failure that cost two sessions (D.11, D.12).
         println!(
             "  engine:  down · {}",
             status
@@ -178,8 +177,8 @@ async fn service_detail() {
                 .unwrap_or("still starting")
         );
     }
-    // Quién manda los avisos nativos. Sin esta línea, "no me llega nada con la
-    // app cerrada" no se puede distinguir de "las tengo apagadas en Ajustes".
+    // Who sends the native notices. Without this line, "nothing reaches me with
+    // the app closed" cannot be told from "I have them switched off in Settings".
     println!(
         "  notify:  {}",
         if status.notifications {
@@ -190,10 +189,10 @@ async fn service_detail() {
     );
 }
 
-/// Las últimas líneas del log de `hoardd`. Es el log que importa desde el Slice
-/// 4c: cuando lo levanta un cliente, el servicio se lanza desasido (sesión
-/// propia, stdio a `null`), así que su salida no aparece ni en el journal de la
-/// unidad ni en la terminal que lo arrancó — sólo en su fichero.
+/// The last lines of `hoardd`'s log. It is the log that matters since Slice 4c:
+/// when a client brings it up, the service is launched detached (its own session,
+/// stdio to `null`), so its output appears neither in the unit's journal nor in
+/// the terminal that started it, only in its file.
 fn service_logs() {
     let Ok(path) = hoard_agent::config::CliConfig::logs_dir().map(|d| d.join("hoardd.log")) else {
         return;
@@ -233,9 +232,8 @@ async fn run_status(program: &str, args: &[&str]) -> Result<bool> {
     Ok(st.success())
 }
 
-// =======================================================================
-// Lo que sólo tiene sentido en una terminal: enseñar el estado y los logs
-// del gestor de servicios, tal cual él los da.
+// ---- what only makes sense in a terminal: showing the service manager's status
+// and logs, exactly as it gives them
 // =======================================================================
 
 #[cfg(target_os = "linux")]

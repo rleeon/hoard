@@ -1,37 +1,37 @@
-//! De qué juego es esta carpeta ⇒ qué ficheros de dentro son partida.
+//! Which game this folder belongs to, and therefore which files inside it are
+//! save data.
 //!
-//! El *qué* lo decide [`hoard_core::kernel::fileclass`], que es puro. Aquí sólo
-//! está lo que necesita IO y catálogo: sacar del manifiesto Ludusavi los
-//! patrones de fichero del juego para pasárselos como blindaje.
+//! The *what* is decided by [`hoard_core::kernel::fileclass`], which is pure.
+//! What lives here is the part that needs IO and the catalogue: pulling the
+//! game's file patterns out of the Ludusavi manifest to hand them over as
+//! shields.
 //!
-//! ## De dónde salen los patrones
+//! ## Where the patterns come from
 //!
-//! 20.499 de las 47.404 plantillas del catálogo terminan en un patrón de
-//! fichero (`<base>/Saves/*.sav`, `<base>/SavesDir/*.sav`). Hoard ya los tenía
-//! delante y los tiraba: `pathexpand::expand_path_globbed` colapsa el patrón a
-//! la carpeta padre y devuelve sólo el directorio, porque lo que rastrea hoard
-//! es la carpeta. El patrón se perdía ahí, y con él la única fuente fiable de
-//! "qué es dato de partida en esta carpeta concreta".
+//! 20,499 of the catalogue's 47,404 templates end in a file pattern
+//! (`<base>/Saves/*.sav`, `<base>/SavesDir/*.sav`). Hoard already had them in
+//! front of it and threw them away: `pathexpand::expand_path_globbed` collapses
+//! the pattern to its parent folder and returns only the directory, because what
+//! Hoard tracks is the folder. The pattern was lost there, and with it the only
+//! reliable source for "what counts as save data in this particular folder".
 //!
-//! Se recupera aquí, por slug y contra las plantillas de **los tres sistemas**:
-//! un juego de Windows corriendo bajo Proton vive en una carpeta con forma de
-//! Windows, así que mirar sólo el OS anfitrión se dejaría fuera la mitad. Como
-//! los patrones sólo *rescatan* (nunca excluyen), el superconjunto es la
-//! elección segura.
+//! It is recovered here, by slug and against the templates of all three systems:
+//! a Windows game running under Proton lives in a Windows-shaped folder, so
+//! looking only at the host OS would drop half of them. Since the patterns only
+//! ever rescue and never exclude, the superset is the safe choice.
 //!
-//! Un save de alta manual, o de un juego que no está en el catálogo, se queda
-//! sin blindaje: las reglas por nombre del kernel deciden solas, y por eso son
-//! conservadoras.
+//! A hand-added save, or one for a game outside the catalogue, gets no shields:
+//! the kernel's name rules decide alone, which is why they are conservative.
 
 use hoard_core::kernel::fileclass::is_useful_shield;
 
-/// Patrones de nombre de fichero que el manifiesto declara como dato de partida
-/// para `slug`, en minúsculas y sin repetir.
+/// The filename patterns the manifest declares as save data for `slug`, in
+/// lowercase and deduplicated.
 ///
-/// Sólo cuenta el último segmento de la plantilla, y **sólo si es un comodín**:
-/// un segmento literal (`.../Fallout4/Saves`) es el nombre de la carpeta
-/// rastreada, no un patrón de fichero, y tomarlo por tal blindaría un nombre
-/// que no existe dentro.
+/// Only the template's last segment counts, and only when it is a wildcard: a
+/// literal segment (`.../Fallout4/Saves`) is the name of the tracked folder
+/// rather than a file pattern, and taking it for one would shield a name that
+/// does not exist inside.
 pub fn shields_for_slug(slug: &str) -> Vec<String> {
     let Some(entry) = hoard_manifest::ludusavi::find_by_slug(slug) else {
         return Vec::new();
@@ -47,7 +47,7 @@ pub fn shields_for_slug(slug: &str) -> Vec<String> {
         let Some(last) = p.path.rsplit('/').next() else {
             continue;
         };
-        // Un literal no es patrón de fichero: es la carpeta que se rastrea.
+        // A literal is not a file pattern: it is the folder being tracked.
         if !last.contains('*') && !last.contains('?') {
             continue;
         }
@@ -77,10 +77,10 @@ mod tests {
 
     #[test]
     fn a_bare_directory_template_yields_no_shield() {
-        // Fallout 4 es `<winDocuments>/My Games/Fallout4/Saves`: el último
-        // segmento es la carpeta, no un patrón.
+        // Fallout 4 is `<winDocuments>/My Games/Fallout4/Saves`: the last
+        // segment is the folder, not a pattern.
         assert!(shields_for_slug("fallout-4").is_empty());
-        // Y Cell to Singularity, el caso que motivó todo esto, tampoco tiene.
+        // And the game that motivated all of this has none either.
         assert!(shields_for_slug("cell-to-singularity-evolution-never-ends").is_empty());
     }
 
@@ -89,16 +89,17 @@ mod tests {
         assert!(shields_for_slug("no-existe-este-juego-12345").is_empty());
     }
 
-    /// Los patrones de Windows valen aunque corramos en Linux: bajo Proton la
-    /// carpeta tiene forma de Windows.
+    /// The Windows patterns count even when we run on Linux: under Proton the
+    /// folder is Windows-shaped.
     #[test]
     fn windows_patterns_count_on_every_host() {
-        // `<base>/SavesDir/*.sav`, sólo declarado en `paths.windows`.
+        // `<base>/SavesDir/*.sav`, declared only in `paths.windows`.
         let shields = shields_for_slug("singularity-tactics-arena");
         assert!(shields.contains(&"*.sav".to_string()), "{shields:?}");
     }
 
-    /// `*.*` casa con todo: blindaría la carpeta entera y anularía el filtro.
+    /// `*.*` matches everything: it would shield the whole folder and void the
+    /// filter.
     #[test]
     fn degenerate_patterns_never_become_shields() {
         for e in hoard_manifest::ludusavi::catalog().iter().take(4000) {

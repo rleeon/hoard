@@ -1,23 +1,21 @@
-//! El enlace de la CLI con `hoardd` (ADR 0021, Parte A — Slice 4c).
+//! The CLI's link to `hoardd` (ADR 0021, part A, Slice 4c).
 //!
-//! Hasta el 4b la CLI **embebía** el motor: `hoard sync` hacía `agent::spawn`,
-//! tomaba el pidfile y rotaba el refresh token de Cloud por su cuenta. Desde este
-//! slice no hay motor aquí: la CLI manda comandos al servicio por el socket local
-//! e imprime lo que el servicio reporta, igual que el desktop pinta lo mismo en
-//! una ventana. Un frontend con ventana y otro sin ella, ahora también en la
-//! topología de procesos.
+//! There is no engine here: the CLI sends commands to the service over the local
+//! socket and prints what the service reports, the same way the desktop draws the
+//! same thing in a window. One frontend with a window and one without, and now in
+//! the process topology too.
 //!
-//! ## Quién arranca el servicio, y quién no
+//! ## Who starts the service, and who does not
 //!
-//! [`ensure`] es "conéctate; si no hay servicio, arráncalo" — el handshake
-//! idempotente de la ADR. Lo usa **sólo** [`super::daemon::run`] (`hoard sync
-//! run`), porque ése es el comando cuyo trabajo *es* que el sync esté corriendo.
+//! [`ensure`] is "connect; if there is no service, start it", the ADR's idempotent
+//! handshake. Only [`super::daemon::run`] (`hoard sync run`) uses it, because that
+//! is the command whose job *is* having sync running.
 //!
-//! Todo lo demás usa [`attached`], que conecta pero **no arranca nada**. Un
-//! `hoard whoami` o un `hoard save pause` no pueden convertir la máquina en una
-//! máquina que sincroniza como efecto secundario; el modo explícito de pedir eso
-//! es `hoard sync start`. La contrapartida es que sin servicio no hay quien rote
-//! el token Cloud, y eso se degrada, no se rompe: ver [`resolve_session`].
+//! Everything else uses [`attached`], which connects but starts nothing. A `hoard
+//! whoami` or a `hoard save pause` cannot turn the machine into a syncing machine
+//! as a side effect; the explicit way to ask for that is `hoard sync start`. The
+//! trade-off is that with no service there is nobody to rotate the Cloud token,
+//! and that degrades rather than breaking: see [`resolve_session`].
 
 use std::time::Duration;
 
@@ -27,24 +25,24 @@ use hoard_core::ipc::{CloudToken, DaemonStatus, IpcError, Payload, Request};
 use hoardd::client::Client;
 use hoardd::endpoint::Endpoint;
 
-/// Cómo nos presentamos en el log del daemon.
+/// How we introduce ourselves in the daemon's log.
 fn client_name(role: &str) -> String {
     format!("hoard {} ({role})", env!("CARGO_PKG_VERSION"))
 }
 
-/// Tope de una petición ya conectada. Un servicio que acepta y luego calla no
-/// puede colgar un comando de terminal para siempre.
+/// Cap on a request over an established connection. A service that accepts and
+/// then goes quiet must not hang a terminal command forever.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Tope para *conectar* cuando el comando sólo quiere mirar (status, banner). Es
-/// un socket local: si no contesta en esto, no hay nadie.
+/// Cap on *connecting* when the command only wants to look (status, banner). It
+/// is a local socket: if it does not answer within this, nobody is there.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
 fn endpoint() -> Result<Endpoint> {
     Endpoint::resolve().context("resolving the hoardd endpoint")
 }
 
-/// Conéctate al servicio y, si no hay, arráncalo. Para `hoard sync run`.
+/// Connect to the service and start it if there is none. For `hoard sync run`.
 pub async fn ensure(role: &str) -> Result<Client> {
     let endpoint = endpoint()?;
     Client::ensure_running(&endpoint, &client_name(role))
@@ -52,8 +50,8 @@ pub async fn ensure(role: &str) -> Result<Client> {
         .with_context(|| format!("connecting to the Hoard service at {endpoint}"))
 }
 
-/// Conéctate al servicio **si ya está arriba**. `None` = no hay servicio (o no
-/// contesta), y eso no es un error: es la respuesta.
+/// Connect to the service *if it is already up*. `None` means there is no service
+/// (or it is not answering), and that is not an error, it is the answer.
 pub async fn attached(role: &str) -> Option<Client> {
     let endpoint = endpoint().ok()?;
     let name = client_name(role);
@@ -70,7 +68,7 @@ pub async fn attached(role: &str) -> Option<Client> {
     }
 }
 
-/// Una petición con tope sobre una conexión ya hecha.
+/// A capped request over an established connection.
 pub async fn ask(client: &mut Client, request: Request) -> Result<Payload> {
     tokio::time::timeout(REQUEST_TIMEOUT, client.request(request))
         .await
@@ -82,13 +80,12 @@ pub async fn ask(client: &mut Client, request: Request) -> Result<Payload> {
         })?
 }
 
-/// Lo que el servicio sabe de la actualización, si hay servicio. Nunca lo
-/// arranca — preguntar cómo va una actualización no puede convertir la máquina
-/// en una que sincroniza.
+/// What the service knows about the update, if there is a service. Never starts
+/// one: asking how an update is going cannot turn the machine into one that syncs.
 ///
-/// `None` cubre dos cosas a propósito: no hay servicio, y hay uno **más viejo
-/// que este binario**, que no conoce la petición. El segundo dura lo que tarda
-/// el relevo (segundos) y no merece un error en pantalla.
+/// `None` deliberately covers two things: there is no service, and there is one
+/// *older than this binary* that does not know the request. The second lasts as
+/// long as the handover takes (seconds) and does not deserve an error on screen.
 pub async fn update_state() -> Option<hoard_core::ipc::UpdateState> {
     let mut client = attached("updates").await?;
     match ask(&mut client, Request::UpdateStatus).await {
@@ -104,8 +101,8 @@ pub async fn update_state() -> Option<hoard_core::ipc::UpdateState> {
     }
 }
 
-/// Pide al servicio que aplique ya lo que tenga bajado. Devuelve el estado del
-/// momento; aplicar sigue en marcha después de contestar.
+/// Asks the service to apply whatever it has downloaded, now. Returns the state
+/// at that moment; applying carries on after the answer.
 pub async fn apply_update(version: Option<String>) -> Result<hoard_core::ipc::UpdateState> {
     let mut client = attached("upgrade")
         .await
@@ -116,8 +113,8 @@ pub async fn apply_update(version: Option<String>) -> Result<hoard_core::ipc::Up
     }
 }
 
-/// Estado del servicio, o `None` si no hay ninguno. Para pintar (`hoard`,
-/// `hoard sync`): no arranca nada.
+/// The service's status, or `None` if there is none. For drawing (`hoard`,
+/// `hoard sync`): it starts nothing.
 pub async fn status() -> Option<DaemonStatus> {
     let mut client = attached("status").await?;
     match ask(&mut client, Request::Status).await {
@@ -133,9 +130,9 @@ pub async fn status() -> Option<DaemonStatus> {
     }
 }
 
-/// Aviso best-effort al servicio, **sin arrancarlo**: si no hay servicio no hay
-/// nada que avisar (cuando arranque leerá el disco de cero). Devuelve `true` si
-/// llegó.
+/// Best-effort notice to the service, without starting it: with no service there
+/// is nothing to notify (when it starts it will read the disk from scratch).
+/// Returns `true` if it landed.
 async fn notify(what: &str, request: Request) -> bool {
     let Some(mut client) = attached("notify").await else {
         return false;
@@ -149,12 +146,12 @@ async fn notify(what: &str, request: Request) -> bool {
     }
 }
 
-/// El conjunto de saves vigilados cambió en disco: que el servicio lo relea. El
-/// cliente **avisa**, no manda la lista — el dueño del estado es el servicio.
+/// The set of watched saves changed on disk, so have the service re-read it. The
+/// client *tells* it, it does not send the list: the service owns the state.
 ///
-/// Devuelve la frase que la CLI le enseña al usuario: antes de este slice todos
-/// estos comandos decían "reinicia `hoard sync` para aplicarlo", que ya no hace
-/// falta (ni funcionaría: reiniciar un cliente no reinicia el motor).
+/// Returns the sentence the CLI shows the user. These commands used to say
+/// "restart `hoard sync` to apply it", which is no longer needed, and would not
+/// work either: restarting a client does not restart the engine.
 pub async fn notify_reload() -> &'static str {
     if notify("ask the service to reload its watch list", Request::Reload).await {
         "the sync service picked it up"
@@ -163,9 +160,9 @@ pub async fn notify_reload() -> &'static str {
     }
 }
 
-/// La sesión en disco cambió (login/logout): que el servicio resuelva de cero.
-/// Un cambio de cuenta invalida su `ApiClient`, su contexto y su rotador de
-/// token, y ninguno de los tres se arregla releyendo los saves.
+/// The on-disk session changed (login or logout), so have the service resolve
+/// from scratch. An account change invalidates its `ApiClient`, its context and
+/// its token rotator, and none of the three is fixed by re-reading the saves.
 pub async fn notify_session_changed() {
     notify(
         "tell the service the session changed",
@@ -174,17 +171,18 @@ pub async fn notify_session_changed() {
     .await;
 }
 
-/// Entrega al servicio la sesión que `hoard login` acaba de acuñar, para que la
-/// guarde **él**. `false` = no había servicio a quien entregársela.
+/// Hands the service the session `hoard login` just minted, so *it* stores it.
+/// `false` means there was no service to hand it to.
 ///
-/// La CLI es un tercer binario, y en macOS eso importa: el ítem del llavero sólo
-/// autoriza al binario que lo crea, así que un login desde la terminal escribiendo
-/// el llavero dejaría al servicio pidiéndole la contraseña al usuario en cada
-/// lectura (ADR 0021 D.20). Aquí se acuña y se entrega; el que guarda es el dueño.
+/// The CLI is a third binary, and on macOS that matters: the keychain item only
+/// authorises the binary that creates it, so a login from the terminal writing
+/// the keychain would leave the service asking the user for a password on every
+/// read (ADR 0021 D.20). Here it is minted and handed over; the owner is what
+/// stores it.
 ///
-/// Va precedido de un olvido en la **misma** conexión: guardar es
-/// read-modify-write, así que sin borrar antes, entrar con otra cuenta dejaría en
-/// disco el `user` y el `server_url` de la anterior.
+/// It is preceded by a forget on the *same* connection: storing is
+/// read-modify-write, so without deleting first, signing in with another account
+/// would leave the previous one's `user` and `server_url` on disk.
 pub async fn hand_over_session(session: hoard_core::ipc::AdoptedSession) -> bool {
     let Some(mut client) = attached("login").await else {
         return false;
@@ -202,10 +200,11 @@ pub async fn hand_over_session(session: hoard_core::ipc::AdoptedSession) -> bool
     }
 }
 
-/// Entrega al servicio la sesión self-hosted que `hoard login --token` acaba de
-/// validar, para que la guarde **él**: es el almacén que resuelve el motor, así
-/// que sin esto un login desde la terminal no cambiaría con qué sesión sincroniza
-/// la máquina si la app ya tenía una. `false` = no había servicio.
+/// Hands the service the self-hosted session `hoard login --token` just
+/// validated, so *it* stores it. That is the store the engine resolves from, so
+/// without this a login from the terminal would not change which session the
+/// machine syncs with if the app already had one. `false` means there was no
+/// service.
 pub async fn hand_over_server_session(session: hoard_core::ipc::ServerSession) -> bool {
     let Some(mut client) = attached("login").await else {
         return false;
@@ -219,7 +218,7 @@ pub async fn hand_over_server_session(session: hoard_core::ipc::ServerSession) -
     }
 }
 
-/// Dile al servicio que olvide la sesión self-hosted. `false` = no hay servicio.
+/// Tell the service to forget the self-hosted session. `false` means no service.
 pub async fn hand_over_server_logout() -> bool {
     let Some(mut client) = attached("logout").await else {
         return false;
@@ -233,9 +232,9 @@ pub async fn hand_over_server_logout() -> bool {
     }
 }
 
-/// Pide prestada la sesión self-hosted. `None` = no hay servicio a quien pedirla,
-/// o no hay sesión de este tipo en la máquina; en los dos casos el que llama cae a
-/// `config.toml`, que es el camino headless de siempre.
+/// Borrow the self-hosted session. `None` means there is no service to ask, or no
+/// session of this kind on the machine; either way the caller falls back to
+/// `config.toml`, which is the usual headless path.
 pub async fn borrow_server_session() -> Option<hoard_core::ipc::ServerSession> {
     let mut client = attached("server token").await?;
     match client.server_session().await {
@@ -247,9 +246,9 @@ pub async fn borrow_server_session() -> Option<hoard_core::ipc::ServerSession> {
     }
 }
 
-/// Dile al servicio que olvide la sesión Cloud. `false` = no hay servicio, así que
-/// el llavero se queda con un par huérfano (inofensivo: sin fichero de sesión no
-/// hay sesión, y el siguiente login lo pisa).
+/// Tell the service to forget the Cloud session. `false` means there is no
+/// service, so the keyring keeps an orphaned pair (harmless: with no session file
+/// there is no session, and the next login overwrites it).
 pub async fn hand_over_logout() -> bool {
     let Some(mut client) = attached("logout").await else {
         return false;
@@ -263,18 +262,17 @@ pub async fn hand_over_logout() -> bool {
     }
 }
 
-/// Pide prestado un token Cloud al servicio. `None` cuando no hay servicio a
-/// quien pedírselo.
+/// Borrow a Cloud token from the service. `None` when there is no service to ask.
 ///
-/// Un `CloudSessionExpired` **no** se traga: si GoTrue revocó la familia de
-/// tokens, seguir con el de disco sólo produce un 401 con peor mensaje.
+/// A `CloudSessionExpired` is not swallowed: if GoTrue revoked the token family,
+/// carrying on with the one on disk only produces a 401 with a worse message.
 pub async fn borrow_cloud_token(rejected: Option<String>) -> Result<Option<CloudToken>> {
     let Some(mut client) = attached("cloud token").await else {
         return Ok(None);
     };
     match ask(&mut client, Request::CloudToken { rejected }).await {
         Ok(Payload::CloudToken(token)) => {
-            // Igual que en el desktop: el enviador de logs lee de este hueco.
+            // As on the desktop: the log shipper reads from this slot.
             hoard_agent::credentials::set_lent_cloud(Some(hoard_agent::credentials::CloudLease {
                 url: token.server_url.clone(),
                 token: token.access_token.clone(),
@@ -289,28 +287,28 @@ pub async fn borrow_cloud_token(rejected: Option<String>) -> Result<Option<Cloud
             ) {
                 return Err(err.context("the Hoard service couldn't renew the Cloud session"));
             }
-            // Transitorio (red, GoTrue de mal humor): el token de disco puede
-            // seguir valiendo, así que se intenta con él en vez de abortar.
+            // Transient (network, a grumpy GoTrue): the token on disk may still
+            // be good, so try with it rather than abort.
             tracing::warn!(error = %format!("{err:#}"), "cli: couldn't borrow a Cloud token");
             Ok(None)
         }
     }
 }
 
-/// Sesión activa para un one-shot que necesita hablar con el servidor.
+/// An active session for a one-shot that needs to talk to the server.
 ///
-/// Pide el token al servicio y resuelve con él. Si no hay servicio se usa el de
-/// disco **sin rotarlo**: rotar aquí es exactamente lo que este slice elimina
-/// (dos procesos rotando el mismo refresh token = reuse-detection de GoTrue =
-/// sesión revocada). Un token caducado y sin servicio da un 401, y ahí se enseña
-/// la pista de que quien renueva es el servicio.
+/// Asks the service for the token and resolves with it. With no service the one on
+/// disk is used *without rotating it*: rotating here is the thing to avoid, since
+/// two processes rotating the same refresh token is GoTrue's reuse detection and a
+/// revoked session. An expired token with no service gives a 401, and there the
+/// hint is shown that the service is what renews.
 pub async fn resolve_session() -> Result<Active> {
-    // Sin sesión Cloud no hay nada que pedir prestado: esto es un usuario
-    // self-hosted, y el servicio contestaría "no hay sesión Cloud" — un error
-    // inventado sobre algo que a este comando no le hace falta.
+    // With no Cloud session there is nothing to borrow: this is a self-hosted
+    // user, and the service would answer "there is no Cloud session", an invented
+    // error about something this command does not need.
     if hoard_agent::cloud_auth::load_session()?.is_none() {
-        // Self-hosted: la sesión de la app la guarda el servicio (D.20), así que se
-        // pide prestada. Sin servicio se cae a `config.toml`, como siempre.
+        // Self-hosted: the app's session is stored by the service (D.20), so it
+        // gets borrowed. With no service it falls back to `config.toml`, as ever.
         return session::resolve_borrowed(None, borrow_server_session().await).await;
     }
     let lent = borrow_cloud_token(None).await?;
@@ -322,8 +320,8 @@ pub async fn resolve_session() -> Result<Active> {
     }
 }
 
-/// Añade al error la pista de que el arreglo es levantar el servicio, no volver a
-/// entrar — pero sólo si el token de disco está de verdad caducado.
+/// Adds the hint that the fix is bringing the service up rather than signing in
+/// again, but only when the token on disk really has expired.
 fn hint_stale_session(err: anyhow::Error) -> anyhow::Error {
     let Ok(Some(sess)) = hoard_agent::cloud_auth::load_session() else {
         return err;

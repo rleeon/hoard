@@ -3,13 +3,13 @@
 //! `std::fs::write` truncates the destination *before* it writes anything, so a
 //! process that dies inside that window leaves a 0-byte file behind. For a
 //! rebuildable cache that's a nuisance; for the files that record what the user
-//! is tracking it's data loss — [`crate::state::load_json`] treats an unparseable
+//! is tracking it's data loss: [`crate::state::load_json`] treats an unparseable
 //! file as corrupt, moves it aside and starts from `Default`, i.e. an empty save
 //! list.
 //!
 //! Both failure modes are real: production telemetry carries 917 rows of
 //! "prefs.json was corrupt; resetting to defaults" from a single user, every one
-//! of them with serde's "EOF while parsing a value at line 1 column 0" — the
+//! of them with serde's "EOF while parsing a value at line 1 column 0", the
 //! signature of a zero-length file.
 //!
 //! The write here never truncates the destination. The new contents land in a
@@ -24,8 +24,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Disambiguates temp files written by the same process at the same moment. The
-/// pid covers the interesting case — desktop, daemon and CLI all write these
-/// files — and this covers two threads racing inside one of them.
+/// pid covers the interesting case, since desktop, daemon and CLI all write
+/// these files, and this covers two threads racing inside one of them.
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Replace `path` with `bytes`, atomically. The parent directory is created if
@@ -46,7 +46,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         let mut f = File::create(&tmp)?;
         f.write_all(bytes)?;
         // Without this the rename can land while the contents are still only in
-        // the page cache — the same 0-byte file, with extra steps.
+        // the page cache: the same 0-byte file, with extra steps.
         f.sync_all()
     })();
     if let Err(e) = written {
@@ -83,8 +83,8 @@ fn parent_dir(path: &Path) -> PathBuf {
 ///
 /// Built from the whole file name rather than `with_extension` so that two
 /// files differing only in extension can't collide on one temp name. The
-/// leading dot plus the non-`.json` suffix keeps a leftover — one per crash
-/// between `create` and `rename` — out of every directory listing and
+/// leading dot plus the non-`.json` suffix keeps a leftover, one per crash
+/// between `create` and `rename`, out of every directory listing and
 /// extension filter that walks the state dir.
 fn temp_sibling(path: &Path, dir: &Path) -> PathBuf {
     let name = path
@@ -160,7 +160,7 @@ mod tests {
     }
 
     /// Two files whose names differ only in extension must not share a temp
-    /// name — `with_extension` would have collapsed them onto one.
+    /// name; `with_extension` would have collapsed them onto one.
     #[test]
     fn temp_names_are_unique_per_target_and_per_call() {
         let dir = Path::new("/state");

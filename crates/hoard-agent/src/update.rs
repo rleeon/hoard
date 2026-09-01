@@ -3,7 +3,7 @@
 //! installer at all) and by the `hoard` status panel (paint the `cli` dot amber
 //! when an update is available).
 //!
-//! The version comes from the GitHub "latest release" API — the same source the
+//! The version comes from the GitHub "latest release" API, the same source the
 //! `install.sh` / `install.ps1` one-liners resolve. Every network path here is
 //! best-effort with a short timeout: a check that fails or times out must never
 //! block the CLI, so callers treat `None` as "assume up to date".
@@ -114,7 +114,7 @@ fn write_cache(latest: &str) {
 }
 
 /// Latest version, served from the on-disk cache when it's fresh (< 6h) and
-/// otherwise re-fetched and re-cached. Best-effort — falls back to a stale cache
+/// otherwise re-fetched and re-cached. Best-effort: it falls back to a stale cache
 /// value if the refresh fails, or `None` if there's nothing to go on.
 pub async fn cached_latest() -> Option<String> {
     if let Some(c) = read_cache() {

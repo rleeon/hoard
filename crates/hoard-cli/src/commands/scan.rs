@@ -1,15 +1,15 @@
-//! `hoard scan` — benchmark the local game-detection pass.
+//! `hoard scan`: benchmark the local game-detection pass.
 //!
 //! This runs exactly the heavy half of what Automatic Mode executes on every
-//! `automatic-tick`: `detection::detect_all`, the disk walk that cross-checks
-//! the Ludusavi catalog + Steam libraries against the filesystem. It needs no
-//! server and writes nothing, so it's a safe, repeatable way to answer "is the
-//! periodic scan actually expensive on this machine?" — run it a few times and
-//! watch the wall-clock figure (and a system monitor for CPU/disk).
+//! `automatic-tick`: `detection::detect_all`, the disk walk that cross-checks the
+//! Ludusavi catalog and Steam libraries against the filesystem. It needs no server
+//! and writes nothing, so it is a safe, repeatable way to answer "is the periodic
+//! scan actually expensive on this machine?". Run it a few times and watch the
+//! wall-clock figure, and a system monitor for CPU and disk.
 //!
 //! Note it does *not* include the backup sweep (re-hashing each tracked save),
-//! which needs a server + tracked saves; the scan is the dominant, machine-
-//! local cost and the part that's unique to ticking periodically.
+//! which needs a server and tracked saves. The scan is the dominant machine-local
+//! cost and the part that is unique to ticking periodically.
 
 use std::time::Instant;
 
@@ -34,8 +34,8 @@ pub struct ScanGame {
     /// folder" from "detected with saves" without reading an empty array and
     /// guessing what it means.
     pub needs_folder: bool,
-    /// Whether this machine already tracks it — the difference between "we
-    /// found 200 games" and the only question worth asking, which is which of
+    /// Whether this machine already tracks it, which is the difference between
+    /// "we found 200 games" and the only question worth asking, namely which of
     /// them are not being backed up yet.
     pub tracked: bool,
 }
@@ -53,8 +53,8 @@ pub struct ScanOut {
     pub medium_confidence: usize,
     pub low_confidence: usize,
     pub with_save_paths: usize,
-    /// Installed games whose save folder was not located — the ones a caller
-    /// can do something about, by picking a folder. The complement of
+    /// Installed games whose save folder was not located: the ones a caller can
+    /// do something about, by picking a folder. The complement of
     /// `with_save_paths`, spelled out so it does not have to be derived.
     pub needing_folder: usize,
     /// Folders added to / removed from the exclusion list by this same
@@ -66,10 +66,10 @@ pub struct ScanOut {
     /// The detected games. Always present under `--json`, and only with
     /// `--verbose` in the human output.
     ///
-    /// `--verbose` is a knob for how much a person wants printed; a caller
-    /// parsing JSON always wants the list, and getting the counts alone reads
-    /// as "nothing found" rather than as "you didn't ask". Absent, not empty,
-    /// when it genuinely wasn't produced — so an empty list means no games.
+    /// `--verbose` is a knob for how much a person wants printed; a caller parsing
+    /// JSON always wants the list, and getting the counts alone reads as "nothing
+    /// found" rather than as "you didn't ask". Absent, not empty, when it
+    /// genuinely was not produced, so an empty list means no games.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub games: Option<Vec<ScanGame>>,
 }
@@ -88,12 +88,12 @@ fn should_list_games(verbose: bool, json: bool) -> bool {
     verbose || json
 }
 
-/// The human table: one row per game, and **one path per line**.
+/// The human table: one row per game, and one path per line.
 ///
-/// The paths used to be joined with `", "`, in a column whose values contain
-/// that separator for real — `…/unity3d/Cipher Prime Studios, Inc./…` is one
-/// save folder, not two — so the row could not be split back apart by anything
-/// but guesswork. The machine-readable answer to that is `--json`, which is the
+/// The paths used to be joined with `", "`, in a column whose values contain that
+/// separator for real (`.../unity3d/Cipher Prime Studios, Inc./...` is one save
+/// folder, not two), so the row could not be split back apart by anything but
+/// guesswork. The machine-readable answer to that is `--json`, which is the
 /// contract; this is so a person reading the table can still see where one path
 /// ends and the next begins.
 fn render_table(games: &[ScanGame]) -> String {
@@ -134,8 +134,8 @@ pub async fn run(
     unexclude: Vec<String>,
     list_excluded: bool,
 ) -> Result<()> {
-    // Gestión de carpetas descartadas. Va antes del escaneo para que un
-    // `--exclude` y el escaneo de la misma invocación ya lo reflejen.
+    // Managing discarded folders. It goes before the scan so that an `--exclude`
+    // and the scan in the same invocation already reflect it.
     //
     // These print nothing of their own under `--json`: stdout has to hold one
     // envelope and nothing else, so what they did is echoed inside it instead.
@@ -179,8 +179,8 @@ pub async fn run(
     };
     let elapsed = start.elapsed();
 
-    // Mismos filtros de borde que aplica el desktop, para que el bench
-    // refleje lo que el usuario ve y no una lista distinta.
+    // The same edge filters the desktop applies, so the bench reflects what the
+    // user sees rather than a different list.
     report.games.retain(|g| !cli_state.is_ignored(&g.slug));
     hoard_agent::library::apply_excluded_paths(&mut report, &cli_state);
 
@@ -281,8 +281,8 @@ mod tests {
         }
     }
 
-    /// A save path with a comma in it — a real one, from a studio that put a
-    /// comma in its name — has to come back out of the table whole.
+    /// A save path with a comma in it, a real one from a studio that put a comma
+    /// in its name, has to come back out of the table whole.
     #[test]
     fn every_path_gets_its_own_line() {
         let comma = "/home/u/.config/unity3d/Cipher Prime Studios, Inc./Splice";
@@ -306,8 +306,8 @@ mod tests {
         assert!(table.contains("no save folder located"), "{table}");
     }
 
-    /// The per-game list is a `--verbose` choice for a person and not
-    /// negotiable for a machine: `--json` alone has to carry it.
+    /// The per-game list is a `--verbose` choice for a person and not negotiable
+    /// for a machine: `--json` alone has to carry it.
     #[test]
     fn json_always_carries_the_games() {
         assert!(should_list_games(false, true), "--json alone");

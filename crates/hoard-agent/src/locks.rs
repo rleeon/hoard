@@ -1,41 +1,40 @@
-//! ¿Está el juego escribiendo el save AHORA MISMO?
+//! Is the game writing the save RIGHT NOW?
 //!
-//! Sonda del sistema de ficheros, independiente de la tabla de procesos: se
-//! intenta abrir cada fichero del save **en solo lectura** y, si el SO
-//! responde que otro proceso lo tiene en exclusiva, es que se está escribiendo.
+//! A filesystem probe, independent of the process table: we try to open each of
+//! the save's files read-only, and if the OS says another process holds it
+//! exclusively, something is writing to it.
 //!
-//! Vale la pena precisamente porque no depende de reconocer al juego. Toda la
-//! detección de sesión de `agent::process_poll` parte de casar un proceso con
-//! el save (nombre, carpeta de instalación, handles, correlación); un juego que
-//! no casa con nada aparece como "parado" mientras guarda la partida, y ahí un
-//! backup copia un fichero a medias y un restore lo pisa. Esto lo cubre sin
-//! saber nada del juego.
+//! It is worth having precisely because it does not depend on recognising the
+//! game. All of `agent::process_poll`'s session detection starts from matching a
+//! process to the save (name, install folder, handles, correlation), and a game
+//! that matches nothing shows up as "stopped" while it saves, at which point a
+//! backup copies a half-written file and a restore walks over it. This covers
+//! that without knowing anything about the game.
 //!
-//! **Sólo Windows puede afirmarlo.** En POSIX un `open()` de lectura no falla
-//! porque otro proceso esté escribiendo (no hay bloqueo obligatorio), así que
-//! ahí la sonda devuelve `false` y mandan los guards de siempre — que en Linux
-//! son fuertes: `agent.rs` ya casa por `/proc/<pid>/fd`, la vía que en Windows
-//! no existe. Las dos plataformas acaban cubiertas, cada una por su lado.
+//! Only Windows can assert it. On POSIX a read `open()` does not fail because
+//! another process is writing (there is no mandatory locking), so there the probe
+//! returns `false` and the usual guards decide. On Linux those guards are strong:
+//! `agent.rs` already matches through `/proc/<pid>/fd`, the route Windows does not
+//! have. Both platforms end up covered, each its own way.
 
 use std::path::Path;
 
-/// Cuántos ficheros se sondean como mucho. La sonda corre en cada tick del
-/// poll con un juego vivo, y una carpeta de 4000 saves (el caso `swarm` del
-/// banco de pruebas) no puede convertirse en 4000 `open()` cada dos segundos.
-/// Con que UNO esté bloqueado ya está contestada la pregunta, y el que el
-/// juego tiene abierto suele ser de los primeros.
+/// How many files get probed at most. The probe runs on every poll tick with a
+/// live game, and a folder of 4000 saves (the `swarm` case in the test bench)
+/// cannot turn into 4000 `open()` calls every two seconds. One locked file
+/// answers the question, and the one the game holds is usually near the front.
 const MAX_PROBED_FILES: usize = 64;
 
-/// Profundidad máxima al buscar ficheros que sondear.
+/// Maximum depth when looking for files to probe.
 const MAX_DEPTH: usize = 3;
 
-/// `true` si algún fichero bajo `path` está abierto en exclusiva por otro
-/// proceso. `path` puede ser un fichero suelto o una carpeta.
+/// `true` when some file under `path` is held open exclusively by another
+/// process. `path` may be a single file or a folder.
 ///
-/// Conservador ante la duda: cualquier error que no sea un bloqueo declarado
-/// (no existe, sin permisos, se borró a media sonda) cuenta como NO bloqueado.
-/// Tratar "sin permisos" como bloqueo es lo que dejaba el bucle de espera
-/// girando para siempre en la versión original de esta idea.
+/// Conservative when in doubt: any error that is not a declared lock (missing,
+/// no permission, deleted mid-probe) counts as NOT locked. Treating "no
+/// permission" as a lock is what left the wait loop spinning forever in the
+/// original version of this idea.
 pub fn any_file_locked(path: &Path) -> bool {
     let mut budget = MAX_PROBED_FILES;
     probe(path, MAX_DEPTH, &mut budget)
@@ -69,13 +68,13 @@ fn probe(path: &Path, depth: usize, budget: &mut usize) -> bool {
     false
 }
 
-/// Windows: abrir en solo lectura y mirar el error.
+/// Windows: open read-only and look at the error.
 ///
-/// Se abre **sólo para leer** a propósito: los saves nunca se escriben durante
-/// un backup, así que pedir escritura daría falsos positivos con cualquier
-/// fichero de solo lectura. Y sólo cuentan los dos errores que significan de
-/// verdad "otro proceso lo tiene": un permiso denegado normal NO es un
-/// bloqueo, y tratarlo como tal congelaría el save para siempre.
+/// Read-only on purpose: saves are never written during a backup, so asking for
+/// write access would give false positives on any read-only file. And only the
+/// two errors that really mean "another process holds it" count: an ordinary
+/// permission denial is NOT a lock, and treating it as one would freeze the save
+/// forever.
 #[cfg(windows)]
 fn is_file_locked(path: &Path) -> bool {
     /// `ERROR_SHARING_VIOLATION`
@@ -91,8 +90,8 @@ fn is_file_locked(path: &Path) -> bool {
     }
 }
 
-/// POSIX: no hay bloqueo obligatorio, así que un `open()` de lectura no puede
-/// contestar la pregunta. Se devuelve `false` en vez de inventar una respuesta.
+/// POSIX: there is no mandatory locking, so a read `open()` cannot answer the
+/// question. It returns `false` rather than inventing an answer.
 #[cfg(not(windows))]
 fn is_file_locked(_path: &Path) -> bool {
     false
@@ -116,7 +115,7 @@ mod tests {
         assert!(!any_file_locked(Path::new("/definitely/not/here")));
     }
 
-    /// Un árbol grande no puede convertirse en miles de `open()` por tick.
+    /// A large tree must not turn into thousands of `open()` calls per tick.
     #[test]
     fn the_probe_is_bounded() {
         let tmp = tempfile::tempdir().unwrap();
@@ -128,8 +127,8 @@ mod tests {
         assert_eq!(budget, 0, "debería haber agotado el presupuesto, no más");
     }
 
-    /// En POSIX la sonda no puede afirmar nada, y eso es lo correcto: nunca
-    /// debe frenar un backup por un fichero que simplemente está abierto.
+    /// On POSIX the probe can assert nothing, and that is right: it must never
+    /// brake a backup over a file that merely happens to be open.
     #[cfg(unix)]
     #[test]
     fn posix_never_reports_locked() {

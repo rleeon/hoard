@@ -1,34 +1,28 @@
-//! Contrato de eventos y estado del motor — **el protocolo de eventos por
-//! cable** (ADR 0021, Parte A + C.6).
+//! The engine's event and status contract: the on-the-wire event protocol
+//! (ADR 0021, part A and C.6).
 //!
-//! Estos tres tipos vivían en `hoard_agent::agent`, donde eran el canal
-//! in-process `events_tx` que el desktop y el daemon CLI consumían. Con el
-//! Slice 4 el motor se muda a su propio proceso (`hoardd`) y ese canal pasa a
-//! cruzar un socket: la ADR lo dice literalmente — «el `AgentEvent` pasa a ser
-//! el protocolo de eventos por cable». Un tipo que cruza el cable pertenece al
-//! kernel leaf, no al crate del motor, o el cliente tendría que depender del
-//! motor entero para leer un evento.
+//! `AgentEvent` used to be an in-process channel. Now the engine lives in its
+//! own process and the channel crosses a socket, so the type belongs to the leaf
+//! kernel rather than to the engine crate; otherwise a client would have to
+//! depend on the whole engine to read one event.
+//! [`super::events_wire_shape_is_frozen`] pins the JSON shape so nobody moves it
+//! by accident.
 //!
-//! El movimiento fue **verbatim**: mismas variantes, mismos campos, mismos
-//! atributos `serde`. `hoard_agent::agent` los re-exporta, así que ni el
-//! desktop ni la CLI notan el cambio, y [`super::events_wire_shape_is_frozen`]
-//! fija la forma del JSON para que nadie la mueva por accidente.
+//! ## Compatibility discipline
 //!
-//! ## Disciplina de compatibilidad
-//!
-//! Igual que [`crate::wire`], pero con una diferencia: aquí las dos puntas son
-//! **el daemon y sus clientes**, que se actualizan por separado (el usuario
-//! actualiza la app y el servicio de usuario sigue siendo el viejo hasta que
-//! reinicia sesión). Por tanto: append-only, `#[serde(default)]` en todo campo
-//! nuevo, nunca repurposear un campo, y la versión del protocolo
-//! ([`super::PROTOCOL_VERSION`]) sube cuando un cambio no es compatible.
+//! As in [`crate::wire`], with one difference that matters: the two ends here
+//! are the daemon and its clients, and they update separately. Someone updates
+//! the app while the user service keeps running the old binary until they log
+//! back in. So: append only, `#[serde(default)]` on every new field, never
+//! repurpose a field, and bump [`super::PROTOCOL_VERSION`] when a change is not
+//! compatible.
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
-/// Who refused an upload for being too big — and therefore what the user has to
+/// Who refused an upload for being too big, and therefore what the user has to
 /// change. See [`AgentEvent::BackupTooLarge`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -80,30 +74,26 @@ pub enum AgentEvent {
         /// `state.json` so the next session can skip a no-op re-upload of the
         /// same bytes. `None` only if the agent couldn't compute it.
         set_hash: Option<String>,
-        /// **No se subió nada: el contenido ya era la cabeza del server** (ADR
-        /// 0021 D.8.3). Pasa cuando el daemon se reinicia con una subida en
-        /// vuelo que sí llegó a comprometerse: el `in_flight` en memoria se
-        /// perdió, pero los bytes están arriba, y el chequeo content-addressed
-        /// lo detecta en vez de crear una versión duplicada.
+        /// Nothing was uploaded, because the content already was the server's
+        /// head (ADR 0021 D.8.3). Happens when the daemon restarts with an
+        /// upload in flight that did commit: the in-memory `in_flight` is gone
+        /// but the bytes are up there, and the content-addressed check notices
+        /// instead of creating a duplicate version.
         ///
-        /// Sigue siendo un `BackupSuccess` porque el hecho que le importa a
-        /// quien mira es el mismo —"está guardado en la versión N"— y porque de
-        /// él cuelga la persistencia de `state.json`. `total_bytes` es 0: no
-        /// viajó ni un byte. Campo nuevo con `default`, así que un cliente
-        /// anterior lo lee como `false` (ADR 0021 C.6: append-only).
+        /// Still a `BackupSuccess`, because the fact anyone watching cares about
+        /// is the same one ("it is saved in version N") and because `state.json`
+        /// persistence hangs off it. `total_bytes` is 0; not a byte travelled.
         #[serde(default)]
         already_landed: bool,
-        /// La pidió una persona: el botón "copiar ahora" o la red de seguridad
-        /// previa a un restore ([`hoard_core::wire::VersionOrigin::is_deliberate`]).
+        /// A person asked for this: the "back up now" button, or the safety net
+        /// taken before a restore
+        /// ([`hoard_core::wire::VersionOrigin::is_deliberate`]).
         ///
-        /// Existe para el aviso: `notify_on_success` está apagado por defecto a
-        /// propósito, porque el motor narrando cada autoguardado es ruido — pero
-        /// esa preferencia nunca quiso decir "no contestes cuando pulse un
-        /// botón". Sin esto, pulsar "copiar ahora" no daba señal ninguna: ni
-        /// aviso, ni error, sólo una fila en el feed que hay que ir a mirar.
-        ///
-        /// Campo nuevo con `default`, así que un cliente anterior lo lee como
-        /// `false` y se comporta como hasta ahora (ADR 0021 C.6: append-only).
+        /// It exists for the notification. `notify_on_success` is off by default
+        /// on purpose, because the engine narrating every autosave is noise, but
+        /// that preference never meant "say nothing when I press a button".
+        /// Without this, pressing "back up now" gave no signal at all: no
+        /// notice, no error, just a row in a feed you have to go and look at.
         #[serde(default)]
         deliberate: bool,
     },
@@ -115,8 +105,8 @@ pub enum AgentEvent {
         will_retry: bool,
     },
     /// The upload was deferred by the server's rolling bandwidth limit (429).
-    /// Not a failure — the agent is waiting `retry_after_secs` for the window
-    /// to slide and will retry automatically. The UI shows an amber
+    /// Not a failure: the agent waits `retry_after_secs` for the window to
+    /// slide and retries on its own. The UI shows an amber
     /// "en espera, reintento en Xs" entry instead of a red "falló", so a
     /// first-time onboarding burst that briefly exceeds the window reads as
     /// throttled rather than broken.
@@ -147,20 +137,21 @@ pub enum AgentEvent {
         limit_bytes: u64,
         /// Cloud only: the save's real size, known up front.
         actual_bytes: u64,
-        /// Self-hosted only: bytes taken in before the server gave up. A floor,
-        /// not the total — it aborts mid-stream and never learns the size.
+        /// Self-hosted only: bytes taken in before the server gave up. A floor
+        /// rather than the total, since it aborts mid-stream and never learns
+        /// the size.
         received_bytes: u64,
     },
-    /// The *account* is out of storage (402 `quota_exceeded`), so this upload —
-    /// and every other one — will keep failing until the user frees space or
+    /// The *account* is out of storage (402 `quota_exceeded`), so this upload,
+    /// and every other one, keeps failing until the user frees space or
     /// upgrades. Its own event rather than a `BackupFailed` for two reasons:
     /// nothing about this save is wrong (a red "factorio falló" blames the
     /// wrong thing, and the raw 402 JSON was what actually reached the feed in
     /// ago-2026), and it's account-wide, so the UI collapses every save's
     /// report into one actionable banner that opens "liberar espacio".
     ///
-    /// The save keeps its pending changes and re-arms on a long park — the
-    /// bytes are still only on disk, so the slot must stay vetoed from restores
+    /// The save keeps its pending changes and re-arms on a long park. The bytes
+    /// are still only on disk, so the slot has to stay vetoed from restores
     /// until they land.
     BackupQuotaFull {
         save_id: String,
@@ -171,8 +162,8 @@ pub enum AgentEvent {
         limit_bytes: u64,
     },
     /// The save was bigger than the plan's per-save cap, so the agent uploaded
-    /// only the newest files that fit and dropped the oldest (generic recency
-    /// trim — no per-game knowledge). The backup **succeeded** (a
+    /// only the newest files that fit and dropped the oldest (a generic recency
+    /// trim, with no per-game knowledge). The backup **succeeded** (a
     /// `BackupSuccess` fires alongside), but it's *partial*: the UI surfaces an
     /// amber "tu plan no llega, sube a Pro" state rather than a plain green
     /// "ok", so a Free user knows their older saves aren't in the cloud even
@@ -193,16 +184,16 @@ pub enum AgentEvent {
     ///
     /// Exists because the alternative was worse in both directions. Failing the
     /// whole snapshot on one unreadable file is what actually happened until
-    /// ago-2026 — a OneDrive Files On-Demand placeholder ("the cloud file
-    /// provider is not running") inside a GTA San Andreas save meant 3,934
-    /// attempts across 13 days and not one version uploaded — and quietly
-    /// shipping an incomplete version is the failure nobody would ever notice
-    /// until a restore came back missing a file. So: upload what can be read,
-    /// and say out loud what was left behind.
+    /// aug-2026: an on-demand placeholder ("the cloud file provider is not
+    /// running") inside one save meant 3,934 attempts across 13 days and not one
+    /// version uploaded. Quietly shipping an incomplete version is the other
+    /// direction, the failure nobody notices until a restore comes back missing
+    /// a file. So: upload what can be read, and say out loud what was left
+    /// behind.
     ///
     /// Fired right after the `BackupSuccess` for the same upload, so the UI's
-    /// amber "partial" state wins over the green "ok" — same ordering contract
-    /// as [`AgentEvent::BackupTrimmed`]. When `uploaded` is false nothing went
+    /// amber "partial" state wins over the green "ok", the same ordering
+    /// contract as [`AgentEvent::BackupTrimmed`]. When `uploaded` is false nothing went
     /// up at all (not a single file was readable) and there is no companion
     /// success event.
     BackupFilesUnreadable {
@@ -240,10 +231,10 @@ pub enum AgentEvent {
     /// the save is left untouched and we want the UI to suggest "restore
     /// manually" rather than "we'll try again".
     ///
-    /// A retry *is* scheduled (the reconciliation sweep re-fires once the
-    /// slot's backoff elapses) — the doc here used to claim otherwise, which
-    /// was wrong in a load-bearing way: it made the every-minute retry loop
-    /// look intentional. Each occurrence is a transient toast; a save that
+    /// A retry *is* scheduled: the reconciliation sweep re-fires once the
+    /// slot's backoff elapses. The doc here used to claim otherwise, and that
+    /// was wrong in a load-bearing way, because it made the every-minute retry
+    /// loop look intentional. Each occurrence is a transient toast; a save that
     /// keeps failing escalates to [`AgentEvent::SaveAutoRestoreStuck`].
     SaveAutoRestoreFailed {
         save_id: String,
@@ -255,7 +246,7 @@ pub enum AgentEvent {
     ///
     /// Exists because the July-2026 re-download incident was *silent*. Every
     /// individual failure emitted `SaveAutoRestoreFailed`, which the desktop
-    /// renders as a toast — a notification the user dismisses, or never sees
+    /// renders as a toast, a notification the user dismisses or never sees
     /// because it appeared while they were in-game. Eight days of a save
     /// silently not syncing (and re-downloading gigabytes to fail again) is
     /// the thing a toast structurally cannot tell you. This event is what the
@@ -263,9 +254,9 @@ pub enum AgentEvent {
     /// until the save actually recovers.
     ///
     /// One-shot per (save, version), throttled the way `RestoreDeferred` is:
-    /// the sweep keeps retrying and keeps failing, but the user is told once.
-    /// Cleared — and followed by [`AgentEvent::SaveAutoRestoreRecovered`] — on
-    /// a successful attempt or when the cloud version changes.
+    /// the sweep keeps retrying and keeps failing, but the user is told once. A
+    /// successful attempt or a new cloud version clears it and emits
+    /// [`AgentEvent::SaveAutoRestoreRecovered`].
     SaveAutoRestoreStuck {
         save_id: String,
         game_slug: String,
@@ -281,15 +272,16 @@ pub enum AgentEvent {
     /// once too often: **it has stopped retrying** and needs a person.
     ///
     /// The conflict is the 409 non-fast-forward whose reconcile finds nothing to
-    /// pull — the server says this device is behind, but there is no newer
-    /// version to merge from (the remote head was purged, or raced backwards).
-    /// No amount of waiting fixes that: every retry asks the same question.
+    /// pull: the server says this device is behind, but there is no newer
+    /// version to merge from, because the remote head was purged or raced
+    /// backwards. No amount of waiting fixes that; every retry asks the same
+    /// question.
     ///
     /// Exists because the retry was previously silent *and* unbounded: 1,701
     /// events across 5 users, one save stuck at ~4.5 attempts an hour for 14
     /// days, surviving three app versions without anything ever saying so. The
-    /// frontends turn this into a persistent state on the save's card — like
-    /// [`AgentEvent::SaveAutoRestoreStuck`], a toast structurally cannot carry
+    /// frontends turn this into a persistent state on the save's card. Like
+    /// [`AgentEvent::SaveAutoRestoreStuck`]: a toast structurally cannot carry
     /// "this has been broken for two weeks".
     ///
     /// Cleared by [`AgentEvent::BackupAttentionCleared`] when a backup finally
@@ -315,16 +307,16 @@ pub enum AgentEvent {
     /// A save that had emitted [`AgentEvent::SaveAutoRestoreStuck`] restored
     /// successfully (or the cloud moved to a new version, giving it a fresh
     /// reason to try). Lets the frontends drop the persistent warning instead
-    /// of leaving a stale "this is broken" badge on a save that now works —
-    /// a warning that can't clear itself trains the user to ignore warnings.
+    /// of leaving a stale "this is broken" badge on a save that now works. A
+    /// warning that cannot clear itself trains the user to ignore warnings.
     SaveAutoRestoreRecovered {
         save_id: String,
         game_slug: String,
     },
     /// A scheduled backup landed but the local folder was empty (or gone)
-    /// at upload time. We deliberately do **not** push an empty snapshot —
-    /// that would silently destroy the user's last good save on the server
-    /// the next time they look at History. Instead we surface this event so
+    /// at upload time. We deliberately do **not** push an empty snapshot, which
+    /// would silently destroy the user's last good save on the server the next
+    /// time they look at History. Instead we surface this event so
     /// the UI can toast "we skipped backup because the folder is empty; turn
     /// on auto-restore in Settings if you wanted it pulled back".
     ///
@@ -341,8 +333,9 @@ pub enum AgentEvent {
         /// instead of the ordinary "nothing to back up" notice.
         ///
         /// A save that has backed up before and is empty *now* is a state
-        /// change, not a detection error — R.E.P.O. wipes its own directory
-        /// at the menu, which is why it ships a preset — so it stays quiet.
+        /// change rather than a detection error. R.E.P.O. wipes its own
+        /// directory at the menu, which is why it ships a preset, so this stays
+        /// quiet.
         #[serde(default)]
         likely_wrong_path: bool,
     },
@@ -358,7 +351,7 @@ pub enum AgentEvent {
     },
     /// The process poll spotted a heavy-CPU process that looks like a game
     /// (`correlation::is_game_like`) but matches no tracked save's process
-    /// name — most likely a just-launched, not-yet-tracked game. The desktop
+    /// name, most likely a just-launched game nobody tracks yet. The desktop
     /// reacts by firing an immediate detection scan instead of waiting out the
     /// periodic timer, so a new game lands in the Library within seconds of
     /// launch. Emitted at most once per PID until that process exits, so a
@@ -400,9 +393,9 @@ pub enum BackupReason {
     Manual,
     /// One save inside a staggered "backup sweep" (Modo Automático's hourly
     /// hash pass). Spaced out across an effective window so disk I/O doesn't
-    /// burst. Kept quiet in the activity feed — unlike a filesystem-settled
-    /// backup there's no user-visible trigger, and N queued rows every hour
-    /// would be noise — but the resulting upload still announces normally.
+    /// burst. Kept quiet in the activity feed, since unlike a filesystem-settled
+    /// backup there is no user-visible trigger and N queued rows every hour
+    /// would be noise. The resulting upload still announces itself normally.
     SweepStaggered,
     /// A previous attempt burned its whole retry budget and failed for real.
     /// The upload is re-armed on a long backoff

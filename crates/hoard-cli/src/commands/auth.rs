@@ -1,10 +1,10 @@
 //! `hoard login` / `logout` / `whoami`.
 //!
 //! Two session kinds, never both effectively at once (Cloud wins over self-host
-//! when resolving — see `session::resolve`):
-//! - **Cloud** (default, bare `hoard login`): Supabase **without a browser** —
-//!   email + password, or an email OTP code if you leave the password blank.
-//! - **self-host** (`hoard login --token <token>`): the server's bearer token.
+//! when resolving, see `session::resolve`):
+//! - Cloud (default, bare `hoard login`): Supabase without a browser, so email
+//!   plus password, or an email OTP code if you leave the password blank.
+//! - self-host (`hoard login --token <token>`): the server's bearer token.
 
 use std::io::{self, IsTerminal, Write};
 use std::time::{Duration, Instant};
@@ -27,9 +27,9 @@ pub async fn login(token: Option<String>, server: Option<String>, force_email: b
         return login_cloud_email(&cloud_auth::cloud_base_url()).await;
     }
 
-    // No flags: ask what to sign in to — but only if there's a terminal to ask
-    // on. Piped/CI/service contexts can't answer a prompt, so default to Cloud
-    // (its device/email flow doesn't depend on an interactive menu).
+    // No flags: ask what to sign in to, but only if there's a terminal to ask
+    // on. Piped, CI and service contexts can't answer a prompt, so default to
+    // Cloud (its device/email flow doesn't depend on an interactive menu).
     if !io::stdin().is_terminal() {
         return login_cloud(false).await;
     }
@@ -71,9 +71,9 @@ async fn login_selfhost(token: String, server: Option<String>) -> Result<()> {
     let client = ApiClient::new(cfg.server.url.clone(), token.clone())?;
     let me = client.whoami().await?;
 
-    // Al servicio, que es el dueño del almacén que resuelve el motor (D.20): sin
-    // esto, en una máquina donde la app ya tenía sesión, este login no cambiaría
-    // con qué server sincroniza el motor.
+    // To the service, which owns the store the engine resolves from (D.20).
+    // Without this, on a machine where the app already had a session, this login
+    // would not change which server the engine syncs with.
     let handed = link::hand_over_server_session(hoard_core::ipc::ServerSession {
         server_url: cfg.server.url.clone(),
         token: token.clone(),
@@ -85,15 +85,15 @@ async fn login_selfhost(token: String, server: Option<String>) -> Result<()> {
     })
     .await;
 
-    // Y a `config.toml` igual: es el camino headless y lo que leen los one-shots de
-    // esta misma CLI sin servicio delante. Texto plano y 0600, como siempre — aquí
-    // no hay llavero que envenenar.
+    // And to `config.toml` as well: it is the headless path and what this same
+    // CLI's one-shots read with no service in front. Plain text and 0600, as
+    // always; there is no keyring to poison here.
     cfg.auth.token = Some(token);
     cfg.save(&path)?;
     if !handed {
-        // El servicio no se enteró por la entrega. Además hay que quitar de en
-        // medio la sesión que la app pudiera tener guardada: el motor la prefiere,
-        // así que dejarla ahí haría que este login no sirviera de nada.
+        // The service did not hear about it through the handover. On top of
+        // that, whatever session the app may have stored has to go: the engine
+        // prefers it, so leaving it there would make this login pointless.
         let _ = hoard_agent::credentials::forget_unlocked();
         link::notify_session_changed().await;
     }
@@ -123,11 +123,11 @@ async fn login_selfhost_interactive() -> Result<()> {
     login_selfhost(token, Some(url)).await
 }
 
-/// Cloud without a browser. Main path: **mobile pairing** — the CLI shows a URL
+/// Cloud without a browser. The main path is mobile pairing: the CLI shows a URL
 /// and a code, you approve it from your phone (already signed in on the web) and
-/// the server mints the session. If the server doesn't have it configured, it falls
-/// back to the email+password / OTP-code path. The session is stored where the
-/// desktop keeps it (keyring + `cloud.toml`) to share the login.
+/// the server mints the session. If the server doesn't have it configured, it
+/// falls back to the email plus password or OTP-code path. The session is stored
+/// where the desktop keeps it (keyring plus `cloud.toml`) to share the login.
 async fn login_cloud(force_email: bool) -> Result<()> {
     let base = cloud_auth::cloud_base_url();
     println!("Sign in to Hoard Cloud ({base})");
@@ -227,14 +227,14 @@ async fn login_cloud_email(base: &str) -> Result<()> {
 
 /// Persists the session and sets the Cloud context. Shared by both paths.
 ///
-/// Acuñar una sesión no es rotarla, así que el login sí es cosa del cliente — pero
-/// **guardarla** es del servicio (D.20): el ítem del llavero sólo autoriza al
-/// binario que lo crea, y el que lo lee en cada arranque del motor es `hoardd`. Se
-/// le entrega por IPC, y con eso el servicio ya sabe que la sesión cambió (no hace
-/// falta el aviso aparte).
+/// Minting a session is not rotating one, so logging in is the client's job, but
+/// *storing* it is the service's (D.20): the keyring item only authorises the
+/// binary that creates it, and what reads it on every engine start is `hoardd`.
+/// It gets handed over by IPC, and that alone tells the service the session
+/// changed, so no separate notice is needed.
 async fn finish_cloud_login(base: &str, tokens: &cloud_auth::Tokens) -> Result<()> {
-    // La entrega incluye olvidar la anterior, para que entrar con otra cuenta no
-    // deje su `user` / `server_url` en disco.
+    // The handover includes forgetting the previous one, so signing in with
+    // another account does not leave its `user` or `server_url` on disk.
     let handed = link::hand_over_session(hoard_core::ipc::AdoptedSession {
         server_url: base.to_string(),
         access_token: tokens.access.clone(),
@@ -242,17 +242,17 @@ async fn finish_cloud_login(base: &str, tokens: &cloud_auth::Tokens) -> Result<(
     })
     .await;
     if !handed {
-        // Sin servicio: al fichero 0600 y **no** al llavero. El servicio lo recoge
-        // de ahí cuando arranque y lo sube al llavero él mismo, ya como dueño;
-        // escribirlo aquí es lo que dejaba al motor pidiendo permiso.
+        // With no service: to the 0600 file, and NOT to the keyring. The service
+        // picks it up from there on start and puts it in the keyring itself, as
+        // its owner. Writing it here is what left the engine asking permission.
         cloud_auth::forget_tokens_unlocked()?;
         cloud_auth::store_tokens_unlocked(tokens, base)?;
     }
     let me = cloud_auth::fetch_me(base, &tokens.access).await?;
     state::set_active_context(Some(state::cloud_context(&me.user_id)));
     if !handed {
-        // El servicio no se enteró del login por la entrega, así que se le avisa
-        // por si arrancó entremedias.
+        // The service did not hear about the login through the handover, so tell
+        // it in case it started in between.
         link::notify_session_changed().await;
     }
     println!(
@@ -280,8 +280,8 @@ fn local_hostname() -> Option<String> {
 
 pub async fn logout() -> Result<()> {
     let had_cloud = cloud_auth::load_session()?.is_some();
-    // El par lo borra su dueño (el servicio); si no hay servicio basta con quitar
-    // el fichero de sesión: sin él no hay sesión que resolver.
+    // The pair is deleted by its owner, the service. With no service, removing
+    // the session file is enough: without it there is no session to resolve.
     let cloud_forgotten_by_service = had_cloud && link::hand_over_logout().await;
     if had_cloud && !cloud_forgotten_by_service {
         cloud_auth::forget_tokens_unlocked()?;
@@ -289,9 +289,9 @@ pub async fn logout() -> Result<()> {
 
     let path = CliConfig::default_path()?;
     let mut cfg = CliConfig::load(&path)?;
-    // Las dos fuentes self-hosted: el `config.toml` de esta CLI y el almacén de
-    // sesión que guarda el servicio (donde vive la de la app). Un logout tiene que
-    // cerrar las dos o la máquina seguiría sincronizando.
+    // The two self-hosted sources: this CLI's `config.toml` and the session store
+    // the service keeps, where the app's lives. A logout has to close both or the
+    // machine would carry on syncing.
     let stored_selfhost = hoard_agent::credentials::load_public()?.is_some();
     let had_selfhost = cfg.auth.token.is_some() || stored_selfhost;
     if cfg.auth.token.is_some() {
@@ -303,10 +303,10 @@ pub async fn logout() -> Result<()> {
         hoard_agent::credentials::forget_unlocked()?;
     }
 
-    // Las credenciales ya no están: que el servicio tire el motor y resuelva de
-    // nuevo, en vez de seguir con un token que acabamos de borrar.
-    // `ForgetSession` ya lo lleva dentro, así que sólo hace falta avisar si no
-    // pasó por ahí.
+    // The credentials are gone, so have the service drop the engine and resolve
+    // afresh rather than carry on with a token we just deleted. `ForgetSession`
+    // already carries that, so it only needs telling when it did not go that
+    // way.
     if (had_selfhost && !selfhost_forgotten_by_service)
         || (had_cloud && !cloud_forgotten_by_service)
     {
@@ -345,9 +345,9 @@ pub enum WhoamiOut {
 
 pub async fn whoami() -> Result<()> {
     let out = if cloud_auth::load_session()?.is_some() {
-        // Token prestado por el servicio, no refrescado aquí: dos procesos
-        // rotando el mismo refresh token es la reuse-detection que revoca la
-        // sesión entera (ADR 0021, Parte A).
+        // A token lent by the service, not refreshed here: two processes rotating
+        // the same refresh token is the reuse detection that revokes the whole
+        // session (ADR 0021, part A).
         let active = link::resolve_session().await?;
         let Some(sess) = active.cloud else {
             bail!("the stored Cloud session is unreadable — run `hoard login`");

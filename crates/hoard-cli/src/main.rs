@@ -15,7 +15,7 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
     /// Machine-readable output: one JSON envelope on stdout, human logs on
-    /// stderr. What agents and scripts read — see `hoard agents`.
+    /// stderr. What agents and scripts read; see `hoard agents`.
     #[arg(long, global = true)]
     json: bool,
 }
@@ -24,7 +24,7 @@ struct Cli {
 enum Commands {
     /// Install (or repair) every Hoard component this machine wants
     Install {
-        /// Core only — never the desktop app, even where one would fit
+        /// Core only: never the desktop app, even where one would fit
         #[arg(long, conflicts_with = "with_desktop")]
         headless: bool,
         /// Install the desktop app too, even if this machine looks headless
@@ -52,9 +52,9 @@ enum Commands {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
-    /// Manage the background sync service — the resident automatic sync (the app
-    /// without a window) run under your OS service manager (systemd --user /
-    /// launchd / Task Scheduler). `hoard sync start|stop|status`.
+    /// Manage the background sync service: the resident automatic sync (the app
+    /// without a window) run under your OS service manager (systemd --user,
+    /// launchd, Task Scheduler). `hoard sync start|stop|status`.
     Sync {
         #[command(subcommand)]
         action: Option<commands::service::SyncCommand>,
@@ -86,10 +86,10 @@ enum Commands {
     Status,
     /// List the machines on this account: which are on and what they're playing
     Devices,
-    /// Check this machine's tracked saves for the mistakes that break syncing —
-    /// folders that vanished, backup mirrors tracked instead of the real save,
-    /// rows named after an installer — and print the command that fixes each.
-    /// Local and offline; changes nothing.
+    /// Check this machine's tracked saves for the mistakes that break syncing,
+    /// such as folders that vanished, backup mirrors tracked instead of the real
+    /// save, or rows named after an installer, and print the command that fixes
+    /// each. Local and offline; changes nothing.
     Doctor,
     /// Configuration file management
     Config {
@@ -131,7 +131,7 @@ enum Commands {
         #[command(subcommand)]
         action: commands::games::GameCommand,
     },
-    /// Hoard Cloud account: export, storage/caja negra, entitlements, playtime
+    /// Hoard Cloud account: export, storage, entitlements, playtime
     Cloud {
         #[command(subcommand)]
         action: commands::cloud::CloudCommand,
@@ -172,12 +172,12 @@ enum Commands {
     },
     /// Upload a directory as a new snapshot
     Backup {
-        /// Save id (UUID) — see `hoard save list`
+        /// Save id (UUID), see `hoard save list`
         save_id: String,
         /// Source directory to back up. Required unless previously remembered.
         #[arg(long)]
         from: Option<PathBuf>,
-        /// Save the (save_id → local_path) mapping in local state for future runs
+        /// Save the (save_id, local_path) mapping in local state for future runs
         #[arg(long)]
         remember: bool,
     },
@@ -200,7 +200,7 @@ enum Commands {
         /// Show what would change in the folder and stop, without restoring
         #[arg(long)]
         dry_run: bool,
-        /// Also write the snapshot's config files (.ini, .cfg, .toml, settings…)
+        /// Also write the snapshot's config files (.ini, .cfg, .toml, settings)
         /// over this machine's. Off by default: those files carry the other
         /// machine's resolution, GPU and paths, and games crash on them.
         #[arg(long, alias = "allow-config")]
@@ -226,15 +226,15 @@ enum SnapshotCommand {
     },
     /// Restore a soft-deleted snapshot back to active state
     Undelete { save_id: String, version: i64 },
-    /// Show or set your cap on stored versions per save. No value = show;
-    /// a number = set; `off` = unlimited. The server prunes immediately.
+    /// Show or set your cap on stored versions per save. No value shows it, a
+    /// number sets it, `off` means unlimited. The server prunes immediately.
     ///
-    /// Las copias que pides tú (`hoard backup`, y la de seguridad previa a un
-    /// restore) tienen su propio cupo, sin límite por defecto: `--manual`.
-    /// Así una partida que autoguarda cada minuto no puede llenar el
-    /// historial y llevarse por delante la copia que hiciste antes del jefe.
+    /// The copies you ask for yourself (`hoard backup`, and the safety copy taken
+    /// before a restore) have their own budget, unlimited by default: `--manual`.
+    /// That way a game autosaving every minute cannot fill the history and take
+    /// out the copy you made before the boss.
     MaxVersions {
-        /// New cap (1–10000), or `off` to remove the cap
+        /// New cap (1 to 10000), or `off` to remove the cap
         value: Option<String>,
         /// Act on the budget for the copies you asked for, not the automatic ones
         #[arg(long)]
@@ -276,7 +276,7 @@ fn init_tracing(cli: &Cli) -> Option<WorkerGuard> {
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
 
-    // Only `hoard sync run` (the service's ExecStart) writes the file log — a
+    // Only `hoard sync run` (the service's ExecStart) writes the file log; a
     // one-shot CLI command doesn't need a persistent log file.
     let (file_layer, guard) = match &cli.command {
         Some(Commands::Sync {
@@ -304,11 +304,11 @@ fn init_tracing(cli: &Cli) -> Option<WorkerGuard> {
 
 /// Which commands actually honour `--json`.
 ///
-/// The flag promises one envelope on stdout. A command that hasn't been
-/// converted would print its human table instead **and exit 0**, which is worse
-/// than refusing: the caller parses that as JSON, fails, and has no way to tell
-/// a malformed answer from a command that was never going to answer. So the
-/// ones that can't, say so.
+/// The flag promises one envelope on stdout. A command that has not been converted
+/// would print its human table instead *and exit 0*, which is worse than refusing:
+/// the caller parses that as JSON, fails, and has no way to tell a malformed
+/// answer from a command that was never going to answer. So the ones that cannot,
+/// say so.
 fn supports_json(cmd: &Commands) -> bool {
     match cmd {
         Commands::Saves
@@ -514,19 +514,19 @@ struct SnapshotRow {
     file_count: i64,
     total_size_bytes: i64,
     created_at: String,
-    /// Which machine made this copy. `None` on versions stored before the
-    /// server kept it — the table shows those as "—".
+    /// Which machine made this copy. `None` on versions stored before the server
+    /// kept it, which the table shows as a dash.
     device_name: Option<String>,
-    /// `active`, `pinned` or `trash`. Tagged rather than left implicit: a
-    /// trashed version still lists, and restoring one by accident is exactly
-    /// the mistake worth making impossible to stumble into.
+    /// `active`, `pinned` or `trash`. Tagged rather than left implicit: a trashed
+    /// version still lists, and restoring one by accident is exactly the mistake
+    /// worth making impossible to stumble into.
     state: &'static str,
     /// The save this version is about, derived by the server from the manifest.
     /// `None` on versions stored before it did that, and on servers that don't.
     #[serde(skip_serializing_if = "Option::is_none")]
     save_name: Option<String>,
-    /// Files added or rewritten since the previous version. `None` when there
-    /// is no insight to say — never `0`, which would claim nothing changed.
+    /// Files added or rewritten since the previous version. `None` when there is
+    /// no insight to say, and never `0`, which would claim nothing changed.
     #[serde(skip_serializing_if = "Option::is_none")]
     changed_files: Option<u32>,
 }
@@ -562,12 +562,12 @@ async fn list_snapshots(
             println!("(no snapshots)");
             return;
         }
-        // La máquina va en la tabla por lo mismo que en la ventana: con una
-        // partida sincronizada en dos equipos, la fecha no dice cuál de las dos
-        // copias es. Las versiones anteriores a que el server lo guardara salen
-        // con "—".
-        // La columna SAVE es la que contesta "¿cuál de mis partidas es esta?"
-        // con varias en la misma carpeta. Vacía donde el server no lo derivó.
+        // The machine goes in the table for the same reason it goes in the
+        // window: with one save synced on two machines, the date does not say
+        // which of the two copies this is. Versions from before the server stored
+        // it come out as a dash. The SAVE column is the one that answers "which of
+        // my saves is this?" when several share a folder, and it is blank where
+        // the server did not derive it.
         println!(
             "{:>5}  {:<20}  {:>5}  {:>10}  {:<25}  {:<16}  STATE",
             "VER", "SAVE", "FILES", "SIZE", "CREATED", "DEVICE"

@@ -1,17 +1,16 @@
-//! DETECCIÓN — enumeración de roots de usuario (fase 0, ADR 0020).
+//! Detection: enumerating the user roots (phase 0, ADR 0020).
 //!
-//! Lista los directorios raíz donde los juegos guardan saves, por SO,
-//! derivada de los placeholders que `pathexpand` ya sabe expandir
-//! (`<winAppData>`, `<winLocalAppDataLow>`, `<xdgData>`, …). Es la base del
-//! scan automático catalog-free: el walk por señales (fase 1+) debe
-//! recorrer ESTOS roots, no sólo `install_dir` + `drive_c/users/steamuser`.
+//! Lists the root directories where games keep saves, per OS, derived from the
+//! placeholders `pathexpand` already knows how to expand (`<winAppData>`,
+//! `<winLocalAppDataLow>`, `<xdgData>` and the rest). It is the base of the
+//! catalogue-free automatic scan: the signal-driven walk (phase 1 onwards) has to
+//! cover THESE roots, not just `install_dir` plus `drive_c/users/steamuser`.
 //!
-//! NOTA DE INTEGRACIÓN: este módulo es la cimentación de la fase 0. Todavía
-//! NO está cableado en `detection::detect_all` — recorrer todo el HOME por
-//! cada slug sin resolver sería I/O explosiva, así que el cableado real
-//! espera a la fase 4 (atribución), que asocia candidatos sueltos a juegos.
-//! Aquí sólo se provee la lista de roots, deduplicada y filtrada a los que
-//! existen en el host.
+//! Integration note: this module is phase 0's foundation and is not yet wired
+//! into `detection::detect_all`. Walking the whole HOME for every unresolved slug
+//! would be explosive IO, so the real wiring waits for phase 4 (attribution),
+//! which ties loose candidates to games. All that is provided here is the list of
+//! roots, deduplicated and filtered down to the ones that exist on the host.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -19,13 +18,13 @@ use std::path::{Path, PathBuf};
 use crate::manifest::Os;
 use crate::pathexpand::expand_path;
 
-/// Templates de roots de usuario por SO (placeholders estilo Ludusavi).
+/// User-root templates per OS, using Ludusavi-style placeholders.
 fn root_templates(os: Os) -> &'static [&'static str] {
     match os {
         Os::Windows => &[
             "<winAppData>",         // Roaming
             "<winLocalAppData>",    // Local
-            "<winLocalAppDataLow>", // LocalLow — Unity Application.persistentDataPath
+            "<winLocalAppDataLow>", // LocalLow: Unity Application.persistentDataPath
             "<winSavedGames>",
             "<home>/Documents",
             "<home>/Documents/My Games",
@@ -35,16 +34,16 @@ fn root_templates(os: Os) -> &'static [&'static str] {
             "<xdgConfig>", // ~/.config
             "<home>/.local/state",
             "<home>/Documents",
-            // Juegos nativos (no-Proton) que escriben en el "Saved Games" estilo
-            // Windows dentro del HOME (Unity/Unreal multiplataforma, varios
-            // indies). Sin esto, sólo se miraba dentro de prefijos Wine.
+            // Native, non-Proton games that write into a Windows-style "Saved
+            // Games" inside HOME (cross-platform Unity and Unreal, several
+            // indies). Without this, only Wine prefixes were looked at.
             "<home>/Saved Games",
         ],
         Os::Mac => &["<macAppSupport>", "<macPreferences>", "<home>/Documents"],
     }
 }
 
-/// Roots de usuario nativos que existen en este host, deduplicados.
+/// The native user roots that exist on this host, deduplicated.
 pub fn user_save_roots(os: Os) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
@@ -58,18 +57,17 @@ pub fn user_save_roots(os: Os) -> Vec<PathBuf> {
     out
 }
 
-/// Roots adicionales que SOLO recorre el escaneo profundo (Linux): el gaming
-/// confinado en sandboxes y los emuladores, que el tick periódico no mira por
-/// coste. Cubre:
+/// Extra roots only the deep scan walks (Linux): sandboxed gaming and emulators,
+/// which the periodic tick skips because of the cost. Covers:
 ///
-/// - **Flatpak**: datos por-app en `~/.var/app/<id>/{config,data,.local/share,
-///   .config}` — Steam Deck, Heroic/Lutris/Bottles Flatpak, emuladores
-///   EmuDeck/RetroDECK.
-/// - **Snap**: `~/snap/<app>/{common,current}/.local/share` y `/.config`.
-/// - **EmuDeck / RetroDECK**: `~/Emulation/saves`, `~/Emulation/storage`, y
-///   las copias en microSD `/run/media/<user>/<label>/Emulation/saves`.
+/// - Flatpak: per-app data in `~/.var/app/<id>/{config,data,.local/share,
+///   .config}`, so Steam Deck, Flatpak Heroic, Lutris and Bottles, and the
+///   EmuDeck and RetroDECK emulators.
+/// - Snap: `~/snap/<app>/{common,current}/.local/share` and `/.config`.
+/// - EmuDeck and RetroDECK: `~/Emulation/saves`, `~/Emulation/storage`, and the
+///   microSD copies at `/run/media/<user>/<label>/Emulation/saves`.
 ///
-/// Todos filtrados a los que existen; vacío en SO que no sean Linux.
+/// All filtered down to the ones that exist; empty on anything but Linux.
 pub fn deep_save_roots(os: Os) -> Vec<PathBuf> {
     if !matches!(os, Os::Linux) {
         return Vec::new();
@@ -122,9 +120,9 @@ pub fn deep_save_roots(os: Os) -> Vec<PathBuf> {
     out
 }
 
-/// The storefront roots that aren't Steam's, for the `<root>` placeholder —
-/// one entry per row of [`pathexpand::NON_STEAM_STORE_ROOTS`], filtered to the
-/// ones installed here.
+/// The storefront roots that aren't Steam's, for the `<root>` placeholder: one
+/// entry per row of [`pathexpand::NON_STEAM_STORE_ROOTS`], filtered to the ones
+/// installed here.
 ///
 /// Native only, and Windows-only in practice: no such launcher ships a Linux
 /// or macOS build, and under Proton the same roots live inside the prefix,
@@ -136,7 +134,7 @@ pub fn other_store_roots(os: Os) -> Vec<PathBuf> {
     }
     let mut candidates: Vec<PathBuf> = Vec::new();
     for store in crate::pathexpand::NON_STEAM_STORE_ROOTS {
-        // The env vars are the only way to `Program Files` — `pathexpand`
+        // The env vars are the only way to `Program Files`, since `pathexpand`
         // carries no placeholder for it, because no save template needs one.
         for key in ["ProgramFiles(x86)", "ProgramFiles"] {
             if let Some(base) = std::env::var_os(key) {
@@ -160,26 +158,24 @@ pub fn other_store_roots(os: Os) -> Vec<PathBuf> {
     out
 }
 
-/// Carpetas donde la gente agrupa programas descomprimidos. Se miran un nivel
-/// por dentro además de la propia raíz de la unidad.
+/// Folders where people group unpacked programs. Both one level in and the
+/// drive root itself get looked at.
 const COLLECTION_DIRS: &[&str] = &["Emulators", "Emulation", "Emus", "Games", "Juegos", "ROMs"];
 
-/// Sitios donde buscar programas que se instalaron descomprimiendo una carpeta
-/// en vez de con un instalador.
+/// Where to look for programs installed by unpacking a folder rather than by
+/// running an installer.
 ///
-/// Son dos: la **raíz de cada unidad interna** (`D:\RetroArch`) y **un nivel
-/// dentro** de una carpeta-colección (`D:\Emulators\RetroArch`). Devuelve los
-/// directorios a listar, no los candidatos: quien pregunta decide qué nombres
-/// le valen.
+/// There are two: the root of each internal drive (`D:\RetroArch`) and one level
+/// inside a collection folder (`D:\Emulators\RetroArch`). It returns the
+/// directories to list, not the candidates: the caller decides which names count.
 ///
-/// Acotado a propósito, y esto es la mitad del diseño: un listado por unidad
-/// más uno por colección, sin recorrer nada por debajo. Un barrido de un disco
-/// de juegos leería decenas de miles de directorios para encontrar un puñado
-/// de aciertos, y lo pagaría el arranque de cada escaneo.
+/// Deliberately bounded, and that is half the design: one listing per drive plus
+/// one per collection, with nothing walked below. Sweeping a games disk would
+/// read tens of thousands of directories to find a handful of hits, and every
+/// scan's startup would pay for it.
 ///
-/// Las unidades extraíbles, ópticas y de red se saltan: un recurso compartido
-/// desconectado bloquea segundos en cada llamada, y ese coste lo notaría todo
-/// el escaneo.
+/// Removable, optical and network drives are skipped: a disconnected share blocks
+/// for seconds on every call, and the whole scan would feel that cost.
 pub fn portable_install_roots(os: Os) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
@@ -198,16 +194,16 @@ pub fn portable_install_roots(os: Os) -> Vec<PathBuf> {
     out
 }
 
-/// Raíces de las unidades internas de este equipo.
+/// The roots of this machine's internal drives.
 ///
-/// En Windows son las letras de unidad fijas. En Linux y macOS no hay letras,
-/// así que se toman los puntos de montaje habituales de discos secundarios —
-/// que es donde acaba un segundo SSD o la microSD de una Deck.
+/// On Windows those are the fixed drive letters. On Linux and macOS there are no
+/// letters, so the usual mount points for secondary disks are taken, which is
+/// where a second SSD or a Deck's microSD ends up.
 #[cfg(windows)]
 pub fn internal_drive_roots(_os: Os) -> Vec<PathBuf> {
-    // `DRIVE_FIXED` no está junto a las dos funciones que lo consumen: vive en
-    // `System::WindowsProgramming`. Compila igual en cualquiera de los dos
-    // sitios, así que el error sólo aparece al construir para Windows.
+    // `DRIVE_FIXED` does not sit next to the two functions that consume it; it
+    // lives in `System::WindowsProgramming`. It compiles from either place, so the
+    // mistake only shows up when building for Windows.
     use windows_sys::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives};
     use windows_sys::Win32::System::WindowsProgramming::DRIVE_FIXED;
 
@@ -221,11 +217,11 @@ pub fn internal_drive_roots(_os: Os) -> Vec<PathBuf> {
             continue;
         }
         let letter = (b'A' + i as u8) as char;
-        // `GetDriveTypeW` quiere la raíz con barra final y en UTF-16 terminado
+        // `GetDriveTypeW` wants the root with a trailing slash, as null-terminated
         // en nulo: "D:\\\0".
         let root: Vec<u16> = format!("{letter}:\\\0").encode_utf16().collect();
-        // SAFETY: `root` es un UTF-16 válido terminado en nulo y vive durante
-        // toda la llamada.
+        // SAFETY: `root` is valid null-terminated UTF-16 and lives for the whole
+        // call.
         if unsafe { GetDriveTypeW(root.as_ptr()) } == DRIVE_FIXED {
             out.push(PathBuf::from(format!("{letter}:\\")));
         }
@@ -233,10 +229,10 @@ pub fn internal_drive_roots(_os: Os) -> Vec<PathBuf> {
     out
 }
 
-/// Equivalente no-Windows: los puntos de montaje donde aparece un disco
-/// secundario. `/media/<user>` y `/run/media/<user>` los usan los escritorios
-/// Linux (y la Deck para la microSD); `/mnt` es el montaje a mano de toda la
-/// vida; `/Volumes` es el de macOS.
+/// The non-Windows equivalent: the mount points where a secondary disk turns up.
+/// `/media/<user>` and `/run/media/<user>` are what Linux desktops use (and the
+/// Deck for its microSD); `/mnt` is the by-hand mount of long tradition;
+/// `/Volumes` is macOS's.
 #[cfg(not(windows))]
 pub fn internal_drive_roots(os: Os) -> Vec<PathBuf> {
     let mut out = Vec::new();
@@ -259,8 +255,8 @@ pub fn internal_drive_roots(os: Os) -> Vec<PathBuf> {
             if !entry.is_dir() {
                 continue;
             }
-            // `/media/<user>/<volumen>` y `/media/<volumen>` conviven según la
-            // distribución, así que se aceptan los dos niveles.
+            // `/media/<user>/<volume>` and `/media/<volume>` coexist depending
+            // on the distro, so both levels are accepted.
             let mut had_child = false;
             if let Ok(children) = std::fs::read_dir(&entry) {
                 for child in children.flatten().map(|e| e.path()) {
@@ -278,13 +274,13 @@ pub fn internal_drive_roots(os: Os) -> Vec<PathBuf> {
     out
 }
 
-/// Nombres de usuario Windows reales dentro de un prefijo Wine/Proton.
+/// Real Windows user names inside a Wine or Proton prefix.
 ///
-/// Lista los directorios bajo `drive_c/users/` que son usuarios reales —
-/// Proton usa `steamuser`, los prefijos genéricos (`wine`, PlayOnLinux,
-/// lanzadores `.desktop`) usan el login del host (`$USER`). Excluye `Public`
-/// (no es un perfil de usuario) y entradas no-directorio. Vacío si el prefijo
-/// no existe o no tiene `drive_c/users/`.
+/// Lists the directories under `drive_c/users/` that are real users: Proton uses
+/// `steamuser`, while generic prefixes (`wine`, PlayOnLinux, `.desktop`
+/// launchers) use the host login (`$USER`). Excludes `Public`, which is not a
+/// user profile, and non-directory entries. Empty when the prefix does not exist
+/// or has no `drive_c/users/`.
 pub fn prefix_windows_users(prefix: &Path) -> Vec<String> {
     let users_dir = prefix.join("drive_c/users");
     let entries = match std::fs::read_dir(&users_dir) {
@@ -307,10 +303,10 @@ pub fn prefix_windows_users(prefix: &Path) -> Vec<String> {
     out
 }
 
-/// Subdirectorios de usuario dentro de un prefijo Wine/Proton donde caen
-/// los saves, para todos los usuarios reales del prefijo. Mismo naming
-/// Windows que `pathexpand::expand_placeholder_in_prefix`. `prefix` apunta al
-/// directorio que contiene `drive_c/` directamente.
+/// The per-user subdirectories inside a Wine or Proton prefix where saves land,
+/// for every real user of the prefix. Same Windows naming as
+/// `pathexpand::expand_placeholder_in_prefix`. `prefix` points at the directory
+/// that directly contains `drive_c/`.
 pub fn prefix_user_roots(prefix: &Path) -> Vec<PathBuf> {
     prefix_windows_users(prefix)
         .iter()

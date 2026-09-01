@@ -8,7 +8,7 @@
 //! # What this never touches
 //!
 //! **Your saves and your settings stay.** Uninstalling removes the program, not
-//! the backups it made — those are the point of having used it, they can be
+//! the backups it made: those are the point of having used it, and they can be
 //! tens of gigabytes, and a user who is only switching machines or reinstalling
 //! would have no way to get them back. The paths are returned in [`Removed`] so
 //! whoever asked can say where they are; deleting them is a separate decision
@@ -23,7 +23,7 @@ use super::{fetch, Delivery};
 /// Stops anything of ours that is running, so its files can be replaced or
 /// deleted.
 ///
-/// On Unix this is a courtesy — a running binary can be unlinked and the kernel
+/// On Unix this is a courtesy: a running binary can be unlinked and the kernel
 /// keeps the inode alive until the process exits. On Windows it is the whole
 /// operation: an open executable cannot be deleted at all, and this is exactly
 /// the failure the NSIS hook exists to prevent ("Error opening file for
@@ -89,20 +89,20 @@ pub async fn desktop(
         }
         Delivery::Nsis => {
             // The installer leaves its own uninstaller beside the app, and that
-            // is the only thing that knows what it wrote — shortcuts, the
+            // is the only thing that knows what it wrote: shortcuts, the
             // registry entry, the PATH. Deleting the folder ourselves would
             // leave every one of those behind.
             let dir = path.parent().context("the app has no parent directory")?;
             let uninstaller = dir.join("uninstall.exe");
             if !uninstaller.is_file() {
                 bail!(
-                    "no uninstaller at {} — remove Hoard from Settings › Apps instead",
+                    "no uninstaller at {}; remove Hoard from Settings › Apps instead",
                     uninstaller.display()
                 );
             }
             // `_?=` is what makes this synchronous. Without it an NSIS
             // uninstaller copies itself to the temp directory, launches that
-            // copy detached and returns success immediately — so the caller
+            // copy detached and returns success immediately, so the caller
             // reports "removed" while the files are still there, and whatever
             // it does next races the deletion. With `_?=` it runs in place and
             // blocks; the price is that it can no longer delete its own
@@ -130,7 +130,7 @@ pub async fn desktop(
         }
         Delivery::Managed => {
             bail!(
-                "this copy is managed by your package manager — remove it the same way you \
+                "this copy is managed by your package manager; remove it the same way you \
                  installed it"
             )
         }
@@ -200,14 +200,14 @@ pub fn core(dir: &Path) -> Result<Vec<PathBuf>> {
 
 /// Takes the line `super::ensure_on_shell_path` added back out.
 ///
-/// Only the exact pair it wrote — its comment and the export directly under it.
+/// Only the exact pair it wrote: its comment and the export directly under it.
 /// Anything else in that file is the user's, including a `PATH` line they wrote
 /// themselves that happens to name the same directory.
 pub fn shell_path_line(dir: &Path) {
     #[cfg(target_os = "windows")]
     {
         // The counterpart of `super::platform_reach`, which put this directory
-        // into the user's `Path`. Leaving it is litter that points at nothing —
+        // into the user's `Path`. Leaving it is litter that points at nothing,
         // and the next install would find it already present and skip writing
         // it, so the asymmetry is not even harmless.
         use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
@@ -278,7 +278,7 @@ pub fn manifest() -> Result<()> {
     }
 }
 
-/// Where the user's own things live — saves, settings, the local database.
+/// Where the user's own things live: saves, settings, the local database.
 ///
 /// Returned so an uninstaller can say "your backups are still here", never so
 /// it can delete them. See this module's header.
@@ -287,7 +287,7 @@ pub fn kept_data() -> Vec<PathBuf> {
     if let Ok(dirs) = crate::config::CliConfig::project_dirs() {
         // State first, config second. Whoever reports this shows the first one,
         // and the state directory is the one worth pointing at: it holds what
-        // Hoard learned about this machine — which folders are tracked, the
+        // Hoard learned about this machine: which folders are tracked, the
         // sync history, the local database. The config directory is a
         // `config.toml` that can be rewritten in a minute.
         for dir in [dirs.data_local_dir(), dirs.data_dir(), dirs.config_dir()] {

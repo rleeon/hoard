@@ -1,22 +1,22 @@
-//! Qué le va a pasar a la carpeta si se restaura esta versión.
+//! What will happen to the folder if this version is restored.
 //!
-//! Restaurar es la operación que más miedo da de la app, y hasta ahora se
-//! confirmaba a ciegas: el usuario elegía una fecha y aceptaba sin saber si eso
-//! tocaba un fichero o los ochocientos. Este módulo responde a la pregunta
-//! antes de escribir nada — cuántos ficheros cambian, cuáles aparecen y cuáles
-//! sólo existen en el disco — **sin descargar un solo byte**.
+//! Restoring is the scariest operation in the app, and until now it was confirmed
+//! blind: the user picked a date and accepted without knowing whether that touched
+//! one file or eight hundred. This module answers the question before anything is
+//! written (how many files change, which appear, which exist only on disk) without
+//! downloading a single byte.
 //!
-//! Sale gratis porque las dos mitades ya estaban: el servidor publica el
-//! manifiesto por fichero de cada versión (ruta, sha256 y tamaño) y
-//! [`crate::backup::walk_source`] es el mismo recorrido que usa el backup, ya
-//! filtrado de symlinks y de los locks transitorios que deja un juego abierto.
-//! Sólo hay que cruzarlos.
+//! It comes free because both halves already existed: the server publishes each
+//! version's per-file manifest (path, sha256 and size) and
+//! [`crate::backup::walk_source`] is the same walk the backup uses, already
+//! filtered of symlinks and of the transient locks an open game leaves. All that
+//! is needed is to cross them.
 //!
-//! El cruce se hace en dos pasadas para no leer de más: primero por ruta y
-//! tamaño, que resuelve gratis todo lo que aparece, desaparece o cambia de
-//! tamaño; y sólo lo que coincide en ruta **y** en tamaño se hashea, porque es
-//! lo único que puede ser "el mismo fichero" o "distinto contenido, mismo
-//! tamaño" (un save de tamaño fijo, que es justo el caso frecuente).
+//! The cross runs in two passes so nothing is read twice over: first by path and
+//! size, which settles for free everything that appears, disappears or changes
+//! size; and only what matches in both path *and* size gets hashed, because that
+//! is the only thing that can be either "the same file" or "different content,
+//! same size", which is exactly the common case for a fixed-size save.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -25,73 +25,72 @@ use anyhow::Result;
 use hoard_core::kernel::fileclass::RestoreGate;
 use serde::Serialize;
 
-/// Un fichero de la versión remota, en lo mínimo que hace falta para comparar.
-/// Se construye igual desde el manifiesto de Cloud que desde el listado
-/// self-hosted, que llevan los mismos tres datos con distinto nombre.
+/// A file in the remote version, in the least it takes to compare. It is built
+/// the same way from Cloud's manifest as from the self-hosted listing, which carry
+/// the same three facts under different names.
 #[derive(Debug, Clone)]
 pub struct RemoteFile {
     pub relative_path: String,
     pub size_bytes: u64,
-    /// `None` = **no se sabe**, no "hash malo". Las versiones legacy de archivo
-    /// entero no tienen digest por fichero, y ese hueco se propaga hasta la UI
-    /// en vez de fingir una comparación que no se ha hecho.
+    /// `None` means unknown, not "bad hash". The legacy whole-archive versions
+    /// have no per-file digest, and that gap is propagated all the way to the UI
+    /// rather than faking a comparison that never happened.
     pub sha256: Option<String>,
 }
 
-/// Un fichero que ya está en la carpeta de destino.
+/// A file already in the destination folder.
 #[derive(Debug, Clone)]
 pub struct LocalFile {
     pub relative_path: String,
     pub size_bytes: u64,
 }
 
-/// Lo que la restauración le hará a la carpeta.
+/// What the restore will do to the folder.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct RestorePreview {
-    /// Ficheros que la versión trae idénticos a los que ya hay: no se tocan.
+    /// Files the version brings identical to what is already there: untouched.
     pub unchanged: usize,
-    /// Están en los dos lados con contenido distinto: se sobrescriben.
+    /// Present on both sides with different content: they get overwritten.
     ///
-    /// Enumerada hasta [`MAX_LISTED`]; el total real está en
-    /// [`Self::modified_count`]. Contar por `len()` decía "200 ficheros" de un
-    /// save de ochocientos, y lo decía justo en la frase que el usuario lee
-    /// antes de sobrescribir sus partidas.
+    /// Listed up to [`MAX_LISTED`]; the real total is in [`Self::modified_count`].
+    /// Counting by `len()` said "200 files" of an eight-hundred-file save, and it
+    /// said it in exactly the sentence the user reads before overwriting their
+    /// saves.
     pub modified: Vec<String>,
-    /// Cuántos se sobrescriben en total, enumerados o no.
+    /// How many get overwritten in total, listed or not.
     #[serde(default)]
     pub modified_count: usize,
-    /// Sólo están en la versión: se crean. Enumerada hasta [`MAX_LISTED`].
+    /// Only in the version: they get created. Listed up to [`MAX_LISTED`].
     pub added: Vec<String>,
-    /// Cuántos se crean en total, enumerados o no.
+    /// How many get created in total, listed or not.
     #[serde(default)]
     pub added_count: usize,
-    /// Sólo están en el disco. **No se borran** — la restauración escribe
-    /// encima, no sincroniza en espejo — pero el usuario merece verlos: son
-    /// las partidas que hizo después de la versión que está a punto de traer.
-    /// Enumerada hasta [`MAX_LISTED`].
+    /// Only on disk. They are not deleted, since a restore writes over rather
+    /// than mirroring, but the user deserves to see them: they are the saves made
+    /// after the version about to be brought back. Listed up to [`MAX_LISTED`].
     pub local_only: Vec<String>,
-    /// Cuántos hay sólo en disco en total, enumerados o no.
+    /// How many exist only on disk in total, listed or not.
     #[serde(default)]
     pub local_only_count: usize,
-    /// Bytes que hay que escribir (lo modificado más lo añadido).
+    /// Bytes that have to be written (modified plus added).
     pub bytes_to_write: u64,
-    /// `false` cuando la versión no publica hashes por fichero (las legacy de
-    /// archivo entero). Entonces `modified` y `unchanged` no se pueden
-    /// distinguir y la UI debe decir que no puede previsualizar, en vez de
-    /// enseñar un diff vacío que se leería como "no cambia nada".
+    /// `false` when the version publishes no per-file hashes (the legacy
+    /// whole-archive ones). Then `modified` and `unchanged` cannot be told apart
+    /// and the UI has to say it cannot preview, rather than showing an empty diff
+    /// that would read as "nothing changes".
     pub comparable: bool,
 }
 
-/// Cuántas rutas se enumeran como mucho en cada lista. Un save con ochocientos
-/// ficheros no cabe en un diálogo, y el recuento ya va aparte en los totales.
+/// How many paths get listed at most in each list. A save with eight hundred
+/// files does not fit in a dialog, and the count already travels in the totals.
 const MAX_LISTED: usize = 200;
 
-/// El cruce, sin tocar disco: recibe los dos lados ya leídos y un veredicto de
-/// igualdad por fichero, y decide.
+/// The cross, without touching the disk: it takes both sides already read plus a
+/// per-file equality verdict, and decides.
 ///
-/// `same_bytes` sólo se consulta para las rutas que coinciden en los dos lados
-/// **y** tienen el mismo tamaño; para el resto la respuesta ya está decidida y
-/// no hay que hashear nada.
+/// `same_bytes` is only consulted for paths present on both sides *and* of the
+/// same size; for the rest the answer is already settled and nothing needs
+/// hashing.
 pub fn diff(
     remote: &[RemoteFile],
     local: &[LocalFile],
@@ -122,10 +121,10 @@ pub fn diff(
                 push_capped(&mut out.modified, &r.relative_path);
             }
             Some(_) => {
-                // Mismo tamaño: hay que mirar el contenido. Sin hash publicado
-                // no se puede afirmar que sea igual, así que cuenta como que
-                // se sobrescribe — el lado seguro, y `comparable` ya avisa de
-                // que la cuenta es una cota superior.
+                // Same size, so the content has to be looked at. With no
+                // published hash there is no claiming they are equal, so it
+                // counts as overwritten, which is the safe side, and
+                // `comparable` already warns the count is an upper bound.
                 if comparable && same_bytes(&r.relative_path) {
                     out.unchanged += 1;
                 } else {
@@ -150,29 +149,30 @@ pub fn diff(
     out
 }
 
-/// Añade a la lista hasta el tope. Pasado el tope se deja de enumerar; el
-/// total lo llevan los `*_count`, que el llamador incrementa siempre.
+/// Appends to the list up to the cap. Past the cap it stops listing; the total is
+/// carried by the `*_count` fields, which the caller always increments.
 fn push_capped(list: &mut Vec<String>, path: &str) {
     if list.len() < MAX_LISTED {
         list.push(path.to_string());
     }
 }
 
-/// Lee la carpeta de destino y cruza con el manifiesto ya descargado.
+/// Reads the destination folder and crosses it with the already-downloaded
+/// manifest.
 ///
-/// Hashea sólo las rutas que coinciden en nombre y tamaño con la versión; el
-/// resto se resuelve sin abrir el fichero. En el peor caso lee tanto como ocupa
-/// el save, que es el mismo presupuesto que ya se gasta la deduplicación contra
-/// disco de un restore real.
+/// It hashes only the paths matching the version in both name and size; the rest
+/// is settled without opening the file. In the worst case it reads as much as the
+/// save occupies, which is the same budget a real restore's dedup against disk
+/// already spends.
 pub async fn against_disk(
     remote: &[RemoteFile],
     dest: &Path,
     gate: &RestoreGate,
 ) -> Result<RestorePreview> {
-    // Lo que la puerta no deja pasar no se va a escribir, así que no puede
-    // aparecer en la previsualización como si fuera a escribirse. La misma
-    // decisión que toma el restore —incluida la excepción del save de fichero
-    // suelto—, no una copia de ella que se le vaya separando.
+    // What the gate does not let through is not going to be written, so it cannot
+    // appear in the preview as though it were. The same decision the restore
+    // makes, the single-file save exception included, rather than a copy of it
+    // that drifts away.
     let names: Vec<&str> = remote.iter().map(|f| f.relative_path.as_str()).collect();
     let filtered: Vec<RemoteFile>;
     let remote = if crate::restore::is_single_file_snapshot(dest, &names) {
@@ -193,12 +193,12 @@ pub async fn against_disk(
                 size_bytes: f.size_bytes,
             })
             .collect(),
-        // Carpeta que aún no existe (equipo nuevo): todo son altas. No es un
-        // error, es el caso más común de un restore.
+        // A folder that does not exist yet (a new machine): everything is an
+        // addition. Not an error, but the commonest case of a restore.
         Err(_) => Vec::new(),
     };
 
-    // Sólo las candidatas ambiguas: misma ruta, mismo tamaño.
+    // Only the ambiguous candidates: same path, same size.
     let local_sizes: HashMap<&str, u64> = local
         .iter()
         .map(|f| (f.relative_path.as_str(), f.size_bytes))
@@ -212,9 +212,9 @@ pub async fn against_disk(
             continue;
         }
         let path = dest.join(&r.relative_path);
-        // Un fichero que no se puede leer (lock de un juego abierto, permisos)
-        // cuenta como distinto: la previsualización se pasa de precavida antes
-        // que prometer que algo no se toca.
+        // A file that cannot be read (an open game's lock, permissions) counts as
+        // different: the preview would rather be over-cautious than promise
+        // something will not be touched.
         if let Ok(actual) = crate::backup::hash_file(&path).await {
             if actual.eq_ignore_ascii_case(sha) {
                 equal.insert(r.relative_path.clone());
@@ -225,12 +225,12 @@ pub async fn against_disk(
     Ok(diff(remote, &local, |p| equal.contains(p)))
 }
 
-/// El manifiesto de una versión, venga de donde venga.
+/// A version's manifest, wherever it comes from.
 ///
-/// Las dos mitades del producto publican los mismos tres datos por fichero con
-/// nombres distintos, así que se normalizan aquí y el resto del módulo no se
-/// entera de con qué servidor habla. `presign = false`: esto es una consulta,
-/// no una descarga, y no debe gastar cuota de ancho de banda.
+/// Both halves of the product publish the same three per-file facts under
+/// different names, so they are normalised here and the rest of the module never
+/// learns which server it is talking to. `presign = false`: this is a query, not a
+/// download, and it must not spend bandwidth quota.
 pub async fn remote_files(
     client: &crate::api::ApiClient,
     save_id: &str,
@@ -241,8 +241,8 @@ pub async fn remote_files(
             .cloud_version_manifest(save_id, version, false)
             .await?;
         if !manifest.content_addressed {
-            // Versión legacy de archivo entero: no hay listado por fichero. Se
-            // devuelve vacío y `diff` lo marcará como no comparable.
+            // A legacy whole-archive version: there is no per-file listing. It
+            // comes back empty and `diff` will mark it not comparable.
             return Ok(Vec::new());
         }
         return Ok(manifest
@@ -267,10 +267,10 @@ pub async fn remote_files(
         .collect())
 }
 
-/// La previsualización completa: trae el manifiesto y lo cruza con el disco.
+/// The full preview: it fetches the manifest and crosses it with the disk.
 ///
-/// Un manifiesto vacío (versión legacy, o una versión sin ficheros) sale como
-/// no comparable, nunca como "no cambia nada".
+/// An empty manifest (a legacy version, or a version with no files) comes out as
+/// not comparable, never as "nothing changes".
 pub async fn restore_preview(
     client: &crate::api::ApiClient,
     save_id: &str,
@@ -335,8 +335,8 @@ mod tests {
 
     #[test]
     fn same_size_different_bytes_is_a_modification() {
-        // El caso que obliga a hashear: un save de tamaño fijo que cambia de
-        // contenido sin cambiar de tamaño.
+        // The case that forces a hash: a fixed-size save whose content changes
+        // without its size changing.
         let remote = vec![r("slot1.sav", 4096, Some("aa"))];
         let local = vec![l("slot1.sav", 4096)];
 
@@ -361,8 +361,9 @@ mod tests {
 
     #[test]
     fn a_version_without_per_file_hashes_says_so_instead_of_showing_no_changes() {
-        // Versión legacy de archivo entero: sin digests no se puede afirmar que
-        // nada cambia, y decir "0 cambios" sería mentir en la dirección peor.
+        // A legacy whole-archive version: with no digests there is no claiming
+        // nothing changed, and saying "0 changes" would lie in the worse
+        // direction.
         let remote = vec![r("save.dat", 10, None)];
         let local = vec![l("save.dat", 10)];
         let out = diff(&remote, &local, |_| true);

@@ -5,7 +5,7 @@
 //! into one or more real directories on the host.
 //!
 //! Some placeholders fan out to multiple candidates (Steam libraries on
-//! several disks, both XDG and `~/.config`, etc.) — hence the `Vec<PathBuf>`
+//! several disks, both XDG and `~/.config`, and so on), hence the `Vec<PathBuf>`
 //! return type. Callers use the *existing* paths from the result to decide
 //! whether the game has been played on this machine.
 //!
@@ -28,7 +28,7 @@ pub fn expand_path(template: &str, os: Os) -> Vec<PathBuf> {
         None => {
             // No placeholder at the start: template is a literal path
             // (Ludusavi only emits absolute literals on rare entries). Return
-            // it verbatim — stripping the leading '/' would turn an absolute
+            // it verbatim: stripping the leading '/' would turn an absolute
             // path into a bogus relative one that never stats.
             return vec![PathBuf::from(template)];
         }
@@ -61,11 +61,11 @@ pub fn expand_path(template: &str, os: Os) -> Vec<PathBuf> {
 /// path at all on a machine that had the game installed.
 #[derive(Debug, Default, Clone)]
 pub struct PathScope {
-    /// Where this specific game is installed — resolves `<base>`. Several
+    /// Where this specific game is installed; resolves `<base>`. Several
     /// candidates are normal: the same folder name can exist in more than
     /// one Steam library.
     pub install_dirs: Vec<PathBuf>,
-    /// Storefront roots — resolves `<root>`. Steam's library roots plus any
+    /// Storefront roots; resolves `<root>`. Steam's library roots plus any
     /// other storefront installed on this host ([`NON_STEAM_STORE_ROOTS`]).
     pub store_roots: Vec<PathBuf>,
 }
@@ -76,7 +76,7 @@ impl PathScope {
     }
 }
 
-/// Where one storefront keeps its own directory — what `<root>` names for the
+/// Where one storefront keeps its own directory, which is what `<root>` names for the
 /// templates constrained to that store.
 ///
 /// Steam's roots come from live state (its library folders move), so they are
@@ -91,11 +91,11 @@ pub struct StoreRootLayout {
 }
 
 /// Storefronts other than Steam that `<root>` can mean. **Adding one is a
-/// row** — nothing else in the expander knows any store by name.
+/// row**; nothing else in the expander knows any store by name.
 ///
 /// Today there is one, because the catalog says so: of the 3.1k `<root>`
 /// templates, 2.9k are Steam's `userdata/...` and 219 are the Ubisoft
-/// launcher's `savegames/<storeUserId>/<gameId>` — the only save path 63 games
+/// launcher's `savegames/<storeUserId>/<gameId>`, the only save path 63 games
 /// declare, the whole Assassin's Creed / Far Cry / Watch Dogs line among them.
 /// With Steam as the sole `<root>` those expanded to `…/Steam/savegames/…` and
 /// found nothing, so the games came back with no save folder at all.
@@ -117,13 +117,13 @@ pub const NON_STEAM_STORE_ROOTS: &[StoreRootLayout] = &[StoreRootLayout {
 /// * `<osUserName>` → the current user name.
 ///
 /// Anything else falls through to [`expand_path_globbed`] unchanged. A
-/// template whose scope placeholder has no candidates yields nothing — the
+/// template whose scope placeholder has no candidates yields nothing; the
 /// game isn't installed here, so there is nothing to stat.
 pub fn expand_path_scoped(template: &str, os: Os, scope: &PathScope) -> Vec<PathBuf> {
     let substituted = substitute_inline(template);
     let Some((placeholder, tail)) = split_placeholder(&substituted) else {
         // A literal that isn't absolute would resolve against the process
-        // CWD — never a save location.
+        // CWD, never a save location.
         if !is_absolute_literal(&substituted) {
             return Vec::new();
         }
@@ -374,7 +374,7 @@ fn expand_glob_tail(base: &Path, tail: &str, out: &mut Vec<PathBuf>) {
 /// user environment.
 ///
 /// Returns an empty `Vec` if the template doesn't start with a placeholder
-/// we know how to map to a Wine path — Linux/Mac-only placeholders
+/// we know how to map to a Wine path; Linux and Mac-only placeholders
 /// (`<xdgData>`, `<macAppSupport>`, …) and unknown tokens both yield
 /// `vec![]` so the caller doesn't accidentally stat a meaningless path
 /// under the prefix.
@@ -391,14 +391,14 @@ pub fn expand_path_in_prefix(template: &str, prefix: &Path) -> Vec<PathBuf> {
 pub fn expand_path_in_prefix_as_user(template: &str, prefix: &Path, user: &str) -> Vec<PathBuf> {
     // Same inline substitution the native path does, with the prefix's own
     // Windows user instead of the host login. Without it `<storeUserId>` stayed
-    // literal inside a prefix, so every template that carries one mid-path —
-    // the whole Ubisoft launcher family, `savegames/<storeUserId>/<gameId>` —
+    // literal inside a prefix, so every template that carries one mid-path (the
+    // whole Ubisoft launcher family, `savegames/<storeUserId>/<gameId>`)
     // expanded to a directory that can't exist.
     let substituted = template
         .replace("<storeUserId>", "*")
         .replace("<osUserName>", user);
     let Some((placeholder, tail)) = split_placeholder(&substituted) else {
-        // Literal templates don't apply to a prefix — they're absolute
+        // Literal templates don't apply to a prefix; they're absolute
         // host paths, not Wine paths. Drop them.
         return Vec::new();
     };
@@ -433,7 +433,7 @@ fn expand_placeholder_in_prefix(name: &str, prefix: &Path, user: &str) -> Vec<Pa
     // table adds its own. Which one a template meant is decided by the store
     // constraint the catalog carries; expanding all of them and letting the
     // caller keep what exists is cheaper than threading that constraint down
-    // here, and it can't misfire — two storefronts never share a tree.
+    // here, and it can't misfire: two storefronts never share a tree.
     if name == "root" {
         let mut out = vec![drive_c.clone()];
         for store in NON_STEAM_STORE_ROOTS {
@@ -456,7 +456,7 @@ fn expand_placeholder_in_prefix(name: &str, prefix: &Path, user: &str) -> Vec<Pa
         "winDocuments" => userhome.join("Documents"),
         // `%USERPROFILE%\Saved Games` inside the prefix. Without this, games
         // that target `<winSavedGames>` (Planet S, plenty of modern titles)
-        // were never searched under a Proton/Wine prefix on Linux — detection
+        // were never searched under a Proton or Wine prefix on Linux, so detection
         // fell back to the low-confidence Steam Cloud stub instead.
         "winSavedGames" => userhome.join("Saved Games"),
         "winPublic" => drive_c.join("users/Public"),
@@ -485,7 +485,7 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
     // `%USERPROFILE%\Documents` then points at an empty stub the game
     // never writes to. `windows_known_folder` reads
     // `HKCU\...\User Shell Folders` so we follow the redirect. Returns
-    // `None` on non-Windows or when the registry value is missing — the
+    // `None` on non-Windows or when the registry value is missing; the
     // existing env-based match below kicks in as the fallback.
     if matches!(os, Os::Windows) {
         if let Some(p) = windows_known_folder(name) {
@@ -497,7 +497,7 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
         // -------- Cross-platform basics
         (_, "home") => home_dir().into_iter().collect(),
         // `<root>` is the STOREFRONT root (the Steam install dir), not the
-        // filesystem root — 2.7k of its 3.1k uses are
+        // filesystem root: 2.7k of its 3.1k uses are
         // `<root>/userdata/<storeUserId>/<appid>/remote`. Mapping it to `/`
         // produced `/userdata/...`, which never exists, so those templates
         // were dead weight either way. It needs live Steam state, so it is
@@ -507,7 +507,7 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
         // -------- Windows
         (Os::Windows, "winAppData") => env_dir("APPDATA"),
         (Os::Windows, "winLocalAppData") => env_dir("LOCALAPPDATA"),
-        // `<winLocalAppDataLow>` — `%USERPROFILE%\AppData\LocalLow`. Not
+        // `<winLocalAppDataLow>`, meaning `%USERPROFILE%\AppData\LocalLow`. Not
         // present in `User Shell Folders`, so we synthesise it from
         // `%USERPROFILE%` directly. Ludusavi uses it for a handful of
         // games that write to the IE-sandboxed LocalLow tree.
@@ -526,7 +526,7 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
         (Os::Windows, "winPublic") => env_dir("PUBLIC"),
         (Os::Windows, "winProgramData") => env_dir("PROGRAMDATA"),
         (Os::Windows, "winDir") => env_dir("WINDIR"),
-        // `<winSavedGames>` — `%USERPROFILE%\Saved Games`, the Vista+
+        // `<winSavedGames>`, meaning `%USERPROFILE%\Saved Games`, the Vista+
         // canonical save folder. Modern titles increasingly target it;
         // on non-Windows it returns an empty `Vec` so callers skip it.
         (Os::Windows, "winSavedGames") => home_dir()
@@ -537,9 +537,9 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
         // (Unity/Unreal y varios indies, p. ej. Planet S) conservan en su
         // build de Linux la convención Windows de `~/Saved Games`, fuera de
         // todo prefijo Wine. Sin esto el catálogo no resolvía esa ruta en
-        // nativo y caía al `saves` del install-dir (a menudo un stub de Steam
-        // Cloud). Genérico: si la carpeta no existe o no tiene saves, el
-        // refinamiento la descarta igual que cualquier otro candidato.
+        // native one and fell back to the install-dir's `saves` (often a Steam
+        // stub with no real save in it). Now the native path also gets tried, and
+        // refinement discards it like any other candidate.
         (Os::Linux, "winSavedGames") => home_dir()
             .map(|h| vec![h.join("Saved Games")])
             .unwrap_or_default(),
@@ -577,10 +577,10 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
         }
 
         (_, other) => {
-            // An unknown placeholder is almost always a real bug — either
+            // An unknown placeholder is almost always a real bug: either
             // the manifest grew a new token that we haven't taught
             // pathexpand about, or the user is on an OS we don't handle.
-            // Log it (sampled — `trace`, not `warn`) so we can spot gaps
+            // Log it (sampled: `trace`, not `warn`) so we can spot gaps
             // without spamming the terminal during a full scan.
             tracing::trace!(
                 token = other,
@@ -603,12 +603,12 @@ fn home_dir() -> Option<PathBuf> {
     // heavy; std + a per-platform fallback covers the cases we hit.
     //
     // `USERPROFILE` is asked first on Windows, and the order is the whole
-    // point. `HOME` is not a Windows variable — when it is set at all it was
+    // point. `HOME` is not a Windows variable; when it is set at all it was
     // set by something ported from Unix, Git Bash and MSYS above all, and it
     // frequently holds that shell's idea of the home rather than the account's
     // (`/c/Users/name`, or a drive that doesn't exist outside the shell).
-    // Preferring it meant every `<home>` template — the blocked roots among
-    // them — resolved somewhere the user's saves have never been, on machines
+    // Preferring it meant every `<home>` template, the blocked roots among them,
+    // resolved somewhere the user's saves have never been, on machines
     // whose only sin was having Git installed.
     if cfg!(windows) {
         if let Some(h) = std::env::var_os("USERPROFILE") {
@@ -637,7 +637,7 @@ fn xdg_or(default: Option<PathBuf>, env_var: &str) -> Vec<PathBuf> {
 /// redirected Documents/AppData/etc. away from `%USERPROFILE%`.
 ///
 /// Returns `None` on non-Windows hosts, for tokens we don't map, or when
-/// the registry value is missing/unreadable — callers then fall back to
+/// the registry value is missing or unreadable, and callers then fall back to
 /// the env-var-based match in `expand_placeholder`.
 ///
 /// We only ship a Windows implementation; the no-op stub keeps the call
@@ -676,7 +676,7 @@ fn windows_known_folder(token: &str) -> Option<PathBuf> {
             r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders",
             "Common AppData",
         ),
-        // No registry mapping for LocalLow or SavedGames — both are
+        // No registry mapping for LocalLow or SavedGames: both are
         // synthesised from %USERPROFILE% in `expand_placeholder`.
         _ => return None,
     };
@@ -711,7 +711,7 @@ fn expand_windows_env_vars(input: &str) -> String {
         let after = &rest[start + 1..];
         if let Some(end) = after.find('%') {
             let name = &after[..end];
-            // Case-insensitive env var lookup — Windows treats `%appdata%`
+            // Case-insensitive env var lookup, since Windows treats `%appdata%`
             // and `%APPDATA%` identically.
             let value = std::env::vars_os()
                 .find(|(k, _)| k.to_string_lossy().eq_ignore_ascii_case(name))
@@ -966,8 +966,8 @@ mod tests {
     /// substitutes inline placeholders: every modern Assassin's Creed (and the
     /// rest of the Ubisoft line) declares exactly one save path,
     /// `<root>/savegames/<storeUserId>/<gameId>`. Under Proton that used to
-    /// expand to `drive_c/savegames/<storeUserId>/…` — a literal
-    /// `<storeUserId>` under a folder that doesn't exist — so the game came
+    /// expand to `drive_c/savegames/<storeUserId>/…`, a literal
+    /// `<storeUserId>` under a folder that doesn't exist, so the game came
     /// back with no save folder and the user had to find it by hand.
     #[test]
     fn a_ubisoft_save_resolves_inside_a_proton_prefix() {
@@ -1012,9 +1012,9 @@ mod tests {
     }
 
     /// `<winSavedGames>` resuelve a `~/Saved Games` también en Linux nativo:
-    /// los builds de Linux de muchos juegos multiplataforma conservan esa
-    /// convención Windows fuera de todo prefijo Wine (Planet S y cía). En Mac
-    /// no hay tal convención, así que ahí el token sigue cayendo.
+    /// the Linux builds of many cross-platform games keep that same layout, so
+    /// the token still resolves there. On a native Linux-only game there is no
+    /// such convention, and the token keeps falling through.
     #[test]
     fn winsavedgames_resolves_under_os_linux_drops_on_mac() {
         with_env(&[("HOME", Some("/home/test"))], || {
@@ -1035,7 +1035,7 @@ mod tests {
             &[
                 ("HOME", Some("/home/test")),
                 // Force the Known-Folder helper to return None on
-                // Windows hosts running the test suite — we don't want
+                // Windows hosts running the test suite, and we don't want
                 // a real HKCU lookup to interfere.
                 ("USERPROFILE", Some("/home/test")),
             ],
@@ -1207,7 +1207,7 @@ mod tests {
 
     #[test]
     fn base_without_install_dirs_yields_nothing() {
-        // The game isn't installed here — there is nothing to stat, and
+        // The game isn't installed here: there is nothing to stat, and
         // guessing a path would be worse than reporting no candidates.
         let scope = PathScope::default();
         assert!(expand_path_scoped("<base>/saves", Os::Linux, &scope).is_empty());

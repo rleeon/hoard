@@ -1,46 +1,44 @@
-//! # Protocolo IPC del servicio local (ADR 0021, Parte A — Slice 4)
+//! The local service's IPC protocol (ADR 0021, part A).
 //!
-//! El motor deja de ir embebido en cada frontend y pasa a vivir en un proceso
-//! propio (`hoardd`, un motor por usuario). Desktop y CLI se conectan a él por
-//! un socket local — UDS en Linux/macOS, named pipe en Windows — y este módulo
-//! es **lo que viaja por ese socket**: los sobres, las peticiones, las
-//! respuestas, el journal de eventos y el encuadre.
+//! The engine stopped being embedded in every frontend and moved into a process
+//! of its own (`hoardd`, one engine per user). Desktop and CLI connect to it
+//! over a local socket, a UDS on Linux and macOS, a named pipe on Windows, and
+//! this module is what travels over it: the envelopes, the requests, the
+//! replies, the event journal and the framing.
 //!
-//! Vive en `hoard-core` por la misma razón que [`crate::wire`] (C.6): el
-//! contrato no puede pertenecer a una de las dos puntas. `hoard-core` es el
-//! kernel *leaf* —sólo `serde`, sin `tokio`—, así que aquí están **los tipos y
-//! el encuadre**, y el transporte (bind, accept, permisos, leer/escribir del
-//! socket) vive en el crate del daemon, que sí tiene runtime.
+//! It lives in `hoard-core` for the same reason [`crate::wire`] does (C.6): a
+//! contract cannot belong to one of its two ends. `hoard-core` is the leaf
+//! kernel, `serde` and nothing else, no `tokio`, so the types and the framing
+//! are here while the transport (bind, accept, permissions, reading and writing
+//! the socket) lives in the daemon crate, which has a runtime.
 //!
-//! ## Encuadre
+//! ## Framing
 //!
-//! Cada mensaje va como `u32` big-endian con la longitud + ese número de bytes
-//! de JSON. Framed y no line-delimited porque un evento lleva rutas de fichero
-//! (`SaveConflictsBackedUp::conflict_dir`) y no quiero que un `\n` dentro de un
-//! campo sea sintaxis. El tope ([`MAX_FRAME_BYTES`]) se comprueba **antes** de
-//! reservar el buffer: un socket local sigue siendo entrada no confiable y un
-//! prefijo de 4 GiB no puede convertirse en una reserva de 4 GiB.
+//! Every message goes out as a big-endian `u32` length followed by that many
+//! bytes of JSON. Framed rather than line-delimited because an event carries
+//! file paths (`SaveConflictsBackedUp::conflict_dir`) and a `\n` inside a field
+//! must not be syntax. The cap ([`MAX_FRAME_BYTES`]) is checked *before* the
+//! buffer is reserved: a local socket is still untrusted input, and a 4 GiB
+//! prefix must not become a 4 GiB allocation.
 //!
-//! ## Handshake versionado
+//! ## Versioned handshake
 //!
-//! Ahora hay 2+ artefactos actualizables (servicio + app + CLI) que tienen que
-//! hablar el mismo protocolo, y no se actualizan a la vez: el usuario actualiza
-//! la app y el servicio de usuario sigue siendo el viejo hasta que reinicia la
-//! sesión. Así que el cliente manda [`Hello`] con su [`PROTOCOL_VERSION`] y el
-//! daemon contesta [`Welcome`] o [`Rejected`] con **la suya**, para que el
-//! cliente pueda decir "actualiza/reinicia el servicio" en vez de fallar con un
-//! error de parseo.
+//! There are now two or more updatable artefacts (service, app, CLI) that have
+//! to speak the same protocol, and they do not update together: someone updates
+//! the app and the user service stays on the old binary until they log back in.
+//! So the client sends [`Hello`] with its [`PROTOCOL_VERSION`] and the daemon
+//! answers [`Welcome`] or [`Rejected`] with its own, which lets the client say
+//! "update or restart the service" instead of dying on a parse error.
 //!
-//! Dentro de una misma versión de protocolo se aplica la disciplina de
-//! [`crate::wire`]: append-only, `#[serde(default)]` en todo campo nuevo, nunca
-//! repurposear un campo. La versión sube sólo cuando el cambio no es
-//! compatible.
+//! Within one protocol version, [`crate::wire`]'s discipline applies: append
+//! only, `#[serde(default)]` on every new field, never repurpose a field. The
+//! version goes up only when a change is not compatible.
 //!
-//! ## Entrega de eventos: journal + push
+//! ## Event delivery: journal plus push
 //!
-//! Los dos, no uno u otro (D.14.2). El cliente conecta → pide todo lo posterior
-//! a su cursor ([`Request::Subscribe`]) → recibe [`Payload::Backlog`] → y desde
-//! ahí escucha [`ServerFrame::Event`] en vivo. Ver [`journal`].
+//! Both, not one or the other (D.14.2). The client connects, asks for everything
+//! after its cursor ([`Request::Subscribe`]), gets a [`Payload::Backlog`], and
+//! listens for live [`ServerFrame::Event`]s from there. See [`journal`].
 
 pub mod events;
 pub mod journal;
@@ -52,22 +50,20 @@ use time::OffsetDateTime;
 pub use events::{AgentEvent, AgentSlotStatus, BackupReason};
 pub use journal::{Backlog, JournalEntry};
 
-/// Versión del protocolo. Sube **sólo** ante un cambio incompatible; añadir un
-/// campo con `#[serde(default)]` o una variante que el otro lado pueda ignorar
-/// no lo es.
+/// Protocol version. Goes up only on an incompatible change; adding a field with
+/// `#[serde(default)]`, or a variant the other side can ignore, is not one.
 pub const PROTOCOL_VERSION: u32 = 1;
 
-/// Bytes de cabecera de cada trama (el `u32` de longitud).
+/// Header bytes on every frame (the length `u32`).
 pub const HEADER_BYTES: usize = 4;
 
-/// Tope de una trama. Los mensajes reales son cientos de bytes; el tope existe
-/// para que un prefijo de longitud absurdo no se convierta en una reserva de
-/// memoria absurda. El backlog más grande imaginable (1024 filas de journal)
-/// cabe con holgura.
+/// Frame cap. Real messages are hundreds of bytes; the cap exists so an absurd
+/// length prefix cannot become an absurd allocation. The largest imaginable
+/// backlog, 1024 journal rows, fits with room to spare.
 pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
-/// Fallo de encuadre. Distinto de un error de aplicación ([`IpcError`]): esto
-/// significa que la conexión ya no es de fiar y se cierra.
+/// A framing failure. Unlike an application error ([`IpcError`]), this means the
+/// connection is no longer trustworthy and gets closed.
 #[derive(Debug, thiserror::Error)]
 pub enum FrameError {
     #[error("frame of {size} bytes exceeds the {MAX_FRAME_BYTES}-byte limit")]
@@ -76,7 +72,7 @@ pub enum FrameError {
     Malformed(#[from] serde_json::Error),
 }
 
-/// Serializa `msg` como trama completa (cabecera + JSON).
+/// Serialises `msg` as a complete frame: header plus JSON.
 pub fn encode_frame<T: Serialize>(msg: &T) -> Result<Vec<u8>, FrameError> {
     let body = serde_json::to_vec(msg)?;
     if body.len() > MAX_FRAME_BYTES {
@@ -88,8 +84,8 @@ pub fn encode_frame<T: Serialize>(msg: &T) -> Result<Vec<u8>, FrameError> {
     Ok(out)
 }
 
-/// Longitud declarada por una cabecera, validada contra [`MAX_FRAME_BYTES`].
-/// El lector la llama antes de reservar el buffer del cuerpo.
+/// The length a header declares, validated against [`MAX_FRAME_BYTES`]. The
+/// reader calls this before reserving the body buffer.
 pub fn frame_len(header: [u8; HEADER_BYTES]) -> Result<usize, FrameError> {
     let size = u32::from_be_bytes(header) as usize;
     if size > MAX_FRAME_BYTES {
@@ -98,42 +94,40 @@ pub fn frame_len(header: [u8; HEADER_BYTES]) -> Result<usize, FrameError> {
     Ok(size)
 }
 
-/// Deserializa el cuerpo de una trama.
+/// Deserialises a frame body.
 pub fn decode_frame<T: DeserializeOwned>(body: &[u8]) -> Result<T, FrameError> {
     Ok(serde_json::from_slice(body)?)
 }
 
-// ---------------------------------------------------------------------------
-// Handshake
-// ---------------------------------------------------------------------------
+// ---- handshake
 
-/// Primera trama del cliente.
+/// The client's first frame.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hello {
     pub protocol: u32,
-    /// Quién llama, para los logs del daemon: `"hoard-desktop 7.7.16"`.
+    /// Who is calling, for the daemon's logs: `"hoard-desktop 7.7.16"`.
     pub client: String,
 }
 
-/// Handshake aceptado.
+/// Handshake accepted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Welcome {
     pub protocol: u32,
     pub daemon_version: String,
     pub pid: u32,
-    /// Identidad de **esta ejecución** del daemon. Los `seq` del journal
-    /// empiezan de nuevo en cada arranque, así que un cursor guardado sólo vale
-    /// si el epoch coincide; si cambió, el cliente arranca de 0. Sin esto, un
-    /// cliente con cursor 500 contra un daemon recién reiniciado se quedaría
-    /// esperando eventos que ya pasaron.
+    /// Identity of *this run* of the daemon. Journal `seq`s start over on every
+    /// boot, so a stored cursor is only worth anything if the epoch matches; when
+    /// it changed, the client starts from 0. Without this, a client holding
+    /// cursor 500 against a freshly restarted daemon would sit waiting for events
+    /// that already happened.
     pub epoch: String,
-    /// Cursor del journal ahora mismo, para que el cliente sepa cuánto hay sin
-    /// pedirlo.
+    /// The journal cursor right now, so the client knows how much is there
+    /// without asking.
     pub cursor: u64,
 }
 
-/// Handshake rechazado. Lleva la versión del daemon para que el cliente pueda
-/// decir qué hay que actualizar.
+/// Handshake rejected. Carries the daemon's version so the client can say what
+/// needs updating.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Rejected {
     pub reason: String,
@@ -141,24 +135,22 @@ pub struct Rejected {
     pub daemon_version: String,
 }
 
-// ---------------------------------------------------------------------------
-// Sobres
-// ---------------------------------------------------------------------------
+// ---- envelopes
 
-/// Trama cliente → daemon.
+/// A client-to-daemon frame.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "frame", rename_all = "snake_case")]
 pub enum ClientFrame {
     Hello(Hello),
-    /// `id` lo elige el cliente y vuelve en [`ServerFrame::Reply`], para poder
-    /// tener varias peticiones en vuelo por la misma conexión.
+    /// The client picks `id` and it comes back in [`ServerFrame::Reply`], so
+    /// several requests can be in flight on one connection.
     Request {
         id: u64,
         request: Request,
     },
 }
 
-/// Trama daemon → cliente.
+/// A daemon-to-client frame.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "frame", rename_all = "snake_case")]
 pub enum ServerFrame {
@@ -168,53 +160,53 @@ pub enum ServerFrame {
         id: u64,
         reply: Reply,
     },
-    /// Push en vivo: una fila nueva del journal. Los colapsos (rachas del mismo
-    /// reposo) no se empujan — ver [`journal::Appended`].
+    /// Live push: one new journal row. Collapses, meaning runs of the same rest,
+    /// are not pushed. See [`journal::Appended`].
     Event(JournalEntry),
-    /// El cliente no pudo seguir el ritmo del canal de push y se perdió filas.
-    /// Debe volver a pedir [`Request::Subscribe`] desde su cursor. Es la
-    /// alternativa honesta a tragarse el hueco en silencio.
+    /// The client could not keep up with the push channel and missed rows. It
+    /// must re-issue [`Request::Subscribe`] from its cursor. The honest
+    /// alternative to swallowing the gap in silence.
     Resync {
         cursor: u64,
         dropped: u64,
     },
-    /// **El servicio se está parando a propósito** y se despide antes de cerrar
-    /// el socket (ADR 0021 D.17 → 4d).
+    /// The service is stopping on purpose and says goodbye before closing the
+    /// socket (ADR 0021 D.17).
     ///
-    /// Sin esto, un cliente enganchado no puede distinguir "lo pararon" de "se
-    /// cayó", y como su reconexión es "spawn if absent", un `hoard sync stop`
-    /// resucitaba el servicio ~3 s después: el apagado deliberado no se quedaba
-    /// apagado. Con la despedida, el cliente sigue reconectando —si alguien lo
-    /// vuelve a arrancar, se engancha— pero **no lo arranca él**. Un daemon que
-    /// muere de verdad (pánico, OOM, kill -9) no manda nada, así que ahí el
-    /// cliente sigue levantándolo, que es lo correcto.
+    /// Without this, a connected client cannot tell "it was stopped" from "it
+    /// crashed", and since its reconnect is spawn-if-absent, a `hoard sync stop`
+    /// resurrected the service about three seconds later: a deliberate shutdown
+    /// would not stay down. With the goodbye, the client keeps reconnecting, so
+    /// it latches on if somebody starts it again, but does not start it itself. A
+    /// daemon that really dies (panic, OOM, kill -9) sends nothing, so there the
+    /// client still brings it back up, which is right.
     Goodbye {
         reason: String,
     },
-    /// Trama que este cliente no conoce: la manda un daemon más nuevo.
+    /// A frame this client does not know, sent by a newer daemon.
     ///
-    /// Hay 2+ artefactos que se actualizan por separado, así que un daemon puede
-    /// aprender una trama antes que el cliente. Sin esta variante, la primera
-    /// trama desconocida sería un error de encuadre —y el encuadre roto **tira la
-    /// conexión**, que es un fallo desproporcionado para "no sé qué es esto".
-    /// Ignorarla es lo que permite añadir tramas dentro de la misma versión de
-    /// protocolo, que es justo lo que [`ServerFrame::Goodbye`] acaba de hacer.
+    /// Two or more artefacts update separately, so a daemon can learn a frame
+    /// before the client does. Without this variant the first unknown frame would
+    /// be a framing error, and broken framing drops the connection, which is a
+    /// wildly disproportionate response to "I don't know what this is". Ignoring
+    /// it is what lets frames be added inside one protocol version, which is
+    /// exactly what [`ServerFrame::Goodbye`] just did.
     #[serde(other)]
     Unknown,
 }
 
-/// Peticiones. Espejo de la superficie pública de `AgentHandle`: el IPC es el
-/// `AgentHandle` remoto, así que si aparece un comando nuevo en el motor,
-/// aparece aquí y no en cada frontend.
+/// Requests. A mirror of `AgentHandle`'s public surface: the IPC *is* the remote
+/// `AgentHandle`, so a new command in the engine shows up here rather than in
+/// every frontend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Request {
-    /// Latido: confirma que el otro extremo es un daemon vivo.
+    /// Heartbeat: confirms the other end is a live daemon.
     Ping,
-    /// Estado completo del daemon y de cada slot vigilado.
+    /// Full status of the daemon and of every watched slot.
     Status,
-    /// Backlog desde `since` (o desde el principio) + alta en el push en vivo.
-    /// `None` = "no tengo cursor, dame lo que haya".
+    /// Backlog since `since` (or from the beginning) plus a subscription to the
+    /// live push. `None` means "I have no cursor, give me what there is".
     Subscribe {
         since: Option<u64>,
     },
@@ -229,7 +221,7 @@ pub enum Request {
         /// Head the caller already knows (SSE `save` frame, cloud poller).
         /// Kernel `cloud_ahead` needs this in cache; a bare `ForceRestore` is
         /// only a tick nudge and no-ops on self-hosted when heads were never
-        /// observed. `None` from older clients — engine still reconciles.
+        /// observed. `None` from older clients; the engine still reconciles.
         #[serde(default)]
         version_num: Option<i64>,
     },
@@ -239,148 +231,150 @@ pub enum Request {
     SetGlobalSync {
         enabled: bool,
     },
-    /// El conjunto de saves rastreados cambió en disco (`state.json`):
-    /// re-hidrátalo. El daemon es el dueño del estado, así que el cliente
-    /// **avisa**, no manda la lista — un `WatchedSave` por el cable sería el
-    /// cliente decidiendo qué vigila el motor.
+    /// The set of tracked saves changed on disk (`state.json`): re-hydrate it.
+    /// The daemon owns the state, so the client *tells* it rather than sending
+    /// the list. A `WatchedSave` on the wire would be the client deciding what
+    /// the engine watches.
     Reload,
-    /// Carpetas candidatas (detectadas pero no rastreadas) que el motor debe
-    /// sondear para correlacionar proceso↔escritura. Es lo único que un cliente
-    /// **sí** manda como lista: la detección vive en el frontend (Slice 8 la
-    /// mueve) y el motor no puede adivinarla.
+    /// Candidate folders, detected but not tracked, that the engine should probe
+    /// to correlate process against writes. It is the one thing a client does
+    /// send as a list: detection lives in the frontend (Slice 8 moves it) and the
+    /// engine cannot guess it.
     ///
-    /// Van como `String` porque el cable es JSON: una ruta que no sea UTF-8 no
-    /// cabe y se queda fuera en el cliente, que es donde se puede decir.
+    /// They travel as `String` because the wire is JSON: a non-UTF-8 path does
+    /// not fit and gets dropped on the client, which is where that can be said.
     SetProbeCandidates {
         dirs: Vec<String>,
     },
-    /// **Préstame un token Cloud válido.** El daemon es el único que rota
-    /// `cloud.toml` (Parte A: "un único rotador"), así que quien necesite hablar
-    /// con la nube —el desktop para sus llamadas REST, la CLI para un one-shot—
-    /// pide aquí en vez de refrescar por su cuenta. Dos procesos rotando el
-    /// mismo refresh token es la reuse-detection de GoTrue, que revoca la
-    /// familia entera: 401 permanente y sesión muerta sin arreglo.
+    /// Lend me a valid Cloud token. The daemon is the only thing that rotates
+    /// `cloud.toml` (part A, "a single rotator"), so anyone who needs to talk to
+    /// the cloud, the desktop for its REST calls or the CLI for a one-shot, asks
+    /// here instead of refreshing on its own. Two processes rotating the same
+    /// refresh token is GoTrue's reuse detection, which revokes the whole family:
+    /// a permanent 401 and a dead session with no way back.
     ///
-    /// `rejected` es el token que al cliente le acaban de rechazar con un 401.
-    /// Sin él, un cliente que come un 401 con un token todavía "fresco" (revocado
-    /// server-side, reloj desfasado) recibiría el mismo token una y otra vez y
-    /// reintentaría en bucle. Con él, el daemon rota **sólo** si el que serviría
-    /// es justo ese; si ya lo rotó otro, contesta con el nuevo sin gastar una
-    /// rotación.
+    /// `rejected` is the token the client just had refused with a 401. Without
+    /// it, a client that eats a 401 on a token that still looks fresh (revoked
+    /// server-side, skewed clock) would get the same token back over and over and
+    /// retry in a loop. With it, the daemon rotates only if the token it would
+    /// serve is that one; if somebody else already rotated, it answers with the
+    /// new one without spending a rotation.
     CloudToken {
         #[serde(default)]
         rejected: Option<String>,
     },
-    /// **Toma esta sesión Cloud recién acuñada y guárdala tú.** El cliente
-    /// acaba de terminar un OAuth (o un login por email) y entrega el par en vez
-    /// de escribirlo: el daemon es el único que toca el almacén de secretos.
+    /// Take this freshly minted Cloud session and store it yourself. The client
+    /// has just finished an OAuth (or an email login) and hands over the pair
+    /// rather than writing it: the daemon is the only thing that touches the
+    /// secret store.
     ///
-    /// No es simetría por gusto con [`Request::CloudToken`], es lo que arregla
-    /// los diálogos de contraseña en macOS. Ahí cada ítem del llavero lleva una
-    /// ACL con los binarios autorizados, y quien **crea** el ítem es el único de
-    /// la lista: con el login escribiendo desde la app y el motor leyendo desde
-    /// `hoardd`, cada lectura del servicio era un binario ajeno pidiendo permiso
-    /// → un diálogo por lectura, y el keeper reintentando cada pocos segundos.
-    /// Escribiéndolo el daemon, creador y lector son el mismo binario y no hay
-    /// nada que autorizar. En Linux (Secret Service) y Windows (Credential
-    /// Manager) el secreto no está atado al binario, así que allí esto es sólo
-    /// coherencia: "el motor es el dueño del secreto, los clientes son vistas".
+    /// This is not symmetry for its own sake with [`Request::CloudToken`], it is
+    /// what fixes the password dialogs on macOS. There every keychain item
+    /// carries an ACL of authorised binaries, and whoever *creates* the item is
+    /// the only one on that list. With login writing from the app and the engine
+    /// reading from `hoardd`, every read by the service was a foreign binary
+    /// asking permission, so one dialog per read, with the keeper retrying every
+    /// few seconds. With the daemon writing it, creator and reader are the same
+    /// binary and there is nothing to authorise. On Linux (Secret Service) and
+    /// Windows (Credential Manager) the secret is not tied to a binary, so there
+    /// this is just consistency: the engine owns the secret, clients are views.
     ///
-    /// Implica el efecto de [`Request::RestartEngine`]: acabamos de aprender una
-    /// sesión nueva, y el motor que hubiera está hablando con la anterior.
+    /// Implies the effect of [`Request::RestartEngine`]: we have just learned a
+    /// new session, and whatever engine is running is talking to the old one.
     AdoptSession {
         session: AdoptedSession,
     },
-    /// **Olvida la sesión Cloud** (logout, o cuenta borrada). Lo pide el cliente
-    /// por la misma razón que [`Request::AdoptSession`]: borrar un ítem del
-    /// llavero también hay que autorizarlo, y el que puede hacerlo sin
-    /// preguntarle nada al usuario es su dueño. Implica reiniciar el motor.
+    /// Forget the Cloud session (logout, or a deleted account). The client asks
+    /// for the same reason as [`Request::AdoptSession`]: deleting a keychain item
+    /// also has to be authorised, and the one that can do it without asking the
+    /// user anything is its owner. Implies restarting the engine.
     ForgetSession,
-    /// **Toma esta sesión self-hosted y guárdala tú.** El gemelo de
-    /// [`Request::AdoptSession`] para un server propio: el cliente valida el
-    /// token contra `/v1/auth/whoami` y entrega `(url, token, user)`.
+    /// Take this self-hosted session and store it yourself. The twin of
+    /// [`Request::AdoptSession`] for someone's own server: the client validates
+    /// the token against `/v1/auth/whoami` and hands over `(url, token, user)`.
     ///
-    /// Arregla dos cosas de una, y la segunda es la gorda. La primera es la misma
-    /// ACL del llavero de macOS que [`Request::AdoptSession`]. La segunda es que
-    /// **el motor no veía la sesión del desktop en absoluto**: la app guardaba en
-    /// `credentials` (llavero + `session.toml`) y el motor resolvía self-hosted
-    /// leyendo `config.toml`, que sólo escribe `hoard login --token`. Dos
-    /// almacenes disjuntos, así que quien entraba sólo por la app tenía un motor
-    /// que no sincronizaba nada. Con un único dueño hay un único almacén.
+    /// It fixes two things at once, and the second is the big one. The first is
+    /// the same macOS keychain ACL as [`Request::AdoptSession`]. The second is
+    /// that the engine could not see the desktop's session at all: the app stored
+    /// into `credentials` (keychain plus `session.toml`) while the engine
+    /// resolved self-hosted by reading `config.toml`, which only
+    /// `hoard login --token` writes. Two disjoint stores, so anyone who logged in
+    /// through the app alone had an engine syncing nothing. With one owner there
+    /// is one store.
     ///
-    /// Implica el efecto de [`Request::RestartEngine`], como su gemelo.
+    /// Implies the effect of [`Request::RestartEngine`], like its twin.
     AdoptServerSession {
         session: ServerSession,
     },
-    /// **Olvida la sesión self-hosted** (logout). Igual que
-    /// [`Request::ForgetSession`], pero del server propio.
+    /// Forget the self-hosted session (logout). Like [`Request::ForgetSession`],
+    /// but for someone's own server.
     ForgetServerSession,
-    /// **Préstame el token del server propio.** El gemelo de
-    /// [`Request::CloudToken`] para self-hosted, y mucho más simple: un token
-    /// `hoard_v1_…` es estático (no caduca ni se rota), así que aquí no hay
-    /// rotación que decidir — sólo el almacén, que es del daemon.
+    /// Lend me the token for my own server. The twin of [`Request::CloudToken`]
+    /// for self-hosted, and far simpler: a `hoard_v1_...` token is static, it
+    /// neither expires nor rotates, so there is no rotation to decide here, only
+    /// the store, which belongs to the daemon.
     ///
-    /// Devuelve también `user` para que un cliente que perdió su `session.toml`
-    /// (la ACL que un build viejo de Windows dejaba clavada) recupere quién es
-    /// sin esperar a que el daemon le repare el fichero.
+    /// It also returns `user`, so a client that lost its `session.toml` (the ACL
+    /// an old Windows build used to leave stuck) recovers who it is without
+    /// waiting for the daemon to repair the file.
     ServerToken,
-    /// La sesión en disco cambió: tira el motor y deja que el keeper lo levante
-    /// resolviendo las credenciales de nuevo.
+    /// The on-disk session changed: drop the engine and let the keeper bring it
+    /// back up resolving credentials afresh.
     ///
-    /// Ya no lo necesita ningún login: las cuatro peticiones de sesión
-    /// (`AdoptSession`/`ForgetSession` y sus gemelos self-hosted) lo llevan
-    /// dentro. Se queda porque sigue siendo la forma de decir "he tocado el disco
-    /// por debajo" — un `hoard login --token` sin servicio al alcance, un
-    /// `config.toml` editado a mano.
+    /// No login needs it any more, since all four session requests
+    /// (`AdoptSession`/`ForgetSession` and their self-hosted twins) carry it. It
+    /// stays because it is still the way to say "I touched the disk underneath
+    /// you": a `hoard login --token` with no service in reach, a hand-edited
+    /// `config.toml`.
     ///
-    /// Distinto de [`Request::Reload`], que sólo re-hidrata el conjunto de
-    /// saves: un cambio de cuenta invalida el `ApiClient`, el contexto de
-    /// `state.json` y el rotador del token, y ninguno de los tres se arregla
-    /// añadiendo y quitando slots. Y distinto de [`Request::Shutdown`]: el
-    /// servicio sigue vivo, sólo cambia de sesión.
+    /// Different from [`Request::Reload`], which only re-hydrates the set of
+    /// saves: an account change invalidates the `ApiClient`, the `state.json`
+    /// context and the token rotator, and none of the three is fixed by adding
+    /// and removing slots. And different from [`Request::Shutdown`]: the service
+    /// stays alive, it just changes session.
     RestartEngine,
-    /// Para el motor y el daemon. Es una orden explícita del usuario
-    /// (`hoard sync stop`), no un efecto de cerrar un cliente: cerrar la app
-    /// nunca puede matar el sync, que es el punto de todo el slice.
+    /// Stop the engine and the daemon. An explicit user order (`hoard sync
+    /// stop`), not a side effect of closing a client: closing the app can never
+    /// kill sync, which is the point of the whole slice.
     Shutdown,
-    /// **¿Cómo va la actualización?** El servicio es el dueño del updater —es
-    /// el único que está siempre—, así que los clientes no miran GitHub: se lo
-    /// preguntan a él. Responde [`Payload::Update`].
+    /// How is the update going? The service owns the updater, being the one
+    /// thing always running, so clients do not look at GitHub, they ask it.
+    /// Answers [`Payload::Update`].
     UpdateStatus,
-    /// **Aplica ya lo que haya bajado.** Lo pide un cliente cuando hay alguien
-    /// delante: el botón de Ajustes, `hoard upgrade`, o la ventana al abrirse.
+    /// Apply whatever has been downloaded, now. A client asks when there is
+    /// somebody in front of it: the Settings button, `hoard upgrade`, or the
+    /// window on open.
     ///
-    /// La diferencia con esperar al ciclo de fondo no es la prisa, es el
-    /// permiso: con un humano delante, el servicio puede lanzar un `pkexec` y
-    /// que el diálogo de polkit tenga a quién preguntarle. En el ciclo de fondo
-    /// no puede, y por eso un `.deb` no se actualiza solo.
+    /// The difference from waiting for the background cycle is not urgency, it is
+    /// permission: with a human present the service can fire a `pkexec` and the
+    /// polkit dialog has somebody to ask. In the background cycle it cannot,
+    /// which is why a `.deb` does not update itself.
     ///
-    /// `version` es la que el cliente creía estar aplicando. Si entretanto
-    /// salió otra, el servicio contesta con su estado nuevo en vez de instalar
-    /// a sabiendas algo que ya no es lo último.
+    /// `version` is the one the client believed it was applying. If another one
+    /// shipped meanwhile, the service answers with its new state rather than
+    /// knowingly installing something that is no longer the latest.
     ApplyUpdate {
         #[serde(default)]
         version: Option<String>,
     },
-    /// **Ahora no.** Calla lo que se puede posponer durante `hours`. No mueve
-    /// la fecha límite: posponer retrasa la pregunta, no el plazo.
+    /// Not now. Silences whatever can be postponed for `hours`. It does not move
+    /// the deadline: postponing delays the question, not the due date.
     SnoozeUpdate {
         hours: u32,
     },
-    /// Petición que este daemon no conoce: la manda un cliente más nuevo.
+    /// A request this daemon does not know, sent by a newer client.
     ///
-    /// Sin esta variante, la primera petición desconocida sería un error de
-    /// **encuadre**, y el encuadre roto tira la conexión — un cliente recién
-    /// actualizado hablándole al servicio viejo de hace treinta segundos se
-    /// quedaría sin servicio en vez de recibir un "eso no lo sé hacer". Con
-    /// ella la respuesta es [`IpcError::Unsupported`] y la conexión sigue viva,
-    /// que es lo que permite añadir peticiones sin subir la versión del
-    /// protocolo (C.6).
+    /// Without this variant the first unknown request would be a *framing* error,
+    /// and broken framing drops the connection, so a client updated thirty
+    /// seconds ago talking to the old service would lose the service instead of
+    /// getting an "I can't do that". With it the answer is
+    /// [`IpcError::Unsupported`] and the connection stays alive, which is what
+    /// lets requests be added without bumping the protocol version (C.6).
     #[serde(other)]
     Unknown,
 }
 
-/// Respuesta a una petición.
+/// The answer to a request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "result", rename_all = "snake_case")]
 pub enum Reply {
@@ -388,12 +382,12 @@ pub enum Reply {
     Error(IpcError),
 }
 
-/// Carga útil de una respuesta correcta.
+/// The payload of a successful reply.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "payload", rename_all = "snake_case")]
 pub enum Payload {
-    /// Aceptado. Los comandos del motor son fire-and-forget: lo que pasó
-    /// después llega por el journal.
+    /// Accepted. Engine commands are fire and forget; what happened afterwards
+    /// arrives through the journal.
     Ack,
     Pong {
         daemon_version: String,
@@ -402,107 +396,108 @@ pub enum Payload {
     Status(DaemonStatus),
     Backlog(Backlog),
     CloudToken(CloudToken),
-    /// La sesión self-hosted prestada (respuesta a [`Request::ServerToken`]).
+    /// The lent self-hosted session (answer to [`Request::ServerToken`]).
     ServerSession(ServerSession),
-    /// Cómo va la actualización (respuesta a [`Request::UpdateStatus`] y a
+    /// How the update is going (answer to [`Request::UpdateStatus`] and to
     /// [`Request::ApplyUpdate`]).
     Update(UpdateState),
 }
 
-/// **Lo que el servicio sabe de la actualización**, que es todo: qué corre, qué
-/// hay publicado, qué está bajado y cuándo deja de ser opcional.
+/// Everything the service knows about the update, which is all of it: what is
+/// running, what has shipped, what has been downloaded and when it stops being
+/// optional.
 ///
-/// Es lo único que un cliente necesita para pintar la actualización, y a
-/// propósito no incluye nada que un cliente pudiera *decidir*. La política vive
-/// en `hoard_agent::install::auto` y la ejecuta el servicio; esto es la vista.
+/// It is all a client needs to draw the update, and deliberately includes
+/// nothing a client could *decide*. The policy lives in
+/// `hoard_agent::install::auto` and the service runs it; this is the view.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateState {
-    /// La versión que corre en el servicio.
+    /// The version running in the service.
     pub current: String,
-    /// La última publicada, si se ha podido preguntar.
+    /// The latest published one, if it could be asked for.
     #[serde(default)]
     pub latest: Option<String>,
-    /// La que está bajada y verificada, lista para aplicarse en lo que tarda un
-    /// `rename`.
+    /// The one downloaded and verified, ready to apply in the time a `rename`
+    /// takes.
     #[serde(default)]
     pub staged: Option<String>,
     pub phase: UpdatePhase,
-    /// Cuándo deja de ser opcional. `None` = no hay nada pendiente.
+    /// When it stops being optional. `None` means nothing is pending.
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub deadline: Option<OffsetDateTime>,
-    /// El plazo venció: la ventana no debe dejar seguir sin actualizar.
+    /// The deadline passed: the window must not let anyone carry on unupdated.
     #[serde(default)]
     pub mandatory: bool,
-    /// Esta máquina se releva sola (AppImage, NSIS por-usuario, núcleo en el
-    /// home). `false` significa que hace falta un humano —un `.deb` quiere
-    /// polkit, un `.dmg` quiere una mano—, y es lo que decide si el cliente
-    /// tiene que enseñar algo o puede callarse.
+    /// This machine relieves itself (AppImage, per-user NSIS, a core in the home
+    /// directory). `false` means a human is needed, since a `.deb` wants polkit
+    /// and a `.dmg` wants a hand, and it is what decides whether the client has
+    /// to show something or can stay quiet.
     #[serde(default)]
     pub unattended: bool,
-    /// Qué falló en el último intento, si falló.
+    /// What went wrong on the last attempt, if anything did.
     #[serde(default)]
     pub last_error: Option<String>,
 }
 
-/// En qué punto está.
+/// Where it has got to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "phase", rename_all = "snake_case")]
 pub enum UpdatePhase {
-    /// No hay nada más nuevo.
+    /// There is nothing newer.
     UpToDate,
-    /// Bajando y verificando.
+    /// Downloading and verifying.
     Downloading,
-    /// Bajado. Esperando el momento, o a que alguien diga que sí.
+    /// Downloaded, waiting for the moment or for somebody to say yes.
     Ready,
-    /// Bajado y frenado, con motivo.
+    /// Downloaded and held back, with a reason.
     Waiting { hold: UpdateHold },
-    /// Aplicándose ahora mismo.
+    /// Being applied right now.
     Applying,
-    /// Aplicado. El servicio se está relevando con el binario nuevo.
+    /// Applied. The service is relieving itself with the new binary.
     Restarting,
-    /// El último intento falló (el motivo va en `last_error`).
+    /// The last attempt failed; the reason is in `last_error`.
     Failed,
-    /// Aquí no actualizamos nada: lo mantiene un tercero (el gestor de paquetes
-    /// de la distro, Flatpak, un `nix`).
+    /// We update nothing here: a third party maintains it (the distro's package
+    /// manager, Flatpak, a `nix`).
     Managed,
-    /// Fase que este cliente no conoce, de un daemon más nuevo.
+    /// A phase this client does not know, from a newer daemon.
     #[serde(other)]
     Unknown,
 }
 
-/// Por qué está frenada una actualización que ya está bajada.
+/// Why an already-downloaded update is being held back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdateHold {
-    /// Hay una copia o una restauración a medias. Frena siempre, plazo o no.
+    /// A backup or restore is half done. Always holds, deadline or not.
     TransferInFlight,
-    /// Hay un juego abierto. Frena lo silencioso, no lo obligatorio.
+    /// A game is open. Holds the silent path, not the mandatory one.
     GameRunning,
-    /// Motivo que este cliente no conoce.
+    /// A reason this client does not know.
     #[serde(other)]
     Unknown,
 }
 
-/// Una sesión Cloud que un cliente **entrega** al daemon
-/// ([`Request::AdoptSession`]).
+/// A Cloud session a client hands to the daemon ([`Request::AdoptSession`]).
 ///
-/// Es el único sitio del protocolo por donde viaja un refresh token, y va en una
-/// dirección: cliente → daemon, una vez, al acuñarse la sesión. De vuelta sólo
-/// se presta el access token ([`CloudToken`]), nunca el refresh: un cliente que
-/// no lo tiene no puede rotarlo, que es la regla que sostiene "un único rotador".
+/// It is the only place in the protocol a refresh token travels, and it goes one
+/// way: client to daemon, once, when the session is minted. Coming back, only
+/// the access token is lent ([`CloudToken`]), never the refresh. A client that
+/// does not hold it cannot rotate it, and that is the rule holding up "a single
+/// rotator".
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AdoptedSession {
-    /// A qué Cloud pertenece la sesión.
+    /// Which Cloud the session belongs to.
     pub server_url: String,
-    /// JWT recién emitido.
+    /// A freshly issued JWT.
     pub access_token: String,
-    /// Refresh token con el que el daemon renovará a partir de ahora.
+    /// The refresh token the daemon will renew with from now on.
     pub refresh_token: String,
 }
 
-/// A mano y **redactado**: el `Debug` derivado imprimiría los dos tokens, y basta
-/// un `?request` en un log del daemon para que la sesión entera acabe en el
-/// journal del sistema (que es texto plano y sobrevive al logout).
+/// By hand, and redacted: the derived `Debug` would print both tokens, and one
+/// `?request` in a daemon log is enough to put the whole session in the system
+/// journal, which is plain text and outlives the logout.
 impl std::fmt::Debug for AdoptedSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AdoptedSession")
@@ -513,26 +508,27 @@ impl std::fmt::Debug for AdoptedSession {
     }
 }
 
-/// Una sesión self-hosted: a qué server, con qué token y de quién.
+/// A self-hosted session: which server, which token, whose.
 ///
-/// Viaja en las dos direcciones, y eso es correcto aquí: el token de un server
-/// propio es estático (`hoard_v1_` + 64 hex) y no se rota, así que "entregarlo"
-/// y "prestarlo" son la misma forma. No es el caso de Cloud, donde el refresh
-/// token sólo entra ([`AdoptedSession`]) y sólo sale el access ([`CloudToken`]).
+/// It travels both ways, and that is right here: a token for someone's own
+/// server is static (`hoard_v1_` plus 64 hex) and never rotates, so handing it
+/// over and lending it are the same shape. Not so on Cloud, where the refresh
+/// token only goes in ([`AdoptedSession`]) and only the access comes out
+/// ([`CloudToken`]).
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ServerSession {
-    /// URL del server propio.
+    /// URL of the user's own server.
     pub server_url: String,
-    /// El bearer token.
+    /// The bearer token.
     pub token: String,
-    /// Snapshot de `/v1/auth/whoami` para que el cliente sepa quién es sin una
-    /// llamada de red. `None` cuando no se pudo consultar.
+    /// A snapshot of `/v1/auth/whoami` so the client knows who it is without a
+    /// network call. `None` when it could not be asked.
     #[serde(default)]
     pub user: Option<ServerUser>,
 }
 
-/// Igual que [`AdoptedSession`]: `Debug` a mano para que el token no aparezca en
-/// ningún log por accidente.
+/// Like [`AdoptedSession`]: `Debug` by hand so the token never turns up in a log
+/// by accident.
 impl std::fmt::Debug for ServerSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ServerSession")
@@ -543,9 +539,9 @@ impl std::fmt::Debug for ServerSession {
     }
 }
 
-/// Quién es el usuario en su server propio. Espejo de
-/// `hoard_agent::credentials::UserSection`, que es lo que la app cachea en disco;
-/// vive aquí porque el cable no puede depender del agente.
+/// Who the user is on their own server. Mirrors
+/// `hoard_agent::credentials::UserSection`, which is what the app caches on disk;
+/// it lives here because the wire cannot depend on the agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerUser {
     pub user_id: String,
@@ -553,71 +549,71 @@ pub struct ServerUser {
     pub is_admin: bool,
 }
 
-/// Un token Cloud prestado por el daemon (respuesta a [`Request::CloudToken`]).
+/// A Cloud token lent by the daemon (answer to [`Request::CloudToken`]).
 ///
-/// Es un **préstamo**, no una transferencia: el cliente lo usa para sus
-/// peticiones y no lo persiste. El par completo (access + refresh) vive donde
-/// siempre —keyring + `cloud.toml`— y sólo lo escribe el daemon.
+/// A loan, not a transfer: the client uses it for its requests and does not
+/// persist it. The full pair, access plus refresh, lives where it always did, in
+/// the keyring and `cloud.toml`, and only the daemon writes it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudToken {
-    /// JWT de Supabase con vida suficiente para usarlo ahora mismo.
+    /// A Supabase JWT with enough life left to use right now.
     pub access_token: String,
-    /// A qué servidor Cloud pertenece (el cliente no tiene por qué asumir el
-    /// default: un build de dev apunta a otro sitio por entorno).
+    /// Which Cloud server it belongs to. The client should not assume the
+    /// default, since a dev build points somewhere else by environment.
     pub server_url: String,
-    /// `exp` del JWT en segundos de época, si se pudo leer. El cliente puede
-    /// adelantarse a la expiración sin decodificar nada.
+    /// The JWT's `exp` in epoch seconds, when it could be read. Lets the client
+    /// get ahead of expiry without decoding anything.
     #[serde(default)]
     pub expires_at: Option<i64>,
-    /// El daemon rotó para servir esta respuesta. Sólo informativo (logs): al
-    /// cliente le da igual, y precisamente por eso ya no es asunto suyo.
+    /// The daemon rotated to serve this answer. Informational, for logs: the
+    /// client does not care, and that is precisely why it is no longer its
+    /// business.
     #[serde(default)]
     pub rotated: bool,
 }
 
-/// Error de aplicación. La conexión sigue viva (a diferencia de
-/// [`FrameError`]).
+/// An application error. The connection stays alive, unlike with [`FrameError`].
 ///
-/// Implementa `Error` (y por tanto `Display`) a propósito: el cliente lo
-/// propaga tal cual y el mensaje acaba en un toast del desktop o en el stdout de
-/// la CLI. Volcarlo con `{:?}` enseñaría `EngineDown { reason: … }` al usuario.
+/// It implements `Error`, and therefore `Display`, on purpose: the client
+/// propagates it as-is and the message ends up in a desktop toast or on the
+/// CLI's stdout. Dumping it with `{:?}` would show the user
+/// `EngineDown { reason: ... }`.
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error)]
 #[serde(tag = "error", rename_all = "snake_case")]
 pub enum IpcError {
-    /// El daemon está arriba pero el motor no. `reason` lo explica (sin sesión,
-    /// otro agente tiene el motor, arranque fallando) — un cliente que sólo
-    /// viera "error" volvería a intentarlo para siempre sin poder decirle nada
-    /// al usuario.
+    /// The daemon is up and the engine is not. `reason` explains why (no
+    /// session, another agent holds the engine, a failing start). A client that
+    /// only saw "error" would retry forever with nothing to tell the user.
     #[error("the Hoard service has no engine: {reason}")]
     EngineDown { reason: String },
-    /// No hay sesión Cloud que prestar y **rotar no lo arregla**: no hay sesión
-    /// en disco, o GoTrue revocó la familia entera de tokens (reuse-detection).
-    /// Sólo un login nuevo la recupera.
+    /// There is no Cloud session to lend and rotating will not fix it: either
+    /// there is no session on disk, or GoTrue revoked the whole token family
+    /// (reuse detection). Only a fresh login gets it back.
     ///
-    /// Es una variante propia porque el cliente actúa distinto: ante un fallo
-    /// transitorio reintenta, ante esto cierra sesión localmente y le pide al
-    /// usuario que vuelva a entrar. Antes del Slice 4c esa distinción la hacía
-    /// cada frontend downcasteando su propio `RefreshTokenStale`; ahora viaja por
-    /// el cable porque quien lo descubre es el daemon.
+    /// Its own variant because the client behaves differently: a transient
+    /// failure it retries, this one it logs out locally and asks the user to sign
+    /// in again. Before Slice 4c each frontend made that distinction by
+    /// downcasting its own `RefreshTokenStale`; now it travels on the wire,
+    /// because the daemon is what discovers it.
     #[error("the Hoard Cloud session is gone: {reason}")]
     CloudSessionExpired { reason: String },
-    /// No hay sesión self-hosted en esta máquina. El gemelo de
-    /// [`IpcError::CloudSessionExpired`] para un server propio, y **variante
-    /// aparte a propósito**: un token `hoard_v1_` no caduca, así que esto sólo
-    /// significa "aquí no hay sesión", nunca "caducó". Mezclarlas haría que un
-    /// cliente self-hosted disparara la limpieza de sesión *Cloud*, que es lo que
-    /// `CloudSessionExpired` desencadena en el desktop.
+    /// There is no self-hosted session on this machine. The twin of
+    /// [`IpcError::CloudSessionExpired`] for someone's own server, and a separate
+    /// variant on purpose: a `hoard_v1_` token never expires, so this only means
+    /// "there is no session here", never "it expired". Merging them would make a
+    /// self-hosted client fire the *Cloud* session cleanup, which is what
+    /// `CloudSessionExpired` triggers on the desktop.
     #[error("there is no self-hosted session on this machine: {reason}")]
     NoServerSession { reason: String },
-    /// Esa petición no existe en esta versión del protocolo.
+    /// That request does not exist in this version of the protocol.
     #[error("this Hoard service doesn't support `{op}`")]
     Unsupported { op: String },
     #[error("the Hoard service couldn't do it: {message}")]
     Internal { message: String },
 }
 
-/// Estado del daemon. Lo que un cliente necesita para pintar sin haber visto
-/// ningún evento — el snapshot que a las campanas mudas les faltaba.
+/// The daemon's status. What a client needs to draw something without having
+/// seen a single event: the snapshot the silent bells were missing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DaemonStatus {
     pub daemon_version: String,
@@ -625,86 +621,86 @@ pub struct DaemonStatus {
     pub pid: u32,
     pub epoch: String,
     pub uptime_secs: u64,
-    /// Cursor del journal, para arrancar una suscripción sin backlog.
+    /// The journal cursor, for starting a subscription with no backlog.
     pub cursor: u64,
-    /// **El servicio manda él mismo las notificaciones nativas del SO** (ADR
-    /// 0021 D.14.1). Un cliente que lea `true` no debe mandar las suyas o el
-    /// usuario vería el aviso dos veces con la app abierta.
+    /// The service sends the OS's native notifications itself (ADR 0021 D.14.1).
+    /// A client reading `true` must not send its own, or the user sees every
+    /// notice twice with the app open.
     ///
-    /// `false` significa "este build del daemon todavía no sabe notificar en
-    /// esta plataforma" (hoy: Windows y macOS), y entonces el aviso sigue
-    /// siendo del frontend — que es exactamente como funcionaba antes. Campo
-    /// nuevo con `default`, así que un cliente anterior lo lee como `false` y
-    /// sigue notificando como hasta ahora (C.6: append-only).
+    /// `false` means "this daemon build cannot notify on this platform yet"
+    /// (today: Windows and macOS), and then the notice is still the frontend's,
+    /// which is exactly how it used to work. A new field with a `default`, so an
+    /// older client reads `false` and keeps notifying as before (C.6, append
+    /// only).
     #[serde(default)]
     pub notifications: bool,
     pub engine: EngineStatus,
     pub slots: Vec<AgentSlotStatus>,
 }
 
-/// Estado del motor dentro del daemon.
+/// The engine's status inside the daemon.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EngineStatus {
     pub running: bool,
-    /// Servidor al que habla el motor (`"Cloud · …"` o la URL self-hosted).
+    /// The server the engine talks to (`"Cloud · ..."`, or the self-hosted URL).
     #[serde(default)]
     pub server: Option<String>,
     #[serde(default)]
     pub is_cloud: bool,
     #[serde(default)]
     pub watched: usize,
-    /// Desde cuándo lleva vivo este motor.
+    /// How long this engine has been alive.
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub since: Option<OffsetDateTime>,
-    /// Por qué no está arriba (o el último intento fallido). Un motor caído
-    /// **con motivo** es diagnosticable; sin motivo es el fallo invisible que
-    /// D.11/D.12 costaron dos sesiones.
+    /// Why it is not up, or the last failed attempt. An engine that is down
+    /// *with a reason* is diagnosable; without one it is the invisible failure
+    /// that D.11 and D.12 cost two sessions.
     #[serde(default)]
     pub last_error: Option<String>,
-    /// El mismo motivo, en un tipo que la UI puede traducir y sobre el que puede
-    /// ofrecer el botón que arregla el caso. Campo nuevo con `default`, así que
-    /// un cliente viejo lo lee como [`EngineDownReason::Unknown`] y pinta lo que
-    /// pintaba antes (C.6: append-only, el protocolo no sube).
+    /// The same reason in a type the UI can translate and offer the fixing
+    /// button for. A new field with a `default`, so an older client reads
+    /// [`EngineDownReason::Unknown`] and draws what it drew before (C.6, append
+    /// only, the protocol does not go up).
     #[serde(default)]
     pub reason: EngineDownReason,
     /// Which way the keyring failed, when [`EngineDownReason::KeyringUnreadable`]
     /// is the reason. `None` for any other reason, and on a service too old to
-    /// classify it — the window then shows the general keyring sentence, which is
-    /// what it showed before this field existed.
+    /// classify it, and the window then shows the general keyring sentence,
+    /// which is what it showed before this field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keyring: Option<KeyringFault>,
 }
 
-/// Por qué no hay motor, clasificado en origen.
+/// Why there is no engine, classified at source.
 ///
-/// `last_error` es para el log y para nosotros; esto es para la pantalla. Nace de
-/// dos hilos de soporte (jul-2026, self-hosted 1.1.0) en los que el usuario sólo
-/// podía decir "the sync service is offline": el motivo existía aquí dentro y se
-/// perdía antes de llegar a la ventana, así que ninguno de los dos pudo contar lo
-/// único que hacía falta para diagnosticarlo.
+/// `last_error` is for the log and for us; this is for the screen. It came out of
+/// two support threads (jul-2026, self-hosted 1.1.0) where the user could only
+/// say "the sync service is offline": the reason existed in here and was lost
+/// before it reached the window, so neither of them could report the one thing
+/// needed to diagnose it.
 ///
-/// Se clasifica por **downcast tipado**, no mirando el texto del error: un
-/// mensaje se reescribe sin pensar y nadie se entera de que la clasificación se
-/// rompió, que es exactamente la clase de fallo silencioso que esto viene a matar.
+/// Classified by typed downcast, not by looking at the error's text: a message
+/// gets rewritten without a second thought and nobody notices the classification
+/// broke, which is exactly the silent failure this exists to kill.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EngineDownReason {
-    /// Nadie ha dicho nada: el motor está arriba, arrancando, o lo reporta un
-    /// daemon anterior a este campo.
+    /// Nobody said anything: the engine is up, starting, or being reported by a
+    /// daemon older than this field.
     #[default]
     Unknown,
-    /// No hay ninguna sesión que usar. Lo arregla entrar; nada más lo arregla.
+    /// There is no session to use. Signing in fixes it; nothing else does.
     NoSession,
-    /// Hay sesión guardada y el llavero no la suelta: bloqueado, sin D-Bus en una
-    /// sesión sin escritorio, o una ACL de macOS que no autoriza a este binario.
-    /// Se distingue de [`Self::NoSession`] porque el consejo es el contrario:
-    /// aquí el usuario **sí** entró, y volver a entrar reescribe el ítem a nombre
-    /// de quien lo lee.
+    /// There is a stored session and the keyring will not hand it over: locked,
+    /// no D-Bus in a session with no desktop, or a macOS ACL that does not
+    /// authorise this binary. Distinct from [`Self::NoSession`] because the
+    /// advice is the opposite: here the user *did* sign in, and signing in again
+    /// rewrites the item in the name of whoever reads it.
     KeyringUnreadable,
-    /// Sesión terminalmente caducada (Cloud): sólo un login nuevo la arregla.
+    /// Terminally expired session (Cloud): only a fresh login fixes it.
     SessionExpired,
     /// We couldn't ask. The service didn't answer a status query, so nothing is
-    /// known about the engine — including whether it is running.
+    /// known about the engine, including whether it is running.
     ///
     /// Never sent by the daemon: it is what a *client* fills in when its own
     /// read failed, and it exists so that "I couldn't ask" stops borrowing the
@@ -712,12 +708,12 @@ pub enum EngineDownReason {
     /// 2026-08-28 the difference was the whole complaint: the service had been
     /// up for thirteen hours and the window said it was stopped.
     Unreachable,
-    /// Cualquier otra cosa. `last_error` lleva el detalle.
+    /// Anything else. `last_error` carries the detail.
     Other,
 }
 
-/// Cómo falló el llavero, cuando [`EngineDownReason::KeyringUnreadable`] es el
-/// motivo.
+/// How the keyring failed, when [`EngineDownReason::KeyringUnreadable`] is the
+/// reason.
 ///
 /// The reason is one; the advice is not. A machine with no secret-service daemon
 /// at all is never going to answer, and telling that user to unlock their login
@@ -740,8 +736,8 @@ pub enum KeyringFault {
     /// It's there and it doesn't answer: locked and waiting on an unlock prompt
     /// nobody can see, or a session bus that swallowed the call.
     Locked,
-    /// It answered and said no — a macOS ACL that authorises a different binary,
-    /// a denied access rule.
+    /// It answered and said no: a macOS ACL that authorises a different binary,
+    /// or a denied access rule.
     Refused,
     /// It answered, and what it holds can't be read back: a corrupt entry, a
     /// crypto session that won't negotiate.
@@ -792,8 +788,8 @@ mod tests {
         ));
     }
 
-    /// Una cabecera absurda se rechaza **antes** de reservar nada. Un socket
-    /// local con permisos 0600 sigue siendo entrada que hay que validar.
+    /// An absurd header is rejected *before* anything is reserved. A local
+    /// socket with 0600 permissions is still input that has to be validated.
     #[test]
     fn an_absurd_header_is_rejected_before_allocating() {
         let err = frame_len(u32::MAX.to_be_bytes()).unwrap_err();
@@ -811,10 +807,10 @@ mod tests {
         assert!(decode_frame::<Hello>(body).is_err());
     }
 
-    /// La forma del JSON de los eventos es el contrato que el Slice 4a movió de
-    /// `hoard_agent::agent` a [`events`]. Si alguien renombra una variante o un
-    /// campo, esto cae: el desktop lleva ese payload a la UI por su nombre de
-    /// `type` y el daemon lo guarda en el journal.
+    /// The JSON shape of the events is the contract Slice 4a moved out of
+    /// `hoard_agent::agent` into [`events`]. If anyone renames a variant or a
+    /// field, this fails: the desktop keys the UI off that `type` name and the
+    /// daemon stores it in the journal.
     #[test]
     fn events_wire_shape_is_frozen() {
         let ev = AgentEvent::BackupSuccess {
@@ -830,9 +826,9 @@ mod tests {
         assert_eq!(json["version_num"], 42);
         assert_eq!(json["set_hash"], "cheap:content");
 
-        // Campo nuevo con `default` (D.8.3): el payload de un daemon anterior,
-        // sin `already_landed`, sigue deserializando — la disciplina append-only
-        // es lo que permite añadirlo sin subir la versión de protocolo.
+        // A new field with a `default` (D.8.3): a payload from an older daemon,
+        // with no `already_landed`, still deserialises. The append-only
+        // discipline is what lets it be added without bumping the protocol.
         let legacy: AgentEvent = serde_json::from_str(
             r#"{"type":"backup_success","save_id":"s1","version_num":7,"total_bytes":10,"set_hash":null}"#,
         )
@@ -842,8 +838,8 @@ mod tests {
             legacy,
             AgentEvent::BackupSuccess {
                 already_landed: false,
-                // Igual que `already_landed`: un daemon anterior no lo manda y
-                // se lee como "automática", que es como se comportaba.
+                // Like `already_landed`: an older daemon does not send it and it
+                // reads as "automatic", which is how it behaved.
                 deliberate: false,
                 ..
             }
@@ -865,8 +861,8 @@ mod tests {
         assert!(matches!(deferred, AgentEvent::RestoreDeferred { .. }));
     }
 
-    /// La despedida viaja con su motivo: el cliente la enseña ("lo paró
-    /// `hoard sync stop`") en vez de reportar una conexión perdida.
+    /// The goodbye carries its reason, so the client can show it ("`hoard sync
+    /// stop` stopped it") instead of reporting a lost connection.
     #[test]
     fn the_farewell_carries_its_reason() {
         let frame = ServerFrame::Goodbye {
@@ -877,9 +873,9 @@ mod tests {
         assert_eq!(json["reason"], "stopped on request");
     }
 
-    /// Una trama de un daemon más nuevo se ignora en vez de romper el encuadre
-    /// (y con él la conexión). Es lo que hace que añadir tramas —como la
-    /// despedida— no sea un cambio incompatible de protocolo.
+    /// A frame from a newer daemon is ignored rather than breaking the framing,
+    /// and with it the connection. That is what makes adding frames, like the
+    /// goodbye, a compatible change.
     #[test]
     fn an_unknown_frame_degrades_instead_of_breaking_the_connection() {
         let frame: ServerFrame =
@@ -887,8 +883,8 @@ mod tests {
         assert!(matches!(frame, ServerFrame::Unknown));
     }
 
-    /// El handshake dice **su** versión al rechazar, para que el cliente pueda
-    /// decirle al usuario qué actualizar.
+    /// The handshake states its own version when rejecting, so the client can
+    /// tell the user what to update.
     #[test]
     fn a_rejection_carries_the_daemon_version() {
         let frame = ServerFrame::Rejected(Rejected {
@@ -901,10 +897,10 @@ mod tests {
         assert_eq!(json["daemon_protocol"], PROTOCOL_VERSION);
     }
 
-    /// El nombre por cable de cada petición es contrato: el daemon despacha por
-    /// `op`, así que renombrar una variante rompe a un cliente ya instalado sin
-    /// que el handshake se entere (la versión sólo sube ante un cambio
-    /// incompatible, y añadir variantes no lo es).
+    /// Every request's wire name is contract: the daemon dispatches on `op`, so
+    /// renaming a variant breaks an already-installed client without the
+    /// handshake noticing (the version only goes up on an incompatible change,
+    /// and adding variants is not one).
     #[test]
     fn request_op_names_are_frozen() {
         let cases: Vec<(Request, &str)> = vec![
@@ -952,7 +948,7 @@ mod tests {
     }
 
     /// Older desktops send `force_restore` without `version_num`. New daemon
-    /// must still accept that — missing field is "tick only", not a handshake
+    /// must still accept that: a missing field is "tick only", not a handshake
     /// break.
     #[test]
     fn force_restore_version_num_defaults_when_absent() {
@@ -969,10 +965,11 @@ mod tests {
         }
     }
 
-    /// La sesión entregada va entera por el cable (si no, el daemon no podría
-    /// guardarla) pero **no** por los logs: el `Debug` es a mano justo para eso.
-    /// Un `?request` en un `tracing::` del daemon no puede acabar publicando el
-    /// refresh token en el journal del sistema.
+    /// The handed-over session travels whole on the wire, since otherwise the
+    /// daemon could not store it, but never through the logs: the hand-written
+    /// `Debug` exists for exactly that. A `?request` in one of the daemon's
+    /// `tracing::` calls cannot end up publishing the refresh token to the system
+    /// journal.
     #[test]
     fn an_adopted_session_travels_whole_but_never_prints() {
         let session = AdoptedSession {
@@ -989,15 +986,15 @@ mod tests {
         let printed = format!("{session:?}");
         assert!(!printed.contains("the-jwt"), "{printed}");
         assert!(!printed.contains("the-refresh"), "{printed}");
-        // El servidor sí es útil verlo: es lo que distingue un login de dev de uno
-        // de producción cuando algo no cuadra.
+        // The server is worth seeing: it is what tells a dev login from a
+        // production one when something does not add up.
         assert!(printed.contains("api.hoard.services"), "{printed}");
     }
 
-    /// Y lo mismo para la sesión self-hosted, que viaja en las dos direcciones:
-    /// entera por el cable, nunca por el log. Aquí el riesgo es mayor que en
-    /// Cloud — un token `hoard_v1_` no caduca, así que uno filtrado en el journal
-    /// vale para siempre hasta que alguien lo revoque.
+    /// And the same for the self-hosted session, which travels both ways: whole
+    /// on the wire, never in the log. The risk is higher here than on Cloud,
+    /// because a `hoard_v1_` token does not expire, so one leaked into the
+    /// journal is good forever until somebody revokes it.
     #[test]
     fn a_server_session_travels_whole_but_never_prints() {
         let session = ServerSession {
@@ -1015,14 +1012,14 @@ mod tests {
         let printed = format!("{session:?}");
         assert!(!printed.contains("hoard_v1_secret"), "{printed}");
         assert!(printed.contains("hoard.example"), "{printed}");
-        // El usuario no es secreto y es justo lo que hace útil el log.
+        // The user is not a secret, and is exactly what makes the log useful.
         assert!(printed.contains("rai"), "{printed}");
     }
 
-    /// Campos nuevos con `default`: un daemon viejo que no emite `server` ni
-    /// `since` sigue deserializando en un cliente nuevo. Y al revés — el campo
-    /// que el 4d borró (`blocked_by_pid`, el pidfile) llega como sobrante de un
-    /// daemon anterior y se ignora en vez de romper la conexión.
+    /// New fields with a `default`: an older daemon that emits neither `server`
+    /// nor `since` still deserialises in a new client. And the other way round,
+    /// the field 4d deleted (`blocked_by_pid`, the pidfile) arrives as a leftover
+    /// from an older daemon and is ignored instead of breaking the connection.
     #[test]
     fn older_payloads_still_deserialize() {
         let engine: EngineStatus = serde_json::from_str(r#"{"running":true}"#).unwrap();
@@ -1035,11 +1032,11 @@ mod tests {
         assert!(!legacy.running);
     }
 
-    /// Un daemon anterior a las notificaciones nativas no manda el campo, y el
-    /// `false` que se asume es justo el lado seguro: el frontend sigue avisando
-    /// él. Al revés (bandera nueva, cliente viejo) el campo sobra y se ignora.
-    /// Un default invertido dejaría al usuario sin ningún aviso mientras
-    /// conviven versiones.
+    /// A daemon older than native notifications does not send the field, and the
+    /// `false` that gets assumed is the safe side: the frontend keeps notifying.
+    /// The other way round (new flag, old client) the field is surplus and gets
+    /// ignored. An inverted default would leave the user with no notice at all
+    /// while versions coexist.
     #[test]
     fn a_daemon_that_doesnt_notify_reads_as_not_notifying() {
         let old: DaemonStatus = serde_json::from_str(
@@ -1050,10 +1047,10 @@ mod tests {
         assert!(!old.notifications);
     }
 
-    /// El motivo tipado del motor caído es append-only: un daemon anterior no lo
-    /// manda y el cliente lo lee como `Unknown` (banner genérico, como hasta
-    /// ahora) en vez de fallar el parseo entero del estado — que dejaría al
-    /// cliente sin *ningún* dato del daemon por un campo informativo.
+    /// The engine's typed down-reason is append-only: an older daemon does not
+    /// send it and the client reads `Unknown` (the generic banner, as before)
+    /// instead of failing the parse of the whole status, which would leave the
+    /// client with no data at all about the daemon over an informational field.
     #[test]
     fn an_engine_without_a_reason_reads_as_unknown() {
         let old: DaemonStatus = serde_json::from_str(
@@ -1068,7 +1065,7 @@ mod tests {
 
     /// The keyring fault is append-only in the way that matters: a service too
     /// old to classify it doesn't send the field, and the client reads `None` and
-    /// shows the general keyring sentence — exactly what it showed before the
+    /// shows the general keyring sentence, exactly what it showed before the
     /// field existed. This is the reason it is a field and not two more
     /// `EngineDownReason` variants: an unknown *variant* fails the parse of the
     /// whole status and leaves the client with no data about the daemon at all.
@@ -1109,7 +1106,7 @@ mod tests {
         assert_eq!(json["keyring"], "missing");
     }
 
-    /// Y en el cable va en `snake_case`, que es lo que la UI compara.
+    /// And on the wire it goes as `snake_case`, which is what the UI compares.
     #[test]
     fn the_engine_reason_travels_in_snake_case() {
         let json = serde_json::to_string(&EngineStatus {
@@ -1122,9 +1119,9 @@ mod tests {
         assert_eq!(parsed["reason"], "keyring_unreadable");
     }
 
-    /// El préstamo del token: el `rejected` es opcional en el cable (un cliente
-    /// que sólo quiere "uno válido" no manda nada) y la respuesta lleva la
-    /// caducidad para que el cliente no tenga que decodificar el JWT.
+    /// The token loan: `rejected` is optional on the wire, since a client that
+    /// only wants a valid one sends nothing, and the answer carries the expiry so
+    /// the client does not have to decode the JWT.
     #[test]
     fn the_cloud_token_loan_round_trips() {
         let asked: Request = serde_json::from_str(r#"{"op":"cloud_token"}"#).unwrap();
@@ -1141,16 +1138,16 @@ mod tests {
         assert_eq!(json["access_token"], "jwt");
         assert_eq!(json["expires_at"], 1_800_000_000i64);
 
-        // Un daemon que no sepa la caducidad sigue siendo respuesta válida.
+        // A daemon that does not know the expiry is still a valid answer.
         let minimal: CloudToken =
             serde_json::from_str(r#"{"access_token":"jwt","server_url":"u"}"#).unwrap();
         assert!(minimal.expires_at.is_none());
         assert!(!minimal.rotated);
     }
 
-    /// "La sesión Cloud se acabó" tiene variante propia porque el cliente actúa
-    /// distinto que ante un fallo transitorio: cierra sesión en vez de
-    /// reintentar. Su nombre por cable es contrato.
+    /// "The Cloud session is over" gets its own variant because the client acts
+    /// differently than on a transient failure: it logs out instead of retrying.
+    /// Its wire name is contract.
     #[test]
     fn a_dead_cloud_session_is_its_own_error() {
         let err = IpcError::CloudSessionExpired {
@@ -1160,7 +1157,7 @@ mod tests {
         assert_eq!(json["error"], "cloud_session_expired");
         let back: IpcError = serde_json::from_value(json).unwrap();
         assert!(matches!(back, IpcError::CloudSessionExpired { .. }));
-        // Llega legible al usuario (toast / stdout), no como `{:?}`.
+        // It reaches the user readable (toast, stdout), not as `{:?}`.
         assert!(back.to_string().contains("revoked"));
     }
 }

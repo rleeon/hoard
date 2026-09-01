@@ -31,27 +31,26 @@ pub struct AuthSection {
 }
 
 /// Resuelve el directorio de estado en Windows, mudando el antiguo la primera
-/// vez que alguien pregunta.
+/// time somebody asks.
 ///
-/// Reglas, en orden, y todas con el mismo criterio: **nunca devolver una
-/// carpeta vacía mientras los datos estén en otra.**
+/// The rules, in order, all with the same criterion: never return an empty
+/// folder while the data is in another one.
 ///
-/// 1. Si el destino ya existe, es el bueno (ya se migró, o la instalación nació
-///    aquí).
-/// 2. Si el origen no existe, tampoco hay nada que mudar.
-/// 3. Si el `rename` falla, se sigue usando el origen. Que la mudanza no salga
-///    es un incordio; perder de vista los datos es el bug que esto arregla.
+/// 1. If the destination already exists, it is the right one (already migrated,
+///    or the install was born there).
+/// 2. If the source does not exist, there is nothing to move either.
+/// 3. If the `rename` fails, the source keeps being used. A move that does not
+///    happen is a nuisance; losing sight of the data is the bug this fixes.
 ///
-/// El `rename` es atómico —origen y destino cuelgan los dos de `AppData`, mismo
-/// volumen— así que no hay estado intermedio en el que los ficheros estén a
-/// medias. Y si dos procesos arrancan a la vez (el servicio y la app es lo
-/// normal), el que pierde la carrera ve fallar su `rename` y se encuentra el
-/// destino ya creado, que es la respuesta correcta.
+/// The `rename` is atomic, since source and destination both hang off `AppData`
+/// on the same volume, so there is no intermediate state with the files half
+/// moved. If two processes race (the app and the service starting together, which
+/// is normal) whoever loses sees their `rename` fail and finds the destination
+/// already created, which is the right answer.
 ///
-/// Sólo se llama en Windows, pero se compila en todas partes **a propósito**:
-/// código bajo `cfg(windows)` no lo mira el compilador de esta máquina, y esto
-/// decide dónde están los datos del usuario. Compilarlo y probarlo siempre es lo
-/// que evita que un error tonto viaje hasta el único sitio donde corre.
+/// Only called on Windows, but compiled everywhere on purpose: it is what
+/// decides where the user's data lives. Compiling and testing it always is what
+/// stops a silly mistake travelling all the way to the one place it runs.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn relocated_state_dir(old: &Path, new: &Path) -> PathBuf {
     if new.is_dir() {
@@ -107,23 +106,23 @@ impl CliConfig {
         Ok(pd.config_dir().join("config.toml"))
     }
 
-    /// Dónde vive el estado del usuario: partidas vigiladas, horas jugadas,
+    /// Where the user's state lives: watched saves, hours played,
     /// caché de detección, preferencias.
     ///
     /// En Windows **no** es `data_local_dir()`, y el motivo le costó a un
     /// usuario su historial. `ProjectDirs` lo resuelve a
-    /// `%LOCALAPPDATA%\hoard\hoard\data`, y el instalador NSIS —`productName`
-    /// "Hoard", `installMode` `currentUser`— instala en `%LOCALAPPDATA%\Hoard`.
-    /// Windows no distingue mayúsculas: **los datos del usuario quedaban dentro
-    /// de la carpeta de instalación**, así que reinstalar o actualizar podía
-    /// llevárselos. Y no se quedaba en local: el cliente arrancaba con las
-    /// horas a cero y su siguiente subida propagaba ese vacío a la nube.
+    /// `%LOCALAPPDATA%\hoard\hoard\data`, and the NSIS installer (`productName`
+    /// "Hoard", `installMode` `currentUser`) installs into `%LOCALAPPDATA%\Hoard`.
+    /// Windows is case-insensitive, so the user's data ended up inside the
+    /// install folder, which meant reinstalling or updating could take it away.
+    /// And it did not stay local: the client started with its hours at zero and
+    /// its next upload propagated that emptiness to the cloud.
     ///
-    /// Pasa a `%APPDATA%` (Roaming), que es donde ya vivía la configuración y
-    /// donde ningún instalador escarba. La caché se queda en Local, que es
-    /// justo el reparto que Windows pide: Roaming para el estado pequeño del
-    /// usuario, Local para lo reconstruible. En Linux y macOS `data_dir()` y
-    /// `data_local_dir()` son la misma ruta, así que fuera de Windows no
+    /// It moves to `%APPDATA%` (Roaming), where the configuration already lived
+    /// and where no installer digs. The cache stays in Local, which is exactly the
+    /// split Windows asks for: Roaming for the user's small state, Local for what
+    /// can be rebuilt. On Linux and macOS `data_dir()` and `data_local_dir()` are
+    /// the same path, so outside Windows nothing
     /// cambia nada.
     pub fn state_dir() -> Result<PathBuf> {
         let pd = Self::project_dirs()?;
@@ -197,8 +196,8 @@ impl CliConfig {
 mod tests {
     use super::*;
 
-    /// Un directorio con un fichero dentro, para distinguir "se mudó" de "se
-    /// creó vacío" — que es justo la confusión que costó un historial.
+    /// A directory with a file inside, to tell "it moved" from "it was created
+    /// empty", which is exactly the confusion that cost a history.
     fn seeded(dir: &Path, name: &str) -> PathBuf {
         std::fs::create_dir_all(dir).unwrap();
         let f = dir.join(name);
@@ -215,7 +214,7 @@ mod tests {
         seeded(&new, "bueno.json");
 
         assert_eq!(relocated_state_dir(&old, &new), new);
-        // Ya migrado: mudar otra vez pisaría lo bueno con lo viejo.
+        // Already migrated: moving again would overwrite the good with the old.
         assert!(new.join("bueno.json").exists());
         assert!(old.join("viejo.json").exists());
     }
@@ -251,14 +250,14 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let old = tmp.path().join("local/hoard/data");
         seeded(&old, "playtime.json");
-        // Destino imposible: su padre es un fichero, así que ni `create_dir_all`
-        // ni `rename` pueden con él.
+        // An impossible destination: its parent is a file, so neither
+        // `create_dir_all` nor `rename` can manage it.
         let blocker = tmp.path().join("roaming");
         std::fs::write(&blocker, b"no soy un directorio").unwrap();
         let new = blocker.join("hoard/data");
 
-        // Lo que NO puede pasar es devolver `new`: los datos siguen en `old` y
-        // el llamante crearía una carpeta vacía encima del historial.
+        // What must NOT happen is returning `new`: the data is still in `old` and
+        // the caller would create an empty folder on top of the history.
         assert_eq!(relocated_state_dir(&old, &new), old);
         assert!(old.join("playtime.json").exists());
     }

@@ -55,7 +55,7 @@ pub fn detect_steam_libraries(os: Os) -> Vec<PathBuf> {
     // installs / custom-named libraries the registry and home paths miss.
     roots.extend(scan_steam_roots(os));
 
-    // The root itself always doubles as a library — Steam ships its own
+    // The root itself always doubles as a library: Steam ships its own
     // `steamapps` there. Then any extra libraries are listed inside
     // libraryfolders.vdf. `seen` de-dups by a normalised key so the same
     // directory reached two ways (e.g. registry root vs `%ProgramFiles%`
@@ -80,7 +80,7 @@ pub fn detect_steam_libraries(os: Os) -> Vec<PathBuf> {
                 // shows up", so log it at info so it's visible in the app.
                 tracing::info!(
                     library = %extra.display(),
-                    "Steam library listed in libraryfolders.vdf skipped — no readable steamapps dir (drive offline / not mounted / no permission?)"
+                    "Steam library listed in libraryfolders.vdf skipped: no readable steamapps dir (drive offline / not mounted / no permission?)"
                 );
                 continue;
             }
@@ -115,7 +115,7 @@ pub fn detect_steam_libraries(os: Os) -> Vec<PathBuf> {
 ///   `~/.steam/steam` as a symlink to `~/.local/share/Steam`, and both are
 ///   probed by [`linux_roots`]. Left as raw strings they are different keys, so
 ///   the same library was listed twice and every Steam Cloud save under it was
-///   reported twice — the same `userdata/<id>/<appid>/remote` folder spelled
+///   reported twice: the same `userdata/<id>/<appid>/remote` folder spelled
 ///   two ways, which the UI has no way to tell apart from two real folders.
 ///   Resolving the path is what makes them one key.
 /// * **Case and slashes.** On Windows the registry gives
@@ -127,7 +127,7 @@ pub fn detect_steam_libraries(os: Os) -> Vec<PathBuf> {
 /// the spelling the user knows.
 fn lib_key(p: &Path) -> String {
     // A path that can't be resolved (it just vanished, or we can't traverse to
-    // it) keeps its literal spelling — the worst case is the old behaviour.
+    // it) keeps its literal spelling, so the worst case is the old behaviour.
     let resolved = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     let s = resolved.to_string_lossy();
     #[cfg(windows)]
@@ -146,12 +146,12 @@ fn lib_key(p: &Path) -> String {
 /// The difference decides whether it's worth reading the next file in the same
 /// folder. A corrupt manifest is one game; a drive that isn't plugged in is
 /// every game on it, and asking each one in turn produces a log line per game
-/// per sweep — 553 rows in 48 hours from a single user with `e:/steam`
+/// per sweep: 553 rows in 48 hours from a single user with `e:/steam`
 /// unplugged, all of them the same fact.
 ///
 /// Checked by raw OS code, not by `ErrorKind`: the codes that mean "no device"
 /// map to `Uncategorized`, which is not matchable, and `NotFound` deliberately
-/// isn't here — a missing appmanifest is Steam deleting one mid-scan, which is
+/// isn't here: a missing appmanifest is Steam deleting one mid-scan, which is
 /// a race and not a dead drive.
 fn device_is_gone(e: &std::io::Error) -> bool {
     let Some(code) = e.raw_os_error() else {
@@ -174,7 +174,7 @@ fn device_is_gone(e: &std::io::Error) -> bool {
 /// List Steam apps installed across all detected libraries.
 ///
 /// Errors reading individual library folders / appmanifest files are logged
-/// and skipped — we never abort the whole scan because one folder is
+/// and skipped; we never abort the whole scan because one folder is
 /// missing or one manifest file is corrupt. Returning `Ok(vec![])` is a
 /// normal outcome (Steam not installed); detection treats it as "no
 /// Steam apps found, fall back to filesystem heuristic".
@@ -198,7 +198,7 @@ pub fn list_installed_steam_games(os: Os) -> Result<Vec<SteamApp>> {
                 tracing::info!(
                     library = %steamapps.display(),
                     error = %e,
-                    "skipping Steam library — its folder isn't reachable (drive offline / not mounted / no permission?)"
+                    "skipping Steam library: its folder isn't reachable (drive offline / not mounted / no permission?)"
                 );
                 continue;
             }
@@ -234,7 +234,7 @@ struct LibraryScan {
     /// Manifests that wouldn't read. A count and not a log line each: the caller
     /// says it once.
     unreadable: usize,
-    /// The first failure's text, which is the one worth showing — the rest are
+    /// The first failure's text, which is the one worth showing; the rest are
     /// the same fact about the same drive.
     first_error: Option<String>,
     /// The device answered "I'm not here" and the rest of the library was
@@ -278,7 +278,7 @@ fn scan_library(steamapps: &Path) -> std::io::Result<LibraryScan> {
                 // The drive went away under us. A directory listing can be
                 // served from cache while the reads behind it reach the
                 // hardware, which is how a root that probed fine still fails
-                // here — and every remaining file in this library has the same
+                // here, and every remaining file in this library has the same
                 // answer waiting, so stop asking for them one at a time.
                 if device_is_gone(&e) {
                     scan.device_gone = true;
@@ -306,7 +306,7 @@ fn scan_library(steamapps: &Path) -> std::io::Result<LibraryScan> {
 /// `<library>/steamapps/compatdata/<appid>/pfx/`. Entries without a `pfx/`
 /// subdirectory are skipped (Steam sometimes creates the appid folder
 /// before the prefix itself, e.g. mid-install). Returns an empty `Vec` on
-/// non-Linux hosts and when no libraries are detected — the caller treats
+/// non-Linux hosts and when no libraries are detected; the caller treats
 /// that as "no Proton games to consider".
 pub fn list_proton_prefixes(os: Os) -> Vec<ProtonPrefix> {
     let libraries = detect_steam_libraries(os);
@@ -358,7 +358,7 @@ fn linux_roots() -> Vec<PathBuf> {
         // Linux install the second is a symlink to the first, `lib_key` folds
         // the two into one entry, and whichever is listed first is the spelling
         // every save path downstream inherits. The real directory is the better
-        // one to inherit — it survives Steam rebuilding its compatibility
+        // one to inherit, and it survives Steam rebuilding its compatibility
         // symlinks, and it is what the rest of the system shows the user.
         v.push(h.join(".local/share/Steam"));
         v.push(h.join(".steam/steam"));
@@ -372,7 +372,7 @@ fn linux_roots() -> Vec<PathBuf> {
 
 fn windows_roots() -> Vec<PathBuf> {
     let mut v = Vec::new();
-    // Steam's own recorded install path first — this is the only source that
+    // Steam's own recorded install path first: this is the only source that
     // survives a non-default install drive (`D:\Steam`, etc.). The
     // `%ProgramFiles%` guesses below are the fallback for when the registry
     // read fails.
@@ -392,7 +392,7 @@ const SCAN_MAX_DEPTH: usize = 3;
 
 /// Hard cap on directories inspected per base, so a pathological tree (a huge
 /// system drive, a deep home) can never turn the scan into a stall. Once hit,
-/// that base stops early — the well-known roots still cover the common case.
+/// that base stops early; the well-known roots still cover the common case.
 const SCAN_DIR_BUDGET: usize = 6000;
 
 /// Directory names never worth descending into when hunting for Steam
@@ -423,7 +423,7 @@ const SCAN_SKIP_DIRS: &[&str] = &[
 ];
 
 /// `true` if a directory name should not be descended into during the scan.
-/// Skips dot-directories (unix hidden) and the explicit system/noise list —
+/// Skips dot-directories (unix hidden) and the explicit system/noise list,
 /// but never `steamapps` itself, which is the thing we're looking for.
 fn is_skippable_scan_dir(name: &str) -> bool {
     if name == "steamapps" {
@@ -438,7 +438,7 @@ fn is_skippable_scan_dir(name: &str) -> bool {
 
 /// Base directories to sweep for Steam libraries the well-known paths miss.
 ///
-/// Cross-platform by design — only the set of bases differs:
+/// Cross-platform by design; only the set of bases differs:
 /// - **Windows**: every present drive root `C:`–`Z:` (second installs and
 ///   custom-named libraries live on other drives).
 /// - **macOS**: `/Volumes` (external/extra disks) plus `$HOME`.
@@ -482,13 +482,13 @@ fn scan_bases(os: Os) -> Vec<PathBuf> {
     Vec::new()
 }
 
-/// Steam libraries found by sweeping the disks — catches second/third Steam
+/// Steam libraries found by sweeping the disks. Catches second and third Steam
 /// installs and custom-named library folders on other drives/mounts that
 /// neither the registry (Windows) nor the well-known home paths record. A
 /// Steam library is any directory that holds a `steamapps` subfolder; we
 /// breadth-first walk each base up to [`SCAN_MAX_DEPTH`], record matches, and
 /// prune once found (a library never nests inside another). Memoised: the
-/// sweep (and its discovery logs) runs once per process — a disk mounted after
+/// sweep (and its discovery logs) runs once per process, so a disk mounted after
 /// launch is picked up on the next run, the same contract the catalog uses.
 fn scan_steam_roots(os: Os) -> Vec<PathBuf> {
     use std::sync::OnceLock;
@@ -523,7 +523,7 @@ fn find_steam_libraries_under(base: &Path, out: &mut Vec<PathBuf>) {
         if dir.join("steamapps").is_dir() {
             tracing::info!(root = %dir.display(), "Steam library found by disk scan (outside registry / known paths)");
             out.push(dir);
-            continue; // libraries don't nest — prune here
+            continue; // libraries don't nest, so prune here
         }
         if depth >= SCAN_MAX_DEPTH {
             continue;
@@ -553,8 +553,8 @@ fn find_steam_libraries_under(base: &Path, out: &mut Vec<PathBuf>) {
 /// HKCU `Software\Valve\Steam\SteamPath` is the per-user value Steam keeps
 /// current (forward-slashed, e.g. `d:/steam`); HKLM
 /// `…\Valve\Steam\InstallPath` is the machine-wide fallback (back-slashed).
-/// Reading this is what lets `libraryfolders.vdf` be found — and therefore
-/// every extra library be enumerated — even when Steam lives on another drive.
+/// Reading this is what lets `libraryfolders.vdf` be found, and therefore every
+/// extra library be enumerated, even when Steam lives on another drive.
 #[cfg(windows)]
 fn windows_registry_root() -> Option<PathBuf> {
     use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
@@ -929,11 +929,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path();
         let compatdata = home.join(".steam/steam/steamapps/compatdata");
-        // 413150 (Stardew) has a real pfx — should appear.
+        // 413150 (Stardew) has a real pfx, so it should appear.
         std::fs::create_dir_all(compatdata.join("413150/pfx/drive_c")).unwrap();
-        // 999999 has the appid dir but no pfx — should be skipped.
+        // 999999 has the appid dir but no pfx, so it should be skipped.
         std::fs::create_dir_all(compatdata.join("999999")).unwrap();
-        // "shader_cache" is not numeric — should be skipped.
+        // "shader_cache" is not numeric, so it should be skipped.
         std::fs::create_dir_all(compatdata.join("shader_cache/pfx")).unwrap();
 
         with_home(home, || {
@@ -954,7 +954,7 @@ mod tests {
         let extra = home.join("games/SteamLibrary");
         std::fs::create_dir_all(extra.join("steamapps")).unwrap();
         // A ghost library listed in the vdf but with no steamapps dir
-        // (unmounted drive / offline NAS) — must be skipped.
+        // (unmounted drive, offline NAS): must be skipped.
         let ghost = home.join("mnt/nas/SteamLibrary");
 
         std::fs::write(
@@ -993,7 +993,7 @@ mod tests {
         //   <base>/a/b/Lib3/steamapps
         let lib3 = base.join("a/b/Lib3");
         std::fs::create_dir_all(lib3.join("steamapps")).unwrap();
-        // Too deep (depth 4) — must NOT be found.
+        // Too deep (depth 4): must NOT be found.
         let deep = base.join("a/b/c/TooDeep");
         std::fs::create_dir_all(deep.join("steamapps")).unwrap();
         // Hidden + system-named dirs holding a library must be skipped.
@@ -1023,7 +1023,7 @@ mod tests {
     /// The compatibility symlink every Linux Steam install ships
     /// (`~/.steam/steam` → `~/.local/share/Steam`) must not turn one library
     /// into two. It did, and with it every Steam Cloud save under `userdata`
-    /// was reported twice — 34 duplicate paths across 24 games on one machine.
+    /// was reported twice: 34 duplicate paths across 24 games on one machine.
     ///
     /// The symlink is created for real, not simulated with two separate
     /// directories: the whole bug is that two *different* paths name one

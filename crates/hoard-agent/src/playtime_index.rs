@@ -1,20 +1,20 @@
-//! ÍNDICE DE PLAYTIME (Steam) — mapa `carpeta de instalación → slug` de toda la
-//! biblioteca de Steam, para el modelo "solo lo que juegas" del recap.
+//! The Steam playtime index: a map from install folder to slug for the whole
+//! Steam library, for the recap's "only what you play" model.
 //!
-//! El [`crate::playtime_catalog`] curado cubre juegos online reconocibles
-//! (Fortnite, Rust…) con nombres de proceso conocidos. Pero el usuario quiere
-//! que CUALQUIER juego de Steam que juegue cuente en el Wrapped, aunque no
-//! tenga save que copiar ni entrada en el catálogo Ludusavi (p. ej. juegos
-//! online sin partida local como War Selection). No enrolamos nada ni tocamos
-//! la lista "Jugados, sin copia": el poll de procesos ([`crate::agent`]) mira
-//! si el ejecutable vivo cae bajo alguna `steamapps/common/<juego>` de este
-//! índice y, si es así, le atribuye el tiempo del tick. El slug se genera con
-//! [`ludusavi::slugify`] (el mismo que la detección), así que la UI lo muestra
-//! con el nombre bonito derivado del slug sin más cableado.
+//! The curated [`crate::playtime_catalog`] covers recognisable online games with
+//! known process names. But the user wants ANY Steam game they play to count in
+//! the Wrapped, even one with no save to copy and no entry in the Ludusavi
+//! catalogue, such as an online game with no local save. Nothing gets enrolled
+//! and the "played, not backed up" list is untouched: the process poll
+//! ([`crate::agent`]) checks whether the live executable falls under one of this
+//! index's `steamapps/common/<game>` folders and, if so, attributes the tick's
+//! time to it. The slug comes from [`ludusavi::slugify`], the same one detection
+//! uses, so the UI shows the pretty name derived from the slug with no extra
+//! wiring.
 //!
-//! Se reconstruye desde disco con un TTL ([`REFRESH_TTL`]): leer los
-//! `appmanifest_*.acf` cada 2 s sería un despilfarro y la biblioteca cambia
-//! rara vez.
+//! It is rebuilt from disk on a TTL ([`REFRESH_TTL`]): reading the
+//! `appmanifest_*.acf` files every 2 s would be a waste and the library rarely
+//! changes.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -24,13 +24,13 @@ use hoard_manifest::ludusavi;
 use crate::manifest::Os;
 use crate::steam;
 
-/// Cada cuánto se reconstruye el índice leyendo los appmanifest de Steam.
+/// How often the index is rebuilt by reading Steam's appmanifests.
 pub const REFRESH_TTL: Duration = Duration::from_secs(300);
 
-/// Marcadores (en minúsculas) de "apps" de Steam que en realidad son
-/// herramientas, no juegos: viven bajo `steamapps/common` como cualquier juego
-/// y corren procesos con CPU al lanzar un juego, así que sin este filtro
-/// sumarían horas fantasma al Wrapped.
+/// Lowercase markers for Steam "apps" that are really tools rather than games:
+/// they live under `steamapps/common` like any game and run CPU-heavy processes
+/// when a game launches, so without this filter they would add phantom hours to
+/// the Wrapped.
 const STEAM_TOOL_MARKERS: &[&str] = &[
     "proton",
     "steam linux runtime",
@@ -40,8 +40,8 @@ const STEAM_TOOL_MARKERS: &[&str] = &[
     "steam runtime",
 ];
 
-/// Índice `carpeta de instalación (en minúsculas) → slug` de la biblioteca de
-/// Steam instalada, con marca de tiempo para el refresco perezoso.
+/// A map from lowercase install folder to slug for the installed Steam library,
+/// with a timestamp for the lazy refresh.
 #[derive(Default)]
 pub struct SteamPlaytimeIndex {
     entries: Vec<(PathBuf, String)>,
@@ -53,8 +53,8 @@ impl SteamPlaytimeIndex {
         Self::default()
     }
 
-    /// Reconstruye si nunca se cargó o si el TTL expiró. Barato en estado
-    /// estable (una comparación de instantes).
+    /// Rebuilds when it was never loaded or the TTL expired. Cheap in the steady
+    /// state (one instant comparison).
     pub fn refresh_if_stale(&mut self) {
         let stale = self
             .refreshed_at
@@ -71,10 +71,10 @@ impl SteamPlaytimeIndex {
         self.entries.is_empty()
     }
 
-    /// Slug del juego cuya carpeta de instalación contiene `exe`, si alguno.
-    /// Comparación por componentes de ruta (no por prefijo de cadena) y en
-    /// minúsculas, así "…/common/Portal" no captura "…/common/Portal 2" y el
-    /// casing de Windows no rompe el match.
+    /// The slug of the game whose install folder contains `exe`, if any.
+    /// Compared by path component rather than by string prefix, and in lowercase,
+    /// so ".../common/Portal" does not capture ".../common/Portal 2" and Windows
+    /// casing does not break the match.
     pub fn slug_for_exe(&self, exe: &Path) -> Option<&str> {
         let exe_lower = lower_path(exe);
         self.entries
@@ -84,8 +84,8 @@ impl SteamPlaytimeIndex {
     }
 }
 
-/// Convierte los juegos instalados en pares `(carpeta en minúsculas, slug)`,
-/// descartando herramientas y nombres que slugifican a vacío.
+/// Turns installed games into `(lowercase folder, slug)` pairs, dropping tools
+/// and names that slugify to nothing.
 fn build_entries(apps: Vec<steam::SteamApp>) -> Vec<(PathBuf, String)> {
     apps.into_iter()
         .filter(|a| !is_steam_tool(&a.name))
@@ -104,8 +104,8 @@ fn is_steam_tool(name: &str) -> bool {
     STEAM_TOOL_MARKERS.iter().any(|m| lower.contains(m))
 }
 
-/// Ruta en minúsculas, preservando los separadores de componente (para que
-/// `Path::starts_with` siga comparando componente a componente).
+/// The path in lowercase, keeping component separators so `Path::starts_with`
+/// still compares component by component.
 fn lower_path(p: &Path) -> PathBuf {
     PathBuf::from(p.to_string_lossy().to_lowercase())
 }
@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn does_not_match_sibling_prefix() {
-        // "Portal" no debe capturar un exe de "Portal 2".
+        // "Portal" must not capture an exe from "Portal 2".
         let idx = index(&[("C:/Steam/steamapps/common/Portal", "portal")]);
         assert_eq!(
             idx.slug_for_exe(Path::new("C:/Steam/steamapps/common/Portal 2/portal2.exe")),
