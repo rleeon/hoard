@@ -46,8 +46,8 @@ const MAX_PACED_RETRIES_PER_BLOB: u32 = 6;
 /// Shortest we'll wait after being paced, and the base of the per-blob backoff.
 ///
 /// The pacer's own hint is in whole seconds, so at any sane rate limit it says
-/// `0` — true, but not something to act on literally. Four workers each waiting
-/// ~200 ms converges on roughly 20 requests/second, which is the default limit
+/// `0`, true but not something to act on literally. Four workers each waiting
+/// ~200 ms converges on roughly 20 requests a second, which is the default limit
 /// the server is actually enforcing.
 const PACED_RETRY_FLOOR: Duration = Duration::from_millis(200);
 
@@ -61,19 +61,18 @@ const PACED_RETRY_CEILING: Duration = Duration::from_secs(10);
 /// Summed rather than wall-clock on purpose: wall-clock would also count the
 /// transfer itself, so a legitimately slow 4 GB upload would abort the moment
 /// anything paced it. This counts only time actually spent blocked.
-///
 /// Generous, because the per-blob cap above is what really guards against a
-/// hostile server — this one only has to stop a huge folder from crawling
+/// hostile server; this one only has to stop a huge folder from crawling
 /// indefinitely against a very tight limit. A folder of a few thousand small
-/// files paced at 20 requests/second legitimately spends minutes here, and
+/// files paced at 20 requests a second legitimately spends minutes here, and
 /// aborting that would be the same bug in a new hat.
 const PACED_WAIT_BUDGET: Duration = Duration::from_secs(900);
 
 /// The wait a pacer asked for, if this error is one.
 ///
 /// Only [`RateLimitKind::Paced`] retries here. A budget 429 (bandwidth window,
-/// storage quota, loop brake) means the operation doesn't fit right now, and
-/// re-sending the same PUT can only make it worse — those keep travelling up to
+/// storage quota, loop brake) means the operation does not fit right now, and
+/// re-sending the same PUT can only make it worse; those keep travelling up to
 /// the agent, which parks the save and comes back later.
 fn paced_wait_hint(e: &anyhow::Error) -> Option<u32> {
     if let Some(hint) = e
@@ -90,9 +89,9 @@ fn paced_wait_hint(e: &anyhow::Error) -> Option<u32> {
     {
         return Some(hint);
     }
-    // A pacer that answers 429 **without draining the body** does not read as a
-    // 429: the socket dies while we are still writing the PUT and the response
-    // goes with it. On Windows always — the stack discards whatever was already
+    // A pacer that answers 429 without draining the body does not read as a 429:
+    // the socket dies while we are still writing the PUT and the response goes
+    // with it. On Windows always, since the stack discards whatever was already
     // buffered when the RST lands, so the 429 does not exist for us. That is
     // issue #17: a 173-file folder that never finished, with `error writing a
     // body to connection` for its only clue.
@@ -100,17 +99,17 @@ fn paced_wait_hint(e: &anyhow::Error) -> Option<u32> {
     // Treated as pacing with no hint. A genuine network drop lands here too and
     // gets that blob retried a few times, which beats throwing away the whole
     // batch over one stumble; and if it is persistent,
-    // `MAX_PACED_RETRIES_PER_BLOB` turns it back into the same failure as
-    // before, just a few seconds later.
+    // `MAX_PACED_RETRIES_PER_BLOB` turns it back into the same failure as before,
+    // just a few seconds later.
     is_body_write_reset(e).then_some(0)
 }
 
 /// Did the connection die while we were writing the request body?
 ///
-/// Matched on the `io::Error` at the bottom of the chain, never on the text:
-/// the message comes in the language of the Windows install — the issue's
-/// arrived in German — and comparing localised strings is an expensive way to
-/// detect nothing.
+/// Matched on the `io::Error` at the bottom of the chain, never on the text: the
+/// message comes in the language of the Windows install (the issue's arrived in
+/// German) and comparing localised strings is an expensive way to detect
+/// nothing.
 fn is_body_write_reset(e: &anyhow::Error) -> bool {
     e.chain().any(|c| {
         c.downcast_ref::<std::io::Error>().is_some_and(|io| {
@@ -124,22 +123,22 @@ fn is_body_write_reset(e: &anyhow::Error) -> bool {
     })
 }
 
-/// Run one blob's upload, retrying it — and only it — while a pacer says
-/// "too fast".
+/// Run one blob's upload, retrying it, and only it, while a pacer says "too
+/// fast".
 ///
-/// The upload of a save is N independent PUTs, one per missing blob, and N is
-/// the user's file count: 122 for a Cyberpunk folder with 46 save slots. The
-/// per-IP pacer allows a burst and then a steady rate, so on a fast link the
-/// tail of a large upload is *expected* to be turned away a few times. Letting
-/// that abort the set (`try_collect` cancels every sibling on the first error)
-/// meant a large save could never finish: each attempt got roughly a burst's
-/// worth of blobs through, kept none of them — a fresh `upload_id` stages from
-/// zero — and re-uploaded everything on the next pass, forever.
+/// The upload of a save is N independent PUTs, one per missing blob, and N is the
+/// user's file count: 122 for a Cyberpunk folder with 46 save slots. The per-IP
+/// pacer allows a burst and then a steady rate, so on a fast link the tail of a
+/// large upload is *expected* to be turned away a few times. Letting that abort
+/// the set (`try_collect` cancels every sibling on the first error) meant a large
+/// save could never finish: each attempt got roughly a burst's worth of blobs
+/// through, kept none of them (a fresh `upload_id` stages from zero) and
+/// re-uploaded everything on the next pass, forever.
 ///
-/// `attempt` is a closure, not a future, because a retry needs a new body: the
-/// file gets re-opened and re-hashed on the way out, so a save the game rewrote
-/// mid-upload is still caught by the sha check rather than silently retried
-/// with stale bytes.
+/// `attempt` is a closure rather than a future, because a retry needs a new body:
+/// the file gets re-opened and re-hashed on the way out, so a save the game
+/// rewrote mid-upload is still caught by the sha check rather than silently
+/// retried with stale bytes.
 async fn put_blob_paced<F, Fut>(
     relative_path: &str,
     paced_wait_ms: &AtomicU64,
@@ -160,7 +159,7 @@ where
         };
         if retries >= MAX_PACED_RETRIES_PER_BLOB {
             return Err(err.context(format!(
-                "{relative_path}: still being rate limited after {retries} retries — \
+                "{relative_path}: still being rate limited after {retries} retries: \
                  the server's request limit is too tight for this save's file count"
             )));
         }
@@ -183,35 +182,34 @@ where
             retries,
             wait_ms = wait.as_millis() as u64,
             hint_secs,
-            "upload: paced by the server — retrying this blob"
+            "upload: paced by the server, retrying this blob"
         );
         tokio::time::sleep(wait).await;
     }
 }
 
-/// The source directory exists but holds no regular files to upload (only
-/// empty subdirs, or nothing). Typed so the agent can treat it as "nothing to
-/// back up" (a `BackupSkippedEmpty`) rather than a red "falló" — pushing an
-/// empty snapshot would clobber the last good server copy. See
-/// `agent::run_backup_with_retry`.
+/// The source directory exists but holds no regular files to upload (only empty
+/// subdirs, or nothing). Typed so the agent can treat it as "nothing to back up"
+/// (a `BackupSkippedEmpty`) rather than a red failure: pushing an empty snapshot
+/// would clobber the last good server copy. See `agent::run_backup_with_retry`.
 #[derive(Debug, thiserror::Error)]
 #[error("no files found in {path}")]
 pub struct EmptySource {
     pub path: PathBuf,
 }
 
-/// La carpeta rastreada no puede ser la de un juego: un perfil entero, una raíz
-/// de sistema, un prefijo de Wine/Proton completo.
+/// The tracked folder cannot be a game's: a whole profile, a system root, an
+/// entire Wine or Proton prefix.
 ///
-/// Existe porque la guarda estructural sólo corría **al dar de alta** (alta
-/// manual, adopción, re-apuntar). Una fila envenenada de antes de que la guarda
-/// existiera —o de una vía de alta que se olvidó de validar— no volvía a pasar
-/// por ahí nunca, y seguía subiendo. Reportado en ago-2026: una Steam Deck
-/// subiendo `steamapps/compatdata/423230/pfx`, el prefijo entero, 308 MB, para
-/// una partida de unos KB.
+/// It exists because the structural guard only ran on adding (a manual add, an
+/// adoption, a repoint). A row poisoned before the guard existed, or by an add
+/// path that forgot to validate, never went through it again and carried on
+/// uploading. Reported in aug-2026: a Steam Deck uploading
+/// `steamapps/compatdata/423230/pfx`, the whole prefix, 308 MB, for a save of a
+/// few KB.
 ///
-/// Se comprueba en el camino del backup, antes de tocar el disco, para que
-/// cubra a la vez lo viejo y cualquier alta futura que no valide.
+/// It is checked on the backup path, before the disk is touched, so it covers
+/// both the old rows and any future add that does not validate.
 #[derive(Debug, thiserror::Error)]
 #[error("refusing to back up {path}: {reason}. Pick the game's own save folder inside it.")]
 pub struct UnsafeSource {
@@ -219,23 +217,23 @@ pub struct UnsafeSource {
     pub reason: String,
 }
 
-/// Ni un solo fichero de la carpeta se dejó leer.
+/// Not a single file in the folder could be read.
 ///
-/// El backup salta los ficheros ilegibles uno a uno ([`split_unreadable`]), pero
-/// cuando no queda ninguno no hay snapshot que subir: publicar una versión vacía
-/// borraría en la nube la última copia buena, igual que en [`EmptySource`]. La
-/// diferencia con ése es el motivo, y el motivo es lo único accionable: "está
-/// vacía" manda a mirar la ruta, "no se deja leer" manda a mirar el proveedor de
-/// archivos —el disparador conocido es OneDrive Files On-Demand con el
-/// proveedor parado, que deja los ficheros ahí, con su tamaño, y niega los
-/// bytes.
+/// The backup skips unreadable files one by one ([`split_unreadable`]), but when
+/// none is left there is no snapshot to upload: publishing an empty version would
+/// delete the last good copy in the cloud, just as in [`EmptySource`]. The
+/// difference from that one is the reason, and the reason is the only actionable
+/// part: "it is empty" sends you to check the path, "it will not be read" sends
+/// you to check the file provider. The known trigger is OneDrive Files On-Demand
+/// with the provider stopped, which leaves the files there, with their size, and
+/// denies the bytes.
 #[derive(Debug, thiserror::Error)]
 #[error("none of the {count} files in {path} could be read: {first}")]
 pub struct UnreadableSource {
     pub path: PathBuf,
     /// Cuántos ficheros enumeró el recorrido (todos ilegibles).
     pub count: usize,
-    /// El error del primero, que es el que explica al resto.
+    /// The first one's error, which is the one that explains the rest.
     pub first: String,
 }
 
@@ -256,9 +254,9 @@ pub struct UploadFile {
 
 /// What a per-save-cap trim left out of an upload. See
 /// [`upload_directory_cloud`]'s trim-and-retry: when a save's logical size
-/// exceeds the plan's per-save cap, the client uploads the newest files that
-/// fit and reports the omitted tail here so the UI can tell the user their
-/// plan isn't big enough (Free) — the backup succeeded, but *partial*.
+/// exceeds the plan's per-save cap, the client uploads the newest files that fit
+/// and reports the omitted tail here so the UI can tell the user their plan isn't
+/// big enough (Free). The backup succeeded, but it is *partial*.
 #[derive(Debug, Clone)]
 pub struct TrimInfo {
     pub kept_files: usize,
@@ -271,21 +269,21 @@ pub struct TrimInfo {
     pub limit_bytes: u64,
 }
 
-/// Recorta `working` a lo que quepa bajo `limit`, quedándose con los ficheros
-/// más nuevos, y describe lo que se quedó fuera.
+/// Trims `working` down to what fits under `limit`, keeping the newest files, and
+/// describes what was left out.
 ///
-/// `working` viene ordenado por mtime descendente, así que "lo que cabe" es
-/// también "lo más reciente": una carpeta de partidas enorme sube parcial en
-/// vez de fallar entera, y lo que se pierde es lo más viejo. Regla genérica a
-/// propósito —recencia y tamaño, cero conocimiento por juego—.
+/// `working` arrives sorted by descending mtime, so "what fits" is also "what is
+/// most recent": an enormous save folder uploads partially rather than failing
+/// whole, and what is lost is the oldest. A deliberately generic rule, recency
+/// and size, with zero per-game knowledge.
 ///
-/// `None` cuando ni el fichero más nuevo cabe: ahí no hay recorte posible y el
-/// llamante tiene que tratarlo como un "demasiado grande" terminal.
+/// `None` when not even the newest file fits: there no trim is possible and the
+/// caller has to treat it as a terminal "too large".
 ///
-/// Extraído para que el recorte preventivo (contra el tope ya conocido) y el
-/// reactivo (contra el 413) sean literalmente el mismo código: dos criterios
-/// que se separasen darían dos versiones distintas del mismo save según quién
-/// hubiera recortado.
+/// Extracted so the pre-emptive trim (against the already-known cap) and the
+/// reactive one (against the 413) are literally the same code: two criteria that
+/// drifted apart would give two different versions of the same save depending on
+/// which had done the trimming.
 fn trim_to_cap(working: &mut Vec<&UploadFile>, limit: u64, plan: &str) -> Option<TrimInfo> {
     let mut kept: Vec<&UploadFile> = Vec::new();
     let mut kept_bytes = 0u64;
@@ -311,19 +309,19 @@ fn trim_to_cap(working: &mut Vec<&UploadFile>, limit: u64, plan: &str) -> Option
     Some(info)
 }
 
-/// Un fichero que el recorrido enumeró pero cuyos bytes no se pueden leer.
+/// A file the walk enumerated but whose bytes cannot be read.
 ///
-/// No es un fallo del backup: es contenido que **esta** copia no puede llevarse.
-/// Viaja hasta el llamante porque una versión a la que le falta un fichero sin
-/// que el usuario se entere es peor que un error a la cara — se sube lo que se
-/// puede y se dice en voz alta lo que se ha quedado en tierra.
+/// Not a backup failure: it is content *this* copy cannot take. It travels up to
+/// the caller because a version missing a file without the user knowing is worse
+/// than an error in their face: upload what can be uploaded, and say out loud
+/// what stayed behind.
 #[derive(Debug, Clone)]
 pub struct UnreadableFile {
-    /// Ruta relativa dentro del save, con la misma forma que en [`UploadFile`].
+    /// The path relative to the save, in the same shape as in [`UploadFile`].
     pub relative_path: String,
-    /// El error del sistema tal cual. Es lo único que distingue un placeholder
-    /// de OneDrive sin hidratar de un permiso denegado o de un disco muriéndose,
-    /// así que se transporta entero hasta la UI.
+    /// The system error verbatim. It is the only thing that tells an unhydrated
+    /// OneDrive placeholder from a denied permission or a dying disk, so it is
+    /// carried whole up to the UI.
     pub error: String,
 }
 
@@ -333,51 +331,50 @@ pub struct UploadOutcome {
     pub snapshot: Snapshot,
     pub file_count: usize,
     pub total_bytes: u64,
-    /// Ficheros que el recorrido vio y la subida **no** pudo llevarse porque sus
-    /// bytes no se dejaron leer. Vacío en el caso normal. Que no esté vacío
-    /// significa que esta versión es parcial, y el llamante tiene que decirlo:
-    /// ver `AgentEvent::BackupFilesUnreadable`.
+    /// Files the walk saw and the upload could not take because their bytes would
+    /// not be read. Empty in the normal case. Non-empty means this version is
+    /// partial, and the caller has to say so: see
+    /// `AgentEvent::BackupFilesUnreadable`.
     pub unreadable: Vec<UnreadableFile>,
     /// `Some` when the save was too big for the plan's per-save cap and only
     /// its newest files were uploaded; `None` when the whole save went up.
     pub trimmed: Option<TrimInfo>,
-    /// **Nada se subió: este contenido ya estaba en el server** y `snapshot`
-    /// describe la versión que ya lo tenía (ADR 0021 D.8.3). Ver
+    /// Nothing was uploaded: this content was already on the server, and
+    /// `snapshot` describes the version that already had it (ADR 0021 D.8.3). See
     /// [`ServerHead`].
     pub landed: bool,
 }
 
-/// La cabeza que el server publica para un save: qué versión es y **qué
-/// contenido tiene**, como digest de su manifiesto.
+/// The head the server publishes for a save: which version it is and what content
+/// it has, as a digest of its manifest.
 ///
-/// Es lo que hace posible el anti-relanzamiento robusto a caídas de ADR 0021
-/// C.1: un flag local de "subida en curso" no sobrevive a un reinicio del
-/// daemon —y con el servicio, reiniciar es rutina—, así que la pregunta "¿hace
-/// falta subir esto?" se le hace **a la verdad del server**, que es
-/// content-addressed. Si el digest de lo que íbamos a subir es el de la cabeza,
-/// la subida anterior *aterrizó* y volver a subir sólo crearía una versión
-/// duplicada: mismo contenido, número nuevo, cuota gastada y un pull inútil en
-/// todos los demás equipos.
+/// It is what makes ADR 0021 C.1's crash-robust anti-relaunch possible: a local
+/// "upload in progress" flag does not survive a daemon restart, and with the
+/// service, restarting is routine, so the question "does this need uploading?" is
+/// asked of the server's truth, which is content-addressed. If the digest of what
+/// we were about to upload is the head's, the previous upload *landed* and
+/// uploading again would only create a duplicate version: same content, new
+/// number, quota spent and a pointless pull on every other machine.
 ///
-/// El digest lo trae el manifiesto de la nube (`latest_sha256`), que el motor ya
-/// pide por su cuenta (D.12), así que el chequeo no cuesta ni una petición.
+/// The digest arrives in the cloud manifest (`latest_sha256`), which the engine
+/// already fetches on its own (D.12), so the check costs not one request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerHead {
     pub version_num: i64,
-    /// Digest del manifiesto de esa versión, tal y como lo calcula el server.
-    /// Vacío = versión antigua (archivo entero, sin manifiesto por fichero): no
-    /// se puede comparar y no se compara.
+    /// The digest of that version's manifest, exactly as the server computes it.
+    /// Empty means an old version (a whole archive, with no per-file manifest):
+    /// it cannot be compared, and it is not.
     pub digest: String,
 }
 
 /// Outcome of a skip-aware backup ([`upload_directory_checked`]).
-// One value per backup run, moved straight to the caller — never stored in
+// One value per backup run, moved straight to the caller and never stored in
 // bulk, so the size gap between variants costs nothing worth a Box.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum BackupResult {
-    /// The cheap set signature matched the cached one — nothing was read or
-    /// uploaded. (Fast path.)
+    /// The cheap set signature matched the cached one, so nothing was read or
+    /// uploaded. The fast path.
     Skipped,
     /// The cheap signature drifted (the game rewrote its save files, bumping
     /// mtimes) but the actual bytes are identical to the last upload, so no
@@ -391,25 +388,24 @@ pub enum BackupResult {
         outcome: UploadOutcome,
         signature: String,
     },
-    /// **Ya estaba en el server**: el contenido local es, byte por byte, el de
-    /// la versión que la nube publica como cabeza (ADR 0021 D.8.3). No se subió
-    /// nada; el llamante adopta `version_num` como la versión a la que está
-    /// sincronizado y persiste `signature`.
+    /// It was already on the server: the local content is, byte for byte, that of
+    /// the version the cloud publishes as its head (ADR 0021 D.8.3). Nothing was
+    /// uploaded; the caller adopts `version_num` as the version it is synced to
+    /// and persists `signature`.
     ///
-    /// El caso que lo produce es un reinicio del daemon con una subida en
-    /// vuelo que sí llegó a comprometerse: el `in_flight` en memoria se perdió,
-    /// pero el contenido está arriba.
+    /// What produces it is a daemon restart with an upload in flight that did
+    /// commit: the in-memory `in_flight` was lost, but the content is up there.
     AlreadyLanded { version_num: i64, signature: String },
 }
 
-/// Cheap signature over the sorted `(relative_path, size, mtime)` set.
+/// A cheap signature over the sorted `(relative_path, size, mtime)` set.
 ///
-/// Deliberately *not* a content hash: it never reads file bytes, so it adds
-/// no IO on top of the directory walk. Two walks with identical paths, sizes
-/// and mtimes produce the same signature — which is exactly the "watcher
-/// settled but nothing was actually written" case we want to skip. It will
-/// not catch a rewrite that preserves size *and* mtime while changing bytes
-/// (rare for game saves), trading that corner for zero read overhead.
+/// Deliberately *not* a content hash: it never reads file bytes, so it adds no IO
+/// on top of the directory walk. Two walks with identical paths, sizes and mtimes
+/// produce the same signature, which is exactly the "watcher settled but nothing
+/// was actually written" case we want to skip. It will not catch a rewrite that
+/// preserves size *and* mtime while changing bytes (rare for game saves), trading
+/// that corner for zero read overhead.
 pub fn compute_set_signature(files: &[UploadFile]) -> String {
     let mut h = Sha256::new();
     for f in files {
@@ -427,21 +423,21 @@ pub fn compute_set_signature(files: &[UploadFile]) -> String {
     hex::encode(h.finalize())
 }
 
-/// Digest del manifiesto de una versión: **la identidad de contenido que el
-/// server publica** (`save_versions.sha256` de una versión content-addressed, y
-/// por tanto el `latest_sha256` del manifiesto de la nube).
+/// The digest of a version's manifest: the content identity the server publishes
+/// (`save_versions.sha256` for a content-addressed version, and therefore the
+/// cloud manifest's `latest_sha256`).
 ///
-/// Tiene que casar byte por byte con lo que hace el server al comprometer
-/// (`cas_commit`): sha256 sobre las filas del manifiesto ordenadas por ruta,
-/// cada una `ruta \0 sha \0 tamaño(le) \0`. Si esto se desviara, el chequeo de
-/// D.8.3 no encontraría nunca una coincidencia y volveríamos a subir de más — un
-/// fallo silencioso y caro, así que hay un test con un vector fijo.
+/// It has to match byte for byte what the server does on commit (`cas_commit`):
+/// sha256 over the manifest's rows sorted by path, each one
+/// `path \0 sha \0 size(le) \0`. If this drifted, D.8.3's check would never find
+/// a match and we would go back to uploading too much, a silent and expensive
+/// failure, so there is a test with a fixed vector.
 ///
-/// `files` debe venir ordenado por ruta (es lo que devuelve [`walk_source`]).
-/// Ordenar en Rust es orden de bytes y el server ordena en la base de datos, así
-/// que una intercalación distinta puede darles digests distintos para el mismo
-/// contenido: eso produce un falso negativo (subimos igual), nunca un falso
-/// positivo (dos digests iguales sólo salen del mismo flujo de bytes).
+/// `files` must arrive sorted by path (which is what [`walk_source`] returns).
+/// Sorting in Rust is byte order and the server sorts in the database, so a
+/// different collation can give them different digests for the same content: that
+/// produces a false negative (we upload anyway), never a false positive (two
+/// equal digests only come out of the same byte stream).
 pub fn manifest_digest<'a>(files: impl Iterator<Item = (&'a str, &'a str, i64)>) -> String {
     let mut h = Sha256::new();
     for (path, sha, size) in files {
@@ -455,34 +451,33 @@ pub fn manifest_digest<'a>(files: impl Iterator<Item = (&'a str, &'a str, i64)>)
     hex::encode(h.finalize())
 }
 
-/// Lo que entra en el digest de contenido en el sitio de los bytes de un fichero
-/// que no se deja leer. Un valor cualquiera que no puede ser un prefijo de
-/// contenido real, para que "ilegible" y "vacío" nunca den el mismo digest.
+/// What goes into the content digest in place of the bytes of a file that will
+/// not be read. An arbitrary value that cannot be a prefix of real content, so
+/// "unreadable" and "empty" never give the same digest.
 const UNREADABLE_MARKER: &[u8] = b"\x01hoard:unreadable\x01";
 
-/// Content signature over the sorted `(relative_path, bytes)` set.
+/// A content signature over the sorted `(relative_path, bytes)` set.
 ///
-/// Unlike [`compute_set_signature`] this *reads every file*, so it's only used
-/// as a fallback when the cheap signature drifted: many games (and some
-/// background launchers / cloud-sync daemons) rewrite save files on a timer,
-/// bumping the mtime without changing a single byte. The cheap check would
-/// treat that as a change and cut a redundant snapshot every few hours; this
-/// confirms whether the bytes actually moved before we upload.
+/// Unlike [`compute_set_signature`] this *reads every file*, so it is only used as
+/// a fallback when the cheap signature drifted: many games, and some background
+/// launchers and cloud-sync daemons, rewrite save files on a timer, bumping the
+/// mtime without changing a single byte. The cheap check would treat that as a
+/// change and cut a redundant snapshot every few hours; this confirms whether the
+/// bytes actually moved before we upload.
 ///
-/// **Un fichero ilegible no tumba la pasada**: se salta con un aviso y entra en
-/// el digest por [`UNREADABLE_MARKER`] en vez de por sus bytes. La asimetría
-/// anterior era el bug: [`walk_source`] ya salta a propósito lo que no puede
-/// interrogar —"one unreadable transient file shouldn't lose the backup of
-/// everything else"— y esta pasada propagaba cualquier error de lectura con `?`,
-/// así que un solo fichero perdía el snapshot entero. Caso real: un placeholder
-/// de OneDrive Files On-Demand ("the cloud file provider is not running") dentro
-/// de un save de GTA San Andreas Definitive; 3.934 intentos en 13 días y ni una
-/// versión subida.
+/// An unreadable file does not bring the pass down: it is skipped with a warning
+/// and enters the digest through [`UNREADABLE_MARKER`] rather than through its
+/// bytes. The earlier asymmetry was the bug: [`walk_source`] already skips what it
+/// cannot interrogate, on purpose ("one unreadable transient file shouldn't lose
+/// the backup of everything else"), and this pass propagated any read error with
+/// `?`, so a single file lost the whole snapshot. A real case: a OneDrive Files
+/// On-Demand placeholder ("the cloud file provider is not running") inside one
+/// game's save; 3,934 attempts in 13 days and not one version uploaded.
 ///
-/// El marcador —y no simplemente omitir la ruta— mantiene el digest **estable**
-/// mientras el fichero siga ilegible, que es lo que hace que no se reintente en
-/// bucle, y lo cambia en cuanto vuelve a leerse, que es exactamente cuando hay
-/// que volver a subir.
+/// The marker, rather than simply omitting the path, keeps the digest stable while
+/// the file stays unreadable, which is what stops it retrying in a loop, and
+/// changes it the moment it can be read again, which is exactly when it has to be
+/// uploaded again.
 async fn compute_content_signature(files: &[UploadFile]) -> String {
     use tokio::io::AsyncReadExt;
     let mut h = Sha256::new();
@@ -490,11 +485,11 @@ async fn compute_content_signature(files: &[UploadFile]) -> String {
     for f in files {
         h.update(f.relative_path.as_bytes());
         h.update([0u8]);
-        // Los bytes se vuelcan al hash según llegan, igual que siempre: un save
-        // de 2 GB no se materializa en RAM para firmarlo. Un fallo a mitad deja
-        // en `h` el trozo que sí se leyó y luego el marcador, y eso no encalla
-        // nada: quien decide si hay que re-leer es la firma *barata*, que sólo
-        // mira rutas, tamaños y mtimes y no depende de esto.
+        // The bytes are poured into the hash as they arrive, as always: a 2 GB
+        // save is not materialised in RAM to sign it. A failure halfway leaves in
+        // `h` the part that was read plus the marker, and that stalls nothing:
+        // what decides whether to re-read is the *cheap* signature, which only
+        // looks at paths, sizes and mtimes and does not depend on this.
         let read = async {
             let mut file = tokio::fs::File::open(&f.absolute_path)
                 .await
@@ -525,26 +520,26 @@ async fn compute_content_signature(files: &[UploadFile]) -> String {
     hex::encode(h.finalize())
 }
 
-/// Aparta los ficheros cuyos bytes no se pueden leer **ahora mismo**, para que
-/// la subida se lleve todo lo demás.
+/// Sets aside the files whose bytes cannot be read right now, so the upload can
+/// take everything else.
 ///
-/// Es la otra mitad de la tolerancia de [`compute_content_signature`]: aquélla
-/// evita que un ilegible tumbe la firma, y ésta evita que tumbe la
-/// transferencia. Sin ella el fichero seguiría en la lista y reventaría más
-/// abajo, en el tar del camino de nube o en el hasheo del CAS, que es donde
-/// estaba media avería.
+/// It is the other half of [`compute_content_signature`]'s tolerance: that one
+/// stops an unreadable file bringing the signature down, and this one stops it
+/// bringing the transfer down. Without it the file would stay in the list and blow
+/// up further along, in the cloud path's tar or in the CAS hashing, which is where
+/// half the fault lived.
 ///
-/// Se comprueba abriendo **y leyendo** el primer bloque, no sólo abriendo:
-/// algunos proveedores de ficheros bajo demanda dejan abrir el handle y fallan
-/// en la primera lectura. Cuesta un `open` por fichero encima del que hará la
-/// subida, y sólo en el camino de subida —nunca en el muestreo L1 del motor, ni
-/// en el restore, ni en la vista previa—, porque abrir un placeholder es lo que
-/// dispara su hidratación: forzar eso en cada tick bajaría la carpeta entera
-/// desde la nube del usuario para calcular un fingerprint.
+/// It is checked by opening *and reading* the first block, not just opening: some
+/// on-demand file providers let the handle open and fail on the first read. It
+/// costs one `open` per file on top of the one the upload will do, and only on the
+/// upload path, never in the engine's L1 sampling, the restore or the preview,
+/// because opening a placeholder is what triggers its hydration: forcing that on
+/// every tick would pull the whole folder down from the user's cloud to compute a
+/// fingerprint.
 ///
-/// Conserva el orden de entrada (`buffered`, no `buffer_unordered`): la lista
-/// viene ordenada por ruta desde [`walk_source`] y el digest del manifiesto
-/// depende de ese orden.
+/// It preserves the input order (`buffered`, not `buffer_unordered`): the list
+/// arrives sorted by path from [`walk_source`] and the manifest's digest depends
+/// on that order.
 async fn split_unreadable(files: Vec<UploadFile>) -> (Vec<UploadFile>, Vec<UnreadableFile>) {
     let probes = files.into_iter().map(|f| {
         async move {
@@ -580,7 +575,7 @@ async fn split_unreadable(files: Vec<UploadFile>) -> (Vec<UploadFile>, Vec<Unrea
     (readable, unreadable)
 }
 
-/// ¿Se pueden leer los bytes de este fichero? Abre y lee un byte.
+/// Can this file's bytes be read? It opens and reads one byte.
 async fn probe_readable(path: &Path) -> Result<()> {
     let mut file = tokio::fs::File::open(path)
         .await
@@ -611,33 +606,33 @@ fn join_signature(cheap: &str, content: &str) -> String {
     format!("{cheap}:{content}")
 }
 
-/// Recorre `root` y devuelve los ficheros que **son dato de partida**.
+/// Walks `root` and returns the files that are save data.
 ///
-/// `shields` son los patrones de fichero que el manifiesto declara para este
-/// juego ([`crate::savefilter::shields_for_slug`]); pasar `&[]` deja al kernel
-/// decidiendo sólo por nombre. Lo que
-/// [`fileclass::classify`](hoard_core::kernel::fileclass::classify) marque como
-/// [`Junk`](hoard_core::kernel::fileclass::FileClass::Junk) —basura del SO,
-/// temporales, volcados de crash, telemetría del motor, cerrojos que el juego
-/// tiene abiertos— no entra en el snapshot. La configuración sí entra: es en el
-/// restore donde se decide si se escribe (ver `RestoreOptions::gate`).
+/// `shields` are the file patterns the manifest declares for this game
+/// ([`crate::savefilter::shields_for_slug`]); passing `&[]` leaves the kernel
+/// deciding by name alone. Whatever
+/// [`fileclass::classify`](hoard_core::kernel::fileclass::classify) marks as
+/// [`Junk`](hoard_core::kernel::fileclass::FileClass::Junk) (OS litter,
+/// temporaries, crash dumps, engine telemetry, locks the game holds open) does not
+/// go into the snapshot. Config does: it is on the restore that whether to write
+/// it gets decided (see `RestoreOptions::gate`).
 ///
-/// **Todo el mundo tiene que pasar por aquí con los mismos `shields`.** La
-/// firma barata de [`compute_set_signature`] se calcula sobre esta lista, y el
-/// muestreo L1 del motor (`observe_local_fingerprint`) la compara contra la que
-/// guardó el backup: dos filtros distintos dan dos firmas distintas para la
-/// misma carpeta quieta, el reductor ve un cambio pendiente que nunca se
-/// resuelve y queda un bucle caliente.
+/// Everybody has to come through here with the same `shields`.
+/// [`compute_set_signature`]'s cheap signature is computed over this list, and the
+/// engine's L1 sampling (`observe_local_fingerprint`) compares it against the one
+/// the backup stored: two different filters give two different signatures for the
+/// same quiet folder, the reducer sees a pending change that never resolves, and
+/// there is a hot loop.
 ///
-/// Symlinks are skipped on purpose: we don't want to follow links out of the
-/// save directory, and tar archives with symlinks make restore ambiguous.
+/// Symlinks are skipped on purpose: we don't want to follow links out of the save
+/// directory, and tar archives with symlinks make restore ambiguous.
 pub fn walk_source(root: &Path, shields: &[String]) -> Result<Vec<UploadFile>> {
-    // Save de fichero suelto: el `local_path` ES el fichero. Sale un único
-    // `UploadFile` con su nombre base como ruta relativa, de modo que el
-    // snapshot tiene exactamente la misma forma que el de una carpeta con un
-    // fichero dentro — y todo lo de aguas abajo (firma, dedup, restore) sigue
-    // funcionando sin enterarse. Más de 8.000 entradas del manifiesto son así:
-    // `<winAppData>/Game/save.dat`, `<base>/140.sav`.
+    // A single-file save: the `local_path` IS the file. One `UploadFile` comes out
+    // with its base name as the relative path, so the snapshot has exactly the
+    // same shape as one from a folder with one file in it, and everything
+    // downstream (signature, dedup, restore) carries on unaware. Over 8,000
+    // manifest entries look like this: `<winAppData>/Game/save.dat`,
+    // `<base>/140.sav`.
     if root.is_file() {
         let meta =
             std::fs::metadata(root).with_context(|| format!("reading {}", root.display()))?;
@@ -645,10 +640,10 @@ pub fn walk_source(root: &Path, shields: &[String]) -> Result<Vec<UploadFile>> {
             .file_name()
             .and_then(|s| s.to_str())
             .ok_or_else(|| anyhow!("save file has no usable name: {}", root.display()))?;
-        // Un save de fichero suelto ES el fichero: la ruta se eligió apuntando
-        // a él, así que aquí no se clasifica nada. Filtrarlo dejaría el save
-        // vacío y el backup entero en `EmptySource` — el usuario señaló ese
-        // fichero, y eso pesa más que cualquier regla por nombre.
+        // A single-file save IS the file: the path was chosen by pointing at it,
+        // so nothing is classified here. Filtering it would leave the save empty
+        // and the whole backup in `EmptySource`. The user pointed at that file,
+        // and that outweighs any rule by name.
         return Ok(vec![UploadFile {
             relative_path: name.to_string(),
             absolute_path: root.to_path_buf(),
@@ -660,14 +655,14 @@ pub fn walk_source(root: &Path, shields: &[String]) -> Result<Vec<UploadFile>> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        // Un subdirectorio ilegible se salta; sólo la raíz es error duro.
+        // An unreadable subdirectory is skipped; only the root is a hard error.
         //
-        // Antes esto era `?` para cualquier nivel, así que UNA carpeta sin
-        // permiso abortaba el backup entero del juego. En Windows es la norma,
-        // no la excepción: las junctions legacy del perfil
-        // (`AppData\Local\Application Data`, que apunta a su propio padre)
-        // devuelven acceso denegado y además son un ciclo. Perder una
-        // subcarpeta ilegible es infinitamente mejor que perder el backup.
+        // This used to be a `?` at any level, so ONE folder without permission
+        // aborted the game's whole backup. On Windows that is the norm rather than
+        // the exception: the profile's legacy junctions
+        // (`AppData\Local\Application Data`, which points at its own parent)
+        // return access denied and are a cycle into the bargain. Losing an
+        // unreadable subfolder is infinitely better than losing the backup.
         let read = match std::fs::read_dir(&dir) {
             Ok(r) => r,
             Err(e) if dir != root => {
@@ -679,8 +674,8 @@ pub fn walk_source(root: &Path, shields: &[String]) -> Result<Vec<UploadFile>> {
             }
         };
         for entry in read {
-            // Igual que arriba: una entrada que desaparece o no se puede
-            // interrogar a mitad del paseo no invalida el resto.
+            // As above: an entry that vanishes or cannot be interrogated
+            // mid-walk does not invalidate the rest.
             let Ok(entry) = entry else { continue };
             let path = entry.path();
             let Ok(ft) = entry.file_type() else {
@@ -695,14 +690,14 @@ pub fn walk_source(root: &Path, shields: &[String]) -> Result<Vec<UploadFile>> {
                     .map_err(|e| anyhow!("strip_prefix: {e}"))?
                     .to_string_lossy()
                     .replace('\\', "/");
-                // Lo que no es dato de partida no entra en el snapshot.
+                // What is not save data does not go into the snapshot.
                 if !fileclass::classify(&rel, shields).is_backed_up() {
                     tracing::debug!(path = %rel, "skipping non-save file");
                     continue;
                 }
                 // A file we can't stat (locked, vanished mid-walk, permission)
                 // is skipped with a warning rather than failing the whole
-                // upload — one unreadable transient file shouldn't lose the
+                // upload: one unreadable transient file shouldn't lose the
                 // backup of everything else.
                 let meta = match entry.metadata() {
                     Ok(m) => m,
@@ -728,31 +723,30 @@ pub fn walk_source(root: &Path, shields: &[String]) -> Result<Vec<UploadFile>> {
 /// Upload a directory as a new snapshot for `save_id`.
 ///
 /// `progress(uploaded, total)` is called once per file as it's added to the
-/// multipart form. Both values are byte counts. The callback is `Fn` so the
-/// caller can wire any UI on top.
+/// multipart form. Both values are byte counts. The callback is `Fn` so the caller
+/// can wire any UI on top.
 ///
-/// `game_slug` and `label` are only consulted on the Hoard Cloud path, where
-/// the server keys the save row on `(user_id, game_slug, label)` and the
-/// snapshot list endpoints don't exist. They're ignored self-hosted.
+/// `game_slug` and `label` are only consulted on the Hoard Cloud path, where the
+/// server keys the save row on `(user_id, game_slug, label)` and the snapshot list
+/// endpoints don't exist. They're ignored self-hosted.
 ///
-/// **Un fichero cuyos bytes no se dejan leer se queda fuera y se reporta**, en
-/// vez de perder el snapshot entero. De las dos salidas posibles —saltar el
-/// fichero o aparcar el save— se elige saltar, porque aparcar es exactamente el
-/// estado del que se viene: el caso que lo destapó (un placeholder de OneDrive
-/// Files On-Demand con el proveedor parado, dentro de un save de GTA San Andreas
-/// Definitive) llevaba 13 días y 3.934 intentos sin subir **nada**, y la causa
-/// puede durar semanas. Vale más la partida entera menos un fichero que ninguna
-/// partida.
+/// A file whose bytes will not be read is left out and reported, rather than
+/// losing the whole snapshot. Of the two possible outcomes, skipping the file or
+/// parking the save, skipping wins, because parking is exactly the state we came
+/// from: the case that exposed it (a OneDrive Files On-Demand placeholder with the
+/// provider stopped, inside one game's save) had gone 13 days and 3,934 attempts
+/// uploading nothing, and the cause can last weeks. A whole save minus one file is
+/// worth more than no save.
 ///
-/// El precio de esa elección se paga entero en [`UploadOutcome::unreadable`]: la
-/// versión es parcial y quien la publica **tiene** que decirlo (el motor emite
-/// `AgentEvent::BackupFilesUnreadable` y la UI deja un aviso pegajoso en la
-/// tarjeta del juego). Una versión incompleta en silencio no es una opción: sólo
-/// se descubriría al restaurar.
+/// The price of that choice is paid in full in [`UploadOutcome::unreadable`]: the
+/// version is partial and whoever publishes it has to say so (the engine emits
+/// `AgentEvent::BackupFilesUnreadable` and the UI leaves a sticky warning on the
+/// game's card). A silently incomplete version is not an option: it would only be
+/// discovered on a restore.
 ///
-/// Si no queda **ningún** fichero legible no se sube nada
-/// ([`UnreadableSource`]): publicar una versión vacía borraría en la nube la
-/// última copia buena.
+/// If not a single readable file is left, nothing is uploaded
+/// ([`UnreadableSource`]): publishing an empty version would delete the last good
+/// copy in the cloud.
 #[allow(clippy::too_many_arguments)]
 pub async fn upload_directory<F>(
     client: &ApiClient,
@@ -773,8 +767,8 @@ where
     let source = source
         .canonicalize()
         .with_context(|| format!("source path does not exist: {}", source.display()))?;
-    // Una carpeta o un fichero suelto; cualquier otra cosa (un socket, un
-    // dispositivo) no es un save.
+    // A folder or a single file; anything else (a socket, a device) is not a
+    // save.
     if !source.is_dir() && !source.is_file() {
         bail!("source must be a folder or a file: {}", source.display());
     }
@@ -783,15 +777,15 @@ where
     if files.is_empty() {
         return Err(EmptySource { path: source }.into());
     }
-    // Un fichero que no se deja leer sale de la lista aquí, en el ÚNICO sitio por
-    // el que pasan los cuatro caminos de subida (nube, CAS, pack, multipart), de
-    // modo que ninguno se lo encuentra a mitad de la transferencia. Lo que se
-    // quede fuera viaja en el `UploadOutcome` para que el llamante lo cuente: una
-    // versión incompleta en silencio es el resultado que no vale.
+    // A file that will not be read leaves the list here, at the ONE point all four
+    // upload paths (cloud, CAS, pack, multipart) pass through, so none of them
+    // meets it mid-transfer. Whatever is left out travels in the `UploadOutcome`
+    // so the caller can report it: a silently incomplete version is the outcome
+    // that does not count.
     let (files, unreadable) = split_unreadable(files).await;
     if files.is_empty() {
-        // No queda nada legible: subir aquí publicaría una versión vacía y
-        // borraría en la nube la última copia buena.
+        // Nothing readable is left: uploading here would publish an empty version
+        // and delete the last good copy in the cloud.
         let first = unreadable
             .first()
             .map(|u| u.error.clone())
@@ -806,23 +800,23 @@ where
     let total_bytes: u64 = files.iter().map(|f| f.size_bytes).sum();
     let file_count = files.len();
 
-    // Elegir protocolo exige SABER cuál habla el servidor, no suponerlo.
-    // `is_cloud()` colapsa "self-hosted" y "la sonda de `/v1/health` falló" en
-    // el mismo `false` — cómodo para un adorno de UI, veneno aquí: con la sonda
-    // caída se toma la rama self-hosted y se sube contra
-    // `/v1/saves/:id/snapshots`, que en cloud **no existe**. El usuario ve
-    // «uploading snapshot: not found (404)» y se va a buscar un save borrado
-    // que está perfectamente. Reportado ago-2026, y el disparador es de lo más
-    // corriente: la máquina de Fly se apaga por inactividad y la sonda pilla el
-    // arranque en frío.
+    // Choosing a protocol requires KNOWING which one the server speaks, not
+    // assuming it. `is_cloud()` collapses "self-hosted" and "the `/v1/health`
+    // probe failed" into the same `false`, which is convenient for a UI ornament
+    // and poison here: with the probe down it takes the self-hosted branch and
+    // uploads against `/v1/saves/:id/snapshots`, which does not exist on cloud.
+    // The user sees "uploading snapshot: not found (404)" and goes looking for a
+    // deleted save that is perfectly fine. Reported aug-2026, and the trigger is
+    // as ordinary as it gets: the Fly machine sleeps on inactivity and the probe
+    // catches the cold start.
     //
-    // Sin sonda resuelta no se elige: se falla como lo que es —el servidor no
-    // está localizable— y el backoff de siempre lo reintenta.
+    // With no resolved probe nothing is chosen: it fails as what it is, the server
+    // not being reachable, and the usual backoff retries it.
     //
-    // Las dos llamadas hacen falta y no son redundantes: `server_mode()` es
-    // quien **sondea y cachea** (su propio `None` es igual de ambiguo, porque
-    // se traga el error), y `probed_is_cloud()` es quien luego da la respuesta
-    // honesta — sólo devuelve `Some` si hubo una sonda con éxito.
+    // Both calls are needed and not redundant: `server_mode()` is what probes and
+    // caches (its own `None` is just as ambiguous, because it swallows the error),
+    // and `probed_is_cloud()` is what then gives the honest answer, returning
+    // `Some` only when a probe succeeded.
     let _ = client.server_mode().await;
     let Some(is_cloud) = client.probed_is_cloud() else {
         bail!(
@@ -852,12 +846,13 @@ where
         return Ok(outcome);
     }
 
-    // Self-hosted que sepa negociar el contenido: se le declara el manifiesto y
-    // sólo viajan los blobs que no tenga. El multipart de aquí abajo se queda
-    // para los servers anteriores a la 1.1.3, que no anuncian la capacidad.
+    // A self-hosted server that can negotiate content: the manifest is declared to
+    // it and only the blobs it lacks travel. The multipart below stays for servers
+    // older than 1.1.3, which do not advertise the capability.
     //
-    // La condición es `Some(true)`, no `unwrap_or(false)`: un `None` significa
-    // que la sonda no ha resuelto, y ese caso ya lo cortó el `bail!` de arriba.
+    // The condition is `Some(true)`, not `unwrap_or(false)`: a `None` means the
+    // probe has not resolved, and that case was already cut off by the `bail!`
+    // above.
     if client.probed_supports_cas() == Some(true) {
         let mut outcome = upload_directory_cas(
             client,
@@ -873,11 +868,11 @@ where
         return Ok(outcome);
     }
 
-    // Ingesta adaptativa por forma del save (ADR 0019): muchos archivos
-    // pequeños viajan mejor como un único tar (un round-trip, un handle) que
-    // como N partes multipart. El umbral es por número de archivos; el server
-    // desempaqueta el campo `pack` y deduplica por-archivo igual que el modo
-    // normal, así que el modelo de almacenamiento no cambia.
+    // Adaptive ingest by save shape (ADR 0019): many small files travel better as
+    // a single tar (one round trip, one handle) than as N multipart parts. The
+    // threshold is on file count; the server unpacks the `pack` field and dedups
+    // per file exactly as in the normal mode, so the storage model does not
+    // change.
     const PACK_THRESHOLD: usize = 500;
 
     let mut form = multipart::Form::new();
@@ -886,24 +881,23 @@ where
     if let Some(b) = base_version {
         form = form.text("base_version", b.to_string());
     }
-    // Quién sube. La columna existe desde el primer día y el server la guarda y
-    // la devuelve; lo que faltaba era que alguien la rellenara, así que el
-    // historial no podía distinguir dos máquinas sincronizando la misma
-    // partida.
+    // Who uploads. The column has existed since day one and the server stores and
+    // returns it; what was missing was somebody filling it in, so the history could
+    // not tell two machines syncing the same save apart.
     if let Some(device) = crate::logship::device_name() {
         form = form.text("device_name", device);
     }
-    // Origen de la versión: el server acepta este campo desde siempre y nadie
-    // lo rellenaba. Sin él la retención no puede distinguir la copia que el
-    // usuario hizo antes del jefe de las cuarenta que hizo el temporizador.
+    // The version's origin: the server has always accepted this field and nobody
+    // filled it in. Without it retention cannot tell the copy the user made before
+    // the boss from the forty the timer made.
     if let Some(note) = origin.as_note() {
         form = form.text("notes", note);
     }
     progress(0, total_bytes);
 
     if file_count > PACK_THRESHOLD {
-        // Build the tar on the fly through an in-memory pipe and stream it as
-        // the request body — never materialising the whole archive in RAM.
+        // Build the tar on the fly through an in-memory pipe and stream it as the
+        // request body, never materialising the whole archive in RAM.
         let (writer, reader) = tokio::io::duplex(256 * 1024);
         let files_for_tar = files.clone();
         tokio::spawn(async move {
@@ -995,21 +989,21 @@ async fn hash_manifest(files: &[UploadFile]) -> Result<HashMap<&str, String>> {
         .await
 }
 
-/// Subida self-hosted direccionada por contenido: hashear → declarar el
-/// manifiesto → subir sólo los blobs que al server le falten → confirmar.
+/// Self-hosted content-addressed upload: hash, declare the manifest, upload only
+/// the blobs the server is missing, commit.
 ///
-/// Es el mismo trato que [`upload_directory_cloud`] con una diferencia que
-/// manda: los bytes van **al server**, no a un bucket. Self-hosted no firma URLs
-/// (ADR 0020) porque detrás puede haber disco, MinIO o un `rclone serve s3`
-/// sobre OneDrive; el server siempre está en medio. A cambio, self-hosted no
-/// tiene plan ni tope por partida, así que aquí no hay recorte-y-reintento.
+/// It is the same deal as [`upload_directory_cloud`] with one difference that
+/// governs everything: the bytes go to the server, not to a bucket. Self-hosted
+/// signs no URLs (ADR 0020) because behind it there may be a disk, MinIO or an
+/// `rclone serve s3` over OneDrive; the server is always in the middle. In
+/// exchange, self-hosted has no plan and no per-save cap, so there is no
+/// trim-and-retry here.
 ///
-/// Lo que esto le quita a un self-hoster es la subida repetida: hasta la 1.1.2
-/// una copia mandaba la carpeta entera aunque el server ya tuviera el contenido
-/// —deduplicaba al guardar, no al transmitir—, así que una partida de 3 GB que
-/// cambia 10 MB costaba 3 GB de subida, y por el camino chocaba contra
-/// `max_snapshot_size_mb` y contra el límite de cuerpo de cualquier proxy que
-/// hubiera delante.
+/// What this takes away from a self-hoster is the repeated upload: until 1.1.2 a
+/// copy sent the whole folder even when the server already had the content, since
+/// it deduplicated on store rather than in transit, so a 3 GB save with 10 MB of
+/// changes cost 3 GB of upload and ran into `max_snapshot_size_mb` and any
+/// proxy's body limit along the way.
 async fn upload_directory_cas<F>(
     client: &ApiClient,
     save_id: &str,
@@ -1053,7 +1047,7 @@ where
         .await
         .context("cas init")?;
 
-    // Varios ficheros con el mismo contenido comparten blob: se sube una vez.
+    // Several files with the same content share a blob: it is uploaded once.
     let mut by_sha: HashMap<&str, &UploadFile> = HashMap::new();
     for f in files {
         by_sha
@@ -1061,9 +1055,8 @@ where
             .or_insert(f);
     }
 
-    // Resolver cada blob que falta a su fichero de origen **antes** de mover un
-    // byte, para que un manifiesto que no cuadra aborte de entrada y no a media
-    // subida.
+    // Resolve each missing blob to its source file before a byte moves, so a
+    // manifest that does not add up aborts at the start rather than mid-upload.
     let mut pending: Vec<(&UploadFile, String)> = Vec::with_capacity(init.missing.len());
     for blob in &init.missing {
         let Some(f) = by_sha.get(blob.sha256.as_str()) else {
@@ -1089,8 +1082,8 @@ where
         "self-hosted upload negotiated: only the missing blobs travel"
     );
 
-    // La barra mide lo que de verdad se transmite, no el tamaño de la partida:
-    // es la cifra que el usuario está esperando.
+    // The bar measures what really travels, not the save's size: that is the
+    // figure the user is waiting on.
     let denom = upload_total.max(1);
     let uploaded = AtomicU64::new(0);
     // Shared across every worker: the pacer waits are the same queue, so the
@@ -1119,10 +1112,11 @@ where
                         )
                         .await
                         .with_context(|| format!("uploading {}", f.relative_path))?;
-                    // El server rechaza un blob cuyo contenido no case con su sha,
-                    // así que aquí ya no puede colarse contenido cruzado. Se
-                    // comprueba igual para dar el mensaje bueno —"el juego rotó el
-                    // save mientras subía"— en vez del 400 crudo del server.
+                    // The server rejects a blob whose content does not match its
+                    // sha, so cross-contaminated content can no longer slip
+                    // through here. It is checked anyway to give the good message
+                    // ("the game rotated the save mid-upload") rather than the
+                    // server's raw 400.
                     {
                         let sent = sent.lock().map_err(|_| anyhow!("upload hasher poisoned"))?;
                         verify_sent(&f.relative_path, &sha, f.size_bytes, &sent)?;
@@ -1161,21 +1155,22 @@ where
         snapshot,
         file_count: files.len(),
         total_bytes,
-        // Lo rellena `upload_directory`, que es quien aparta los ilegibles.
+        // Filled in by `upload_directory`, which is what sets the unreadable ones
+        // aside.
         unreadable: Vec::new(),
-        // Sin plan no hay tope por partida que recortar.
+        // With no plan there is no per-save cap to trim against.
         trimmed: None,
         landed: false,
     })
 }
 
-/// Hoard Cloud upload (content-addressed): hash each file → declare manifest
-/// → upload only the blobs the server is missing → commit.
+/// Hoard Cloud upload (content-addressed): hash each file, declare the manifest,
+/// upload only the blobs the server is missing, commit.
 ///
-/// Unlike the old archive path this never packs the whole save: each file is
-/// its own R2 object keyed by its whole-file SHA-256, so a 600 MB save the
-/// game rewrote in place with 10 MB of real change costs a 10 MB upload. Files
-/// are never decompressed — the game's `.v3`/zip blobs are deduped whole.
+/// Unlike the old archive path this never packs the whole save: each file is its
+/// own R2 object keyed by its whole-file SHA-256, so a 600 MB save the game
+/// rewrote in place with 10 MB of real change costs a 10 MB upload. Files are
+/// never decompressed; the game's `.v3` and zip blobs are deduped whole.
 #[allow(clippy::too_many_arguments)]
 async fn upload_directory_cloud<F>(
     client: &ApiClient,
@@ -1194,18 +1189,18 @@ where
 {
     progress(0, total_bytes);
 
-    // 1. Whole-file SHA-256 of every file — the dedup key. Hashed once up
-    //    front and cached by path so a per-save-cap trim-and-retry (below)
-    //    doesn't re-read the files.
+    // 1. Whole-file SHA-256 of every file, the dedup key. Hashed once up front and
+    //    cached by path so a per-save-cap trim-and-retry (below) does not re-read
+    //    the files.
     let sha_by_path = hash_manifest(files).await?;
 
-    // 1b. **¿Ya está arriba?** (ADR 0021 D.8.3.) Con los hashes ya calculados,
-    // preguntarle a la verdad del server si este contenido exacto es su cabeza
-    // no cuesta ni una petición ni una lectura más — y si lo es, la subida que
-    // un reinicio del daemon dejó a medias sí llegó a comprometerse, así que
-    // subir otra vez sólo crearía una versión duplicada (cuota, ops de R2 y un
-    // pull inútil en los demás equipos). Anti-relanzamiento contra el server,
-    // no contra un flag local que no sobrevive a un reinicio.
+    // 1b. Is it already up there? (ADR 0021 D.8.3.) With the hashes already
+    // computed, asking the server's truth whether this exact content is its head
+    // costs neither a request nor another read, and if it is, the upload a daemon
+    // restart left half done did commit, so uploading again would only create a
+    // duplicate version (quota, R2 ops and a pointless pull on every other
+    // machine). Anti-relaunch against the server, not against a local flag that
+    // does not survive a restart.
     if let Some(head) = head.filter(|h| !h.digest.is_empty()) {
         let digest = manifest_digest(files.iter().map(|f| {
             (
@@ -1218,7 +1213,7 @@ where
             tracing::info!(
                 save_id,
                 version_num = head.version_num,
-                "cloud upload skipped — this exact content is already the server's head"
+                "cloud upload skipped: this exact content is already the server's head"
             );
             return Ok(UploadOutcome {
                 snapshot: landed_snapshot(save_id, head, files.len(), total_bytes),
@@ -1231,24 +1226,23 @@ where
         }
     }
 
-    // Working set, newest first, so if the save is too big for the plan's
-    // per-save cap we keep the most recent saves and drop the oldest — a
-    // generic rule (recency + size only, no per-game knowledge) that lets a
-    // huge Paradox `save games` folder back up *partially* instead of failing
-    // whole. `trimmed` records what was left out for the UI's "your plan isn't
-    // big enough" nudge.
+    // Working set, newest first, so if the save is too big for the plan's per-save
+    // cap we keep the most recent saves and drop the oldest: a generic rule
+    // (recency and size only, no per-game knowledge) that lets a huge Paradox
+    // `save games` folder back up *partially* instead of failing whole. `trimmed`
+    // records what was left out for the UI's "your plan isn't big enough" nudge.
     let mut working: Vec<&UploadFile> = files.iter().collect();
     working.sort_by_key(|f| std::cmp::Reverse(f.modified));
     let mut trimmed: Option<TrimInfo> = None;
 
-    // Recorte PREVENTIVO: si ya sabemos el tope de este plan, no hace falta que
-    // el servidor nos lo recuerde otra vez.
+    // The pre-emptive trim: if we already know this plan's cap, the server does not
+    // need to remind us again.
     //
-    // El tope sólo se aprende siendo rechazado —no hay endpoint que lo diga—,
-    // así que la primera copia grande de la sesión sigue costando un 413. Las
-    // demás no: se recortan aquí y suben a la primera. Es la diferencia entre
-    // preguntar una vez y preguntar en cada autoguardado, que es lo que
-    // convirtió a cinco usuarios en 12.996 rechazos semanales.
+    // The cap is only learned by being refused, since no endpoint states it, so the
+    // session's first big copy still costs a 413. The rest do not: they are trimmed
+    // here and go up first time. It is the difference between asking once and
+    // asking on every autosave, which is what turned five users into 12,996
+    // refusals a week.
     if let Some(cap) = client.plan_cap() {
         if total_bytes > cap.limit_bytes {
             if let Some(info) = trim_to_cap(&mut working, cap.limit_bytes, &cap.plan) {
@@ -1326,12 +1320,13 @@ where
                 let Some(detail) = cap else {
                     return Err(e).context("cloud cas init");
                 };
-                // Apúntalo antes de nada: aunque este recorte falle, la próxima
-                // copia ya no tendrá que preguntar.
+                // Record it before anything else: even if this trim fails, the
+                // next copy will not have to ask.
                 client.remember_plan_cap(detail.limit_bytes, &detail.plan);
                 let Some(info) = trim_to_cap(&mut working, detail.limit_bytes, &detail.plan) else {
-                    // Even the single newest file is over the cap — nothing to
-                    // trim to; let the caller surface it as terminal too-large.
+                    // Even the single newest file is over the cap, so there is
+                    // nothing to trim to; let the caller surface it as terminal
+                    // too-large.
                     return Err(e).context("cloud cas init");
                 };
                 tracing::warn!(
@@ -1341,7 +1336,7 @@ where
                     limit_bytes = detail.limit_bytes,
                     kept_files = info.kept_files,
                     omitted_files = info.omitted_files,
-                    "cloud: save exceeds plan per-save cap — uploading only the newest files that fit"
+                    "cloud: save exceeds plan per-save cap, uploading only the newest files that fit"
                 );
                 trimmed = Some(info);
                 continue;
@@ -1371,8 +1366,8 @@ where
     }
     // A few PUTs in flight at once: presigned-URL round-trip latency, not
     // bandwidth, dominates the many-small-blobs shape. Completion order is
-    // irrelevant — each blob is its own R2 object — so progress just counts
-    // bytes as they land. (Eager Vec of boxed futures for the same
+    // irrelevant, since each blob is its own R2 object, so progress just counts
+    // bytes as they land. (An eager Vec of boxed futures for the same
     // trait-inference reason as the hashing pass above.)
     let uploaded = AtomicU64::new(0);
     // Shared across every worker: the pacer waits are the same queue, so the
@@ -1399,13 +1394,14 @@ where
                         )
                         .await
                         .with_context(|| format!("uploading {}", f.relative_path))?;
-                    // El objeto ya está en el bucket, pero **sin commit no existe
-                    // para nadie**: la fila de `cloud_blobs` se crea al confirmar la
-                    // versión, y el dedup del servidor mira esa tabla, no el bucket.
-                    // Así que abortar aquí deja el objeto huérfano (lo barre el GC) y
-                    // el intento siguiente lo vuelve a pedir y lo sobreescribe con el
-                    // contenido bueno. Lo que no puede pasar —y es lo que pasaba— es
-                    // que se confirme una versión que apunta a bytes que no son.
+                    // The object is already in the bucket, but without a commit it
+                    // exists for nobody: the `cloud_blobs` row is created when the
+                    // version is confirmed, and the server's dedup looks at that
+                    // table, not at the bucket. So aborting here leaves the object
+                    // orphaned (the GC sweeps it) and the next attempt asks for it
+                    // again and overwrites it with the good content. What must not
+                    // happen, and what did, is a version being confirmed that
+                    // points at bytes that are not its own.
                     {
                         let sent = sent.lock().map_err(|_| anyhow!("upload hasher poisoned"))?;
                         verify_sent(&f.relative_path, &blob.sha256, f.size_bytes, &sent)?;
@@ -1425,11 +1421,10 @@ where
         .try_collect::<Vec<()>>()
         .await?;
 
-    // 4. Commit — the server verifies the new blobs landed and finalizes.
-    // The commit must target the *canonical* cloud save id: when another
-    // device already created this (game, label) under a different id, the
-    // server resolved ours to that one at init, and committing against our
-    // local id would 404 forever.
+    // 4. Commit: the server verifies the new blobs landed and finalizes. The commit
+    // must target the *canonical* cloud save id: when another device already
+    // created this (game, label) under a different id, the server resolved ours to
+    // that one at init, and committing against our local id would 404 forever.
     let canonical_id = init.save_id.as_deref().unwrap_or(save_id);
     if canonical_id != save_id {
         tracing::info!(
@@ -1437,7 +1432,7 @@ where
             canonical_save_id = canonical_id,
             game_slug,
             label,
-            "cloud save id diverged — committing against the canonical cloud id"
+            "cloud save id diverged, committing against the canonical cloud id"
         );
     }
     let commit = client
@@ -1450,9 +1445,10 @@ where
     // self-hosted snapshot semantics.
     let snapshot = Snapshot {
         id: String::new(),
-        // El id canónico lo devuelve el commit cloud; si viniera con una forma
-        // que la puerta no reconoce, el `Snapshot` sintético se queda sin él en
-        // vez de tumbar un backup que YA subió los bytes.
+        // The canonical id comes back from the cloud commit; if it arrived in a
+        // shape the gate does not recognise, the synthetic `Snapshot` goes
+        // without it rather than bringing down a backup that ALREADY uploaded
+        // the bytes.
         save_id: SaveId::parse(&commit.save_id).ok(),
         version_num: commit.version_num,
         parent_version: base_version,
@@ -1478,11 +1474,11 @@ where
     })
 }
 
-/// El `Snapshot` que describe una subida que **ya había aterrizado**: la versión
-/// es la del server (no una inventada) y el recuento, el del contenido local,
-/// que por definición es el mismo. No se pide al server: la gracia de D.8.3 es
-/// ahorrarse el viaje, y lo único que el llamante necesita es a qué versión
-/// quedamos sincronizados.
+/// The `Snapshot` describing an upload that had already landed: the version is the
+/// server's rather than an invented one, and the count is the local content's,
+/// which by definition is the same. The server is not asked: the whole point of
+/// D.8.3 is saving the round trip, and all the caller needs is which version we
+/// are now synced to.
 fn landed_snapshot(
     save_id: &str,
     head: &ServerHead,
@@ -1507,12 +1503,12 @@ fn landed_snapshot(
 
 /// SHA-256 of a file's bytes, read in fixed-size chunks.
 ///
-/// Shared with the restore side: the same whole-file digest that keys the
-/// upload's dedup against the server's blobs keys the download's dedup against
-/// the local disk (ADR 0021 D.13). There is no per-file hash *cache* to reuse —
-/// `state.json`'s `set_hash` is a signature over the whole set (paths + sizes +
-/// mtimes, plus a content hash of the concatenation), not per-file digests — so
-/// both sides hash on demand.
+/// Shared with the restore side: the same whole-file digest that keys the upload's
+/// dedup against the server's blobs keys the download's dedup against the local
+/// disk (ADR 0021 D.13). There is no per-file hash *cache* to reuse, since
+/// `state.json`'s `set_hash` is a signature over the whole set (paths, sizes and
+/// mtimes, plus a content hash of the concatenation) rather than per-file digests,
+/// so both sides hash on demand.
 pub(crate) async fn hash_file(path: &Path) -> Result<String> {
     let mut file = tokio::fs::File::open(path)
         .await
@@ -1533,7 +1529,7 @@ pub(crate) async fn hash_file(path: &Path) -> Result<String> {
 }
 
 /// Wrap a file as a streaming reqwest body for the presigned PUT.
-/// Lo que de verdad salió por el socket en un PUT.
+/// What really went out over the socket on a PUT.
 #[derive(Default)]
 pub(crate) struct Sent {
     digest: Sha256,
@@ -1546,19 +1542,19 @@ impl Sent {
     }
 }
 
-/// El fichero como stream, hasheando **lo que se manda** en vez de confiar en
-/// lo que se leyó antes.
+/// The file as a stream, hashing what is *sent* rather than trusting what was read
+/// earlier.
 ///
-/// El hash y el PUT son dos lecturas distintas del mismo fichero, y entre las
-/// dos el juego puede haber rotado el save (`save` → `save.bak`, y un `save`
-/// nuevo en su sitio: es el patrón normal de autoguardado). Cuando eso pasa, al
-/// bucket se suben los bytes NUEVOS bajo el sha de los VIEJOS: un blob cuyo
-/// contenido no es el que su nombre promete. Restaurarlo devuelve otra partida
-/// —o basura—, y nada en el camino se queja. Es la única corrupción silenciosa
-/// que hemos encontrado (ago-2026, ~1,7% de la población en riesgo).
+/// The hash and the PUT are two separate reads of the same file, and between them
+/// the game may have rotated the save (`save` to `save.bak`, with a new `save` in
+/// its place: the ordinary autosave pattern). When that happens, the NEW bytes go
+/// into the bucket under the OLD sha: a blob whose content is not what its name
+/// promises. Restoring it hands back a different save, or junk, and nothing along
+/// the way complains. It is the only silent corruption we have found (aug-2026,
+/// about 1.7% of the population at risk).
 ///
-/// Hasheando el propio stream, después del PUT se puede comprobar. Ver
-/// [`verify_sent`] para qué se hace con el veredicto.
+/// By hashing the stream itself, it can be checked after the PUT. See
+/// [`verify_sent`] for what is done with the verdict.
 fn hashing_stream(
     file: tokio::fs::File,
 ) -> (
@@ -1576,11 +1572,11 @@ fn hashing_stream(
     (stream, sent)
 }
 
-/// ¿Lo que salió es lo que se declaró? Puro para poder probarlo sin red.
+/// Is what went out what was declared? Pure, so it can be tested without a network.
 ///
-/// No basta con el tamaño: una rotación puede dejar un fichero del mismo largo.
-/// Manda el sha; el tamaño se comprueba también porque un desajuste ahí
-/// significa además que el `content-length` del PUT mintió.
+/// Size alone is not enough: a rotation can leave a file of the same length. The
+/// sha decides; the size is checked as well because a mismatch there also means the
+/// PUT's `content-length` lied.
 fn verify_sent(
     relative_path: &str,
     declared_sha: &str,
@@ -1613,18 +1609,18 @@ fn verify_sent(
 /// **Both gates are skipped for a deliberate copy** ([`VersionOrigin::is_deliberate`]:
 /// the user's own "back up now" and the safety net taken before a restore
 /// overwrites the folder). A copy the user
-/// asked for is a marker they placed — "right here, before the boss" — and
+/// asked for is a marker they placed ("right here, before the boss") and
 /// whether the bytes happen to match the last autosave is beside the point. It
 /// used to fall through the same gate as a watcher no-op, so pressing the button
 /// with nothing changed did nothing at all: no version, no message, just an INFO
 /// line in a log file the user never opens (ago-2026). The rest of the design
-/// already assumes a deliberate copy is worth keeping on its own terms — manual
+/// already assumes a deliberate copy is worth keeping on its own terms: manual
 /// versions have their own budget precisely so an autosave burst can't evict
 /// them.
 ///
 /// It cannot loop: the gates exist to stop the watcher re-cutting identical
 /// snapshots on a timer, and this path only runs when a person presses a button.
-/// It costs no transfer either — the content is addressed, so the blobs are
+/// It costs no transfer either, since the content is addressed, so the blobs are
 /// already there and the commit only adds a version row.
 ///
 /// The signature persisted by the caller is `"<cheap>:<content>"`.
@@ -1646,9 +1642,9 @@ where
     F: Fn(u64, u64) + Send + Sync,
     G: FnOnce(),
 {
-    // Antes de tocar el disco: una raíz imposible no se recorre. Recorrer un
-    // prefijo de Proton entero para descubrir que no había que subirlo cuesta
-    // justo lo que se quiere evitar.
+    // Before the disk is touched: an impossible root is not walked. Walking a whole
+    // Proton prefix to discover it should not be uploaded costs exactly what we are
+    // trying to avoid.
     if let Some(reason) = crate::junkdirs::dangerous_sync_root(source) {
         return Err(UnsafeSource {
             path: source.to_path_buf(),
@@ -1662,8 +1658,8 @@ where
     if !canonical.is_dir() && !canonical.is_file() {
         bail!("source must be a folder or a file: {}", canonical.display());
     }
-    // Y otra vez sobre la ruta resuelta: un enlace simbólico inocente puede
-    // apuntar al perfil entero, y lo que se recorre es el destino.
+    // And again over the resolved path: an innocent symlink can point at the whole
+    // profile, and what gets walked is the destination.
     if let Some(reason) = crate::junkdirs::dangerous_sync_root(&canonical) {
         return Err(UnsafeSource {
             path: canonical,
@@ -1677,13 +1673,13 @@ where
     }
     let (prev_cheap, prev_content) = split_signature(prev_signature);
     let cheap = compute_set_signature(&files);
-    // `is_deliberate` y no `== Manual`: la red de seguridad previa a un restore
-    // cuenta igual, y ahí saltársela es peor — es la copia que permite deshacer
-    // un restore equivocado.
+    // `is_deliberate` rather than `== Manual`: the safety net taken before a
+    // restore counts too, and skipping it there is worse, since it is the copy that
+    // lets a wrong restore be undone.
     let deliberate = origin.is_deliberate();
     if !deliberate && prev_cheap == Some(cheap.as_str()) {
         // Fast path: the cheap (path, size, mtime) signature is unchanged, so
-        // the bytes can't have moved either — skip without reading any file.
+        // the bytes can't have moved either, so skip without reading any file.
         return Ok(BackupResult::Skipped);
     }
     // The cheap signature drifted. That's often just an mtime bump (a game or
@@ -1711,10 +1707,10 @@ where
         progress,
     )
     .await?;
-    // El contenido ya estaba arriba (D.8.3): no hubo subida, pero sí una versión
-    // a la que quedamos sincronizados. Se distingue de `Uploaded` porque el
-    // llamante NO debe contarlo como backup con commit — mover el ancla del
-    // min-interval con algo que no se subió es la regresión R.E.P.O.
+    // The content was already up there (D.8.3): there was no upload, but there is a
+    // version we are now synced to. It is kept apart from `Uploaded` because the
+    // caller must NOT count it as a committing backup: moving the min-interval
+    // anchor with something that was not uploaded is the R.E.P.O. regression.
     if outcome.landed {
         return Ok(BackupResult::AlreadyLanded {
             version_num: outcome.snapshot.version_num,
@@ -1742,7 +1738,7 @@ pub async fn remember_save(
 ) -> Result<()> {
     if remember {
         let save = client.get_save(save_id).await?;
-        // Preserve any user-set pause flag if the entry already existed —
+        // Preserve any user-set pause flag if the entry already existed:
         // re-fetching from the server shouldn't silently un-pause it.
         let was_paused = state.saves.get(save_id).map(|s| s.paused).unwrap_or(false);
         // Preserve the skip-by-hash signature across a metadata refresh too,
@@ -1801,7 +1797,7 @@ mod trim_tests {
         }
     }
 
-    /// El recorte se queda con los más nuevos, no con los primeros que vea.
+    /// The trim keeps the newest, not the first ones it sees.
     #[test]
     fn keeps_the_newest_files_that_fit() {
         let files = vec![f("old", 60, 100), f("new", 30, 300), f("mid", 30, 200)];
@@ -1818,18 +1814,18 @@ mod trim_tests {
         assert_eq!(info.limit_bytes, 60);
     }
 
-    /// Ni el más nuevo cabe: no hay recorte, y el llamante debe tratarlo como
-    /// un "demasiado grande" terminal en vez de subir una copia vacía.
+    /// Not even the newest fits: there is no trim, and the caller has to treat it
+    /// as a terminal "too large" rather than uploading an empty copy.
     #[test]
     fn refuses_when_even_the_newest_file_is_over_the_cap() {
         let files = vec![f("huge", 500, 300)];
         let mut working: Vec<&UploadFile> = files.iter().collect();
         assert!(trim_to_cap(&mut working, 100, "free").is_none());
-        // Y no toca el conjunto: nada se ha decidido todavía.
+        // And it does not touch the set: nothing has been decided yet.
         assert_eq!(working.len(), 1);
     }
 
-    /// Todo cabe: se conserva entero y el informe dice que no se omitió nada.
+    /// Everything fits: it is kept whole and the report says nothing was omitted.
     #[test]
     fn keeps_everything_when_it_all_fits() {
         let files = vec![f("a", 10, 100), f("b", 10, 200)];
@@ -1916,16 +1912,16 @@ mod tests {
         assert_eq!(paced_wait_hint(&err), None);
     }
 
-    /// El stream que alimenta el PUT tiene que hashear **lo que manda**, no lo
-    /// que se leyó antes. Se comprueba contra `hash_file`, que es el hash que se
-    /// declara en el manifiesto: si los dos coinciden sobre el mismo fichero, la
-    /// comprobación posterior no puede dar falsos positivos.
+    /// The stream feeding the PUT has to hash what it sends, not what was read
+    /// earlier. It is checked against `hash_file`, which is the hash declared in
+    /// the manifest: if the two agree over the same file, the later check cannot
+    /// give false positives.
     #[tokio::test]
     async fn the_upload_stream_hashes_exactly_what_it_sends() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("save.dat");
-        // Más de un chunk de `ReaderStream` (8 KiB) para que el digest tenga que
-        // acumular de verdad.
+        // More than one `ReaderStream` chunk (8 KiB) so the digest really has to
+        // accumulate.
         let bytes: Vec<u8> = (0..40_000u32).map(|i| (i % 251) as u8).collect();
         std::fs::write(&path, &bytes).unwrap();
 
@@ -1937,9 +1933,9 @@ mod tests {
             })
             .await;
 
-        // El hash del fichero se pide ANTES de coger el candado: sostenerlo a
-        // través de un `await` es lo que denuncia `clippy::await_holding_lock`,
-        // y la CI corre clippy con `-D warnings` sobre `--all-targets`.
+        // The file's hash is asked for BEFORE the lock is taken: holding one across
+        // an `await` is what `clippy::await_holding_lock` reports, and CI runs
+        // clippy with `-D warnings` over `--all-targets`.
         let want = hash_file(&path).await.unwrap();
 
         let sent = sent.lock().unwrap();
@@ -1949,9 +1945,9 @@ mod tests {
         assert!(verify_sent("save.dat", &sent.sha256(), sent.len, &sent).is_ok());
     }
 
-    /// La rotación, que es el caso real: se declara el sha del `save` viejo y
-    /// por el socket salen los bytes del nuevo. Antes de esto se confirmaba la
-    /// versión igual y el blob quedaba mintiendo sobre su contenido.
+    /// The rotation, which is the real case: the old `save`'s sha is declared and
+    /// the new one's bytes go out over the socket. Before this the version was
+    /// confirmed anyway and the blob was left lying about its content.
     #[tokio::test]
     async fn a_file_rotated_mid_upload_is_caught() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1964,7 +1960,7 @@ mod tests {
         let len = std::fs::metadata(&viejo).unwrap().len();
         assert_ne!(sha_viejo, hash_file(&nuevo).await.unwrap());
 
-        // Se sube lo que hay ahora (el fichero rotado) bajo el sha declarado.
+        // What is there now (the rotated file) gets uploaded under the declared sha.
         let file = tokio::fs::File::open(&nuevo).await.unwrap();
         let (stream, sent) = hashing_stream(file);
         stream.for_each(|_| async {}).await;
@@ -1978,7 +1974,7 @@ mod tests {
             "{err}"
         );
 
-        // Y un tamaño distinto también se caza (fichero truncado a media subida).
+        // And a different size is caught too (a file truncated mid-upload).
         let corto = Sent {
             digest: Sha256::new(),
             len: 3,
@@ -2022,14 +2018,14 @@ mod tests {
         );
     }
 
-    /// El digest del manifiesto tiene que ser **el mismo número** que calcula el
-    /// server al comprometer una versión content-addressed
-    /// (`hoard-server/src/cloud/routes/saves.rs`, `cas_commit`): sha256 de
-    /// `ruta \0 sha \0 tamaño(i64 le) \0` por fila, ordenadas por ruta. Si
-    /// nuestra mitad se desviara, el chequeo de D.8.3 no encontraría nunca una
-    /// coincidencia y volveríamos a subir de más **en silencio** — no hay error
-    /// que mirar, sólo factura. Por eso el vector va fijo y calculado aparte, no
-    /// derivado de esta misma función.
+    /// The manifest's digest has to be the same number the server computes when it
+    /// commits a content-addressed version
+    /// (`hoard-server/src/cloud/routes/saves.rs`, `cas_commit`): sha256 of
+    /// `path \0 sha \0 size(i64 le) \0` per row, sorted by path. If our half
+    /// drifted, D.8.3's check would never find a match and we would silently go
+    /// back to uploading too much: no error to look at, only a bill. That is why
+    /// the vector is fixed and computed separately rather than derived from this
+    /// same function.
     #[test]
     fn manifest_digest_matches_the_servers_algorithm() {
         let rows = [
@@ -2043,10 +2039,9 @@ mod tests {
         );
     }
 
-    /// Y las tres cosas que lo componen cuentan: el orden, el tamaño y la ruta.
-    /// Un digest que ignorase cualquiera de ellas podría dar por "ya subido" un
-    /// contenido que no está arriba, que es la única forma en que este chequeo
-    /// puede perder datos.
+    /// And all three things that make it up count: the order, the size and the
+    /// path. A digest ignoring any of them could call content "already uploaded"
+    /// when it is not up there, which is the only way this check can lose data.
     #[test]
     fn manifest_digest_is_sensitive_to_order_size_and_path() {
         let sha_a = "11".repeat(32);
@@ -2093,11 +2088,11 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// **El bug**: un solo fichero ilegible tumbaba la firma de contenido, y con
-    /// ella el snapshot entero. El recorrido ya saltaba lo que no podía
-    /// interrogar; la lectura propagaba el error con `?`. Un placeholder de
-    /// OneDrive dentro de un save de GTA San Andreas Definitive bastó para 3.934
-    /// intentos en 13 días sin subir una sola versión.
+    /// The bug: a single unreadable file brought the content signature down, and
+    /// the whole snapshot with it. The walk already skipped what it could not
+    /// interrogate; the read propagated the error with `?`. One OneDrive
+    /// placeholder inside one game's save was enough for 3,934 attempts in 13 days
+    /// without a single version uploaded.
     #[cfg(unix)]
     #[tokio::test]
     async fn one_unreadable_file_does_not_kill_the_signature() {
@@ -2116,11 +2111,11 @@ mod tests {
             "el walk sí ve el fichero: puede hacerle stat"
         );
         let sig = compute_content_signature(&files).await;
-        // Y es estable mientras siga ilegible: si no lo fuera, cada pasada
-        // vería un cambio y volveríamos al bucle de subidas.
+        // And it is stable while it stays unreadable: if it were not, every pass
+        // would see a change and we would be back to the upload loop.
         assert_eq!(sig, compute_content_signature(&files).await);
 
-        // Los bytes del legible sí cuentan.
+        // The readable one's bytes do count.
         std::fs::write(root.join("good.sav"), b"moved on").unwrap();
         let moved = walk_source(root, &[]).unwrap();
         assert_ne!(sig, compute_content_signature(&moved).await);
@@ -2128,9 +2123,10 @@ mod tests {
         std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o644)).unwrap();
     }
 
-    /// Un ilegible no debe confundirse con un vacío: si el marcador no entrase
-    /// en el digest, "no se deja leer" y "está vacío" firmarían igual y una
-    /// carpeta que recupera el acceso a un fichero vacío no se re-subiría.
+    /// An unreadable file must not be confused with an empty one: if the marker
+    /// did not enter the digest, "it will not be read" and "it is empty" would
+    /// sign the same, and a folder that regains access to an empty file would not
+    /// be re-uploaded.
     #[cfg(unix)]
     #[tokio::test]
     async fn unreadable_and_empty_do_not_sign_the_same() {
@@ -2146,9 +2142,9 @@ mod tests {
         assert_ne!(as_empty, as_unreadable);
     }
 
-    /// El filtro de la subida: lo ilegible sale de la lista y se reporta, y lo
-    /// demás viaja. Es lo que impide que el fichero reaparezca dentro del tar
-    /// del camino de nube o del hasheo del CAS.
+    /// The upload's filter: the unreadable ones leave the list and get reported,
+    /// and the rest travel. It is what stops the file reappearing inside the cloud
+    /// path's tar or the CAS hashing.
     #[cfg(unix)]
     #[tokio::test]
     async fn unreadable_files_are_split_off_and_reported() {
@@ -2179,8 +2175,9 @@ mod tests {
         );
     }
 
-    /// Una subcarpeta sin permiso no puede tumbar el backup del juego entero:
-    /// en Windows las junctions legacy del perfil devuelven acceso denegado de
+    /// A subfolder without permission cannot bring down the whole game's backup:
+    /// on Windows the profile's legacy junctions return access denied as a matter
+    /// of course.
     /// forma rutinaria.
     #[cfg(unix)]
     #[test]
@@ -2195,7 +2192,7 @@ mod tests {
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
 
         let files = walk_source(root, &[]).expect("un subdir ilegible no debe abortar el walk");
-        // Restaura permisos para que el tempdir se pueda limpiar.
+        // Restore the permissions so the tempdir can be cleaned up.
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         assert_eq!(
@@ -2208,7 +2205,7 @@ mod tests {
         );
     }
 
-    /// La raíz sí es error duro: si no se puede leer, no hay backup que hacer
+    /// The root IS a hard error: if it cannot be read there is no backup to make.
     /// y decirlo en voz alta es lo correcto.
     #[test]
     fn an_unreadable_root_is_still_an_error() {
@@ -2216,22 +2213,23 @@ mod tests {
         assert!(walk_source(missing, &[]).is_err());
     }
 
-    /// Save de fichero suelto: 4.900 juegos del catálogo sólo tienen
-    /// plantillas que apuntan a un fichero. El snapshot sale con la misma
-    /// forma que el de una carpeta con un fichero dentro, así que firma,
+    /// A single-file save: 4,900 games in the catalogue have only templates
+    /// pointing at a file. The snapshot comes out with the same shape as one from
+    /// a folder with a file in it, so signature,
     /// dedup y restore siguen funcionando sin cambios.
-    /// La guarda del camino del backup: una raíz imposible se rechaza **antes**
-    /// de recorrer nada. Es el caso de la Steam Deck de ago-2026 — el save
-    /// apuntaba al prefijo de Proton entero (308 MB) y la guarda estructural
-    /// sólo corría al dar de alta, así que esa fila no volvía a pasar por ella.
+    /// The backup path's guard: an impossible root is rejected before anything is
+    /// walked. It is the aug-2026 Steam Deck case, where the save had been tracked
+    /// long before, and the structural guard only ran on adding, so that row never
+    /// went through it again.
     ///
-    /// Se comprueba con una carpeta REAL y poblada: si el rechazo dependiera de
-    /// que la ruta no exista o esté vacía, este test pasaría por el motivo
+    /// It is checked with a REAL, populated folder: if the rejection depended on
+    /// the path not existing or being empty, this test would pass for the wrong
+    /// reason.
     /// equivocado.
     #[tokio::test]
     async fn a_whole_proton_prefix_is_refused_before_walking_it() {
         let tmp = tempfile::tempdir().unwrap();
-        // …/compatdata/423230/pfx con contenido dentro, como el real.
+        // .../compatdata/423230/pfx with content in it, like the real one.
         let save_dir = tmp.path().join(
             "steamapps/compatdata/423230/pfx/drive_c/users/steamuser/AppData/LocalLow/TheGameBakers/Furi",
         );
@@ -2266,11 +2264,11 @@ mod tests {
             unsafe_src.reason
         );
 
-        // Y la carpeta buena DENTRO del prefijo no se rechaza aquí: fallará más
-        // adelante por no poder hablar con el servidor, que es otra cosa. Ojo
-        // al elegirla: `…/users/steamuser` NO vale como control, porque es un
-        // perfil entero y la guarda lo rechaza con toda la razón (las reglas de
-        // Windows se reusan dentro del prefijo). Tiene que ser la carpeta del
+        // And the good folder INSIDE the prefix is not rejected here: it will fail
+        // later for not being able to reach the server, which is a different thing.
+        // Mind the path: `drive_c/users/steamuser` on its own is a whole profile
+        // and the guard rejects it quite rightly (the Windows rules are reused
+        // inside the prefix). It has to be the game's own folder.
         // juego de verdad.
         let err = upload_directory_checked(
             &client,
@@ -2294,9 +2292,8 @@ mod tests {
     }
 
     /// La carpeta real de Cell to Singularity: partidas y telemetría de Unity
-    /// mezcladas. Antes de esto el snapshot se llevaba las dos cosas, y el
-    /// `Player.log` —reescrito en cada arranque— cortaba una versión nueva en
-    /// la nube cada vez que el usuario abría el juego.
+    /// mixed together. Before this the snapshot took both, and a log rewritten on
+    /// every launch cut a new cloud version every time the user opened the game.
     #[test]
     fn the_walk_leaves_engine_telemetry_out_of_the_snapshot() {
         let dir = tempfile::tempdir().unwrap();
@@ -2319,8 +2316,8 @@ mod tests {
         assert_eq!(names, vec!["savedGames.gd", "savedGames2.gd"], "{names:?}");
     }
 
-    /// La config **sí** sube: perderla no es una opción, y la protección contra
-    /// el crash está en el restore, no aquí.
+    /// Config does upload: losing it is not an option, and the protection against
+    /// the crash lives in the restore, not here.
     #[test]
     fn config_still_goes_up() {
         let dir = tempfile::tempdir().unwrap();
@@ -2333,8 +2330,8 @@ mod tests {
         assert_eq!(names, vec!["graphics.ini", "slot1.sav"], "{names:?}");
     }
 
-    /// El log que reescribe el juego en cada arranque ya no mueve la firma, así
-    /// que deja de cortar una versión por sesión.
+    /// The log the game rewrites on every launch no longer moves the signature, so
+    /// it stops cutting a version per session.
     #[test]
     fn a_rewritten_engine_log_no_longer_drifts_the_signature() {
         let dir = tempfile::tempdir().unwrap();
@@ -2347,7 +2344,7 @@ mod tests {
         let after = compute_set_signature(&walk_source(root, &[]).unwrap());
         assert_eq!(before, after, "el log no debe mover la firma");
 
-        // Y la partida sí la mueve, que es lo que tiene que seguir pasando.
+        // And the save does move it, which is what has to keep happening.
         std::fs::write(root.join("slot1.sav"), "partida avanzada").unwrap();
         assert_ne!(
             before,
@@ -2355,8 +2352,8 @@ mod tests {
         );
     }
 
-    /// El blindaje del manifiesto rescata lo que las reglas por nombre se
-    /// llevarían: `.log` es el patrón de save de 64 plantillas del catálogo.
+    /// The manifest's shields rescue what the name rules would take: `.log` is the
+    /// save pattern of 64 catalogue templates.
     #[test]
     fn a_manifest_pattern_rescues_a_file_the_rules_would_drop() {
         let dir = tempfile::tempdir().unwrap();
@@ -2369,7 +2366,7 @@ mod tests {
     }
 
     /// Tracking the folder that holds one subfolder per save takes every save
-    /// under it, new ones included — the whole point of pointing Hoard at the
+    /// under it, new ones included, which is the whole point of pointing Hoard at the
     /// parent instead of filing each save by hand. Detection is what used to
     /// stand in the way (see `detection::is_nest_of_save_dirs`); the walk never
     /// did, and this pins that down so no future depth cap quietly breaks it.
@@ -2399,8 +2396,8 @@ mod tests {
         );
     }
 
-    /// Un save de fichero suelto se sube aunque su nombre parezca config: el
-    /// usuario apuntó a ese fichero, y eso pesa más que cualquier regla.
+    /// A single-file save uploads even when its name looks like config: the user
+    /// pointed at that file, and that outweighs any rule.
     #[test]
     fn a_single_file_save_is_never_filtered_out() {
         let dir = tempfile::tempdir().unwrap();
@@ -2425,8 +2422,8 @@ mod tests {
         assert!(files[0].modified.is_some());
     }
 
-    /// Y su firma se comporta como cualquier otra: cambia con el contenido,
-    /// que es lo que hace que el skip-by-set-hash siga siendo correcto.
+    /// And its signature behaves like any other: it changes with the content,
+    /// which is what keeps skip-by-set-hash correct.
     #[test]
     fn a_single_file_saves_signature_tracks_its_content() {
         let tmp = tempfile::tempdir().unwrap();

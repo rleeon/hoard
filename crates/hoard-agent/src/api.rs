@@ -9,7 +9,7 @@ use thiserror::Error;
 use tokio::sync::OnceCell;
 
 /// How long a snapshot download may go without a single byte arriving before we
-/// call it stalled. Not a budget for the transfer — it resets on every chunk —
+/// call it stalled. Not a budget for the transfer (it resets on every chunk)
 /// so it bounds a dead stream without capping a big, slow, healthy one.
 const STREAM_STALL_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -30,7 +30,7 @@ pub enum ApiError {
     /// generic message.
     #[error("{}", .0.human())]
     TooLarge(SaveTooLarge),
-    /// HTTP 403 with `code:"save_archived"` — the game is parked in the
+    /// HTTP 403 with `code:"save_archived"`: the game is parked in the
     /// server-side archive ("caja negra"). Uploading it would revive its frozen
     /// blobs and re-inflate the quota, so the client must stop trying and treat
     /// the local save as frozen, not errored. Distinct from the generic
@@ -38,7 +38,7 @@ pub enum ApiError {
     /// a red "falló".
     #[error("game is archived on the server")]
     Archived,
-    /// HTTP 402 with `code:"quota_exceeded"` — the account's total stored bytes
+    /// HTTP 402 with `code:"quota_exceeded"`: the account's total stored bytes
     /// are at (or over) the plan limit. Unlike a 413 there is nothing to trim
     /// and nothing to wait for: **every** upload will fail identically until the
     /// user frees space or upgrades, so the caller must park the whole cloud leg
@@ -46,7 +46,7 @@ pub enum ApiError {
     /// say how far over the line the account is.
     #[error("{}", .0.human())]
     QuotaExceeded(QuotaExceeded),
-    /// The blob endpoint never answered — the TCP connection couldn't be
+    /// The blob endpoint never answered: the TCP connection couldn't be
     /// opened, or it timed out on the way.
     ///
     /// Typed for two reasons, both learned from one report. The first is what it
@@ -56,14 +56,14 @@ pub enum ApiError {
     /// where it should have said the storage can't be reached. The second is
     /// what it cost: this is not a flake, it's a path that is down, so the
     /// exponential retry budget meant for a dropped packet just burns six
-    /// attempts at a ~21 s connect timeout each — four minutes per round — and
+    /// attempts at a ~21 s connect timeout each, four minutes per round, and
     /// then re-arms and does it again. The caller parks instead.
     ///
     /// `host` and not the URL on purpose: it is the part a person can act on
     /// (or send to their ISP) and the part that carries no signature.
     #[error("can't reach the storage endpoint ({host}): {reason}")]
     StorageUnreachable { host: String, reason: String },
-    /// HTTP 409 with `code:"non_fast_forward"` — the server's head moved past
+    /// HTTP 409 with `code:"non_fast_forward"`: the server's head moved past
     /// the `base_version` this upload declared, so another device advanced the
     /// save since we last synced.
     ///
@@ -79,7 +79,7 @@ pub enum ApiError {
     ///   whose id this device has never seen. That is what stalled a save for
     ///   two weeks in aug-2026: the reconcile looked itself up in the manifest
     ///   by the local id, found nothing, reported "nothing to pull", and parked
-    ///   the conflict — with the head it needed sitting unread in this body.
+    ///   the conflict, with the head it needed sitting unread in this body.
     ///
     /// A server too old to send `code` still lands in [`Self::Conflict`], and
     /// the callers keep their message-text fallback for exactly that.
@@ -96,7 +96,7 @@ pub enum ApiError {
     /// backoff that would just burn every retry inside the still-over-quota
     /// window. `body` keeps the raw JSON for logging/diagnostics.
     ///
-    /// `kind` says which of the two very different 429s this is — see
+    /// `kind` says which of the two very different 429s this is; see
     /// [`RateLimitKind`]. Collapsing them into one is what wedged large
     /// self-hosted uploads: a "you're going too fast" answer meant for a single
     /// PUT was treated as "the whole upload doesn't fit right now".
@@ -117,13 +117,13 @@ pub enum ApiError {
 /// per-IP pacer is `tower_governor` middleware that never sees our types and
 /// answers a bare body. A reverse proxy's own limiter (nginx `limit_req`, which
 /// the self-host guide recommends putting in front) lands in the same
-/// unstructured shape — and wants the same reaction — so "no code" is the right
+/// unstructured shape, and wants the same reaction, so "no code" is the right
 /// test rather than sniffing for a particular server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RateLimitKind {
     /// Per-IP request pacing: *this request* arrived too fast. The wait is
     /// milliseconds to seconds and the operation as a whole is perfectly
-    /// welcome — retry the single request and carry on. Abandoning the whole
+    /// welcome: retry the single request and carry on. Abandoning the whole
     /// operation here is how a 122-blob upload could never finish: the pacer
     /// let ~60 through per attempt, the client threw away the other 62 along
     /// with the ones that had already landed, and the next attempt started
@@ -131,7 +131,7 @@ pub enum RateLimitKind {
     Paced,
     /// A budget the whole operation does not fit inside right now: the rolling
     /// bandwidth window, the storage quota, or a loop brake. Retrying the same
-    /// request in a tight loop cannot help — the caller has to give up on this
+    /// request in a tight loop cannot help: the caller has to give up on this
     /// attempt and come back after the stated wait.
     Budget,
 }
@@ -152,12 +152,12 @@ impl std::fmt::Display for RateLimitKind {
 /// Three different things answer 413 and the wording has to tell them apart,
 /// because the fix is different in each case:
 ///
-/// - **Hoard Cloud** (`code: "save_too_large"`) — the account's per-save plan
+/// - Hoard Cloud (`code: "save_too_large"`): the account's per-save plan
 ///   cap. Carries `plan` and `actual_bytes`; the user upgrades or trims.
-/// - **A self-hosted Hoard** (`code: "snapshot_too_large"`) — the operator's own
+/// - A self-hosted Hoard (`code: "snapshot_too_large"`): the operator's own
 ///   `storage.max_snapshot_size_mb`. Carries `limit_bytes` and `received_bytes`;
 ///   the user edits their `config.toml`.
-/// - **Something in front of the server** — nginx, Traefik, a Cloudflare tunnel.
+/// - Something in front of the server: nginx, Traefik, a Cloudflare tunnel.
 ///   No code, no JSON at all: the body is an HTML error page. See
 ///   [`Self::from_foreign_body`].
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -175,7 +175,7 @@ pub struct SaveTooLarge {
     /// Bytes the server had taken in when it gave up. A **floor**, not the
     /// snapshot's size: a self-hosted server aborts mid-stream, so it never
     /// learns the total. Kept separate from `actual_bytes` so the two can't be
-    /// confused — Cloud knows the real size up front, self-hosted doesn't.
+    /// confused, since Cloud knows the real size up front and self-hosted doesn't.
     #[serde(default)]
     pub received_bytes: u64,
     #[serde(default)]
@@ -209,7 +209,7 @@ pub struct NonFastForward {
 
 impl NonFastForward {
     /// The head to reconcile against, when the server named one. `None` keeps
-    /// "the server didn't say" distinct from "the head is version 0" — the
+    /// "the server didn't say" distinct from "the head is version 0": the
     /// caller must go ask rather than rebase onto a number we invented.
     pub fn head(&self) -> Option<i64> {
         (self.head_version > 0).then_some(self.head_version)
@@ -264,7 +264,7 @@ impl QuotaExceeded {
             return "storage quota exceeded (402)".into();
         }
         format!(
-            "storage full: {} of {} used on the {} plan — free space or upgrade",
+            "storage full: {} of {} used on the {} plan, free space or upgrade",
             fmt_bytes(self.used_bytes),
             fmt_bytes(self.limit_bytes),
             if self.plan.is_empty() {
@@ -281,7 +281,7 @@ impl SaveTooLarge {
     /// parse.
     ///
     /// A 413 whose body isn't our JSON was written by whatever sits in front of
-    /// the server — and that is worth saying out loud, because the user will
+    /// the server, and that is worth saying out loud, because the user will
     /// otherwise go hunting through Hoard's settings for a limit that isn't
     /// there. It cost a self-hoster days: nginx's default `client_max_body_size`
     /// is 1 MB, their save was bigger, and every message they saw pointed at
@@ -310,7 +310,7 @@ impl SaveTooLarge {
     /// event; this string is the log and CLI surface.
     pub fn human(&self) -> String {
         if self.from_proxy {
-            return "payload too large (413) — and the reply wasn't Hoard's: \
+            return "payload too large (413), and the reply wasn't Hoard's: \
                     something between this machine and the server refused it \
                     (a reverse proxy or tunnel body-size limit)"
                 .into();
@@ -322,10 +322,10 @@ impl SaveTooLarge {
             // abort got. Wording them alike had the client announce "3.6 GB sent
             // before it stopped" about an upload that never sent a byte.
             let tail = if self.actual_bytes > 0 {
-                format!(" — the save is {}", fmt_bytes(self.actual_bytes))
+                format!(", the save is {}", fmt_bytes(self.actual_bytes))
             } else if self.received_bytes > 0 {
                 format!(
-                    " — {} sent before it stopped",
+                    ", {} sent before it stopped",
                     fmt_bytes(self.received_bytes)
                 )
             } else {
@@ -373,15 +373,15 @@ fn fmt_bytes(n: u64) -> String {
 impl ApiError {
     pub async fn from_response(resp: reqwest::Response) -> Self {
         let status = resp.status();
-        // Grab the wait hints before consuming the body — they're our fallback
+        // Grab the wait hints before consuming the body: they're our fallback
         // for `retry_after_seconds` if the JSON is unparseable.
         //
         // Two header names, because the per-IP pacer speaks a different one:
         // `tower_governor` emits `x-ratelimit-after` and nothing else, so a
         // client that only looks for `Retry-After` throws away the one number
         // the pacer *did* send and invents its own. Note the pacer's value is
-        // whole seconds (`Duration::as_secs`), so a sub-second wait — which is
-        // every wait at the default 20 req/s — arrives as a legitimate `0`.
+        // whole seconds (`Duration::as_secs`), so a sub-second wait, which is
+        // every wait at the default 20 req/s, arrives as a legitimate `0`.
         // `0` means "almost immediately", not "no hint"; the retry loop applies
         // its own floor.
         let headers = resp.headers();
@@ -413,7 +413,7 @@ impl ApiError {
                     serde_json::from_str::<QuotaExceeded>(&body).unwrap_or_default(),
                 )
             }
-            // A 413 we can't parse wasn't written by Hoard — both our servers
+            // A 413 we can't parse wasn't written by Hoard: both our servers
             // answer with JSON carrying a `code`. Say so instead of shrugging:
             // the culprit is a proxy limit, and nothing in Hoard's settings will
             // fix it.
@@ -470,7 +470,7 @@ fn extract_message(body: &str) -> String {
 /// Everything else keeps its original shape, because everything else is worth
 /// retrying.
 ///
-/// Timeouts deliberately do **not** count, tempting as it looks — the two
+/// Timeouts deliberately do **not** count, tempting as it looks: the two
 /// clients that reach here are built for long transfers and a timeout means
 /// something entirely different on each. `download_http` carries a per-read
 /// `read_timeout`, so its timeout is a transfer that opened fine and then
@@ -480,7 +480,7 @@ fn extract_message(body: &str) -> String {
 /// unambiguous on both.
 ///
 /// The message is rebuilt from the error's cause chain rather than passed
-/// through, because `reqwest`'s own `Display` starts with the full URL — and a
+/// through, because `reqwest`'s own `Display` starts with the full URL, and a
 /// presigned URL is a 400-character AWS signature that has no business in a log
 /// or a feed row. The host survives; the signature doesn't.
 fn storage_transport_error(url: &str, e: reqwest::Error) -> anyhow::Error {
@@ -506,8 +506,8 @@ fn storage_transport_error(url: &str, e: reqwest::Error) -> anyhow::Error {
 ///
 /// The server answers a full account with a plain 402 until it has refused the
 /// same account five times in an hour, and with a 429 (`quota_exceeded_paced`)
-/// after that. Both mean the identical thing to a person — *you are out of
-/// space, here is how much and here is the upgrade* — but only the 402 was
+/// after that. Both mean the identical thing to a person (*you are out of
+/// space, here is how much and here is the upgrade*) but only the 402 was
 /// wired to say so, so the moment the brake engaged the account stopped seeing
 /// the "free up space / go Pro" prompt and started seeing a wordless wait. The
 /// figures were in the paced body the whole time; this reads them back out.
@@ -525,12 +525,12 @@ pub fn paced_quota_detail(body: &str) -> Option<QuotaExceeded> {
 /// Read a 429's body and wait hints into a kind and a number of seconds.
 ///
 /// Split out from `from_response` so the wire rules are testable without an
-/// HTTP round trip — they're the whole point of the change and easy to break
+/// HTTP round trip: they're the whole point of the change and easy to break
 /// by accident later.
 fn classify_rate_limit(body: &str, retry_after_header: Option<u32>) -> (RateLimitKind, u32) {
     // A `code` means one of our handlers wrote this answer, and every one of
     // those is a budget: bandwidth window, storage quota, loop brake, login
-    // throttle. An unknown code counts as a budget too — backing off fully is
+    // throttle. An unknown code counts as a budget too, since backing off fully is
     // the safe way to be wrong about a server newer than us.
     let kind = match extract_code(body) {
         Some(_) => RateLimitKind::Budget,
@@ -570,7 +570,7 @@ pub struct ApiClient {
     /// Self-hosted bearer tokens are stable for the process lifetime, but a
     /// Hoard Cloud session uses a short-lived Supabase JWT (~1h). The desktop's
     /// long-lived agent holds a single `ApiClient` for the whole session, so a
-    /// frozen token would start answering 401 the moment the JWT expired —
+    /// frozen token would start answering 401 the moment the JWT expired,
     /// which is exactly what made the auto-restore sweep spam "no se pudo
     /// restaurar" once an hour in. Storing the token behind a shared `RwLock`
     /// lets the desktop's token-refresh path push a fresh JWT into the running
@@ -578,11 +578,11 @@ pub struct ApiClient {
     token: Arc<RwLock<String>>,
     /// Client for the small request/response JSON endpoints. Its 60 s total
     /// timeout covers the whole request *including the body*, so nothing that
-    /// streams snapshot bytes may use it — see `upload_http` / `download_http`.
+    /// streams snapshot bytes may use it; see `upload_http` and `download_http`.
     http: Client,
     /// Streaming client for snapshot **uploads** (`snapshot_upload`,
     /// `put_presigned`). Same headers as `http` but with **no per-request total
-    /// timeout** — a multi-GB save (Paradox grand-strategy is the worst case)
+    /// timeout**: a multi-GB save (Paradox grand-strategy is the worst case)
     /// on a residential upload link blows past any fixed timeout, which
     /// previously killed the request mid-flight and silently hung the dashboard
     /// "Subiendo…" pill. A TCP keepalive surfaces a genuinely dead connection;
@@ -598,64 +598,66 @@ pub struct ApiClient {
     /// on progress) once the head arrives. A download's head lands immediately,
     /// so the timeout only ever sees body reads; an upload's head arrives after
     /// the whole body is sent, so the same setting would kill any upload slower
-    /// than the timeout — exactly the bug `upload_http` exists to avoid.
+    /// than the timeout, exactly the bug `upload_http` exists to avoid.
     download_http: Client,
     /// Lazily-probed `/v1/health` `mode` (`Some("cloud")` on the SaaS
     /// deployment, `None`/absent self-hosted). Cached behind an `Arc` so the
     /// many `ApiClient` clones in flight share a single probe. Only cached on
-    /// a successful probe — a transient health failure leaves the cell empty
+    /// a successful probe: a transient health failure leaves the cell empty
     /// so the next call retries instead of wedging the client into the wrong
     /// protocol forever.
     mode: Arc<OnceCell<Option<String>>>,
-    /// ¿Anuncia este server las rutas `/v1/saves/{id}/cas/*` (subida
-    /// direccionada por contenido)? Se rellena en la **misma** sonda que
-    /// `mode`, no en una aparte: preguntarlo por separado sería elegir
-    /// protocolo con media foto.
+    /// Does this server advertise the `/v1/saves/{id}/cas/*` routes
+    /// (content-addressed upload)? It is filled in by the same probe as `mode`,
+    /// not by a separate one: asking separately would mean choosing a protocol
+    /// from half a picture.
     ///
-    /// Vacío = no se ha sondeado. `Some(false)` = server anterior a la 1.1.3,
-    /// que sólo entiende el multipart.
+    /// Empty means it has not been probed. `Some(false)` means a server older
+    /// than 1.1.3, which only understands multipart.
     cas: Arc<OnceCell<bool>>,
-    /// ¿Lleva este server censo de dispositivos y presencia (`/v1/devices`,
-    /// `/v1/presence/heartbeat`)? Se rellena en la misma sonda, por lo mismo.
+    /// Does this server keep a device census and presence (`/v1/devices`,
+    /// `/v1/presence/heartbeat`)? Filled in by the same probe, for the same
+    /// reason.
     devices: Arc<OnceCell<bool>>,
-    /// El tope por save del plan, aprendido del último 413.
+    /// The plan's per-save cap, learned from the last 413.
     ///
-    /// **No es una sonda como las de arriba, y por eso no es un `OnceCell`.**
-    /// El tope cambia cuando el usuario cambia de plan, así que tiene que poder
-    /// reescribirse; lo que no puede es tener que redescubrirse en cada copia.
-    /// Hoy el único modo de conocerlo es que el servidor te rechace: no existe
-    /// ningún `GET` que lo diga, así que el 413 es a la vez el error y el canal
-    /// de configuración. Recordarlo convierte el rechazo en algo que ocurre una
-    /// vez por sesión en lugar de una vez por autoguardado — cinco usuarios con
-    /// partidas grandes generaron 12.996 de estos en una semana, todos con la
-    /// misma respuesta.
+    /// It is not a probe like the ones above, which is why it is not a
+    /// `OnceCell`. The cap changes when the user changes plan, so it has to be
+    /// rewritable; what it must not be is rediscovered on every copy. Today the
+    /// only way to know it is for the server to refuse you: there is no `GET`
+    /// that says it, so the 413 is both the error and the configuration channel.
+    /// Remembering it turns the refusal into something that happens once a
+    /// session rather than once an autosave; five users with big saves generated
+    /// 12,996 of them in a week, all with the same answer.
     ///
-    /// Vive en el cliente y no en el estado del save porque el tope es del
-    /// **plan**, no de la partida: descubrirlo subiendo Factorio vale igual
-    /// para Skyrim.
+    /// It lives in the client rather than in the save's state because the cap
+    /// belongs to the plan, not to the save: discovering it by uploading one
+    /// game counts just as well for the next.
     plan_cap: Arc<RwLock<Option<PlanCap>>>,
 }
 
-/// Tope por save del plan y a qué plan pertenece. Ver [`ApiClient::plan_cap`].
+/// The plan's per-save cap and which plan it belongs to. See
+/// [`ApiClient::plan_cap`].
 #[derive(Debug, Clone)]
 pub struct PlanCap {
     pub limit_bytes: u64,
     pub plan: String,
-    /// Cuándo lo aprendimos. Ver [`PLAN_CAP_TTL`].
+    /// When we learned it. See [`PLAN_CAP_TTL`].
     learned_at: std::time::Instant,
 }
 
-/// Cuánto vale un tope aprendido antes de volver a comprobarlo.
+/// How long a learned cap is worth before it gets checked again.
 ///
-/// **Existe por el upgrade.** Quien pasa a Pro multiplica su tope, pero el
-/// cliente sólo se entera si vuelve a preguntar — y todo el sentido de recordar
-/// el tope es dejar de preguntar. Sin caducidad, alguien que acaba de pagar
-/// seguiría subiendo copias recortadas contra el tope de Free hasta reiniciar
-/// el servicio, que es exactamente el momento en que menos se le puede fallar.
+/// It exists because of upgrades. Somebody moving to Pro multiplies their cap,
+/// but the client only finds out if it asks again, and the whole point of
+/// remembering the cap is to stop asking. With no expiry, somebody who has just
+/// paid would carry on uploading copies trimmed against the Free cap until the
+/// service restarted, which is exactly the moment you can least afford to fail
+/// them.
 ///
-/// Media hora es el compromiso: el rechazo pasa de uno por autoguardado a como
-/// mucho uno cada 30 min (dos órdenes de magnitud menos), y un cambio de plan
-/// tarda como mucho eso en notarse solo.
+/// Half an hour is the compromise: the refusal goes from one per autosave to at
+/// most one every 30 minutes, two orders of magnitude fewer, and a plan change
+/// takes at most that long to be noticed on its own.
 const PLAN_CAP_TTL: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
 impl ApiClient {
@@ -685,7 +687,7 @@ impl ApiClient {
         Ok(Self {
             // Strips a `user@` the caller may still have on disk from before
             // this was normalised on the way in. Left alone it silently becomes
-            // an HTTP Basic header that shadows the bearer token — see
+            // an HTTP Basic header that shadows the bearer token; see
             // `serverclass::normalize_server_url`.
             base_url: crate::serverclass::normalize_server_url(&base_url.into()),
             token: Arc::new(RwLock::new(token.into())),
@@ -704,7 +706,7 @@ impl ApiClient {
     }
 
     /// Swap in a fresh bearer token. Every clone of this client shares the same
-    /// token cell, so updating one updates them all — the mechanism the desktop
+    /// token cell, so updating one updates them all, which is the mechanism the desktop
     /// uses to keep the long-lived agent client's Supabase JWT current after a
     /// refresh.
     pub fn set_token(&self, token: impl Into<String>) {
@@ -764,9 +766,9 @@ impl ApiClient {
         self.mode
             .get_or_try_init(|| async {
                 let h = self.health().await?;
-                // Las capacidades salen de la misma respuesta. Se guardan aquí
-                // y no en sondas propias para que modo y capacidades describan
-                // siempre al mismo server.
+                // The capabilities come out of the same response. They are
+                // stored here rather than in probes of their own so mode and
+                // capabilities always describe the same server.
                 let _ = self.cas.set(h.cas);
                 let _ = self.devices.set(h.devices);
                 Ok::<_, anyhow::Error>(h.mode)
@@ -777,27 +779,27 @@ impl ApiClient {
             .flatten()
     }
 
-    /// ¿Sabe este server negociar el contenido antes de subirlo
-    /// (`/v1/saves/{id}/cas/*`)? `None` mientras no haya sondeo con éxito.
+    /// Can this server negotiate content before it is uploaded
+    /// (`/v1/saves/{id}/cas/*`)? `None` until a probe has succeeded.
     ///
-    /// Mismo contrato honesto que [`Self::probed_is_cloud`]: no colapsa "no lo
-    /// soporta" con "todavía no lo sé". Elegir el multipart porque la sonda
-    /// falló sería subir gigas de más sin motivo.
+    /// The same honest contract as [`Self::probed_is_cloud`]: it does not
+    /// collapse "it does not support it" into "I do not know yet". Choosing
+    /// multipart because the probe failed would upload gigabytes for nothing.
     pub fn probed_supports_cas(&self) -> Option<bool> {
         self.cas.get().copied()
     }
 
-    /// ¿Lleva este server censo de dispositivos y presencia en vivo?
+    /// Does this server keep a device census and live presence?
     ///
-    /// Cloud siempre las tiene y **no** anuncia la bandera (su `/v1/health` es
-    /// otro cuerpo), así que quien pregunte tiene que mirar también
-    /// [`Self::probed_is_cloud`] — es lo que hace [`Self::has_presence`].
+    /// Cloud always has them and does not advertise the flag (its `/v1/health`
+    /// is a different body), so whoever asks also has to consult
+    /// [`Self::probed_is_cloud`], which is what [`Self::has_presence`] does.
     pub fn probed_supports_devices(&self) -> Option<bool> {
         self.devices.get().copied()
     }
 
-    /// ¿Tiene sentido mandarle latidos de presencia a este server? Cloud sí
-    /// siempre; self-hosted desde la 1.1.3. Sondea si hace falta.
+    /// Is it worth sending this server presence heartbeats? Cloud always;
+    /// self-hosted since 1.1.3. It probes when it has to.
     pub async fn has_presence(&self) -> bool {
         let _ = self.server_mode().await;
         self.probed_is_cloud() == Some(true) || self.probed_supports_devices() == Some(true)
@@ -810,10 +812,10 @@ impl ApiClient {
         self.server_mode().await.as_deref() == Some("cloud")
     }
 
-    /// El tope por save que este cliente ya conoce, si alguno.
+    /// The per-save cap this client already knows, if any.
     ///
-    /// `None` = todavía no nos han rechazado nada, así que no se sabe y no se
-    /// adivina: subir con un tope inventado recortaría copias que sí cabían.
+    /// `None` means nothing has been refused yet, so it is not known and not
+    /// guessed: uploading against an invented cap would trim copies that fitted.
     pub fn plan_cap(&self) -> Option<PlanCap> {
         self.plan_cap
             .read()
@@ -822,8 +824,8 @@ impl ApiClient {
             .filter(|c| c.learned_at.elapsed() < PLAN_CAP_TTL)
     }
 
-    /// Apunta el tope que acaba de llegar en un 413. Idempotente; un valor
-    /// distinto (el usuario cambió de plan) pisa al anterior.
+    /// Records the cap that just arrived in a 413. Idempotent; a different value
+    /// (the user changed plan) overwrites the previous one.
     pub fn remember_plan_cap(&self, limit_bytes: u64, plan: &str) {
         if limit_bytes == 0 {
             return;
@@ -854,7 +856,7 @@ impl ApiClient {
 
     // ---- Cloud (SaaS) protocol -----------------------------------------
 
-    /// `POST /v1/cloud/saves` — declare upload intent. The server validates
+    /// `POST /v1/cloud/saves`: declare upload intent. The server validates
     /// plan + quota, mints a presigned R2 PUT URL, and returns the version
     /// number the client must `commit` against.
     pub async fn cloud_init_upload(&self, init: &CloudUploadInit) -> Result<CloudUploadInitOut> {
@@ -870,7 +872,7 @@ impl ApiClient {
     }
 
     /// Upload bytes directly to a presigned R2 URL. No `Authorization`
-    /// header — the presigned URL carries its own signature in the query
+    /// header, since the presigned URL carries its own signature in the query
     /// string, and an extra auth header breaks the S3 v4 signature.
     pub async fn put_presigned(
         &self,
@@ -893,7 +895,7 @@ impl ApiClient {
             // The bytes go straight to the bucket here, so this 429 is the
             // storage provider's own pacing, not ours. Surface it as a typed
             // `RateLimited` rather than a string so the blob retry loop can
-            // honour it exactly like it honours the self-hosted one — a plain
+            // honour it exactly like it honours the self-hosted one: a plain
             // `bail!` made the whole upload fail on a signal that only ever
             // meant "slow down".
             if status == StatusCode::TOO_MANY_REQUESTS {
@@ -905,7 +907,7 @@ impl ApiClient {
         Ok(())
     }
 
-    /// `POST /v1/cloud/saves/:id/versions/:n/commit` — finalize an upload.
+    /// `POST /v1/cloud/saves/:id/versions/:n/commit`: finalize an upload.
     /// The server verifies the object via R2 HEAD and records the sha256.
     pub async fn cloud_commit(
         &self,
@@ -926,7 +928,7 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
-    /// `GET /v1/cloud/saves/:id/versions/:n/download` — mint a presigned R2
+    /// `GET /v1/cloud/saves/:id/versions/:n/download`: mint a presigned R2
     /// GET URL plus the version's sha256/size for verification.
     pub async fn cloud_download(&self, save_id: &str, version: i64) -> Result<CloudDownloadOut> {
         let resp = self
@@ -941,7 +943,7 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
-    /// `GET /v1/cloud/sync` — the manifest of the user's saves (latest
+    /// `GET /v1/cloud/sync`: the manifest of the user's saves (latest
     /// version of each). The cloud analogue of `list_saves`; excludes
     /// `backup_only` saves. Sends the device fingerprint so the server's
     /// poll guard can rate-limit per machine instead of per account.
@@ -963,7 +965,7 @@ impl ApiClient {
     /// Reads the same `/v1/cloud/storage/games` the desktop's storage screen
     /// uses, and keeps only the one field the engine needs. A frozen save
     /// refuses every upload with a 403 by design, so the watch set has to know
-    /// which ones they are *before* deciding to back one up — otherwise the
+    /// which ones they are *before* deciding to back one up; otherwise the
     /// folder is re-hashed on every reconcile to be turned away at `cas_init`.
     ///
     /// Deserialised structurally rather than through `cloud_account`'s
@@ -997,7 +999,7 @@ impl ApiClient {
             .collect())
     }
 
-    /// `GET /v1/cloud/saves/:save_id/versions` — the full version history of a
+    /// `GET /v1/cloud/saves/:save_id/versions`: the full version history of a
     /// cloud save (every committed version, newest first). The cloud analogue
     /// of `list_save_snapshots`; the sync manifest only carries the latest.
     pub async fn cloud_list_versions(
@@ -1016,7 +1018,7 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
-    /// `DELETE /v1/cloud/saves/:save_id/versions/:version` — drop a single
+    /// `DELETE /v1/cloud/saves/:save_id/versions/:version`: drop a single
     /// version (blob + row) and repoint `latest_version_num` to the highest
     /// remaining version. Deletes the whole save only if none remain.
     pub async fn cloud_delete_version(&self, save_id: &str, version: i64) -> Result<()> {
@@ -1062,7 +1064,7 @@ impl ApiClient {
         })
     }
 
-    /// `PUT /v1/me/max-versions` — set (`Some(n)`) or clear (`None`) the
+    /// `PUT /v1/me/max-versions`: set (`Some(n)`) or clear (`None`) the
     /// per-user cap on stored versions per save. Both server modes mount the
     /// same path; both prune immediately, so the freed space is visible on
     /// the next quota poll.
@@ -1102,7 +1104,7 @@ impl ApiClient {
         Ok(out.pruned as i64)
     }
 
-    /// `DELETE /v1/cloud/saves/:save_id` — remove a cloud save and all of its
+    /// `DELETE /v1/cloud/saves/:save_id`: remove a cloud save and all of its
     /// versions so the user reclaims storage. The cloud analogue of deleting
     /// a whole tracked save.
     pub async fn cloud_save_delete(&self, save_id: &str) -> Result<()> {
@@ -1122,7 +1124,7 @@ impl ApiClient {
     /// Streams the body, so it belongs on `download_http`: on `http` the 60 s
     /// total timeout also covered the streaming, and every Cloud restore of a
     /// save too big to land inside a minute died mid-body with "operation timed
-    /// out" — forever, since the next attempt was no faster.
+    /// out", forever, since the next attempt was no faster.
     pub async fn get_presigned(&self, presigned: &PresignedUrl) -> Result<reqwest::Response> {
         let method = reqwest::Method::from_bytes(presigned.method.as_bytes())
             .unwrap_or(reqwest::Method::GET);
@@ -1140,7 +1142,7 @@ impl ApiClient {
         Ok(resp)
     }
 
-    /// `POST /v1/cloud/cas/init` — declare a content-addressed upload. Returns
+    /// `POST /v1/cloud/cas/init`: declare a content-addressed upload. Returns
     /// the new version number plus the subset of blobs the server is missing,
     /// each with a presigned PUT URL.
     pub async fn cloud_cas_init(&self, init: &CloudCasInit) -> Result<CloudCasInitOut> {
@@ -1155,7 +1157,7 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
-    /// `POST /v1/cloud/saves/:id/versions/:n/cas/commit` — finalize a content-
+    /// `POST /v1/cloud/saves/:id/versions/:n/cas/commit`: finalize a content-
     /// addressed upload once every missing blob has been PUT.
     pub async fn cloud_cas_commit(
         &self,
@@ -1174,7 +1176,7 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
-    /// `GET /v1/cloud/saves/:id/versions/:n/manifest` — the per-file manifest
+    /// `GET /v1/cloud/saves/:id/versions/:n/manifest`: the per-file manifest
     /// of a content-addressed version. With `presign = true` each file carries
     /// a download URL (restore) and bandwidth is charged; with `false` it's a
     /// cheap listing (History detail). Returns `content_addressed = false` for
@@ -1198,11 +1200,11 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
-    /// `POST /v1/presence/heartbeat` — latido de presencia (Cloud). Lleva los
-    /// mismos headers de identidad de device que `/v1/me`, porque el server
-    /// resuelve la fila de `devices` por `x-hoard-device-fp` (y puede hasta
-    /// registrarla si el primer contacto de una máquina es este latido — el
-    /// caso del daemon headless que nunca pasa por `/v1/me`).
+    /// `POST /v1/presence/heartbeat`: the presence beat (Cloud). It carries the
+    /// same device identity headers as `/v1/me`, because the server resolves the
+    /// `devices` row by `x-hoard-device-fp` and can even register it when a
+    /// machine's first contact is this beat, which is the headless daemon's case,
+    /// since it never goes through `/v1/me`.
     pub async fn presence_heartbeat(&self, playing: &[PlayingBeat], closing: bool) -> Result<()> {
         let body = serde_json::json!({ "closing": closing, "playing": playing });
         let dev = crate::logship::device_identity();
@@ -1221,10 +1223,9 @@ impl ApiClient {
         Ok(())
     }
 
-    /// `GET /v1/devices` — los dispositivos de la cuenta con su presencia en
-    /// vivo (online, jugando qué, desde cuándo). El header de fingerprint va
-    /// para que el server marque `this_device` y la UI filtre sin conocer su
-    /// propio UUID.
+    /// `GET /v1/devices`: the account's devices with their live presence (online,
+    /// playing what, since when). The fingerprint header goes so the server can
+    /// mark `this_device` and the UI can filter without knowing its own UUID.
     pub async fn list_devices(&self) -> Result<DeviceListOut> {
         let dev = crate::logship::device_identity();
         let resp = self
@@ -1238,7 +1239,7 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
-    /// `GET /v1/notifications` — broadcasts del operador para la campana.
+    /// `GET /v1/notifications`: the operator's broadcasts, for the bell.
     /// `since` es el cursor RFC3339 del cliente: solo vuelven filas
     /// estrictamente posteriores, así nada se re-entrega tras un reinicio.
     /// El fingerprint va para que el poll guard del server limite por
@@ -1257,13 +1258,13 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
-    /// `POST /v1/cloud/playtime` (cloud) or `/v1/playtime` (self-hosted) —
+    /// `POST /v1/cloud/playtime` (cloud) or `/v1/playtime` (self-hosted):
     /// ship this machine's playtime breakdown so the recap can merge it with
     /// the account's other devices.
     ///
     /// Picks the path off the cached deployment probe rather than guessing:
     /// posting the cloud path at a self-hosted server is a 404, and the reverse
-    /// is worse (a silent no-op). An unresolved probe means "don't know yet" —
+    /// is worse (a silent no-op). An unresolved probe means "don't know yet",
     /// we skip this round and try again on the next one instead of picking a
     /// protocol by coin flip.
     ///
@@ -1546,7 +1547,7 @@ impl ApiClient {
     // ([`Self::probed_supports_cas`]). Ver `hoard_server::routes::cas` para el
     // porqué y para en qué se aparta del de cloud.
 
-    /// `POST /v1/saves/{id}/cas/init` — declarar el manifiesto. Devuelve qué
+    /// `POST /v1/saves/{id}/cas/init`: declare the manifest. It returns which
     /// blobs faltan y el área de staging donde subirlos.
     pub async fn cas_init(&self, save_id: &str, init: &CasInit) -> Result<CasInitOut> {
         let resp = self
@@ -1560,7 +1561,7 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
-    /// `PUT /v1/cas/blobs/{upload_id}/{sha}` — un blob que falta.
+    /// `PUT /v1/cas/blobs/{upload_id}/{sha}`: one missing blob.
     ///
     /// Va por `upload_http` (sin timeout total) por el mismo motivo que el
     /// multipart: un blob puede ser de gigas y un tope fijo mataría la subida a
@@ -1585,7 +1586,7 @@ impl ApiClient {
         Ok(())
     }
 
-    /// `POST /v1/saves/{id}/cas/commit` — cerrar la versión.
+    /// `POST /v1/saves/{id}/cas/commit`: close the version.
     pub async fn cas_commit(&self, save_id: &str, commit: &CasCommit) -> Result<Snapshot> {
         let resp = self
             .http
@@ -1711,14 +1712,14 @@ pub struct CloudManifest {
 }
 
 /// The cloud keys a save by `(user, game_slug, label)`; this device keys it by
-/// a local uuid it made up. `cas_init` bridges the two — it accepts an id the
-/// server has never seen and resolves it by name — so a device whose local id
+/// a local uuid it made up. `cas_init` bridges the two, accepting an id the
+/// server has never seen and resolving it by name, so a device whose local id
 /// drifted (a folder re-detected, a rebuilt state file) keeps uploading fine
 /// while being unable to find itself in anything the server hands back.
 ///
 /// That asymmetry is what has to be undone here, and in one place: every
 /// lookup of "what does the cloud say about this save" goes through
-/// [`CloudManifest::entry_for`], which tries the id and then the name — the
+/// [`CloudManifest::entry_for`], which tries the id and then the name, the
 /// same two steps, in the same order, as the server's own `resolve_save_row`.
 /// Matching by name can't collide: the cloud holds at most one row per
 /// `(user, game_slug, label)`, which is also why multi-folder slots put their
@@ -1740,7 +1741,7 @@ impl CloudManifest {
     }
 }
 
-/// An empty label is the server's `"default"` — `resolve_save_row` substitutes
+/// An empty label is the server's `"default"`: `resolve_save_row` substitutes
 /// it on the way in, so a client that stored the empty string would otherwise
 /// fail to match its own row.
 fn canonical_label(label: &str) -> &str {
@@ -1781,7 +1782,7 @@ pub struct CloudCasInit {
     pub files: Vec<CloudCasFileEntry>,
 }
 
-/// A blob the server is missing — the client must PUT it to `upload`.
+/// A blob the server is missing, so the client must PUT it to `upload`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct CloudCasMissingBlob {
     pub sha256: String,
@@ -1794,7 +1795,7 @@ pub struct CloudCasMissingBlob {
 #[derive(Debug, Clone, Deserialize)]
 pub struct CloudCasInitOut {
     /// Canonical cloud save id (servers ≥ 2.3.2). Differs from the requested
-    /// id when (user, game_slug, label) already maps to another cloud save —
+    /// id when (user, game_slug, label) already maps to another cloud save,
     /// the commit must target this id or it 404s. `None` on older servers.
     #[serde(default)]
     pub save_id: Option<String>,
@@ -1819,7 +1820,7 @@ pub struct CloudManifestFile {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CloudVersionManifestOut {
-    /// False for legacy archive versions — the caller must fall back to the
+    /// False for legacy archive versions, and the caller must fall back to the
     /// whole-archive `cloud_download` path.
     #[serde(default)]
     pub content_addressed: bool,
@@ -1931,7 +1932,7 @@ mod rate_limit_tests {
     use super::*;
 
     /// Every 429 one of our handlers writes carries a `code`, and every one of
-    /// them means "this operation doesn't fit right now" — wait it out, don't
+    /// them means "this operation doesn't fit right now": wait it out, don't
     /// re-send.
     #[test]
     fn our_own_429s_are_budgets() {
@@ -1960,7 +1961,7 @@ mod rate_limit_tests {
     }
 
     /// A full account says the same thing whether it is answered with the 402
-    /// or, once the brake engages, with the paced 429 — so the figures behind
+    /// or, once the brake engages, with the paced 429, so the figures behind
     /// "free up space / go Pro" have to survive the switch.
     #[test]
     fn a_paced_quota_429_still_carries_the_full_account() {
@@ -1976,7 +1977,7 @@ mod rate_limit_tests {
             Some("https://hoard.services/upgrade")
         );
 
-        // Every other budget 429 is genuinely just a wait — nothing to offer,
+        // Every other budget 429 is genuinely just a wait: nothing to offer,
         // nothing to explain, and inventing a "you are full" prompt out of a
         // bandwidth window would be worse than saying nothing.
         for other in [
@@ -1999,8 +2000,8 @@ mod rate_limit_tests {
         assert_eq!(secs, 0);
     }
 
-    /// A reverse proxy's own limiter — which the self-host guide tells
-    /// operators to put in front — answers HTML with no headers at all. Same
+    /// A reverse proxy's own limiter, which the self-host guide tells
+    /// operators to put in front, answers HTML with no headers at all. Same
     /// meaning as our pacer, so the same handling, and crucially *not* the
     /// 60-second default that a budget gets: 122 blobs served a fabricated
     /// minute each is a two-hour upload.
@@ -2014,7 +2015,7 @@ mod rate_limit_tests {
         assert_eq!(secs, 0);
     }
 
-    /// `Retry-After` still wins when it's there — a proxy that speaks the
+    /// `Retry-After` still wins when it's there: a proxy that speaks the
     /// standard header is telling the truth about its own window.
     #[test]
     fn a_standard_retry_after_header_is_honoured() {
@@ -2082,7 +2083,7 @@ mod plan_cap_tests {
 
 /// The two-key bridge: the cloud names a save `(user, game, label)`, this
 /// machine names it a uuid, and `cas_init` accepts either. These pin the
-/// resolution order down, because getting it wrong is silent — a miss reads
+/// resolution order down, because getting it wrong is silent: a miss reads
 /// exactly like "the server has nothing for this save".
 #[cfg(test)]
 mod manifest_resolution_tests {
@@ -2122,7 +2123,7 @@ mod manifest_resolution_tests {
     }
 
     /// The aug-2026 case. A local id the cloud has never seen still finds its
-    /// row by name — the same fallback `resolve_save_row` does on the way in,
+    /// row by name, the same fallback `resolve_save_row` does on the way in,
     /// so the client sees the row it is actually uploading to.
     #[test]
     fn an_unknown_id_falls_back_to_game_and_label() {
@@ -2150,7 +2151,7 @@ mod manifest_resolution_tests {
     }
 
     /// An empty label is the server's `"default"`, on both sides of the
-    /// comparison — otherwise a save stored with one spelling never matches
+    /// comparison, since otherwise a save stored with one spelling never matches
     /// its own row.
     #[test]
     fn an_empty_label_is_the_servers_default() {
@@ -2194,7 +2195,7 @@ mod non_fast_forward_tests {
         assert!(d.human().contains("head 284, base 283"));
     }
 
-    /// A server that answers with the id we sent has nothing to relabel — the
+    /// A server that answers with the id we sent has nothing to relabel: the
     /// caller must not log a divergence that didn't happen.
     #[test]
     fn the_same_id_back_is_not_a_divergence() {
@@ -2205,7 +2206,7 @@ mod non_fast_forward_tests {
     }
 
     /// A server too old to send the fields degrades to "we diverged, and that
-    /// is all I know" — `head()` stays `None` rather than claiming version 0,
+    /// is all I know": `head()` stays `None` rather than claiming version 0,
     /// which is what keeps the caller from rebasing onto a number we invented.
     #[test]
     fn an_older_server_says_nothing_rather_than_zero() {
