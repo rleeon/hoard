@@ -3,19 +3,19 @@
 //! Detection runs against the catalog embedded in [`hoard_manifest`]:
 //! ~20k games imported from the Ludusavi public manifest at build time, plus
 //! the hand-curated TOML entries. Both sources are merged so the user sees
-//! every game that has a save-path definition we know about, full stop —
+//! every game that has a save-path definition we know about, full stop:
 //! no server round-trips, no "only ten games found" because the admin
 //! hasn't run a manifest import yet.
 //!
 //! Two complementary signals decide whether a game is *installed*:
 //!
-//! 1. **Filesystem heuristic** — for each catalog entry, expand its
+//! 1. Filesystem heuristic: for each catalog entry, expand its
 //!    save-path templates against the local environment (`<winAppData>`,
 //!    `<xdgData>`, `<home>`, …) and check whether any expanded directory
 //!    actually exists. A hit means the user has played (or at least
 //!    installed) the game on this machine. Catches GOG, Epic, DRM-free,
-//!    pirated installs — anything that left a save folder behind.
-//! 2. **Steam library scan** — read Steam's `libraryfolders.vdf` and
+//!    pirated installs, anything that left a save folder behind.
+//! 2. Steam library scan: read Steam's `libraryfolders.vdf` and
 //!    `appmanifest_<id>.acf` files to enumerate installed Steam apps,
 //!    then cross-reference their `appid` against the catalog. Finds
 //!    games even when no save folder has been written yet.
@@ -78,7 +78,7 @@ pub enum DetectionSource {
     SteamLibrary,
     Both,
     /// User picked the save folder by hand; the override lives in
-    /// `CliState::manual_paths` and leads `found_paths` with `High` — the user
+    /// `CliState::manual_paths` and leads `found_paths` with `High`: the user
     /// knows where their saves are better than any scrape.
     ///
     /// Leads it, does **not** replace it: whatever the heuristic found stays
@@ -92,7 +92,7 @@ pub struct DetectedGame {
     pub slug: String,
     pub display_name: String,
     /// **Save**-path candidates that exist on disk. Never contains the game's
-    /// install directory — that lives in [`install_dir`] so the UI can show
+    /// install directory, which lives in [`install_dir`] so the UI can show
     /// it as a hint without us accidentally backing up the game binary.
     /// Empty for Steam-only matches where no save folder has been created yet.
     pub found_paths: Vec<PathBuf>,
@@ -110,7 +110,7 @@ pub struct DetectedGame {
     /// that put each folder where it ended up ("name exact, strong save ext,
     /// recent save-like file", or the correlation note). The breakdown was
     /// already computed by [`grade_and_rank_paths`] and thrown away, which is
-    /// why "why did it pick THIS folder" was unanswerable — locally or from
+    /// why "why did it pick THIS folder" was unanswerable, locally or from
     /// support. Empty strings are placeholders for paths this build didn't
     /// re-grade (single-path rows inherit the rolled-up grade without extra
     /// I/O); an empty vec means the row predates the field.
@@ -121,13 +121,13 @@ pub struct DetectedGame {
     pub steam_app_id: Option<u64>,
     /// Steam install directory (e.g. `…/steamapps/common/Stellaris`). Only
     /// set when we matched via Steam. Surfaced to the UI as a hint near the
-    /// folder picker — **must not** be used as a backup path.
+    /// folder picker, and **must not** be used as a backup path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub install_dir: Option<PathBuf>,
     /// Detection finished without a save folder for this game.
     ///
-    /// The row is still true — the game IS installed, that is what the Steam
-    /// manifest or the launcher said — but there is nothing here to back up
+    /// The row is still true (the game IS installed, that is what the Steam
+    /// manifest or the launcher said) but there is nothing here to back up
     /// until someone points at a folder. Said out loud rather than left to be
     /// inferred from an empty `found_paths`, because the inference is what made
     /// the row a dead end: a caller reading the list sees a detected game, and
@@ -163,7 +163,7 @@ pub struct DetectionReport {
     #[serde(default)]
     pub stats: DetectionStats,
     /// Tracked folders that look like the game's own backup mirror of another
-    /// detected folder (P9). Read-only on purpose — nothing here re-points a
+    /// detected folder (P9). Read-only on purpose: nothing here re-points a
     /// save; surfacing the suggestion is as far as the pipeline goes, because
     /// silent repointing is what broke slot pairing in aug-2026. `default`
     /// keeps older cached reports loading.
@@ -188,18 +188,18 @@ pub struct MirrorWarning {
 }
 
 /// What each pipeline stage contributed to one detection pass, plus the wall
-/// time of the whole pass. Serialized with the report — so it lands in the
-/// scan cache and in the `Detection complete` log line — to make scan cost
+/// time of the whole pass. Serialized with the report, so it lands in the
+/// scan cache and in the `Detection complete` log line, to make scan cost
 /// and per-stage yield measurable across machines instead of guessed.
 /// Counters are "slugs this stage merged/added", not raw path candidates.
 ///
-/// `#[serde(default)]` va en el **contenedor**, no campo a campo: así una
-/// caché escrita por una versión anterior —a la que le falta el contador que
-/// se acaba de añadir— sigue cargando, y la siguiente que se añada tampoco
-/// romperá nada. Sin esto, `wrapper_slugs` tiró la caché de detección entera
-/// del usuario al actualizar ("detection cache malformed; ignoring: missing
-/// field `wrapper_slugs`"): se repara sola al siguiente escaneo, pero la
-/// biblioteca arranca en frío y eso no debería pasar por sumar un contador.
+/// `#[serde(default)]` goes on the container rather than field by field: that way a
+/// cache written by an earlier version, missing the counter just added, still
+/// loads, and the next one added will not break anything either. Without this,
+/// `wrapper_slugs` threw away the user's entire detection cache on update
+/// ("detection cache malformed; ignoring: missing field `wrapper_slugs`"). It
+/// repairs itself on the next scan, but the library starts cold, and that should
+/// not happen over adding a counter.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DetectionStats {
@@ -235,7 +235,7 @@ const PROGRESS_CHUNK: usize = 256;
 /// Folder names we treat as "this is the saves directory". Comparison is
 /// case-insensitive and exact-on-segment: a directory called `Saves` matches,
 /// `save settings` doesn't (otherwise the heuristic would back up the
-/// settings folder by accident — see `docs/plans/detection.md` §9).
+/// settings folder by accident; see `docs/plans/detection.md` §9).
 const SAVE_PATTERNS: &[&str] = &[
     "save",
     "saves",
@@ -243,10 +243,10 @@ const SAVE_PATTERNS: &[&str] = &[
     "savegames",
     "save games",
     "save_games",
-    // DETECCIÓN (recall, fase 1): `savedata`/`savefiles` son nombres de
-    // carpeta muy comunes (Unity, muchos indies, ports de consola) que el
-    // set original no reconocía. Match exacto-por-segmento, así que el
-    // riesgo de falso positivo sigue siendo bajo (no matchea "save settings").
+    // Recall, phase 1: `savedata` and `savefiles` are very common folder names
+    // (Unity, many indies, console ports) the original set did not recognise.
+    // Matched exactly per segment, so the false-positive risk stays low (it does
+    // not match "save settings").
     "savedata",
     "save data",
     "save_data",
@@ -272,7 +272,7 @@ const SAVE_DIR_OVERRIDES: &[(&str, &str)] = &[];
 /// can drive a progress bar. The future is cancellation-safe: dropping it
 /// stops the scan without leaking semaphore permits or open files.
 ///
-/// This function does **not** touch the network — the catalog ships in the
+/// This function does **not** touch the network: the catalog ships in the
 /// binary. That keeps the desktop app working on first launch on a fresh
 /// Windows machine before the user has even pointed it at a server.
 ///
@@ -288,7 +288,7 @@ where
 }
 
 /// Deep variant of [`detect_all`]: same pipeline plus the expensive passes the
-/// periodic scan skips — arbitrary Wine prefixes (Heroic/CrossOver/Flatpak/
+/// periodic scan skips: arbitrary Wine prefixes (Heroic/CrossOver/Flatpak/
 /// mounted media), Flatpak/Snap/EmuDeck save roots, deeper directory walks and
 /// a relaxed precision gate. User-triggered only (the Library "deep scan"
 /// tile), never on the automatic tick.
@@ -328,7 +328,7 @@ where
     // ---- Steam scan ---------------------------------------------------
     // Cheap (just file reads under the Steam install) so we always run it.
     // A failure here means Steam isn't installed or the user revoked
-    // access — log it loudly so the agent log shows *why* a Steam-heavy
+    // access, so log it loudly and the agent log shows *why* a Steam-heavy
     // user got an empty scan, then fall through to the filesystem pass.
     let steam_apps = match steam::list_installed_steam_games(os) {
         Ok(apps) => apps,
@@ -398,7 +398,7 @@ where
         apply_steam_name_fallback(catalog, &steam_apps, &mut by_slug);
 
     // Non-Steam launchers (1.5.2): Epic Games / GOG Galaxy / Microsoft Store.
-    // Same shape as the Steam name fallback above — slugify the display
+    // Same shape as the Steam name fallback above: slugify the display
     // name, look up exact, fall back to fuzzy. Each function is a no-op on
     // non-Windows (or when its launcher data dir is absent), so calling
     // unconditionally costs nothing on hosts without the launcher.
@@ -459,7 +459,7 @@ where
             for tmpl in &templates {
                 let candidates = expand_path_scoped(tmpl, os, &scope);
                 if candidates.is_empty() {
-                    // Unknown placeholder or unset env var — pathexpand
+                    // Unknown placeholder or unset env var; pathexpand
                     // already returns vec![] for those. Useful to log
                     // once per *unknown* template so the agent log can
                     // tell us what's missing in pathexpand.
@@ -611,11 +611,11 @@ where
 
     // Whole-prefix Windows cross-reference: for prefixes NOT tied to a single
     // catalog game, expand EVERY catalog entry's Windows templates against each
-    // real Windows user home inside the prefix — the native filesystem
+    // real Windows user home inside the prefix. The native filesystem
     // heuristic, pointed at the prefix's `drive_c/`. Two prefix sources qualify:
     //   * Generic prefixes (plain `wine` / PlayOnLinux / `.desktop`), which
     //     aren't owned by any launcher.
-    //   * Proton prefixes whose appid has NO catalog match — i.e. "non-Steam
+    //   * Proton prefixes whose appid has NO catalog match, i.e. "non-Steam
     //     game" shortcuts the user added to Steam and runs through Proton. The
     //     appid-keyed Proton block above can't help those (no entry to expand),
     //     so a save belonging to a real catalog game went unseen.
@@ -746,7 +746,7 @@ where
     // Steam-emulator / repack wrappers: `<APPDATA>/GSE Saves/<appid>/remote`
     // and friends. The subfolder IS the Steam appid, so the game resolves
     // against the catalog with its real name and cover instead of whatever
-    // the generic walk guessed — that guess is where "GSE Saves tracked under
+    // the generic walk guessed. That guess is where "GSE Saves tracked under
     // the Windows username" came from. On Linux the same repacks run under
     // Proton, so the prefixes get the same treatment.
     {
@@ -775,16 +775,16 @@ where
                         .and_then(ludusavi::title_for_app_id)
                         .map(str::to_string)
                         .unwrap_or_else(|| hit.folder.clone());
-                    // Los wrappers se organizan por appid, así que cuando el
-                    // catálogo no conoce ese appid el "nombre de carpeta" ES el
-                    // appid: así nacieron los saves `2059170` y `2479090`. Un
-                    // número no nombra un juego y no dice nada al de al lado.
+                    // Wrappers are organised by appid, so when the catalogue does
+                    // not know that appid the "folder name" IS the appid: that is
+                    // how the `2059170` and `2479090` saves were born. A number
+                    // does not name a game and says nothing to the next machine.
                     if segment_names_no_game(&name) {
                         tracing::debug!(
                             wrapper = hit.wrapper,
                             folder = %name,
                             path = %hit.path.display(),
-                            "detect: wrapper entry has no name of its own — skipped"
+                            "detect: wrapper entry has no name of its own, skipped"
                         );
                         continue;
                     }
@@ -845,12 +845,11 @@ where
         .filter(|(_, g)| g.found_paths.is_empty())
         .map(|(s, _)| s.clone())
         .collect();
-    // Una pasada por las raíces estándar para todo el bucle: el tope de tiempo
-    // pasa a ser por pasada y no por juego. Perezoso porque el caso bueno es que
-    // no quede ningún juego sin resolver, y ahí el índice no llega a mirarse:
-    // construirlo igualmente son siete raíces a `NAME_LOOKUP_TIMEOUT` cada una
-    // —hasta 2,8 s de disco frío— en el camino crítico de la detección, para
-    // nada.
+    // One pass over the standard roots for the whole loop: the time cap becomes
+    // per pass rather than per game. Lazy, because the good case is that no game is
+    // left unresolved, and there the index is never looked at: building it anyway
+    // is seven roots at `NAME_LOOKUP_TIMEOUT` each, up to 2.8 s on a cold disk, on
+    // detection's critical path, for nothing.
     let host_dirs = OnceCell::new();
     let mut prefix_indexes: HashMap<PathBuf, NamedDirs> = HashMap::new();
     for slug in unresolved_slugs {
@@ -860,21 +859,21 @@ where
             let prefix_root = prefix_root_by_slug.get(&slug).cloned();
             (install_dir, prefix_root, g.display_name.clone())
         };
-        // Tres intentos, del más exacto al más caro, y el orden es el arreglo:
-        // al revés, un juego cuya ruta de catálogo no resuelve acababa ofreciendo
-        // una carpeta de dentro de la instalación —3,6 GB en el caso que destapó
-        // esto— teniendo la buena a un `read_dir` de distancia en `LocalLow`.
+        // Three attempts, from the most exact to the most expensive, and the order
+        // is the fix: the other way round, a game whose catalogue path did not
+        // resolve ended up offering a folder inside the installation (3.6 GB in the
+        // case that exposed this) with the right one a single `read_dir` away in
+        // `LocalLow`.
         //
-        // Se hace aunque no haya `install_dir` ni prefijo: un juego que no es de
-        // Steam no tiene ninguno de los dos y hasta ahora se quedaba sin fallback
-        // ninguno (el `continue` de abajo lo descartaba antes de mirar nada).
+        // It runs even with no `install_dir` and no prefix: a non-Steam game has
+        // neither, and until now it got no fallback at all (the `continue` below
+        // discarded it before anything was looked at).
         let shields = crate::savefilter::shields_for_slug(&slug);
 
-        // 1. El installDir: una cadena exacta que Valve escribió, resuelta con un
-        //    `stat` por raíz en vez de con un barrido con presupuesto. Un juego
-        //    cuya carpeta de instalación tiene nombre en clave —Aven Colony
-        //    instala en `prj_juniper`— no se parece a su nombre comercial por
-        //    ningún lado, así que ninguna búsqueda por nombre lo encuentra.
+        // 1. The installDir: an exact string Valve wrote, resolved with one `stat`
+        //    per root rather than a budgeted sweep. A game whose install folder has
+        //    a code name (one title installs into `prj_juniper`) looks nothing like
+        //    its commercial name, so no name search finds it.
         let mut discoveries = discover_by_install_dir_name(
             os,
             &slug,
@@ -889,10 +888,9 @@ where
                 "detection: found the save folder by the game's install-dir name"
             );
         }
-        // 2. Por nombre en las raíces donde de verdad viven los saves. El índice
-        //    se construye sólo si hace falta: las raíces del host una vez, las
-        //    del prefijo una vez por prefijo —varios juegos comparten el mismo y
-        //    no hay que reescanearlo.
+        // 2. By name in the roots where saves really live. The index is only built
+        //    when it is needed: the host's roots once, the prefix's once per prefix,
+        //    since several games share one and it must not be rescanned.
         if discoveries.is_empty() {
             let extra_names: Vec<String> = install_dir
                 .as_deref()
@@ -957,8 +955,8 @@ where
     }
 
     // Phase 4 (ADR 0020): catalog-free discovery + attribution. A single
-    // pass over the broad user save roots — scored WITH the correlation
-    // store — surfaces save folders that no catalog/Steam signal claimed
+    // pass over the broad user save roots, scored WITH the correlation
+    // store, surfaces save folders that no catalog/Steam signal claimed
     // (GUID names, non-English names, indies Ludusavi doesn't list) and
     // attributes each to a game by the process that wrote it. Gated to
     // correlation-corroborated or strong-static candidates so it never mints
@@ -1023,7 +1021,7 @@ where
     // Backfill Steam app ids from the catalog by exact slug. A game found
     // purely by filesystem heuristic (a Wine prefix, a native Linux path, a
     // correlation hit) never carried a Steam appid, so the UI had no capsule to
-    // fetch and fell back to the letter tile — that's why Factorio/OpenTTD (and
+    // fetch and fell back to the letter tile, which is why Factorio/OpenTTD (and
     // every Wrapple cover, since the only logged playtime was Factorio's) showed
     // no art. The detected slug *is* the Ludusavi slug, so an exact catalog
     // match is unambiguous. Only fills a missing id; an id already resolved by a
@@ -1038,16 +1036,16 @@ where
                     game.steam_app_id = entry.steam_app_id;
                 }
             }
-            // Nota informativa, nada más. Se rellena aquí y NO se vuelve a
-            // leer: ni ordena, ni puntúa, ni cambia el auto-track. Lo pinta la
-            // UI y ya.
+            // An informational note, nothing more. It is filled in here and never
+            // read again: it neither sorts, nor scores, nor changes auto-track. The
+            // UI draws it and that is all.
             game.steam_cloud = entry.is_some_and(|e| e.cloud_steam);
         }
     }
 
     // Grade + rank each game's save paths individually. Different sources can
-    // hand the same game wildly different folders — a real `~/Saved Games`
-    // tree full of saves next to an almost-empty Steam-Cloud stub — and until
+    // hand the same game wildly different folders (a real `~/Saved Games`
+    // tree full of saves next to an almost-empty Steam-Cloud stub) and until
     // now they were merged in arbitrary order, so `found_paths[0]` (what
     // automatic tracking backs up) could be the junk one. Re-score every path
     // and sort strongest-first, keeping `path_confidences` aligned, so the UI
@@ -1056,7 +1054,7 @@ where
 
     // Last word on every row: a game with no folder says so, instead of leaving
     // it to be inferred from an empty list. Stamped here, after the offer filter
-    // has had its say, so it covers both ways of arriving at nothing — never
+    // has had its say, so it covers both ways of arriving at nothing, never
     // found, and found-then-rejected. See [`DetectedGame::needs_folder`].
     let mut without_folder = 0usize;
     for g in by_slug.values_mut() {
@@ -1091,7 +1089,7 @@ where
     }
 
     // P9: evaluate already-tracked folders against the mirror rule. Fixing
-    // scoring does NOT heal rows tracked before the fix — run_scan skips
+    // scoring does NOT heal rows tracked before the fix: run_scan skips
     // tracked slugs entirely, so without this the mirror keeps uploading
     // forever. Read-only: it warns, it never re-points.
     let mirror_warnings = detect_tracked_mirrors(state, &games);
@@ -1156,7 +1154,7 @@ const LIB_SYSTEM_DIRS: &[&str] = &[
 /// folder called `ELDEN RING`", and this map says where that folder actually
 /// is. Built once per scan from two sources, cheapest first:
 ///
-/// 1. the parsed Steam appmanifests (exact, no extra I/O — we already have
+/// 1. the parsed Steam appmanifests (exact, no extra I/O, since we already have
 ///    them), and
 /// 2. one `read_dir` of each library's `steamapps/common` **and** of the
 ///    library root itself, which is where portable and repack installs sit
@@ -1224,7 +1222,7 @@ fn scope_for(
 }
 
 /// Pull the list of save-path template strings that apply to the requested
-/// OS for a single Ludusavi entry. Strips constraints/tags — detection only
+/// OS for a single Ludusavi entry. Strips constraints and tags: detection only
 /// cares about the path itself.
 fn paths_for_os(entry: &LudusaviEntry, os: Os) -> Vec<String> {
     let slot = match os {
@@ -1325,7 +1323,7 @@ fn apply_steam_name_fallback(
 }
 
 /// Threshold for `find_by_fuzzy_name` in [`apply_steam_name_fallback`].
-/// 0.15 ≈ one edit per ~7 characters — enough slack for typos and minor
+/// 0.15 is about one edit per seven characters, enough slack for typos and minor
 /// suffix noise. Note the threshold alone would NOT stop cross-sequel
 /// matches ("civilization-v" vs "civilization-vi" ≈ 0.07 sits well inside
 /// it); the numeral veto in `fuzzy_match_in` is what rejects those.
@@ -1345,7 +1343,7 @@ const FUZZY_NAME_THRESHOLD: f32 = 0.15;
 /// Confidence is pinned to `Low` because the match is structurally weaker
 /// than Steam's `appid`: two unrelated launcher games sharing a slugifiable
 /// name would collide. Rows without any Ludusavi match are **not**
-/// inserted — surfacing every random launcher app would surface launcher
+/// inserted: surfacing every random launcher app would surface launcher
 /// tooling and non-game executables. The walker still benefits from the
 /// install_dir attached to matched rows.
 ///
@@ -1378,7 +1376,7 @@ fn apply_launcher_name_fallback(
         };
         match by_slug.get_mut(&entry.slug) {
             Some(existing) => {
-                // Already linked by Steam appid or another launcher — keep
+                // Already linked by Steam appid or another launcher, so keep
                 // the stronger row but stamp install_dir if it's still
                 // empty (e.g. the slug came from `apply_steam_name_fallback`
                 // without an install_dir hint).
@@ -1440,7 +1438,7 @@ fn apply_launcher_name_fallback(
 /// Unifies three prefix sources behind a single map keyed by Ludusavi slug:
 ///   * Proton: looked up via the Steam appid → catalog slug.
 ///   * Lutris and Bottles: the prefix's identifier is slugified directly
-///     and used as the key (best-effort — no catalog lookup, the
+///     and used as the key (best-effort, with no catalog lookup, since the
 ///     identifier is whatever the user named the bottle / game dir).
 ///
 /// On non-Linux hosts only the Proton wrapper has a chance to contribute,
@@ -1452,7 +1450,7 @@ fn build_prefix_root_by_slug(os: Os) -> HashMap<String, PathBuf> {
             PrefixKind::Proton => {
                 // The identifier is the Steam appid stringified; look up
                 // the catalog entry to recover the slug. A miss means
-                // Ludusavi doesn't know the appid — silently skip; the
+                // Ludusavi doesn't know the appid, so silently skip; the
                 // walker can't help without a slug to index against.
                 let Ok(appid) = prefix.identifier.parse::<u64>() else {
                     continue;
@@ -1465,19 +1463,19 @@ fn build_prefix_root_by_slug(os: Os) -> HashMap<String, PathBuf> {
             // Lutris names its prefix directory after its own game slug, and
             // the manifest carries that slug (`id.lutris`, 4.1k entries), so
             // it resolves exactly. Slugifying the directory name is the
-            // fallback for Bottles — and for the Lutris games the manifest
-            // doesn't list — but it only works when the folder happens to be
+            // fallback for Bottles, and for the Lutris games the manifest
+            // doesn't list, but it only works when the folder happens to be
             // named like the game.
             PrefixKind::Lutris => ludusavi::find_by_lutris_slug(&prefix.identifier)
                 .map(|e| e.slug.clone())
                 .unwrap_or_else(|| ludusavi::slugify(&prefix.identifier)),
             PrefixKind::Bottles => ludusavi::slugify(&prefix.identifier),
-            // Generic prefixes have no per-game identifier — a single prefix
+            // Generic prefixes have no per-game identifier: a single prefix
             // holds many games. They're handled by the dedicated generic-prefix
             // scan in `detect_all`, not the slug-keyed aggressive walker.
             PrefixKind::Generic => continue,
         };
-        // First writer wins — multiple prefixes for the same slug
+        // First writer wins; multiple prefixes for the same slug
         // (e.g. a Steam install AND a Lutris install of the same game) is
         // an unusual setup; surface a debug log but don't try to merge
         // walks across prefix roots.
@@ -1505,7 +1503,7 @@ fn merge_fs_hit(
     // Single choke point for every catalog-driven stage: a template that
     // resolves to a whole profile or a shared engine root is a loose
     // template, not a save. Offering it would have the user back up their
-    // Documents folder — or every RenPy game at once.
+    // Documents folder, or every RenPy game at once.
     let offered = hits.len();
     let hits: Vec<PathBuf> = hits
         .into_iter()
@@ -1518,17 +1516,17 @@ fn merge_fs_hit(
             !broad
         })
         .collect();
-    // Se ofrecieron rutas y TODAS eran demasiado anchas: no hay nada que
-    // enseñar y tampoco hay que inventar una fila. Ojo: esto no es lo mismo
-    // que un `hits` vacío de entrada — eso es la señal deliberada de "vi el
-    // juego en disco pero no su carpeta de saves", que sí crea la fila con
-    // `found_paths` vacío para que la UI pida elegir carpeta.
+    // Paths were offered and ALL of them were too broad: there is nothing to show
+    // and no row to invent either. Note this is not the same as an empty `hits` on
+    // the way in, which is the deliberate signal for "I saw the game on disk but
+    // not its save folder", and that does create the row with an empty
+    // `found_paths` so the UI asks for a folder.
     if offered > 0 && hits.is_empty() && !by_slug.contains_key(&slug) {
         return;
     }
     match by_slug.get_mut(&slug) {
         Some(existing) => {
-            // Both signals — strongest possible match.
+            // Both signals: the strongest possible match.
             existing.source = DetectionSource::Both;
             existing.confidence = Confidence::High;
             for h in hits {
@@ -1563,7 +1561,7 @@ fn merge_fs_hit(
 /// the scorer; the catalog-template and generic-prefix scans point straight at
 /// a save dir, so without this they'd cap at `Medium` even when the content is
 /// direct evidence (verified archive index, or a rotating ≥3 strong-ext save
-/// set like openttd's `autosave/`). Only ever upgrades — a weak score keeps the
+/// set like openttd's `autosave/`). Only ever upgrades: a weak score keeps the
 /// `Medium` floor, never downgrades. A slug already present (e.g. Steam
 /// cross-ref) is left to `merge_fs_hit`'s Both/High promotion.
 fn merge_fs_hit_graded(
@@ -1599,7 +1597,7 @@ fn merge_fs_hit_graded(
 ///    Same semantics as the pre-1.5 hardcoded list.
 /// 2. Otherwise, per hit:
 ///    * If the hit's last path segment matches [`SAVE_PATTERNS`] (exact,
-///      case-insensitive), keep it as-is — it already points at a save dir.
+///      case-insensitive), keep it as-is: it already points at a save dir.
 ///    * Else, list its immediate subdirectories and keep the ones whose
 ///      name matches [`SAVE_PATTERNS`]. Zero matches drops the hit so the
 ///      UI falls back to the amber "pick folder" alert; one or more matches
@@ -1625,20 +1623,20 @@ fn refine_save_dir(slug: &str, hits: Vec<PathBuf>) -> Vec<PathBuf> {
 
     let mut refined: Vec<PathBuf> = Vec::new();
     for hit in hits {
-        // El candidato es un FICHERO. Más de 4.900 juegos del catálogo sólo
-        // tienen plantillas así (`<winAppData>/Game/save.dat`, `<base>/140.sav`)
-        // y hasta ahora se perdían enteros: el refinado buscaba una subcarpeta
-        // de save, no la encontraba —un fichero no tiene subcarpetas— y lo
-        // tiraba, dejando al juego con la alerta ámbar "elige carpeta".
+        // The candidate is a FILE. Over 4,900 games in the catalogue only have
+        // templates like that (`<winAppData>/Game/save.dat`, `<base>/140.sav`) and
+        // until now they were lost whole: refinement looked for a save subfolder,
+        // did not find one (a file has no subfolders) and threw it away, leaving the
+        // game with the amber "pick a folder" alert.
         //
-        // Se prefiere la CARPETA que lo contiene, que es lo que el usuario
-        // espera respaldar y agrupa los saves hermanos. Sólo cuando esa
-        // carpeta es demasiado ancha para ofrecerla (el perfil, Documentos, la
-        // raíz de instalación del juego) se rastrea el fichero suelto.
+        // The folder containing it is preferred, since that is what the user expects
+        // to back up and it groups the sibling saves. Only when that folder is too
+        // broad to offer (the profile, Documents, the game's install root) is the
+        // lone file tracked.
         //
         // …or when the folder keeps mods, Workshop or cache next to the save
-        // (`junkdirs::holds_foreign_subdir`). That does not make it broad — it
-        // belongs to the game, and `is_too_broad` approves it — but it does make
+        // (`junkdirs::holds_foreign_subdir`). That does not make it broad, since it
+        // belongs to the game, and `is_too_broad` approves it, but it does make
         // it the GAME's folder rather than its saves' folder, and adopting it
         // whole uploads hundreds of megabytes of content nobody asked for.
         // Issue #17: Teardown's save is a `savegame.xml` of a few KB, and its
@@ -1662,8 +1660,8 @@ fn refine_save_dir(slug: &str, hits: Vec<PathBuf>) -> Vec<PathBuf> {
         }
         // Both "keep the hit whole" branches below are gated on this. A
         // template that resolves to a whole profile root and *also* has "save"
-        // in its last segment — `…/Saved Games` on its own, and inside a Proton
-        // prefix especially, where `is_too_broad` alone is blind — was kept
+        // in its last segment (`.../Saved Games` on its own, and inside a Proton
+        // prefix especially, where `is_too_broad` alone is blind) was kept
         // whole and offered as one game's folder. Refining into its
         // subdirectories is still fine, and is what the rest of the loop does.
         let keep_whole = !never_offer_whole(&hit);
@@ -1679,24 +1677,20 @@ fn refine_save_dir(slug: &str, hits: Vec<PathBuf>) -> Vec<PathBuf> {
             && !dir_is_empty(&hit)
             && (hit_name_suggests_saves(&hit) || is_nest_of_save_dirs(&hit))
         {
-            // El catálogo apuntó AQUÍ y el nombre de la carpeta lo dice
-            // ("SavedArksLocal", "SaveData"), pero no es una de las grafías
-            // exactas de `SAVE_PATTERNS` y dentro no hay ninguna subcarpeta
-            // save-named que refinar. Tirarla era perder el acierto: en el
-            // Windows del usuario, `<base>/ShooterGame/Saved/SavedArksLocal`
-            // de ARK existía con partidas dentro y salía como alerta ámbar
-            // "elige carpeta" en vez de rastrearse.
-            //
-            // Se exige que el NOMBRE hable de saves, no sólo que la carpeta
-            // exista: una plantilla que apunta a la raíz del juego (el caso
-            // Paradox, `.../Paradox Interactive/Stellaris` con `mod/` y
-            // `settings/`) no lo cumple y sigue dando la alerta ámbar, que
-            // es lo correcto — ahí no sabemos cuál de las subcarpetas es.
+            // The catalogue pointed HERE and the folder's name says so
+            // ("SavedArksLocal", "SaveData"), but it is not one of
+            // `SAVE_PATTERNS`' exact spellings and there is no save-named subfolder
+            // inside to refine down to. Throwing it away lost the hit: on one
+            // user's Windows, ARK's `<base>/ShooterGame/Saved/SavedArksLocal`
+            // existed with saves in it and came out as an amber alert. A folder
+            // with several ambiguous subfolders (`profiles/`, `settings/`) does not
+            // meet the bar and still gives the amber alert, which is right: there we
+            // do not know which subfolder it is.
             //
             // The other shape kept whole is the NEST: the folder holds no
             // saves of its own but one subfolder per save
             // (`.../Cyberpunk 2077/AutoSave-0/sav.dat`). There is no ambiguity
-            // there either — everything inside belongs to the same game — and
+            // there either, since everything inside belongs to the same game, and
             // dropping it left the game with no path at all even though the
             // catalog had pointed at exactly the right place. See
             // [`is_nest_of_save_dirs`].
@@ -1730,7 +1724,7 @@ fn refine_save_dir(slug: &str, hits: Vec<PathBuf>) -> Vec<PathBuf> {
         }
     }
     // P2 (the incident's veto): a refined entry that is another entry's backup
-    // mirror — name-plus-suffix AND a content superset — is the game's own
+    // mirror (name-plus-suffix AND a content superset) is the game's own
     // rotating copy, never the save. Dropped outright here so it can't reach
     // `found_paths`, get probed for correlation, or lead auto-track. The
     // superset condition is what makes the veto safe: without it a `-bak`
@@ -1755,11 +1749,11 @@ fn refine_save_dir(slug: &str, hits: Vec<PathBuf>) -> Vec<PathBuf> {
     kept
 }
 
-/// El último segmento **habla** de saves sin ser una de las grafías exactas:
-/// `SavedArksLocal`, `SaveData`, `save_games`. Más laxo que
-/// [`name_matches_save_pattern`] a propósito, y sólo se usa para decidir si
-/// conservar un acierto que el catálogo ya señaló — no para inventar
-/// candidatos de la nada.
+/// The last segment *talks about* saves without being one of the exact spellings:
+/// `SavedArksLocal`, `SaveData`, `save_games`. Looser than
+/// [`name_matches_save_pattern`] on purpose, and only used to decide whether to
+/// keep a hit the catalogue already pointed at, never to invent candidates out of
+/// nothing.
 fn hit_name_suggests_saves(path: &Path) -> bool {
     path.file_name()
         .and_then(|s| s.to_str())
@@ -1796,8 +1790,8 @@ fn name_matches_save_pattern(name: &str) -> bool {
 ///   existing entry so the UI still shows the Steam hint.
 ///
 ///   Leading rather than replacing is what fixes the aug-2026 Factorio case:
-///   pointing at a folder by hand — to add it as a second one, or just to try
-///   it — left the card showing **only** that folder, and the game's real save
+///   pointing at a folder by hand, to add it as a second one or just to try
+///   it, left the card showing **only** that folder, and the game's real save
 ///   folder vanished from the list with nothing to say it was still there. The
 ///   manual path already wins by going first (it is what automatic tracking
 ///   picks and what the UI proposes); wiping the rest added nothing and hid the
@@ -1866,8 +1860,8 @@ fn apply_manual_overrides(
 /// behind it. A path already in the list is moved to the front rather than
 /// duplicated.
 ///
-/// `path_confidences` runs 1:1 with `found_paths` — the UI relies on it to grade
-/// each folder and automatic tracking to keep the best one — so it is reordered
+/// `path_confidences` runs 1:1 with `found_paths` (the UI relies on it to grade
+/// each folder and automatic tracking to keep the best one) so it is reordered
 /// alongside. It gets resized first in case the entry came from a cached report
 /// written before that field existed.
 fn promote_manual_path(game: &mut DetectedGame, path: &Path) {
@@ -1919,7 +1913,7 @@ pub struct TraceStep {
 
 /// A candidate path the pipeline rejected, with a human-readable reason.
 /// Surfaced in the diagnostics UI so the user can tell *why* their game
-/// didn't show up — "path doesn't exist", "expand_path returned nothing",
+/// didn't show up: "path doesn't exist", "expand_path returned nothing",
 /// "slug not in catalog".
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DroppedPath {
@@ -1939,7 +1933,7 @@ pub struct DetectionTrace {
 
 /// Reproduce the detection pipeline for a single slug, recording every
 /// step into a [`DetectionTrace`] instead of building a report. Used by
-/// the desktop app's hidden diagnostics panel — the answer to "why
+/// the desktop app's hidden diagnostics panel: the answer to "why
 /// doesn't this game show up in my library?" is now mechanical.
 ///
 /// The real [`detect_all`] is untouched: this is a parallel implementation
@@ -1947,7 +1941,7 @@ pub struct DetectionTrace {
 /// [`expand_path_in_prefix_as_user`], [`refine_save_dir`],
 /// [`aggressive_discover_with`]) but writes traces. Every stage of the real
 /// pipeline has a step here; the only structural difference is phase 4
-/// (catalog-free discovery), which is global rather than per-slug — the
+/// (catalog-free discovery), which is global rather than per-slug, so the
 /// `correlation` step covers its per-slug signal by listing which observed
 /// dirs the store attributes to this slug. If you add a stage to
 /// [`detect_all_inner`], add its step here in the same order; the
@@ -1957,7 +1951,7 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
     let mut attempts: Vec<TraceStep> = Vec::new();
 
     // ---- Step 1: manual_override ------------------------------------
-    // Recorded first because a manual path beats every heuristic — if
+    // Recorded first because a manual path beats every heuristic: if
     // there's an override, the rest of the trace is informative only.
     let mut manual_step = TraceStep {
         kind: "manual_override".into(),
@@ -1981,7 +1975,7 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
     attempts.push(manual_step);
 
     // ---- Step 2: steam_appid ----------------------------------------
-    // A slug not in the catalog short-circuits the rest of the trace —
+    // A slug not in the catalog short-circuits the rest of the trace,
     // the remaining steps can't expand templates we don't have.
     let catalog = ludusavi::catalog();
     let Some(entry) = catalog.iter().find(|e| e.slug == slug) else {
@@ -2073,7 +2067,7 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
     attempts.push(fallback_step);
 
     // ---- Step 4: launcher_fallback ----------------------------------
-    // Epic / GOG / Microsoft Store cross-reference. Exact slug match only —
+    // Epic / GOG / Microsoft Store cross-reference. Exact slug match only,
     // the real pipeline also fuzzy-matches, but the exact miss is already
     // the answer the user needs ("your launcher spells the name differently").
     let mut launcher_step = TraceStep {
@@ -2117,7 +2111,7 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
     // One step per save-path template that applies to the current OS.
     // Collects raw hits to feed into the refinement step below.
     let templates = paths_for_os(entry, os);
-    // Same `<base>`/`<root>` resolution the real pass uses — a diagnostic
+    // The same `<base>` and `<root>` resolution the real pass uses. A diagnostic
     // that expanded templates differently would describe a pipeline that
     // doesn't exist.
     let diag_scope = scope_for(
@@ -2311,7 +2305,7 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
     }
 
     // ---- Step 9: steam_cloud ----------------------------------------
-    // `userdata/<storeUserId>/<appid>/remote/` — some titles write their
+    // `userdata/<storeUserId>/<appid>/remote/`: some titles write their
     // only save there. Merged directly (no refinement) like the pipeline.
     if let Some(appid) = entry.steam_app_id {
         let mut step = TraceStep {
@@ -2468,13 +2462,13 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
             }
         }
     } else {
-        walk_step.template = Some("skipped — earlier stages already produced save paths".into());
+        walk_step.template = Some("skipped: earlier stages already produced save paths".into());
     }
     attempts.push(walk_step);
 
     // ---- Step 12: correlation (phase-4 signal) ------------------------
     // Phase 4 proper is catalog-free and global, so it can't be replayed for
-    // one slug; what CAN be shown is its per-slug input — every observed
+    // one slug; what CAN be shown is its per-slug input, every observed
     // process↔write whose attributed name slugifies to this slug.
     let mut corr_step = TraceStep {
         kind: "correlation".into(),
@@ -2533,12 +2527,12 @@ pub(crate) const AGGRESSIVE_WALK_TIMEOUT: Duration = Duration::from_millis(1500)
 pub(crate) const AGGRESSIVE_WALK_MAX_DEPTH: usize = 4;
 
 /// Hard cap on the number of save-like dirs we report per walked root.
-/// DETECCIÓN (fase 1, ADR 0020): el ADR pide eliminar este tope porque la
-/// verdadera puerta de calidad ahora es el score de `scoring::score_dir`
-/// (sólo cruzan el umbral las carpetas con evidencia real). Lo subimos
-/// 5→16 en vez de quitarlo del todo: sigue actuando de cinturón de
-/// seguridad ante un árbol patológico, pero ya no recorta candidatos
-/// legítimos a los primeros cinco.
+///
+/// ADR 0020 asks for this cap to go, because the real quality gate is now
+/// `scoring::score_dir`'s score (only folders with real evidence cross the
+/// threshold). It was raised from 5 to 16 rather than removed outright: it still
+/// acts as a seatbelt against a pathological tree, but it no longer trims
+/// legitimate candidates down to the first five.
 pub(crate) const AGGRESSIVE_WALK_MAX_CANDIDATES: usize = 16;
 
 /// How often (in dirs visited) the walker re-checks the elapsed timeout.
@@ -2574,15 +2568,16 @@ pub(crate) const WALK_SKIP: &[&str] = &[
 
 /// File extensions we treat as "save-like" when promoting a dir from
 /// `Low` to `Medium` confidence. Compared case-insensitively. Kept tight on
-/// purpose — `.cfg` / `.ini` would generate too many false positives from
+/// purpose: `.cfg` and `.ini` would generate too many false positives from
 /// engine config dirs.
 pub(crate) const SAVE_FILE_EXTENSIONS: &[&str] = &["sav", "save", "profile", "json", "dat", "xml"];
 
 /// How recent a save-like file has to be to promote a dir to `Medium`.
-/// DETECCIÓN (recall, fase 1): subido 90→180 días. 90 dejaba fuera saves
-/// de juegos jugados "la temporada pasada"; 180 los recupera y sigue
-/// descartando data shippeada (que casi siempre tiene la mtime del install,
-/// más vieja que medio año en cuanto el juego lleva tiempo instalado).
+///
+/// Raised from 90 to 180 days. 90 left out saves from games played "last season";
+/// 180 recovers them and still discards shipped data, which almost always carries
+/// the install's mtime, older than half a year as soon as the game has been
+/// installed a while.
 pub(crate) const RECENT_SAVE_FILE_WINDOW: Duration = Duration::from_secs(60 * 60 * 24 * 180);
 
 /// One save-like path discovered by [`aggressive_discover`]. The `reason`
@@ -2606,7 +2601,7 @@ const NAME_LOOKUP_MAX_DIRS: usize = 400;
 /// Normalise a folder or game name for comparison: lowercase, and drop
 /// everything that is not a letter or a digit.
 ///
-/// `Hell Maiden`, `HellMaiden` and `hell-maiden` all have to compare equal —
+/// `Hell Maiden`, `HellMaiden` and `hell-maiden` all have to compare equal, so
 /// studios name the folder however they please, and the catalogue's
 /// `display_name` is the only thing we can hold it against.
 fn name_key(s: &str) -> String {
@@ -2619,8 +2614,8 @@ fn name_key(s: &str) -> String {
 /// Does this directory hold anything a player would miss?
 ///
 /// The gate that makes the name lookup safe to trust. `AppData/LocalLow/<Studio>/<Game>`
-/// exists for **every** Unity game whether or not it saves there — the engine
-/// drops `Player.log` and `Unity/<guid>/Analytics/` in it regardless — so
+/// exists for **every** Unity game whether or not it saves there (the engine
+/// drops `Player.log` and `Unity/<guid>/Analytics/` in it regardless) so
 /// matching on the name alone would confidently recommend a folder of logs. It
 /// is exactly the folder a user picked by hand when Hoard left them to guess,
 /// and then "nothing to back up" was all they got (ago-2026).
@@ -2677,7 +2672,7 @@ enum FolderContents {
     /// Files inside, and [`fileclass`] says not one of them is player data:
     /// settings, logs, engine bookkeeping. Not a save folder.
     NoSaveData,
-    /// No files at all. The game is installed and has not written a save yet —
+    /// No files at all. The game is installed and has not written a save yet,
     /// which is a real state, not a mistake.
     Empty,
     /// The walk ran out of depth or budget before it could say. Never used to
@@ -2689,7 +2684,7 @@ enum FolderContents {
 ///
 /// The counterpart of [`holds_player_data`], and deliberately stricter: that one
 /// asks "is there anything worth backing up here", which a folder holding one
-/// `settings.ini` passes — config is uploaded so it is never lost, so it counts
+/// `settings.ini` passes: config is uploaded so it is never lost, so it counts
 /// as backup-worthy. Offering is a different question. `~/.config/SiNKR` holds
 /// exactly one `settings.ini` and the catalog points at it, so it was offered
 /// next to the folder that holds the actual saves, and the decoy scenario of an
@@ -2708,7 +2703,7 @@ fn inspect_folder(dir: &Path, shields: &[String]) -> FolderContents {
 
     impl Walk<'_> {
         /// `rel` is the path so far **relative to the candidate root**, with
-        /// `/` separators — the shape [`fileclass::classify`] expects. Passing
+        /// `/` separators, the shape [`fileclass::classify`] expects. Passing
         /// only the file name would blind its segment rules, and those are what
         /// recognise the Unity analytics queue and the engine telemetry dirs
         /// that make up most of a false offer's contents.
@@ -2786,7 +2781,7 @@ fn inspect_folder(dir: &Path, shields: &[String]) -> FolderContents {
 ///   settings folder and getting "nothing to back up" for their trouble.
 /// * **No files at all.** Kept, but never above `Low`. The game is installed
 ///   and has not been played, and the folder it will save into is genuinely
-///   useful to show — hiding it would mean a freshly installed game looks
+///   useful to show: hiding it would mean a freshly installed game looks
 ///   undetected. `Low` is also what keeps automatic tracking off it, alongside
 ///   the empty-folder check auto-track already makes.
 ///
@@ -2830,7 +2825,7 @@ const EMPTY_OFFER_REASON: &str = "empty: the game has not written a save here ye
 ///
 /// The game's own grade is deliberately left alone. `DetectedGame::confidence`
 /// answers "is this game installed here", and an empty save folder is no
-/// evidence against that — the game is installed, it has not been played. It is
+/// evidence against that: the game is installed, it has not been played. It is
 /// also what lets an untouched folder adopt a save that already exists in the
 /// cloud, which is exactly the case a `Low` here would break.
 fn cap_empty_offers(g: &mut DetectedGame, empty: &HashSet<PathBuf>) {
@@ -2859,8 +2854,8 @@ fn cap_empty_offers(g: &mut DetectedGame, empty: &HashSet<PathBuf>) {
 /// Scanned once, the cap is a per-pass ceiling instead of a per-game one.
 ///
 /// Two levels are indexed, which is what covers the overwhelming majority:
-///   - `<root>/<Game>` — the game's own folder;
-///   - `<root>/<Studio>/<Game>` — the Unity convention, and what a good many
+///   - `<root>/<Game>`, the game's own folder;
+///   - `<root>/<Studio>/<Game>`, the Unity convention, and what a good many
 ///     others copy.
 ///
 /// A third level is not guessing territory we want to be in.
@@ -2896,10 +2891,10 @@ impl NamedDirs {
                     continue;
                 };
                 for sub in inner.flatten() {
-                    // El reloj también aquí: sin él, una raíz con pocas carpetas
-                    // de primer nivel y muchísimas dentro (un `LocalLow` de un
-                    // estudio prolífico, un disco frío) sólo se frenaba por el
-                    // tope de entradas, que es un número, no un tiempo.
+                    // The clock here too: without it, a root with few top-level
+                    // folders and a great many inside (a prolific studio's
+                    // `LocalLow`, a cold disk) was only braked by the entry cap,
+                    // which is a number rather than a time.
                     if looked >= NAME_LOOKUP_MAX_DIRS || start.elapsed() >= NAME_LOOKUP_TIMEOUT {
                         break;
                     }
@@ -2922,9 +2917,9 @@ impl NamedDirs {
         Self { by_key }
     }
 
-    /// Añade las entradas de otro índice. Un juego bajo Proton puede guardar
-    /// dentro del prefijo **o** en el `$HOME` real (los nativos multiplataforma
-    /// lo hacen), así que su índice mira en los dos sitios.
+    /// Adds another index's entries. A game under Proton can save inside the prefix
+    /// or in the real `$HOME` (cross-platform native ones do), so its index looks in
+    /// both places.
     fn absorb(&mut self, other: &NamedDirs) {
         for (k, paths) in &other.by_key {
             let slot = self.by_key.entry(k.clone()).or_default();
@@ -2956,8 +2951,8 @@ impl NamedDirs {
 /// directory.
 ///
 /// This is the gap that pointed a self-hoster's client at a 3.6 GB folder: when
-/// a catalogued game's declared path does not resolve — the game saves somewhere
-/// else, or the entry is stale — the only fallback was to walk the install dir
+/// a catalogued game's declared path does not resolve (the game saves somewhere
+/// else, or the entry is stale) the only fallback was to walk the install dir
 /// and offer whatever looked save-shaped inside it. The standard roots were
 /// never consulted for a game that *had* a catalogue entry, even though
 /// [`roots::user_save_roots`] already lists the very place most of them save
@@ -2969,7 +2964,7 @@ impl NamedDirs {
 /// The caller passes an index covering both.
 ///
 /// Every hit must pass [`holds_player_data`], so a folder that only holds engine
-/// logs is not offered — which is precisely what a name-only match gets wrong.
+/// logs is not offered, which is precisely what a name-only match gets wrong.
 pub fn discover_by_name(
     index: &NamedDirs,
     display_name: &str,
@@ -2983,8 +2978,8 @@ pub fn discover_by_name(
             wanted.push(k);
         }
     }
-    // Un nombre de dos letras casa con cualquier cosa, y recomendar la carpeta
-    // equivocada cuesta más que no recomendar ninguna.
+    // A two-letter name matches anything, and recommending the wrong folder costs
+    // more than recommending none.
     wanted.retain(|k| k.len() >= 3);
     if wanted.is_empty() {
         return Vec::new();
@@ -3008,7 +3003,7 @@ pub fn discover_by_name(
 /// The documented layout is `userdata/<storeUserId>/<appid>/remote/`, and that
 /// is the only shape the pipeline looked for. Not every game uses it: Mojo:
 /// Hanako writes straight into `userdata/<storeUserId>/892630`, one level up,
-/// and every title that does was invisible — its only save is here, so missing
+/// and every title that does was invisible: its only save is here, so missing
 /// it meant missing the game.
 ///
 /// `remote/` still wins where it exists: it is the folder Valve documents and
@@ -3029,20 +3024,20 @@ fn steam_cloud_dir_for(user_dir: &Path, app_id: u64, shields: &[String]) -> Opti
 }
 
 /// Look for a game's save folder under the standard roots by its **installDir**
-/// — the folder name Steam's own `appmanifest_<appid>.acf` records, which is not
+/// the folder name Steam's own `appmanifest_<appid>.acf` records, which is not
 /// always the name the game is sold under.
 ///
 /// Aven Colony installs into `prj_juniper` and saves into
 /// `<xdgData>/prj_juniper/savegames`. Nothing about "Aven Colony" appears
 /// anywhere near the save, so every name-based lookup misses it, and the catalog
-/// has no Linux path to expand — the game came back installed and with nowhere
+/// has no Linux path to expand: the game came back installed and with nowhere
 /// to back up. The codename was on disk the whole time, in a field already
 /// parsed and already carried on the row.
 ///
 /// This is the same pairing [`discover_unattributed`] does with the correlation
 /// store, with a signal that needs no observed play session: an exact string
 /// match against a name Valve wrote down. It is a direct `stat` per root rather
-/// than a scan, so unlike [`NamedDirs`] it has no budget to run out of — which
+/// than a scan, so unlike [`NamedDirs`] it has no budget to run out of, which
 /// is what makes it worth having next to a lookup that already passes the
 /// installDir in as an extra name.
 ///
@@ -3183,7 +3178,7 @@ pub(crate) fn aggressive_discover_with(
         // own prefixes and wrong for every other launcher: Heroic, Lutris and
         // Bottles name the profile after the real account, so their prefixes
         // yielded nothing at all. `prefix_windows_users` takes whichever
-        // profiles actually exist — the same rule the generic-prefix stage
+        // profiles actually exist, the same rule the generic-prefix stage
         // has always used.
         for user in roots::prefix_windows_users(prefix) {
             let home = prefix.join("drive_c/users").join(&user);
@@ -3223,7 +3218,7 @@ const PHASE4_DEEP_WALK_MAX_DEPTH: usize = 6;
 const PHASE4_DEEP_WALK_TIMEOUT: Duration = Duration::from_millis(5000);
 
 /// `true` when a path segment is a container, an identifier or an account
-/// name — anything but the name of a game. Walking up to attribute a save
+/// name: anything but the name of a game. Walking up to attribute a save
 /// folder skips these; landing on one is the whole reason production grew
 /// saves called `user`, `steam`, `settings` and `2059170`.
 ///
@@ -3232,7 +3227,7 @@ const PHASE4_DEEP_WALK_TIMEOUT: Duration = Duration::from_millis(5000);
 /// [`hoard_core::ids::is_generic_name`] for the static plumbing, the
 /// machine-minted ids and the too-short segments; and
 /// [`crate::agent::is_generic_identity_token`] for the components of THIS
-/// user's home path, which no static list can know — an OEM Windows box whose
+/// user's home path, which no static list can know: an OEM Windows box whose
 /// account is literally `user` was the single biggest source of the bad names.
 fn segment_names_no_game(name: &str) -> bool {
     hoard_core::ids::is_generic_name(name)
@@ -3251,7 +3246,7 @@ pub struct AttributedSave {
     pub confidence: Confidence,
     pub reason: String,
     /// Set when the attribution landed on a catalog entry that carries an
-    /// appid — the cover art and the cross-device identity come from it.
+    /// appid: the cover art and the cross-device identity come from it.
     pub steam_app_id: Option<u64>,
 }
 
@@ -3311,20 +3306,20 @@ pub fn discover_unattributed_mode(
 /// **This is deliberately not the periodic scan's question.** Out in the broad
 /// roots the question is "does this look enough like a save to mint a game?",
 /// and a weak candidate has to be dropped or the Library fills with phantoms.
-/// Here the user has already answered it — they pointed at this folder — so the
+/// Here the user has already answered it, by pointing at this folder, so the
 /// question becomes the much simpler "which folders under it hold their own
 /// data?". Scoring still runs, but only to *grade* a hit (so the UI can rank
 /// and label it), never to veto one. That's what makes a folder full of saves
-/// with a proprietary extension — the common case in `Saved Games`, where the
-/// scored walk found one game in four — come back complete.
+/// with a proprietary extension (the common case in `Saved Games`, where the
+/// scored walk found one game in four) come back complete.
 ///
 /// The walk emits a folder and stops descending as soon as it holds files of
 /// its own, so:
 ///
 /// * `…/Saved Games` (only `desktop.ini` + one dir per game) yields one
 ///   candidate per game, not the container;
-/// * `…/Saved Games/Surviving Mars Relaunched` — the folder the user picked
-///   *is* the save folder — yields itself. The old walk only ever classified
+/// * `.../Saved Games/Surviving Mars Relaunched`, the folder the user picked,
+///   *is* the save folder and yields itself. The old walk only ever classified
 ///   the children of the root, so pointing straight at a game's own folder
 ///   found nothing at all;
 /// * a game whose saves sit in `…/<Game>/slot1/` yields `slot1`, attributed to
@@ -3357,9 +3352,9 @@ pub fn discover_in_folder(
         if !is_root && (is_internal_or_trash(&dir) || is_too_broad(&dir)) {
             continue;
         }
-        // La carpeta que el usuario eligió se ofrece pase lo que pase; para las
-        // de dentro, un nombre de config/caché/logs es un no rotundo (y además
-        // un callejón sin salida: tampoco se baja por él).
+        // The folder the user picked is offered whatever happens; for the ones
+        // inside it, a config, cache or log name is a flat no (and a dead end
+        // besides: it is not descended into either).
         if !is_root && dir_name_is_negative(&dir) {
             continue;
         }
@@ -3375,8 +3370,8 @@ pub fn discover_in_folder(
         }
         // One subfolder per save inside (the Cyberpunk 2077 shape): the folder
         // the user wants tracked is THIS one, not each of the ones inside.
-        // Pointing at it returned seventeen identical rows — one per save, all
-        // named the same — and none of them was the game's folder, so there was
+        // Pointing at it returned seventeen identical rows, one per save, all
+        // named the same, and none of them was the game's folder, so there was
         // no way to back up the manual saves without filing each one by hand.
         // Emitted whole, and the walk doesn't descend past it.
         if is_nest_of_save_dirs(&dir) {
@@ -3389,13 +3384,13 @@ pub fn discover_in_folder(
             if !path_already_known(&dir, known_paths) {
                 push_attributed(&mut out, &dir, store);
             }
-            // Emitida: no se sigue bajando. El usuario quiere la carpeta del
-            // juego, no cada subcarpeta de partidas que haya dentro.
+            // Emitted, so we stop descending. The user wants the game's folder, not
+            // every save subfolder inside it.
             //
-            // Salvo en la que él eligió: ahí sí se baja igualmente, porque una
-            // carpeta puede ser las dos cosas. `Documents` tiene ficheros
-            // sueltos Y una carpeta por juego dentro; parar en ella devolvería
-            // un único resultado inútil y escondería justo lo que buscaba.
+            // Except in the one they picked: there we descend anyway, because a
+            // folder can be both things. `Documents` has loose files AND a folder
+            // per game inside; stopping at it would return one useless result and
+            // hide exactly what they were looking for.
             if !is_root {
                 continue;
             }
@@ -3425,29 +3420,29 @@ pub fn discover_in_folder(
     out
 }
 
-/// Profundidad y presupuesto del barrido de carpeta explícita. Más generoso
-/// que el periódico —es una petición puntual del usuario, con la app esperando
-/// delante— pero acotado igual: sin tope, apuntar a `C:\` sería un paseo por
-/// todo el disco.
+/// Depth and budget of the explicit-folder sweep. More generous than the periodic
+/// one, since it is a one-off request from the user with the app waiting in front
+/// of them, but bounded all the same: with no cap, pointing at `C:\` would be a
+/// walk across the whole disk.
 const EXPLICIT_WALK_MAX_DEPTH: usize = 6;
 const EXPLICIT_WALK_TIMEOUT: Duration = Duration::from_millis(8000);
-/// Tope de hallazgos. Muy por encima de los 16 del barrido periódico: aquí una
-/// sola carpeta legítima —`Saved Games`— ya trae una decena de juegos, y
-/// cortar a 16 volvería a esconder justo lo que el usuario buscaba.
+/// Cap on finds. Well above the periodic sweep's 16: here one legitimate folder
+/// (`Saved Games`) already brings a dozen games, and cutting at 16 would hide
+/// exactly what the user was looking for.
 const EXPLICIT_WALK_MAX_CANDIDATES: usize = 64;
 
-/// Ficheros que no cuentan como "datos propios" de una carpeta: los que crea
-/// el sistema operativo o el explorador de archivos. Sin esta lista el
-/// `desktop.ini` que Windows deja en `Saved Games` convertiría el contenedor
-/// entero en un único candidato y taparía los juegos que hay dentro.
+/// Files that do not count as a folder's own data: the ones the operating system
+/// or the file manager creates. Without this list the `desktop.ini` Windows leaves
+/// in `Saved Games` would turn the whole container into a single candidate and hide
+/// the games inside it.
 const OS_JUNK_FILES: &[&str] = &["desktop.ini", "thumbs.db", ".ds_store", "icon\r"];
 
-/// `true` si el directorio guarda datos suyos: al menos un fichero que no sea
-/// ruido del sistema, y no siendo todo imágenes (eso son capturas).
+/// `true` when the directory holds data of its own: at least one file that is not
+/// system noise, and not everything being images (those are screenshots).
 ///
-/// Es el predicado que separa "contenedor por el que hay que bajar" de "esta
-/// es la carpeta". No mira nombres ni extensiones a propósito: la extensión
-/// propietaria es justo lo que el barrido puntuado no sabe reconocer.
+/// It is the predicate that separates "a container to descend through" from "this
+/// is the folder". It looks at neither names nor extensions on purpose: a
+/// proprietary extension is exactly what the scored sweep cannot recognise.
 fn holds_own_data(dir: &Path) -> bool {
     let Ok(read) = std::fs::read_dir(dir) else {
         return false;
@@ -3483,32 +3478,32 @@ fn holds_own_data(dir: &Path) -> bool {
 /// It exists because that shape slipped through all three paths at once and
 /// left the user with no way to reach the right folder by any of them. The
 /// catalog points straight at the game's folder, but [`find_save_subdirs`]
-/// recognises none of [`SAVE_PATTERNS`] inside it — `AutoSave-0` is not one of
-/// those spellings — so the hit was dropped whole and the game surfaced with
+/// recognises none of [`SAVE_PATTERNS`] inside it (`AutoSave-0` is not one of
+/// those spellings) so the hit was dropped whole and the game surfaced with
 /// no path. What was left were the loose folders phase 4 rescued one by one: a
 /// separate "game" per save, and only the ones the game had written to lately
 /// (the autosaves), never the manual ones. A player who saves by hand got a
 /// row per slot and had to re-point Hoard after every new save.
 ///
 /// Deliberately conservative, because the expensive mistake is the opposite
-/// one — swallowing a whole install directory, or a container of SEVERAL
-/// games, as if it were one save — so every condition has to hold:
+/// one, swallowing a whole install directory, or a container of SEVERAL
+/// games, as if it were one save, so every condition has to hold:
 ///
 /// * the folder is one nobody may be handed whole ([`never_offer_whole`]:
 ///   `Saved Games`, `Documents`, `AppData`, a Proton prefix…);
 /// * it holds **no data of its own**. A folder that does is not a nest, it is
-///   a folder with saves *and* other things in it — an install directory with
-///   `settings_game.cfg` next to `saves/`, say — and the existing paths grade
+///   a folder with saves *and* other things in it (an install directory with
+///   `settings_game.cfg` next to `saves/`, say) and the existing paths grade
 ///   that correctly already. Swallowing it whole would back up the game;
 /// * at least **two** subfolders hold data of their own
 ///   ([`holds_own_data`]);
 /// * **every** subfolder that holds data is named like a save
-///   ([`name_is_save_slot`]). One foreign child with content — `mods`,
-///   `config` — and this stops being a nest: we no longer know what is what,
+///   ([`name_is_save_slot`]). One foreign child with content (`mods`,
+///   `config`) and this stops being a nest: we no longer know what is what,
 ///   and the amber "pick a folder" alert is a better answer than a guess;
 /// * and none of them is one of the exact [`SAVE_PATTERNS`] spellings. A child
 ///   literally called `saves` means the folder is a *container of saves*, not
-///   one save — `…/common/Planet S` with `saves/` and `saves_migrated/` inside
+///   one save (`.../common/Planet S` with `saves/` and `saves_migrated/` inside
 ///   is an install directory, and the answer there is to descend into `saves`,
 ///   which is what refinement and the walk already do. Found by sweeping this
 ///   machine's real folders: 129,383 directories, and that install dir was one
@@ -3548,7 +3543,7 @@ fn is_nest_of_save_dirs(dir: &Path) -> bool {
 /// folder: `AutoSave-0`, `ManualSave-3`, `QuickSave`, `SaveGame01`, `slot1`,
 /// `profile2`.
 ///
-/// Says nothing about a bare `saves` — that is a folder *of* saves, and the
+/// Says nothing about a bare `saves`: that is a folder *of* saves, and the
 /// caller has to tell the two apart itself; see [`is_nest_of_save_dirs`].
 fn name_is_save_slot(name: &str) -> bool {
     junkdirs::looks_like_save_dir_name(name) || name_matches_slot_profile_user(name)
@@ -3557,8 +3552,8 @@ fn name_is_save_slot(name: &str) -> bool {
 /// A nest ([`is_nest_of_save_dirs`]) graded by the BEST of its children: the
 /// correlation that corroborates `…/Cyberpunk 2077/AutoSave-3` corroborates
 /// the game's folder, which is where the game was writing. Without this the
-/// nest would score as what the scoring sees — a folder without a single file
-/// in it — and phase 4's precision gate would drop it.
+/// nest would score as what the scoring sees (a folder without a single file
+/// in it) and phase 4's precision gate would drop it.
 ///
 /// `None` when it isn't a nest, or when no child grades save-like: a nest of
 /// folders that aren't saves is not a finding.
@@ -3595,8 +3590,8 @@ fn classify_nest_as_save_like(dir: &Path, store: &CorrelationStore) -> Option<Di
     })
 }
 
-/// `true` si el nombre de la carpeta la delata como config/caché/logs/capturas
-/// — nunca la carpeta de partidas de un juego.
+/// `true` when the folder's name gives it away as config, cache, logs or
+/// screenshots, and never a game's save folder.
 fn dir_name_is_negative(dir: &Path) -> bool {
     dir.file_name()
         .and_then(|s| s.to_str())
@@ -3609,20 +3604,20 @@ fn dir_name_is_negative(dir: &Path) -> bool {
 
 /// What to offer for a folder that turns out to be an emulator's save root.
 ///
-/// `None` means it isn't one — carry on with the ordinary attribution.
+/// `None` means it isn't one, so carry on with the ordinary attribution.
 ///
 /// The root of an emulator is a **container of one folder per title**, not a
 /// save. Offering it whole produced the two failures this answers: a slug torn
 /// off the tree's plumbing (`dev_hdd0`, from rpcs3's
 /// `dev_hdd0/home/<profile>/savedata`, on macOS and on RetroDECK), and a save
-/// that can never back up — one rpcs3 root logged "nothing to back up and this
+/// that can never back up: one rpcs3 root logged "nothing to back up and this
 /// save has never had a snapshot" 224 times and was still logging it in
 /// ago-2026. The likeliest reason is the profile id: the catalog template says
 /// `00000001`, and a user whose active rpcs3 profile is `00000002` has a
 /// `00000001/savedata` that stays empty forever.
 ///
 /// So the answer is one row per title, named the way the "add emulator" dialog
-/// names them (`emu-<id>-<title>`), and an **empty vec** — refuse — when there
+/// names them (`emu-<id>-<title>`), and an **empty vec** (refuse) when there
 /// is no title inside to name. Refusing is the honest end of an empty
 /// container: there is nothing there to back up, and the dialog is the flow
 /// built for adding it once there is.
@@ -3636,9 +3631,9 @@ fn dir_name_is_negative(dir: &Path) -> bool {
 /// count as playing all of them at once.
 fn emulator_candidates(dir: &Path, store: &CorrelationStore) -> Option<Vec<AttributedSave>> {
     let Some(def) = emulators::save_root_at(dir) else {
-        // Dentro de una raíz, no en ella: el barrido baja hasta donde hay
-        // ficheros. Lo que se ofrece es la carpeta del título, con el mismo
-        // nombre que tendría si se hubiera entrado por la raíz.
+        // Inside a root rather than at it: the sweep descends to where the files
+        // are. What gets offered is the title's folder, with the same name it would
+        // have had if the root had been entered.
         let (def, title) = emulators::save_root_above(dir)?;
         return Some(vec![emulator_title_save(def, &title)]);
     };
@@ -3646,7 +3641,7 @@ fn emulator_candidates(dir: &Path, store: &CorrelationStore) -> Option<Vec<Attri
 
     if titles.is_empty() {
         if emulators::has_direct_file(dir) {
-            // Save plano: la carpeta es el save, sólo estaba mal bautizada.
+            // A flat save: the folder IS the save, it was just badly named.
             let graded = classify_dir_as_save_like(dir, def.display_name, store);
             return Some(vec![AttributedSave {
                 slug: format!("emu-{}", def.id),
@@ -3663,7 +3658,7 @@ fn emulator_candidates(dir: &Path, store: &CorrelationStore) -> Option<Vec<Attri
         tracing::info!(
             emulator = def.id,
             path = %dir.display(),
-            "detect: emulator save root with no title inside — not offering it as a save"
+            "detect: emulator save root with no title inside, not offering it as a save"
         );
         crate::telemetry::emulator_root_skipped(def.id, dir);
         return Some(Vec::new());
@@ -3677,9 +3672,9 @@ fn emulator_candidates(dir: &Path, store: &CorrelationStore) -> Option<Vec<Attri
     )
 }
 
-/// Una carpeta de título dentro de la raíz de saves de `def`, con el nombre y
-/// el slug que le pondría el diálogo de "añadir emulador": el **id** del
-/// título, no su nombre, porque es lo único que las dos máquinas llaman igual.
+/// A title folder inside `def`'s save root, with the name and slug the "add
+/// emulator" dialog would give it: the title's ID rather than its name, because it
+/// is the only thing both machines call the same.
 fn emulator_title_save(def: &'static emulators::EmulatorDef, title: &Path) -> AttributedSave {
     let title_id = title
         .file_name()
@@ -3687,7 +3682,7 @@ fn emulator_title_save(def: &'static emulators::EmulatorDef, title: &Path) -> At
         .unwrap_or_default();
     AttributedSave {
         slug: format!("emu-{}-{}", def.id, ludusavi::slugify(title_id)),
-        display_name: format!("{} — {}", def.display_name, title_id),
+        display_name: format!("{}: {}", def.display_name, title_id),
         path: title.to_path_buf(),
         confidence: Confidence::Medium,
         reason: format!("one {} title inside its save root", def.display_name),
@@ -3707,12 +3702,12 @@ fn extend_without_repeats(out: &mut Vec<AttributedSave>, found: Vec<AttributedSa
 }
 
 /// Attribute one discovered folder to a game and append it. The scoring runs
-/// only to grade the hit (`Low` when it wouldn't even qualify on its own) —
+/// only to grade the hit (`Low` when it wouldn't even qualify on its own),
 /// in this walk it never decides whether the folder makes the list.
 fn push_attributed(out: &mut Vec<AttributedSave>, dir: &Path, store: &CorrelationStore) {
-    // Una raíz de emulador no se atribuye a ningún juego: se parte por título
-    // o se rechaza. Va antes que todo lo demás porque su nombre sale de la
-    // fontanería del emulador, no del árbol de saves del usuario.
+    // An emulator root is attributed to no game: it is split per title or refused.
+    // It goes before everything else because its name comes from the emulator's
+    // plumbing, not from the user's save tree.
     if let Some(found) = emulator_candidates(dir, store) {
         extend_without_repeats(out, found);
         return;
@@ -3722,7 +3717,7 @@ fn push_attributed(out: &mut Vec<AttributedSave>, dir: &Path, store: &Correlatio
     let Some(display_name) = attribute_game_name(dir, store) else {
         tracing::debug!(
             path = %dir.display(),
-            "detect: no segment of this path names a game — not offering it"
+            "detect: no segment of this path names a game, not offering it"
         );
         return;
     };
@@ -3746,9 +3741,9 @@ fn push_attributed(out: &mut Vec<AttributedSave>, dir: &Path, store: &Correlatio
     });
 }
 
-/// Appid del catálogo para un nombre ya atribuido, si lo nombra exactamente.
-/// Sólo confirma lo que [`attribute_game_name`] resolvió — no vuelve a
-/// adivinar — y es lo que le da carátula al hallazgo.
+/// The catalogue appid for an already-attributed name, when it names it exactly.
+/// It only confirms what [`attribute_game_name`] resolved, never guessing again,
+/// and it is what gives the find its cover art.
 fn catalog_app_id(display_name: &str) -> Option<u64> {
     ludusavi::find_by_canon_name(display_name).and_then(|e| e.steam_app_id)
 }
@@ -3778,7 +3773,7 @@ fn discover_in_roots(
         walk_root_collecting(&root, max_depth, timeout, &mut hits, &mut seen, store);
         for hit in hits {
             let corroborated = store.signal_for(&hit.path).is_some();
-            // Precision gate: weak static-only matches don't create games —
+            // Precision gate: weak static-only matches don't create games,
             // except in deep mode, where surfacing maybes is the whole point.
             if !deep && !corroborated && hit.confidence == Confidence::Low {
                 continue;
@@ -3796,7 +3791,7 @@ fn discover_in_roots(
             let Some(display_name) = attribute_game_name(&hit.path, store) else {
                 tracing::debug!(
                     path = %hit.path.display(),
-                    "detect: no segment of this path names a game — not offering it"
+                    "detect: no segment of this path names a game, not offering it"
                 );
                 continue;
             };
@@ -3825,29 +3820,28 @@ fn path_already_known(candidate: &Path, known: &HashSet<PathBuf>) -> bool {
     known.iter().any(|k| paths_overlap(candidate, k))
 }
 
-/// `true` si dos rutas se solapan: son la misma carpeta, o una cuelga de la
-/// otra. Es el predicado de "esta carpeta ya está cubierta" que usan tanto el
-/// descubrimiento de fase 4 como el auto-track (que sin él rastreaba la misma
-/// carpeta una vez por cada nombre que la correlación le atribuía).
+/// `true` when two paths overlap: they are the same folder, or one hangs off the
+/// other. It is the "this folder is already covered" predicate used by both phase
+/// 4's discovery and auto-track (which without it tracked the same folder once per
+/// name correlation attributed to it).
 ///
-/// En Windows compara sin distinguir mayúsculas: `C:\Users\…\Saved Games` y
-/// `c:\users\…\saved games` son la MISMA carpeta, y la ruta guardada en el
-/// state y la que sale del walk no siempre coinciden en caja.
+/// On Windows it compares case-insensitively: `C:\Users\...\Saved Games` and
+/// `c:\users\...\saved games` are the SAME folder, and the path stored in the
+/// state and the one coming out of the walk do not always agree on case.
 pub fn paths_overlap(a: &Path, b: &Path) -> bool {
     path_is_inside(a, b) || path_is_inside(b, a)
 }
 
 /// `true` when `inner` IS `outer` or hangs off it. The directed half of
 /// [`paths_overlap`], for when the useful answer isn't "they overlap" but
-/// **which one is inside which** — a save tracked inside the folder being
+/// which one is inside which: a save tracked inside the folder being
 /// added is not fixed the same way as one that contains it.
 ///
 /// Case-insensitive on Windows, for the same reason as [`paths_overlap`].
 pub fn path_is_inside(inner: &Path, outer: &Path) -> bool {
     if cfg!(windows) {
-        // `starts_with` compara por COMPONENTES, así que bajar la cadena
-        // entera a minúsculas no altera la semántica (los separadores siguen
-        // donde estaban).
+        // `starts_with` compares by COMPONENT, so lowercasing the whole string does
+        // not change the semantics (the separators are still where they were).
         let (inner, outer) = (
             PathBuf::from(inner.to_string_lossy().to_lowercase()),
             PathBuf::from(outer.to_string_lossy().to_lowercase()),
@@ -3873,91 +3867,89 @@ pub fn path_is_inside(inner: &Path, outer: &Path) -> bool {
 /// all of them unpairable across machines and unsearchable in the library.
 fn attribute_game_name(path: &Path, store: &CorrelationStore) -> Option<String> {
     let obs = store.signal_for(path);
-    // Nombre de proceso atribuido, sólo si sigue superando las reglas ACTUALES:
-    // una atribución envenenada de antes del fix `is_installer_like` (p.ej.
-    // `Codex Windows Sandbox Setup.exe`) sigue en el store persistido y no debe
-    // rebautizar un save perfectamente nombrado por su carpeta.
+    // The attributed process name, only when it still passes the CURRENT rules: an
+    // attribution poisoned before the `is_installer_like` fix (say
+    // `Codex Windows Sandbox Setup.exe`) is still in the persisted store and must not
+    // rename a save that its folder names perfectly well.
     let proc_name: Option<&str> = obs
         .map(|o| o.process_name.trim())
         .filter(|n| !n.is_empty() && crate::correlation::is_game_like(n, None));
 
-    // --- Señales que el CATÁLOGO puede confirmar, de más a menos directa ---
+    // ---- signals the CATALOGUE can confirm, most direct first
     //
-    // Cualquiera de las tres da un título autoritativo, y por eso van todas
-    // antes que los nombres crudos: un nombre crudo es inestable (el churn
-    // ChatGPT → opencode → code) y a veces sencillamente peor que el dato que
-    // ya tenemos delante.
+    // Any of the three gives an authoritative title, which is why they all come
+    // before the raw names: a raw name is unstable (the churn from one app name to
+    // the next) and sometimes simply worse than the data already in front of us.
     if let Some(name) = proc_name {
-        // 1. El ejecutable, cuando pertenece a un solo juego del manifiesto.
+        // 1. The executable, when it belongs to a single manifest game.
         for probe in [name.to_string(), format!("{name}.exe")] {
             if let Some(title) = ludusavi::title_for_exe(&probe) {
                 return Some(title.to_string());
             }
         }
     }
-    // 2. La CARPETA DE INSTALACIÓN del ejecutable. Vale cuando el nombre del
-    //    exe es ambiguo: `Mars.exe` lo reclaman dos juegos del catálogo, así
-    //    que el paso 1 se veta (correctamente) — pero el exe vive en
-    //    `C:\Games\Surviving Mars Relaunched\Mars.exe` y esa carpeta no deja
-    //    lugar a dudas. Es el mismo truco que `process_identity_candidates`
-    //    usa para casar procesos vivos.
+    // 2. The executable's INSTALL FOLDER. It counts when the exe's name is
+    //    ambiguous: `Mars.exe` is claimed by two games in the catalogue, so step 1
+    //    vetoes it, correctly, but the exe lives in
+    //    `C:\Games\Surviving Mars Relaunched\Mars.exe` and that folder leaves no
+    //    room for doubt. The same trick `process_identity_candidates` uses to match
+    //    live processes.
     if let Some(dir) = obs
         .and_then(|o| o.exe.as_deref())
         .and_then(|e| e.parent())
         .and_then(|p| p.file_name())
         .and_then(|s| s.to_str())
     {
-        // `title_for_canon_name` y no `find_by_canon_name`: aquí sólo se busca
-        // un NOMBRE, y el catálogo únicamente lleva juegos con ruta de guardado.
-        // Una edición que el manifiesto sólo conoce por su título —"Surviving
-        // Mars: Relaunched"— no está en él, así que buscarla ahí devolvía nada y
-        // el save acababa llamándose "Mars", por el ejecutable.
+        // `title_for_canon_name` rather than `find_by_canon_name`: here only a NAME
+        // is being looked for, and the catalogue only carries games with a save
+        // path. An edition the manifest only knows by its title is not in it, so
+        // looking there returned nothing and the save ended up named after the
+        // executable.
         if let Some(title) = ludusavi::title_for_canon_name(dir) {
             return Some(title.to_string());
         }
     }
-    // 3. El primer ancestro con nombre propio del save, si es un juego del
-    //    manifiesto. `…/Saved Games/Surviving Mars Relaunched/<steamid>` lo es.
+    // 3. The save's first ancestor with a name of its own, when it is a manifest
+    //    game. `.../Saved Games/Surviving Mars Relaunched/<steamid>` is one.
     let ancestor = meaningful_ancestor(path);
     if let Some(title) = ancestor.and_then(ludusavi::title_for_canon_name) {
         return Some(title.to_string());
     }
-    // 4. El mismo ancestro, pero con el título del catálogo como PREFIJO: la
-    //    carpeta lleva un calificador que el catálogo no tiene (`Surviving Mars
-    //    Relaunched`, `… Definitive Edition`). Sin esto cada edición se
-    //    convierte en un juego fantasma con nombre propio.
+    // 4. The same ancestor, but with the catalogue's title as a PREFIX: the folder
+    //    carries a qualifier the catalogue does not have (`Surviving Mars
+    //    Relaunched`, `... Definitive Edition`). Without this every edition
     if let Some(entry) = ancestor.and_then(ludusavi::find_by_name_prefix) {
         return Some(entry.display_name.clone());
     }
 
-    // --- Y si el catálogo no reconoce nada, los nombres crudos ---
+    // ---- and when the catalogue recognises nothing, the raw names
     //
-    // Crudos, pero por la misma puerta: un proceso llamado `game.exe` o
-    // `steam.exe` nombra tan mal como el segmento de ruta que ya se vetó, y
-    // aquí ya no hay catálogo detrás que lo desmienta.
+    // Raw, but through the same gate: a process called `game.exe` or `steam.exe`
+    // names things as badly as the path segment already vetoed, and here there is no
+    // catalogue behind it to contradict it.
     if let Some(name) = proc_name {
-        // Sin la extensión: el nombre va a la UI, no a un matcher.
+        // Without the extension: the name goes to the UI, not to a matcher.
         let bare = name.strip_suffix(".exe").unwrap_or(name);
         if !segment_names_no_game(bare) {
             return Some(prettify_process_name(bare));
         }
     }
-    // `ancestor` ya pasó la puerta al elegirse; si no hay, no hay nombre. El
-    // último segmento de `path` NO vale de recambio: es justo el que la subida
-    // acaba de descartar.
+    // `ancestor` already passed the gate when it was chosen; without one there is no
+    // name. `path`'s last segment is NOT a substitute: it is precisely the one the
+    // climb just discarded.
     ancestor.map(str::to_string)
 }
 
-/// El primer segmento subiendo desde `path` que puede ser el nombre de un
-/// juego: ni un contenedor genérico (`AppData`, `Saved Games`), ni un id de
-/// cuenta (`…/Plan B Terraform/76561197960287930/saves` debe dar "Plan B
-/// Terraform", no el SteamID), ni una palabra de save.
+/// The first segment climbing up from `path` that could be a game's name: not a
+/// generic container (`AppData`, `Saved Games`), not an account id
+/// (`.../Plan B Terraform/76561197960287930/saves` has to give "Plan B Terraform",
+/// not the SteamID), and not a save word.
 ///
 /// `None` means the climb reached the filesystem root without finding one.
 /// That is an answer, not a failure: it is what `~/.local/share/<opaque>` and
 /// `C:\Users\user\AppData\Local` really have to say about which game wrote
-/// there, and inventing a name from the last segment looked at — which is what
-/// this used to fall back to — is how `local`, `user` and `logs` became games.
+/// there, and inventing a name from the last segment looked at, which is what
+/// this used to fall back to, is how `local`, `user` and `logs` became games.
 fn meaningful_ancestor(path: &Path) -> Option<&str> {
     let mut cur = Some(path);
     while let Some(dir) = cur {
@@ -3973,7 +3965,7 @@ fn meaningful_ancestor(path: &Path) -> Option<&str> {
 
 /// Turn a raw process name into a presentable Library display name:
 /// `"plan_b-terraform"` → `"Plan B Terraform"`. Only all-lowercase names are
-/// touched — a name that already carries any uppercase ("NieRAutomata",
+/// touched: a name that already carries any uppercase ("NieRAutomata",
 /// "DOOMEternal") is left verbatim, since mangling its casing is worse than
 /// showing it raw. The slug is unaffected either way: `slugify` lowercases
 /// and folds separators, so `slugify(prettified) == slugify(raw)`.
@@ -4015,7 +4007,7 @@ fn walk_root_collecting(
     let initial = out.len();
     // Depth-first walk via an explicit stack. Save-like dirs are not
     // descended into (see the `continue` below), so the order in which we
-    // exhaust branches doesn't change which paths qualify — only the order
+    // exhaust branches doesn't change which paths qualify, only the order
     // they're appended to `out` before the cap kicks in. Each entry is
     // `(path, depth)` so we can cap descent at push-time.
     let mut stack: Vec<(PathBuf, usize)> = vec![(root.to_path_buf(), 0)];
@@ -4047,13 +4039,13 @@ fn walk_root_collecting(
                 continue;
             }
             // Never walk Hoard's own bookkeeping (conflict backups,
-            // correlation/state json) nor the desktop trash — descending there
+            // correlation/state json) nor the desktop trash: descending there
             // mints phantom "games" out of our own data (e.g. the timestamped
             // `conflicts/<id>/<ts>/autosave` folders) or out of deleted files.
             if is_internal_or_trash(&path) {
                 continue;
             }
-            // A nest — one subfolder per save — is emitted whole and not
+            // A nest (one subfolder per save) is emitted whole and not
             // descended into: otherwise every save of the same game entered the
             // list as its own "game", and between them they ate the root's
             // whole candidate budget.
@@ -4074,7 +4066,7 @@ fn walk_root_collecting(
                     }
                 }
                 // Even when this dir is itself save-like we don't descend
-                // into it — saves typically live one level deep, and going
+                // into it: saves typically live one level deep, and going
                 // further just bloats the candidate list.
                 continue;
             }
@@ -4089,7 +4081,7 @@ fn walk_root_collecting(
 /// the asset/build denylist, or anything that is regenerable cache.
 ///
 /// The cache half is [`junkdirs::is_cache_dir_name`], which matches by
-/// **suffix** on a separator-stripped name — so `AnvilDX12Cache`,
+/// **suffix** on a separator-stripped name, so `AnvilDX12Cache`,
 /// `FortniteShaderCache` and `Shader Cache` are all caught. The old
 /// exact-match negative vocabulary in `scoring` only ever saw a bare
 /// `shadercache`, and it merely subtracted score instead of pruning the walk.
@@ -4119,7 +4111,7 @@ fn is_too_broad(path: &Path) -> bool {
 ///
 /// Two guards, because each covers what the other cannot. [`is_too_broad`]
 /// compares against roots resolved for the running OS, so on Linux it knows
-/// nothing about the Windows-shaped profile inside a Proton prefix —
+/// nothing about the Windows-shaped profile inside a Proton prefix, so
 /// `…/pfx/drive_c/users/steamuser/Saved Games` is not in its set, and that is
 /// where the Windows rules living inside `drive_c` have bitten before.
 /// [`junkdirs::dangerous_sync_root`] is structural: it reads the shape of the
@@ -4128,7 +4120,7 @@ fn is_too_broad(path: &Path) -> bool {
 ///
 /// The pair is what add-to-library and the backup already enforce, so anything
 /// detection offers past this point is something the rest of the app will
-/// accept — offering a folder that `hoard add` then refuses is a dead end the
+/// accept: offering a folder that `hoard add` then refuses is a dead end the
 /// user has to work out on their own.
 fn never_offer_whole(dir: &Path) -> bool {
     is_too_broad(dir) || crate::junkdirs::dangerous_sync_root(dir).is_some()
@@ -4153,8 +4145,8 @@ fn is_internal_or_trash(path: &Path) -> bool {
 }
 
 /// Grade a single save folder, keeping the WHY. Catalog/Steam paths are never
-/// dropped here — an already-attributed path stays in the list even when it
-/// scores low (it's a real candidate, just weak evidence — a near-empty
+/// dropped here: an already-attributed path stays in the list even when it
+/// scores low (it's a real candidate, just weak evidence, a near-empty
 /// Steam-Cloud stub *should* read `Low`).
 fn grade_path_reasoned(path: &Path, store: &CorrelationStore) -> (Confidence, String) {
     let name = path
@@ -4174,7 +4166,7 @@ fn grade_path_reasoned(path: &Path, store: &CorrelationStore) -> (Confidence, St
 /// scoring scans (depth + shared budget) so a pathological tree can't turn a
 /// comparison into a walk of the whole drive; symlinks never count.
 ///
-/// `false` means "unknown" — the budget ran out — and callers must treat that
+/// `false` means "unknown", meaning the budget ran out, and callers must treat that
 /// as NO answer: an incomplete listing must never decide a demotion.
 fn collect_file_basenames(
     dir: &Path,
@@ -4214,18 +4206,18 @@ fn collect_file_basenames(
 /// Is `copy` the game's own backup mirror of `original`? (P2,
 /// DETECCION-REVISION §4 R3.) Two conditions, BOTH required:
 ///
-/// * **Name relation**: some ancestor of `original` — the folder itself or a
-///   parent — sits next to `copy` and `copy` is its name plus a backup
+/// * Name relation: some ancestor of `original`, the folder itself or a
+///   parent, sits next to `copy` and `copy` is its name plus a backup
 ///   suffix. This covers both shapes: same-parent twins (`Saves` vs
 ///   `SavesOld`) and the incident's shape, where the copy hugs the original
 ///   from one level up (`SaveGames/<id>` vs `SaveGamesBackup`).
 /// * **Content superset**: every file basename under `original` also exists
 ///   somewhere under `copy`. A rotating mirror accumulates copies, so it
 ///   always holds for a live twin; two unrelated folders fail it. Names only,
-///   not sizes or hashes — each backup pass rewrites the saves, so bytes and
+///   not sizes or hashes, since each backup pass rewrites the saves, so bytes and
 ///   sizes differ by design.
 ///
-/// Either check failing (or being *unknowable* — budget exhausted) returns
+/// Either check failing (or being *unknowable*, with the budget exhausted) returns
 /// `false`: this function gates a demotion, so its false-positive cost is the
 /// expensive one. A `-bak` sibling without the content relation stays exactly
 /// where it was.
@@ -4294,7 +4286,7 @@ pub(crate) fn is_backup_mirror(copy: &Path, original: &Path) -> bool {
 ///
 /// Strictness mirrors [`grade_and_rank_paths`]: a warning needs either the
 /// full structural twin (name relation + content superset) or, weaker, just
-/// the suffix relation — the reason string says which one fired so the UI and
+/// the suffix relation: the reason string says which one fired so the UI and
 /// support can weigh it. Purely read-only: repointing stays a user act.
 fn detect_tracked_mirrors(state: &CliState, games: &[DetectedGame]) -> Vec<MirrorWarning> {
     let mut candidates: Vec<&PathBuf> = games.iter().flat_map(|g| g.found_paths.iter()).collect();
@@ -4393,8 +4385,8 @@ fn grade_and_rank_paths(
             drop_folders_without_saves(g)
         };
         if g.found_paths.is_empty() {
-            // Everything it had was settings folders. The row stays — the game
-            // IS installed — with no path, which is the state the UI answers
+            // Everything it had was settings folders. The row stays (the game
+            // IS installed) with no path, which is the state the UI answers
             // with the folder picker.
             g.path_confidences.clear();
             g.path_reasons.clear();
@@ -4419,7 +4411,7 @@ fn grade_and_rank_paths(
             })
             .collect();
         // P2: a backup mirror of ANOTHER candidate never leads, even when its
-        // confidence would tie or win — the mirror is written constantly, so
+        // confidence would tie or win: the mirror is written constantly, so
         // correlation loves it, and that is precisely the Wukong failure.
         // Stable sort keeps discovery order everywhere else.
         let mirrors: Vec<bool> = graded
@@ -4434,7 +4426,7 @@ fn grade_and_rank_paths(
         order.sort_by_key(|&i| (mirrors[i], std::cmp::Reverse(confidence_rank(graded[i].1))));
         let ranked: Vec<_> = order.iter().map(|&i| graded[i].clone()).collect();
 
-        // An empty folder never decides the game's grade — see
+        // An empty folder never decides the game's grade; see
         // [`cap_empty_offers`]. With nothing but empty folders left there is
         // nothing to re-roll from, so the grade the pipeline arrived at stands.
         if let Some(max) = ranked
@@ -4467,26 +4459,23 @@ fn classify_dir_as_save_like(
     if is_too_broad(path) {
         return None;
     }
-    // DETECCIÓN (fase 1+3, ADR 0020): el booleano name-only se sustituye por
-    // el scoring graduado (`scoring::score_dir`: nombre + contenido +
-    // recencia + negativas) MÁS el bonus de correlación proceso↔escritura
-    // (+0.50) si el store corrobora el dir. Por debajo de `SCORE_POSSIBLE`
-    // se descarta.
+    // Phase 1 and 3 (ADR 0020): the name-only boolean is replaced by graded scoring
+    // (`scoring::score_dir`: name plus content plus recency plus negatives) PLUS the
+    // process-to-write correlation bonus (+0.50) when the store corroborates the dir.
+    // Below `SCORE_POSSIBLE` it is discarded.
     //
-    // Mapeo a `Confidence`: con el bucle de correlación cerrado, `High` ya
-    // no se reserva — se concede cuando el score cruza el cutoff de
-    // auto-confirmado Y la escritura quedó atribuida a un proceso de juego
-    // (la señal que el ADR exige para certeza). Sin correlación, un score
-    // alto puramente estático tope en `Medium`. El número va en `reason`
-    // para el panel de diagnóstico.
+    // The bonus is not reserved: it is granted when the score crosses the
+    // auto-confirm cutoff, which is the signal the ADR demands for certainty.
+    // Without correlation, a purely static high score caps at `Medium`. The number
+    // goes into `reason` for the diagnostics panel.
     let breakdown = correlation::score_with_correlation(path, name, store);
     if breakdown.score < scoring::SCORE_POSSIBLE {
         return None;
     }
-    // Corroboración para conceder `High`: correlación proceso↔escritura
-    // (el store) O un comprimido con índice save-like verificado. Lo segundo
-    // es evidencia directa —abrimos el .zip y vimos el save dentro— así que
-    // vale tanto como la correlación y no exige una sesión de juego observada.
+    // Corroboration for granting `High`: process-to-write correlation (the store)
+    // OR an archive with a verified save-like index. The second is direct evidence,
+    // since we opened the `.zip` and saw the save inside, so it counts as much as
+    // correlation and demands no observed play session.
     let corroborated = store.signal_for(path).is_some() || breakdown.corroborated_by_content;
     let confidence = if breakdown.score >= scoring::SCORE_CONFIRMED {
         if corroborated {
@@ -4650,7 +4639,7 @@ mod tests {
     }
 
     /// A hit whose last path segment is already a save-named folder is
-    /// passed through untouched — the heuristic doesn't need to descend.
+    /// passed through untouched: the heuristic doesn't need to descend.
     #[test]
     fn refine_save_dir_keeps_path_with_save_in_name() {
         let p = PathBuf::from("/home/x/.config/StardewValley/Saves");
@@ -4672,8 +4661,8 @@ mod tests {
         assert_eq!(refined, vec![root.join("save games")]);
     }
 
-    /// A literal-file template widens to its folder — that is the recall fix
-    /// for the ~4.900 catalog entries that only name a file — but only when the
+    /// A literal-file template widens to its folder, which is the recall fix
+    /// for the ~4,900 catalog entries that only name a file, but only when the
     /// folder is the save's and not the game's.
     #[test]
     fn refine_save_dir_widens_a_file_hit_to_its_clean_folder() {
@@ -4742,7 +4731,7 @@ mod tests {
         assert_eq!(refined, vec![root.join("Saves")]);
     }
 
-    /// Root exists but contains no save-named subdir — the hit is dropped
+    /// Root exists but contains no save-named subdir, so the hit is dropped
     /// so the UI surfaces the amber "pick folder" alert instead of
     /// tracking the root (and its mods, config, telemetry…) by mistake.
     #[test]
@@ -4758,7 +4747,7 @@ mod tests {
 
     /// One folder per save inside the game's own: the Cyberpunk 2077 shape,
     /// where the catalog points at `…/CD Projekt Red/Cyberpunk 2077` and there
-    /// is no `Saves/` inside to refine down to. The hit is kept whole — before,
+    /// is no `Saves/` inside to refine down to. The hit is kept whole; before,
     /// the game was left with no path and all that showed up were the loose
     /// autosaves phase 4 rescued one at a time.
     fn cyberpunk_shaped(root: &Path) -> PathBuf {
@@ -4805,8 +4794,8 @@ mod tests {
     /// Inside a Proton prefix the Windows rules are the ones that apply, and
     /// `is_too_broad` cannot see them: it holds the roots resolved for the
     /// running OS, and on Linux `<winSavedGames>` expands to nothing. So a
-    /// prefix's own `Saved Games` — with a couple of slot-shaped folders in it,
-    /// which is all the nest test asks for — passed as one game's save folder.
+    /// prefix's own `Saved Games`, with a couple of slot-shaped folders in it,
+    /// which is all the nest test asks for, passed as one game's save folder.
     /// The structural guard is what catches it, by the tail of the path.
     #[test]
     fn a_windows_root_inside_a_proton_prefix_is_not_a_nest() {
@@ -4858,7 +4847,7 @@ mod tests {
         assert!(refine_save_dir("cyberpunk-2077", vec![game]).is_empty());
     }
 
-    /// Pointing at the game's folder returns ONE row — the folder — and not
+    /// Pointing at the game's folder returns ONE row, the folder, and not
     /// one per save. This is the flow a user reaches for when detection misses,
     /// and it used to return seventeen identical "Cyberpunk 2077" rows.
     #[test]
@@ -4872,7 +4861,7 @@ mod tests {
         assert_eq!(found[0].path, game);
 
         // And from the publisher's container, the same: one row, the game's
-        // folder — not five save folders.
+        // folder, not five save folders.
         let from_above = discover_in_folder(game.parent().unwrap(), &store, &HashSet::new());
         assert_eq!(from_above.len(), 1, "{from_above:#?}");
         assert_eq!(from_above[0].path, game);
@@ -4880,8 +4869,8 @@ mod tests {
 
     /// The phase 4 sweep emits the nest, not each loose save: the correlation
     /// that corroborates a child corroborates the game's folder. Without this
-    /// the Library filled up with a row per autosave — all under the same name
-    /// — and between them they ate the root's candidate budget.
+    /// the Library filled up with a row per autosave, all under the same name,
+    /// and between them they ate the root's candidate budget.
     #[test]
     fn phase_four_surfaces_the_nest_and_not_its_slots() {
         with_isolated_home(|home| {
@@ -4916,7 +4905,7 @@ mod tests {
     /// and offered the game's whole installation instead of descending into
     /// `saves` the way it did before. Two things rule it out, and either alone
     /// is enough: the folder holds a file of its own, and one of its children
-    /// is called `saves` — a container of saves, not one save.
+    /// is called `saves`: a container of saves, not one save.
     #[test]
     fn an_install_dir_with_a_saves_folder_is_not_a_nest() {
         let tmp = tempfile::tempdir().unwrap();
@@ -4943,7 +4932,7 @@ mod tests {
         );
     }
 
-    /// The parent of a nest holds nothing of its own — that is what makes
+    /// The parent of a nest holds nothing of its own, which is what makes
     /// everything inside it a save. A folder that holds data *and* has
     /// save-named subfolders is something else, and the ordinary grading
     /// already handles it.
@@ -4973,7 +4962,7 @@ mod tests {
 
     /// Build a synthetic catalog entry for the slug-fallback tests. The
     /// path templates are empty because the fallback path never touches
-    /// them — it only matches by slug and copies display_name.
+    /// them: it only matches by slug and copies display_name.
     fn synthetic_entry(slug: &str, display_name: &str, app_id: Option<u64>) -> LudusaviEntry {
         LudusaviEntry {
             slug: slug.into(),
@@ -5020,7 +5009,7 @@ mod tests {
     }
 
     /// If the appid cross-reference already linked this Steam app, the
-    /// fallback must skip it — never demote a High/Medium entry to Low.
+    /// fallback must skip it: never demote a High/Medium entry to Low.
     #[test]
     fn steam_to_catalog_fallback_skips_when_appid_already_matched() {
         let catalog = vec![synthetic_entry("test-game", "Test Game", Some(999))];
@@ -5053,7 +5042,7 @@ mod tests {
     }
 
     /// Steam apps whose slugified name is not in the catalog produce no
-    /// noise — the dedupe map stays empty.
+    /// noise: the dedupe map stays empty.
     #[test]
     fn steam_to_catalog_fallback_skips_unknown_titles() {
         let catalog = vec![synthetic_entry("known-game", "Known Game", None)];
@@ -5160,7 +5149,7 @@ mod tests {
     }
 
     /// And a folder that merely shares the name while holding no player data is
-    /// still not offered — the install-dir signal is exact, not a licence.
+    /// still not offered: the install-dir signal is exact, not a licence.
     #[test]
     fn the_install_dir_name_does_not_offer_a_settings_folder() {
         with_isolated_home(|home| {
@@ -5211,7 +5200,7 @@ mod tests {
         );
     }
 
-    /// Engine leftovers are not player data either — that is the whole Unity
+    /// Engine leftovers are not player data either, which is the whole Unity
     /// `LocalLow` shape, which exists for every Unity game whether it saves
     /// there or not.
     #[test]
@@ -5293,7 +5282,7 @@ mod tests {
     }
 
     /// An empty folder is offered, but never above `Low` and never ahead of a
-    /// sibling that holds something — `found_paths[0]` is what automatic
+    /// sibling that holds something: `found_paths[0]` is what automatic
     /// tracking picks.
     #[test]
     fn an_empty_folder_is_offered_last_and_low() {
@@ -5405,12 +5394,12 @@ mod tests {
 
     /// Same Stellaris regression test as before, adapted to the new
     /// function name. Covers the "root exists but no save-named subdir"
-    /// regression — historically Hoard would back up the entire root.
+    /// regression: historically Hoard would back up the entire root.
     #[test]
     fn refine_save_dir_drops_paradox_root_without_save_games() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("Paradox Interactive").join("Stellaris");
-        // Root exists (config + mods present) but no `save games/` yet —
+        // Root exists (config and mods present) but no `save games/` yet, so
         // user installed Stellaris but hasn't created a campaign.
         std::fs::create_dir_all(root.join("mod")).unwrap();
 
@@ -5421,7 +5410,7 @@ mod tests {
     // The detect_all test below mutates process-wide env (HOME / XDG_*) so
     // we serialise it against any other test in this crate that does the
     // same via the crate-wide test_lock. Held across the (single) tokio
-    // runtime block — fine because detect_all takes seconds, not long
+    // runtime block, which is fine because detect_all takes seconds, not long
     // enough to starve other tests.
     fn with_isolated_home<F: FnOnce(&std::path::Path)>(f: F) {
         let _guard = crate::test_lock::ENV
@@ -5621,7 +5610,7 @@ mod tests {
     #[test]
     fn manual_override_surfaces_slug_filesystem_cannot_find() {
         with_isolated_home(|home| {
-            // No Steam install, no on-disk save folder for the slug — the
+            // No Steam install, no on-disk save folder for the slug, so the
             // heuristic produces nothing. Only the manual_path entry can
             // make the slug appear.
             let override_dir = home.join("custom-stardew");
@@ -5832,9 +5821,8 @@ mod tests {
         assert_eq!(hits.len(), 1, "expected exactly one hit, got {hits:?}");
         assert_eq!(hits[0].path, save_dir);
         assert_eq!(hits[0].confidence, Confidence::Medium);
-        // DETECCIÓN (fase 1, ADR 0020): el reason ahora es el desglose del
-        // score; un `.sav` reciente aporta "strong save ext" + "recent
-        // save-like file".
+        // The reason is now the score's breakdown; a recent `.sav` contributes
+        // "strong save ext" plus "recent save-like file".
         assert!(
             hits[0].reason.contains("recent save-like file"),
             "expected a 'recent save-like file' reason; got {:?}",
@@ -5842,8 +5830,8 @@ mod tests {
         );
     }
 
-    /// El walker tenía `steamuser` fijo, así que un prefijo de Heroic, Lutris
-    /// o Bottles —que nombran el perfil con la cuenta real— no daba nada.
+    /// The walker had `steamuser` hard-coded, so a Heroic, Lutris or Bottles prefix,
+    /// which names the profile with the real account, gave nothing.
     #[test]
     fn the_walker_reaches_a_prefix_whose_user_is_not_steamuser() {
         let tmp = tempfile::tempdir().unwrap();
@@ -5886,7 +5874,7 @@ mod tests {
     }
 
     /// A `save/` dir nested under a `bin/` denylist entry must not be
-    /// walked into — `WALK_SKIP` is honoured even when the inner dir name
+    /// walked into: `WALK_SKIP` is honoured even when the inner dir name
     /// matches the save patterns.
     #[test]
     fn aggressive_discover_respects_skip_list() {
@@ -5970,9 +5958,9 @@ mod tests {
         assert!(bogus_hits.is_empty());
     }
 
-    /// Fase 3 (cierre del bucle): un dir con evidencia estática fuerte
-    /// (`.sav` reciente) que sin correlación tope en `Medium` se promociona
-    /// a `High` cuando el store atribuye la escritura a un proceso de juego.
+    /// Phase 3 closing the loop: a dir with strong static evidence (a recent `.sav`)
+    /// that would cap at `Medium` without correlation is promoted to `High` when the
+    /// store attributes the write to a game process.
     #[test]
     fn classify_unlocks_high_with_correlation() {
         let tmp = std::env::temp_dir().join(format!(
@@ -6005,9 +5993,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    /// Corroboración por contenido: una carpeta `saves` con un `.zip` cuyo
-    /// índice delata un save (Factorio: `control.lua`) se concede `High` sin
-    /// necesidad de correlación de proceso — abrimos el archivo y lo vimos.
+    /// Corroboration by content: a `saves` folder with a `.zip` whose index gives a
+    /// save away (Factorio: `control.lua`) is granted `High` with no need for process
+    /// correlation, because we opened the archive and saw it.
     #[test]
     fn classify_archive_content_unlocks_high_without_correlation() {
         use std::io::Write;
@@ -6027,10 +6015,10 @@ mod tests {
         assert_eq!(hit.confidence, Confidence::High);
     }
 
-    /// Una caché de detección escrita por una versión ANTERIOR tiene que
-    /// seguir cargando. Regresión real (Windows, 30-jul-2026): añadir
-    /// `wrapper_slugs` sin default hizo que serde rechazara el `detection.json`
-    /// existente entero y la biblioteca arrancara en frío tras actualizar.
+    /// A detection cache written by an EARLIER version has to keep loading. A real
+    /// regression (Windows, 2026-07-30): adding `wrapper_slugs` with no default made
+    /// serde reject the whole existing `detection.json` and the library started cold
+    /// after an update.
     #[test]
     fn an_older_cached_report_still_loads() {
         // Stats de antes de `wrapper_slugs` (y de cualquier contador futuro).
@@ -6056,13 +6044,13 @@ mod tests {
             "el contador nuevo por defecto"
         );
 
-        // Y un report sin bloque `stats` en absoluto (más viejo todavía).
+        // And a report with no `stats` block at all (older still).
         let older = r#"{"games":[],"catalog_size":1,"steam_apps_found":0,"scanned_at_ms":1}"#;
         let report: DetectionReport = serde_json::from_str(older).unwrap();
         assert_eq!(report.stats, DetectionStats::default());
     }
 
-    /// Y una fila de juego cacheada por una versión anterior también.
+    /// And a game row cached by an earlier version too.
     #[test]
     fn an_older_cached_game_row_still_loads() {
         let json = r#"{
@@ -6076,11 +6064,10 @@ mod tests {
         assert!(g.path_confidences.is_empty());
     }
 
-    /// Caso real (Windows del usuario, 30-jul-2026): con `<base>` resuelto, la
-    /// plantilla de ARK apuntaba a `…/ShooterGame/Saved/SavedArksLocal`, que
-    /// existía con partidas dentro — y el refinado la tiraba por no ser una
-    /// grafía exacta de `SAVE_PATTERNS`, dejando una alerta ámbar sobre un
-    /// acierto perfecto.
+    /// A real case (a user's Windows, 2026-07-30): with `<base>` resolved, ARK's
+    /// template pointed at `.../ShooterGame/Saved/SavedArksLocal`, which existed with
+    /// saves in it, and refinement threw it away for not being one of
+    /// `SAVE_PATTERNS`' exact spellings, leaving an amber alert over a perfect hit.
     #[test]
     fn a_hit_whose_name_speaks_of_saves_is_kept_even_if_not_an_exact_pattern() {
         let tmp = tempfile::tempdir().unwrap();
@@ -6094,9 +6081,9 @@ mod tests {
         );
     }
 
-    /// Pero la raíz de un juego que mezcla saves con mods y config sigue
-    /// dando la alerta ámbar: ahí no sabemos cuál de las subcarpetas es, y
-    /// rastrearla entera subiría los mods.
+    /// But the root of a game that mixes saves with mods and config still gives the
+    /// amber alert: there we do not know which subfolder it is, and tracking the whole
+    /// thing would upload the mods.
     #[test]
     fn a_game_root_without_save_subdirs_still_yields_the_amber_alert() {
         let tmp = tempfile::tempdir().unwrap();
@@ -6107,10 +6094,10 @@ mod tests {
         assert!(refine_save_dir("stellaris", vec![root]).is_empty());
     }
 
-    /// Y la regla nueva no se aplica a una carpeta VACÍA: no hay nada que
-    /// respaldar y ofrecerla sólo produciría snapshots vacíos. (Una grafía
-    /// EXACTA de `SAVE_PATTERNS` sí se conserva aunque esté vacía — eso es
-    /// comportamiento previo: la carpeta existe y el juego escribirá ahí.)
+    /// And the new rule does not apply to an EMPTY folder: there is nothing to back
+    /// up and offering it would only produce empty snapshots. (An EXACT `SAVE_PATTERNS`
+    /// spelling is kept even when empty, which is prior behaviour: the folder exists
+    /// and the game will write there.)
     #[test]
     fn the_relaxed_rule_does_not_offer_an_empty_folder() {
         let tmp = tempfile::tempdir().unwrap();
@@ -6119,11 +6106,10 @@ mod tests {
         assert!(refine_save_dir("x", vec![hit]).is_empty());
     }
 
-    /// Plantilla que apunta a un FICHERO (4.900 juegos del catálogo sólo
-    /// tienen de estas). Antes el refinado no encontraba subcarpeta de save y
-    /// tiraba el hallazgo, dejando al juego con la alerta ámbar. Ahora se
-    /// ofrece la carpeta que lo contiene, que es lo que el usuario espera
-    /// respaldar y agrupa los saves hermanos.
+    /// A template pointing at a FILE (4,900 catalogue games only have these). Before,
+    /// refinement found no save subfolder and threw the find away, leaving the game
+    /// with the amber alert. Now the folder containing it is offered, which is what
+    /// the user expects to back up and what groups the sibling saves.
     #[test]
     fn a_file_hit_resolves_to_its_containing_folder() {
         let tmp = tempfile::tempdir().unwrap();
@@ -6135,8 +6121,8 @@ mod tests {
         assert_eq!(refine_save_dir("sonic", vec![file]), vec![dir]);
     }
 
-    /// Pero si esa carpeta es demasiado ancha para ofrecerla, se rastrea el
-    /// fichero suelto en vez de proponer el perfil entero.
+    /// But when that folder is too broad to offer, the lone file is tracked rather
+    /// than the whole profile proposed.
     #[test]
     fn a_file_in_a_too_broad_folder_is_tracked_on_its_own() {
         let Some(home) = directories::UserDirs::new().map(|u| u.home_dir().to_path_buf()) else {
@@ -6146,9 +6132,9 @@ mod tests {
         if !docs.is_dir() {
             return;
         }
-        // No se crea nada en el home del usuario: basta con que la ruta
-        // exista como fichero para el refinado, así que se usa uno real si lo
-        // hay y si no se sale.
+        // Nothing is created in the user's home: the path only has to exist as a
+        // file for refinement, so a real one is used when there is one and otherwise
+        // we bail.
         let Some(existing) = std::fs::read_dir(&docs).ok().and_then(|mut r| {
             r.find_map(|e| e.ok().map(|e| e.path()))
                 .filter(|p| p.is_file())
@@ -6162,9 +6148,9 @@ mod tests {
         );
     }
 
-    /// Una plantilla laxa que resuelve al perfil entero (o a una raíz de motor
-    /// compartida) no puede acabar como carpeta de save de un juego: sería
-    /// sincronizar Documentos enteros, o mezclar todos los juegos RenPy.
+    /// A loose template resolving to the whole profile, or to a shared engine root,
+    /// cannot end up as a game's save folder: that would be syncing the whole of
+    /// Documents, or mixing every RenPy game together.
     #[test]
     fn a_profile_or_engine_root_is_never_merged_as_a_save() {
         let Some(home) = directories::UserDirs::new().map(|u| u.home_dir().to_path_buf()) else {
@@ -6192,7 +6178,7 @@ mod tests {
         assert_eq!(by_slug.len(), 1);
     }
 
-    /// El walk tampoco puede rescatarla por score.
+    /// The walk cannot rescue it by score either.
     #[test]
     fn the_walk_refuses_to_classify_a_blocked_root() {
         let Some(home) = directories::UserDirs::new().map(|u| u.home_dir().to_path_buf()) else {
@@ -6202,8 +6188,8 @@ mod tests {
         assert!(classify_dir_as_save_like(&home, "home", &store).is_none());
     }
 
-    /// La caché con el nombre del juego delante (`AnvilDX12Cache`) es justo la
-    /// que el set exacto de `scoring` no atrapaba.
+    /// The cache with the game's name in front of it (`AnvilDX12Cache`) is exactly
+    /// what `scoring`'s exact set did not catch.
     #[test]
     fn the_walk_skips_prefixed_cache_dirs() {
         for n in [
@@ -6218,14 +6204,14 @@ mod tests {
         assert!(!is_skip_dir("SaveGames"));
     }
 
-    /// La raíz de un emulador, entrando por donde entra el usuario: señalando
-    /// la carpeta. Lo que sale es una fila por título, con el nombre y el slug
-    /// que le pondría el diálogo de emuladores — nunca la raíz, que es un
-    /// contenedor y no tiene un solo fichero que respaldar.
+    /// An emulator's root, entered the way the user enters it: by pointing at the
+    /// folder. What comes out is one row per title, with the name and slug the
+    /// emulator dialog would give it, and never the root, which is a container with
+    /// not one file to back up.
     #[test]
     fn pointing_at_an_emulator_root_lists_its_titles_not_the_root() {
         let tmp = tempfile::tempdir().unwrap();
-        // La forma real: `<lo que sea>/rpcs3/dev_hdd0/home/<perfil>/savedata`.
+        // The real shape: `<whatever>/rpcs3/dev_hdd0/home/<profile>/savedata`.
         let root = tmp.path().join("rpcs3/dev_hdd0/home/00000001/savedata");
         for title in ["BLUS30443-AUTOSAVE", "NPUB30493-SAVEDATA01"] {
             let d = root.join(title);
@@ -6244,25 +6230,25 @@ mod tests {
             vec![
                 (
                     "emu-rpcs3-blus30443-autosave".to_string(),
-                    "RPCS3 — BLUS30443-AUTOSAVE".to_string()
+                    "RPCS3: BLUS30443-AUTOSAVE".to_string()
                 ),
                 (
                     "emu-rpcs3-npub30493-savedata01".to_string(),
-                    "RPCS3 — NPUB30493-SAVEDATA01".to_string()
+                    "RPCS3: NPUB30493-SAVEDATA01".to_string()
                 ),
             ]
         );
-        // Y ninguna fila es la raíz: era ella la que no podía respaldar nada.
+        // And no row is the root: it was the root that could back nothing up.
         assert!(
             found.iter().all(|a| a.path != root),
             "la raíz del emulador no se ofrece como save"
         );
-        // Tampoco sobrevive el slug que salía del árbol del emulador.
+        // Nor does the slug that came out of the emulator's tree survive.
         assert!(found.iter().all(|a| a.slug != "dev-hdd0"));
     }
 
-    /// Y la raíz vacía —rpcs3 instalado, perfil sin estrenar: el caso de las
-    /// 224 líneas de "nothing to back up"— no ofrece nada en absoluto.
+    /// And an empty root (rpcs3 installed, profile never used, the case of the 224
+    /// "nothing to back up" lines) offers nothing at all.
     #[test]
     fn an_empty_emulator_root_is_refused_instead_of_tracked() {
         let tmp = tempfile::tempdir().unwrap();
@@ -6276,9 +6262,9 @@ mod tests {
         );
     }
 
-    /// El barrido no aterriza en la raíz: baja hasta donde hay ficheros. Entrar
-    /// por encima tiene que dar exactamente lo mismo que señalarla, y una sola
-    /// fila por título aunque haya varios ficheros dentro.
+    /// The sweep does not land on the root: it descends to where the files are.
+    /// Entering above it has to give exactly the same as pointing at it, and one row
+    /// per title even with several files inside.
     #[test]
     fn walking_into_an_emulator_root_from_above_still_files_it_by_title() {
         let tmp = tempfile::tempdir().unwrap();
@@ -6304,7 +6290,7 @@ mod tests {
 
     /// The names production actually minted saves under, plus the ones a walk
     /// runs into on the way there. Every one of them is a container, an
-    /// account or an identifier — never a title — and every one has to be
+    /// account or an identifier, never a title, and every one has to be
     /// refused at the moment of naming, not just quarantined afterwards.
     #[test]
     fn a_generic_segment_never_names_a_game() {
@@ -6322,7 +6308,7 @@ mod tests {
             // wrapper whose appid the catalog doesn't carry.
             "2059170",
             "2479090",
-            // Y la fontanería que atraviesa cualquier subida por la ruta.
+            // And the plumbing any path passes through on the way up.
             "AppData",
             "Roaming",
             "LocalLow",
@@ -6339,8 +6325,8 @@ mod tests {
             "Public",
             ".config",
             ".local",
-            // Identificadores que la máquina se inventa: SteamID64, uuid de
-            // perfil, los ids hex que Citra deriva de las claves de consola.
+            // Identifiers the machine invents for itself: SteamID64, a profile uuid,
+            // the hex ids Citra derives from console keys.
             "76561197960287930",
             "00000001",
             "0004000000033400",
@@ -6360,7 +6346,7 @@ mod tests {
             );
         }
 
-        // El control: nombres de carpeta reales que NO se pueden perder.
+        // The control: real folder names that must NOT be lost.
         for name in [
             "Stellaris",
             "Elden Ring",
@@ -6379,43 +6365,42 @@ mod tests {
         }
     }
 
-    /// La guarda, ya en la escalera de atribución: subir por la ruta buscando
-    /// un nombre útil, y si arriba no hay ninguno, decir que no hay.
+    /// The guard, now on the attribution ladder: climb the path looking for a useful
+    /// name, and when there is none above, say there is none.
     ///
-    /// El caso de la izquierda es el que llenó producción: el último segmento
-    /// mirado se usaba de recambio, así que una ruta entera de fontanería
-    /// acababa bautizando un juego con el trozo más cercano.
+    /// The left-hand case is the one that filled production: the last segment looked
+    /// at was used as a substitute, so a whole path of plumbing ended up christening
+    /// a game with the nearest piece of it.
     #[test]
     fn attribution_refuses_a_path_that_names_no_game() {
         let empty = CorrelationStore::default();
         let cases: &[(&str, Option<&str>)] = &[
-            // --- Nada aquí nombra un juego: la respuesta es "ninguno" ------
+            // ---- nothing here names a game, so the answer is "none"
             //
-            // Cuenta de Windows OEM llamada literalmente `user`: 13 usuarios.
+            // An OEM Windows account literally called `user`: 13 users.
             ("C:/Users/user/AppData/Local", None),
             ("C:/Users/user/AppData/LocalLow", None),
             // `cd` bajo pura fontanería: 4 usuarios.
             ("C:/Users/user/AppData/Roaming/cd", None),
-            // `local` suelto, la mitad Linux del mismo fallo.
+            // A bare `local`, the Linux half of the same failure.
             ("/home/u/.local/share", None),
             // `steam` / `common`: 11 usuarios.
             ("/home/u/.steam/steam/steamapps/common", None),
-            // El appid pelado, con el SteamID64 de por medio.
+            // The bare appid, with the SteamID64 in between.
             (
                 "/home/u/.local/share/Steam/userdata/76561197960287930/2059170/remote",
                 None,
             ),
-            // --- Y lo que NO se puede romper arreglando lo de arriba -------
+            // ---- and what must not break while fixing the above
             //
-            // El mismo árbol de Steam, pero con el juego dentro: sube desde la
-            // palabra de save y para en el título.
+            // The same Steam tree, but with the game inside: it climbs from the
+            // save word and stops at the title.
             (
                 "/home/u/.steam/steam/steamapps/common/Stellaris/save games",
                 Some("Stellaris"),
             ),
-            // Un juego que el catálogo no conoce, bajo la cuenta `user`: el
-            // veto de la cuenta no puede llevarse por delante el título que
-            // hay por debajo.
+            // A game the catalogue does not know, under the `user` account: the
+            // account's veto must not take the title below it down with it.
             (
                 "C:/Users/user/Documents/My Games/Frobnicate Deluxe/Saves",
                 Some("Frobnicate Deluxe"),
@@ -6428,9 +6413,9 @@ mod tests {
         }
     }
 
-    /// Atribución (fase 4): el nombre del proceso que escribió la carpeta gana
-    /// sobre la heurística de ancestro; sin proceso, se usa el primer segmento
-    /// no genérico subiendo por el árbol.
+    /// Attribution (phase 4): the name of the process that wrote the folder beats
+    /// the ancestor heuristic; with no process, the first non-generic segment
+    /// climbing the tree is used.
     #[test]
     fn attribute_game_name_prefers_process_then_ancestor() {
         let path = PathBuf::from("/home/u/.local/share/Skyrim/Saves");
@@ -6457,10 +6442,10 @@ mod tests {
         );
     }
 
-    /// El título del catálogo gana al nombre crudo del proceso. Es lo que
-    /// estabiliza la atribución: el proceso que se lleva la correlación cambia
-    /// entre escaneos (la carpeta de Planet S pasó por ChatGPT, opencode y
-    /// code), y cada nombre nuevo creaba un slug nuevo y una fila nueva.
+    /// The catalogue's title beats the process's raw name. That is what stabilises
+    /// attribution: the process that wins the correlation changes between scans (one
+    /// game's folder went through three different app names) and each new name
+    /// created a new slug and a new row.
     #[test]
     fn attribution_prefers_the_catalog_title_over_the_process_name() {
         let path = PathBuf::from("/home/u/.factorio/saves");
@@ -6478,17 +6463,17 @@ mod tests {
             attribute_game_name(&path, &store).as_deref(),
             Some(expected)
         );
-        // Y el slug resultante es estable, que es lo que evita la fila nueva.
+        // And the resulting slug is stable, which is what avoids the new row.
         assert_eq!(ludusavi::slugify(expected), "factorio");
     }
 
-    /// Caso real del Windows del usuario (30-jul-2026): `Mars.exe` lo reclaman
-    /// DOS juegos del catálogo, así que el veto de ambigüedad lo rechaza — bien,
-    /// porque adivinar habría bautizado el save como "Mars Underground". Lo que
-    /// estaba mal era caer al nombre crudo teniendo delante dos señales que el
-    /// catálogo sí confirma: la carpeta del ejecutable y el ancestro del save.
-    /// El resultado era un juego llamado "Mars" y una segunda fila ámbar para
-    /// la MISMA carpeta bajo el slug bueno.
+    /// A real case from a user's Windows (2026-07-30): `Mars.exe` is claimed by TWO
+    /// catalogue games, so the ambiguity veto rejects it, which is right, because
+    /// guessing would have christened the save "Mars Underground". What was wrong was
+    /// falling back to the raw name with two signals in front of it that the catalogue
+    /// does confirm: the executable's folder and the save's ancestor. The result was a
+    /// game called "Mars" and a second amber row for the SAME folder under the good
+    /// slug.
     #[test]
     fn an_ambiguous_exe_falls_back_to_the_catalog_not_to_the_raw_name() {
         let save = PathBuf::from("/home/u/Saved Games/Surviving Mars Relaunched/76561197960271872");
@@ -6500,7 +6485,7 @@ mod tests {
                 exe: Some(PathBuf::from("/games/Surviving Mars Relaunched/Mars.exe")),
             }],
         );
-        // El veto sigue en pie: `mars.exe` no resuelve por sí solo.
+        // The veto still stands: `mars.exe` does not resolve on its own.
         assert!(
             ludusavi::title_for_exe("mars.exe").is_none(),
             "mars.exe lo reclama más de un juego; no debe resolver"
@@ -6510,19 +6495,16 @@ mod tests {
         assert_eq!(ludusavi::slugify(&name), "surviving-mars-relaunched");
     }
 
-    /// Contra qué datos se está midiendo, para el mensaje de un test que casa
-    /// títulos concretos del manifiesto.
+    /// What the data being measured against is, for the message of a test that
+    /// matches specific manifest titles.
     ///
-    /// Estos tests afirman cosas sobre datos que vienen de fuera, y el catálogo
-    /// que se carga **no es siempre el que trae el binario**: si la app ha
-    /// refrescado el manifiesto, mandan los ficheros de `~/.cache/hoard/`.
-    /// Entonces esto falla en local y pasa en CI, y sin la nota parece cosa de
-    /// brujas. El fallo es de verdad —arriba movieron el juego y el nombrado se
-    /// degrada con él—, pero hay que saber con qué se está comparando.
+    /// These tests assert things about data that comes from outside, and the
+    /// catalogue that gets loaded is not always the one the binary ships: if the app
+    /// has refreshed the manifest, the files in `~/.cache/hoard/` win.
     ///
-    /// Sólo informa del tamaño cargado: mirar si el fichero de override existe
-    /// **ahora** miente, porque otro test puede tener `XDG_CACHE_HOME` apuntando
-    /// a su tempdir en este instante, y el catálogo ya está cargado desde antes.
+    /// It only reports the loaded size: checking whether the override file exists
+    /// says nothing here, because the test points `XDG_CACHE_HOME` at its tempdir at
+    /// this instant and the catalogue is already loaded from before.
     fn catalog_source() -> String {
         format!(
             "catálogo cargado: {} juegos. Si esto falla en local y pasa en CI, la app refrescó \
@@ -6532,7 +6514,7 @@ mod tests {
         )
     }
 
-    /// Y con la carpeta del save opaca, la del ejecutable basta.
+    /// And with the save's folder opaque, the executable's is enough.
     #[test]
     fn the_executables_install_folder_names_the_game() {
         let save = PathBuf::from("/home/u/.local/share/a1b2c3d4-guid/data");
@@ -6552,8 +6534,8 @@ mod tests {
         );
     }
 
-    /// Una carpeta que se llama como un juego del catálogo sale con su título
-    /// bonito, no con el nombre crudo del directorio.
+    /// A folder named after a catalogue game comes out with its pretty title, not
+    /// with the directory's raw name.
     #[test]
     fn attribution_upgrades_a_folder_name_to_its_catalog_title() {
         let path = PathBuf::from("/home/u/.local/share/StardewValley/Saves");
@@ -6574,9 +6556,9 @@ mod tests {
         assert!(!path_already_known(Path::new("/games/b/Saves"), &known));
     }
 
-    /// Fase 4 end-to-end: una carpeta de nombre opaco (GUID) bajo un root de
-    /// usuario, estáticamente invisible, aflora SÓLO porque la correlación la
-    /// corrobora, y se atribuye al proceso que la escribió.
+    /// Phase 4 end to end: a folder with an opaque name (a GUID) under a save root
+    /// scores as possible, the correlation corroborates it, and it is attributed to
+    /// the process that wrote it.
     #[test]
     fn discover_unattributed_rescues_correlated_guid_folder() {
         with_isolated_home(|home| {
@@ -6606,12 +6588,12 @@ mod tests {
                 .iter()
                 .find(|a| a.path == guid)
                 .expect("correlated GUID folder should surface in phase 4");
-            // El nombre de proceso se embellece para la Library (title-case);
-            // el slug sale del slugify del display, así que no cambia.
+            // The process name is prettified for the Library (title case); the slug
+            // comes from slugifying the display, so it does not change.
             assert_eq!(hit.display_name, "Mysterygame");
             assert_eq!(hit.slug, "mysterygame");
 
-            // Si ya está reclamada por el catálogo, se omite.
+            // If the catalogue already claims it, it is skipped.
             let mut known = HashSet::new();
             known.insert(guid.clone());
             let skipped = discover_unattributed(Os::Linux, &store, &known);
@@ -6619,11 +6601,9 @@ mod tests {
         });
     }
 
-    /// Regresión: los backups de conflictos del propio Hoard
-    /// (`<state_dir>/conflicts/<id>/<ts>/autosave`) son bytes de save
-    /// copiados verbatim, así que puntúan save-like y, antes del fix, afloraban
-    /// como juegos fantasma nombrados con el timestamp. El walk debe saltarlos
-    /// aunque la correlación los corrobore.
+    /// A regression: Hoard's own conflict backups are copied verbatim, so they score
+    /// save-like and, before the fix, surfaced as phantom games named after the
+    /// timestamp. The walk has to skip them even when correlation corroborates them.
     #[test]
     fn discover_unattributed_skips_hoard_internal_conflicts() {
         with_isolated_home(|_home| {
@@ -6656,7 +6636,7 @@ mod tests {
 
     /// The Library "add from folder" flow: scanning an arbitrary folder (not a
     /// standard save root) must find a save-like dir inside it and attribute it
-    /// to the game named by the folder above the save-word — no catalog, no
+    /// to the game named by the folder above the save-word: no catalog, no
     /// correlation. A folder already covered by a tracked save is skipped.
     #[test]
     fn discover_in_folder_finds_and_attributes_inside_arbitrary_dir() {
@@ -6687,7 +6667,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Carpeta temporal única para los tests del barrido explícito.
+    /// A unique temporary folder for the explicit-sweep tests.
     fn scratch_dir(tag: &str) -> PathBuf {
         let uniq = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -6700,7 +6680,7 @@ mod tests {
 
     /// Regresión: apuntar directamente a la carpeta de partidas de un juego
     /// (`…/Saved Games/Surviving Mars Relaunched`) no encontraba nada, porque
-    /// el walk sólo clasificaba a los HIJOS de la raíz elegida. La carpeta que
+    /// the walk only classified the CHILDREN of the chosen root. The folder that
     /// el usuario señala es un candidato como cualquier otro.
     #[test]
     fn discover_in_folder_offers_the_chosen_folder_itself() {
@@ -6721,8 +6701,8 @@ mod tests {
     }
 
     /// Una carpeta puede ser save Y contenedor: `Documents` tiene ficheros
-    /// sueltos y una carpeta por juego dentro. Se ofrece ella (es la elegida)
-    /// pero sin tapar lo que hay debajo.
+    /// loose files and a folder per game inside. It is offered (it is the chosen
+    /// one) but without hiding what is underneath.
     #[test]
     fn discover_in_folder_descends_past_a_chosen_folder_that_also_holds_files() {
         let base = scratch_dir("scan-both");
@@ -6743,12 +6723,12 @@ mod tests {
     }
 
     /// Regresión: escanear `Saved Games` devolvía un juego de cuatro, porque
-    /// una carpeta de partidas con extensión propietaria no pasa el listón del
-    /// barrido puntuado. Con la carpeta elegida a mano el listón no aplica.
+    /// a save folder with a proprietary extension does not clear the scored sweep's
+    /// bar.
     ///
-    /// Cubre además el `desktop.ini` que Windows deja en `Saved Games`: sin
-    /// filtrarlo, el contenedor contaría como carpeta con datos propios y
-    /// taparía a los cuatro juegos de dentro.
+    /// It also covers the `desktop.ini` Windows leaves in `Saved Games`: without
+    /// filtering it, the container would count as a folder with data of its own and
+    /// would hide the four games inside.
     #[test]
     fn discover_in_folder_lists_every_game_under_a_container() {
         let base = scratch_dir("scan-container");
@@ -6774,13 +6754,13 @@ mod tests {
         );
         assert!(
             found.iter().all(|a| a.path != base),
-            "the container itself is not a save folder — its desktop.ini doesn't make it one"
+            "the container itself is not a save folder; its desktop.ini doesn't make it one"
         );
 
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Config/caché/logs no son partidas por mucho que tengan ficheros, y una
+    /// Config, cache and logs are not saves however many files they hold, and a
     /// carpeta de capturas tampoco.
     #[test]
     fn discover_in_folder_skips_config_and_screenshots() {
@@ -6808,14 +6788,14 @@ mod tests {
     /// puede inventar un juego nuevo cuando el catálogo tiene el título dentro.
     #[test]
     fn name_prefix_resolves_edition_folders_to_the_catalog_game() {
-        // Contra el catálogo real: si "Surviving Mars" está en él, la carpeta
-        // con calificador debe resolver a ese título y no a sí misma.
+        // Against the real catalogue: if "Surviving Mars" is in it, the qualified
+        // folder has to resolve to that title rather than to itself.
         let Some(entry) = ludusavi::find_by_slug("surviving-mars") else {
             return; // catálogo recortado en este build: nada que comprobar
         };
         let resolved = ludusavi::find_by_name_prefix("Surviving Mars Relaunched");
         assert_eq!(resolved.map(|e| &e.slug), Some(&entry.slug));
-        // Y el guardarraíl: un título de una sola palabra no se traga otro juego.
+        // And the guardrail: a single-word title does not swallow another game.
         assert!(
             ludusavi::find_by_name_prefix("Fallout New Vegas").is_none_or(|e| e.slug != "fallout")
         );
@@ -6825,7 +6805,7 @@ mod tests {
     //
     // Every fixture lives in a tempdir and touches neither the catalog nor
     // XDG_CACHE_HOME: the only input is the tree it builds itself. That
-    // isolation is deliberate — a refreshed `~/.cache/hoard` has silently
+    // isolation is deliberate: a refreshed `~/.cache/hoard` has silently
     // decided other tests in this file before.
 
     /// A tree with `n` saves sharing their names under each given root.
@@ -6985,7 +6965,7 @@ mod tests {
         assert_eq!(g.found_paths[1], mirror, "the mirror falls behind");
         assert_eq!(g.found_paths.len(), g.path_confidences.len());
         assert_eq!(g.found_paths.len(), g.path_reasons.len());
-        // P1: the winner's reason explains the pick — it is not empty.
+        // P1: the winner's reason explains the pick, so it is not empty.
         assert!(
             !g.path_reasons[0].is_empty(),
             "the leading path must carry its why"
