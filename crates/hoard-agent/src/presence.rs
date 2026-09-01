@@ -61,9 +61,9 @@ impl PresenceHandle {
         let _ = self.tx.try_send(Cmd::Stopped { slug: slug.into() });
     }
 
-    /// Latido final en el shutdown ordenado: marca este device offline ya.
-    /// A bounded wait ([`CLOSING_TIMEOUT_SECS`]), callable from the quit path.
-    /// quit sin miedo a colgarlo.
+    /// The last beat on an orderly shutdown: it marks this device offline right
+    /// away. A bounded wait ([`CLOSING_TIMEOUT_SECS`]), so the quit path can call
+    /// it without any risk of hanging.
     pub async fn closing(&self) {
         let (done_tx, done_rx) = oneshot::channel();
         if self.tx.send(Cmd::Closing { done: done_tx }).await.is_ok() {
@@ -73,8 +73,8 @@ impl PresenceHandle {
 }
 
 /// Starts the presence task on the agent's own `ApiClient` (the desktop rotates
-/// the JWT). The task dies on its own once every handle is dropped, or
-/// inmediatamente tras el beat de un `closing()`.
+/// the JWT). The task dies on its own once every handle is dropped, or right
+/// after a `closing()` beat.
 pub fn spawn(api: ApiClient) -> (PresenceHandle, JoinHandle<()>) {
     let (tx, rx) = mpsc::channel(64);
     let task = tokio::spawn(run(api, rx));
@@ -98,9 +98,9 @@ async fn run(api: ApiClient, mut rx: mpsc::Receiver<Cmd>) {
                 Some(Cmd::Started { slug }) => {
                     let entry = running.entry(slug).or_insert((0, Instant::now()));
                     entry.0 += 1;
-                    // Latido inmediato solo cuando el SET visible cambia (el
-                    // the game has just appeared); the same game's second save
-                    // changes nothing anybody can see.
+                    // Beat immediately only when the visible SET changes (the game
+                    // has just appeared); the same game's second save changes
+                    // nothing anybody can see.
                     if entry.0 == 1 {
                         beat(&api, &running, false).await;
                     }
@@ -132,12 +132,12 @@ async fn beat(api: &ApiClient, running: &HashMap<String, (u32, Instant)>, closin
     // Gated on capability rather than on deployment: cloud always has it, and
     // self-hosted since 1.1.3, which is when its server started keeping a device
     // census. The probe is cached on first success, so in the steady state
-    // esto no cuesta red; un server viejo (o un probe fallido) → silencio.
+    // this costs no network; an old server (or a failed probe) means silence.
     if !api.has_presence().await {
         return;
     }
-    // The full list, most recent first, in the same order the
-    // server la guarda y el Eye panel la pinta.
+    // The full list, most recent first, the same order the server stores it in and
+    // the Eye panel paints it in.
     let mut games: Vec<(&String, &Instant)> = running.iter().map(|(s, (_, at))| (s, at)).collect();
     games.sort_by_key(|(_, started)| std::cmp::Reverse(**started));
     let playing: Vec<crate::api::PlayingBeat> = games

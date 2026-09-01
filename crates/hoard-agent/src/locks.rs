@@ -124,7 +124,7 @@ mod tests {
         }
         let mut budget = MAX_PROBED_FILES;
         probe(tmp.path(), MAX_DEPTH, &mut budget);
-        assert_eq!(budget, 0, "debería haber agotado el presupuesto, no más");
+        assert_eq!(budget, 0, "the budget should be spent, no more than that");
     }
 
     /// On POSIX the probe can assert nothing, and that is right: it must never

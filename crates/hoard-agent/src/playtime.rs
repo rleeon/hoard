@@ -63,13 +63,13 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Cubetas de tiempo jugado persistidas en disco, más anclas en memoria.
+/// Playtime buckets persisted to disk, plus in-memory anchors.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PlaytimeStore {
     /// Local day `YYYY-MM-DD` to seconds played that day, across all games.
     #[serde(default)]
     days: BTreeMap<String, u64>,
-    /// `game_slug` → segundos jugados acumulados (histórico).
+    /// `game_slug` to seconds played, accumulated over all time.
     #[serde(default)]
     by_game: BTreeMap<String, u64>,
     /// The cross breakdown of day to (`game_slug` to seconds): what was played
@@ -78,11 +78,11 @@ pub struct PlaytimeStore {
     /// [`Self::upload_rows`], which adds a remainder row to balance it).
     #[serde(default)]
     daily_by_game: BTreeMap<String, BTreeMap<String, u64>>,
-    /// Segundos jugados acumulados (histórico).
+    /// Seconds played, accumulated over all time.
     #[serde(default)]
     total_secs: u64,
 
-    /// Sólo memoria: `save_id` → instante (epoch-ms) de la última atribución.
+    /// Memory only: `save_id` to the instant (epoch-ms) of the last attribution.
     #[serde(skip)]
     anchors: HashMap<String, u64>,
     #[serde(skip)]
@@ -214,7 +214,7 @@ impl PlaytimeStore {
                     tracing::warn!(
                         error = %e,
                         path = %path.display(),
-                        "playtime: store ilegible; se sigue sin él, pero no se declarará autoritativo"
+                        "playtime: store unreadable; carrying on without it, but it will not be declared authoritative"
                     );
                     Self::default()
                 }
@@ -379,7 +379,7 @@ mod tests {
     fn accrues_between_ticks() {
         let mut s = store();
         s.accrue(&[("a".into(), "game".into())], 10_000, 60);
-        // 12 s después.
+        // 12 s later.
         s.accrue(&[("a".into(), "game".into())], 22_000, 60);
         assert_eq!(s.total_secs, 12);
         assert_eq!(*s.by_game.get("game").unwrap(), 12);

@@ -2,7 +2,7 @@
 //!
 //! Tiny harness that runs `detect_all` against the host and prints the
 //! report. Use it to sanity-check detection on your dev machine without
-//! firing up the desktop app — if this returns 0 games on a box that has
+//! firing up the desktop app: if this returns 0 games on a box that has
 //! Steam + saves on disk, detection is broken.
 
 use hoard_agent::detection::detect_all;
@@ -14,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
     let os = Os::current();
     println!("Scanning for installed games on {os:?}...");
 
-    // The smoke binary doesn't load the on-disk state — it's a quick
+    // The smoke binary doesn't load the on-disk state, it's a quick
     // detection sanity check, not a session. An empty CliState means no
     // manual_paths overrides apply, which is fine for "did the heuristics
     // find anything?".

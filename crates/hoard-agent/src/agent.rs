@@ -320,7 +320,7 @@ enum AgentCommand {
     /// when the total save footprint is large, and schedules each save at a
     /// size-proportional offset within it. Saves already queued for backup
     /// (fs event or a still-running previous sweep) are skipped so ticks
-    /// don't pile up. Fired by the desktop "Modo Automático" backup
+    /// don't pile up. Fired by the desktop's automatic-mode backup
     /// scheduler.
     SweepAll {
         window_secs: u64,
@@ -1002,7 +1002,7 @@ struct CloudHeads {
     /// behind [`Self::versions`]; that is why [`Self::head_for`] demands the version
     /// match before believing it.
     digests: HashMap<String, ServerHead>,
-    /// Cuándo aterrizó ese feed, venga de donde venga. `None` = todavía ninguno.
+    /// When that feed landed, wherever it came from. `None` means none yet.
     as_of: Option<OffsetDateTime>,
     /// The engine's last attempt to observe the cloud itself, successful or not. It
     /// paces the retries: without this stamp a downed server, or a 401 session, would
@@ -2376,12 +2376,12 @@ async fn run_agent(
                     &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx, &cloud_heads,
                 );
 
-                // DETECCIÓN (fase 3, ADR 0020): sonda de candidatos. `sys` ya
-                // viene refrescado por `process_poll`. Para cada candidato no
-                // tracked, when its folder was rewritten since the last tick
-                // y hay un juego vivo, registra la correlación. Esto es lo que
-                // rompe el huevo-y-gallina: el siguiente escaneo verá el bonus
-                // +0.50 y ascenderá el candidato a `High`.
+                // DETECTION (phase 3, ADR 0020): probing the candidates. `sys`
+                // comes already refreshed by `process_poll`. For each untracked
+                // candidate, when its folder was rewritten since the last tick
+                // and a game is alive, the correlation is recorded. This is what
+                // breaks the chicken-and-egg: the next scan will see the +0.50
+                // bonus and promote the candidate to `High`.
                 if !probes.is_empty() {
                     probe_candidates(&mut probes, &sys, &mut corr_store, corr_path.as_deref());
                 }
@@ -2433,7 +2433,7 @@ async fn run_agent(
                 );
             }
 
-            // ----- Nudge de reconciliación (debounce fs asentado) -----
+            // ---- reconciliation nudge (the fs debounce has settled)
             Some(()) = nudge_rx.recv() => {
                 // They coalesce: a burst of autosaves across several slots leaves
                 // several nudges; we drain them and reconcile once.
@@ -5393,8 +5393,8 @@ fn process_poll(
         };
 
         if now_running {
-            // ¿Arranque solo-débil? Ninguna señal fuerte lo corrobora este
-            // tick: candidato a sesión fantasma (ver `SaveSlot::weak_session`).
+            // A weak-only start? No strong signal corroborates it this tick, so it
+            // is a phantom-session candidate (see `SaveSlot::weak_session`).
             let weak_start = !strong_now.contains(id.as_str());
             if let Some(slot) = slots.get_mut(&id) {
                 slot.is_running = true;
@@ -5598,7 +5598,7 @@ mod tests {
             "savedgames",
             "games",
         ] {
-            assert!(is_generic_identity_token(t), "{t} debería vetarse");
+            assert!(is_generic_identity_token(t), "{t} should be vetoed");
         }
         assert!(!is_generic_identity_token("eldenring"));
         assert!(!is_generic_identity_token("mousepiforhire"));
@@ -5743,7 +5743,7 @@ mod tests {
         assert_eq!(
             heads.expected_since(),
             Some(t0),
-            "cloud: la cuenta atrás corre desde que el motor arrancó"
+            "cloud: the countdown runs from the moment the engine started"
         );
     }
 
@@ -6314,10 +6314,10 @@ mod tests {
         );
     }
 
-    /// La basura local no es divergencia. `disk_set_hash` no la cuenta (sale de
-    /// `walk_source`), so counting it here would mark `local_diverged` on every
-    /// auto-restore of any game with a log, and the engine would repeat a walk
-    /// y un hash de contenido enteros cada vez.
+    /// Local junk is not divergence. `disk_set_hash` does not count it (it comes
+    /// from `walk_source`), so counting it here would mark `local_diverged` on every
+    /// auto-restore of any game with a log, and the engine would repeat a whole walk
+    /// and a whole content hash every time.
     #[tokio::test(flavor = "current_thread")]
     async fn restore_files_into_ignores_junk_when_counting_local_only() {
         let dir = tempfile::tempdir().unwrap();
@@ -6337,7 +6337,7 @@ mod tests {
         // But config does count: it exists only locally until it is uploaded.
         std::fs::write(target.join("graphics.ini"), b"res=1080").unwrap();
         let stats = restore_files_into(target, source, None, &[]).await.unwrap();
-        assert_eq!(stats.target_only, 1, "la config sí debe contar");
+        assert_eq!(stats.target_only, 1, "the config does have to count");
     }
 
     /// Local-only files: a file present in the target but absent from the

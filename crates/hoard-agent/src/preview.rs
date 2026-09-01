@@ -328,7 +328,7 @@ mod tests {
     fn a_size_change_needs_no_hash_at_all() {
         let remote = vec![r("save.dat", 200, Some("aa"))];
         let local = vec![l("save.dat", 100)];
-        let out = diff(&remote, &local, |_| panic!("no debería hashear"));
+        let out = diff(&remote, &local, |_| panic!("should not hash"));
         assert_eq!(out.modified, vec!["save.dat"]);
         assert_eq!(out.bytes_to_write, 200);
     }

@@ -231,7 +231,7 @@ pub struct UnsafeSource {
 #[error("none of the {count} files in {path} could be read: {first}")]
 pub struct UnreadableSource {
     pub path: PathBuf,
-    /// Cuántos ficheros enumeró el recorrido (todos ilegibles).
+    /// How many files the walk enumerated (all of them unreadable).
     pub count: usize,
     /// The first one's error, which is the one that explains the rest.
     pub first: String,
@@ -1951,23 +1951,23 @@ mod tests {
     #[tokio::test]
     async fn a_file_rotated_mid_upload_is_caught() {
         let tmp = tempfile::tempdir().unwrap();
-        let viejo = tmp.path().join("viejo.dat");
-        let nuevo = tmp.path().join("nuevo.dat");
-        std::fs::write(&viejo, b"partida de ayer").unwrap();
-        // Mismo tamaño a propósito: el largo no basta como árbitro.
-        std::fs::write(&nuevo, b"partida de HOY!").unwrap();
-        let sha_viejo = hash_file(&viejo).await.unwrap();
-        let len = std::fs::metadata(&viejo).unwrap().len();
-        assert_ne!(sha_viejo, hash_file(&nuevo).await.unwrap());
+        let old = tmp.path().join("old.dat");
+        let new_file = tmp.path().join("new.dat");
+        std::fs::write(&old, b"yesterday's save").unwrap();
+        // Same size on purpose: the length is not enough to arbitrate.
+        std::fs::write(&new_file, b"TODAY's save!!!!").unwrap();
+        let sha_old = hash_file(&old).await.unwrap();
+        let len = std::fs::metadata(&old).unwrap().len();
+        assert_ne!(sha_old, hash_file(&new_file).await.unwrap());
 
         // What is there now (the rotated file) gets uploaded under the declared sha.
-        let file = tokio::fs::File::open(&nuevo).await.unwrap();
+        let file = tokio::fs::File::open(&new_file).await.unwrap();
         let (stream, sent) = hashing_stream(file);
         stream.for_each(|_| async {}).await;
 
         let sent = sent.lock().unwrap();
-        assert_eq!(sent.len, len, "misma longitud: sólo el sha lo delata");
-        let err = verify_sent("save.dat", &sha_viejo, len, &sent).unwrap_err();
+        assert_eq!(sent.len, len, "same length: only the sha gives it away");
+        let err = verify_sent("save.dat", &sha_old, len, &sent).unwrap_err();
         assert!(
             err.to_string()
                 .contains("changed while it was being uploaded"),
@@ -2105,11 +2105,7 @@ mod tests {
         std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o000)).unwrap();
 
         let files = walk_source(root, &[]).unwrap();
-        assert_eq!(
-            files.len(),
-            2,
-            "el walk sí ve el fichero: puede hacerle stat"
-        );
+        assert_eq!(files.len(), 2, "the walk does see the file: it can stat it");
         let sig = compute_content_signature(&files).await;
         // And it is stable while it stays unreadable: if it were not, every pass
         // would see a change and we would be back to the upload loop.
@@ -2165,13 +2161,13 @@ mod tests {
                 .map(|f| f.relative_path.as_str())
                 .collect::<Vec<_>>(),
             ["a.sav", "c.sav"],
-            "el orden por ruta se conserva: el digest del manifiesto depende de él"
+            "the order by path is preserved: the manifest digest depends on it"
         );
         assert_eq!(skipped.len(), 1);
         assert_eq!(skipped[0].relative_path, "b.sav");
         assert!(
             !skipped[0].error.is_empty(),
-            "el error del sistema es lo único accionable que ve el usuario"
+            "the system error is the only actionable thing the user sees"
         );
     }
 
@@ -2291,8 +2287,8 @@ mod tests {
         );
     }
 
-    /// La carpeta real de Cell to Singularity: partidas y telemetría de Unity
-    /// mixed together. Before this the snapshot took both, and a log rewritten on
+    /// The real Cell to Singularity folder: saves and Unity telemetry mixed
+    /// together. The snapshot used to take both, and a log rewritten on
     /// every launch cut a new cloud version every time the user opened the game.
     #[test]
     fn the_walk_leaves_engine_telemetry_out_of_the_snapshot() {
@@ -2309,7 +2305,7 @@ mod tests {
         }
         let analytics = root.join("Unity/0a8833bc-a8ad/Analytics");
         std::fs::create_dir_all(&analytics).unwrap();
-        std::fs::write(analytics.join("values"), "telemetría").unwrap();
+        std::fs::write(analytics.join("values"), "telemetry").unwrap();
 
         let files = walk_source(root, &[]).unwrap();
         let names: Vec<&str> = files.iter().map(|f| f.relative_path.as_str()).collect();
@@ -2340,9 +2336,9 @@ mod tests {
         std::fs::write(root.join("Player.log"), "arranque 1").unwrap();
         let before = compute_set_signature(&walk_source(root, &[]).unwrap());
 
-        std::fs::write(root.join("Player.log"), "arranque 2, más largo").unwrap();
+        std::fs::write(root.join("Player.log"), "launch 2, longer").unwrap();
         let after = compute_set_signature(&walk_source(root, &[]).unwrap());
-        assert_eq!(before, after, "el log no debe mover la firma");
+        assert_eq!(before, after, "the log must not move the signature");
 
         // And the save does move it, which is what has to keep happening.
         std::fs::write(root.join("slot1.sav"), "partida avanzada").unwrap();
@@ -2358,7 +2354,7 @@ mod tests {
     fn a_manifest_pattern_rescues_a_file_the_rules_would_drop() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        std::fs::write(root.join("player.log"), "esto sí es la partida").unwrap();
+        std::fs::write(root.join("player.log"), "this one really is the save").unwrap();
 
         assert!(walk_source(root, &[]).unwrap().is_empty());
         let shielded = walk_source(root, &["*.log".to_string()]).unwrap();
@@ -2430,8 +2426,8 @@ mod tests {
         let file = tmp.path().join("save.dat");
         std::fs::write(&file, b"a").unwrap();
         let before = compute_set_signature(&walk_source(&file, &[]).unwrap());
-        // Un tamaño distinto mueve la firma aunque el mtime tenga poca
-        // resolución en este sistema de ficheros.
+        // A different size moves the signature even when the mtime has little
+        // resolution on this filesystem.
         std::fs::write(&file, b"bbbb").unwrap();
         let after = compute_set_signature(&walk_source(&file, &[]).unwrap());
         assert_ne!(before, after);

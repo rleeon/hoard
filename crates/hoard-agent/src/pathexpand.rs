@@ -533,13 +533,13 @@ fn expand_placeholder(name: &str, os: Os) -> Vec<PathBuf> {
             .map(|h| vec![h.join("Saved Games")])
             .unwrap_or_default(),
 
-        // `<winSavedGames>` en Linux nativo. Muchos juegos multiplataforma
-        // (Unity/Unreal y varios indies, p. ej. Planet S) conservan en su
-        // build de Linux la convención Windows de `~/Saved Games`, fuera de
-        // todo prefijo Wine. Sin esto el catálogo no resolvía esa ruta en
-        // native one and fell back to the install-dir's `saves` (often a Steam
-        // stub with no real save in it). Now the native path also gets tried, and
-        // refinement discards it like any other candidate.
+        // `<winSavedGames>` on native Linux. Plenty of cross-platform games
+        // (Unity/Unreal and several indies, Planet S among them) keep the Windows
+        // `~/Saved Games` convention in their Linux build, outside any Wine prefix.
+        // Without this the catalogue did not resolve that path on the native one and
+        // fell back to the install-dir's `saves` (often a Steam Cloud stub). Generic:
+        // if the folder is missing or holds no saves, refinement discards it like any
+        // other candidate.
         (Os::Linux, "winSavedGames") => home_dir()
             .map(|h| vec![h.join("Saved Games")])
             .unwrap_or_default(),
@@ -1011,7 +1011,7 @@ mod tests {
         );
     }
 
-    /// `<winSavedGames>` resuelve a `~/Saved Games` también en Linux nativo:
+    /// `<winSavedGames>` resolves to `~/Saved Games` on native Linux too:
     /// the Linux builds of many cross-platform games keep that same layout, so
     /// the token still resolves there. On a native Linux-only game there is no
     /// such convention, and the token keeps falling through.

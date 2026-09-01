@@ -919,7 +919,7 @@ where
                 );
             }
         }
-        // 3. Barrer el directorio de instalación y el prefijo.
+        // 3. Sweep the install directory and the prefix.
         if discoveries.is_empty() {
             if install_dir.is_none() && prefix_root.is_none() {
                 continue;
@@ -5849,7 +5849,7 @@ mod tests {
             AGGRESSIVE_WALK_TIMEOUT,
             AGGRESSIVE_WALK_MAX_DEPTH,
         );
-        assert_eq!(hits.len(), 1, "esperado un hallazgo, salió {hits:?}");
+        assert_eq!(hits.len(), 1, "expected exactly one hit, got {hits:?}");
         assert_eq!(hits[0].path, save_dir);
     }
 
@@ -5974,13 +5974,13 @@ mod tests {
         std::fs::create_dir_all(&tmp).unwrap();
         std::fs::write(tmp.join("game.sav"), b"x").unwrap();
 
-        // Sin correlación: strong ext (+0.30) lo deja en `Medium` como mucho,
-        // nunca `High`.
+        // With no correlation, a strong extension (+0.30) leaves it at `Medium` at
+        // best, never `High`.
         let empty = CorrelationStore::default();
         let plain = classify_dir_as_save_like(&tmp, "saves", &empty).unwrap();
         assert_ne!(plain.confidence, Confidence::High);
 
-        // Con correlación: +0.50 cruza holgado el cutoff y desbloquea `High`.
+        // With correlation, +0.50 clears the cutoff comfortably and unlocks `High`.
         let mut store = CorrelationStore::default();
         store.record(
             &tmp,
@@ -6038,7 +6038,7 @@ mod tests {
             }
         }"#;
         let report: DetectionReport =
-            serde_json::from_str(json).expect("una caché vieja debe seguir cargando");
+            serde_json::from_str(json).expect("an old cache has to keep loading");
         assert_eq!(report.stats.fs_template_slugs, 16);
         assert_eq!(
             report.stats.wrapper_slugs, 0,
@@ -6145,7 +6145,7 @@ mod tests {
         assert_eq!(
             refine_save_dir("some-game", vec![existing.clone()]),
             vec![existing],
-            "Documentos entero no puede ser el save; el fichero sí"
+            "the whole of Documents cannot be the save; the file can"
         );
     }
 
@@ -6166,10 +6166,10 @@ mod tests {
         );
         assert!(
             by_slug.is_empty(),
-            "no debería haber creado nada: {by_slug:?}"
+            "nothing should have been created: {by_slug:?}"
         );
 
-        // La carpeta de UN juego dentro de esa misma raíz sí entra.
+        // The folder of ONE game inside that same root does get in.
         merge_fs_hit(
             &mut by_slug,
             "real-game".into(),
@@ -6199,7 +6199,7 @@ mod tests {
             "Shader Cache",
             "logs",
         ] {
-            assert!(is_skip_dir(n), "{n} debería saltarse");
+            assert!(is_skip_dir(n), "{n} should be skipped");
         }
         assert!(!is_skip_dir("saves"));
         assert!(!is_skip_dir("SaveGames"));
@@ -6242,7 +6242,7 @@ mod tests {
         // And no row is the root: it was the root that could back nothing up.
         assert!(
             found.iter().all(|a| a.path != root),
-            "la raíz del emulador no se ofrece como save"
+            "the emulator root is not offered as a save"
         );
         // Nor does the slug that came out of the emulator's tree survive.
         assert!(found.iter().all(|a| a.slug != "dev-hdd0"));
@@ -6259,7 +6259,7 @@ mod tests {
         let found = discover_in_folder(&root, &CorrelationStore::default(), &HashSet::new());
         assert!(
             found.is_empty(),
-            "una raíz de emulador sin un solo título dentro no es un save: {found:?}"
+            "an emulator root with not one title inside is not a save: {found:?}"
         );
     }
 
@@ -6283,7 +6283,7 @@ mod tests {
         assert_eq!(
             found.len(),
             1,
-            "una fila por título, no una por fichero: {found:?}"
+            "one row per title, not one per file: {found:?}"
         );
         assert_eq!(found[0].slug, "emu-rpcs3-blus30443-autosave");
         assert_eq!(found[0].path, title);
@@ -6343,7 +6343,7 @@ mod tests {
         ] {
             assert!(
                 segment_names_no_game(name),
-                "{name:?} no nombra ningún juego y debe vetarse al bautizar"
+                "{name:?} names no game and has to be vetoed when naming"
             );
         }
 
@@ -6361,7 +6361,7 @@ mod tests {
         ] {
             assert!(
                 !segment_names_no_game(name),
-                "{name:?} es un nombre de juego perfectamente válido"
+                "{name:?} is a perfectly valid game name"
             );
         }
     }
@@ -6381,7 +6381,7 @@ mod tests {
             // An OEM Windows account literally called `user`: 13 users.
             ("C:/Users/user/AppData/Local", None),
             ("C:/Users/user/AppData/LocalLow", None),
-            // `cd` bajo pura fontanería: 4 usuarios.
+            // `cd` under pure plumbing: 4 users.
             ("C:/Users/user/AppData/Roaming/cd", None),
             // A bare `local`, the Linux half of the same failure.
             ("/home/u/.local/share", None),
@@ -6421,14 +6421,14 @@ mod tests {
     fn attribute_game_name_prefers_process_then_ancestor() {
         let path = PathBuf::from("/home/u/.local/share/Skyrim/Saves");
 
-        // Sin correlación: sube desde `Saves` (save-word) hasta `Skyrim`.
+        // With no correlation it climbs from `Saves` (a save word) up to `Skyrim`.
         let empty = CorrelationStore::default();
         assert_eq!(
             attribute_game_name(&path, &empty).as_deref(),
             Some("Skyrim")
         );
 
-        // Con correlación: el proceso atribuido manda.
+        // With correlation, the attributed process is what decides.
         let mut store = CorrelationStore::default();
         store.record(
             &path,
@@ -6489,9 +6489,9 @@ mod tests {
         // The veto still stands: `mars.exe` does not resolve on its own.
         assert!(
             ludusavi::title_for_exe("mars.exe").is_none(),
-            "mars.exe lo reclama más de un juego; no debe resolver"
+            "more than one game claims mars.exe, so it must not resolve"
         );
-        let name = attribute_game_name(&save, &store).expect("la ruta nombra un juego");
+        let name = attribute_game_name(&save, &store).expect("the path names a game");
         assert_eq!(name, "Surviving Mars: Relaunched", "{}", catalog_source());
         assert_eq!(ludusavi::slugify(&name), "surviving-mars-relaunched");
     }
@@ -6508,9 +6508,9 @@ mod tests {
     /// this instant and the catalogue is already loaded from before.
     fn catalog_source() -> String {
         format!(
-            "catálogo cargado: {} juegos. Si esto falla en local y pasa en CI, la app refrescó \
-             el manifiesto en ~/.cache/hoard y esos datos mandan; para medir como CI: \
-             XDG_CACHE_HOME=$(mktemp -d) cargo test",
+            "catalogue loaded: {} games. If this fails locally and passes in CI, the app \
+             refreshed the manifest in ~/.cache/hoard and that data is what counts; to \
+             measure like CI: XDG_CACHE_HOME=$(mktemp -d) cargo test",
             ludusavi::catalog_size()
         )
     }
@@ -6567,7 +6567,7 @@ mod tests {
             let guid = xdg_data.join("a1b2c3d4-e5f6");
             std::fs::create_dir_all(&guid).unwrap();
 
-            // Sin correlación no aflora nada (nombre opaco, carpeta vacía).
+            // With no correlation nothing surfaces (opaque name, empty folder).
             let empty = CorrelationStore::default();
             let none = discover_unattributed(Os::Linux, &empty, &HashSet::new());
             assert!(
@@ -6575,7 +6575,7 @@ mod tests {
                 "opaque empty folder must stay invisible without correlation"
             );
 
-            // Con correlación sí, y atribuida al proceso.
+            // With correlation it does, and attributed to the process.
             let mut store = CorrelationStore::default();
             store.record(
                 &guid,
@@ -6617,7 +6617,7 @@ mod tests {
             std::fs::create_dir_all(&conflict).unwrap();
             std::fs::write(conflict.join("game.sav"), b"x").unwrap();
 
-            // Correlación fuerte sobre la carpeta interna: aun así no debe salir.
+            // Strong correlation on the inner folder: it still must not come out.
             let mut store = CorrelationStore::default();
             store.record(
                 &conflict,
@@ -6679,10 +6679,10 @@ mod tests {
         dir
     }
 
-    /// Regresión: apuntar directamente a la carpeta de partidas de un juego
-    /// (`…/Saved Games/Surviving Mars Relaunched`) no encontraba nada, porque
-    /// the walk only classified the CHILDREN of the chosen root. The folder that
-    /// el usuario señala es un candidato como cualquier otro.
+    /// A regression: pointing straight at a game's save folder
+    /// (`.../Saved Games/Surviving Mars Relaunched`) found nothing, because the
+    /// walk only classified the CHILDREN of the chosen root. The folder the user
+    /// points at is a candidate like any other.
     #[test]
     fn discover_in_folder_offers_the_chosen_folder_itself() {
         let base = scratch_dir("scan-self");
@@ -6723,9 +6723,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Regresión: escanear `Saved Games` devolvía un juego de cuatro, porque
+    /// A regression: scanning `Saved Games` returned one game out of four, because
     /// a save folder with a proprietary extension does not clear the scored sweep's
-    /// bar.
+    /// bar. With a folder chosen by hand, that bar does not apply.
+    ///
+    /// It also covers the `desktop.ini` Windows leaves in `Saved Games`: without
+    /// filtering it, the container would count as a folder with data of its own and
+    /// would hide the four games inside it.
     ///
     /// It also covers the `desktop.ini` Windows leaves in `Saved Games`: without
     /// filtering it, the container would count as a folder with data of its own and
@@ -6785,14 +6789,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// El calificador de la carpeta (`Relaunched`, `Definitive Edition`…) no
-    /// puede inventar un juego nuevo cuando el catálogo tiene el título dentro.
+    /// The folder's qualifier (`Relaunched`, `Definitive Edition`...) must not
+    /// invent a new game when the catalogue holds the title inside it.
     #[test]
     fn name_prefix_resolves_edition_folders_to_the_catalog_game() {
         // Against the real catalogue: if "Surviving Mars" is in it, the qualified
         // folder has to resolve to that title rather than to itself.
         let Some(entry) = ludusavi::find_by_slug("surviving-mars") else {
-            return; // catálogo recortado en este build: nada que comprobar
+            return; // trimmed catalogue in this build: nothing to check
         };
         let resolved = ludusavi::find_by_name_prefix("Surviving Mars Relaunched");
         assert_eq!(resolved.map(|e| &e.slug), Some(&entry.slug));
@@ -6881,8 +6885,8 @@ mod tests {
 
     #[test]
     fn a_bak_sibling_without_the_content_relation_is_not_a_mirror() {
-        // The negative case that makes the veto safe: `-bak` with no superset
-        // (aquí ni siquiera contiene un save) no altera nada.
+        // The negative case that makes the veto safe: a `-bak` with no superset
+        // relation (here it does not even hold a save) changes nothing.
         let tmp = tempfile::tempdir().unwrap();
         let orig = tmp.path().join("NobodyT");
         let bak = tmp.path().join("NobodyT-bak");

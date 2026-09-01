@@ -322,7 +322,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let app = tmp.path().join("1091500");
         touch(&app.join("Saved/SaveGames/slot.sav"));
-        // La hija más específica gana sobre `Saved`.
+        // The more specific child wins over `Saved`.
         assert_eq!(
             resolve_game_container_dir(&app),
             app.join("Saved").join("SaveGames")
@@ -351,7 +351,7 @@ mod tests {
         touch(&root.join("413150/remote/save.dat"));
         touch(&root.join("settings/user.ini")); // config del emulador
         touch(&root.join("MyGame/saves/x.sav")); // sin AppID, pero es un juego
-        std::fs::create_dir_all(root.join("empty")).unwrap(); // vacío: se ignora
+        std::fs::create_dir_all(root.join("empty")).unwrap(); // empty: ignored
 
         let mut out = Vec::new();
         let mut seen = Vec::new();

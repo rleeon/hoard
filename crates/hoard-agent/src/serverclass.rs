@@ -1,16 +1,16 @@
-//! Clasificación de la URL de un servidor Hoard, sin red. Puro heurístico sobre
-//! el host: ¿es "self-hosted en casa" (LAN/Tailscale/loopback) o un SaaS
-//! externo?, ¿apunta al backend gestionado Hoard Cloud? Vive en el agente para
-//! so desktop and CLI share exactly the same rule (the desktop
-//! re-exporta como `classify_server`/`classify_cloud`).
+//! Classifying a Hoard server's URL, with no network. A pure heuristic on the
+//! host: is it "self-hosted at home" (LAN/Tailscale/loopback) or an external
+//! SaaS? Does it point at the managed Hoard Cloud backend? It lives in the agent
+//! so desktop and CLI share exactly the same rule (the desktop re-exports it as
+//! `classify_server`/`classify_cloud`).
 
-/// ¿Tratamos `url` como "self-hosted en casa" (tamaños en MB) frente a "SaaS
-/// externo" (porcentaje de cuota)?
+/// Do we treat `url` as "self-hosted at home" (sizes in MB) rather than
+/// "external SaaS" (a percentage of quota)?
 ///
 /// A heuristic: loopback, an RFC1918 private IP, Tailscale's CGNAT block
 /// (100.64.0.0/10), an mDNS `.local`, or a single-label host (a LAN box or a
-/// MagicDNS name).
-/// donde quería MB; ambas vistas muestran el mismo dato.
+/// MagicDNS name) means local. Everything else is external. At worst the user
+/// sees a percentage where they wanted MB; both views show the same figure.
 pub fn is_local_server(url: &str) -> bool {
     let host = match host_of(url) {
         Some(h) => h,

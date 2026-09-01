@@ -104,7 +104,7 @@ mod tests {
     fn degenerate_patterns_never_become_shields() {
         for e in hoard_manifest::ludusavi::catalog().iter().take(4000) {
             for s in shields_for_slug(&e.slug) {
-                assert!(is_useful_shield(&s), "{} blindó con {s}", e.slug);
+                assert!(is_useful_shield(&s), "{} shielded with {s}", e.slug);
             }
         }
     }

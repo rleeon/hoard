@@ -1,20 +1,21 @@
-//! El viaje completo del enviador de logs, contra un servidor de verdad.
+//! The log shipper's whole journey, against a real server.
 //!
-//! Existe por el bug que motivó todo esto: `logship` resolvía la sesión mirando
-//! **sólo** el almacén self-hosted, así que en una máquina entrada en Cloud no
-//! enviaba nada — y nadie se enteró en tres meses porque no había una sola
-//! prueba que comprobara que un lote llega. Los tests unitarios de redacción y
-//! de filtrado pueden estar todos verdes con el tubo desconectado; éste no.
+//! It exists because of the bug that started all of this: `logship` resolved the
+//! session by looking at the self-hosted store **only**, so a machine signed into
+//! Cloud shipped nothing, and nobody noticed for three months because not one test
+//! checked that a batch arrives. The unit tests for redaction and filtering can all
+//! be green with the pipe unplugged; this one cannot.
 //!
-//! Levanta un servidor HTTP mínimo que habla como Cloud (`/v1/health` con
-//! `mode: "cloud"`), arranca la capa de verdad sobre el `tracing` del proceso,
-//! emite eventos y comprueba **el cuerpo que llega al POST**: que llega, que va
-//! al camino de Cloud, con el token correcto, con las rutas redactadas, con la
-//! desmentida dentro pese a ir por debajo del mínimo, y sin el INFO operativo.
+//! It stands up a minimal HTTP server that talks like Cloud (`/v1/health` with
+//! `mode: "cloud"`), starts the real layer over the process's `tracing`, emits
+//! events and checks **the body that reaches the POST**: that it arrives, that it
+//! goes down the Cloud path, with the right token, with the paths redacted, with
+//! the verdict inside despite being below the minimum, and with no operational
+//! INFO.
 //!
-//! Va en su propio binario de test porque toca dos cosas globales del proceso —
-//! `XDG_DATA_HOME` (para no leer las prefs reales del usuario) y el subscriber
-//! de `tracing`— y eso no se puede compartir con otros tests.
+//! It gets its own test binary because it touches two process-global things,
+//! `XDG_DATA_HOME` (so it does not read the user's real prefs) and the `tracing`
+//! subscriber, and neither can be shared with other tests.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -27,7 +28,7 @@ use hoard_core::wire::{LogBatch, LogEntry, TELEMETRY_TARGET};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-/// Lo que el servidor de mentira vio en una petición.
+/// What the stub server saw in one request.
 struct Seen {
     method: String,
     path: String,
@@ -35,9 +36,9 @@ struct Seen {
     body: String,
 }
 
-/// Un servidor HTTP de una sola pieza: contesta `/v1/health` como Cloud y
-/// recoge lo que llegue al ingest. Cierra la conexión en cada respuesta
-/// (`Connection: close`) para no tener que implementar keep-alive.
+/// A one-piece HTTP server: it answers `/v1/health` like Cloud and collects
+/// whatever reaches the ingest. It closes the connection on every response
+/// (`Connection: close`) so keep-alive never has to be implemented.
 fn spawn_stub() -> (String, Receiver<Seen>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().expect("addr");
@@ -89,8 +90,9 @@ fn serve_one(mut stream: TcpStream, tx: &Sender<Seen>) -> std::io::Result<()> {
     }
     let body = String::from_utf8_lossy(&body).into_owned();
 
-    // Cloud anuncia WARN: el INFO operativo se filtra en origen y la desmentida
-    // entra igual por su `target`. Es la combinación que este test comprueba.
+    // Cloud announces WARN: the operational INFO is filtered at the source and the
+    // verdict still gets in through its `target`. That is the combination this test
+    // checks.
     let payload = if path.starts_with("/v1/health") {
         r#"{"status":"ok","version":"9.9.9","mode":"cloud","log_min_level":"warn"}"#.to_string()
     } else {
@@ -114,11 +116,11 @@ fn serve_one(mut stream: TcpStream, tx: &Sender<Seen>) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Junta los POST que lleguen hasta tener `wanted` entradas o agotar el plazo.
+/// Gathers the POSTs that arrive until there are `wanted` entries or time runs out.
 ///
-/// Son varios porque el enviador agrupa por tiempo: si el hilo se despierta a
-/// medias de la ráfaga, parte de los eventos van en un lote y el resto en otro.
-/// Esperar "el" lote sería un test que pasa o falla según cómo caiga el reloj.
+/// There are several because the shipper batches by time: if the thread wakes up
+/// halfway through the burst, some events go in one batch and the rest in another.
+/// Waiting for "the" batch would be a test that passes or fails on clock luck.
 fn collect_entries(rx: &Receiver<Seen>, wanted: usize) -> (Vec<Seen>, Vec<LogEntry>) {
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
     let mut posts = Vec::new();
@@ -127,18 +129,18 @@ fn collect_entries(rx: &Receiver<Seen>, wanted: usize) -> (Vec<Seen>, Vec<LogEnt
         let left = deadline.saturating_duration_since(std::time::Instant::now());
         assert!(
             !left.is_zero(),
-            "en 30s sólo llegaron {} de {wanted} entradas: {entries:#?}",
+            "only {} of {wanted} entries arrived in 30s: {entries:#?}",
             entries.len()
         );
         match rx.recv_timeout(left) {
             Ok(seen) if seen.method == "POST" => {
                 let batch: LogBatch =
-                    serde_json::from_str(&seen.body).expect("el cuerpo es un LogBatch");
+                    serde_json::from_str(&seen.body).expect("the body is a LogBatch");
                 entries.extend(batch.entries);
                 posts.push(seen);
             }
-            Ok(_) => continue, // el sondeo de health
-            Err(e) => panic!("el servidor de prueba se calló: {e}"),
+            Ok(_) => continue, // the health probe
+            Err(e) => panic!("the stub server went quiet: {e}"),
         }
     }
     (posts, entries)
@@ -148,7 +150,7 @@ fn collect_entries(rx: &Receiver<Seen>, wanted: usize) -> (Vec<Seen>, Vec<LogEnt
 ///
 /// The fixtures spell these out whole rather than building them with
 /// `Path::join`, so the separators are `/` on every platform and the
-/// expectation can be too — the redaction only rewrites the profile segment
+/// expectation can be too, the redaction only rewrites the profile segment
 /// and leaves the rest of the string alone. Deriving the separator from the
 /// host here would put a `\` in the middle of a path the fixture never wrote
 /// that way, and fail on Windows.
@@ -165,36 +167,36 @@ fn verdict<'a>(entries: &'a [LogEntry], name: &str) -> &'a serde_json::Value {
                 && e.fields.as_ref().and_then(|f| f.get("verdict"))
                     == Some(&serde_json::Value::String(name.to_string()))
         })
-        .unwrap_or_else(|| panic!("no llegó la desmentida `{name}`: {entries:#?}"))
+        .unwrap_or_else(|| panic!("the `{name}` verdict never arrived: {entries:#?}"))
         .fields
         .as_ref()
-        .expect("campos")
+        .expect("fields")
 }
 
 #[test]
 fn a_batch_actually_reaches_the_server_redacted() {
     let home = tempfile::tempdir().expect("tempdir");
-    // Las prefs y el estado salen de `XDG_DATA_HOME`: sin esto el test leería
-    // (y el enviador obedecería) las prefs reales de quien lo ejecuta.
+    // Prefs and state come out of `XDG_DATA_HOME`: without this the test would read
+    // (and the shipper would obey) the real prefs of whoever runs it.
     std::env::set_var("XDG_DATA_HOME", home.path());
     std::env::set_var("XDG_CONFIG_HOME", home.path());
 
     let prefs = Prefs::default();
     assert!(
         prefs.anonymous_telemetry,
-        "el envío viene activado de fábrica; si esto cambia, este test debe \
-         activarlo a mano en vez de dar por hecho el default"
+        "shipping is on out of the box; if that changes, this test has to turn it \
+         on by hand instead of assuming the default"
     );
-    let prefs_path = Prefs::default_path().expect("ruta de prefs");
-    prefs.save(&prefs_path).expect("escribir prefs");
+    let prefs_path = Prefs::default_path().expect("prefs path");
+    prefs.save(&prefs_path).expect("write prefs");
 
     let (base_url, rx) = spawn_stub();
 
-    // El hueco que el bug no miraba. Se pone ANTES de arrancar la capa para que
-    // la primera vuelta del hilo ya encuentre sesión y no espere el backoff.
+    // The slot the bug never looked at. It is set BEFORE the layer starts so the
+    // thread's first pass already finds a session and does not wait out the backoff.
     credentials::set_lent_cloud(Some(CloudLease {
         url: base_url,
-        token: "jwt-de-prueba".to_string(),
+        token: "test-jwt".to_string(),
     }));
 
     tracing_subscriber::registry()
@@ -202,20 +204,20 @@ fn a_batch_actually_reaches_the_server_redacted() {
         .with(hoard_agent::logship::start())
         .init();
 
-    // 1. Un WARN con una ruta de Windows tal y como la renderiza `{:?}` (con las
-    //    barras escapadas), que es la forma que más fácil se cuela.
+    // 1. A WARN with a Windows path exactly as `{:?}` renders it (with the slashes
+    //    escaped), which is the shape that slips through most easily.
     tracing::warn!(
         path = ?"C:\\Users\\angel\\AppData\\LocalLow\\TheGameBakers\\Furi",
         "agent: refusing to back up this save"
     );
-    // 2. Un INFO operativo: por debajo del mínimo de Cloud, no debe viajar.
+    // 2. An operational INFO: below Cloud's minimum, so it must not travel.
     tracing::info!(target: "hoard_agent::agent", "agent: backup committed");
-    // 3. Las cinco desmentidas: son INFO, pero viajan por su `target`.
-    // Rutas de un layout Linux escritas enteras, sin `join`: en Windows el
-    // separador nativo es `\\`, así que unir un literal Unix produce
-    // `/home/angel\\.local/share/Furi` y el test acabaría comprobando por qué
-    // ruta pasó el runner en vez de qué hizo la redacción con ella. La forma
-    // Windows tiene su propio caso, unas líneas más arriba.
+    // 3. The five verdicts: they are INFO, but they travel through their `target`.
+    // Linux-layout paths written out in full, with no `join`: on Windows the native
+    // separator is `\\`, so joining a Unix literal produces
+    // `/home/angel\\.local/share/Furi` and the test would end up checking which path
+    // the runner passed rather than what redaction did with it. The Windows shape has
+    // its own case, a few lines above.
     let home = std::path::Path::new("/home/angel");
     let p = |tail: &str| std::path::PathBuf::from(format!("/home/angel/{tail}"));
     hoard_agent::telemetry::repointed(
@@ -238,12 +240,12 @@ fn a_batch_actually_reaches_the_server_redacted() {
         );
         assert_eq!(
             post.authorization.as_deref(),
-            Some("Bearer jwt-de-prueba"),
-            "el lote viaja con el token del hueco Cloud"
+            Some("Bearer test-jwt"),
+            "the batch travels with the token from the Cloud slot"
         );
         assert!(
             !post.body.contains("angel"),
-            "salió el nombre de la persona en el lote: {}",
+            "the person's name came out in the batch: {}",
             post.body
         );
     }
@@ -261,9 +263,9 @@ fn a_batch_actually_reaches_the_server_redacted() {
         "el INFO operativo tiene que quedarse fuera: {entries:#?}"
     );
 
-    // El contrato de campos, veredicto a veredicto. El panel pinta columnas por
-    // nombre de campo: `path` es "de dónde" y `to` es "a dónde" en TODOS, o una
-    // columna acaba enseñando el dato bueno donde dice "ruta mala".
+    // The field contract, verdict by verdict. The panel paints columns by field
+    // name: `path` is "from where" and `to` is "to where" in EVERY one of them, or a
+    // column ends up showing the good value under a heading that says "bad path".
     let repointed = verdict(&entries, "repointed");
     assert_eq!(repointed["slug"], "furi");
     assert_eq!(repointed["path"], under_home(".local/share/Furi"));
@@ -277,7 +279,7 @@ fn a_batch_actually_reaches_the_server_redacted() {
     assert_eq!(manual["to"], under_home("Saved Games/Planet S"));
     assert!(
         manual.get("path").is_none(),
-        "la carpeta que el usuario eligió es el destino, no la ruta mala: {manual}"
+        "the folder the user chose is the destination, not the bad path: {manual}"
     );
 
     let untracked = verdict(&entries, "untracked");
@@ -293,19 +295,19 @@ fn a_batch_actually_reaches_the_server_redacted() {
     assert_eq!(rejected["path"], "/home/<user>");
     assert_eq!(rejected["reason"], "the user profile root");
 
-    // Cerrar sesión vacía el hueco: el JWT es una copia en memoria y borrar el
-    // fichero de sesión no la toca, así que sin esto el proceso seguiría
-    // enviando con la cuenta que se acaba de cerrar.
+    // Signing out empties the slot: the JWT is an in-memory copy and deleting the
+    // session file does not touch it, so without this the process would keep shipping
+    // under the account that was just closed.
     assert!(credentials::lent_cloud().is_some());
-    hoard_agent::cloud_auth::forget_tokens_unlocked().expect("logout sin servicio");
+    hoard_agent::cloud_auth::forget_tokens_unlocked().expect("service-less logout");
     assert!(
         credentials::lent_cloud().is_none(),
-        "el logout sin servicio dejó el token puesto"
+        "the service-less logout left the token in place"
     );
 
-    // El otro logout, `clear_session`, hace lo mismo con una línea idéntica —
-    // pero **no se llama aquí a propósito**: además del fichero borra el ítem
-    // del llavero, y el llavero es del sistema, no del `XDG_DATA_HOME` que este
-    // test redirige. Un test que lo llamara le borraría al desarrollador su
-    // sesión de Cloud de verdad al pasar la batería.
+    // The other logout, `clear_session`, does the same thing with an identical line,
+    // but it is **deliberately not called here**: on top of the file it deletes the
+    // keyring item, and the keyring belongs to the system, not to the `XDG_DATA_HOME`
+    // this test redirects. A test that called it would wipe the developer's real Cloud
+    // session every time the suite ran.
 }

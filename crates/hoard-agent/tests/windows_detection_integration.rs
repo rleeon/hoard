@@ -5,7 +5,7 @@
 //! materialises the minimum on-disk fixture the launcher/prefix reader
 //! requires, runs [`hoard_agent::detection::detect_all`] end-to-end, and
 //! asserts on the resulting [`hoard_agent::detection::DetectionReport`].
-//! The host's real launchers, registry or prefix layout are never read —
+//! The host's real launchers, registry or prefix layout are never read,
 //! every fixture lives under a tempdir that drops at end-of-test.
 //!
 //! Coverage matrix (see `docs/plans/1.5.2.md` §7 P-D152-6):
@@ -15,7 +15,7 @@
 //! | `epic_fixture_yields_detected_game`               | Epic `.item` manifests cross-ref       |
 //! | `gog_fixture_yields_detected_game`                | GOG Galaxy sqlite cross-ref            |
 //! | `registry_expand_returns_empty_on_linux`          | `expand_registry_path` no-op cross-OS  |
-//! | `registry_expand_reads_hkcu_value` (ignored)      | live HKCU read — manual on Windows     |
+//! | `registry_expand_reads_hkcu_value` (ignored)      | live HKCU read, manual on Windows     |
 //! | `msstore_returns_empty_on_non_windows`            | MS Store reader cross-OS stub          |
 //! | `lutris_fixture_yields_detected_game`             | Lutris prefix → walker / slug match    |
 //! | `bottles_fixture_yields_detected_game`            | Bottles prefix → walker / slug match   |
@@ -24,7 +24,7 @@
 //! environment variables; cargo runs each test binary's tests in parallel
 //! and an unguarded `set_var` race would corrupt other tests' view of the
 //! world. The crate-internal `test_lock::ENV` is `pub(crate)` and not
-//! reachable from an integration-test binary, so a local mutex is used —
+//! reachable from an integration-test binary, so a local mutex is used,
 //! same pattern as `detection_integration.rs` and
 //! `aggressive_discovery_integration.rs`.
 
@@ -146,7 +146,7 @@ fn with_isolated_windows_env<F: FnOnce(&Path)>(f: F) {
     }
 }
 
-/// Single-thread tokio runtime — detect_all is async and the tests run it
+/// Single-thread tokio runtime, detect_all is async and the tests run it
 /// to completion synchronously inside the env-guarded scope.
 fn block_on_detect(os: Os, state: &CliState) -> hoard_agent::detection::DetectionReport {
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -164,8 +164,8 @@ fn block_on_detect(os: Os, state: &CliState) -> hoard_agent::detection::Detectio
 ///
 /// The Lutris/Bottles tests use this to land the catalog slug into the
 /// pipeline's `by_slug` map (via the Steam appid cross-reference) so that
-/// the aggressive walker — which only runs for slugs already in the map
-/// with empty `found_paths` — has something to walk against.
+/// the aggressive walker, which only runs for slugs already in the map
+/// with empty `found_paths`, has something to walk against.
 fn build_steam_install(home: &Path, apps: &[(u64, &str, &str)]) -> PathBuf {
     let steam = home.join(".steam/steam");
     let steamapps = steam.join("steamapps");
@@ -202,7 +202,7 @@ fn build_steam_install(home: &Path, apps: &[(u64, &str, &str)]) -> PathBuf {
 /// neutral "extra-fs" tag chosen by P-D152-5 for all launcher cross-refs)
 /// and an `install_dir` pointing at the manifest's `InstallLocation`.
 ///
-/// `found_paths` may stay empty — no save dir was created under the
+/// `found_paths` may stay empty, no save dir was created under the
 /// tempdir-pinned `%APPDATA%`, so the fs heuristic produces no hit.
 #[test]
 fn epic_fixture_yields_detected_game() {
@@ -274,7 +274,7 @@ fn epic_fixture_yields_detected_game() {
 /// `#[ignore]` until either the cfg is widened (would pull `rusqlite`
 /// into all non-Windows prod builds) or a Windows CI runner is wired up.
 #[test]
-#[ignore = "gog_read_db is cfg(any(windows, test)); cfg(test) is lib-internal only, not visible to integration test binaries — covered by launchers::tests::gog_parses_synthetic_sqlite"]
+#[ignore = "gog_read_db is cfg(any(windows, test)); cfg(test) is lib-internal only, not visible to integration test binaries, covered by launchers::tests::gog_parses_synthetic_sqlite"]
 fn gog_fixture_yields_detected_game() {
     with_isolated_windows_env(|home| {
         let localappdata = std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA pinned by helper");
@@ -357,7 +357,7 @@ fn registry_expand_returns_empty_on_linux() {
 }
 
 /// Round-trip a `RegistryPath` against the live HKCU hive on a Windows
-/// host. Ignored by default because it touches the user's real registry —
+/// host. Ignored by default because it touches the user's real registry,
 /// run by hand with `cargo test -- --ignored` when validating the
 /// registry expander on a Windows box.
 ///
@@ -366,7 +366,7 @@ fn registry_expand_returns_empty_on_linux() {
 /// from outside the crate without falling back to a stubbed helper.
 #[cfg(windows)]
 #[test]
-#[ignore = "TODO: implementar a mano cuando se valide en Windows — toca HKCU real"]
+#[ignore = "TODO: do this by hand when it is validated on Windows; it touches the real HKCU"]
 fn registry_expand_reads_hkcu_value() {
     // Intentionally empty: the smoke test lives in the crate-local unit
     // tests (`pathexpand::tests::expand_registry_reads_value_from_hkcu`),
@@ -396,14 +396,14 @@ fn msstore_returns_empty_on_non_windows() {
 /// walker descends into `drive_c/users/steamuser/AppData/Roaming/...`,
 /// and the report surfaces the slug with a path inside the tempdir.
 ///
-/// The synthetic Steam install **only** seeds the slug — its `installdir`
+/// The synthetic Steam install **only** seeds the slug, its `installdir`
 /// directory is intentionally not created on disk, so the Steam scan
 /// alone produces no `found_paths` and the walker must run against the
 /// Lutris prefix to populate them.
 #[test]
 fn lutris_fixture_yields_detected_game() {
     with_isolated_linux_env(|home| {
-        // Stardew Valley's Steam appid is 413150 — see Ludusavi catalog.
+        // Stardew Valley's Steam appid is 413150, see Ludusavi catalog.
         // The cross-reference inserts the slug with empty `found_paths`
         // so the aggressive walker has work to do.
         let _steamapps = build_steam_install(home, &[(413150, "Stardew Valley", "Stardew Valley")]);
@@ -417,7 +417,7 @@ fn lutris_fixture_yields_detected_game() {
             prefix_root.join("drive_c/users/steamuser/AppData/Roaming/StardewValley/Saves");
         std::fs::create_dir_all(&save_dir).unwrap();
         // A recent `.sav` file pushes the aggressive walker to Medium
-        // confidence — the same pattern the 1.5.1 walker tests rely on to
+        // confidence, the same pattern the 1.5.1 walker tests rely on to
         // ensure the dir is treated as a save dir rather than dropped.
         std::fs::write(save_dir.join("Farm.sav"), b"synthetic save").unwrap();
 

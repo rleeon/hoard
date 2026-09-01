@@ -149,7 +149,7 @@ pub struct Prefs {
     #[serde(default)]
     pub last_update_notified_version: Option<String>,
 
-    /// When `true`, the sidebar "Modo Automático" toggle is on. The desktop
+    /// When `true`, the sidebar's automatic-mode toggle is on. The desktop
     /// app keeps two background schedulers alive: a cheap detection scan
     /// (every `automatic_scan_interval_secs`) that tracks newly installed
     /// games, and an expensive hash sweep (every
@@ -209,7 +209,7 @@ pub struct Prefs {
     /// When `true`, the floating ActivityFeed panel is rendered next to
     /// the sidebar so the user sees a live stream of upload / pull /
     /// throttle events. Default `true`, since it's the most useful first
-    /// impression of Modo Automático working. Users who find it noisy
+    /// impression of automatic mode working. Users who find it noisy
     /// can hide it from Settings → Cloud.
     #[serde(default = "default_true")]
     pub live_activity_visible: bool,
@@ -543,10 +543,10 @@ mod tests {
         assert!(!parsed.anonymous_telemetry);
     }
 
-    /// Invariante crítico de 1.5.3: el deserializador NO debe acoplar
-    /// `automatic_mode` y `auto_restore`. La cascada "activar Modo Automático
-    /// ⇒ encender auto_restore" vive en el comando Tauri `set_automatic_mode`
-    /// (`crates/hoard-desktop/src/commands/prefs.rs`), no en `Prefs`. Si un
+    /// The critical invariant from 1.5.3: the deserialiser must NOT couple
+    /// `automatic_mode` and `auto_restore`. The cascade ("turning automatic mode
+    /// on also turns auto_restore on") lives in the `set_automatic_mode` Tauri
+    /// command (`crates/hoard-desktop/src/commands/prefs.rs`), not in `Prefs`. If one
     /// day somebody tries to "simplify" by deriving one from the other in the
     /// type, this test has to break and force a conversation.
     #[test]
@@ -560,7 +560,7 @@ mod tests {
             !parsed.auto_restore,
             "auto_restore must remain false; cascade lives in the Tauri command, not the deserialiser",
         );
-        // Belt-and-braces: el round-trip también respeta la independencia.
+        // Belt and braces: the round trip respects the independence too.
         let json2 = serde_json::to_string(&parsed).unwrap();
         let back: Prefs = serde_json::from_str(&json2).unwrap();
         assert!(back.automatic_mode);

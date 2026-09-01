@@ -15,9 +15,9 @@ use std::time::SystemTime;
 
 /// ADR 0020 §2's cutoffs.
 ///
-/// * `S ≥ 0.60` → save confirmado automáticamente.
+/// * `S >= 0.60` is a save, confirmed automatically.
 /// * `0.35 <= S < 0.60` is "possible": corroborate with the catalogue, or ask.
-/// * `S < 0.35` → descartado.
+/// * `S < 0.35` is discarded.
 pub const SCORE_CONFIRMED: f32 = 0.60;
 pub const SCORE_POSSIBLE: f32 = 0.35;
 
@@ -108,7 +108,7 @@ fn file_is_recent(path: &Path) -> bool {
     };
     match SystemTime::now().duration_since(modified) {
         Ok(age) => age <= crate::detection::RECENT_SAVE_FILE_WINDOW,
-        Err(_) => true, // mtime en el futuro: trátalo como reciente.
+        Err(_) => true, // an mtime in the future: treat it as recent.
     }
 }
 
@@ -196,7 +196,7 @@ struct DirContent {
     weak: usize,
     noisy: usize,
     image: usize,
-    /// Comprimidos cuyo índice contiene contenido save-like.
+    /// Archives whose index holds save-like content.
     archive_save: usize,
     /// Strong-extension saves found in the subfolders (recursive, with depth and
     /// file caps). Catches `openttd/save/autosave/*.sav` and nested layouts
@@ -262,9 +262,9 @@ fn scan_content(dir: &Path) -> DirContent {
     c
 }
 
-/// Cuenta ficheros de extensión fuerte bajo `dir` recursivamente, hasta
-/// `depth` niveles y mientras quede `budget` de ficheros. No sigue symlinks
-/// (evita ciclos). Devuelve el número de saves de extensión fuerte hallados.
+/// Counts strong-extension files under `dir` recursively, down to `depth` levels
+/// and while `budget` files remain. It does not follow symlinks (which avoids
+/// cycles). Returns how many strong-extension saves it found.
 fn count_strong_recursive(dir: &Path, depth: usize, budget: &mut usize) -> usize {
     if depth == 0 || *budget == 0 {
         return 0;
@@ -322,8 +322,8 @@ fn name_signal(name: &str, reasons: &mut Vec<String>) -> f32 {
     0.0
 }
 
-/// Puntúa un directorio candidato combinando nombre + contenido + recencia
-/// + señales negativas. Score en `[0,1]`.
+/// Scores a candidate directory from its name, its content, how recent it is and
+/// the negative signals. The score is in `[0,1]`.
 pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
     let mut reasons: Vec<String> = Vec::new();
     let mut score = 0.0_f32;
@@ -340,7 +340,7 @@ pub fn score_dir(path: &Path, name: &str) -> ScoreBreakdown {
     let content = scan_content(path);
     let has_signal = name_pos > 0.0;
     let name_exact = SAVE_NAME_VOCAB.iter().any(|v| *v == lower);
-    // Saves de extensión fuerte aquí o un nivel más abajo (autosave/, slot/).
+    // Strong-extension saves here or one level down (autosave/, slot/).
     let strong_total = content.strong + content.strong_subdir;
 
     // A dominant set of an unknown extension: a folder with an EXACT save name
@@ -501,7 +501,7 @@ mod archive_tests {
             b.reasons
         );
         assert!(b.score >= SCORE_CONFIRMED, "score {} too low", b.score);
-        // El contenido verificado corrobora → habilita `High` sin correlación.
+        // Verified content corroborates, which enables `High` with no correlation.
         assert!(b.corroborated_by_content);
     }
 
@@ -527,7 +527,7 @@ mod archive_tests {
 
     #[test]
     fn single_loose_sav_does_not_corroborate() {
-        // Un `.sav` suelto sigue siendo conservador: puntúa pero NO corrobora.
+        // A lone `.sav` stays conservative: it scores but does NOT corroborate.
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("game.sav"), b"x").unwrap();
         let b = score_dir(dir.path(), "save");
@@ -743,7 +743,7 @@ mod bench {
             if seg.is_empty() || seg.contains('*') || seg.starts_with('<') {
                 continue;
             }
-            // Saltar si es claramente un fichero (extensión corta conocida-ish).
+            // Skip what is clearly a file (a short, known-ish extension).
             if let Some((_, ext)) = seg.rsplit_once('.') {
                 if (1..=5).contains(&ext.len()) && ext.chars().all(|c| c.is_ascii_alphanumeric()) {
                     continue;
@@ -784,7 +784,7 @@ mod bench {
         assert!(total > 0, "manifest yielded no leaf names");
 
         let mut recognised = 0usize;
-        let mut neg_collisions = 0usize; // reconocidos que también son config/cache
+        let mut neg_collisions = 0usize; // recognised ones that are also config or cache
         for name in leaves.keys() {
             if name_recognised(name) {
                 recognised += 1;
@@ -800,6 +800,8 @@ mod bench {
         eprintln!("unique save-leaf names:  {total}");
         eprintln!("name-recognised:         {recognised} ({recall:.1}%)");
         eprintln!("  of which config-ish:   {neg_collisions} (precision risk)");
-        eprintln!("=> recall del NAME-signal solo; contenido+correlación suben esto en fases 2/3");
+        eprintln!(
+            "=> recall of the NAME signal alone; content and correlation raise this in phases 2/3"
+        );
     }
 }

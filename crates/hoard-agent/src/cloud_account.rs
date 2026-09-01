@@ -35,14 +35,14 @@ impl CloudError {
     /// fallback for the cases it does not intercept by code.
     pub fn message(&self) -> String {
         match self {
-            CloudError::Unauthorized => "la sesión Cloud caducó, vuelve a iniciar sesión".into(),
+            CloudError::Unauthorized => "the Cloud session expired, sign in again".into(),
             CloudError::Http { status, body } => {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(body) {
                     if let Some(msg) = v.get("error").and_then(|x| x.as_str()) {
                         return format!("Hoard Cloud: {msg} ({status})");
                     }
                 }
-                format!("Hoard Cloud devolvió {status}: {body}")
+                format!("Hoard Cloud answered {status}: {body}")
             }
             CloudError::Network(m) | CloudError::Parse(m) => m.clone(),
         }
@@ -261,7 +261,7 @@ pub async fn dismiss_notification(base: &str, token: &str, id: &str) -> Result<(
     Ok(())
 }
 
-// ---- términos ---------------------------------------------------------
+// ---- terms
 
 /// What the server knows about this account's acceptance.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

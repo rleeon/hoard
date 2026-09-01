@@ -361,7 +361,7 @@ fn cleanse(state: &mut CliState) {
             Repair::Repaired { value, .. } => {
                 warn_once(
                     raw,
-                    || tracing::warn!(raw, repaired = %value, "state: slug inválido reparado al cargar"),
+                    || tracing::warn!(raw, repaired = %value, "state: invalid slug repaired on load"),
                 );
                 Some(value.into_inner())
             }
@@ -475,7 +475,7 @@ impl CliState {
         self.quarantined_slugs.contains(slug)
     }
 
-    /// Los slugs marcados en la última carga (diagnóstico / UI).
+    /// The slugs flagged on the last load (diagnostics and UI).
     pub fn quarantined_slugs(&self) -> &HashSet<String> {
         &self.quarantined_slugs
     }
@@ -958,7 +958,7 @@ mod tests {
         s.add_excluded_path(PathBuf::from("/a/b/c"));
         s.add_excluded_path(PathBuf::from("/a/b"));
         assert_eq!(s.excluded_paths, vec![PathBuf::from("/a/b")]);
-        // Re-excluir algo ya cubierto no añade nada.
+        // Re-excluding something already covered adds nothing.
         s.add_excluded_path(PathBuf::from("/a/b/d"));
         assert_eq!(s.excluded_paths, vec![PathBuf::from("/a/b")]);
     }
@@ -968,7 +968,10 @@ mod tests {
         let mut s = CliState::default();
         s.add_excluded_path(PathBuf::from("/a/b"));
         s.remove_excluded_path(Path::new("/a/b/c"));
-        assert!(s.is_path_excluded(Path::new("/a/b/c")), "sólo la exacta");
+        assert!(
+            s.is_path_excluded(Path::new("/a/b/c")),
+            "only the exact one"
+        );
         s.remove_excluded_path(Path::new("/a/b"));
         assert!(!s.is_path_excluded(Path::new("/a/b/c")));
     }

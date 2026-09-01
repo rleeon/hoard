@@ -2,7 +2,7 @@
 //! fuzzy-match fallback.
 //!
 //! The walker fires inside [`hoard_agent::detection::detect_all`] **only**
-//! for slugs that finish the main pipeline with empty `found_paths` — it's
+//! for slugs that finish the main pipeline with empty `found_paths`, it's
 //! the long-tail safety net for indies/GOG titles/odd layouts the catalog
 //! templates can't expand. The fuzzy fallback resolves Steam apps whose
 //! display name slugifies to something the catalog doesn't index exactly
@@ -19,7 +19,7 @@
 //! All tests share `ENV_LOCK`: cargo runs the binary's tests in parallel by
 //! default and `std::env::set_var` is process-wide. The crate's own
 //! `test_lock::ENV` is `pub(crate) #[cfg(test)]` and not reachable from an
-//! integration-test binary, so we define a local mutex here — same pattern
+//! integration-test binary, so we define a local mutex here, same pattern
 //! as `detection_integration.rs`.
 
 use std::ffi::OsString;
@@ -142,7 +142,7 @@ fn unused_steam_appid(start: u64) -> u64 {
 // =============================================================
 
 /// End-to-end walker happy path. Stardew Valley's catalog Linux template
-/// expands under `<xdgConfig>/StardewValley/Saves` — by *not* creating that
+/// expands under `<xdgConfig>/StardewValley/Saves`, by *not* creating that
 /// directory, the filesystem heuristic produces zero hits, so the Steam
 /// cross-reference lands the slug with empty `found_paths`. The aggressive
 /// walker then scans the install dir, finds `<install>/saves/main.sav`
@@ -150,12 +150,12 @@ fn unused_steam_appid(start: u64) -> u64 {
 /// thanks to the recent `.sav` file. The integration check asserts on the
 /// final `DetectionReport`: the slug surfaces with the walker-found path,
 /// `Confidence::Medium` (the walker overrides the `Both/High` promotion that
-/// `merge_fs_hit` would otherwise stamp — the walker's signal is heuristic
+/// `merge_fs_hit` would otherwise stamp, the walker's signal is heuristic
 /// only), and the install dir hint preserved from the Steam scan.
 #[test]
 fn walker_finds_save_dir_in_install_when_catalog_misses() {
     with_isolated_linux_env(|home| {
-        // Appid 413150 is Stardew Valley — present in the catalog with a
+        // Appid 413150 is Stardew Valley, present in the catalog with a
         // Linux template (`<xdgConfig>/StardewValley/Saves`) that we
         // deliberately do not materialise so the heuristic stays empty.
         let steamapps = build_steam_install(home, &[(413150, "Stardew Valley", "Stardew Valley")]);
@@ -187,7 +187,7 @@ fn walker_finds_save_dir_in_install_when_catalog_misses() {
         // The walker over-rides `merge_fs_hit`'s `Both/High` stamping
         // because its signal is heuristic, not catalog-backed. The
         // assertion accepts `Medium` (recent save file present) or higher
-        // — never `Low`, since the `.sav` file forces promotion.
+        //, never `Low`, since the `.sav` file forces promotion.
         assert!(
             matches!(game.confidence, Confidence::Medium | Confidence::High),
             "walker hit with recent .sav must be Medium or higher; got {:?}",
@@ -221,7 +221,7 @@ fn aggressive_discover_respects_caps_against_noisy_dirs() {
     std::fs::create_dir_all(&install).unwrap();
     // 50 sibling top-level dirs with one shallow save-like subdir each.
     // Walker should pick at most 5 (`AGGRESSIVE_WALK_MAX_CANDIDATES`)
-    // before bailing — way below the depth bound, so the cap is what
+    // before bailing, way below the depth bound, so the cap is what
     // stops it.
     for i in 0..50 {
         let branch = install.join(format!("branch_{i:02}"));
@@ -248,7 +248,7 @@ fn aggressive_discover_respects_caps_against_noisy_dirs() {
         // walker to either fill the cap or time out gracefully.
         Duration::from_millis(1500),
         // `max_depth` cranked way past the default of 4 to prove the
-        // walker doesn't rely on the depth bound to terminate — the
+        // walker doesn't rely on the depth bound to terminate, the
         // candidate cap and per-root timeout must do the job.
         64,
     );
@@ -259,7 +259,7 @@ fn aggressive_discover_respects_caps_against_noisy_dirs() {
         "aggressive walker hung past the 5s safety budget; elapsed = {elapsed:?}",
     );
     // The plan calls this out as `<= AGGRESSIVE_WALK_MAX_CANDIDATES`
-    // (bumped to 16 in the ADR 0020 phase-1 scoring work — graded scoring
+    // (bumped to 16 in the ADR 0020 phase-1 scoring work, graded scoring
     // surfaces more partial matches, so the cap was widened to match).
     // Hard-coding the number here means a future bump to the constant will
     // fail this test loudly rather than silently widen the contract.
@@ -302,7 +302,7 @@ fn fuzzy_match_resolves_steam_app_with_typo() {
     // Catalog precondition: `stardew-valley` must exist. The plan asks
     // for an explicit assertion using `find_by_slug`, but the module only
     // exposes `find_by_steam_app_id` and `find_by_fuzzy_name` publicly,
-    // so we walk the catalog directly — same pattern as
+    // so we walk the catalog directly, same pattern as
     // `detection_integration.rs::catalog_entry`.
     assert!(
         ludusavi::catalog()
@@ -319,7 +319,7 @@ fn fuzzy_match_resolves_steam_app_with_typo() {
         // test in `detection_integration.rs`.
         let appid = unused_steam_appid(90_000_001);
         // Confirm the slugified typo really doesn't collide with any
-        // catalog slug — otherwise the slug-exact fallback would fire
+        // catalog slug, otherwise the slug-exact fallback would fire
         // instead of fuzzy and the test would silently change semantics.
         let typo_slug = ludusavi::slugify("Stardew Vally");
         assert!(
@@ -363,14 +363,14 @@ fn fuzzy_match_resolves_steam_app_with_typo() {
     });
 }
 
-/// La búsqueda por nombre en las raíces estándar, que corre **antes** de bajar a
-/// barrer el directorio de instalación.
+/// The lookup by name across the standard roots, which runs **before** dropping
+/// down to sweep the install directory.
 ///
-/// El caso real: un juego de Windows bajo Proton cuya ruta de catálogo no
-/// resuelve. Sus saves están en `LocalLow/<Estudio>/<Juego>` **dentro del
-/// prefijo** — el `$HOME` de la máquina no tiene nada que ver — y hasta ahora
-/// nadie miraba ahí para un juego con entrada de catálogo: se barría la
-/// instalación y se ofrecía una carpeta de 3,6 GB.
+/// The real case: a Windows game under Proton whose catalogue path does not
+/// resolve. Its saves live in `LocalLow/<Studio>/<Game>` **inside the prefix**,
+/// with the machine's `$HOME` having nothing to do with it, and until now nobody
+/// looked there for a game that has a catalogue entry: the install got swept and
+/// a 3.6 GB folder was offered.
 #[test]
 fn the_name_lookup_finds_a_proton_game_in_locallow() {
     with_isolated_linux_env(|home| {
@@ -387,16 +387,16 @@ fn the_name_lookup_finds_a_proton_game_in_locallow() {
         let paths: Vec<_> = hits.iter().map(|h| h.path.clone()).collect();
         assert!(
             paths.contains(&real),
-            "no encontró la carpeta real: {paths:?}"
+            "the real folder was not found: {paths:?}"
         );
     });
 }
 
-/// El filtro que hace que lo de arriba se pueda creer: Unity crea
-/// `LocalLow/<Estudio>/<Juego>` para **todos** sus juegos, guarden ahí o no, y
-/// dentro deja `Player.log` y su telemetría. Casar sólo por nombre recomendaría
-/// con toda seguridad una carpeta de logs — que es exactamente la que un usuario
-/// eligió a mano cuando le dejamos adivinar, para después no poder copiar nada.
+/// The filter that makes the above believable: Unity creates
+/// `LocalLow/<Studio>/<Game>` for **every** one of its games, whether they save
+/// there or not, and leaves `Player.log` and its telemetry inside. Matching by
+/// name alone would confidently recommend a log folder, which is exactly the one
+/// a user picked by hand when we let them guess, only to find nothing to copy.
 #[test]
 fn a_folder_with_only_engine_logs_is_not_offered() {
     with_isolated_linux_env(|home| {
@@ -415,13 +415,13 @@ fn a_folder_with_only_engine_logs_is_not_offered() {
         let hits = hoard_agent::detection::discover_by_name(&index, "Hell Maiden", &[], &[]);
         assert!(
             hits.is_empty(),
-            "ofreció una carpeta que sólo tiene logs del motor: {hits:?}"
+            "a folder holding nothing but engine logs was offered: {hits:?}"
         );
     });
 }
 
-/// Un nombre corto no puede pescar en el resto del árbol: con dos letras casa
-/// cualquier cosa, y una recomendación equivocada cuesta más que no recomendar.
+/// A short name must not fish through the rest of the tree: two letters match
+/// anything, and a wrong recommendation costs more than no recommendation.
 #[test]
 fn a_two_letter_name_never_matches() {
     with_isolated_linux_env(|home| {

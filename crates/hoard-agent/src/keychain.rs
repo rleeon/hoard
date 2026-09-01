@@ -258,13 +258,13 @@ mod tests {
         // gets control back long before the operation finishes.
         assert!(
             started.elapsed() < Duration::from_millis(250),
-            "esperó de más: {:?}",
+            "waited too long: {:?}",
             started.elapsed()
         );
 
         let timeout = err
             .downcast_ref::<KeyringTimeout>()
-            .expect("el motivo va tipado, no sólo en el texto");
+            .expect("the reason is typed, not only in the text");
         assert_eq!(timeout.doing, "reading the Cloud session");
         let text = err.to_string();
         assert!(
@@ -396,7 +396,7 @@ mod tests {
         assert!(task.await.unwrap_err().is_cancelled());
         assert!(
             started.elapsed() < Duration::from_millis(250),
-            "el apagado esperó al llavero: {:?}",
+            "shutdown waited on the keyring: {:?}",
             started.elapsed()
         );
     }

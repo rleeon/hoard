@@ -23,7 +23,7 @@ use crate::pathexpand::expand_path;
 /// Folders that are regenerable cache or derived state: never a save, and syncing
 /// them would move hundreds of megabytes of machine-specific junk.
 const CACHE_DIR_NAMES: &[&str] = &[
-    // Cachés de API gráfica.
+    // Graphics API caches.
     "dx12cache",
     "dxcache",
     "d3dcache",
@@ -32,7 +32,7 @@ const CACHE_DIR_NAMES: &[&str] = &[
     "dxbc",
     "pipelinecache",
     "psocache",
-    // Cachés de motor y de vendor.
+    // Engine and vendor caches.
     "shadercache",
     "shadercachedb",
     "shaders",
@@ -43,7 +43,7 @@ const CACHE_DIR_NAMES: &[&str] = &[
     "glcache",
     "vulkancache",
     "nvidiacache",
-    // Genéricas y estado regenerado.
+    // Generic ones and regenerated state.
     "cache",
     "caches",
     "cacheddata",
@@ -350,7 +350,7 @@ pub fn blocked_roots(os: Os) -> HashSet<PathBuf> {
         "<xdgData>",
         "<xdgConfig>",
         "<xdgState>",
-        // Raíces de motor compartidas.
+        // Shared engine roots.
         "<winAppData>/RenPy",
         "<winAppData>/Godot",
         "<winAppData>/Godot/app_userdata",
@@ -554,7 +554,7 @@ mod tests {
             ),
         ] {
             let reason = dangerous_sync_root(Path::new(p));
-            assert!(reason.is_some(), "{p} debería rechazarse");
+            assert!(reason.is_some(), "{p} should be rejected");
             assert!(
                 reason.as_deref().unwrap().to_lowercase().contains(hint),
                 "{p}: motivo poco claro → {reason:?}"
@@ -580,7 +580,7 @@ mod tests {
         ] {
             assert!(
                 dangerous_sync_root(Path::new(p)).is_none(),
-                "{p} debería aceptarse: {:?}",
+                "{p} should be accepted: {:?}",
                 dangerous_sync_root(Path::new(p))
             );
         }
@@ -611,10 +611,10 @@ mod tests {
             "Logs",
             "temp",
         ] {
-            assert!(is_cache_dir_name(n), "{n} debería ser caché");
+            assert!(is_cache_dir_name(n), "{n} should be a cache");
         }
         for n in ["saves", "SaveGames", "profiles", "slot1", "Documents", ""] {
-            assert!(!is_cache_dir_name(n), "{n} NO debería ser caché");
+            assert!(!is_cache_dir_name(n), "{n} should NOT be a cache");
         }
     }
 
@@ -635,7 +635,7 @@ mod tests {
             "SaveData",
             "autosave",
         ] {
-            assert!(looks_like_save_dir_name(n), "{n} debería parecer save");
+            assert!(looks_like_save_dir_name(n), "{n} should look like a save");
         }
         for n in ["config", "binaries", "shaders"] {
             assert!(!looks_like_save_dir_name(n));
@@ -711,9 +711,9 @@ mod tests {
     fn finds_a_save_dir_next_to_the_game_and_prefers_the_specific_child() {
         let tmp = tempfile::tempdir().unwrap();
         let install = tmp.path().join("Game");
-        // El caso Ubisoft: <install>/savegames/<id numérico>.
+        // The Ubisoft case: <install>/savegames/<numeric id>.
         touch(&install.join("savegames/1234567/save.dat"));
-        // Y el de Unreal, un nivel más abajo.
+        // And the Unreal one, a level further down.
         touch(&install.join("Binaries/Saved/SaveGames/slot.sav"));
         // Noise that must not come out.
         touch(&install.join("ShaderCache/x.bin"));
@@ -727,7 +727,7 @@ mod tests {
                 install.join("Binaries/Saved/SaveGames"),
                 install.join("savegames"),
             ],
-            "esperado el save de Ubisoft y el de Unreal, sin caché"
+            "expected the Ubisoft save and the Unreal one, with no cache"
         );
     }
 
@@ -753,7 +753,7 @@ mod tests {
             assert!(roots.contains(&home), "el home debe estar bloqueado");
             assert!(
                 !roots.contains(&home.join("Documents/My Games/Skyrim")),
-                "la carpeta de UN juego dentro de una raíz bloqueada es válida"
+                "the folder of ONE game inside a blocked root is valid"
             );
         }
     }

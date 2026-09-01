@@ -739,8 +739,8 @@ mod tests {
         assert!(format!("{err:#}").contains("locked"), "{err:#}");
     }
 
-    /// But with a token in the file (the 0600 fallback for when there is no keyring)
-    /// un llavero bloqueado no desloguea a nadie: se sigue con lo que hay.
+    /// But with a token in the file (the 0600 fallback for when there is no
+    /// keyring) a locked keyring logs nobody out: it carries on with what is there.
     #[test]
     fn a_locked_keyring_still_falls_back_to_the_file_token() {
         let got = pick_token(Err(stuck()), Some("hoard_v1_del-fichero".to_string()))

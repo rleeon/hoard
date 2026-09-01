@@ -139,7 +139,7 @@ pub struct TrackOutcome {
     pub watched: WatchedSave,
 }
 
-// ---- caché de detección en disco (compartida) ------------------------------
+// ---- the on-disk detection cache (shared)
 
 /// A detection snapshot persisted next to `state.json` so the library can be drawn
 /// instantly from cold without re-scanning.
@@ -183,7 +183,7 @@ pub fn load_detection_from_disk() -> Option<CachedDetection> {
     }
 }
 
-/// Escribe el caché atómicamente: serializa → tmp → `fs::rename`.
+/// Writes the cache atomically: serialise, then tmp, then `fs::rename`.
 pub fn save_detection_to_disk_atomic(cached: &CachedDetection) -> Result<()> {
     let path = detection_cache_path()?;
     if let Some(parent) = path.parent() {
@@ -515,7 +515,7 @@ pub fn apply_excluded_paths(report: &mut DetectionReport, state: &CliState) {
     });
 }
 
-/// `save_id` sintético de un slot playtime-only. Prefijo anticolisión.
+/// A synthetic `save_id` for a playtime-only slot. The prefix avoids collisions.
 fn playtime_save_id(slug: &str) -> String {
     format!("playtime:{slug}")
 }
@@ -1040,8 +1040,8 @@ fn occupied_slot(
         return Ok(());
     }
     // By number rather than by string: now that the label carries a name, `"2"` and
-    // `"2 · Mods"` son la MISMA ranura, y comparar el texto dejaría colar una
-    // a second folder in slot 2 just because it is named differently.
+    // `"2 · Mods"` are the SAME slot, and comparing the text would let a second
+    // folder into slot 2 just because it is named differently.
     let want = slots::slot_of(label);
     let Some(current) = state
         .saves
@@ -1602,7 +1602,7 @@ fn dir_has_any_file(root: &Path) -> bool {
                     if depth < MAX_DEPTH {
                         pending.push((entry.path(), depth + 1));
                     } else {
-                        return true; // más hondo de lo que miramos
+                        return true; // deeper than we look
                     }
                 }
                 Ok(_) => return true, // fichero (o symlink): hay contenido
@@ -2238,7 +2238,7 @@ pub fn set_paused(save_id: &str, paused: bool) -> Result<LiveReseat> {
 /// back to the global defaults. It reseats the agent so the new policy (interval,
 /// debounce, restore) applies at once, unless it is paused.
 pub fn set_preset(save_id: &str, preset: Option<String>) -> Result<LiveReseat> {
-    // Normaliza: vacío / "standard" = sin override.
+    // Normalise: empty or "standard" means no override.
     let preset = preset.filter(|p| !p.is_empty() && p != presets::PRESET_STANDARD);
     if let Some(p) = &preset {
         if !presets::ALL_PRESETS.contains(&p.as_str()) {
@@ -2778,7 +2778,7 @@ mod tests {
             )
             .map(|s| s.game_slug.as_str()),
             Some("skyrim"),
-            "«una carpeta, un juego» sigue protegiendo contra juegos distintos"
+            "\"one folder, one game\" still protects against different games"
         );
     }
 
@@ -3050,7 +3050,7 @@ mod tests {
         assert_eq!(
             row_for_same_folder(&state, &PathBuf::from(dispatch)),
             Some("row-dispatch"),
-            "la carpeta identifica la fila aunque el slug lleve el año"
+            "the folder identifies the row even when the slug carries the year"
         );
         assert_eq!(
             row_for_same_folder(&state, &PathBuf::from(vrising)),
@@ -3084,7 +3084,7 @@ mod tests {
         );
         assert!(
             conflicting_save(&posix, &nested, &[]).is_some(),
-            "y sigue denunciándose como solape"
+            "and it is still reported as an overlap"
         );
     }
 
@@ -3399,8 +3399,8 @@ mod tests {
         let d = local_detection(Some(&c), "ori", &[]);
         assert_eq!(d.candidates[0].display_name, "Ori");
         assert_eq!(d.candidates[0].affinity, 2);
-        // «ori» dentro de «originstory» NO cuenta: bajo 4 caracteres la
-        // contención empareja demasiado.
+        // "ori" inside "originstory" does NOT count: under four characters,
+        // containment matches far too much.
         assert_eq!(d.candidates[1].display_name, "Origin Story");
         assert_eq!(d.candidates[1].affinity, 0);
     }
@@ -3484,9 +3484,9 @@ mod tests {
         let mut state = CliState::default();
         state.add_excluded_path(PathBuf::from("/junk"));
         let mut report = report_of(vec![
-            excl_game("sin-rutas", &[]),                 // alerta ámbar: se queda
-            excl_game("todo-descartado", &["/junk/x"]),  // pierde todo: fuera
-            excl_game("parcial", &["/junk/y", "/real"]), // conserva la buena
+            excl_game("sin-rutas", &[]),                 // amber alert: it stays
+            excl_game("todo-descartado", &["/junk/x"]),  // loses everything: out
+            excl_game("parcial", &["/junk/y", "/real"]), // keeps the good one
             excl_game("intacto", &["/real/z"]),
         ]);
         apply_excluded_paths(&mut report, &state);

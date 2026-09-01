@@ -30,8 +30,8 @@ pub struct AuthSection {
     pub token: Option<String>,
 }
 
-/// Resuelve el directorio de estado en Windows, mudando el antiguo la primera
-/// time somebody asks.
+/// Resolves the state directory on Windows, moving the old one the first time
+/// somebody asks.
 ///
 /// The rules, in order, all with the same criterion: never return an empty
 /// folder while the data is in another one.
@@ -74,13 +74,13 @@ fn relocated_state_dir(old: &Path, new: &Path) -> PathBuf {
             tracing::info!(
                 from = %old.display(),
                 to = %new.display(),
-                "estado movido fuera de la carpeta de instalación"
+                "state moved out of the install folder"
             );
             new.to_path_buf()
         }
         Err(e) => {
-            // Puede ser la carrera de arranque: si el otro proceso ya lo movió,
-            // el destino existe y es la respuesta buena.
+            // This can be the startup race: if the other process already moved it,
+            // the destination exists and is the right answer.
             if new.is_dir() {
                 return new.to_path_buf();
             }
@@ -106,11 +106,11 @@ impl CliConfig {
         Ok(pd.config_dir().join("config.toml"))
     }
 
-    /// Where the user's state lives: watched saves, hours played,
-    /// caché de detección, preferencias.
+    /// Where the user's state lives: watched saves, hours played, the detection
+    /// cache, preferences.
     ///
-    /// En Windows **no** es `data_local_dir()`, y el motivo le costó a un
-    /// usuario su historial. `ProjectDirs` lo resuelve a
+    /// On Windows it is **not** `data_local_dir()`, and the reason cost one user
+    /// their history. `ProjectDirs` resolves it to
     /// `%LOCALAPPDATA%\hoard\hoard\data`, and the NSIS installer (`productName`
     /// "Hoard", `installMode` `currentUser`) installs into `%LOCALAPPDATA%\Hoard`.
     /// Windows is case-insensitive, so the user's data ended up inside the
@@ -122,8 +122,7 @@ impl CliConfig {
     /// and where no installer digs. The cache stays in Local, which is exactly the
     /// split Windows asks for: Roaming for the user's small state, Local for what
     /// can be rebuilt. On Linux and macOS `data_dir()` and `data_local_dir()` are
-    /// the same path, so outside Windows nothing
-    /// cambia nada.
+    /// the same path, so nothing changes outside Windows.
     pub fn state_dir() -> Result<PathBuf> {
         let pd = Self::project_dirs()?;
         #[cfg(not(windows))]
@@ -225,8 +224,8 @@ mod tests {
         let old = tmp.path().join("local/hoard/data");
         let new = tmp.path().join("roaming/hoard/data");
 
-        // Instalación limpia: nadie ha escrito nada aún. El llamante creará el
-        // directorio cuando le toque.
+        // A clean install: nobody has written anything yet. The caller creates the
+        // directory when its turn comes.
         assert_eq!(relocated_state_dir(&old, &new), new);
     }
 

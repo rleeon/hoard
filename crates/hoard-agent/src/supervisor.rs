@@ -1,10 +1,9 @@
 //! Keep a long-lived background loop alive, and say so when it dies.
 //!
-//! Vivía en `hoard-desktop/src/commands/supervisor.rs`. Subió aquí en el Slice
-//! 4a because D.12's rule ("if it outlives a request, it goes under
-//! `supervise`") applies to the daemon too, and a module private to
-//! the desktop is no use to it. The desktop re-exports it from its old path, so
-//! its callers did not change.
+//! It lives in the agent because D.12's rule ("if it outlives a request, it goes
+//! under `supervise`") applies to the daemon as much as to the desktop, and a
+//! module private to the desktop would be no use to it. The desktop re-exports it
+//! from its old path, so its callers see no difference.
 //!
 //! **Why this exists (ADR 0021 D.12).** The cloud-pull poller stopped after two
 //! ticks and *nothing in the log said so*: no `gate busy`, no second `started`,

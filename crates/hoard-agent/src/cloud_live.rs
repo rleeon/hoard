@@ -113,7 +113,7 @@ async fn poll_loop(
                 }
             }
         }
-        // Vacía kicks acumulados: varios cambios seguidos = un solo pull.
+        // Drain the kicks piled up: several changes in a row mean a single pull.
         while kick_rx.try_recv().is_ok() {}
 
         run_pull(&client, &handle, cfg.global_sync, &mut seen).await;
@@ -134,7 +134,7 @@ async fn run_pull(
             // A transient 401 (a token on the edge) or a network drop recovers on
             // its own next tick; the daemon's periodic refresh keeps the client's
             // token current.
-            tracing::debug!(error = %format!("{e:#}"), "cloud-live: pull falló");
+            tracing::debug!(error = %format!("{e:#}"), "cloud-live: the pull failed");
             return;
         }
     };
@@ -173,7 +173,7 @@ async fn run_pull(
     // the reconciliation sweep can gate by version without re-fetching the
     // manifest for each save.
     if let Err(e) = handle.set_cloud_versions(latest, aliases).await {
-        tracing::warn!(error = %format!("{e:#}"), "cloud-live: no pude alimentar la caché de versiones");
+        tracing::warn!(error = %format!("{e:#}"), "cloud-live: could not feed the versions cache");
     }
 
     // Global sync: ask for the immediate pull of whatever advanced. The agent
@@ -221,7 +221,7 @@ async fn realtime_loop(kick_tx: mpsc::Sender<()>) {
                 backoff = BACKOFF_MIN_SECS;
             }
             Err(e) => {
-                tracing::debug!(error = %format!("{e:#}"), "cloud-live: conexión realtime cortada, reintento");
+                tracing::debug!(error = %format!("{e:#}"), "cloud-live: realtime connection dropped, retrying");
             }
         }
         sleep(Duration::from_secs(backoff)).await;
@@ -322,7 +322,7 @@ async fn connect_once(kick_tx: &mpsc::Sender<()>) -> anyhow::Result<bool> {
                             // Just (re)joined: whatever changed while the socket
                             // was down produced no `postgres_changes`, so a
                             // recovery pull closes that gap.
-                            tracing::debug!("cloud-live: (re)suscrito → pull de recuperación");
+                            tracing::debug!("cloud-live: (re)subscribed, running a recovery pull");
                             let _ = kick_tx.try_send(());
                         }
                         Some(Action::TokenError) => {
@@ -339,12 +339,12 @@ async fn connect_once(kick_tx: &mpsc::Sender<()>) -> anyhow::Result<bool> {
                             // whole token family.
                             tracing::debug!("cloud-live: token rejected, refreshing");
                             match cloud_auth::refresh_freshest().await {
-                                Ok(_) => anyhow::bail!("refresh forzó reconexión"),
+                                Ok(_) => anyhow::bail!("the refresh forced a reconnect"),
                                 Err(e) if e.downcast_ref::<cloud_auth::RefreshTokenStale>().is_some() => {
                                     tracing::info!("cloud-live: refresh token revoked, realtime parks until a fresh login");
                                     return Ok(false);
                                 }
-                                Err(_) => anyhow::bail!("refresh forzó reconexión"),
+                                Err(_) => anyhow::bail!("the refresh forced a reconnect"),
                             }
                         }
                         None => {}
@@ -363,9 +363,9 @@ async fn connect_once(kick_tx: &mpsc::Sender<()>) -> anyhow::Result<bool> {
 enum Action {
     /// A relevant row of `saves` changed, so refresh.
     Change,
-    /// El join tuvo éxito: (re)suscrito, disparar pull de recuperación.
+    /// The join succeeded: (re)subscribed, so fire a recovery pull.
     Resubscribed,
-    /// El token fue rechazado; refrescar y reconectar.
+    /// The token was rejected; refresh and reconnect.
     TokenError,
 }
 
@@ -433,9 +433,9 @@ mod tests {
         // With nothing on disk, or an empty refresh: keep waiting.
         assert!(!session_renewed(Some("rt-dead"), None));
         assert!(!session_renewed(Some("rt-dead"), Some(&disk("  "))));
-        // La misma sesión muerta sigue en disco: sigue esperando.
+        // The same dead session is still on disk: keep waiting.
         assert!(!session_renewed(Some("rt-dead"), Some(&disk("rt-dead"))));
-        // Un login nuevo (refresh distinto) despierta.
+        // A fresh login (a different refresh token) wakes it up.
         assert!(session_renewed(Some("rt-dead"), Some(&disk("rt-new"))));
     }
 

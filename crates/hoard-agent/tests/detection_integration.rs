@@ -5,7 +5,7 @@
 //! branch of [`hoard_agent::detection::detect_all`], runs the full pipeline
 //! against the embedded Ludusavi catalog, and asserts on the resulting
 //! [`hoard_agent::detection::DetectionReport`]. The host's real saves,
-//! Steam install, or Proton prefixes are never read — every fixture lives
+//! Steam install, or Proton prefixes are never read, every fixture lives
 //! under a `tempfile::TempDir` that drops at end-of-test.
 //!
 //! Coverage matrix (see `docs/plans/detection.md` §3, §4.1 and P-DET-7):
@@ -139,7 +139,7 @@ fn with_isolated_windows_env<F: FnOnce(&Path)>(f: F) {
     }
 }
 
-/// Single-thread tokio runtime — detect_all is async and the tests run it
+/// Single-thread tokio runtime, detect_all is async and the tests run it
 /// to completion synchronously inside the env-guarded scope.
 fn block_on_detect(os: Os, state: &CliState) -> hoard_agent::detection::DetectionReport {
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -221,7 +221,7 @@ fn first_linux_expansion(slug: &str) -> PathBuf {
         })
 }
 
-/// `<xdgData>` under the pinned test environment — `~/.local/share` on a real
+/// `<xdgData>` under the pinned test environment, `~/.local/share` on a real
 /// host, a tempdir here.
 fn xdg_data(_home: &Path) -> PathBuf {
     PathBuf::from(std::env::var_os("XDG_DATA_HOME").expect("XDG_DATA_HOME is pinned"))
@@ -276,9 +276,9 @@ fn fs_heuristic_finds_native_linux_save() {
             "found_paths should contain {save_dir:?}; got {:?}",
             game.found_paths,
         );
-        // Desde bd9173f el pipeline rellena el appid desde el catálogo por
-        // slug exacto aunque no haya Steam instalado — es cosmético (la UI
-        // resuelve la cápsula de portada con él), no una señal de detección:
+        // Since bd9173f the pipeline fills the appid in from the catalogue by
+        // exact slug even with no Steam installed. It is cosmetic (the UI resolves
+        // the cover capsule with it), not a detection signal:
         // source sigue siendo FilesystemHeuristic y no hay install_dir.
         assert_eq!(
             game.steam_app_id,
@@ -355,7 +355,7 @@ fn proton_prefix_finds_windows_only_game_on_linux() {
 
 /// Stellaris's catalog template `<xdgData>/Paradox Interactive/Stellaris`
 /// expands to a game root that mixes saves with config and mods. With
-/// only `mod/` and `settings/` populated (no `save games/` yet — common
+/// only `mod/` and `settings/` populated (no `save games/` yet, common
 /// for a fresh install before the user starts a campaign), the refine
 /// step must drop every raw hit. `root_matched` is still true, so the
 /// slug appears with empty `found_paths` and the UI surfaces an amber
@@ -377,7 +377,7 @@ fn refine_drops_paradox_root_without_save_games() {
             .expect("stellaris should appear with empty found_paths, not be dropped");
         // Only what the tempdir holds is this test's business. The isolation
         // covers HOME and the XDG vars, which is everything the Linux paths
-        // resolve through — but on a Windows host the sweep also reads the real
+        // resolve through, but on a Windows host the sweep also reads the real
         // known folders, and a developer who actually plays the game then has a
         // populated `Documents\Paradox Interactive\Stellaris` answering to this
         // slug. That path is a correct find; failing on it tests the machine,
@@ -399,7 +399,7 @@ fn refine_drops_paradox_root_without_save_games() {
 
 /// Same fixture as above but with `save games/` created. The general
 /// refine heuristic must collapse the raw root hit down to the save
-/// subdirectory — never propose the bare root, never silently drop the
+/// subdirectory, never propose the bare root, never silently drop the
 /// game. Regression guard for Paradox-family layouts (CK3, EU4, HoI4,
 /// Imperator, Victoria 3) that historically caused Hoard to back up the
 /// entire game tree.
@@ -442,7 +442,7 @@ fn refine_promotes_paradox_save_games_subdir() {
 fn steam_name_fallback_picks_up_no_appid_entries() {
     with_isolated_linux_env(|home| {
         // Scan the catalog at runtime so this test survives upstream
-        // churn — the first qualifying entry is enough.
+        // churn, the first qualifying entry is enough.
         let entry = ludusavi::catalog()
             .iter()
             .find(|e| {
@@ -545,7 +545,7 @@ fn manual_override_wins_over_heuristic() {
 
 /// A Steam game whose install folder is a codename: Aven Colony installs into
 /// `prj_juniper` and saves into `~/.local/share/prj_juniper/savegames`. The
-/// catalog only knows the retail name, so nothing it says resolves — but the
+/// catalog only knows the retail name, so nothing it says resolves, but the
 /// installDir is sitting in the appmanifest, exact and already parsed.
 #[test]
 fn a_save_folder_named_after_the_install_dir_is_found() {
@@ -573,8 +573,8 @@ fn a_save_folder_named_after_the_install_dir_is_found() {
     });
 }
 
-/// A Steam game with no save folder anywhere is still a true row — the game IS
-/// installed — but it is not a detected save, and saying so is the difference
+/// A Steam game with no save folder anywhere is still a true row, the game IS
+/// installed, but it is not a detected save, and saying so is the difference
 /// between an answer and a dead end. The flag is what a caller branches on;
 /// inferring it from an empty list is what made the row look like a find.
 #[test]
