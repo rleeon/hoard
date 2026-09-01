@@ -3,19 +3,19 @@
 //!
 //! Two feeds, same plumbing:
 //!
-//! - **Devices** (`hoard://devices`): GET `/v1/devices` — every machine on
+//! - **Devices** (`hoard://devices`): GET `/v1/devices`, every machine on
 //!   the account with its live state (online dot, playing what, since when).
 //!   The whole response body is re-emitted verbatim as the Tauri payload; the
-//!   UI filters out `this_device` and renders the rest under "esta máquina".
+//!   UI filters out `this_device` and renders the rest under this machine.
 //! - **Notifications** (`hoard://notification`, one event per row): GET
-//!   `/v1/notifications?since=<cursor>` — operator broadcasts for the bell.
+//!   `/v1/notifications?since=<cursor>`, operator broadcasts for the bell.
 //!   The cursor (RFC3339 of the newest row ever seen) persists in the state
 //!   dir so a restart never re-delivers; the UI's own localStorage dedup by
 //!   id is the second belt.
 //!
 //! Kicked from two places, mirroring the `cloud_pull` design: the Realtime
 //! subscriber (`cloud_realtime`) on every pushed `devices`/`notifications`
-//! change and on (re)join — that's the "responds within a second" path — and
+//! change and on (re)join, which is the "responds within a second" path, and
 //! the timed poller as fallback (at most every [`FALLBACK_MIN_SECS`]) for
 //! when the socket is down. Each feed runs behind a single-flight gate with a
 //! short spacing floor so a burst of Realtime events (e.g. three devices'
@@ -23,8 +23,8 @@
 //!
 //! Cloud-only by construction: both endpoints exist only on the cloud
 //! server, and every kick path (Realtime, cloud poller) already runs only
-//! with a cloud session. Best-effort throughout — a failed fetch logs at
-//! debug and waits for the next kick; there is nothing to roll back.
+//! with a cloud session. Best-effort throughout: a failed fetch logs at
+//! debug and waits for the next kick, and there is nothing to roll back.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -35,13 +35,13 @@ use tokio::time::Instant;
 /// Spacing floor between fetches of the same feed. Keepalive heartbeats
 /// arrive every ~30s per sibling device, each one pushing a `devices` UPDATE
 /// through Realtime; without a floor every beat would cost one GET. 10s
-/// keeps a many-device account at ≤6 GETs/min — safely under the server's
-/// per-device poll guard (10/min) — and beats still land within one beat
-/// interval of each other.
+/// keeps a many-device account at 6 GETs/min or fewer, safely under the server's
+/// per-device poll guard (10/min), and beats still land within one beat interval of
+/// each other.
 const SPACING_SECS: u64 = 10;
 
 /// The timed poller may tick as fast as every 5s; the fallback feed refresh
-/// doesn't need that — Realtime covers immediacy. Cap it to once a minute.
+/// doesn't need that, since Realtime covers immediacy. Cap it to once a minute.
 pub const FALLBACK_MIN_SECS: u64 = 60;
 
 /// Managed singleton: one gate per feed + the notifications cursor cache.
@@ -63,12 +63,12 @@ struct FeedGate {
 /// The managed [`CloudFeed`], or `None` (logged) if it was never registered.
 ///
 /// **This is the ADR 0021 D.12 panic.** `Manager::state::<T>()` panics when `T`
-/// was never `.manage()`d, and `CloudFeed` never was — so every `kick_*` call
+/// was never `.manage()`d, and `CloudFeed` never was, so every `kick_*` call
 /// killed *its caller's task*, synchronously, before any of the spawn/gate
 /// machinery below ran. The cloud-pull poller calls `kick_all` right after its
 /// first pull, which is exactly the observed failure: two ticks in the first
-/// second, then a task that no longer exists — no `gate busy`, no `stopped`, no
-/// log line at all, and the engine blind for the rest of the session. The
+/// second, then a task that no longer exists, with no `gate busy`, no `stopped`
+/// and no log line at all, and the engine blind for the rest of the session. The
 /// realtime socket died the same way on its (re)subscribe catch-up.
 ///
 /// Registering it in `lib.rs` is the fix; going through `try_state` is the
@@ -77,7 +77,7 @@ struct FeedGate {
 fn feed_state(app: &AppHandle) -> Option<tauri::State<'_, CloudFeed>> {
     let state = app.try_state::<CloudFeed>();
     if state.is_none() {
-        tracing::warn!("cloud-feed: state not managed — devices/bell feeds are inert");
+        tracing::warn!("cloud-feed: state not managed, devices and bell feeds are inert");
     }
     state
 }
@@ -154,14 +154,14 @@ where
 }
 
 /// Authenticated GET with the same 401-retry-once dance as `cloud_pull`: the
-/// Supabase JWT rotates hourly and a stale one must never kill a feed. Desde el
-/// Slice 4c el token de repuesta se **pide prestado** al servicio en vez de
-/// rotarlo aquí (ADR 0021: un único rotador). Returns the response body on 2xx,
-/// `None` (logged) otherwise.
+/// Supabase JWT rotates hourly and a stale one must never kill a feed. The
+/// replacement token is **borrowed** from the service rather than rotated here (ADR
+/// 0021: one rotator only). Returns the response body on 2xx, `None` (logged)
+/// otherwise.
 async fn authed_get(app: &AppHandle, path_and_query: &str) -> Option<String> {
     let creds = match crate::commands::cloud::active_creds(app).await {
         Ok(Some(c)) => c,
-        Ok(None) => return None, // signed out between kicks — quiet exit
+        Ok(None) => return None, // signed out between kicks: quiet exit
         Err(e) => {
             tracing::debug!(error = %e, "cloud-feed: couldn't get a token for the session");
             return None;
@@ -236,9 +236,9 @@ async fn fetch_devices_once(app: &AppHandle) {
 /// event with the FULL list so the UI can reconcile: add new rows AND remove
 /// server-sourced entries the server no longer delivers (dismissed on another
 /// device, expired, etc.). The server is the authority for server notifications
-/// now (migration 0033 + cloud/routes/notifications.rs), so the UI must drop
-/// stale localStorage entries that the server's filtered list excludes —
-/// without this snapshot a notification dismissed on machine A would persist
+/// now (migration 0033 plus cloud/routes/notifications.rs), so the UI must drop
+/// stale localStorage entries that the server's filtered list excludes: without
+/// this snapshot a notification dismissed on machine A would persist
 /// on machine B until B is restarted (localStorage resurrects it).
 ///
 /// Individual `hoard://notification` events are NOT emitted anymore: the
@@ -294,7 +294,7 @@ pub async fn devices_refresh(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// `POST /v1/notifications/:id/dismiss` — record a per-user, cross-device
+/// `POST /v1/notifications/:id/dismiss`: record a per-user, cross-device
 /// dismissal on the server. Thin wrapper over `cloud_account::dismiss_notification`
 /// with the same 401-refresh-once dance as `cloud_entitlements`: the Supabase
 /// JWT rotates hourly and a stale one must never block a dismiss. The UI calls

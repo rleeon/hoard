@@ -1,10 +1,10 @@
-//! Alias del supervisor compartido — la implementación vive en
-//! `hoard_agent::supervisor` desde el Slice 4a (ADR 0021).
+//! An alias for the shared supervisor; the implementation lives in
+//! `hoard_agent::supervisor` (ADR 0021).
 //!
-//! Se movió porque el daemon (`hoardd`) tiene que cumplir la misma regla de
-//! D.12 («si vive más que una petición, va bajo `supervise`») y no puede usar un
-//! módulo privado del desktop. Este alias se queda para que la ruta que la ADR
-//! nombra —`commands/supervisor.rs`— siga siendo la que encuentra quien busque
-//! dónde se supervisa una tarea del desktop.
+//! It lives there because the daemon (`hoardd`) has to satisfy the same D.12 rule
+//! ("if it outlives a request, it goes under `supervise`") and cannot use a module
+//! private to the desktop. This alias stays so the path the ADR names,
+//! `commands/supervisor.rs`, is still what anybody looking for where a desktop task
+//! gets supervised will find.
 
 pub use hoard_agent::supervisor::{supervise, Finished};

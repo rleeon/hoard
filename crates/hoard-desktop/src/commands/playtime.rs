@@ -5,11 +5,11 @@
 //! * **Recap data** ([`list_playtime`]): reads the agent's local
 //!   `playtime.json` (per-local-day seconds played, written by the in-process
 //!   agent's poll loop) and hands it to the UI. Nothing here touches the
-//!   network — playtime is local-only data.
+//!   network: playtime is local-only data.
 //! * **Playtime-only games** (the rest): always-online titles with no save
-//!   worth syncing (Fortnite, Rust, VALORANT…). We auto-enrol them — matching
+//!   worth syncing (Fortnite, Rust, VALORANT...). We auto-enrol them, matching
 //!   the curated [`hoard_agent::playtime_catalog`] against the installed-game
-//!   scan (Steam + Epic + GOG + MS Store) — as `track_only` agent slots so
+//!   scan (Steam, Epic, GOG, MS Store), as `track_only` agent slots so
 //!   their hours accrue for the recap without ever backing anything up. The
 //!   user can drop any of them; the opt-out persists in `CliState`.
 
@@ -31,8 +31,8 @@ use crate::state::AppState;
 /// agent has observed a tracked game running for at least one poll interval.
 #[tauri::command]
 pub fn list_playtime() -> Result<PlaytimeSummary, String> {
-    // Idempotente: adopta el playtime legacy al contexto activo si aún no se
-    // hizo (p.ej. el recap se abre antes de que el agente arranque).
+    // Idempotent: it adopts the legacy playtime into the active context when that
+    // has not happened yet (the recap opening before the agent starts, say).
     let _ = PlaytimeStore::migrate_legacy_into_current_context();
     let path = PlaytimeStore::default_path().map_err(|e| e.to_string())?;
     Ok(PlaytimeStore::load(&path).summary())
@@ -105,8 +105,8 @@ fn playtime_watched_save(slug: &str, install_dir: Option<PathBuf>) -> WatchedSav
         local_path: PathBuf::new(),
         steam_install_dir: install_dir,
         processes,
-        // Sólo-horas: su lista de procesos viene del catálogo de playtime, que
-        // es un juego por entrada, así que nadie la comparte.
+        // Hours only: its process list comes from the playtime catalogue, which is
+        // one game per entry, so nobody shares it.
         shared_processes: false,
         policy: Default::default(),
         known_version: None,

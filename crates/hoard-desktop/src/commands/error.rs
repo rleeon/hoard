@@ -4,7 +4,7 @@
 //! raw string into a toast. That worked for one-line failures but broke down
 //! for the updater, which can emit a 250-char message listing every release
 //! asset when no installer matches the platform. We want a single visual
-//! block — title + body + collapsible technical detail — and that needs a
+//! block (title, body, and collapsible technical detail) and that needs a
 //! structured envelope on the wire.
 //!
 //! `AppError` is intentionally tiny: two i18n keys plus an optional raw
@@ -15,7 +15,7 @@
 //!
 //! The `From<String>` / `From<&str>` impls keep retrocompat for callers
 //! that still use `?` on a `String`-error chain. Those land as
-//! `common.error_title` + the raw string as the body — readable, not
+//! `common.error_title` plus the raw string as the body: readable, not
 //! pretty, but never a regression.
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -24,7 +24,7 @@ pub struct AppError {
     /// `common.error_title` for ad-hoc errors.
     pub title: String,
     /// i18n key resolved by svelte-i18n on the UI side. For raw `From<String>`
-    /// conversions this holds the raw message — the dialog renders it
+    /// conversions this holds the raw message, and the dialog renders it
     /// verbatim because the key won't resolve.
     pub body: String,
     /// Optional technical detail surfaced under a "Show details" toggle. Used

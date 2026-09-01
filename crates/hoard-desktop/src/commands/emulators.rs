@@ -1,45 +1,44 @@
-//! Puente Tauri del alta manual de emuladores.
+//! The Tauri bridge for adding emulators by hand.
 //!
-//! El catálogo, la resolución de rutas y los dos sondeos (instalación portable
-//! en otra unidad, partición por título) viven en
-//! [`hoard_agent::emulators`]: son detección, y la detección la comparten los
-//! dos frontends. Aquí sólo quedan los `#[tauri::command]` que sirven esos
-//! datos a la UI, más el picker de procesos en vivo.
+//! The catalogue, path resolution and the two probes (a portable install on
+//! another drive, splitting per title) live in [`hoard_agent::emulators`]: they are
+//! detection, and detection is shared by both frontends. What is left here are the
+//! `#[tauri::command]`s that serve that data to the UI, plus the live process
+//! picker.
 
 use hoard_agent::emulators;
 use serde::Serialize;
 
 use hoard_agent::proclist::RunningProcess;
 
-/// Una entrada del catálogo, con las rutas ya resueltas para este equipo.
+/// One catalogue entry, with its paths already resolved for this machine.
 #[derive(Debug, Clone, Serialize)]
 pub struct EmulatorPreset {
     pub id: &'static str,
     pub display_name: &'static str,
     pub system: &'static str,
     pub processes: Vec<&'static str>,
-    /// Carpetas de save nativas que existen en este equipo; la primera es el
-    /// mejor default. Puede venir vacía (emulador portable, instalación fuera
-    /// de lo normal) — entonces la UI pide la carpeta al usuario.
+    /// Native save folders that exist on this machine; the first is the best
+    /// default. It can come back empty (a portable emulator, an install off the
+    /// beaten path), and then the UI asks the user for the folder.
     pub save_paths: Vec<String>,
-    /// True cuando la raíz de saves de este emulador se puede partir en una
-    /// carpeta por juego. La UI ofrece entonces elegir títulos en vez de
-    /// añadir el árbol entero.
+    /// True when this emulator's save root can be split into one folder per game.
+    /// The UI then offers picking titles instead of adding the whole tree.
     pub splits_per_title: bool,
 }
 
-/// Catálogo de emuladores con las carpetas resueltas contra el host. Alimenta
-/// el diálogo "Añadir emulador". Barato (un puñado de `stat`s) salvo cuando
-/// hay que sondear unidades, de ahí el `spawn_blocking`.
+/// The emulator catalogue with its folders resolved against the host. It feeds the
+/// "Add emulator" dialog. Cheap (a handful of `stat`s) except when drives have to be
+/// probed, hence the `spawn_blocking`.
 #[tauri::command]
 pub async fn list_emulator_presets() -> Result<Vec<EmulatorPreset>, String> {
     tokio::task::spawn_blocking(|| {
         emulators::CATALOG
             .iter()
             .map(|def| {
-                // Instalado primero, portable después: si alguien tiene las dos
-                // cosas, la copia instalada es la que su emulador abre por
-                // defecto y debe quedar de default.
+                // Installed first, portable second: when somebody has both, the
+                // installed copy is the one their emulator opens by default and it
+                // should be the default here too.
                 let mut save_paths = emulators::resolve_save_paths(def);
                 for p in emulators::portable_save_paths(def) {
                     let s = p.to_string_lossy().into_owned();
@@ -59,24 +58,24 @@ pub async fn list_emulator_presets() -> Result<Vec<EmulatorPreset>, String> {
             .collect()
     })
     .await
-    .map_err(|e| format!("No se pudo leer el catálogo de emuladores: {e}"))
+    .map_err(|e| format!("Couldn't read the emulator catalogue: {e}"))
 }
 
-/// Un juego encontrado dentro del árbol de saves de una consola.
+/// A game found inside a console's save tree.
 #[derive(Debug, Clone, Serialize)]
 pub struct EmulatorTitle {
-    /// Id del título tal cual lo nombra la carpeta. Es lo único que dos
-    /// instalaciones distintas llaman igual.
+    /// The title's id exactly as the folder names it. It is the only thing two
+    /// different installs call the same.
     pub title_id: String,
     pub path: String,
 }
 
-/// Los juegos que hay dentro de la carpeta de saves de un emulador.
+/// The games inside an emulator's save folder.
 ///
-/// Devuelve vacío cuando el árbol no tiene la forma esperada, y eso **no es un
-/// error**: significa que quien pregunta debe seguir ofreciendo la raíz tal
-/// cual. Una suposición de distribución que falle dejaría al usuario sin
-/// ninguna detección, que es peor que el problema que esto resuelve.
+/// It returns empty when the tree does not have the expected shape, and that is
+/// **not an error**: it means the caller should keep offering the root as it is. A
+/// layout guess that misses would leave the user with no detection at all, which is
+/// worse than the problem this solves.
 #[tauri::command]
 pub async fn list_emulator_titles(
     emulator_id: String,
@@ -89,7 +88,7 @@ pub async fn list_emulator_titles(
         emulators::split_per_title(std::path::Path::new(&root), layout)
     })
     .await
-    .map_err(|e| format!("No se pudieron leer los juegos del emulador: {e}"))?;
+    .map_err(|e| format!("Couldn't read the emulator's games: {e}"))?;
 
     Ok(found
         .into_iter()
@@ -100,9 +99,9 @@ pub async fn list_emulator_titles(
         .collect())
 }
 
-/// Retrato en vivo de los procesos con pinta de juego, para el picker que
-/// evita teclear el nombre del ejecutable. La muestra de CPU bloquea un
-/// instante, así que va fuera del runtime async.
+/// A live snapshot of the game-looking processes, for the picker that saves typing
+/// the executable's name. The CPU sample blocks for a moment, so it runs off the
+/// async runtime.
 #[tauri::command]
 pub async fn list_running_processes() -> Result<Vec<RunningProcess>, String> {
     tokio::task::spawn_blocking(hoard_agent::proclist::list_game_like_processes)

@@ -1,4 +1,4 @@
-//! System tray — the always-visible "Hoard is alive" surface.
+//! The system tray: the always-visible "Hoard is alive" surface.
 //!
 //! We render a 32×32 monochrome icon with a small status dot in the
 //! bottom-right corner. The dot is colour-coded so the user can glance at the
@@ -15,7 +15,7 @@
 //! onto it at runtime in the bottom-right quarter. On macOS the icon is
 //! registered as a *template* (the OS renders its alpha as a monochrome
 //! silhouette that adapts to light/dark menu bars), so the dot is skipped
-//! there — state lives in the tooltip instead.
+//! there and the state lives in the tooltip instead.
 //!
 //! The tray menu carries: Show Hoard, Back up everything now, Open Settings,
 //! Sign out, Quit. Left-click the icon to toggle the main window.
@@ -53,13 +53,13 @@ impl TrayState {
             TrayState::Ok => [52, 211, 153, 255],
             // red-400
             TrayState::Error => [248, 113, 113, 255],
-            // zinc-700 — duller than idle so it reads as "asleep"
+            // zinc-700, duller than idle so it reads as "asleep"
             TrayState::Offline => [63, 63, 70, 255],
         }
     }
 
-    /// Tooltip text shown on hover. Kept short — most tray UIs truncate
-    /// aggressively after ~50 chars.
+    /// Tooltip text shown on hover. Kept short, since most tray UIs truncate
+    /// aggressively after about 50 chars.
     fn tooltip(self) -> &'static str {
         match self {
             TrayState::Idle => "Hoard — watching",
@@ -86,13 +86,13 @@ impl TrayController {
     pub fn set_state(&self, state: TrayState) {
         let Some(tray) = self.inner.lock().unwrap().clone() else {
             // No tray yet (we're still inside `setup`, or running on a
-            // platform that didn't grant us one). Drop the update silently —
+            // platform that didn't grant us one). Drop the update silently:
             // the next `set_state` will reflect the latest value.
             return;
         };
         // macOS renders the icon as a fixed template silhouette, so pushing a
         // re-rendered bitmap is pointless (and resets the template flag on
-        // some Tauri versions) — only the tooltip changes there.
+        // some Tauri versions), so only the tooltip changes there.
         if !cfg!(target_os = "macos") {
             match render_icon(state) {
                 Ok(img) => {
@@ -112,7 +112,7 @@ impl TrayController {
 /// Build the tray once on startup. The returned icon is stored on
 /// `TrayController` so later state updates can mutate it. We register click
 /// and menu handlers here too; everything in those closures is just a Tauri
-/// event emit — no business logic, so the rest of the app can subscribe.
+/// event emit, with no business logic, so the rest of the app can subscribe.
 pub fn install(app: &AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "tray::show", "Show Hoard", true, None::<&str>)?;
     let backup_all = MenuItem::with_id(
@@ -173,8 +173,8 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "tray::show" => show_main_window(app),
         "tray::backup-all" => {
             // The frontend listens for this and calls `backup_now` per save.
-            // Doing it that way keeps the per-save iteration logic — and
-            // success/failure toasts — in one place (the dashboard).
+            // Doing it that way keeps the per-save iteration logic, and the
+            // success and failure toasts, in one place (the dashboard).
             let _ = app.emit("tray://backup-all", ());
             show_main_window(app);
         }
@@ -193,7 +193,7 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "tray::quit" => {
             // Properly tear down rather than just app.exit so the agent gets
             // a chance to flush. The `WindowEvent::CloseRequested` path
-            // we install elsewhere doesn't help us here — that's only for
+            // we install elsewhere doesn't help us here: that's only for
             // window closes, not explicit quits.
             tracing::info!("user requested quit from tray");
             app.exit(0);
@@ -202,9 +202,8 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     }
 }
 
-/// Left-click toggles visibility — match the behaviour Slack/Linear ship,
-/// because users will reflexively click. Right-click opens the menu (handled
-/// by the runtime).
+/// Left-click toggles visibility, matching what users reflexively expect.
+/// Right-click opens the menu (handled by the runtime).
 fn handle_icon_event(tray: &tauri::tray::TrayIcon, event: TrayIconEvent) {
     if let TrayIconEvent::Click {
         button: MouseButton::Left,
@@ -230,7 +229,7 @@ fn toggle_main_window(app: &AppHandle) {
     };
     match window.is_visible() {
         Ok(true) => {
-            // Already visible — clicking the tray on a visible window is the
+            // Already visible: clicking the tray on a visible window is the
             // user telling us they're done. Hide it; the agent keeps running.
             let _ = window.hide();
         }
@@ -249,9 +248,9 @@ fn toggle_main_window(app: &AppHandle) {
 const ICON_PNG: &[u8] = include_bytes!("../icons/64x64.png");
 
 /// Compose the tray icon: the app icon with a status-coloured dot in the
-/// lower-right (except on macOS — see module docs; the template silhouette
-/// would flatten any colour, so the base icon is returned untouched and the
-/// tooltip carries the state).
+/// lower-right (except on macOS: see the module docs, where the template
+/// silhouette would flatten any colour, so the base icon is returned untouched and
+/// the tooltip carries the state).
 fn render_icon(state: TrayState) -> tauri::Result<Image<'static>> {
     let base = Image::from_bytes(ICON_PNG)?;
     let (w, h) = (base.width(), base.height());

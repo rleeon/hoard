@@ -1,33 +1,32 @@
-//! Ventana principal: cuándo se muestra.
+//! The main window: when it gets shown.
 //!
-//! La ventana se declara `"visible": false` en `tauri.conf.json`. Tauri la
-//! crearía visible en cuanto el lado Rust termina de construirla, pero el
-//! webview todavía tiene que arrancar su proceso y parsear el bundle, así que
-//! el usuario veía un rectángulo en blanco (el fondo por defecto del webview,
-//! no nuestro `bg-zinc-950`) durante todo ese hueco. Naciendo oculta, la
-//! ventana aparece ya dibujada: es el frontend quien pide mostrarla con
-//! [`ui_ready`] justo después del primer paint.
+//! The window is declared `"visible": false` in `tauri.conf.json`. Tauri would
+//! create it visible the moment the Rust side finished building it, but the webview
+//! still has to start its process and parse the bundle, so the user saw a white
+//! rectangle (the webview's default background, not our `bg-zinc-950`) for that
+//! whole gap. Born hidden, the window appears already drawn: the frontend is what
+//! asks to show it, through [`ui_ready`], right after the first paint.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
 
-/// Cuánto esperamos al frontend antes de mostrar la ventana por nuestra cuenta.
+/// How long we wait for the frontend before showing the window ourselves.
 ///
-/// Con la ventana oculta por defecto, un frontend que nunca monta (un throw en
-/// el bootstrap, como el bug de i18n de la v1.2.1) ya no deja una ventana en
-/// blanco: deja una app **invisible**, que desde fuera se parece demasiado a
-/// "no arranca". Este plazo garantiza que siempre haya algo en pantalla, aunque
-/// sea la página rota, que es lo que el usuario puede reportar.
+/// With the window hidden by default, a frontend that never mounts (a throw in the
+/// bootstrap, like the v1.2.1 i18n bug) no longer leaves a white window: it leaves
+/// an **invisible** app, which from outside looks far too much like "it doesn't
+/// start". This deadline guarantees there is always something on screen, even if it
+/// is the broken page, which is what the user can report.
 const FALLBACK_SHOW_AFTER: Duration = Duration::from_secs(8);
 
-/// Decide si la ventana debe mostrarse en este arranque.
+/// Decides whether the window should be shown on this start.
 ///
-/// Arrancar en silencio (autostart con `--silent` + `start_minimised`) es la
-/// única razón legítima para quedarse oculto: ahí la app vive en la bandeja
-/// hasta que el usuario la abre. Se resuelve una vez en `setup()` porque
-/// depende de los argumentos del proceso, no del estado de la UI.
+/// Starting silently (autostart with `--silent` plus `start_minimised`) is the only
+/// legitimate reason to stay hidden: there the app lives in the tray until the user
+/// opens it. It is resolved once in `setup()` because it depends on the process's
+/// arguments, not on the UI's state.
 #[derive(Debug, Default)]
 pub struct StartHidden(AtomicBool);
 
@@ -48,17 +47,16 @@ fn show_main(app: &AppHandle) {
     }
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
-        // Sin esto la ventana aparece detrás en algunos compositores de Linux
-        // cuando el arranque fue lento: el foco se lo quedó otra ventana
-        // mientras nosotros seguíamos ocultos.
+        // Without this the window appears behind on some Linux compositors when the
+        // start was slow: another window took the focus while we were still hidden.
         let _ = w.set_focus();
     }
 }
 
-/// El frontend ya pintó su primer frame y la ventana puede mostrarse.
+/// The frontend has painted its first frame and the window can be shown.
 ///
-/// Idempotente: `show()` sobre una ventana ya visible no hace nada, así que no
-/// importa que el fallback se nos haya adelantado.
+/// Idempotent: `show()` on an already visible window does nothing, so it does not
+/// matter if the fallback got there first.
 #[tauri::command]
 pub fn ui_ready(app: AppHandle) {
     show_main(&app);

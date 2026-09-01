@@ -1,33 +1,32 @@
-//! El HUD sobre el juego: una segunda ventana, casi transparente, con el
-//! registro en vivo del servicio de sync.
+//! The HUD over the game: a second, nearly transparent window carrying the sync
+//! service's live log.
 //!
-//! Es **la app normal**, no Hoard-Screen. Hoard-Screen es un proceso aparte que
-//! compone paneles nativos; esto es una ventana Tauri más, con el mismo bundle
-//! del frontend, que se distingue por su etiqueta (`OVERLAY_LABEL`). El
-//! frontend mira esa etiqueta al arrancar y monta el HUD en vez de la
-//! aplicación entera (ver `main.ts`).
+//! It is **the normal app**, not Hoard-Screen. Hoard-Screen is a separate process
+//! that composes native panels; this is one more Tauri window, with the same
+//! frontend bundle, told apart by its label (`OVERLAY_LABEL`). The frontend looks at
+//! that label on start and mounts the HUD instead of the whole application (see
+//! `main.ts`).
 //!
-//! Por qué se crea aquí y no desde JS: la ventana necesita nacer sin
-//! decoración, transparente, siempre encima y fuera de la barra de tareas, y
-//! esas propiedades son de construcción. Crearla desde el webview obligaría
-//! además a ampliar las capacidades para permitir la creación arbitraria de
-//! ventanas, que es justo lo que no interesa abrir.
+//! Why it is created here and not from JS: the window has to be born undecorated,
+//! transparent, always on top and out of the taskbar, and those are construction-time
+//! properties. Creating it from the webview would also mean widening the capabilities
+//! to allow arbitrary window creation, which is exactly what should stay shut.
 //!
-//! **Orden con Hoard-Screen**: el overlay Pro es un proceso independiente que
-//! también se pone siempre encima; entre dos ventanas "always on top" manda el
-//! orden de activación del compositor, así que esta ventana se muestra **sin
-//! robar el foco** (`focused = false`) para no colarse por encima de él.
+//! **Ordering against Hoard-Screen**: the Pro overlay is an independent process that
+//! also puts itself always on top, and between two "always on top" windows the
+//! compositor's activation order decides, so this window is shown **without stealing
+//! focus** (`focused = false`) so it does not jump over it.
 
 use tauri::utils::config::Color;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-/// Etiqueta de la ventana. El frontend la compara para decidir qué montar, así
-/// que cambiarla aquí obliga a cambiarla en `main.ts`.
+/// The window's label. The frontend compares against it to decide what to mount, so
+/// changing it here means changing it in `main.ts`.
 pub const OVERLAY_LABEL: &str = "overlay";
 
-/// Crea la ventana si no existe. Nace oculta: quien la enseña es
-/// [`overlay_set_visible`], para que la primera pulsación del atajo no muestre
-/// un rectángulo en blanco mientras el webview arranca.
+/// Creates the window when it does not exist. It is born hidden, and
+/// [`overlay_set_visible`] is what shows it, so the first press of the shortcut does
+/// not show a white rectangle while the webview starts.
 fn ensure(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
     if let Some(w) = app.get_webview_window(OVERLAY_LABEL) {
         return Ok(w);
@@ -35,11 +34,11 @@ fn ensure(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
     WebviewWindowBuilder::new(app, OVERLAY_LABEL, WebviewUrl::default())
         .title("Hoard")
         .transparent(true)
-        // Fondo de ventana totalmente transparente. Sin esto se queda con el
-        // del sistema —blanco opaco en la mayoría de plataformas— y **cualquier
-        // píxel que el HUD no cubra lo enseña**: típicamente una línea clara de
-        // uno o dos píxeles en un borde. La ventana principal sí fija el suyo
-        // en `tauri.conf.json`; ésta se creaba sin ninguno.
+        // A fully transparent window background. Without it the window keeps the
+        // system's (opaque white on most platforms) and **shows it through any pixel
+        // the HUD does not cover**: typically a light one- or two-pixel line along an
+        // edge. The main window sets its own in `tauri.conf.json`; this one was
+        // created with none.
         .background_color(Color(0, 0, 0, 0))
         .decorations(false)
         .always_on_top(true)
@@ -47,8 +46,8 @@ fn ensure(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
         .resizable(false)
         .maximized(true)
         .visible(false)
-        // Sin sombra: en Windows la sombra de una ventana sin decoración se
-        // dibuja igual y deja un halo gris sobre el juego.
+        // No shadow: on Windows an undecorated window's shadow is drawn anyway and
+        // leaves a grey halo over the game.
         .shadow(false)
         .build()
         .map_err(|e| format!("no se pudo crear el overlay: {e}"))
@@ -60,9 +59,8 @@ pub async fn overlay_set_visible(app: AppHandle, visible: bool) -> Result<bool, 
     let w = ensure(&app)?;
     if visible {
         let _ = w.show();
-        // Se pide el foco a propósito: el HUD tiene un botón de cerrar y
-        // responde a Escape, así que necesita teclado. Es lo mismo que hace
-        // el overlay de Steam.
+        // Focus is asked for on purpose: the HUD has a close button and responds to
+        // Escape, so it needs the keyboard. It is what the Steam overlay does too.
         let _ = w.set_focus();
     } else {
         let _ = w.hide();
@@ -78,7 +76,7 @@ pub async fn overlay_toggle(app: AppHandle) -> Result<bool, String> {
     overlay_set_visible(app, !showing).await
 }
 
-/// ¿Está el HUD en pantalla? Lo usa la página de Ajustes para pintar su estado.
+/// Is the HUD on screen? The Settings page uses it to paint its state.
 #[tauri::command]
 pub async fn overlay_is_visible(app: AppHandle) -> Result<bool, String> {
     Ok(app

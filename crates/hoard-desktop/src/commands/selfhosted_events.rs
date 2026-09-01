@@ -1,4 +1,4 @@
-//! Self-hosted server→app push over Server-Sent Events — the self-hosted twin
+//! Self-hosted server-to-app push over Server-Sent Events, the self-hosted twin
 //! of `commands::cloud_realtime`.
 //!
 //! Cloud gets near-instant cross-device sync from Supabase Realtime; self-hosted
@@ -7,7 +7,7 @@
 //! server now exposes `GET /v1/events` (see `hoard-server::routes::events`): a
 //! long-lived SSE stream that emits one frame the instant a new save version
 //! commits. This module holds that stream open and, on each `save` frame,
-//! force-restores the advanced save when "sync global" is on — exactly what the
+//! force-restores the advanced save when "sync global" is on, exactly what the
 //! cloud poller does on a Realtime push.
 //!
 //! Like its cloud sibling this is strictly an accelerator. It never restores
@@ -47,7 +47,7 @@ const READ_IDLE_SECS: u64 = 60;
 const CONNECT_TIMEOUT_SECS: u64 = 15;
 
 /// Server `event: save` payload. `version_num` is merged into the engine's
-/// head cache so `cloud_ahead` can fire — a bare force-restore tick is a
+/// head cache so `cloud_ahead` can fire; a bare force-restore tick is a
 /// no-op when that cache is empty (self-hosted has no cloud manifest).
 #[derive(Debug, Deserialize)]
 struct SaveEvent {
@@ -98,9 +98,9 @@ fn signed_in(app: &AppHandle) -> bool {
     app.state::<AppState>().user.lock().unwrap().is_some()
 }
 
-/// Self-hosted session creds: `(base_url, bearer_token)`. `None` when signed
-/// out — o cuando el servicio, que es quien guarda el token (D.20), no está para
-/// prestarlo.
+/// Self-hosted session creds: `(base_url, bearer_token)`. `None` when signed out,
+/// or when the service, which is what stores the token (D.20), is not there to lend
+/// it.
 async fn session(app: &AppHandle) -> Option<(String, String)> {
     let base = app
         .state::<AppState>()
@@ -183,7 +183,7 @@ async fn connect_once(app: &AppHandle, client: &reqwest::Client) -> anyhow::Resu
     loop {
         let next = tokio::time::timeout(Duration::from_secs(READ_IDLE_SECS), stream.next()).await;
         let chunk = match next {
-            Err(_) => anyhow::bail!("idle timeout — no keep-alive, socket presumed dead"),
+            Err(_) => anyhow::bail!("idle timeout: no keep-alive, socket presumed dead"),
             Ok(None) => return Ok(()), // server closed the stream cleanly
             Ok(Some(Err(e))) => return Err(e.into()),
             Ok(Some(Ok(c))) => c,
@@ -234,10 +234,10 @@ async fn handle_event(app: &AppHandle, ev_type: &str, data: &str) {
             if !global_sync {
                 return;
             }
-            // El motor está en el servicio desde el Slice 4b, así que esto va
-            // por IPC. Sigue siendo el único empuje servidor→cliente que tiene
-            // el self-hosted: `hoardd` monta Realtime sólo para Cloud, y la SSE
-            // necesita las credenciales self-hosted que vive aquí.
+            // The engine lives in the service, so this goes over IPC. It is still
+            // the only server-to-client push self-hosted has: `hoardd` sets Realtime
+            // up for Cloud only, and the SSE needs the self-hosted credentials that
+            // live here.
             let Some(state) = app.try_state::<AppState>() else {
                 return;
             };
@@ -258,7 +258,7 @@ async fn handle_event(app: &AppHandle, ev_type: &str, data: &str) {
                 .await;
         }
         "lagged" => {
-            tracing::debug!("selfhosted-events: lagged — relying on agent sweep to reconcile");
+            tracing::debug!("selfhosted-events: lagged, relying on the agent sweep to reconcile");
         }
         _ => {}
     }

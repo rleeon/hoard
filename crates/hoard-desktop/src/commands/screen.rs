@@ -4,17 +4,17 @@
 //! Tauri **sidecar**, feed it newline-JSON layout on stdin, and run it once with
 //! `--list-windows` to enumerate capturable windows. The scene JSON is built by
 //! the Pro UI and forwarded here verbatim (an opaque `String`), so the overlay /
-//! scene schema never lives in this public repo — only the compiled, Pro binary
+//! scene schema never lives in this public repo, only the compiled Pro binary
 //! supplied at bundle time. Without that binary (community build) every command
 //! just errors and the Hoard Screen section stays gated.
 //!
 //! Sidecar config: `bundle.externalBin = ["hoard-screen"]` in
-//! `tauri.pro.conf.json` + a `shell:allow-execute` scope for `hoard-screen`
+//! `tauri.pro.conf.json` plus a `shell:allow-execute` scope for `hoard-screen`
 //! in `capabilities/screen.json`. The platform-suffixed binary
 //! (`hoard-screen-<target-triple>`) is dropped next to `tauri.conf.json` (the
 //! src-tauri root) by the Pro build (or `scripts/local-link.sh` for local runs).
-//! A bare name (no `binaries/` subdir) is required so the bundled sidecar — which
-//! the bundler flattens next to the app exe — is found by `exe_dir.join(name)`.
+//! A bare name (no `binaries/` subdir) is required so the bundled sidecar, which
+//! the bundler flattens next to the app exe, is found by `exe_dir.join(name)`.
 
 use std::sync::Mutex;
 
@@ -40,9 +40,9 @@ pub struct ScreenProc(pub Mutex<Option<CommandChild>>);
 
 /// Launch the overlay if it isn't already running. Idempotent.
 ///
-/// `monitors` es cuántas pantallas ha enumerado la UI justo antes de abrir; va
-/// sólo a la telemetría (¿se usa esto en multi-monitor?). Opcional para que un
-/// front que no lo mande siga abriendo el overlay igual.
+/// `monitors` is how many screens the UI enumerated right before opening; it goes
+/// to telemetry only (is this used on multi-monitor setups?). Optional, so a
+/// frontend that does not send it still opens the overlay.
 #[tauri::command]
 pub async fn screen_open(
     app: AppHandle,
@@ -61,7 +61,7 @@ pub async fn screen_open(
         .map_err(|e| format!("spawn {SIDECAR}: {e}"))?;
 
     // Pump the overlay's stdout/stderr to the log, and clear the stored handle
-    // when it exits — so a crashed or self-closed overlay doesn't leave
+    // when it exits, so a crashed or self-closed overlay doesn't leave
     // `screen_open` thinking it's still up.
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -78,12 +78,12 @@ pub async fn screen_open(
                     let s = String::from_utf8_lossy(&line);
                     let s = s.trim();
                     if s.starts_with('{') {
-                        // Única excepción a lo de arriba, y a propósito: el
-                        // cronómetro del modo edición se lleva aquí y no en la
-                        // UI porque la página de Screen se desmonta al navegar
-                        // a otra pestaña con el overlay puesto, y ahí ya no
-                        // habría quien escuchara. Se mira un solo campo de un
-                        // mensaje de dos, no el esquema de la escena.
+                        // The one exception to the above, deliberately: the
+                        // editor-mode stopwatch is kept here and not in the UI
+                        // because the Screen page unmounts when you navigate to
+                        // another tab with the overlay up, and there would be
+                        // nobody left listening. It reads one field of a
+                        // two-field message, not the scene's schema.
                         if let Some(on) = editor_flag(s) {
                             if let Some(tel) = app2.try_state::<ScreenTelemetry>() {
                                 tel.editor(on);
@@ -99,10 +99,10 @@ pub async fn screen_open(
                     if let Some(state) = app2.try_state::<ScreenProc>() {
                         *state.0.lock().unwrap() = None;
                     }
-                    // No-op si el usuario ya cerró: `closed` es idempotente.
-                    // Este camino es el que recoge las salidas por su cuenta y
-                    // las caídas, que son las que no hay que contar como
-                    // desinterés.
+                    // A no-op when the user already closed it: `closed` is
+                    // idempotent. This road is what picks up self-closes and
+                    // crashes, which are the ones that must not count as
+                    // disinterest.
                     if let Some(tel) = app2.try_state::<ScreenTelemetry>() {
                         tel.closed(EndReason::from_exit_code(payload.code));
                     }
@@ -118,12 +118,12 @@ pub async fn screen_open(
     Ok(())
 }
 
-/// ¿Es esta línea el `{"type":"mode","editor":…}` del overlay? Devuelve el
-/// valor de `editor`, o `None` para cualquier otro mensaje.
+/// Is this line the overlay's `{"type":"mode","editor":...}`? Returns `editor`'s
+/// value, or `None` for any other message.
 ///
-/// A mano y sin `serde_json::from_str` a una struct: el resto de mensajes son
-/// la escena entera, y no quiero que el backend adquiera opinión sobre su
-/// esquema sólo para leer un booleano.
+/// By hand, with no `serde_json::from_str` into a struct: the rest of the messages
+/// are the whole scene, and the backend must not acquire an opinion about its schema
+/// just to read one boolean.
 fn editor_flag(line: &str) -> Option<bool> {
     let v: serde_json::Value = serde_json::from_str(line).ok()?;
     if v.get("type")?.as_str()? != "mode" {
@@ -162,11 +162,11 @@ pub async fn screen_close(
     Ok(())
 }
 
-/// Anota un acto del usuario dentro del overlay para la telemetría de Screen.
+/// Records something the user did inside the overlay, for Screen's telemetry.
 ///
-/// Lo llama la UI porque es la que tiene el vocabulario: el backend ve procesos
-/// y líneas JSON, no sabe qué es una mirilla. Ver `screen_telemetry` para qué
-/// se manda y, sobre todo, qué no.
+/// The UI calls it because the UI has the vocabulary: the backend sees processes and
+/// JSON lines, and does not know what a crosshair is. See `screen_telemetry` for
+/// what gets sent and, above all, what does not.
 #[tauri::command]
 pub fn screen_note(tel: State<'_, ScreenTelemetry>, action: String, kind: Option<String>) {
     tel.action(&action, kind.as_deref());

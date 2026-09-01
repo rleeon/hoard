@@ -2,10 +2,10 @@
 //!
 //! Snap/Flatpak-confined browsers (Ubuntu ships Firefox as a snap by default)
 //! cannot dispatch a custom `hoard://` URL scheme to the host, so the
-//! browser → app handoff after a Supabase OAuth round-trip silently fails: the
+//! browser-to-app handoff after a Supabase OAuth round-trip silently fails: the
 //! web "success" page sets `window.location.href = "hoard://…"` and nothing
 //! reaches the app. The standard desktop-OAuth workaround (RFC 8252) is a
-//! loopback redirect — the app listens on `http://127.0.0.1:<ephemeral>` (a URL
+//! loopback redirect: the app listens on `http://127.0.0.1:<ephemeral>` (a URL
 //! confined browsers *can* open), the web callback redirects the freshly-minted
 //! tokens there, and we feed them into the very same `deep-link://new-url` path
 //! the rest of the app already consumes. The custom scheme stays as a fallback.
@@ -18,8 +18,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 /// How long the listener waits for the browser to come back before giving up
-/// and freeing the port. Generous — the user may have to pick an account or
-/// approve a provider consent screen first. Also bounds how long
+/// and freeing the port. Generous, since the user may have to pick an account or
+/// approve a provider consent screen first. It also bounds how long
 /// `cloud_login_url` keeps reusing the same in-flight attempt (nonce + port):
 /// past this window the listener is gone, so a fresh attempt is minted.
 pub(crate) const LISTEN_TIMEOUT: Duration = Duration::from_secs(300);
@@ -46,8 +46,8 @@ color:#a1a1aa\"><p style=\"padding:2rem\">Esperando el inicio de sesion de Hoard
 /// callback or the timeout elapses.
 ///
 /// The `state` nonce is the CSRF guard (RFC 6749 §10.12, RFC 8252 §8.9):
-/// without it, any local process — or a web page that guessed the ephemeral
-/// port — could POST attacker-controlled tokens to `/callback` and silently
+/// without it, any local process (or a web page that guessed the ephemeral
+/// port) could POST attacker-controlled tokens to `/callback` and silently
 /// log the app into the attacker's account, sending the user's backups to it.
 pub async fn start(app: AppHandle, state: String) -> Result<u16> {
     let listener = TcpListener::bind(("127.0.0.1", 0))
@@ -90,7 +90,7 @@ pub async fn start(app: AppHandle, state: String) -> Result<u16> {
                             // handing this same port out for the whole
                             // LISTEN_TIMEOUT window while the attempt is
                             // pending, so a one-shot listener left every retry
-                            // inside that window aimed at a closed socket —
+                            // inside that window aimed at a closed socket, so
                             // the browser got ERR_CONNECTION_REFUSED and the
                             // user had to wait out the 5 minutes. Capturing a
                             // callback is not the same as *completing* a login:
@@ -102,7 +102,7 @@ pub async fn start(app: AppHandle, state: String) -> Result<u16> {
                                 break;
                             }
                         }
-                        // A stray request (favicon probe, etc.) — keep waiting.
+                        // A stray request (a favicon probe, say): keep waiting.
                         Ok(None) => continue,
                         Err(e) => {
                             tracing::warn!(error = %e, "loopback OAuth request failed");
@@ -134,7 +134,7 @@ fn attempt_pending(app: &AppHandle, nonce: &str) -> bool {
 /// `None`, so the listener keeps waiting for the genuine redirect.
 async fn serve(mut stream: TcpStream, expected_state: &str) -> Result<Option<(String, String)>> {
     // Request line + headers are tiny; one read of the first chunk is enough to
-    // see `GET /callback?…` — we never need the (absent) body.
+    // see `GET /callback?...`; we never need the (absent) body.
     let mut buf = [0u8; 8192];
     let n = stream.read(&mut buf).await.context("reading request")?;
     let head = String::from_utf8_lossy(&buf[..n]);

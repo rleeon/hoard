@@ -5,21 +5,22 @@
 //! Tauri commands that let the frontend (or the app's own startup hook)
 //! download a fresh copy from upstream and persist it as a *runtime
 //! override* in the OS cache dir. The next process launch picks the
-//! refreshed catalog up automatically — there's no in-process hot-swap
+//! refreshed catalog up automatically; there's no in-process hot-swap
 //! because mid-run swaps would make detection results inconsistent
 //! across overlapping scans.
 //!
 //! Wire shape:
 //!
-//! - `update_catalog()` — synchronous command for the "Check for updates"
-//!   button. Returns [`CatalogUpdateResult`] on success.
-//! - `catalog_status()` — read-only metadata for the Settings page so we
+//! - `update_catalog()`: the synchronous command behind the "Check for
+//!   updates" button. Returns [`CatalogUpdateResult`] on success.
+//! - `catalog_status()`: read-only metadata for the Settings page, so we
 //!   can show "20,731 games · updated 3 days ago".
-//! - `auto_update_catalog_in_background()` — background loop spawned from
-//!   `setup()`; re-checks hourly and refreshes once the cached catalog is
-//!   older than [`AUTO_UPDATE_AFTER`]. The loop (vs. the old launch-time
-//!   one-shot) matters because the app lives in the tray for weeks — a
-//!   check only at startup meant the catalog could silently go stale.
+//! - `auto_update_catalog_in_background()`: the background loop spawned from
+//!   `setup()`; it re-checks hourly and refreshes once the cached catalog is
+//!   older than [`AUTO_UPDATE_AFTER`]. The loop (rather than the old
+//!   launch-time one-shot) matters because the app lives in the tray for
+//!   weeks: a check only at startup meant the catalog could silently go
+//!   stale.
 
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
@@ -33,7 +34,7 @@ use tauri::{AppHandle, Emitter};
 const AUTO_UPDATE_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// How often the background loop re-checks staleness. Checking is a local
-/// metadata read — the 17 MB download only happens past [`AUTO_UPDATE_AFTER`].
+/// metadata read; the 17 MB download only happens past [`AUTO_UPDATE_AFTER`].
 const RECHECK_EVERY: Duration = Duration::from_secs(60 * 60);
 
 /// Sidecar metadata file written next to the catalog JSON. Tells the UI
@@ -161,8 +162,8 @@ fn emit_stage(app: &Option<AppHandle>, stage: &str) {
     }
 }
 
-/// Tauri command: report the currently-loaded catalog status. Cheap —
-/// only touches the meta sidecar, never re-parses the catalog JSON.
+/// Tauri command: report the currently-loaded catalog status. Cheap, since it
+/// only touches the meta sidecar and never re-parses the catalog JSON.
 #[tauri::command]
 pub fn catalog_status() -> CatalogStatus {
     let games = hoard_manifest::ludusavi::catalog_size();
@@ -186,7 +187,7 @@ pub fn catalog_status() -> CatalogStatus {
 /// immediately, then every [`RECHECK_EVERY`], refreshing whenever the cached
 /// catalog is missing or older than [`AUTO_UPDATE_AFTER`]. Never blocks
 /// startup, and silently swallows errors (the user's already running on the
-/// embedded catalog, so a failed refresh is degradation, not breakage — the
+/// embedded catalog, so a failed refresh is degradation, not breakage, and the
 /// next tick retries).
 pub fn auto_update_catalog_in_background(app: AppHandle) {
     // `tauri::async_runtime::spawn` rather than `tokio::spawn`: this is

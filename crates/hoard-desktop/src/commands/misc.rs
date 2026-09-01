@@ -14,7 +14,7 @@ pub fn greet(name: &str) -> String {
 /// Why not just use the plugin: inside an AppImage, `AppRun` exports
 /// `LD_LIBRARY_PATH` / `LD_PRELOAD` / `GTK_PATH` / … pointing at Hoard's bundled
 /// libraries. A browser spawned via the plugin inherits them and loads our
-/// (version-mismatched) Wayland/EGL libs instead of the host's — on SteamOS /
+/// (version-mismatched) Wayland/EGL libs instead of the host's; on SteamOS and
 /// Bazzite it then dies before drawing a window, so the "Sign in" button opened
 /// *nothing* even though the loopback listener was already up. We strip those
 /// vars (restoring `*_ORIG` if AppRun saved them) so the browser starts against
@@ -22,7 +22,7 @@ pub fn greet(name: &str) -> String {
 /// hand the URL to the platform opener.
 #[tauri::command]
 pub async fn open_external(url: String) -> Result<(), String> {
-    // Never feed an arbitrary string to a shell/opener — web schemes only.
+    // Never feed an arbitrary string to a shell or opener: web schemes only.
     let allowed =
         url.starts_with("https://") || url.starts_with("http://") || url.starts_with("mailto:");
     if !allowed {
@@ -72,7 +72,7 @@ pub async fn open_external(url: String) -> Result<(), String> {
         // Do NOT route through `cmd /C start`: cmd re-parses its command line
         // and treats every `&` in the URL as a command separator, so an OAuth
         // sign-in URL like `.../login?desktop=1&port=65491&state=<nonce>` was
-        // truncated at the first `&` — the browser only ever received
+        // truncated at the first `&`, so the browser only ever received
         // `?desktop=1`, dropping the loopback port and the CSRF nonce. The
         // callback then reached the app with no `state`, and every desktop
         // sign-in failed with "auth callback state mismatch". rundll32 is not a
