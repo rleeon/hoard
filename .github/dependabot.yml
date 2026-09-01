@@ -8,4 +8,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    # Ten, not five: five was exactly the number of actions that had a major
+    # waiting, so the cap stayed saturated and hid every other outdated one
+    # behind it. Dependabot never opens the eleventh, it just goes quiet.
+    open-pull-requests-limit: 10
