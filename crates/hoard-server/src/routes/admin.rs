@@ -31,7 +31,7 @@ pub struct UpgradeAck {
     pub status: &'static str,
 }
 
-/// `POST /v1/admin/upgrade` — request a self-upgrade of this server.
+/// `POST /v1/admin/upgrade`: request a self-upgrade of this server.
 ///
 /// The web process is sandboxed (see `deploy/systemd/hoard-server.service`)
 /// and deliberately cannot touch its own binary. All it does here is drop a
@@ -58,7 +58,7 @@ pub async fn upgrade(
     }
 
     let marker = state.config.storage.data_dir.join(UPGRADE_MARKER);
-    // Content is informational only — the oneshot reads nothing from it.
+    // Content is informational only; the oneshot reads nothing from it.
     let body = format!(
         "requested_by={}\nrequested_at={}\n",
         user.username,
@@ -103,7 +103,7 @@ fn now_unix() -> u64 {
 //
 // What is deliberately NOT here: deleting a user, migrating storage backends,
 // verifying every object. Those are `hoard-admin` subcommands and they stay
-// there — each one is long-running or irreversible, and both properties are
+// there: each one is long-running or irreversible, and both properties are
 // better served by a terminal that can print progress and refuse to be closed
 // than by a browser tab.
 // ---------------------------------------------------------------------------
@@ -340,7 +340,7 @@ pub async fn overview(
 /// Kept in one place because the two used to disagree.
 pub const MIN_PASSWORD_LEN: usize = 8;
 
-/// Longest username. Not a storage limit — the column is TEXT — but a name
+/// Longest username. Not a storage limit (the column is TEXT) but a name
 /// that does not fit any table cell it appears in is a support ticket.
 const MAX_USERNAME_LEN: usize = 64;
 
@@ -373,7 +373,7 @@ pub struct UserPatch {
     pub password: Option<String>,
 }
 
-/// `PATCH /v1/admin/users/:id` — flip the admin bit, move a quota, rename, or
+/// `PATCH /v1/admin/users/:id`: flip the admin bit, move a quota, rename, or
 /// set a password.
 ///
 /// The first three are reversible from this same screen. The one irreversible
@@ -504,7 +504,7 @@ pub struct CreatedUser {
     pub username: String,
 }
 
-/// `POST /v1/admin/users` — create an account.
+/// `POST /v1/admin/users`: create an account.
 ///
 /// Same three columns `hoard-admin user create` writes, through the same
 /// `hash_password`. It exists so that adding the second person to a NAS does
@@ -569,7 +569,7 @@ pub struct DeletedUser {
     pub bytes_removed: i64,
 }
 
-/// `DELETE /v1/admin/users/:id` — remove an account and everything it stored.
+/// `DELETE /v1/admin/users/:id`: remove an account and everything it stored.
 ///
 /// Irreversible, and the only route here that destroys data. It refuses one
 /// case: **deleting yourself**. The confirmation sits a click away from the
@@ -577,7 +577,7 @@ pub struct DeletedUser {
 /// cannot tell you what happened.
 ///
 /// That single check is also what keeps the server from reaching zero admins,
-/// which would need a shell to undo — the admin flag guards its own route. No
+/// which would need a shell to undo, since the admin flag guards its own route. No
 /// separate last-admin count is needed here, unlike when demoting: the caller
 /// is an admin, the target is somebody else, so there are at least two. The
 /// CLI has no "yourself" to refuse and does count, in `hoard-admin user
@@ -715,7 +715,7 @@ pub struct MintedToken {
     pub expires_at: Option<String>,
 }
 
-/// `POST /v1/admin/tokens` — mint a device token.
+/// `POST /v1/admin/tokens`: mint a device token.
 ///
 /// The gap this closes: the container prints a token for the first PC on first
 /// boot, and every PC after that needed `hoard-admin token create` from a shell
@@ -795,7 +795,7 @@ pub async fn create_token(
 
 /// `POST /v1/admin/tokens/:id/revoke`
 ///
-/// The token itself is never readable here — only its SHA-256 is stored — so
+/// The token itself is never readable here (only its SHA-256 is stored) so
 /// revocation goes by row id. Revoking your own session is allowed and logs you
 /// out on the next request, which is the correct behaviour for "I clicked the
 /// wrong row".
@@ -848,7 +848,7 @@ pub struct LogQuery {
 ///
 /// First reader `client_logs` has ever had. Clients have been shipping their
 /// diagnostics to the server since migration 0012 and the only code that
-/// touched the table was the retention sweep deleting them — an operator
+/// touched the table was the retention sweep deleting them, and an operator
 /// debugging a device had to open SQLite by hand.
 pub async fn logs(
     Extension(user): Extension<AuthUser>,

@@ -14,8 +14,8 @@ use crate::routes::{parse_save_id, repair_slug, repair_ts};
 
 // ─── Request/Response types ─────────────────────────────────────────────────
 //
-// Las formas viven en `hoard_core::wire` (ADR 0021 C.6): el cliente compila
-// contra las mismas, así que un drift entre las dos puntas es un error de
+// The shapes live in `hoard_core::wire` (ADR 0021 C.6): the client compiles
+// against the same ones, so drift between the two ends is a compile
 // compilación en vez de un 422 en producción.
 
 #[derive(Deserialize)]
@@ -30,8 +30,9 @@ pub async fn create(
     Extension(user): Extension<AuthUser>,
     Json(body): Json<CreateSaveRequest>,
 ) -> Result<(StatusCode, Json<Save>), (StatusCode, Json<serde_json::Value>)> {
-    // `game_slug` ya pasó la puerta de `GameSlug` al deserializar el cuerpo, así
-    // que aquí sólo hace falta el `&str` para SQL y para las rutas de disco.
+    // `game_slug` already went through `GameSlug`'s gate when the body was
+    // deserialised, so all that is needed here is the `&str` for SQL and for the
+    // disk paths.
     let slug_str = body.game_slug.as_str();
 
     // Validate game exists
@@ -45,7 +46,7 @@ pub async fn create(
         // Self-heal path: if the client supplied a display_name (newer
         // desktops do; older CLI clients don't), insert a minimal games
         // stub. This unblocks tracking when the desktop's Ludusavi catalog
-        // is fresher than the server's seed — the alternative is making
+        // is fresher than the server's seed; the alternative is making
         // the user manually re-import the manifest on every server upgrade.
         if let Some(display) = body.display_name.as_deref().filter(|s| !s.is_empty()) {
             let display = display.to_string();
@@ -293,7 +294,7 @@ pub async fn patch(
                 .join(new_label);
 
             if old_dir.exists() {
-                // Reject if the target dir already exists — the UNIQUE
+                // Reject if the target dir already exists: the UNIQUE
                 // constraint above should make this unreachable but we
                 // double-check rather than trust two writers can't race.
                 if new_dir.exists() {
@@ -315,7 +316,7 @@ pub async fn patch(
             }
 
             if let Err(e) = tx.commit().await {
-                // Commit failed after the rename succeeded — try to undo
+                // Commit failed after the rename succeeded, so try to undo
                 // the rename so the world stays consistent.
                 tracing::warn!(error = %e, "commit failed after rename; reverting rename");
                 tokio::fs::rename(&new_dir, &old_dir).await.ok();

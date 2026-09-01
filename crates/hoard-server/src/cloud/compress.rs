@@ -3,7 +3,7 @@
 //! Clients upload raw bytes to presigned PUTs and that never changes; this
 //! sweep walks blobs older than `min_age_hours` and rewrites the R2 object
 //! as zstd, in place, at the same key. `cloud_blobs.size_bytes` keeps the
-//! RAW size — it feeds the storage trigger and everything the user sees —
+//! RAW size, since it feeds the storage trigger and everything the user sees,
 //! while `stored_bytes` records what R2 actually bills. Compressed blobs
 //! are served through the decompressing `/v1/cloud/blob/:token` proxy
 //! (`routes::blob_proxy`), so any client, past or future, keeps receiving
@@ -17,7 +17,7 @@
 //!      the manifest routes hand out proxy URLs; while the object is still
 //!      raw the proxy passes it through untouched (it only decompresses
 //!      once `stored_bytes` lands).
-//!   2. compress into a sibling `<key>.ztmp` object — the raw object is
+//!   2. compress into a sibling `<key>.ztmp` object; the raw object is
 //!      not touched.
 //!   3. verify: stream `.ztmp` back, decompress, SHA-256 must equal the
 //!      blob's content hash. A mismatch aborts, deletes the tmp and
@@ -31,12 +31,12 @@
 //! the sweep skips and every reader treats as uncompressed.
 //!
 //! A blob whose R2 object no longer exists (refcount desync from a past
-//! incident) is marked `encoding = 'missing'` — also terminal. Retrying
+//! incident) is marked `encoding = 'missing'`, also terminal. Retrying
 //! can't conjure the bytes back, and leaving the row claimed-but-eligible
 //! is how a ≥`batch` cohort of them once turned the drain loop into a
 //! permanent hot loop of HEADs (~10/s of Class B ops, 2026-07-18). For the
 //! same reason the drain only keeps going while a batch actually makes
-//! progress: persistent failures wait for the next tick — and, after
+//! progress: persistent failures wait for the next tick and, after
 //! [`MAX_ATTEMPTS`] of them, stop being picked up at all. "Waits for the
 //! next tick" is not an exit: a blob that fails deterministically (stored
 //! bytes that don't hash to `sha256`) retried every tick forever until the
@@ -44,7 +44,7 @@
 //!
 //! Crash at any point is healed on retry: the claim keeps the blob in the
 //! sweep, and a final object whose size differs from `size_bytes` is
-//! re-verified by content — never re-compressed blind (zstd output can't
+//! re-verified by content, never re-compressed blind (zstd output can't
 //! equal its input length, so the size test is a reliable "overwrite
 //! already landed" signal). Races with deletion (version GC, account
 //! purge, archive expiry) stay benign: everything deletes by the row's
@@ -71,14 +71,14 @@ const MIN_BLOB_BYTES: i64 = 4096;
 /// Give up on a blob after this many failed attempts. The terminal states
 /// above ('raw', 'missing') only cover blobs the sweep *evaluated*; a blob
 /// that keeps failing used to have no exit, because the verification path
-/// un-claims the row back to `encoding IS NULL` — exactly what the
+/// un-claims the row back to `encoding IS NULL`, exactly what the
 /// eligibility query picks up. A blob whose stored bytes don't hash to
 /// `sha256` therefore re-downloaded, re-compressed and re-verified itself
 /// every tick forever (six of them ran from 2026-07-11 to 2026-08-03,
 /// ~1.7k attempts/day of GET + multipart PUT + verify GET, for nothing).
 /// The cap makes permanent failure cost a bounded number of R2 ops. It
 /// counts *attempts*, not consecutive failures, so a transient R2 error
-/// spends one too — with five of them a real blip still gets retried, and
+/// spends one too: with five of them a real blip still gets retried, and
 /// a blob that is genuinely broken stops after ~25 minutes.
 const MAX_ATTEMPTS: i16 = 5;
 
@@ -104,7 +104,7 @@ pub fn spawn(state: CloudState) {
             // Drain: keep pulling full batches until the backlog is empty,
             // so "older than min_age ⇒ compressed" holds instead of
             // trickling `batch` blobs per tick forever. Only while batches
-            // make progress, though — a full batch of failures must wait
+            // make progress, though: a full batch of failures must wait
             // for the next tick, not respin the same rows back-to-back.
             loop {
                 match sweep_once(&state, &cfg).await {
@@ -127,7 +127,7 @@ pub fn spawn(state: CloudState) {
 }
 
 /// One batch: claim up to `batch` eligible blobs, compress each. Returns
-/// `(picked, ok)` — how many were picked up and how many of those finished
+/// `(picked, ok)`: how many were picked up and how many of those finished
 /// (compressed, kept raw, or marked missing). Failures retry on a later
 /// tick; the caller uses `ok` to stop draining when nothing progresses.
 async fn sweep_once(state: &CloudState, cfg: &CompressionConfig) -> anyhow::Result<(usize, usize)> {
@@ -184,7 +184,7 @@ async fn sweep_once(state: &CloudState, cfg: &CompressionConfig) -> anyhow::Resu
                     // Terminal, and deliberately *without* un-claiming. A row
                     // giving up while still `encoding='zstd', stored_bytes
                     // NULL` keeps being served through the decompressing
-                    // proxy, which costs egress the presigned path wouldn't —
+                    // proxy, which costs egress the presigned path wouldn't,
                     // but resetting it to NULL is not the fix. That state is
                     // ambiguous: phase 4 may have already overwritten the
                     // object with zstd bytes and died before `finalize`, and
@@ -192,7 +192,7 @@ async fn sweep_once(state: &CloudState, cfg: &CompressionConfig) -> anyhow::Resu
                     // if they were the save. Cheap and correct beats cheaper
                     // and corrupt; the healing path reclaims it if it can.
                     //
-                    // The object stays readable either way — but a blob that
+                    // The object stays readable either way, but a blob that
                     // never round-trips to its own content hash is a blob
                     // whose stored bytes disagree with what the client
                     // uploaded, and every version referencing it restores
@@ -243,7 +243,7 @@ async fn compress_one(
     // The object is gone but the row survived (refcount desync from a past
     // incident). Terminal 'missing' state: retrying can't conjure the bytes
     // back, and leaving the row eligible is what once melted the drain loop
-    // into a HEAD-per-retry hot loop. Loud on purpose — every referencing
+    // into a HEAD-per-retry hot loop. Loud on purpose: every referencing
     // version is unrestorable and someone should look at why.
     let Some(head) = state.r2.head(key).await? else {
         sqlx::query(
@@ -266,13 +266,13 @@ async fn compress_one(
 
     // Retry healing: an object whose size differs from the raw size means a
     // previous attempt already landed the overwrite. Verify it by content
-    // (never re-compress blind — that would double-compress) and finalize.
+    // (never re-compress blind, which would double-compress) and finalize.
     if head != raw_size {
         if decompressed_sha_matches(state, key, sha).await? {
             let _ = state.r2.delete_object(&tmp_key).await;
             return finalize(state, user_id, sha, key, &tmp_key, head, raw_size).await;
         }
-        // Final object doesn't verify — the tmp (kept until after a good
+        // Final object doesn't verify. The tmp (kept until after a good
         // final verify) is the recovery source.
         anyhow::ensure!(
             decompressed_sha_matches(state, &tmp_key, sha).await?,
@@ -296,7 +296,7 @@ async fn compress_one(
 
     // Not worth it? Plenty of game saves are already-compressed formats and
     // zstd only adds frame overhead. Keep the raw object, drop the tmp and
-    // mark the row `encoding = 'raw'` — a terminal "evaluated, leave alone"
+    // mark the row `encoding = 'raw'`, a terminal "evaluated, leave alone"
     // state the sweep never re-picks and every reader treats as raw (the
     // proxy and manifest only special-case 'zstd').
     if stored as f64 >= raw_size as f64 * 0.98 {
@@ -327,7 +327,7 @@ async fn compress_one(
         let _ = state.r2.delete_object(&tmp_key).await;
         // Un-claim so the manifest goes back to the direct presigned path;
         // the raw object is untouched. Ending up here repeatedly points at
-        // a corrupt source object — loud on purpose.
+        // a corrupt source object. Loud on purpose.
         sqlx::query(
             "UPDATE cloud_blobs SET encoding = NULL
               WHERE user_id = $1 AND sha256 = $2 AND stored_bytes IS NULL",
@@ -358,7 +358,7 @@ async fn compress_one(
 
 /// Record `stored_bytes`, closing the two-phase dance. If the row vanished
 /// mid-flight (purge won a race after our claim), the freshly-written
-/// objects are orphans nobody references — delete them.
+/// objects are orphans nobody references, so delete them.
 async fn finalize(
     state: &CloudState,
     user_id: Uuid,

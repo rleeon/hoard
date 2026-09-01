@@ -1,16 +1,16 @@
-//! `hoard-server upgrade` — pulls the latest release binary from GitHub and
+//! `hoard-server upgrade`: pulls the latest release binary from GitHub and
 //! swaps it into place.
 //!
 //! Design notes
 //! ------------
 //! - This runs entirely outside the Axum/DB world. No config loading, no
-//!   database connection — just an HTTP call to GitHub plus a file swap. That
+//!   database connection, just an HTTP call to GitHub plus a file swap. That
 //!   lets the user run `hoard-server upgrade` even when the service is broken.
 //! - We do NOT restart the systemd service ourselves. Distro packaging differs
 //!   (some users run it under systemd, others bare-metal); printing a one-line
 //!   "now run `sudo systemctl restart hoard-server`" is portable.
 //! - We do NOT touch the config file or DB. The binary swap is the entirety
-//!   of the upgrade — schema migrations happen on next boot via
+//!   of the upgrade; schema migrations happen on next boot via
 //!   `db::run_migrations`.
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -71,7 +71,7 @@ pub async fn run(target: Option<PathBuf>) -> Result<()> {
     //    `HOARD_UPGRADE_ALLOW_CONTAINER=1`.
     if in_container() && std::env::var_os("HOARD_UPGRADE_ALLOW_CONTAINER").is_none() {
         println!(
-            "\nThis server is running in a container — `hoard-server upgrade` doesn't apply here.\n\
+            "\nThis server is running in a container, so `hoard-server upgrade` doesn't apply.\n\
              The binary swap wouldn't survive a container recreate. Update the image instead:\n\n\
              \x20 docker compose pull   # or: docker compose build --pull\n\
              \x20 docker compose up -d\n\n\
@@ -152,7 +152,7 @@ pub async fn run(target: Option<PathBuf>) -> Result<()> {
     //     signature asset is `<asset>.minisig` in the same release. This is
     //     the gate that makes `upgrade` safe to run as root: an attacker who
     //     re-uploads a malicious tarball can't forge a signature for the
-    //     embedded public key. Fails closed — no signature, no upgrade.
+    //     embedded public key. Fails closed: no signature, no upgrade.
     println!("  verifying      : minisign signature");
     verify_release_signature(&client, &release.assets, &asset.name, &bytes)
         .await
@@ -166,7 +166,7 @@ pub async fn run(target: Option<PathBuf>) -> Result<()> {
     // 5. Mark executable and swap into place via rename (atomic on the same
     //    FS). Processes currently exec'ing the old binary keep their old
     //    inode on Linux; the next start picks up the new file. The chmod
-    //    is a unix-only concern — on Windows the binary is .exe and the
+    //    is a unix-only concern: on Windows the binary is .exe and the
     //    NTFS permission bits aren't expressed this way. We keep the
     //    server compiling on Windows so the CI matrix passes; the actual
     //    `upgrade` command is still gated to linux-x86_64 by the asset

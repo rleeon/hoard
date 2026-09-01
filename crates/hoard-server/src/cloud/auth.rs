@@ -37,7 +37,7 @@ pub struct CloudUser {
 }
 
 /// In-memory JWKS cache. Concurrent reads via `RwLock` (overwhelmingly the
-/// hot path — every authenticated request hits this).
+/// hot path, since every authenticated request hits this).
 pub struct JwksCache {
     inner: RwLock<JwkSet>,
     audience: String,
@@ -69,7 +69,7 @@ impl JwksCache {
 
     /// Spawn the background refresh task. The cache lifetime equals the
     /// server lifetime; if the refresh fails, we log and keep the previous
-    /// JWKS rather than panicking — a stale-but-valid keyset is far better
+    /// JWKS rather than panicking: a stale-but-valid keyset is far better
     /// than dropping every authenticated request.
     pub fn spawn_refresh(self: Arc<Self>, interval: Duration) {
         tokio::spawn(async move {
@@ -238,11 +238,11 @@ fn extract_bearer(req: &Request) -> Option<String> {
 /// can read the `CloudUser` it inserted): freeze accounts that are scheduled for
 /// deletion.
 ///
-/// Soft-delete used to be invisible — `require_cloud_auth` never looked at
+/// Soft-delete used to be invisible: `require_cloud_auth` never looked at
 /// `deleted_at`, so a "deleted" account kept reading and writing exactly like a
 /// plain logout (all data + devices still live), and nothing ever purged it.
 /// This gate makes the 30-day grace real: the account's data stays put but is
-/// frozen — every data route 403s with a machine-readable code — until either
+/// frozen, with every data route 403ing with a machine-readable code, until either
 /// the user reactivates (see `POST /v1/me/reactivate`) or the purge cron
 /// hard-deletes it. `GET/DELETE /v1/me` and `/v1/me/reactivate` are deliberately
 /// mounted on the auth-only router so a frozen user can still see the countdown

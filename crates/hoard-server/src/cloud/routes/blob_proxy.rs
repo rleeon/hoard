@@ -1,12 +1,12 @@
-//! `/v1/cloud/blob/:token` — decompressing download proxy for blobs the
+//! `/v1/cloud/blob/:token`: decompressing download proxy for blobs the
 //! compression sweep rewrote as zstd (`cloud::compress`).
 //!
 //! Clients treat download URLs as opaque: `version_manifest` hands them a
 //! URL and they GET it with no auth header (presigned-style). For raw blobs
 //! that URL is a presigned R2 GET as always; for compressed blobs it points
 //! here instead, with an HMAC token standing in for the presigned
-//! signature. The response body is the RAW bytes — decompressed on the fly,
-//! streamed with bounded memory — so the client's per-file SHA-256 check
+//! signature. The response body is the RAW bytes, decompressed on the fly and
+//! streamed with bounded memory, so the client's per-file SHA-256 check
 //! passes exactly as if R2 had served the object directly. No client code
 //! knows compression exists.
 //!

@@ -2,7 +2,7 @@
 //!
 //! Two incidents, one shape. In both a client asks for something that will
 //! never change, gets a perfectly successful answer, learns nothing from it,
-//! and asks again — and nothing on either side counts how many times that has
+//! and asks again, and nothing on either side counts how many times that has
 //! happened.
 //!
 //! **The restore loop.** A user's Windows client pulled the same 2.83 MB
@@ -11,13 +11,13 @@
 //! leaves the folder empty, and an empty folder is what triggers the restore),
 //! and it is fixed there. But it was found by chance while sweeping Fly logs
 //! eight days in, and the only way to stop it that afternoon was an `UPDATE
-//! saves SET backup_only = true` typed by hand against production — which hid
+//! saves SET backup_only = true` typed by hand against production, which hid
 //! that person's only cloud copy from their only machine, and which somebody
 //! then has to remember to undo. The same shape shows up at gigabyte scale:
 //! 111 pulls of one 1,57 GB version in a fortnight, 170 GB.
 //!
 //! **The full-account loop.** When an account is over quota the upload is
-//! refused at init with a 402, before any bytes move — cheap, correct, and
+//! refused at init with a 402, before any bytes move: cheap, correct, and
 //! completely ignored by the client, which tries the next save, and the next,
 //! and comes back a minute later. One account collected 342 refusals in three
 //! hours; another 148 in a day. The client-side fix (park the whole account for
@@ -38,7 +38,7 @@
 //!
 //! ## Why pacing and not refusing
 //!
-//! Re-restoring the same version is a legitimate thing to do — testing a save,
+//! Re-restoring the same version is a legitimate thing to do: testing a save,
 //! hopping between machines, undoing a bad session. So the download brake never
 //! says no, it says *later*, with the gap widening as the count climbs. A
 //! person restoring by hand crosses the first threshold about never; a loop
@@ -78,7 +78,7 @@ const QUOTA_BLOCKS_FREE_PER_HOUR: i64 = 5;
 
 /// How long a paced account is told to wait.
 ///
-/// One hour, flat, matching the client-side park that shipped after v1.1.2 — if
+/// One hour, flat, matching the client-side park that shipped after v1.1.2. If
 /// both ends are running the same number, an updated client and an old one
 /// behave the same. Deliberately *not* escalating: the account stops being full
 /// the moment somebody deletes a save or upgrades, and a six-hour wait would
@@ -106,7 +106,7 @@ pub struct Pace {
 ///
 /// The first band is the gentle one on purpose. Replaying 60 days of
 /// `sync_log` through these numbers, 179 (user, save, version, day) groups
-/// would have been paced across 11 accounts — but 19 of those groups, from two
+/// would have been paced across 11 accounts, but 19 of those groups, from two
 /// accounts, carry 9.105 of the 11.393 paced downloads. That is the shape of
 /// the whole problem: a couple of runaway clients and a tail of people who
 /// genuinely restored the same version nine or ten times in an afternoon. The
@@ -127,8 +127,8 @@ pub fn download_gap_secs(seen_24h: i64) -> Option<i64> {
 ///
 /// `since_last_secs` is how long ago the last *served* download of this version
 /// was; `None` means there is no previous one (and then there is nothing to
-/// pace against). Refused attempts never reach this — they don't write a
-/// `download` row — so the gap is measured between bytes actually handed out,
+/// pace against). Refused attempts never reach this, since they write no
+/// `download` row, so the gap is measured between bytes actually handed out,
 /// not between attempts, and a hammering client can't push its own window
 /// forward by hammering.
 pub fn download_pace(seen_24h: i64, since_last_secs: Option<i64>) -> Option<Pace> {
@@ -220,7 +220,7 @@ pub struct PacedResponse<T: Serialize> {
     pub error: &'static str,
     pub code: &'static str,
     pub retry_after_seconds: i64,
-    /// What tripped the brake — the 24h download count, or the refusals seen
+    /// What tripped the brake: the 24h download count, or the refusals seen
     /// this hour. Named for a human reading a support ticket.
     pub repeated: i64,
     #[serde(flatten)]
@@ -300,7 +300,7 @@ mod tests {
         );
     }
 
-    /// Once the gap has passed, the download goes through — the brake paces,
+    /// Once the gap has passed, the download goes through: the brake paces,
     /// it never latches. A version nobody has pulled in a day is served on the
     /// first ask no matter how ugly its history.
     #[test]

@@ -8,7 +8,7 @@
 //! previous upload.
 //!
 //! The boundary detector is a gear-hash rolling hash (the core of FastCDC)
-//! implemented here rather than pulled from a crate — it's ~40 lines and avoids
+//! implemented here rather than pulled from a crate: it is about 40 lines and avoids
 //! a dependency on file-format-stable chunk boundaries we'd have to pin anyway.
 //! Boundaries depend only on the byte content within the rolling window, so two
 //! uploads that share a run of bytes produce identical chunks over that run.
@@ -23,7 +23,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
 /// chunk stores from ever holding the same content twice.
 pub const CHUNK_THRESHOLD: u64 = 128 * 1024 * 1024;
 
-/// Minimum chunk size — below this we never cut, so a degenerate input can't
+/// Minimum chunk size. Below this we never cut, so a degenerate input can't
 /// produce a flood of tiny chunks.
 const MIN_CHUNK: usize = 1 << 20; // 1 MiB
 /// Hard cap so a stretch with no natural boundary still terminates.
@@ -59,7 +59,7 @@ pub fn chunk_path(data_dir: &Path, user_id: &str, sha256: &str) -> PathBuf {
 }
 
 /// Gear table: 256 pseudo-random u64 built deterministically (splitmix64) at
-/// compile time, so the boundary function is fixed across builds — a chunk
+/// compile time, so the boundary function is fixed across builds: a chunk
 /// written by one server version dedups against the same content from another.
 const GEAR: [u64; 256] = build_gear();
 
@@ -82,7 +82,7 @@ const fn build_gear() -> [u64; 256] {
 /// Stream `src` through the gear-hash chunker, hashing each chunk's bytes, and
 /// return the ordered list of [`ChunkPlan`]s. Reads in fixed-size blocks; no
 /// more than `MAX_CHUNK` bytes of the file are buffered at once. Does not touch
-/// the DB or place anything on disk — that's the commit phase's job, so a quota
+/// the DB or place anything on disk, which is the commit phase's job, so a quota
 /// rejection costs only the read, not a rollback.
 pub async fn plan_chunks(src: &Path) -> std::io::Result<Vec<ChunkPlan>> {
     let mut file = tokio::fs::File::open(src).await?;

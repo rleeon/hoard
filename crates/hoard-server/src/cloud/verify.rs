@@ -1,28 +1,30 @@
-//! `hoard-server verify-blobs` — la pasada forense sobre los blobs de la nube.
+//! `hoard-server verify-blobs`: the forensic pass over the cloud's blobs.
 //!
-//! Un blob es content-addressed: su nombre **es** el sha256 de su contenido.
-//! Nada en el camino normal vuelve a comprobarlo. El commit hace un HEAD (que
-//! sólo dice el tamaño) y el barrido de compresión sí verifica lo que él mismo
-//! comprime, pero un objeto que se subió mal y nunca se comprimió no lo mira
-//! nadie: se descubre al restaurar, que es el peor momento posible.
+//! A blob is content-addressed: its name *is* the sha256 of its content. Nothing
+//! on the normal path ever checks that again. The commit does a HEAD (which only
+//! tells you the size) and the compression sweep does verify what it compresses
+//! itself, but an object that was uploaded wrong and never compressed is looked at
+//! by nobody: it gets discovered on restore, which is the worst possible moment.
 //!
-//! Y se subieron mal. Hasta ago-2026 el cliente hasheaba el fichero y lo subía
-//! en dos lecturas distintas; si el juego rotaba el save entre medias —`save` →
-//! `save.bak` y uno nuevo en su sitio, el patrón normal de autoguardado— el
-//! objeto acababa con bytes que no son los que su nombre promete. El cliente ya
-//! no puede producirlos (hashea el propio stream del PUT y aborta antes de
-//! confirmar la versión), pero los de entonces siguen ahí.
+//! And some were uploaded wrong. Until aug-2026 the client hashed the file and
+//! uploaded it in two separate reads; if the game rotated the save in between
+//! (`save` to `save.bak` with a new one in its place, the ordinary autosave
+//! pattern) the object ended up holding bytes that are not what its name promises.
+//! The client can no longer produce them (it hashes the PUT's own stream and
+//! aborts before confirming the version), but the ones from back then are still
+//! there.
 //!
-//! Esto los encuentra: lee cada objeto entero, lo descomprime si hace falta,
-//! hashea y compara. Escribe el veredicto en `cloud_blobs.integrity` para no
-//! releer lo ya sano en la siguiente vuelta, y nombra los saves afectados —
-//! usuario, juego, versión y fichero— porque lo que el operador necesita saber
-//! no es "el blob abc123 miente" sino "a esta persona no le va a restaurar bien
-//! tal partida".
+//! This finds them: it reads each object whole, decompresses if needed, hashes and
+//! compares. It writes the verdict into `cloud_blobs.integrity` so it does not
+//! re-read what is already healthy on the next pass, and it names the affected
+//! saves (user, game, version and file) because what the operator needs to know is
+//! not "blob abc123 is lying" but "this person's restore is going to come back
+//! wrong".
 //!
-//! Sólo lee y anota. **No borra nada**: un blob roto sigue siendo la única
-//! copia que hay de esa versión, y tirarlo cambiaría "restaura mal" por "no
-//! restaura". Qué hacer con ellos es una decisión de producto, no de barrido.
+//! It only reads and records. It deletes nothing: a broken blob is still the only
+//! copy of that version there is, and throwing it away would trade "restores
+//! wrong" for "does not restore". What to do with them is a product decision, not
+//! a sweep's.
 
 use anyhow::{Context, Result};
 use async_compression::tokio::bufread::ZstdDecoder;
@@ -33,16 +35,16 @@ use tokio::io::{AsyncBufRead, AsyncReadExt};
 
 use crate::config::Config;
 
-/// Qué se le pide a la pasada.
+/// What the pass is asked for.
 #[derive(Debug, Clone)]
 pub struct Options {
-    /// Cuántos blobs mirar como mucho. `None` = todos los que queden.
+    /// How many blobs to look at at most. `None` means all that are left.
     pub limit: Option<i64>,
-    /// Volver a mirar también los que ya tienen veredicto.
+    /// Look again at the ones that already have a verdict.
     pub recheck: bool,
     /// Lecturas simultáneas.
     pub concurrency: usize,
-    /// No escribir veredictos en la base: sólo informar.
+    /// Do not write verdicts to the database, only report.
     pub dry_run: bool,
 }
 
@@ -51,22 +53,22 @@ impl Default for Options {
         Self {
             limit: None,
             recheck: false,
-            // Cada lectura es una descarga entera desde R2: unas pocas a la vez
-            // saturan el enlace sin dejar la máquina sin aire para servir.
+            // Every read is a whole download from R2: a few at a time saturate
+            // the link without leaving the machine no air to serve with.
             concurrency: 4,
             dry_run: false,
         }
     }
 }
 
-/// El veredicto de un objeto.
+/// One object's verdict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
-    /// Los bytes hashean a su sha256.
+    /// The bytes hash to its sha256.
     Ok,
-    /// El objeto está, pero su contenido no es el que promete su nombre.
+    /// The object is there, but its content is not what its name promises.
     Mismatch,
-    /// No está en el bucket.
+    /// Not in the bucket.
     Missing,
 }
 
@@ -80,15 +82,15 @@ impl Verdict {
     }
 }
 
-/// Un blob que no pasó, con lo que hace falta para avisar a quien le importa.
+/// A blob that failed, with what is needed to warn whoever cares.
 #[derive(Debug, Clone)]
 pub struct Damage {
     pub user_id: uuid::Uuid,
     pub sha256: String,
     pub verdict: Verdict,
-    /// Qué se leyó en realidad (vacío si el objeto no estaba).
+    /// What was actually read (empty when the object was missing).
     pub actual_sha256: String,
-    /// `(game_slug, version_num, relative_path)` de cada sitio que lo usa.
+    /// `(game_slug, version_num, relative_path)` of every place that uses it.
     pub used_by: Vec<(String, i64, String)>,
 }
 
@@ -99,12 +101,12 @@ pub struct Report {
     pub damaged: Vec<Damage>,
 }
 
-/// Hash del contenido **lógico** del objeto: descomprime antes de hashear
-/// cuando el blob está guardado en zstd, porque el sha256 que promete el nombre
-/// es el de los bytes originales, no el de su empaquetado.
+/// Hash of the object's *logical* content: it decompresses before hashing when
+/// the blob is stored as zstd, because the sha256 its name promises is the one of
+/// the original bytes, not of their packaging.
 ///
-/// Streaming y con buffer fijo: hay blobs de cientos de MB y esto corre en una
-/// máquina de 512 MB.
+/// Streaming, with a fixed buffer: there are blobs of hundreds of MB and this
+/// runs on a 512 MB machine.
 pub async fn digest_of<R: AsyncBufRead + Unpin>(reader: R, zstd: bool) -> Result<(String, u64)> {
     let mut hasher = Sha256::new();
     let mut len = 0u64;
@@ -133,15 +135,15 @@ pub async fn digest_of<R: AsyncBufRead + Unpin>(reader: R, zstd: bool) -> Result
     Ok((hex::encode(hasher.finalize()), len))
 }
 
-/// Compara lo leído con lo prometido. Puro: el veredicto es la parte que
-/// merece un test, y no necesita ni bucket ni base.
+/// Compares what was read against what was promised. Pure: the verdict is the
+/// part worth a test, and it needs neither bucket nor database.
 pub fn judge(declared_sha: &str, declared_len: i64, actual: Option<(&str, u64)>) -> Verdict {
     match actual {
         None => Verdict::Missing,
         Some((sha, len)) => {
-            // El tamaño también manda: `size_bytes` es lo que se le cobra al
-            // usuario y lo que la restauración espera. Un objeto que hashea
-            // bien pero mide otra cosa es igual de inservible.
+            // Size counts too: `size_bytes` is what the user is charged and what
+            // the restore expects. An object that hashes right but measures
+            // something else is just as useless.
             if sha == declared_sha && len == declared_len.max(0) as u64 {
                 Verdict::Ok
             } else {
@@ -151,7 +153,7 @@ pub fn judge(declared_sha: &str, declared_len: i64, actual: Option<(&str, u64)>)
     }
 }
 
-/// Corre la pasada. Devuelve el informe; imprimirlo es cosa del llamante.
+/// Runs the pass. Returns the report; printing it is the caller's business.
 pub async fn run(cfg: &Config, opts: Options) -> Result<Report> {
     let cloud_cfg = cfg
         .cloud
@@ -186,15 +188,15 @@ pub async fn run(cfg: &Config, opts: Options) -> Result<Report> {
             let key: String = row.get("r2_key");
             let encoding: Option<String> = row.get("encoding");
             let stored: Option<i64> = row.get("stored_bytes");
-            // Sólo hay que descomprimir cuando el barrido TERMINÓ de escribir
-            // la versión comprimida; `encoding='zstd'` con `stored_bytes` a
-            // NULL es una reclamación en curso y el objeto sigue crudo.
+            // Decompression is only needed when the sweep *finished* writing the
+            // compressed version; `encoding='zstd'` with a NULL `stored_bytes` is
+            // a claim in progress and the object is still raw.
             let zstd = encoding.as_deref() == Some("zstd") && stored.is_some();
 
             let actual = match r2.get_reader(&key).await {
                 Ok(reader) => Some(digest_of(reader, zstd).await?),
-                // Cualquier fallo de lectura se trata como "no está": si el
-                // objeto no se puede bajar, restaurar tampoco va a poder.
+                // Any read failure is treated as "not there": if the object
+                // cannot be downloaded, a restore will not manage either.
                 Err(e) => {
                     tracing::debug!(error = %e, key = %key, "verify-blobs: unreadable object");
                     None
@@ -237,8 +239,8 @@ pub async fn run(cfg: &Config, opts: Options) -> Result<Report> {
             report.ok += 1;
             continue;
         }
-        // Quién lo sufre. Un blob puede estar referenciado por varias versiones
-        // (dedup), y el operador necesita la lista entera para avisar.
+        // Who suffers it. A blob can be referenced by several versions (dedup),
+        // and the operator needs the whole list to warn people.
         let used_by: Vec<(String, i64, String)> = sqlx::query(
             "SELECT s.game_slug, f.version_num, f.relative_path
                FROM save_version_files f
@@ -279,7 +281,7 @@ pub async fn run(cfg: &Config, opts: Options) -> Result<Report> {
     Ok(report)
 }
 
-/// Informe legible para la consola de `fly ssh console -C …`.
+/// A readable report for the `fly ssh console -C ...` console.
 pub fn print_report(report: &Report, dry_run: bool) {
     println!(
         "verify-blobs: {} checked, {} ok, {} damaged{}",
@@ -325,9 +327,9 @@ mod tests {
         out
     }
 
-    /// El hash es el del contenido lógico: un blob comprimido tiene que dar el
-    /// mismo sha que el crudo, o la pasada declararía rotos a todos los
-    /// comprimidos sanos.
+    /// The hash is of the logical content: a compressed blob has to give the same
+    /// sha as the raw one, or the pass would declare every healthy compressed
+    /// blob broken.
     #[tokio::test]
     async fn the_digest_is_of_the_content_not_of_its_packaging() {
         let content = b"partida de ayer, con sus cosas dentro".repeat(500);
@@ -347,18 +349,19 @@ mod tests {
         assert_eq!(zstd_len, content.len() as u64);
     }
 
-    /// El veredicto, que es lo que decide si se avisa a un usuario.
+    /// The verdict, which is what decides whether a user gets warned.
     #[test]
     fn the_verdict_needs_both_the_hash_and_the_size() {
         let sha = "a".repeat(64);
         assert_eq!(judge(&sha, 10, Some((&sha, 10))), Verdict::Ok);
         assert_eq!(judge(&sha, 10, None), Verdict::Missing);
-        // La rotación de ago-2026: otro contenido, mismo tamaño.
+        // The aug-2026 rotation: different content, same size.
         assert_eq!(
             judge(&sha, 10, Some((&"b".repeat(64), 10))),
             Verdict::Mismatch
         );
-        // Y un objeto que hashea bien pero mide otra cosa tampoco vale.
+        // And an object that hashes right but measures something else is no good
+        // either.
         assert_eq!(judge(&sha, 10, Some((&sha, 9))), Verdict::Mismatch);
     }
 }

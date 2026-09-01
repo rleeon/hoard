@@ -5,15 +5,15 @@
 //! calls [`require_feature`] and gets a `402` unless the caller is on paid Pro
 //! or inside an active one-week trial. Value is anchored server-side (wrapple
 //! generated here, screen assets served from R2) so a patched OSS client can't
-//! fake entitlement — it can show the locked UI but never produce the content.
+//! fake entitlement: it can show the locked UI but never produce the content.
 //!
 //! Two entry points:
-//! - [`require_feature`] — mutating; used by content endpoints and by
+//! - [`require_feature`]: mutating; used by content endpoints and by
 //!   `POST /v1/cloud/features/:feature/activate` (the client calls it the
-//!   first time the user *opens* the feature's page — the trial clock starts
+//!   first time the user *opens* the feature's page, so the trial clock starts
 //!   at first view, not at signup). Idempotent; also acts as a backstop so a
 //!   content endpoint can never be consumed without a running window.
-//! - [`feature_state`] — read-only; used by `GET /v1/cloud/entitlements` to
+//! - [`feature_state`]: read-only; used by `GET /v1/cloud/entitlements` to
 //!   paint the UI badge/lock/countdown. Never starts a trial.
 
 use crate::cloud::errors::CloudError;
@@ -55,7 +55,7 @@ impl Feature {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum FeatureState {
-    /// Paid Pro — full access, no expiry.
+    /// Paid Pro: full access, no expiry.
     Entitled,
     /// Free account that hasn't used the feature yet; the trial will start on
     /// first use. `days` is the full trial length.
@@ -94,7 +94,7 @@ pub async fn require_feature(
     feature: Feature,
 ) -> Result<(), CloudError> {
     // Wrapple (hoard-wrapple) is free for everyone, in every app and on every
-    // plan — the server never gates it. Only Screen is a paid/trial feature.
+    // plan, and the server never gates it. Only Screen is a paid/trial feature.
     if feature == Feature::Wrapple || plan == Plan::Pro {
         return Ok(());
     }

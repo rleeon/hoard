@@ -15,17 +15,17 @@ use crate::routes::repair_username;
 /// `storage_used_bytes` and `storage_quota_bytes` are read directly from
 /// the `users` table (kept in sync by the snapshot upload/delete paths,
 /// see `routes::snapshots`). The desktop app uses these for the quota
-/// progress bar — see Phase 5 of the v0.3 build plan.
+/// progress bar; see Phase 5 of the v0.3 build plan.
 pub async fn whoami(
     Extension(user): Extension<AuthUser>,
     State(state): State<Arc<ServerState>>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Whoami>, StatusCode> {
     let user_id = user.user_id.to_string();
-    // El cliente llama aquí al iniciar sesión y al arrancar, así que es el sitio
-    // natural para dar de alta la máquina en el censo (`routes::devices`) — el
-    // mismo papel que `/v1/me` en cloud. Best-effort: que el censo falle no
-    // puede tumbar la identidad del usuario, que es de lo que va esta ruta.
+    // The client calls here on sign-in and on startup, which makes it the
+    // natural place to register the machine in the census (`routes::devices`),
+    // the same role `/v1/me` plays on cloud. Best-effort: a failing census must
+    // not take down the user's identity, which is what this route is about.
     if let Err(e) = crate::routes::devices::register(&state.pool, &user_id, &headers).await {
         tracing::warn!(error = %e, "devices: register on whoami failed");
     }
@@ -47,7 +47,7 @@ pub async fn whoami(
         user_id,
         // The `users` row is persisted state, so it goes through the lenient
         // gate: a legacy username the strict `parse` would reject must not
-        // 500 `whoami` — that would lock the account out of the app entirely
+        // 500 `whoami`, which would lock the account out of the app entirely
         // (ADR 0021 C.3).
         username: repair_username(&user.username),
         is_admin: user.is_admin,
@@ -61,7 +61,7 @@ pub async fn whoami(
     }))
 }
 
-/// `PUT /v1/me/max-versions` — set (or clear, with `null`) the per-user cap
+/// `PUT /v1/me/max-versions`: set, or clear with `null`, the per-user cap
 /// on stored versions per save, then immediately trash any snapshot already
 /// over it so the effect is visible without waiting for the next backup.
 /// With `dry_run: true` it only previews the prune count.
@@ -108,7 +108,7 @@ pub async fn set_max_versions(
         }));
     }
 
-    // Columna elegida por el flag, no interpolada dentro del SQL.
+    // The column is picked by the flag, not interpolated into the SQL.
     let sql = if body.manual {
         "UPDATE users SET max_manual_versions = ? WHERE id = ?"
     } else {

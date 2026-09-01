@@ -2,20 +2,20 @@
 //!
 //! Every Free / Pro account gets a 15-minute rolling quota (500 MB / 1 GB
 //! respectively). We can't observe the bytes on-the-wire because the
-//! payload goes directly to R2 via presigned URLs — so the design is:
+//! payload goes directly to R2 via presigned URLs, so the design is:
 //!
 //! 1. Before minting a presigned URL, check the SUM of `bytes_used` over
 //!    the last `bandwidth_window_secs`. If it would exceed the quota,
 //!    return a structured 429 with `retry_after_seconds` derived from the
 //!    oldest bucket about to fall off the window.
-//! 2. After the upload commits (or the download presign mints — we credit
+//! 2. After the upload commits (or the download presign mints, since we credit
 //!    optimistically since the URL has a TTL and the client *almost
 //!    always* uses it), record the bytes against the current minute
 //!    bucket. UPSERT on `(user_id, bucket_start)`.
 //! 3. A periodic cron deletes rows older than 1 hour so the table stays
 //!    O(users * 60).
 //!
-//! Bucket granularity is a minute — coarse enough to keep the row count
+//! Bucket granularity is a minute: coarse enough to keep the row count
 //! down, fine enough that retry_after is meaningful. The window query
 //! sums at most ~15 rows per user.
 
@@ -48,7 +48,7 @@ impl IntoResponse for BandwidthLimitResponse {
     fn into_response(self) -> Response {
         let retry = self.retry_after_seconds;
         let mut resp = (StatusCode::TOO_MANY_REQUESTS, Json(self)).into_response();
-        // RFC 6585 — clients should honour Retry-After. axum's typed header
+        // RFC 6585: clients should honour Retry-After. axum's typed header
         // helpers want a Duration; raw header is simpler here.
         if let Ok(v) = retry.to_string().parse() {
             resp.headers_mut().insert("Retry-After", v);
@@ -86,7 +86,7 @@ pub async fn used_in_window(
 }
 
 /// Record `bytes` against the current minute bucket. Idempotent for the
-/// (user_id, bucket_start) row — concurrent calls just add into the
+/// (user_id, bucket_start) row, so concurrent calls just add into the
 /// running counter atomically.
 pub async fn record(pool: &PgPool, user_id: Uuid, bytes: u64) -> Result<(), sqlx::Error> {
     let bucket = floor_to_minute(OffsetDateTime::now_utc());
@@ -142,8 +142,8 @@ pub async fn check(
     requested: u64,
     limits: &PlanLimits,
 ) -> Result<u64, Response> {
-    // A request that transfers nothing — a fully-deduped `cas_init` where the
-    // server is missing zero blobs — must never 429. Blocking a 0-byte op
+    // A request that transfers nothing, a fully-deduped `cas_init` where the
+    // server is missing zero blobs, must never 429. Blocking a 0-byte op
     // costs the user a red "falló" in the feed for no bandwidth at all (the
     // `r-e-p-o` case). Short-circuit before we even touch the DB.
     if requested == 0 {
@@ -155,7 +155,7 @@ pub async fn check(
             warn!(error = %e, "bandwidth: window query failed");
             // Fail closed: if we can't read the rolling window we can't enforce
             // the quota, so refuse the transfer rather than grant unmetered
-            // bandwidth (the previous `Ok(0)` did). A DB hiccup is transient —
+            // bandwidth (the previous `Ok(0)` did). A DB hiccup is transient,
             // tell the client to retry shortly.
             return Err(unavailable_response());
         }
@@ -200,7 +200,7 @@ fn unavailable_response() -> Response {
     resp
 }
 
-/// Delete rows older than 1h. Keeps the table bounded — at 60 rows/user/h
+/// Delete rows older than 1h. Keeps the table bounded: at 60 rows/user/h
 /// peak this is enough headroom for any window we'll ever set. Called by
 /// the cleanup task spawned in `run.rs`.
 pub async fn cleanup_old(pool: &PgPool) -> Result<u64, sqlx::Error> {

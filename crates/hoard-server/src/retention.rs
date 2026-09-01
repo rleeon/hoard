@@ -1,4 +1,4 @@
-//! Snapshot retention policy — age-weighted (GFS) pruning.
+//! Snapshot retention policy: age-weighted (GFS) pruning.
 //!
 //! Implements eje B of [ADR 0018](../../docs/decisions/0018-storage-efficiency-dedup-retention.md):
 //! instead of keeping every snapshot forever, thin them so recent history
@@ -8,7 +8,7 @@
 //! The decision logic ([`plan_prune`]) is a pure function over snapshot
 //! metadata so it's exhaustively testable; the actual soft-delete (move to
 //! `trash/`, decrement quota) happens in `cleanup.rs` and reuses the
-//! existing snapshot deletion path. Nothing is hard-deleted here — pruned
+//! existing snapshot deletion path. Nothing is hard-deleted here: pruned
 //! snapshots go to the trash and are purged later by `trash_retention_days`.
 
 /// Per-snapshot metadata needed to decide retention. Storefront/path details
@@ -51,7 +51,7 @@ impl RetentionPolicy {
     /// Map the user-facing `data_saving` knob `k ∈ [0,1]` onto concrete
     /// keep-counts (ADR 0018, Decisión 4). `k=0` ≈ keep a lot (close to the
     /// pre-0018 "keep everything" feel); `k=1` ≈ keep only the essentials.
-    /// `byte_cap` stays `None` here — it's opt-in via config/plan.
+    /// `byte_cap` stays `None` here; it is opt-in via config or plan.
     pub fn from_data_saving(k: f64) -> Self {
         let k = k.clamp(0.0, 1.0);
         let r = |a: f64, b: f64| lerp(k, a, b).round().max(1.0) as usize;
@@ -66,7 +66,7 @@ impl RetentionPolicy {
 }
 
 impl Default for RetentionPolicy {
-    /// Default knob position is `k = 0.3` — a little saving out of the box,
+    /// Default knob position is `k = 0.3`, a little saving out of the box,
     /// because "keep everything" surprises users badly (the OpenTTD case
     /// that motivated ADR 0018).
     fn default() -> Self {
@@ -79,7 +79,7 @@ impl Default for RetentionPolicy {
 /// Borg-style grandfather-father-son: a snapshot is kept if it's among the
 /// `keep_recent` newest, or it's the newest snapshot within one of the most
 /// recent `keep_hourly` hours / `keep_daily` days / `keep_weekly` weeks.
-/// Everything else is returned for pruning — **except**:
+/// Everything else is returned for pruning, **except**:
 ///
 /// - Pinned snapshots are never pruned.
 /// - The single newest snapshot is never pruned (belt-and-suspenders; with

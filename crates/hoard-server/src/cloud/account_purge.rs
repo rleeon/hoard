@@ -4,11 +4,11 @@
 //! (see `auth::require_active_account`). Nothing used to finish the job: the
 //! "30-day purge" the delete response promised didn't exist, so a deleted
 //! account sat frozen forever, its data never freed. This task closes that
-//! loop — once a day it hard-deletes every account whose grace window has
+//! loop: once a day it hard-deletes every account whose grace window has
 //! passed:
 //!
 //! 1. Delete the account's R2 objects (deduped blobs, legacy archives, export
-//!    ZIPs) — the DB cascade below can't reach object storage.
+//!    ZIPs), because the DB cascade below can't reach object storage.
 //! 2. `DELETE FROM profiles`, which cascades through the whole cloud schema
 //!    (saves → versions → files, devices, subscriptions, sync_log, playtime,
 //!    export_jobs, cloud_blobs) and NULLs the `audit_log` rows.
@@ -16,7 +16,7 @@
 //! The Supabase `auth.users` row is intentionally left: purging it needs the
 //! admin API (service-role key) we don't wire here, and leaving it just means a
 //! user who signs in again after the purge starts fresh with a new, empty
-//! account — the intended outcome of a completed deletion.
+//! account, which is the intended outcome of a completed deletion.
 
 use crate::cloud::routes::me::GRACE_DAYS;
 use crate::cloud::state::CloudState;
@@ -72,7 +72,7 @@ pub async fn purge_due(state: &CloudState) -> Result<usize, sqlx::Error> {
 
 /// Delete one account's R2 objects then its DB rows (cascade). Best-effort on
 /// R2: an object that fails to delete is logged and skipped rather than
-/// blocking the DB purge — a leaked blob is a storage-cost nuisance, but a
+/// blocking the DB purge: a leaked blob is a storage-cost nuisance, but a
 /// half-purged account that keeps its DB rows is a correctness bug.
 async fn purge_account(state: &CloudState, user_id: Uuid) -> Result<(), sqlx::Error> {
     for key in r2_keys_for(&state.pool, user_id).await? {

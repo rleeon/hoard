@@ -8,7 +8,7 @@
 //! A session is not a new kind of credential. Login mints an ordinary
 //! `api_tokens` row (short-lived, `device_name = 'web panel'`) and hands it to
 //! the browser in an httpOnly cookie, so it expires, revokes and lists through
-//! the machinery that already exists — `hoard-admin token list <user>` shows a
+//! the machinery that already exists: `hoard-admin token list <user>` shows a
 //! browser session next to the desktop's token, and revoking it logs the
 //! browser out. See [`crate::auth::SESSION_COOKIE`] for why `SameSite=Strict`
 //! is load-bearing.
@@ -40,8 +40,8 @@ const MIN_PASSWORD_LEN: usize = 8;
 const MAX_FAILURES: u32 = 5;
 /// The same, counted per origin across every account it tries. Without it the
 /// per-account limit above is bypassed by rotating the username, and each
-/// attempt still costs a full argon2id verify — 19 MiB and tens of
-/// milliseconds — which turns the password hash into a lever against the box
+/// attempt still costs a full argon2id verify, 19 MiB and tens of milliseconds,
+/// which turns the password hash into a lever against the box
 /// instead of a wall in front of it. Higher than the per-account number so a
 /// household behind one NAT address doesn't lock itself out by fumbling two
 /// different passwords.
@@ -67,7 +67,7 @@ pub struct PasswordBody {
     pub new_password: String,
 }
 
-/// Machine-readable failure. The panel maps the code to a translated string —
+/// Machine-readable failure. The panel maps the code to a translated string,
 /// the server has no business guessing the reader's language, and these codes
 /// are also what a script would branch on.
 fn fail(status: StatusCode, code: &str) -> (StatusCode, Json<serde_json::Value>) {
@@ -76,7 +76,7 @@ fn fail(status: StatusCode, code: &str) -> (StatusCode, Json<serde_json::Value>)
 
 type ApiError = (StatusCode, Json<serde_json::Value>);
 
-/// `POST /v1/auth/login` — exchange username + password for a session cookie.
+/// `POST /v1/auth/login`: exchange username and password for a session cookie.
 pub async fn login(
     State(state): State<Arc<ServerState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -135,7 +135,7 @@ pub async fn login(
 
     let ok = hoard_core::hashing::verify_password(&body.password, &hash).unwrap_or_else(|e| {
         // A hash the verifier can't parse is a row written by something that
-        // isn't `hash_password` — hand-edited, or restored from a backup of a
+        // isn't `hash_password`: hand-edited, or restored from a backup of a
         // different scheme. Treat it as a failed login, not a 500: the account
         // needs `hoard-admin user passwd`, and saying so in the log is the only
         // way the operator finds out.
@@ -172,7 +172,7 @@ pub async fn login(
         .into_response())
 }
 
-/// `POST /v1/auth/session` — trade a working `hoard_v1_…` token for a session.
+/// `POST /v1/auth/session`: trade a working `hoard_v1_…` token for a session.
 ///
 /// The second way into the panel, and the one that saves an account whose
 /// password nobody remembers: paste the token the CLI already uses. It runs
@@ -186,7 +186,7 @@ pub async fn login(
 /// never-expiring browser credential.
 ///
 /// It also means the panel never has to hold a token in `localStorage`, where
-/// any script on the page could read it — the paste goes straight out in one
+/// any script on the page could read it: the paste goes straight out in one
 /// request and what comes back is httpOnly.
 pub async fn exchange_token(
     State(state): State<Arc<ServerState>>,
@@ -213,7 +213,7 @@ pub async fn exchange_token(
         .into_response())
 }
 
-/// `POST /v1/auth/logout` — revoke the session this request arrived with.
+/// `POST /v1/auth/logout`: revoke the session this request arrived with.
 ///
 /// Deliberately narrow: it revokes the one token in the cookie, never the
 /// user's other tokens. Logging out of a browser must not stop the desktop
@@ -243,7 +243,7 @@ pub async fn logout(
     Ok((StatusCode::NO_CONTENT, [(header::SET_COOKIE, cleared)]).into_response())
 }
 
-/// `POST /v1/auth/password` — change your own password.
+/// `POST /v1/auth/password`: change your own password.
 ///
 /// Every *other* browser session is revoked on success, which is the point of
 /// changing a password you think leaked. API tokens survive on purpose: they
@@ -305,7 +305,7 @@ pub async fn change_password(
 
 /// What a browser session is called in `api_tokens.device_name`. The panel and
 /// the admin views filter on this exact string to tell a browser apart from a
-/// device, so it is a value, not a label — changing it orphans existing rows.
+/// device, so it is a value, not a label: changing it orphans existing rows.
 pub const SESSION_DEVICE_NAME: &str = "web panel";
 
 async fn mint_session(
@@ -336,7 +336,7 @@ async fn mint_session(
 
 /// Exact match first; a case-insensitive match only counts when it is the only
 /// one. `users.username` is UNIQUE but case-sensitively so, meaning `Ana` and
-/// `ana` can both exist — rare, but if they do, "whichever `COLLATE NOCASE`
+/// `ana` can both exist. Rare, but if they do, "whichever `COLLATE NOCASE`
 /// returns first" would be a coin flip deciding whose account you enter.
 async fn lookup_user(
     pool: &sqlx::SqlitePool,
@@ -378,7 +378,7 @@ fn session_cookie(token: &str, ttl_secs: i64, secure: bool) -> String {
 /// `Secure` is set only when the request actually arrived over TLS. A LAN
 /// instance on plain `http://192.168.1.x:12421` is the common self-hosted
 /// shape, and a `Secure` cookie there is one the browser accepts and never
-/// sends back — a login that silently does nothing.
+/// sends back: a login that silently does nothing.
 fn is_secure(headers: &HeaderMap) -> bool {
     headers
         .get("x-forwarded-proto")
@@ -428,12 +428,12 @@ struct Failures {
 /// How many (origin, account) counters the table holds before it starts
 /// evicting. Each origin can only put `MAX_FAILURES_PER_ORIGIN + 1` keys in it
 /// before its own budget runs out, so this is roughly "fifty attackers at
-/// once" — small enough to stay a rounding error in memory.
+/// once", small enough to stay a rounding error in memory.
 const MAX_TRACKED_KEYS: usize = 1024;
 
 /// Keyed on (origin bucket, username) rather than username alone: keying on the
 /// account would hand anyone a way to lock a user out by guessing badly on
-/// purpose. It is not meant to stop a distributed attacker — argon2id at 19 MiB
+/// purpose. It is not meant to stop a distributed attacker; argon2id at 19 MiB
 /// is the wall there. What it stops is that same wall being used as a CPU lever
 /// against the server, which is the cheaper attack.
 ///
@@ -447,7 +447,7 @@ fn throttle() -> &'static Mutex<HashMap<String, Failures>> {
 }
 
 /// `None` when this key still has budget; otherwise how long the door stays
-/// shut. There is no "window of zero" case to handle — [`PanelConfig::login_throttle`]
+/// shut. There is no "window of zero" case to handle, because [`PanelConfig::login_throttle`]
 /// clamps to [`crate::config::MIN_LOGIN_THROTTLE_SECS`], and the callers go
 /// through it.
 ///
@@ -466,7 +466,7 @@ fn throttled_for(key: &str, limit: u32, window: Duration) -> Option<Duration> {
 }
 
 /// Count one wrong password against `key`. `limit` is stored with the counter
-/// so eviction can tell a door that is shut from one that is merely ajar — the
+/// so eviction can tell a door that is shut from one that is merely ajar. The
 /// two callers use different limits, and only the caller knows which.
 fn record_failure(key: &str, limit: u32, window: Duration) {
     let Ok(mut map) = throttle().lock() else {
@@ -489,8 +489,8 @@ fn record_failure(key: &str, limit: u32, window: Duration) {
 /// Keep the table bounded without handing an attacker a way to empty it.
 ///
 /// It used to `clear()` when pruning wasn't enough, which is a reset button:
-/// spend a few origins' budgets, overflow the table, and every counter in it —
-/// including the ones holding a door shut — went away. Now expired entries go
+/// spend a few origins' budgets, overflow the table, and every counter in it,
+/// the ones holding a door shut included, went away. Now expired entries go
 /// first, then the ones still under their limit (oldest first, since they are
 /// the closest to expiring anyway), and a counter that is actively refusing
 /// someone is the last thing dropped.
@@ -558,7 +558,7 @@ mod tests {
     }
 
     /// The floor is what the request path actually uses. Asking for no throttle
-    /// at all used to work — the handler read the raw field — and the boot log
+    /// at all used to work (the handler read the raw field) and the boot log
     /// said the minimum was in force while it wasn't.
     #[test]
     fn the_configured_window_never_goes_below_the_floor() {

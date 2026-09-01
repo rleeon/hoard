@@ -1,11 +1,11 @@
-//! Device-pairing endpoints — browserless CLI login.
+//! Device-pairing endpoints: browserless CLI login.
 //!
 //! Flow: the CLI (headless box, no browser) calls [`start`] and prints the
 //! returned `user_code` + URL. The user opens the URL on a phone already
 //! signed into Hoard Cloud and confirms the code, which hits [`approve`]; that
 //! mints a fresh session (see [`supabase_admin`]) and parks it on the pairing
 //! row. Meanwhile the CLI polls [`poll`] and, once approved, collects the
-//! tokens (single-use — the row is deleted on read).
+//! tokens (single-use: the row is deleted on read).
 //!
 //! `start`/`poll` are unauthenticated (the CLI has no session yet) and keyed by
 //! the secret `device_code`. `approve` requires the phone's Cloud JWT.
@@ -57,7 +57,7 @@ pub async fn start(
         .filter(|h| !h.is_empty());
     let device_code = random_hex();
 
-    // Retry on the (rare) user_code collision — the UNIQUE index rejects it.
+    // Retry on the (rare) user_code collision: the UNIQUE index rejects it.
     for _ in 0..6 {
         let user_code = gen_user_code();
         let res = sqlx::query(

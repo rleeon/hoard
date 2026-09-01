@@ -3,7 +3,7 @@
 //! The cloud deployment gets near-instant cross-device sync from Supabase
 //! Realtime (Postgres logical replication → WebSocket). Self-hosted has no
 //! such thing, so historically the only "another device uploaded" path was the
-//! agent's reconciliation sweep — up to a cooldown of latency. This module adds
+//! agent's reconciliation sweep, up to a cooldown of latency. This module adds
 //! the missing push: clients open a long-lived `GET /v1/events` SSE stream and
 //! the snapshot-commit path publishes a [`SaveEvent`] the instant a new version
 //! lands, so the listening device pulls within ~1s.
@@ -79,7 +79,7 @@ impl EventBus {
     }
 }
 
-/// `GET /v1/events` — long-lived SSE stream of the authenticated user's save
+/// `GET /v1/events`: long-lived SSE stream of the authenticated user's save
 /// changes. Emits `event: save` frames carrying the JSON [`SaveEvent`], and an
 /// `event: lagged` hint if the client fell behind (it should respond with a
 /// full catch-up pull). A 25 s keep-alive comment keeps idle proxies from
@@ -103,7 +103,7 @@ pub async fn stream(
             Err(broadcast::error::RecvError::Lagged(_)) => {
                 Some((Ok(Event::default().event("lagged").data("")), rx))
             }
-            // Sender gone (shouldn't happen while ServerState is alive) —
+            // Sender gone (shouldn't happen while ServerState is alive):
             // end the stream so the client reconnects.
             Err(broadcast::error::RecvError::Closed) => None,
         }

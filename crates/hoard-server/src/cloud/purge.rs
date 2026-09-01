@@ -1,7 +1,7 @@
 //! Smart storage purge under quota pressure (cloud only).
 //!
 //! When a user's deduped footprint crosses a per-plan threshold (80% Free,
-//! 90% Pro) we reclaim space by deleting *old* save versions — never the most
+//! 90% Pro) we reclaim space by deleting *old* save versions, never the most
 //! recent one of any game, never pinned ones, and never below a per-plan floor
 //! of kept versions per game (1 Free, 5 Pro).
 //!
@@ -53,12 +53,12 @@ pub struct PurgeCandidate {
     pub save_id: String,
     pub version_num: i64,
     pub created_unix: i64,
-    /// Bytes freed if *this* version is deleted now — only blobs no other
+    /// Bytes freed if *this* version is deleted now: only blobs no other
     /// version references (refcount == 1). Shared blobs free nothing here.
     pub freeable_bytes: i64,
     /// Pinned versions are never purged and count toward the floor.
     pub is_pinned: bool,
-    /// The save's head (latest) version — never purged, counts toward the floor.
+    /// The save's head (latest) version. Never purged; counts toward the floor.
     pub is_head: bool,
 }
 
@@ -145,7 +145,7 @@ pub fn plan_quota_purge(
 /// call after every commit.
 pub async fn maybe_purge(state: &CloudState, user_id: Uuid) -> Result<usize, CloudError> {
     // Promote a downgrade whose grace window has elapsed before we read the
-    // limit — until then the user keeps their larger limit and nothing here
+    // limit. Until then the user keeps their larger limit and nothing here
     // purges.
     crate::cloud::quota::apply_due_downgrade(&state.pool, user_id).await?;
     let row: Option<(String, i64, Option<i64>, Option<time::OffsetDateTime>)> = sqlx::query_as(
@@ -265,9 +265,9 @@ async fn load_candidates(
 /// [`prune_version_caps`]; powers the confirmation dialog the panel shows
 /// before lowering the cap.
 ///
-/// `manual = true` pregunta por el cupo de las copias deliberadas; `false`, por
-/// el de las automáticas. Cada clase se cuenta contra las de su clase, igual
-/// que en la poda, para que el diálogo prometa exactamente lo que va a pasar.
+/// `manual = true` asks about the deliberate copies' cap, `false` about the
+/// automatic ones'. Each class is counted against its own, as in the prune, so the
+/// dialog promises exactly what is going to happen.
 pub async fn count_version_cap_excess(
     state: &CloudState,
     user_id: Uuid,
@@ -302,20 +302,20 @@ pub async fn count_version_cap_excess(
 }
 
 /// Enforce the user's own "max versions per save" caps (`profiles.max_versions`
-/// para las automáticas, `profiles.max_manual_versions` para las que pidió a
+/// for the automatic ones, `profiles.max_manual_versions` for the ones asked
 /// mano; NULL = sin límite). Unlike the quota purge this is user-opt-in and
 /// unconditional: for every save, the oldest committed live versions beyond
-/// the newest `cap` are deleted — never the head, never pinned ones. Handles
+/// the newest `cap` are deleted, never the head and never pinned ones. Handles
 /// both content-addressed versions (blob release, like [`purge_one`]) and
 /// legacy whole-archive ones (R2 object drop, like the manual delete route).
 /// Returns how many versions were deleted.
 ///
-/// **Las dos clases se cuentan por separado**, y ésa es toda la gracia. Con un
-/// único cupo, una partida que autoguarda cada minuto llena el historial entero
-/// en una sesión y se lleva por delante la copia que alguien hizo a propósito
-/// antes de un jefe. Contando aparte, una ráfaga automática sólo puede
+/// The two classes are counted separately, and that is the whole point. With a
+/// single cap, a game autosaving every minute fills the entire history in one
+/// session and takes out the copy somebody deliberately made before a boss.
+/// Counted apart, an automatic burst can only
 /// desplazar a otras automáticas. De qué clase es cada versión lo dice
-/// `notes`; nulo = automática, que es lo que son todas las filas anteriores a
+/// `notes`; null means automatic, which is what every row from before
 /// esto (ver [`VersionOrigin`]).
 pub async fn prune_version_caps(state: &CloudState, user_id: Uuid) -> Result<usize, CloudError> {
     let caps: Option<(Option<i32>, Option<i32>)> =
@@ -329,8 +329,8 @@ pub async fn prune_version_caps(state: &CloudState, user_id: Uuid) -> Result<usi
     if auto_cap.is_none() && manual_cap.is_none() {
         return Ok(0);
     }
-    // Un cupo sin poner es "sin límite". Se traduce a un número imposible de
-    // alcanzar en vez de a una rama aparte, para que la consulta sea una sola.
+    // An unset cap means no limit. It translates to an unreachable number rather
+    // than a separate branch, so the query stays a single one.
     let auto_cap = auto_cap.map_or(i64::MAX, |c| i64::from(c).max(1));
     let manual_cap = manual_cap.map_or(i64::MAX, |c| i64::from(c).max(1));
 

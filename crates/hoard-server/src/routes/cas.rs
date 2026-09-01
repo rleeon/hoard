@@ -1,63 +1,60 @@
-//! Subida direccionada por contenido, self-hosted (`/v1/saves/{id}/cas/*`).
+//! Content-addressed upload, self-hosted (`/v1/saves/{id}/cas/*`).
 //!
-//! # Por qué existe
+//! # Why it exists
 //!
-//! El almacenamiento de Hoard deduplica desde la ADR 0018: cada fichero se
-//! guarda una vez por usuario bajo su sha256 y una versión no es más que su
-//! lista de referencias. Lo que **no** deduplicaba self-hosted era la
-//! transmisión. El único camino de entrada era el multipart de
-//! `POST /v1/saves/{id}/snapshots`, que se traga la carpeta entera en cada
-//! copia: el server recibía 3 GB, los escribía en `tmp/`, los hasheaba, y
-//! descubría que ya tenía 2,99 GB. Los tiraba y se quedaba con los 10 MB
-//! nuevos.
+//! Hoard's storage has deduplicated since ADR 0018: every file is stored once per
+//! user under its sha256, and a version is nothing but its list of references.
+//! What self-hosted did *not* deduplicate was the transfer. The only way in was
+//! the multipart at `POST /v1/saves/{id}/snapshots`, which swallows the whole
+//! folder on every copy: the server received 3 GB, wrote them into `tmp/`, hashed
+//! them, and found it already had 2.99 GB. It threw those away and kept the 10 MB
+//! that were new.
 //!
-//! Eso cuesta tres cosas a la vez: el ancho de banda de subida del usuario, el
-//! espacio en `tmp/` para una copia completa, y —la que de verdad rompía— el
-//! límite de cuerpo de la petición. `storage.max_snapshot_size_mb` y cualquier
-//! proxy inverso por delante ven una única petición del tamaño de la partida
-//! entera, así que una partida grande devolvía un 413 que no se podía arreglar
-//! sin subir el tope. Hoard Cloud no tenía ese problema porque negocia el
-//! contenido desde el principio; self-hosted arrastraba el protocolo viejo.
+//! That costs three things at once: the user's upload bandwidth, the space in
+//! `tmp/` for a full copy, and, the one that actually broke, the request body
+//! limit. `storage.max_snapshot_size_mb` and any reverse proxy in front see one
+//! request the size of the entire save, so a big save came back 413 with no fix
+//! short of raising the cap. Hoard Cloud never had that problem because it
+//! negotiates content up front; self-hosted was still dragging the old protocol.
 //!
-//! # El protocolo
+//! # The protocol
 //!
-//! 1. `POST /v1/saves/{id}/cas/init` — el cliente declara el manifiesto
-//!    (ruta, sha, tamaño de cada fichero). El server contesta **qué shas no
-//!    tiene** y abre un área de staging.
-//! 2. `PUT /v1/cas/blobs/{upload_id}/{sha}` — un blob que falta, un cuerpo.
-//!    El server lo escribe en staging verificando el hash mientras entra.
-//! 3. `POST /v1/saves/{id}/cas/commit` — el manifiesto otra vez; el server
-//!    coloca los blobs nuevos, escribe las filas y avanza la cabeza.
+//! 1. `POST /v1/saves/{id}/cas/init`: the client declares the manifest (path, sha
+//!    and size of each file). The server answers with which shas it does not have
+//!    and opens a staging area.
+//! 2. `PUT /v1/cas/blobs/{upload_id}/{sha}`: one missing blob, one body. The
+//!    server writes it into staging, verifying the hash on the way in.
+//! 3. `POST /v1/saves/{id}/cas/commit`: the manifest again; the server places the
+//!    new blobs, writes the rows and advances the head.
 //!
-//! # Dónde se aparta de cloud (y por qué)
+//! # Where it departs from cloud, and why
 //!
-//! Cloud firma URLs presignadas de R2 y el cliente escribe **directamente en el
-//! bucket**. Aquí no: la ADR 0020 dice que el cliente self-hosted nunca habla
-//! con el almacenamiento, porque el backend puede ser disco local, MinIO, un
-//! `rclone serve s3` sobre OneDrive… El server siempre está en medio, así que
-//! el paso 2 es un PUT contra el propio server.
+//! Cloud signs presigned R2 URLs and the client writes straight into the bucket.
+//! Not here: ADR 0020 says the self-hosted client never talks to storage, because
+//! the backend may be local disk, MinIO, an `rclone serve s3` over OneDrive. The
+//! server is always in the middle, so step 2 is a PUT against the server itself.
 //!
-//! Cloud además reserva la versión en el `init` con una fila pendiente
-//! (`sha256 = ''`) y la confirma después. Aquí el `init` **no escribe nada en la
-//! base**: es una consulta. El manifiesto vuelve a viajar en el commit, que es
-//! quien asigna el número de versión bajo la misma transacción que comprueba la
-//! cabeza. Un init abandonado no deja fila pendiente que limpiar ni versión
-//! fantasma en el historial; lo único que deja son bytes en `tmp/`, que ya
-//! barre `retention.tmp_cleanup_hours`.
+//! Cloud also reserves the version in the `init` with a pending row
+//! (`sha256 = ''`) and confirms it afterwards. Here the `init` writes nothing to
+//! the database: it is a query. The manifest travels again in the commit, which is
+//! what assigns the version number inside the same transaction that checks the
+//! head. An abandoned init leaves no pending row to clean up and no phantom
+//! version in the history; all it leaves is bytes in `tmp/`, which
+//! `retention.tmp_cleanup_hours` already sweeps.
 //!
-//! # Trocear sigue siendo cosa del server
+//! # Chunking is still the server's business
 //!
-//! Un fichero por encima de `chunking::CHUNK_THRESHOLD` se parte en trozos de
-//! contenido igual que en el multipart (ADR 0019), y por el mismo motivo: una
-//! partida monolítica que reescribe unos KB por versión no debe re-almacenar el
-//! fichero entero. El cliente no lo sabe ni le hace falta — negocia por
-//! fichero completo, y el server decide cómo lo guarda.
+//! A file above `chunking::CHUNK_THRESHOLD` is split into content-defined chunks
+//! exactly as in the multipart path (ADR 0019), and for the same reason: a
+//! monolithic save that rewrites a few KB per version must not re-store the whole
+//! file. The client neither knows nor needs to: it negotiates whole files, and the
+//! server decides how it stores them.
 //!
-//! La otra cara: un fichero ya troceado no tiene fila en `blobs`, así que
-//! preguntar sólo esa tabla lo daría por ausente y el cliente lo volvería a
-//! subir entero cada vez. [`stored_representation`] mira también los
-//! `snapshot_files` del usuario, y el commit **copia la lista de trozos** de la
-//! versión vieja en vez de pedir los bytes.
+//! The other side of that: a chunked file has no row in `blobs`, so asking only
+//! that table would call it absent and the client would re-upload it whole every
+//! time. [`stored_representation`] also looks at the user's `snapshot_files`, and
+//! the commit *copies the chunk list* from the old version instead of asking for
+//! the bytes.
 
 use axum::{
     body::Body,
@@ -85,18 +82,18 @@ use crate::routes::snapshots::{
 
 type ApiError = (StatusCode, Json<serde_json::Value>);
 
-/// Tope de ficheros por versión. El mismo que el modo empaquetado del multipart:
-/// aquí tampoco hay un handle ni un round-trip por fichero, así que lo que se
-/// acota es el tamaño de la transacción, no el coste de la transferencia.
+/// Cap on files per version. The same as the multipart's packed mode: there is no
+/// handle and no round trip per file here either, so what gets bounded is the size
+/// of the transaction, not the cost of the transfer.
 const MAX_FILES: usize = 50_000;
 
-/// Cómo tiene el server guardado ya un contenido concreto.
+/// How the server already holds a given piece of content.
 #[derive(Debug, Clone)]
 enum Stored {
-    /// Blob de fichero entero, con fila en `blobs`.
+    /// A whole-file blob, with a row in `blobs`.
     Blob { size_bytes: i64 },
-    /// Troceado (ADR 0019). `file_id` es una fila de `snapshot_files` de la que
-    /// copiar la lista ordenada de trozos.
+    /// Chunked (ADR 0019). `file_id` is a `snapshot_files` row to copy the
+    /// ordered chunk list from.
     Chunks { size_bytes: i64, file_id: String },
 }
 
@@ -108,13 +105,13 @@ impl Stored {
     }
 }
 
-/// ¿Tiene ya el server los bytes de este sha para este usuario, y en qué forma?
+/// Does the server already have this sha's bytes for this user, and in what shape?
 ///
-/// Consulta `blobs` primero (el caso normal) y, si no está, busca un
-/// `snapshot_files` del usuario con ese sha que tenga trozos. Se incluyen a
-/// propósito los snapshots en la papelera: un snapshot borrado sigue sujetando
-/// sus bytes contra la cuota hasta que la purga los libera, así que su contenido
-/// está disponible y referenciarlo es correcto.
+/// It asks `blobs` first (the normal case) and, failing that, looks for one of the
+/// user's `snapshot_files` with that sha and chunks. Trashed snapshots are
+/// deliberately included: a deleted snapshot still pins its bytes against the
+/// quota until the purge frees them, so its content is available and referencing
+/// it is correct.
 async fn stored_representation(
     pool: &sqlx::SqlitePool,
     user_id: &str,
@@ -150,39 +147,39 @@ async fn stored_representation(
     }))
 }
 
-/// Carpeta de staging de una subida. Vive al ras de `tmp/` para que el barrido
-/// por antigüedad de `cleanup::purge_tmp` (que sólo mira las entradas de primer
-/// nivel) recoja las subidas abandonadas.
+/// An upload's staging folder. It sits flush against `tmp/` so
+/// `cleanup::purge_tmp`'s age sweep, which only looks at first-level entries,
+/// picks up abandoned uploads.
 fn staging_dir(data_dir: &std::path::Path, upload_id: &str) -> PathBuf {
     data_dir.join("tmp").join(format!("cas-{upload_id}"))
 }
 
-/// El dueño de un área de staging, escrito al abrirla.
+/// A staging area's owner, written when it is opened.
 ///
-/// El `upload_id` es un UUID v4 que mina el server, así que adivinarlo no es
-/// realista — pero "no es realista" no es un control de acceso. Con el dueño en
-/// disco, subir a la subida de otro es imposible por construcción y no depende
-/// de que nadie filtre un id.
+/// The `upload_id` is a v4 UUID minted by the server, so guessing it is not
+/// realistic, but "not realistic" is not an access control. With the owner on
+/// disk, uploading into somebody else's upload is impossible by construction and
+/// does not depend on nobody leaking an id.
 fn owner_file(dir: &std::path::Path) -> PathBuf {
     dir.join("owner")
 }
 
-/// Valida un `upload_id` **antes** de meterlo en una ruta de fichero. Sólo
-/// UUIDs: nada de `..`, separadores ni sorpresas.
+/// Validates an `upload_id` *before* it goes into a file path. UUIDs only: no
+/// `..`, no separators, no surprises.
 fn valid_upload_id(s: &str) -> bool {
     Uuid::parse_str(s).is_ok()
 }
 
-/// sha256 canónico en hexadecimal minúsculo. Se interpola en claves de
-/// almacenamiento y en rutas de staging, así que se comprueba antes.
+/// Canonical lowercase-hex sha256. It gets interpolated into storage keys and
+/// staging paths, so it is checked first.
 fn valid_sha256(s: &str) -> bool {
     s.len() == 64
         && s.bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-/// Manifiesto → shas únicos, con el tamaño declarado de cada uno. Un mismo
-/// contenido repetido en varias rutas se sube una sola vez.
+/// Manifest to unique shas, with each one's declared size. The same content
+/// repeated at several paths is uploaded once.
 fn unique_shas(files: &[CasFile]) -> Vec<(String, i64)> {
     let mut seen: HashSet<&str> = HashSet::new();
     let mut out = Vec::new();
@@ -194,8 +191,8 @@ fn unique_shas(files: &[CasFile]) -> Vec<(String, i64)> {
     out
 }
 
-/// Comprobaciones que valen para el init y para el commit: manifiesto no vacío,
-/// dentro del tope de ficheros, rutas seguras.
+/// Checks that apply to both init and commit: a non-empty manifest, within the
+/// file cap, with safe paths.
 fn validate_manifest(files: &[CasFile]) -> Result<(), ApiError> {
     if files.is_empty() {
         return Err(err(StatusCode::BAD_REQUEST, "empty manifest"));
@@ -213,7 +210,7 @@ fn validate_manifest(files: &[CasFile]) -> Result<(), ApiError> {
     Ok(())
 }
 
-// ─── POST /v1/saves/:save_id/cas/init ───────────────────────────────────────
+// ---- POST /v1/saves/:save_id/cas/init
 
 pub async fn init(
     State(state): State<Arc<ServerState>>,
@@ -229,40 +226,40 @@ pub async fn init(
 
     validate_manifest(&body.files)?;
 
-    // El tope por versión se mide sobre el tamaño **lógico** de la partida, no
-    // sobre lo que se vaya a transmitir. Es la misma promesa que hace el
-    // multipart y la que el operador cree estar configurando: "no guardes
-    // versiones de más de X". Que ahora los bytes viajen troceados no cambia lo
-    // que ocupa la versión.
+    // The per-version cap is measured against the save's *logical* size, not
+    // against what will be transferred. It is the same promise the multipart makes
+    // and the one the operator believes they are configuring: "do not store
+    // versions bigger than X". That the bytes now travel in pieces does not change
+    // what the version occupies.
     let logical: i64 = body.files.iter().map(|f| f.size_bytes.max(0)).sum();
     let max_per_snapshot = (state.config.storage.max_snapshot_size_mb as i64) * 1024 * 1024;
     if logical > max_per_snapshot {
-        // Aquí sí se sabe el tamaño real (lo declara el manifiesto), a
-        // diferencia del multipart, que aborta a media transmisión y sólo puede
-        // decir hasta dónde llegó. Va como `actual_bytes` justamente por eso: de
-        // aquí no ha salido ni un byte todavía, así que darlo como "recibido"
-        // hacía que el cliente dijera "3,6 GB enviados antes de parar".
+        // Here the real size is known, because the manifest declares it, unlike
+        // the multipart, which aborts mid-transfer and can only say how far it
+        // got. It goes out as `actual_bytes` for exactly that reason: not a byte
+        // has left here yet, so reporting it as "received" made the client say
+        // "3.6 GB sent before stopping".
         return Err(snapshot_too_large_declared(max_per_snapshot, logical));
     }
 
-    // Rechazar el non-fast-forward **antes** de mover un byte. En el multipart
-    // esta comprobación llega después de haber subido la partida entera; aquí
-    // es lo primero, que es media razón para tener un `init`.
+    // Reject the non-fast-forward *before* a byte moves. In the multipart this
+    // check arrives after the whole save has been uploaded; here it is the first
+    // thing, which is half the reason for having an `init` at all.
     let head: i64 = sqlx::query_scalar("SELECT latest_version_num FROM saves WHERE id=?")
         .bind(&save_id)
         .fetch_one(&state.pool)
         .await
         .map_err(|e| internal_logged("reading the save's latest version", e))?;
     if let Some(base) = body.base_version {
-        // Una base que no cuadra con la cabeza se rechaza para que un push no
-        // entierre una versión que no llegó a ver. Pero un manifiesto que trae
-        // *entera* esa versión no puede enterrarla: su contenido sigue ahí,
-        // fichero a fichero, en la que se va a escribir. Es el mismo juicio que
-        // hace el agente cuando reconcilia y descubre que su carpeta ya
-        // contiene la cabeza — hecho aquí, con el manifiesto que ya viene en la
-        // petición, para los clientes que no saben hacerlo solos: leer la
-        // cabeza del cuerpo de un 409 es de ago-2026, y antes de eso un rechazo
-        // los dejaba sabiendo que divergían pero no de qué.
+        // A base that does not match the head is rejected so a push cannot bury
+        // a version it never saw. But a manifest that brings that version
+        // *entirely* cannot bury it: its content is still there, file by file, in
+        // the one about to be written. It is the same judgement the agent makes
+        // when it reconciles and finds its folder already contains the head, made
+        // here with the manifest already in the request, for clients that cannot
+        // do it themselves. Reading the head out of a 409 body is from aug-2026,
+        // and before that a rejection left them knowing they had diverged but not
+        // from what.
         if base != head && !manifest_covers_head(&state.pool, &save_id, head, &body.files).await? {
             return Err(non_fast_forward(&save_id, head, base));
         }
@@ -276,9 +273,9 @@ pub async fn init(
         }
     }
 
-    // Qué falta. Los tamaños que se apuntan son los que el cliente declara —
-    // sólo se usan para la barra de progreso y para el aviso de cuota de aquí
-    // abajo; el cargo de verdad lo hace el commit con lo que haya aterrizado.
+    // What is missing. The sizes recorded are the ones the client declares; they
+    // are only used for the progress bar and for the quota warning below. The real
+    // charge is made by the commit against whatever actually landed.
     let mut missing = Vec::new();
     let mut missing_bytes: i64 = 0;
     for (sha, size) in unique_shas(&body.files) {
@@ -303,9 +300,9 @@ pub async fn init(
         }
     }
 
-    // Aviso temprano de cuota, con los tamaños declarados. No es la puerta —esa
-    // está en el commit, contra los bytes reales— pero evita que alguien suba
-    // 8 GB para que se los rechacen al final.
+    // Early quota warning, using the declared sizes. It is not the gate (that is
+    // in the commit, against the real bytes) but it stops somebody uploading 8 GB
+    // only to have them refused at the end.
     let (quota, used): (i64, i64) =
         sqlx::query_as("SELECT storage_quota_bytes, storage_used_bytes FROM users WHERE id=?")
             .bind(&user_id)
@@ -343,16 +340,16 @@ pub async fn init(
     }))
 }
 
-/// ¿Trae este push todo lo que tiene la cabeza?
+/// Does this push bring everything the head has?
 ///
-/// Superconjunto **estricto**: tiene que traer la cabeza entera *y* algo suyo.
-/// Quitar un fichero que la cabeza tiene es justo el entierro que el 409 existe
-/// para impedir, y lo sigue recibiendo. Traer la cabeza y nada más es un cliente
-/// que no tiene contenido nuevo que escribir — el agente se asienta sobre la
-/// cabeza en vez de re-subirla, y acuñar aquí una versión idéntica sólo engorda
-/// el historial de un equipo que lo único que perdió fue su sitio. Una cabeza
-/// sin ficheros (versión a medias, o anterior al content-addressing) tampoco
-/// concede nada: no hay con qué comparar.
+/// A *strict* superset: it has to bring the whole head *and* something of its own.
+/// Dropping a file the head has is precisely the burial the 409 exists to prevent,
+/// and it still gets one. Bringing the head and nothing else is a client with no
+/// new content to write: the agent settles onto the head rather than re-uploading
+/// it, and minting an identical version here would only fatten the history of a
+/// machine whose only loss was its place in the queue. A head with no files (a
+/// half-built version, or one from before content-addressing) concedes nothing
+/// either: there is nothing to compare against.
 async fn manifest_covers_head(
     pool: &sqlx::SqlitePool,
     save_id: &str,
@@ -386,11 +383,11 @@ async fn manifest_covers_head(
     Ok(covers_all && incoming.len() > head_files.len())
 }
 
-/// The divergence 409. It carries `save_id` even though here it is always the
-/// id the client asked for — self-hosted never relabels rows, the route already
-/// names one — so the body has a single shape across both deployments: on Cloud
-/// that field is the canonical row the push was rejected against, which may not
-/// be the one the client thought it was writing to, and the client parses one
+/// The divergence 409. It carries `save_id` even though here it is always the id
+/// the client asked for (self-hosted never relabels rows, and the route already
+/// names one) so the body has a single shape across both deployments. On Cloud
+/// that field is the canonical row the push was rejected against, which may not be
+/// the one the client thought it was writing to, and the client parses one
 /// structure instead of branching on which server answered.
 fn non_fast_forward(save_id: &str, head: i64, base: i64) -> ApiError {
     (
@@ -405,7 +402,7 @@ fn non_fast_forward(save_id: &str, head: i64, base: i64) -> ApiError {
     )
 }
 
-// ─── PUT /v1/cas/blobs/:upload_id/:sha256 ───────────────────────────────────
+// ---- PUT /v1/cas/blobs/:upload_id/:sha256
 
 /// How much body we swallow as a courtesy before answering an error, while the
 /// client is still writing.
@@ -413,13 +410,13 @@ fn non_fast_forward(save_id: &str, head: i64, base: i64) -> ApiError {
 /// This exists because answering and closing without reading is not free: hyper
 /// closes the socket with data unconsumed, TCP sends RST, and **Windows throws
 /// away the response already sitting in its receive buffer**. The client never
-/// gets to see the 404 or the 413 — only an `error writing a body to
-/// connection` (os error 10053/10054) that says nothing. Half of issue #17.
+/// gets to see the 404 or the 413, only an `error writing a body to connection`
+/// (os error 10053/10054) that says nothing. Half of issue #17.
 ///
 /// Capped, because the body can be gigabytes and swallowing all of it just to
-/// be able to say "no" is exactly the work the error was trying to avoid. Past
-/// the cap we stop and the client gets the same reset as before: no worse than
-/// it was.
+/// Capped, because the body can be gigabytes and swallowing all of it just to be
+/// able to say "no" is exactly the work the error was trying to avoid. Past the
+/// cap we stop and the client gets the same reset as before: no worse than it was.
 const MAX_DRAIN_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Empty whatever is left of the body (up to [`MAX_DRAIN_BYTES`]) and return the
@@ -442,17 +439,17 @@ async fn drain_then(
     error
 }
 
-/// Un blob que falta. El cuerpo son los bytes en crudo; se escriben en staging
-/// hasheando por el camino, y si el sha no cuadra con el que promete la URL el
-/// fichero se borra y la petición se rechaza.
+/// One missing blob. The body is the raw bytes; they get written into staging,
+/// hashed on the way, and if the sha does not match the one the URL promises the
+/// file is deleted and the request rejected.
 ///
-/// Verificar aquí y no en el commit no es cortesía: el cliente hashea el fichero
-/// y **después** lo lee otra vez para mandarlo, y entre las dos lecturas el
-/// juego puede haber rotado el save. Si nadie comprueba, el server acaba
-/// guardando bytes nuevos bajo el sha de los viejos — un blob cuyo contenido no
-/// es el que su nombre promete, que al restaurar devuelve otra partida sin que
-/// nada se queje. Es la corrupción silenciosa de ago-2026; el cliente ya se
-/// defiende hasheando lo que sale por el socket, y esta es la otra mitad.
+/// Verifying here rather than in the commit is not politeness: the client hashes
+/// the file and *then* reads it again to send it, and between the two reads the
+/// game may have rotated the save. If nobody checks, the server ends up storing
+/// new bytes under the old bytes' sha, a blob whose content is not what its name
+/// promises, which on restore hands back a different save with nothing
+/// complaining. That is the silent corruption of aug-2026; the client already
+/// defends itself by hashing what leaves the socket, and this is the other half.
 pub async fn upload_blob(
     State(state): State<Arc<ServerState>>,
     Extension(user): Extension<AuthUser>,
@@ -483,8 +480,8 @@ pub async fn upload_blob(
         }
     };
     if owner != user_id {
-        // Mismo cuerpo que "no existe": quien no es el dueño no debe poder
-        // distinguir un id ajeno de uno inventado.
+        // The same body as "it does not exist": somebody who is not the owner
+        // must not be able to tell a foreign id from an invented one.
         let e = err(StatusCode::NOT_FOUND, "upload not found or expired");
         return Err(drain_then(&mut stream, e, 0).await);
     }
@@ -551,10 +548,10 @@ pub async fn upload_blob(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ─── POST /v1/saves/:save_id/cas/commit ─────────────────────────────────────
+// ---- POST /v1/saves/:save_id/cas/commit
 
-/// Un objeto colocado en el almacén durante esta petición, para poder deshacerlo
-/// si la transacción no llega a comprometerse.
+/// An object placed into the store during this request, so it can be undone if
+/// the transaction never commits.
 struct Placed {
     key: String,
     sha: String,
@@ -591,11 +588,11 @@ pub async fn commit(
         });
     };
 
-    // ── Resolver cada sha: ¿lo acaban de subir, o ya lo teníamos? ───────────
+    // ---- resolve each sha: was it just uploaded, or did we already have it?
     //
-    // `staged` son los que hay que almacenar ahora; `reused` los que ya están y
-    // sólo hay que referenciar. Cualquier otra cosa es un manifiesto que no
-    // cuadra con lo subido, y se rechaza antes de tocar el almacén.
+    // `staged` are the ones to store now; `reused` the ones already there that
+    // only need referencing. Anything else is a manifest that does not match what
+    // was uploaded, and gets rejected before the store is touched.
     let mut staged: HashMap<String, (PathBuf, i64)> = HashMap::new();
     let mut reused: HashMap<String, Stored> = HashMap::new();
     for (sha, _declared) in unique_shas(&body.files) {
@@ -606,9 +603,9 @@ pub async fn commit(
         let path = dir.join(&sha);
         match tokio::fs::metadata(&path).await {
             Ok(meta) => {
-                // El tamaño que cuenta es el del fichero en disco, nunca el que
-                // declaró el cliente: si no, bastaría con declarar 1 byte para
-                // colarse por la cuota y subir un giga.
+                // The size that counts is the file's on disk, never the one the
+                // client declared: otherwise declaring 1 byte would be enough to
+                // slip past the quota and upload a gigabyte.
                 staged.insert(sha, (path, meta.len() as i64));
             }
             Err(_) => {
@@ -631,9 +628,9 @@ pub async fn commit(
         }
     }
 
-    // ── Trocear lo nuevo que lo merezca (ADR 0019) ─────────────────────────
-    // Sólo planifica (hashea), no escribe: si la cuota rechaza más abajo no hay
-    // nada que deshacer.
+    // ---- chunk whatever deserves it (ADR 0019)
+    // Planning only (hashing), no writing: if the quota refuses further down there
+    // is nothing to undo.
     let mut chunk_plans: HashMap<String, Vec<crate::chunking::ChunkPlan>> = HashMap::new();
     for (sha, (path, size)) in &staged {
         if *size as u64 > crate::chunking::CHUNK_THRESHOLD {
@@ -649,10 +646,10 @@ pub async fn commit(
         }
     }
 
-    // ── Bytes nuevos de verdad ─────────────────────────────────────────────
-    // Un fichero troceado sólo cuesta los trozos que el usuario no tuviera ya,
-    // así que dos versiones de una partida monolítica que cambia poco cuestan
-    // poco aunque el fichero entero haya viajado.
+    // ---- genuinely new bytes
+    // A chunked file only costs the chunks the user did not already have, so two
+    // versions of a monolithic save that changes little cost little, even though
+    // the whole file travelled.
     let mut new_bytes: i64 = 0;
     let mut new_chunks: HashSet<String> = HashSet::new();
     for (sha, (_, size)) in &staged {
@@ -691,9 +688,9 @@ pub async fn commit(
         return Err(err(StatusCode::PAYLOAD_TOO_LARGE, "storage quota exceeded"));
     }
 
-    // El tamaño de la versión lo pone el server sumando lo que sabe de cada
-    // contenido (el fichero en staging o la fila que ya existía), no el
-    // manifiesto del cliente.
+    // The version's size is set by the server, summing what it knows about each
+    // piece of content (the staged file, or the row that already existed), not by
+    // the client's manifest.
     let mut size_by_sha: HashMap<&str, i64> = HashMap::new();
     for (sha, (_, size)) in &staged {
         size_by_sha.insert(sha.as_str(), *size);
@@ -712,10 +709,10 @@ pub async fn commit(
         return Err(snapshot_too_large(max_per_snapshot, total_size));
     }
 
-    // ── Colocación: primero los bytes, después la base ─────────────────────
-    // Igual que en el multipart (y por lo mismo): un `put_from_file` contra S3
-    // es una subida por red, y hacerlo con la transacción abierta deja a todo el
-    // server esperando el lock de escritura de SQLite.
+    // ---- placement: bytes first, database after
+    // As in the multipart, and for the same reason: a `put_from_file` against S3
+    // is a network upload, and doing it with the transaction open leaves the whole
+    // server waiting on SQLite's write lock.
     let store = state.store.clone();
     let mut placed: Vec<Placed> = Vec::new();
     let mut placed_chunks: HashSet<String> = HashSet::new();
@@ -731,11 +728,11 @@ pub async fn commit(
             let (store, pool, user_id) = (store.clone(), pool.clone(), user_id.clone());
             tokio::spawn(async move {
                 for (key, sha, is_chunk) in keys {
-                    // Sólo se borra lo que no referencia nadie: entre la
-                    // colocación y esta vuelta atrás otra petición puede haber
-                    // confirmado una versión que apunta a la misma clave. Ante
-                    // un error de la base se asume referenciado — un huérfano
-                    // cuesta espacio, un borrado de más cuesta datos.
+                    // Only what nothing references gets deleted: between the
+                    // placement and this rollback another request may have
+                    // committed a version pointing at the same key. On a database
+                    // error we assume it is referenced: an orphan costs space, an
+                    // over-eager delete costs data.
                     let referenced = if is_chunk {
                         chunk_in_db(&pool, &user_id, &sha).await.unwrap_or(true)
                     } else {
@@ -792,7 +789,7 @@ pub async fn commit(
         });
     }
 
-    // ── Transacción: sólo filas ────────────────────────────────────────────
+    // ---- transaction: rows only
     let snapshot_id = Uuid::new_v4().to_string();
     let mut tx = state.pool.begin().await.map_err(|e| {
         rollback(&placed);
@@ -809,8 +806,8 @@ pub async fn commit(
             cleanup_staging();
             internal_logged("reading the save's latest version", e)
         })?;
-    // El init ya lo miró, pero entre init y commit pueden pasar minutos y otro
-    // equipo puede haber empujado. Esta es la comprobación que manda.
+    // The init already looked, but minutes can pass between init and commit and
+    // another machine may have pushed. This is the check that counts.
     if let Some(base) = body.base_version {
         if base != head {
             rollback(&placed);
@@ -867,9 +864,9 @@ pub async fn commit(
             fail(e, "recording a snapshot file")
         })?;
 
-        // Trozos: los recién planificados, o los copiados de la versión que ya
-        // tenía este contenido. En los dos casos se referencia trozo a trozo —
-        // un fichero puede repetir el mismo trozo, y cada aparición cuenta.
+        // Chunks: the ones just planned, or the ones copied from the version that
+        // already had this content. Either way it is referenced chunk by chunk,
+        // since a file can repeat the same chunk and every appearance counts.
         let chunks: Vec<(String, i64)> = if let Some(plan) = chunk_plans.get(sha) {
             plan.iter()
                 .map(|c| (c.sha256.clone(), c.len as i64))
@@ -1107,8 +1104,8 @@ mod tests {
 
     #[test]
     fn upload_ids_and_shas_are_gated_before_they_reach_a_path() {
-        // Lo que se interpola en una ruta se valida antes. Sin esto, un
-        // `upload_id` con `..` escribe fuera de `tmp/`.
+        // Whatever gets interpolated into a path is validated first. Without
+        // this, an `upload_id` with `..` writes outside `tmp/`.
         assert!(valid_upload_id(&Uuid::new_v4().to_string()));
         assert!(!valid_upload_id("../../etc"));
         assert!(!valid_upload_id(""));
@@ -1143,9 +1140,9 @@ mod tests {
         assert!(validate_manifest(&[file("saves/a.sav", &s, 1)]).is_ok());
     }
 
-    /// Un blob con fila en `blobs` se reconoce; uno troceado también, aunque no
-    /// tenga fila en `blobs` — y ese es el caso que, de olvidarse, haría que una
-    /// partida monolítica se volviera a subir entera en cada copia.
+    /// A blob with a row in `blobs` is recognised, and so is a chunked one even
+    /// with no `blobs` row. That is the case which, if forgotten, would make a
+    /// monolithic save upload whole on every copy.
     #[tokio::test]
     async fn stored_content_is_recognised_as_blob_or_as_chunks() {
         let pool = mem_pool().await;
@@ -1208,7 +1205,7 @@ mod tests {
             .await
             .unwrap()
             .is_none());
-        // El dedup no cruza cuentas: otro usuario no ve este contenido.
+        // Dedup does not cross accounts: another user does not see this content.
         assert!(stored_representation(&pool, "u2", &whole)
             .await
             .unwrap()

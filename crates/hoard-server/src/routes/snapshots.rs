@@ -22,8 +22,8 @@ use crate::routes::repair_ts;
 
 // ─── Response types ─────────────────────────────────────────────────────────
 //
-// Las formas viven en `hoard_core::wire` (ADR 0021 C.6), compartidas con el
-// cliente: `Snapshot`, `SnapshotDetail` y `SnapshotFile`.
+// The shapes live in `hoard_core::wire` (ADR 0021 C.6), shared with the client:
+// `Snapshot`, `SnapshotDetail` and `SnapshotFile`.
 
 #[derive(Deserialize)]
 pub struct ListQuery {
@@ -51,7 +51,7 @@ pub(crate) fn internal() -> (StatusCode, Json<serde_json::Value>) {
 
 /// A 500 that says, **in the log**, what actually went wrong.
 ///
-/// The client still gets the same opaque `{"error":"internal server error"}` —
+/// The client still gets the same opaque `{"error":"internal server error"}`,
 /// it must not learn about our paths or SQL. The operator gets the cause.
 ///
 /// This exists because the whole upload route used to discard its errors: every
@@ -62,7 +62,7 @@ pub(crate) fn internal() -> (StatusCode, Json<serde_json::Value>) {
 /// two log dumps (2026-08-07). An upload can fail a dozen ways; the server knew
 /// which one every single time and threw it away.
 ///
-/// `what` names the step, not the error — the error speaks for itself. Keep the
+/// `what` names the step, not the error; the error speaks for itself. Keep the
 /// names coarse and stable: they are what an operator greps for.
 pub(crate) fn internal_logged<E: std::fmt::Display>(
     what: &'static str,
@@ -77,7 +77,7 @@ pub(crate) fn internal_logged<E: std::fmt::Display>(
 /// Structured like Hoard Cloud's `save_too_large` body so a self-hosted user
 /// gets a number to act on instead of a shrug. Before this, self-hosted 413s
 /// carried only `{"error": …}`, the client parsed zeroes out of it and fell back
-/// to "the server refused it as too large (413)" — which is indistinguishable
+/// to "the server refused it as too large (413)", which is indistinguishable
 /// from the 413 an nginx in front returns, and sends the user hunting through
 /// proxy configs when the answer was `storage.max_snapshot_size_mb`.
 ///
@@ -99,7 +99,7 @@ pub fn snapshot_too_large(
 ///
 /// It exists because sending that figure as `received_bytes` made the client
 /// tell a self-hoster "3.6 GB sent before it stopped" for an upload that moved
-/// **zero** bytes — the rejection happens at `cas_init`, before a single blob
+/// zero bytes: the rejection happens at `cas_init`, before a single blob
 /// travels (ago-2026). Same number, opposite meaning: one is a floor of what
 /// arrived, the other is exactly how big the save is.
 pub fn snapshot_too_large_declared(
@@ -142,7 +142,7 @@ fn too_large_body(
 
 /// Is this whole-file blob already stored for the user? The `blobs` table is
 /// the source of truth (a row exists iff the object is stored and refcounted),
-/// so dedup/quota consult it instead of a per-key HEAD against the store —
+/// so dedup and quota consult it instead of a per-key HEAD against the store,
 /// which on the S3 backend would be one network round-trip per file.
 pub(crate) async fn blob_in_db(
     pool: &sqlx::SqlitePool,
@@ -296,7 +296,7 @@ pub async fn create(
         // ── Packed mode (ADR 0019) ──────────────────────────────────────
         // A single uncompressed tar carrying many files. We stream-unpack it
         // straight from the request body into `tmp_root`, hashing each entry,
-        // and feed the same `files` vec the per-file path uses below — so the
+        // and feed the same `files` vec the per-file path uses below, so the
         // commit logic (dedup, blobs, quota) is identical regardless of how
         // the bytes arrived.
         if name == "pack" {
@@ -440,7 +440,7 @@ pub async fn create(
                 cleanup_tmp();
                 return Err(snapshot_too_large(max_per_snapshot, total_size));
             }
-            // Quota is checked at commit time against deduplicated bytes — a
+            // Quota is checked at commit time against deduplicated bytes: a
             // re-upload of mostly-identical files (the OpenTTD case) adds
             // almost nothing, so the streaming `total_size` check would reject
             // uploads that actually fit. `max_per_snapshot` still caps disk.
@@ -539,7 +539,7 @@ pub async fn create(
     //
     // Every physical write happens here, *before* the transaction opens. It
     // used to be interleaved with the inserts, which meant the SQLite write
-    // lock was held for the whole upload to the storage backend — a rename on
+    // lock was held for the whole upload to the storage backend, and a rename on
     // the local backend (microseconds), but a full network PUT per object on
     // S3, and minutes when that S3 endpoint is an rclone bridge to a consumer
     // drive. Every other writer on the server would sit behind it and start
@@ -577,7 +577,7 @@ pub async fn create(
                 for (key, sha, is_chunk) in keys {
                     // Only drop bytes nothing references. Between our placement
                     // and this rollback another request may have committed a
-                    // snapshot pointing at the same content-addressed key —
+                    // snapshot pointing at the same content-addressed key,
                     // deleting it then would break *their* save. On a DB error
                     // assume referenced: an orphan costs space, a wrong delete
                     // costs data.
@@ -711,7 +711,7 @@ pub async fn create(
         internal_logged("recording the snapshot", e)
     })?;
 
-    // From here the transaction only writes rows — the bytes are already in the
+    // From here the transaction only writes rows; the bytes are already in the
     // store (see the placement pass above), so nothing below can block on the
     // network while holding SQLite's single write lock.
     for (i, (rel_path, size, sha)) in files.iter().enumerate() {
@@ -871,7 +871,7 @@ pub async fn create(
     );
 
     // Enforce the user's own "max versions per save" cap: trash the oldest
-    // non-pinned snapshots beyond it. Off the response path — a failed prune
+    // non-pinned snapshots beyond it. Off the response path: a failed prune
     // must not fail an upload that already committed.
     {
         let pool = state.pool.clone();
@@ -986,9 +986,9 @@ pub async fn list(
         })
         .collect();
 
-    // Mismo motivo que en cloud: las versiones anteriores a esto salen sin
-    // etiqueta, y el sitio donde se nota es justo este. Se calculan fuera del
-    // camino de la respuesta, con tope, y la siguiente carga ya las trae.
+    // Same reason as on cloud: versions from before this come out unlabelled,
+    // and this is exactly where that shows. They are computed off the response
+    // path, capped, and the next load already brings them.
     let pending: Vec<i64> = rows
         .iter()
         .filter(|s| crate::insight::needs_refresh(s.insight.as_ref()))
@@ -1049,9 +1049,9 @@ pub async fn detail(
     .map_err(|e| internal_logged("listing snapshot rows", e))?
     .into_iter()
     .map(|r| {
-        // El sha lo calcula el propio server al subir, así que uno inválido
-        // significa DB tocada a mano. Aquí NO se repara ni se omite: la lista de
-        // ficheros es lo que el cliente usa para restaurar y verificar, y
+        // The sha is computed by the server itself on upload, so an invalid one
+        // means a hand-edited DB. It is neither repaired nor skipped here: the
+        // file list is what the client uses to restore and verify, and
         // servirla incompleta escribiría un save a medias. Se falla ruidosamente.
         let sha = Sha256Hex::parse(&r.sha256).map_err(|e| {
             tracing::error!(error = %e, path = %r.relative_path,
@@ -1117,7 +1117,7 @@ pub async fn download(
     // referenced blobs and/or chunks (ADR 0018 eje C + ADR 0019 Fase 4). No
     // per-version folder exists anymore. A file is reassembled from its ordered
     // chunks when it has snapshot_file_chunks rows, otherwise from its single
-    // whole-file blob — transparent to the client, which gets the same tar.zst.
+    // whole-file blob, transparent to the client, which gets the same tar.zst.
     let file_rows = sqlx::query(
         "SELECT id, relative_path, size_bytes, sha256 FROM snapshot_files
          WHERE snapshot_id=? ORDER BY relative_path",
@@ -1173,7 +1173,7 @@ pub async fn download(
     }
 
     // A remote backend streams each needed blob/chunk into this per-download
-    // spool dir under tmp/ (bounded memory — never the whole save in RAM); the
+    // spool dir under tmp/ (bounded memory, never the whole save in RAM); the
     // local backend returns the real blob path and spools nothing. Cleaned up
     // when the tar is done either way.
     let store = state.store.clone();
@@ -1237,7 +1237,7 @@ pub async fn download(
         let mut tar = tokio_tar::Builder::new(zstd);
 
         // Spool files created for a remote backend, for the entry being written
-        // right now — they're dropped as soon as that entry is in the tar (see
+        // right now, and they are dropped as soon as that entry is in the tar (see
         // the end of the loop), so peak scratch space is one file, not the whole
         // snapshot. Local refs have cleanup=false and never land here.
         let mut spooled: Vec<PathBuf> = Vec::new();
@@ -1406,7 +1406,7 @@ pub async fn soft_delete(
     let snap_id = snap_id.ok_or_else(|| err(StatusCode::NOT_FOUND, "snapshot not found"))?;
 
     // Soft-delete is purely logical now (ADR 0018, eje C): mark deleted_at and
-    // audit. The blobs stay on disk with their refcount intact — a trashed
+    // audit. The blobs stay on disk with their refcount intact: a trashed
     // snapshot still pins its bytes (and quota) until the trash purge actually
     // decrements the refcounts and GCs blobs that reach 0. No folder to move,
     // no quota change here.
@@ -1540,7 +1540,7 @@ pub(crate) async fn count_over_version_cap(
 /// Enforce the user's "max versions per save" cap (`users.max_versions`,
 /// NULL = unlimited): soft-delete the oldest non-pinned live snapshots so at
 /// most `cap` live ones remain per save. Same trash semantics as a manual
-/// delete — recoverable until `purge_trash` GCs the blobs. `only_save`
+/// delete, recoverable until `purge_trash` GCs the blobs. `only_save`
 /// narrows the pass to one save (the post-commit hook); `None` sweeps every
 /// save of the user (after lowering the cap). Runtime queries (not the
 /// `query!` macro) so the new column doesn't require regenerating the
@@ -1560,8 +1560,8 @@ pub(crate) async fn prune_over_version_cap(
     if auto_cap.is_none() && manual_cap.is_none() {
         return Ok(0);
     }
-    // Cupo sin poner = sin límite. Se traduce a un número inalcanzable para que
-    // la consulta siga siendo una sola en vez de ramificar.
+    // An unset cap means no limit. It translates to an unreachable number so the
+    // query stays a single one rather than branching.
     let auto_cap = auto_cap.map_or(i64::MAX, |c| c.max(1));
     let manual_cap = manual_cap.map_or(i64::MAX, |c| c.max(1));
 
@@ -1579,12 +1579,12 @@ pub(crate) async fn prune_over_version_cap(
     let mut pruned = 0u64;
     for save_id in save_ids {
         // Victims: live, not pinned, and not among the newest `cap` live
-        // snapshots **de su misma clase** (el más reciente siempre cae dentro
-        // de esa ventana, así que nunca acaba en la papelera por aquí).
+        // snapshots *of its own class* (the most recent one always falls inside
+        // that window, so it never ends up in the trash this way).
         //
-        // Dos ventanas separadas, una por clase: si compartieran cupo, una
-        // sesión de autoguardados se llevaría por delante la copia que el
-        // usuario hizo a mano, que es justo la que quería conservar.
+        // Two separate windows, one per class: sharing a cap would let a session
+        // of autosaves take out the copy the user made by hand, which is exactly
+        // the one they wanted to keep.
         let victims: Vec<String> = sqlx::query(
             "SELECT id FROM snapshots
              WHERE save_id = ?1 AND deleted_at IS NULL AND is_pinned = 0
@@ -1764,7 +1764,7 @@ mod version_cap_tests {
 
     /// The question "back up now always cuts a version" raises: twenty presses
     /// in a row must not eat the history the user actually wants. They cannot,
-    /// because the two classes are counted against separate caps — a manual
+    /// because the two classes are counted against separate caps: a manual
     /// copy can only ever displace another manual one.
     #[tokio::test]
     async fn twenty_manual_copies_never_evict_automatic_history() {
@@ -1787,8 +1787,8 @@ mod version_cap_tests {
         assert_eq!(manuals, 5, "the manual budget was not applied");
         assert_eq!(pruned, 15);
 
-        // And the newest manual — the press that just happened, and the save's
-        // head — is still there.
+        // And the newest manual, the press that just happened and the save's
+        // head, is still there.
         assert!(live.iter().any(|(v, _)| *v == 30));
     }
 
@@ -1807,7 +1807,7 @@ mod version_cap_tests {
 
     /// The pre-restore safety copy shares the manual budget, so a run of
     /// button presses can push it out. That is the trade the split was written
-    /// with — the alternative is a third cap — but it is the one thing in here
+    /// with (the alternative is a third cap) but it is the one thing in here
     /// worth knowing: with `max_manual_versions` set low, the copy that lets
     /// you undo a restore is not guaranteed to outlive twenty presses.
     #[tokio::test]

@@ -2,14 +2,14 @@
 //!
 //! Used only by the device-pairing flow ([`crate::cloud::routes::device`]).
 //! When a signed-in phone approves a pairing we must hand the waiting CLI a
-//! *session of its own* — not the phone's tokens. Supabase has no public
+//! *session of its own*, not the phone's tokens. Supabase has no public
 //! "create a second session for this user" call, but the admin API does the
 //! job in two hops:
 //!
-//! 1. `POST /auth/v1/admin/generate_link` (`type=magiclink`) — with the
+//! 1. `POST /auth/v1/admin/generate_link` (`type=magiclink`), with the
 //!    service-role key. This does **not** send an email; it just returns a
 //!    one-time `email_otp` for that user.
-//! 2. `POST /auth/v1/verify` (`type=magiclink`) — redeem that OTP for a brand
+//! 2. `POST /auth/v1/verify` (`type=magiclink`), redeeming that OTP for a brand
 //!    new access+refresh pair. Independent refresh-token family, so Supabase's
 //!    reuse detection never crosses it with the phone's session.
 //!

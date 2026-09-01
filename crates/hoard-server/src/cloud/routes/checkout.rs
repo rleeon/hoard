@@ -1,4 +1,4 @@
-//! `POST /v1/cloud/checkout` — create a Polar checkout session.
+//! `POST /v1/cloud/checkout`: create a Polar checkout session.
 //!
 //! Server-initiated so the user_id can never be forged: we read it (and the
 //! email) from the verified Supabase JWT, then stamp `metadata.user_id` and

@@ -1,7 +1,7 @@
 //! Transactional email via Resend's HTTP API.
 //!
 //! Only one message today: "your account export is ready". Delivery is
-//! best-effort and *optional* — with no `cloud.email.api_key` configured the
+//! best-effort and *optional*: with no `cloud.email.api_key` configured the
 //! export worker still produces a downloadable ZIP (surfaced in-app via
 //! `GET /v1/me/export`); it just skips the mail. That keeps a fresh deploy
 //! working before an email provider is even provisioned.

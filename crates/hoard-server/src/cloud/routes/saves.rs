@@ -1,4 +1,4 @@
-//! `/v1/cloud/saves*` — upload + download flows for cloud-stored snapshots.
+//! `/v1/cloud/saves*`: upload and download flows for cloud-stored snapshots.
 
 use crate::cloud::auth::CloudUser;
 use crate::cloud::bandwidth;
@@ -44,7 +44,7 @@ pub struct UploadInit {
     #[serde(default)]
     pub notes: Option<String>,
     /// When true, this save is excluded from the multi-device manifest pull
-    /// — other devices won't auto-restore it. Manual download via
+    /// and other devices won't auto-restore it. Manual download via
     /// `/v1/cloud/saves/:id/versions/:n/download` still works. Toggleable
     /// per-save by the client (per the 1.6.1 "modo ahorro" UX).
     #[serde(default)]
@@ -120,7 +120,7 @@ pub async fn init_upload(
     Extension(user): Extension<CloudUser>,
     Json(body): Json<UploadInit>,
 ) -> Result<Response, CloudError> {
-    // 1. Per-save size cap — cheapest check, doesn't even touch the DB.
+    // 1. Per-save size cap: the cheapest check, and it doesn't touch the DB.
     //    Resolve the plan from the cached load() in `check_storage` below
     //    would mean two queries; do a tiny direct lookup so we can 413
     //    before incurring the storage SUM.
@@ -147,7 +147,7 @@ pub async fn init_upload(
         .into_response());
     }
 
-    // 2. Bandwidth window — pre-upload check so we 429 *before* presigning.
+    // 2. Bandwidth window: a pre-upload check so we 429 *before* presigning.
     //    The PUT itself goes direct to R2 so we can't intercept the bytes;
     //    we credit the window in `commit_upload` once R2 head confirms the
     //    object landed.
@@ -180,7 +180,7 @@ pub async fn init_upload(
         }
     };
 
-    // 4. Ensure the saves row exists. UPSERT semantics — first version
+    // 4. Ensure the saves row exists. UPSERT semantics: the first version
     //    of a save creates it; subsequent versions just bump latest_version_num.
     //    `backup_only` is captured per-save: a row toggled to backup_only=true
     //    on a later upload stays out of the manifest until explicitly
@@ -202,7 +202,7 @@ pub async fn init_upload(
     // the head means another device pushed since the client last synced.
     //
     // No base at all used to skip the check entirely, and that is the hole: a
-    // client sends no base when its local cursor is null — a machine that has
+    // client sends no base when its local cursor is null, and a machine that has
     // never synced this save, or one whose state was rebuilt. Against a save
     // with history that is the *least* trustworthy upload there is, and it was
     // the only one allowed through unchecked. In aug-2026 a device with a null
@@ -212,7 +212,7 @@ pub async fn init_upload(
     //
     // Treated as base 0: fine against an empty save (the first upload), a
     // non-fast-forward against anything else. The client already knows this
-    // answer — it reconciles and pulls before retrying.
+    // answer: it reconciles and pulls before retrying.
     let base = body.base_version.unwrap_or(0);
     if base != head && !save_has_no_history(&mut conn, &save_row.0, head).await? {
         return Ok(NonFastForwardResponse {
@@ -240,7 +240,7 @@ pub async fn init_upload(
     let r2_key = r2::key_for_snapshot(user.user_id, &save_row.0, next_version as u64);
 
     // 5. Insert the (pending) save_versions row. We only know size and key
-    //    so far — sha256 is filled in by `commit`. Until then the row is
+    //    so far; sha256 is filled in by `commit`. Until then the row is
     //    pending and storage_bytes hasn't been credited (trigger runs on
     //    INSERT but with the *requested* size; if the upload fails or never
     //    commits, the cleanup cron deletes pending rows older than 1h).
@@ -298,7 +298,7 @@ pub async fn commit_upload(
     Path((save_id, version)): Path<(String, i64)>,
     Json(body): Json<UploadCommit>,
 ) -> Result<Response, CloudError> {
-    // Owner check first — never trust a save_id from the request without
+    // Owner check first: never trust a save_id from the request without
     // verifying the JWT subject owns it.
     let owner: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
         .bind(&save_id)
@@ -436,7 +436,7 @@ pub async fn commit_upload(
 
     // Credit the bandwidth window with the observed size. Done after the
     // commit so a failed upload doesn't eat into the user's quota. We log
-    // and swallow errors here — the upload itself was successful; a stale
+    // and swallow errors here: the upload itself was successful, and a stale
     // bandwidth counter is recoverable, a 500 returned to the client is
     // not.
     if let Err(e) = bandwidth::record(&state.pool, user.user_id, head_size as u64).await {
@@ -471,8 +471,8 @@ pub async fn commit_upload(
 // The client declares a manifest of (relative_path, sha256, size). The server
 // answers which whole-file blobs it doesn't already have; the client PUTs only
 // those to R2 (one object per blob, keyed by SHA), then commits. Bytes shared
-// with a previous version — even most of a 600 MB save the game rewrote in
-// place — are never re-uploaded.
+// with a previous version, even most of a 600 MB save the game rewrote in place,
+// are never re-uploaded.
 // ===========================================================================
 
 /// One file in a content-addressed manifest.
@@ -508,7 +508,7 @@ pub struct CasInit {
     pub files: Vec<CasFileEntry>,
 }
 
-/// A blob the server doesn't have yet — the client must PUT it.
+/// A blob the server doesn't have yet, so the client must PUT it.
 #[derive(Debug, Serialize)]
 pub struct CasMissingBlob {
     pub sha256: String,
@@ -520,7 +520,7 @@ pub struct CasMissingBlob {
 #[derive(Debug, Serialize)]
 pub struct CasInitOut {
     /// Canonical cloud save id. May differ from the id the client sent when
-    /// (user, game_slug, label) already resolves to another save — the client
+    /// (user, game_slug, label) already resolves to another save, so the client
     /// must use this id for the commit URL and re-key its local state.
     pub save_id: String,
     pub version_num: i64,
@@ -538,7 +538,7 @@ pub async fn cas_init(
     if body.files.is_empty() {
         return Err(CloudError::BadRequest("empty manifest".into()));
     }
-    // Every content hash is interpolated into an R2 key and stored verbatim —
+    // Every content hash is interpolated into an R2 key and stored verbatim,
     // reject anything that isn't a canonical sha256 before it gets that far.
     if let Some(bad) = body.files.iter().find(|f| !r2::is_valid_sha256(&f.sha256)) {
         return Err(CloudError::BadRequest(format!(
@@ -547,7 +547,7 @@ pub async fn cas_init(
         )));
     }
 
-    // Don't accept uploads for a game the user archived — it would revive the
+    // Don't accept uploads for a game the user archived: it would revive the
     // frozen blobs and re-inflate the quota. The client stops retrying on this.
     crate::cloud::archive::ensure_not_archived(&state, user.user_id, &body.save_id).await?;
 
@@ -578,8 +578,8 @@ pub async fn cas_init(
     }
 
     // Dedup the manifest down to unique (sha -> size). Then find which of those
-    // the user already has stored, so we only charge bandwidth + storage for —
-    // and only presign — the genuinely new bytes.
+    // the user already has stored, so we only charge bandwidth and storage for,
+    // and only presign, the genuinely new bytes.
     let mut unique: BTreeMap<String, i64> = BTreeMap::new();
     for f in &body.files {
         unique
@@ -652,7 +652,7 @@ pub async fn cas_init(
     // on the saves row, held until commit, and that is what serializes
     // concurrent cas_inits for the same save. Without the lock two requests read
     // the same head and the second INSERT into save_versions dies on the
-    // (save_id, version_num) unique constraint — the "db_error" bursts when
+    // (save_id, version_num) unique constraint: the "db_error" bursts when
     // several devices or sweeps fire at once.
     let mut tx = state.pool.begin().await?;
     let save_row = resolve_save_row(
@@ -668,7 +668,7 @@ pub async fn cas_init(
 
     // The client keys saves by its own device-local id; the server keys by
     // (user, game_slug, label). When two devices track the same game with
-    // different local ids they resolve to one cloud save here — log it loudly,
+    // different local ids they resolve to one cloud save here, so log it loudly,
     // it's the usual root cause of "another device is ahead" upload failures.
     if save_row.0 != body.save_id {
         tracing::warn!(
@@ -695,11 +695,11 @@ pub async fn cas_init(
     );
 
     // No base means a null local cursor, which against a save with history is
-    // the least trustworthy upload there is — see the same check on the archive
+    // the least trustworthy upload there is; see the same check on the archive
     // path for the incident. Treated as base 0: fine on a first upload, a
     // non-fast-forward against anything else.
     let base = body.base_version.unwrap_or(0);
-    // An empty row is the one mismatch that isn't a divergence — see
+    // An empty row is the one mismatch that isn't a divergence; see
     // `save_has_no_history`. It reads the versions inside the same transaction
     // that holds the row lock, so a sibling push can't land one in between.
     let orphaned_cursor = base != head && save_has_no_history(&mut tx, &save_row.0, head).await?;
@@ -763,7 +763,7 @@ pub async fn cas_init(
 
     // Pending content-addressed version. sha256 = '' until commit; r2_key is
     // unused (blobs carry their own keys). The storage trigger skips
-    // content_addressed rows, so this charges nothing — blobs do, at commit.
+    // content_addressed rows, so this charges nothing; blobs do, at commit.
     sqlx::query(
         r#"
         INSERT INTO save_versions
@@ -838,7 +838,7 @@ pub async fn cas_init(
     .into_response())
 }
 
-/// `POST /v1/cloud/saves/:save_id/versions/:version/cas/commit` — finalize a
+/// `POST /v1/cloud/saves/:save_id/versions/:version/cas/commit`: finalize a
 /// content-addressed upload. Verifies each new blob landed in R2, bumps blob
 /// refcounts (storage is charged on a blob's first reference), stamps the
 /// version's manifest digest and advances the save head. Idempotent and
@@ -889,7 +889,7 @@ pub async fn cas_commit(
         ));
     }
     if !cur_sha.is_empty() {
-        // Already committed — idempotent success.
+        // Already committed: idempotent success.
         return Ok(Json(UploadCommitOut {
             save_id,
             version_num: version,
@@ -940,7 +940,7 @@ pub async fn cas_commit(
     let existing: std::collections::HashSet<String> = existing.into_iter().map(|(s,)| s).collect();
 
     // Verify every new blob actually landed in R2 and trust R2's reported
-    // size — never the client's declared manifest size — for accounting.
+    // size, never the client's declared manifest size, for accounting.
     // A malicious client can understate `size_bytes` at init to slip past the
     // quota check, then PUT arbitrarily large objects to the presigned URLs
     // (which carry no content-length limit). The real footprint is whatever
@@ -950,8 +950,8 @@ pub async fn cas_commit(
     // blob. The difference is not a micro-optimisation: `cas_commit` has to
     // answer inside the client's fixed 60 s timeout, and the version that found
     // this carried 35,143 files over 24,784 distinct blobs because the game
-    // writes one file per map chunk. Per-blob that is 24,784 round trips — tens
-    // of minutes in sequence, still tens of seconds fanned out — and every
+    // writes one file per map chunk. Per-blob that is 24,784 round trips, tens of
+    // minutes in sequence and still tens of seconds fanned out, and every
     // timeout sent the client back to re-upload the same 398 MB, hourly, for a
     // version that could never land. A listing answers all of them in ~26.
     let mut new_bytes: u64 = 0;
@@ -964,7 +964,7 @@ pub async fn cas_commit(
 
     // A listing is the bulk answer, not the authority: an object PUT moments
     // ago may not be in it yet. So anything it doesn't show is asked for
-    // directly before we are willing to call it missing — normally nothing, and
+    // directly before we are willing to call it missing: normally nothing, and
     // a handful at worst, which is what keeps this off the per-blob path.
     //
     // The futures are built eagerly into a Vec of owned values rather than
@@ -1049,7 +1049,7 @@ pub async fn cas_commit(
     .execute(&mut *tx)
     .await?;
     if claimed.rows_affected() == 0 {
-        // Lost the race — another commit finalized it. Treat as success.
+        // Lost the race: another commit finalized it. Treat as success.
         tx.rollback().await.ok();
         return Ok(Json(UploadCommitOut {
             save_id,
@@ -1061,7 +1061,7 @@ pub async fn cas_commit(
 
     // Bump refcounts: +1 per distinct blob this version references. New blobs
     // are inserted at refcount 1 (their first reference charges storage via the
-    // cloud_blobs trigger) with the size R2 actually reported — never the
+    // cloud_blobs trigger) with the size R2 actually reported, never the
     // client's declared size; existing ones just increment (the bound size is
     // ignored by the ON CONFLICT path, so their already-charged size stands).
     // `purge_after = NULL` un-trashes a blob that archiving had frozen: if the
@@ -1071,7 +1071,7 @@ pub async fn cas_commit(
     // One statement, not one per blob. Row by row this held a write transaction
     // open for a round trip per blob against the pooler, which on a 24,784-blob
     // version is the second half of the same stall. `unique` is keyed by sha, so
-    // no key repeats within the arrays — `ON CONFLICT DO UPDATE` would reject
+    // no key repeats within the arrays, because `ON CONFLICT DO UPDATE` would reject
     // the whole statement if one did, since it cannot touch a row twice.
     let blob_shas: Vec<String> = unique.keys().cloned().collect();
     let blob_sizes: Vec<i64> = unique
@@ -1147,7 +1147,7 @@ pub async fn cas_commit(
     tokio::spawn(async move {
         // What the history row will say about this version. Off the response
         // path and never fatal: the version is committed, and a row that fails
-        // to get a label is a cosmetic loss — not two more queries on the
+        // to get a label is a cosmetic loss, not two more queries on the
         // client's 60 s commit budget.
         if let Err(e) = crate::insight::record_cloud(&st.pool, &sid, version).await {
             tracing::warn!(error = ?e, save_id = %sid, version, "insight: not recorded");
@@ -1184,7 +1184,7 @@ pub struct ManifestFile {
 
 #[derive(Debug, Serialize)]
 pub struct VersionManifestOut {
-    /// False for legacy archive versions — the client then falls back to the
+    /// False for legacy archive versions, and the client then falls back to the
     /// whole-archive `download` endpoint.
     pub content_addressed: bool,
     pub files: Vec<ManifestFile>,
@@ -1193,12 +1193,12 @@ pub struct VersionManifestOut {
 #[derive(Debug, Deserialize)]
 pub struct ManifestQuery {
     /// When true, mint a presigned GET per (unique) blob and charge bandwidth.
-    /// When false (default) just list the files — cheap, no bandwidth.
+    /// When false (the default) just list the files: cheap, no bandwidth.
     #[serde(default)]
     pub presign: bool,
 }
 
-/// `GET /v1/cloud/saves/:save_id/versions/:version/manifest` — the per-file
+/// `GET /v1/cloud/saves/:save_id/versions/:version/manifest`: the per-file
 /// manifest of a content-addressed version. With `?presign=true` it also mints
 /// a download URL per blob (restore); without it, just the listing (History).
 pub async fn version_manifest(
@@ -1519,17 +1519,17 @@ pub struct VersionEntry {
     pub file_count: i64,
     pub total_size_bytes: i64,
     pub is_pinned: bool,
-    /// Máquina de la que salió esta versión. `None` en todo lo subido antes de
-    /// que se guardara (y por clientes viejos): el historial se calla en vez de
+    /// The machine this version came from. `None` on everything uploaded before it
+    /// was stored, and by older clients: the history stays quiet rather than
     /// inventarse un equipo.
     pub device_name: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: time::OffsetDateTime,
     #[serde(with = "time::serde::rfc3339::option")]
     pub deleted_at: Option<time::OffsetDateTime>,
-    /// Lo que la fila cuenta de esta versión: de qué partida va, qué cambió
-    /// desde la anterior. Ausente en todo lo subido antes de que el server lo
-    /// derivara, y el cliente lo pinta como siempre.
+    /// What the row says about this version: which save it is about, what changed
+    /// since the previous one. Absent on everything uploaded before the server
+    /// derived it, and the client draws it as it always did.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub insight: Option<hoard_core::kernel::insight::VersionInsight>,
 }
@@ -1540,10 +1540,10 @@ pub struct ListVersionsQuery {
     pub include_deleted: bool,
 }
 
-/// `GET /v1/cloud/saves/:save_id/versions` — full committed version history
+/// `GET /v1/cloud/saves/:save_id/versions`: the full committed version history
 /// for a save. The sync manifest only carries the latest version; this
 /// surfaces every committed one so History can list and restore any of them.
-/// The R2 blobs and `save_versions` rows already persist per version — this
+/// The R2 blobs and `save_versions` rows already persist per version; this
 /// just exposes them. Pending (uncommitted, `sha256 = ''`) rows are excluded.
 pub async fn list_versions(
     State(state): State<CloudState>,
@@ -1646,7 +1646,7 @@ pub async fn list_versions(
     Ok(Json(out))
 }
 
-/// `DELETE /v1/cloud/saves/:save_id/versions/:version` — drop a single
+/// `DELETE /v1/cloud/saves/:save_id/versions/:version`: drop a single
 /// committed version. We delete the R2 blob (best-effort) then the row (the
 /// storage_bytes trigger credits the freed space). If the deleted version was
 /// the save's head, `latest_version_num` is repointed at the highest
@@ -1738,7 +1738,7 @@ pub async fn delete_version(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-/// `DELETE /v1/cloud/saves/:save_id` — wipe a cloud save and every version
+/// `DELETE /v1/cloud/saves/:save_id`: wipe a cloud save and every version
 /// it holds so the user can reclaim storage. We drop the R2 blobs first
 /// (best-effort) then cascade-delete the DB rows; the storage_bytes trigger
 /// credits the freed space back as each `save_versions` row goes.
@@ -1747,7 +1747,7 @@ pub async fn delete_save(
     Extension(user): Extension<CloudUser>,
     Path(save_id): Path<String>,
 ) -> Result<Response, CloudError> {
-    // Owner check — never trust a save_id from the request.
+    // Owner check: never trust a save_id from the request.
     let owner: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
         .bind(&save_id)
         .fetch_optional(&state.pool)
@@ -1835,7 +1835,7 @@ pub struct SaveSummary {
 ///   uploads under the name it last saw. Conflicting on
 ///   `(user_id, game_slug, label)` matched nothing, so Postgres tried a real
 ///   insert of an `id` that already existed and raised a unique violation on the
-///   primary key — surfacing as `cloud cas init: server error (500)` on a save
+///   primary key, surfacing as `cloud cas init: server error (500)` on a save
 ///   whose only sin was being renamed elsewhere.
 /// * **The id is stale.** The client minted its own `save_id` and the row in the
 ///   cloud has a different one (a re-install, a state wipe, a self-hosted server
@@ -1849,7 +1849,7 @@ pub struct SaveSummary {
 /// statement. Resolve first, in the order identity actually runs: the `id` names
 /// the row, the label only names a slot within a game.
 ///
-/// The row's label wins over the client's on purpose — adopting the incoming one
+/// The row's label wins over the client's on purpose: adopting the incoming one
 /// would silently undo the rename made on the other machine.
 pub async fn resolve_save_row(
     conn: &mut sqlx::PgConnection,
@@ -1916,7 +1916,7 @@ pub async fn resolve_save_row(
 /// A head of 0 on a row with no versions at all is not a divergence: there is no
 /// version for another device to have advanced past, and nothing a fast-forward
 /// could bury. What it actually means is that the client is carrying the cursor
-/// of a previous life — the row it used to push to was deleted (a game
+/// of a previous life: the row it used to push to was deleted (a game
 /// un-archived and dropped, a purge, an account rebuilt) and the one it is
 /// talking to now is the empty row `resolve_save_row` just minted for it.
 ///
@@ -1924,7 +1924,7 @@ pub async fn resolve_save_row(
 /// base only moves when an upload lands or a reconcile pulls a head, and here
 /// neither can ever happen: the upload is refused, and the reconcile finds no
 /// remote history to pull. It retries, gets the same 409, and gives up for good
-/// after its conflict budget — with the rejection blaming "another device" that
+/// after its conflict budget, with the rejection blaming "another device" that
 /// does not exist. Worse, the row minted to answer it is rolled back with the
 /// refusal, so the next attempt starts from exactly the same nothing.
 ///
@@ -1953,14 +1953,14 @@ pub async fn save_has_no_history(
 ///
 /// The second question asked of a mismatched base, after `save_has_no_history`,
 /// and the one that covers a head with real content. A non-fast-forward is
-/// refused to stop a push from burying a version it never saw — but a manifest
+/// refused to stop a push from burying a version it never saw, but a manifest
 /// that lists every (path, sha) the head lists cannot bury it: the content is
 /// all still there, in the version about to be written, byte for byte. What the
 /// client is doing then is not overwriting the head, it is descending from it
 /// with extra files or none.
 ///
 /// This is the same judgement the agent makes for itself when a reconcile tells
-/// it "your folder already holds the head" and it rebases onto that head — but
+/// it "your folder already holds the head" and it rebases onto that head, but
 /// made here, from the manifest already in the request, so it also works for
 /// clients too old to make it. Those clients could not: reading the head out of
 /// a 409 body only landed in ago-2026, and before it a rejection left them
@@ -1970,7 +1970,7 @@ pub async fn save_has_no_history(
 /// A *strict* superset: the push must carry the whole head **and** something of
 /// its own. Both halves earn their place. Dropping a file the head has is
 /// exactly the burial the 409 exists for, and still gets one. Carrying the head
-/// and nothing else is a client that has no new content to write — the agent
+/// and nothing else is a client that has no new content to write: the agent
 /// settles on the head rather than re-uploading it, and minting an identical
 /// version here would pad the history for a device that only lost its place.
 pub async fn manifest_covers_head(
@@ -1989,7 +1989,7 @@ pub async fn manifest_covers_head(
     .bind(head)
     .fetch_all(&mut *conn)
     .await?;
-    // A head with no manifest rows is not something to reason about — it is a
+    // A head with no manifest rows is not something to reason about: it is a
     // pending version, or one from before content addressing. Say no and let
     // the ordinary rejection stand.
     if head_files.is_empty() {
@@ -2132,7 +2132,7 @@ where
 /// Record a rejected sync in `sync_log` so failed syncs land in the same
 /// analytics stream as successful uploads/downloads. `kind` is `'quota_block'`
 /// (over storage limit) or `'bandwidth_block'` (over the moving bandwidth
-/// window) — both extend the enum documented in migration 0006. Without this a
+/// window). Both extend the enum documented in migration 0006. Without this a
 /// sync that 402/429s leaves no trace and the failure rate is invisible.
 ///
 /// Best-effort: a logging failure must never turn a clean rejection into a 500.
@@ -2169,14 +2169,14 @@ async fn log_sync_block(
 /// that fills up earns one refusal per tracked save on the sweep that
 /// discovers it, and a dozen refusals in ten seconds is a library, not a loop.
 /// What stops being honest is answering the same 402 to the same client 342
-/// times in three hours — ago-2026, one account; 148 in a day, another. Every
+/// times in three hours (aug-2026, one account; 148 in a day, another). Every
 /// client shipped up to v1.1.2 reads that 402 as a failure of *this* save and
 /// comes straight back with the next one. Those same clients do understand a
 /// 429, so past the threshold that is what they get.
 ///
 /// The quota figures are reloaded for the paced body rather than pulled out of
-/// `plain` — by then it is a serialised `Response` and there is nothing left to
-/// read — because a window that says "slow down" without saying "you are full"
+/// `plain`, because by then it is a serialised `Response` and there is nothing
+/// left to read. A window that says "slow down" without saying "you are full"
 /// sends the user looking for a network problem they don't have.
 async fn paced_quota_reject(
     state: &CloudState,
@@ -2219,7 +2219,7 @@ async fn paced_quota_reject(
 /// looking like a user and start looking like a loop.
 ///
 /// Deliberately lax, because it's allowed to be: this only writes a log line.
-/// Re-restoring one version two or three times in a day is ordinary — testing a
+/// Re-restoring one version two or three times in a day is ordinary: testing a
 /// save, hopping between machines, undoing a bad session. By five there's no
 /// benign reading left. A false positive costs one WARN; a false negative cost
 /// us eight days and ~60 GB/day of the July-2026 incident, so if this number is
@@ -2228,7 +2228,7 @@ async fn paced_quota_reject(
 /// Note the interaction with the client-side escalating backoff (hoard-agent's
 /// `AUTO_RESTORE_FAILURE_BACKOFF_SECS`): a *fixed* client now retries ~24×/day
 /// at worst, not ~1440×, so reaching 5 takes far longer than it did during the
-/// incident. That's the point — the threshold still trips, but tripping now
+/// incident. That's the point: the threshold still trips, but tripping now
 /// means "this has been broken for a while", which is exactly the signal an
 /// operator wants. An old or third-party client with no backoff still trips it
 /// within minutes.
@@ -2237,7 +2237,7 @@ const REPEAT_DOWNLOAD_WARN_THRESHOLD: i64 = 5;
 /// Emit an operator signal when the same save version is downloaded over and
 /// over by the same user inside 24h.
 ///
-/// Only a log line — the *first* of two thresholds on the same signal. This one
+/// Only a log line, the *first* of two thresholds on the same signal. This one
 /// is allowed to cry wolf at five, because all it costs is a WARN and its job is
 /// to stop the loop being invisible (it was found by chance, eight days and
 /// 10,6 GB in). The one that changes what the client gets lives in

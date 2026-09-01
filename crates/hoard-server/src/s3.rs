@@ -2,8 +2,8 @@
 //!
 //! Generalizes what used to live only in `cloud/r2.rs`: a thin wrapper over
 //! `aws-sdk-s3` bound to one bucket, with an explicit endpoint URL and inline
-//! access-key credentials (the shape every S3-compatible service speaks —
-//! MinIO, Backblaze B2, Cloudflare R2, Garage, Wasabi, `rclone serve s3`, …).
+//! access-key credentials, the shape every S3-compatible service speaks: MinIO,
+//! Backblaze B2, Cloudflare R2, Garage, Wasabi, `rclone serve s3` and the rest.
 //!
 //! Compiled whenever `s3-backend` is on (which `cloud` implies), so both the
 //! self-hosted S3 blob backend (`store::S3Store`) and the cloud R2 client
@@ -72,12 +72,12 @@ impl S3 {
     ///
     /// `compat` exists because "S3-compatible" is a spectrum. Since the SDK
     /// defaults flipped to `RequestChecksumCalculation::WhenSupported`, every
-    /// upload with a *streaming* body (which is every blob we store — the body
+    /// upload with a *streaming* body (which is every blob we store, since the body
     /// comes off a file, not a `Vec`) is sent as `aws-chunked`: the payload is
     /// wrapped in `<len>;chunk-signature=…` frames with the checksum trailing
-    /// after it. AWS, R2 and MinIO unwrap that. An implementation that doesn't
-    /// — `rclone serve s3`'s gofakes3 among them, i.e. the bridge our own guide
-    /// points Mega/OneDrive/Drive users at — stores the frames verbatim, so
+    /// after it. AWS, R2 and MinIO unwrap that. An implementation that doesn't,
+    /// `rclone serve s3`'s gofakes3 among them, which is the bridge our own guide
+    /// points Mega, OneDrive and Drive users at, stores the frames verbatim, so
     /// every blob lands corrupt and only surfaces on restore, months later.
     /// With `compat` on we ask for checksums only where the S3 API *requires*
     /// them (nothing we call does), which drops `aws-chunked` entirely and puts
@@ -93,7 +93,7 @@ impl S3 {
             anyhow::bail!("s3 endpoint and bucket are required");
         }
         // Without a scheme the SDK fails deep inside the first request with an
-        // opaque "invalid URI" — catch the common `127.0.0.1:9000` typo here.
+        // opaque "invalid URI", so catch the common `127.0.0.1:9000` typo here.
         if !p.endpoint.starts_with("http://") && !p.endpoint.starts_with("https://") {
             anyhow::bail!(
                 "s3 endpoint must start with http:// or https:// (got {:?})",
@@ -153,7 +153,7 @@ impl S3 {
         &self.bucket
     }
 
-    /// Direct PUT of an in-memory body — for small objects the server builds
+    /// Direct PUT of an in-memory body, for small objects the server builds
     /// itself (export ZIPs, manifests, the write probe). Buffers the whole
     /// body; use [`Self::put_file`] for anything large.
     pub async fn put_object(&self, key: &str, body: Vec<u8>) -> Result<()> {
@@ -168,7 +168,7 @@ impl S3 {
         Ok(())
     }
 
-    /// Streaming PUT from a file on disk. Keeps the body off the heap — the SDK
+    /// Streaming PUT from a file on disk. Keeps the body off the heap: the SDK
     /// reads the file incrementally. Used for blob/chunk finalization and
     /// account-export ZIPs, which can be GB-sized.
     ///
@@ -252,7 +252,7 @@ impl S3 {
             .await
             .with_context(|| format!("s3 spool {key}"))?;
         tokio::io::AsyncWriteExt::flush(&mut file).await.ok();
-        // A body cut short mid-stream is not an error for `copy` — it just
+        // A body cut short mid-stream is not an error for `copy`; it just
         // stops. Silently spooling a truncated blob would put the wrong bytes
         // in a restore tarball, so compare against the length the endpoint
         // declared and let the caller fail (and the client retry) instead.
@@ -299,7 +299,7 @@ impl S3 {
         const PART_SIZE: usize = 8 * 1024 * 1024;
 
         // Buffer the first part up front: a body that fits in one part goes
-        // out as a single PUT — one Class A op instead of multipart's three
+        // out as a single PUT, one Class A op instead of multipart's three
         // (create + part + complete), and most save files are far below the
         // part size. Only genuinely multi-part bodies pay for multipart.
         let mut first = Vec::with_capacity(PART_SIZE);
@@ -343,7 +343,7 @@ impl S3 {
             let mut parts: Vec<CompletedPart> = Vec::new();
             let mut total: i64 = 0;
             let mut part_number = 1i32;
-            // Part 1 is the buffer already read above — a full part; smaller
+            // Part 1 is the buffer already read above, a full part; smaller
             // bodies (including empty) took the single-PUT path.
             let mut buf = first;
             loop {
@@ -430,7 +430,7 @@ impl S3 {
             Ok(out) => Ok(out.content_length()),
             Err(e) => {
                 // 404 is the expected miss. Detect it via the typed service
-                // error rather than the Display string — MinIO, R2 and S3 all
+                // error rather than the Display string: MinIO, R2 and S3 all
                 // render the message differently, but `is_not_found()` is
                 // uniform. Anything else (auth, outage) must bubble up: treating
                 // a transient error as "absent" would let callers re-create

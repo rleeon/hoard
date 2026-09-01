@@ -1,18 +1,18 @@
-//! Archived games — the "black box" for saves that can't fit the plan.
+//! Archived games: the "black box" for saves that can't fit the plan.
 //!
 //! When a user's *live* footprint exceeds their storage limit and purging old
-//! versions wouldn't bring it under (the current saves alone are too big — e.g.
+//! versions wouldn't bring it under (the current saves alone are too big, e.g.
 //! a Pro→Free downgrade), deleting history frees nothing useful and just
 //! destroys it. Instead the desktop offers to *archive* the heaviest games.
 //!
 //! Archiving a save (see [`archive_save`]):
-//!   1. Marks `saves.archived_at` — the client then excludes it from every sync
+//!   1. Marks `saves.archived_at`, and the client then excludes it from every sync
 //!      path and the sync manifest omits it, so the cloud-side change can never
 //!      propagate a delete to the user's local disk.
 //!   2. De-references its content-addressed blobs. Each blob whose last live
-//!      reference goes away hits refcount 0 — which credits the freed space via
+//!      reference goes away hits refcount 0, which credits the freed space via
 //!      the existing `sync_blob_storage` trigger, so the quota drops *now* and
-//!      sync resumes for everything else — but instead of deleting the R2 object
+//!      sync resumes for everything else, but instead of deleting the R2 object
 //!      we stamp `cloud_blobs.purge_after` and keep it, so the save stays
 //!      downloadable during the grace window.
 //!   3. A daily cron ([`purge_expired`]) hard-deletes archived saves and their
@@ -20,7 +20,7 @@
 //!
 //! Reactivating ([`reactivate_save`]) before the window elapses re-references
 //! the blobs (clearing `purge_after`) and clears `archived_at`, subject to the
-//! quota still fitting — typically done right after upgrading to Pro.
+//! quota still fitting, typically done right after upgrading to Pro.
 //!
 //! This mirrors the account soft-delete + `account_purge` pattern, scoped to a
 //! single game.
@@ -39,7 +39,7 @@ use sqlx::PgPool;
 use std::time::Duration;
 use uuid::Uuid;
 
-/// Grace window (days) an archived game is frozen — downloadable, out of quota —
+/// Grace window (days) an archived game is frozen: downloadable, out of quota,
 /// before the cron hard-deletes it and its blobs. Used symmetrically when
 /// stamping `purge_after` on archive and when selecting due rows in the cron.
 pub const ARCHIVE_GRACE_DAYS: i64 = 7;
@@ -98,7 +98,7 @@ async fn owned_save(state: &CloudState, user_id: Uuid, save_id: &str) -> Result<
 /// Reject an upload targeting an archived save. While a save is frozen it must
 /// not be re-uploaded: a new version would revive its blobs (cas_commit's
 /// `ON CONFLICT ... refcount + 1`) and re-inflate the quota the archive just
-/// freed — defeating the whole point, and un-freezing a game the user chose to
+/// freed, defeating the whole point, and un-freezing a game the user chose to
 /// park. The `save_archived` code lets the client recognise this and stop
 /// retrying instead of surfacing a generic error. No-op for a save that doesn't
 /// exist yet (first upload) or isn't archived.
@@ -124,7 +124,7 @@ pub(crate) async fn ensure_not_archived(
 
 /// Bytes that archiving this save would free: blobs it references whose refs all
 /// come from this save (`refcount <= refs_here`), so de-referencing drops them
-/// to 0. Shared blobs free nothing. Cast to bigint — the SUM is NUMERIC and
+/// to 0. Shared blobs free nothing. Cast to bigint, because the SUM is NUMERIC and
 /// mapping it to i64 without the cast is a runtime decode error.
 async fn exclusive_bytes(
     state: &CloudState,
@@ -161,7 +161,7 @@ pub struct ArchiveOut {
 }
 
 /// Archive one save: freeze its blobs (out of quota, kept in R2 for the grace
-/// window) and mark it archived. Idempotent — archiving an already-archived
+/// window) and mark it archived. Idempotent: archiving an already-archived
 /// save just returns its current state. The local copy is never touched.
 pub async fn archive_save(
     state: &CloudState,
@@ -187,7 +187,7 @@ pub async fn archive_save(
 
     let freed = exclusive_bytes(state, user_id, save_id).await?;
 
-    // Reference counts this save contributes per blob — same shape as
+    // Reference counts this save contributes per blob, same shape as
     // delete_save. Read before we change anything.
     let blob_refs: Vec<(String, i64)> = sqlx::query_as(
         "SELECT sha256, COUNT(DISTINCT version_num) FROM save_version_files
@@ -348,7 +348,7 @@ pub struct GameFootprint {
     pub game_slug: String,
     pub label: String,
     /// Bytes freed from the quota by archiving this game (deduped exclusive
-    /// blobs). What the dialog ranks "los que más pesan" by.
+    /// blobs). What the dialog ranks the heaviest games by.
     pub freeable_bytes: i64,
     pub archived: bool,
     /// RFC3339 hard-delete instant, present only while archived.
@@ -358,11 +358,11 @@ pub struct GameFootprint {
 
 /// Bytes that only come back when **every** save in `save_ids` is archived.
 ///
-/// Content addressing means two saves can point at the same blob — most often
+/// Content addressing means two saves can point at the same blob, most often
 /// because the same folder ended up tracked twice under two slugs (the mars /
 /// surviving-mars-relaunched case: 1.25 GB, 60% of a Free quota). Those bytes
 /// are exclusive to *neither* save, so they vanish from both `freeable_bytes`
-/// figures and the dialog silently under-reports what the account is carrying —
+/// figures and the dialog silently under-reports what the account is carrying,
 /// and archiving either game alone frees nothing at all, which reads as the
 /// feature being broken.
 #[derive(Debug, Serialize)]
@@ -376,7 +376,7 @@ pub struct SharedGroup {
 /// already released, so they can't hold anything hostage.
 ///
 /// Split out of the handler so it can be exercised against a real database
-/// without standing up a `CloudState` — the array decode (`text[]` → `Vec<String>`,
+/// without standing up a `CloudState`. The array decode (`text[]` to `Vec<String>`,
 /// which hinges on `saves.id` being TEXT rather than UUID) is the kind of thing
 /// that compiles happily and 500s in production.
 pub async fn shared_groups(pool: &PgPool, user_id: Uuid) -> Result<Vec<SharedGroup>, CloudError> {
@@ -426,7 +426,7 @@ pub struct StorageGamesOut {
     pub shared_groups: Vec<SharedGroup>,
 }
 
-/// `GET /v1/cloud/storage/games` — per-game freeable footprint plus the quota
+/// `GET /v1/cloud/storage/games`: per-game freeable footprint plus the quota
 /// figures, so the desktop can render the "archive the heaviest to fit" dialog
 /// and know how much to free.
 pub async fn storage_games(

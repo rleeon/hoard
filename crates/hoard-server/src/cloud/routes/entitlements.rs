@@ -1,11 +1,11 @@
-//! `GET /v1/cloud/entitlements` — read-only Pro entitlement snapshot for the
+//! `GET /v1/cloud/entitlements`: read-only Pro entitlement snapshot for the
 //! desktop UI (badge / lock / days-left). This does NOT start any trial; trials
 //! begin on first use of a Pro *content* endpoint. The authoritative check is
 //! always per-endpoint `entitlements::require_feature`, never this response.
 //!
-//! `POST /v1/cloud/features/:feature/activate` — the mutating counterpart the
+//! `POST /v1/cloud/features/:feature/activate`: the mutating counterpart the
 //! client calls when the user opens a Pro feature's page for the first time.
-//! It starts the one-week trial (idempotent — reopening never restarts the
+//! It starts the one-week trial (idempotent: reopening never restarts the
 //! clock) and returns the resulting [`FeatureState`], or `402` once the window
 //! has elapsed. This is the endpoint that turns a `Free` account's first look
 //! into an active `trial`.

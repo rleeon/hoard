@@ -14,7 +14,7 @@ pub struct Config {
     pub auth: AuthConfig,
     pub retention: RetentionConfig,
     pub logging: LoggingConfig,
-    /// Browser panel served by this same binary. Self-hosted only — the cloud
+    /// Browser panel served by this same binary. Self-hosted only; the cloud
     /// router never mounts it.
     #[serde(default)]
     pub panel: PanelConfig,
@@ -41,15 +41,15 @@ pub struct ServerConfig {
     /// still rate-limit at the reverse proxy.
     #[serde(default)]
     pub rate_limit: RateLimitConfig,
-    /// Which peers are allowed to tell the server who the client is — i.e.
+    /// Which peers are allowed to tell the server who the client is, meaning
     /// whose `X-Forwarded-For` we believe. Addresses, CIDRs, or the shorthands
     /// `loopback` / `private` / `any`; see
     /// [`crate::clientip::TrustedProxies::parse`].
     ///
     /// Defaults to `loopback`, which covers the usual single-box shape (nginx
     /// or Caddy on the same host proxying to `127.0.0.1:12421`) and nothing
-    /// else. A proxy that reaches the server from another address — a
-    /// container on a Docker network, a box elsewhere on the LAN — has to be
+    /// else. A proxy that reaches the server from another address (a container
+    /// on a Docker network, a box elsewhere on the LAN) has to be
     /// named here, or its clients all count as one.
     ///
     /// It is not a nicety: the panel's login throttle counts wrong passwords
@@ -74,7 +74,7 @@ pub struct RateLimitConfig {
     pub enabled: bool,
     /// Sustained allowance in requests per second per client IP (one cell
     /// replenishes every `1/per_second` seconds). NOTE: this is our unit, not
-    /// tower_governor's — its builder method of the same name takes a period
+    /// tower_governor's, whose builder method of the same name takes a period
     /// in seconds; `ratelimit::layer` does the conversion.
     #[serde(default = "default_rate_limit_per_second")]
     pub per_second: u64,
@@ -94,7 +94,7 @@ pub struct RateLimitConfig {
     /// of the official client: app startup fires one `/v1/cloud/sync` per
     /// save being auto-restored (`hoard-agent::restore` fetches the
     /// manifest per game) on top of the login pull and feed kicks. The
-    /// sustained rate above is what actually stops a hammering client —
+    /// sustained rate above is what actually stops a hammering client,
     /// after the burst drains it converges to `poll_per_minute`.
     #[serde(default = "default_rate_limit_poll_burst")]
     pub poll_burst: u32,
@@ -154,7 +154,7 @@ pub enum StorageBackend {
 
 /// Self-hosted S3-compatible storage (MinIO, Backblaze B2, R2, Garage, Wasabi,
 /// or `rclone serve s3` fronting Mega/Dropbox/Drive). Distinct from the
-/// cloud-mode `[cloud.r2]` block — this is for a self-hosted server that wants
+/// cloud-mode `[cloud.r2]` block; this is for a self-hosted server that wants
 /// its blobs off local disk. Secrets can come from `HOARD__STORAGE__S3__*`.
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct S3StorageConfig {
@@ -175,7 +175,7 @@ pub struct S3StorageConfig {
     /// deployments). Empty by default.
     #[serde(default)]
     pub key_prefix: String,
-    /// Path-style addressing (`endpoint/bucket/key`). Default true — MinIO,
+    /// Path-style addressing (`endpoint/bucket/key`). Default true, because MinIO,
     /// Garage and `rclone serve s3` require it; leave true unless your provider
     /// mandates virtual-host style.
     #[serde(default = "default_force_path_style")]
@@ -219,7 +219,7 @@ pub struct AuthConfig {
 /// Off-by-config rather than off-by-default: a self-hoster who never opens a
 /// browser still pays only three static routes, and the ones who do want it
 /// shouldn't have to discover a config key first. Turning it off removes the
-/// panel routes *and* the password login with them, which is the point — an
+/// panel routes *and* the password login with them, which is the point: an
 /// instance that only ever talks to the desktop app has no reason to expose a
 /// second way in.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -234,14 +234,14 @@ pub struct PanelConfig {
     pub session_days: u64,
     /// How long the login door stays shut after too many wrong passwords, in
     /// seconds. Read through [`PanelConfig::login_throttle`], which enforces
-    /// the floor — never read this field directly.
+    /// the floor. Never read this field directly.
     ///
     /// Ten by default, which is short for a login form and right for a box on
     /// your own network: long enough that an argon2id verify (19 MiB, tens of
     /// milliseconds a go) stops being a free CPU lever, short enough that
     /// fumbling your own password three times doesn't lock you out of your own
     /// server. Raise it towards a minute or more if the panel is exposed to the
-    /// open internet — what protects the account there is the password, and a
+    /// open internet, where what protects the account is the password, and a
     /// slow door buys it time.
     #[serde(default = "default_panel_login_throttle_secs")]
     pub login_throttle_secs: u64,
@@ -262,7 +262,7 @@ impl PanelConfig {
         std::time::Duration::from_secs(self.login_throttle_secs.max(MIN_LOGIN_THROTTLE_SECS))
     }
 
-    /// True when the configured value was raised to the floor — the caller logs
+    /// True when the configured value was raised to the floor, so the caller logs
     /// it once at boot so the operator isn't left thinking their `1` took.
     pub fn login_throttle_was_raised(&self) -> bool {
         self.login_throttle_secs < MIN_LOGIN_THROTTLE_SECS
@@ -334,7 +334,7 @@ pub enum LogFormat {
 /// `config.toml` and exporting via env is the standard production path.
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct CloudConfig {
-    /// JWKS URL for Supabase Auth — used to verify access tokens.
+    /// JWKS URL for Supabase Auth, used to verify access tokens.
     /// Typical value: `https://<project>.supabase.co/auth/v1/.well-known/jwks.json`.
     #[serde(default)]
     pub supabase_jwks_url: String,
@@ -374,12 +374,12 @@ pub struct CloudConfig {
     /// Grace window (days) a user keeps their old, larger storage limit after
     /// dropping to a smaller tier whose size is below their current footprint.
     /// Nothing is purged during the window and `/v1/me` advertises the pending
-    /// change. Defaults to 30. Cloud-only — self-hosted has no quotas.
+    /// change. Defaults to 30. Cloud only; self-hosted has no quotas.
     #[serde(default = "default_storage_downgrade_grace_days")]
     pub storage_downgrade_grace_days: u64,
     /// Transactional email (account-export "your download is ready"). Optional:
     /// with no API key the export worker still runs and produces a downloadable
-    /// ZIP surfaced in-app — it just skips the email leg.
+    /// ZIP surfaced in-app; it just skips the email leg.
     #[serde(default)]
     pub email: EmailConfig,
     /// At-rest zstd compression of content-addressed blobs (cost saver:
@@ -393,7 +393,7 @@ pub struct CloudConfig {
 /// keep uploading raw bytes to presigned PUTs and keep receiving raw bytes
 /// on download (compressed blobs are served through the decompressing
 /// `/v1/cloud/blob/:token` proxy instead of a direct presigned GET).
-/// Deliberately undocumented in the example config — it's internal storage
+/// Deliberately undocumented in the example config: it is internal storage
 /// maintenance, not an operator feature; override via
 /// `HOARD__CLOUD__COMPRESSION__*` env vars if ever needed.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -503,12 +503,12 @@ fn default_presign_ttl() -> u64 {
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct PolarConfig {
     /// Organization access token (OAT). Used for server-initiated Polar API
-    /// calls — specifically `POST /v1/checkouts/` to create a checkout
+    /// calls, specifically `POST /v1/checkouts/` to create a checkout
     /// session. Webhook verification itself only needs `webhook_secret`.
     #[serde(default)]
     pub access_token: String,
     /// Standard Webhooks signing secret (the `polar_whs_...` value). Used
-    /// verbatim as the HMAC key — see `cloud::polar::verify_signature`.
+    /// verbatim as the HMAC key; see `cloud::polar::verify_signature`.
     #[serde(default)]
     pub webhook_secret: String,
     /// Polar API base URL. Empty falls back to production
@@ -628,13 +628,13 @@ impl Config {
     }
 
     /// Search the standard fallback locations for a config file. Used when
-    /// the explicit `--config` path doesn't exist — letting users run
+    /// the explicit `--config` path doesn't exist, letting users run
     /// `hoard-server` without sudo by dropping a config in their XDG config
     /// dir or the working directory.
     ///
     /// We deliberately use `server.toml` for the XDG path instead of
     /// `config.toml` because the CLI (`hoard-cli`) already uses
-    /// `~/.config/hoard/config.toml` with a different schema — sharing the
+    /// `~/.config/hoard/config.toml` with a different schema, and sharing the
     /// filename would cause confusing parse errors when the server tries
     /// to read CLI credentials.
     ///
@@ -697,8 +697,8 @@ impl Config {
                     );
                 }
                 // Check write permission by attempting to create a temp file.
-                // `data_dir` is still required for the s3 backend — tmp upload
-                // staging, the SQLite DB and the upgrade marker live here — so
+                // `data_dir` is still required for the s3 backend, since tmp
+                // upload staging, the SQLite DB and the upgrade marker live here, so
                 // this applies regardless of `storage.backend`.
                 let probe = self.storage.data_dir.join(".hoard_write_probe");
                 std::fs::write(&probe, b"").with_context(|| {

@@ -1,4 +1,4 @@
-//! `POST /v1/logs` — ingest of client diagnostic logs (self-hosted).
+//! `POST /v1/logs`: ingest of client diagnostic logs (self-hosted).
 //!
 //! Connected apps (desktop/CLI) ship batches of their `tracing` events here.
 //! Self-hosted accepts *every* level; the wire shape and the batch caps are
@@ -22,16 +22,17 @@ pub const MAX_BATCH_ENTRIES: usize = 500;
 /// Per-request body cap for the logs endpoint (~256 KiB).
 pub const MAX_BATCH_BYTES: usize = 256 * 1024;
 
-// El cuerpo (`LogBatch` / `LogEntry` / `DeviceMeta`) y la respuesta viven en
-// `hoard_core::wire` (ADR 0021 C.6). Este par era drift real: el cliente
-// declaraba `target` y `ts` obligatorios y el server los tenía `Option`.
+// The body (`LogBatch`, `LogEntry`, `DeviceMeta`) and the response live in
+// `hoard_core::wire` (ADR 0021 C.6). This pair was real drift: the client declared
+// `target` and `ts` as required and the server had them as `Option`.
 
-// El orden de niveles y la regla de qué se guarda viven en `hoard_core::wire`
-// (`level_rank` / `ships_at` / `CLOUD_MIN_RANK`), compartidos con el cliente:
-// estaban escritos tres veces —aquí, en el namespace cloud y en el enviador del
-// agente— y una regla duplicada es una fuga en silencio esperando su turno. Si
-// el cliente filtra a un nivel y el server a otro, o se manda lo que el server
-// tira o se tira lo que el cliente manda, y nadie se entera.
+// The level ordering and the rule about what gets stored live in
+// `hoard_core::wire` (`level_rank`, `ships_at`, `CLOUD_MIN_RANK`), shared with the
+// client. They used to be written three times, here, in the cloud namespace and in
+// the agent's shipper, and a duplicated rule is a silent leak waiting its turn. If
+// the client filters at one level and the server at another, either what the
+// server throws away gets sent or what the client sends gets dropped, and nobody
+// finds out.
 
 pub async fn ingest(
     Extension(user): Extension<AuthUser>,
@@ -82,5 +83,5 @@ pub async fn ingest(
     Ok((StatusCode::OK, Json(LogIngestResponse { accepted })))
 }
 
-// La matriz de la regla se testea una sola vez, donde vive: `hoard_core::wire`
+// The rule's matrix is tested once, where it lives: `hoard_core::wire`
 // (`one_rule_decides_what_travels_and_what_is_stored`).

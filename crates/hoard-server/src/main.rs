@@ -38,7 +38,7 @@ enum Cmd {
     /// Run the HTTP server. Default if no subcommand is given.
     Serve,
     /// Download the latest release from GitHub and replace this binary.
-    /// Does not restart the systemd service — see the printed hint.
+    /// Does not restart the systemd service; see the printed hint.
     Upgrade {
         /// Override the install destination. Defaults to the path of the
         /// currently-running binary (resolved via /proc/self/exe).
@@ -184,7 +184,7 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
 
     // One-time migration of legacy folder snapshots into the blob store
     // (ADR 0018, eje C). No-op on fresh installs and once already migrated.
-    // Local-layout only — skip it on the s3 backend (there are no legacy
+    // Local-layout only: skip it on the s3 backend (there are no legacy
     // on-disk `v<n>/` folders to migrate when blobs never lived on disk).
     if cfg.storage.backend == hoard_server::config::StorageBackend::Local {
         hoard_server::blobs::backfill_from_folders(&pool, &cfg.storage.data_dir).await?;
@@ -195,14 +195,15 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
     // pointer to `hoard-admin storage migrate` (ADR 0020, phase 2).
     hoard_server::store::sanity_check(&pool, &store).await?;
 
-    // Y el inverso, que es el que pierde datos: almacén con contenido de un
-    // despliegue anterior y base sin un solo usuario. Arrancar así se ve sano y
-    // deja a cada cliente con `save_id` que aquí ya no existen — 404 eternos.
+    // And the inverse, which is the one that loses data: a store holding an
+    // earlier deployment's content and a database without a single user. Booting
+    // like that looks healthy and leaves every client holding `save_id`s that no
+    // longer exist here, so 404s forever.
     hoard_server::store::guard_against_lost_database(&pool, &cfg.storage.data_dir).await?;
 
     // Who may speak for someone else. A bad entry is named out loud: failing
     // open here means "your proxy isn't trusted", which is the safe direction
-    // but an invisible one — every client behind it would silently share one
+    // but an invisible one: every client behind it would silently share one
     // throttle bucket.
     let (trusted_proxies, bad_proxies) =
         hoard_server::clientip::TrustedProxies::parse(&cfg.server.trusted_proxies);
@@ -245,7 +246,7 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
         // Server→app push: long-lived SSE stream of this user's save changes
         // so other devices pull within ~1s instead of waiting for the sweep.
         .route("/v1/events", get(event_routes::stream))
-        // Client diagnostic-log ingest. Smaller body cap than snapshots —
+        // Client diagnostic-log ingest. Smaller body cap than snapshots,
         // applied per-route so it overrides the large snapshot limit below.
         .route(
             "/v1/logs",
@@ -253,11 +254,11 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
                 log_routes::MAX_BATCH_BYTES,
             )),
         )
-        // Admin ops (self-hosted only — see ADR 0017). Gated on is_admin
+        // Admin ops (self-hosted only, see ADR 0017). Gated on is_admin
         // inside the handler; the cloud router never mounts this.
         .route("/v1/admin/upgrade", post(admin_routes::upgrade))
         // Operator views behind the panel's server section. Each handler
-        // checks `is_admin` itself — see the comment in `routes::admin`.
+        // checks `is_admin` itself; see the comment in `routes::admin`.
         .route("/v1/admin/overview", get(admin_routes::overview))
         .route("/v1/admin/users", post(admin_routes::create_user))
         .route(
@@ -311,17 +312,17 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
             "/v1/saves/:save_id/snapshots/:version/restore",
             post(snap_routes::restore),
         )
-        // Subida direccionada por contenido: declarar el manifiesto, subir sólo
-        // los blobs que falten, confirmar (ver `routes::cas`). El multipart de
-        // arriba se queda para los clientes que no la anuncian — `/v1/health`
-        // lleva `cas: true` desde la 1.1.3.
+        // Content-addressed upload: declare the manifest, upload only the
+        // missing blobs, commit (see `routes::cas`). The multipart above stays
+        // for clients that do not advertise it; `/v1/health` has carried
+        // `cas: true` since 1.1.3.
         .route("/v1/saves/:save_id/cas/init", post(cas_routes::init))
         .route("/v1/saves/:save_id/cas/commit", post(cas_routes::commit))
         // The blob PUT lives in `blob_upload` below: it is the one route that
         // does not go through the per-IP limiter.
         // Censo de dispositivos + presencia en vivo (ver `routes::devices`).
-        // Mismas rutas que en cloud a propósito: el cliente ya las hablaba, y
-        // así no hay dos protocolos para lo mismo.
+        // The same routes as cloud, on purpose: the client already spoke them,
+        // so there are not two protocols for one thing.
         .route("/v1/devices", get(device_routes::list))
         .route(
             "/v1/devices/:id",
@@ -335,7 +336,7 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
 
     // `PUT /v1/cas/blobs/:upload_id/:sha256`, held apart from the router above
     // so the per-IP limiter does **not** cover it. Outside the `:save_id` tree
-    // on purpose: a blob belongs to the user, not to one save — the same
+    // on purpose: a blob belongs to the user, not to one save, and the same
     // content can end up referenced by several.
     //
     // Why this one is exempt when everything else is limited: the number of
@@ -352,7 +353,7 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
     // arrives and the client's pacer cannot react. See `put_blob_paced` in
     // `hoard-agent`.
     //
-    // What actually needs braking — login, panel, polling — stays inside.
+    // What actually needs braking (login, panel, polling) stays inside.
     let blob_upload = Router::new()
         .route(
             "/v1/cas/blobs/:upload_id/:sha256",
@@ -394,7 +395,7 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
     // The panel and the password login it needs are one switch: an instance
     // that only ever talks to the desktop app has no reason to expose a second
     // way in, and leaving `/v1/auth/login` mounted with the pages gone would be
-    // exactly that. Nothing here is authenticated — the login screen is the
+    // exactly that. Nothing here is authenticated: the login screen is the
     // one screen that by definition has no session yet.
     if cfg.panel.enabled {
         if cfg.panel.login_throttle_was_raised() {
@@ -432,7 +433,7 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
     // SmartIpKeyExtractor needs ConnectInfo, which the
     // `into_make_service_with_connect_info` below supplies.
     //
-    // The order — limit first, **then** merge the exempt route — is the whole
+    // The order (limit first, *then* merge the exempt route) is the whole
     // fix, and it lives inside `apply`, with a test that catches an inversion.
     let app =
         hoard_server::ratelimit::apply(&cfg.server.rate_limit, app, blob_upload.with_state(state));

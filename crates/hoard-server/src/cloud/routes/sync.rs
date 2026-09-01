@@ -1,4 +1,4 @@
-//! `/v1/cloud/sync` — manifest endpoint. Clients call this on startup and
+//! `/v1/cloud/sync`: manifest endpoint. Clients call this on startup and
 //! periodically to learn which versions exist on the server side.
 
 use crate::cloud::auth::CloudUser;
@@ -39,7 +39,7 @@ pub async fn manifest(
     // `backup_only` saves are hidden from the manifest pull: other devices
     // won't see them, so the agent won't auto-restore the file. The save
     // is still uploadable and downloadable through the explicit per-id
-    // endpoints — that's the "modo ahorro" toggle.
+    // endpoints; that's the data-saver toggle.
     let rows: Vec<(
         String,
         String,

@@ -1,4 +1,4 @@
-//! `/v1/me*` — account-facing endpoints for the desktop client.
+//! `/v1/me*`: account-facing endpoints for the desktop client.
 
 use crate::cloud::abuse;
 use crate::cloud::auth::CloudUser;
@@ -28,7 +28,7 @@ pub struct Me {
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
     pub plan: String,
-    /// RFC3339 — account creation time. The desktop derives the
+    /// RFC3339 account creation time. The desktop derives the
     /// "premium features unlocked for the first 30 days" trial from this.
     pub created_at: Option<String>,
     pub subscription_status: Option<String>,
@@ -36,20 +36,20 @@ pub struct Me {
     pub cancel_at: Option<String>,
     pub storage_used_bytes: i64,
     pub storage_limit_bytes: i64,
-    /// Total bytes ever stored, monotonic — never credited back on delete or
+    /// Total bytes ever stored, monotonic: never credited back on delete or
     /// purge. Powers the recap's lifetime "Atesorado". Backfilled to the
     /// current footprint at migration time, so it's only exact going forward.
     pub lifetime_storage_bytes: i64,
     pub devices_used: i32,
     pub devices_limit: i32,
-    /// RFC3339 — the first time this account ever went Pro, or `null` if it
+    /// RFC3339 stamp of the first time this account went Pro, or `null` if it
     /// never did. One-way: a downgrade doesn't clear it. It's why an account on
     /// Free can legitimately report an unlimited `devices_limit`, so the UI can
     /// say *why* instead of looking like a bug.
     pub first_pro_at: Option<String>,
     pub saves_used: i32,
     pub saves_limit: i32,
-    /// True on every tier post-1.6.1 — kept on the wire as a bool so
+    /// True on every tier post-1.6.1, kept on the wire as a bool so
     /// "rolling N days" tiers in the future flip this to `false` instead
     /// of forcing every client to start reading a `retention_days` int
     /// that used to be missing.
@@ -58,10 +58,10 @@ pub struct Me {
     pub bandwidth_window_secs: i32,
     pub bandwidth_quota_bytes: i64,
     /// Storage pressure state for the UI gauge:
-    /// - `"ok"`      — under the auto-purge threshold (green).
-    /// - `"purging"` — at/over threshold; old versions are auto-deleted to make
+    /// - `"ok"`: under the auto-purge threshold (green).
+    /// - `"purging"`: at or over threshold; old versions are auto-deleted to make
     ///   room (orange: the user is losing old history).
-    /// - `"full"`    — at the hard limit; nothing left to reclaim, sync uploads
+    /// - `"full"`: at the hard limit; nothing left to reclaim, sync uploads
     ///   are rejected (red).
     pub storage_status: &'static str,
     /// Set when a storage downgrade is scheduled but not yet in effect: the
@@ -73,7 +73,7 @@ pub struct Me {
     pub storage_limit_change_at: Option<String>,
     /// Set when the account is soft-deleted and inside its 30-day grace: the
     /// RFC3339 instant deletion was requested. The desktop uses its presence to
-    /// swap the whole app for a "scheduled for deletion — reactivate?" screen,
+    /// swap the whole app for a "scheduled for deletion, reactivate?" screen,
     /// since every data route is frozen (403 `account_scheduled_deletion`)
     /// until the user reactivates or the grace elapses. `null` for live
     /// accounts.
@@ -85,21 +85,22 @@ pub struct Me {
     /// Enforced server-side after every commit (oldest non-pinned versions
     /// beyond the cap are deleted). Set via `PUT /v1/me/max-versions`.
     ///
-    /// Sólo cuenta las copias **automáticas**. Las que el usuario pidió a mano
-    /// tienen su propio cupo ([`Self::max_manual_versions`]) para que una
-    /// ráfaga de autoguardados no pueda echarlas del historial.
+    /// Counts the automatic copies only. The ones the user asked for by hand have
+    /// their own cap ([`Self::max_manual_versions`]) so a burst of autosaves
+    /// cannot push them out of the history.
     pub max_versions: Option<i64>,
-    /// Cupo de las copias deliberadas (las que el usuario pidió y la red de
-    /// seguridad previa a un restore). `null` = sin límite, que es el defecto:
-    /// son pocas y son justo las que se quieren conservar.
+    /// Cap on the deliberate copies: the ones the user asked for, plus the safety
+    /// net taken before a restore. `null` means unlimited, which is the default,
+    /// because there are few of them and they are the ones worth keeping.
     pub max_manual_versions: Option<i64>,
-    /// La versión de los Términos que esta cuenta aceptó por última vez, o
-    /// `null` si nunca se registró ninguna (cuentas anteriores a que esto
-    /// existiera). Es la mitad del par que el cliente compara.
+    /// The Terms version this account last accepted, or `null` if none was ever
+    /// recorded (accounts from before this existed). One half of the pair the
+    /// client compares.
     pub terms_version_accepted: Option<String>,
-    /// La versión vigente hoy. Viaja aunque el cliente ya la tenga compilada:
-    /// un binario viejo que se quedó en el literal anterior seguiría creyendo
-    /// que está al día, y es justo al revés — quien manda es el server.
+    /// The version in force today. It travels even though the client has it
+    /// compiled in: an older binary stuck on the previous literal would still
+    /// believe it was up to date, and it is the other way round, the server
+    /// decides.
     pub terms_version_current: &'static str,
 }
 
@@ -127,7 +128,7 @@ fn storage_status(plan: Plan, used: i64, limit: u64, grace: bool) -> &'static st
     }
 }
 
-/// GET /v1/me — current user's profile + plan + usage. Auto-creates the
+/// GET /v1/me: the current user's profile, plan and usage. Auto-creates the
 /// profile row on first call (idempotent), so the client doesn't need a
 /// separate "registration" step after Supabase OAuth.
 pub async fn get_me(
@@ -236,7 +237,7 @@ pub async fn get_me(
     .fetch_optional(&state.pool)
     .await?;
 
-    // Saves count comes from a separate query — keeps profile reads cheap
+    // Saves count comes from a separate query, which keeps profile reads cheap
     // for endpoints that don't need this and avoids a join when the saves
     // count would be `0` on day one anyway. `saves` has no soft-delete
     // column today (only `save_versions` does); a plain COUNT is the right
@@ -248,10 +249,10 @@ pub async fn get_me(
             .fetch_one(&state.pool)
             .await?;
 
-    // La última aceptación registrada. Va suelta y no en el SELECT gordo de
-    // arriba porque su tabla es append-only y vive aparte de `profiles`: un
-    // JOIN aquí sólo serviría para que un fallo tonto de este añadido pudiera
-    // tumbar la respuesta entera de la cuenta.
+    // The last recorded acceptance. It goes on its own rather than in the big
+    // SELECT above because its table is append-only and lives apart from
+    // `profiles`: a JOIN here would only let a silly failure in this addition take
+    // down the whole account response.
     let accepted_terms: Option<String> = sqlx::query_scalar(
         "SELECT version FROM terms_acceptances
           WHERE user_id = $1 ORDER BY accepted_at DESC LIMIT 1",
@@ -260,10 +261,10 @@ pub async fn get_me(
     .fetch_optional(&state.pool)
     .await
     .unwrap_or_else(|e| {
-        // Y si falla, se calla: `/v1/me` es la llamada de la que cuelga la
-        // pantalla de cuenta entera. Un dato de papeleo no puede ser lo que
-        // deje a alguien sin poder mirar su plan — el cliente lee `null` y
-        // vuelve a pedir la casilla, que es el lado seguro del fallo.
+        // And if it fails, it stays quiet: `/v1/me` is the call the whole account
+        // screen hangs off. A piece of paperwork cannot be what stops somebody
+        // looking at their plan. The client reads `null` and asks for the checkbox
+        // again, which is the safe side of the failure.
         tracing::warn!("terms acceptance lookup failed: {e}");
         None
     });
@@ -275,7 +276,7 @@ pub async fn get_me(
     limits.devices = crate::cloud::plans::resolved_devices_limit(plan, first_pro_at.is_some());
     // A pending downgrade exists iff a change instant is set; while it's in the
     // future `storage_limit_bytes` is the absolute grant the user keeps and the
-    // plan column may already say "free" — so resolve, don't just read the tier.
+    // plan column may already say "free", so resolve rather than just read the tier.
     let pending_change_at = row.10;
     limits.storage_bytes = crate::cloud::plans::resolved_storage_limit(
         plan,
@@ -333,9 +334,9 @@ pub async fn get_me(
 pub struct MaxVersionsBody {
     /// `null` clears the cap (unlimited).
     pub max_versions: Option<i64>,
-    /// A qué cupo se refiere: `true` = el de las copias deliberadas, `false`
-    /// (por defecto) = el de las automáticas. Un solo endpoint para los dos
-    /// porque la validación, la poda y el `dry_run` son idénticos.
+    /// Which cap this is about: `true` for the deliberate copies, `false` (the
+    /// default) for the automatic ones. One endpoint for both, because the
+    /// validation, the prune and the `dry_run` are identical.
     #[serde(default)]
     pub manual: bool,
     /// When true, nothing is written or deleted: `pruned` reports how many
@@ -348,14 +349,14 @@ pub struct MaxVersionsBody {
 #[derive(Debug, Serialize)]
 pub struct MaxVersionsOut {
     pub max_versions: Option<i64>,
-    /// Qué cupo se acaba de tocar, eco de la petición.
+    /// Which cap was just touched, echoed back from the request.
     pub manual: bool,
     /// Versions deleted right away because they were over the new cap (or,
     /// on `dry_run`, how many would be).
     pub pruned: usize,
 }
 
-/// `PUT /v1/me/max-versions` — set (or clear, with `null`) the per-user cap
+/// `PUT /v1/me/max-versions`: set, or clear with `null`, the per-user cap
 /// on stored versions per save, then prune immediately so the effect (and
 /// the freed storage) is visible without waiting for the next backup. With
 /// `dry_run: true` it only previews the prune count.
@@ -388,8 +389,8 @@ pub async fn set_max_versions(
         }));
     }
 
-    // La columna se elige por el flag, no por interpolación: dos consultas
-    // literales en vez de coser el nombre de una columna dentro del SQL.
+    // The column is picked by the flag, not by interpolation: two literal queries
+    // rather than stitching a column name into the SQL.
     let sql = if body.manual {
         "UPDATE profiles SET max_manual_versions = $1, updated_at = now() WHERE user_id = $2"
     } else {
@@ -410,7 +411,7 @@ pub async fn set_max_versions(
 }
 
 /// Map u64 byte caps to the `-1 = unlimited` convention the client uses.
-/// We never overflow i64 here in practice — quotas are GB-scale — but
+/// We never overflow i64 here in practice (quotas are GB-scale) but
 /// the `try_into` guard keeps the intent obvious.
 fn bytes_or_unlimited(n: u64) -> i64 {
     i64::try_from(n).unwrap_or(i64::MAX)
@@ -434,11 +435,11 @@ fn format_dt(dt: OffsetDateTime) -> String {
 
 /// Create the row if missing. Same effect as the old `POST /v1/profiles/sync`
 /// from the handoff but folded into `GET /v1/me` to keep the client API
-/// flat — the first authenticated GET is always the bootstrap.
+/// flat: the first authenticated GET is always the bootstrap.
 ///
 /// First provisioning runs the anti-abuse gates (disposable domain, one live
 /// account per canonical email, per-device free-account cap). Returning users
-/// — any row already present — skip every gate: a miscount or a newly added
+/// (any row already present) skip every gate: a miscount or a newly added
 /// rule must never lock someone out of an account they already hold.
 async fn upsert_profile_for(
     state: &CloudState,
@@ -478,7 +479,7 @@ async fn upsert_profile_for(
     }
 
     // Persist the OAuth provider's name + avatar so /v1/me can return them
-    // (this is why the desktop "account photo" was always blank — we only
+    // (this is why the desktop "account photo" was always blank: we only
     // ever wrote the email). COALESCE keeps any value already on the row when
     // a later token happens to omit the metadata, so the picture (and the
     // canonical email) doesn't flicker away on a refresh whose token lacks it.
@@ -516,7 +517,7 @@ async fn upsert_profile_for(
 /// Reject creation of a *new* free account when this device already hosts the
 /// per-device cap of distinct live free accounts. Pro accounts aren't counted
 /// and are never blocked. A client that sends no fingerprint (older builds, or
-/// a machine with neither `/etc/machine-id` nor a hostname) is not gated — the
+/// a machine with neither `/etc/machine-id` nor a hostname) is not gated: the
 /// cap is a speed bump for casual multi-accounting, and we'd rather under-block
 /// than lock out a real user whose machine reports no stable id.
 async fn enforce_device_account_cap(
@@ -563,7 +564,7 @@ async fn enforce_device_account_cap(
 /// the app on the same machine bumps `last_seen_at` instead of inflating the
 /// count. No-op when the client sends no fingerprint header (older builds, or
 /// a machine with neither `/etc/machine-id` nor a hostname). The device limit
-/// is *not* enforced here — we only keep the count truthful; gating uploads on
+/// is *not* enforced here. We only keep the count truthful; gating uploads on
 /// it is a separate decision so a miscount can never lock a user out.
 async fn register_device(
     state: &CloudState,
@@ -611,12 +612,12 @@ async fn register_device(
 
 /// A device counts as online while its last heartbeat is younger than this.
 /// The agent beats every ~30s, so 90s = three missed beats before the dot
-/// goes grey — tight enough to feel live, loose enough to ride out a hiccup.
+/// goes grey: tight enough to feel live, loose enough to ride out a hiccup.
 const PRESENCE_ONLINE_WINDOW_SECS: i32 = 90;
 
 /// One game a device is running right now: `{ slug, since }`, `since` in
 /// RFC3339. Wire shape of both the `devices.playing` JSONB elements and the
-/// `DeviceOut.playing` entries — stored and served identically on purpose.
+/// `DeviceOut.playing` entries, stored and served identically on purpose.
 #[derive(Debug, Serialize, serde::Deserialize)]
 pub struct PlayingOut {
     pub slug: String,
@@ -635,7 +636,7 @@ pub struct DeviceOut {
     /// Live presence: heartbeat fresh and no closing beat received.
     pub online: bool,
     /// Games the device is running right now, most recently started first.
-    /// Only ever populated while `online` — a stale "playing" on a dead
+    /// Only ever populated while `online`: a stale "playing" on a dead
     /// machine is worse than none. Empty = idle.
     pub playing: Vec<PlayingOut>,
     /// True for the row matching the caller's `x-hoard-device-fp`, so the UI
@@ -648,7 +649,7 @@ pub struct DeviceListOut {
     pub devices: Vec<DeviceOut>,
 }
 
-/// GET /v1/devices — the machines registered to this account, newest-seen
+/// GET /v1/devices: the machines registered to this account, newest-seen
 /// first. Powers the account page's "Dispositivos" list + unlink buttons.
 pub async fn list_devices(
     State(state): State<CloudState>,
@@ -664,7 +665,7 @@ pub async fn list_devices(
     // `online` is computed here, at read time, so a client that died without
     // its closing beat ages out on its own. `playing` is masked for offline
     // devices in the same breath. The JSONB comes out as text and is parsed
-    // in Rust — no sqlx `json` feature needed.
+    // in Rust, so no sqlx `json` feature is needed.
     let rows: Vec<(
         Uuid,
         String,
@@ -724,7 +725,7 @@ pub async fn list_devices(
     Ok(Json(DeviceListOut { devices }))
 }
 
-/// DELETE /v1/devices/:id — unlink a device. Scoped to the caller's user_id so
+/// DELETE /v1/devices/:id: unlink a device. Scoped to the caller's user_id so
 /// you can never delete another account's row even with a guessed UUID. After
 /// the delete we recompute the cached `profiles.devices_count`. Deleting a
 /// machine that's still running just means it re-registers on its next
@@ -777,13 +778,13 @@ pub struct HeartbeatIn {
     pub closing: bool,
 }
 
-/// Hard caps on what a beat may claim. Presence is cosmetic — shown only to
-/// the user's own other devices — so these just stop a rogue client from
+/// Hard caps on what a beat may claim. Presence is cosmetic, shown only to the
+/// user's own other devices, so these just stop a rogue client from
 /// stuffing megabytes into the row.
 const MAX_PLAYING_GAMES: usize = 8;
 const MAX_SLUG_CHARS: usize = 128;
 
-/// POST /v1/presence/heartbeat — presence keepalive from the agent. Sent every
+/// POST /v1/presence/heartbeat: presence keepalive from the agent. Sent every
 /// ~30s while it runs, immediately on any game start/stop, and once with
 /// `closing: true` on quit. Bumps `last_seen_at` and the `playing` JSONB;
 /// `GET /v1/devices` turns that into the Eye panel's online dots. Best-effort
@@ -833,7 +834,7 @@ pub async fn heartbeat(
 
     // First beat from a machine the server has never met (e.g. a headless
     // CLI that authenticated via device pairing and never hit `GET /v1/me`):
-    // register it the same way `/v1/me` would — name/os come from the same
+    // register it the same way `/v1/me` would; name and os come from the same
     // headers. The register path also keeps `profiles.devices_count` truthful.
     if stored.is_none() {
         register_device(&state, &user, &headers).await?;
@@ -889,13 +890,13 @@ pub async fn heartbeat(
 /// Cuerpo de `POST /v1/me/terms`.
 #[derive(Debug, Deserialize)]
 pub struct AcceptTermsBody {
-    /// La versión que el cliente enseñó al usuario. **No** la damos por buena
-    /// sin mirar: si un binario viejo manda una anterior, guardar eso como
-    /// "aceptó lo vigente" sería fabricar una prueba falsa.
+    /// The version the client showed the user. We do not take it on trust: if an
+    /// older binary sends a previous one, recording that as "accepted what is in
+    /// force" would be manufacturing false evidence.
     pub version: String,
     /// `desktop` | `web` | `cli`.
     pub source: String,
-    /// Versión de la app que recogió el clic, cuando el cliente la manda.
+    /// The app version that collected the click, when the client sends it.
     #[serde(default)]
     pub app_version: Option<String>,
 }
@@ -905,22 +906,22 @@ pub struct TermsStatusOut {
     /// Última versión aceptada, o `null` si no consta ninguna.
     pub accepted_version: Option<String>,
     pub accepted_at: Option<String>,
-    /// La vigente hoy.
+    /// The one in force today.
     pub current_version: &'static str,
-    /// `true` cuando hay que volver a pedir la casilla.
+    /// `true` when the checkbox has to be asked for again.
     pub needs_acceptance: bool,
 }
 
-/// Fuentes admitidas. Cerrado a propósito: el campo acaba en un registro que
-/// puede leer un juez, y "lo que mandara el cliente" no es una respuesta.
+/// Accepted sources. Closed on purpose: the field ends up in a record a judge may
+/// read, and "whatever the client sent" is not an answer.
 const TERMS_SOURCES: [&str; 3] = ["desktop", "web", "cli"];
 
-/// POST /v1/me/terms — deja constancia de que esta cuenta aceptó los Términos.
+/// POST /v1/me/terms: records that this account accepted the Terms.
 ///
-/// Idempotente por `(user_id, version)`: los clientes lo llaman en cada inicio
-/// de sesión y la primera aceptación es la que vale, así que un `ON CONFLICT
-/// DO NOTHING` conserva la fecha original en vez de irla empujando hacia
-/// delante cada vez que alguien abre la app.
+/// Idempotent on `(user_id, version)`: clients call it on every sign-in and the
+/// first acceptance is the one that counts, so an `ON CONFLICT DO NOTHING` keeps
+/// the original date instead of pushing it forward every time somebody opens the
+/// app.
 pub async fn accept_terms(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
@@ -955,9 +956,9 @@ pub async fn accept_terms(
     terms_status(&state, user.user_id).await.map(Json)
 }
 
-/// GET /v1/me/terms — qué aceptó esta cuenta y si hay que volver a preguntar.
-/// El usuario puede pedir este registro por el art. 15 del RGPD, y esto es lo
-/// que se le entrega.
+/// GET /v1/me/terms: what this account accepted and whether it has to be asked
+/// again. The user can request this record under GDPR article 15, and this is what
+/// they are handed.
 pub async fn get_terms(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
@@ -988,7 +989,7 @@ pub struct ExportJobOut {
     pub status: String,
 }
 
-/// POST /v1/me/export — enqueue an export job. Returns immediately with a
+/// POST /v1/me/export: enqueue an export job. Returns immediately with a
 /// `job_id`; the cron / background worker writes the ZIP to R2 and updates
 /// the row. Client polls (future endpoint) or watches via realtime.
 pub async fn create_export_job(
@@ -996,7 +997,7 @@ pub async fn create_export_job(
     Extension(user): Extension<CloudUser>,
 ) -> Result<Json<ExportJobOut>, CloudError> {
     // Reuse an in-flight job instead of stacking duplicates: tapping "export"
-    // twice — or a status poll racing a click — must not spawn N ZIP builds.
+    // twice, or a status poll racing a click, must not spawn N ZIP builds.
     let existing: Option<(Uuid, String)> = sqlx::query_as(
         "SELECT id, status FROM export_jobs
            WHERE user_id = $1 AND status IN ('pending','running')
@@ -1022,7 +1023,7 @@ pub async fn create_export_job(
     }))
 }
 
-/// Wire shape for `GET /v1/me/export` — the latest export job's state, so the
+/// Wire shape for `GET /v1/me/export`: the latest export job's state, so the
 /// account page can show a spinner then a download button without email. All
 /// fields are `null` when the user has never requested an export.
 #[derive(Debug, Serialize)]
@@ -1038,7 +1039,7 @@ pub struct ExportStatusOut {
     pub error: Option<String>,
 }
 
-/// GET /v1/me/export — status of the most recent export, with a fresh
+/// GET /v1/me/export: status of the most recent export, with a fresh
 /// presigned download link when one is ready. Polled by the client after it
 /// enqueues an export.
 pub async fn get_export_status(
@@ -1112,7 +1113,7 @@ pub struct DeleteAccountOut {
     pub grace_days: u32,
 }
 
-/// DELETE /v1/me — soft-delete the account. The account is *frozen* immediately
+/// DELETE /v1/me: soft-delete the account. The account is *frozen* immediately
 /// (every data route 403s via `require_active_account`), so unlike before this
 /// no longer behaves like a plain logout. `account_purge`'s daily cron
 /// hard-deletes it `GRACE_DAYS` later; `POST /v1/me/reactivate` cancels it in
@@ -1153,10 +1154,10 @@ pub struct ReactivateOut {
     pub reactivated: bool,
 }
 
-/// POST /v1/me/reactivate — cancel a pending soft-delete. Clears `deleted_at`
+/// POST /v1/me/reactivate: cancel a pending soft-delete. Clears `deleted_at`
 /// (the purge cron only ever touches rows where it's non-NULL, so this is what
 /// actually saves the account) and lifts the freeze. Explicit on purpose: a
-/// mere re-login must NOT silently un-delete — that was the old bug that made
+/// mere re-login must NOT silently un-delete: that was the old bug that made
 /// "delete" indistinguishable from a logout. `reactivated` is `false` when the
 /// account wasn't scheduled for deletion (nothing to do), so the client can
 /// tell an idempotent no-op from a real reactivation.

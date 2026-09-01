@@ -1,4 +1,4 @@
-//! `/v1/cloud/playtime` — cloud mirror of the agent's real-hours-played
+//! `/v1/cloud/playtime`: cloud mirror of the agent's real-hours-played
 //! tracker, attributed per local day and per game, per device.
 //!
 //! - `POST` replaces a device's breakdown of `(day, game, secs)` rows, scoped
@@ -9,14 +9,14 @@
 //!   This used to wipe every row for `(user_id, device_fp)` unconditionally,
 //!   justified by "the client's local store is monotonic, so this never loses
 //!   history". Nothing enforced that invariant, and it stops holding the moment
-//!   the local store is gone — a reinstall, a wiped `AppData`, a fresh profile.
+//!   the local store is gone: a reinstall, a wiped `AppData`, a fresh profile.
 //!   Then the client came back with an empty breakdown, this route believed it,
 //!   and the account's history was deleted server-side. That is exactly how a
 //!   user lost theirs (2026-08-07): the app was reinstalled at 03:19 and its
 //!   own routine push finished the job at 04:17.
 //!
 //!   So a payload now only clears the days it actually mentions, unless it sets
-//!   `authoritative` — which the agent does only when its store came off disk.
+//!   `authoritative`, which the agent does only when its store came off disk.
 //!   A client that lost its file says nothing about last month, so last month
 //!   survives; a client that still has its file can retract a day (a game
 //!   excluded from the count) and the retraction lands.
@@ -29,7 +29,7 @@
 //!   `{ days, by_game, total_secs }` shape the recap reads locally, so the UI
 //!   can swap its source without reshaping. The synthetic `__other__` slug
 //!   (time from days that predate the per-game breakdown) counts toward `days`
-//!   and `total_secs` but is hidden from `by_game` — it isn't a real game.
+//!   and `total_secs` but is hidden from `by_game`, since it isn't a real game.
 
 use std::collections::BTreeMap;
 
@@ -40,7 +40,7 @@ use crate::cloud::auth::CloudUser;
 use crate::cloud::errors::CloudError;
 use crate::cloud::state::CloudState;
 
-/// Hard cap on rows per upload. A real history is days × games — a few
+/// Hard cap on rows per upload. A real history is days by games, a few
 /// thousand at most. The cap only stops a malicious client from flooding the
 /// table; an honest agent never approaches it.
 const MAX_ROWS: usize = 50_000;
@@ -57,8 +57,8 @@ pub struct PlaytimeUpload {
     /// The client vouches for this device's *whole* history, so anything it
     /// doesn't send may be dropped.
     ///
-    /// Defaults to `false`, and the default is the point: an older client — or
-    /// any client that can't tell a real zero from a lost file — gets the safe
+    /// Defaults to `false`, and the default is the point: an older client, or any
+    /// client that can't tell a real zero from a lost file, gets the safe
     /// behaviour without being updated first.
     #[serde(default)]
     pub authoritative: bool,
@@ -216,7 +216,7 @@ pub async fn aggregate(
     .fetch_all(&state.pool)
     .await?;
 
-    // Per-(day, game) total across devices, real games only — the day-detail
+    // Per-(day, game) total across devices, real games only: the day-detail
     // breakdown the recap shows when a square is clicked.
     let day_game_rows: Vec<(String, String, i64)> = sqlx::query_as(
         r#"

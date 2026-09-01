@@ -2,15 +2,15 @@
 //!
 //! Self-hosted `hoard-server` keeps its content-addressed bytes either on local
 //! disk (the default, unchanged) or on any S3-compatible endpoint, selected by
-//! `[storage] backend`. Everything else — the SQLite index, auth, dedup and
-//! refcounts, retention, the client API — is identical between the two: the
+//! `[storage] backend`. Everything else, the SQLite index, auth, dedup and
+//! refcounts, retention, the client API, is identical between the two: the
 //! bucket only ever holds opaque zstd blob/chunk bytes, addressed by the same
 //! per-user, sha-sharded key scheme the on-disk layout uses.
 //!
 //! The one key scheme (`blobs/<user>/<ab>/<sha>` and `chunks/<user>/<ab>/<sha>`)
 //! mirrors `blobs::blob_path` / `chunking::chunk_path`, so `LocalFs` maps a key
-//! straight onto `data_dir/<key>` — byte-identical to the pre-abstraction
-//! layout — and `S3Store` uses it verbatim as the object key (optionally under
+//! straight onto `data_dir/<key>`, byte-identical to the pre-abstraction layout,
+//! and `S3Store` uses it verbatim as the object key (optionally under
 //! a `key_prefix`).
 
 use std::path::{Path, PathBuf};
@@ -56,7 +56,7 @@ pub struct LocalRef {
 pub trait BlobStore: Send + Sync {
     /// Finalize an upload: move the staged file at `local_path` into the store
     /// under `key`. Consumes the staged file. The local backend renames it
-    /// (same filesystem — `tmp/` and the blob store share `data_dir`) with a
+    /// (same filesystem, since `tmp/` and the blob store share `data_dir`) with a
     /// copy fallback on EXDEV; the S3 backend streams it to the bucket.
     async fn put_from_file(&self, key: &str, local_path: &Path) -> Result<()>;
 
@@ -65,7 +65,7 @@ pub trait BlobStore: Send + Sync {
     async fn exists(&self, key: &str) -> Result<bool>;
 
     /// Object size in bytes, or `None` if absent. A cheap stat/HEAD (no
-    /// download) — migration uses it to skip keys the destination already has
+    /// download). Migration uses it to skip keys the destination already has
     /// at the right size.
     async fn size(&self, key: &str) -> Result<Option<i64>>;
 
@@ -79,7 +79,7 @@ pub trait BlobStore: Send + Sync {
     async fn local_ref(&self, key: &str, spool_dir: &Path) -> Result<LocalRef>;
 
     /// The directory keys resolve under, for the one backend that has one.
-    /// `None` everywhere else — a remote bucket has no directories, only keys
+    /// `None` everywhere else: a remote bucket has no directories, only keys
     /// that happen to contain slashes. Only for tidying up empty directories
     /// after a purge; never for reading or writing an object, which always
     /// goes through the methods above.
@@ -207,7 +207,7 @@ impl S3Store {
     /// compare the bytes, then delete it.
     ///
     /// The round-trip is the point. A write-only probe passes on an endpoint
-    /// that mangles streaming bodies — the historical failure here was
+    /// that mangles streaming bodies. The historical failure here was
     /// `aws-chunked` framing being stored verbatim by `rclone serve s3`, which
     /// corrupts every blob while the server logs nothing. Comparing bytes turns
     /// that into a refusal to boot. Reading also proves the credentials can GET,
@@ -334,7 +334,7 @@ pub async fn build_store(cfg: &crate::config::Config) -> Result<Arc<dyn BlobStor
 /// rather than off the filesystem.
 ///
 /// Deleting the `users` row cascades the `blobs`/`chunks` rows away, so this
-/// has to run **first** — afterwards there is nothing left to say which keys
+/// has to run *first*: afterwards there is nothing left to say which keys
 /// were theirs. Going through [`BlobStore`] instead of `remove_dir_all` is
 /// what makes it work on an S3 bucket too, where there are no directories to
 /// remove and the objects would otherwise stay (and keep costing) forever.
@@ -406,17 +406,17 @@ pub async fn purge_user_objects(
 
 /// Startup guard (self-host): datos en disco pero **base vacía**.
 ///
-/// El inverso de [`sanity_check`], y el que muerde de verdad. Si el `data_dir`
-/// tiene contenido de un despliegue anterior pero la base no tiene ni un
-/// usuario, la base se ha perdido: casi siempre un `docker compose` sin volumen
-/// persistente para `/var/lib/hoard`, o un `down -v`. El servidor arrancaba tan
-/// contento —migraciones "aplicadas" sobre una base recién creada— y el
-/// operador se enteraba cuando su cliente no podía loguear, con los snapshots
-/// intactos al lado. Reportado en ago-2026: un self-hoster actualizó, perdió
-/// usuarios y clientes, y tuvo que recrearlo todo a mano.
+/// The inverse of [`sanity_check`], and the one that really bites. If the
+/// `data_dir` holds content from an earlier deployment but the database has not a
+/// single user, the database has been lost: almost always a `docker compose` with
+/// no persistent volume for `/var/lib/hoard`, or a `down -v`. The server used to
+/// boot away happily, with migrations "applied" over a freshly created database,
+/// and the operator found out when their client could not log in, with the
+/// snapshots sitting there intact. Reported in aug-2026: a self-hoster updated,
+/// lost users and clients, and had to recreate all of it by hand.
 ///
-/// Arrancar así no es recuperable desde el cliente: los `save_id` que guarda
-/// cada máquina ya no existen aquí, y sus subidas responden 404 para siempre.
+/// Booting like that is not recoverable from the client: the `save_id`s each
+/// machine holds no longer exist here, and its uploads answer 404 forever.
 /// Mejor negarse a servir y decirlo.
 pub async fn guard_against_lost_database(
     pool: &sqlx::SqlitePool,
@@ -428,14 +428,14 @@ pub async fn guard_against_lost_database(
     if users > 0 {
         return Ok(());
     }
-    // Sin usuarios: ¿hay rastro de un despliegue anterior en disco? `blobs/` y
-    // `chunks/` son del almacén local; `snapshots/` es del layout legacy.
+    // No users: is there any trace of an earlier deployment on disk? `blobs/` and
+    // `chunks/` belong to the local store; `snapshots/` is the legacy layout.
     let leftovers = ["blobs", "chunks", "snapshots"]
         .iter()
         .filter(|d| std::fs::read_dir(data_dir.join(d)).is_ok_and(|mut r| r.next().is_some()))
         .count();
     if leftovers == 0 {
-        // Instalación nueva de verdad: nada que proteger.
+        // A genuinely fresh install: nothing to protect.
         return Ok(());
     }
     anyhow::bail!(
@@ -457,7 +457,7 @@ pub async fn guard_against_lost_database(
 pub async fn sanity_check(pool: &sqlx::SqlitePool, store: &Arc<dyn BlobStore>) -> Result<()> {
     use sqlx::Row;
 
-    // Sample live keys — blobs first, then chunks if the user only has chunked
+    // Sample live keys, blobs first, then chunks if the user only has chunked
     // saves. `refcount > 0` = still referenced (live or trashed).
     let mut keys: Vec<String> = sqlx::query(
         "SELECT user_id, sha256 FROM blobs WHERE refcount > 0 ORDER BY RANDOM() LIMIT 8",
@@ -524,22 +524,22 @@ mod tests {
         pool
     }
 
-    /// El caso que se llevó por delante el despliegue de un self-hoster: base
-    /// recién creada (cero usuarios) junto a un `data_dir` lleno del despliegue
-    /// anterior. Arrancar así se ve sano y deja 404 eternos a todos sus
-    /// clientes, así que el arranque tiene que negarse.
+    /// The case that took out a self-hoster's deployment: a freshly created
+    /// database (zero users) next to a `data_dir` full of the previous one.
+    /// Booting like that looks healthy and leaves every client with permanent
+    /// 404s, so the boot has to refuse.
     #[tokio::test]
     async fn refuses_to_boot_with_an_empty_database_next_to_leftover_data() {
         let pool = mem_pool().await;
         let tmp = tempfile::tempdir().unwrap();
 
-        // Instalación nueva de verdad: sin usuarios y sin datos. Debe pasar —
+        // A genuinely fresh install: no users and no data. It has to pass,
         // un falso positivo aquí rompería CADA primer arranque.
         guard_against_lost_database(&pool, tmp.path())
             .await
             .expect("una instalación nueva tiene que arrancar");
 
-        // Ahora con restos de blobs y sin usuarios: la base se perdió.
+        // Now with leftover blobs and no users: the database was lost.
         std::fs::create_dir_all(tmp.path().join("blobs/user-1/ab")).unwrap();
         std::fs::write(tmp.path().join("blobs/user-1/ab/abcd"), b"x").unwrap();
         let err = guard_against_lost_database(&pool, tmp.path())

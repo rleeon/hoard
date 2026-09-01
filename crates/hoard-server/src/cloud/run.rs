@@ -64,7 +64,7 @@ pub async fn run(cfg: Config) -> Result<()> {
     // 4b. Bandwidth bucket cleanup. 10-minute cadence is far below the
     //     1-hour cutoff, so a missed tick after a deploy can't let the
     //     table grow more than ~1.5h before the next run trims it back.
-    //     Spawned as a detached task — failures just `warn!` and the
+    //     Spawned as a detached task: failures just `warn!` and the
     //     next tick retries; not worth crashing the server over.
     {
         let pool = pool.clone();
@@ -92,14 +92,14 @@ pub async fn run(cfg: Config) -> Result<()> {
     //     sweep deletes anything older. Detached task: failures `warn!` and
     //     the next tick retries.
     //
-    //     Los `EXEMPT_TARGETS` viven 180 días y no 14. No son diagnóstico: son
-    //     las dos señales que se recogen a propósito —desmentidas de detección
-    //     y uso de Hoard Screen— y las dos preguntas que contestan son
-    //     longitudinales ("¿mejora la detección?", "¿crece el uso del
-    //     overlay?"). Con la poda corta, el panel enseñaba una ventana móvil de
-    //     dos semanas haciéndola pasar por el total, que es la peor forma de
-    //     equivocarse: sin error, sin hueco, y con la tendencia borrada. El
-    //     volumen no es problema — un par de filas por sesión, frente a las
+    //     The `EXEMPT_TARGETS` live 180 days rather than 14. They are not
+    //     diagnostics: they are the two signals collected on purpose (detection
+    //     contradictions and Hoard Screen usage) and the two questions they
+    //     answer are longitudinal ("is detection getting better?", "is overlay
+    //     use growing?"). With the short prune the panel showed a rolling
+    //     two-week window and passed it off as the total, which is the worst way
+    //     to be wrong: no error, no gap, and the trend erased. Volume is not the
+    //     problem, at a couple of rows per session against the
     //     ~15.000 de log corriente.
     {
         let pool = pool.clone();
@@ -205,9 +205,9 @@ pub async fn run(cfg: Config) -> Result<()> {
     let authed_always = Router::new()
         .route("/v1/me", get(me::get_me).delete(me::delete_me))
         .route("/v1/me/reactivate", post(me::reactivate_me))
-        // Va con las de "siempre" y no con las guardadas: aceptar los Términos
-        // es lo primero que hace un cliente al entrar, y tiene que poder
-        // hacerlo aunque el resto de la cuenta esté congelada.
+        // It goes with the always-on routes rather than the guarded ones:
+        // accepting the Terms is the first thing a client does on sign-in, and it
+        // has to be able to even with the rest of the account frozen.
         .route("/v1/me/terms", get(me::get_terms).post(me::accept_terms))
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -230,7 +230,7 @@ pub async fn run(cfg: Config) -> Result<()> {
         )
         // Presence keepalive for the Eye panel. Lives off the `/devices/:id`
         // param path on purpose: matchit 0.7 (axum 0.7) panics on a static
-        // segment colliding with a param at the same position — same caveat
+        // segment colliding with a param at the same position, the same caveat
         // as `/saves/cas` below.
         .route(
             "/v1/presence/heartbeat",
@@ -313,7 +313,7 @@ pub async fn run(cfg: Config) -> Result<()> {
             get(playtime_routes::aggregate).post(playtime_routes::upload),
         )
         // Client diagnostic-log ingest (INFO+ only). Smaller body cap than
-        // save uploads — applied per-route.
+        // save uploads, applied per route.
         .route(
             "/v1/cloud/logs",
             post(log_routes::ingest).layer(axum::extract::DefaultBodyLimit::max(
@@ -348,7 +348,7 @@ pub async fn run(cfg: Config) -> Result<()> {
     // Browser CORS: the marketing site (hoard.services) and the account
     // page fetch this API cross-origin. Without these headers the browser
     // blocks reading the response even on a healthy 200, which is what made
-    // the status dot read "degraded". No cookies — auth is a Bearer token —
+    // the status dot read "degraded". No cookies, since auth is a Bearer token,
     // so credentials stay off.
     let cors = CorsLayer::new()
         .allow_origin([
@@ -366,8 +366,8 @@ pub async fn run(cfg: Config) -> Result<()> {
         .with_state(state.clone())
         // The self-hosted router has always set this (`main.rs`, derived from
         // `max_snapshot_size_mb`); the cloud one never did, so it ran on axum's
-        // 2 MB default. That is not a limit on save *bytes* — those go straight
-        // to R2 over a presigned PUT and never cross this process — but on the
+        // 2 MB default. That is not a limit on save *bytes*, which go straight
+        // to R2 over a presigned PUT and never cross this process, but on the
         // `cas/init` manifest, which carries one JSON entry per file: path, its
         // 64-char sha256, size, mtime. At roughly 170 bytes an entry, 2 MB runs
         // out at ~12k files.
@@ -375,7 +375,7 @@ pub async fn run(cfg: Config) -> Result<()> {
         // A save that trips it can never land, and the failure reads as
         // anything but the truth: the extractor's 413 has a plain-text body, so
         // a client that expects Hoard's JSON parses zeros out of it and reports
-        // "exceeds the server's per-save size limit" — a per-save cap that
+        // "exceeds the server's per-save size limit", a per-save cap that
         // never ran, on a plan that was never consulted. Our first Pro user
         // spent a day watching Project Zomboid (one file per map chunk, tens of
         // thousands of them) retry hourly against that, upgrading mid-way in
@@ -385,22 +385,22 @@ pub async fn run(cfg: Config) -> Result<()> {
         // Cloudflare's 100 MB request ceiling on the way in. Not higher: the
         // whole body is buffered and deserialized into owned Strings on a
         // 512 MB machine, so the headroom above is memory, not generosity.
-        // `/v1/cloud/logs` keeps its own smaller cap — a route-level limit is
+        // `/v1/cloud/logs` keeps its own smaller cap, since a route-level limit is
         // applied inside this one and wins.
         .layer(DefaultBodyLimit::max(32 * 1024 * 1024));
 
     // Per-IP rate limiting. SmartIpKeyExtractor keys off X-Forwarded-For
-    // (Fly/CDN set it), falling back to the connection peer — which the
+    // (Fly/CDN set it), falling back to the connection peer, which the
     // `into_make_service_with_connect_info` below provides.
     //
-    // **Por dentro de CORS, no por fuera.** Las capas se aplican de dentro
-    // hacia fuera, así que con el limitador el último, sus 429 salían sin
-    // cabeceras CORS: cortocircuita antes de llegar a la capa que las pone. El
-    // navegador no puede leer una respuesta así, ni siquiera su código —la web
-    // sólo ve "error de red"—, de modo que cualquier 429 era indiagnosticable
-    // desde el cliente justo cuando más falta hace saberlo. Con CORS fuera, el
-    // preflight lo contesta CORS (y deja de contar contra el cupo, que también
-    // es lo correcto) y el 429 llega legible.
+    // Inside CORS, not outside it. Layers apply from the inside out, so with the
+    // limiter outermost its 429s went out with no CORS headers: it short-circuits
+    // before reaching the layer that adds them. A browser cannot read a response
+    // like that, not even its status code (the web only sees "network error"), so
+    // any 429 was undiagnosable from the client at exactly the moment knowing
+    // matters most. With CORS outside, the preflight is answered by CORS (and
+    // stops counting against the budget, which is also right) and the 429 arrives
+    // readable.
     if let Some(rl) = crate::ratelimit::layer(&cfg.server.rate_limit) {
         info!(
             per_second = cfg.server.rate_limit.per_second,
@@ -428,13 +428,13 @@ pub async fn run(cfg: Config) -> Result<()> {
 
 async fn cloud_health(State(state): State<CloudState>) -> axum::Json<HealthBody> {
     // Reaching this handler means the server process is up. "degraded" is
-    // reserved for "up but a dependency is failing" — here, Postgres. If the
+    // reserved for "up but a dependency is failing", here meaning Postgres. If the
     // process itself were down the request wouldn't connect at all, which the
     // client reads as a hard outage (red), not degraded (amber).
     //
     // The DB probe is bounded by a 2s timeout: Fly's health check hits this
     // endpoint every 15s with a 5s budget, so a hung Postgres must never make
-    // the handler block past that — otherwise Fly would crash-loop a machine
+    // the handler block past that, or Fly would crash-loop a machine
     // that a restart can't fix. Timeout or error → degraded.
     let db_ok = matches!(
         tokio::time::timeout(
@@ -457,9 +457,9 @@ struct HealthBody {
     status: &'static str,
     version: &'static str,
     mode: &'static str,
-    /// Minimum log level cloud accepts for client-log ingest — WARN. The
+    /// Minimum log level cloud accepts for client-log ingest: WARN. The
     /// client reads this on connect and filters at source. Los
-    /// `EXEMPT_TARGETS` —desmentidas de detección y telemetría de Screen— van
-    /// exentos en los dos lados.
+    /// `EXEMPT_TARGETS` (detection contradictions and Screen telemetry) are
+    /// exempt on both sides.
     log_min_level: &'static str,
 }

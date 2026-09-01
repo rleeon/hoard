@@ -4,11 +4,11 @@
 //! self-hosted install is one binary plus a config file, and "copy the assets
 //! next to it" is a step that will be forgotten on exactly the upgrade that
 //! changes them. It also means the panel can never be out of step with the API
-//! it talks to — they ship as the same artifact.
+//! it talks to; they ship as the same artifact.
 //!
 //! Everything is same-origin and dependency-free, so the pages go out under a
 //! CSP with no escape hatches: no inline script, no inline style, no remote
-//! anything. Keep it that way — the moment a `style="…"` attribute or a CDN
+//! anything. Keep it that way: the moment a `style="…"` attribute or a CDN
 //! font shows up, the header below has to be loosened for the whole panel.
 
 use axum::{
@@ -98,7 +98,7 @@ pub async fn i18n(Path(lang): Path<String>) -> Response {
     }
 }
 
-/// `GET /` — the bare URL is what a self-hoster types into a browser, and until
+/// `GET /`: the bare URL is what a self-hoster types into a browser, and until
 /// now it answered 404.
 pub async fn root() -> Redirect {
     Redirect::temporary("/panel")
@@ -137,7 +137,7 @@ mod tests {
 
     /// A missing paren in `panel.js` is a blank page, and nothing else in the
     /// build would notice: the file is `include_str!`-ed, so it ships as bytes
-    /// and only the browser ever parses it. This is not a JS parser — it is the
+    /// and only the browser ever parses it. This is not a JS parser; it is the
     /// cheapest check that catches the mistake that actually happens when you
     /// close nine nested `h(...)` calls on one line.
     #[test]

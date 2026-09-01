@@ -2,7 +2,7 @@
 //!
 //! R2 speaks the S3 API with a custom endpoint and inline access-key creds.
 //! The object plumbing (put/get/head/delete + streaming) lives in the shared
-//! [`crate::s3`] module — this wrapper adds only the R2-specific extras:
+//! [`crate::s3`] module; this wrapper adds only the R2-specific extras:
 //! presigned URLs and the cloud key builders.
 //!
 //! Why presigned URLs: snapshots can be 50+ MB. Funneling those bytes
@@ -25,7 +25,7 @@ pub struct R2Store {
 
 impl R2Store {
     /// Build a client from a `R2Config`. The endpoint URL is what makes this
-    /// R2-not-S3 — without it, the SDK would try to hit Amazon.
+    /// R2, not S3: without it the SDK would try to hit Amazon.
     pub async fn from_config(cfg: &crate::config::R2Config) -> Result<Self> {
         if cfg.endpoint.is_empty() || cfg.bucket.is_empty() {
             anyhow::bail!("cloud.r2.endpoint and cloud.r2.bucket are required");
@@ -49,7 +49,7 @@ impl R2Store {
         })
     }
 
-    /// Direct PUT — useful for small objects (export ZIPs, manifests) the
+    /// Direct PUT, useful for small objects (export ZIPs, manifests) the
     /// server constructs itself. For user-uploaded snapshots, prefer
     /// `presign_put`.
     pub async fn put_object(&self, key: &str, body: Vec<u8>) -> Result<()> {
@@ -57,7 +57,7 @@ impl R2Store {
     }
 
     /// Streaming PUT from a file on disk. Used for account-export ZIPs, which
-    /// can be hundreds of MB — streaming keeps the archive off the heap
+    /// can be hundreds of MB, and streaming keeps the archive off the heap
     /// (unlike `put_object`, which buffers the whole body in a `Vec<u8>`).
     pub async fn put_file(&self, key: &str, path: &std::path::Path) -> Result<()> {
         self.inner.put_file(key, path).await
@@ -162,7 +162,7 @@ pub fn key_for_snapshot(user_id: uuid::Uuid, save_id: &str, version: u64) -> Str
     format!("users/{user_id}/saves/{save_id}/v{version}.tar.zst")
 }
 
-/// Build a key for an export ZIP — distinct prefix so the cron sweep can
+/// Build a key for an export ZIP, with a distinct prefix so the cron sweep can
 /// scope its work to that folder.
 pub fn key_for_export(user_id: uuid::Uuid, job_id: uuid::Uuid) -> String {
     format!("exports/{user_id}/{job_id}.zip")
@@ -180,7 +180,7 @@ pub fn key_for_blob(user_id: uuid::Uuid, sha256: &str) -> String {
 /// A client-supplied content hash must be exactly 64 lowercase hex chars before
 /// it's ever interpolated into an R2 key. R2 treats keys literally (no `..`
 /// traversal) and every key is already scoped under the authenticated user's
-/// prefix, so this is defense-in-depth — but it keeps malformed or oversized
+/// prefix, so this is defense in depth, but it keeps malformed or oversized
 /// values out of the keyspace and out of `cloud_blobs`/`save_version_files`.
 pub fn is_valid_sha256(s: &str) -> bool {
     s.len() == 64

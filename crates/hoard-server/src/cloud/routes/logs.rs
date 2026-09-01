@@ -1,15 +1,15 @@
-//! `POST /v1/cloud/logs` — ingest of client diagnostic logs (cloud).
+//! `POST /v1/cloud/logs`: ingest of client diagnostic logs (cloud).
 //!
 //! Cloud stores only *key events*: the client already filters to the level
 //! advertised in `/v1/health` (WARN+), and we re-filter here as defense in
 //! depth so a misbehaving client can't dump DEBUG/TRACE into the SaaS DB.
 //!
-//! El mínimo es WARN y no INFO porque con toda la población enviando, el INFO
-//! operativo llena la tabla de ruido y la poda a 14 días se lleva por delante
-//! justo los casos raros. Las excepciones son los `EXEMPT_TARGETS`: las
-//! desmentidas de detección y la telemetría de Hoard Screen entran sea cual sea
-//! su nivel — son la señal que se recoge a propósito, y filtrarlas por nivel
-//! sería recoger todo menos lo que importa.
+//! The minimum is WARN rather than INFO because with the whole population
+//! sending, operational INFO fills the table with noise and the 14-day prune takes
+//! the rare cases with it. The exceptions are the `EXEMPT_TARGETS`: detection
+//! contradictions and Hoard Screen telemetry come in whatever their level. They
+//! are the signal collected on purpose, and filtering them by level would be
+//! collecting everything except what matters.
 //!
 //! The wire shape and batch caps are shared with the self-hosted route
 //! (`crate::routes::logs`). On top of that we resolve `device_id` by matching

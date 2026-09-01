@@ -1,10 +1,10 @@
-//! Plan limits — single source of truth for what each tier allows.
+//! Plan limits: the single source of truth for what each tier allows.
 //!
 //! Hardcoded on purpose. Pricing is an opinion (see ADR 0015); when it
 //! changes, update here + the landing + the Polar products and ship a new
 //! release. Reading these from the DB would invite drift.
 //!
-//! Two tiers post-1.6.1: Free and Pro. Pro+ was removed — the gap
+//! Two tiers post-1.6.1: Free and Pro. Pro+ was removed, because the gap
 //! between "I play one game" and "I store every save I've ever made"
 //! turned out to be smaller than originally guessed, and a third tier
 //! complicated pricing copy without a clear customer to sell it to.
@@ -27,7 +27,7 @@ impl Plan {
         match s {
             "free" => Some(Plan::Free),
             "pro" => Some(Plan::Pro),
-            // Legacy values from the old enum — a user who paid for
+            // Legacy values from the old enum: a user who paid for
             // Pro+ pre-1.6.1 is grandfathered onto Pro (same storage,
             // bandwidth shape; the difference was retention which is
             // now forever for everyone). The migration rewrites stored
@@ -66,7 +66,7 @@ impl Plan {
             Plan::Pro => PlanLimits {
                 plan: self,
                 // Base tier (Pro x1). The effective limit can be larger when
-                // the user bought a higher storage tier — see
+                // the user bought a higher storage tier; see
                 // `effective_storage_limit` and `STORAGE_STEP_BYTES`.
                 storage_bytes: 100 * GB,
                 devices: u32::MAX,
@@ -119,7 +119,7 @@ pub const STORAGE_STEP_BYTES: u64 = 25 * GB;
 /// optional per-user override column (`profiles.storage_limit_bytes`,
 /// NULL = use the plan default).
 ///
-/// Free always gets the plan default regardless of any override left behind —
+/// Free always gets the plan default regardless of any override left behind,
 /// a guard so a stale value from a lapsed Pro tier can never grant a free
 /// account extra room. Pro honours a positive override (the bought tier) and
 /// falls back to the 100 GB base when it's NULL/0.
@@ -137,8 +137,8 @@ pub fn effective_storage_limit(plan: Plan, override_bytes: Option<i64>) -> u64 {
 /// grace window.
 ///
 /// While a downgrade is scheduled (`change_at` still in the future) the
-/// `profiles.storage_limit_bytes` column holds an **absolute grant** — the
-/// limit the user had the moment the smaller tier landed — and it wins over the
+/// `profiles.storage_limit_bytes` column holds an absolute grant, the limit the
+/// user had the moment the smaller tier landed, and it wins over the
 /// plan default, **Free included**. That exception is the entire point of the
 /// window: keep the room until the deadline so nothing is purged behind the
 /// user's back, and so `/v1/me` can count down to a date instead of announcing
@@ -171,7 +171,7 @@ pub fn resolved_storage_limit(
 /// [`resolved_storage_limit`] is what makes that landing survivable. Devices are
 /// not: a user who paired six machines while paying doesn't un-pair them by
 /// letting the subscription lapse, and telling them "6 / 3" turns a working
-/// account into one that reads as broken — or locks them out outright the day
+/// account into one that reads as broken, or locks them out outright the day
 /// the cap stops being merely informational (`register_device` counts but
 /// deliberately doesn't gate).
 ///

@@ -2,10 +2,10 @@
 //!
 //! Two consumers:
 //!
-//! 1. `check_storage` — called from upload handlers *before* presigning a
+//! 1. `check_storage`: called from upload handlers *before* presigning a
 //!    PUT URL. Returns `Err(QuotaResponse)` (which serializes to 402) if
 //!    the user would exceed their plan, otherwise `Ok(())`.
-//! 2. `check_devices` — called from `/v1/profiles/sync` and similar
+//! 2. `check_devices`: called from `/v1/profiles/sync` and similar
 //!    bootstrap endpoints. Same shape.
 
 use crate::cloud::errors::CloudError;
@@ -46,7 +46,7 @@ impl IntoResponse for QuotaResponse {
 }
 
 /// Fetch plan + storage_bytes for a user. Returns None if no profile row
-/// exists yet — callers should treat that as a 404 / "log in first".
+/// exists yet; callers should treat that as a 404 or "log in first".
 pub async fn load(
     pool: &PgPool,
     user_id: Uuid,
@@ -70,11 +70,11 @@ pub async fn load(
     };
     let plan = Plan::from_str(&plan_s).unwrap_or(Plan::Free);
     let mut limits = plan.limits();
-    // Devices are kept for life once bought — see `resolved_devices_limit`.
+    // Devices are kept for life once bought; see `resolved_devices_limit`.
     limits.devices = super::plans::resolved_devices_limit(plan, first_pro_at.is_some());
     // Apply the per-user storage tier (Pro xN) and any live downgrade grace
-    // grant. Overriding here means every downstream consumer — including
-    // `check_storage`, which reads `limits.storage_bytes` directly — sees the
+    // grant. Overriding here means every downstream consumer, `check_storage`
+    // included, which reads `limits.storage_bytes` directly, sees the
     // limit actually being enforced, not the one the plan column implies.
     limits.storage_bytes = super::plans::resolved_storage_limit(
         plan,
@@ -96,7 +96,7 @@ pub async fn load(
 /// assert on it without re-reading the row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettleOutcome {
-    /// No profile row yet — nothing to settle.
+    /// No profile row yet, so nothing to settle.
     NoProfile,
     /// The new limit fits the current footprint (or is bigger): applied now,
     /// any pending change cleared.
@@ -126,7 +126,7 @@ pub enum SettleOutcome {
 /// **The old plan is read from the row, not taken from the caller.** Reading it
 /// from the incoming plan is what made this a no-op for the only downgrade that
 /// matters: on Pro→Free both sides resolved to Free's 2 GB, `new_eff >=
-/// current_eff` held, and the window was never scheduled — the limit collapsed
+/// current_eff` held, and the window was never scheduled, so the limit collapsed
 /// the same second the webhook landed and the auto-purge ate the user's history
 /// with no warning. So callers must **not** flip `profiles.plan` before calling
 /// this.
@@ -197,7 +197,7 @@ pub async fn settle_storage_limit(
 
     // Freeze today's limit as an absolute grant. It has to be absolute because
     // the plan column is about to say "free", and Free's limit ignores the tier
-    // override — see `plans::resolved_storage_limit`.
+    // override; see `plans::resolved_storage_limit`.
     sqlx::query(
         "UPDATE profiles SET storage_limit_bytes = $1, pending_storage_limit_bytes = $2, \
          storage_limit_change_at = now() + ($3::int * interval '1 day'), \
@@ -216,7 +216,7 @@ pub async fn settle_storage_limit(
 }
 
 /// Promote a pending downgrade whose grace window has elapsed into the live
-/// limit. Idempotent and cheap — call before reading/enforcing the limit
+/// limit. Idempotent and cheap; call before reading or enforcing the limit
 /// (`get_me`, `maybe_purge`). Rows without a due change are untouched.
 pub async fn apply_due_downgrade(pool: &PgPool, user_id: Uuid) -> Result<(), CloudError> {
     sqlx::query(

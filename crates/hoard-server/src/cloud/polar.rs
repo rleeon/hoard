@@ -1,10 +1,10 @@
-//! Polar webhooks — the billing provider. Polar is the Merchant of Record
+//! Polar webhooks: the billing provider. Polar is the Merchant of Record
 //! and settles through Stripe underneath, so "the Stripe fee" and "the
 //! Polar fee" are the same line item.
 //!
 //! Historical note: billing started on Lemon Squeezy and the schema still
 //! carries its fingerprints (`subscriptions`, the 0015 variant→product
-//! rename). Lemon Squeezy is **not used** — there is no LS code path, no LS
+//! rename). Lemon Squeezy is not used: there is no LS code path, no LS
 //! config field, and nothing reads the `HOARD__CLOUD__LEMONSQUEEZY__*`
 //! secrets. Treat any surviving mention as dead history, not a second
 //! provider to keep working.
@@ -19,7 +19,7 @@
 //! Key derivation gotcha: Polar's SDK base64-*encodes* the `polar_whs_...`
 //! secret string before handing it to the Standard Webhooks verifier, which
 //! then base64-*decodes* it back. The net effect is that the HMAC key is the
-//! raw secret string bytes verbatim — so we key directly on
+//! raw secret string bytes verbatim, so we key directly on
 //! `secret.as_bytes()` (the whole `polar_whs_...` string), no decoding.
 //!
 //! Events map onto the `subscriptions` table + `profiles.plan` cascade the
@@ -84,7 +84,7 @@ pub struct PolarData {
     /// the same way Lemon Squeezy uses custom_data.user_id.
     #[serde(default)]
     pub metadata: Option<PolarMetadata>,
-    /// Customer object — `external_id` is the recommended place to stash our
+    /// Customer object. `external_id` is the recommended place to stash our
     /// internal user id; used as a fallback when metadata is absent.
     #[serde(default)]
     pub customer: Option<PolarCustomer>,
@@ -335,7 +335,7 @@ pub async fn handle(
     if status == "active" {
         // Storage tier (Pro xN) this product grants. `None` (base/unconfigured)
         // means the plan default. Upgrades apply at once; a downgrade below the
-        // user's footprint gets a grace window before it shrinks — see
+        // user's footprint gets a grace window before it shrinks; see
         // `settle_storage_limit`. (Downgrades should be issued with
         // `proration_behavior=next_period` so the user also keeps the bigger
         // tier until their paid period ends.)
@@ -380,8 +380,8 @@ pub async fn handle(
         }
     } else if status == "expired" {
         // Subscription expired: drop to Free. If the user is over Free's limit
-        // they keep their Pro room for `storage_downgrade_grace_days` — nothing
-        // is purged and `/v1/me` counts down — before it shrinks to 2 GB.
+        // they keep their Pro room for `storage_downgrade_grace_days`, with
+        // nothing purged and `/v1/me` counting down, before it shrinks to 2 GB.
         match crate::cloud::quota::settle_storage_limit(
             &state.pool,
             user_id,
@@ -550,13 +550,13 @@ mod tests {
     #[test]
     fn product_resolution() {
         // Real UUIDs copied from the production config, so don't read them as
-        // a source of truth — `deploy/config.cloud.toml.example` is that, and
+        // a source of truth: `deploy/config.cloud.toml.example` is that, and
         // it has already moved on. The yearly one here
         // (77d81015-7c9d-4009-b2a6-e0c0a0901899) is RETIRED: it was created in
         // Polar with recurring_interval=month, so it billed €19.99 monthly
         // under a "Pro anual" label. It was replaced by
         // ee6d9395-cc3a-4b0c-96a5-4a008292ffc6 and archived. The monthly one
-        // is still live. Nothing here needs updating when products change —
+        // is still live. Nothing here needs updating when products change,
         // this test is about `resolve_product`'s lookup, and any two distinct
         // strings would do.
         let products = vec![
@@ -567,7 +567,7 @@ mod tests {
                 storage_gb: Some(25),
             },
             PolarProduct {
-                // Retired — see the note above.
+                // Retired; see the note above.
                 product_id: "77d81015-7c9d-4009-b2a6-e0c0a0901899".into(),
                 plan: "pro".into(),
                 interval: "year".into(),

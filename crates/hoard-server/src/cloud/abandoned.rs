@@ -3,7 +3,7 @@
 //! A content-addressed upload is three steps: `cas_init` writes the version row
 //! and its manifest, the client PUTs the missing blobs straight to R2, and
 //! `cas_commit` checks every blob landed and stamps `sha256`. Only the third
-//! step makes the version real — until then `sha256` is `''`, and both the
+//! step makes the version real; until then `sha256` is `''`, and both the
 //! listing and "latest version" filter on `sha256 <> ''`, so an abandoned
 //! attempt is correctly invisible to everyone.
 //!
@@ -17,7 +17,7 @@
 //! 2. **Orphan blobs in R2.** Whatever the client managed to PUT before it gave
 //!    up is in the bucket, but `cas_commit` never ran, so there is no
 //!    `cloud_blobs` row referencing it. That makes it invisible to the refcount
-//!    GC in `release_blobs` too — it is charged by Cloudflare and reachable by
+//!    GC in `release_blobs` too, since it is charged by Cloudflare and reachable by
 //!    nobody, forever.
 //!
 //! Both are the tail of a failure that is *supposed* to happen sometimes: a
@@ -27,15 +27,15 @@
 //!
 //! ## Why the orphan sweep is gated on the account being quiet
 //!
-//! "In R2 with no `cloud_blobs` row" describes an orphan — and it describes
+//! "In R2 with no `cloud_blobs` row" describes an orphan, and it describes
 //! every blob of an upload that is *in flight right now*, between its PUT and
 //! its commit. The two are indistinguishable from the bucket alone, and
 //! deleting the second kind would make a healthy upload fail its own commit
 //! with "blob was not uploaded".
 //!
 //! So the sweep only runs for an account with no uncommitted version younger
-//! than [`ABANDONED_AFTER`]. No upload survives that long — the presigned URLs
-//! expire far sooner — so once an account is quiet by that measure, anything in
+//! than [`ABANDONED_AFTER`]. No upload survives that long, since the presigned
+//! URLs expire far sooner, so once an account is quiet by that measure, anything in
 //! the bucket without a row is litter by elimination. An account that is
 //! genuinely mid-upload every time the task runs simply keeps its litter until
 //! a round catches it idle, which is the right way to be wrong.
@@ -51,8 +51,8 @@
 //! * **Compression staging** (`compress.rs` writes `<key>.ztmp`) fails the
 //!   64-character test, so a compression job in flight cannot be mistaken for
 //!   litter. Keep that in mind before loosening the filter.
-//! * **Archived saves.** Archiving keeps the `cloud_blobs` row — it stamps
-//!   `purge_after` and drops the refcount rather than deleting — so a frozen
+//! * **Archived saves.** Archiving keeps the `cloud_blobs` row (it stamps
+//!   `purge_after` and drops the refcount rather than deleting) so a frozen
 //!   game is referenced, and referenced is all this sweep looks at. A future
 //!   change that archived by *removing* the row would turn this task into a
 //!   deleter of other people's archives.
@@ -64,7 +64,7 @@ use uuid::Uuid;
 /// How old an uncommitted version has to be before it counts as abandoned.
 ///
 /// Presigned PUT URLs are minted with a one-hour TTL, so an upload still
-/// working an hour after `cas_init` cannot finish anyway — its URLs are dead
+/// working an hour after `cas_init` cannot finish anyway: its URLs are dead
 /// and the client will start over with a fresh `upload_id`. Twelve hours is
 /// that bound with a wide margin for a paused laptop that resumes and manages
 /// to commit, and it is the same window that decides an account is quiet enough
@@ -128,7 +128,7 @@ pub async fn sweep(state: &CloudState) -> Result<Swept, sqlx::Error> {
 
     // Accounts carrying at least one abandoned version. Doing this per account
     // rather than in one global DELETE is what lets the R2 half ask "is *this*
-    // account quiet?" — and keeps one account's failure off everyone else's
+    // account quiet?", and keeps one account's failure off everyone else's
     // cleanup.
     let accounts: Vec<(Uuid,)> = sqlx::query_as(
         "SELECT DISTINCT s.user_id
@@ -168,7 +168,7 @@ async fn sweep_account(
     // bucket. Doing the rows anyway and skipping only R2 looks harmless and
     // isn't: the candidate list up in [`sweep`] is "accounts with an abandoned
     // version", so an account whose rows we delete drops out of it. Skip the
-    // bucket after that and its orphans are stranded — no later round would
+    // bucket after that and its orphans are stranded, because no later round would
     // ever look at that account again. Leaving the whole account for the next
     // round costs one day and keeps the two halves together.
     let in_flight: i64 = sqlx::query_scalar(
@@ -247,7 +247,7 @@ async fn sweep_account(
     let referenced: std::collections::HashSet<String> =
         referenced.into_iter().map(|(s,)| s).collect();
 
-    // Sorted so a capped round is deterministic — the same objects go first
+    // Sorted so a capped round is deterministic: the same objects go first
     // every time, instead of whatever order the listing happened to return.
     let mut orphans: Vec<(&String, &i64)> = in_bucket
         .iter()

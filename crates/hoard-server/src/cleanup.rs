@@ -59,9 +59,9 @@ pub async fn run_once(
     purge_trash(pool, data_dir, store, trash_retention_days).await?;
     purge_client_logs(pool, CLIENT_LOG_RETENTION_DAYS).await?;
     purge_dead_sessions(pool, SESSION_TOMBSTONE_DAYS).await?;
-    // Olvidar máquinas que llevan meses sin aparecer, o el censo acumula para
-    // siempre cada portátil que alguien usó una tarde. Best-effort: que esto
-    // falle no puede tumbar el resto de la limpieza.
+    // Forget machines that have not shown up in months, or the census
+    // accumulates every laptop somebody used for one afternoon, forever.
+    // Best-effort: this failing must not take down the rest of the cleanup.
     match crate::routes::devices::prune_stale(pool, DEVICE_RETENTION_DAYS).await {
         Ok(n) if n > 0 => info!(removed = n, "forgot devices with no recent activity"),
         Err(e) => warn!(error = %e, "device pruning error"),
@@ -74,20 +74,20 @@ pub async fn run_once(
 ///
 /// Before the panel, nothing ever deleted a token row and that was right: they
 /// are minted by hand, one per device, and a revoked one is audit trail. A
-/// browser session is the opposite — minted on every sign-in, dead in two
-/// weeks — so without this the table grows by one row per login forever. The
+/// browser session is the opposite, minted on every sign-in and dead in two
+/// weeks, so without this the table grows by one row per login forever. The
 /// window is there so a "who logged in last month" question still has an
 /// answer; only rows tagged as sessions are touched, never a device's token.
 const SESSION_TOMBSTONE_DAYS: i64 = 30;
 
-/// Cuánto sobrevive un dispositivo en el censo sin dar señales. 90 días es lo
-/// mismo que usa cloud: largo para que un equipo que sólo se enciende en
-/// vacaciones no desaparezca, corto para que el listado siga significando algo.
+/// How long a device survives in the census without a sign of life. 90 days, the
+/// same as cloud: long enough that a machine only switched on during the holidays
+/// does not vanish, short enough that the listing still means something.
 const DEVICE_RETENTION_DAYS: i64 = 90;
 
 /// Age-weighted snapshot pruning (ADR 0018, eje B). For each save, decide
 /// which live snapshots are redundant per `policy` and soft-delete them
-/// (logical only — the bytes stay until the trash purge). Recoverable until
+/// (logical only: the bytes stay until the trash purge). Recoverable until
 /// then. Runtime queries (not the `query!` macro) so this doesn't depend on
 /// the `.sqlx` offline cache being regenerated.
 async fn prune_snapshots(pool: &SqlitePool, policy: &RetentionPolicy) -> anyhow::Result<()> {
@@ -162,7 +162,7 @@ async fn prune_snapshots(pool: &SqlitePool, policy: &RetentionPolicy) -> anyhow:
 
 /// Soft-delete one snapshot as part of retention pruning. With the blob store
 /// (ADR 0018, eje C) this is purely logical: mark deleted and audit. The bytes
-/// stay on disk with their blob refcounts intact — a trashed snapshot still
+/// stay on disk with their blob refcounts intact: a trashed snapshot still
 /// pins its blobs (and quota) until `purge_trash` decrements refcounts and GCs
 /// any blob that reaches 0. No quota change and no folder move here.
 async fn soft_delete_pruned(
@@ -306,7 +306,7 @@ async fn purge_trash(
         // The whole-file shas this snapshot referenced (one row per file, dups
         // included so the refcount decrement matches the increment from
         // `create`). Chunked files have no blob row, so their decrement below
-        // is a harmless no-op — their bytes are freed via the chunk pass.
+        // is a harmless no-op, since their bytes are freed via the chunk pass.
         let shas: Vec<String> =
             sqlx::query("SELECT sha256 FROM snapshot_files WHERE snapshot_id = ?")
                 .bind(&snap_id)
@@ -428,7 +428,7 @@ async fn purge_trash(
 
         tx.commit().await?;
 
-        // GC blob/chunk objects only after the DB committed their removal — and
+        // GC blob/chunk objects only after the DB committed their removal, and
         // only if the row is still gone. A concurrent upload can re-reference an
         // object in the window between commit and delete, re-creating its row
         // (refcount > 0) and re-writing the object; deleting it here would

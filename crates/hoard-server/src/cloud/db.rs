@@ -21,7 +21,7 @@ pub async fn connect(url: &str, max_connections: u32) -> Result<PgPool> {
         // connection of their own. Ten seconds was enough for a warm pooler and
         // nothing else: when Supabase's pooler was slow to hand out the second
         // connection the acquire timed out, `run` returned an error, the
-        // process exited 1 and Fly restarted it — forever, on a ~12s cycle,
+        // process exited 1 and Fly restarted it, forever, on a ~12s cycle,
         // because every restart hit the same cold pooler. Thirty seconds is
         // still a bounded failure, just not one that a transient stall trips.
         .acquire_timeout(Duration::from_secs(30))

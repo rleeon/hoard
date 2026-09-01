@@ -5,7 +5,7 @@
 //! pending job, bundles the latest live version of every one of the user's
 //! saves into a single ZIP, streams it to R2 under `exports/<user>/<job>.zip`,
 //! marks the job `done` with a size + 7-day expiry, and emails the user a
-//! download link (best-effort — the link is also surfaced in-app via
+//! download link (best-effort; the link is also surfaced in-app via
 //! `GET /v1/me/export`, so email being unconfigured doesn't break the feature).
 //!
 //! Content-addressed versions (the current format) are expanded to their real
@@ -31,7 +31,7 @@ const POLL_INTERVAL: Duration = Duration::from_secs(30);
 /// runs inside the API process, which Fly stops when the app scales to zero
 /// (`min_machines_running = 0`); a machine killed mid-build leaves its row
 /// `running` forever. Without recovery that row also wedges the feature, because
-/// `create_export_job` dedupes on any pending/running job — so every retry just
+/// `create_export_job` dedupes on any pending or running job, so every retry just
 /// re-polls the corpse. Reaping it to `failed` unblocks a fresh request.
 const STALE_RUNNING_AFTER: Duration = Duration::from_secs(60 * 60);
 
@@ -44,14 +44,14 @@ const EXPORT_TTL_DAYS: i64 = 7;
 /// so the link never outlives the bytes it points at.
 const LINK_TTL: Duration = Duration::from_secs(6 * 24 * 3600);
 
-/// Spawn the daemon. Idempotent per process — call once from `cloud::run`.
+/// Spawn the daemon. Idempotent per process; call once from `cloud::run`.
 pub fn spawn(state: CloudState) {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(POLL_INTERVAL);
         loop {
             ticker.tick().await;
             // Recover jobs orphaned in `running` by a machine that stopped
-            // mid-build, before claiming new work — otherwise the dedup in
+            // mid-build, before claiming new work, or the dedup in
             // `create_export_job` keeps every retry pinned to the dead row.
             if let Err(e) = reap_stale(&state).await {
                 tracing::warn!(error = %e, "export stale-job reap failed");
@@ -144,7 +144,7 @@ async fn run_job(state: &CloudState, job_id: Uuid, user_id: Uuid) -> anyhow::Res
 
     tracing::info!(%job_id, %user_id, size, file_count, "export job done");
 
-    // Email the download link — best-effort, never fails the job.
+    // Email the download link. Best-effort; it never fails the job.
     if let Err(e) = notify_by_email(state, user_id, &key, expires).await {
         tracing::warn!(%job_id, error = %e, "export email failed");
     }
@@ -153,7 +153,7 @@ async fn run_job(state: &CloudState, job_id: Uuid, user_id: Uuid) -> anyhow::Res
 
 /// Build the ZIP on a temp file on disk. Each blob is pulled from R2 into
 /// memory one at a time and written straight through, so peak heap is a single
-/// file — not the whole archive. Returns the temp file (kept alive for upload),
+/// file, not the whole archive. Returns the temp file (kept alive for upload),
 /// the archive size in bytes, and the number of entries written.
 async fn build_export_zip(
     state: &CloudState,
@@ -218,7 +218,7 @@ async fn build_export_zip(
                     }
                 };
                 // The export must contain the RAW file: undo the at-rest
-                // zstd rewrite when (and only when) it completed — same
+                // zstd rewrite when (and only when) it completed, the same
                 // rule as the blob proxy (`stored_bytes` set).
                 let bytes = if blob_is_compressed(state, user_id, &sha).await {
                     match zstd_decode(&bytes).await {
@@ -285,7 +285,7 @@ async fn notify_by_email(
 }
 
 async fn mark_failed(state: &CloudState, job_id: Uuid, error: &str) {
-    // Truncate defensively — `error` may carry a long provider body.
+    // Truncate defensively: `error` may carry a long provider body.
     let error: String = error.chars().take(500).collect();
     if let Err(e) = sqlx::query(
         "UPDATE export_jobs SET status = 'failed', finished_at = now(), error = $2 WHERE id = $1",
@@ -324,7 +324,7 @@ async fn expire_due(state: &CloudState) -> Result<(), sqlx::Error> {
 
 /// Directory prefix for a save's entries. `default` labels collapse to just the
 /// game slug so the common single-slot case doesn't nest a redundant folder.
-/// Whether the at-rest compression rewrite completed for this blob — the
+/// Whether the at-rest compression rewrite completed for this blob. The
 /// only state where the stored object is zstd instead of raw (same rule as
 /// `routes::blob_proxy`). Errors and missing rows read as "raw": worst case
 /// the ZIP carries the object as-is instead of failing the whole export.

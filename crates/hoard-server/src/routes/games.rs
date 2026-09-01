@@ -208,7 +208,7 @@ struct ManifestVersionRow {
 /// A bare 500 for the client, the real cause for the log.
 ///
 /// The catalog routes answer with a plain [`StatusCode`], so this returns one
-/// too — the point is only that the error stops vanishing on the way out.
+/// too; the point is only that the error stops vanishing on the way out.
 fn internal_logged<E: std::fmt::Display>(what: &'static str, e: E) -> StatusCode {
     tracing::error!(error = %e, step = what, "games request failed");
     StatusCode::INTERNAL_SERVER_ERROR

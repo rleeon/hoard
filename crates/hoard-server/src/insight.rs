@@ -1,6 +1,6 @@
 //! Deriving a version's insight from the manifests the server already holds.
 //!
-//! The decision itself is `hoard_core::kernel::insight` — pure, tested, shared.
+//! The decision itself is `hoard_core::kernel::insight`: pure, tested, shared.
 //! This module is only the IO around it: read the version's manifest and the
 //! one before it, hand both to the kernel, store what comes back.
 //!
@@ -162,7 +162,7 @@ fn into_manifest_file(
 /// Everything committed before this existed has no insight, and the answer to
 /// "when does the user's history get labelled" should not be "never, unless you
 /// re-upload". Listing a save's history says exactly which versions someone is
-/// looking at, so that is when the missing ones get computed — capped, off the
+/// looking at, so that is when the missing ones get computed: capped, off the
 /// response path, and idempotent, so two windows open at once just do the same
 /// harmless UPDATE twice.
 pub const BACKFILL_PER_LISTING: usize = 25;
@@ -170,8 +170,8 @@ pub const BACKFILL_PER_LISTING: usize = 25;
 /// Does this row want computing again?
 ///
 /// Missing, or written by an older schema than this binary derives. The rules
-/// that pick what a row says get better — a name that used to come out as
-/// `murray heath_31852938(m)` now comes out as `murray heath` — and a stored
+/// that pick what a row says get better (a name that used to come out as
+/// `murray heath_31852938(m)` now comes out as `murray heath`) and a stored
 /// label must not outlive the improvement. The row still serves what it has
 /// meanwhile, so nothing blinks to empty while the recompute runs.
 pub fn needs_refresh(stored: Option<&VersionInsight>) -> bool {

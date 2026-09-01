@@ -10,9 +10,9 @@ use std::collections::HashSet;
 use std::sync::OnceLock;
 
 /// Max distinct *free* accounts we let share one device fingerprint. Pro
-/// accounts don't count toward it and are never blocked — they paid. The
+/// accounts don't count toward it and are never blocked: they paid. The
 /// fingerprint is client-supplied and the client is open source, so this is a
-/// speed bump for casual abuse, not a cryptographic barrier — don't
+/// speed bump for casual abuse, not a cryptographic barrier, so don't
 /// over-invest in it.
 pub const MAX_FREE_ACCOUNTS_PER_DEVICE: i64 = 2;
 
@@ -46,7 +46,7 @@ pub fn canonicalize_email(email: &str) -> Option<String> {
 }
 
 /// Is the address on a known disposable / throwaway email provider? Matches the
-/// domain against a curated set of the most common ones. Not exhaustive — a
+/// domain against a curated set of the most common ones. Not exhaustive: a
 /// coarse filter to raise the cost of bulk free signups, not a guarantee.
 pub fn is_disposable_email(email: &str) -> bool {
     let domain = match email.trim().rsplit_once('@') {

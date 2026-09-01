@@ -1,16 +1,16 @@
-//! `/v1/playtime` — self-hosted mirror of the agent's real-hours-played
+//! `/v1/playtime`: self-hosted mirror of the agent's real-hours-played
 //! tracker, attributed per local day and per game. SQLite/bearer counterpart of
 //! the cloud route (`cloud::routes::playtime`); same wire shape so the recap
 //! (hoard-wrapple) reads either source identically.
 //!
 //! Self-hosted model: one machine is one server user. Rows are scoped by the
-//! bearer's `user_id`, so a user's recap is their OWN machine's history — not a
+//! bearer's `user_id`, so a user's recap is their OWN machine's history, not a
 //! cross-machine merge (that's the cloud model, where many devices hang off one
 //! account). `device_fp` is still recorded (and the aggregate sums over it), but
 //! for a 1:1 machine↔user server that's just the single device.
 //!
 //! - `POST` replaces a device's breakdown of `(day, game, secs)` rows, only as
-//!   wide as the client can vouch for — see the cloud route for the full story.
+//!   wide as the client can vouch for; see the cloud route for the full story.
 //!   The short version: this used to wipe every row for the device on the
 //!   grounds that "the client's local playtime is monotonic", an invariant
 //!   nothing enforced and that a reinstall breaks. Now a payload clears only the
@@ -19,7 +19,7 @@
 //! - `GET` returns the device-merged aggregate in the same
 //!   `{ days, by_game, daily_by_game, total_secs }` shape the recap reads
 //!   locally. The synthetic `__other__` slug counts toward `days`/`total_secs`
-//!   but is hidden from `by_game`/`daily_by_game` — it isn't a real game.
+//!   but is hidden from `by_game` and `daily_by_game`, since it isn't a real game.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use crate::auth::AuthUser;
 use crate::routes::health::ServerState;
 
-/// Hard cap on rows per upload. A real history is days × games — a few thousand
+/// Hard cap on rows per upload. A real history is days by games, a few thousand
 /// at most. The cap only stops a malicious client from flooding the table.
 const MAX_ROWS: usize = 50_000;
 

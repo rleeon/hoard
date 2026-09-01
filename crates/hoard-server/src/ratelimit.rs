@@ -1,7 +1,7 @@
 //! Per-IP request rate limiting, shared by the self-hosted and cloud routers.
 //!
 //! This is an in-process safety net against accidental request loops and cheap
-//! brute force — not a substitute for a reverse-proxy / WAF limiter, which a
+//! brute force, not a substitute for a reverse-proxy or WAF limiter, which a
 //! production deployment should still run in front of the server.
 
 use std::sync::Arc;
@@ -36,7 +36,7 @@ pub fn layer(cfg: &RateLimitConfig) -> Option<GovernorLayer<SmartIpKeyExtractor,
     let burst = cfg.burst.max(1);
 
     // CAUTION: `GovernorConfigBuilder::per_second(n)` does NOT mean "n
-    // requests per second" — it sets the replenish PERIOD to n seconds (one
+    // requests per second": it sets the replenish PERIOD to n seconds (one
     // request every n seconds sustained). Shipping `.per_second(50)` here
     // granted 1 req/50s after the burst, so any IP with a couple of live
     // clients drained the bucket and then saw 429 ("Limitada") forever.
@@ -69,7 +69,7 @@ pub fn layer(cfg: &RateLimitConfig) -> Option<GovernorLayer<SmartIpKeyExtractor,
 /// A function rather than three loose lines in `main` because the ordering IS
 /// the fix and reads like nothing: `Router::layer` only wraps the routes
 /// already mounted, so merging before the `layer` instead of after quietly
-/// puts the exempt route back under the limiter — nothing fails, nothing warns.
+/// puts the exempt route back under the limiter, and nothing fails or warns.
 /// This way that mistake has a test that catches it.
 ///
 /// `exempt`'s only tenant is `PUT /v1/cas/blobs/:upload_id/:sha256`; the why is
@@ -137,7 +137,7 @@ mod tests {
 
     /// Issue #17: the blob upload is never limited, however many there are.
     /// That is 173 PUTs for the issue's Teardown, and the count was fixed by
-    /// the server itself when it answered `cas/init` — limiting here is
+    /// the server itself when it answered `cas/init`, so limiting here is
     /// fighting the batch we authorised ourselves.
     #[tokio::test]
     async fn the_blob_upload_is_never_limited() {

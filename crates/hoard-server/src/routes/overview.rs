@@ -5,7 +5,7 @@
 //! `audit_log`, written on every snapshot create/delete/restore/prune since the
 //! first migration, and `client_logs`, which clients upload and only the
 //! retention sweep ever touched. The panel is the first reader either one has
-//! had — see [`crate::routes::admin`] for the log side.
+//! had; see [`crate::routes::admin`] for the log side.
 //!
 //! The per-request cost is a handful of grouped scans over one user's rows. On
 //! a self-hosted instance that is nothing; if it ever stops being nothing, the
@@ -120,7 +120,7 @@ pub struct ActivityRow {
     pub version_num: Option<i64>,
     pub device_name: Option<String>,
     pub bytes: Option<i64>,
-    /// Bytes that were not already stored — the honest cost of that version.
+    /// Bytes that were not already stored: the honest cost of that version.
     pub new_bytes: Option<i64>,
 }
 

@@ -4,15 +4,15 @@
 //! `/v1/notifications` (≤1/min each) and `/v1/presence/heartbeat` (2/min);
 //! Realtime kicks collapse into at most a couple of extra pulls. The per-IP
 //! limiter in `crate::ratelimit` has to stay loose (a re-sync after install
-//! bursts hundreds of requests), which also lets a single runaway poller —
-//! a modified client, or the pre-1.0.4 `prefs.json` knob set to 2 s — hammer
+//! bursts hundreds of requests), which also lets a single runaway poller (a
+//! modified client, or the pre-1.0.4 `prefs.json` knob set to 2 s) hammer
 //! these endpoints forever. This guard caps each one per (user, device,
 //! endpoint) instead, so abuse hits a wall without touching legit bursts on
 //! the save endpoints.
 //!
 //! Device identity is the `x-hoard-device-fp` header (same one `/v1/me`
-//! uses for the devices row). Requests without it — older builds, browser
-//! calls from the account page — share the user's single no-fp bucket,
+//! uses for the devices row). Requests without it, from older builds or browser
+//! calls on the account page, share the user's single no-fp bucket,
 //! which the generous limit absorbs. `/v1/health` is deliberately *not*
 //! guarded: Fly probes it every 15 s to decide machine health, and a 429
 //! there would flap the deployment.
@@ -51,9 +51,9 @@ impl PollGuard {
     pub fn new(per_minute: u32, burst: u32) -> Arc<Self> {
         let limiter = NonZeroU32::new(per_minute).map(|n| {
             // Sustained one request every 60/n seconds. The burst must be
-            // large enough for the official client's legitimate spikes —
+            // large enough for the official client's legitimate spikes,
             // app startup fires one `/v1/cloud/sync` per auto-restored save
-            // on top of the login pull — while the sustained rate is what
+            // on top of the login pull, while the sustained rate is what
             // walls off a hammering client once the burst drains.
             let burst = NonZeroU32::new(burst.max(1)).expect("clamped > 0");
             let quota = Quota::with_period(Duration::from_secs_f64(60.0 / n.get() as f64))
@@ -99,7 +99,7 @@ pub async fn guard(
     req: Request,
     next: Next,
 ) -> Response {
-    // No CloudUser means auth didn't run (mis-wired route) — fail open, the
+    // No CloudUser means auth didn't run (mis-wired route), so fail open: the
     // per-IP limiter still applies.
     let Some(user) = req.extensions().get::<CloudUser>() else {
         return next.run(req).await;

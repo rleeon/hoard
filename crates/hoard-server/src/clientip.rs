@@ -10,7 +10,7 @@
 //!
 //! Reading it unconditionally is what made the panel's login throttle a
 //! decoration: both of its counters are keyed on the client address, so a
-//! direct caller — the normal shape on a LAN, with no proxy in front — rotated
+//! direct caller, the normal shape on a LAN with no proxy in front, rotated
 //! the header on every attempt, landed in a fresh bucket each time and was
 //! never refused. What was left standing between an attacker and the server was
 //! an argon2id verify at 19 MiB a go, which is the CPU lever the throttle
@@ -20,9 +20,9 @@
 //! `tower_governor`'s `SmartIpKeyExtractor`, which has the same unconditional
 //! trust. Moving it here would silently collapse every client of a proxied
 //! deployment into one token bucket until its operator sets `trusted_proxies`,
-//! and that trade — a sync-breaking 429 storm against a limiter that was never
-//! a security boundary ("an in-process safety net against accidental request
-//! loops", [`crate::ratelimit`]) — is not worth taking in the same release that
+//! and that trade, a sync-breaking 429 storm against a limiter that was never a
+//! security boundary ("an in-process safety net against accidental request
+//! loops", [`crate::ratelimit`]), is not worth taking in the same release that
 //! introduces the setting.
 
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
@@ -37,7 +37,7 @@ use axum::http::HeaderMap;
 #[derive(Debug, Clone, Default)]
 pub struct TrustedProxies {
     nets: Vec<Net>,
-    /// `trusted_proxies = ["any"]` — the pre-1.1.4 behaviour, kept reachable
+    /// `trusted_proxies = ["any"]`, the pre-1.1.4 behaviour, kept reachable
     /// for a deployment that terminates somewhere we can't enumerate.
     any: bool,
 }
@@ -60,14 +60,14 @@ impl TrustedProxies {
     /// Parse the config list. Accepts a bare address (`10.0.0.5`), a CIDR
     /// (`172.16.0.0/12`, `fd00::/8`) or one of the shorthands:
     ///
-    /// * `loopback` — `127.0.0.0/8` and `::1`. The default, and what covers the
+    /// * `loopback`: `127.0.0.0/8` and `::1`. The default, and what covers the
     ///   common single-box shape: nginx/Caddy on the same host, proxying to
     ///   `127.0.0.1:12421`.
-    /// * `private` — the RFC 1918 ranges, link-local, CGNAT (Tailscale) and
+    /// * `private`: the RFC 1918 ranges, link-local, CGNAT (Tailscale) and
     ///   IPv6 ULA. What a proxy in another container or elsewhere on the LAN
     ///   needs. Note it also trusts every *other* machine on that LAN, so it is
     ///   opt-in rather than the default.
-    /// * `any` — everyone. Only for a deployment whose proxy address can't be
+    /// * `any`: everyone. Only for a deployment whose proxy address can't be
     ///   pinned down; it puts the header back in the caller's hands.
     ///
     /// Bad entries are returned rather than defaulted away: a typo here fails
@@ -216,7 +216,8 @@ fn parse_cidr(entry: &str) -> Result<Net, &'static str> {
 /// The address to attribute this request to.
 ///
 /// From a trusted proxy, the leftmost entry of `X-Forwarded-For` (or
-/// `X-Real-Ip`) — the client the proxy saw. From anyone else, the peer, because
+/// `X-Real-Ip`), which is the client the proxy saw. From anyone else, the peer,
+/// because
 /// anything they claim about themselves is theirs to make up. An unparseable
 /// claim also falls back to the peer: it would otherwise become a throttle-map
 /// key of arbitrary attacker-chosen text.

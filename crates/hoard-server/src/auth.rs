@@ -37,7 +37,7 @@ fn unauthorized() -> Response {
 /// Its value is a plain `api_tokens` row, so everything that already governs a
 /// token governs a browser session too: expiry, `revoked_at`, and
 /// `hoard-admin token list/revoke`. That is why the middleware below needs no
-/// second code path — it looks the cookie up exactly like a Bearer header.
+/// second code path: it looks the cookie up exactly like a Bearer header.
 ///
 /// The cookie is minted `SameSite=Strict`, which is what stands in for a CSRF
 /// token: a POST from another origin arrives without it and lands on the
@@ -131,7 +131,7 @@ fn extract_bearer(req: &Request) -> Option<String> {
 
 /// Pull one cookie out of the `Cookie` header. Hand-rolled instead of pulling
 /// in a cookie crate because we need exactly one name out of a
-/// `; `-separated list — the RFC 6265 machinery worth a dependency (domains,
+/// `; `-separated list, and the RFC 6265 machinery worth a dependency (domains,
 /// expiry, the secure flag) all lives on the browser's side of the wire.
 fn extract_cookie(req: &Request, name: &str) -> Option<String> {
     let raw = req.headers().get(header::COOKIE)?.to_str().ok()?;

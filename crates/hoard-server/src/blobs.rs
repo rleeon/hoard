@@ -1,7 +1,7 @@
 //! Content-addressed blob store (ADR 0018, eje C).
 //!
 //! File bytes live once per user at `blobs/<user_id>/<sha[0:2]>/<sha256>`.
-//! Snapshots stop owning a physical `v<n>/` folder — a version is purely the
+//! Snapshots stop owning a physical `v<n>/` folder: a version is purely the
 //! list of its `snapshot_files` rows, each pointing at a blob by sha256.
 //! `blobs.refcount` counts every referencing row (live or trashed); GC of the
 //! file happens only when it reaches 0 during the trash purge.
@@ -132,7 +132,7 @@ pub async fn backfill_from_folders(pool: &SqlitePool, data_dir: &Path) -> anyhow
     }
 
     // Quota now means: sum of unique blob sizes plus unique chunk sizes
-    // referenced by the user (ADR 0018 eje C + ADR 0019 Fase 4). Idempotent —
+    // referenced by the user (ADR 0018 axis C, ADR 0019 phase 4). Idempotent,
     // recomputed from scratch, so re-running never drifts.
     sqlx::query(
         "UPDATE users SET storage_used_bytes =

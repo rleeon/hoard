@@ -6,7 +6,7 @@ use serde::Serialize;
 
 /// Cloud-wide error type. Maps to JSON `{error: "...", code: "..."}` and a
 /// matching HTTP status. Domain-specific responses (e.g. 402 quota) build
-/// their own structured payloads — this is the catch-all for everything
+/// their own structured payloads; this is the catch-all for everything
 /// else.
 #[derive(Debug)]
 pub enum CloudError {
