@@ -26,9 +26,8 @@ Free and open source under AGPL-3.0. Windows, Linux, macOS and Steam Deck.
 Every session becomes a new version you can roll back to, deduplicated by
 content hash so ten versions of a 2 GB save cost about 2 GB, not 20.
 
-Where Hoard is not the answer: if you only want local backups on one PC,
-Ludusavi does that well and Hoard reads the same save-location data. If you
-want a general file syncer for arbitrary folders, use Syncthing.
+Where Hoard is not the answer, and which tool to reach for instead, is laid
+out in the comparison guide below.
 `;
 
 const section = (title: string, links: [string, string, string][]) =>
