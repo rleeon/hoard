@@ -53,7 +53,7 @@ use serde::{Deserialize, Serialize};
 pub enum Component {
     /// `hoardd` + `hoard`. Obligatorio.
     Core,
-    /// La app gráfica (`hoard-desktop` y su overlay `hoard-screen`).
+    /// The graphical app (`hoard-desktop` and its `hoard-screen` overlay).
     Desktop,
 }
 
@@ -73,9 +73,9 @@ impl Component {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Delivery {
-    /// `.deb` por `dpkg`/`apt`.
+    /// `.deb` via `dpkg`/`apt`.
     Deb,
-    /// `.rpm` por `rpm`/`dnf`.
+    /// `.rpm` via `rpm`/`dnf`.
     Rpm,
     /// An AppImage in the user's directory, with no privileges.
     ///
@@ -111,7 +111,7 @@ impl Delivery {
         !matches!(self, Delivery::Managed)
     }
 
-    /// ¿Necesita privilegios para aplicarse?
+    /// Does it need privileges to be applied?
     pub fn needs_elevation(self) -> bool {
         matches!(self, Delivery::Deb | Delivery::Rpm)
     }
@@ -134,7 +134,7 @@ pub struct Probe {
     pub has_dpkg: bool,
     /// `rpm` disponible.
     pub has_rpm: bool,
-    /// ¿Podemos elevar privilegios **sin colgarnos esperando a un humano**?
+    /// Can we elevate privileges without hanging on a human?
     /// Ver [`can_elevate`].
     pub can_elevate: bool,
     /// Are we inside a Flatpak? See [`running_under_flatpak`].
@@ -161,13 +161,13 @@ impl Probe {
 ///
 /// Both signals are the ones `flatpak` itself documents: it exports `FLATPAK_ID`
 /// into the sandbox, and mounts `/.flatpak-info` there. The file is what makes
-/// this true for our sidecars as well — `hoardd` is started by the app, and a
+/// this true for our sidecars as well: `hoardd` is started by the app, and a
 /// child that had its environment scrubbed would still see the mount.
 pub fn running_under_flatpak() -> bool {
     std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists()
 }
 
-/// ¿Está `name` en el `PATH`?
+/// Is `name` on the `PATH`?
 fn bin_exists(name: &str) -> bool {
     std::env::var_os("PATH")
         .map(|paths| {
@@ -285,13 +285,11 @@ fn can_elevate() -> bool {
 
 #[cfg(not(unix))]
 fn can_elevate() -> bool {
-    // En Windows eleva el propio instalador (UAC), no nosotros.
+    // On Windows the installer elevates itself (UAC), not us.
     true
 }
 
-// =======================================================================
-// La política (pura)
-// =======================================================================
+// ---- policy (pure)
 
 /// Which components this machine needs on a fresh install.
 ///
@@ -351,9 +349,7 @@ pub fn resolve_delivery(_probe: &Probe) -> Delivery {
     Delivery::AppImage
 }
 
-// =======================================================================
-// El manifiesto
-// =======================================================================
+// ---- the manifest
 
 /// What is installed on this machine: which components, at which version and by
 /// which route. It is what turns "install" and "update" into the same operation
@@ -369,10 +365,10 @@ pub struct Manifest {
     /// The graphical app's route. `None` when there is no `Desktop`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delivery: Option<Delivery>,
-    /// Dónde viven `hoard` y `hoardd`.
+    /// Where `hoard` and `hoardd` live.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub core_dir: Option<PathBuf>,
-    /// Ejecutable de la app, cuando lo sabemos.
+    /// The app's executable, when we know it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub desktop_path: Option<PathBuf>,
     /// Does the core travel inside the app's bundle? Then the app's installer
@@ -420,12 +416,12 @@ impl Manifest {
         Ok(())
     }
 
-    /// ¿Está este componente instalado?
+    /// Is this component installed?
     pub fn has(&self, c: Component) -> bool {
         self.components.contains(&c)
     }
 
-    /// Añade un componente (idempotente, mantiene el orden).
+    /// Adds a component (idempotent, keeping the order).
     pub fn add(&mut self, c: Component) {
         if !self.has(c) {
             self.components.push(c);
@@ -433,7 +429,7 @@ impl Manifest {
         }
     }
 
-    /// El manifiesto de una instalación nueva en esta máquina.
+    /// The manifest of a fresh install on this machine.
     pub fn planned(version: &str, probe: &Probe) -> Self {
         let components = resolve_components(probe);
         let delivery = components
@@ -528,7 +524,7 @@ const SWAP_WINDOW: std::time::Duration = std::time::Duration::from_secs(3 * 60);
 /// are a deadlock on Windows. The NSIS hook stops `hoardd.exe` before it can
 /// overwrite it, the desktop notices the socket is gone two seconds later and
 /// starts it again from the *old* binary, and NSIS then hits a file that's back
-/// in use — "Error opening file for writing", update aborted, and the same
+/// in use ("Error opening file for writing"), the update aborted, and the same
 /// thing an hour later. The kill order in `installer-hooks.nsh` narrows that
 /// window; this closes it, and covers the clients the hook can't kill by name
 /// (a `hoard` invocation from a terminal, a second desktop session).
@@ -539,7 +535,7 @@ const SWAP_WINDOW: std::time::Duration = std::time::Duration::from_secs(3 * 60);
 /// Held for the length of [`stage::apply`] and dropped with the guard. Being
 /// killed mid-swap is the normal Windows path, so a marker that outlives its
 /// process is expected: it expires on its own after [`SWAP_WINDOW`], and any
-/// `hoardd` that manages to start clears it — a live service *is* the proof the
+/// `hoardd` that manages to start clears it: a live service *is* the proof the
 /// swap is over.
 pub struct Swap {
     path: Option<PathBuf>,
@@ -624,7 +620,7 @@ pub fn ensure_cli_reachable() -> Result<CliReach> {
 /// The same, for a directory that isn't ours.
 ///
 /// An installer needs it: it has just dropped `hoard` into a folder, and that
-/// folder is not where the installer itself lives — so [`ensure_cli_reachable`],
+/// folder is not where the installer itself lives, so [`ensure_cli_reachable`],
 /// which starts from `current_exe()`, would look in the wrong place and conclude
 /// [`CliReach::NotBundled`].
 pub fn ensure_dir_reachable(dir: &Path) -> Result<CliReach> {
@@ -646,7 +642,7 @@ pub fn ensure_dir_reachable(dir: &Path) -> Result<CliReach> {
 /// binary already lives in `~/.local/bin` and it is that directory missing from
 /// the `PATH`: the link would point at itself. This fixes the `PATH` instead,
 /// which is what `install.sh` does at the end of a terminal install and what an
-/// installer with a window has to do the same way — otherwise whoever installs
+/// installer with a window has to do the same way, or whoever installs
 /// through the window ends up with a CLI they can't type.
 ///
 /// Best-effort and idempotent: an install doesn't fail over this, and calling it
@@ -688,8 +684,8 @@ fn shell_path(dir: &Path) -> Result<PathNudge> {
 ///
 /// Picked by `$SHELL` rather than by what happens to exist in the home
 /// directory: writing to the `.bashrc` of someone who uses zsh is writing to a
-/// file nobody reads. Without `$SHELL` — an app launched from the desktop menu
-/// may not have it — it falls to `.profile`, which every login shell reads.
+/// file nobody reads. Without `$SHELL`, which an app launched from the desktop menu
+/// may not have, it falls to `.profile`, which every login shell reads.
 #[cfg(unix)]
 fn shell_path(dir: &Path) -> Result<PathNudge> {
     let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
@@ -726,19 +722,19 @@ fn shell_path(_dir: &Path) -> Result<PathNudge> {
     Ok(PathNudge::Skipped("unsupported platform".into()))
 }
 
-/// Qué pasó al intentar dejar la terminal a mano.
+/// What happened when trying to leave the terminal within reach.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliReach {
     /// `hoard` was already typable. Nothing to do.
     AlreadyReachable,
-    /// Se añadió `dir` al `PATH` del usuario. Requiere abrir una terminal nueva.
+    /// `dir` was added to the user's `PATH`. It needs a fresh terminal.
     AddedToPath(PathBuf),
-    /// Se creó un enlace en `path`.
+    /// A link was created at `path`.
     Linked(PathBuf),
-    /// Este bundle no trae la terminal (build vieja, o un AppImage cuyo núcleo
-    /// pone el instalador aparte).
+    /// This bundle does not carry the terminal (an old build, or an AppImage whose
+    /// core the installer puts elsewhere).
     NotBundled,
-    /// No hay forma de arreglarlo desde aquí, con el motivo.
+    /// There is no way to fix it from here, with the reason.
     Unreachable(String),
 }
 
@@ -749,12 +745,12 @@ fn on_path(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Windows: la carpeta de la app al `PATH` **del usuario** (`HKCU\Environment`).
+/// Windows: the app's folder onto the USER's `PATH` (`HKCU\Environment`).
 ///
-/// Se hace desde aquí y no desde el hook del instalador NSIS a propósito: así
-/// vale igual para una instalación nueva, para una actualización que mueva la
-/// carpeta y para un bundle que ya estuviera puesto, y es la misma línea de
-/// código que corrige el caso en las tres. `winreg` ya es dependencia.
+/// It is done from here rather than from the NSIS installer's hook on purpose: that
+/// way it works for a fresh install, for an update that moves the folder, and for a
+/// bundle that was already in place, and it is the same line of code fixing the case
+/// in all three. `winreg` is already a dependency.
 #[cfg(target_os = "windows")]
 fn platform_reach(dir: &Path, _cli: &Path) -> Result<CliReach> {
     use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
@@ -783,16 +779,15 @@ fn platform_reach(dir: &Path, _cli: &Path) -> Result<CliReach> {
     Ok(CliReach::AddedToPath(dir.to_path_buf()))
 }
 
-/// Avisa al sistema de que el entorno cambió.
+/// Tells the system the environment changed.
 ///
-/// Escribir el registro no basta y es el tipo de fallo que parece funcionar en
-/// una prueba: el valor queda bien guardado, pero Explorer mantiene su bloque de
-/// entorno en caché y **toda terminal que lance hereda el viejo**, así que
-/// `hoard` seguiría sin existir hasta cerrar sesión. `WM_SETTINGCHANGE` con
-/// `"Environment"` es lo que hace que una consola nueva ya lo vea.
+/// Writing the registry is not enough, and it is the kind of failure that looks like
+/// it works in a test: the value is stored correctly, but Explorer keeps its
+/// environment block cached and every terminal it launches inherits the old one, so
+/// broadcasting `"Environment"` is what makes a new console see it.
 ///
-/// Con timeout y `SMTO_ABORTIFHUNG` porque va a *todas* las ventanas de nivel
-/// superior: una aplicación colgada no puede quedarse con nuestro hilo.
+/// With a timeout and `SMTO_ABORTIFHUNG` because it goes to *every* top-level window:
+/// a hung application must not keep our thread.
 #[cfg(target_os = "windows")]
 fn broadcast_environment_change() {
     use windows_sys::Win32::Foundation::{HWND, LPARAM, WPARAM};
@@ -801,9 +796,9 @@ fn broadcast_environment_change() {
     };
 
     let param: Vec<u16> = "Environment\0".encode_utf16().collect();
-    // SAFETY: `HWND_BROADCAST` es válido, y `param` vive durante toda la llamada
-    // (es síncrona con tope de 5 s). El resultado no se usa: esto es
-    // best-effort, y si nadie contesta el PATH sigue escrito.
+    // SAFETY: `HWND_BROADCAST` is valid, and `param` lives for the whole call (it is
+    // synchronous with a 5 s cap). The result is unused: this is best-effort, and if
+    // nobody answers the PATH is still written.
     unsafe {
         SendMessageTimeoutW(
             HWND_BROADCAST as HWND,
@@ -817,11 +812,12 @@ fn broadcast_environment_change() {
     }
 }
 
-/// macOS: un symlink donde el `PATH` por defecto ya mira.
+/// macOS: a symlink where the default `PATH` already looks.
 ///
-/// `/usr/local/bin` es la convención y está en el `PATH` de serie, pero es de
-/// root; se intenta sin elevar y, si no se puede, se cae a `~/.local/bin`, que
-/// siempre es escribible. Pedir privilegios al abrir la app por esto sería
+/// `/usr/local/bin` is the convention and is on the `PATH` out of the box, but it
+/// belongs to root; it is tried without elevating and, failing that, falls back to
+/// `~/.local/bin`, which is always writable. Asking for privileges on opening the app
+/// over this would be
 /// desproporcionado.
 #[cfg(target_os = "macos")]
 fn platform_reach(_dir: &Path, cli: &Path) -> Result<CliReach> {
@@ -832,11 +828,11 @@ fn platform_reach(_dir: &Path, cli: &Path) -> Result<CliReach> {
     link_into(&candidates, cli)
 }
 
-/// Linux: en `.deb`/`.rpm` el binario ya está en `/usr/bin` y esto no llega a
-/// llamarse. Sólo queda el AppImage, donde no hay nada que enlazar: su
-/// contenido vive en un montaje que desaparece al cerrar la app, y el enlace
-/// quedaría roto en cuanto se cierre. Ahí la terminal la pone el instalador,
-/// que es quien puede dejarla en una ruta estable.
+/// Linux: on a `.deb` or `.rpm` the binary is already in `/usr/bin` and this never
+/// gets called. Only the AppImage is left, where there is nothing to link: its
+/// content lives on a mount that disappears when the app closes, and the link would
+/// be broken the moment it does. There the terminal is put in place by the installer,
+/// which is what can leave it on a stable path.
 #[cfg(target_os = "linux")]
 fn platform_reach(_dir: &Path, cli: &Path) -> Result<CliReach> {
     if cli
@@ -856,20 +852,20 @@ fn platform_reach(_dir: &Path, cli: &Path) -> Result<CliReach> {
     link_into(&[home.join(".local").join("bin")], cli)
 }
 
-/// Enlaza `cli` desde el primer directorio de `candidates` que lo admita.
+/// Links `cli` from the first directory in `candidates` that will take it.
 ///
-/// **Nunca sustituye un fichero que no sea un enlace nuestro.** Es la regla
-/// entera de esta función y la razón de que exista: `~/.local/bin` es justo
-/// donde el instalador de terminal deja el `hoard` de verdad, y una app que
-/// arranque sin ese directorio en su `PATH` —lo normal al lanzarla desde el
-/// menú del escritorio, que no lee tu perfil de shell— concluiría "no es
-/// alcanzable" y borraría el binario instalado para poner un enlace a su copia
-/// del bundle. Cambiaría una instalación independiente y actualizable por sí
-/// sola por una atada a la app, destruyendo la buena por el camino.
+/// It NEVER replaces a file that is not a link of ours. That is the whole rule of
+/// this function and the reason it exists: `~/.local/bin` is exactly where the
+/// terminal installer leaves the real `hoard`, and an app starting without that
+/// directory on its `PATH`, which is normal when launched from the desktop menu since
+/// that does not read your shell profile, would conclude "it is not reachable" and
+/// delete the installed binary to put a link to its bundle copy in its place. It
+/// would trade a standalone, self-updating install for one tied to the app,
+/// destroying the good one on the way.
 ///
-/// Si ya hay un `hoard` de carne y hueso ahí, la respuesta correcta es dejarlo
-/// en paz: el binario está y es alcanzable desde esa ruta. Que ese directorio
-/// esté o no en el `PATH` de tu shell es cosa de tu perfil, no algo que se
+/// When there is already a flesh-and-blood `hoard` there, the right answer is to
+/// leave it alone: the binary is there and reachable from that path. Whether that
+/// directory is on your shell's `PATH` is a matter for your profile, not something to
 /// arregle borrando ejecutables ajenos.
 #[cfg(unix)]
 fn link_into(candidates: &[PathBuf], cli: &Path) -> Result<CliReach> {
@@ -881,20 +877,20 @@ fn link_into(candidates: &[PathBuf], cli: &Path) -> Result<CliReach> {
         }
         let link = dir.join("hoard");
         match std::fs::symlink_metadata(&link) {
-            // Un enlace ya apuntando bien no se toca. Uno que apunte a otro
-            // sitio sí se re-apunta: es el caso de después de una actualización
-            // que mueva el bundle, y re-apuntar un enlace nuestro no destruye
-            // nada.
+            // A link already pointing correctly is left alone. One pointing
+            // somewhere else is repointed: that is the case after an update
+            // that moves the bundle, and repointing a link of ours destroys
+            // nothing.
             Ok(meta) if meta.file_type().is_symlink() => {
                 if std::fs::read_link(&link).is_ok_and(|t| t == cli) {
                     return Ok(CliReach::AlreadyReachable);
                 }
                 let _ = std::fs::remove_file(&link);
             }
-            // Hay algo que NO es un enlace: un `hoard` instalado de verdad.
-            // Se respeta y se da por alcanzable.
+            // Something that is NOT a link: a real installed `hoard`. It is
+            // respected and taken as reachable.
             Ok(_) => return Ok(CliReach::AlreadyReachable),
-            // No hay nada: vía libre.
+            // Nothing there: clear road.
             Err(_) => {}
         }
         match std::os::unix::fs::symlink(cli, &link) {
@@ -914,8 +910,8 @@ fn platform_reach(_dir: &Path, _cli: &Path) -> Result<CliReach> {
 /// the install.
 ///
 /// [`observe`] can't answer this. It starts from `current_exe().parent()`,
-/// which is right when the asker is `hoard` or `hoardd` — they live in the
-/// directory it is looking for — and wrong for an installer, which sits in
+/// which is right when the asker is `hoard` or `hoardd` (they live in the
+/// directory it is looking for) and wrong for an installer, which sits in
 /// whatever downloads folder it was saved to and would report that folder as
 /// the place Hoard lives.
 ///
@@ -984,7 +980,7 @@ pub struct Installed {
     pub core_dir: Option<PathBuf>,
     /// The app's executable, if it is installed.
     pub desktop: Option<PathBuf>,
-    /// How the app got here — needed to take it away again the same way.
+    /// How the app got here, needed to take it away again the same way.
     pub delivery: Option<Delivery>,
     /// The manifest itself, when there is one.
     pub manifest: Option<Manifest>,
@@ -997,7 +993,7 @@ impl Installed {
     }
 }
 
-/// Qué hay instalado **según el disco**, sin manifiesto de por medio.
+/// What is installed **according to the disk**, with no manifest in the middle.
 fn observe() -> Manifest {
     let core_dir = observed_core_dir();
     let desktop_path = observed_desktop();
@@ -1006,9 +1002,9 @@ fn observe() -> Manifest {
         components.push(Component::Desktop);
     }
     let delivery = desktop_path.as_deref().map(observed_delivery);
-    // Sin manifiesto que lo diga hay que deducirlo, y el único caso en que el
-    // núcleo viaja dentro es un bundle de verdad: el AppImage comparte carpeta
-    // con el núcleo sin contenerlo, así que se excluye explícitamente.
+    // With no manifest saying so it has to be deduced, and the only case where the
+    // core travels inside is a real bundle: the AppImage shares a folder with the
+    // core without containing it, so it is excluded explicitly.
     let core_from_bundle = match (&core_dir, &desktop_path, delivery) {
         (Some(core), Some(desktop), Some(d)) => {
             d != Delivery::AppImage && desktop.parent() == Some(core.as_path())
@@ -1025,20 +1021,20 @@ fn observe() -> Manifest {
     }
 }
 
-/// Dónde vive el núcleo: el directorio de este mismo ejecutable, que es `hoard`
-/// o `hoardd` según quién pregunte y en ambos casos es la respuesta correcta.
+/// Where the core lives: the directory of this very executable, which is `hoard`
+/// or `hoardd` depending on who asks and is the right answer either way.
 fn observed_core_dir() -> Option<PathBuf> {
     std::env::current_exe()
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf))
 }
 
-/// El ejecutable de la app, si está. Se busca donde lo dejan las vías que
-/// conocemos, y de paso el `PATH` para una instalación a mano.
+/// The app's executable, if it is there. Looked for where the delivery routes we
+/// know leave it, and the `PATH` too for a hand-rolled install.
 fn observed_desktop() -> Option<PathBuf> {
     let name = format!("hoard-desktop{}", std::env::consts::EXE_SUFFIX);
 
-    // Junto a nosotros: bundle del desktop, o un `cargo build` del workspace.
+    // Next to us: the desktop bundle, or a `cargo build` of the workspace.
     if let Some(dir) = observed_core_dir() {
         let sibling = dir.join(&name);
         if sibling.is_file() {
@@ -1048,14 +1044,14 @@ fn observed_desktop() -> Option<PathBuf> {
     installed_desktop()
 }
 
-/// La app **donde la dejan las vías de instalación**, sin mirar junto a quien
-/// pregunta.
+/// The app **where the install routes leave it**, without looking next to whoever
+/// is asking.
 ///
-/// El descarte importa: [`observed_desktop`] empieza por su propio directorio
-/// porque quien pregunta suele ser `hoard` o `hoardd`, que viajan con la app. Un
-/// instalador no — vive en la carpeta de descargas, o en `target/debug` durante
-/// el desarrollo, y ahí «hay un hoard-desktop al lado» significa «alguien acaba
-/// de compilar el workspace», no «esta máquina tiene Hoard instalado».
+/// The exclusion matters: [`observed_desktop`] starts from its own directory
+/// because the asker is usually `hoard` or `hoardd`, which travel with the app. An
+/// installer does not: it lives in the downloads folder, or in `target/debug`
+/// during development, and there "a hoard-desktop sits next to me" means "somebody
+/// just built the workspace", not "this machine has Hoard installed".
 pub(crate) fn installed_desktop() -> Option<PathBuf> {
     let name = format!("hoard-desktop{}", std::env::consts::EXE_SUFFIX);
     for dir in known_desktop_dirs() {
@@ -1071,7 +1067,7 @@ pub(crate) fn installed_desktop() -> Option<PathBuf> {
     })
 }
 
-/// Directorios donde aterriza la app según la vía de entrega, por plataforma.
+/// Directories where the app lands per delivery route, by platform.
 fn known_desktop_dirs() -> Vec<PathBuf> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
@@ -1109,8 +1105,8 @@ fn known_desktop_dirs() -> Vec<PathBuf> {
     }
 }
 
-/// De dónde salió la app que hay en `path`. Se deduce de dónde vive: es la única
-/// pista que sobrevive a que el instalador la pusiera hace meses.
+/// Where the app at `path` came from. Deduced from where it lives: that is the
+/// only clue that survives the installer having put it there months ago.
 fn observed_delivery(path: &Path) -> Delivery {
     observed_delivery_in(path, running_under_flatpak())
 }
@@ -1118,7 +1114,7 @@ fn observed_delivery(path: &Path) -> Delivery {
 /// [`observed_delivery`] with the sandbox answered for it, so the one case that
 /// can't be expressed as a path is still a test and not a comment.
 fn observed_delivery_in(path: &Path, sandboxed: bool) -> Delivery {
-    // A Flatpak install writes no manifest — it never runs our installer — so
+    // A Flatpak install writes no manifest (it never runs our installer), so
     // this is the function that names it, and naming it wrong is expensive:
     // `/app/bin/hoard-desktop` is under neither `$HOME` nor `/usr`, so it used
     // to fall through to the `AppImage` at the bottom and hand the updater a
@@ -1133,13 +1129,13 @@ fn observed_delivery_in(path: &Path, sandboxed: bool) -> Delivery {
     if cfg!(target_os = "macos") {
         return Delivery::Dmg;
     }
-    // Bajo el home no hay gestor de paquetes de por medio.
+    // Under the home there is no package manager in the middle.
     if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
         if path.starts_with(&home) {
             return Delivery::AppImage;
         }
     }
-    // En `/usr` lo puso un paquete. Cuál, lo dice la máquina.
+    // In `/usr` a package put it. Which one, the machine says.
     if s.starts_with("/usr/") {
         if bin_exists("dpkg") {
             return Delivery::Deb;
@@ -1147,8 +1143,8 @@ fn observed_delivery_in(path: &Path, sandboxed: bool) -> Delivery {
         if bin_exists("rpm") {
             return Delivery::Rpm;
         }
-        // Ni dpkg ni rpm y aun así está en /usr: lo puso otra cosa (Arch, Nix,
-        // un tarball a mano). No es nuestro y no lo tocamos.
+        // Neither dpkg nor rpm and still under /usr: something else put it
+        // there (Arch, Nix, a hand-rolled tarball). Not ours, not touched.
         return Delivery::Managed;
     }
     Delivery::AppImage
@@ -1158,8 +1154,8 @@ fn observed_delivery_in(path: &Path, sandboxed: bool) -> Delivery {
 mod tests {
     use super::*;
 
-    /// Un probe "de escritorio corriente" sobre el que variar un solo hecho por
-    /// test; así cada aserción dice qué hecho manda.
+    /// An "ordinary desktop" probe to vary a single fact per test, so each
+    /// assertion says which fact is the one in charge.
     fn desktop_box() -> Probe {
         Probe {
             graphical: true,
@@ -1188,8 +1184,8 @@ mod tests {
         );
     }
 
-    /// El núcleo no es opcional en ninguna combinación: una cara sin motor es
-    /// justo el artefacto roto que este módulo viene a eliminar.
+    /// The core is optional in no combination: a face with no engine is exactly
+    /// the broken artifact this module exists to eliminate.
     #[test]
     fn the_core_is_never_optional() {
         for graphical in [true, false] {
@@ -1223,10 +1219,10 @@ mod tests {
             assert_eq!(resolve_delivery(&probe), Delivery::Rpm);
         }
 
-        /// SteamOS y Bazzite: tienen `rpm` en el PATH y aun así el paquete
-        /// nativo no puede aplicarse. Sin la comprobación de raíz inmutable el
-        /// plan elegiría un `.rpm` que no escribe nada — y es exactamente el
-        /// caso que abrió todo este rediseño.
+        /// SteamOS and Bazzite have `rpm` on the PATH and the native package
+        /// still cannot be applied. Without the immutable-root check the plan
+        /// would pick an `.rpm` that writes nothing, which is exactly the case
+        /// that opened this whole redesign.
         #[test]
         fn an_immutable_image_falls_back_to_the_appimage() {
             let probe = Probe {
@@ -1238,9 +1234,9 @@ mod tests {
             assert_eq!(resolve_delivery(&probe), Delivery::AppImage);
         }
 
-        /// Dentro de `curl … | sh` no hay a quién pedirle la contraseña, así que
-        /// "no podemos elevar" tiene que llevar al AppImage y no a un `.deb` que
-        /// se colgaría esperando.
+        /// Inside `curl … | sh` there is nobody to ask for the password, so
+        /// "we cannot elevate" has to lead to the AppImage and not to a `.deb`
+        /// that would hang waiting.
         #[test]
         fn no_way_to_elevate_falls_back_to_the_appimage() {
             let probe = Probe {
@@ -1263,7 +1259,7 @@ mod tests {
         /// The sandbox outranks the package manager, and the probe it runs on
         /// is deliberately the friendliest one there is: a writable Debian box
         /// that can elevate. Order matters here and nothing else would catch
-        /// it — read the checks in the other order and this same probe comes
+        /// it: read the checks in the other order and this same probe comes
         /// back `Deb`.
         #[test]
         fn a_flatpak_is_not_ours_to_update() {
@@ -1276,7 +1272,7 @@ mod tests {
         }
 
         /// `/app/bin` is under neither `$HOME` nor `/usr`, so the path alone
-        /// says AppImage — which is how the updater ended up aiming at a
+        /// says AppImage, which is how the updater ended up aiming at a
         /// read-only directory. The second half of this test is the bug, kept
         /// so that removing the flag can't look harmless.
         #[test]
@@ -1307,9 +1303,9 @@ mod tests {
         assert_eq!(m.components, before);
     }
 
-    /// Lo que mantiene un tercero no se actualiza: reemplazar por debajo un
-    /// binario del gestor de paquetes de la distro deja el sistema mintiendo
-    /// sobre lo que tiene instalado.
+    /// What a third party maintains is not updated: replacing a distro package
+    /// manager's binary underneath it leaves the system lying about what it has
+    /// installed.
     #[test]
     fn a_managed_install_is_not_ours_to_update() {
         assert!(!Delivery::Managed.is_ours());
@@ -1325,8 +1321,8 @@ mod tests {
         assert!(!Delivery::Nsis.needs_elevation());
     }
 
-    /// El manifiesto es un contrato con el instalador de shell, que lo escribe
-    /// y lo lee sin serde. Si cambia la forma, ese lado se entera aquí.
+    /// The manifest is a contract with the shell installer, which writes and
+    /// reads it without serde. If the shape changes, that side finds out here.
     #[test]
     fn the_manifest_round_trips_through_its_wire_shape() {
         let m = Manifest {
@@ -1343,10 +1339,10 @@ mod tests {
         assert_eq!(serde_json::from_str::<Manifest>(&json).unwrap(), m);
     }
 
-    /// Los instaladores de shell comparan cadenas literales contra este campo,
-    /// así que la forma por cable y la que imprimimos tienen que ser la misma.
-    /// Sin este test, un `rename_all` convirtiendo `AppImage` en `app_image`
-    /// pasa desapercibido hasta que un `upgrade` no reconoce su propia vía.
+    /// The shell installers compare literal strings against this field, so the
+    /// wire shape and the one we print have to be the same. Without this test a
+    /// `rename_all` turning `AppImage` into `app_image` goes unnoticed until an
+    /// `upgrade` fails to recognise its own route.
     #[test]
     fn every_delivery_serialises_as_the_name_it_prints() {
         for d in [
@@ -1375,13 +1371,12 @@ mod tests {
         }
     }
 
-    /// **La regla que protege la instalación del usuario.** `~/.local/bin` es
-    /// justo donde el instalador de terminal deja el `hoard` de verdad, y una
-    /// app lanzada desde el menú del escritorio no lee tu perfil de shell, así
-    /// que puede arrancar sin ese directorio en su `PATH` y concluir "no es
-    /// alcanzable". Si en ese punto borrase lo que hay, cambiaría una
-    /// instalación independiente por un enlace atado al bundle — destruyendo la
-    /// buena por el camino.
+    /// **The rule that protects the user's install.** `~/.local/bin` is exactly
+    /// where the terminal installer leaves the real `hoard`, and an app launched
+    /// from the desktop menu does not read your shell profile, so it can start
+    /// without that directory on its `PATH` and conclude "not reachable". If it
+    /// deleted what is there at that point, it would trade a standalone install
+    /// for a link tied to the bundle, destroying the good one on the way.
     #[cfg(unix)]
     #[test]
     fn a_real_binary_in_the_target_dir_is_never_replaced() {
@@ -1389,11 +1384,11 @@ mod tests {
         let dir = tmp.path().join("bin");
         std::fs::create_dir_all(&dir).unwrap();
         let installed = dir.join("hoard");
-        std::fs::write(&installed, b"el hoard instalado de verdad").unwrap();
+        std::fs::write(&installed, b"the real installed hoard").unwrap();
 
         let bundled = tmp.path().join("bundle").join("hoard");
         std::fs::create_dir_all(bundled.parent().unwrap()).unwrap();
-        std::fs::write(&bundled, b"la copia del bundle").unwrap();
+        std::fs::write(&bundled, b"the bundle copy").unwrap();
 
         assert_eq!(
             link_into(std::slice::from_ref(&dir), &bundled).unwrap(),
@@ -1401,20 +1396,20 @@ mod tests {
         );
         assert_eq!(
             std::fs::read(&installed).unwrap(),
-            b"el hoard instalado de verdad",
-            "se ha pisado el binario instalado"
+            b"the real installed hoard",
+            "the installed binary got clobbered"
         );
         assert!(
             !std::fs::symlink_metadata(&installed)
                 .unwrap()
                 .file_type()
                 .is_symlink(),
-            "el fichero real se ha convertido en enlace"
+            "the real file has been turned into a link"
         );
     }
 
-    /// Un enlace nuestro sí se re-apunta: es lo que pasa tras una actualización
-    /// que mueva el bundle, y re-apuntar un enlace no destruye nada.
+    /// A link of ours does get repointed: that is what happens after an update
+    /// that moves the bundle, and repointing a link destroys nothing.
     #[cfg(unix)]
     #[test]
     fn a_stale_symlink_of_ours_gets_repointed() {
@@ -1437,9 +1432,9 @@ mod tests {
         assert_eq!(std::fs::read_link(&link).unwrap(), new);
     }
 
-    /// Un enlace que ya apunta donde toca no se toca: esto corre en cada
-    /// arranque de la app, y reescribirlo por gusto es escritura en disco por
-    /// nada.
+    /// A link already pointing where it should is left alone: this runs on every
+    /// app start, and rewriting it for the sake of it is a disk write for
+    /// nothing.
     #[cfg(unix)]
     #[test]
     fn a_correct_symlink_is_left_alone() {
@@ -1458,7 +1453,7 @@ mod tests {
         );
     }
 
-    /// Directorio vacío: vía libre, se enlaza.
+    /// Empty directory: clear road, it gets linked.
     #[cfg(unix)]
     #[test]
     fn an_empty_dir_gets_the_link() {
@@ -1474,12 +1469,12 @@ mod tests {
         );
     }
 
-    /// **El AppImage comparte carpeta con el núcleo sin contenerlo.** Es la
-    /// trampa que hace inservible deducir la propiedad del núcleo comparando
-    /// rutas: `place_appimage` deja la app en `~/.local/bin/hoard-desktop`, que
-    /// es donde el instalador dejó `hoard` y `hoardd`, así que "misma carpeta"
-    /// daría "lo trae el bundle" y `hoard upgrade` dejaría de actualizar el
-    /// núcleo — en la vía de SteamOS, que es la que motivó todo esto.
+    /// **The AppImage shares a folder with the core without containing it.** That
+    /// is the trap that makes deducing core ownership by comparing paths useless:
+    /// `place_appimage` leaves the app at `~/.local/bin/hoard-desktop`, which is
+    /// where the installer left `hoard` and `hoardd`, so "same folder" would give
+    /// "the bundle brings it" and `hoard upgrade` would stop updating the core,
+    /// on the SteamOS route, which is the one that motivated all of this.
     #[test]
     fn an_appimage_sharing_the_core_dir_does_not_own_the_core() {
         let m = Manifest {
@@ -1492,12 +1487,12 @@ mod tests {
         };
         assert!(
             !m.core_from_bundle,
-            "un AppImage no puede reclamar el núcleo por vivir al lado"
+            "an AppImage cannot claim the core just by living next to it"
         );
     }
 
-    /// Un manifiesto viejo (anterior al campo) se lee sin reventar y da el valor
-    /// prudente: el núcleo es nuestro y por tanto actualizable.
+    /// An old manifest (from before the field) parses without blowing up and
+    /// gives the prudent value: the core is ours and therefore updatable.
     #[test]
     fn a_manifest_from_before_the_field_defaults_to_ours() {
         let m: Manifest = serde_json::from_str(
@@ -1507,8 +1502,8 @@ mod tests {
         assert!(!m.core_from_bundle);
     }
 
-    /// Una instalación sin app no escribe `delivery` — el campo ausente tiene
-    /// que leerse como "no hay", no reventar el parseo.
+    /// An install with no app writes no `delivery`; the absent field has to read
+    /// as "there is none", not blow up the parse.
     #[test]
     fn a_manifest_without_a_desktop_parses() {
         let m: Manifest =

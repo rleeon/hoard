@@ -59,7 +59,7 @@ const NON_GAME_PROCESS: &[&str] = &[
     "explorer.exe",
     "windowserver",
     "loginwindow",
-    // Navegadores / runtimes genéricos.
+    // Generic browsers and runtimes.
     "chrome",
     "chromium",
     "firefox",
@@ -78,7 +78,7 @@ const NON_GAME_PROCESS: &[&str] = &[
     "gsd-",
     "pipewire-",
     "wireplumber",
-    // Launchers / overlays / clientes (no son el juego en sí).
+    // Launchers, overlays and clients (not the game itself).
     "steamwebhelper",
     "steam.exe",
     "steam ",
@@ -512,7 +512,7 @@ impl CorrelationStore {
         entry.phantom_strikes = 0;
 
         if primary.name == entry.process_name {
-            // Confirma la atribución vigente; refresca el exe y borra retador.
+            // Confirms the standing attribution; refreshes the exe and drops the challenger.
             entry.exe = primary.exe.clone();
             entry.challenger = None;
             entry.challenger_streak = 0;
@@ -659,7 +659,7 @@ mod tests {
             "RadeonSoftware.exe",
             "windhawk.exe",
         ] {
-            assert!(!is_game_like(n, None), "{n} debería filtrarse");
+            assert!(!is_game_like(n, None), "{n} should be filtered out");
         }
     }
 
@@ -677,7 +677,7 @@ mod tests {
         std::fs::write(&tmp, json).unwrap();
         let store = CorrelationStore::load(&tmp);
         let _ = std::fs::remove_file(&tmp);
-        // Sólo sobrevive el juego de verdad.
+        // Only the real game survives.
         assert_eq!(store.len(), 1);
         assert!(store.signal_for(Path::new("/saves/real")).is_some());
         assert!(store.signal_for(Path::new("/saves/ark")).is_none());
@@ -700,7 +700,7 @@ mod tests {
             "steam-runtime-launcher-service",
             "gameoverlayui",
         ] {
-            assert!(!is_game_like(n, None), "{n} debería filtrarse");
+            assert!(!is_game_like(n, None), "{n} should be filtered out");
         }
         // The game's real executable (the same name sysinfo would see under
         // Proton) still passes.
@@ -736,8 +736,8 @@ mod tests {
 
     #[test]
     fn is_game_like_rejects_windows_system_and_overlays() {
-        // Procesos de fondo de Windows que envenenaban la correlación real:
-        // ssh.exe / RuntimeBroker.exe bajo C:\Windows\ (ruta de sistema)…
+        // Windows background processes that poisoned real correlation:
+        // ssh.exe / RuntimeBroker.exe under C:\Windows\ (a system path)...
         assert!(!is_game_like(
             "ssh.exe",
             Some(Path::new("C:\\Windows\\System32\\OpenSSH\\ssh.exe"))
@@ -754,7 +754,7 @@ mod tests {
                 "C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\NVIDIA Overlay.exe"
             ))
         ));
-        // Otra unidad distinta de C: también cuenta como sistema.
+        // A drive other than C: also counts as system.
         assert!(!is_game_like(
             "conhost.exe",
             Some(Path::new("D:\\Windows\\System32\\conhost.exe"))
@@ -903,9 +903,9 @@ mod tests {
                 exe: None,
             }],
         );
-        // Coincidencia exacta.
+        // Exact match.
         assert!(store.signal_for(&save).is_some());
-        // Un hijo del dir observado también corrobora (watcher recursivo).
+        // A child of the watched dir corroborates too (the watcher is recursive).
         assert!(store.signal_for(&save.join("slot1")).is_some());
         // An unrelated dir does not.
         assert!(store.signal_for(Path::new("/etc")).is_none());
@@ -914,7 +914,7 @@ mod tests {
 
     #[test]
     fn record_attribution_survives_single_intruder_tick() {
-        // Correlación asentada con el juego real.
+        // Settled correlation with the real game.
         let mut store = CorrelationStore::default();
         let dir = PathBuf::from("/home/u/.local/share/Game/Saves");
         let game = GameProcess {
@@ -937,7 +937,7 @@ mod tests {
         store.record(&dir, std::slice::from_ref(&intruder));
         store.record(&dir, std::slice::from_ref(&game));
         assert_eq!(store.attributed_name(&dir).as_deref(), Some("game"));
-        // Sólo tras ATTRIBUTION_SWITCH_STREAK ticks seguidos gana el retador.
+        // Only after ATTRIBUTION_SWITCH_STREAK ticks in a row does the challenger win.
         for _ in 0..ATTRIBUTION_SWITCH_STREAK {
             store.record(&dir, std::slice::from_ref(&intruder));
         }
@@ -968,7 +968,7 @@ mod tests {
             "setup.exe",
             "achievements.exe",
         ] {
-            assert!(!is_game_like(n, None), "{n} debería filtrarse");
+            assert!(!is_game_like(n, None), "{n} should be filtered out");
         }
         // "setup" and "achievements" go by EXACT match: they eat no legitimate
         // names.
@@ -988,10 +988,10 @@ mod tests {
             exe: Some(PathBuf::from("/apps/hourlytask.exe")),
         };
         store.record(&dir, std::slice::from_ref(&task));
-        // Primera sesión fantasma: strike, pero la observación sobrevive.
+        // First phantom session: a strike, but the observation survives.
         assert_eq!(store.strike_phantom(&dir), Some(false));
         assert!(store.signal_for(&dir).is_some());
-        // Segunda seguida: cae. La señal débil muere con ella.
+        // Second in a row: it falls. The weak signal dies with it.
         assert_eq!(store.strike_phantom(&dir), Some(true));
         assert!(store.signal_for(&dir).is_none());
         // With no observation, the strike is a no-op.
@@ -1013,7 +1013,7 @@ mod tests {
         store.record(&dir, std::slice::from_ref(&game));
         assert_eq!(store.strike_phantom(&dir), Some(false));
         assert!(store.signal_for(&dir).is_some());
-        // `absolve` explícito también resetea (sesión con had_pending).
+        // An explicit `absolve` resets too (a session with had_pending).
         store.absolve(&dir);
         assert_eq!(store.strike_phantom(&dir), Some(false));
         assert!(store.signal_for(&dir).is_some());

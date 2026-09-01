@@ -50,7 +50,7 @@ pub struct EmulatorDef {
     /// A stable id; the UI builds the game's synthetic slug as `emu-<id>`.
     pub id: &'static str,
     pub display_name: &'static str,
-    /// Consola / plataforma, como sublínea en el selector.
+    /// Console or platform, shown as a subline in the picker.
     pub system: &'static str,
     /// Executable names that mark the emulator as running. The agent matches any
     /// of them (case-insensitive, exact name), so the variants for every OS and
@@ -110,7 +110,7 @@ pub const CATALOG: &[EmulatorDef] = &[
             "duckstation",
         ],
         // Windows moved to Local AppData; the README keeps Documents only for
-        // "old installs", so it stays listed but never first — an install that
+        // "old installs", so it stays listed but never first: an install that
         // predates the move still has the folder, and existence filtering
         // picks whichever is real. Linux is the data dir, not config: the
         // official migration command moves the Flatpak tree *into*
@@ -317,7 +317,7 @@ pub const CATALOG: &[EmulatorDef] = &[
         // path, so nothing ever lands in `%APPDATA%\flycast`. Offering it made
         // the dialog point at a folder that cannot exist. Windows installs are
         // found by `portable_save_paths`, which reuses the `flycast`/`data`
-        // pair from the Linux template below — that row is load-bearing for
+        // pair from the Linux template below, and that row is load-bearing for
         // Windows detection even though it never expands there.
         save_templates: &[
             "<xdgData>/flycast/data",
@@ -364,7 +364,7 @@ pub const CATALOG: &[EmulatorDef] = &[
         // `Save` subfolder of the program folder, and nothing is written to
         // `%APPDATA%`. The template is kept anyway because it is the only
         // source of the `Project64`/`Save` pair that `portable_save_paths`
-        // reanchors onto a real install — delete it and Windows detection goes
+        // reanchors onto a real install; delete it and Windows detection goes
         // to zero. What is still wrong is the fallback: with no folder found,
         // `resolve_save_paths` offers this path, which will never exist. That
         // needs the entry to be able to say "portable only", not a different
@@ -513,7 +513,7 @@ pub fn portable_save_paths(def: &EmulatorDef) -> Vec<PathBuf> {
     out
 }
 
-// ─── Partición por título ───────────────────────────────────────────────────
+// ---- splitting per title
 
 /// One game's save folder inside a console's tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -596,7 +596,7 @@ fn split_switch_nand(root: &Path) -> Vec<TitleSave> {
                 });
                 continue;
             }
-            // Un nivel más abajo: <cuenta>/<perfil>/<title-id>.
+            // One level further down: <account>/<profile>/<title-id>.
             for level3 in read_dirs(&level2) {
                 let Some(name) = level3.file_name().and_then(|n| n.to_str()) else {
                     continue;
@@ -658,7 +658,7 @@ fn split_citra_sdmc(root: &Path) -> Vec<TitleSave> {
 /// The catalog can't answer this by comparing expanded paths: the roots that
 /// reach detection are the ones the templates missed. rpcs3 on macOS lives
 /// under `~/Library/Application Support`, and under RetroDECK it lives inside
-/// `~/retrodeck` — neither is `<xdgConfig>`, and both are still rpcs3.
+/// `~/retrodeck`; neither is `<xdgConfig>`, and both are still rpcs3.
 ///
 /// So the match is on the **tail** of the template, which is the part that
 /// belongs to the emulator instead of to the host: `rpcs3/dev_hdd0/home/
@@ -743,10 +743,10 @@ pub fn titles_in(def: &EmulatorDef, root: &Path) -> Vec<TitleSave> {
     if let Some(layout) = def.title_layout {
         return split_per_title(root, layout);
     }
-    // Sin distribución conocida, la forma genérica: una carpeta por título y
-    // nada suelto en la raíz. El `has_direct_file` es la línea que separa un
-    // contenedor de un save de verdad — RetroArch deja sus `.srm` sueltos en
-    // `saves/`, así que esa carpeta ES el save y no hay nada que partir.
+    // With no known layout, the generic shape: one folder per title and nothing
+    // loose at the root. `has_direct_file` is the line that separates a container
+    // from a real save: RetroArch leaves its `.srm` files loose in `saves/`, so
+    // that folder IS the save and there is nothing to split.
     if has_direct_file(root) {
         return Vec::new();
     }
@@ -767,8 +767,8 @@ pub fn titles_in(def: &EmulatorDef, root: &Path) -> Vec<TitleSave> {
     out
 }
 
-/// `true` si la raíz tiene ficheros **suyos**, sin bajar. Distingue el save
-/// plano (RetroArch) del contenedor de carpetas por título (rpcs3).
+/// `true` if the root holds files of **its own**, without descending. Tells the
+/// flat save (RetroArch) apart from the per-title container (rpcs3).
 pub fn has_direct_file(dir: &Path) -> bool {
     let Ok(read) = std::fs::read_dir(dir) else {
         return false;
@@ -777,8 +777,8 @@ pub fn has_direct_file(dir: &Path) -> bool {
         .any(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
 }
 
-/// Subdirectorios inmediatos de `dir`, ordenados. Vacío si no se puede leer:
-/// aquí un error sólo significa "no hay nada que ofrecer por debajo".
+/// Immediate subdirectories of `dir`, sorted. Empty when it cannot be read: an
+/// error here only means "nothing to offer underneath".
 fn read_dirs(dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -798,26 +798,26 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
-    /// Las raíces que producción rastreó como si fueran un save, cada una con
-    /// el emulador que debería haberlas reclamado. Las rutas son las de los
-    /// casos vistos: rpcs3 en macOS y en RetroDECK (ninguna de las dos es la
-    /// que expande la plantilla), RetroArch, Ryujinx, Dolphin y Yuzu.
+    /// The roots production tracked as if they were a save, each with the
+    /// emulator that should have claimed them. The paths are the ones actually
+    /// seen: rpcs3 on macOS and inside RetroDECK (neither is what the template
+    /// expands to), RetroArch, Ryujinx, Dolphin and Yuzu.
     #[test]
     fn an_emulator_save_root_is_recognised_wherever_it_was_installed() {
         let cases: &[(&str, Option<&str>)] = &[
-            // rpcs3, el de las 224 líneas de "nothing to back up". El slug que
-            // salía de aquí era `dev-hdd0`.
+            // rpcs3, the one behind the 224 lines of "nothing to back up". The
+            // slug coming out of here was `dev-hdd0`.
             (
                 "/Users/u/Library/Application Support/rpcs3/dev_hdd0/home/00000001/savedata",
                 Some("rpcs3"),
             ),
-            // El mismo árbol dentro de RetroDECK.
+            // The same tree inside RetroDECK.
             (
                 "/home/u/retrodeck/saves/ps3/rpcs3/dev_hdd0/home/00000001/savedata",
                 Some("rpcs3"),
             ),
-            // Y con el perfil que NO es el primero: el id es por instalación,
-            // así que se compara la forma, no el valor.
+            // And with a profile that is NOT the first one: the id is per
+            // install, so it is the shape that gets compared, not the value.
             (
                 "/home/u/.config/rpcs3/dev_hdd0/home/00000002/savedata",
                 Some("rpcs3"),
@@ -835,8 +835,8 @@ mod tests {
             ("/home/u/.local/share/dolphin-emu/Wii", Some("dolphin")),
             ("/home/u/.local/share/yuzu/nand/user/save", Some("yuzu")),
             ("/home/u/.local/share/Cemu/mlc01/usr/save", Some("cemu")),
-            // Y lo que NO puede reclamar ningún emulador: la carpeta de UN
-            // título dentro de la raíz, y un save cualquiera de un juego.
+            // And what no emulator may claim: the folder of ONE title inside
+            // the root, and any ordinary game save.
             (
                 "/home/u/.config/rpcs3/dev_hdd0/home/00000001/savedata/BLUS30443",
                 None,
@@ -853,27 +853,27 @@ mod tests {
         }
     }
 
-    /// Y desde dentro se llega a la raíz por arriba, que es como el barrido la
-    /// encuentra de verdad: baja hasta donde hay ficheros, no para en la raíz.
+    /// And from inside, the root is reached upwards, which is how the walk really
+    /// finds it: it descends to where the files are, it does not stop at the root.
     #[test]
     fn a_folder_inside_a_save_root_finds_the_root_above_it() {
         let deep = Path::new("/home/u/.config/rpcs3/dev_hdd0/home/00000001/savedata/BLUS30443/sub");
-        let (def, title) = save_root_above(deep).expect("cuelga de la raíz de rpcs3");
+        let (def, title) = save_root_above(deep).expect("hangs off the rpcs3 root");
         assert_eq!(def.id, "rpcs3");
-        // La carpeta del TÍTULO, no la hoja donde aterrizó el barrido.
+        // The TITLE folder, not the leaf the walk landed on.
         assert_eq!(
             title,
             Path::new("/home/u/.config/rpcs3/dev_hdd0/home/00000001/savedata/BLUS30443")
         );
 
-        // La raíz misma no cuelga de sí misma: eso lo contesta `save_root_at`.
+        // The root does not hang off itself: `save_root_at` answers that one.
         let root = Path::new("/home/u/.config/rpcs3/dev_hdd0/home/00000001/savedata");
         assert!(save_root_above(root).is_none());
     }
 
-    /// Partir la raíz: una fila por título cuando hay títulos, y **nada**
-    /// cuando la raíz está vacía —que es el caso de las 224 líneas: rpcs3
-    /// instalado y el `savedata` del primer perfil sin estrenar.
+    /// Splitting the root: one row per title when there are titles, and **nothing**
+    /// when the root is empty, which is the case behind the 224 lines: rpcs3
+    /// installed and the first profile's `savedata` never used.
     #[test]
     fn a_container_root_splits_per_title_and_an_empty_one_offers_nothing() {
         let tmp = tempdir().unwrap();
@@ -881,17 +881,17 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         let rpcs3 = find("rpcs3").unwrap();
 
-        // Vacía: no hay título que ofrecer, y la raíz NO vale como save.
+        // Empty: no title to offer, and the root does NOT count as a save.
         assert!(titles_in(rpcs3, &root).is_empty());
         assert!(!has_direct_file(&root));
 
-        // Con dos títulos dentro, uno por fila.
+        // With two titles inside, one row each.
         for title in ["BLUS30443-AUTOSAVE", "NPUB30493-SAVEDATA01"] {
             let d = root.join(title);
             fs::create_dir_all(&d).unwrap();
             fs::write(d.join("PARAM.SFO"), b"x").unwrap();
         }
-        // Y una carpeta vacía, que no es un título: no hay nada que respaldar.
+        // And an empty folder, which is not a title: nothing to back up.
         fs::create_dir_all(root.join("EMPTY00000")).unwrap();
 
         let titles = titles_in(rpcs3, &root);
@@ -904,9 +904,9 @@ mod tests {
         );
     }
 
-    /// La otra mitad: una raíz con los ficheros sueltos dentro NO es un
-    /// contenedor. RetroArch deja sus `.srm` en `saves/`, así que esa carpeta
-    /// ES el save y partirla la destrozaría.
+    /// The other half: a root with the files loose inside is NOT a container.
+    /// RetroArch leaves its `.srm` files in `saves/`, so that folder IS the save
+    /// and splitting it would destroy it.
     #[test]
     fn a_flat_save_root_is_not_a_container() {
         let tmp = tempdir().unwrap();
@@ -918,7 +918,7 @@ mod tests {
         assert!(has_direct_file(&root));
         assert!(
             titles_in(retroarch, &root).is_empty(),
-            "no hay títulos que partir: los saves son los ficheros"
+            "no titles to split: the saves are the files"
         );
     }
 
@@ -987,9 +987,9 @@ mod tests {
             fs::create_dir_all(&t).unwrap();
             fs::write(t.join("save.dat"), b"x").unwrap();
         }
-        // Vacía: el emulador la crea por cada título lanzado, no es un save.
+        // Empty: the emulator creates one per launched title, it is not a save.
         fs::create_dir_all(profile.join("0100abcd00099000")).unwrap();
-        // Ni carpeta de trabajo ni copia: la forma no es un id de título.
+        // Neither a working folder nor a backup: the shape is not a title id.
         fs::create_dir_all(profile.join("backup")).unwrap();
 
         let found = split_per_title(root, TitleLayout::SwitchNand);

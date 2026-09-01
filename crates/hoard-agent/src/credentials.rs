@@ -3,8 +3,8 @@
 //! Two pieces are kept on disk:
 //!
 //! * The bearer token, which is sensitive and should live in the OS keychain
+//!   when one is available (Secret Service on Linux, Credential Manager on
 //!   Windows, Keychain on macOS, all surfaced by the `keyring` crate).
-//!   Windows, Keychain on macOS — all surfaced by the `keyring` crate).
 //! * The server URL and a cached copy of the last-seen user info, which are
 //!   not sensitive and live in a TOML file at `<config>/desktop/session.toml`
 //!   so we can show the username without hitting the network on startup. These
@@ -439,7 +439,7 @@ pub fn set_lent_cloud(lease: Option<CloudLease>) {
     *slot = lease;
 }
 
-/// El token Cloud prestado, si hay sesión Cloud viva en este proceso.
+/// The lent Cloud token, when a Cloud session is alive in this process.
 pub fn lent_cloud() -> Option<CloudLease> {
     LENT_CLOUD.read().unwrap_or_else(|p| p.into_inner()).clone()
 }
@@ -728,23 +728,23 @@ mod tests {
         }))
     }
 
-    /// El fallo de D.19 en la ruta self-hosted: con el token sólo en el llavero,
-    /// uno bloqueado devolvía `Ok(None)` y el usuario aparecía deslogueado —
-    /// indistinguible de una instalación nueva, y sin nada que mirar. Ahora el
-    /// motivo sale entero y tipado.
+    /// The D.19 failure on the self-hosted route: with the token only in the
+    /// keyring, a locked one returned `Ok(None)` and the user showed up as logged
+    /// out, indistinguishable from a fresh install and with nothing to look at.
+    /// Now the reason comes out whole and typed.
     #[test]
     fn a_locked_keyring_is_not_a_logged_out_user() {
-        let err = pick_token(Err(stuck()), None).expect_err("no puede ser Ok(None)");
+        let err = pick_token(Err(stuck()), None).expect_err("cannot be Ok(None)");
         assert!(err.is::<KeyringTimeout>(), "{err:#}");
         assert!(format!("{err:#}").contains("locked"), "{err:#}");
     }
 
-    /// Pero con token en el fichero (el fallback 0600 de cuando no hay llavero)
+    /// But with a token in the file (the 0600 fallback for when there is no keyring)
     /// un llavero bloqueado no desloguea a nadie: se sigue con lo que hay.
     #[test]
     fn a_locked_keyring_still_falls_back_to_the_file_token() {
         let got = pick_token(Err(stuck()), Some("hoard_v1_del-fichero".to_string()))
-            .expect("el fichero salva la sesión")
+            .expect("the file saves the session")
             .expect("token");
         assert_eq!(
             got,
@@ -752,10 +752,10 @@ mod tests {
         );
     }
 
-    /// El origen viaja con el token, y no es cosmético: es lo que le dice al
-    /// daemon que el ítem del llavero no es suyo (o no está) y que le toca
-    /// subirlo con [`promote_to_keyring`]. Sin este dato la promoción sería una
-    /// escritura por arranque, y en macOS un diálogo por arranque.
+    /// The origin travels with the token, and it is not cosmetic: it is what tells
+    /// the daemon that the keyring item is not its own (or is missing) and that it
+    /// has to push it up with [`promote_to_keyring`]. Without it the promotion
+    /// would be one write per start, and on macOS one dialog per start.
     #[test]
     fn the_token_says_where_it_came_from() {
         let (_, storage) = pick_token(in_the_keyring("hoard_v1_x"), None)
@@ -769,24 +769,24 @@ mod tests {
         assert_eq!(storage, TokenStorage::File);
     }
 
-    /// Un llavero que contesta "no" (la ACL de macOS que autoriza a otro binario,
-    /// una sesión sin D-Bus) sale con **su** motivo tipado, distinto del tope.
-    /// La UI los pinta igual —"vuelve a entrar"— pero el log tiene que poder
-    /// distinguir un llavero bloqueado de uno que deniega.
+    /// A keyring that answers "no" (the macOS ACL authorising another binary, a
+    /// session with no D-Bus) comes out with **its own** typed reason, distinct
+    /// from the timeout. The UI paints them the same ("sign in again"), but the log
+    /// has to be able to tell a locked keyring from one that refuses.
     #[test]
     fn a_refusing_keyring_is_typed_as_unreadable() {
         let err = pick_token(Err(anyhow::anyhow!("access denied")), None)
-            .expect_err("sin fichero que salve, sale entero");
+            .expect_err("with no file to save it, it comes out whole");
         assert!(err.downcast_ref::<KeyringUnreadable>().is_some(), "{err:#}");
         assert!(err.downcast_ref::<KeyringTimeout>().is_none());
     }
 
-    /// Un fallo del llavero que no es el tope (sin D-Bus, entrada corrupta) llega
-    /// igual de entero, con el contexto de dónde ocurrió.
+    /// A keyring failure that is not the timeout (no D-Bus, corrupt entry) arrives
+    /// just as whole, with the context of where it happened.
     #[test]
     fn another_keyring_failure_also_surfaces() {
         let err = pick_token(Err(anyhow::anyhow!("no D-Bus session bus")), None)
-            .expect_err("el fallo del llavero se propaga");
+            .expect_err("the keyring failure propagates");
         assert!(err.downcast_ref::<KeyringTimeout>().is_none());
         assert!(
             format!("{err:#}").contains("no D-Bus session bus"),
@@ -794,8 +794,8 @@ mod tests {
         );
     }
 
-    /// Y un llavero sano gana al fichero; sin entrada (o con una vacía, que es
-    /// como quedan las de una sesión a medio borrar) se cae al fichero.
+    /// And a healthy keyring beats the file; with no entry (or an empty one, which
+    /// is how a half-deleted session leaves them) it falls back to the file.
     #[test]
     fn a_healthy_keyring_wins_and_an_empty_one_falls_back() {
         let (got, _) = pick_token(
@@ -822,15 +822,16 @@ mod tests {
             Some("hoard_v1_del-fichero")
         );
         assert!(pick_token(Ok(None), None).expect("ok").is_none());
-        // Un fichero con el token vacío es lo mismo que no tenerlo.
+        // A file with an empty token is the same as having none.
         assert!(pick_token(Ok(None), Some(String::new()))
             .expect("ok")
             .is_none());
     }
 
-    /// Aísla el directorio de config. Sólo Linux, que es donde `ProjectDirs` mira
-    /// `XDG_CONFIG_HOME`: en macOS y Windows la ruta sale del sistema y el test
-    /// escribiría en la sesión de verdad de quien ejecuta los tests.
+    /// Isolates the config directory. Linux only, because that is where
+    /// `ProjectDirs` looks at `XDG_CONFIG_HOME`: on macOS and Windows the path comes
+    /// from the system and the test would write into the real session of whoever
+    /// runs it.
     #[cfg(target_os = "linux")]
     fn with_isolated_config(f: impl FnOnce()) {
         let _guard = crate::test_lock::ENV
@@ -846,8 +847,8 @@ mod tests {
         }
     }
 
-    /// El camino sin servicio de D.20: se guarda en el fichero 0600, sin llavero, y
-    /// se lee de vuelta entero — incluido lo que un cliente puede leer solo
+    /// The service-less path from D.20: it is saved to the 0600 file, with no
+    /// keyring, and read back whole, including what a client can read on its own
     /// ([`load_public`]).
     #[cfg(target_os = "linux")]
     #[test]
@@ -862,18 +863,18 @@ mod tests {
                     is_admin: true,
                 }),
             };
-            save_unlocked(&creds).expect("escribe");
+            save_unlocked(&creds).expect("writes");
 
-            let session = read_session().expect("lee").expect("hay fichero");
+            let session = read_session().expect("reads").expect("there is a file");
             assert_eq!(session.server.url, "https://hoard.example");
             assert_eq!(
-                session.auth.expect("el token está en el fichero").token,
+                session.auth.expect("the token is in the file").token,
                 creds.token
             );
 
-            let (url, user) = load_public().expect("lee").expect("hay sesión");
+            let (url, user) = load_public().expect("reads").expect("there is a session");
             assert_eq!(url, "https://hoard.example");
-            assert_eq!(user.expect("usuario").username, "rai");
+            assert_eq!(user.expect("user").username, "rai");
 
             #[cfg(unix)]
             {
@@ -887,12 +888,13 @@ mod tests {
         });
     }
 
-    /// La tumba del logout sin servicio, que es la diferencia con Cloud: aquí
-    /// **borrar el fichero no basta**, porque [`load`] recupera la sesión del blob
-    /// del llavero cuando el fichero no está (el arreglo de la ACL de Windows) y
-    /// resucitaría justo lo que el usuario acaba de cerrar. Con la marca puesta,
-    /// `load` contesta "no hay sesión" **sin llegar a mirar el llavero** — que es lo
-    /// que hace este test determinista incluso en una máquina con su ítem de verdad.
+    /// The logout tombstone for the service-less path, which is the difference from
+    /// Cloud: here **deleting the file is not enough**, because [`load`] recovers the
+    /// session from the keyring blob when the file is missing (the Windows ACL fix)
+    /// and would resurrect exactly what the user just closed. With the marker in
+    /// place, `load` answers "no session" **without ever looking at the keyring**,
+    /// which is what makes this test deterministic even on a machine that has the
+    /// real item.
     #[cfg(target_os = "linux")]
     #[test]
     fn a_logout_without_a_service_cannot_be_resurrected_from_the_keyring() {
@@ -902,23 +904,26 @@ mod tests {
                 token: format!("hoard_v1_{}", "b".repeat(64)),
                 user: None,
             };
-            save_unlocked(&creds).expect("escribe");
-            assert!(load_public().expect("lee").is_some());
+            save_unlocked(&creds).expect("writes");
+            assert!(load_public().expect("reads").is_some());
 
-            forget_unlocked().expect("olvida");
+            forget_unlocked().expect("forgets");
             assert!(
-                load_public().expect("lee").is_none(),
-                "sigue habiendo sesión"
+                load_public().expect("reads").is_none(),
+                "there is still a session"
             );
-            assert!(load().expect("lee").is_none(), "la tumba no se respetó");
-            // Y el siguiente login la limpia sin acordarse de ella.
-            save_unlocked(&creds).expect("vuelve a entrar");
-            assert!(load_public().expect("lee").is_some());
+            assert!(
+                load().expect("reads").is_none(),
+                "the tombstone was not honoured"
+            );
+            // And the next login clears it without remembering it.
+            save_unlocked(&creds).expect("signs back in");
+            assert!(load_public().expect("reads").is_some());
         });
     }
 
-    /// El hueco del préstamo: en un cliente, `current` no puede caer al almacén ni
-    /// cuando está vacío — esa lectura es el diálogo de contraseña de macOS.
+    /// The gap in the loan: in a client, `current` must not fall back to the store
+    /// even when it is empty, because that read is the macOS password dialog.
     #[test]
     fn a_client_without_a_loan_has_no_session_instead_of_reading_the_store() {
         let creds = Credentials {
@@ -927,15 +932,15 @@ mod tests {
             user: None,
         };
         set_lent(Some(creds.clone()));
-        assert_eq!(lent().expect("prestada").token, creds.token);
-        assert_eq!(current().expect("ok").expect("prestada").token, creds.token);
+        assert_eq!(lent().expect("lent").token, creds.token);
+        assert_eq!(current().expect("ok").expect("lent").token, creds.token);
 
         set_lent(None);
         mark_client();
         assert!(lent().is_none());
         assert!(
             current().expect("ok").is_none(),
-            "un cliente sin préstamo no puede leer el almacén"
+            "a client with no loan cannot read the store"
         );
     }
 }

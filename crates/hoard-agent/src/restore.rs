@@ -61,7 +61,7 @@ pub struct RestoreOutcome {
     pub files_reused: usize,
     /// Subset of `bytes_extracted` that never crossed the network.
     pub bytes_reused: u64,
-    /// Cuánto costó cada mitad del restore. Ver [`RestoreTimings`].
+    /// What each half of the restore cost. See [`RestoreTimings`].
     pub timings: RestoreTimings,
 }
 
@@ -81,7 +81,7 @@ pub struct RestoreTimings {
     pub index_ms: u64,
     /// Moving bytes: GETs to R2 plus the local copies the index saved.
     pub transfer_ms: u64,
-    /// De la primera llamada al último byte escrito.
+    /// From the first call to the last byte written.
     pub total_ms: u64,
 }
 
@@ -576,7 +576,7 @@ async fn build_reuse_index(
 /// Join the manifest's per-file SHAs against the on-disk index.
 ///
 /// Pure: all the IO happened in [`build_reuse_index`]. Matching is by content
-/// hash *only* — a local file that shares a manifest entry's name but not its
+/// hash *only*: a local file that shares a manifest entry's name but not its
 /// bytes hashes differently and simply isn't in the index, so it's downloaded.
 fn plan_byte_sources(shas: &[String], index: &ReuseIndex) -> Vec<ByteSource> {
     shas.iter()
@@ -591,8 +591,8 @@ fn plan_byte_sources(shas: &[String], index: &ReuseIndex) -> Vec<ByteSource> {
 /// that what landed hashes to the SHA-256 the manifest declares.
 ///
 /// The check is the same one the download path runs, and it's what makes the
-/// shortcut safe rather than merely fast: a wrong reuse — stale index, a file
-/// rewritten under us — fails here and the caller falls back to the network.
+/// shortcut safe rather than merely fast: a wrong reuse (stale index, a file
+/// rewritten under us) fails here and the caller falls back to the network.
 async fn copy_local_blob(
     src: &Path,
     dest_path: &Path,
@@ -600,7 +600,7 @@ async fn copy_local_blob(
     options: &RestoreOptions,
 ) -> Result<()> {
     // On a direct restore the folder we indexed *is* `dest`, so the right bytes
-    // can already be at the right path. Nothing to copy — re-verify in place so
+    // can already be at the right path. Nothing to copy, so re-verify in place and
     // "everything under dest was hash-checked this pass" still holds.
     if src == dest_path {
         if options.skip_verify {
@@ -676,7 +676,7 @@ fn as_mib(bytes: u64) -> f64 {
 /// Content-addressed restore: each file in the manifest is its own R2 blob.
 /// Stream each to its destination path, verifying the whole-file sha256 and
 /// preserving the recorded mtime (so a cloud pull doesn't always win the
-/// conflict-aware diff). No temp archive — files land directly.
+/// conflict-aware diff). No temp archive: files land directly.
 ///
 /// Before any blob is fetched, the folder named by `options.reuse_from` is
 /// indexed by content hash and every manifest entry whose SHA is already on
@@ -765,7 +765,7 @@ where
     };
     let index_ms = index_started.elapsed().as_millis() as u64;
 
-    // A few blobs download in flight at once — presigned-GET round-trip
+    // A few blobs download in flight at once: presigned-GET round-trip
     // latency dominates the many-small-files shape. Each blob writes to its
     // own dest path and verifies independently, so completion order doesn't
     // matter; progress counts bytes as they land. (Eager Vec of boxed
@@ -795,8 +795,8 @@ where
                         .with_context(|| format!("creating parent {}", parent.display()))?;
                 }
 
-                // Local shortcut first. On failure — including a sha that doesn't
-                // match, which is the whole point of keeping the check — we fall
+                // Local shortcut first. On failure, including a sha that doesn't
+                // match (which is the whole point of keeping the check), we fall
                 // through to the network, so a bad reuse costs a wasted read, never
                 // a corrupt file or a failed restore. (That fallback is also what
                 // makes a direct restore safe when a source we indexed is itself
@@ -818,7 +818,7 @@ where
                             path = %file.relative_path,
                             source = %src.display(),
                             error = %format!("{e:#}"),
-                            "cloud restore: local reuse failed verification — downloading the blob"
+                            "cloud restore: local reuse failed verification, downloading the blob"
                         ),
                     }
                 }
@@ -828,7 +828,7 @@ where
                 })?;
                 // R2/Cloudflare occasionally truncates a blob mid-stream ("end of
                 // file before message length reached"). Failing the whole restore
-                // over one dropped connection is a brutal retry — the next
+                // over one dropped connection is a brutal retry: the next
                 // reconciliation sweep re-downloads *every* blob. Blobs are
                 // content-addressed and sha-verified, so just re-fetch the one blob a
                 // few times with a short backoff (a truncated body fails the sha
@@ -878,7 +878,7 @@ where
                                 attempt,
                                 path = %file.relative_path,
                                 error = %format!("{e:#}"),
-                                "cloud restore: blob download failed — retrying"
+                                "cloud restore: blob download failed, retrying"
                             );
                             tokio::time::sleep(std::time::Duration::from_millis(
                                 300u64 * u64::from(attempt),
@@ -949,7 +949,7 @@ where
         files_reused,
         bytes_reused,
         timings: RestoreTimings {
-            manifest_ms: 0, // lo rellena `download_snapshot_cloud`, que lo pidió
+            manifest_ms: 0, // filled in by `download_snapshot_cloud`, which asked for it
             index_ms,
             transfer_ms,
             total_ms: 0,
@@ -961,7 +961,7 @@ where
 ///
 /// Without it every cloud pull would look strictly newer than the local copy
 /// and silently win the auto-restore diff. Reused files get exactly the same
-/// treatment as downloaded ones — they're indistinguishable to the
+/// treatment as downloaded ones: they're indistinguishable to the
 /// staging→merge step, which is what keeps `preserve_staging_mtime` honest.
 /// Best-effort: a failure only degrades conflict resolution.
 fn apply_manifest_mtime(file: &crate::api::CloudManifestFile, dest_path: &Path) {
@@ -1037,7 +1037,7 @@ where
 
     // Decompression-bomb guard. This legacy path has no per-file manifest and
     // `meta.size_bytes` is the *compressed* archive size, so the expanded size
-    // is unknown — fall back to the absolute ceiling.
+    // is unknown, so fall back to the absolute ceiling.
     let cap = restore_byte_cap(None);
 
     let mut entries = archive.entries().context("opening tar archive")?;
@@ -1119,14 +1119,14 @@ where
 /// the blob through the zstd + tar decoders and reads just the entry headers.
 /// File bodies are skipped (`tokio_tar` seeks past them) and nothing touches
 /// the filesystem, so this stays cheap even for large saves. `sha256` is left
-/// empty — the tar header doesn't carry it and the detail view doesn't show it.
+/// empty: the tar header doesn't carry it and the detail view doesn't show it.
 pub async fn list_cloud_version_files(
     client: &ApiClient,
     save_id: &str,
     version: i64,
 ) -> Result<Vec<SnapshotFile>> {
     // Content-addressed versions keep a real per-file index server-side, so the
-    // detail view is a single cheap call — no blob download, no bandwidth. SHAs
+    // detail view is a single cheap call: no blob download, no bandwidth. SHAs
     // come back too. Legacy archive versions fall through to streaming the tar.
     let manifest = client
         .cloud_version_manifest(save_id, version, false)
@@ -1176,8 +1176,8 @@ pub async fn list_cloud_version_files(
         files.push(SnapshotFile {
             relative_path: rel,
             size_bytes: size,
-            // Versión legacy de archivo entero: el tar no lleva digest por
-            // fichero. `None` es exactamente el `""` que emitía la release.
+            // Legacy whole-archive version: the tar carries no per-file digest.
+            // `None` is exactly the `""` that release used to emit.
             sha256: None,
         });
     }
@@ -1190,7 +1190,7 @@ pub async fn list_cloud_version_files(
 /// We write each file with `File::create`, which stamps it with mtime=now.
 /// The conflict-aware auto-restore diff (`agent::local_mtime_wins`) compares
 /// the freshly-pulled file's mtime against the local copy's, so without this
-/// every cloud pull would look strictly newer than local and silently win —
+/// every cloud pull would look strictly newer than local and silently win,
 /// exactly the "todos mis saves de la nube los puso más recientes" bug.
 /// Best-effort: a failure here only degrades conflict resolution, never the
 /// extraction itself, so errors are swallowed.
@@ -1242,18 +1242,18 @@ mod tests {
         assert_eq!(root.join("ssr_save.bin"), file);
     }
 
-    /// Máquina nueva: el fichero aún no existe, así que decide la forma del
-    /// snapshot — una sola entrada llamada como el destino.
+    /// A fresh machine: the file does not exist yet, so the snapshot's shape
+    /// decides, and a single entry named like the destination means one file.
     #[test]
     fn a_missing_single_file_save_is_recognised_from_the_snapshot_shape() {
         let tmp = tempfile::tempdir().unwrap();
         let file = tmp.path().join("save.dat");
         assert_eq!(extraction_root(&file, &["save.dat"]), tmp.path());
-        // Con más de una entrada es una carpeta que todavía no existe.
+        // With more than one entry it is a folder that does not exist yet.
         assert_eq!(
             extraction_root(&file, &["a.sav", "b.sav"]),
             file,
-            "varios ficheros ⇒ el destino es la carpeta"
+            "several files means the destination is the folder"
         );
         // Y una entrada con OTRO nombre tampoco lo convierte en fichero suelto.
         assert_eq!(extraction_root(&file, &["otro.dat"]), file);
@@ -1347,7 +1347,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         const N: usize = 12;
 
-        // Distinct contents of distinct lengths — one per autosave slot.
+        // Distinct contents of distinct lengths, one per autosave slot.
         let blobs: Vec<Vec<u8>> = (0..N).map(|i| vec![b'a' + i as u8; 4096 + i]).collect();
         let manifest_shas: Vec<String> = blobs.iter().map(|b| sha_of(b)).collect();
 
@@ -1369,24 +1369,23 @@ mod tests {
         }
     }
 
-    /// La regresión que se coló al meter la puerta: el plan de bytes se
-    /// calculaba sobre el manifiesto **entero** y luego se emparejaba por
-    /// posición con la lista de trabajos ya **filtrada**. Un solo fichero
-    /// vetado corría todos los demás una posición, cada copia local fallaba la
-    /// verificación de sha y caía a la red — la deduplicación contra disco
-    /// muerta en silencio.
+    /// The regression that slipped in with the gate: the byte plan was computed
+    /// over the **whole** manifest and then paired by position with the job list
+    /// that had already been **filtered**. A single vetoed file shifted every
+    /// other one by a position, each local copy failed its sha check and fell
+    /// back to the network, and the dedup against disk was dead in silence.
     ///
-    /// Aquí se comprueba la invariante que lo evita: el plan se deriva de la
-    /// misma lista filtrada, así que `plan[i]` es el de `kept[i]`.
+    /// What is checked here is the invariant that prevents it: the plan derives
+    /// from the same filtered list, so `plan[i]` belongs to `kept[i]`.
     #[tokio::test]
     async fn the_byte_plan_lines_up_with_the_filtered_job_list() {
         let dir = tempfile::tempdir().unwrap();
 
-        // Tres ficheros en el snapshot; el de en medio es config y la puerta lo
-        // veta. Los otros dos ya están en disco con sus bytes buenos.
-        let save_a = b"partida A".to_vec();
+        // Three files in the snapshot; the middle one is config and the gate
+        // vetoes it. The other two are already on disk with their good bytes.
+        let save_a = b"save A".to_vec();
         let conf = b"res=1920x1080".to_vec();
-        let save_b = b"partida B, distinta longitud".to_vec();
+        let save_b = b"save B, a different length".to_vec();
         seed(dir.path(), "a.sav", &save_a);
         seed(dir.path(), "b.sav", &save_b);
         seed(dir.path(), "graphics.ini", &conf);
@@ -1410,26 +1409,26 @@ mod tests {
         let plan = plan_byte_sources(&shas, &index);
 
         assert_eq!(plan.len(), kept.len());
-        // Cada entrada del plan apunta al fichero local que de verdad tiene
-        // esos bytes. Con el desfase, `a.sav` recibía el plan de `graphics.ini`.
+        // Every plan entry points at the local file that really holds those
+        // bytes. With the shift, `a.sav` got `graphics.ini`'s plan.
         assert_eq!(plan[0], ByteSource::Reuse(dir.path().join("a.sav")));
         assert_eq!(plan[1], ByteSource::Reuse(dir.path().join("b.sav")));
     }
 
-    /// Un save de fichero suelto se restaura pase lo que pase: el usuario
-    /// apuntó a ese fichero. Sin la excepción, un save llamado `settings.ini`
-    /// se subía (el walk ya lo exceptúa) pero no volvía nunca.
+    /// A single-file save is restored no matter what: the user pointed at that
+    /// file. Without the exception, a save called `settings.ini` was uploaded
+    /// (the walk already excepts it) but never came back.
     #[test]
     fn a_single_file_save_is_never_gated() {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("settings.ini");
-        std::fs::write(&dest, b"en realidad es la partida").unwrap();
+        std::fs::write(&dest, b"this really is the save").unwrap();
         assert!(is_single_file_snapshot(&dest, &["settings.ini"]));
-        // La puerta lo vetaría por nombre si se le preguntara.
+        // The gate would veto it by name if it were asked.
         assert!(!RestoreGate::default().allows("settings.ini"));
 
-        // Y también en una máquina nueva, donde el fichero aún no existe: manda
-        // la forma del snapshot.
+        // And on a fresh machine too, where the file does not exist yet: the
+        // snapshot's shape is what decides.
         let fresh = dir.path().join("save.cfg");
         assert!(is_single_file_snapshot(&fresh, &["save.cfg"]));
         // Una carpeta con varios ficheros no es un save de fichero suelto.
@@ -1442,7 +1441,7 @@ mod tests {
     async fn same_name_different_content_is_not_reused() {
         let dir = tempfile::tempdir().unwrap();
         let remote = b"the version the server has".to_vec();
-        // Same length so the size prefilter can't be what saves us — the hash
+        // Same length so the size prefilter can't be what saves us; the hash
         // has to be the thing that rejects it.
         let local = b"a different local edition!".to_vec();
         assert_eq!(remote.len(), local.len());

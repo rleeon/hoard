@@ -2,20 +2,20 @@
 //!
 //! Three independent loops cooperate inside one Tokio task:
 //!
-//! 1. **Filesystem watcher** — `notify-debouncer-mini` aggregates raw inotify
+//! 1. Filesystem watcher: `notify-debouncer-mini` aggregates raw inotify
 //!    events into a debounced stream. When a save folder settles for
 //!    `debounce_secs`, we enqueue a backup.
-//! 2. **Process watcher** — a periodic `sysinfo` poll asks "is any tracked
+//! 2. Process watcher: a periodic `sysinfo` poll asks "is any tracked
 //!    game's executable running?" and emits `GameStarted` / `GameStopped`
 //!    transitions. On stop we also enqueue an immediate backup, since the
 //!    user just finished playing.
-//! 3. **Backup scheduler** — drains the queue, runs `upload_directory` per
+//! 3. Backup scheduler: drains the queue, runs `upload_directory` per
 //!    entry, and applies exponential backoff (`2 ** retry` seconds, capped)
 //!    on failure up to `max_retries`.
 //!
 //! Everything outside the agent talks to it through two channels:
-//! - `AgentCommand` (mpsc, in)  — add/remove watched saves, shut down.
-//! - `AgentEvent` (mpsc, out) — fire-and-forget notifications the desktop UI
+//! - `AgentCommand` (mpsc, in): add or remove watched saves, shut down.
+//! - `AgentEvent` (mpsc, out): fire-and-forget notifications the desktop UI
 //!   surfaces as Tauri events.
 //!
 //! The agent never panics on a missing path or a failed upload; those become
@@ -54,7 +54,7 @@ use crate::backup::{upload_directory_checked, BackupResult, ServerHead};
 /// - **2 s process poll** *while a game is running*: catches "I quit the
 ///   game" within seconds. When idle the poll backs off to
 ///   `poll_secs * IDLE_POLL_MULT` (the common case is no game running, so
-///   this keeps `/proc` scans — the agent's dominant idle cost — rare). The
+///   this keeps `/proc` scans, the agent's dominant idle cost, rare). The
 ///   refresh itself is name+exe only, never the full per-process snapshot.
 /// - **5 retries** with exponential backoff covers "wifi blipped"
 ///   without pestering the user forever.
@@ -82,19 +82,18 @@ pub struct AgentConfig {
     /// per-tick sweep removes them. Mirrors `Prefs::conflict_retention_days`.
     pub conflict_retention_days: u32,
     /// Minimum seconds between two successful backups of the *same* save
-    /// (ADR 0018, eje A — "ahorro de datos"). After a backup succeeds, the
-    /// agent won't start another for this save until the interval elapses;
-    /// intermediate writes coalesce into the next one (the final state is
-    /// always uploaded). Kills the "one version per minute" cadence of games
-    /// that autosave every few seconds (OpenTTD). `0` disables the floor
-    /// (every settle backs up — sin espera). The desktop derives this from
-    /// `Prefs::data_saving` via `min_snapshot_interval_for`: la franja baja del
-    /// deslizador (incluido el default) da `0`; sólo al empujar hacia "ahorro"
-    /// aparece un suelo, hasta 600 s.
+    /// (ADR 0018, axis A: data saving). After a backup succeeds, the agent won't
+    /// start another for this save until the interval elapses; intermediate writes
+    /// coalesce into the next one (the final state is always uploaded). It kills
+    /// the "one version per minute" cadence of games that autosave every few
+    /// seconds (OpenTTD). `0` disables the floor (every settle backs up, with no
+    /// wait). The desktop derives this from `Prefs::data_saving` via
+    /// `min_snapshot_interval_for`: the slider's low band, the default included,
+    /// gives `0`; only pushing towards saving produces a floor, up to 600 s.
     pub min_snapshot_interval_secs: u64,
     /// Mirror of `Prefs::global_sync`. Distinct from [`Self::auto_restore`]:
     /// it opts every save into restore (same effect as `auto_restore` on the
-    /// eligibility floor) *and* unlocks the low-latency pull paths — the
+    /// eligibility floor) *and* unlocks the low-latency pull paths, which are
     /// poller/SSE `ForceRestore` push and the pre-launch sync barrier on
     /// `GameStarted`. The version-gate inside `run_auto_restore`
     /// (`known >= latest`) still holds, so it never re-downloads a save the
@@ -102,8 +101,8 @@ pub struct AgentConfig {
     /// (`policy.auto_restore == Some(false)`) still opt out.
     ///
     /// It does **not** bypass the "user is mid-session" guards (`is_running`,
-    /// `has_pending`, recent-fs-event, recent-mtime). It used to — "pull the
-    /// moment it's outdated, even while playing" — and on a single device
+    /// `has_pending`, recent-fs-event, recent-mtime). It used to ("pull the
+    /// moment it's outdated, even while playing") and on a single device
     /// that raced the user's own backup: the pull re-applied the last
     /// *uploaded* version over progress the debounced backup hadn't flushed
     /// yet, so intermediate sessions never got versioned (REPO data-loss
@@ -112,13 +111,13 @@ pub struct AgentConfig {
     /// upload gets a 409 non-fast-forward and the reconcile path merges the
     /// remote head in before retrying. So outdated-while-playing now defers
     /// to the reconciliation sweep, which catches up as soon as the session
-    /// settles — and a deferred `ForceRestore` that finds un-flushed local
+    /// settles, and a deferred `ForceRestore` that finds un-flushed local
     /// changes flushes them immediately (the reductor marks that flush
-    /// *urgent*, so it skips the data-saving min-interval floor — never an
+    /// *urgent*, so it skips the data-saving min-interval floor, but never an
     /// error backoff), so live progress becomes a cloud version within seconds
     /// instead of waiting out the debounce window. There is no guarded-path
     /// exception left: the pre-launch barrier died with the inversion of
-    /// `run_agent` (ADR 0021 Slice 2b) — the tick is the only authority.
+    /// `run_agent` (ADR 0021 Slice 2b): the tick is the only authority.
     pub global_sync: bool,
 }
 
@@ -137,19 +136,18 @@ impl Default for AgentConfig {
     }
 }
 
-/// Umbral del deslizador "Ahorro de datos" por debajo del cual NO se impone
-/// suelo entre snapshots: el cambio sube en cuanto se asienta el debounce, sin
-/// "en cola — esperando". Cubre el default de fábrica (`data_saving = 0.3`) para
-/// que el usuario nunca vea una subida en espera salvo que pida ahorrar a
-/// propósito.
+/// The data-saving slider's threshold below which NO floor is imposed between
+/// snapshots: the change goes up as soon as the debounce settles, with no "queued,
+/// waiting". It covers the factory default (`data_saving = 0.3`) so the user never
+/// sees an upload waiting unless they deliberately asked to save data.
 const DATA_SAVING_NO_FLOOR_UPTO: f64 = 0.4;
 
-/// Map the user's `data_saving` knob (0..=1) to a minimum snapshot interval in
-/// seconds (ADR 0018, Decisión 4). La franja baja (`k ≤ DATA_SAVING_NO_FLOOR_UPTO`,
-/// incluido el default) devuelve `0`: sin espera, la subida es inmediata tras el
-/// debounce. Por encima del umbral el suelo crece linealmente hasta 600 s
-/// (`k = 1`, "máximo ahorro" ≈ 10 min entre snapshots). Los presets con suelo
-/// explícito (`short_session` 30 s, `data_saver` 600 s) siguen mandando por save.
+/// Maps the user's `data_saving` knob (0..=1) to a minimum snapshot interval in
+/// seconds (ADR 0018, decision 4). The low band (`k <= DATA_SAVING_NO_FLOOR_UPTO`,
+/// the default included) returns `0`: no wait, and the upload is immediate after the
+/// debounce. Above the threshold the floor grows linearly up to 600 s (`k = 1`,
+/// maximum saving, about ten minutes between snapshots). Presets with an explicit
+/// floor (`short_session` 30 s, `data_saver` 600 s) still decide per save.
 pub fn min_snapshot_interval_for(data_saving: f64) -> u64 {
     let k = data_saving.clamp(0.0, 1.0);
     if k <= DATA_SAVING_NO_FLOOR_UPTO {
@@ -163,13 +161,13 @@ pub fn min_snapshot_interval_for(data_saving: f64) -> u64 {
 /// poll reads each process's `name()` (always populated, no flag), its `exe()`
 /// for the legacy install-dir fallback, and its `cpu_usage()` to spot a
 /// just-launched untracked game (see `process_poll`). Everything else
-/// `ProcessRefreshKind::everything()` pulls — memory, disk I/O, environ,
-/// cmdline, cwd, root, user — is dead weight re-read from `/proc/<pid>/*` for
+/// `ProcessRefreshKind::everything()` pulls (memory, disk I/O, environ,
+/// cmdline, cwd, root, user) is dead weight re-read from `/proc/<pid>/*` for
 /// every process on the box on every tick, and was the bulk of the agent's
 /// idle CPU. `OnlyIfNotSet` reads each `exe` path exactly once per PID (it never
-/// changes); `with_cpu` adds no per-process file read — utime/stime come from
+/// changes); `with_cpu` adds no per-process file read, since utime and stime come from
 /// the same `/proc/<pid>/stat` already parsed for the name, plus a single
-/// global `/proc/stat` read per tick — so steady-state ticks stay cheap.
+/// global `/proc/stat` read per tick, so steady-state ticks stay cheap.
 ///
 /// `Process::status()` (see [`is_defunct`]) needs no flag of its own and adds
 /// no cost: `ProcessRefreshKind` has no switch for it because sysinfo always
@@ -183,7 +181,7 @@ fn proc_refresh_kind() -> ProcessRefreshKind {
 }
 
 /// Is this process listed by the OS but no longer able to run code? A zombie
-/// has already exited and only lingers because its parent hasn't reaped it —
+/// has already exited and only lingers because its parent hasn't reaped it,
 /// which under Proton is routine: the game quits, the wine supervisor leaves
 /// the .exe defunct, and the entry can sit there until the prefix tears down
 /// (on a Steam Deck, often not before the next reboot).
@@ -212,16 +210,17 @@ pub struct WatchedSave {
     pub steam_install_dir: Option<PathBuf>,
     /// Process executable file names (case-insensitive, with extension on
     /// Windows). The agent's process poll matches against these to fire
-    /// `GameStarted` / `GameStopped` transitions. Rarely populated (only the
-    /// curated `builtin_processes_for` list — Minecraft, emuladores…); the
-    /// TOML catalog that fed it se quitó en 1.5.0. Con la lista vacía el match
-    /// NO se queda en `steam_install_dir`: el poll también casa por identidad
-    /// genérica (nombre/carpeta del proceso vs slug del juego, list-free y
-    /// multiplataforma — ver `game_identity_tokens` / `process_identity_candidates`).
+    /// `GameStarted` and `GameStopped` transitions. Rarely populated (only the
+    /// curated `builtin_processes_for` list: Minecraft, emulators); the TOML catalog
+    /// that fed it was removed in 1.5.0. With the list empty the match does NOT stop
+    /// at `steam_install_dir`: the poll also matches by generic identity (the
+    /// process's name or folder against the game's slug, list-free and
+    /// cross-platform; see `game_identity_tokens` and
+    /// `process_identity_candidates`).
     #[serde(default)]
     pub processes: Vec<String>,
-    /// [`Self::processes`] los comparte con otros saves rastreados, así que ver
-    /// el proceso no identifica a cuál de ellos se está jugando. Ver
+    /// [`Self::processes`] are shared with other tracked saves, so seeing the
+    /// process does not identify which of them is being played. See
     /// [`crate::state::SaveState::shared_processes`].
     #[serde(default)]
     pub shared_processes: bool,
@@ -241,7 +240,7 @@ pub struct WatchedSave {
     /// so the reconciliation sweep's version-gate is armed from the first
     /// tick after a restart: without it every restart re-downloads every
     /// snapshot to diff and drains the bandwidth quota. `None` for a
-    /// freshly tracked save (nothing committed yet) is correct — the gate
+    /// freshly tracked save (nothing committed yet) is correct: the gate
     /// stays open so an empty/new device still pulls.
     #[serde(default)]
     pub known_version: Option<i64>,
@@ -264,12 +263,11 @@ pub struct WatchedSave {
     pub track_only: bool,
 }
 
-/// El contrato de eventos y de estado por slot vive en el kernel leaf desde el
-/// Slice 4a: con el motor en su propio proceso (`hoardd`) estos tipos cruzan el
-/// socket, así que un cliente no puede necesitar el crate del motor para
-/// leerlos (ADR 0021, Parte A + C.6). El movimiento fue verbatim y se
-/// re-exportan aquí, así que `hoard_agent::agent::AgentEvent` sigue siendo la
-/// ruta buena para el desktop y la CLI.
+/// The event and per-slot status contract lives in the leaf kernel: with the engine
+/// in its own process (`hoardd`) these types cross the socket, so a client cannot
+/// need the engine's crate to read them (ADR 0021, part A and C.6). They are
+/// re-exported here, so `hoard_agent::agent::AgentEvent` is still the right path for
+/// the desktop and the CLI.
 pub use hoard_core::ipc::events::{AgentEvent, AgentSlotStatus, BackupReason};
 
 /// How a spawned auto-restore attempt ended. Drives how the slot's
@@ -285,10 +283,10 @@ enum AutoRestoreDisposition {
     /// 404: the save has no record/snapshot on the backend we're talking to
     /// (carried over from another account, stale state, remote purged). Parks
     /// the slot on the long not-found backoff. Not a "failure" for backoff
-    /// purposes — retrying can't conjure a snapshot that doesn't exist, and
+    /// purposes: retrying can't conjure a snapshot that doesn't exist, and
     /// this arm already paces itself.
     NotOnServer,
-    /// 401: session-wide, not this save's problem — the stored cloud JWT is
+    /// 401: session-wide, not this save's problem. The stored cloud JWT is
     /// expired and the refresh hasn't landed in this client yet. Swallowed and
     /// left on the normal short cooldown so it retries as soon as the token is
     /// back. Deliberately does *not* touch the failure counter: counting a
@@ -297,7 +295,7 @@ enum AutoRestoreDisposition {
     Unauthorized,
     /// 429: the server's rolling bandwidth limiter deferred this download. Like
     /// [`Self::Unauthorized`] it isn't this save's fault and must *not* touch the
-    /// failure counter — counting a throttle toward "stuck" is exactly what made
+    /// failure counter: counting a throttle toward "stuck" is exactly what made
     /// a busy reconciliation sweep spam "keeps failing to restore (3×)". Carries
     /// the server's `retry_after_secs` so the slot re-arms on the exact window
     /// slide instead of the generic 60s cooldown. Swallowed (no failure toast).
@@ -329,14 +327,14 @@ enum AgentCommand {
     },
     /// Internal: an auto-restore task finished writing files into a slot's
     /// local path. The slot's fs watcher was either never armed (path was
-    /// missing on AddSave) or armed against an empty directory — either
+    /// missing on AddSave) or armed against an empty directory. Either
     /// way we re-arm it now so the freshly-restored save is being watched.
     /// Not exposed through `AgentHandle` because only the auto-restore
     /// task ever fires it.
     RearmWatcher(String),
     /// Internal: a spawned auto-restore task finished (success or failure).
     /// Clears `slot.restoring` so the reconciliation sweep can try again
-    /// next tick. `outcome` decides how the slot is re-armed — see
+    /// next tick. `outcome` decides how the slot is re-armed; see
     /// [`AutoRestoreDisposition`].
     AutoRestoreFinished {
         id: String,
@@ -371,44 +369,42 @@ enum AgentCommand {
     /// immediate sweep so every outdated-but-idle save catches up right away.
     /// See [`AgentConfig::global_sync`].
     SetGlobalSync(bool),
-    /// Sync global, ruta de baja latencia: el poller `cloud_pull` (o el SSE
-    /// self-hosted) detectó que un save concreto avanzó de versión y pide
-    /// bajarlo ya, saltándose el cooldown del sweep. Respeta el flag
-    /// `restoring` (no solapa restores), el opt-out backup-only por preset y
-    /// los guards de sesión viva (`is_running`/`has_pending`/actividad
-    /// reciente): con la partida abierta el pull NO se descarta, se anota en
-    /// `SaveSlot::pull_pending` y se ejecuta al cerrarse el juego. El
-    /// version-gate dentro de `run_auto_restore` evita la descarga si ya
-    /// estamos al día.
+    /// Global sync, the low-latency path: the `cloud_pull` poller (or the
+    /// self-hosted SSE) spotted that a particular save moved forward a version and
+    /// asks to pull it now, skipping the sweep's cooldown. It honours the `restoring`
+    /// flag (restores never overlap), the backup-only opt-out from a preset, and the
+    /// live-session guards (`is_running`, `has_pending`, recent activity): with the
+    /// game open the pull is NOT discarded but recorded in `SaveSlot::pull_pending`
+    /// and executed when the game closes. The version gate inside `run_auto_restore`
+    /// avoids the download when we are already up to date.
     ///
     /// `version_num` is the remote head when the caller already has it (SSE).
-    /// Without it this is only an early tick — the reducer still needs
-    /// `cloud_heads` populated, which self-hosted now fills via `list_saves`.
+    /// Without it this is only an early tick: the reducer still needs `cloud_heads`
+    /// populated, which self-hosted now fills via `list_saves`.
     ForceRestore {
         save_id: String,
         version_num: Option<i64>,
     },
-    /// DETECCIÓN (fase 3, ADR 0020): lista de carpetas candidatas detectadas
-    /// pero AÚN NO rastreadas, que el escaneo del desktop quiere "sondear".
-    /// El agente las vigila por mtime en cada tick de proceso: si una se
-    /// reescribe mientras un juego está vivo, registra la correlación
-    /// proceso↔escritura — la misma señal +0.50 que hoy sólo obtenían los
-    /// saves ya rastreados. Rompe el huevo-y-gallina: jugar un juego no
-    /// rastreado deja por fin rastro, y el siguiente escaneo lo asciende a
-    /// `High` y lo auto-rastrea. Reemplaza el set entero en cada llamada.
+    /// Detection (phase 3, ADR 0020): the list of candidate folders that have been
+    /// detected but NOT yet tracked, which the desktop's scan wants probed. The agent
+    /// watches their mtime on every process tick: if one is rewritten while a game is
+    /// alive, it records the process-to-write correlation, the same +0.50 signal only
+    /// already-tracked saves used to earn. It breaks the chicken and egg: playing an
+    /// untracked game finally leaves a trace, and the next scan promotes it to `High`
+    /// and auto-tracks it. It replaces the whole set on every call.
     SetProbeCandidates(Vec<PathBuf>),
     /// Internal: a backup task exhausted its retry budget and failed for real.
     /// Sent by `run_backup_with_retry` instead of just giving up, because
     /// giving up wedged the slot: no `BackupDone` is emitted on this path (the
     /// local changes are still un-versioned, so `has_pending` must stay set to
     /// keep every restore off them) and `has_pending` is itself a
-    /// `mid_session_reason` veto — so the save could neither be uploaded nor
+    /// `mid_session_reason` veto, so the save could neither be uploaded nor
     /// pulled until the user happened to write the folder again. The handler
     /// feeds it to the reductor as `OpResult::Failed`, which re-arms the upload
-    /// on [`kernel::reconcile::BACKUP_FAILURE_BACKOFF_SECS`] — the recovery path
+    /// on [`kernel::reconcile::BACKUP_FAILURE_BACKOFF_SECS`], the recovery path
     /// that doesn't depend on a new fs event.
     RetryBackupAfterFailure(String),
-    /// Internal: the upload hit a 409 the reconcile couldn't resolve — the
+    /// Internal: the upload hit a 409 the reconcile couldn't resolve, so the
     /// server says we're behind, yet there is nothing newer to pull. Same
     /// wedge-avoidance contract as [`AgentCommand::RetryBackupAfterFailure`] (no
     /// `BackupDone`, `has_pending` survives), but fed to the reducer as
@@ -422,19 +418,19 @@ enum AgentCommand {
     /// one save stuck at ~4.5 attempts/h for 14 days through three app versions.
     ParkBackupConflict {
         id: String,
-        /// La cadena del 409, para el aviso que la UI enseña si el presupuesto
-        /// se agota. El reductor no la transporta (su `ConflictStalled` no lleva
-        /// texto), así que la guarda el shell — igual que `last_restore_error`.
+        /// The 409's chain, for the warning the UI shows if the budget runs out. The
+        /// reducer does not carry it (its `ConflictStalled` carries no text) so the
+        /// shell keeps it, exactly as with `last_restore_error`.
         error: String,
     },
-    /// Internal: the upload hit a 402 — the whole account is out of storage.
+    /// Internal: the upload hit a 402: the whole account is out of storage.
     /// Same wedge-avoidance contract as `RetryBackupAfterFailure` (no
     /// `BackupDone`, `has_pending` survives), but fed to the reductor as
     /// [`kernel::OpResult::QuotaFull`] so it parks on the long
     /// [`kernel::reconcile::QUOTA_FULL_BACKOFF_SECS`] instead of retrying every
     /// ten minutes against a wall that only a human can move.
     ParkBackupQuotaFull(String),
-    /// Internal: the upload hit a **budget** 429 — a rolling bandwidth window,
+    /// Internal: the upload hit a **budget** 429: a rolling bandwidth window,
     /// the storage quota, or the server's loop brake. Same wedge-avoidance
     /// contract as the two above (no `BackupDone`, `has_pending` survives), fed
     /// to the reducer as [`kernel::OpResult::Throttled`] so the wait the server
@@ -449,19 +445,18 @@ enum AgentCommand {
         retry_after_secs: u32,
     },
     /// Latest known cloud version per save id, as last seen by the `cloud_pull`
-    /// poller's manifest. The poller already fetches the full manifest once per
-    /// tick, so it hands the map to the agent and the reconciliation sweep can
-    /// version-gate locally instead of each `run_auto_restore` re-fetching the
-    /// same manifest (cloud) / hitting `get_save` per candidate (the old N+1).
-    /// Replaces the whole map each call. Cloud pollers send the full
-    /// manifest; self-hosted SSE uses [`AgentCommand::ForceRestore`] to merge
-    /// one head instead (must not replace the map). The engine also fills
-    /// this itself via [`AgentCommand::CloudHeadsObserved`].
+    /// poller's manifest. The poller already fetches the full manifest once per tick,
+    /// so it hands the map to the agent and the reconciliation sweep can version-gate
+    /// locally instead of each `run_auto_restore` re-fetching the same manifest
+    /// (cloud) or hitting `get_save` per candidate (the old N+1). It replaces the
+    /// whole map each call. Cloud pollers send the full manifest; self-hosted SSE
+    /// uses [`AgentCommand::ForceRestore`] to merge one head instead (it must not
+    /// replace the map). The engine also fills this itself via
+    /// [`AgentCommand::CloudHeadsObserved`].
     ///
-    /// Desde ADR 0021 D.12 esto es un **hint de latencia**, no la fuente única:
-    /// el motor observa la cabeza por su cuenta ([`Self::CloudHeadsObserved`])
-    /// cuando este empujón se retrasa, así que un poller muerto ya no lo deja
-    /// ciego.
+    /// Since ADR 0021 D.12 this is a latency hint rather than the only source: the
+    /// engine observes the head itself ([`Self::CloudHeadsObserved`]) when this push
+    /// is late, so a dead poller no longer leaves it blind.
     SetCloudVersions {
         versions: HashMap<String, i64>,
         /// `(game_slug, label)` → `save_id`, from the same manifest the versions
@@ -469,9 +464,9 @@ enum AgentCommand {
         /// the server's ids alone can't answer for every tracked save.
         aliases: HashMap<(String, String), String>,
     },
-    /// Interno (ADR 0021 D.12): resultado de la observación de la nube que el
-    /// **propio motor** dispara desde su tick. La consulta vive en el shell —el
-    /// kernel no hace IO— y entra al reductor como parte de la `Observation`.
+    /// Internal (ADR 0021 D.12): the result of the cloud observation the engine
+    /// itself triggers from its tick. The query lives in the shell, since the kernel
+    /// does no IO, and enters the reducer as part of the `Observation`.
     CloudHeadsObserved {
         /// `Some` = the list arrived (full `save_id` → version map, replaces
         /// the cache). `None` = the attempt produced no heads (network, 401,
@@ -482,14 +477,14 @@ enum AgentCommand {
         /// the cache answer for a save whose local id the cloud has never seen
         /// (see [`CloudHeads::aliases`]).
         aliases: Option<HashMap<(String, String), String>>,
-        /// Qué contenido tiene cada cabeza (digest del manifiesto), para el
-        /// chequeo anti-relanzamiento de D.8.3. Viaja junto a `versions` y de
-        /// la misma pasada del manifiesto, así que los dos describen el mismo
-        /// instante del server.
+        /// What content each head has (the manifest's digest), for D.8.3's
+        /// anti-relaunch check. It travels alongside `versions` and comes from the
+        /// same pass over the manifest, so both describe the same instant of the
+        /// server.
         digests: Option<HashMap<String, ServerHead>>,
-        /// Contexto del despliegue según el probe cacheado de `/v1/health`:
-        /// `Some(true)` cloud, `Some(false)` self-hosted, `None` sin resolver
-        /// (probe fallido). Sólo un valor definido mueve el latch.
+        /// The deployment's context according to the cached `/v1/health` probe:
+        /// `Some(true)` cloud, `Some(false)` self-hosted, `None` unresolved (a failed
+        /// probe). Only a definite value moves the latch.
         is_cloud: Option<bool>,
     },
     QueryStatus(oneshot::Sender<Vec<AgentSlotStatus>>),
@@ -535,7 +530,7 @@ impl AgentHandle {
     }
 
     /// Diagnostic snapshot of every tracked slot. Backs the hidden Settings
-    /// "agent diagnostics" panel — surfaces the same internal state we'd
+    /// "agent diagnostics" panel: it surfaces the same internal state we'd
     /// otherwise only see in `tracing` logs (watcher armed, last fs event,
     /// next scheduled backup).
     pub async fn status(&self) -> Result<Vec<AgentSlotStatus>> {
@@ -639,7 +634,7 @@ pub fn spawn(
 
     // The agent loop needs its own clone of `cmd_tx` so background tasks
     // it spawns (auto-restore is the only one today) can post commands
-    // back to it — e.g. `RearmWatcher` after files land on disk.
+    // back to it, e.g. `RearmWatcher` after files land on disk.
     let cmd_tx_loop = cmd_tx.clone();
     let task = tokio::spawn(run_agent(api, config, cmd_rx, cmd_tx_loop, events_tx));
     (AgentHandle { tx: cmd_tx }, task)
@@ -648,7 +643,7 @@ pub fn spawn(
 /// Signal from a finished backup task back to the agent loop.
 struct BackupDone {
     save_id: String,
-    /// `Some` when a new snapshot was uploaded — carries the fresh set
+    /// `Some` when a new snapshot was uploaded, carrying the fresh set
     /// signature to cache on the slot. `None` when the backup was skipped
     /// (unchanged) or the folder was empty, so the slot keeps its previous
     /// signature.
@@ -657,22 +652,22 @@ struct BackupDone {
     /// throttle anchors on `last_backup_at`, which must advance **only** on a
     /// genuine upload. A skip (unchanged bytes) or an empty/missing folder is
     /// not a backup: if it bumped the anchor, the next real change would be
-    /// throttled a full `min_snapshot_interval_secs` out — and with
+    /// throttled a full `min_snapshot_interval_secs` out, and with
     /// auto-restore re-emptying the folder each cycle, the anchor would keep
     /// advancing on phantom "backups" and a short play session would never
     /// flush its progress before the game closed (R.E.P.O. regression).
     committed: bool,
-    /// Version number of the snapshot just uploaded (`Some` only when
-    /// `committed`, o cuando el contenido ya estaba arriba — ver
-    /// [`Self::landed`]). The agent advances the slot's `known_version` to this
-    /// so the reconciliation sweep won't re-download a version this device
-    /// itself just produced. `None` on skip/empty.
+    /// Version number of the snapshot just uploaded (`Some` only when `committed`,
+    /// or when the content was already up there; see [`Self::landed`]). The agent
+    /// advances the slot's `known_version` to this so the reconciliation sweep won't
+    /// re-download a version this device itself just produced. `None` on skip or
+    /// empty.
     version_num: Option<i64>,
-    /// **No se subió nada porque ya estaba subido** (ADR 0021 D.8.3): el
-    /// contenido local es el de la versión que el server publica como cabeza.
-    /// Viaja hasta la `Observation` como `upload_landed`, donde el reductor lo
-    /// usa para distinguir este no-op del 409 asentado a la cabeza: aquél
-    /// escribió en la carpeta (y sella `last_restore_at`), éste no tocó nada.
+    /// Nothing was uploaded because it was already uploaded (ADR 0021 D.8.3): the
+    /// local content is that of the version the server publishes as its head. It
+    /// travels to the `Observation` as `upload_landed`, where the reducer uses it to
+    /// tell this no-op from the 409 settled onto the head: that one wrote into the
+    /// folder (and stamps `last_restore_at`), this one touched nothing.
     landed: bool,
 }
 
@@ -692,13 +687,13 @@ struct SaveSlot {
     /// Currently-running guess from the last process poll. Drives
     /// GameStarted/Stopped transitions.
     is_running: bool,
-    /// La sesión en curso arrancó SOLO por señal débil (correlación
-    /// carpeta→proceso) y ninguna señal fuerte la ha corroborado después. Si
-    /// además termina sin una sola escritura en la carpeta, fue una sesión
-    /// fantasma: el proceso correlacionado no era el juego, y se le pasa un
-    /// strike a la observación ([`CorrelationStore::strike_phantom`]) para que
-    /// una atribución envenenada (task horario, residente) se auto-descarte en
-    /// vez de vetar el sync "mid-session" para siempre (caso MOUSE jul-2026).
+    /// The session in progress started on a weak signal alone (folder-to-process
+    /// correlation) and no strong signal has corroborated it since. If it also ends
+    /// without a single write to the folder, it was a phantom session: the
+    /// correlated process was not the game, and the observation takes a strike
+    /// ([`CorrelationStore::strike_phantom`]) so a poisoned attribution (an hourly
+    /// task, a resident) discards itself instead of vetoing mid-session sync
+    /// forever.
     weak_session: bool,
     /// Last poll at which this slot's process was seen running. Powers the
     /// stop-debounce (`RUNNING_STICKY_SECS`): a correlation match is CPU-gated,
@@ -710,7 +705,7 @@ struct SaveSlot {
     last_running_seen: Option<TokioInstant>,
     /// Has the save folder changed since the last successful backup?
     /// Drives the v0.3 "final-flush-only-if-pending" rule on `GameStopped`
-    /// — no point re-uploading an unchanged save just because the user
+    /// so there is no point re-uploading an unchanged save just because the user
     /// quit. Set on every fs event; cleared on backup success.
     has_pending: bool,
     /// Most recent debounced fs event observed for this slot. Surfaced via
@@ -721,7 +716,7 @@ struct SaveSlot {
     /// (UTC). A restore bumps the folder mtime and echoes fs events, which would
     /// otherwise trip the `mid_session_reason` "folder touched recently" /
     /// "fs event observed recently" vetoes and throttle the NEXT cross-device
-    /// pull for a whole `RECENT_SAVE_GRACE` — so back-to-back saves from another
+    /// pull for a whole `RECENT_SAVE_GRACE`, so back-to-back saves from another
     /// device landed at most one per window on the receiver. This lets the veto
     /// tell our own restore writes apart from the user's. Only set when files
     /// were actually applied (not on a no-op "already synced" pass).
@@ -744,102 +739,99 @@ struct SaveSlot {
     /// to [`kernel::State::last_backup_at`]); the reductor advances it on a
     /// committed backup.
     last_backup_at: Option<OffsetDateTime>,
-    /// Ventana y cuenta de commits recientes: la memoria del suelo adaptativo
-    /// que agrupa a un juego cuyo autoguardado se reescribe cada pocos segundos.
-    /// Mapean a [`kernel::State::burst_since`] / `burst_backups`, y como todo el
-    /// ritmo, viven sólo en memoria: al arrancar el motor un save empieza sin
-    /// ráfaga y la primera copia sale inmediata.
+    /// The window and count of recent commits: the adaptive floor's memory, which
+    /// groups a game whose autosave is rewritten every few seconds. They map to
+    /// [`kernel::State::burst_since`] and `burst_backups`, and like all the pacing
+    /// they live only in memory: when the engine starts a save begins with no burst
+    /// and its first copy goes out at once.
     burst_since: Option<OffsetDateTime>,
     burst_backups: u32,
-    /// La operación de IO en curso para este slot (anti-relaunch, ADR 0021
-    /// C.1): mientras sea `Some`, el reductor retiene ("operation in flight")
-    /// en vez de relanzar una subida/bajada de varios GB. Sustituye al viejo
-    /// `restoring: bool`: ahora distingue backup de restore. El reductor lo
-    /// pone al emitir `Act(Backup)`/`Act(Restore)`; el shell lo limpia al
-    /// ingerir el [`kernel::OpResult`] correspondiente. Mapea 1:1 a
-    /// [`kernel::State::in_flight`].
+    /// The IO operation in flight for this slot (anti-relaunch, ADR 0021 C.1): while
+    /// it is `Some`, the reducer holds ("operation in flight") rather than relaunching
+    /// a multi-GB upload or download. It replaces the old `restoring: bool` and now
+    /// tells a backup from a restore. The reducer sets it when emitting `Act(Backup)`
+    /// or `Act(Restore)`; the shell clears it when it ingests the matching
+    /// [`kernel::OpResult`]. It maps 1:1 to [`kernel::State::in_flight`].
     in_flight: Option<kernel::Op>,
-    /// Suelo de instante para el próximo backup por **backoff de error**
-    /// (throttle 429 de subida / reintentos de subida agotados). `None` = sin
-    /// freno. El suelo de min-interval no vive aquí: el reductor lo deriva de
-    /// `last_backup_at` (ver `kernel::reconcile`).
-    /// `OffsetDateTime` (no `TokioInstant`) porque el kernel es sans-IO y
-    /// compara contra `world.now`; la conversión vive aquí en el shell (ADR
-    /// 0021 D.7). Mapea a [`kernel::State::next_backup_at`].
+    /// The earliest instant for the next backup because of an error backoff (an
+    /// upload 429, or exhausted upload retries). `None` means no brake. The
+    /// min-interval floor does not live here: the reducer derives it from
+    /// `last_backup_at` (see `kernel::reconcile`). An `OffsetDateTime` rather than a
+    /// `TokioInstant` because the kernel is sans-IO and compares against `world.now`;
+    /// the conversion lives here in the shell (ADR 0021 D.7). It maps to
+    /// [`kernel::State::next_backup_at`].
     next_backup_at: Option<OffsetDateTime>,
-    /// Suelo de instante para el próximo restore (cooldown / backoff de fallo /
-    /// backoff de throttle de bajada). Antes `next_auto_restore_at:
-    /// Option<TokioInstant>`; ahora `OffsetDateTime` para casar con el kernel.
+    /// The earliest instant for the next restore (cooldown, failure backoff or
+    /// download throttle backoff). It used to be an `Option<TokioInstant>`; now an
+    /// `OffsetDateTime` to match the kernel.
     /// Mapea a [`kernel::State::next_restore_at`].
     next_restore_at: Option<OffsetDateTime>,
-    /// Escalada de fallos de restore por versión cloud (404/401/429 no cuentan;
-    /// ver [`kernel::OpResult`]). El reductor la escala/resetea al ingerir el
-    /// resultado; el shell la lee para emitir los eventos stuck/recovered.
-    /// Antes `AutoRestoreFailures` (con métodos en el shell); ahora el tipo puro
-    /// del kernel [`kernel::RestoreFailures`] — la lógica vive en el reductor.
+    /// The restore failure escalation per cloud version (404, 401 and 429 do not
+    /// count). The reducer escalates and resets it on ingesting a result; the shell
+    /// reads it to emit the stuck and recovered events. It used to be
+    /// `AutoRestoreFailures`, with methods in the shell; now it is the kernel's pure
+    /// [`kernel::RestoreFailures`] and the logic lives in the reducer.
     restore_failures: kernel::RestoreFailures,
-    /// Escalada del 409 que la reconciliación no puede resolver (el server dice
-    /// "vas por detrás" y no hay nada que bajar). El reductor la escala, la
-    /// resetea y decide cuándo se acaba el presupuesto; el shell lee el flanco
-    /// de `needs_attention` para avisar al usuario. Mapea a
+    /// The escalation for the 409 reconciliation cannot resolve (the server says
+    /// "you are behind" and there is nothing to pull). The reducer escalates it,
+    /// resets it and decides when the budget runs out; the shell reads
+    /// `needs_attention`'s edge to warn the user. It maps to
     /// [`kernel::State::backup_conflict`].
     backup_conflict: kernel::ConflictStall,
-    /// Skip-by-set-hash signature of the last successful upload this session
-    /// (ADR 0019). Compared against the freshly-walked signature before each
-    /// backup; an unchanged signature means the watcher fired on a no-op
-    /// settle, so the upload is skipped. In-memory only — cross-restart
-    /// persistence is the CLI/desktop's job via `state.json`. Sigue siendo el
-    /// composite `"<cheap>:<content>"` que consume `run_backup_with_retry`; su
-    /// mitad *cheap* alimenta el fingerprint del kernel (`synced_fingerprint`).
+    /// The skip-by-set-hash signature of this session's last successful upload
+    /// (ADR 0019). Compared against the freshly walked signature before each backup;
+    /// an unchanged signature means the watcher fired on a no-op settle, so the
+    /// upload is skipped. In-memory only: cross-restart persistence is the CLI's and
+    /// desktop's job via `state.json`. It is still the composite
+    /// `"<cheap>:<content>"` that `run_backup_with_retry` consumes; its cheap half
+    /// feeds the kernel's fingerprint (`synced_fingerprint`).
     last_set_hash: Option<String>,
-    /// Fingerprint (`u64`) del contenido local ya sincronizado, para el
-    /// invariante "convergido ⇒ 0 acciones" del reductor (mata el hot-loop de
-    /// compresión R2). Es el hash de la mitad *cheap* de [`Self::last_set_hash`]:
-    /// igual función que el fingerprint muestreado en la observación L1, así que
-    /// contenido idéntico ⇒ mismo `u64` ⇒ el reductor retiene. Mapea a
+    /// The `u64` fingerprint of the local content already synced, for the reducer's
+    /// "converged means zero actions" invariant (it kills the R2 compression hot
+    /// loop). It is the hash of [`Self::last_set_hash`]'s cheap half: the same
+    /// function as the fingerprint sampled in the L1 observation, so identical
+    /// content gives the same `u64` and the reducer holds. It maps to
     /// [`kernel::State::synced_fingerprint`].
     synced_fingerprint: Option<u64>,
-    /// mtime propio de la carpeta (su inodo) visto el último tick: gate del
-    /// muestreo L1. Sólo re-hasheamos (`walk_source` + `compute_set_signature`)
-    /// cuando este mtime cambió, cuando el watcher marcó [`Self::needs_l1`], o
-    /// en un sweep/manual — nunca cada tick (ADR 0021 C.1, observación por
-    /// niveles L0/L1).
+    /// The folder's own mtime (its inode) as seen on the last tick: the gate on L1
+    /// sampling. We only re-hash (`walk_source` plus `compute_set_signature`) when
+    /// this mtime changed, when the watcher set [`Self::needs_l1`], or on a sweep or
+    /// manual copy, never on every tick (ADR 0021 C.1, tiered L0/L1 observation).
     last_l0_mtime: Option<OffsetDateTime>,
-    /// Fuerza el cálculo del fingerprint L1 en el próximo tick aunque el mtime
-    /// L0 no haya cambiado: lo pone el watcher fs (una reescritura in-place en
-    /// un subdirectorio no mueve el mtime propio de la carpeta), el barrido
-    /// horario (`SweepAll`) y el backup manual (`BackupNow`). Se limpia tras
-    /// muestrear.
+    /// Forces the L1 fingerprint to be computed on the next tick even when the L0
+    /// mtime has not changed: set by the fs watcher (an in-place rewrite in a
+    /// subdirectory does not move the folder's own mtime), by the hourly sweep
+    /// (`SweepAll`) and by a manual backup (`BackupNow`). Cleared after sampling.
     needs_l1: bool,
-    /// El usuario ha pedido esta copia a mano (`BackupNow`) y todavía no ha
-    /// salido. Lo consume el lanzamiento del backup para etiquetar la versión
-    /// como deliberada, que es lo que la protege de que una ráfaga de copias
-    /// automáticas la eche del historial. Se limpia al lanzar, no al terminar:
-    /// si la subida falla y el reductor la reintenta, el reintento sigue siendo
-    /// la copia que pidió el usuario.
+    /// The user asked for this copy by hand (`BackupNow`) and it has not gone out
+    /// yet. The backup's launch consumes it to label the version deliberate, which
+    /// is what protects it from a burst of automatic copies pushing it out of the
+    /// history. It is cleared on launch rather than on completion: if the upload
+    /// fails and the reducer retries it, the retry is still the copy the user asked
+    /// for.
     manual_requested: bool,
-    /// Resultado de una op de IO que acaba de terminar, en cola para que el
-    /// próximo `reconcile` lo ingiera (limpia `in_flight`, actualiza
-    /// contabilidad/backoff). En el modelo invertido la finalización de una op
-    /// es una *entrada* del reductor, no un evento que muta estado por su
-    /// cuenta. Mapea a [`kernel::Observation::op_result`].
+    /// The result of an IO op that just finished, queued for the next `reconcile` to
+    /// ingest (clearing `in_flight`, updating the bookkeeping and backoff). In the
+    /// inverted model an op finishing is an *input* to the reducer rather than an
+    /// event that mutates state on its own. It maps to
+    /// [`kernel::Observation::op_result`].
     pending_op_result: Option<kernel::OpResult>,
-    /// Respuesta del chequeo content-addressed anti-relanzamiento, en cola junto
-    /// al `pending_op_result` de una subida que no subió nada porque el
-    /// contenido **ya estaba** en el server (ADR 0021 D.8.3). Mapea a
+    /// The answer from the content-addressed anti-relaunch check, queued alongside
+    /// the `pending_op_result` of an upload that uploaded nothing because the content
+    /// was already on the server (ADR 0021 D.8.3). It maps to
     /// [`kernel::Observation::upload_landed`].
     pending_upload_landed: Option<bool>,
-    /// La cadena de error del último restore fallido, en cola junto a un
-    /// `pending_op_result` = `Failed`. El reductor no la transporta (su
-    /// `OpResult::Failed` no lleva string), así que el shell la guarda para el
-    /// evento [`AgentEvent::SaveAutoRestoreStuck`] que emite al cruzar el umbral.
+    /// The error chain of the last failed restore, queued alongside a
+    /// `pending_op_result` of `Failed`. The reducer does not carry it (its
+    /// `OpResult::Failed` carries no string) so the shell keeps it for the
+    /// [`AgentEvent::SaveAutoRestoreStuck`] event it emits on crossing the
+    /// threshold.
     last_restore_error: Option<String>,
-    /// La cadena del último 409 irresoluble, en cola junto a un
-    /// `pending_op_result` = `ConflictStalled`. Igual que
-    /// [`Self::last_restore_error`]: el reductor no transporta texto, y el
-    /// evento `BackupNeedsAttention` tiene que decir por qué.
+    /// The last unresolvable 409's chain, queued alongside a `pending_op_result` of
+    /// `ConflictStalled`. As with [`Self::last_restore_error`]: the reducer carries
+    /// no text, and the `BackupNeedsAttention` event has to say why.
     last_conflict_error: Option<String>,
-    /// Cloud version this slot is known to be synced to — advanced on a genuine
+    /// Cloud version this slot is known to be synced to, advanced on a genuine
     /// upload commit and after a successful auto-restore. The reconciliation
     /// sweep passes it to `run_auto_restore`, which skips the download-to-diff
     /// when the server's latest version isn't newer than this. `None` until the
@@ -849,16 +841,15 @@ struct SaveSlot {
     /// (another device committed a higher version) still pulls; our own folder
     /// churn no longer does.
     known_version: Option<i64>,
-    /// A cross-device update is waiting to land in this slot, but a pull was
-    /// vetoed by [`mid_session_reason`]. Set instead of dropping the
-    /// `ForceRestore` outright: "the sweep re-runs every tick, so it lands as
-    /// soon as the session settles" assumed the session ends. On a Steam Deck it
-    /// often doesn't — suspend/resume keeps the game alive across days, and
-    /// Proton regularly leaves the process behind after the user quits — so the
-    /// veto held forever and a save made on another device only showed up after
-    /// a Steam restart. Consumido por el reductor el primer tick en que el slot
-    /// queda tranquilo (juego cerrado, nada pendiente). Mapea a
-    /// [`kernel::State::pull_pending`].
+    /// A cross-device update is waiting to land in this slot, but a pull was vetoed
+    /// by [`mid_session_reason`]. Set instead of dropping the `ForceRestore`
+    /// outright: "the sweep re-runs every tick, so it lands as soon as the session
+    /// settles" assumed the session ends. On a Steam Deck it often doesn't: suspend
+    /// and resume keeps the game alive across days, and Proton regularly leaves the
+    /// process behind after the user quits, so the veto held forever and a save made
+    /// on another device only showed up after a Steam restart. Consumed by the
+    /// reducer on the first tick where the slot is quiet (game closed, nothing
+    /// pending). It maps to [`kernel::State::pull_pending`].
     pull_pending: bool,
     /// Has [`AgentEvent::RestoreDeferred`] already gone out for the update
     /// currently waiting? The reductor re-evaluates the veto every tick, so
@@ -869,42 +860,42 @@ struct SaveSlot {
     deferred_notified: bool,
 }
 
-/// Semilla determinista del RNG del kernel para este save (ADR 0021 C.2): el
-/// jitter del backoff de throttle debe ser reproducible, así que se deriva del
-/// `save_id` en vez de `thread_rng`. Réplica inyectable del `hash(id) % 6`
-/// original del shell.
+/// The kernel's deterministic RNG seed for this save (ADR 0021 C.2): the throttle
+/// backoff's jitter has to be reproducible, so it derives from the `save_id` rather
+/// than from `thread_rng`. An injectable replica of the shell's original
+/// `hash(id) % 6`.
 fn seed_for(save_id: &str) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     std::hash::Hash::hash(save_id, &mut h);
     std::hash::Hasher::finish(&h)
 }
 
-/// Hash `u64` estable-en-proceso de una firma de set. Sólo se compara dentro de
-/// una misma ejecución (fingerprint muestreado vs sincronizado), así que
-/// `DefaultHasher` basta; no necesita estabilidad cross-restart.
+/// A process-stable `u64` hash of a set signature. It is only ever compared within
+/// one run (the sampled fingerprint against the synced one), so `DefaultHasher` is
+/// enough; it needs no cross-restart stability.
 fn fingerprint_of(sig: &str) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     std::hash::Hash::hash(sig, &mut h);
     std::hash::Hasher::finish(&h)
 }
 
-/// El fingerprint del kernel a partir del composite `"<cheap>:<content>"` que
-/// persiste el backup: toma la mitad *cheap* (la firma de
-/// `(paths+sizes+mtimes)`), que es exactamente lo que muestrea
-/// [`observe_local_fingerprint`]. Así "contenido idéntico ⇒ mismo `u64`".
+/// The kernel's fingerprint from the composite `"<cheap>:<content>"` the backup
+/// persists: it takes the cheap half (the signature over paths, sizes and mtimes),
+/// which is exactly what [`observe_local_fingerprint`] samples. So identical content
+/// gives the same `u64`.
 fn fingerprint_from_set_hash(composite: &str) -> u64 {
     let cheap = composite.split_once(':').map_or(composite, |(c, _)| c);
     fingerprint_of(cheap)
 }
 
-/// Muestreo L1 (ADR 0021 C.1): camina la carpeta y computa la firma *cheap*
-/// (`compute_set_signature`, sin leer bytes — misma que usa el skip del backup)
-/// hasheada a `u64`. Sólo se llama cuando L0 cambió o un hint enfocó el save.
-/// `None` si la carpeta no se pudo caminar (se cae al `has_pending` en el
-/// reductor).
+/// L1 sampling (ADR 0021 C.1): it walks the folder and computes the cheap signature
+/// (`compute_set_signature`, without reading bytes, the same one the backup's skip
+/// uses) hashed to a `u64`. Only called when L0 moved or a hint focused the save.
+/// `None` when the folder could not be walked (the reducer then falls back to
+/// `has_pending`).
 fn observe_local_fingerprint(path: &Path, game_slug: &str) -> Option<u64> {
-    // El mismo blindaje que usa el backup, o las dos firmas divergen para
-    // siempre y el reductor ve un cambio pendiente que nunca se resuelve.
+    // The same shields the backup uses, or the two signatures diverge forever and
+    // the reducer sees a pending change that never resolves.
     let shields = crate::savefilter::shields_for_slug(game_slug);
     let files = crate::backup::walk_source(path, &shields).ok()?;
     Some(fingerprint_of(&crate::backup::compute_set_signature(
@@ -912,13 +903,13 @@ fn observe_local_fingerprint(path: &Path, game_slug: &str) -> Option<u64> {
     )))
 }
 
-/// Construye la [`kernel::State`] durable del slot para pasarla al reductor
-/// (ADR 0021 D.7: la conversión `SaveSlot`↔`kernel::State` vive en el shell).
+/// Builds the slot's durable [`kernel::State`] to hand to the reducer (ADR 0021
+/// D.7: the `SaveSlot` to `kernel::State` conversion lives in the shell).
 ///
-/// `is_running`/`last_running_seen` se alimentan del valor **ya dereborotado**
-/// que mantiene `process_poll` (su sticky de 6 s, `STRONG_STOP_GRACE_FLOOR_SECS`),
-/// de modo que la stickiness del kernel es un passthrough y no se dobla la
-/// gracia. El resto de campos de sync los posee el reductor.
+/// `is_running` and `last_running_seen` are fed from the already-debounced value
+/// `process_poll` maintains (its 6 s sticky, `STRONG_STOP_GRACE_FLOOR_SECS`), so the
+/// kernel's stickiness is a passthrough and the grace is not doubled. The reducer
+/// owns the rest of the sync fields.
 fn state_from_slot(slot: &SaveSlot, config: &AgentConfig, now: OffsetDateTime) -> kernel::State {
     kernel::State {
         track_only: slot.save.track_only,
@@ -933,8 +924,8 @@ fn state_from_slot(slot: &SaveSlot, config: &AgentConfig, now: OffsetDateTime) -
             .min_snapshot_interval_secs
             .unwrap_or(config.min_snapshot_interval_secs),
         is_running: slot.is_running,
-        // Passthrough: `process_alive` == `is_running` en la observación, así
-        // que la gracia del kernel nunca extiende más allá del sticky del shell.
+        // Passthrough: `process_alive` equals `is_running` in the observation, so
+        // the kernel's grace never extends beyond the shell's sticky.
         last_running_seen: if slot.is_running { Some(now) } else { None },
         has_pending: slot.has_pending,
         last_fs_event_at: slot.last_fs_event_at,
@@ -954,9 +945,9 @@ fn state_from_slot(slot: &SaveSlot, config: &AgentConfig, now: OffsetDateTime) -
     }
 }
 
-/// Vuelca el estado que el reductor devolvió de vuelta al slot. **No** toca
-/// `is_running`/`last_running_seen`: esos los posee `process_poll` (detección +
-/// eventos GameStarted/Stopped + playtime); el reductor sólo los lee.
+/// Pours the state the reducer returned back into the slot. It does NOT touch
+/// `is_running` or `last_running_seen`: those belong to `process_poll` (detection,
+/// the GameStarted and GameStopped events, playtime); the reducer only reads them.
 fn apply_state_to_slot(slot: &mut SaveSlot, next: kernel::State) {
     slot.has_pending = next.has_pending;
     slot.last_fs_event_at = next.last_fs_event_at;
@@ -975,24 +966,23 @@ fn apply_state_to_slot(slot: &mut SaveSlot, next: kernel::State) {
     slot.backup_conflict = next.backup_conflict;
 }
 
-/// La caché de cabezas de nube, **con la marca de cuándo llegó**. El par va
-/// junto a propósito: una cabeza sin fecha no se puede distinguir de una cabeza
-/// congelada, y ésa fue justo la avería de ADR 0021 D.10 — el poller murió,
-/// `versions` se quedó clavado en la v120 y el reductor decidía bien sobre una
-/// entrada mentirosa, rotulándolo `converged`.
+/// The cloud-head cache, with the stamp of when it arrived. The pair travels
+/// together on purpose: a head with no date cannot be told from a frozen head, and
+/// that was exactly ADR 0021 D.10's fault. The poller died, `versions` stayed pinned
+/// at v120, and the reducer decided correctly on a lying input, labelling it
+/// `converged`.
 ///
-/// Desde D.12 se llena por **dos** vías, y ése es el fix estructural: el motor
-/// consulta el manifiesto él mismo cada
+/// Since D.12 it is filled two ways, and that is the structural fix: the engine
+/// queries the manifest itself every
 /// [`kernel::reconcile::CLOUD_SELF_OBSERVE_AFTER_SECS`]
-/// ([`Self::due_for_self_observation`]) y el push del cliente
-/// (`SetCloudVersions`, del poller del desktop o del `cloud_live` de la CLI)
-/// queda como *hint* de latencia. Un feed vivo rejuvenece la marca antes de que
-/// venza el plazo, así que suprime la consulta propia y el coste sigue siendo un
-/// manifiesto por intervalo; un poller muerto ya sólo cuesta latencia, no
-/// ceguera permanente.
+/// ([`Self::due_for_self_observation`]) and the client's push (`SetCloudVersions`,
+/// from the desktop's poller or the CLI's `cloud_live`) remains a latency hint. A
+/// live feed refreshes the stamp before the deadline expires, so it suppresses the
+/// engine's own query and the cost stays one manifest per interval; a dead poller
+/// now only costs latency, not permanent blindness.
 #[derive(Debug, Clone)]
 struct CloudHeads {
-    /// Última versión cloud por `save_id`, tal cual la trajo el manifest.
+    /// The latest cloud version per `save_id`, exactly as the manifest brought it.
     versions: HashMap<String, i64>,
     /// `(game_slug, label)` → the `save_id` the cloud knows that row by.
     ///
@@ -1002,30 +992,30 @@ struct CloudHeads {
     /// rebuilt `state.json`) keeps uploading fine while being unable to find
     /// itself in anything the server hands back. Without this index
     /// `versions.get(local_id)` is `None` forever: the row goes blind to the
-    /// cloud — it sees no new versions and can't clear a conflict — and does it
+    /// cloud (it sees no new versions and can't clear a conflict) and does it
     /// silently, because "absent from the manifest" and "converged" read the
     /// same. That is what left a save fourteen days out of sync in aug-2026.
     aliases: HashMap<(String, String), String>,
-    /// **Qué contenido** tiene esa cabeza, por `save_id`: el digest del
-    /// manifiesto que publica el server (ADR 0021 D.8.3). Sólo lo llena la
-    /// observación propia del motor —el empujón del cliente trae versiones, no
-    /// digests—, así que puede ir por detrás de [`Self::versions`]; por eso
-    /// [`Self::head_for`] exige que la versión coincida antes de creérselo.
+    /// What content that head has, per `save_id`: the digest of the manifest the
+    /// server publishes (ADR 0021 D.8.3). Only the engine's own observation fills it,
+    /// since the client's push brings versions rather than digests, so it can lag
+    /// behind [`Self::versions`]; that is why [`Self::head_for`] demands the version
+    /// match before believing it.
     digests: HashMap<String, ServerHead>,
     /// Cuándo aterrizó ese feed, venga de donde venga. `None` = todavía ninguno.
     as_of: Option<OffsetDateTime>,
-    /// Último intento **propio** de observar la nube, con éxito o sin él. Marca
-    /// el ritmo de reintento: sin esta marca un servidor caído (o una sesión
-    /// 401) haría que cada tick —cada 2 s— relanzase la consulta.
+    /// The engine's last attempt to observe the cloud itself, successful or not. It
+    /// paces the retries: without this stamp a downed server, or a 401 session, would
+    /// have every tick, every two seconds, firing the query again.
     last_attempt_at: Option<OffsetDateTime>,
-    /// ¿Hay nube que observar? `Some(true)` cloud, `Some(false)` self-hosted,
-    /// `None` = sin resolver (el probe de `/v1/health` no ha respondido aún).
-    /// Latcheado: una vez resuelto no se desdice, porque el `ApiClient` del
-    /// agente no cambia de servidor en vida.
+    /// Is there a cloud to observe? `Some(true)` cloud, `Some(false)` self-hosted,
+    /// `None` unresolved (the `/v1/health` probe has not answered yet). Latched: once
+    /// resolved it does not take it back, because the agent's `ApiClient` does not
+    /// change server within its life.
     is_cloud: Option<bool>,
-    /// Cuándo empezó este motor a esperar cabezas de nube. Es el ancla del
-    /// margen de arranque con el que el kernel reporta "nunca supe nada de la
-    /// nube" (ADR 0021 D.11, remate).
+    /// When this engine started expecting cloud heads. It is the anchor of the
+    /// startup allowance the kernel uses to report "I have never heard anything from
+    /// the cloud" (ADR 0021 D.11).
     expecting_since: OffsetDateTime,
 }
 
@@ -1042,9 +1032,10 @@ impl CloudHeads {
         }
     }
 
-    /// Instala un feed nuevo y sella su marca de tiempo. `digests` sólo viene
-    /// de la observación propia; un empujón de cliente pasa `None` y deja los
-    /// que hubiera (que [`Self::head_for`] descartará si la versión ya no casa).
+    /// Installs a new feed and stamps its timestamp. `digests` only comes from the
+    /// engine's own observation; a client push passes `None` and leaves whatever was
+    /// there (which [`Self::head_for`] will discard if the version no longer
+    /// matches).
     fn feed(
         &mut self,
         versions: HashMap<String, i64>,
@@ -1066,7 +1057,7 @@ impl CloudHeads {
     }
 
     /// The id the cloud knows this save by: ours if it recognises it, otherwise
-    /// the row carrying its `(game, label)` — the same two steps the server
+    /// the row carrying its `(game, label)`, the same two steps the server
     /// itself takes in `resolve_save_row`, in the same order.
     ///
     /// An alias only counts while the row it names is still in this pass's feed;
@@ -1094,24 +1085,24 @@ impl CloudHeads {
         self.versions.get(self.cloud_id_for(save)).copied()
     }
 
-    /// La cabeza de un save **con su contenido**, para el chequeo
-    /// anti-relanzamiento de D.8.3.
+    /// A save's head together with its content, for D.8.3's anti-relaunch check.
     ///
-    /// Sólo se devuelve si el digest que tenemos es el de la versión que ahora
-    /// mismo es la cabeza: un digest emparejado con una versión vieja
-    /// describiría un contenido que ya no es el del server, y creérselo sería
-    /// saltarse una subida que sí hace falta. Emparejar en vez de mantener dos
-    /// mapas sueltos es lo que hace imposible ese fallo.
+    /// It is only returned when the digest we hold is the one for the version that is
+    /// the head right now: a digest paired with an old version would describe content
+    /// that is no longer the server's, and believing it would skip an upload that is
+    /// genuinely needed. Pairing them rather than keeping two loose maps is what
+    /// makes that failure impossible.
     fn head_for(&self, save: &WatchedSave) -> Option<&ServerHead> {
         let id = self.cloud_id_for(save);
         let head = self.digests.get(id)?;
         (self.versions.get(id) == Some(&head.version_num)).then_some(head)
     }
 
-    /// El ancla del margen de arranque que va en la [`kernel::Observation`]:
-    /// sólo hay algo que esperar si sabemos que hay nube. Sin contexto resuelto
-    /// no se afirma nada — declarar ceguera sin saber si existe la nube sería
-    /// inventarse una avería.
+    /// The anchor for the startup allowance that goes into the
+    /// [`kernel::Observation`]: there is only something to wait for when we know
+    /// there is a cloud. With no resolved context nothing is claimed, since declaring
+    /// blindness without knowing whether the cloud exists would be inventing a
+    /// fault.
     fn expected_since(&self) -> Option<OffsetDateTime> {
         (self.is_cloud == Some(true)).then_some(self.expecting_since)
     }
@@ -1132,18 +1123,15 @@ impl CloudHeads {
         }
     }
 
-    /// ¿Toca que el motor vaya a buscar la cabeza él mismo? Dos frenos
-    /// independientes:
+    /// Is it time for the engine to fetch the head itself? Two independent brakes:
     ///
-    /// - **Frescura**: con un feed reciente (del poller o nuestro) no hay nada
-    ///   que buscar. Es lo que hace que un cliente sano no duplique el GET.
-    /// - **Ritmo**: como mucho un intento por intervalo pase lo que pase, para
-    ///   que un backend caído reciba un intento por minuto y medio, no uno por
-    ///   tick.
+    /// - Freshness: with a recent feed (the poller's or our own) there is nothing to
+    ///   fetch. That is what stops a healthy client duplicating the GET.
+    /// - Pacing: at most one attempt per interval whatever happens, so a downed
+    ///   backend gets one attempt every minute and a half rather than one per tick.
     ///
-    /// Self-hosted has heads too (`GET /v1/saves`). Skipping that left
-    /// `cloud_ahead` stuck on `None` so auto-restore never ran unless the
-    /// folder was empty.
+    /// Self-hosted has heads too (`GET /v1/saves`). Skipping that left `cloud_ahead`
+    /// stuck on `None` so auto-restore never ran unless the folder was empty.
     fn due_for_self_observation(&self, now: OffsetDateTime) -> bool {
         let stale_enough = |t: OffsetDateTime| {
             (now - t).whole_seconds() >= kernel::reconcile::CLOUD_SELF_OBSERVE_AFTER_SECS
@@ -1152,24 +1140,24 @@ impl CloudHeads {
     }
 }
 
-/// **El motor observa la nube** (ADR 0021 D.12). Una sola llamada al manifiesto
-/// —no un GET por save y tick— cuyo resultado vuelve al bucle como
-/// [`AgentCommand::CloudHeadsObserved`] y de ahí a la [`kernel::Observation`].
+/// The engine observes the cloud (ADR 0021 D.12). One single call to the manifest,
+/// rather than a GET per save per tick, whose result comes back into the loop as
+/// [`AgentCommand::CloudHeadsObserved`] and from there into the
+/// [`kernel::Observation`].
 ///
-/// Corre en su propia tarea para no bloquear el `select!` del agente: el probe
-/// de `/v1/health` y el manifiesto tienen minuto de timeout cada uno, y el bucle
-/// tiene que seguir atendiendo eventos fs, procesos y comandos mientras tanto.
+/// It runs in its own task so it does not block the agent's `select!`: the
+/// `/v1/health` probe and the manifest each have a minute of timeout, and the loop
+/// has to keep serving fs events, processes and commands meanwhile.
 ///
-/// Por qué el motor y no el cliente: la UI sabía de la v181 porque *ella*
-/// preguntaba al servidor; el agente no, porque dependía de que un proceso ajeno
-/// y frágil se la empujase. Muerto ese proceso, el motor quedaba ciego para
-/// siempre sin autorrecuperación. Observando él mismo, un poller muerto degrada
-/// a "tardo hasta el siguiente intervalo" — la propiedad level-triggered de C.1
-/// aplicada también al transporte.
+/// Why the engine and not the client: the UI knew about v181 because *it* asked the
+/// server; the agent did not, because it depended on a foreign and fragile process
+/// pushing it. With that process dead, the engine stayed blind forever with no
+/// self-recovery. Observing for itself, a dead poller degrades to "I take until the
+/// next interval", C.1's level-triggered property applied to the transport as well.
 ///
-/// Best-effort de principio a fin: cualquier fallo se reporta como
-/// `versions: None` (la marca de frescura no se sella y la ceguera sigue siendo
-/// visible) y se reintenta al siguiente plazo.
+/// Best-effort from end to end: any failure is reported as `versions: None` (the
+/// freshness stamp is not set and the blindness stays visible) and retried at the
+/// next deadline.
 /// How often the engine ships this machine's playtime. Playtime is a daily
 /// aggregate, not an event stream, so the only thing a short interval buys is
 /// a fresher recap for someone who opens Wrapple right now; 30 min keeps a
@@ -1181,7 +1169,7 @@ const PLAYTIME_SHIP_INTERVAL: Duration = Duration::from_secs(30 * 60);
 ///
 /// **Why the engine and not the window.** Until now the only caller of the
 /// playtime push was the Wrapple screen itself, so the hours reached the server
-/// only when a user opened the recap — which meant the recap showed real hours
+/// only when a user opened the recap, which meant the recap showed real hours
 /// exclusively to people who had already opened it before. Everyone else saw
 /// zero and concluded it was broken. The store has always accrued correctly in
 /// `process_poll`; it was the delivery that depended on someone looking. Same
@@ -1189,7 +1177,7 @@ const PLAYTIME_SHIP_INTERVAL: Duration = Duration::from_secs(30 * 60);
 /// engine that goes quiet the moment the window closes.
 ///
 /// Gated on `prefs.wrapple_telemetry`, read fresh so flipping the switch takes
-/// effect within one interval. Off means nothing is sent — the daemon does not
+/// effect within one interval. Off means nothing is sent: the daemon does not
 /// report the fact that it is off, which would be exactly the telemetry the
 /// user just declined.
 ///
@@ -1249,19 +1237,19 @@ fn heads_from_selfhosted_saves(
 }
 
 async fn observe_cloud_heads(api: ApiClient, cmd_tx: mpsc::Sender<AgentCommand>) {
-    // Probe cacheado tras el primer éxito; un fallo NO se cachea, así que el
-    // siguiente intento vuelve a preguntar.
+    // The probe is cached after the first success; a failure is NOT cached, so the
+    // next attempt asks again.
     let cloud = api.is_cloud().await;
-    // Se lee DESPUÉS del probe para distinguir "self-hosted" de "no se pudo
-    // resolver" — `is_cloud()` colapsa ambos en `false`.
+    // Read AFTER the probe so "self-hosted" can be told from "it could not be
+    // resolved": `is_cloud()` collapses both into `false`.
     let is_cloud = api.probed_is_cloud();
     let observed = if cloud {
         match api.cloud_sync().await {
             Ok(manifest) => {
-                // Dos mapas de la misma pasada: la versión (la cabeza) y qué
-                // contenido tiene (el digest de su manifiesto, D.8.3). Salen
-                // juntos a propósito — un digest de una pasada distinta
-                // describiría un contenido que ya no es el de esa versión.
+                // Two maps from the same pass: the version (the head) and what
+                // content it has (its manifest's digest, D.8.3). They come out
+                // together on purpose, since a digest from a different pass would
+                // describe content that is no longer that version's.
                 let mut versions: HashMap<String, i64> = HashMap::new();
                 let mut aliases: HashMap<(String, String), String> = HashMap::new();
                 let mut digests: HashMap<String, ServerHead> = HashMap::new();
@@ -1295,9 +1283,9 @@ async fn observe_cloud_heads(api: ApiClient, cmd_tx: mpsc::Sender<AgentCommand>)
                 Some((versions, aliases, digests))
             }
             Err(e) => {
-                // A warn, no debug: desde D.12 esto es la vía principal de
-                // observación de la nube, y que enmudezca es exactamente la
-                // avería que nos costó dos sesiones de dogfooding encontrar.
+                // A warn rather than a debug: since D.12 this is the main route for
+                // observing the cloud, and it going quiet is exactly the fault that
+                // cost two dogfooding sessions to find.
                 tracing::warn!(error = %e, "agent: couldn't observe the cloud head");
                 None
             }
@@ -1315,7 +1303,7 @@ async fn observe_cloud_heads(api: ApiClient, cmd_tx: mpsc::Sender<AgentCommand>)
             }
         }
     } else {
-        tracing::debug!("agent: cloud head observation skipped — server mode unresolved");
+        tracing::debug!("agent: cloud head observation skipped, server mode unresolved");
         None
     };
     let (versions, aliases, digests) = match observed {
@@ -1332,10 +1320,10 @@ async fn observe_cloud_heads(api: ApiClient, cmd_tx: mpsc::Sender<AgentCommand>)
         .await;
 }
 
-/// Muestrea el mundo para un slot y construye la [`kernel::Observation`] del
-/// tick (ADR 0021 C.1). L0 (mtime propio + vacío) es barato cada tick; L1 (el
-/// fingerprint) sólo se calcula cuando L0 cambió, el watcher marcó `needs_l1`,
-/// o un sweep/manual lo forzó — nunca re-hasheando todo cada tick.
+/// Samples the world for one slot and builds the tick's [`kernel::Observation`]
+/// (ADR 0021 C.1). L0 (the folder's own mtime plus emptiness) is cheap every tick;
+/// L1 (the fingerprint) is only computed when L0 moved, the watcher set `needs_l1`,
+/// or a sweep or manual copy forced it, never re-hashing everything every tick.
 fn observe_slot(slot: &mut SaveSlot, cloud: &CloudHeads) -> kernel::Observation {
     let folder_mtime = folder_own_mtime(&slot.save.local_path);
     let local_empty = is_path_empty_or_missing(&slot.save.local_path);
@@ -1353,49 +1341,50 @@ fn observe_slot(slot: &mut SaveSlot, cloud: &CloudHeads) -> kernel::Observation 
         folder_size: None,
         local_empty,
         local_fingerprint,
-        // El estado de proceso lo posee `process_poll` (ya con su sticky de
-        // 6 s); aquí es un passthrough para la stickiness del kernel.
+        // The process state belongs to `process_poll` (already with its 6 s sticky);
+        // here it is a passthrough for the kernel's stickiness.
         process_alive: slot.is_running,
-        // Sonda de bloqueo: "el juego está escribiendo el save AHORA", dicho
-        // por el sistema de ficheros y no por casar un proceso. Sólo se paga
-        // cuando de verdad puede cambiar una decisión — si el slot ya está
-        // corriendo, el veto salta antes y sondear sería `open()` por fichero
-        // cada dos segundos para nada. En POSIX siempre es `false` (no hay
-        // bloqueo obligatorio); ver `crate::locks`.
+        // The lock probe: "the game is writing the save NOW", said by the filesystem
+        // rather than by matching a process. It is only paid for when it can really
+        // change a decision: if the slot is already running, the veto fires earlier
+        // and probing would be an `open()` per file every two seconds for nothing.
+        // On POSIX it is always `false` (there is no mandatory locking); see
+        // `crate::locks`.
         save_files_locked: !slot.is_running
             && !slot.save.track_only
             && crate::locks::any_file_locked(&slot.save.local_path),
         cloud_version: cloud.version_for(&slot.save),
-        // La marca es del *feed*, no del save: el manifest viene entero, así que
-        // un save ausente de él tiene `cloud_version: None` con la marca igual
-        // de fresca. Es lo que deja al kernel distinguir "convergido" de
-        // "ciego" (ADR 0021 D.10).
+        // The stamp belongs to the *feed*, not to the save: the manifest arrives
+        // whole, so a save missing from it has `cloud_version: None` with an equally
+        // fresh stamp. That is what lets the kernel tell "converged" from "blind"
+        // (ADR 0021 D.10).
         cloud_version_as_of: cloud.as_of,
-        // Y esto es lo que deja distinguir "no hay nube que mirar" de "hay nube
-        // y llevo desde el arranque sin saber nada de ella" (D.11, remate).
+        // And this is what lets it tell "there is no cloud to look at" from "there
+        // is a cloud and I have known nothing about it since boot" (D.11).
         cloud_feed_expected_since: cloud.expected_since(),
-        // El watcher fs marca `has_pending`/`last_fs_event_at` en el slot
-        // directamente (ver la rama `fs_rx`), así que no hace falta re-marcar
-        // por `fs_event` aquí; el reductor los lee del estado.
+        // The fs watcher marks `has_pending` and `last_fs_event_at` on the slot
+        // directly (see the `fs_rx` branch), so there is no need to re-mark through
+        // `fs_event` here; the reducer reads them from the state.
         fs_event: false,
         op_result: slot.pending_op_result.take(),
-        // El chequeo content-addressed anti-relanzamiento (ADR 0021 D.8.3): lo
-        // contesta el ejecutor de la subida —es IO, y el kernel no hace IO—
-        // comparando el contenido local con el digest de la cabeza del server.
-        // `Some(true)` = la subida que un reinicio dejó a medias sí aterrizó, así
-        // que no hay nada que resubir y el reductor sólo tiene que apuntar la
-        // versión. `None` = no se comprobó (nadie subió nada este tick).
+        // The content-addressed anti-relaunch check (ADR 0021 D.8.3): it is answered
+        // by the upload's executor, since it is IO and the kernel does none, by
+        // comparing the local content against the server's head digest. `Some(true)`
+        // means the upload a restart left half done did land, so there is nothing to
+        // re-upload and the reducer only has to record the version. `None` means it
+        // was not checked (nobody uploaded anything this tick).
         upload_landed: slot.pending_upload_landed.take(),
     }
 }
 
-/// El paso de reconciliación (ADR 0021 C.1, Slice 2b): la autoridad invertida.
-/// Para cada slot: muestrea el mundo → construye la [`kernel::Observation`] →
-/// llama al reductor puro [`kernel::reconcile`] → vuelca el estado → ejecuta las
-/// [`kernel::Decision`]s (`Act` → IO; `Hold` → log del motivo). **Cero política
-/// aquí**: toda decisión de sync (backup/restore/defer/veto/cooldown/backoff/
-/// throttle/min-interval) la toma el reductor. El tick es la fuente de verdad;
-/// fs/realtime/op sólo dejaron hints en el slot que adelantan este paso.
+/// The reconciliation step (ADR 0021 C.1, Slice 2b): the inverted authority. For
+/// each slot: sample the world, build the [`kernel::Observation`], call the pure
+/// reducer [`kernel::reconcile`], pour the state back, run the
+/// [`kernel::Decision`]s (`Act` goes to IO, `Hold` gets its reason logged). Zero
+/// policy here: every sync decision (backup, restore, defer, veto, cooldown,
+/// backoff, throttle, min-interval) is taken by the reducer. The tick is the source
+/// of truth; fs, realtime and op events only left hints on the slot that bring this
+/// step forward.
 #[allow(clippy::too_many_arguments)]
 fn reconcile_all(
     slots: &mut HashMap<String, SaveSlot>,
@@ -1409,12 +1398,12 @@ fn reconcile_all(
     let now = OffsetDateTime::now_utc();
     let ids: Vec<String> = slots.keys().cloned().collect();
     for id in ids {
-        // El slot pudo desaparecer entre iteraciones (no aquí, pero por higiene).
+        // The slot may have vanished between iterations (not here, but for hygiene).
         let Some(slot) = slots.get_mut(&id) else {
             continue;
         };
-        // Snapshot pre-reductor para derivar los eventos de observabilidad
-        // (stuck/recovered) del delta de `restore_failures`.
+        // A pre-reducer snapshot to derive the observability events (stuck and
+        // recovered) from `restore_failures`' delta.
         let was_stuck = slot.restore_failures.stuck_notified;
         let err_for_stuck = slot.last_restore_error.take();
         let was_blocked = slot.backup_conflict.needs_attention;
@@ -1431,18 +1420,17 @@ fn reconcile_all(
         // next go out, and the shell owes the user that number (see the
         // `Hold` arm below).
         let floor = kernel::reconcile::backup_floor(&next);
-        // Read while `slot` is still borrowed — `execute_action` takes the whole
+        // Read while `slot` is still borrowed: `execute_action` takes the whole
         // map, so the head has to be resolved and cloned before that.
         let server_head = cloud.head_for(&slot.save).cloned();
         apply_state_to_slot(slot, next);
 
-        // Eventos stuck/recovered puramente del delta de la escalada de fallos.
-        // El reductor decide (escala al ingerir un `Failed`, resetea con un `Ok`
-        // o con una versión cloud nueva); el shell sólo traduce el flanco a
-        // eventos de UI (ADR 0021 C.5: el veto/fallo es de primera clase y
-        // visible). Sin gate por el tipo de resultado: así el reseteo por
-        // versión nueva —que ya no llega como op— también avisa de la
-        // recuperación.
+        // The stuck and recovered events come purely from the failure escalation's
+        // delta. The reducer decides (it escalates on ingesting a `Failed`, resets on
+        // an `Ok` or on a new cloud version); the shell only translates the edge into
+        // UI events (ADR 0021 C.5: the veto or failure is first-class and visible).
+        // With no gate on the result type, so the reset on a new version, which no
+        // longer arrives as an op, also announces the recovery.
         let now_stuck = slot.restore_failures.stuck_notified;
         if !was_stuck && now_stuck {
             let _ = events_tx.try_send(AgentEvent::SaveAutoRestoreStuck {
@@ -1455,7 +1443,7 @@ fn reconcile_all(
         if was_stuck && !now_stuck {
             tracing::info!(
                 save_id = %id,
-                "agent: auto-restore escalation cleared — save recovered"
+                "agent: auto-restore escalation cleared, save recovered"
             );
             let _ = events_tx.try_send(AgentEvent::SaveAutoRestoreRecovered {
                 save_id: id.clone(),
@@ -1463,19 +1451,19 @@ fn reconcile_all(
             });
         }
 
-        // Y lo mismo para la subida atascada en un conflicto sin salida: el
-        // reductor decide cuándo se agota el presupuesto y cuándo se suelta (una
-        // copia con éxito, una cabeza de nube nueva, o el usuario pidiéndola a
-        // mano); el shell sólo traduce el flanco a eventos. Que el aviso salga
-        // del MISMO flag que frena la subida es lo que impide que la UI diga
-        // "atascado" de un save que sí sube — o que se calle el que no.
+        // And the same for an upload stuck on a conflict with no way out: the reducer
+        // decides when the budget runs out and when it is released (a successful copy,
+        // a new cloud head, or the user asking by hand); the shell only translates the
+        // edge into events. The warning coming off the SAME flag that brakes the
+        // upload is what stops the UI calling a save stuck while it uploads fine, or
+        // staying quiet about one that does not.
         let now_blocked = slot.backup_conflict.needs_attention;
         if !was_blocked && now_blocked {
             tracing::warn!(
                 save_id = %id,
                 game_slug = %slot.save.game_slug,
                 conflicts = slot.backup_conflict.consecutive,
-                "agent: giving up on this upload — the conflict needs the user"
+                "agent: giving up on this upload, the conflict needs the user"
             );
             let _ = events_tx.try_send(AgentEvent::BackupNeedsAttention {
                 save_id: id.clone(),
@@ -1488,7 +1476,7 @@ fn reconcile_all(
         if was_blocked && !now_blocked {
             tracing::info!(
                 save_id = %id,
-                "agent: upload conflict cleared — this save can sync again"
+                "agent: upload conflict cleared, this save can sync again"
             );
             let _ = events_tx.try_send(AgentEvent::BackupAttentionCleared {
                 save_id: id.clone(),
@@ -1522,14 +1510,14 @@ fn reconcile_all(
 
 /// Show a deferred backup instead of just logging it.
 ///
-/// The reducer can hold an upload for a full minute — the adaptive floor under
-/// a game that rewrites its autosave in a loop — and until now that hold was a
+/// The reducer can hold an upload for a full minute (the adaptive floor under
+/// a game that rewrites its autosave in a loop) and until now that hold was a
 /// `debug!` line and nothing else. The first attempt at a floor was a fixed one
 /// for everybody and had to be reverted for exactly this: it was invisible, and
 /// what reached support was "Hoard isn't picking up my changes". A conditional
 /// floor that nobody can see fails the same way, only to fewer people.
 ///
-/// `next_scheduled_backup_at` is where the answer belongs — the overlay's "next
+/// `next_scheduled_backup_at` is where the answer belongs: the overlay's "next
 /// copy in Xs" and the Settings diagnostics both read it already, and the
 /// debounce timer writes the same field. It is cleared when the upload actually
 /// starts, so a stale deadline can't outlive the wait.
@@ -1567,18 +1555,17 @@ fn announce_backup_wait(
         save_id: id.to_string(),
         delay_ms: (remaining.whole_milliseconds().max(0)) as u64,
         // The same reason the debounce announces with, so the desktop's
-        // "queued — waiting" surface needs no new variant on the wire (ADR 0021
+        // "queued, waiting" surface needs no new variant on the wire (ADR 0021
         // C.6): what tells the two apart there is the delay being longer than a
         // debounce, which is precisely what this is.
         reason: BackupReason::FilesystemSettled,
     });
 }
 
-/// Ejecuta una [`kernel::Action`] que el reductor pidió: la traducción
-/// decisión→IO. `Pull` y `Restore` comparten **un solo ejecutor**
-/// (`spawn_auto_restore` → `run_auto_restore`), para que no se vuelvan dos
-/// caminos divergentes de retry/throttle/integridad — el 429 fue exactamente
-/// eso (ADR 0021 D.7).
+/// Runs a [`kernel::Action`] the reducer asked for: the decision-to-IO translation.
+/// `Pull` and `Restore` share one executor (`spawn_auto_restore` into
+/// `run_auto_restore`) so they do not become two diverging paths for retry,
+/// throttle and integrity, which is exactly what the 429 was (ADR 0021 D.7).
 #[allow(clippy::too_many_arguments)]
 fn execute_action(
     slots: &mut HashMap<String, SaveSlot>,
@@ -1595,17 +1582,16 @@ fn execute_action(
         kernel::Action::Backup => {
             execute_backup(slots, id, api, events_tx, cmd_tx, config, done_tx, head);
         }
-        // Pull y Restore: intents distintos del kernel, ejecutor único.
+        // Pull and Restore: different kernel intents, one executor.
         kernel::Action::Restore | kernel::Action::Pull => {
             execute_restore(slots, id, api, events_tx, cmd_tx, config);
         }
-        // Aviso de UI, nada más. El flush que antes vivía aquí (subir lo
-        // pendiente para que la nube dejase de ir por delante) era **política en
-        // el shell**: el reductor retenía el pull y retornaba antes de la rama de
-        // backup, así que el shell desatascaba a mano el par
-        // (has_pending, cloud_ahead). Ahora el propio reductor emite `Backup` en
-        // el mismo tick en que difiere el pull (ADR 0021 D.8.1), así que aquí
-        // sólo queda notificar.
+        // A UI notice, nothing more. The flush that used to live here (uploading what
+        // was pending so the cloud stopped being ahead) was policy in the shell: the
+        // reducer held the pull and returned before the backup branch, so the shell
+        // unstuck the (has_pending, cloud_ahead) pair by hand. Now the reducer itself
+        // emits `Backup` on the same tick it defers the pull (ADR 0021 D.8.1), so all
+        // that is left here is the notification.
         kernel::Action::DeferPull => {
             let Some(game_slug) = slots.get(id).map(|s| s.save.game_slug.clone()) else {
                 return;
@@ -1620,19 +1606,19 @@ fn execute_action(
                 reason: "mid-session".to_string(),
             });
         }
-        // El deadline ya vive en `next_backup_at`/`next_restore_at`; el shell no
-        // reintenta hasta cruzarlo. Aquí sólo se registra (observabilidad).
+        // The deadline already lives in `next_backup_at` and `next_restore_at`; the
+        // shell does not retry until it is crossed. This only records it.
         kernel::Action::Throttle { until } => {
-            tracing::info!(save_id = %id, ?until, "agent: throttled — backing off until deadline");
+            tracing::info!(save_id = %id, ?until, "agent: throttled, backing off until deadline");
         }
     }
 }
 
-/// Lanza el backup (subida local→nube) que el reductor pidió. `in_flight` ya
-/// quedó marcado `Some(Backup)` por el reductor; el anti-relaunch lo protege de
-/// relanzarse. Al terminar, `run_backup_with_retry` reporta vía `done_tx` /
-/// `RetryBackupAfterFailure` y el shell lo convierte en un `OpResult` para el
-/// próximo tick.
+/// Launches the backup (local to cloud upload) the reducer asked for. `in_flight`
+/// was already marked `Some(Backup)` by the reducer, so anti-relaunch protects it
+/// from firing again. On finishing, `run_backup_with_retry` reports through
+/// `done_tx` or `RetryBackupAfterFailure` and the shell turns it into an `OpResult`
+/// for the next tick.
 #[allow(clippy::too_many_arguments)]
 fn execute_backup(
     slots: &mut HashMap<String, SaveSlot>,
@@ -1642,21 +1628,21 @@ fn execute_backup(
     cmd_tx: &mpsc::Sender<AgentCommand>,
     config: &AgentConfig,
     done_tx: &mpsc::Sender<BackupDone>,
-    // Qué contenido publica el server como cabeza de este save, si lo sabemos:
-    // es lo que deja detectar que la subida que un reinicio del daemon dejó a
-    // medias ya había aterrizado (ADR 0021 D.8.3).
+    // What content the server publishes as this save's head, when we know it: it is
+    // what lets us spot that the upload a daemon restart left half done had already
+    // landed (ADR 0021 D.8.3).
     head: Option<ServerHead>,
 ) {
     let Some(slot) = slots.get_mut(id) else {
         return;
     };
-    // `in_flight` ya quedó `Some(Backup)` por el reductor (única vía de emisión
-    // de `Act(Backup)`), así que el anti-relaunch cubre esta subida sin que el
-    // shell toque estado de sync.
+    // `in_flight` was already set to `Some(Backup)` by the reducer (the only route
+    // that emits `Act(Backup)`), so anti-relaunch covers this upload without the
+    // shell touching sync state.
     //
-    // La subida anterior (si la había) ya terminó — el reductor no re-emite
-    // Backup con `in_flight` puesto. Cancela cualquier timer de debounce fs
-    // pendiente: su trabajo (nudge) ya no aplica, la subida arranca ahora.
+    // The previous upload, if there was one, has already finished: the reducer does
+    // not re-emit Backup with `in_flight` set. Cancel any pending fs debounce timer,
+    // since its job (the nudge) no longer applies and the upload starts now.
     if let Some(p) = slot.pending.take() {
         p.abort();
     }
@@ -1702,9 +1688,10 @@ fn execute_backup(
     });
 }
 
-/// Lanza el restore (bajada nube→local, conflict-aware) que el reductor pidió.
-/// `in_flight` ya quedó `Some(Restore)` y `next_restore_at` armó el cooldown por
-/// el reductor; el resultado vuelve como `AutoRestoreFinished` → `OpResult`.
+/// Launches the restore (cloud to local, conflict-aware) the reducer asked for.
+/// `in_flight` was already set to `Some(Restore)` and `next_restore_at` armed the
+/// cooldown, both by the reducer; the result comes back as `AutoRestoreFinished`
+/// and then an `OpResult`.
 fn execute_restore(
     slots: &HashMap<String, SaveSlot>,
     id: &str,
@@ -1726,10 +1713,10 @@ fn execute_restore(
         config.conflict_root.clone(),
         config.conflict_retention_days,
         known_version,
-        // Autoritativo: el reductor ya decidió que hay que bajar (vacío o nube
-        // por delante); busca la cabeza real en vez de fiarte de una caché que
-        // pudo quedar un tick stale. El version-gate interno lo deja gratis si
-        // ya estamos al día.
+        // Authoritative: the reducer already decided there is something to pull
+        // (empty, or the cloud ahead), so look for the real head rather than trusting
+        // a cache that may be a tick stale. The internal version gate makes it free
+        // when we are already up to date.
         None,
         None,
     );
@@ -1751,22 +1738,21 @@ async fn run_agent(
     // reconciliation sweep version-gate locally instead of having each
     // `run_auto_restore` re-fetch the manifest.
     let mut cloud_heads = CloudHeads::new(OffsetDateTime::now_utc());
-    // La observación de nube en vuelo, si la hay. Es un `JoinHandle` y no un
-    // booleano a propósito: `is_finished()` es cierto también cuando la tarea
-    // muere por pánico o la cancelan, así que el hueco no se puede quedar
-    // "ocupado" para siempre — que es justo cómo enmudeció el poller del
-    // desktop (D.11) y cómo desapareció su tarea entera (D.12).
+    // The cloud observation in flight, if any. A `JoinHandle` rather than a boolean
+    // on purpose: `is_finished()` is also true when the task dies on a panic or gets
+    // cancelled, so the slot cannot stay "occupied" forever, which is exactly how the
+    // desktop's poller went quiet (D.11) and how its whole task disappeared (D.12).
     let mut cloud_probe: Option<JoinHandle<()>> = None;
 
-    // El envío de playtime en vuelo, con su plazo. Mismo `JoinHandle` y no
-    // booleano que `cloud_probe`, y por el mismo motivo: una tarea que muere
-    // por pánico no puede dejar el hueco ocupado para siempre. El primer envío
-    // sale al primer tick (no esperamos media hora a que un equipo recién
-    // arrancado cuente lo que ya tenía en disco).
+    // The playtime upload in flight, with its deadline. The same `JoinHandle` rather
+    // than a boolean as `cloud_probe`, and for the same reason: a task that dies on a
+    // panic must not leave the slot occupied forever. The first upload goes out on the
+    // first tick (we do not wait half an hour for a freshly started machine to report
+    // what it already had on disk).
     let mut playtime_ship: Option<JoinHandle<()>> = None;
     let mut playtime_ship_due = tokio::time::Instant::now();
 
-    // Channel used by every fs watcher — debounced events all funnel here
+    // Channel used by every fs watcher: debounced events all funnel here
     // and we route them by path. mpsc::unbounded would be fine since the
     // debouncer already throttles, but we cap at 256 to be defensive.
     let (fs_tx, mut fs_rx) = mpsc::channel::<PathBuf>(256);
@@ -1776,12 +1762,11 @@ async fn run_agent(
     // `cmd_rx`.
     let (done_tx, mut done_rx) = mpsc::channel::<BackupDone>(64);
 
-    // Nudge de reconciliación fuera de banda (ADR 0021 C.1: los eventos son
-    // hints que sólo *adelantan* un tick). El timer de debounce fs lo dispara al
-    // asentarse la escritura; el bucle corre entonces `reconcile_all` sin esperar
-    // al siguiente `poll.tick()`. Los nudges coalescen (drenamos la cola antes de
-    // reconciliar), así que una ráfaga de autosaves no dispara una ráfaga de
-    // reconciliaciones.
+    // The out-of-band reconciliation nudge (ADR 0021 C.1: events are hints that only
+    // bring a tick forward). The fs debounce timer fires it when a write settles; the
+    // loop then runs `reconcile_all` without waiting for the next `poll.tick()`. The
+    // nudges coalesce (the queue is drained before reconciling) so a burst of
+    // autosaves does not fire a burst of reconciliations.
     let (nudge_tx, mut nudge_rx) = mpsc::channel::<()>(64);
 
     // Process watcher: periodic poll. We refresh only the bits we care
@@ -1796,23 +1781,22 @@ async fn run_agent(
     // `process_poll`'s return value drives the fast↔idle cadence thereafter.
     let mut polling_fast = true;
 
-    // DETECCIÓN (fase 3, ADR 0020): store de correlación proceso↔escritura.
-    // Cuando un save vigilado se reescribe, registramos qué proceso de juego
-    // estaba vivo. Hoy alimenta atribución/aprendizaje sobre saves ya
-    // rastreados; el observador sobre los roots amplios de `roots.rs` (para
-    // DESCUBRIR carpetas nuevas) es el paso siguiente, más pesado, y queda
-    // fuera de este cableado.
+    // Detection (phase 3, ADR 0020): the process-to-write correlation store. When a
+    // watched save is rewritten, we record which game process was alive. Today it
+    // feeds attribution and learning over already-tracked saves; the observer over
+    // `roots.rs`' broad roots, for DISCOVERING new folders, is the next and heavier
+    // step and stays out of this wiring.
     let corr_path = crate::correlation::CorrelationStore::default_path().ok();
     let mut corr_store = corr_path
         .as_deref()
         .map(crate::correlation::CorrelationStore::load)
         .unwrap_or_default();
 
-    // PLAYTIME: horas reales por día local. Se alimenta en cada tick de poll
-    // con los saves cuyo proceso de juego sigue vivo (ver `process_poll`).
-    // Adopta una vez el fichero legacy global al contexto activo antes de
-    // cargar, para que la cuenta principal conserve su histórico y el resto
-    // arranque vacío (el store se resuelve por contexto de sync).
+    // Playtime: real hours per local day. It is fed on every poll tick with the saves
+    // whose game process is still alive (see `process_poll`). It adopts the legacy
+    // global file into the active context once before loading, so the main account
+    // keeps its history and the rest start empty (the store resolves per sync
+    // context).
     if let Err(e) = crate::playtime::PlaytimeStore::migrate_legacy_into_current_context() {
         tracing::debug!(error = %e, "agent: legacy playtime migration skipped");
     }
@@ -1822,12 +1806,11 @@ async fn run_agent(
         .map(crate::playtime::PlaytimeStore::load)
         .unwrap_or_default();
 
-    // DETECCIÓN (fase 3, ADR 0020): sonda de candidatos no-rastreados. Mapea
-    // cada carpeta candidata → su última mtime-máxima observada. Cuando una
-    // sube (escritura nueva) y hay un juego vivo, registra la correlación. El
-    // baseline `None` se siembra en el primer tick sin registrar nada (así no
-    // confundimos un fichero pre-existente reciente con una escritura recién
-    // observada).
+    // Detection (phase 3, ADR 0020): the untracked-candidate probe. It maps each
+    // candidate folder to the last maximum mtime observed. When one goes up (a new
+    // write) and a game is alive, it records the correlation. The `None` baseline is
+    // seeded on the first tick without recording anything, so a pre-existing recent
+    // file is not confused with a freshly observed write.
     let mut probes: HashMap<PathBuf, Option<std::time::SystemTime>> = HashMap::new();
 
     // PIDs we've already flagged as heavy untracked games this session (see
@@ -1835,19 +1818,19 @@ async fn run_agent(
     // one event per process; `process_poll` prunes exited PIDs each tick so a
     // relaunch re-triggers.
     let mut reported_heavy: HashSet<Pid> = HashSet::new();
-    // Estado cross-tick de la detección por correlación (señal DÉBIL), que ahora
-    // es transición de PID en vez de presencia+CPU: `prev_pids` es la foto de
-    // PIDs vivos del tick anterior (para saber cuáles NACIERON este tick) y
-    // `corr_running` mapea `save_id → (pid, start_time)` del proceso que hoy
-    // mantiene ese slot "corriendo". Un residente (Discord desde el boot) nunca
-    // es nuevo, así que jamás dispara "arrancó"; el slot para cuando su PID muere.
+    // The cross-tick state of correlation detection (the WEAK signal), which is now
+    // a PID transition rather than presence plus CPU: `prev_pids` is the previous
+    // tick's snapshot of live PIDs (to know which were BORN this tick) and
+    // `corr_running` maps `save_id` to the `(pid, start_time)` of the process keeping
+    // that slot "running" today. A resident (a chat client since boot) is never new,
+    // so it never fires "it started"; the slot stops when its PID dies.
     let mut prev_pids: HashSet<Pid> = HashSet::new();
     let mut corr_running: HashMap<String, (Pid, u64)> = HashMap::new();
 
-    // PLAYTIME "solo lo que juegas": índice `carpeta Steam → slug` de la
-    // biblioteca instalada. El poll atribuye horas a cualquier juego de Steam
-    // que se ejecute, esté o no rastreado. Se reconstruye con TTL (ver
-    // `playtime_index`); vacío hasta el primer `refresh_if_stale`.
+    // Playtime "only what you play": an index from Steam folder to slug for the
+    // installed library. The poll attributes hours to any Steam game that runs,
+    // tracked or not. It is rebuilt on a TTL (see `playtime_index`); empty until the
+    // first `refresh_if_stale`.
     let mut steam_index = crate::playtime_index::SteamPlaytimeIndex::new();
 
     tracing::info!(
@@ -1863,13 +1846,13 @@ async fn run_agent(
             cmd = cmd_rx.recv() => {
                 match cmd {
                     Some(AgentCommand::AddSave(save)) => {
-                        // handle_add registra el slot, arma el watcher y, si la
-                        // carpeta ya tiene contenido divergente de lo sincronizado,
-                        // siembra `has_pending` para la línea base inicial. La
-                        // decisión (restaurar en vacío / subir la base / vetar por
-                        // sesión) la toma el reductor en el reconcile de abajo — el
-                        // veto de recencia cubre el "carpeta tocada hace poco" que
-                        // antes difería a mano.
+                        // handle_add registers the slot, arms the watcher and, when
+                        // the folder already holds content diverging from what is
+                        // synced, seeds `has_pending` for the initial baseline. The
+                        // decision (restore into empty, upload the baseline, veto for
+                        // the session) is taken by the reducer in the reconcile
+                        // below; the recency veto covers the "folder touched
+                        // recently" case that used to be deferred by hand.
                         handle_add(&mut slots, *save, &fs_tx);
                         reconcile_all(
                             &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx,
@@ -1877,7 +1860,7 @@ async fn run_agent(
                         );
                     }
                     Some(AgentCommand::RearmWatcher(id)) => {
-                        // Auto-restore created files where there were none —
+                        // Auto-restore created files where there were none, so
                         // the watcher we built (or skipped) on AddSave needs
                         // to be rebuilt against the now-existing directory.
                         if let Some(slot) = slots.get_mut(&id) {
@@ -1885,18 +1868,18 @@ async fn run_agent(
                         }
                     }
                     Some(AgentCommand::AutoRestoreFinished { id, disposition, synced_version, post_restore_set_hash, wrote_files }) => {
-                        // La op de restore terminó: en el modelo invertido su
-                        // resultado es una *entrada* del reductor (ADR 0021 C.1).
-                        // Traducimos la disposición al `OpResult` del kernel y la
-                        // encolamos; el próximo `reconcile_all` limpia `in_flight`,
-                        // aplica la contabilidad/backoff (cooldown, 404, 401, 429,
-                        // escalada de fallos por versión) y —vía el delta de
-                        // `restore_failures`— emite los eventos stuck/recovered.
-                        // `wrote_files` viaja en `OpResult::Ok.wrote` para sellar
-                        // `last_restore_at` (que el propio toque del restore no
-                        // vete el siguiente pull); el fingerprint sincronizado sale
-                        // de la firma post-merge sólo cuando el árbol quedó igual a
-                        // la cabeza (sin divergencia local).
+                        // The restore op finished: in the inverted model its result
+                        // is an *input* to the reducer (ADR 0021 C.1). We translate
+                        // the disposition into the kernel's `OpResult` and queue it;
+                        // the next `reconcile_all` clears `in_flight`, applies the
+                        // bookkeeping and backoff (cooldown, 404, 401, 429, the
+                        // per-version failure escalation) and, through
+                        // `restore_failures`' delta, emits the stuck and recovered
+                        // events. `wrote_files` travels in `OpResult::Ok.wrote` to
+                        // stamp `last_restore_at` (so the restore's own touch does
+                        // not veto the next pull); the synced fingerprint comes from
+                        // the post-merge signature only when the tree ended up equal
+                        // to the head, with no local divergence.
                         let fingerprint =
                             post_restore_set_hash.as_deref().map(fingerprint_from_set_hash);
                         let op_result = match disposition {
@@ -1918,9 +1901,9 @@ async fn run_agent(
                             }
                         };
                         if let Some(slot) = slots.get_mut(&id) {
-                            // Adoptar la firma post-merge también refresca el skip
-                            // del backup: las escrituras del propio merge no
-                            // rebotan como una subida redundante de la cabeza.
+                            // Adopting the post-merge signature also refreshes the
+                            // backup's skip: the merge's own writes do not bounce
+                            // back as a redundant re-upload of the head.
                             if let Some(h) = post_restore_set_hash {
                                 slot.last_set_hash = Some(h);
                             }
@@ -1938,10 +1921,10 @@ async fn run_agent(
                             auto_restore = enabled,
                             "agent: auto_restore preference updated"
                         );
-                        // Off → on = "ponme al día ahora". Reconcilia sin esperar
-                        // al siguiente tick: el reductor restaura cualquier carpeta
-                        // vacía / desactualizada, con el version-gate y los vetos
-                        // de sesión intactos.
+                        // Off to on means "bring me up to date now". Reconcile without
+                        // waiting for the next tick: the reducer restores any empty or
+                        // outdated folder, with the version gate and the session
+                        // vetoes intact.
                         if !was && enabled {
                             reconcile_all(
                                 &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx,
@@ -1984,51 +1967,49 @@ async fn run_agent(
                             count = map.len(),
                             "agent: cloud version cache updated from poller"
                         );
-                        // Sólo se refresca la caché de cabezas: soltar el backoff
-                        // de un save aparcado cuando la nube publica una versión
-                        // distinta de la que fallaba es política, y vive en el
-                        // reductor desde el Slice 2c (ADR 0021 D.8.2) — lo aplica
-                        // el `reconcile_all` de abajo al ver el `cloud_version`
-                        // nuevo, y el evento "recovered" sale del delta de
-                        // `restore_failures` como cualquier otro.
+                        // Only the head cache is refreshed: releasing a parked save's
+                        // backoff when the cloud publishes a version different from
+                        // the one that was failing is policy, and it has lived in the
+                        // reducer since Slice 2c (ADR 0021 D.8.2). The
+                        // `reconcile_all` below applies it on seeing the new
+                        // `cloud_version`, and the "recovered" event comes out of
+                        // `restore_failures`' delta like any other.
                         //
-                        // La marca de tiempo del feed se sella aquí: es la que
-                        // permite al reductor decir "ciego" en vez de
-                        // "convergido" si el poller vuelve a enmudecer (ADR 0021
-                        // D.10).
+                        // The feed's timestamp is stamped here: it is what lets the
+                        // reducer say "blind" instead of "converged" if the poller
+                        // goes quiet again (ADR 0021 D.10).
                         cloud_heads.feed(map, Some(aliases), None, OffsetDateTime::now_utc());
-                        // Un empujón sólo puede venir de un cliente cloud (el
-                        // poller del desktop o `cloud_live` de la CLI, ambos
-                        // detrás de una sesión cloud), así que sirve de
-                        // evidencia de contexto cuando el probe todavía no ha
-                        // podido correr — el caso del arranque sin red, donde
-                        // si no nunca sabríamos que hay nube que echar de menos.
-                        // Pero NO pisa un probe ya resuelto: con el agente
-                        // apuntando a un server self-hosted y una sesión cloud
-                        // viva en disco, el poller alimenta cabezas que no son
-                        // de este motor, y creerle nos haría reportar ceguera de
-                        // una nube que este agente no mira.
+                        // A push can only come from a cloud client (the desktop's
+                        // poller or the CLI's `cloud_live`, both behind a cloud
+                        // session), so it counts as context evidence when the probe
+                        // has not managed to run yet, which is the boot-with-no-
+                        // network case where otherwise we would never know there is a
+                        // cloud to miss. But it does NOT overwrite an already-resolved
+                        // probe: with the agent pointing at a self-hosted server and a
+                        // live cloud session on disk, the poller feeds heads that are
+                        // not this engine's, and believing it would make us report
+                        // blindness about a cloud this agent does not watch.
                         cloud_heads.is_cloud.get_or_insert(true);
-                        // La nube pudo adelantarse: reconcilia para pulsar las
-                        // actualizaciones que acaban de destrabarse.
+                        // The cloud may have moved ahead: reconcile to push the
+                        // updates that have just been unblocked.
                         reconcile_all(
                             &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx,
                             &cloud_heads,
                         );
                     }
                     Some(AgentCommand::CloudHeadsObserved { versions, aliases, digests, is_cloud }) => {
-                        // El motor miró la nube por su cuenta (ADR 0021 D.12).
-                        // El latch de contexto sólo se mueve con una respuesta
-                        // definida: un probe fallido no puede degradar un
-                        // despliegue cloud a "aquí no hay nube que mirar".
+                        // The engine looked at the cloud itself (ADR 0021 D.12). The
+                        // context latch only moves on a definite answer: a failed
+                        // probe cannot demote a cloud deployment to "there is no cloud
+                        // to look at here".
                         if let Some(c) = is_cloud {
                             cloud_heads.is_cloud = Some(c);
                         }
-                        // Sin cabezas (`None`) la marca de frescura NO se toca:
-                        // que el intento quede registrado (`last_attempt_at`,
-                        // sellado al lanzarlo) sólo marca el ritmo de reintento;
-                        // la obsolescencia sigue contando desde el último dato
-                        // real, que es lo que hace observable la ceguera.
+                        // With no heads (`None`) the freshness stamp is NOT touched:
+                        // recording that the attempt happened (`last_attempt_at`,
+                        // stamped when it was launched) only paces the retries;
+                        // staleness keeps counting from the last real data, which is
+                        // what makes the blindness observable.
                         if let Some(map) = versions {
                             tracing::debug!(
                                 count = map.len(),
@@ -2042,10 +2023,10 @@ async fn run_agent(
                         );
                     }
                     Some(AgentCommand::SetProbeCandidates(dirs)) => {
-                        // Reemplaza el set conservando los baselines de los que
-                        // siguen; los nuevos arrancan en `None` (se siembran en
-                        // el próximo tick). Drop de los que ya no son candidatos
-                        // (se rastrearon o dejaron de detectarse).
+                        // It replaces the set while keeping the baselines of the ones
+                        // that remain; new ones start at `None` (seeded on the next
+                        // tick). The ones that are no longer candidates are dropped
+                        // (they got tracked, or stopped being detected).
                         let mut next: HashMap<PathBuf, Option<std::time::SystemTime>> =
                             HashMap::with_capacity(dirs.len());
                         for d in dirs {
@@ -2064,21 +2045,21 @@ async fn run_agent(
                         }
                     }
                     Some(AgentCommand::BackupNow(id)) => {
-                        // Backup manual: marca pendiente si el contenido diverge de
-                        // lo sincronizado (como el skip-por-set-hash del backup, un
-                        // contenido idéntico no genera snapshot) y deja que el
-                        // reductor decida. `needs_l1` fuerza un fingerprint fresco.
+                        // A manual backup: mark pending when the content diverges from
+                        // what is synced (as with the backup's skip-by-set-hash,
+                        // identical content produces no snapshot) and let the reducer
+                        // decide. `needs_l1` forces a fresh fingerprint.
                         if let Some(slot) = slots.get_mut(&id) {
                             slot.needs_l1 = true;
                             slot.manual_requested = true;
-                            // Pulsar "copiar ahora" ES la intervención que el
-                            // save pedía: suelta la escalada de conflictos y su
-                            // freno, o el botón no haría nada y el usuario no
-                            // tendría forma de contestar al aviso.
+                            // Pressing "back up now" IS the intervention the save was
+                            // asking for: it releases the conflict escalation and its
+                            // brake, or the button would do nothing and the user would
+                            // have no way to answer the warning.
                             if slot.backup_conflict != kernel::ConflictStall::default() {
                                 tracing::info!(
                                     save_id = %id,
-                                    "agent: manual backup — clearing the conflict escalation"
+                                    "agent: manual backup, clearing the conflict escalation"
                                 );
                                 slot.backup_conflict = kernel::ConflictStall::default();
                                 slot.next_backup_at = None;
@@ -2091,21 +2072,21 @@ async fn run_agent(
                         );
                     }
                     Some(AgentCommand::RetryBackupAfterFailure(id)) => {
-                        // La subida agotó su presupuesto de reintentos internos.
-                        // Como cualquier final de op, es una *entrada* del
-                        // reductor: `OpResult::Failed` sobre un `in_flight` de
-                        // backup limpia la op, arma `next_backup_at` en el backoff
-                        // largo y CONSERVA `has_pending` (los cambios nunca
-                        // llegaron a una versión; perderlos dejaría que un restore
-                        // los pisara). Ese ritmo era política del shell hasta el
-                        // Slice 2c; ahora vive en el kernel (ADR 0021 D.8.2).
+                        // The upload burned its internal retry budget. Like any op
+                        // ending, it is an *input* to the reducer:
+                        // `OpResult::Failed` over a backup `in_flight` clears the op,
+                        // arms `next_backup_at` on the long backoff and KEEPS
+                        // `has_pending` (the changes never reached a version, and
+                        // losing them would let a restore walk over them). That pacing
+                        // was shell policy until Slice 2c; now it lives in the kernel
+                        // (ADR 0021 D.8.2).
                         if let Some(slot) = slots.get_mut(&id) {
                             slot.next_scheduled_backup_at = None;
                             slot.pending_op_result = Some(kernel::OpResult::Failed);
                             tracing::info!(
                                 save_id = %id,
                                 backoff_secs = kernel::reconcile::BACKUP_FAILURE_BACKOFF_SECS,
-                                "agent: backup retries exhausted — re-arming on the long backoff"
+                                "agent: backup retries exhausted, re-arming on the long backoff"
                             );
                         }
                         reconcile_all(
@@ -2114,13 +2095,12 @@ async fn run_agent(
                         );
                     }
                     Some(AgentCommand::ParkBackupConflict { id, error }) => {
-                        // Conflicto que la reconciliación no sabe resolver. Como
-                        // los de arriba es una entrada del reductor, con su
-                        // propia disposición: escala el contador del slot y, en
-                        // cuanto se agota el presupuesto, deja de reintentar y
-                        // marca el save como que necesita al usuario. El aviso a
-                        // la UI sale del flanco de `needs_attention` en
-                        // `reconcile_all`, no de aquí.
+                        // A conflict reconciliation cannot resolve. Like the ones
+                        // above it is an input to the reducer, with its own
+                        // disposition: it escalates the slot's counter and, once the
+                        // budget runs out, stops retrying and marks the save as
+                        // needing the user. The UI warning comes off `needs_attention`'s
+                        // edge in `reconcile_all`, not from here.
                         if let Some(slot) = slots.get_mut(&id) {
                             slot.next_scheduled_backup_at = None;
                             slot.pending_op_result = Some(kernel::OpResult::ConflictStalled);
@@ -2129,7 +2109,7 @@ async fn run_agent(
                                 save_id = %id,
                                 conflicts = slot.backup_conflict.consecutive + 1,
                                 give_up_after = kernel::reconcile::CONFLICT_STALL_GIVE_UP_AFTER,
-                                "agent: upload conflict has no resolution — escalating the backoff"
+                                "agent: upload conflict has no resolution, escalating the backoff"
                             );
                         }
                         reconcile_all(
@@ -2138,17 +2118,17 @@ async fn run_agent(
                         );
                     }
                     Some(AgentCommand::ParkBackupQuotaFull(id)) => {
-                        // Cuenta llena (402). Igual que el caso de arriba es una
-                        // entrada del reductor, pero con su propia disposición:
-                        // aparca la subida una hora, conserva `has_pending` y no
-                        // cuenta como fallo del save — no lo es.
+                        // A full account (402). Like the case above it is an input to
+                        // the reducer, but with its own disposition: it parks the
+                        // upload for an hour, keeps `has_pending` and does not count
+                        // as the save failing, because it is not.
                         if let Some(slot) = slots.get_mut(&id) {
                             slot.next_scheduled_backup_at = None;
                             slot.pending_op_result = Some(kernel::OpResult::QuotaFull);
                             tracing::info!(
                                 save_id = %id,
                                 backoff_secs = kernel::reconcile::QUOTA_FULL_BACKOFF_SECS,
-                                "agent: cloud storage full — parking the upload until space is freed"
+                                "agent: cloud storage full, parking the upload until space is freed"
                             );
                         }
                         reconcile_all(
@@ -2168,7 +2148,7 @@ async fn run_agent(
                             tracing::info!(
                                 save_id = %id,
                                 retry_after_secs,
-                                "agent: server asked for a wait — parking the upload until it's up"
+                                "agent: server asked for a wait, parking the upload until it's up"
                             );
                         }
                         reconcile_all(
@@ -2177,19 +2157,19 @@ async fn run_agent(
                         );
                     }
                     Some(AgentCommand::SweepAll { window_secs }) => {
-                        // `window_secs` era el ancho del escalonado por tamaño del
-                        // viejo `sweep_all`; hoy es informativo (el escalonado se
-                        // simplificó — ver abajo). Se registra y no se usa para
-                        // pacing.
-                        tracing::debug!(window_secs, "agent: hourly sweep — re-checking fingerprints");
-                        // Barrido horario (Modo Automático): re-hashea cada save
-                        // para cazar cambios que el watcher fs se perdió. En el
-                        // modelo invertido eso es: recomputar el fingerprint L1 y,
-                        // si diverge de lo sincronizado, marcar `has_pending` para
-                        // que el reductor suba. El escalonado por tamaño del viejo
-                        // `sweep_all` (suavizar I/O) se simplifica: hoy caminamos
-                        // todas las carpetas de golpe. `has_pending` sólo se marca
-                        // cuando hay divergencia REAL, así el veto sigue honesto.
+                        // `window_secs` was the width of the old `sweep_all`'s
+                        // size-based staggering; today it is informational (the
+                        // staggering was simplified, see below). It is recorded and
+                        // not used for pacing.
+                        tracing::debug!(window_secs, "agent: hourly sweep, re-checking fingerprints");
+                        // The hourly sweep (Automatic Mode): it re-hashes every save to
+                        // catch changes the fs watcher missed. In the inverted model
+                        // that means recomputing the L1 fingerprint and, when it
+                        // diverges from what is synced, marking `has_pending` so the
+                        // reducer uploads. The old `sweep_all`'s size-based staggering
+                        // (to smooth IO) is simplified: today we walk every folder at
+                        // once. `has_pending` is only set on a REAL divergence, so the
+                        // veto stays honest.
                         for slot in slots.values_mut() {
                             if slot.save.track_only {
                                 continue;
@@ -2234,38 +2214,39 @@ async fn run_agent(
                         .and_then(|s| s.save.policy.debounce_secs)
                         .unwrap_or(config.debounce_secs);
                     let mut delay = Duration::from_secs(debounce_secs);
-                    // ¿Ya había una ventana de debounce abierta? Sólo se anuncia
-                    // en el flanco de subida: re-anunciar en cada evento fs es lo
-                    // que inundaba el feed de filas "en cola" huérfanas cuando un
-                    // juego autoguarda cada segundo.
+                    // Was a debounce window already open? It is only announced on the
+                    // rising edge: re-announcing on every fs event is what flooded the
+                    // feed with orphaned "queued" rows when a game autosaves every
+                    // second.
                     let already_scheduled = slots
                         .get(&save_id)
                         .is_some_and(|s| s.next_scheduled_backup_at.is_some());
                     if let Some(slot) = slots.get_mut(&save_id) {
-                        // Hints del watcher (ADR 0021 C.1): marcan pendiente y
-                        // enfocan el save para el muestreo L1 — una reescritura
-                        // in-place en un subdirectorio no mueve el mtime propio de
-                        // la carpeta, así que L0 no la vería. El reductor decide;
-                        // esto sólo adelanta un tick. El suelo de min-interval ya no
-                        // se calcula aquí: vive en el reductor (`next_backup_at`).
+                        // Watcher hints (ADR 0021 C.1): they mark pending and focus the
+                        // save for L1 sampling, since an in-place rewrite in a
+                        // subdirectory does not move the folder's own mtime and L0
+                        // would not see it. The reducer decides; this only brings a
+                        // tick forward. The min-interval floor is no longer computed
+                        // here: it lives in the reducer (`next_backup_at`).
                         slot.has_pending = true;
                         slot.last_fs_event_at = Some(now);
                         slot.needs_l1 = true;
-                        // Anti-starvation cap. Cada evento fs reinicia el debounce,
-                        // así que un juego que escribe cada segundo nunca asentaría
-                        // ("se quedó todo en cola"). Ancla el cambio más viejo sin
-                        // volcar; pasado MAX_BACKUP_WAIT_SECS deja de reiniciar y
-                        // nudge-a ya, aunque sigan llegando escrituras.
+                        // The anti-starvation cap. Every fs event restarts the
+                        // debounce, so a game writing every second would never settle
+                        // ("it all stayed queued"). This anchors the oldest change
+                        // without flushing; past MAX_BACKUP_WAIT_SECS it stops
+                        // restarting and nudges now, even while writes keep arriving.
                         let waited_since = *slot.first_pending_event_at.get_or_insert(now);
                         if (now - waited_since).whole_seconds() >= MAX_BACKUP_WAIT_SECS {
                             delay = Duration::ZERO;
                             slot.first_pending_event_at = Some(now);
                         }
                         slot.next_scheduled_backup_at = Some(now + delay);
-                        // (Re)arma el timer de debounce: al asentarse dispara un
-                        // nudge que corre `reconcile_all` sin esperar al poll tick.
-                        // Cancelar el previo reinicia el debounce, como antes. El
-                        // reductor puede aún diferir la subida (min-interval).
+                        // (Re)arms the debounce timer: on settling it fires a nudge
+                        // that runs `reconcile_all` without waiting for the poll tick.
+                        // Cancelling the previous one restarts the debounce, as
+                        // before. The reducer may still defer the upload
+                        // (min-interval).
                         if let Some(p) = slot.pending.take() {
                             p.abort();
                         }
@@ -2283,12 +2264,12 @@ async fn run_agent(
                         delay_ms = delay.as_millis() as u64,
                         "agent: fs event observed; nudging reconcile after debounce"
                     );
-                    // La píldora "próximo backup en Xs" de la UI. Antes la emitía
-                    // `schedule_backup`; ahora el dato vive aquí, en el timer de
-                    // debounce. Mismas reglas que antes: nada en delay cero y nada
-                    // si la ventana ya estaba abierta. (El reductor puede aún
-                    // diferir la subida por min-interval; el anuncio es del
-                    // debounce, como siempre lo fue.)
+                    // The UI's "next backup in Xs" pill. It used to be emitted by
+                    // `schedule_backup`; now the data lives here, in the debounce
+                    // timer. The same rules as before: nothing at zero delay and
+                    // nothing when the window was already open. (The reducer may still
+                    // defer the upload on min-interval; the announcement belongs to
+                    // the debounce, as it always did.)
                     if delay > Duration::ZERO && !already_scheduled {
                         let _ = events_tx.try_send(AgentEvent::BackupScheduled {
                             save_id: save_id.clone(),
@@ -2297,10 +2278,10 @@ async fn run_agent(
                         });
                     }
 
-                    // DETECCIÓN (fase 3, ADR 0020): la carpeta se reescribió;
-                    // muestrea los procesos de juego vivos y registra la
-                    // correlación proceso↔escritura. Alimenta atribución y la
-                    // señal +0.50 del scoring para descubrimientos futuros.
+                    // Detection (phase 3, ADR 0020): the folder was rewritten, so
+                    // sample the live game processes and record the process-to-write
+                    // correlation. It feeds attribution and scoring's +0.50 signal for
+                    // future discoveries.
                     sys.refresh_processes_specifics(
                         ProcessesToUpdate::All,
                         true,
@@ -2324,14 +2305,13 @@ async fn run_agent(
 
             // ----- Process poll tick -----
             _ = poll.tick() => {
-                // Observar el mundo incluye observar la NUBE (ADR 0021 D.12), no
-                // sólo el disco y la tabla de procesos. El plazo lo pone
-                // `due_for_self_observation`: un cliente sano nos empuja las
-                // cabezas antes de que venza y esto no llega a dispararse, así
-                // que el coste en estado estable es cero y en el peor caso un
-                // manifiesto por intervalo. La consulta se va a su propia tarea
-                // (el bucle no puede bloquearse un minuto en un GET) y vuelve
-                // como `CloudHeadsObserved`.
+                // Observing the world includes observing the CLOUD (ADR 0021 D.12),
+                // not just the disk and the process table. The deadline is set by
+                // `due_for_self_observation`: a healthy client pushes the heads before
+                // it expires and this never fires, so the steady-state cost is zero
+                // and the worst case one manifest per interval. The query goes to its
+                // own task (the loop cannot block for a minute on a GET) and comes
+                // back as `CloudHeadsObserved`.
                 let cloud_now = OffsetDateTime::now_utc();
                 let probe_free = cloud_probe.as_ref().is_none_or(JoinHandle::is_finished);
                 if probe_free && cloud_heads.due_for_self_observation(cloud_now) {
@@ -2342,10 +2322,10 @@ async fn run_agent(
                     )));
                 }
 
-                // PLAYTIME: y observar el mundo incluye contarle al servidor lo
-                // que este equipo lleva jugado. La puerta de consentimiento se
-                // lee dentro de la tarea, fresca, para que apagar el interruptor
-                // valga dentro del mismo intervalo.
+                // Playtime: observing the world also includes telling the server what
+                // this machine has played. The consent gate is read inside the task,
+                // fresh, so turning the switch off takes effect within the same
+                // interval.
                 let ship_free = playtime_ship.as_ref().is_none_or(JoinHandle::is_finished);
                 if ship_free && tokio::time::Instant::now() >= playtime_ship_due {
                     playtime_ship_due = tokio::time::Instant::now() + PLAYTIME_SHIP_INTERVAL;
@@ -2355,8 +2335,8 @@ async fn run_agent(
                     )));
                 }
 
-                // Refresca el índice de Steam si el TTL expiró (barato en estado
-                // estable) antes de que el poll atribuya horas por carpeta.
+                // Refresh the Steam index when its TTL expired (cheap in the steady
+                // state) before the poll attributes hours by folder.
                 steam_index.refresh_if_stale();
                 let any_running = process_poll(
                     &mut sys, &mut slots, &events_tx, &config,
@@ -2384,21 +2364,21 @@ async fn run_agent(
                         arm_watcher(slot, &fs_tx);
                     }
                 }
-                // La reconciliación (ADR 0021 C.1): el tick es la fuente de
-                // verdad. `process_poll` ya muestreó el mundo (procesos →
-                // `is_running`, eventos, playtime); ahora reconciliamos cada slot
-                // contra el reductor. Sustituye al viejo `sweep_for_auto_restore`
-                // (restore) Y al flush/pull en las transiciones de `process_poll`:
-                // el reductor emite restore en vacío/desactualizado, backup del
-                // flush final al cerrarse el juego, y el aterrizaje del pull
-                // diferido — todo level-triggered, sin política en el bucle.
+                // The reconciliation (ADR 0021 C.1): the tick is the source of truth.
+                // `process_poll` already sampled the world (processes into
+                // `is_running`, events, playtime); now each slot is reconciled against
+                // the reducer. It replaces both the old `sweep_for_auto_restore` and
+                // the flush and pull in `process_poll`'s transitions: the reducer
+                // emits a restore for empty or outdated folders, the final flush
+                // backup when the game closes, and the deferred pull's landing, all
+                // level-triggered, with no policy in the loop.
                 reconcile_all(
                     &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx, &cloud_heads,
                 );
 
                 // DETECCIÓN (fase 3, ADR 0020): sonda de candidatos. `sys` ya
                 // viene refrescado por `process_poll`. Para cada candidato no
-                // rastreado, si su carpeta se reescribió desde el último tick
+                // tracked, when its folder was rewritten since the last tick
                 // y hay un juego vivo, registra la correlación. Esto es lo que
                 // rompe el huevo-y-gallina: el siguiente escaneo verá el bonus
                 // +0.50 y ascenderá el candidato a `High`.
@@ -2419,15 +2399,15 @@ async fn run_agent(
 
             // ----- Backup completions -----
             Some(done) = done_rx.recv() => {
-                // La subida terminó. En el modelo invertido su resultado es una
-                // *entrada* del reductor: aquí sólo se traduce (conversión del
-                // ejecutor, ADR 0021 D.7). `committed` viaja como `OpResult::Ok
-                // { wrote }`, el discriminante commit/no-op que el reductor usa
-                // para anclar —o NO anclar— el min-interval: un skip/unchanged/
-                // vacío/archived, o el 409 asentado a la cabeza, no es un backup
-                // y no debe mover el ancla (regresión R.E.P.O.). Esa distinción
-                // vivía aquí como bookkeeping del shell; ahora está en el kernel
-                // (D.8.2), donde el replay de C.5 la reproduce.
+                // The upload finished. In the inverted model its result is an
+                // *input* to the reducer: here it is only translated (the executor's
+                // conversion, ADR 0021 D.7). `committed` travels as
+                // `OpResult::Ok { wrote }`, the commit-versus-no-op discriminant the
+                // reducer uses to anchor, or NOT anchor, the min-interval: a skip,
+                // an unchanged, an empty, an archived, or the 409 settled onto the
+                // head, is not a backup and must not move the anchor (the R.E.P.O.
+                // regression). That distinction lived here as shell bookkeeping; now
+                // it is in the kernel (D.8.2), where C.5's replay reproduces it.
                 if let Some(slot) = slots.get_mut(&done.save_id) {
                     slot.next_scheduled_backup_at = None;
                     slot.first_pending_event_at = None;
@@ -2439,11 +2419,11 @@ async fn run_agent(
                         fingerprint: done.new_set_hash.as_deref().map(fingerprint_from_set_hash),
                         wrote: done.committed,
                     });
-                    // La respuesta del chequeo content-addressed (D.8.3) viaja
-                    // en la misma observación que el resultado de la op: es lo
-                    // que deja al reductor distinguir este no-op —nada se subió
-                    // y nada se escribió en la carpeta— del 409 asentado a la
-                    // cabeza, que sí escribió y por eso sella `last_restore_at`.
+                    // The content-addressed check's answer (D.8.3) travels in the
+                    // same observation as the op's result: it is what lets the
+                    // reducer tell this no-op (nothing uploaded and nothing written
+                    // to the folder) from the 409 settled onto the head, which did
+                    // write and therefore stamps `last_restore_at`.
                     if done.landed {
                         slot.pending_upload_landed = Some(true);
                     }
@@ -2455,8 +2435,8 @@ async fn run_agent(
 
             // ----- Nudge de reconciliación (debounce fs asentado) -----
             Some(()) = nudge_rx.recv() => {
-                // Coalescen: una ráfaga de autosaves de varios slots deja varios
-                // nudges; los drenamos y reconciliamos una sola vez.
+                // They coalesce: a burst of autosaves across several slots leaves
+                // several nudges; we drain them and reconcile once.
                 while nudge_rx.try_recv().is_ok() {}
                 reconcile_all(
                     &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx, &cloud_heads,
@@ -2466,14 +2446,14 @@ async fn run_agent(
     }
 }
 
-/// Marca `has_pending` si el contenido local diverge de lo ya sincronizado
-/// (fingerprint L1 distinto de `synced_fingerprint`), la condición para que el
-/// reductor tome un backup. Se usa donde no hubo evento fs pero puede haber algo
-/// que subir: alta con contenido, barrido horario (`SweepAll`) y backup manual
-/// (`BackupNow`). **Sólo** marca ante divergencia REAL, así el veto —que mira
-/// `has_pending`— sigue honesto (marcarlo espurio vetaría pulls para siempre).
-/// Carpeta vacía / track-only: no marca (no hay nada que subir; una vacía la
-/// resuelve el reductor por la rama de restore).
+/// Marks `has_pending` when the local content diverges from what is already synced
+/// (an L1 fingerprint different from `synced_fingerprint`), which is the condition
+/// for the reducer to take a backup. Used where there was no fs event but there may
+/// be something to upload: an add with content, the hourly sweep (`SweepAll`) and a
+/// manual backup (`BackupNow`). It only marks on REAL divergence, so the veto, which
+/// reads `has_pending`, stays honest (marking it spuriously would veto pulls
+/// forever). An empty folder or a track-only slot is not marked (there is nothing to
+/// upload; an empty one is resolved by the reducer through the restore branch).
 fn mark_pending_if_diverged(slot: &mut SaveSlot) {
     if slot.save.track_only || is_path_empty_or_missing(&slot.save.local_path) {
         return;
@@ -2489,20 +2469,20 @@ fn mark_pending_if_diverged(slot: &mut SaveSlot) {
 ///
 /// Pre-1.4 this deferred the watcher to `GameStarted`, which silently broke
 /// autobackup for saves whose Ludusavi manifest entry had no `processes`
-/// and that weren't a Steam install — the process poll never matched, the
+/// and that weren't a Steam install: the process poll never matched, the
 /// watcher never armed, no events fired, the Dashboard pill stayed
 /// "Inactivo" forever. Arming up front trades one inotify slot per tracked
 /// save for end-to-end reliability; `process_poll` still emits
 /// `GameStarted`/`GameStopped` for UI signalling but no longer gates the
 /// fs subsystem.
 ///
-/// Slice 2b (ADR 0021): ya no lanza el restore-en-alta ni el backup-inicial a
-/// mano — sólo registra el slot, siembra el fingerprint sincronizado desde el
-/// set-hash persistido y marca `has_pending` si hay contenido divergente. El
-/// reductor, en el `reconcile_all` que sigue al `AddSave`, decide: restaura una
-/// carpeta vacía / desactualizada, sube la línea base de contenido nuevo, y el
-/// veto de recencia difiere si el usuario está en sesión (sustituye al viejo
-/// chequeo `is_path_recently_touched`).
+/// Slice 2b (ADR 0021): it no longer launches the on-add restore or the initial
+/// backup by hand. It only registers the slot, seeds the synced fingerprint from the
+/// persisted set-hash, and marks `has_pending` when there is diverging content. The
+/// reducer, in the `reconcile_all` that follows the `AddSave`, decides: it restores
+/// an empty or outdated folder, uploads the baseline of new content, and the recency
+/// veto defers when the user is mid-session (replacing the old
+/// `is_path_recently_touched` check).
 fn handle_add(
     slots: &mut HashMap<String, SaveSlot>,
     save: WatchedSave,
@@ -2511,9 +2491,9 @@ fn handle_add(
     let save_id = save.save_id.clone();
     let known_version = save.known_version;
     let last_set_hash = save.set_hash.clone();
-    // Siembra el fingerprint sincronizado desde el set-hash persistido
-    // (state.json) para que "convergido ⇒ 0 acciones" valga desde el primer
-    // tick: sin esto un save ya subido re-subiría su base al arrancar.
+    // Seed the synced fingerprint from the persisted set-hash (state.json) so
+    // "converged means zero actions" holds from the first tick: without it a save
+    // already uploaded would re-upload its baseline on start.
     let synced_fingerprint = last_set_hash.as_deref().map(fingerprint_from_set_hash);
     let mut slot = SaveSlot {
         save,
@@ -2556,10 +2536,10 @@ fn handle_add(
         return;
     }
     arm_watcher(&mut slot, fs_tx);
-    // Contenido ya en disco que diverge de lo sincronizado (add fresco sin
-    // set-hash — el caso emulador — o cambios offline): siembra `has_pending`
-    // para que el reductor tome la línea base. Vacío + restore habilitado → el
-    // reductor restaura.
+    // Content already on disk that diverges from what is synced (a fresh add with no
+    // set-hash, the emulator case, or offline changes): seed `has_pending` so the
+    // reducer takes the baseline. Empty plus restore enabled means the reducer
+    // restores.
     mark_pending_if_diverged(&mut slot);
     slots.insert(save_id, slot);
 }
@@ -2567,7 +2547,7 @@ fn handle_add(
 /// Idle process-poll slowdown factor. When no tracked game is running the agent
 /// polls the process table every `poll_secs * IDLE_POLL_MULT` instead of every
 /// `poll_secs`. Scanning every process on the box is the agent's dominant idle
-/// cost, and while idle there's nothing to detect "stopping" — only launches,
+/// cost, and while idle there's nothing to detect "stopping": only launches,
 /// whose detection just gains up to one idle interval of latency (absorbed by
 /// the conflict-aware pre-launch barrier). The first running game snaps the
 /// cadence back to `poll_secs`.
@@ -2582,27 +2562,25 @@ const IDLE_POLL_MULT: u32 = 4;
 /// so we bias toward catching games.
 const HEAVY_PROCESS_CPU_PCT: f32 = 25.0;
 
-/// CPU floor (sysinfo `cpu_usage()`, donde 100.0 = un núcleo al máximo) para
-/// que un match por CORRELACIÓN cuente como "el juego está corriendo". Los
-/// process-names declarados por manifest cuentan haya o no CPU (un juego en
-/// pausa sigue "corriendo"), pero la atribución carpeta→proceso de la
-/// correlación es ruidosa: una utilidad de fondo (RTSS, ctfmon, taskhostw,
-/// RadeonSoftware…) que toca una carpeta de save queda correlacionada y, en
-/// reposo a ~0%, dispararía un "arrancó" falso y un barrier de auto-restore
-/// falso. Exigir CPU real separa un juego fuera de catálogo en juego activo de
-/// un helper en reposo. Por debajo de `HEAVY_PROCESS_CPU_PCT` para que un juego
-/// moderadamente activo siga contando.
+/// The CPU floor (sysinfo's `cpu_usage()`, where 100.0 is one core maxed out) for a
+/// CORRELATION match to count as "the game is running". Process names declared by
+/// the manifest count with or without CPU (a paused game is still "running"), but
+/// correlation's folder-to-process attribution is noisy: a background utility (RTSS,
+/// ctfmon, taskhostw, RadeonSoftware) that touches a save folder ends up correlated
+/// and, idling at about 0%, would fire a false "it started" and a false auto-restore
+/// barrier. Demanding real CPU separates an off-catalogue game actively running from
+/// a helper at rest. Below `HEAVY_PROCESS_CPU_PCT` so a moderately active game still
+/// counts.
 const CORRELATION_MIN_CPU_PCT: f32 = 5.0;
 
-/// Cuánto vale una escritura en la carpeta como prueba de "de todos los saves
-/// que comparten este proceso, se está jugando a ÉSTE".
+/// How much a write to the folder is worth as proof that "of all the saves sharing
+/// this process, THIS one is being played".
 ///
-/// Diez títulos de una misma consola emulada declaran el mismo ejecutable, así
-/// que el nombre del proceso no elige entre ellos y hay que mirar quién recibe
-/// los guardados. La ventana es generosa a propósito: un juego que guarda cada
-/// veinte minutos seguiría contando entre autoguardados, y el precio de pasarse
-/// es acotado — el otro título tendría que haber guardado él también dentro de
-/// la misma ventana para colarse.
+/// Ten titles from one emulated console declare the same executable, so the process
+/// name does not choose between them and we have to look at which one receives the
+/// saves. The window is generous on purpose: a game that saves every twenty minutes
+/// would still count between autosaves, and the price of overshooting is bounded,
+/// since the other title would have had to save within the same window to slip in.
 const SHARED_PROCESS_ACTIVITY: time::Duration = time::Duration::minutes(30);
 
 /// Grace window (in *poll ticks*) before a slot that dropped out of the running
@@ -2616,14 +2594,15 @@ const SHARED_PROCESS_ACTIVITY: time::Duration = time::Duration::minutes(30);
 /// still resolves within the grace.
 const RUNNING_STICKY_POLLS: u64 = 3;
 
-/// Floor for the strong-signal stop grace (see the `sticky` computation below).
-/// It only has to swallow a rare 1-tick process-table refresh race, so a handful
-/// of seconds is plenty. Was 90 s — badly over-provisioned: because the
+/// Floor for the strong-signal stop grace (see the `sticky` computation below). It
+/// only has to swallow a rare one-tick process-table refresh race, so a handful of
+/// seconds is plenty. It was 90 s, badly over-provisioned: because the
 /// [`mid_session_reason`] veto keys on `is_running`, that 90 s got tacked onto
-/// *every* GameStopped, inflating both close-detection latency ("2 min to notice
-/// I quit") and cross-device restore latency (the receiver keeps vetoing pulls
-/// for exactly this long after the game quits). 6 s ≈ RUNNING_STICKY_POLLS ticks
-/// at the default 2 s poll, still comfortably above any real refresh hiccup.
+/// *every* GameStopped, inflating both close-detection latency ("two minutes to
+/// notice I quit") and cross-device restore latency (the receiver keeps vetoing
+/// pulls for exactly this long after the game quits). 6 s is about
+/// RUNNING_STICKY_POLLS ticks at the default 2 s poll, still comfortably above any
+/// real refresh hiccup.
 const STRONG_STOP_GRACE_FLOOR_SECS: u64 = 6;
 
 /// Hard ceiling on how long a continuously-writing save can defer its
@@ -2683,7 +2662,7 @@ fn spawn_auto_restore(
             save_id = %save.save_id,
             game_slug = %save.game_slug,
             path = %save.local_path.display(),
-            "agent: auto-restore diff — checking server snapshot against local"
+            "agent: auto-restore diff, checking server snapshot against local"
         );
         let retention = Duration::from_secs(u64::from(conflict_retention_days) * 86_400);
         let mut disposition = AutoRestoreDisposition::Ok;
@@ -2693,7 +2672,7 @@ fn spawn_auto_restore(
         // don't bounce back as a redundant upload. Stays `None` on a diverged
         // tree so the genuinely-new local content still uploads.
         let mut post_restore_set_hash: Option<String> = None;
-        // True once we've actually written pulled files into the folder — used
+        // True once we've actually written pulled files into the folder, used
         // to stamp `last_restore_at` so our own writes don't veto the next pull.
         let mut wrote_files = false;
         match run_auto_restore(
@@ -2754,7 +2733,7 @@ fn spawn_auto_restore(
                     }
                     // Tell the agent loop to rebuild the fs watcher now that
                     // the directory actually has contents. Safe to send even
-                    // if it was already armed — `arm_watcher` overwrites.
+                    // if it was already armed; `arm_watcher` overwrites.
                     let _ = cmd_tx
                         .send(AgentCommand::RearmWatcher(save.save_id.clone()))
                         .await;
@@ -2766,32 +2745,31 @@ fn spawn_auto_restore(
                         outcome.conflicts_local_wins
                     );
                 }
-                // else: every file present and identical — silent no-op.
+                // else: every file present and identical, so a silent no-op.
             }
-            // Nothing to pull, either way. `run_auto_restore` already logged
-            // which case it was — don't second-guess it here, the old
-            // unconditional "no snapshots yet" line contradicted the up-to-date
-            // path. Neither arm touches `synced_version`: the gate only fires
-            // when this device is already at or past head, so writing the
-            // server's number back could walk our own cursor backwards.
+            // Nothing to pull, either way. `run_auto_restore` already logged which
+            // case it was, so don't second-guess it here; the old unconditional "no
+            // snapshots yet" line contradicted the up-to-date path. Neither arm
+            // touches `synced_version`: the gate only fires when this device is
+            // already at or past head, so writing the server's number back could walk
+            // our own cursor backwards.
             Ok(AutoRestorePull::AlreadyAtHead { .. }) => {}
             Ok(AutoRestorePull::NothingRemote) => {}
             Err(e) => {
                 // A 404 means the save has no record/snapshot on the backend
                 // (carried over from another account, stale state, or the
-                // remote was purged). It's not a transient failure — don't
+                // remote was purged). It's not a transient failure, so don't
                 // raise it to the user as an error and don't keep retrying on
                 // the short cooldown; park it on a long backoff (below).
                 let api_err = e.downcast_ref::<ApiError>();
                 let not_on_server = matches!(api_err, Some(ApiError::NotFound));
-                // A 401 is session-wide, not per-save: at launch the stored
-                // cloud JWT can be expired and the desktop's refresh path
-                // hasn't pushed a fresh token into this client yet, so the
-                // startup reconciliation sweep would emit one
-                // `SaveAutoRestoreFailed` per tracked save — a burst of "no se
-                // pudo restaurar" popups. Swallow it (the global cloud status
-                // already reflects the session problem) and let the normal
-                // short cooldown retry once the token is refreshed.
+                // A 401 is session-wide, not per-save: at launch the stored cloud JWT
+                // can be expired and the desktop's refresh path hasn't pushed a fresh
+                // token into this client yet, so the startup reconciliation sweep
+                // would emit one `SaveAutoRestoreFailed` per tracked save, a burst of
+                // "could not restore" popups. Swallow it (the global cloud status
+                // already reflects the session problem) and let the normal short
+                // cooldown retry once the token is refreshed.
                 let unauthorized = matches!(api_err, Some(ApiError::Unauthorized));
                 // A 429 is the rolling bandwidth limiter, not a per-save failure:
                 // during a reconciliation sweep every tracked save races for the
@@ -2810,7 +2788,7 @@ fn spawn_auto_restore(
                     disposition = AutoRestoreDisposition::NotOnServer;
                     tracing::debug!(
                         save_id = %save.save_id,
-                        "agent: auto-restore — save not on server (404); backing off"
+                        "agent: auto-restore: save not on server (404); backing off"
                     );
                 } else if let Some(retry_after_secs) = throttled {
                     disposition = AutoRestoreDisposition::Throttled { retry_after_secs };
@@ -2843,7 +2821,7 @@ fn spawn_auto_restore(
                 }
             }
         }
-        // Always clear the slot's `restoring` flag, even on failure — the
+        // Always clear the slot's `restoring` flag, even on failure: the
         // reconciliation sweep is responsible for retrying once the
         // cooldown (or, on repeated failures, the escalating backoff the
         // handler arms from `outcome`) expires; we just need to mark this
@@ -2872,10 +2850,10 @@ fn folder_own_mtime(path: &Path) -> Option<OffsetDateTime> {
         .map(OffsetDateTime::from)
 }
 
-/// Mayor mtime entre la propia carpeta y sus ficheros inmediatos (no
-/// recursivo — barato y suficiente: un save que se escribe deja un fichero
-/// nuevo/tocado en el primer nivel, p.ej. el `.zip` de Factorio en `saves/`).
-/// `None` si la carpeta no se puede leer.
+/// The greatest mtime between the folder itself and its immediate files (not
+/// recursive: cheap and enough, since a save being written leaves a new or touched
+/// file at the first level, such as Factorio's `.zip` in `saves/`). `None` when the
+/// folder cannot be read.
 fn dir_max_mtime(dir: &Path) -> Option<std::time::SystemTime> {
     let mut max = std::fs::metadata(dir).ok().and_then(|m| m.modified().ok());
     if let Ok(read) = std::fs::read_dir(dir) {
@@ -2893,11 +2871,11 @@ fn dir_max_mtime(dir: &Path) -> Option<std::time::SystemTime> {
     max
 }
 
-/// Recorre las carpetas candidatas sondeadas, actualiza sus baselines de
-/// mtime y devuelve aquellas reescritas desde el último tick. El baseline
-/// `None` (primer avistamiento) sólo se siembra, sin reportar — evita
-/// atribuir un fichero pre-existente reciente a una escritura no presenciada.
-/// Pura (sin I/O de procesos ni persistencia) para poder testearla.
+/// Walks the probed candidate folders, updates their mtime baselines and returns the
+/// ones rewritten since the last tick. The `None` baseline (a first sighting) is only
+/// seeded, never reported, which avoids attributing a pre-existing recent file to a
+/// write nobody witnessed. Pure (no process IO and no persistence) so it can be
+/// tested.
 fn probe_detect_writes(
     probes: &mut HashMap<PathBuf, Option<std::time::SystemTime>>,
 ) -> Vec<PathBuf> {
@@ -2915,11 +2893,11 @@ fn probe_detect_writes(
     written
 }
 
-/// DETECCIÓN (fase 3, ADR 0020): sondea los candidatos y, para los reescritos
-/// desde el último tick, si hay un juego vivo registra la correlación
-/// proceso↔escritura y persiste el store. Es lo que rompe el huevo-y-gallina:
-/// jugar un juego no rastreado deja por fin el rastro +0.50 que el siguiente
-/// escaneo necesita para ascenderlo a `High`.
+/// Detection (phase 3, ADR 0020): probes the candidates and, for the ones rewritten
+/// since the last tick, records the process-to-write correlation when a game is alive
+/// and persists the store. It is what breaks the chicken and egg: playing an
+/// untracked game finally leaves the +0.50 trace the next scan needs to promote it to
+/// `High`.
 fn probe_candidates(
     probes: &mut HashMap<PathBuf, Option<std::time::SystemTime>>,
     sys: &System,
@@ -2930,7 +2908,7 @@ fn probe_candidates(
     if written.is_empty() {
         return;
     }
-    // Sólo muestreamos procesos cuando de verdad hubo una escritura (perezoso).
+    // Processes are only sampled when there really was a write (lazily).
     let games = crate::correlation::sample_game_processes(sys);
     if games.is_empty() {
         return;
@@ -2960,7 +2938,7 @@ struct AutoRestoreOutcome {
     /// don't count.
     files_restored: u64,
     /// Files where the local copy was preserved because its mtime was
-    /// newer than the remote (or `conflict_root` was unset — see
+    /// newer than the remote (or `conflict_root` was unset; see
     /// `restore_files_into` for the fallback path).
     conflicts_local_wins: u64,
     /// Files where the local copy was moved into the conflict backup dir
@@ -3013,7 +2991,7 @@ pub(crate) struct RestoreStats {
     /// Useful for the `SaveAutoRestored` event payload.
     pub bytes_restored: u64,
     /// Files present locally (`target`) but absent from the remote snapshot
-    /// (`source`) — local-only content the merge left untouched. Together with
+    /// (`source`): local-only content the merge left untouched. Together with
     /// `conflicts_resolved_local` this tells the caller whether the merged tree
     /// genuinely diverges from the head (a follow-up upload carries real data)
     /// or matches it exactly (re-uploading would only mint a redundant no-op
@@ -3029,7 +3007,7 @@ async fn run_auto_restore(
     known_version: Option<i64>,
     // A head somebody else already learned, to skip the fetch. It carries a
     // version but no id, so it can only be trusted for a save whose local id
-    // *is* the cloud's — every caller today passes `None` and takes the
+    // *is* the cloud's, and every caller today passes `None` and takes the
     // resolving path below. Don't start passing it without carrying the id
     // alongside: a version read off one row and downloaded from another 404s.
     cached_latest: Option<i64>,
@@ -3069,7 +3047,7 @@ async fn run_auto_restore(
                                 cloud_save_id = %e.save_id,
                                 game_slug = %save.game_slug,
                                 label = %save.label,
-                                "agent: local save id isn't the cloud's — matched by (game, label) instead"
+                                "agent: local save id isn't the cloud's; matched by (game, label) instead"
                             );
                         }
                         (e.save_id.clone(), Some(e.latest_version_num))
@@ -3088,7 +3066,7 @@ async fn run_auto_restore(
     };
     // Version gate: if we're already synced to the server's latest version,
     // there's nothing newer from another device to pull, so skip the expensive
-    // download-to-diff entirely. This is the fix for the bandwidth blowout —
+    // download-to-diff entirely. This is the fix for the bandwidth blowout:
     // the sweep used to re-download the full snapshot every ~50s just to diff
     // it against a folder that hadn't changed, exhausting the 15-min cloud
     // quota (429 storm) and starving real uploads. A genuine cross-device
@@ -3097,14 +3075,14 @@ async fn run_auto_restore(
     // latest version" is a lie worth pulling for: the user wiped the save
     // (manual cleanup, uninstall, deleted folder) and the cloud copy is the
     // only one left. Restoring it is exactly what they want, so don't let the
-    // version gate short-circuit an empty folder — fall through to the download
+    // version gate short-circuit an empty folder, so fall through to the download
     // even when `known >= v`.
     if let (Some(v), Some(known)) = (latest, known_version) {
         if known >= v && !is_path_empty_or_missing(&save.local_path) {
             tracing::debug!(
                 save_id = %save.save_id,
                 version = v,
-                "agent: auto-restore — already synced to latest version; skipping download"
+                "agent: auto-restore: already synced to latest version; skipping download"
             );
             if let Some(root) = conflict_root {
                 if let Err(e) = cleanup_old_conflicts(root, retention).await {
@@ -3117,9 +3095,9 @@ async fn run_auto_restore(
     let Some(version) = latest else {
         tracing::debug!(
             save_id = %save.save_id,
-            "agent: auto-restore — server has no snapshots yet; nothing to restore"
+            "agent: auto-restore: the server has no snapshots yet; nothing to restore"
         );
-        // Still sweep TTL before bailing — keeps the conflict dir bounded
+        // Still sweep TTL before bailing, which keeps the conflict dir bounded
         // even for saves whose remote has been purged.
         if let Some(root) = conflict_root {
             if let Err(e) = cleanup_old_conflicts(root, retention).await {
@@ -3179,7 +3157,7 @@ async fn run_auto_restore(
 
     // Per-attempt timestamped subdir so concurrent restores never collide
     // and the TTL sweep can drop the whole subtree in one shot. We compute
-    // it lazily *only if* a conflict_root is configured — `restore_files_into`
+    // it lazily *only if* a conflict_root is configured; `restore_files_into`
     // treats `None` as the safe legacy fallback.
     let conflict_backup_dir: Option<PathBuf> = conflict_root.map(|root| {
         let ts = OffsetDateTime::now_utc()
@@ -3199,7 +3177,7 @@ async fn run_auto_restore(
     .await;
     cleanup_staging(&staging).await;
 
-    // Best-effort TTL sweep regardless of the per-file outcome — we want
+    // Best-effort TTL sweep regardless of the per-file outcome, because we want
     // bounded disk usage even when the current restore had no conflicts.
     if let Some(root) = conflict_root {
         if let Err(e) = cleanup_old_conflicts(root, retention).await {
@@ -3219,7 +3197,7 @@ async fn run_auto_restore(
     // ahead of head; otherwise the tree now equals head exactly.
     let local_diverged = stats.conflicts_resolved_local > 0 || stats.target_only > 0;
     // Cheap (no byte reads) signature of the merged folder, in the composite
-    // `"<cheap>:"` shape `upload_directory_checked` splits on — the empty
+    // `"<cheap>:"` shape `upload_directory_checked` splits on, and the empty
     // content half is fine because the fast-path skip only compares the cheap
     // half. Best-effort: a walk error just drops the redundant-upload
     // optimisation, never blocks the restore.
@@ -3253,8 +3231,7 @@ enum AutoRestorePull {
     /// The version gate held: this device is already at the server's head, so
     /// there was nothing newer to pull.
     AlreadyAtHead { version_num: i64 },
-    /// The server has no snapshot for this save — purged, or a row we can't
-    /// resolve.
+    /// The server has no snapshot for this save: purged, or a row we can't resolve.
     NothingRemote,
 }
 
@@ -3297,7 +3274,7 @@ async fn cleanup_staging(staging: &Path) {
 /// Walk `conflict_root` two levels deep (`<save_id>/<timestamp>/`) and
 /// remove every timestamp dir whose mtime is older than `now - retention`.
 /// No-op when the root doesn't exist (typical fresh install). Errors are
-/// logged but never propagated — a stuck conflict dir is much better than
+/// logged but never propagated: a stuck conflict dir is much better than
 /// killing the auto-restore tick.
 pub(crate) async fn cleanup_old_conflicts(conflict_root: &Path, retention: Duration) -> Result<()> {
     if !conflict_root.exists() {
@@ -3373,7 +3350,7 @@ pub(crate) async fn cleanup_old_conflicts(conflict_root: &Path, retention: Durat
 ///     If `conflict_backup_dir` is `Some(dir)`, move `target/rel` to
 ///     `dir/rel` (creating parents) and bump `conflicts_backed_up`, then
 ///     copy `source/rel` over and bump `conflicts_resolved_remote`. If
-///     `conflict_backup_dir` is `None`, *do not* overwrite — bump
+///     `conflict_backup_dir` is `None`, *do not* overwrite: bump
 ///     `conflicts_resolved_local` as a safety fallback (legacy 1.5.4
 ///     behaviour) and log a warn.
 ///
@@ -3403,8 +3380,8 @@ pub(crate) async fn restore_files_into(
                 continue;
             }
             if !file_type.is_file() {
-                // Skip symlinks, devices etc — they shouldn't appear in
-                // a hoard snapshot but we'd rather no-op than crash.
+                // Skip symlinks, devices and the like: they shouldn't appear in a
+                // hoard snapshot but we'd rather no-op than crash.
                 continue;
             }
             let rel = path
@@ -3417,10 +3394,10 @@ pub(crate) async fn restore_files_into(
                     stats.skipped += 1;
                     continue;
                 }
-                // Bytes differ — the resolution policy is the kernel's; this
-                // shell samples the mtime winner and executes the chosen
-                // branch. 1s tolerance covers FAT32 and friends; remote ties
-                // take the local side so a close call doesn't trash data.
+                // Bytes differ. The resolution policy is the kernel's; this shell
+                // samples the mtime winner and executes the chosen branch. A one-second
+                // tolerance covers FAT32 and friends; remote ties take the local side
+                // so a close call doesn't trash data.
                 let local_wins = local_mtime_wins(&dest, &path).await;
                 let backup_root = match kernel::restore_merge::resolve_conflict(
                     local_wins,
@@ -3504,7 +3481,7 @@ pub(crate) async fn restore_files_into(
     // Second pass over `target`: count files the snapshot didn't carry. These
     // are local-only and survive the merge, so the merged tree is strictly
     // ahead of head and a follow-up upload is real, not redundant. We don't
-    // filter transient lock files here — a stray lock counting as divergence
+    // filter transient lock files here: a stray lock counting as divergence
     // only costs one extra upload (the safe direction), never a skipped one.
     let mut tstack: Vec<PathBuf> = vec![target.to_path_buf()];
     while let Some(dir) = tstack.pop() {
@@ -3526,17 +3503,16 @@ pub(crate) async fn restore_files_into(
             let Ok(rel) = path.strip_prefix(target) else {
                 continue;
             };
-            // Un fichero que el backup **nunca sube** tampoco es divergencia.
-            // `disk_set_hash` se calcula con `walk_source`, que ya deja fuera
-            // la basura; contarla aquí desajusta las dos mitades y marca
-            // `local_diverged` en cada auto-restore de cualquier juego con un
-            // `Player.log` o un `.DS_Store` — un walk y un hash de contenido
-            // completos de más, para siempre.
+            // A file the backup NEVER uploads is not divergence either.
+            // `disk_set_hash` is computed with `walk_source`, which already leaves the
+            // litter out; counting it here puts the two halves out of step and marks
+            // `local_diverged` on every auto-restore of any game with a `Player.log`
+            // or a `.DS_Store`, meaning a full extra walk and content hash, forever.
             //
-            // La config sí sigue contando, y a propósito: existe sólo en local
-            // hasta que se sube, así que descartarla aquí adoptaría una firma
-            // de "estamos en sync" y el backup siguiente se saltaría el fichero
-            // por la vía rápida sin haberlo subido nunca.
+            // Config does still count, and deliberately: it exists only locally until
+            // it is uploaded, so discarding it here would adopt a signature saying "we
+            // are in sync" and the next backup would skip the file down the fast path
+            // without ever having uploaded it.
             let rel_str = rel.to_string_lossy().replace('\\', "/");
             if !kernel::fileclass::classify(&rel_str, shields).is_backed_up() {
                 continue;
@@ -3579,11 +3555,11 @@ async fn preserve_staging_mtime(src: &Path, dest: &Path) {
     }
 }
 
-/// True when the local file's mtime is more than 1s newer than the remote
-/// file's. Conservative on errors: if we can't read either mtime, we treat
-/// the remote as the winner — the snapshot's authority comes from the
-/// server's committed timestamps, which are more reliable than a local
-/// filesystem with quirks (FAT32 2s rounding, network share clock skew).
+/// True when the local file's mtime is more than one second newer than the remote
+/// file's. Conservative on errors: when either mtime cannot be read the remote wins,
+/// because a snapshot's authority comes from the server's committed timestamps, which
+/// are more reliable than a local filesystem with quirks (FAT32's two-second
+/// rounding, clock skew on a network share).
 async fn local_mtime_wins(local: &Path, remote: &Path) -> bool {
     // Sans-IO boundary: this shell samples both mtimes; the kernel decides.
     // An unreadable file → `None` → the kernel hands the tie to the remote,
@@ -3599,12 +3575,11 @@ async fn local_mtime_wins(local: &Path, remote: &Path) -> bool {
     kernel::restore_merge::local_wins_on_mtime(local_mtime, remote_mtime)
 }
 
-/// Cheap bytes-equal: size first (saves the read for the common
-/// different-sized case), then a single shot read of each file and a
-/// linear compare. Files in tracked saves are small enough that
-/// chunk-streaming would only matter for pathological archives — the
-/// per-file alloc cost is much smaller than the network/zstd cost we
-/// already paid to land them in staging.
+/// A cheap bytes-equal: size first (which saves the read in the common
+/// different-sized case), then one shot read of each file and a linear compare. Files
+/// in tracked saves are small enough that chunk-streaming would only matter for
+/// pathological archives, and the per-file allocation cost is much smaller than the
+/// network and zstd cost we already paid to land them in staging.
 async fn files_have_equal_bytes(a: &Path, b: &Path) -> Result<bool> {
     let meta_a = tokio::fs::metadata(a).await?;
     let meta_b = tokio::fs::metadata(b).await?;
@@ -3618,7 +3593,7 @@ async fn files_have_equal_bytes(a: &Path, b: &Path) -> Result<bool> {
 
 /// Try to attach an fs debouncer to `slot`. Tolerant: a missing folder or
 /// an inotify error logs and leaves `slot.watcher == None` so the agent
-/// keeps running for the other slots. Re-arming later is fine — we just
+/// keeps running for the other slots. Re-arming later is fine, since we just
 /// overwrite the field.
 fn arm_watcher(slot: &mut SaveSlot, fs_tx: &mpsc::Sender<PathBuf>) {
     let path = slot.save.local_path.clone();
@@ -3656,13 +3631,12 @@ fn build_watcher(
     path: &Path,
     fs_tx: mpsc::Sender<PathBuf>,
 ) -> Result<Debouncer<notify::RecommendedWatcher>> {
-    // Save de fichero suelto: se vigila el DIRECTORIO PADRE y se filtra por
-    // nombre. Vigilar el inodo directamente no sirve con los juegos que
-    // guardan "a lo seguro" — escriben un temporal, borran el original y
-    // renombran el temporal encima —, porque el fichero que se estaba
-    // vigilando deja de existir y el watch muere con él. El padre sobrevive a
-    // ese baile. `watch_root` sigue siendo la ruta del save, que es lo que el
-    // bucle usa para casar el evento con su slot.
+    // A single-file save: the PARENT DIRECTORY is watched and filtered by name.
+    // Watching the inode directly is no use with games that save the safe way, writing
+    // a temporary, deleting the original and renaming the temporary over it, because
+    // the file being watched stops existing and the watch dies with it. The parent
+    // survives that dance. `watch_root` is still the save's path, which is what the
+    // loop uses to match the event to its slot.
     let watch_root = path.to_path_buf();
     let single_file = path.is_file();
     let (watch_target, want_name) = if single_file {
@@ -3681,9 +3655,9 @@ fn build_watcher(
         Duration::from_secs(2),
         move |res: DebounceEventResult| {
             if let Ok(events) = res {
-                // Con un fichero suelto vigilamos su carpeta, así que hay que
-                // descartar los eventos de los vecinos: si no, cualquier otro
-                // save en la misma carpeta despertaría a éste.
+                // With a single file we watch its folder, so the neighbours' events
+                // have to be discarded: otherwise any other save in the same folder
+                // would wake this one.
                 let relevant = match &want_name {
                     Some(name) => events.iter().any(|e| e.path.file_name() == Some(name)),
                     None => !events.is_empty(),
@@ -3719,13 +3693,13 @@ fn match_save_for_path(slots: &HashMap<String, SaveSlot>, path: &Path) -> Option
     None
 }
 
-/// Sum the byte size of every regular file under `root`, recursively. Reads
-/// directory entries + file metadata only — never opens a file — so it's the
-/// cheap way to learn a save's footprint for sweep staggering. Unreadable
-/// dirs/entries are skipped rather than erroring; a best-effort estimate is
-/// all the scheduler needs.
+/// Sums the byte size of every regular file under `root`, recursively. It reads
+/// directory entries and file metadata only, never opening a file, so it is the cheap
+/// way to learn a save's footprint for sweep staggering. Unreadable directories and
+/// entries are skipped rather than erroring; a best-effort estimate is all the
+/// scheduler needs.
 pub fn dir_size_bytes(root: &Path) -> u64 {
-    // Un save de fichero suelto ocupa lo que ocupa ese fichero.
+    // A single-file save occupies whatever that file occupies.
     if root.is_file() {
         return std::fs::metadata(root).map(|m| m.len()).unwrap_or(0);
     }
@@ -3770,17 +3744,17 @@ async fn run_backup_with_retry(
     prev_set_hash: Option<String>,
     // The version this device believes is the server head. Sent as the upload's
     // fast-forward base so the server rejects (409 non-fast-forward) when another
-    // device advanced the save since we last synced — see the `ApiError::Conflict`
+    // device advanced the save since we last synced; see the `ApiError::Conflict`
     // arm below, which reconciles and retries instead of burying their version.
     // `None` only for a save never synced from this device (no head yet) and the
     // empty/missing-folder restore path, which never uploads.
     mut base_version: Option<i64>,
-    // Cabeza del server (versión + digest de su contenido) para el chequeo
-    // anti-relanzamiento de D.8.3: si lo que íbamos a subir ya es esa cabeza, la
-    // subida anterior aterrizó y volver a subir sólo crea una versión duplicada.
+    // The server's head (version plus its content's digest) for D.8.3's anti-relaunch
+    // check: if what we were about to upload is already that head, the previous upload
+    // landed and uploading again would only create a duplicate version.
     head: Option<ServerHead>,
-    // Qué clase de copia es. Sólo cambia la etiqueta que se guarda con la
-    // versión; el camino de subida es el mismo.
+    // What kind of copy this is. It only changes the label stored with the version;
+    // the upload path is the same.
     origin: VersionOrigin,
     events_tx: mpsc::Sender<AgentEvent>,
     done_tx: mpsc::Sender<BackupDone>,
@@ -3795,14 +3769,14 @@ async fn run_backup_with_retry(
             save_id = %save.save_id,
             path = %save.local_path.display(),
             auto_restore,
-            "agent: backup skipped — local folder is empty/missing"
+            "agent: backup skipped, local folder is empty or missing"
         );
-        // No-op: limpia has_pending (via el bookkeeping del shell) para que un
-        // evento fs futuro no quede bloqueado. Ya NO se lanza el restore desde
-        // aquí — con la carpeta vacía el reductor emitirá `Restore` en el
-        // próximo tick (rama `local_empty`), sin duplicar caminos de ejecución.
-        // El toast "backup omitido: carpeta vacía" sólo cuando el restore está
-        // deshabilitado (si no, el reductor la rellena).
+        // A no-op: it clears has_pending (through the shell's bookkeeping) so a
+        // future fs event is not blocked. The restore is NO LONGER launched from
+        // here; with the folder empty the reducer will emit `Restore` on the next
+        // tick (the `local_empty` branch), with no duplicated execution paths. The
+        // "backup skipped: empty folder" toast only when restore is disabled
+        // (otherwise the reducer fills it).
         let _ = done_tx.try_send(BackupDone {
             save_id: save.save_id.clone(),
             new_set_hash: None,
@@ -3831,7 +3805,7 @@ async fn run_backup_with_retry(
     const MAX_THROTTLE_WAITS: u32 = 5;
     // Fast-forward conflicts (409) are reconciled-then-retried, not backed off.
     // Cap the reconcile loop so a head that keeps advancing under us (a very
-    // chatty sibling device) can't spin forever — after this many we surface
+    // chatty sibling device) can't spin forever: after this many we surface
     // the conflict as a failure and let the next scheduled backup try fresh.
     let mut conflict_reconciles = 0u32;
     const MAX_CONFLICT_RECONCILES: u32 = 3;
@@ -3852,7 +3826,7 @@ async fn run_backup_with_retry(
             origin,
             |_, _| {},
             // Emit "uploading…" only once the signature checks have decided a
-            // real upload is happening — a Skipped/Unchanged settle stays
+            // real upload is happening; a Skipped or Unchanged settle stays
             // quiet in the feed (BUG 2). Only on the first attempt: retries
             // re-firing it filled the feed with "Subiendo… / falló" pairs.
             || {
@@ -3874,7 +3848,7 @@ async fn run_backup_with_retry(
                 // write anything. Skip the no-op snapshot, clear has_pending.
                 tracing::info!(
                     save_id = %save.save_id,
-                    "agent: backup skipped — no content change since last upload"
+                    "agent: backup skipped, no content change since last upload"
                 );
                 let _ = done_tx.try_send(BackupDone {
                     save_id: save.save_id.clone(),
@@ -3892,7 +3866,7 @@ async fn run_backup_with_retry(
                 // instead of re-reading every file.
                 tracing::info!(
                     save_id = %save.save_id,
-                    "agent: backup skipped — bytes unchanged despite mtime drift"
+                    "agent: backup skipped, bytes unchanged despite mtime drift"
                 );
                 let _ = done_tx.try_send(BackupDone {
                     save_id: save.save_id.clone(),
@@ -3903,16 +3877,15 @@ async fn run_backup_with_retry(
                 });
                 return;
             }
-            // El contenido ya estaba en el server (ADR 0021 D.8.3): la subida
-            // que un reinicio del daemon dejó a medias sí había aterrizado. No
-            // se sube nada; sólo se adopta la versión que ya lo tiene.
+            // The content was already on the server (ADR 0021 D.8.3): the upload a
+            // daemon restart left half done had landed after all. Nothing is
+            // uploaded; only the version that already holds it is adopted.
             //
-            // Se emite `BackupSuccess` —con `already_landed`— y no un evento
-            // propio porque para el usuario el hecho **es** "está guardado en la
-            // versión N", y porque es lo que hace que el servicio persista
-            // `last_version_num`/`set_hash` en `state.json`. Sin esa fila, el
-            // siguiente arranque vería la nube por delante y se bajaría su propio
-            // contenido.
+            // A `BackupSuccess` is emitted, with `already_landed`, rather than an
+            // event of its own, because to the user the fact IS "it is saved in
+            // version N", and because it is what makes the service persist
+            // `last_version_num` and `set_hash` into `state.json`. Without that row,
+            // the next start would see the cloud ahead and download its own content.
             Ok(BackupResult::AlreadyLanded {
                 version_num,
                 signature,
@@ -3920,14 +3893,14 @@ async fn run_backup_with_retry(
                 tracing::info!(
                     save_id = %save.save_id,
                     version_num,
-                    "agent: nothing to upload — this content is already the server's head"
+                    "agent: nothing to upload, this content is already the server's head"
                 );
                 let _ = events_tx
                     .send(AgentEvent::BackupSuccess {
                         save_id: save.save_id.clone(),
                         version_num,
-                        // Cero bytes porque cero bytes viajaron: el tamaño que la
-                        // UI enseña es el de la subida, y aquí no la hubo.
+                        // Zero bytes because zero bytes travelled: the size the UI
+                        // shows is the upload's, and there was none here.
                         total_bytes: 0,
                         set_hash: Some(signature.clone()),
                         already_landed: true,
@@ -3937,9 +3910,9 @@ async fn run_backup_with_retry(
                 let _ = done_tx.try_send(BackupDone {
                     save_id: save.save_id.clone(),
                     new_set_hash: Some(signature),
-                    // **No** es un commit: nada llegó al server en esta pasada, y
-                    // mover el ancla del min-interval con un no-op es la
-                    // regresión R.E.P.O. (D.8.2). La versión sí se adopta.
+                    // NOT a commit: nothing reached the server on this pass, and
+                    // moving the min-interval anchor with a no-op is the R.E.P.O.
+                    // regression (D.8.2). The version is adopted, though.
                     committed: false,
                     version_num: Some(version_num),
                     landed: true,
@@ -3963,7 +3936,7 @@ async fn run_backup_with_retry(
                 // Partial upload: the save was over the plan's per-save cap so
                 // only the newest files went up. Fire a second event *after*
                 // success so the UI's amber "plan too small" state wins over the
-                // green "ok" — the backup worked, but the user must know Free
+                // green "ok": the backup worked, but the user must know Free
                 // isn't enough for this save.
                 if let Some(t) = &o.trimmed {
                     let _ = events_tx
@@ -3979,11 +3952,11 @@ async fn run_backup_with_retry(
                         })
                         .await;
                 }
-                // Parcial por otra razón: había ficheros cuyos bytes no se
-                // dejaron leer y la subida siguió sin ellos. Se cuenta igual que
-                // el recorte de plan —después del éxito, para que el ámbar gane
-                // al verde— porque el trato es el mismo: la copia sirve, pero al
-                // usuario no se le puede ocultar lo que no está dentro.
+                // Partial for another reason: there were files whose bytes would not
+                // be read and the upload carried on without them. It is counted like
+                // the plan trim, after the success so amber beats green, because the
+                // deal is the same: the copy is useful, but what is not inside it
+                // cannot be hidden from the user.
                 if let Some(first) = o.unreadable.first() {
                     tracing::warn!(
                         save_id = %save.save_id,
@@ -4008,9 +3981,9 @@ async fn run_backup_with_retry(
                         .await;
                 }
                 // Tell the agent loop to clear has_pending and cache the new
-                // signature. If the channel is full or the agent is shutting
-                // down we just drop the signal — worst case we re-upload an
-                // unchanged snapshot on the next GameStopped, a soft failure.
+                // signature. If the channel is full or the agent is shutting down we
+                // just drop the signal; worst case we re-upload an unchanged snapshot
+                // on the next GameStopped, which is a soft failure.
                 let _ = done_tx.try_send(BackupDone {
                     save_id: save.save_id.clone(),
                     new_set_hash: Some(signature),
@@ -4024,15 +3997,15 @@ async fn run_backup_with_retry(
                 // Fast-forward conflict (409 non_fast_forward): another device
                 // advanced this save past our `base_version`. Re-pushing our
                 // stale content with a backoff is exactly how a behind device
-                // used to bury a sibling's version. Instead reconcile — pull the
+                // used to bury a sibling's version. Instead reconcile: pull the
                 // remote head with the conflict-aware merge (local-newer files
-                // survive, remote-newer overwrite with a backup) — then retry the
+                // survive, remote-newer overwrite with a backup) and then retry the
                 // upload fast-forwarding from the new head. So on a newer remote
                 // head, restore wins; only genuinely-newer-or-additional local
                 // content goes up afterwards (a purely-stale device matches head
                 // and settles). Bounded by MAX_CONFLICT_RECONCILES.
                 // Only a *non-fast-forward* 409 means "you're behind, reconcile
-                // first" — that's the single 409 the upload path emits today
+                // first", which is the single 409 the upload path emits today
                 // (`init_upload`/`cas_init`), and the server tags it in the body
                 // (`code: "non_fast_forward"`). A tagged body arrives typed and
                 // carries the head we have to reconcile against; the message
@@ -4058,7 +4031,7 @@ async fn run_backup_with_retry(
                             game_slug = %save.game_slug,
                             conflict_reconciles,
                             error = %chain,
-                            "agent: backup conflict — remote head kept moving; giving up after reconcile retries"
+                            "agent: backup conflict, remote head kept moving; giving up after reconcile retries"
                         );
                         let _ = events_tx
                             .send(AgentEvent::BackupFailed {
@@ -4085,12 +4058,12 @@ async fn run_backup_with_retry(
                         server_head = ?server_head,
                         cloud_save_id = ?detail.and_then(|d| d.canonical_id_for(&save.save_id)),
                         conflict_reconciles,
-                        "agent: backup rejected (non-fast-forward) — reconciling remote head before retry"
+                        "agent: backup rejected (non-fast-forward), reconciling remote head before retry"
                     );
                     let retention =
                         Duration::from_secs(u64::from(conflict_retention_days) * 86_400);
                     // Pass our stale `base_version` as known_version (so the
-                    // version-gate won't trip — remote is strictly ahead) and
+                    // version-gate won't trip, since remote is strictly ahead) and
                     // `None` cached_latest / shared_manifest so we fetch the
                     // authoritative head rather than trust a cache that may
                     // itself be stale.
@@ -4129,7 +4102,7 @@ async fn run_backup_with_retry(
                                             .await;
                                     }
                                 }
-                                // The merge wrote into the live folder — re-arm
+                                // The merge wrote into the live folder, so re-arm
                                 // the watcher so the slot tracks the new state.
                                 let _ = cmd_tx
                                     .send(AgentCommand::RearmWatcher(save.save_id.clone()))
@@ -4137,22 +4110,23 @@ async fn run_backup_with_retry(
                             }
                             if !outcome.local_diverged {
                                 // The merged tree equals the head we just pulled:
-                                // re-uploading would only mint head+1 with
-                                // identical bytes (and fan a no-op realtime push
-                                // out to every other device). Settle instead. En el
-                                // modelo invertido señalamos UNA sola terminación:
-                                // un `BackupDone` no-committed que ACARREA la versión
-                                // asentada (`version_num`) y la firma post-merge. El
-                                // shell (rama `done_rx`) lo trata como el 409-settle:
-                                // avanza `known_version`, adopta el fingerprint,
-                                // sella `last_restore_at` (el merge escribió como un
-                                // restore) y limpia has_pending — sin cruzar el
-                                // `OpResult` de restore con un `in_flight` de backup.
+                                // re-uploading would only mint head+1 with identical
+                                // bytes (and fan a no-op realtime push out to every
+                                // other device). Settle instead. In the inverted model
+                                // we signal ONE termination: a non-committed
+                                // `BackupDone` that CARRIES the settled version
+                                // (`version_num`) and the post-merge signature. The
+                                // shell (the `done_rx` branch) treats it like the
+                                // 409-settle: it advances `known_version`, adopts the
+                                // fingerprint, stamps `last_restore_at` (the merge
+                                // wrote like a restore) and clears has_pending,
+                                // without crossing a restore `OpResult` with a backup
+                                // `in_flight`.
                                 tracing::info!(
                                     save_id = %save.save_id,
                                     game_slug = %save.game_slug,
                                     version_num = outcome.version_num,
-                                    "agent: backup conflict reconciled to head with no local divergence — settled without re-upload"
+                                    "agent: backup conflict reconciled to head with no local divergence, settled without re-upload"
                                 );
                                 let _ = done_tx
                                     .send(BackupDone {
@@ -4165,20 +4139,20 @@ async fn run_backup_with_retry(
                                     .await;
                                 return;
                             }
-                            // Local content survived the merge that head lacks —
+                            // Local content survived the merge that head lacks, so
                             // fast-forward from the head we just reconciled to and
-                            // retry so that genuinely-new local data goes up.
-                            // `known_version` avanzará en el `BackupDone` final del
-                            // commit; no hace falta un `AutoRestoreFinished`
-                            // intermedio (el gate se arma al terminar). Deja
-                            // `last_set_hash` stale para que el retry vea la
-                            // divergencia y suba.
+                            // retry so genuinely new local data goes up.
+                            // `known_version` will advance in the commit's final
+                            // `BackupDone`; no intermediate `AutoRestoreFinished` is
+                            // needed (the gate arms on completion). `last_set_hash` is
+                            // left stale so the retry sees the divergence and
+                            // uploads.
                             base_version = Some(outcome.version_num);
                             continue;
                         }
                         // The reconcile pulled nothing because this folder
                         // already holds the server's head. That is not a dead
-                        // end — it is the one case where fast-forwarding is
+                        // end: it is the one case where fast-forwarding is
                         // provably safe: our tree contains everything the head
                         // has, so pushing head+1 buries nobody, and the version
                         // we descend from stays in history either way.
@@ -4191,7 +4165,7 @@ async fn run_backup_with_retry(
                         // Both answers have to name the same version. They come
                         // from two reads of the server a moment apart, and a
                         // manifest that lags (or leads) the rejection describes a
-                        // head this folder was never checked against — rebasing
+                        // head this folder was never checked against, so rebasing
                         // onto that is how you push over content you never saw.
                         Ok(AutoRestorePull::AlreadyAtHead { version_num })
                             if server_head == Some(version_num) =>
@@ -4200,13 +4174,13 @@ async fn run_backup_with_retry(
                                 save_id = %save.save_id,
                                 game_slug = %save.game_slug,
                                 head = version_num,
-                                "agent: backup conflict — local tree already holds head; fast-forwarding the base and retrying"
+                                "agent: backup conflict: the local tree already holds head; fast-forwarding the base and retrying"
                             );
                             base_version = Some(version_num);
                             continue;
                         }
                         // The server named head 0: the save it is holding for
-                        // us has no versions at all. Nobody advanced past us —
+                        // us has no versions at all. Nobody advanced past us;
                         // the history our cursor descends from is gone (the row
                         // was deleted while this folder kept its number, e.g. a
                         // game un-archived and dropped). Descending from 0 buries
@@ -4224,7 +4198,7 @@ async fn run_backup_with_retry(
                                 save_id = %save.save_id,
                                 game_slug = %save.game_slug,
                                 base_version = ?base_version,
-                                "agent: backup conflict — the server has no history for this save; restarting from version 1"
+                                "agent: backup conflict: the server has no history for this save; restarting from version 1"
                             );
                             base_version = Some(0);
                             continue;
@@ -4241,7 +4215,7 @@ async fn run_backup_with_retry(
                             tracing::warn!(
                                 save_id = %save.save_id,
                                 error = %chain,
-                                "agent: backup conflict but reconcile found nothing to pull — surfacing"
+                                "agent: backup conflict but reconcile found nothing to pull; surfacing"
                             );
                             let _ = events_tx
                                 .send(AgentEvent::BackupFailed {
@@ -4251,18 +4225,17 @@ async fn run_backup_with_retry(
                                     will_retry: false,
                                 })
                                 .await;
-                            // Devuelve el reintento al bucle: limpia `in_flight` y
-                            // repone `next_backup_at` (conserva has_pending — los
-                            // cambios locales nunca llegaron a una versión). Sin
-                            // esto la op quedaría "in flight" para siempre.
+                            // Hand the retry back to the loop: it clears `in_flight`
+                            // and restores `next_backup_at` (keeping has_pending,
+                            // since the local changes never reached a version).
+                            // Without this the op would stay "in flight" forever.
                             //
-                            // Por su carril propio, no por el de un fallo
-                            // cualquiera: esto no es una avería que el tiempo
-                            // cure, así que el reductor lo escala y termina
-                            // parando. El `RetryBackupAfterFailure` que había
-                            // aquí reponía el intento cada diez minutos sin
-                            // contador ninguno, justo debajo de un comentario que
-                            // decía evitar el bucle.
+                            // Down its own lane rather than an ordinary failure's:
+                            // this is not a fault time cures, so the reducer escalates
+                            // it and eventually stops. The `RetryBackupAfterFailure`
+                            // that used to be here restored the attempt every ten
+                            // minutes with no counter at all, right under a comment
+                            // that said it was avoiding the loop.
                             let _ = cmd_tx
                                 .send(AgentCommand::ParkBackupConflict {
                                     id: save.save_id.clone(),
@@ -4276,7 +4249,7 @@ async fn run_backup_with_retry(
                             tracing::warn!(
                                 save_id = %save.save_id,
                                 error = %chain,
-                                "agent: backup conflict — reconcile failed; surfacing"
+                                "agent: backup conflict; reconcile failed, surfacing"
                             );
                             let _ = events_tx
                                 .send(AgentEvent::BackupFailed {
@@ -4293,14 +4266,14 @@ async fn run_backup_with_retry(
                         }
                     }
                 }
-                // Raíz imposible (perfil entero, prefijo de Proton completo):
-                // no es un fallo transitorio y reintentarlo no lo arregla, así
-                // que se asienta sin marcar rojo ni re-armar el backoff. Se
-                // grita con la ruta y el motivo delante, que es lo único que
-                // permite al usuario entender por qué su juego no sube: la
-                // guarda estructural ya existía, pero sólo corría al dar de
-                // alta, y una fila envenenada de antes no volvía a pasar por
-                // ella. Reportado ago-2026 (Steam Deck subiendo el `pfx`).
+                // An impossible root (a whole profile, a complete Proton prefix): not
+                // a transient failure, and retrying does not fix it, so it settles
+                // without marking red or re-arming the backoff. It is shouted with the
+                // path and the reason in front, which is the only thing that lets the
+                // user understand why their game is not uploading: the structural
+                // guard already existed but only ran on adding, and a row poisoned
+                // before that never went through it again. Reported aug-2026 (a Steam
+                // Deck uploading the `pfx`).
                 if let Some(unsafe_src) = e
                     .chain()
                     .find_map(|c| c.downcast_ref::<crate::backup::UnsafeSource>())
@@ -4310,7 +4283,7 @@ async fn run_backup_with_retry(
                         game_slug = %save.game_slug,
                         path = %unsafe_src.path.display(),
                         reason = %unsafe_src.reason,
-                        "agent: refusing to back up this save — the tracked folder can't be a \
+                        "agent: refusing to back up this save, the tracked folder can't be a \
                          game's save folder; re-point it at the folder inside"
                     );
                     crate::telemetry::rejected_root(
@@ -4334,30 +4307,30 @@ async fn run_backup_with_retry(
                 // empty `Repo/saves`). Clear has_pending so a later write isn't
                 // blocked, and settle without a red "falló".
                 if e.chain().any(|c| c.is::<crate::backup::EmptySource>()) {
-                    // Nunca ha subido nada Y está vacía: casi siempre es una
-                    // ruta mal detectada (la carpeta nativa rastreada mientras
-                    // el juego corre por Proton, el contenedor en vez de su
-                    // `remote/`, una conjetura de fase 4). Se dice fuerte, con
-                    // la ruta delante, en vez de dejarlo en un INFO que nadie
-                    // lee. Si ya había subido antes, vaciarse es un cambio de
-                    // estado legítimo y no se molesta al usuario.
+                    // It has never uploaded anything AND it is empty: almost always a
+                    // wrongly detected path (the native folder tracked while the game
+                    // runs under Proton, the container instead of its `remote/`, a
+                    // phase-4 guess). It is said loudly, with the path in front, rather
+                    // than left in an INFO nobody reads. If it had uploaded before,
+                    // becoming empty is a legitimate state change and the user is not
+                    // bothered.
                     let likely_wrong_path = save.known_version.is_none();
                     if likely_wrong_path {
                         tracing::warn!(
                             save_id = %save.save_id,
                             game_slug = %save.game_slug,
                             path = %save.local_path.display(),
-                            "agent: nothing to back up and this save has never had a snapshot — \
+                            "agent: nothing to back up and this save has never had a snapshot: \
                              the tracked folder is probably not where the game saves"
                         );
-                        // El aviso de arriba es para el humano que abre el log
-                        // de su máquina; éste es el que se puede contar.
+                        // The warning above is for the human opening their machine's
+                        // log; this one is the one that can be counted.
                         crate::telemetry::no_snapshots(&save.game_slug, &save.local_path);
                     } else {
                         tracing::info!(
                             save_id = %save.save_id,
                             game_slug = %save.game_slug,
-                            "agent: backup skipped — source has no files to upload"
+                            "agent: backup skipped, the source has no files to upload"
                         );
                     }
                     let _ = done_tx.try_send(BackupDone {
@@ -4376,18 +4349,17 @@ async fn run_backup_with_retry(
                         .await;
                     return;
                 }
-                // Ni un fichero de la carpeta se dejó leer, así que no hay
-                // snapshot que subir: una versión vacía borraría en la nube la
-                // última copia buena. **No** se manda `BackupDone` —los cambios
-                // locales siguen sin versionar y limpiar `has_pending` dejaría
-                // que un restore los pisara— y se re-arma en el backoff largo,
-                // que es exactamente lo que hace falta: el disparador conocido
-                // (un proveedor de ficheros bajo demanda parado) se cura solo en
-                // cuanto el proveedor arranca, y entonces la siguiente pasada
-                // sube. Lo que ya no pasa es que lo haga en silencio: el evento
-                // deja un aviso persistente en la tarjeta del juego.
-                // Se copia fuera de la cadena antes de esperar a nada: un
-                // `anyhow::Chain` no es `Send` y este futuro va a `tokio::spawn`.
+                // Not one file in the folder would be read, so there is no snapshot to
+                // upload: an empty version would delete the last good copy in the
+                // cloud. `BackupDone` is NOT sent (the local changes are still
+                // unversioned and clearing `has_pending` would let a restore walk over
+                // them) and it re-arms on the long backoff, which is exactly what is
+                // needed: the known trigger, a stalled on-demand file provider, heals
+                // itself as soon as the provider starts, and then the next pass
+                // uploads. What no longer happens is it doing so in silence: the event
+                // leaves a persistent warning on the game's card. It is copied out of
+                // the chain before awaiting anything: an `anyhow::Chain` is not `Send`
+                // and this future goes to `tokio::spawn`.
                 let unreadable_src = e
                     .chain()
                     .find_map(|c| c.downcast_ref::<crate::backup::UnreadableSource>())
@@ -4399,7 +4371,7 @@ async fn run_backup_with_retry(
                         path = %path.display(),
                         count,
                         error = %first,
-                        "agent: nothing backed up — not one file in the save folder could be read"
+                        "agent: nothing backed up, not one file in the save folder could be read"
                     );
                     let _ = events_tx
                         .send(AgentEvent::BackupFilesUnreadable {
@@ -4420,7 +4392,7 @@ async fn run_backup_with_retry(
                 }
                 // Archived game (403 `save_archived`): the user parked this save
                 // in the server-side "caja negra". Re-uploading would revive its
-                // frozen blobs and undo the quota it freed, so never retry —
+                // frozen blobs and undo the quota it freed, so never retry:
                 // settle quietly (clear has_pending, no red "falló"). The local
                 // save stays put; the desktop learns the archived state from
                 // `/v1/cloud/storage/games` and surfaces it there.
@@ -4434,7 +4406,7 @@ async fn run_backup_with_retry(
                     tracing::info!(
                         save_id = %save.save_id,
                         game_slug = %save.game_slug,
-                        "agent: backup skipped — game is archived on the server (caja negra)"
+                        "agent: backup skipped, the game is archived on the server"
                     );
                     let _ = done_tx.try_send(BackupDone {
                         save_id: save.save_id.clone(),
@@ -4445,13 +4417,12 @@ async fn run_backup_with_retry(
                     });
                     return;
                 }
-                // 404 al subir: el servidor no conoce este `save_id`. Reintentar
-                // no lo va a resucitar —lo repara `library::reconcile_with_server`
-                // al arrancar el motor, re-apuntando la fila al id que el
-                // servidor tenga ahora— así que se asienta como los otros
-                // terminales. Sin este corte, una base rehecha deja al motor
-                // reintentando cada 600 s para siempre: 1.353 subidas fallidas
-                // en tres días en el caso de ago-2026.
+                // A 404 on upload: the server does not know this `save_id`. Retrying
+                // will not resurrect it (`library::reconcile_with_server` repairs it
+                // when the engine starts, repointing the row at the id the server has
+                // now) so it settles like the other terminals. Without this cut-off, a
+                // rebuilt database leaves the engine retrying every 600 s forever:
+                // 1,353 failed uploads in three days in the aug-2026 case.
                 let gone = e.chain().any(|c| {
                     matches!(
                         c.downcast_ref::<crate::api::ApiError>(),
@@ -4462,7 +4433,7 @@ async fn run_backup_with_retry(
                     tracing::warn!(
                         save_id = %save.save_id,
                         game_slug = %save.game_slug,
-                        "agent: backup abandoned — the server doesn't know this save; it'll be re-linked on the next engine start"
+                        "agent: backup abandoned, the server doesn't know this save; it'll be re-linked on the next engine start"
                     );
                     let _ = done_tx.try_send(BackupDone {
                         save_id: save.save_id.clone(),
@@ -4474,10 +4445,10 @@ async fn run_backup_with_retry(
                     return;
                 }
                 // Per-save size cap (413 `save_too_large`): the upload can never
-                // succeed as-is, so retrying just burns the budget and spams the
-                // feed. Emit a dedicated, actionable event and settle (clear
-                // has_pending) so it doesn't re-fire until the folder actually
-                // changes — no red "falló", no retry loop.
+                // succeed as-is, so retrying just burns the budget and spams the feed.
+                // Emit a dedicated, actionable event and settle (clearing has_pending)
+                // so it does not re-fire until the folder actually changes: no red
+                // failure, no retry loop.
                 let too_large = e
                     .chain()
                     .find_map(|c| c.downcast_ref::<crate::api::ApiError>())
@@ -4486,12 +4457,12 @@ async fn run_backup_with_retry(
                         _ => None,
                     });
                 if let Some(detail) = too_large {
-                    // Un 413 puede venir de tres sitios y cada uno se arregla en
-                    // un lado distinto: el tope del plan en Cloud, el
-                    // `max_snapshot_size_mb` de un servidor propio, o un proxy
-                    // delante que ni siquiera es Hoard. `kind()` lo decide y
-                    // `human()` lo redacta; afirmar "tope de plan" sin más fue lo
-                    // que mandó a un self-hoster a mirar donde no era (ago-2026).
+                    // A 413 can come from three places and each is fixed somewhere
+                    // else: the plan's cap on Cloud, a self-hosted server's
+                    // `max_snapshot_size_mb`, or a proxy in front that is not even
+                    // Hoard. `kind()` decides and `human()` words it; claiming "plan
+                    // cap" with nothing behind it is what sent a self-hoster looking
+                    // in the wrong place (aug-2026).
                     let kind = detail.kind();
                     tracing::warn!(
                         save_id = %save.save_id,
@@ -4502,7 +4473,7 @@ async fn run_backup_with_retry(
                         actual_bytes = detail.actual_bytes,
                         received_bytes = detail.received_bytes,
                         detail = %detail.human(),
-                        "agent: backup rejected — the upload was refused as too large"
+                        "agent: backup rejected, the upload was refused as too large"
                     );
                     let _ = done_tx.try_send(BackupDone {
                         save_id: save.save_id.clone(),
@@ -4526,7 +4497,7 @@ async fn run_backup_with_retry(
                     return;
                 }
                 // Account out of storage (402 `quota_exceeded`): nothing about
-                // this save is wrong and nothing will change by retrying — the
+                // this save is wrong and nothing will change by retrying: the
                 // next attempt, and every other save's, hits the same wall until
                 // a human frees space or upgrades. Park it for an hour and say
                 // so once, account-wide. Deliberately **no** `BackupDone`: the
@@ -4547,7 +4518,7 @@ async fn run_backup_with_retry(
                         used_bytes = detail.used_bytes,
                         limit_bytes = detail.limit_bytes,
                         over_bytes = detail.over_bytes(),
-                        "agent: backup parked — the cloud account is out of storage"
+                        "agent: backup parked, the cloud account is out of storage"
                     );
                     let _ = events_tx
                         .send(AgentEvent::BackupQuotaFull {
@@ -4566,12 +4537,12 @@ async fn run_backup_with_retry(
                 }
                 // Bandwidth throttle (429): wait the server's exact
                 // window-slide time and retry without consuming the
-                // network-flake budget. Kept out of the "falló" feed path —
+                // network-flake budget. Kept out of the failure feed path,
                 // we emit an amber "en espera" entry instead.
                 //
                 // Only the blob PUTs get retried in place (`backup::put_blob_paced`);
-                // a 429 that reaches here came from a single request — the init or
-                // the commit — so waiting and re-running the whole backup is right
+                // a 429 that reaches here came from a single request, the init or
+                // the commit, so waiting and re-running the whole backup is right
                 // for either kind. The kind still travels because the log line has
                 // to say which one it was: "bandwidth limit" on what was really the
                 // server asking this machine to slow down is what sent a whole
@@ -4589,7 +4560,7 @@ async fn run_backup_with_retry(
                     });
                 if let Some((kind, retry_after, body)) = throttle {
                     // A budget 429 is the server saying this operation does not
-                    // fit right now — the bandwidth window, the storage quota,
+                    // fit right now: the bandwidth window, the storage quota,
                     // or the loop brake. Sitting on it inside the backup task is
                     // the wrong shape twice over: it holds the task open for
                     // whatever the server asked (an hour, for a full account),
@@ -4617,7 +4588,7 @@ async fn run_backup_with_retry(
                             game_slug = %save.game_slug,
                             retry_after,
                             full = quota.is_some(),
-                            "agent: backup parked — the server asked for a wait before trying again"
+                            "agent: backup parked, the server asked for a wait before trying again"
                         );
                         let event = match &quota {
                             Some(detail) => AgentEvent::BackupQuotaFull {
@@ -4659,7 +4630,7 @@ async fn run_backup_with_retry(
                             retry_after,
                             wait,
                             %kind,
-                            "agent: backup throttled (429) — waiting to retry"
+                            "agent: backup throttled (429), waiting to retry"
                         );
                         let _ = events_tx
                             .send(AgentEvent::BackupThrottled {
@@ -4673,12 +4644,12 @@ async fn run_backup_with_retry(
                         throttle_waits += 1;
                         continue;
                     }
-                    // Exhausted our patience for the window — fall through and
+                    // Exhausted our patience for the window, so fall through and
                     // surface it as a normal failure below.
                 }
                 // The storage endpoint never answered. Not a flake: the
                 // connection didn't open, and it won't open on the next attempt
-                // either — the retry budget just spends six connect timeouts
+                // either: the retry budget just spends six connect timeouts
                 // (~21 s each on Windows) before parking, then re-arms and
                 // spends them again. One user's ISP stopped routing to the two
                 // anycast addresses R2's S3 endpoint resolves to, and every
@@ -4703,7 +4674,7 @@ async fn run_backup_with_retry(
                         game_slug = %save.game_slug,
                         %host,
                         error = %chain,
-                        "agent: backup parked — the storage endpoint can't be reached from this machine"
+                        "agent: backup parked, the storage endpoint can't be reached from this machine"
                     );
                     let _ = events_tx
                         .send(AgentEvent::BackupFailed {
@@ -4719,7 +4690,7 @@ async fn run_backup_with_retry(
                     return;
                 }
                 let will_retry = attempt < max_retries;
-                // `{:#}` renders the whole anyhow context chain — `.to_string()`
+                // `{:#}` renders the whole anyhow context chain; `.to_string()`
                 // alone collapses it to the outermost label ("cloud cas init"),
                 // which is what made this failure undiagnosable from the feed.
                 let chain = format!("{e:#}");
@@ -4734,9 +4705,9 @@ async fn run_backup_with_retry(
                     error = %chain,
                     "agent: backup attempt failed"
                 );
-                // Feed-visible failure only when the retries are exhausted —
-                // intermediate attempts stay in the log, otherwise one flaky
-                // burst paints the feed with a dozen "falló" rows.
+                // A feed-visible failure only when the retries are exhausted;
+                // intermediate attempts stay in the log, or one flaky burst paints the
+                // feed with a dozen failure rows.
                 if !will_retry {
                     let _ = events_tx
                         .send(AgentEvent::BackupFailed {
@@ -4751,7 +4722,7 @@ async fn run_backup_with_retry(
                     // made it to a version, so `has_pending` has to stay set or
                     // a later restore would overwrite them. That also means the
                     // slot is now vetoed from every pull *and* has nothing left
-                    // that would re-fire the upload — until this returned, only
+                    // that would re-fire the upload: until this returned, only
                     // a fresh fs event could break the deadlock, so a save whose
                     // game was already closed just sat there. Hand the retry
                     // back to the agent loop instead.
@@ -4767,30 +4738,28 @@ async fn run_backup_with_retry(
     }
 }
 
-// `accept_correlation_signals` (el filtro anti horas-fantasma) se movió al
-// kernel leaf en el Slice 1 (ADR 0021): vive en
-// `hoard_core::kernel::correlation` y se importa arriba. Era ya una función
-// pura, así que su sitio natural es el kernel.
+// `accept_correlation_signals` (the phantom-hours filter) lives in the leaf kernel,
+// at `hoard_core::kernel::correlation`, and is imported above. It was already a pure
+// function, so the kernel is its natural home.
 
-/// Longitud mínima de un token de identidad para que cuente en el match
-/// genérico. Por debajo (`gta`, `ori`, `ff`) es demasiado corto y colisiona
-/// con carpetas o nombres de proceso cualesquiera.
+/// The minimum length of an identity token for it to count in the generic match.
+/// Below that (`gta`, `ori`, `ff`) it is too short and collides with any old folder
+/// or process name.
 use hoard_core::ids::MIN_IDENTITY_TOKEN_LEN;
 
-/// Token canónico de identidad (ver [`hoard_core::ids::canon_token`]). Vive en
-/// el kernel leaf porque `GameSlug::repair` lo usa para detectar slugs
-/// degenerados y las dos comprobaciones tienen que ser la misma.
+/// The canonical identity token (see [`hoard_core::ids::canon_token`]). It lives in
+/// the leaf kernel because `GameSlug::repair` uses it to detect degenerate slugs and
+/// the two checks have to be the same one.
 use hoard_core::ids::canon_token;
 
-/// Tokens VETADOS en el match genérico de identidad: componentes del perfil de
-/// usuario y de la fontanería de instalación. Un slug degenerado igual a uno de
-/// estos convierte procesos cualesquiera en señal fuerte de "estás jugando" —
-/// caso real jul-2026: el save de `GSE Saves` quedó rastreado con slug =
-/// nombre de usuario de Windows ("jacka"), y como el username es componente de
-/// ruta de TODO exe bajo `C:\Users\<user>\...`, cualquier app del perfil
-/// disparaba GameStarted (y el guard "un juego a la vez" apagaba de rebote los
-/// juegos reales). La lista estática cubre la fontanería común; los
-/// componentes del home real (username incluido) se añaden dinámicamente.
+/// Tokens VETOED in the generic identity match: components of the user profile and
+/// of install plumbing. A degenerate slug equal to one of these turns arbitrary
+/// processes into a strong "you are playing" signal. The real case from jul-2026: one
+/// save ended up tracked with its slug set to the Windows account name, and since the
+/// username is a path component of EVERY exe under `C:\Users\<user>\...`, any app
+/// in the profile fired GameStarted (and the "one game at a time" guard switched the
+/// real games off as a side effect). The static list covers the common plumbing; the
+/// real home's components, the username included, are added dynamically.
 pub(crate) fn is_generic_identity_token(tok: &str) -> bool {
     static HOME_TOKENS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
     let home = HOME_TOKENS.get_or_init(|| {
@@ -4810,11 +4779,11 @@ pub(crate) fn is_generic_identity_token(tok: &str) -> bool {
     hoard_core::ids::GENERIC_IDENTITY_TOKENS.contains(&tok) || home.iter().any(|h| h == tok)
 }
 
-/// Tokens de identidad de un save rastreado, derivados de datos que ya tenemos
-/// (slug + nombre visible) — SIN lista curada. Son las claves contra las que se
-/// compara cada proceso vivo. Los tokens genéricos/de perfil se vetan
-/// ([`is_generic_identity_token`]): un juego así de mal nombrado pierde el
-/// match por token (le quedan las otras señales) antes que casar con todo.
+/// A tracked save's identity tokens, derived from data we already have (the slug
+/// plus the display name), with NO curated list. They are the keys each live process
+/// is compared against. Generic and profile tokens are vetoed
+/// ([`is_generic_identity_token`]): a game named that badly loses the token match
+/// (it still has the other signals) rather than matching everything.
 fn game_identity_tokens(slug: &str, display: &str) -> Vec<String> {
     let mut v: Vec<String> = Vec::with_capacity(2);
     for raw in [slug, display] {
@@ -4826,14 +4795,14 @@ fn game_identity_tokens(slug: &str, display: &str) -> Vec<String> {
     v
 }
 
-/// Candidatos de identidad de un proceso vivo, list-free y multiplataforma: el
-/// basename del ejecutable (`.../Stellaris/stellaris` → `stellaris`), el nombre
-/// del proceso, y cada componente de la RUTA del ejecutable — porque la carpeta
-/// de instalación casi siempre lleva el nombre del juego (`steamapps/common/The
-/// Witcher 3 Wild Hunt/...`, `GOG Games/...`, el `.app` de macOS). Con esto un
-/// juego cuyo exe está abreviado (`witcher3.exe`) casa igual por su carpeta. La
-/// comparación es igualdad exacta de tokens canónicos, así que un componente
-/// genérico (`common`, `bin`, `x64`) no colisiona con un slug real.
+/// A live process's identity candidates, list-free and cross-platform: the
+/// executable's basename (`.../Stellaris/stellaris` gives `stellaris`), the process
+/// name, and each component of the executable's PATH, because the install folder
+/// almost always carries the game's name (`steamapps/common/The Witcher 3 Wild
+/// Hunt/...`, `GOG Games/...`, macOS's `.app`). With that, a game whose exe is
+/// abbreviated (`witcher3.exe`) matches through its folder anyway. The comparison is
+/// exact equality of canonical tokens, so a generic component (`common`, `bin`,
+/// `x64`) does not collide with a real slug.
 fn process_identity_candidates(name: &str, exe: Option<&Path>) -> Vec<String> {
     let mut v: Vec<String> = Vec::new();
     let push = |s: &str, v: &mut Vec<String>| {
@@ -4858,18 +4827,17 @@ fn process_identity_candidates(name: &str, exe: Option<&Path>) -> Vec<String> {
     v
 }
 
-/// Rutas abiertas (fd + cwd) por el proceso `pid` que caen DENTRO de alguna de
-/// `folders`. Señal de arranque agnóstica del instalador y del nombre del exe:
-/// si un proceso de juego tiene abierto un fichero de la carpeta de save (o su
-/// cwd está ahí), ese proceso es el juego de ese save — sin catálogo, sin Steam
-/// y sin esperar a que escriba (basta con que lo tenga abierto, p. ej. al listar
-/// partidas en el menú de carga o al mapear el save en memoria). Devuelve los
-/// `save_id` casados.
+/// The paths (fds plus cwd) the `pid` process has open that fall INSIDE one of
+/// `folders`. A launch signal agnostic of the installer and of the exe's name: if a
+/// game process has a file from the save folder open (or its cwd is there), that
+/// process is that save's game, with no catalogue, no Steam and no waiting for it to
+/// write (having it open is enough, when listing saves in the load menu or mapping
+/// the save into memory). It returns the matched `save_id`s.
 ///
-/// Hoy solo Linux/SteamOS (vía `/proc/<pid>/fd` y `/proc/<pid>/cwd`, que no
-/// requieren privilegios para procesos propios). Windows/macOS devuelven vacío
-/// por ahora — su equivalente (enumerar handles / `proc_pidfdinfo`) queda
-/// pendiente; ahí la detección se apoya en nombre/carpeta y correlación.
+/// Linux and SteamOS only today (through `/proc/<pid>/fd` and `/proc/<pid>/cwd`,
+/// which need no privileges for our own processes). Windows and macOS return empty
+/// for now; their equivalent (enumerating handles, `proc_pidfdinfo`) is still to
+/// come, and there detection leans on name, folder and correlation.
 #[cfg(target_os = "linux")]
 fn open_paths_matching(pid: Pid, folders: &[(&str, &Path)]) -> Vec<String> {
     let mut hits: Vec<String> = Vec::new();
@@ -4905,15 +4873,14 @@ fn open_paths_matching(_pid: Pid, _folders: &[(&str, &Path)]) -> Vec<String> {
     Vec::new()
 }
 
-/// De todos los saves que declaran el mismo ejecutable, ¿es ÉSTE el que se
-/// está jugando?
+/// Of all the saves declaring the same executable, is THIS the one being played?
 ///
-/// El nombre del proceso no puede responder: diez títulos de una consola
-/// emulada lo comparten. Lo que sí distingue es quién recibe los guardados, así
-/// que la prueba es una escritura reciente en su propia carpeta. Sin escrituras
-/// no se afirma nada — que es lo correcto: perder el arranque de una sesión
-/// sólo cuesta unos minutos de horas contadas, mientras que darlo por bueno
-/// para todos inventaría una sesión entera en las otras nueve partidas.
+/// The process name cannot answer: ten titles from an emulated console share it.
+/// What does distinguish them is which one receives the saves, so the proof is a
+/// recent write to its own folder. With no writes nothing is claimed, which is
+/// right: losing a session's start only costs a few minutes of counted hours, while
+/// taking it as true for all of them would invent a whole session in the other nine
+/// saves.
 fn shared_process_is_corroborated(
     last_fs_event_at: Option<OffsetDateTime>,
     now: OffsetDateTime,
@@ -4921,14 +4888,14 @@ fn shared_process_is_corroborated(
     last_fs_event_at.is_some_and(|t| now - t <= SHARED_PROCESS_ACTIVITY)
 }
 
-/// One sweep of the process table. Emits transitions + schedules a
-/// post-game backup when a watched game stops running.
+/// One sweep of the process table. It emits transitions and schedules a post-game
+/// backup when a watched game stops running.
 ///
-/// Since 1.4 this no longer touches the fs watcher — the watcher is armed
-/// in `handle_add` and lives for the slot's lifetime. `process_poll` is
-/// pure UI signal (Dashboard pill, "the game just closed → flush" hint).
+/// Since 1.4 this no longer touches the fs watcher: the watcher is armed in
+/// `handle_add` and lives for the slot's lifetime. `process_poll` is pure UI signal
+/// (the Dashboard pill, the "the game just closed, so flush" hint).
 ///
-/// Returns whether any tracked game is currently running, so the caller can
+/// It returns whether any tracked game is currently running, so the caller can
 /// throttle the poll cadence (fast while a game is up, slow when idle).
 #[allow(clippy::too_many_arguments)]
 fn process_poll(
@@ -4939,23 +4906,23 @@ fn process_poll(
     playtime: &mut crate::playtime::PlaytimeStore,
     playtime_path: Option<&std::path::Path>,
     reported_heavy: &mut HashSet<Pid>,
-    // Mutable: las transiciones de parada pasan strikes de sesión fantasma a
-    // las observaciones de correlación (y las descartan al llegar al tope).
+    // Mutable: stop transitions pass phantom-session strikes to the correlation
+    // observations (and discard them on reaching the cap).
     corr_store: &mut crate::correlation::CorrelationStore,
     corr_path: Option<&std::path::Path>,
     steam_index: &crate::playtime_index::SteamPlaytimeIndex,
     prev_pids: &mut HashSet<Pid>,
     corr_running: &mut HashMap<String, (Pid, u64)>,
 ) -> bool {
-    // Slice 2b (ADR 0021 C.1): `process_poll` es el **muestreador del mundo** —
-    // detección de procesos, `is_running` (con su sticky de 6 s), eventos
-    // GameStarted/Stopped, playtime, heavy/correlación/probes. Ya NO toma
-    // decisiones de sync (barrier, flush final, deferred-pull): las emite el
-    // reductor en el `reconcile_all` que sigue a este poll. Por eso dejó de
-    // recibir `api`/`done_tx`/`cmd_tx`/`latest_versions`.
-    // Refresh every process. The `true` flag asks sysinfo to remove
-    // entries for processes that have exited since the last refresh,
-    // which is exactly what we need to detect "game stopped".
+    // Slice 2b (ADR 0021 C.1): `process_poll` is the world's sampler. Process
+    // detection, `is_running` (with its 6 s sticky), the GameStarted and GameStopped
+    // events, playtime, the heavy, correlation and probe passes. It NO LONGER takes
+    // sync decisions (barrier, final flush, deferred pull): the reducer emits those in
+    // the `reconcile_all` that follows this poll. That is why it stopped receiving
+    // `api`, `done_tx`, `cmd_tx` and `latest_versions`.
+    // Refresh every process. The `true` flag asks sysinfo to remove entries for
+    // processes that have exited since the last refresh, which is exactly what we need
+    // to detect "game stopped".
     sys.refresh_processes_specifics(ProcessesToUpdate::All, true, proc_refresh_kind());
 
     // Build a set of "currently running" save_ids. Two matchers cooperate:
@@ -4965,50 +4932,50 @@ fn process_poll(
     //
     // Single pass over the process table: invert the slots into a name→ids
     // index up front so the scan is O(procs + slots) instead of O(procs ×
-    // slots) — the old nested loop re-scanned every process for every slot and
+    // slots): the old nested loop re-scanned every process for every slot and
     // rebuilt a HashSet per slot per tick, which got worse now that playtime-
     // only games add up to ~16 extra slots.
     let mut name_index: HashMap<String, Vec<&str>> = HashMap::new();
-    // Saves cuyos nombres de proceso comparten con otros saves (una consola
-    // emulada partida en una carpeta por juego). Van a un índice aparte porque
-    // el nombre NO los identifica: diez títulos de la misma máquina listan el
-    // mismo ejecutable, y meterlos en `name_index` marcaría los diez como
-    // "jugando" en cuanto arranca el emulador. Aquí sólo se recogen candidatos;
-    // se corroboran más abajo contra la actividad de CADA carpeta.
+    // Saves whose process names are shared with other saves (an emulated console
+    // split into one folder per game). They go into a separate index because the name
+    // does NOT identify them: ten titles from the same machine list the same
+    // executable, and putting them in `name_index` would mark all ten as "playing" the
+    // moment the emulator starts. Only candidates are collected here; they get
+    // corroborated below against EACH folder's activity.
     let mut shared_name_index: HashMap<String, Vec<&str>> = HashMap::new();
-    // Saves de proceso compartido con escrituras recientes en su carpeta. Es la
-    // única evidencia de "este de los diez es el que se está jugando" que
-    // funciona en los tres SO: los handles abiertos sólo se pueden leer en
-    // Linux (`/proc`). Coste: las horas de un título emulado empiezan a contar
-    // en su primer guardado, no al arrancar el emulador. Se prefiere perder ese
-    // arranque a inventar horas en las otras nueve partidas.
+    // Shared-process saves with recent writes in their folder. It is the only evidence
+    // of "this one of the ten is the one being played" that works on all three
+    // systems: open handles can only be read on Linux (`/proc`). The cost: an emulated
+    // title's hours start counting on its first save rather than when the emulator
+    // starts. Losing that start is preferred to inventing hours in the other nine
+    // saves.
     let mut shared_fs_active: HashSet<&str> = HashSet::new();
-    // Índice genérico de identidad (slug/nombre → save_ids), list-free y
-    // multiplataforma. Es la vía que arregla los juegos sin procesos
-    // configurados (Stellaris, Victoria…): antes solo casaban por correlación
-    // fría o por `steam_install_dir`, así que la primera sesión no disparaba
-    // "arrancó" ni auto-restore aunque el save sí se detectara. Ahora casan por
-    // su propio nombre/carpeta sin depender de Steam ni de una lista curada.
+    // The generic identity index (slug or name to save_ids), list-free and
+    // cross-platform. It is the route that fixes games with no configured processes
+    // (Stellaris, Victoria): they used to match only through cold correlation or
+    // `steam_install_dir`, so the first session fired neither "it started" nor
+    // auto-restore even when the save was detected. Now they match through their own
+    // name or folder without depending on Steam or on a curated list.
     let mut token_index: HashMap<String, Vec<&str>> = HashMap::new();
-    // Carpetas de save rastreadas `(save_id, local_path)`. Las usa la detección
-    // por HANDLES ABIERTOS: un proceso de juego que tiene un fichero abierto
-    // dentro de una de estas carpetas ES el juego de ese save — agnóstico del
-    // instalador y del nombre del exe (resuelve exes en clave como EU5 sin
-    // catálogo ni Steam). Se saltan los `track_only` (no tienen save real).
+    // The tracked save folders, `(save_id, local_path)`. Used by OPEN-HANDLE
+    // detection: a game process with a file open inside one of these folders IS that
+    // save's game, agnostic of the installer and of the exe's name (it resolves
+    // code-named exes with no catalogue and no Steam). `track_only` ones are skipped
+    // (they have no real save).
     let mut save_folders: Vec<(&str, &Path)> = Vec::new();
     let mut dir_slots: Vec<(&str, &Path)> = Vec::new();
-    // Señales de correlación candidatas `(proc_name_lower, save_id, game_slug)`,
-    // recogidas aparte para vetar las ambiguas ANTES de que cuenten horas (ver
+    // Candidate correlation signals `(proc_name_lower, save_id, game_slug)`, collected
+    // separately so the ambiguous ones can be vetoed BEFORE they count hours (see
     // `accept_correlation_signals`).
     let mut corr_candidates: Vec<(String, &str, &str)> = Vec::new();
     for slot in slots.values() {
-        // Identidad genérica: vale para TODOS los slots (con o sin procesos
-        // configurados, `track_only` incluido). Es aditivo sobre un HashSet, así
-        // que solaparse con `name_index` es inocuo.
+        // Generic identity: it counts for EVERY slot (with or without configured
+        // processes, `track_only` included). It is additive over a HashSet, so
+        // overlapping with `name_index` is harmless.
         //
-        // Salvo los de proceso compartido: su identidad es justo lo que NO
-        // distingue una partida de otra, y dejarlos entrar aquí reabriría por
-        // esta puerta el "arranca el emulador, corren los diez títulos".
+        // Except the shared-process ones: their identity is exactly what does NOT tell
+        // one save from another, and letting them in here would reopen "the emulator
+        // starts and all ten titles run" through this door.
         for tok in if slot.save.shared_processes {
             Vec::new()
         } else {
@@ -5023,24 +4990,22 @@ fn process_poll(
             save_folders.push((slot.save.save_id.as_str(), slot.save.local_path.as_path()));
         }
         if slot.save.processes.is_empty() {
-            // Correlation-learned launch signal (ADR 0020, storefront- y
-            // juego-agnóstico): si Hoard ya observó algún proceso de JUEGO
-            // escribiendo en la carpeta de este save, ese proceso es la señal
-            // de "estás jugando". Sin esto, un juego fuera de la lista (p. ej.
-            // EU5 bajo Proton, cuyo exe no cae bajo `steam_install_dir`) nunca
-            // entra en `running` y no suma horas. PERO la atribución
-            // carpeta→proceso es ruidosa: si algo de fondo (Steam Cloud) reescribe
-            // la carpeta de save de OTRO juego mientras corre éste, esa carpeta
-            // queda correlacionada con este proceso. Para detección eso es
-            // inocuo (revisable); para PLAYTIME acumularía horas fantasma. Por
-            // eso aquí sólo recogemos candidatos y filtramos abajo.
+            // The correlation-learned launch signal (ADR 0020, storefront- and
+            // game-agnostic): if Hoard has already seen some GAME process writing into
+            // this save's folder, that process is the "you are playing" signal.
+            // Without it, a game off the list (say one under Proton whose exe does not
+            // fall under `steam_install_dir`) never enters `running` and accrues no
+            // hours. BUT folder-to-process attribution is noisy: if something in the
+            // background rewrites ANOTHER game's save folder while this one runs, that
+            // folder ends up correlated with this process. For detection that is
+            // harmless (it can be reviewed); for PLAYTIME it would accrue phantom
+            // hours. So only candidates are collected here and filtered below.
             if let Some(obs) = corr_store.signal_for(&slot.save.local_path) {
-                // Re-valida la observación contra las reglas ACTUALES y exige
-                // un exe en disco: blinda contra entradas basura grabadas por
-                // versiones previas con filtros más laxos (p. ej. el worker de
-                // kernel `ib_srv_wkr-2`, sin exe, que vive 24/7 y acumularía
-                // horas para siempre). En cuanto se re-grabe la correlación
-                // durante una sesión real, queda corregida y se confía en ella.
+                // Re-validate the observation against the CURRENT rules and demand an
+                // exe on disk: it guards against junk entries recorded by earlier
+                // versions with looser filters (a kernel worker with no exe, living
+                // 24/7, would accrue hours forever). As soon as the correlation is
+                // re-recorded during a real session it is corrected and trusted.
                 if obs.exe.is_some()
                     && crate::correlation::is_game_like(&obs.process_name, obs.exe.as_deref())
                 {
@@ -5073,12 +5038,11 @@ fn process_poll(
         }
     }
 
-    // Las señales de correlación NO se mezclan con los process-names de
-    // manifest: van a un índice aparte porque un match por correlación sólo
-    // cuenta como "jugando" si el proceso tiene CPU real en este tick (ver
-    // `CORRELATION_MIN_CPU_PCT`). Sólo se inyectan las que sobreviven al filtro
-    // anti horas-fantasma (los process-names configurados son de juegos con
-    // manifest).
+    // Correlation signals are NOT mixed with the manifest's process names: they go
+    // into a separate index because a correlation match only counts as "playing" when
+    // the process has real CPU on this tick (see `CORRELATION_MIN_CPU_PCT`). Only the
+    // ones surviving the phantom-hours filter are injected (the configured process
+    // names belong to games with a manifest).
     let configured: HashSet<String> = name_index.keys().cloned().collect();
     let mut corr_index: HashMap<String, Vec<&str>> = HashMap::new();
     for (pname, save_id) in accept_correlation_signals(&corr_candidates, &configured) {
@@ -5088,8 +5052,8 @@ fn process_poll(
     // The three indexes above all answer "which save is this process?" by
     // process NAME, and a save only appears in them if something ever wrote its
     // `processes` list. Plenty never did: they were tracked by folder and the
-    // list is empty. That's fine for "is this game running" — the identity and
-    // correlation paths cover it — but not for the heavy-process warning, which
+    // list is empty. That's fine for "is this game running", since the identity and
+    // correlation paths cover it, but not for the heavy-process warning, which
     // reads an empty list as "not tracked". Stellaris has been tracked for
     // months with `processes: []`, so every launch asked for a detection scan
     // for a game that was already in. Hence a second check by identity: the
@@ -5101,54 +5065,54 @@ fn process_poll(
         .filter(|s| !s.is_empty())
         .collect();
 
-    // Señal DÉBIL = transición de PID, no presencia+CPU. `first_tick` (no había
-    // foto previa) marca el arranque del agente: en él NO disparamos "arrancó"
-    // por correlación —adoptamos lo que ya corría como pre-existente— para no
-    // confundir un residente vivo desde el boot con un lanzamiento. `cur_pids`
-    // se convierte en la foto del próximo tick.
+    // The WEAK signal is a PID transition, not presence plus CPU. `first_tick` (there
+    // was no previous snapshot) marks the agent's start: on it we do NOT fire "it
+    // started" from correlation, adopting whatever was running as pre-existing, so a
+    // resident alive since boot is not confused with a launch. `cur_pids` becomes the
+    // next tick's snapshot.
     let first_tick = prev_pids.is_empty();
     let mut cur_pids: HashSet<Pid> = HashSet::with_capacity(sys.processes().len());
 
-    // Señales FUERTES: el proceso lleva el nombre/identidad del juego, corre
-    // desde su carpeta de instalación o tiene un fichero de su save abierto.
-    // Todas exigen que el ejecutable real del juego EXISTA ahora mismo y que el
-    // proceso siga VIVO (`is_defunct`): que exista el exe no bastaba — un juego
-    // de Proton que muere mal deja un zombi con su mismo nombre y exe, y eso
-    // mantenía el juego "corriendo" indefinidamente.
+    // STRONG signals: the process carries the game's name or identity, runs from its
+    // install folder, or has one of its save's files open. All of them demand that the
+    // game's real executable EXIST right now and that the process still be ALIVE
+    // (`is_defunct`): the exe existing was not enough, since a Proton game that dies
+    // badly leaves a zombie with the same name and exe, and that kept the game
+    // "running" indefinitely.
     let mut running: HashSet<String> = HashSet::new();
-    // Señales DÉBILES (correlación carpeta→proceso): no exigen el exe real del
-    // juego, solo que "algún proceso de juego" tocara su carpeta alguna vez. Un
-    // proceso de fondo mal atribuido puede mantenerlas vivas indefinidamente
-    // (caso offworld: 35 min sin cerrarse). Se resuelven aparte para poder
-    // aplicarles el guard "un juego a la vez" más abajo.
+    // WEAK signals (folder-to-process correlation): they do not demand the game's real
+    // exe, only that "some game process" touched its folder at some point. A
+    // misattributed background process can keep them alive indefinitely (one case ran
+    // 35 minutes without closing). They are resolved separately so the "one game at a
+    // time" guard below can be applied to them.
     let mut weak_running: HashSet<String> = HashSet::new();
-    // PLAYTIME "solo lo que juegas": slugs de juegos de Steam que corren pero
-    // no están rastreados por ningún slot (ni save real ni catálogo). Se cuentan
-    // igual para el Wrapped; ver `steam_index` y la atribución más abajo.
+    // Playtime "only what you play": slugs of Steam games that are running but tracked
+    // by no slot (neither a real save nor the catalogue). They count for the Wrapped
+    // anyway; see `steam_index` and the attribution below.
     let mut steam_running: HashSet<String> = HashSet::new();
     for (pid, proc) in sys.processes() {
         let name = proc.name().to_string_lossy().to_lowercase();
-        // Un proceso difunto conserva nombre, exe y `start_time`, así que casaría
-        // con las señales FUERTES igual que uno vivo y mantendría el slot
-        // "corriendo" para siempre (ver `is_defunct`). No puede estar escribiendo
-        // un save: queda fuera de las cuatro. La DÉBIL tampoco lo quiere: aunque
-        // sólo ARRANCA con un PID que nace, su arm de "mismo PID sigue vivo"
-        // aceptaba al zombi tick tras tick (un juego Proton que muere mal deja el
-        // zombi con el mismo `rpid`/`rst`), y el slot no salía de "corriendo"
-        // hasta el reboot — al zombi no se le puede matar y el force quit no
-        // genera transición. Ver incidente PoP 2008 jul-2026.
+        // A defunct process keeps its name, exe and `start_time`, so it would match
+        // the STRONG signals just like a live one and keep the slot "running" forever
+        // (see `is_defunct`). It cannot be writing a save, so it stays out of all four.
+        // The WEAK one does not want it either: although it only STARTS on a PID being
+        // born, its "same PID still alive" arm accepted the zombie tick after tick (a
+        // Proton game that dies badly leaves the zombie with the same `rpid` and
+        // `rst`), and the slot never left "running" until a reboot, since a zombie
+        // cannot be killed and a force quit generates no transition. See the PoP 2008
+        // incident, jul-2026.
         let defunct = is_defunct(proc.status());
-        // Name match — works on every storefront on Windows, and on
+        // Name match: works on every storefront on Windows, and on
         // Proton/Wine where the wineprefix process keeps the .exe name.
         if !defunct && !name_index.is_empty() {
             if let Some(ids) = name_index.get(&name) {
                 running.extend(ids.iter().map(|id| id.to_string()));
             }
         }
-        // Proceso compartido: el nombre por sí solo no elige entre los saves
-        // que lo listan, así que sólo cuenta el que además está recibiendo
-        // escrituras. Los handles abiertos, cuando se pueden leer, resuelven lo
-        // mismo un poco antes y entran por su propia rama más abajo.
+        // A shared process: the name alone does not choose between the saves listing
+        // it, so only the one also receiving writes counts. Open handles, where they
+        // can be read, resolve the same thing a little earlier and come in through
+        // their own branch below.
         if !defunct && !shared_name_index.is_empty() {
             if let Some(ids) = shared_name_index.get(&name) {
                 running.extend(
@@ -5158,11 +5122,11 @@ fn process_poll(
                 );
             }
         }
-        // Match genérico por identidad (list-free): el proceso lleva el nombre
-        // del juego o corre desde su carpeta de instalación. Sin gate de CPU —
-        // igualdad exacta con el slug/nombre del juego es señal fuerte por sí
-        // sola, y así un juego pausado (menús de Paradox, a 0% de CPU) sigue
-        // contando como "corriendo". `is_game_like` descarta sistema/launchers.
+        // The generic identity match (list-free): the process carries the game's name
+        // or runs from its install folder. With no CPU gate, since exact equality with
+        // the game's slug or name is a strong signal on its own, and that way a paused
+        // game (a Paradox menu at 0% CPU) still counts as running. `is_game_like`
+        // discards system processes and launchers.
         if !defunct
             && !token_index.is_empty()
             && crate::correlation::is_game_like(&name, proc.exe())
@@ -5173,12 +5137,11 @@ fn process_poll(
                 }
             }
         }
-        // Match por HANDLES ABIERTOS (agnóstico del instalador y del nombre del
-        // exe): si un proceso de juego tiene abierto un fichero de la carpeta de
-        // save, es el juego de ese save. Resuelve los exes en clave/abreviados
-        // (EU5 → `eu5.exe`) que ni el nombre ni la carpeta delatan, sin catálogo
-        // ni Steam. Sólo para procesos con pinta de juego, para acotar el coste
-        // de leer `/proc/<pid>/fd`.
+        // The OPEN-HANDLE match (agnostic of installer and exe name): if a game process
+        // has a file from the save folder open, it is that save's game. It resolves the
+        // code-named and abbreviated exes that neither the name nor the folder gives
+        // away, with no catalogue and no Steam. Only for processes that look like
+        // games, to bound the cost of reading `/proc/<pid>/fd`.
         if !defunct
             && !save_folders.is_empty()
             && crate::correlation::is_game_like(&name, proc.exe())
@@ -5188,26 +5151,26 @@ fn process_poll(
             }
         }
         cur_pids.insert(*pid);
-        // Match por correlación (señal DÉBIL) por TRANSICIÓN DE PID: el slot
-        // corre mientras viva el PID que lo arrancó, y sólo arranca cuando un PID
-        // que casa su nombre NACE este tick (no estaba el tick anterior). Sin
-        // gate de CPU: un residente correlacionado por error (Discord) nunca
-        // "aparece", así que ningún pico de CPU puede dispararlo. Va a
-        // `weak_running`; el guard "un juego a la vez" aún lo descarta si otro
-        // juego corre por señal fuerte (ver más abajo).
+        // The correlation match (the WEAK signal) by PID TRANSITION: the slot runs
+        // while the PID that started it lives, and it only starts when a PID matching
+        // its name is BORN this tick (it was not there on the previous one). With no
+        // CPU gate: a resident correlated by mistake never "appears", so no CPU spike
+        // can fire it. It goes to `weak_running`; the "one game at a time" guard still
+        // discards it when another game runs on a strong signal (see below).
         if !defunct && !corr_index.is_empty() {
             if let Some(ids) = corr_index.get(&name) {
                 let st = proc.start_time();
                 for id in ids {
                     match corr_running.get(*id) {
-                        // Es el PID que ya mantenía vivo este slot y sigue vivo.
+                        // It is the PID that already kept this slot alive and still
+                        // is.
                         Some((rpid, rst)) if *rpid == *pid && *rst == st => {
                             weak_running.insert(id.to_string());
                         }
-                        // PID distinto (o slot parado): sólo cuenta si acaba de
-                        // nacer. En el primer tick tras arrancar el agente nada
-                        // es "nuevo" — un juego ya abierto se detecta igual por
-                        // señal fuerte; la correlación lo recupera al relanzar.
+                        // A different PID (or a stopped slot): it only counts when it
+                        // has just been born. On the first tick after the agent starts
+                        // nothing is "new"; a game already open is detected by a strong
+                        // signal anyway, and correlation picks it up on relaunch.
                         _ => {
                             if !first_tick && !prev_pids.contains(pid) {
                                 weak_running.insert(id.to_string());
@@ -5229,12 +5192,12 @@ fn process_poll(
             }
         }
 
-        // PLAYTIME "solo lo que juegas" (recap, Steam): cuenta horas de juegos
-        // de Steam aunque no estén rastreados. Es SOLO para el Wrapped, no para
-        // detectar arranque — la detección de "corriendo" es agnóstica del
-        // instalador (nombre/carpeta + handles abiertos + correlación), sin
-        // tocar Steam. Exigimos CPU real, no-hilo y pinta de juego para no
-        // sumar herramientas de fondo bajo `steamapps/common`.
+        // Playtime "only what you play" (the recap, Steam): it counts hours for Steam
+        // games even when they are not tracked. It is ONLY for the Wrapped, not for
+        // detecting launches; "running" detection is installer-agnostic (name, folder,
+        // open handles and correlation) and never touches Steam. We demand real CPU,
+        // not being a thread, and looking like a game, so background tools under
+        // `steamapps/common` are not added up.
         if !steam_index.is_empty()
             && proc.thread_kind().is_none()
             && proc.cpu_usage() >= CORRELATION_MIN_CPU_PCT
@@ -5262,11 +5225,11 @@ fn process_poll(
             && !reported_heavy.contains(pid)
             && crate::correlation::is_game_like(&name, proc.exe())
         {
-            // El aviso enseña el TÍTULO cuando el manifiesto reconoce el
-            // ejecutable (18k juegos lo declaran en `launch:`), y sólo cae al
-            // nombre crudo del proceso si no. "Detectado posible juego:
-            // Hollow Knight" en vez de "hollow_knight.x86_64". El nombre real
-            // sigue en la línea de log de aquí al lado para diagnóstico.
+            // The notice shows the TITLE when the manifest recognises the executable
+            // (18k games declare it in `launch:`) and only falls back to the raw
+            // process name otherwise. "Possible game detected: Hollow Knight" rather
+            // than "hollow_knight.x86_64". The real name is still on the log line next
+            // to it for diagnostics.
             let raw = proc.name().to_string_lossy().into_owned();
             let title = hoard_manifest::ludusavi::title_for_exe(&raw)
                 .or_else(|| {
@@ -5306,28 +5269,28 @@ fn process_poll(
     }
     // Forget PIDs that have exited so a relaunch of the same game re-triggers.
     reported_heavy.retain(|pid| sys.processes().contains_key(pid));
-    // Suelta la atribución débil de slots cuyo PID ya no vive, y guarda la foto
-    // de PIDs para que el próximo tick sepa cuáles nacieron.
+    // Release the weak attribution of slots whose PID no longer lives, and store the
+    // PID snapshot so the next tick knows which were born.
     corr_running.retain(|_, (pid, _)| cur_pids.contains(pid));
     *prev_pids = cur_pids;
 
-    // Stop-debounce SÓLO para señales FUERTES: un match por nombre/handle puede
-    // caerse un tick por una carrera del refresco de procesos. Las señales
-    // DÉBILES ya son exactas (transición de PID: su "parado" es la muerte del
-    // PID), así que NO entran en el sticky — sin ellas aquí desaparece el ciclo
-    // de 90 s y el "35 min sin cerrarse". Refresca el stamp de los slots fuertes
-    // vivos y re-añade los que cayeron dentro de la ventana de gracia.
+    // Stop-debounce for STRONG signals only: a name or handle match can drop for one
+    // tick on a process-refresh race. The WEAK signals are already exact (a PID
+    // transition: their "stopped" is the PID's death) so they do NOT enter the sticky.
+    // Without them here the 90 s cycle and the "35 minutes without closing" disappear.
+    // It refreshes the stamp of live strong slots and re-adds the ones that fell inside
+    // the grace window.
     let now_inst = TokioInstant::now();
     for id in running.iter() {
         if let Some(slot) = slots.get_mut(id) {
             slot.last_running_seen = Some(now_inst);
-            // Una señal fuerte corrobora la sesión: ya no es "solo débil".
+            // A strong signal corroborates the session: it is no longer weak-only.
             slot.weak_session = false;
         }
     }
-    // Foto de los ids con señal FUERTE este tick, ANTES de mezclar débiles y
-    // sticky: las transiciones de abajo la usan para saber si un arranque fue
-    // solo-correlación (candidato a sesión fantasma).
+    // A snapshot of the ids with a STRONG signal this tick, BEFORE weak and sticky are
+    // mixed in: the transitions below use it to know whether a start was
+    // correlation-only (a phantom-session candidate).
     let strong_now: HashSet<String> = running.iter().cloned().collect();
     let sticky = Duration::from_secs(
         config
@@ -5347,15 +5310,14 @@ fn process_poll(
         .map(|(id, _)| id.clone())
         .collect();
 
-    // Guard "un juego a la vez": las señales fuertes (`running`) exigen que el
-    // exe real del juego exista, así que sus slugs son juegos que corren de
-    // verdad AHORA. Casi nadie juega a dos a la vez, y una correlación pegada a
-    // un proceso de fondo puede mantener un juego ya cerrado "arrancado" para
-    // siempre (offworld). Por eso, si algún juego corre por señal fuerte,
-    // descartamos las señales DÉBILES (correlación) y las re-añadidas por
-    // sticky de OTROS juegos: al arrancar otro juego, el fantasma se apaga y se
-    // queda apagado mientras juegas. Sin ningún juego fuerte, la correlación y
-    // el sticky siguen valiendo (juegos que SOLO casan así se detectan igual).
+    // The "one game at a time" guard: the strong signals (`running`) demand the game's
+    // real exe to exist, so their slugs are games genuinely running NOW. Almost nobody
+    // plays two at once, and a correlation stuck to a background process can keep an
+    // already-closed game "started" forever. So when any game runs on a strong signal,
+    // we discard the WEAK signals (correlation) and the ones re-added by sticky for
+    // OTHER games: starting another game switches the phantom off and keeps it off
+    // while you play. With no strong game at all, correlation and sticky still count
+    // (games that ONLY match that way are still detected).
     let strong_slugs: HashSet<String> = running
         .iter()
         .filter_map(|id| slots.get(id).map(|s| s.save.game_slug.clone()))
@@ -5377,8 +5339,8 @@ fn process_poll(
         }
     }
 
-    // PLAYTIME: atribuye el intervalo de este tick a los juegos vivos. El cap
-    // es 4× el poll (mín. 30 s) para no contar un suspend/resume como juego.
+    // Playtime: attribute this tick's interval to the live games. The cap is four
+    // times the poll (30 s minimum) so a suspend and resume is not counted as play.
     let mut running_games: Vec<(String, String)> = running
         .iter()
         .filter_map(|id| {
@@ -5387,10 +5349,10 @@ fn process_poll(
                 .map(|s| (id.clone(), s.save.game_slug.clone()))
         })
         .collect();
-    // Suma los juegos de Steam jugados-pero-no-rastreados que ningún slot ya
-    // cuenta (evita doble conteo por slug). El `save_id` sintético es estable
-    // entre ticks —clave de ancla en `PlaytimeStore::accrue`— y su prefijo lo
-    // hace obvio en logs.
+    // Add the played-but-untracked Steam games no slot already counts (which avoids
+    // double counting by slug). The synthetic `save_id` is stable across ticks (it is
+    // the anchor key in `PlaytimeStore::accrue`) and its prefix makes it obvious in
+    // logs.
     if !steam_running.is_empty() {
         let counted: HashSet<String> = running_games.iter().map(|(_, s)| s.clone()).collect();
         for slug in &steam_running {
@@ -5443,9 +5405,9 @@ fn process_poll(
                 // land (a restore in flight, un-flushed changes) is still owed.
                 slot.deferred_notified = false;
             }
-            // El nombre del proceso correlacionado va al log: sin él, un
-            // GameStarted fantasma es indiagnosticable (caso MOUSE jul-2026:
-            // días de arranques horarios sin saber qué proceso los causaba).
+            // The correlated process's name goes into the log: without it a phantom
+            // GameStarted is undiagnosable (the MOUSE case, jul-2026: days of hourly
+            // starts with no way of knowing which process caused them).
             let corr_process = if weak_start {
                 corr_store.attributed_name(&local_path)
             } else {
@@ -5463,34 +5425,34 @@ fn process_poll(
                 save_id: id.clone(),
                 game_slug,
             });
-            // El viejo "pre-launch sync barrier" (pull edge-triggered en el
-            // instante del arranque) desaparece con la autoridad invertida (ADR
-            // 0021 C.1): el modelo es level-triggered, así que el reductor ya
-            // restauró cualquier delta cross-device en un tick tranquilo ANTES de
-            // lanzar, y el `reconcile_all` que sigue a este poll difiere (con
-            // flush) el pull si la nube se adelantó justo al arrancar. Se pierde
-            // algo de latencia en la ventana estrecha "bump < 1 tick antes de
-            // lanzar" (aterriza al cerrar); ver el resumen del slice.
+            // The old "pre-launch sync barrier" (an edge-triggered pull at the moment
+            // of launch) disappears with the inverted authority (ADR 0021 C.1): the
+            // model is level-triggered, so the reducer already restored any
+            // cross-device delta on a quiet tick BEFORE launching, and the
+            // `reconcile_all` that follows this poll defers (with a flush) the pull if
+            // the cloud moved ahead right at launch. Some latency is lost in the narrow
+            // "bump less than a tick before launching" window (it lands on close); see
+            // the slice's summary.
         } else {
             let was_weak_session = slots.get(&id).map(|s| s.weak_session).unwrap_or(false);
             if let Some(slot) = slots.get_mut(&id) {
                 slot.is_running = false;
                 slot.weak_session = false;
             }
-            // Sesión fantasma: arrancó solo por correlación y murió sin UNA
-            // escritura en la carpeta. Un juego real escribe al jugar (y cada
-            // escritura re-graba la observación y la absuelve), así que esto
-            // solo acumula sobre atribuciones envenenadas — el task horario
-            // que tuvo a MOUSE "mid-session" durante días. Al segundo strike
-            // la observación cae y la señal débil muere con ella.
+            // A phantom session: it started on correlation alone and died without ONE
+            // write to the folder. A real game writes while being played (and every
+            // write re-records the observation and absolves it), so this only
+            // accumulates over poisoned attributions, such as the hourly task that had
+            // one save "mid-session" for days. On the second strike the observation
+            // falls and the weak signal dies with it.
             if was_weak_session && !had_pending {
                 match corr_store.strike_phantom(&local_path) {
                     Some(true) => {
                         tracing::warn!(
                             save_id = %id,
                             game_slug = %game_slug,
-                            "agent: observación de correlación descartada — \
-                             sesiones fantasma repetidas sin escrituras"
+                            "agent: correlation observation discarded, repeated \
+                             phantom sessions with no writes"
                         );
                         if let Some(p) = corr_path {
                             if let Err(e) = corr_store.save(p) {
@@ -5502,13 +5464,14 @@ fn process_poll(
                         tracing::info!(
                             save_id = %id,
                             game_slug = %game_slug,
-                            "agent: sesión fantasma (correlación sin escrituras) — strike a la observación"
+                            "agent: phantom session (correlation with no writes), striking the observation"
                         );
                     }
                     None => {}
                 }
             } else if had_pending {
-                // La sesión escribió: la atribución es legítima; borra strikes.
+                // The session wrote: the attribution is legitimate, so clear the
+                // strikes.
                 corr_store.absolve(&local_path);
             }
             tracing::info!(
@@ -5521,15 +5484,14 @@ fn process_poll(
                 save_id: id.clone(),
                 game_slug,
             });
-            // El flush final al cerrarse el juego y el aterrizaje del pull
-            // diferido ya NO se lanzan aquí: son decisiones de sync que el
-            // reductor emite en el `reconcile_all` que sigue a este poll. Al
-            // limpiar `is_running` arriba, el veto de sesión se levanta (pasada
-            // la gracia sticky) y el reductor ve `has_pending` + carpeta quieta →
-            // backup (el flush final), y `pull_pending`/nube-por-delante +
-            // tranquilo → restore (el pull diferido aterriza). `process_poll`
-            // sólo muestrea el mundo (ADR 0021 C.1). `had_pending` ya sólo
-            // alimenta el striking de sesión fantasma de arriba.
+            // The final flush when the game closes and the deferred pull's landing are
+            // NO LONGER launched here: they are sync decisions the reducer emits in the
+            // `reconcile_all` that follows this poll. Clearing `is_running` above lifts
+            // the session veto (past the sticky grace) and the reducer sees
+            // `has_pending` plus a quiet folder, so a backup (the final flush), and
+            // `pull_pending` or cloud-ahead plus quiet, so a restore (the deferred pull
+            // lands). `process_poll` only samples the world (ADR 0021 C.1).
+            // `had_pending` now only feeds the phantom-session striking above.
         }
     }
 
@@ -5540,9 +5502,8 @@ fn process_poll(
         playtime.flush_if_due(playtime_path, now_ms);
     }
 
-    // Un juego de Steam no rastreado que corre también mantiene la cadencia
-    // rápida: si no, el intervalo idle podría superar el cap de `accrue` y
-    // subcontar sus horas.
+    // An untracked Steam game that is running also keeps the fast cadence: otherwise
+    // the idle interval could exceed `accrue`'s cap and undercount its hours.
     !running.is_empty() || !steam_running.is_empty()
 }
 
@@ -5553,7 +5514,7 @@ mod tests {
 
     #[test]
     fn canon_token_unifies_slug_name_and_exe() {
-        // Las tres formas del mismo juego colapsan a un token.
+        // All three shapes of the same game collapse to one token.
         assert_eq!(canon_token("victoria-3"), "victoria3");
         assert_eq!(canon_token("Victoria 3"), "victoria3");
         assert_eq!(canon_token("victoria3.exe"), "victoria3exe");
@@ -5562,18 +5523,18 @@ mod tests {
 
     #[test]
     fn game_tokens_drop_short_and_dedup() {
-        // Slug y nombre visible que colapsan al mismo token → uno solo.
+        // A slug and a display name that collapse to the same token give one.
         assert_eq!(
             game_identity_tokens("stellaris", "Stellaris"),
             ["stellaris"]
         );
-        // Token demasiado corto se descarta (colisiona con cualquier carpeta).
+        // A token that is too short is discarded (it collides with any folder).
         assert!(game_identity_tokens("gta", "GTA").is_empty());
     }
 
     #[test]
     fn process_matches_game_by_exe_basename() {
-        // Caso Stellaris/Victoria: el exe lleva el nombre del juego.
+        // The Stellaris and Victoria case: the exe carries the game's name.
         let cands = process_identity_candidates(
             "victoria3",
             Some(Path::new(
@@ -5585,8 +5546,8 @@ mod tests {
 
     #[test]
     fn process_matches_game_by_install_folder() {
-        // Exe abreviado (`witcher3`) pero la CARPETA lleva el nombre completo:
-        // el slug casa por el componente de ruta, no por el basename.
+        // An abbreviated exe (`witcher3`) but the FOLDER carries the full name: the
+        // slug matches through the path component rather than the basename.
         let cands = process_identity_candidates(
             "witcher3",
             Some(Path::new(
@@ -5599,8 +5560,8 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn open_handle_detects_process_holding_a_save_file() {
-        // Un fichero abierto dentro de la carpeta de save delata al proceso
-        // dueño, sin depender del nombre del exe (caso EU5).
+        // A file open inside the save folder gives its owning process away, without
+        // depending on the exe's name.
         let dir = tempfile::tempdir().unwrap();
         let save = dir.path().join("Save Games");
         std::fs::create_dir_all(&save).unwrap();
@@ -5610,14 +5571,14 @@ mod tests {
         let hits = open_paths_matching(pid, &folders);
         assert!(hits.contains(&"save-eu5".to_string()));
         drop(f);
-        // Cerrado el fichero, ya no casa.
+        // With the file closed, it no longer matches.
         let hits2 = open_paths_matching(pid, &folders);
         assert!(!hits2.contains(&"save-eu5".to_string()));
     }
 
     #[test]
     fn generic_identity_ignores_unrelated_process() {
-        // Un proceso sin relación no produce el token del juego.
+        // An unrelated process does not produce the game's token.
         let cands =
             process_identity_candidates("firefox", Some(Path::new("/usr/lib/firefox/firefox")));
         assert!(!cands.contains(&"stellaris".to_string()));
@@ -5625,10 +5586,10 @@ mod tests {
 
     #[test]
     fn generic_and_profile_tokens_are_vetoed() {
-        // Caso real jul-2026: un save quedó rastreado con slug = username de
-        // Windows ("jacka"). El username es componente de ruta de TODO exe del
-        // perfil, así que cualquier app disparaba "estás jugando". Los tokens
-        // de fontanería no pueden ser identidad ni de juego ni de proceso.
+        // The real jul-2026 case: a save ended up tracked with its slug set to the
+        // Windows username. The username is a path component of EVERY exe in the
+        // profile, so any app fired "you are playing". Plumbing tokens cannot be
+        // identity, for either a game or a process.
         for t in [
             "users",
             "appdata",
@@ -5641,11 +5602,11 @@ mod tests {
         }
         assert!(!is_generic_identity_token("eldenring"));
         assert!(!is_generic_identity_token("mousepiforhire"));
-        // Del lado del juego: un slug degenerado no produce tokens…
+        // On the game's side: a degenerate slug produces no tokens...
         assert!(game_identity_tokens("games", "Saved Games").is_empty());
-        // …y del lado del proceso, los componentes del perfil no salen como
-        // candidatos (el exe y su carpeta de instalación sí). Ruta con
-        // separador nativo: los componentes sólo se extraen así.
+        // ...and on the process's side, the profile's components do not come out as
+        // candidates (the exe and its install folder do). A path with the native
+        // separator: the components are only extracted that way.
         let cands = process_identity_candidates(
             "game.exe",
             Some(Path::new("/Users/bob/AppData/Roaming/GSE Saves/game.exe")),
@@ -5654,7 +5615,7 @@ mod tests {
             .iter()
             .any(|c| c == "users" || c == "appdata" || c == "roaming"));
         assert!(cands.contains(&"gsesaves".to_string()));
-        // Un juego normal conserva su identidad por carpeta de instalación.
+        // An ordinary game keeps its identity through its install folder.
         let cands = process_identity_candidates(
             "witcher3",
             Some(Path::new(
@@ -5710,30 +5671,29 @@ mod tests {
         assert!(c.max_retries >= 1);
     }
 
-    /// ADR 0021 D.12 — el motor observa la nube él mismo, pero un cliente sano
-    /// le ahorra el viaje: mientras el feed sea reciente no se dispara ninguna
-    /// consulta propia. Es lo que mantiene el coste en UN manifiesto por
-    /// intervalo en vez de dos.
+    /// ADR 0021 D.12: the engine observes the cloud itself, but a healthy client saves
+    /// it the trip. While the feed is recent, no query of its own fires. That is what
+    /// keeps the cost at ONE manifest per interval rather than two.
     #[test]
     fn self_observation_is_suppressed_by_a_live_feed_and_paced_when_blind() {
         let t0 = OffsetDateTime::UNIX_EPOCH;
         let secs = |n: i64| t0 + Duration::from_secs(n as u64);
         let due = kernel::reconcile::CLOUD_SELF_OBSERVE_AFTER_SECS;
 
-        // Arranque en frío: sin feed y sin intentos, se observa ya (el motor no
-        // espera a que nadie le dé la papilla).
+        // A cold start: with no feed and no attempts, it observes now (the engine does
+        // not wait to be spoon-fed).
         let mut heads = CloudHeads::new(t0);
         assert!(heads.due_for_self_observation(t0));
 
-        // Con un feed recién llegado (poller vivo) no hay nada que buscar…
+        // With a freshly arrived feed (a live poller) there is nothing to fetch...
         heads.feed(HashMap::new(), None, None, secs(10));
         assert!(!heads.due_for_self_observation(secs(10 + due - 1)));
-        // …hasta que ese feed se hace viejo: el poller enmudeció y el motor
-        // cubre el hueco por su cuenta.
+        // ...until that feed gets old: the poller went quiet and the engine covers the
+        // gap on its own.
         assert!(heads.due_for_self_observation(secs(10 + due)));
 
-        // Un intento propio que no trajo cabezas (red caída, 401) marca el
-        // ritmo: un reintento por plazo, no uno por tick de 2 s.
+        // An attempt of its own that brought no heads (network down, a 401) paces it:
+        // one retry per deadline, not one per two-second tick.
         heads.last_attempt_at = Some(secs(100));
         assert!(!heads.due_for_self_observation(secs(101)));
         assert!(heads.due_for_self_observation(secs(100 + due)));
@@ -5767,9 +5727,9 @@ mod tests {
         assert_eq!(heads.as_of, as_of, "SSE merge must not suppress list_saves");
     }
 
-    /// ADR 0021 D.11 (remate) — el ancla del margen de arranque sólo existe con
-    /// nube que observar. Sin contexto resuelto no se afirma nada: declarar
-    /// ceguera sin saber si hay nube sería inventarse una avería.
+    /// ADR 0021 D.11: the startup allowance's anchor only exists when there is a cloud
+    /// to observe. With no resolved context nothing is claimed: declaring blindness
+    /// without knowing whether there is a cloud would be inventing a fault.
     #[test]
     fn expected_since_is_anchored_only_in_cloud_context() {
         let t0 = OffsetDateTime::UNIX_EPOCH;
@@ -5791,12 +5751,12 @@ mod tests {
     fn a_shared_process_needs_a_write_in_this_saves_own_folder() {
         let now = OffsetDateTime::UNIX_EPOCH + time::Duration::hours(10);
 
-        // Arranca el emulador y todavía no ha guardado nadie: ningún título
-        // cuenta como "jugando". Éste es el caso que evita inventar horas en
-        // las nueve partidas que no se están tocando.
+        // The emulator starts and nobody has saved yet: no title counts as playing.
+        // This is the case that avoids inventing hours in the nine saves nobody is
+        // touching.
         assert!(!shared_process_is_corroborated(None, now));
 
-        // El título que acaba de guardar sí.
+        // The title that has just saved does.
         assert!(shared_process_is_corroborated(
             Some(now - time::Duration::minutes(1)),
             now
@@ -5808,8 +5768,8 @@ mod tests {
             now
         ));
 
-        // Pero una partida que se tocó esta mañana no se cuela en la sesión de
-        // ahora sólo porque el emulador esté abierto.
+        // But a save touched this morning does not slip into the current session just
+        // because the emulator is open.
         assert!(!shared_process_is_corroborated(
             Some(now - time::Duration::hours(3)),
             now
@@ -5825,11 +5785,11 @@ mod tests {
         let mut probes: HashMap<PathBuf, Option<std::time::SystemTime>> = HashMap::new();
         probes.insert(cand.clone(), None);
 
-        // Primer tick: sólo siembra el baseline, no reporta nada.
+        // The first tick only seeds the baseline and reports nothing.
         assert!(probe_detect_writes(&mut probes).is_empty());
         assert!(probes[&cand].is_some());
 
-        // Una escritura posterior (mtime mayor) sí se reporta.
+        // A later write (a greater mtime) is reported.
         let later = std::time::SystemTime::now() + Duration::from_secs(120);
         filetime::set_file_mtime(
             cand.join("save1.zip"),
@@ -5843,9 +5803,9 @@ mod tests {
         assert!(probe_detect_writes(&mut probes).is_empty());
     }
 
-    // Los tests de `accept_correlation_signals` (incluida la regresión de
-    // horas-fantasma del corpus D.4) se movieron con la función al kernel
-    // leaf: `hoard_core::kernel::correlation::tests`.
+    // The `accept_correlation_signals` tests (the D.4 corpus phantom-hours regression
+    // included) moved with the function into the leaf kernel:
+    // `hoard_core::kernel::correlation::tests`.
 
     /// A slot in the state a freshly added save has: nothing pending, nothing
     /// scheduled, no burst.
@@ -5926,7 +5886,7 @@ mod tests {
     /// A save whose local id the cloud has never seen must still read its own
     /// head. This is the whole aug-2026 failure in one assertion: the lookup
     /// missed, `cloud_version` came back `None`, and a row fourteen versions
-    /// behind was reported as converged — while every upload it tried was
+    /// behind was reported as converged, while every upload it tried was
     /// rejected as non-fast-forward by the row it couldn't see.
     #[test]
     fn a_drifted_local_id_still_reads_its_cloud_head() {
@@ -5954,7 +5914,7 @@ mod tests {
     #[test]
     fn an_alias_for_a_row_thats_gone_is_ignored() {
         let mut heads = heads_with(&[("cloud-side", "factorio", "main", 284)]);
-        // A later feed without that row, and without names — the aliases stay.
+        // A later feed without that row, and without names: the aliases stay.
         heads.feed(
             HashMap::new(),
             None,
@@ -5977,7 +5937,7 @@ mod tests {
     }
 
     /// The digest is only trusted when it belongs to the version that is head
-    /// *now*, and that check has to happen after the id is resolved — a digest
+    /// *now*, and that check has to happen after the id is resolved: a digest
     /// looked up under the local id would simply never be found.
     #[test]
     fn the_head_digest_follows_the_resolved_id() {
@@ -6045,7 +6005,7 @@ mod tests {
     /// being invisible ("Hoard isn't picking up my changes"); a conditional one
     /// nobody can see fails the same way to fewer people. The wait lands in
     /// `next_scheduled_backup_at`, which the overlay's "next copy in Xs" reads,
-    /// and is announced once — not on every one of the thirty ticks the floor
+    /// and is announced once, not on every one of the thirty ticks the floor
     /// spans.
     #[tokio::test(flavor = "current_thread")]
     async fn a_deferred_backup_shows_when_it_will_go_out() {
@@ -6102,7 +6062,7 @@ mod tests {
 
     /// A Proton game that dies badly leaves its .exe defunct, keeping the name
     /// and exe path every strong matcher keys on. Nothing about a zombie says
-    /// "the user is playing" — it can't write a save file — so it must never
+    /// "the user is playing" (it can't write a save file) so it must never
     /// hold a slot `is_running`, which is what pinned the mid-session veto open
     /// and stranded cross-device updates on the Deck.
     #[test]
@@ -6112,7 +6072,7 @@ mod tests {
 
         assert!(!is_defunct(ProcessStatus::Run));
         assert!(!is_defunct(ProcessStatus::Sleep));
-        // A Paradox game sitting in a menu burns no CPU and reads as Idle —
+        // A Paradox game sitting in a menu burns no CPU and reads as Idle, which is
         // very much a live session.
         assert!(!is_defunct(ProcessStatus::Idle));
         // SIGSTOP'd (or suspended): it can resume and write at any moment.
@@ -6123,7 +6083,7 @@ mod tests {
     /// `proc_refresh_kind` really does populate `status()`, and a genuine
     /// unreaped child really does read as defunct through it. If sysinfo ever
     /// puts `status` behind a refresh flag, the zombie filter would silently
-    /// go back to matching leftovers — this fails instead.
+    /// go back to matching leftovers: this fails instead.
     #[cfg(target_os = "linux")]
     #[test]
     fn sysinfo_reports_an_unreaped_child_as_defunct() {
@@ -6155,14 +6115,13 @@ mod tests {
         );
     }
 
-    /// Integración end-to-end del camino invertido (ADR 0021 Slice 2b): un save
-    /// sin `processes` ni `steam_install_dir` (ningún proceso casa) debe, al
-    /// reescribirse su carpeta, disparar un backup **sin juego corriendo**. En el
-    /// modelo invertido eso es: watcher armado en `handle_add` → evento fs marca
-    /// `has_pending`/`needs_l1` y arma el timer de debounce → nudge → `reconcile_all`
-    /// → el reductor emite `Backup` (has_pending && contenido divergente) →
-    /// `run_backup_with_retry` arranca y emite `BackupStarted`. (Antes se esperaba
-    /// `BackupScheduled`, que emitía el `schedule_backup` ya retirado; la subida
+    /// An end-to-end integration of the inverted path (ADR 0021 Slice 2b): a save
+    /// with no `processes` and no `steam_install_dir` (nothing matches) has to fire a
+    /// backup when its folder is rewritten, with no game running. In the inverted
+    /// model that is: the watcher armed in `handle_add`, an fs event marking
+    /// `has_pending` and `needs_l1` and arming the debounce timer, a nudge,
+    /// `reconcile_all`, and the reducer emitting `Backup` (has_pending plus diverging
+    /// content), so `run_backup_with_retry` starts and emits `BackupStarted`.
     /// real empezando prueba el mismo invariante extremo-a-extremo, mejor.)
     #[tokio::test(flavor = "current_thread")]
     async fn fs_event_triggers_backup_without_game_running() {
@@ -6203,7 +6162,7 @@ mod tests {
         let (handle, task) = spawn(api, config, vec![save], events_tx);
 
         // Give the agent a beat to register the save before we touch the
-        // folder — otherwise the fs event could land before `AddSave` is
+        // folder, or the fs event could land before `AddSave` is
         // processed.
         tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -6230,13 +6189,13 @@ mod tests {
         let _ = tokio::time::timeout(Duration::from_secs(2), task).await;
 
         let save_id = started.expect(
-            "timed out waiting for BackupStarted — the fs event never reached the reducer as a backup",
+            "timed out waiting for BackupStarted: the fs event never reached the reducer as a backup",
         );
         assert_eq!(save_id, "watcher-bug-1");
     }
 
     /// A backup that burns its whole retry budget used to leave the slot in a
-    /// corner it could never climb out of: no `BackupDone` (correctly — the
+    /// corner it could never climb out of: no `BackupDone` (correctly, since the
     /// changes never reached a version, so `has_pending` must stay set to keep
     /// restores off them), but also nothing that would ever try the upload
     /// again. `has_pending` is itself a mid-session veto, so the save could
@@ -6356,8 +6315,8 @@ mod tests {
     }
 
     /// La basura local no es divergencia. `disk_set_hash` no la cuenta (sale de
-    /// `walk_source`), así que contarla aquí marcaría `local_diverged` en cada
-    /// auto-restore de cualquier juego con un log, y el motor repetiría un walk
+    /// `walk_source`), so counting it here would mark `local_diverged` on every
+    /// auto-restore of any game with a log, and the engine would repeat a walk
     /// y un hash de contenido enteros cada vez.
     #[tokio::test(flavor = "current_thread")]
     async fn restore_files_into_ignores_junk_when_counting_local_only() {
@@ -6368,14 +6327,14 @@ mod tests {
         std::fs::create_dir_all(target).unwrap();
         std::fs::write(source.join("slot1.sav"), b"partida").unwrap();
         std::fs::write(target.join("slot1.sav"), b"partida").unwrap();
-        // Sólo en local, y de las que el backup nunca sube.
+        // Local only, and of the kind the backup never uploads.
         std::fs::write(target.join("Player.log"), b"log").unwrap();
         std::fs::write(target.join(".DS_Store"), b"junk").unwrap();
 
         let stats = restore_files_into(target, source, None, &[]).await.unwrap();
         assert_eq!(stats.target_only, 0, "la basura no es divergencia");
 
-        // Pero la config sí cuenta: existe sólo en local hasta que se sube.
+        // But config does count: it exists only locally until it is uploaded.
         std::fs::write(target.join("graphics.ini"), b"res=1080").unwrap();
         let stats = restore_files_into(target, source, None, &[]).await.unwrap();
         assert_eq!(stats.target_only, 1, "la config sí debe contar");
@@ -6384,7 +6343,7 @@ mod tests {
     /// Local-only files: a file present in the target but absent from the
     /// remote snapshot is left untouched and counted under `target_only`.
     /// This is the divergence signal the conflict/auto-restore path keys on
-    /// to decide it must re-upload rather than settle — getting it wrong
+    /// to decide it must re-upload rather than settle: getting it wrong
     /// would silently drop local data, so pin the count explicitly.
     #[tokio::test(flavor = "current_thread")]
     async fn restore_files_into_counts_local_only_files() {
@@ -6422,7 +6381,7 @@ mod tests {
     }
 
     /// Mirror image: when the target is a strict subset of the snapshot
-    /// (everything local also exists remotely), `target_only` is zero — the
+    /// (everything local also exists remotely), `target_only` is zero, and the
     /// signal that a purely-behind device can settle without re-uploading.
     #[tokio::test(flavor = "current_thread")]
     async fn restore_files_into_no_local_only_when_target_is_subset() {
@@ -6444,7 +6403,7 @@ mod tests {
     }
 
     /// Conflict case: A exists in both source and target but bytes differ.
-    /// The local copy wins — bytes on disk stay as the target's version
+    /// The local copy wins: bytes on disk stay as the target's version
     /// and the conflict is reported in stats.
     #[tokio::test(flavor = "current_thread")]
     async fn restore_files_into_preserves_local_on_conflict() {
@@ -6458,7 +6417,7 @@ mod tests {
 
         let stats = restore_files_into(target, source, None, &[]).await.unwrap();
 
-        assert_eq!(stats.restored, 0, "nothing copied — A is a conflict");
+        assert_eq!(stats.restored, 0, "nothing copied: A is a conflict");
         assert_eq!(stats.skipped, 0);
         // No conflict_backup_dir → fallback to "keep local" regardless of
         // mtime, accounted under `conflicts_resolved_local`.
@@ -6593,7 +6552,7 @@ mod tests {
         assert_eq!(stats.conflicts_backed_up, 0);
         assert_eq!(stats.bytes_restored, 0);
         assert_eq!(std::fs::read(target.join("a.dat")).unwrap(), b"LOCAL-WORK");
-        // No backup was created — `backup` is still empty.
+        // No backup was created; `backup` is still empty.
         assert!(std::fs::read_dir(backup).unwrap().next().is_none());
     }
 

@@ -69,7 +69,7 @@ pub async fn release_assets(version: Option<&str>) -> Result<(String, Vec<Asset>
         .with_context(|| format!("asking GitHub for {url}"))?;
     if !resp.status().is_success() {
         bail!(
-            "GitHub answered {} for {url} — the release may not be published yet",
+            "GitHub answered {} for {url}; the release may not be published yet",
             resp.status()
         );
     }
@@ -117,7 +117,7 @@ pub fn asset_for(delivery: Delivery, assets: &[Asset]) -> Option<&Asset> {
 ///
 /// Every release carries both, and they collide by construction: the installer
 /// is a `.exe` on Windows and would be an `.AppImage` or a `.dmg` if it were
-/// packaged the way each system expects — the very suffixes [`asset_for`] uses
+/// packaged the way each system expects, the very suffixes [`asset_for`] uses
 /// to recognise the app. [`pick_for_arch`] can't separate them either, since
 /// both carry the same architecture token, so the tie would be broken by
 /// whatever order GitHub happens to list the files in.
@@ -301,7 +301,7 @@ pub async fn apply_desktop(
             }
             // Where it *landed*, not the setup file we just ran. Returning the
             // installer's own path put a `…\Temp\Hoard_x.y.z_x64-setup.exe`
-            // into `Manifest::desktop_path` — a file that gets swept minutes
+            // into `Manifest::desktop_path`, a file that gets swept minutes
             // later. Two things then break quietly: "Open Hoard" runs the
             // installer again instead of the app, and an uninstall looks for a
             // path that no longer exists, finds nothing, and reports success
@@ -324,13 +324,13 @@ pub async fn apply_desktop(
 /// Mounts the `.dmg`, copies the `.app` into `/Applications`, unmounts.
 ///
 /// This is the macOS half of "the installer does the same thing on all three
-/// systems". It used to fail on purpose — "open it and drag Hoard to
-/// Applications" — which is reasonable guidance for a person with the Finder in
+/// systems". It used to fail on purpose ("open it and drag Hoard to
+/// Applications"), which is reasonable guidance for a person with the Finder in
 /// front of them and no guidance at all for the updater, or for an install
 /// window that claims to be installing.
 ///
 /// Mounted with `-nobrowse` so a Finder window doesn't open on top of ours, and
-/// unmounted whatever happens above — a volume nobody detaches sits on the
+/// unmounted whatever happens above: a volume nobody detaches sits on the
 /// user's desktop until they reboot.
 #[cfg(target_os = "macos")]
 async fn install_dmg(path: &Path) -> Result<PathBuf> {
@@ -444,7 +444,7 @@ async fn copy_app_out(mount: &Path) -> Result<PathBuf> {
             String::from_utf8_lossy(&out.stderr).trim()
         );
     }
-    bail!("could not install the app bundle — {last}")
+    bail!("could not install the app bundle: {last}")
 }
 
 /// Off macOS a `.dmg` is installable by nobody. We never get here:
@@ -478,7 +478,7 @@ async fn elevated(cmd: &[&str], path: &Path, noninteractive: bool) -> Result<()>
     elevated_argv(&argv, noninteractive).await
 }
 
-/// The same, for a command whose last word isn't a path — `dpkg -r hoard`
+/// The same, for a command whose last word isn't a path: `dpkg -r hoard`
 /// takes a package name, not a file, and taking one away needs the same
 /// privileges as putting it there.
 pub(super) async fn elevated_argv(argv: &[String], noninteractive: bool) -> Result<()> {
@@ -724,7 +724,7 @@ async fn extract_core(tarball: &[u8], dir: &Path) -> Result<Vec<(&'static str, P
             .filter(|w| !found.iter().any(|(n, _)| n == w))
             .collect();
         bail!(
-            "the release tarball is missing {} — refusing to install half of the core",
+            "the release tarball is missing {}; refusing to install half of the core",
             missing.join(" and ")
         );
     }
@@ -765,7 +765,7 @@ fn replace_binary(src: &Path, dest: &Path) -> Result<()> {
         if dest.exists() {
             std::fs::rename(dest, &parked).with_context(|| {
                 format!(
-                    "parking the running {} — is another copy still starting?",
+                    "parking the running {}; is another copy still starting?",
                     dest.display()
                 )
             })?;
@@ -782,7 +782,7 @@ mod tests {
 
     /// How the bundlers spell *this* machine's architecture, so the fixture
     /// below describes a release that actually has a file for the runner. A
-    /// hardcoded `amd64` made these tests assert on x86 and panic on ARM —
+    /// hardcoded `amd64` made these tests assert on x86 and panic on ARM;
     /// `pick_for_arch` is right to return None when no candidate is ours, and
     /// macOS CI runs on Apple Silicon.
     fn arch_token() -> &'static str {
@@ -1075,7 +1075,7 @@ mod installer_guard_tests {
     /// The app's names carry no architecture token on purpose, so
     /// [`pick_for_arch`] falls through to "the only candidate" and the outcome
     /// depends on nothing but the filter under test. With real names the answer
-    /// would change with the machine running the test — a `.dmg` is published
+    /// would change with the machine running the test: a `.dmg` is published
     /// for aarch64 only, so on an x86_64 host the right answer is `None`, and
     /// this test would be asserting the host rather than the code.
     #[test]

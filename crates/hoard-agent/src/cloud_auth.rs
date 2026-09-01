@@ -79,7 +79,7 @@ pub struct Tokens {
     pub refresh: String,
 }
 
-/// Sesión Cloud activa cargada de disco: a qué servidor apunta y sus tokens.
+/// The active Cloud session loaded from disk: which server it points at, plus tokens.
 #[derive(Debug, Clone)]
 pub struct Session {
     pub server_url: String,
@@ -96,7 +96,7 @@ pub struct RefreshTokenStale;
 
 impl std::fmt::Display for RefreshTokenStale {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("refresh token ya rotado por otra ejecución")
+        f.write_str("refresh token already rotated by another run")
     }
 }
 
@@ -148,7 +148,7 @@ fn supabase_error_message(status: StatusCode, body: &str) -> String {
             }
         }
     }
-    format!("Supabase devolvió {status}")
+    format!("Supabase answered {status}")
 }
 
 /// Login by email and password (`grant_type=password`). Direct when the account
@@ -185,7 +185,7 @@ pub async fn otp_start(email: &str) -> Result<()> {
     }
     let body = resp.text().await.unwrap_or_default();
     bail!(
-        "no pude enviar el código: {}",
+        "could not send the code: {}",
         supabase_error_message(status, &body)
     );
 }
@@ -203,7 +203,7 @@ pub async fn otp_verify(email: &str, code: &str) -> Result<Tokens> {
     parse_token_response(resp).await
 }
 
-// ---- emparejamiento por móvil (device flow) ---------------------------
+// ---- pairing from the phone (device flow)
 
 /// The response of `/v1/cloud/device/start`. The CLI shows `user_code` and
 /// `verification_uri` (or the `_complete` one with the code already filled in) and
@@ -323,7 +323,7 @@ pub async fn device_poll(device_code: &str) -> Result<DeviceStatus> {
 pub async fn refresh(refresh_token: &str) -> Result<Tokens> {
     let refresh_token = refresh_token.trim();
     if refresh_token.is_empty() {
-        bail!("no hay refresh token guardado — vuelve a iniciar sesión");
+        bail!("no refresh token stored; sign in again");
     }
     let url = format!("{}/auth/v1/token?grant_type=refresh_token", supabase_url());
     let client = Client::builder()
@@ -374,7 +374,7 @@ pub async fn refresh(refresh_token: &str) -> Result<Tokens> {
             tokio::time::sleep(Duration::from_millis(600)).await;
             continue;
         }
-        bail!("no pude renovar la sesión ({status}): {body}");
+        bail!("could not renew the session ({status}): {body}");
     }
 }
 
@@ -405,13 +405,13 @@ pub async fn fetch_me(base: &str, access: &str) -> Result<Me> {
         .with_context(|| format!("GET {url}"))?;
     let status = resp.status();
     if status == StatusCode::UNAUTHORIZED {
-        bail!("la sesión Cloud caducó — vuelve a iniciar sesión");
+        bail!("the Cloud session expired; sign in again");
     }
     let body = resp.text().await.unwrap_or_default();
     if !status.is_success() {
-        bail!("/v1/me devolvió {status}: {body}");
+        bail!("/v1/me answered {status}: {body}");
     }
-    serde_json::from_str::<Me>(&body).with_context(|| format!("parseando /v1/me: {body}"))
+    serde_json::from_str::<Me>(&body).with_context(|| format!("parsing /v1/me: {body}"))
 }
 
 // ---- persistencia (interoperable con el desktop) ----------------------
@@ -455,13 +455,14 @@ fn read_session_file() -> Result<Option<SessionFile>> {
 fn write_session_file(s: &SessionFile) -> Result<()> {
     let path = session_path()?;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| format!("creando {}", parent.display()))?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
     }
-    let text = toml::to_string_pretty(s).context("serializando sesión Cloud")?;
+    let text = toml::to_string_pretty(s).context("serialising the Cloud session")?;
     // An atomic write, temp plus rename, so a cut halfway through does not leave a
     // truncated TOML that looks like a broken session on start.
     let tmp = path.with_extension("toml.tmp");
-    std::fs::write(&tmp, &text).with_context(|| format!("escribiendo {}", tmp.display()))?;
+    std::fs::write(&tmp, &text).with_context(|| format!("writing {}", tmp.display()))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -554,7 +555,7 @@ pub async fn load_session_async() -> Result<Option<Session>> {
         Ok(result) => result,
         // Only happens if `keyring` panicked. Saying so is infinitely better than
         // a start that hangs with no reason.
-        Err(join) => Err(anyhow::Error::new(join).context("leyendo la sesión Cloud")),
+        Err(join) => Err(anyhow::Error::new(join).context("reading the Cloud session")),
     }
 }
 
@@ -634,7 +635,7 @@ pub fn store_tokens(tokens: &Tokens, server_url: &str) -> Result<()> {
 /// A `set_password` that returns `Ok` is not proof the entry can be read: the
 /// error users actually hit is `Platform secure storage failure: Crypto error:
 /// Unpad Error`, a keyring that accepts writes and can't decrypt what it holds.
-/// Trusting the write is what turned that into a lockout — the caller sets
+/// Trusting the write is what turned that into a lockout: the caller sets
 /// `auth = None`, so the only copy of the session lives in a store that will
 /// never give it back, and the machine stops syncing with nothing on disk to
 /// recover from. The read-back is one extra call on a healthy keyring, in the
@@ -792,7 +793,7 @@ pub async fn refresh_freshest() -> Result<Tokens> {
     }
 
     let Some(sess) = load_session()? else {
-        bail!("no hay sesión Cloud — vuelve a iniciar sesión");
+        bail!("no Cloud session; sign in again");
     };
     let attempted = sess.refresh.clone();
     match refresh(&sess.refresh).await {
@@ -810,7 +811,7 @@ pub async fn refresh_freshest() -> Result<Tokens> {
                     *last = Some((Instant::now(), tokens.clone()));
                     Ok(tokens)
                 }
-                None => Err(e.context("la sesión Cloud caducó — vuelve a iniciar sesión")),
+                None => Err(e.context("the Cloud session expired; sign in again")),
             }
         }
         Err(e) => Err(e),
@@ -850,7 +851,7 @@ mod tests {
 
     #[test]
     fn refuses_to_replay_the_token_that_just_failed() {
-        // Mismo token en disco: nadie rotó nada, la sesión está muerta de verdad.
+        // The same token on disk: nobody rotated anything, the session really is dead.
         assert!(adoptable("ours", Some(&disk("ours"))).is_none());
     }
 
@@ -860,9 +861,9 @@ mod tests {
         assert!(adoptable("ours", None).is_none());
     }
 
-    /// El `exp` se lee sin verificar firma, y un token que no se puede decodificar
-    /// devuelve `None` (no un número optimista): quien presta el token trata
-    /// `None` como "rota por si acaso".
+    /// The `exp` is read without verifying the signature, and a token that cannot
+    /// be decoded returns `None` (not an optimistic number): whoever lends the
+    /// token treats `None` as "rotate just in case".
     #[test]
     fn reads_the_expiry_of_a_jwt_and_admits_ignorance() {
         use base64::Engine;
@@ -877,11 +878,11 @@ mod tests {
         assert_eq!(jwt_expiry(&format!("h.{no_exp}.s")), None);
     }
 
-    // ---- el llavero bloqueado (D.19) ----------------------------------
+    // ---- the locked keyring (D.19)
     //
-    // El tope en sí se prueba en `crate::keychain`, que es donde vive. Aquí sólo
-    // lo que es de esta sesión: que un llavero bloqueado no se lea como "no hay
-    // sesión Cloud".
+    // The timeout itself is tested in `crate::keychain`, where it lives. Here, only
+    // what belongs to this session: that a locked keyring is not read as "there is
+    // no Cloud session".
 
     fn stuck() -> anyhow::Error {
         anyhow::Error::new(KeyringTimeout {
@@ -897,22 +898,22 @@ mod tests {
         }
     }
 
-    /// Sin tokens en el fichero, un llavero bloqueado **no** puede parecer "no hay
-    /// sesión": el motivo sale entero para que el motor lo publique en vez de
-    /// quedarse en `starting` sin una línea de log.
+    /// With no tokens in the file, a locked keyring must **not** look like "there
+    /// is no session": the reason comes out whole so the engine can publish it
+    /// instead of sitting in `starting` with not one line of log.
     #[test]
     fn a_locked_keyring_surfaces_the_reason_instead_of_looking_logged_out() {
-        let err = pick_auth(Err(stuck()), None).expect_err("no puede ser Ok(None)");
+        let err = pick_auth(Err(stuck()), None).expect_err("cannot be Ok(None)");
         assert!(err.is::<KeyringTimeout>(), "{err:#}");
         assert!(format!("{err:#}").contains("locked"), "{err:#}");
     }
 
-    /// Pero con tokens en el fichero (el fallback 0600) un llavero bloqueado no
-    /// desloguea a nadie: se sigue con lo que hay, que es lo que ya hacía.
+    /// But with tokens in the file (the 0600 fallback) a locked keyring logs
+    /// nobody out: it carries on with what is there, as it already did.
     #[test]
     fn a_locked_keyring_still_falls_back_to_the_file_tokens() {
         let got = pick_auth(Err(stuck()), Some(tokens_in_the_file()))
-            .expect("el fichero salva la sesión")
+            .expect("the file saves the session")
             .expect("tokens");
         assert_eq!(got.access_token, "jwt-del-fichero");
     }
@@ -927,7 +928,7 @@ mod tests {
         let refused = anyhow::Error::new(keyring::Error::PlatformFailure(
             "Crypto error: Unpad Error".into(),
         ));
-        let err = pick_auth(Err(refused), None).expect_err("no puede ser Ok(None)");
+        let err = pick_auth(Err(refused), None).expect_err("cannot be Ok(None)");
         assert!(
             err.downcast_ref::<KeyringUnreadable>().is_some(),
             "the reason has to be typed, not just in the text: {err:#}"
@@ -960,10 +961,10 @@ mod tests {
         assert!(pick_auth(Ok(None), None).expect("ok").is_none());
     }
 
-    /// Aísla el directorio de config en un tempdir. Sólo Linux: es donde
-    /// `ProjectDirs` mira `XDG_CONFIG_HOME`. En macOS y Windows la ruta sale de
-    /// APIs del sistema y un test así escribiría en la sesión de verdad de quien
-    /// ejecuta los tests, que es exactamente lo que no puede pasar.
+    /// Isolates the config directory in a tempdir. Linux only: that is where
+    /// `ProjectDirs` looks at `XDG_CONFIG_HOME`. On macOS and Windows the path comes
+    /// from system APIs and a test like this would write into the real session of
+    /// whoever runs it, which is exactly what must not happen.
     #[cfg(target_os = "linux")]
     fn with_isolated_config(f: impl FnOnce()) {
         let _guard = crate::test_lock::ENV
@@ -979,15 +980,15 @@ mod tests {
         }
     }
 
-    /// El camino degradado de D.20: un cliente que acuña una sesión y no tiene
-    /// servicio a quien entregarla la deja en el fichero 0600 y **no** en el
-    /// llavero. Lo que se comprueba es que el par queda donde el daemon lo va a
-    /// encontrar (`pick_auth` cae al fichero cuando el llavero no tiene entrada),
-    /// que es lo que hace que se cure solo en el primer refresh del servicio.
+    /// The degraded path from D.20: a client that mints a session and has no
+    /// service to hand it to leaves it in the 0600 file and **not** in the keyring.
+    /// What is checked is that the pair ends up where the daemon will find it
+    /// (`pick_auth` falls back to the file when the keyring has no entry), which is
+    /// what makes it heal itself on the service's first refresh.
     ///
-    /// Que no toque el llavero no se puede afirmar desde un test sin leer el
-    /// llavero de verdad; lo sostiene el tipo: esta función no tiene ninguna
-    /// llamada a `keyring_*`.
+    /// That it never touches the keyring cannot be asserted from a test without
+    /// reading the real keyring; the type is what holds it up: this function makes
+    /// no `keyring_*` call at all.
     #[cfg(target_os = "linux")]
     #[test]
     fn a_session_stored_without_a_service_lands_in_the_file() {
@@ -996,22 +997,24 @@ mod tests {
                 access: "jwt-sin-servicio".to_string(),
                 refresh: "refresh-sin-servicio".to_string(),
             };
-            store_tokens_unlocked(&tokens, "https://api.hoard.services").expect("escribe");
+            store_tokens_unlocked(&tokens, "https://api.hoard.services").expect("writes");
 
-            let file = read_session_file().expect("lee").expect("hay fichero");
+            let file = read_session_file()
+                .expect("reads")
+                .expect("there is a file");
             assert_eq!(file.server_url, "https://api.hoard.services");
-            let auth = file.auth.clone().expect("el par está en el fichero");
+            let auth = file.auth.clone().expect("the pair is in the file");
             assert_eq!(auth.access_token, "jwt-sin-servicio");
             assert_eq!(auth.refresh_token, "refresh-sin-servicio");
 
-            // Con el llavero sin entrada (lo normal en este camino), el par del
-            // fichero es el que gana: el daemon arranca con la sesión.
+            // With no keyring entry (the normal case on this path), the pair in
+            // the file is the one that wins: the daemon starts with the session.
             let picked = pick_auth(Ok(None), file.auth)
                 .expect("ok")
-                .expect("hay tokens");
+                .expect("there are tokens");
             assert_eq!(picked.refresh_token, "refresh-sin-servicio");
 
-            // Y 0600: es el mismo grado de protección que el fallback histórico.
+            // And 0600: the same degree of protection as the historic fallback.
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
@@ -1019,13 +1022,13 @@ mod tests {
                     .unwrap()
                     .permissions()
                     .mode();
-                assert_eq!(mode & 0o777, 0o600, "modo {:o}", mode & 0o777);
+                assert_eq!(mode & 0o777, 0o600, "mode {:o}", mode & 0o777);
             }
 
-            // El logout sin servicio: sin fichero no hay sesión que resolver, dé
-            // lo que dé el llavero.
-            forget_tokens_unlocked().expect("olvida");
-            assert!(read_session_file().expect("lee").is_none());
+            // Logout with no service: with no file there is no session to resolve,
+            // whatever the keyring answers.
+            forget_tokens_unlocked().expect("forgets");
+            assert!(read_session_file().expect("reads").is_none());
         });
     }
 }

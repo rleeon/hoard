@@ -168,7 +168,7 @@ impl Visit for FieldVisitor {
     }
 }
 
-// ---- redacción ----------------------------------------------------------
+// ---- redaction
 
 /// What replaces the profile segment. The shape of the path is kept, which is what
 /// is useful for fixing detection, and the person's name is thrown away, which is
@@ -500,7 +500,7 @@ fn current_session() -> Option<(String, String)> {
 /// It is **opt-out**, not opt-in: `Prefs::default` sets
 /// `anonymous_telemetry: true`, so a fresh install ships until the user says
 /// stop. That is a deliberate product call and it is disclosed in the privacy
-/// policy — but the comment here used to claim the opposite ("we never ship
+/// policy, but the comment here used to claim the opposite ("we never ship
 /// without an affirmative flag"), which is the kind of thing that reads like a
 /// promise when someone audits this file. The only case treated as off is a
 /// missing or corrupt prefs file, where we cannot know what was chosen.
@@ -657,7 +657,7 @@ mod tests {
             redact("/Users/angel/Library/Application Support/Factorio"),
             "/Users/<user>/Library/Application Support/Factorio"
         );
-        // Mayúsculas como las escribe Windows, y barras mezcladas.
+        // Capitalisation as Windows writes it, and mixed slashes.
         assert_eq!(
             redact("c:/users/Angel/Saved Games"),
             "c:/users/<user>/Saved Games"
@@ -679,10 +679,10 @@ mod tests {
     /// any field recorded with `?` instead of `%`.
     #[test]
     fn redacts_windows_paths_as_debug_renders_them() {
-        // Lo que de verdad produce `format!("{:?}", "C:\\Users\\angel\\AppData")`.
+        // What `format!("{:?}", "C:\\Users\\angel\\AppData")` actually produces.
         let debug_rendered = format!("{:?}", "C:\\Users\\angel\\AppData\\LocalLow");
         let shaped = redact(&debug_rendered);
-        assert!(!shaped.contains("angel"), "quedó el nombre en {shaped}");
+        assert!(!shaped.contains("angel"), "the name survived in {shaped}");
         assert_eq!(shaped, "\"C:\\\\Users\\\\<user>\\\\AppData\\\\LocalLow\"");
     }
 
@@ -786,12 +786,12 @@ mod tests {
                 let leaked = out
                     .match_indices(name)
                     .any(|(at, _)| profile_dir_precedes(&out, at));
-                assert!(!leaked, "{input:?} -> {out:?} conservó {name}");
+                assert!(!leaked, "{input:?} -> {out:?} kept {name}");
             }
         }
     }
 
-    /// ¿El segmento que empieza en `at` cuelga directamente de `home`/`users`?
+    /// Does the segment starting at `at` hang straight off `home`/`users`?
     fn profile_dir_precedes(text: &str, at: usize) -> bool {
         let before = &text[..at];
         let Some(cut) = before.rfind(['/', '\\']) else {

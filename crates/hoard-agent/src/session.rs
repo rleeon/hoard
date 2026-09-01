@@ -65,11 +65,11 @@ const SERVER_WAIT: Duration = Duration::from_secs(60);
 /// seconds until it crossed our threshold.
 const LEND_MIN_TTL: i64 = 5 * 60;
 
-/// Sesión activa resuelta.
+/// The resolved active session.
 pub struct Active {
     pub client: ApiClient,
     pub is_cloud: bool,
-    /// Descripción legible del destino (banners, logs, `Status` del IPC).
+    /// Human-readable description of the target (banners, logs, the IPC `Status`).
     pub server: String,
     /// Cloud credentials for the REST calls that go outside the `ApiClient`
     /// (`hoard cloud`, the refresher). `None` on self-hosted.
@@ -159,7 +159,7 @@ async fn resolve_cloud_owned(sess: cloud_auth::Session) -> Result<Active> {
         // context would sync another account's save map.
         Err(err) if degraded => {
             let user_id = cloud_auth::session_user_id()?.context(
-                "Cloud is unreachable and the stored session is unreadable — run `hoard login`",
+                "Cloud is unreachable and the stored session is unreadable: run `hoard login`",
             )?;
             state::set_active_context(Some(state::cloud_context(&user_id)));
             tracing::warn!(error = %err, "session: Cloud unreachable; starting on the stored session");
@@ -268,7 +268,7 @@ pub async fn resolve_borrowed(
             }
             Err(err) => {
                 let user_id = cloud_auth::session_user_id()?
-                    .context("the stored Cloud session is unreadable — run `hoard login`")?;
+                    .context("the stored Cloud session is unreadable: run `hoard login`")?;
                 state::set_active_context(Some(state::cloud_context(&user_id)));
                 Err(err)
             }
@@ -300,7 +300,7 @@ pub async fn resolve_borrowed(
 async fn selfhosted_owned() -> Result<Active> {
     let stored = tokio::task::spawn_blocking(credentials::load_detailed)
         .await
-        .map_err(|join| anyhow::Error::new(join).context("leyendo la sesión self-hosted"))??;
+        .map_err(|join| anyhow::Error::new(join).context("reading the self-hosted session"))??;
 
     // The token came from the 0600 file: either a client with no service left it
     // there, or the keyring was mute when it was stored. Lifting it NOW, from the
@@ -465,8 +465,8 @@ pub fn stale_token_hint(access: &str, now_unix: i64) -> Option<&'static str> {
         None => false,
     };
     expired.then_some(
-        "the Cloud session token has expired and the Hoard service —the only thing that \
-         renews it— isn't running. Start it with `hoard sync start`.",
+        "the Cloud session token has expired and the Hoard service (the only thing that \
+         renews it) isn't running. Start it with `hoard sync start`.",
     )
 }
 
@@ -545,11 +545,11 @@ fn now_unix() -> i64 {
     time::OffsetDateTime::now_utc().unix_timestamp()
 }
 
-// ---- el servicio: refresher de fondo ----------------------------------
+// ---- the service: background refresher
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase {
-    /// Sesión viva: renovar en la cadencia normal.
+    /// A live session: renew at the normal cadence.
     Normal,
     /// GoTrue revoked the token family. There is nothing to renew until somebody
     /// signs in again, so only the disk gets watched.
@@ -696,7 +696,7 @@ pub async fn refresh_loop(
         let step = next_step(phase, outcome);
         match step.announce {
             Announce::Expired => {
-                tracing::error!("session: the Cloud session expired — run `hoard login`")
+                tracing::error!("session: the Cloud session expired, run `hoard login`")
             }
             Announce::Restored => tracing::info!("session: the Cloud session is back"),
             Announce::Nothing => {}
@@ -732,7 +732,7 @@ mod tests {
             Some(creds("https://saves.example", "hoard_v1_de-la-app")),
             Some(creds("http://localhost:12421", "hoard_v1_del-config")),
         )
-        .expect("hay sesión");
+        .expect("there is a session");
         assert_eq!(picked.token, "hoard_v1_de-la-app");
         assert_eq!(picked.url, "https://saves.example");
     }
@@ -743,7 +743,7 @@ mod tests {
     #[test]
     fn config_toml_still_serves_the_headless_path() {
         let picked = pick_selfhosted(None, Some(creds("http://nas.local:12421", "hoard_v1_cli")))
-            .expect("hay sesión");
+            .expect("there is a session");
         assert_eq!(picked.token, "hoard_v1_cli");
     }
 
@@ -752,7 +752,7 @@ mod tests {
     /// banner.
     #[test]
     fn no_session_anywhere_is_typed() {
-        let err = pick_selfhosted(None, None).expect_err("no hay sesión");
+        let err = pick_selfhosted(None, None).expect_err("there is no session");
         assert!(err.downcast_ref::<NoSession>().is_some(), "{err:#}");
         assert!(format!("{err:#}").contains("no session"), "{err:#}");
     }
@@ -764,7 +764,7 @@ mod tests {
         assert_eq!(died.announce, Announce::Expired);
         assert_eq!(died.sleep, RELOGIN_RECHECK_EVERY);
 
-        // Cada comprobación posterior sin login pendiente: mismo estado, callado.
+        // Every later check with no pending login: same state, quiet.
         let again = next_step(died.phase, Outcome::Expired);
         assert_eq!(again.phase, Phase::Expired);
         assert_eq!(again.announce, Announce::Nothing);

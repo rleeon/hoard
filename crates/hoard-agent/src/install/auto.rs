@@ -61,7 +61,7 @@ pub const GRACE: Duration = Duration::from_secs(48 * 60 * 60);
 /// user option because the long deadline is the policy, not a preference.
 pub const GRACE_ENV: &str = "HOARD_UPDATE_GRACE_HOURS";
 
-/// El plazo efectivo de esta máquina.
+/// The deadline this machine actually uses.
 pub fn grace() -> Duration {
     match std::env::var(GRACE_ENV)
         .ok()
@@ -72,9 +72,7 @@ pub fn grace() -> Duration {
     }
 }
 
-// =======================================================================
-// Qué toca hacer ahora mismo
-// =======================================================================
+// ---- what to do right now
 
 /// What to do about the new version at this exact moment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,8 +86,8 @@ pub enum Stance {
     /// Downloading before deciding is what makes "update on open" take as long as a
     /// `rename` rather than as long as a 90 MB bundle.
     Stage { version: String },
-    /// Bajada, verificada, y esta máquina puede relevarse sin pedirle nada a
-    /// nadie. Aplicar sin decir nada.
+    /// Downloaded, verified, and this machine can relieve itself without asking
+    /// anybody. Applied without a word.
     ApplyQuietly { version: String },
     /// Downloaded, but applying it needs somebody present (polkit, a `.dmg`). It
     /// gets offered, and can be postponed.
@@ -116,7 +114,7 @@ impl Stance {
         }
     }
 
-    /// ¿Esto se aplica sin preguntar?
+    /// Does this get applied without asking?
     pub fn is_automatic(&self) -> bool {
         matches!(
             self,
@@ -139,7 +137,7 @@ pub enum Hold {
 /// nothing is inspected here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Situation {
-    /// La versión que corre ahora mismo.
+    /// The version running right now.
     pub current: String,
     /// The latest published one we know of. `None` means it could not be asked.
     pub latest: Option<String>,
@@ -147,12 +145,12 @@ pub struct Situation {
     pub staged: Option<String>,
     /// When [`Situation::latest`] was first seen. The deadline comes from this.
     pub first_seen_at: Option<OffsetDateTime>,
-    /// ¿Puede esta instalación relevarse entera sin privilegios ni manos?
-    /// Sale de [`Manifest::applies_unattended`].
+    /// Can this install be relieved whole, with no privileges and no hands?
+    /// Comes from [`Manifest::applies_unattended`].
     pub unattended: bool,
-    /// ¿Hay una copia o restauración en vuelo?
+    /// Is a backup or restore in flight?
     pub transfer_in_flight: bool,
-    /// ¿Hay un juego abierto?
+    /// Is a game open?
     pub game_running: bool,
 }
 
@@ -212,9 +210,7 @@ pub fn decide(now: OffsetDateTime, s: &Situation) -> Stance {
     }
 }
 
-// =======================================================================
-// El registro en disco
-// =======================================================================
+// ---- the on-disk ledger
 
 /// What has to be remembered between starts: what was seen, when it was first seen
 /// (the deadline's clock), and what is downloaded.
@@ -224,13 +220,13 @@ pub fn decide(now: OffsetDateTime, s: &Situation) -> Stance {
 /// the preferences would make deleting preferences reset the deadline.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ledger {
-    /// La última versión publicada que hemos visto.
+    /// The latest published version we have seen.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_seen: Option<String>,
     /// When we first saw it. The deadline's clock.
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub first_seen_at: Option<OffsetDateTime>,
-    /// Qué versión está bajada y verificada en `staging_dir`.
+    /// Which version is downloaded and verified in `staging_dir`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staged: Option<String>,
     #[serde(default, with = "time::serde::rfc3339::option")]
@@ -330,9 +326,7 @@ impl Ledger {
     }
 }
 
-// =======================================================================
-// ¿Se aplica sola esta instalación?
-// =======================================================================
+// ---- does this install apply itself?
 
 impl Delivery {
     /// Can this route be relieved without dialogs and without hands?
@@ -530,7 +524,7 @@ mod tests {
         assert_eq!(l.first_seen_at, Some(at(0)));
         assert_eq!(l.last_check_at, Some(at(1)));
 
-        // Versión distinta: reloj nuevo, y lo bajado deja de valer.
+        // A different version: new clock, and what was downloaded stops counting.
         l.staged = Some("1.1.0".into());
         l.observe("1.2.0", at(5));
         assert_eq!(l.first_seen_at, Some(at(5)));

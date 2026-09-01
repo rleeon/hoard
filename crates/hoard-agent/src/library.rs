@@ -3348,7 +3348,7 @@ mod tests {
             named("celeste", "Celeste", &["/saves/celeste"]),
         ]);
         let d = local_detection(Some(&c), "raccoin", &[]);
-        // Nada bajo ese slug exacto…
+        // Nothing under that exact slug...
         assert!(d.paths.is_empty());
         // ...but a game with the same name does, and it goes first.
         assert_eq!(d.candidates.len(), 2);

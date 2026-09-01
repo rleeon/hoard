@@ -35,7 +35,7 @@ pub enum ApiError {
     /// blobs and re-inflate the quota, so the client must stop trying and treat
     /// the local save as frozen, not errored. Distinct from the generic
     /// `Forbidden` so the backup path can settle it silently instead of painting
-    /// a red "falló".
+    /// a red "failed".
     #[error("game is archived on the server")]
     Archived,
     /// HTTP 402 with `code:"quota_exceeded"`: the account's total stored bytes
@@ -1036,9 +1036,9 @@ impl ApiClient {
     /// unlimited. Self-hosted reads it off `whoami`; cloud reads it off
     /// `/v1/me` (other fields ignored).
     ///
-    /// `manual` elige el cupo: el de las copias que pidió el usuario o el de
-    /// las automáticas. Se cuentan por separado para que una ráfaga de
-    /// autoguardados no pueda echar del historial la copia deliberada.
+    /// `manual` picks the cap: the one for copies the user asked for, or the one
+    /// for the automatic ones. They are counted apart so that a burst of
+    /// autosaves cannot push the deliberate copy out of the history.
     pub async fn get_max_versions(&self, manual: bool) -> Result<Option<i64>> {
         if self.is_cloud().await {
             #[derive(Deserialize)]
@@ -1240,10 +1240,9 @@ impl ApiClient {
     }
 
     /// `GET /v1/notifications`: the operator's broadcasts, for the bell.
-    /// `since` es el cursor RFC3339 del cliente: solo vuelven filas
-    /// estrictamente posteriores, así nada se re-entrega tras un reinicio.
-    /// El fingerprint va para que el poll guard del server limite por
-    /// máquina y no por cuenta.
+    /// `since` is the client's RFC3339 cursor: only strictly later rows come
+    /// back, so nothing is re-delivered after a restart. The fingerprint goes
+    /// along so the server's poll guard limits per machine and not per account.
     pub async fn list_notifications(&self, since: Option<&str>) -> Result<NotificationListOut> {
         let dev = crate::logship::device_identity();
         let mut req = self
@@ -1360,11 +1359,11 @@ impl ApiClient {
         steam_app_id: Option<i64>,
     ) -> Result<Save> {
         let body = CreateSaveRequest {
-            // La puerta de `GameSlug`: un slug envenenado no llega a crear una
-            // fila server-side (ADR 0021 C.3). Los slugs del cliente salen todos
-            // de `slugify`, así que esto sólo dispara con datos corruptos.
+            // The `GameSlug` gate: a poisoned slug never gets to create a
+            // server-side row (ADR 0021 C.3). Client slugs all come out of
+            // `slugify`, so this only fires on corrupt data.
             game_slug: GameSlug::parse(game_slug)
-                .with_context(|| format!("slug inválido al crear el save: {game_slug:?}"))?,
+                .with_context(|| format!("invalid slug creating the save: {game_slug:?}"))?,
             label: Some(label.to_string()),
             local_path_hint: None,
             client_os: None,
@@ -1541,14 +1540,14 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
-    // ---- Self-hosted, direccionado por contenido ------------------------
+    // ---- self-hosted, content-addressed
     //
-    // El trío que sustituye al multipart cuando el server lo anuncia
-    // ([`Self::probed_supports_cas`]). Ver `hoard_server::routes::cas` para el
-    // porqué y para en qué se aparta del de cloud.
+    // The trio that replaces the multipart when the server announces it
+    // ([`Self::probed_supports_cas`]). See `hoard_server::routes::cas` for the
+    // why and for where it departs from the cloud one.
 
     /// `POST /v1/saves/{id}/cas/init`: declare the manifest. It returns which
-    /// blobs faltan y el área de staging donde subirlos.
+    /// blobs are missing and the staging area to upload them to.
     pub async fn cas_init(&self, save_id: &str, init: &CasInit) -> Result<CasInitOut> {
         let resp = self
             .http
@@ -1563,9 +1562,9 @@ impl ApiClient {
 
     /// `PUT /v1/cas/blobs/{upload_id}/{sha}`: one missing blob.
     ///
-    /// Va por `upload_http` (sin timeout total) por el mismo motivo que el
-    /// multipart: un blob puede ser de gigas y un tope fijo mataría la subida a
-    /// media transferencia.
+    /// Goes through `upload_http` (no total timeout) for the same reason as the
+    /// multipart: a blob can be gigabytes and a fixed ceiling would kill the
+    /// upload halfway through.
     pub async fn cas_upload_blob(
         &self,
         upload_id: &str,
@@ -1600,12 +1599,12 @@ impl ApiClient {
     }
 }
 
-// ---- DTOs ---------------------------------------------------------------
+// ---- DTOs
 //
-// El contrato self-hosted vive en `hoard_core::wire` (ADR 0021 C.6): el server
-// compila contra las mismas formas, así que un drift entre las dos puntas es un
-// error de compilación en vez de un 422 en producción. Se re-exportan aquí para
-// que `api::Save` y compañía sigan siendo las rutas públicas de siempre.
+// The self-hosted contract lives in `hoard_core::wire` (ADR 0021 C.6): the server
+// compiles against the same shapes, so a drift between the two ends is a compile
+// error instead of a 422 in production. They are re-exported here so `api::Save`
+// and friends stay the public paths they have always been.
 
 pub use hoard_core::wire::{
     CasCommit, CasFile, CasInit, CasInitOut, CasMissing, CreateSaveRequest, Game, Health,
@@ -1828,16 +1827,16 @@ pub struct CloudVersionManifestOut {
     pub files: Vec<CloudManifestFile>,
 }
 
-// El censo de dispositivos y la presencia son las MISMAS rutas en los dos
-// despliegues (`/v1/devices`, `/v1/presence/heartbeat`), así que sus formas
-// viven en `hoard_core::wire` y las dos puntas compilan contra una sola
-// definición. Se re-exportan aquí porque `api::DeviceOut` es la ruta pública
-// que el desktop ya importa.
+// The device census and presence are the SAME routes on both deployments
+// (`/v1/devices`, `/v1/presence/heartbeat`), so their shapes live in
+// `hoard_core::wire` and both ends compile against a single definition. They are
+// re-exported here because `api::DeviceOut` is the public path the desktop
+// already imports.
 pub use hoard_core::wire::{DeviceListOut, DeviceOut, DevicePlaying, Heartbeat, PlayingBeat};
 
-/// Un broadcast del operador (`GET /v1/notifications`). Mismo shape que el
-/// `ServerNotification` que espera la UI (stores/notifications.ts) más
-/// `created_at` para el cursor del cliente.
+/// An operator broadcast (`GET /v1/notifications`). Same shape as the
+/// `ServerNotification` the UI expects (stores/notifications.ts) plus
+/// `created_at` for the client's cursor.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationOut {
     pub id: String,
@@ -2033,8 +2032,8 @@ mod plan_cap_tests {
         ApiClient::new("http://127.0.0.1:1", "t").expect("client")
     }
 
-    /// Sin rechazo previo no se sabe el tope, y no se inventa: recortar contra
-    /// un número adivinado mutilaría copias que sí cabían.
+    /// With no prior rejection the cap is unknown, and it is not invented:
+    /// trimming against a guessed number would mutilate copies that did fit.
     #[test]
     fn unknown_until_a_rejection_teaches_it() {
         assert!(client().plan_cap().is_none());
@@ -2049,7 +2048,7 @@ mod plan_cap_tests {
         assert_eq!(cap.plan, "free");
     }
 
-    /// Cambiar de plan pisa el tope viejo en cuanto el server lo dice.
+    /// Changing plan overwrites the old cap as soon as the server says so.
     #[test]
     fn a_new_limit_replaces_the_old_one() {
         let c = client();
@@ -2060,9 +2059,9 @@ mod plan_cap_tests {
         assert_eq!(cap.plan, "pro");
     }
 
-    /// Un cuerpo sin `limit_bytes` utilizable (un proxy que devolvió su propio
-    /// 413) no enseña nada: mejor no saber que aprender un cero y recortarlo
-    /// todo.
+    /// A body with no usable `limit_bytes` (a proxy that returned its own 413)
+    /// teaches nothing: better not to know than to learn a zero and trim
+    /// everything.
     #[test]
     fn a_zero_limit_teaches_nothing() {
         let c = client();

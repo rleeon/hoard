@@ -3918,6 +3918,7 @@ fn attribute_game_name(path: &Path, store: &CorrelationStore) -> Option<String> 
     // 4. The same ancestor, but with the catalogue's title as a PREFIX: the folder
     //    carries a qualifier the catalogue does not have (`Surviving Mars
     //    Relaunched`, `... Definitive Edition`). Without this every edition
+    //    becomes a phantom game with a name of its own.
     if let Some(entry) = ancestor.and_then(ludusavi::find_by_name_prefix) {
         return Some(entry.display_name.clone());
     }
