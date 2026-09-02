@@ -614,17 +614,17 @@
       );
       return true;
     } catch (e) {
-      // Antes se seguía adelante «para que al menos esta sesión funcione». Ya
-      // no: el motivo más probable del rechazo es que esa carpeta sea de otro
-      // juego, y ahí seguir es justo lo que hay que evitar. El error se
-      // enseña y el llamante decide (no rastrea).
+      // This used to carry on "so at least this session works". Not any more: the
+      // likeliest reason for the rejection is that the folder belongs to another
+      // game, and carrying on there is exactly what must not happen. The error is
+      // shown and the caller decides (it does not track).
       toastError(typeof e === "string" ? e : (e as Error).message);
       return false;
     }
   }
 
-  /** "Volver a sugerencia automática" entry on the per-game menu. Drops the
-   *  manual_paths override and refreshes the in-memory report so the row
+  /** The "back to the automatic suggestion" entry on the per-game menu. It drops
+   *  the manual_paths override and refreshes the in-memory report so the row
    *  reverts to whatever the heuristic detected (or, if nothing, the amber
    *  alert). */
   async function revertToAutoDetection(save: TrackedSave) {
@@ -835,10 +835,10 @@
 
   // ---- derived views -------------------------------------------------
 
-  // Saves with a local folder on this machine vs cloud-only saves from other
-  // machines. Los primeros son los que salen marcados dentro de la rejilla
-  // única; los segundos van a "En la nube, otras máquinas" (adoptables), que
-  // sigue siendo una sección aparte porque la acción es otra, BUG 4.
+  // Saves with a local folder on this machine against cloud-only saves from other
+  // machines. The first come out marked inside the single grid; the second go to the
+  // "in the cloud, other machines" section (adoptable), which stays separate because
+  // the action is a different one (BUG 4).
   const localSaves = $derived(tracked.filter((t) => !t.orphan));
   const cloudOrphans = $derived(tracked.filter((t) => t.orphan));
 
@@ -869,7 +869,8 @@
     }
   }
 
-  /** "Vincular a esta máquina…" on a cloud-orphan card. Opens the modal that
+  /** The "link to this machine" action on a cloud-orphan card. It opens the modal
+   *  that
    *  offers what detection already found here, the folders for this slug, or
    *  any other detected game picked by name, and keeps the folder picker as
    *  the escape hatch. Going straight to the OS dialog (as 1.0.4 did after the
@@ -950,7 +951,7 @@
   );
 
   // Sum the cloud footprint of saves that live only on other machines, for the
-  // "En la nube, otras máquinas" header.
+  // "in the cloud, other machines" header.
   const cloudTotalBytes = $derived(
     cloudOrphans.reduce((acc, s) => acc + (s.total_size_bytes ?? 0), 0),
   );
@@ -971,9 +972,9 @@
     return m;
   });
 
-  // Slugs whose detection row has source=manual_override. Drives the
-  // "Volver a sugerencia automática" de las partidas monitorizadas, sólo se
-  // enseña cuando el usuario tiene de verdad un override que limpiar.
+  // Slugs whose detection row has source=manual_override. It drives the "back to
+  // the automatic suggestion" action on the watched saves, which is only shown when
+  // the user really has an override to clear.
   const slugsWithManualOverride = $derived.by(() => {
     const s = new Set<string>();
     if (!report) return s;
@@ -987,28 +988,28 @@
     return slugsWithManualOverride.has(slug);
   }
 
-  // ── Rejilla única ──────────────────────────────────────────────────────────
+  // ---- the single grid
   //
-  // Antes esta página tenía los juegos monitorizados arriba y, al final del
-  // todo, la lista de detectados desde la que se dan de alta. Un juego ya
-  // monitorizado salía en las dos, y lo que había que buscar para añadir algo
-  // nuevo era justo lo que quedaba más lejos. Ahora hay una sola rejilla: una
-  // tarjeta por juego, los monitorizados primero, y dentro de cada tarjeta
-  // conviven lo que ya vigilamos y las rutas que la detección propone.
+  // This page used to have the watched games at the top and, right at the bottom,
+  // the list of detected ones you track from. A game already watched appeared in
+  // both, and what you had to hunt for to add something new was exactly what sat
+  // furthest away. There is one grid now: one card per game, the watched ones first,
+  // and inside each card what we already watch lives alongside the paths detection
+  // proposes.
 
-  /** Un juego de la biblioteca, con las dos mitades de lo que sabemos de él. */
+  /** One game in the library, with both halves of what we know about it. */
   type LibraryEntry = {
     slug: string;
     name: string;
     appId: number | null;
-    /** Fila de detección, si el escaneo lo encontró. */
+    /** Its detection row, when the scan found it. */
     game: DetectedGame | null;
-    /** Partidas monitorizadas en ESTA máquina para ese juego (pueden ser
-     *  varias: un mismo juego con dos carpetas dadas de alta). */
+    /** Saves watched on THIS machine for that game (there can be several: one game
+     *  with two folders tracked). */
     saves: TrackedSave[];
   };
 
-  /** Chip de la barra: sólo los monitorizados, o todo lo que hay. */
+  /** The bar's chip: the watched ones only, or everything there is. */
   let onlyTracked = $state(false);
 
   const savesBySlug = $derived.by(() => {
@@ -1021,8 +1022,8 @@
     return m;
   });
 
-  /** Todo lo que el escaneo conoce, filtros aparte: sirve para saber si un
-   *  monitorizado tiene fila de detección o hay que sacarlo por su cuenta. */
+  /** Everything the scan knows, filters aside: it says whether a watched save has a
+   *  detection row or has to be surfaced on its own. */
   const detectedSlugs = $derived(
     new Set((report?.games ?? []).map((g) => g.slug)),
   );
@@ -1040,17 +1041,17 @@
       });
     }
 
-    // Monitorizados que la detección no encuentra: añadidos a mano, emuladores,
-    // o un juego que el escaneo ya no ve. Sin ellos, juntar las dos listas
-    // perdería justo las partidas que el usuario dio de alta él mismo.
+    // Watched saves detection does not find: added by hand, emulators, or a game
+    // the scan no longer sees. Without them, joining the two lists would lose
+    // exactly the saves the user tracked themselves.
     const q = search.trim().toLowerCase();
     const filtersOff = confidenceFilter === "all" && sourceFilter === "all";
     for (const [slug, saves] of savesBySlug) {
       if (detectedSlugs.has(slug)) continue;
       const name = displayName(slug);
       if (q && !name.toLowerCase().includes(q)) continue;
-      // No tienen grado ni origen que comparar, así que con un filtro de
-      // detección puesto no pintan nada en el resultado.
+      // They have no confidence or source to compare, so with a detection filter on
+      // they have no business in the result.
       if (!filtersOff) continue;
       out.push({
         slug,
@@ -1079,9 +1080,9 @@
     onlyTracked ? allEntries.filter((e) => e.saves.length > 0) : allEntries,
   );
 
-  /** Rutas detectadas que todavía no monitorizamos, con su índice original
-   *  para que `pathConf` siga leyendo el grado correcto. Las que ya están
-   *  dadas de alta viven en el bloque verde de la tarjeta, no aquí. */
+  /** Detected paths we do not watch yet, with their original index so `pathConf`
+   *  keeps reading the right confidence. The ones already tracked live in the card's
+   *  green block, not here. */
   function untrackedPaths(game: DetectedGame): { path: string; i: number }[] {
     return game.found_paths
       .map((path, i) => ({ path, i }))

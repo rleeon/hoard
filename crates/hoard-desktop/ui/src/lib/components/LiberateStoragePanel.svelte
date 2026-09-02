@@ -1,23 +1,23 @@
 <script lang="ts">
   /**
-   * El cuerpo del diálogo *Libera espacio*: la lista de juegos con su peso, las
-   * casillas para elegir cuáles se archivan y el medidor de dónde deja eso a la
-   * cuenta.
+   * The body of the *free up space* dialog: the list of games with their weight,
+   * the checkboxes for picking which get archived, and the meter showing where that
+   * leaves the account.
    *
-   * Vive aparte de {@link LiberateStorageModal} porque lo enseñan dos sitios
-   * distintos y por motivos distintos:
+   * It lives apart from {@link LiberateStorageModal} because two different places
+   * show it, for different reasons:
    *
-   *   - el diálogo de *Liberar espacio*, cuando la cuenta **ya** está por
-   *     encima del límite y la sincronización está parada;
-   *   - la despedida de Pro, cuando todavía no lo está pero lo va a estar: ahí
-   *     el medidor se mide contra el límite al que la cuenta **va a caer**
-   *     (`limitOverride`), no contra el que tiene hoy, que sigue siendo el
-   *     grande durante la ventana de gracia. Sin ese override el panel diría
-   *     "cabe de sobra" el día que cancelas y "no cabe nada" un mes después,
-   *     sin haber cambiado nada por medio.
+   *   - the *free up space* dialog, when the account is **already** over the limit
+   *     and the sync is stopped;
+   *   - the Pro farewell, when it is not over yet but is going to be: there the
+   *     meter measures against the limit the account is **falling to**
+   *     (`limitOverride`), not the one it has today, which stays the larger one
+   *     during the grace window. Without that override the panel would say "plenty
+   *     of room" on the day you cancel and "nothing fits" a month later, with
+   *     nothing having changed in between.
    *
-   * La selección es del padre (`bind:selected`) porque el botón que la ejecuta
-   * está en el pie de cada diálogo, y cada uno lo coloca a su manera.
+   * The selection belongs to the parent (`bind:selected`) because the button that
+   * acts on it is in each dialog's footer, and each places it its own way.
    */
   import { _ } from "svelte-i18n";
   import { Link2 } from "@lucide/svelte";
@@ -34,11 +34,11 @@
     open: boolean;
     /** Bloquea las casillas mientras el padre archiva. */
     busy?: boolean;
-    /** Límite contra el que medir, en vez del que el servidor aplica hoy. */
+    /** The limit to measure against, instead of the one the server applies today. */
     limitOverride?: number | null;
-    /** Cámbialo para releer del servidor (tras archivar, p. ej.). */
+    /** Change it to re-read from the server (after archiving, say). */
     reloadKey?: number;
-    /** Ids de los saves marcados. Del padre: él es quien archiva. */
+    /** The ticked saves' ids. The parent's, since the parent is what archives. */
     selected?: Set<string>;
   };
 
@@ -50,17 +50,17 @@
     selected = $bindable(new Set<string>()),
   }: Props = $props();
 
-  /** Cuándo un grupo compartido merece que se hable de él.
+  /** When a shared group is worth talking about.
    *
-   *  El aviso existe para evitar un error caro: archivar medio par y no liberar
-   *  nada. Por debajo de un mega ese error no existe, no hay nada que liberar
-   *  y la fila acababa diciendo "comparte 0 B con Factorio: archiva ambos para
-   *  liberarlo", que además arrastraba al compañero a la selección sin ganar un
+   *  The notice exists to prevent an expensive mistake: archiving half a pair and
+   *  freeing nothing. Under a megabyte that mistake does not exist, there is nothing
+   *  to free, and the row ended up saying "shares 0 B with Factorio: archive both to
+   *  free it", which also dragged the partner into the selection without gaining a
    *  byte.
    *
-   *  Es un umbral de **presentación**: los bytes del grupo siguen contando en
-   *  el medidor pase lo que pase. Ocultar bytes que la cuenta paga sería
-   *  exactamente el fallo que `shared_groups` vino a arreglar. */
+   *  It is a **presentation** threshold: the group's bytes still count in the meter
+   *  whatever happens. Hiding bytes the account pays for would be exactly the
+   *  failure `shared_groups` came to fix. */
   const SHARED_HINT_FLOOR_BYTES = 1024 * 1024;
 
   let loading = $state(false);
@@ -70,19 +70,19 @@
   let sharedGroups = $state<SharedGroup[]>([]);
   let loadError = $state<string | null>(null);
 
-  /** Grupos de los que sí se habla (aviso en la fila + arrastre del compañero
-   *  a la selección sugerida). Subconjunto de `sharedGroups`, nunca sustituto:
-   *  el cálculo usa la lista entera. */
+  /** The groups that do get talked about (a notice on the row, plus dragging the
+   *  partner into the suggested selection). A subset of `sharedGroups`, never a
+   *  replacement: the calculation uses the whole list. */
   const notableGroups = $derived(
     sharedGroups.filter((g) => g.bytes >= SHARED_HINT_FLOOR_BYTES),
   );
 
-  /** El límite que manda: el que pide el padre, o el que aplica el servidor. */
+  /** The limit that rules: the one the parent asks for, or the one the server applies. */
   const limitBytes = $derived(
     limitOverride != null && limitOverride > 0 ? limitOverride : serverLimitBytes,
   );
-  /** Recalculado aquí y no leído de `over_bytes`: con `limitOverride` el número
-   *  del servidor mide contra otro listón. */
+  /** Recomputed here rather than read from `over_bytes`: with `limitOverride` the
+   *  server's number measures against a different bar. */
   const overBytes = $derived(
     limitBytes > 0 ? Math.max(0, usedBytes - limitBytes) : 0,
   );
@@ -100,9 +100,9 @@
       const data = await storageGamesCloud();
       usedBytes = data.used_bytes;
       serverLimitBytes = data.limit_bytes;
-      // Todos los grupos, sin filtrar: son bytes que la cuenta paga y el
-      // medidor tiene que contarlos. El suelo de abajo sólo decide de cuáles
-      // se habla, nunca cuáles cuentan.
+      // Every group, unfiltered: these are bytes the account pays for and the meter
+      // has to count them. The floor below only decides which get talked about,
+      // never which count.
       sharedGroups = data.shared_groups ?? [];
       // Archived saves are already out of the quota; everything else is a
       // candidate, including games whose own bytes are all shared
@@ -148,9 +148,9 @@
       if (freedBy(sel) >= overBytes) break;
       sel.add(g.save_id);
       // Pull in the rest of any group this game belongs to: half a duplicate
-      // frees nothing, so ticking it alone would be a lie in the meter. Sólo
-      // los notables: arrastrar un juego entero para recuperar 52 bytes es
-      // marcarle al usuario algo que no pidió a cambio de nada.
+      // frees nothing, so ticking it alone would be a lie in the meter. Only the
+      // notable ones: dragging a whole game in to recover 52 bytes is ticking
+      // something for the user that they never asked for, in exchange for nothing.
       for (const grp of notableGroups) {
         if (grp.save_ids.includes(g.save_id)) {
           for (const id of grp.save_ids) sel.add(id);

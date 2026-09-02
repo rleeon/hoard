@@ -55,29 +55,28 @@
   let selectedId = $state("");
   let customName = $state("");
 
-  // Juegos encontrados dentro de la carpeta del emulador, cuando su árbol se
-  // puede partir por título. Se ofrece elegirlos porque el nivel intermedio
-  // lleva un identificador de perfil que se genera en cada instalación: copiar
-  // el árbol entero deja la partida colgando de un perfil que el emulador de la
-  // otra máquina no ha visto nunca, y ésta la rechaza. La carpeta del título es
-  // la parte en la que las dos instalaciones sí están de acuerdo.
+  // Games found inside the emulator's folder, when its tree can be split per title.
+  // Picking them is offered because the intermediate level carries a profile id
+  // generated per install: copying the whole tree leaves the save hanging off a
+  // profile the other machine's emulator has never seen, and it rejects it. The
+  // title's folder is the part both installs do agree on.
   //
-  // Lista vacía tras buscar = el árbol no tiene la forma esperada; entonces se
-  // añade la raíz tal cual, como siempre. Una suposición que falle dejaría al
-  // usuario sin nada, que es peor que el problema que esto resuelve.
+  // An empty list after searching means the tree does not have the expected shape;
+  // the root is then added as it is, as always. A guess that missed would leave the
+  // user with nothing, which is worse than the problem this solves.
   let titles = $state<EmulatorTitle[]>([]);
   let chosenTitles = $state<Set<string>>(new Set());
   let scanningTitles = $state(false);
   let scannedTitles = $state(false);
-  // Nombre que el usuario le pone a cada título, por ruta. La carpeta se llama
-  // con el id de la consola (`0100152000022000`) y no hay forma de traducirlo:
-  // el manifiesto que usa Hoard es de Steam y no sabe nada de Switch. Así que
-  // se pregunta, una vez, en el único momento en que el usuario tiene delante
-  // la lista y sabe cuál es cuál.
+  // The name the user gives each title, by path. The folder is named with the
+  // console's id (`0100152000022000`) and there is no way to translate it: the
+  // manifest Hoard uses is Steam's and knows nothing about the Switch. So it is
+  // asked, once, at the only moment the user has the list in front of them and knows
+  // which is which.
   //
-  // **El nombre no entra en el slug.** El slug lo forma el id, que es idéntico
-  // en las dos máquinas; si dependiera de lo que alguien teclea, el mismo juego
-  // se rastrearía dos veces al escribirlo distinto en el otro PC.
+  // **The name does not go into the slug.** The slug is formed from the id, which is
+  // identical on both machines; if it depended on what somebody types, the same game
+  // would be tracked twice the moment it was spelled differently on the other PC.
   let titleNames = $state<Record<string, string>>({});
 
   // --- Shared ------------------------------------------------------------
@@ -144,8 +143,8 @@
     scanningTitles = true;
     try {
       titles = await listEmulatorTitles(selectedId, folder.trim());
-      // Todos marcados: quien busca sus juegos los quiere, y desmarcar es más
-      // rápido que marcar diez.
+      // All ticked: somebody looking for their games wants them, and unticking is
+      // faster than ticking ten.
       chosenTitles = new Set(titles.map((t) => t.path));
       scannedTitles = true;
     } catch (e) {
@@ -273,18 +272,18 @@
         slug = slugify(display);
       }
 
-      // Títulos elegidos: una entrada por juego en vez de una por el árbol
-      // entero. Todas comparten el ejecutable del emulador, así que van
-      // marcadas como proceso compartido: si no, arrancar el emulador contaría
-      // como estar jugando a los diez a la vez, inventando horas en nueve
-      // partidas y vetándoles el sync sin que nadie las haya tocado.
+      // The chosen titles: one entry per game rather than one for the whole tree.
+      // They all share the emulator's executable, so they are marked as a shared
+      // process: otherwise starting the emulator would count as playing all ten at
+      // once, inventing hours on nine saves and vetoing their sync with nobody
+      // having touched them.
       const picked = titles.filter((t) => chosenTitles.has(t.path));
       if (isEmulator && picked.length > 0) {
         let last = null;
         for (const t of picked) {
           const named = (titleNames[t.path] ?? "").trim();
           last = await addGameToTracking({
-            // El id, no el nombre: es lo que las dos máquinas llaman igual.
+            // The id, not the name: it is what both machines call the same.
             game_slug: `${slug}-${t.title_id.toLowerCase()}`,
             local_path: t.path,
             display_name: named ? named : `${display} — ${t.title_id}`,

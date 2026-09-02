@@ -1,35 +1,36 @@
 /**
- * "Acaba de pasar algo con tu plan", el disparador de los dos diálogos que
- * sólo se ven una vez: el agradecimiento al pagar Pro y la despedida al
- * cancelarlo.
+ * "Something just happened with your plan": the trigger for the two dialogs that
+ * are only ever seen once, the thank-you when Pro is paid for and the farewell when
+ * it is cancelled.
  *
- * El plan no se mueve por nada que ocurra dentro de la aplicación: el pago y la
- * cancelación pasan en el navegador, en Polar, y aquí sólo llega el resultado
- * en el siguiente `/v1/me`. Así que esto no es un evento, es una **diferencia**:
- * cada snapshot de cuenta se compara con el último que vimos de ese usuario y
- * lo que cambió decide qué diálogo toca.
+ * The plan does not move because of anything that happens inside the application:
+ * the payment and the cancellation happen in the browser, on Polar, and only the
+ * result arrives here on the next `/v1/me`. So this is not an event, it is a
+ * **difference**: every account snapshot is compared against the last one we saw for
+ * that user and what changed decides which dialog is due.
  *
- * Guardarlo en disco (no en memoria) es justo el punto: el usuario paga en el
- * navegador, cierra, y vuelve a abrir Hoard horas después. Si la comparación
- * viviera en la sesión, ese arranque no tendría con qué comparar y el
- * agradecimiento no llegaría nunca, o, peor, llegaría en cada arranque.
+ * Storing it on disk (not in memory) is precisely the point: the user pays in the
+ * browser, closes it, and opens Hoard again hours later. If the comparison lived in
+ * the session, that start would have nothing to compare against and the thank-you
+ * would never arrive, or worse, would arrive on every start.
  *
- * Reglas del marcador (por `user_id`, en `plan-events.json`):
+ * The marker's rules (per `user_id`, in `plan-events.json`):
  *
- *   - **Sin marcador previo → no se enseña nada**, sólo se siembra. Un usuario
- *     que ya era Pro cuando esto se instaló no merece un "gracias por pagar"
- *     de la nada, y quien acaba de iniciar sesión ya sabe lo que compró.
- *   - `free → pro`  → `thanks`.
- *   - Aparece `cancel_at` (sigue en Pro, con baja programada) → `farewell`.
- *     Ese es el momento en que el usuario se va, aunque el plan tarde semanas
- *     en caerse.
- *   - `pro → free` sin haber visto antes el `cancel_at` → `farewell` también:
- *     es el caso de quien canceló con la aplicación cerrada y sólo vuelve
- *     cuando ya está en Free.
+ *   - **With no previous marker, nothing is shown**, it is only seeded. A user who
+ *     was already Pro when this shipped does not deserve a "thanks for paying" out
+ *     of nowhere, and somebody who has just signed in already knows what they
+ *     bought.
+ *   - free to pro gives `thanks`.
+ *   - A `cancel_at` appearing (still on Pro, with a scheduled downgrade) gives
+ *     `farewell`. That is the moment the user leaves, even if the plan takes weeks
+ *     to fall.
+ *   - pro to free without having seen the `cancel_at` first also gives `farewell`:
+ *     that is the case of somebody who cancelled with the application closed and
+ *     only comes back once they are already on Free.
  *
- * El marcador se escribe **al decidir enseñar el diálogo**, no al cerrarlo: si
- * el proceso se muere con la ventana abierta, "una sola vez" sigue siendo una
- * sola vez.
+ * The marker is written **when the decision to show the dialog is made**, not when
+ * it is closed: if the process dies with the window open, "only once" is still only
+ * once.
  */
 import { LazyStore } from "@tauri-apps/plugin-store";
 import { writable } from "svelte/store";
@@ -40,13 +41,13 @@ const STORE_FILE = "plan-events.json";
 type Seen = {
   /** "free" | "pro" */
   plan: string;
-  /** Si tenía una baja programada (`cancel_at`) la última vez que miramos. */
+  /** Whether it had a scheduled downgrade (`cancel_at`) the last time we looked. */
   cancel: boolean;
 };
 
 export type PlanEvent = "thanks" | "farewell";
 
-/** Diálogo pendiente de enseñar, o `null`. Lo consume `App.svelte`. */
+/** The dialog waiting to be shown, or `null`. `App.svelte` consumes it. */
 export const planEvent = writable<PlanEvent | null>(null);
 
 export function dismissPlanEvent(): void {
@@ -55,7 +56,7 @@ export function dismissPlanEvent(): void {
 
 const store = new LazyStore(STORE_FILE);
 
-/** Lo mínimo que hace falta de la cuenta para diferenciar dos snapshots. */
+/** The minimum needed from the account to tell two snapshots apart. */
 type PlanSnapshot = {
   user_id: string;
   plan: string;
@@ -63,13 +64,13 @@ type PlanSnapshot = {
 };
 
 /**
- * Compara el snapshot recién llegado con el último que vimos de esa cuenta y
- * encola el diálogo que corresponda. Idempotente: si nada cambió no escribe ni
- * enseña nada, así que puede llamarse en cada refresco (`/v1/me` se pide cada
- * 30 s desde la barra lateral).
+ * Compares the freshly arrived snapshot with the last one we saw for that account
+ * and queues whichever dialog is due. Idempotent: when nothing changed it writes
+ * nothing and shows nothing, so it can be called on every refresh (`/v1/me` is asked
+ * for every 30 s from the sidebar).
  *
- * Nunca lanza: es decoración sobre el refresco de cuenta, y un fallo de disco
- * no puede tumbar la ruta que lo llamó.
+ * It never throws: it is decoration on top of the account refresh, and a disk
+ * failure must not bring down the route that called it.
  */
 export async function notePlanSnapshot(
   account: PlanSnapshot | null,
@@ -112,7 +113,7 @@ export async function notePlanSnapshot(
     event = "farewell";
   }
 
-  // Escribir antes de enseñar (ver cabecera).
+  // Write before showing (see the header).
   await persist();
   if (event) planEvent.set(event);
 }
