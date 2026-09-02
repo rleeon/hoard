@@ -116,10 +116,10 @@ export async function hydrateCloud(): Promise<void> {
       account?.storage_used_bytes,
       account?.storage_limit_bytes,
     );
-    // Con el snapshot cacheado, que puede ser de hace semanas: si el plan
-    // cambió mientras la aplicación estaba cerrada, el `refreshCloud` de dos
-    // líneas más abajo es quien lo nota. Este pase sólo mantiene el marcador
-    // al día para que aquél tenga con qué comparar.
+    // With the cached snapshot, which can be weeks old: if the plan changed while
+    // the application was closed, the `refreshCloud` two lines below is what
+    // notices. This pass only keeps the marker current so that one has something to
+    // compare against.
     void notePlanSnapshot(account);
     // If we have an account, refresh once in the background so the bar
     // tracks reality instead of whatever was on disk at last sign-in.
@@ -130,8 +130,8 @@ export async function hydrateCloud(): Promise<void> {
       // Resume background watching for a restored cloud session. Self-hosted
       // does this in `hydrateAuth`, but a cloud-only user has no `$auth.user`,
       // so without this the agent never boots on launch: tracked saves aren't
-      // watched, running games aren't detected, and "vigilancia" stays off
-      // until the user toggles Modo Automático or restarts. `bootAgent` is
+      // watched, running games aren't detected, and the watcher stays off
+      // until the user toggles automatic mode or restarts. `bootAgent` is
       // idempotent and dedups against a concurrent self-hosted boot.
       bootAgent().catch((e) =>
         console.warn("agent boot failed on cloud hydrate:", e),
@@ -155,8 +155,8 @@ export async function refreshCloud(): Promise<CloudAccount> {
       account.storage_used_bytes,
       account.storage_limit_bytes,
     );
-    // Aquí es donde se entera de un pago o una cancelación hechos fuera: es el
-    // único punto que habla con el servidor de verdad.
+    // This is where a payment or a cancellation made elsewhere is noticed: it is
+    // the only point that really talks to the server.
     void notePlanSnapshot(account);
     return account;
   } catch (e) {
@@ -196,10 +196,11 @@ export async function completeCloudLogin(
       callbackState,
     });
     internal.set({ account, hydrated: true, loading: false });
-    // Primer contacto con el plan de esta cuenta. Si la máquina nunca la había
-    // visto, el marcador se siembra y calla: quien acaba de entrar ya sabe con
-    // qué plan lo hace. Si sí la conocía, la diferencia cuenta igual, pagar en
-    // la web y volver aquí a iniciar sesión es una forma legítima de llegar.
+    // First contact with this account's plan. If the machine had never seen it, the
+    // marker is seeded and stays quiet: whoever just signed in already knows which
+    // plan they did it on. If it had seen it, the difference counts anyway, since
+    // paying on the web and coming back here to sign in is a legitimate way to
+    // arrive.
     void notePlanSnapshot(account);
     // Leave a record of the acceptance the user gave on the onboarding screen.
     // It has to happen here and not there: the checkbox is ticked before the

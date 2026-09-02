@@ -60,8 +60,8 @@ export type FeedEntry = {
     // and the row carries the action that opens "liberar espacio".
     | "backup_quota_full"
     | "backup_trimmed"
-    // La copia subió sin ficheros que no se dejaron leer (o no subió nada
-    // porque no se dejó leer ninguno). Parcial, dicho en voz alta.
+    // The backup went up without the files that would not read (or uploaded
+    // nothing at all because none of them would). Partial, said out loud.
     | "backup_files_unreadable"
     | "auto_restore_failed"
     // Auto-restore has failed repeatedly on the same cloud version. Distinct
@@ -69,8 +69,8 @@ export type FeedEntry = {
     // failing and it won't fix itself" row, pushed once per (save, version).
     | "auto_restore_stuck"
     | "auto_restore_recovered"
-    // La subida se rindió ante un conflicto que no sabe resolver: ya no hay
-    // reintento en camino, hace falta el usuario.
+    // The upload gave up against a conflict it cannot resolve: there is no retry
+    // coming, the user is needed.
     | "backup_blocked"
     | "backup_unblocked"
     // Account-wide storage pressure, driven off the cloud account's
@@ -363,9 +363,9 @@ export function adoptJournal(rows: JournalRow[]): void {
 export function adoptCloud(status: CloudPulse, retryIn: number | null): void {
   cloudLoop.set({
     status,
-    // El snapshot trae el estado, no *cuándo* fue: poner `Date.now()` aquí
-    // diría "acabo de comprobarlo" cada vez que alguien abre el HUD, que es
-    // justo la clase de mentira que este panel existe para no contar.
+    // The snapshot carries the state, not *when* it was: putting `Date.now()` here
+    // would say "I just checked" every time somebody opens the HUD, which is exactly
+    // the class of lie this panel exists not to tell.
     last_ok_at: null,
     retry_in: retryIn,
   });

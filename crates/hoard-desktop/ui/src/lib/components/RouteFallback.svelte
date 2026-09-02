@@ -1,10 +1,10 @@
 <script lang="ts">
-  // Marcador que el router enseña mientras carga el chunk de una ruta.
+  // The placeholder the router shows while a route's chunk loads.
   //
-  // Es deliberadamente invisible al principio: una navegación a un chunk ya
-  // cacheado resuelve en un microtask, y sin el retraso el spinner parpadearía
-  // en *cada* cambio de página. Con él, sólo aparece cuando la carga tarda lo
-  // bastante como para que no enseñar nada resulte raro.
+  // It is deliberately invisible at first: navigating to an already-cached chunk
+  // resolves in a microtask, and without the delay the spinner would flash on
+  // *every* page change. With it, it only appears when the load takes long enough
+  // that showing nothing would feel odd.
 </script>
 
 <div class="route-fallback flex h-full items-center justify-center bg-zinc-950">
@@ -25,8 +25,8 @@
     }
   }
 
-  /* Respeta a quien pide menos movimiento: sin fundido, pero manteniendo el
-     retraso para que las navegaciones rápidas sigan sin parpadeo. */
+  /* Honours anybody asking for less motion: no fade, but the delay is kept so fast
+     navigations still do not flash. */
   @media (prefers-reduced-motion: reduce) {
     .route-fallback {
       animation: route-fallback-in 0ms linear 200ms forwards;

@@ -4,11 +4,11 @@
    *
    * The sidebar shows a small amber "alert" button when GitHub reports a
    * newer release. Clicking it opens this modal:
-   *   - "Se necesita actualizar" + a one-line context line.
-   *   - Sí (green primary): downloads the asset and launches the OS installer.
+   *   - an "update needed" heading plus a one-line context line.
+   *   - Yes (green primary): downloads the asset and launches the OS installer.
    *     For server updates we don't auto-run anything (the server doesn't
    *     self-update); we just show the `hoard-server upgrade` command.
-   *   - No (red secondary): closes.
+   *   - No (red secondary): closes it.
    *
    * The component owns its own "installing" lifecycle so the parent doesn't
    * have to thread loading state through props.
@@ -50,8 +50,8 @@
   });
 
   // We treat the modal as serving one of two purposes:
-  //   - clientUpdate: the desktop app itself is behind → green Sí = install.
-  //   - serverUpdate: the user's self-hosted server is behind → green Sí just
+  //   - clientUpdate: the desktop app itself is behind, so green Yes installs.
+  //   - serverUpdate: the user's self-hosted server is behind, so green Yes just
   //     copies `hoard-server upgrade` to clipboard, because we have no remote
   //     execute story (and the user said the server must not self-update).
   // If both are available we show the client first; user can re-open later.

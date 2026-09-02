@@ -41,11 +41,11 @@
   const variantClasses: Record<Variant, string> = {
     // Primary = the gem. Emerald with a faint inner top-light and an
     // outer glow that intensifies on hover.
-    // El halo iba en `rgba(16,185,129,…)` a pelo, es decir en esmeralda
-    // literal: si el usuario elegía otro acento en Ajustes, el relleno del
-    // botón cambiaba de color pero su resplandor seguía siendo verde. Ahora
-    // sale de `--color-accent`, que es justo la variable que repinta el
-    // selector de tono (`applyAccentHue`), así que el halo acompaña al relleno.
+    // The halo used to be a bare `rgba(16,185,129,...)`, literal emerald: if the
+    // user picked another accent in Settings, the button's fill changed colour but
+    // its glow stayed green. It comes from `--color-accent` now, which is exactly
+    // the variable the hue picker repaints (`applyAccentHue`), so the halo follows
+    // the fill.
     primary:
       "bg-emerald-600 text-emerald-50 " +
       "shadow-[inset_0_1px_0_0_oklch(1_0_0/0.2),0_8px_24px_-10px_var(--color-accent),0_0_0_1px_color-mix(in_oklch,var(--color-accent)_22%,transparent)] " +
@@ -67,9 +67,9 @@
     lg: "px-5 py-2.5 text-base",
   };
 
-  // El anillo de foco no se declara aquí: `app.css` da uno común a todo lo
-  // enfocable por teclado, así que el botón no tiene que llevar el suyo (que
-  // además había que acordarse de teñir en cada variante).
+  // The focus ring is not declared here: `app.css` gives one to everything
+  // keyboard-focusable, so the button does not have to carry its own (which also
+  // had to be remembered and tinted in every variant).
   const baseClass =
     "glow inline-flex items-center justify-center gap-2 rounded-[var(--radius-control)] font-medium tracking-[-0.005em] " +
     "transition-all duration-150 active:scale-[0.97] " +

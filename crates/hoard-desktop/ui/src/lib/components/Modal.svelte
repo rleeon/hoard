@@ -19,10 +19,10 @@
     title: string;
     description?: string;
     dismissible?: boolean;
-    /** Deja quieta la cabecera y el pie y hace rodar sólo el cuerpo. Para
-     *  diálogos altos en los que las salidas del pie tienen que estar
-     *  siempre a la vista: por defecto rueda la tarjeta entera y el pie se va
-     *  abajo del todo, fuera de la pantalla. */
+    /** Keeps the header and the footer still and scrolls the body alone. For tall
+     *  dialogs where the footer's ways out have to stay visible: by default the
+     *  whole card scrolls and the footer ends up right at the bottom, off
+     *  screen. */
     scrollBody?: boolean;
     onClose: () => void;
     children: Snippet;

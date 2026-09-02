@@ -45,11 +45,11 @@
   import { tr, fmtBytes } from "./lib";
   import { prefs } from "../stores/prefs";
 
-  // --- identity ----------------------------------------------------------
-  // The recap prefers the Hoard Cloud account (it carries the Google avatar +
-  // email), and falls back to the self-hosted server user when there's no
-  // cloud session. That's why a cloud-only user used to see "Sin sesión": the
-  // card only read `currentUser()`.
+  // ---- identity
+  // The recap prefers the Hoard Cloud account (it carries the Google avatar and
+  // email), and falls back to the self-hosted server user when there's no cloud
+  // session. That's why a cloud-only user used to see "no session": the card only
+  // read `currentUser()`.
   let user = $state<UserInfo | null>(null);
   let account = $state<CloudAccountInfo | null>(null);
   let revealed = $state(false);
@@ -125,7 +125,7 @@
   let daysByKey = $state<Record<string, number>>({});
   // Day whose detail panel is open (its `key`), or null when none.
   let selectedKey = $state<string | null>(null);
-  // La tarjeta compartible (el botón de la cámara, al final de la página).
+  // The shareable card (the camera button, at the foot of the page).
   let showCard = $state(false);
   // Year filter, buttons for every year with any playtime, plus the current
   // year (so a fresh account still sees its own year). Latest first.

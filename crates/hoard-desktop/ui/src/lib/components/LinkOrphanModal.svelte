@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * "Vincular a esta máquina" for a cloud orphan, a save that lives in the
+   * The "link to this machine" dialog for a cloud orphan: a save that lives in the
    * cloud from ANOTHER machine, with no local folder here.
    *
    * The folder picker used to be the only way through, even when detection
@@ -15,8 +15,8 @@
    *    already found. Best name match comes first and is badged.
    * 3. The folder picker, still there for what detection genuinely missed.
    *
-   * Cold cache (never scanned, the case for anyone who never turned on Modo
-   * Automático) is deliberately NOT rendered as "nothing found": we don't
+   * A cold cache (never scanned, the case for anyone who never turned automatic
+   * mode on) is deliberately NOT rendered as "nothing found": we don't
    * know, so we offer the scan.
    *
    * Adopting is the parent's job (`onPick`): Library.svelte owns the toast and

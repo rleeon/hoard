@@ -155,21 +155,20 @@
     if (Number.isFinite(v)) setUiScale(v / 100);
   }
 
-  // Intensidad del relieve: 0 lo apaga, 100 son los 8° históricos, 50,el
-  // defecto, la mitad. En `oninput` (no `onchange`) para que se note mientras
-  // se arrastra.
+  // The tilt's intensity: 0 turns it off, 100 is the historic 8 degrees, and 50,
+  // the default, is half. On `oninput` (not `onchange`) so it is visible while you
+  // drag.
   function onMotionInput(e: Event): void {
     const v = Number((e.currentTarget as HTMLInputElement).value);
     if (Number.isFinite(v)) setMotionIntensity(v);
   }
 
-  // ── Captura del atajo del overlay ────────────────────────────────────
+  // ---- capturing the overlay's shortcut
   //
-  // Se escucha en fase de captura para que la combinación no active nada de la
-  // página mientras se está asignando. Sólo se acepta cuando hay al menos un
-  // modificador: un atajo global de una sola tecla se comería esa tecla en
-  // TODAS las aplicaciones, que es una forma muy rápida de romperle el teclado
-  // a alguien.
+  // It listens in the capture phase so the combination activates nothing on the
+  // page while it is being assigned. It is only accepted with at least one
+  // modifier: a global single-key shortcut would eat that key in EVERY
+  // application, which is a very fast way to break somebody's keyboard.
   let capturingHotkey = $state(false);
 
   const MODS: [string, string][] = [
@@ -604,10 +603,10 @@
     },
   ]);
 
-  // Dos interruptores, no uno: la telemetría de diagnóstico promete en su
-  // texto que nunca manda nombres de juegos, y el playtime son nombres de
-  // juegos por construcción. Apagar el de Wrapple no manda nada, tampoco un
-  // aviso de que está apagado, y su descripción dice lo que cuesta.
+  // Two switches, not one: the diagnostics telemetry promises in its own text that
+  // it never sends game names, and playtime is game names by construction. Turning
+  // Wrapple's off sends nothing, not even a notice that it is off, and its
+  // description says what that costs.
   const privacyRows: Row[] = $derived([
     {
       field: "anonymous_telemetry",

@@ -36,16 +36,16 @@ if (!isOverlayWindow()) {
 // while no messages are loaded, svelte-i18n throws, and Svelte unwinds,
 // leaving the user with a blank, body-coloured window. (See v1.2.1 bug.)
 //
-// Es lo *único* que bloquea al mount: cargar un diccionario ya registrado. La
-// preferencia de idioma guardada en disco corre en paralelo y tiene su propio
-// plazo dentro de `i18nReady`, ver el módulo de i18n.
+// It is the *only* thing that blocks the mount: loading an already-registered
+// dictionary. The language preference stored on disk runs in parallel and has its
+// own deadline inside `i18nReady`; see the i18n module.
 /**
- * El HUD sobre el juego es **otra ventana** con el mismo bundle, distinguida
- * por su etiqueta (la pone `commands/overlay.rs`). Se reparte aquí, antes de
- * montar, en vez de con una ruta: el router de `App.svelte` decide su destino
- * en `onMount` según la sesión y arrastraría al HUD a la pantalla de
- * bienvenida. Leer la etiqueta de la URL evita además cargar el puente de
- * ventanas de Tauri sólo para esto.
+ * The HUD over the game is **another window** running the same bundle, told apart
+ * by its label (`commands/overlay.rs` sets it). The routing happens here, before
+ * mounting, rather than through a route: `App.svelte`'s router decides its
+ * destination in `onMount` based on the session and would drag the HUD to the
+ * welcome screen. Reading the label off the URL also avoids loading Tauri's window
+ * bridge just for this.
  */
 function isOverlayWindow(): boolean {
   try {
@@ -62,8 +62,8 @@ function isOverlayWindow(): boolean {
 async function bootstrap() {
   await i18nReady;
   if (isOverlayWindow()) {
-    // La ventana es transparente: el fondo lo pinta el propio HUD, así que hay
-    // que quitar el color de `body` o taparía el juego con un rectángulo negro.
+    // The window is transparent: the HUD paints its own background, so `body`'s
+    // colour has to go or it would cover the game with a black rectangle.
     document.documentElement.classList.add("is-overlay");
     return mount(Overlay, { target: document.getElementById("app")! });
   }

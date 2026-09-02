@@ -1,21 +1,21 @@
 <script lang="ts">
   /**
-   * "Libera espacio" dialog, the black-box escape hatch.
+   * The "free up space" dialog, the black box's escape hatch.
    *
    * Shown when the account's live saves exceed the plan limit and purging old
-   * versions can't bring them under (the Pro→Free case). It lists the games by
+   * versions can't bring them under (the Pro-to-Free case). It lists the games by
    * weight and offers three ways out:
-   *   - green, top     → upgrade to Pro (nothing gets archived)
-   *   - black, bottom-l → download the saves first (reuses the account export)
-   *   - red,   bottom-r → Continuar: archive the ticked games. Archiving frees
+   *   - green, top: upgrade to Pro (nothing gets archived)
+   *   - black, bottom left: download the saves first (reuses the account export)
+   *   - red, bottom right: continue and archive the ticked games. Archiving frees
    *                       the quota now, freezes the cloud copy for 7 days
    *                       (downloadable), then it's purged. The LOCAL save is
    *                       never touched and it's reversible by reactivating
    *                       after upgrading.
    *
-   * El cuerpo,la lista, las casillas y el medidor, vive en
-   * {@link LiberateStoragePanel}, porque la despedida de Pro enseña lo mismo
-   * midiendo contra otro límite. Aquí quedan sólo las salidas.
+   * The body (the list, the checkboxes and the meter) lives in
+   * {@link LiberateStoragePanel}, because the Pro farewell shows the same thing
+   * measured against a different limit. What is left here are the ways out.
    */
   import { _ } from "svelte-i18n";
   import { push } from "svelte-spa-router";
@@ -61,9 +61,9 @@
     }
   }
 
-  // A la pantalla Pro, no al navegador. Este diálogo salta cuando la cuota se
-  // llena, o sea, en mitad de otra cosa, así que abrir una pestaña encima es
-  // el peor momento posible para hacerlo.
+  // To the Pro screen, not to the browser. This dialog appears when the quota
+  // fills, which is to say in the middle of something else, so opening a tab on top
+  // is the worst possible moment for it.
   function goPro() {
     onClose();
     push("/pro");

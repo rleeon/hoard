@@ -118,7 +118,7 @@
       const snaps = await api.listSaveSnapshots(saveId, false);
       versionCounts = { ...versionCounts, [saveId]: snaps.length };
     } catch {
-      // Unavailable (offline server, pruned save…): the card shows "—".
+      // Unavailable (an offline server, a pruned save): the card shows a dash.
       versionCounts = { ...versionCounts, [saveId]: null };
     }
   }
@@ -240,10 +240,10 @@
   let maxVersionsInput = $state<number | null>(null);
   let savingMaxVersions = $state(false);
 
-  // Las copias que el usuario pide a mano llevan su propio cupo, sin límite por
-  // defecto. Con un cupo compartido, una partida que autoguarda cada minuto
-  // llena el historial en una sesión y se lleva por delante justo la copia que
-  // alguien hizo a propósito antes de un jefe.
+  // The backups the user asks for by hand carry their own cap, unlimited by
+  // default. With a shared cap, a save that autosaves every minute fills the
+  // history in one session and takes out exactly the copy somebody made on purpose
+  // before a boss.
   let maxManual = $state<number | null>(null);
   let maxManualInput = $state<number | null>(null);
   let savingMaxManual = $state(false);

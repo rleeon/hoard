@@ -1,11 +1,11 @@
 <script lang="ts">
   /**
-   * Panel de depuración del HUD. **TEMPORAL**, ver `debug.svelte.ts`.
+   * The HUD's debug panel. **TEMPORARY**, see `debug.svelte.ts`.
    *
-   * Deliberadamente sin traducir y sin pulir: es andamio para elegir los
-   * valores definitivos de opacidad y tamaño mirando el HUD sobre un juego
-   * real, no una superficie que vaya a ver ningún usuario. Se borra entero
-   * junto con el store cuando los números estén decididos.
+   * Deliberately untranslated and unpolished: it is scaffolding for picking the
+   * final opacity and size values while looking at the HUD over a real game, not a
+   * surface any user will ever see. It gets deleted wholesale along with the store
+   * once the numbers are settled.
    */
   import { overlayDebug, saveOverlayDebug, resetOverlayDebug } from "./debug.svelte";
 

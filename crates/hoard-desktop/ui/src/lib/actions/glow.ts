@@ -9,11 +9,10 @@
  */
 export function glow(node: HTMLElement) {
   let raf = 0;
-  /** Rect cacheado al entrar. `getBoundingClientRect` fuerza un cálculo de
-   *  layout síncrono, y llamarlo en cada `mousemove` significaba pagarlo
-   *  decenas de veces por segundo mientras el cursor cruza un botón. El
-   *  tamaño de un botón no cambia mientras lo apuntas, así que basta medirlo
-   *  al entrar. */
+  /** The rect cached on enter. `getBoundingClientRect` forces a synchronous layout
+   *  calculation, and calling it on every `mousemove` meant paying for it dozens of
+   *  times a second while the cursor crosses a button. A button's size does not
+   *  change while you point at it, so measuring on enter is enough. */
   let rect: DOMRect | null = null;
 
   function onEnter() {
@@ -21,9 +20,9 @@ export function glow(node: HTMLElement) {
   }
 
   function onMove(e: MouseEvent) {
-    // `mouseenter` siempre precede a `mousemove` sobre el mismo elemento,
-    // pero medimos aquí también por si la acción se monta con el cursor ya
-    // encima (una lista que se re-renderiza bajo el ratón).
+    // `mouseenter` always precedes `mousemove` on the same element, but we measure
+    // here too in case the action mounts with the cursor already on it (a list
+    // re-rendering under the mouse).
     if (!rect) rect = node.getBoundingClientRect();
     const px = (e.clientX - rect.left) / rect.width;
     const py = (e.clientY - rect.top) / rect.height;

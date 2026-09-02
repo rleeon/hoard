@@ -2,9 +2,9 @@
   // Shared entitlement gate for the Pro features (Hoard-Screen / Hoard-Wrapped).
   // Reads the per-feature snapshot from the server (`GET /v1/cloud/entitlements`)
   // and maps it to one of three views:
-  //   - entitled (paid Pro)          → "En construcción" (the feature is being built)
-  //   - trial_available / trial      → "Prueba: quedan N días"
-  //   - trial_expired / signed-out   → "Función Pro" + upgrade CTA
+  //   - entitled (paid Pro): "under construction" (the feature is being built)
+  //   - trial_available or trial: "trial, N days left"
+  //   - trial_expired or signed-out: "Pro feature" plus the upgrade CTA
   //
   // The trial is one week per feature and normally starts automatically the
   // first time the user opens the feature's page (`ProFeature` activates it on

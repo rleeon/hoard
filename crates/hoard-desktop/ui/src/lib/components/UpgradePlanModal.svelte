@@ -27,10 +27,10 @@
 
   const currentPlan = $derived($cloud.account?.plan ?? null);
 
-  // El modal cierra y lleva a `/pro`, donde está la explicación completa y el
-  // botón de pago con su aviso. Antes saltaba directo al navegador desde un
-  // diálogo que el usuario no había ido a buscar (lo dispara un 402 del
-  // servidor), que es la forma más brusca de sacarlo de la aplicación.
+  // The modal closes and leads to `/pro`, where the full explanation and the
+  // payment button with its notice live. It used to jump straight to the browser
+  // from a dialog the user never went looking for (a 402 from the server fires it),
+  // which is the most abrupt way there is to throw them out of the application.
   function pick(_plan: "pro") {
     onClose();
     push("/pro");

@@ -115,14 +115,14 @@
     auto_restore_stuck:
       "my-1 rounded-md border border-amber-500/60 bg-amber-500/10",
     storage_full: "my-1 rounded-md border border-rose-500/60 bg-rose-500/10",
-    // Rojo, no ámbar: a diferencia del `auto_restore_stuck`, aquí ya no hay
-    // reintento esperando. Sin una persona, este save no vuelve a subir.
+    // Red, not amber: unlike `auto_restore_stuck`, there is no retry waiting here.
+    // Without a person, this save never uploads again.
     backup_blocked: "my-1 rounded-md border border-rose-500/60 bg-rose-500/10",
     backup_quota_full:
       "my-1 rounded-md border border-rose-500/60 bg-rose-500/10",
     backup_trimmed: "my-1 rounded-md border border-amber-500/60 bg-amber-500/10",
-    // Ámbar: la copia sirve, le falta un trozo. El día que no suba nada, la
-    // fila roja de `upload_failed` sale a su lado y ésa manda.
+    // Amber: the backup is usable, it is just missing a piece. The day nothing
+    // uploads, `upload_failed`'s red row appears next to it and that one rules.
     backup_files_unreadable:
       "my-1 rounded-md border border-amber-500/60 bg-amber-500/10",
     storage_purging: "my-1 rounded-md border border-amber-500/60 bg-amber-500/10",

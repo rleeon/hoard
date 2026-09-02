@@ -32,8 +32,8 @@ function clamp(n: number): number {
 export async function hydrateCoverAspect(): Promise<void> {
   try {
     const saved = await STORE.get<number | string>(STORE_KEY);
-    // Hasta 1.1.0 esto era el interruptor de dos posiciones; se traduce al
-    // número equivalente para que nadie pierda su elección al actualizar.
+    // This used to be a two-position switch; it is translated into the equivalent
+    // number so nobody loses their choice on updating.
     if (saved === "portrait") aspect = POSTER;
     else if (saved === "square") aspect = SQUARE;
     else if (typeof saved === "number" && Number.isFinite(saved)) {

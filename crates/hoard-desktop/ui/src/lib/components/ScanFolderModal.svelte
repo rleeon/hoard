@@ -65,11 +65,11 @@
   let trackingSlug = $state<string | null>(null);
   let addedSlugs = $state<string[]>([]);
 
-  // Cuando no hay ninguna carpeta detectada, abrir ya escaneando la de
-  // instalación: enseñar esa ruta servía justo para que el usuario fuera a
-  // mirar si el save está ahí, y hacerle dar dos clics más es la pereza que
-  // sobra. Con carpeta ya detectada no se escanea nada solo, se busca OTRA,
-  // así que la conocida únicamente siembra el selector.
+  // With no folder detected, it opens already scanning the install directory:
+  // showing that path served exactly to make the user go and look whether the save
+  // is there, and making them click twice more is laziness nobody needs. With a
+  // folder already detected nothing is scanned on its own, since what is being
+  // looked for is ANOTHER one, so the known folder only seeds the picker.
   let autoScanned = $state(false);
   $effect(() => {
     if (!open) {
@@ -89,8 +89,8 @@
       const result = await openDialog({
         directory: true,
         multiple: false,
-        // Abre el selector DONDE ya sabemos que guarda el juego, para que se
-        // navegue desde ahí en vez de desde Documentos.
+        // Opens the picker WHERE we already know the game saves, so browsing
+        // starts from there rather than from Documents.
         defaultPath: folder || target?.seed_path || undefined,
         title: $_("scan_folder.pick"),
       });
@@ -129,11 +129,11 @@
   async function choose(game: DetectedGame) {
     const path = game.found_paths[0];
     if (!path) return;
-    // Sólo el juego que se buscaba se devuelve como "su carpeta". Un resultado
-    // de OTRO juego es la carpeta de ese otro: bindearla al objetivo escribía un
-    // override manual permanente (`device.json`, sobrevive a todo) y dejaba al
-    // dueño real sin poder rastrear lo suyo. Ago-2026: Horizon Forbidden West
-    // acabó apuntando a la carpeta de Surviving Mars. Se añade como lo que es.
+    // Only the game that was being looked for comes back as "its folder". A result
+    // for ANOTHER game is that other game's folder: binding it to the target wrote a
+    // permanent manual override (`device.json`, which survives everything) and left
+    // the real owner unable to track its own. Aug 2026: Horizon Forbidden West ended
+    // up pointing at Surviving Mars's folder. It is added as what it is.
     if (target && game.slug === target.slug) {
       usePath(path);
       return;
@@ -165,11 +165,11 @@
     close();
   }
 
-  /** En modo dirigido, TODOS los resultados que no son el juego buscado. La
-   *  salida de emergencia sigue disponible,el usuario puede saber algo que la
-   *  detección no, pero con el aviso de a quién pertenece esa carpeta. Son
-   *  todos y no el primero: una carpeta madre puede tener varios juegos dentro,
-   *  y nombrar solo a uno haría creer que los demás no están en juego. */
+  /** In targeted mode, EVERY result that is not the game being looked for. The
+   *  escape hatch is still there (the user may know something detection does not)
+   *  but with a notice about whose folder it is. All of them and not the first: a
+   *  parent folder can hold several games, and naming only one would suggest the
+   *  others are out of the running. */
   const foreignOwners = $derived(
     target ? results.filter((g) => g.slug !== target.slug) : [],
   );

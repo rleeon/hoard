@@ -1,15 +1,15 @@
 /**
- * Ajustes de la tarjeta compartible, **solo de este equipo**.
+ * The shareable card's settings, **this machine's only**.
  *
- * Nombre, frase y rango viven en un `store` local (`wrapple_card.json`, junto
- * al resto de preferencias de la app) y la foto es un PNG bajo el app-data
- * dir. Nada de esto sale del equipo: no viaja al servidor, no entra en la
- * sincronización y no aparece en el export de la cuenta. Cambiar de máquina
- * es empezar de cero aquí, y es lo que se pidió.
+ * The name, the phrase and the rank live in a local store (`wrapple_card.json`,
+ * alongside the app's other preferences) and the picture is a PNG under the
+ * app-data dir. None of it leaves the machine: it does not travel to the server,
+ * does not enter the sync and does not appear in the account export. Changing
+ * machine means starting from scratch here, which is what was asked for.
  *
- * La foto se recorta y escala en el webview antes de guardarse (cuadrada,
- * 512 px), así lo que llega a disco es un PNG acotado en vez de la foto de
- * 12 MP que salió del móvil.
+ * The picture is cropped and scaled in the webview before being stored (square,
+ * 512 px), so what reaches disk is a bounded PNG rather than the 12 MP photo that
+ * came off the phone.
  */
 import { invoke } from "@tauri-apps/api/core";
 import { LazyStore } from "@tauri-apps/plugin-store";
@@ -17,9 +17,9 @@ import { LazyStore } from "@tauri-apps/plugin-store";
 export type CardRange = "week" | "month" | "year";
 
 type Saved = {
-  /** Vacío = usar el nombre de la sesión. */
+  /** Empty means use the session's name. */
   name: string;
-  /** Vacío = frase automática (la del dado). */
+  /** Empty means the automatic phrase (the dice's). */
   quote: string;
   range: CardRange;
   /** Semilla del dado: subirla es "otra frase". */
@@ -31,7 +31,7 @@ const STORE_KEY = "card";
 
 const DEFAULTS: Saved = { name: "", quote: "", range: "year", seed: 1 };
 
-/** Lado del avatar guardado. 512 basta para la tarjeta a 2× (112 px lógicos). */
+/** The stored avatar's side. 512 is enough for the card at 2x (112 logical px). */
 const AVATAR_SIDE = 512;
 
 let saved = $state<Saved>({ ...DEFAULTS });
@@ -110,9 +110,9 @@ async function loadPhoto(): Promise<void> {
 }
 
 /**
- * Recorta la imagen a un cuadrado centrado de `AVATAR_SIDE` px y devuelve su
- * PNG en base64. Recortamos al cuadrado (no deformamos) porque la tarjeta la
- * pinta dentro de un círculo.
+ * Crops the image to a centred square of `AVATAR_SIDE` px and returns its PNG in
+ * base64. It crops to the square rather than distorting because the card paints it
+ * inside a circle.
  */
 function squarePng(img: HTMLImageElement): string {
   const canvas = document.createElement("canvas");
@@ -158,7 +158,7 @@ export async function clearCardPhoto(): Promise<void> {
   await loadPhoto();
 }
 
-/** Guarda el PNG de la tarjeta en la galería. Devuelve la ruta final. */
+/** Saves the card's PNG into the gallery. Returns the final path. */
 export function saveCardToGallery(pngBase64: string, label: string | null): Promise<string> {
   return invoke<string>("wrapple_save_card", { pngBase64, label });
 }

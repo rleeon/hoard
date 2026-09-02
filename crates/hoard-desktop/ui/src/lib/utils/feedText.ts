@@ -1,15 +1,14 @@
 /**
- * Texto de los eventos del feed (`agent://*`), compartido.
+ * The feed events' text (`agent://*`), shared.
  *
- * Vivía dentro de `ActivityFeed.svelte`. Al aparecer una segunda superficie que
- * enseña los mismos eventos,el HUD sobre el juego, duplicarlo garantizaba que
- * los dos textos se separaran a la primera línea que alguien tocara, así que
- * está aquí.
+ * It used to live inside `ActivityFeed.svelte`. Once a second surface showing the
+ * same events appeared, the HUD over the game, duplicating it guaranteed the two
+ * texts would drift apart on the first line anybody touched, so it lives here.
  *
- * Recibe el traductor por parámetro en lugar de importar `$_`: en un módulo
- * `.ts` habría que leer el store con `get()`, que congela el idioma en el
- * momento de la llamada. Pasándolo desde el componente (`$_`) el texto se
- * vuelve a calcular solo cuando el usuario cambia de idioma.
+ * It takes the translator as a parameter rather than importing `$_`: in a `.ts`
+ * module the store would have to be read with `get()`, which freezes the language
+ * at the moment of the call. Passed in from the component (`$_`), the text
+ * recomputes on its own when the user changes language.
  */
 import type { Readable } from "svelte/store";
 import { _ } from "svelte-i18n";
@@ -17,12 +16,12 @@ import { _ } from "svelte-i18n";
 import type { FeedEntry } from "../stores/live";
 import { formatBytes } from "./format";
 
-/** El tipo exacto de `$_`.
+/** `$_`'s exact type.
  *
- *  svelte-i18n declara `MessageFormatter` pero no lo exporta, así que se saca
- *  del store `_`, que sí. Escribir la firma a mano parecía más limpio y no lo
- *  es: la librería restringe los valores de interpolación y una firma más laxa
- *  no encaja con lo que pasan los componentes. */
+ *  svelte-i18n declares `MessageFormatter` but does not export it, so it is taken
+ *  off the `_` store, which is exported. Writing the signature by hand looked
+ *  cleaner and is not: the library constrains the interpolation values and a laxer
+ *  signature does not fit what the components pass. */
 type Unwrap<T> = T extends Readable<infer U> ? U : never;
 export type Translate = Unwrap<typeof _>;
 

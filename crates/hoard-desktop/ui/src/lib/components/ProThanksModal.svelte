@@ -1,16 +1,16 @@
 <script lang="ts">
   /**
-   * "Gracias por apoyar Hoard", salta una sola vez, en mitad de la aplicación,
-   * la primera vez que vemos la cuenta en Pro después de no estarlo (ver
+   * The thank-you for supporting Hoard. It appears once, in the middle of the
+   * application, the first time we see the account on Pro after it was not (see
    * `stores/planEvents.ts`).
    *
-   * No es un recibo: el recibo lo manda Polar. Es la única pantalla que explica
-   * qué acaba de comprar el usuario y,esto es lo importante, **qué parte se
-   * queda para siempre y qué parte depende de seguir pagando**. Los
-   * dispositivos ilimitados no vuelven a bajar aunque cancele (`first_pro_at`
-   * es un marcador de un solo sentido en el servidor); los 100 GB y Hoard
-   * Screen sí se van con la suscripción. Decirlo aquí, el día que paga y de
-   * buen humor, es más honesto que dejar que lo descubra el día que cancela.
+   * It is not a receipt: Polar sends the receipt. It is the only screen that
+   * explains what the user just bought and, this is the important part, **which
+   * half stays for ever and which half depends on carrying on paying**. Unlimited
+   * devices never come back down even if they cancel (`first_pro_at` is a one-way
+   * marker on the server); the 100 GB and Hoard Screen do go with the subscription.
+   * Saying it here, on the day they pay and are in a good mood, is more honest than
+   * letting them find out on the day they cancel.
    */
   import { _ } from "svelte-i18n";
   import { Infinity as InfinityIcon, HardDrive, MonitorPlay } from "@lucide/svelte";
@@ -30,7 +30,7 @@
     title: string;
     body: string;
     badge: string;
-    /** Los que sobreviven a una cancelación se pintan en verde. */
+    /** The ones that survive a cancellation are painted green. */
     forever: boolean;
   };
 

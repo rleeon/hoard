@@ -49,15 +49,15 @@
     startX = e.clientX;
     startY = e.clientY;
     startW = cardWidth(section);
-    // `offsetWidth` del contenedor posicionado (la tarjeta), no
-    // `getBoundingClientRect`: la tarjeta está inclinada por `use:tilt` y el
-    // rect saldría del bbox ya transformado, unos puntos más ancho.
+    // The positioned container's `offsetWidth` (the card), not
+    // `getBoundingClientRect`: the card is tilted by `use:tilt` and the rect would
+    // come from the already-transformed bbox, a few points wider.
     const card = el?.offsetParent as HTMLElement | null;
     startCardW = card?.offsetWidth || startW;
     document.body.style.cursor = "nwse-resize";
     document.body.style.userSelect = "none";
-    // Un aviso de apertura con dy=0: quien escucha ancla ahí su valor de
-    // partida y ya no depende de dónde caiga el primer pointermove.
+    // An opening notice with dy=0: whoever listens anchors its starting value there
+    // and no longer depends on where the first pointermove lands.
     onVerticalDrag?.(0, startCardW);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);

@@ -5,8 +5,8 @@
    * server-side during its 30-day grace, every data route 403s, so we replace
    * the whole app with this until the user either reactivates or signs out.
    *
-   * Reactivate (green) cancels the pending delete; "Cerrar sesión" (neutral)
-   * just drops the local session. There is no dismiss: the app behind is
+   * Reactivate (green) cancels the pending delete; sign out (neutral) just drops
+   * the local session. There is no dismiss: the app behind is
    * non-functional while frozen.
    */
   import { _ } from "svelte-i18n";

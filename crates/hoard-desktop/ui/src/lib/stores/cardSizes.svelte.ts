@@ -15,17 +15,16 @@ const DEFAULTS: Record<SectionKey, number> = {
   orphans: 220,
   playtime: 220,
   detected: 280,
-  // El panel son carátulas grandes, no fichas. 360 está calculado para que la
-  // rejilla elástica caiga en la misma retícula que tenían los breakpoints
-  // fijos (lg:3 / 2xl:4): a pantalla completa en 1080p el contenido mide
-  // 1536px y con gap-5 salen 4 columnas de 369px, las mismas de antes; y en
-  // ventanas de ~1280 siguen saliendo 3.
+  // The dashboard is large covers, not tiles. 360 is calculated so the elastic grid
+  // lands on the same lattice the fixed breakpoints had (lg:3, 2xl:4): full screen
+  // at 1080p the content is 1536px wide and with gap-5 that gives 4 columns of
+  // 369px, the same as before; in windows around 1280 it still gives 3.
   dashboard: 360,
 };
 
-// Por sección, porque no todas aguantan lo mismo: una ficha de la biblioteca
-// se sigue leyendo a 140px, pero la tarjeta del panel lleva pastilla de estado
-// y botón de copia en la misma fila y se rompe mucho antes.
+// Per section, because they do not all take the same treatment: a library tile is
+// still readable at 140px, but the dashboard's card carries a status pill and a
+// backup button on the same row and breaks far sooner.
 const BOUNDS: Record<SectionKey, { min: number; max: number }> = {
   tracked: { min: 140, max: 500 },
   orphans: { min: 140, max: 500 },
@@ -45,9 +44,9 @@ export async function hydrateCardSizes(): Promise<void> {
   } catch { /* ignore */ }
 }
 
-// Persistencia diferida: esto se escribe desde un arrastre, así que guardar en
-// el acto es un viaje a disco (ida y vuelta por IPC) en cada pointermove.
-// 250ms tras soltar no se notan y dejan una única escritura.
+// Deferred persistence: this is written from a drag, so saving on the spot is a
+// trip to disk (an IPC round-trip) on every pointermove. 250 ms after letting go
+// goes unnoticed and leaves a single write.
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
 function schedulePersist(): void {
