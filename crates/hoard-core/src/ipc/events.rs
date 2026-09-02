@@ -99,7 +99,7 @@ pub enum AgentEvent {
     },
     BackupFailed {
         save_id: String,
-        /// Slug so the feed can show "factorio falló" instead of a raw uuid.
+        /// Slug so the feed can name the game instead of showing a raw uuid.
         game_slug: String,
         error: String,
         will_retry: bool,
@@ -107,7 +107,7 @@ pub enum AgentEvent {
     /// The upload was deferred by the server's rolling bandwidth limit (429).
     /// Not a failure: the agent waits `retry_after_secs` for the window to
     /// slide and retries on its own. The UI shows an amber
-    /// "en espera, reintento en Xs" entry instead of a red "falló", so a
+    /// "waiting, retrying in Xs" entry instead of a red failure, so a
     /// first-time onboarding burst that briefly exceeds the window reads as
     /// throttled rather than broken.
     BackupThrottled {
@@ -145,7 +145,7 @@ pub enum AgentEvent {
     /// The *account* is out of storage (402 `quota_exceeded`), so this upload,
     /// and every other one, keeps failing until the user frees space or
     /// upgrades. Its own event rather than a `BackupFailed` for two reasons:
-    /// nothing about this save is wrong (a red "factorio falló" blames the
+    /// nothing about this save is wrong (a red failure row blames the
     /// wrong thing, and the raw 402 JSON was what actually reached the feed in
     /// Aug 2026), and it's account-wide, so the UI collapses every save's
     /// report into one actionable banner that opens "liberar espacio".

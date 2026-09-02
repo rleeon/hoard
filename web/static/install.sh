@@ -1,5 +1,5 @@
 #!/bin/sh
-# Hoard CLI installer — Linux & macOS
+# Hoard CLI installer, Linux & macOS
 #
 #   curl -fsSL https://hoard.services/install.sh | sh
 #
@@ -8,7 +8,7 @@
 #
 # It installs the CORE: `hoardd` (the sync engine, which runs as a background
 # service) and `hoard` (the terminal face). They ship and update together
-# always — `hoard` is a thin client of `hoardd` since 1.1.0, so either one on its
+# always, `hoard` is a thin client of `hoardd` since 1.1.0, so either one on its
 # own is a program that cannot do anything.
 #
 # Then it hands off to `hoard install`, which decides whether this machine also
@@ -174,8 +174,8 @@ fi
 say ""
 # Both flags accumulate rather than overwrite, so setting HOARD_HEADLESS=1 and
 # HOARD_WITH_DESKTOP=1 together reaches `hoard install` as the contradiction it
-# is and clap rejects it (`conflicts_with`). Assigning instead of appending —
-# which this did — silently dropped --headless and pulled a desktop app onto a
+# is and clap rejects it (`conflicts_with`). Assigning instead of appending,
+# which this did, silently dropped --headless and pulled a desktop app onto a
 # machine that asked not to have one. install.ps1 has always accumulated; these
 # two must not disagree about what the same env vars mean.
 rest_args=""
@@ -185,9 +185,10 @@ rest_args=""
 # stdin is the script itself inside `curl … | sh`, so anything that might prompt
 # has to be told it can't. `hoard install` picks a non-interactive delivery when
 # it sees this.
-# La versión va explícita aunque el binario recién puesto ya sea esa: deja el
-# contrato escrito, y si alguien reordena esto y se instala un `hoard` de otra
-# versión, falla en vez de mezclar piezas de dos releases.
+# The version is passed explicitly even though the binary just placed is already
+# that one: it writes the contract down, and if somebody reorders this and a `hoard`
+# of another version gets installed, it fails instead of mixing pieces of two
+# releases.
 HOARD_NONINTERACTIVE=1 "$dir/hoard" install --version "$ver" $rest_args </dev/null || {
   warn "the core is installed, but setting up the rest didn't finish."
   say  "  Re-run it when you're ready:  ${BOLD}hoard install${RESET}"

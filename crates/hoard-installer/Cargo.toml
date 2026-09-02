@@ -3,7 +3,7 @@ name = "hoard-installer"
 # Deliberately not `version.workspace`: this is the owner's private build number
 # for the installer, bumped by hand while it is being tried out, and the
 # workspace version belongs to the release train. What the welcome screen shows
-# is neither — it is the release fetched from GitHub.
+# is neither, it is the release fetched from GitHub.
 version = "8.8.8"
 edition.workspace = true
 license.workspace = true
@@ -20,14 +20,14 @@ slint-build = "1.17"
 [target.'cfg(windows)'.build-dependencies]
 # The icon Explorer draws on the file. Slint's `icon:` property only dresses the
 # window and the taskbar button; what a downloaded `.exe` shows before anyone
-# runs it is a PE resource, and without one it is the blank default — which is
+# runs it is a PE resource, and without one it is the blank default, which is
 # exactly what a stranger's executable is not supposed to look like.
 winresource = "0.1"
 
 [dependencies]
 # The installer doesn't reimplement installing: it drives it. Everything it
-# knows how to do — which components this machine wants, which asset matches,
-# how a signature is checked and how each package is applied — has lived in the
+# knows how to do, which components this machine wants, which asset matches,
+# how a signature is checked and how each package is applied, has lived in the
 # agent since `hoard install` existed. This is that engine's third face.
 hoard-agent = { path = "../hoard-agent" }
 # Only for `autostart`: declaring and starting the service is what turns
@@ -36,7 +36,7 @@ hoardd = { path = "../hoardd" }
 
 # No webview, on purpose. An installer is the first thing that runs on a machine
 # where nothing is installed yet, so it cannot depend on WebView2 (Windows) or
-# WebKitGTK (Linux) being there — those are what it is here to install. The
+# WebKitGTK (Linux) being there, those are what it is here to install. The
 # software renderer takes the last graphics assumption out too: it draws on a
 # machine with no usable GPU driver, which is where a VM, an RDP session and a
 # handheld in a strange mode all live.

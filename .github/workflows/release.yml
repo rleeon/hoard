@@ -19,13 +19,13 @@ jobs:
       matrix:
         include:
           # Linux keeps the full self-host bundle (CLI + server + admin). The
-          # other platforms ship the `hoard` CLI only — the server/admin are
+          # other platforms ship the `hoard` CLI only, the server/admin are
           # meant to run on a Linux box. Every target builds on a NATIVE runner
           # so we never cross-compile the dbus/keyring/OpenSSL C deps.
           # `ubuntu-latest` is 24.04, so the binaries this job produces need
           # GLIBC 2.39 and refuse to start on anything older: Debian 12
           # (bookworm) is out, trixie and Ubuntu 24.04+ are in. Nothing in the
-          # source asks for that — it is the runner image, and moving the job to
+          # source asks for that, it is the runner image, and moving the job to
           # an older one (or building against a lower floor) is what widens it.
           # Left as-is deliberately; noted so the next person reading a "GLIBC
           # 2.39 not found" report knows where it comes from.
@@ -41,7 +41,7 @@ jobs:
             target: aarch64-apple-darwin
             artifact: macos-aarch64
             full: false
-          # Intel macOS (macos-13) is being retired by GitHub — the runner
+          # Intel macOS (macos-13) is being retired by GitHub, the runner
           # queues forever and never picks the job up, pinning `sign`/`publish`
           # open (they `needs: build`). The Apple-silicon dmg covers Mac; drop
           # the x86_64 tarball rather than block the whole release, matching
@@ -68,17 +68,17 @@ jobs:
       - name: System deps
         # libdbus-1-dev is needed by `libdbus-sys`, pulled in transitively via
         # hoard-cli → hoard-agent → keyring (its `sync-secret-service` feature).
-        # Linux only — macOS (Keychain) and Windows (DPAPI) use native stores
+        # Linux only, macOS (Keychain) and Windows (DPAPI) use native stores
         # with no C dependency.
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libdbus-1-dev
 
       - name: Build release binaries
-        # `-p hoardd` no es opcional ni un extra: desde el Slice 4 de la ADR 0021
-        # `hoard` es un cliente fino del servicio, así que un tarball con `hoard`
-        # y sin `hoardd` instala una cara sin motor — arranca y no puede
-        # sincronizar nada. `hoard-cli` depende de `hoardd` como *lib*, y cargo
-        # no construye el binario de una dependencia, así que hay que pedirlo.
+        # `-p hoardd` is neither optional nor an extra: `hoard` is a thin client of
+        # the service (ADR 0021), so a tarball with `hoard` and no `hoardd` installs a
+        # face with no engine, which starts and can sync nothing. `hoard-cli` depends
+        # on `hoardd` as a *lib*, and cargo does not build a dependency's binary, so
+        # it has to be asked for.
         shell: bash
         run: |
           if [ "${{ matrix.full }}" = "true" ]; then
@@ -119,7 +119,7 @@ jobs:
 
       # NOTE: signing happens in the isolated `sign` job below, NOT here. This
       # `build` job compiles untrusted third-party code (cargo deps + build
-      # scripts) and so must never see MINISIGN_SECRET_KEY — a malicious dep
+      # scripts) and so must never see MINISIGN_SECRET_KEY, a malicious dep
       # could otherwise exfiltrate the release-signing key. We only emit the
       # unsigned tarball + checksum as artifacts.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -134,12 +134,12 @@ jobs:
     name: Sign artifacts (minisign)
     needs: build
     runs-on: ubuntu-latest
-    # Isolated signing job: no checkout, no cargo, no build scripts — the only
+    # Isolated signing job: no checkout, no cargo, no build scripts, the only
     # code that runs is the trusted `minisign` package and this script, so the
     # MINISIGN_SECRET_KEY is never exposed to third-party code (ADR 0017). The
     # secret lives only in repo secrets and only touches this runner's disk for
     # the lifetime of the step. If the signing secret isn't configured we skip
-    # and warn loudly — the release just won't be auto-upgradable (the client
+    # and warn loudly, the release just won't be auto-upgradable (the client
     # fails closed on the missing/invalid signature).
     #
     # Recommended hardening: gate this job behind a protected GitHub Environment
@@ -171,7 +171,7 @@ jobs:
 
           # Also sign the desktop installers (.msi/.exe/.dmg/.AppImage/.deb).
           # They're built+uploaded by the private hoard-build workflow, whose
-          # `gh release create` is what pushed this tag and triggered us — so by
+          # `gh release create` is what pushed this tag and triggered us, so by
           # now they already exist on the release. Without a `<installer>.minisig`
           # the in-app updater treats the build as Unsigned and only DOWNLOADS it
           # instead of running the installer (see MINISIGN_PUBKEY +

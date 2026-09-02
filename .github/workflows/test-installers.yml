@@ -3,7 +3,7 @@ name: Test installers
 # Exercises the hosted install scripts end-to-end on real runners: download the
 # latest release, verify its checksum, install, and confirm `hoard --version`
 # runs. Windows is tested on BOTH Windows PowerShell 5.1 (`powershell`) and
-# PowerShell 7 (`pwsh`) — the 5.1 host is where the tricky bugs live (empty
+# PowerShell 7 (`pwsh`), the 5.1 host is where the tricky bugs live (empty
 # RuntimeInformation, TLS 1.0 default, byte[] response bodies).
 
 on:

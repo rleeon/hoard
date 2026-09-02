@@ -5,7 +5,7 @@
 #     is not root; without this the first write fails and the container loops.
 #   - Bootstrap config from the image's example if there is none at $CFG.
 #   - Create the first admin (and print a device token) when the database is
-#     empty and HOARD_ADMIN_USERNAME/PASSWORD are set — the one-click path for
+#     empty and HOARD_ADMIN_USERNAME/PASSWORD are set, the one-click path for
 #     app-store installs, where nobody is going to open a shell.
 #   - Run pending migrations before exec'ing the server.
 #   - exec the requested command (CMD).
@@ -44,7 +44,7 @@ if [ "$(id -u)" = 0 ] && [ "$PUID" != 0 ]; then
             # The directory is already ours, but single files in it may not be:
             # a `docker exec … hoard-admin …` runs as root, and if it recreates
             # the SQLite WAL the server cannot write it on the next start. Only
-            # the top level — blobs are never touched by hand, and walking a
+            # the top level, blobs are never touched by hand, and walking a
             # snapshot store on every boot would cost more than it fixes.
             find "$dir" -maxdepth 1 ! -uid "$PUID" -exec chown "$PUID:$PGID" {} + 2>/dev/null || true
         fi
@@ -77,7 +77,7 @@ hoard-server | /usr/local/bin/hoard-server)
 
     # An empty database is the only moment this can run: after that the
     # variables are ignored, so leaving them set (or clearing them) changes
-    # nothing. The password is never used to log in again by itself — it is
+    # nothing. The password is never used to log in again by itself, it is
     # what the panel asks for.
     if [ -n "${HOARD_ADMIN_USERNAME:-}" ] && [ -n "${HOARD_ADMIN_PASSWORD:-}" ] &&
         hoard-admin --config "$CFG" user list | grep -q '^No users\.$'; then
@@ -85,7 +85,7 @@ hoard-server | /usr/local/bin/hoard-server)
         hoard-admin --config "$CFG" user create "$HOARD_ADMIN_USERNAME" \
             --admin --password "$HOARD_ADMIN_PASSWORD"
         # The desktop app is set up with a token, not a password, and there is
-        # no way to mint one from the panel — so the install that never opens a
+        # no way to mint one from the panel, so the install that never opens a
         # shell gets its token here, once, in the log.
         token=$(hoard-admin --config "$CFG" token create "$HOARD_ADMIN_USERNAME" \
             --device "${HOARD_ADMIN_DEVICE:-first device}" |

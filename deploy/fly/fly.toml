@@ -14,7 +14,7 @@
 # Billing is Polar (Merchant of Record, Stripe underneath) and nothing else.
 # The deployed app still carries three `HOARD__CLOUD__LEMONSQUEEZY__*`
 # secrets from the pre-Polar era; no config field reads them, so they are
-# inert credentials sitting in the deployment — `fly secrets unset` them and
+# inert credentials sitting in the deployment, `fly secrets unset` them and
 # revoke the key on the LS side.
 #   fly deploy --dockerfile deploy/fly/Dockerfile
 
@@ -69,7 +69,7 @@ kill_timeout = "10s"
   memory_mb = 512
 
 # Rolling deploys across the app's machines. Note this says nothing about
-# how many stay up — that's `min_machines_running` above, which is 0. An
+# how many stay up, that's `min_machines_running` above, which is 0. An
 # earlier version of this comment claimed one machine is kept warm; it is
 # not, and believing it hid a machine that sat started for 16 days.
 [deploy]
@@ -77,7 +77,7 @@ kill_timeout = "10s"
   max_unavailable = 0.3
   # Migrate as its own deploy step, in a throwaway machine, before any traffic
   # moves. A migration that fails here fails the deploy and the version already
-  # serving keeps serving. Run from inside `serve` — which is what happened on
-  # 2026-08-13 — the same failure exits the process, Fly restarts it into the
+  # serving keeps serving. Run from inside `serve`, which is what happened on
+  # 2026-08-13, the same failure exits the process, Fly restarts it into the
   # identical failure, and the API stays down until someone rolls back by hand.
   release_command = "migrate"

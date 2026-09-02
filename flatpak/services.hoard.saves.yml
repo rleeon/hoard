@@ -8,7 +8,7 @@
 # The Flatpak id (services.hoard.saves) is intentionally its own reverse-DNS name,
 # distinct from the Tauri `identifier` in tauri.conf.json (dev.hoard.desktop),
 # which stays as-is since it's load-bearing for deep links (`hoard://`) and
-# the updater — only the Flatpak wrapper needs the services.hoard.saves name.
+# the updater, only the Flatpak wrapper needs the services.hoard.saves name.
 id: services.hoard.saves
 
 runtime: org.gnome.Platform
@@ -62,7 +62,7 @@ modules:
       - tar -C deb-extract -xf deb-extract/data.tar.*
 
       # Main binary plus every externalBin sidecar (hoardd, hoard-screen, hoard
-      # CLI) the bundler drops next to it — hoardd::client::own_daemon_binary
+      # CLI) the bundler drops next to it, hoardd::client::own_daemon_binary
       # and the screen sidecar both resolve as a bare-named sibling of
       # current_exe, so they all need to land in the same /app/bin.
       - |

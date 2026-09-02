@@ -3,13 +3,13 @@
  * Dark only, on purpose: this is the same surface as the desktop app and the
  * metrics dashboard, and a self-hoster who opens both in one sitting should not
  * get two different products. The accent (emerald) appears in four places and
- * nowhere else — the mark, the active tab, primary buttons, and anything that
+ * nowhere else, the mark, the active tab, primary buttons, and anything that
  * means "live". If a fifth use shows up, it is one of the other four wearing a
  * disguise.
  *
  * There are no inline styles anywhere: the page is served under a CSP without
  * 'unsafe-inline' (see routes/panel.rs). The two things that must be computed
- * at runtime — meter fill and strip height — go through custom properties set
+ * at runtime, meter fill and strip height, go through custom properties set
  * with CSSOM, which CSP does not cover.
  */
 

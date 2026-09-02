@@ -3,7 +3,7 @@
 # oneshot) which performs the privileged binary swap + restart.
 #
 # The web service (hoard-server.service) runs sandboxed and CANNOT do this
-# itself by design — see ADR 0017. Keep the path in sync with
+# itself by design, see ADR 0017. Keep the path in sync with
 # `routes::admin::UPGRADE_MARKER` and the server's data_dir.
 
 [Unit]

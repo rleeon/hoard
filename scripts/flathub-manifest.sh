@@ -9,7 +9,7 @@
 # thing that recipe cannot be.
 #
 # So this rewrites that single source into the release asset plus its hash and
-# leaves the rest of the manifest alone — one file to maintain, not two that
+# leaves the rest of the manifest alone, one file to maintain, not two that
 # drift.
 #
 # Usage:

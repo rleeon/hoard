@@ -4,13 +4,13 @@
 @import "@fontsource-variable/jetbrains-mono/index.css";
 
 @theme {
-  /* Dark, green-cast palette with a single emerald accent — the same
+  /* Dark, green-cast palette with a single emerald accent, the same
      family the desktop app uses, so site and app read as one product.
      `accent` is the bright emerald for text/icons on dark; `accent-deep`
      is the filled-chip emerald that carries white text.
 
-     WOLED: the page canvas is pure #000 — the same off-black the desktop app
-     uses — so the emerald only ever shows on real surfaces (borders, chips,
+     WOLED: the page canvas is pure #000, the same off-black the desktop app
+     uses, so the emerald only ever shows on real surfaces (borders, chips,
      buttons) and the black stays truly off. Surfaces are a hair above black. */
   --color-bg: #000000;
   --color-surface: #0a0f0b;
@@ -22,7 +22,7 @@
   --color-accent: #34d399;
   --color-accent-deep: #047857;
   --color-accent-tint: #0d2117;
-  /* Raised band — one step above the page, hairline-bordered. */
+  /* Raised band, one step above the page, hairline-bordered. */
   --color-pine: #0c130e;
   --color-pine-elev: #131c16;
   --color-pine-line: #212b24;
@@ -46,7 +46,7 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Large-display scaling — every measure on the site is in rem (type, spacing,
+/* Large-display scaling, every measure on the site is in rem (type, spacing,
    the max-w-* containers), so raising the root size grows the whole layout in
    proportion instead of leaving a 1152px column marooned in the middle of a
    1440p panel. Steps, not a fluid clamp: a clamp keeps resizing under the
@@ -68,7 +68,7 @@ body {
   color: var(--color-ink);
 }
 
-/* WOLED grain — a tiny tiled SVG turbulence blended low so the pure-black
+/* WOLED grain, a tiny tiled SVG turbulence blended low so the pure-black
    canvas reads as paper tooth, not a dead flat void. Matches the desktop app.
    pointer-events:none keeps it purely decorative and it sits behind content. */
 body::before {
@@ -130,7 +130,7 @@ h3 {
   transform: none;
 }
 
-/* Small uppercase mono section label: "01 — Sync" */
+/* Small uppercase mono section label: "01, Sync" */
 .kicker {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -195,10 +195,10 @@ h3 {
 }
 
 /* ------------------------------------------------------------------
-   Tilt 3D — ported from the desktop app so cards/screenshots lean toward
+   Tilt 3D, ported from the desktop app so cards/screenshots lean toward
    the cursor with a soft directional glow. The `.tilt` class consumes CSS
    vars set by the `tilt` action (lib/actions/tilt.ts); the action itself
-   stays transform-free. No `preserve-3d` / `mix-blend-mode` — a plain
+   stays transform-free. No `preserve-3d` / `mix-blend-mode`, a plain
    opacity fade is cross-browser safe. Reduced-motion flattens it below.
 ------------------------------------------------------------------ */
 .tilt {
@@ -208,7 +208,7 @@ h3 {
   will-change: transform;
 }
 
-/* Glow-only — cursor-following light with no 3D rotation, for smaller
+/* Glow-only, cursor-following light with no 3D rotation, for smaller
    interactive surfaces. Shares the --tilt-glow-x/y vars. */
 .glow {
   position: relative;
@@ -249,7 +249,7 @@ h3 {
 }
 
 /* ------------------------------------------------------------------
-   Fact marquee — the trust strip scrolls instead of sitting in a 4-cell
+   Fact marquee, the trust strip scrolls instead of sitting in a 4-cell
    grid. The motion itself lives in lib/actions/marquee.ts: a CSS keyframe
    loop always returns to its first frame (the wrap reads as a restart) and
    the global reduced-motion rule clamped it to a standstill. Here CSS only
@@ -279,7 +279,7 @@ h3 {
 }
 
 /* ------------------------------------------------------------------
-   Game pills — the hand-verified marquee. Every pill is a plain span:
+   Game pills, the hand-verified marquee. Every pill is a plain span:
    the Steam links were pulled out of the strip (see GamesSection). The
    anchor rules stay so the links can come back without a restyle.
 ------------------------------------------------------------------ */

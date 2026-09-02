@@ -2,7 +2,7 @@
 
 /* The Pro overlay UI (Screen / Overlay / Wrapped) lives under `src/lib/pro/`
    and is part of this repo. (It used to be copied in from a private hoard-pro
-   repo and was .gitignored — that's no longer the case; the directory is
+   repo and was .gitignored, that's no longer the case; the directory is
    tracked normally now.) Tailwind v4's automatic content detection picks it up
    on its own; we register it explicitly anyway as belt-and-suspenders so any
    class used ONLY by the Pro surfaces (the note's `bg-amber-200/95`, the
@@ -11,9 +11,9 @@
 @source "./lib/pro/**/*.{svelte,ts}";
 
 /* ====================================================================== */
-/*  Hoard — "Obsidian Vault" theme                                        */
+/*  Hoard, "Obsidian Vault" theme                                        */
 /*  Direction: warm-dark, editorial, emerald-as-gem. Bundled variable     */
-/*  fonts (offline-safe — no CDN), layered atmosphere instead of flat     */
+/*  fonts (offline-safe, no CDN), layered atmosphere instead of flat     */
 /*  fills, hairline borders, a characterful display serif. Deliberately   */
 /*  not the generic "Inter on zinc-900" dashboard look.                   */
 /* ====================================================================== */
@@ -44,12 +44,12 @@
     "Geist Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono:
     "Geist Mono", ui-monospace, "SFMono-Regular", "Menlo", monospace;
-  /* Sin webfont serif: el experimento de display serif se descartó (ver
-     `.font-display` más abajo) pero los `@font-face` seguían costando
-     149 KB de descarga en cada arranque sin que ninguna regla los usara. */
+  /* No serif webfont: the display-serif experiment was dropped (see
+     `.font-display` below) but the `@font-face` rules kept costing 149 KB of
+     download on every start with nothing using them. */
   --font-serif: ui-serif, Georgia, "Times New Roman", serif;
 
-  /* Obsidian surfaces — near-black with a sliver of emerald hue so the
+  /* Obsidian surfaces, near-black with a sliver of emerald hue so the
      dark never reads as dead/plastic grey. */
   --color-bg: oklch(0.165 0.006 165);
   --color-bg-elev: oklch(0.205 0.007 165);
@@ -59,15 +59,15 @@
   --color-accent: oklch(0.62 0.15 158); /* emerald, the gem */
   --color-accent-hover: oklch(0.72 0.16 160);
 
-  /* Rampa neutra repintada. Tailwind trae `zinc` gris puro; aquí es obsidiana
-     con croma bajísimo en el mismo tono (165) que `--color-bg`, y con pasos
-     perceptualmente regulares en oklch. Dos consecuencias: los fondos grandes
-     dejan de leerse como plástico gris sobre el negro, y los peldaños
-     intermedios (700/800) por fin se distinguen entre sí, que es lo que hacía
-     que bordes y superficies se confundieran.
+  /* The neutral ramp, repainted. Tailwind ships `zinc` as pure grey; here it is
+     obsidian at a very low chroma in the same hue (165) as `--color-bg`, with
+     perceptually even steps in oklch. Two consequences: large backgrounds stop
+     reading as grey plastic over the black, and the middle steps (700/800) can
+     finally be told apart, which is what made borders and surfaces blur into each
+     other.
 
      Como cada componente usa utilidades crudas (`bg-zinc-900`, `text-zinc-400`),
-     repintar la rampa reviste toda la aplicación sin tocar el marcado — y el
+     repintar la rampa reviste toda la aplicación sin tocar el marcado, y el
      tema Quartz la vuelve a repintar más abajo para el modo claro. */
   --color-zinc-50: oklch(0.98 0.004 165);
   --color-zinc-100: oklch(0.95 0.005 165);
@@ -81,8 +81,8 @@
   --color-zinc-900: oklch(0.2 0.006 165);
   --color-zinc-950: oklch(0.145 0.005 165);
 
-  /* Escala de radios. Antes convivían rounded-md/lg/xl/2xl sin criterio; estos
-     tres tienen un significado: control, panel y superficie flotante. */
+  /* The radius scale. rounded-md/lg/xl/2xl used to coexist with no rule behind
+     them; these three mean something: a control, a panel, a floating surface. */
   --radius-control: 0.625rem;
   --radius-panel: 1rem;
   --radius-pop: 1.125rem;
@@ -100,24 +100,24 @@ body,
   /* The mark's gem. Its own tokens rather than the `emerald` ramp: the logo
      always sits on a near-black tile, so it needs lightness fixed high enough
      to read there even under Quartz (where the ramp is darkened for paper).
-     `applyAccentHue` rewrites just the hue, keeping the two-tone sweep — the
+     `applyAccentHue` rewrites just the hue, keeping the two-tone sweep, the
      top stop leads the bottom one by ~20 degrees, same as teal -> emerald. */
   --logo-gem-from: oklch(0.855 0.138 181);
   --logo-gem-to: oklch(0.6 0.13 163);
   --logo-gem-ring: oklch(0.7 0.149 162);
 
-  /* ---- Elevación ---------------------------------------------------- */
-  /* Tres superficies y su filo. Fuera de `@theme` a propósito: son valores
-     compuestos (con alfa) que cada tema repinta, no colores que Tailwind deba
-     convertir en utilidades. Se consumen desde las clases `.panel` / `.pop` de
-     más abajo, o con `bg-[var(--surface-2)]` cuando hace falta a mano. */
+  /* ---- elevation */
+  /* Three surfaces and their edge. Outside `@theme` on purpose: they are composite
+     values (with alpha) that each theme repaints, not colours Tailwind should turn
+     into utilities. They are consumed from the `.panel` and `.pop` classes below, or
+     with `bg-[var(--surface-2)]` when it has to be done by hand. */
   --surface-1: oklch(0.185 0.006 165 / 62%);
   --surface-2: oklch(0.225 0.007 165 / 72%);
   --surface-3: oklch(0.255 0.008 165 / 88%);
   --edge: oklch(1 0 0 / 9%);
   --edge-strong: oklch(1 0 0 / 15%);
-  /* Filo superior: la línea de luz de un píxel que hace que un panel parezca
-     levantado y no pegado al fondo. */
+  /* The top edge: the one-pixel line of light that makes a panel look raised rather
+     than glued to the background. */
   --edge-top: inset 0 1px 0 0 oklch(1 0 0 / 8%);
 
   --shadow-panel: 0 1px 2px oklch(0 0 0 / 40%), 0 12px 32px -16px oklch(0 0 0 / 70%);
@@ -126,7 +126,7 @@ body,
 }
 
 /* ---- Base atmosphere ------------------------------------------------- */
-/* WOLED: a pure #000 canvas. No top glow — the accent (emerald) only shows on
+/* WOLED: a pure #000 canvas. No top glow, the accent (emerald) only shows on
    real surfaces (buttons, borders, the gem), so the black stays truly off and
    never blinks. The grain overlay adds a touch of paper tooth. */
 body {
@@ -138,7 +138,7 @@ body {
   font-feature-settings: "cv01", "cv03", "ss03";
 }
 
-/* Grain — a tiny tiled SVG turbulence, blended low so it reads as paper
+/* Grain, a tiny tiled SVG turbulence, blended low so it reads as paper
    tooth, not noise. pointer-events:none keeps it purely decorative. */
 body::before {
   content: "";
@@ -169,12 +169,12 @@ body::after {
   transition: opacity 320ms ease;
 }
 
-/* Flat — the grain off, nothing else. */
+/* Flat, the grain off, nothing else. */
 :root[data-atmos="flat"] body::before {
   display: none;
 }
 
-/* Glow — the top light the WOLED default deliberately withholds, tinted with
+/* Glow, the top light the WOLED default deliberately withholds, tinted with
    whatever gem is active so it moves with the accent picker. */
 :root[data-atmos="glow"] body::after {
   opacity: 1;
@@ -186,11 +186,11 @@ body::after {
   );
 }
 
-/* Vignette — darkened edges to pull the eye to the middle.
+/* Vignette, darkened edges to pull the eye to the middle.
    It is the one atmosphere that has to raise the floor before it can dig:
    Obsidian's canvas is already pure black, and black over black is an
    expensive way to paint nothing. So the middle comes up a step and the
-   corners fall back to the same #000 as everywhere else — which keeps the
+   corners fall back to the same #000 as everywhere else, which keeps the
    WOLED argument intact, since the black stays black exactly where the
    vignette is darkest.
 
@@ -234,7 +234,7 @@ html.is-overlay body::after {
 }
 
 /* Las barras de desplazamiento las pinta el motor con el tema del sistema, y
-   en un tema GTK claro salen como una franja clara pegada al borde — sobre un
+   en un tema GTK claro salen como una franja clara pegada al borde, sobre un
    HUD translúcido eso se lee como una línea blanca. En esta ventana no hace
    falta ninguna a nivel de página (el registro tiene su propio scroll), así que
    fuera; y la del registro, oscura. */
@@ -262,7 +262,7 @@ html.is-overlay ::-webkit-scrollbar-thumb {
 }
 
 /* ---- Display typography --------------------------------------------- */
-/* Headings and the brand stay on Geist Sans — the serif (Fraunces) display
+/* Headings and the brand stay on Geist Sans, the serif (Fraunces) display
    experiment read as a thin, out-of-place masthead in the chrome, so we
    keep everything on the sans family and just tighten the tracking for a
    modern, dense look. `.font-display` is kept as an alias so existing
@@ -286,7 +286,7 @@ h2 {
    `bg-zinc-9xx/xx + border-white/[0.0x] + rounded-xl + shadow-[…]`. Un
    componente que quiera una superficie usa una de estas y hereda filo, sombra
    y radio coherentes con el resto de la aplicación. Se puede seguir tiñendo
-   por encima con utilidades (`border-emerald-500/25`, por ejemplo) — el
+   por encima con utilidades (`border-emerald-500/25`, por ejemplo), el
    sistema fija la forma, no el color. */
 @layer components {
   .panel {
@@ -333,7 +333,7 @@ select option {
 }
 
 /* WebKitGTK (Linux) paints a black rectangle where a `backdrop-filter`
-   element repaints on hover — the sidebar's blur, sitting over the Wrapped
+   element repaints on hover, the sidebar's blur, sitting over the Wrapped
    surface's translucent layers, triggers it every time a nav button lights up.
    Drop the backdrop blur on Linux only; the semi-opaque gradient already reads
    as a panel there. WebView2 (Windows) / WKWebView (macOS) keep the glass. */
@@ -345,16 +345,16 @@ html.is-linux .sidebar-glass {
 /* Same webkit2gtk black-rect bug as the sidebar: a `backdrop-filter` element
    repainting over translucent layers (here the card surface over the Wrapped
    surface) paints a black rectangle on hover. The cards use `backdrop-blur-xl`
-   via the `.card-glass` class, so drop it on Linux only — the semi-opaque
+   via the `.card-glass` class, so drop it on Linux only, the semi-opaque
    surface already reads as a panel there. WebView2 / WKWebView keep the frost. */
 html.is-linux .card-glass {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
-/* Las superficies translúcidas tienen el mismo problema que el blur en
-   webkit2gtk cuando se apilan sobre otra capa translúcida: sin desenfoque el
-   alfa basta, pero conviene subirlo para que el negro no se cuele. */
+/* The translucent surfaces have the same problem as the blur on webkit2gtk when
+   they stack over another translucent layer: with no blur the alpha is enough, but
+   raising it keeps the black from bleeding through. */
 html.is-linux {
   --surface-1: oklch(0.185 0.006 165 / 80%);
   --surface-2: oklch(0.225 0.007 165 / 88%);
@@ -370,12 +370,12 @@ html.is-linux {
     transition-duration: 0.001ms !important;
   }
 
-  /* Excepción: si el usuario eligió nivel de relieve a mano
-     (`data-motion-on`, que pone `stores/motion.ts` cuando la barra está por
-     encima de 0), `.tilt` conserva su suavizado. Aplanárselo no le da menos movimiento —los grados son los que
-     pidió—, sólo se lo da a saltos persiguiendo al ratón, que es lo contrario
-     de lo que busca quien activa el ajuste del sistema. Sin elección
-     Con la barra a 0 no hay nada que suavizar. */
+  /* The exception: when the user picked a tilt level by hand (`data-motion-on`,
+     which `stores/motion.ts` sets while the slider is above 0), `.tilt` keeps its
+     easing. Flattening it does not give them less motion (the degrees are the ones
+     they asked for), it only gives it to them in jerks chasing the mouse, which is
+     the opposite of what somebody turning on the system setting wants. With the
+     slider at 0 there is nothing to ease. */
   :root[data-motion-on] .tilt {
     transition-duration: 220ms !important;
   }
@@ -387,17 +387,17 @@ html.is-linux {
 /*  plus the custom --color-* tokens under a [data-theme] scope on <html>. */
 /*  Because every component uses raw Tailwind utilities (bg-zinc-950,      */
 /*  text-emerald-300, …) that read these variables, re-skinning the whole  */
-/*  app needs no markup edits — values just resolve differently per theme. */
+/*  app needs no markup edits, values just resolve differently per theme. */
 /*  Obsidian is the un-overridden default (Tailwind zinc + the body        */
 /*  atmosphere above). `:root[data-theme=…]` wins the specificity duel      */
 /*  against Tailwind's emitted `:root`.                                    */
 /* ====================================================================== */
 
-/* Quartz — light, frosted paper. The zinc scale is inverted to warm paper;
+/* Quartz, light, frosted paper. The zinc scale is inverted to warm paper;
    white → ink so opacity tints read as dark hairlines; emerald darkened for
    contrast on light. Crucially zinc-950 (the card surface) is a mid-light tint
    DARKER than the body bg, so translucent cards read as frosted glass with body
-   colour showing through — not a flat wash. */
+   colour showing through, not a flat wash. */
 :root[data-theme="quartz"] {
   color-scheme: light;
   --color-bg: oklch(0.975 0.005 95);
@@ -426,7 +426,7 @@ html.is-linux {
   --color-emerald-600: oklch(0.48 0.15 162);
   --color-emerald-700: oklch(0.42 0.14 162);
 
-  /* Elevación en papel: pigmento blanco y sombras cortas, no alfa oscuro. */
+  /* Elevation on paper: white pigment and short shadows, not dark alpha. */
   --surface-1: oklch(1 0 0 / 62%);
   --surface-2: oklch(1 0 0 / 82%);
   --surface-3: oklch(1 0 0 / 96%);
@@ -453,21 +453,20 @@ html.is-linux {
 /*  Motion & effects                                                        */
 /* ====================================================================== */
 
-/* Tilt 3D — the `.tilt` class consumes CSS vars set by the `tilt` action
+/* Tilt 3D, the `.tilt` class consumes CSS vars set by the `tilt` action
    (lib/actions/tilt.ts). The transform is kept here (not in JS) so teardown is
    cheap and the transition survives re-renders. Glow uses the theme accent.
-   No `transform-style: preserve-3d` — it caused compositing issues on WebView2
+   No `transform-style: preserve-3d`, it caused compositing issues on WebView2
    (Windows) where the glow pseudo-element didn't render. No `mix-blend-mode`
-   for the same reason — a plain opacity fade is cross-platform safe. */
+   for the same reason, a plain opacity fade is cross-platform safe. */
 .tilt {
   transform: perspective(700px) rotateX(var(--tilt-rx, 0deg))
     rotateY(var(--tilt-ry, 0deg));
-  /* La transición incluye el color, no sólo el transform. `.tilt` se declara
-     después del `@import` de Tailwind, así que su `transition` gana a las
-     utilidades `transition` / `transition-colors` del marcado: cualquier
-     elemento que lleve las dos —los botones del rail, sin ir más lejos— se
-     quedaba sin suavizado de color y cambiaba de golpe. Enumerarlas aquí
-     devuelve ese suavizado sin tener que quitar `tilt` de nada. */
+  /* The transition includes colour, not just the transform. `.tilt` is declared
+     after Tailwind's `@import`, so its `transition` beats the markup's `transition`
+     and `transition-colors` utilities: any element carrying both (the rail's
+     buttons, to name one) lost its colour easing and changed abruptly. Listing them
+     here gives that easing back without removing `tilt` from anything. */
   transition:
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
     background-color 150ms ease,
@@ -493,15 +492,15 @@ html.is-linux {
   opacity: var(--tilt-glow-strength, 0.18);
 }
 
-/* La intensidad del relieve es un porcentaje continuo, así que
-   `--tilt-glow-strength` y `--glow-strength` las escribe `stores/motion.ts`
-   directamente sobre `<html>` — aquí sólo quedan los valores de reserva por si
-   el store no llegó a correr. Los grados los escala la propia acción. La
-   perspectiva del `transform` es deliberadamente fija: hacerla variar esconde
+/* The tilt's intensity is a continuous percentage, so `stores/motion.ts` writes
+   `--tilt-glow-strength` and `--glow-strength` straight onto `<html>`; what is left
+   here are the fallback values in case the store never ran. The action itself scales
+   the degrees. The `transform`'s perspective is deliberately fixed: varying it
+   hides
    un segundo multiplicador (reduce el desplazamiento igual que recortar
    grados) y las dos reducciones se multiplican. */
 
-/* Glow-only — same cursor-following glow as .tilt but WITHOUT the 3D
+/* Glow-only, same cursor-following glow as .tilt but WITHOUT the 3D
    rotation. Used by buttons and small interactive elements where a tilt
    would feel wrong but the light-follow is still nice. The `glow` action
    (lib/actions/glow.ts) sets the same --tilt-glow-x/y variables. */
@@ -527,7 +526,7 @@ html.is-linux {
   opacity: var(--glow-strength, 1);
 }
 
-/* Ripple — host clips the spawned span to the button's rounded corners. */
+/* Ripple, host clips the spawned span to the button's rounded corners. */
 .ripple-host {
   position: relative;
   overflow: hidden;
@@ -547,7 +546,7 @@ html.is-linux {
   }
 }
 
-/* Shimmer — skeleton sweep for loading placeholders. */
+/* Shimmer, skeleton sweep for loading placeholders. */
 .shimmer {
   position: relative;
   overflow: hidden;
@@ -574,7 +573,7 @@ html.is-linux {
   }
 }
 
-/* Theme crossfade — toggled on <html> for ~300ms around a theme switch so the
+/* Theme crossfade, toggled on <html> for ~300ms around a theme switch so the
    palette swap reads as a fade rather than a hard cut. */
 :root.theme-anim,
 :root.theme-anim * {
@@ -585,7 +584,7 @@ html.is-linux {
 /* Reduced motion already kills transitions/animations globally (above); the
    .tilt transform is also flattened there via the wildcard rule. */
 
-/* Responsive sidebar — icon-rail on narrow windows (Steam Deck, tiling).
+/* Responsive sidebar, icon-rail on narrow windows (Steam Deck, tiling).
    Hides `.hide-narrow` labels and centers the nav icons so the collapsed
    rail reads as a stack of glyphs rather than a clipped sidebar. */
 .sidebar-glass.is-narrow {
@@ -605,10 +604,10 @@ html.is-linux {
   padding-right: 0;
 }
 
-/* Barra de intensidad del relieve. La pista va de apagado al acento, así que
-   la propia barra enseña lo que se está regulando. Mismo tratamiento manual
-   que `.hue-slider`: los navegadores no dejan estilar un range sin
-   `appearance: none` y sus pseudo-elementos por motor. */
+/* The tilt-intensity slider. The track runs from off to the accent, so the slider
+   itself shows what is being adjusted. The same manual treatment as `.hue-slider`:
+   browsers will not style a range without `appearance: none` and their per-engine
+   pseudo-elements. */
 .motion-slider {
   -webkit-appearance: none;
   appearance: none;
@@ -642,7 +641,7 @@ html.is-linux {
   cursor: grab;
 }
 
-/* Hue picker — the accent slider's track is a full hue wheel so the user sees
+/* Hue picker, the accent slider's track is a full hue wheel so the user sees
    the spectrum they're picking from; the thumb rides on top in the active
    accent colour. Cross-platform track/thumb styling. */
 .hue-slider {

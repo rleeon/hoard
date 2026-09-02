@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Compara los 8 locales JSON contra en.json. Falla con exit 1 si:
-// - una key existe en en.json pero falta en otro locale
-// - una key existe en otro locale que no está en en.json (key huérfana)
-// El script solo lee + compara claves, no valores.
+// Compares the 8 JSON locales against en.json. It exits 1 when:
+// - a key exists in en.json but is missing from another locale
+// - a key exists in another locale that is not in en.json (an orphan key)
+// The script only reads and compares keys, never values.
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";

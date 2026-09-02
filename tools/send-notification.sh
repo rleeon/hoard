@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Send an operator broadcast to every Hoard Cloud user's bell panel.
 #
-# This is THE write path for the `notifications` table — on purpose there is
+# This is THE write path for the `notifications` table, on purpose there is
 # no HTTP endpoint that inserts rows, so only someone holding the service-role
 # database URL (you) can send one. Delivery is instant for open apps
 # (Supabase Realtime pushes the INSERT) and on next poll for the rest.
@@ -16,7 +16,7 @@
 #     [--expires '2026-08-01 00:00:00+00']
 #
 # Body supports the client's mini-markdown: **bold**, *italic*, `code`,
-# [text](https://url), and literal \n for line breaks. Keep it short — the
+# [text](https://url), and literal \n for line breaks. Keep it short, the
 # bell panel is 288px wide.
 
 set -euo pipefail
@@ -39,7 +39,7 @@ done
 [[ "$PRIORITY" =~ ^(high|normal|low)$ ]] || { echo "--priority must be high|normal|low" >&2; exit 2; }
 [[ -n "${DATABASE_URL:-}" ]] || { echo "set DATABASE_URL to the service-role Postgres URL" >&2; exit 2; }
 
-# psql variable binding (:'var') quotes safely — no SQL injection via the
+# psql variable binding (:'var') quotes safely, no SQL injection via the
 # message text. Empty optionals become NULL.
 psql "$DATABASE_URL" \
     -v ON_ERROR_STOP=1 \

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Hoard server uninstaller.
 #
-# By default this removes the service, binaries, and config — but KEEPS the
+# By default this removes the service, binaries, and config, but KEEPS the
 # data directory. Pass --purge to also delete /var/lib/hoard (irreversible).
 #
 # Run as root: sudo ./deploy/scripts/uninstall.sh [--purge]

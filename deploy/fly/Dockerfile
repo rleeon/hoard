@@ -18,7 +18,7 @@ WORKDIR /src
 COPY . .
 
 # We use sqlx runtime queries in cloud code (no .sqlx/ cache needed for the
-# cloud module). Self-hosted code still uses the macro against SQLite —
+# cloud module). Self-hosted code still uses the macro against SQLite,
 # SQLX_OFFLINE points at the committed cache for that.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \

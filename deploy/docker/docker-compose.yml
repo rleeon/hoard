@@ -1,4 +1,4 @@
-# Hoard server — single-node deployment.
+# Hoard server, single-node deployment.
 #
 # Usage:
 #   cd deploy/docker
@@ -12,11 +12,11 @@
 services:
   server:
     # Prebuilt multi-arch image (amd64/arm64) published to GHCR on every
-    # release tag — `docker compose pull && docker compose up -d` to update.
+    # release tag, `docker compose pull && docker compose up -d` to update.
     # Pin a version (…/hoard:1.0) instead of :latest for reproducible upgrades.
     image: ghcr.io/rleeon/hoard:latest
     # To build from source instead of pulling, uncomment `build:` below (it
-    # overrides the pull) — the context is the repo root so the workspace
+    # overrides the pull), the context is the repo root so the workspace
     # resolves.
     # build:
     #   context: ../..
@@ -27,7 +27,7 @@ services:
       - "${HOARD_PORT:-12421}:12421"
     environment:
       # Override TOML keys without rebuilding/remounting:
-      # HOARD__SERVER__PORT must stay 12421 inside the container — change the
+      # HOARD__SERVER__PORT must stay 12421 inside the container, change the
       # host-side mapping above instead.
       HOARD__LOGGING__LEVEL: ${HOARD_LOG_LEVEL:-info}
       HOARD__LOGGING__FORMAT: ${HOARD_LOG_FORMAT:-json}
@@ -45,7 +45,7 @@ services:
       # Persistent data (SQLite DB, snapshots, tmp, trash).
       - hoard-data:/var/lib/hoard
       # Your config.toml. Left empty, the container writes a working one here on
-      # first start — so it is mounted read-write, not read-only.
+      # first start, so it is mounted read-write, not read-only.
       - ./config:/etc/hoard
     healthcheck:
       # Compose-side healthcheck (the Dockerfile one is intentionally shallow).

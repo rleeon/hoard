@@ -1,5 +1,5 @@
 # Privileged oneshot that performs the actual server self-upgrade. Triggered
-# by hoard-upgrade.path when the marker file appears. Runs as root — the ONLY
+# by hoard-upgrade.path when the marker file appears. Runs as root, the ONLY
 # place in the deploy with privilege to overwrite /usr/local/bin/hoard-server
 # and restart the service. See ADR 0017.
 #

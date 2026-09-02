@@ -26,13 +26,13 @@ tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
 anyhow = { workspace = true }
 indicatif = { workspace = true }
-# `hoard saves` formatea las fechas de último backup (OffsetDateTime → RFC3339).
+# `hoard saves` formats the last-backup dates (OffsetDateTime to RFC3339).
 time = { workspace = true }
-# `--json`: los tipos de salida viven en `output.rs`, no se serializan los del
-# motor (ver el módulo).
+# `--json`: the output types live in `output.rs`; the engine's are not serialised
+# (see the module).
 serde = { workspace = true }
 serde_json = { workspace = true }
-# `hoard login` (Cloud) lee la contraseña sin echo en la terminal.
+# `hoard login` (Cloud) reads the password without echoing it in the terminal.
 rpassword = { workspace = true }
 
 [dev-dependencies]

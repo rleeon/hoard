@@ -48,14 +48,14 @@ COPY --from=builder /out-server /usr/local/bin/hoard-server
 COPY --from=builder /out-admin  /usr/local/bin/hoard-admin
 COPY deploy/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 # NOT under /etc/hoard: that is where operators mount their own config, and the
-# mount hides anything the image left there — which is exactly when the example
+# mount hides anything the image left there, which is exactly when the example
 # is needed. From here an empty mounted directory can still bootstrap itself.
 COPY deploy/config.toml.example /usr/share/hoard/config.toml.example
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # No `USER hoard`: the entrypoint starts as root only to take ownership of the
 # mounted directories (a NAS bind mount arrives owned by root) and then re-execs
-# itself as PUID:PGID — 10001:10001, the `hoard` user above, unless overridden.
+# itself as PUID:PGID, 10001:10001, the `hoard` user above, unless overridden.
 # Passing `--user` / compose `user:` still works and skips that block entirely.
 WORKDIR /var/lib/hoard
 EXPOSE 12421

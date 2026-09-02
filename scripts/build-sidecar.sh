@@ -4,18 +4,18 @@
 # triple (+ `.exe` on Windows) exactly as Tauri's bundler expects.
 #
 # Three of them:
-#   - `hoard-screen` — the in-game overlay (Pro layer).
-#   - `hoardd`       — the local sync service that owns the engine (ADR 0021).
+#   - `hoard-screen`, the in-game overlay (Pro layer).
+#   - `hoardd`      , the local sync service that owns the engine (ADR 0021).
 #                      The desktop is a thin client of it and starts it when it's
 #                      absent, so a bundle without `hoardd` is an app that can't
 #                      sync at all.
-#   - `hoard`        — the terminal face. It rides along so that installing the
+#   - `hoard`       , the terminal face. It rides along so that installing the
 #                      app installs the whole of Hoard: same version, same pass,
 #                      no second download. Which copy ends up on PATH is decided
 #                      by `hoard_agent::install`, not by whoever wrote last.
 #
 # `bundle.externalBin` in tauri.conf.json lists all three, which means every
-# desktop bundle needs them present first — run before `tauri build`. The compiled
+# desktop bundle needs them present first, run before `tauri build`. The compiled
 # artifacts are gitignored (only the sources under `crates/` are tracked). Run
 # once per matrix OS in CI, or locally before a desktop build.
 #
@@ -41,16 +41,16 @@ esac
 # A plain `cargo build --release` (no bundle) needs no copy at all: both binaries
 # already land in `target/release`, next to `hoard-desktop`, which is the first
 # place the sidecar lookup and `hoardd::client::daemon_binary` look.
-# `install -m 0755`, no `cp`, y el bit de ejecución se comprueba después.
+# `install -m 0755`, not `cp`, and the execute bit is checked afterwards.
 #
-# El bundler mete el sidecar en el paquete **con el modo que tenga aquí**, así que
-# un fichero sin permiso de ejecución se instala sin él y la app no puede lanzar
-# el servicio: `.deb` que instala bien, app que no sincroniza y un ENOENT/EACCES
-# que no lleva a ninguna parte. Pasó de verdad (2026-07-26): el `cp` conserva el
-# modo del **destino** cuando ya existe, así que un sidecar que perdiera el bit
-# una vez se quedaba sin él en todas las builds siguientes de esa copia de
-# trabajo. `install` fija el modo siempre, y el chequeo convierte un fallo
-# silencioso de empaquetado en un build roto.
+# The bundler puts the sidecar into the package **with whatever mode it has here**,
+# so a file with no execute permission installs without one and the app cannot launch
+# the service: a `.deb` that installs fine, an app that does not sync, and an
+# ENOENT/EACCES that leads nowhere. It really happened (2026-07-26): `cp` keeps the
+# **destination's** mode when it already exists, so a sidecar that lost the bit once
+# stayed without it on every later build of that working copy. `install` sets the
+# mode every time, and the check turns a silent packaging failure into a broken
+# build.
 place() {
   local name="$1"
   local dest="$DESK/$name-$triple$ext"
@@ -64,15 +64,15 @@ cargo build --manifest-path "$HOARD/Cargo.toml" --release -p hoard-screen --feat
 place hoard-screen
 
 # The sync service. It's also what the per-user autostart unit execs, so the copy
-# that ships next to the app is the one the OS runs at login — the client
+# that ships next to the app is the one the OS runs at login, the client
 # resolves the daemon as its own sibling first and only then falls back to PATH.
 echo "Building hoardd sidecar ($triple)"
 cargo build --manifest-path "$HOARD/Cargo.toml" --release -p hoardd
 place hoardd
 
-# La cara de terminal. Va en el bundle para que instalar la app instale Hoard
-# entero y no "la app, y el CLI aparte si te enteras" — el mismo trato que el
-# instalador de terminal le da a la app.
+# The terminal face. It rides in the bundle so installing the app installs the whole
+# of Hoard and not "the app, and the CLI separately if you find out", the same
+# treatment the terminal installer gives the app.
 echo "Building hoard CLI sidecar ($triple)"
 cargo build --manifest-path "$HOARD/Cargo.toml" --release -p hoard-cli
 place hoard

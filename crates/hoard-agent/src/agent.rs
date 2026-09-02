@@ -3828,7 +3828,7 @@ async fn run_backup_with_retry(
             // Emit "uploading…" only once the signature checks have decided a
             // real upload is happening; a Skipped or Unchanged settle stays
             // quiet in the feed (BUG 2). Only on the first attempt: retries
-            // re-firing it filled the feed with "Subiendo… / falló" pairs.
+            // re-firing it filled the feed with uploading/failed pairs.
             || {
                 if attempt == 0 {
                     let _ = events_tx.try_send(AgentEvent::BackupStarted {
@@ -4305,7 +4305,7 @@ async fn run_backup_with_retry(
                 // copy, so we skip exactly like the up-front empty-folder guard.
                 // Reached when the folder holds only subdirs / no files (e.g. an
                 // empty `Repo/saves`). Clear has_pending so a later write isn't
-                // blocked, and settle without a red "falló".
+                // blocked, and settle without a red failure row.
                 if e.chain().any(|c| c.is::<crate::backup::EmptySource>()) {
                     // It has never uploaded anything AND it is empty: almost always a
                     // wrongly detected path (the native folder tracked while the game
@@ -4393,7 +4393,7 @@ async fn run_backup_with_retry(
                 // Archived game (403 `save_archived`): the user parked this save
                 // in the server-side "caja negra". Re-uploading would revive its
                 // frozen blobs and undo the quota it freed, so never retry:
-                // settle quietly (clear has_pending, no red "falló"). The local
+                // settle quietly (clear has_pending, no red failure row). The local
                 // save stays put; the desktop learns the archived state from
                 // `/v1/cloud/storage/games` and surfaces it there.
                 let is_archived = e.chain().any(|c| {

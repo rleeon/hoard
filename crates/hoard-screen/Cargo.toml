@@ -30,7 +30,7 @@ assets = [["target/release/hoard-screen", "usr/bin/hoard-screen", "755"]]
 
 [features]
 # Default builds the testable, display-free core (scene/geometry/compositor/
-# engine/IPC) plus the headless snapshot tool — no native system libraries.
+# engine/IPC) plus the headless snapshot tool, no native system libraries.
 # `runtime` pulls the on-screen overlay window + native window-capture backends.
 default = []
 # The per-OS native deps are optional and target-gated, so `runtime` only ever
@@ -68,9 +68,9 @@ x11rb = { version = "0.13", optional = true, features = [
     "composite",
     "shape",
     "damage",
-    # XInput2: `XIQueryPointer` es lo único que reporta los botones laterales
-    # del ratón (8/9). El protocolo core sólo tiene Button1..Button5, así que
-    # sin esta extensión no se puede vincular el visor a un botón del pulgar.
+    # XInput2: `XIQueryPointer` is the only thing that reports the mouse's side
+    # buttons (8 and 9). The core protocol only has Button1 to Button5, so without
+    # this extension the scope cannot be bound to a thumb button.
     "xinput",
 ] }
 libc = { version = "0.2", optional = true }

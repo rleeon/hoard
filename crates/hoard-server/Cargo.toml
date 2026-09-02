@@ -17,7 +17,7 @@ path = "src/main.rs"
 # `s3-backend` lets a *self-hosted* server store its blob/chunk bytes on any
 # S3-compatible endpoint (MinIO, B2, R2, Garage, Wasabi, or `rclone serve s3`)
 # instead of local disk, selected via `[storage] backend = "s3"`. It pulls in
-# the (heavy) aws-sdk-s3 stack, so it's a feature — on in `default` for release
+# the (heavy) aws-sdk-s3 stack, so it's a feature, on in `default` for release
 # builds, off under `--no-default-features` for a lean disk-only binary. It
 # provides the shared S3 client that `cloud` also builds on.
 #
@@ -80,7 +80,7 @@ reqwest = { workspace = true }
 async-trait = { workspace = true }
 
 # Release signature verification for `hoard-server upgrade`. Pure-Rust
-# Ed25519 minisign verifier — no libsodium link. See ADR 0017.
+# Ed25519 minisign verifier, no libsodium link. See ADR 0017.
 minisign-verify = "0.2"
 
 # Cloud-only optional dependencies. Pull in only when --features cloud.

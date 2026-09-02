@@ -1,7 +1,7 @@
 # Hoard Cloud server config (Fly.io / cloud mode).
 # Set `backend = "postgres"` to enable cloud mode (requires building with
 # `--features cloud`). All secret-bearing fields can be supplied via env
-# vars instead — prefer that in production. Figment merges
+# vars instead, prefer that in production. Figment merges
 # `HOARD__SECTION__KEY=value` over this file.
 
 [server]
@@ -10,7 +10,7 @@ port = 8082
 public_url = "https://api.hoard.services"
 # Per-IP rate limiting. Client IP is taken from X-Forwarded-For (Fly/CDN set
 # it). Defaults shown; omit the table to use them. Still keep limits at the
-# edge (Fly/Cloudflare) — this is only an in-process backstop.
+# edge (Fly/Cloudflare), this is only an in-process backstop.
 [server.rate_limit]
 enabled = true
 per_second = 20
@@ -33,7 +33,7 @@ url = "postgres://postgres:postgres@localhost:5432/hoard"
 max_connections = 10
 
 [auth]
-# Self-hosted bearer-token settings — ignored in cloud mode but the config
+# Self-hosted bearer-token settings, ignored in cloud mode but the config
 # struct still parses them. Cloud uses Supabase JWTs.
 token_lifetime_days = 365
 allow_registration = false
@@ -52,7 +52,7 @@ level = "info"
 format = "json"
 
 [cloud]
-# Supabase JWKS URL — required.
+# Supabase JWKS URL, required.
 # HOARD__CLOUD__SUPABASE_JWKS_URL=https://<project>.supabase.co/auth/v1/.well-known/jwks.json
 supabase_jwks_url = ""
 supabase_audience = "authenticated"
@@ -107,7 +107,7 @@ interval = "year"
 # window and /v1/me advertises the pending change so the app can warn first.
 # Cloud-only; self-hosted has no quotas. 30 = one month of buffer after the
 # paid period ENDS (subscription.revoked / retroactive expiry), never from the
-# cancel click — the webhook only downgrades to Free on 'expired', not on the
+# cancel click, the webhook only downgrades to Free on 'expired', not on the
 # 'grace' state a cancellation leaves behind.
 storage_downgrade_grace_days = 30
 
@@ -115,7 +115,7 @@ storage_downgrade_grace_days = 30
 access_token = ""
 webhook_secret = ""
 
-# --- Pro (base) — no `storage_gb` → falls to the 100 GB plan default ---
+# --- Pro (base), no `storage_gb` → falls to the 100 GB plan default ---
 [[cloud.polar.products]]
 product_id = "4404a328-9289-4077-b25b-162ecd1d6ed3"
 plan = "pro"
@@ -127,7 +127,7 @@ interval = "month"
 # recurring_interval=month, so "Pro anual" billed €19.99 EVERY MONTH while
 # /pricing advertised two months free. Nobody bought it; it's replaced below
 # and archived in Polar. When you add a product, check its recurring_interval
-# in the API — the product *name* proves nothing.
+# in the API, the product *name* proves nothing.
 [[cloud.polar.products]]
 product_id = "ee6d9395-cc3a-4b0c-96a5-4a008292ffc6"
 plan = "pro"

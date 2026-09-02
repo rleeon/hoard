@@ -7,14 +7,14 @@
  *   1. Parses as JSON. A parse error is a hard fail (the app would crash on
  *      svelte-i18n init otherwise).
  *   2. Compared against `en.json`, the source of truth. Missing keys → fail.
- *      Extra keys (present locally but absent in en) → warn only — sometimes
+ *      Extra keys (present locally but absent in en) → warn only, sometimes
  *      they're stragglers from a partial revert and we'd rather see them than
  *      silently drop them in a CI run.
  *   3. Checks that `{name}`-style placeholders match the en version, so a
  *      translator can't accidentally drop a variable and trigger an "undefined
  *      interpolation" at runtime.
  *
- * No node_modules — uses only the standard library. Fast enough to run in the
+ * No node_modules, uses only the standard library. Fast enough to run in the
  * pre-commit hook.
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -63,7 +63,7 @@ function loadLocale(name) {
  * (`{count, plural, one {…} other {…}}`). Inside an ICU branch we recurse so
  * variables referenced from a branch body (`Restored v{version}`) count too,
  * but the branch *names* (`one`, `other`, `=0`) and any literal words that
- * happen to live there (`{line}`, `{lines}`) are correctly ignored — those
+ * happen to live there (`{line}`, `{lines}`) are correctly ignored, those
  * are translatable text, not placeholders.
  *
  * Returns a `Set<string>` so order-of-appearance and duplicate counts don't
@@ -116,7 +116,7 @@ function placeholders(str) {
           k = be + 1;
         }
       }
-      // Otherwise: unrecognised pattern — leave it alone. We don't use other
+      // Otherwise: unrecognised pattern, leave it alone. We don't use other
       // ICU forms in this codebase.
     }
     i = j + 1;

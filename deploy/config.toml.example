@@ -6,12 +6,12 @@
 [server]
 # Listen address. Use 0.0.0.0 to bind on all interfaces.
 host = "0.0.0.0"
-# TCP port to listen on. 12421 is Hoard's default — a high, uncommon port so it
+# TCP port to listen on. 12421 is Hoard's default, a high, uncommon port so it
 # won't clash with anything you're already running (and below the ephemeral
 # range, so it's safe to bind). Change it only if you must.
 port = 12421
 # Public URL. The key is required by the config schema, but in self-hosted
-# mode the value is never read — only Hoard Cloud deployments use it (for
+# mode the value is never read, only Hoard Cloud deployments use it (for
 # self-referencing links). Leave it as-is; no need to touch it.
 public_url = "https://hoard.example.com"
 # Allow admins to trigger a self-upgrade from the desktop app via
@@ -27,7 +27,7 @@ allow_remote_upgrade = true
 # Leave it alone if the server is exposed directly, or if your reverse proxy
 # runs on the same machine and connects over 127.0.0.1 (the default covers
 # that). Add your proxy's address if it reaches the server from somewhere else
-# — a container on a Docker network, another box on the LAN — or every client
+#, a container on a Docker network, another box on the LAN, or every client
 # behind it counts as one for the panel's login throttle.
 #
 # Accepts addresses, CIDRs, and the shorthands "loopback", "private" (RFC 1918
@@ -41,7 +41,7 @@ trusted_proxies = ["loopback"]
 # net against accidental request loops and cheap brute force; a production
 # deployment should ALSO rate-limit at the reverse proxy. Note this limiter
 # still keys off X-Forwarded-For / X-Real-Ip / Forwarded regardless of
-# `trusted_proxies` above, falling back to the connection peer — it is a guard
+# `trusted_proxies` above, falling back to the connection peer, it is a guard
 # against runaway clients, not against someone deliberately evading it. Omit
 # this table to keep the defaults below.
 [server.rate_limit]
@@ -64,13 +64,13 @@ data_dir = "/var/lib/hoard"
 #
 # Two jobs: keeping a modded save with a few GB of files from being refused, and
 # catching the case where someone points Hoard at a game's *install* directory
-# instead of its saves — that mistake is common, and a cap is the only thing
+# instead of its saves, that mistake is common, and a cap is the only thing
 # that stops it quietly filling the disk. Raise it if a legitimate save needs
 # more; don't remove the idea of a limit.
 #
 # It is measured against the save's total size, and clients from 1.1.3 on are
 # told the number up front instead of finding out mid-upload. It is also the
-# ceiling on any single request body — but since 1.1.3 a save no longer travels
+# ceiling on any single request body, but since 1.1.3 a save no longer travels
 # in one request (each file that the server is missing is its own upload), so
 # this stopped being the thing a big save collides with.
 #
@@ -79,16 +79,16 @@ data_dir = "/var/lib/hoard"
 max_snapshot_size_mb = 4096
 # How long in seconds a client has to finish an upload.
 upload_timeout_secs = 600
-# Where blob/chunk bytes live: "local" (default — on disk under data_dir) or
+# Where blob/chunk bytes live: "local" (default, on disk under data_dir) or
 # "s3" (any S3-compatible endpoint, see [storage.s3] below). Existing installs
 # upgrade with zero changes: omit this and you stay on local disk.
 # backend = "local"
 
 # External S3-compatible object storage (MinIO, Backblaze B2, Cloudflare R2,
 # Garage, Wasabi, or an `rclone serve s3` bridge in front of a consumer drive
-# — OneDrive, Mega, Google Drive, Dropbox…; see SELF-HOST_GUIDE.md, that path
+#, OneDrive, Mega, Google Drive, Dropbox…; see SELF-HOST_GUIDE.md, that path
 # has real trade-offs). Only read when backend = "s3". The server stays
-# mandatory: it keeps the SQLite index, auth and deduplication — the bucket
+# mandatory: it keeps the SQLite index, auth and deduplication, the bucket
 # only holds opaque zstd blob/chunk bytes and is NOT restorable on its own
 # without the server's database.
 # [storage.s3]
@@ -123,7 +123,7 @@ enabled = true
 # device token, and a browser is a shared, long-lived place.
 session_days = 14
 # Seconds the login door stays shut after five wrong passwords for the same
-# account. Minimum 2 — anything lower is read as 2, because with no pause at
+# account. Minimum 2, anything lower is read as 2, because with no pause at
 # all each guess costs the server a full password hash and costs whoever is
 # guessing a single request. Ten is short for a login form and right for a box
 # on your own network: enough that the hashing can't be used as a CPU lever,

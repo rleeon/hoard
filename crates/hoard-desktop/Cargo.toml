@@ -44,20 +44,20 @@ tauri-plugin-dialog = "2"
 tauri-plugin-os = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-store = "2"
-# Deep link — registers the `hoard://` scheme so the OAuth callback from
+# Deep link, registers the `hoard://` scheme so the OAuth callback from
 # Hoard Cloud can hand the desktop app a Supabase access_token.
 tauri-plugin-deep-link = "2"
 # Global hotkey support (fires regardless of focus). Generic capability; the
 # binding (Ctrl+O for the Pro overlay) is registered at runtime by the UI only
-# when the Pro layer is present — the community build ships the plugin unused.
+# when the Pro layer is present, the community build ships the plugin unused.
 tauri-plugin-global-shortcut = "2"
-# Sin `keyring`: desde D.20 (ADR 0021) el desktop no toca el almacén de secretos.
-# El par de tokens Cloud lo escribe y lo lee el servicio, que es su dueño — en
-# macOS el ítem sólo autoriza al binario que lo creó, así que compartirlo entre dos
-# binarios era un diálogo de contraseña por lectura. No volver a añadirla aquí: si
+# No `keyring`: since D.20 (ADR 0021) the desktop does not touch the secret store.
+# The Cloud token pair is written and read by the service, which owns it; on macOS
+# the item only authorises the binary that created it, so sharing it between two
+# binaries was one password dialog per read. Do not add it back here: if
 # un comando necesita el token, se lo pide al servicio (`DaemonLink::cloud_token`).
 toml = { workspace = true }
-# Ed25519 minisign verifier — gates the auto-updater so an installer is only
+# Ed25519 minisign verifier, gates the auto-updater so an installer is only
 # run (as root, via pkexec) after its signature matches the embedded release
 # key. Same crate/key the server's `hoard-server upgrade` uses. See ADR 0017.
 

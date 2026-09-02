@@ -5,7 +5,7 @@
 # Tauri's AppImage bundler copies WebKitGTK's dependency closure into the
 # bundle, which drags in libwayland-client/-egl/-cursor, libEGL, libGL(X),
 # libgbm and libdrm. On the build runner (Ubuntu 22.04) those match the host,
-# but on a newer or immutable target — SteamOS / Bazzite / recent Fedora — the
+# but on a newer or immutable target, SteamOS / Bazzite / recent Fedora, the
 # bundled libwayland-client no longer matches the running compositor, so
 # WebKitGTK fails at `could not create default EGL display: EGL_BAD_PARAMETER`
 # and the window renders solid white.
@@ -15,7 +15,7 @@
 # dynamic loader falls through to the system copies, and repackage. The `.deb`
 # and `.rpm` are unaffected (they depend on system libs already), and the
 # in-app updater ships the `.deb` on Linux, so the repackaged AppImage needs no
-# updater signature — `release.yml` minisigns it afterwards.
+# updater signature, `release.yml` minisigns it afterwards.
 #
 # Usage: scripts/fix-appimage-libs.sh <bundle-root>
 #   <bundle-root> defaults to target/release/bundle; the script also probes

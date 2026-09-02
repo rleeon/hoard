@@ -4,8 +4,8 @@ name: Publish container image
 # Registry and Docker Hub so operators can `docker pull` it (and update with
 # Dockge/dockhand/Watchtower) instead of building from source on their NAS.
 #
-# Runs only on a version tag — same cadence as the desktop/server release
-# workflows — so it never spends Actions minutes on routine pushes. First image
+# Runs only on a version tag, same cadence as the desktop/server release
+# workflows, so it never spends Actions minutes on routine pushes. First image
 # lands with the next `vX.Y.Z` tag.
 on:
   push:
@@ -87,7 +87,7 @@ jobs:
           #
           # `semver` only matches on a tag ref, so a manual `workflow_dispatch`
           # used to derive NO tags at all and push an image nobody could pull.
-          # `:edge` gives the run off a branch somewhere to land — the point of
+          # `:edge` gives the run off a branch somewhere to land, the point of
           # dispatching by hand is shipping a server fix to a self-hoster to
           # diagnose with, without cutting a release or moving the `:latest`
           # everyone else's compose is pinned to.

@@ -75,7 +75,7 @@ patch('crates/hoard-desktop/ui/package.json', jsonVersion);
 
 // AppStream: prepend a <release>, newest first, which is the order stores read
 // them in. Left alone when the version is already listed, so re-running this
-// is safe. The number here is the published one — the store page shows it, and
+// is safe. The number here is the published one, the store page shows it, and
 // on Flathub it is the only version a user ever sees, since a sandboxed
 // install can't update itself (`Delivery::Managed`).
 const today = new Date().toISOString().slice(0, 10);

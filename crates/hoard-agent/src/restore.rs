@@ -1191,7 +1191,7 @@ pub async fn list_cloud_version_files(
 /// The conflict-aware auto-restore diff (`agent::local_mtime_wins`) compares
 /// the freshly-pulled file's mtime against the local copy's, so without this
 /// every cloud pull would look strictly newer than local and silently win,
-/// exactly the "todos mis saves de la nube los puso más recientes" bug.
+/// exactly the "everything from the cloud came down marked newer" bug.
 /// Best-effort: a failure here only degrades conflict resolution, never the
 /// extraction itself, so errors are swallowed.
 fn apply_entry_mtime<R>(entry: &tokio_tar::Entry<R>, path: &Path)

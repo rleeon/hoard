@@ -3,18 +3,17 @@ import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 export default {
   preprocess: vitePreprocess(),
   compilerOptions: {
-    // Runas para toda la app. Antes no se podía: `lucide-svelte` 0.4x seguía
-    // usando `$$props`, sintaxis legacy que el modo runas prohíbe, y como
-    // `compilerOptions` alcanza también a los `.svelte` de las dependencias,
-    // activarlo aquí rompía la compilación de los iconos. Ese paquete quedó
-    // deprecado; el sustituto (`@lucide/svelte` 1.x) y `svelte-spa-router` 5
-    // son nativos de Svelte 5, así que ya no queda nada legacy en el árbol.
+    // Runes across the whole app. It was not possible before: `lucide-svelte` 0.4x
+    // still used `$$props`, legacy syntax that runes mode forbids, and since
+    // `compilerOptions` reaches the dependencies' `.svelte` files too, turning it on
+    // here broke the icons' compilation. That package was deprecated; its
+    // replacement (`@lucide/svelte` 1.x) and `svelte-spa-router` 5 are Svelte 5
+    // natives, so nothing legacy is left in the tree.
     //
-    // Qué gana: el compilador deja de emitir el puente de compatibilidad
-    // (props mutables, `$$restProps`, invalidación por asignación) y compila
-    // con señales directas. De paso convierte en error de compilación
-    // cualquier recaída en `export let` / `$:`, que es la regla que CLAUDE.md
-    // venía pidiendo a mano.
+    // What it buys: the compiler stops emitting the compatibility bridge (mutable
+    // props, `$$restProps`, invalidation by assignment) and compiles with direct
+    // signals. It also turns any relapse into `export let` or `$:` into a compile
+    // error, which is the rule CLAUDE.md had been asking for by hand.
     runes: true,
   },
 };

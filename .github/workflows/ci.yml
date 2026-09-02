@@ -1,7 +1,7 @@
 name: CI
 
 on:
-  # Full CI runs only on a version tag (the release gate) and on demand — never
+  # Full CI runs only on a version tag (the release gate) and on demand, never
   # on routine branch pushes, so editing a single .md no longer spends Actions
   # minutes. Validate locally before pushing with `cargo check --workspace` +
   # `pnpm --dir crates/hoard-desktop/ui check` (see CLAUDE.md). PRs still get
@@ -165,7 +165,7 @@ jobs:
           touch "crates/hoard-desktop/hoardd-$triple"
           touch "crates/hoard-desktop/hoard-$triple"
       # On Linux the full workspace builds (hoard-desktop included). On Windows
-      # and macOS we skip the desktop crate — it needs the prebuilt frontend
+      # and macOS we skip the desktop crate, it needs the prebuilt frontend
       # plus host-specific webview shims, which the release pipeline already
       # exercises. Server / agent / CLI must still compile + pass tests.
       - name: cargo build (full workspace)
@@ -181,7 +181,7 @@ jobs:
         if: runner.os != 'Linux'
         run: cargo test --workspace --exclude hoard-desktop --verbose
 
-  # Catches stale .sqlx/ caches before merge — same check `just sqlx-prepare`
+  # Catches stale .sqlx/ caches before merge, same check `just sqlx-prepare`
   # would let us run locally with a real database. Uses sqlx-cli's
   # `--check` mode against the migrations under crates/hoard-server.
   sqlx-check:

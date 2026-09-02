@@ -29,32 +29,32 @@ clap = { workspace = true }
 time = { workspace = true }
 uuid = { workspace = true }
 
-# `flock` sobre el fichero de lock: el mutex real con liveness que sustituye al
-# pidfile como árbitro (ADR 0021, Parte A). El kernel lo suelta al morir el
-# proceso, así que un daemon que crashea no bloquea al siguiente — que es
-# exactamente lo que `agent.pid` no sabía hacer.
+# `flock` on the lock file: the real mutex with liveness that replaces the pidfile as
+# arbiter (ADR 0021, Part A). The kernel releases it when the process dies, so a
+# daemon that crashes does not block the next one, which is exactly what `agent.pid`
+# could not do.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-# Notificaciones nativas por el bus de sesión (ADR 0021 D.14.1). Es la misma
-# librería que usa por debajo el plugin de notificaciones de Tauri, así que el
-# aviso del servicio se ve igual que el que mandaba el desktop. Sólo Linux: los
-# backends de Windows y macOS se añaden detrás de la misma interfaz
-# (`notify::Sink`), y hasta entonces el frontend sigue notificando allí.
+# Native notifications over the session bus (ADR 0021 D.14.1). It is the same library
+# Tauri's notification plugin uses underneath, so the service's notice looks the same
+# as the one the desktop used to send. Linux only: the Windows and macOS backends go
+# behind the same interface (`notify::Sink`), and until then the frontend keeps
+# notifying there.
 [target.'cfg(target_os = "linux")'.dependencies]
 notify-rust = { workspace = true }
 
-# Cliente de los portales XDG. Sólo se usa dentro de un Flatpak, donde el
-# arranque en sesión no puede pasar por systemd: `background` es la única
+# The XDG portals' client. It is only used inside a Flatpak, where starting at login
+# cannot go through systemd: `background` is the only
 # interfaz sancionada para pedirlo, y el resto de portales no se compilan.
 ashpd = { version = "0.13", default-features = false, features = [
     "tokio",
     "background",
 ] }
 
-# ACL del named pipe: sin descriptor de seguridad explícito Windows le da a
-# `Everyone` acceso de lectura al pipe, y por ahí viajan nombres de juego, rutas
-# y comandos del sync. La ADR pide permisos solo-usuario (0600 / ACL), así que
+# The named pipe's ACL: with no explicit security descriptor Windows grants
+# `Everyone` read access to the pipe, and game names, paths and the sync's commands
+# travel over it. The ADR asks for user-only permissions (0600 or an ACL), so
 # construimos un SD con SDDL desde el SID del usuario actual.
 [target.'cfg(windows)'.dependencies]
 # The Run entry under HKCU that starts the service at logon when the Task

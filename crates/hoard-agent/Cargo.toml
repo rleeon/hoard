@@ -46,17 +46,17 @@ notify-debouncer-mini = { workspace = true }
 filetime = "0.2"
 
 # Lectura del ÍNDICE de comprimidos (sin descomprimir) para puntuar saves
-# que viven dentro de un .zip (Factorio y varios indies). `default-features
-# = false`: sólo leemos el directorio central (nombres de entrada), nunca
-# inflamos contenido, así que no hace falta arrastrar codecs (deflate, zstd,
-# bzip2...). Único consumidor: `scoring::archive_looks_like_save`, así que
-# se queda fuera de `[workspace.dependencies]`.
+# that live inside a .zip (Factorio and several indies). `default-features = false`:
+# we only read the central directory (the entry names) and never inflate content, so
+# there is no need to drag codecs in (deflate, zstd, bzip2 and the rest). Its only
+# consumer is `scoring::archive_looks_like_save`, so it stays out of
+# `[workspace.dependencies]`.
 zip = { version = "2", default-features = false }
 
 # OS-native credential storage. Linux uses libsecret via sync-secret-service
 # (no async runtime in the way), Windows uses Credential Manager, macOS uses
 # the Keychain. When none of these are available the desktop client falls
-# back to a 0600 file — see `credentials.rs`.
+# back to a 0600 file, see `credentials.rs`.
 keyring = { version = "3", default-features = false, features = [
     "apple-native",
     "windows-native",
@@ -64,11 +64,10 @@ keyring = { version = "3", default-features = false, features = [
     "crypto-rust",
 ] }
 
-# Verificador minisign (Ed25519). Un instalador bajado de internet se ejecuta
-# con privilegios, así que no se aplica ninguno sin firma válida de CI (ADR
-# 0017). Estaba sólo en el desktop; baja aquí porque desde la unificación la
-# terminal instala la app igual que la app se actualiza a sí misma, y la
-# comprobación tiene que ser la misma en los dos caminos.
+# The minisign verifier (Ed25519). An installer downloaded from the internet runs
+# with privileges, so none is applied without a valid CI signature (ADR 0017). It
+# used to be desktop-only; it lives here because the terminal installs the app just
+# as the app updates itself, and the check has to be the same on both roads.
 minisign-verify = "0.2"
 
 # Windows-only registry access for `pathexpand` (OneDrive-aware Known Folder
@@ -83,28 +82,28 @@ minisign-verify = "0.2"
 # not part of the standard Windows install). Single consumer + cfg-gated,
 # so it also stays out of `[workspace.dependencies]`.
 
-# `geteuid` en `install/`: parte de decidir si podemos elevar privilegios sin
-# quedarnos esperando a un humano que dentro de `curl … | sh` no existe. Ya está
-# en el árbol de dependencias (tokio lo arrastra en unix), así que no añade
-# compilación; único consumidor y cfg-gated, de ahí que no vaya al workspace.
+# `geteuid` in `install/`: part of deciding whether privileges can be elevated
+# without waiting on a human who, inside `curl … | sh`, does not exist. It is already
+# in the dependency tree (tokio drags it in on unix), so it adds no compilation; one
+# consumer and cfg-gated, hence not in the workspace.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 winreg = { workspace = true }
-# `SendMessageTimeoutW` para difundir `WM_SETTINGCHANGE` tras tocar el PATH del
-# usuario en `install::ensure_cli_reachable`. Sin esa difusión el cambio queda
-# escrito pero invisible: Explorer conserva su bloque de entorno en caché y toda
-# terminal que lance hereda el viejo, así que `hoard` no existiría hasta cerrar
-# sesión. Comprobado contra la máquina Windows del usuario.
+# `SendMessageTimeoutW`, to broadcast `WM_SETTINGCHANGE` after touching the user's
+# PATH in `install::ensure_cli_reachable`. Without that broadcast the change is
+# written but invisible: Explorer keeps its environment block cached and every
+# terminal it launches inherits the old one, so `hoard` would not exist until you
+# signed out. Checked against a real Windows machine.
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
-    # `GetLogicalDrives` + `GetDriveTypeW` en `roots::internal_drive_roots`: un
-    # emulador descomprimido en D: no deja rastro en %APPDATA%, así que hay que
-    # preguntarle al SO qué unidades fijas hay antes de buscarlo.
+    # `GetLogicalDrives` and `GetDriveTypeW` in `roots::internal_drive_roots`: an
+    # emulator unzipped onto D: leaves no trace in %APPDATA%, so the OS has to be
+    # asked which fixed drives exist before it can be looked for.
     "Win32_Storage_FileSystem",
-    # `DRIVE_FIXED`, que vive en otro módulo que las dos funciones que lo usan.
+    # `DRIVE_FIXED`, which lives in a different module from the two functions using it.
     "Win32_System_WindowsProgramming",
 ] }
 rusqlite = { version = "0.32", features = ["bundled"] }

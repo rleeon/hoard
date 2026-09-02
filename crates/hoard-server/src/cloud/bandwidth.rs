@@ -144,7 +144,7 @@ pub async fn check(
 ) -> Result<u64, Response> {
     // A request that transfers nothing, a fully-deduped `cas_init` where the
     // server is missing zero blobs, must never 429. Blocking a 0-byte op
-    // costs the user a red "falló" in the feed for no bandwidth at all (the
+    // costs the user a red failure row in the feed for no bandwidth at all (the
     // `r-e-p-o` case). Short-circuit before we even touch the DB.
     if requested == 0 {
         return Ok(0);

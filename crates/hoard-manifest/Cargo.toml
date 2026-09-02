@@ -13,7 +13,7 @@ default = ["bundled-catalog"]
 # The data is CC BY-NC-SA 3.0: the NonCommercial clause makes bundling it into
 # a build distributed alongside a paid subscription legally doubtful. Turning
 # this off produces a binary with no catalogue inside, which fetches it on
-# first run into the user's own cache instead — the same path the in-app
+# first run into the user's own cache instead, the same path the in-app
 # "update catalogue" button already uses. Detection then needs one network
 # round-trip before it works, which is exactly the trade being made.
 #

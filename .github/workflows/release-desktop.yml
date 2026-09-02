@@ -4,7 +4,7 @@ name: Release (desktop)
 # workflow handles the headless tarball; this one packages the Tauri desktop
 # app into native installers and uploads them as additional release assets.
 #
-# Code signing isn't wired in for v0.2 — Linux/Windows/macOS users will see
+# Code signing isn't wired in for v0.2, Linux/Windows/macOS users will see
 # their OS's "unverified developer" warning on first run. See
 # `docs/install-client.md` for the workaround. Once we have signing certs
 # we'll set the relevant env vars (TAURI_SIGNING_*, APPLE_*, WINDOWS_*) as
@@ -12,7 +12,7 @@ name: Release (desktop)
 
 on:
   # Canonical desktop release path. The Pro layer (overlay + Wrapped) now lives
-  # in-repo, so this single workflow builds the full bundles — no private
+  # in-repo, so this single workflow builds the full bundles, no private
   # `hoard-build`/`hoard-pro` overlay any more. Runs on `v*` tags alongside
   # `release.yml` (which attaches the headless server tarball; different
   # filenames, no clash) and can be dispatched manually for a one-off build.
@@ -43,7 +43,7 @@ jobs:
           # ARM Linux. `release.yml` has shipped the aarch64 core tarball for a
           # while; this is the app itself, for the handhelds and the ARM SteamOS
           # devices people actually asked about. Native runner, like every other
-          # entry — the C dependencies (dbus, keyring) are not worth
+          # entry, the C dependencies (dbus, keyring) are not worth
           # cross-compiling. 22.04 rather than 24.04 for the same reason as the
           # x86_64 entry: it links an older glibc, so the AppImage runs on more
           # distros than the runner it was built on.
@@ -59,7 +59,7 @@ jobs:
             setup_arch: x86_64
           # ARM Windows. NSIS only, and deliberately: WiX's arm64 support is the
           # shakier half of the bundler, and NSIS is the installer the updater
-          # reaches for first anyway — it carries the hook that stops a running
+          # reaches for first anyway, it carries the hook that stops a running
           # `hoardd` before overwriting it (see `install::fetch`). Optional
           # while it is new: a failure here leaves the release short one bundle
           # instead of holding up the other five.
@@ -69,7 +69,7 @@ jobs:
             args: "--bundles nsis"
             setup_arch: aarch64
             optional: true
-          # Apple-silicon only — macos-13 (x86_64) is being retired by
+          # Apple-silicon only, macos-13 (x86_64) is being retired by
           # GitHub and queues for the legacy intel image stall for hours,
           # which used to block the entire `publish` job. macos-14 builds
           # the universal-aarch64 bundle and runs reliably.
@@ -107,7 +107,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           # Tauri's `target/` lives under `crates/hoard-desktop/`-adjacent
-          # paths in our setup — but the workspace target is the canonical
+          # paths in our setup, but the workspace target is the canonical
           # one, so default cache key works.
           shared-key: desktop-${{ matrix.label }}
 
@@ -138,7 +138,7 @@ jobs:
 
       # The three sidecars the bundle ships: the overlay (hoard-screen), the sync
       # service (hoardd) and the terminal face (hoard). Without the second one
-      # the app installs without an engine — it's a thin client of the daemon
+      # the app installs without an engine, it's a thin client of the daemon
       # since ADR 0021's Slice 4. The third is what makes installing the app
       # install the whole of Hoard, at one version and in one pass.
       - name: Build sidecars (hoard-screen, hoardd, hoard)
@@ -153,20 +153,20 @@ jobs:
         env:
           # When we set up code signing, these are the env vars the Tauri
           # action picks up:
-          #   TAURI_SIGNING_PRIVATE_KEY        — for the auto-updater
+          #   TAURI_SIGNING_PRIVATE_KEY       , for the auto-updater
           #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-          #   APPLE_CERTIFICATE                — macOS code-signing
+          #   APPLE_CERTIFICATE               , macOS code-signing
           #   APPLE_CERTIFICATE_PASSWORD
           #   APPLE_SIGNING_IDENTITY
           #   APPLE_ID
           #   APPLE_TEAM_ID
-          #   APPLE_PASSWORD                   — app-specific notarization pwd
+          #   APPLE_PASSWORD                  , app-specific notarization pwd
           # Until they're populated, the action falls back to unsigned bundles.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: crates/hoard-desktop
           args: ${{ matrix.args }}
-          # We don't let tauri-action create the GitHub release itself —
+          # We don't let tauri-action create the GitHub release itself,
           # `release.yml` is the source of truth for the release object.
           # We only want it to build, then we upload bundles below.
           tagName: ""
@@ -206,7 +206,7 @@ jobs:
           [ -f "$BIN" ] || [ -f "$BIN.exe" ] || BIN="target/release/hoard-installer"
           # The architecture comes from the matrix, never hardcoded: every
           # entry runs this same step, so a fixed `x86_64` would have the ARM
-          # runners writing an aarch64 binary under the x86 name — and
+          # runners writing an aarch64 binary under the x86 name, and
           # `merge-multiple` in `publish` would then quietly keep whichever of
           # the two identically-named files it downloaded last.
           ARCH="${{ matrix.setup_arch }}"
@@ -278,7 +278,7 @@ jobs:
                -o -name '*.dmg' -o -name '*.app.tar.gz' \) \
             -exec cp -v {} dist/ \; || true
           # Hoard Setup rides along so `publish` signs it and hashes it with
-          # everything else — that job works on whatever is in `dist/`.
+          # everything else, that job works on whatever is in `dist/`.
           cp setup/* dist/ 2>/dev/null || true
           ls -la dist/
           # macOS runners don't ship GNU coreutils, so `sha256sum` is missing
@@ -315,7 +315,7 @@ jobs:
         run: ls -la dist/
       # Sign every installer with minisign so the in-app auto-updater
       # (`apply_desktop_update`) can verify it against the public key embedded
-      # in the client before running it as root via pkexec — same key and
+      # in the client before running it as root via pkexec, same key and
       # fail-closed model the server's `hoard-server upgrade` uses (ADR 0017).
       # The secret lives only in repo secrets. If it isn't configured we warn
       # loudly: unsigned installers make the client fall back to a *manual*
