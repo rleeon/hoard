@@ -78,6 +78,31 @@ ignore = [
     # Migration to the maintained `astral-tokio-tar` fork (near drop-in) or sync
     # `tar` on a blocking task is tracked for when the restore path is reworked.
     "RUSTSEC-2025-0111",
+    # h2 queues empty DATA frames without a limit, so a stream nobody drains
+    # can grow memory or overflow a length. Two copies were in the tree; the
+    # 0.4 line carries the whole live networking stack (hyper 1.x, reqwest)
+    # and is updated to a patched 0.4.x, so this entry covers only the 0.3.27
+    # left behind. Nothing can move that one: 0.3 has no patched release at
+    # all (`cargo update` locks zero packages against it), and it arrives
+    # solely through aws-smithy-http-client's legacy hyper 0.14 client, the
+    # same stack the rustls-webpki entries above are waiting on. Low severity
+    # per the advisory. Revisit when aws-smithy drops hyper 0.14.
+    "RUSTSEC-2026-0258",
+    # Three unmaintained crates that arrived with Slint, none of them a
+    # vulnerability, and all reachable only from the graphical installer.
+    # `resvg` is what Slint draws an SVG icon with, and it brings `usvg`,
+    # which brings `rustybuzz` for shaping and `ttf-parser` for the font
+    # tables. Both only ever read the fonts the installer bundles into its own
+    # binary, never a file from the user or the network. `paste` is further
+    # away still: `i-slint-compiler` pulls `image` for the decoders, and
+    # `image` pulls `exr` and `ravif`, which use it. That compiler is reached
+    # through `slint-build` and `slint-macros`, so `paste` runs at build time
+    # and ships in nothing. Each crate pins its own minor inside Slint, so
+    # there is no in-line upgrade. Revisit when Slint's renderer moves off
+    # resvg, or when maintained forks land.
+    "RUSTSEC-2024-0436", # paste
+    "RUSTSEC-2026-0192", # ttf-parser
+    "RUSTSEC-2026-0206", # rustybuzz
 ]
 
 [licenses]
