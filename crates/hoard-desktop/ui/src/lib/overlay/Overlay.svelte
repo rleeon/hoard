@@ -1,38 +1,38 @@
 <script lang="ts">
   /**
-   * HUD sobre el juego — el "Shift+Tab" de Hoard.
+   * The HUD over the game, Hoard's Shift+Tab.
    *
-   * Es **la app normal**, no Hoard-Screen: una segunda ventana Tauri
-   * (etiqueta `overlay`, creada en `commands/overlay.rs`) sin decoración,
-   * transparente y siempre encima, que monta este componente en vez de
-   * `App.svelte` — el reparto lo hace `main.ts` mirando la etiqueta.
+   * It is **the normal app**, not Hoard-Screen: a second Tauri window (label
+   * `overlay`, created in `commands/overlay.rs`), undecorated, transparent and
+   * always on top, which mounts this component instead of `App.svelte`. `main.ts`
+   * does the routing by looking at the label.
    *
-   * Tres zonas, y cada una responde a una pregunta distinta:
+   * Three areas, each answering a different question:
    *
-   * - **Arriba, estado**: ¿está esto funcionando *ahora*? Servicio, nube,
-   *   cuántas partidas vigila y cuándo toca la próxima copia.
-   * - **Izquierda, registro**: ¿qué ha pasado? El feed del servicio, con
-   *   filtros y búsqueda. Por defecto **no** lo enseña todo ni sólo las
-   *   subidas: enseña lo que cuenta una sesión (arranques, subidas,
-   *   restauraciones y fallos), igual que el panel de la aplicación.
-   * - **Derecha, partidas**: ¿en qué estado está cada juego? Sobre todo qué
-   *   versión hay **aquí** frente a la que hay **en la nube**, que es el dato
-   *   que decide si puedes jugar tranquilo.
+   * - **Top, status**: is this working *right now*? The service, the cloud, how
+   *   many saves it watches and when the next backup is due.
+   * - **Left, the log**: what has happened? The service's feed, with filters and
+   *   search. By default it shows neither everything nor only the uploads: it
+   *   shows what tells the story of a session (starts, uploads, restores and
+   *   failures), the same as the application's dashboard.
+   * - **Right, the saves**: what state is each game in? Above all, which version
+   *   is **here** against the one **in the cloud**, which is the figure that
+   *   decides whether you can play in peace.
    *
-   * Cierra con el botón de arriba a la derecha o con Escape.
+   * It closes with the button at the top right, or with Escape.
    *
-   * **Esto sólo mira.** No enciende el relevo de eventos, no arranca el
-   * servicio, no manda notificaciones y no toca la bandeja: pide una
-   * instantánea de lo que la aplicación ya sabe (`agent_snapshot`, tres mutex
-   * en memoria) y la pinta. Abrir una ventana para consultar el estado no puede
-   * cambiarlo.
+   * **This only looks.** It does not switch the event relay on, does not start the
+   * service, sends no notifications and does not touch the tray: it asks for a
+   * snapshot of what the application already knows (`agent_snapshot`, three
+   * in-memory mutexes) and paints it. Opening a window to check the state must not
+   * change it.
    *
-   * Y lee en vez de escuchar porque escuchar aquí **no funciona**: esta ventana
-   * nace en la primera pulsación del atajo, cuando el backlog del servicio ya se
-   * emitió una vez, `attach_agent_events` es idempotente y el estado del motor
-   * sólo se re-emite cuando cambia. Con los `listen()` perfectamente puestos, el
-   * HUD salía con el registro vacío, «servicio caído» en rojo con el servicio
-   * vivo, cero partidas vigiladas y ninguna copia programada.
+   * And it reads instead of listening because listening here **does not work**:
+   * this window is born on the first press of the shortcut, when the service's
+   * backlog has already been emitted once, `attach_agent_events` is idempotent and
+   * the engine's state is only re-emitted when it changes. With the `listen()`s
+   * perfectly in place, the HUD came up with an empty log, "service down" in red
+   * with the service alive, zero saves watched and no backup scheduled.
    */
   import { onMount } from "svelte";
   import { _ } from "svelte-i18n";
@@ -61,12 +61,12 @@
   type Filter = "default" | "all" | "errors";
 
   /**
-   * El filtro de fábrica.
+   * The out-of-the-box filter.
    *
-   * Ni todo de golpe (cuota, candado Pro, vigilante armándose… ruido que no
-   * ayuda con un juego delante) ni sólo subidas (te pierdes justo el fallo que
-   * querías ver). Es lo que cuenta una partida: arrancó, se subió, se
-   * restauró, o algo se rompió.
+   * Neither everything at once (quota, the Pro padlock, the watcher arming itself,
+   * noise that does not help with a game in front of you) nor uploads only (you
+   * miss exactly the failure you wanted to see). It is what tells a session's
+   * story: it started, it uploaded, it restored, or something broke.
    */
   const DEFAULT_KINDS = new Set<FeedEntry["kind"]>([
     "game_started",
@@ -111,13 +111,13 @@
   });
 
   /**
-   * Filas ya formateadas. El texto se calcula aquí y no en el marcado porque
-   * la búsqueda tiene que mirar **lo que el usuario lee**, no el `kind`
-   * interno: buscar "factorio" debe encontrar la fila que dice «factorio
-   * arrancó», y ese texto sólo existe después de traducir.
+   * Rows already formatted. The text is computed here and not in the markup
+   * because the search has to look at **what the user reads**, not the internal
+   * `kind`: searching "factorio" has to find the row that says "factorio started",
+   * and that text only exists after translation.
    *
-   * `tick` entra como dependencia deliberada: sin él Svelte no tiene motivo
-   * para repintar y los tiempos relativos se congelan.
+   * `tick` is a deliberate dependency: without it Svelte has no reason to repaint
+   * and the relative times freeze.
    */
   const rows = $derived.by(() => {
     tick;
@@ -156,9 +156,9 @@
   });
 
   /**
-   * Lo que el servicio dice de cada partida vigilada, indexado por `save_id`.
-   * Es la fuente del «jugando» y de la próxima copia: estado que el motor ya
-   * lleva, no algo que esta ventana deduzca del registro.
+   * What the service says about each watched save, indexed by `save_id`. It is the
+   * source of the "playing" state and of the next backup: state the engine already
+   * keeps, not something this window deduces from the log.
    */
   let slots = $state<AgentSlotStatus[]>([]);
   const slotOf = $derived.by(() => {
@@ -167,7 +167,7 @@
     return by;
   });
 
-  /** La copia programada más próxima entre todas las partidas. */
+  /** The soonest scheduled backup across every save. */
   const nextBackup = $derived.by(() => {
     tick;
     const now = Date.now();
@@ -199,9 +199,9 @@
   }
 
   /**
-   * Las partidas, con la que se está jugando primero: con un juego delante, lo
-   * que interesa es ese juego. Después las que van por detrás de la nube (el
-   * caso que puede costarte una partida) y luego por fecha.
+   * The saves, with the one being played first: with a game in front of you, that
+   * game is what matters. Then the ones behind the cloud (the case that can cost
+   * you a save), and then by date.
    */
   const savesSorted = $derived.by(() => {
     const rank = (s: TrackedSave) =>
@@ -225,14 +225,13 @@
   }
 
   /**
-   * Copia el estado de la aplicación a los stores de **esta** ventana.
+   * Copies the application's state into **this** window's stores.
    *
-   * Cada ventana tiene su propio contexto JS y, por tanto, sus propios stores;
-   * los de aquí arrancan en su valor por defecto (servicio parado, registro
-   * vacío, nube desconocida). Esto los pone al día con lo que la aplicación ya
-   * sabe, y el registro pasa por el mismo mapeo de eventos que usa el panel de
-   * la app (`adoptJournal`), para que las dos superficies no puedan contar
-   * cosas distintas del mismo evento.
+   * Every window has its own JS context and therefore its own stores; the ones here
+   * start at their default values (service stopped, empty log, cloud unknown). This
+   * brings them up to date with what the application already knows, and the log
+   * goes through the same event mapping the app's dashboard uses (`adoptJournal`),
+   * so the two surfaces cannot tell different stories about the same event.
    */
   async function refresh() {
     try {
@@ -251,16 +250,16 @@
   }
 
   /**
-   * Cada cuánto se relee mientras el HUD está a la vista.
+   * How often it re-reads while the HUD is on screen.
    *
-   * Es leer memoria del propio proceso, así que el coste es el del puente del
-   * webview y nada más; con el HUD escondido no se lee. Dos segundos es lo que
-   * hace falta para que una copia que arranca con el panel abierto se vea sin
-   * que parezca un contador nervioso.
+   * It reads the process's own memory, so the cost is the webview bridge's and
+   * nothing else; with the HUD hidden it does not read at all. Two seconds is what
+   * it takes for a backup starting with the panel open to be visible without
+   * looking like a nervous counter.
    */
   const REFRESH_MS = 2000;
 
-  /** Las partidas sí salen de la red, así que van a su ritmo y no al del bucle. */
+  /** The saves do come from the network, so they go at their own pace, not the loop's. */
   const SAVES_MIN_GAP_MS = 15000;
   let lastSavesAt = 0;
 
@@ -279,19 +278,19 @@
       void refresh();
     }, REFRESH_MS);
 
-    // Al volver a mostrarse conviene no esperar al siguiente tic, y además
-    // repasar las partidas: entre apertura y apertura pueden haber cambiado
-    // versiones o haberse dado de alta una nueva. `focus` va junto a
-    // `visibilitychange` porque enseñar la ventana pide el foco, y no todas las
-    // plataformas marcan el documento como oculto al esconderla.
+    // On being shown again it is worth not waiting for the next tick, and worth
+    // re-reading the saves: between one opening and the next, versions may have
+    // changed or a new save may have been added. `focus` goes alongside
+    // `visibilitychange` because showing the window asks for focus, and not every
+    // platform marks the document hidden when it is hidden.
     const onShow = () => {
       if (document.hidden) return;
       void refresh();
       void loadSavesThrottled();
-      // El idioma también: esta ventana no se destruye al cerrarla, así que sin
-      // esto se quedaría con el que tuviera cuando se creó aunque el usuario lo
-      // cambie en Ajustes. svelte-i18n es reactivo — los textos se cambian
-      // solos, sin remontar nada.
+      // The language too: this window is not destroyed when it closes, so without
+      // this it would keep whatever it had when it was created even if the user
+      // changes it in Settings. svelte-i18n is reactive, so the text changes on its
+      // own with nothing remounted.
       void syncPersistedLocale();
     };
     document.addEventListener("visibilitychange", onShow);
@@ -300,8 +299,8 @@
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        // Escape sale del buscador antes que del HUD: si estás filtrando,
-        // esperas salir del filtro, no de la ventana.
+        // Escape leaves the search box before it leaves the HUD: if you are
+        // filtering, you expect to leave the filter, not the window.
         if (query) {
           query = "";
           return;

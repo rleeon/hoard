@@ -8,7 +8,7 @@
   // The URL prefix is the source of truth for the language of these marketing
   // pages. The universal `+layout.ts` load sets the locale during SSR/prerender
   // (so the prerendered HTML comes out right), but it does NOT re-run on client
-  // hydration — SvelteKit reuses the serialized load data — so its `locale.set`
+  // hydration, SvelteKit reuses the serialized load data, so its `locale.set`
   // side-effect is skipped. Without this, the client keeps whatever locale
   // `setupI18n` seeded from localStorage (the last language the visitor used),
   // showing e.g. Spanish on /en/guides. Re-assert the route locale on the

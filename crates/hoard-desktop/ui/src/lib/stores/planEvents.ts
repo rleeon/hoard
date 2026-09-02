@@ -1,5 +1,5 @@
 /**
- * "Acaba de pasar algo con tu plan" — el disparador de los dos diálogos que
+ * "Acaba de pasar algo con tu plan", el disparador de los dos diálogos que
  * sólo se ven una vez: el agradecimiento al pagar Pro y la despedida al
  * cancelarlo.
  *
@@ -12,7 +12,7 @@
  * Guardarlo en disco (no en memoria) es justo el punto: el usuario paga en el
  * navegador, cierra, y vuelve a abrir Hoard horas después. Si la comparación
  * viviera en la sesión, ese arranque no tendría con qué comparar y el
- * agradecimiento no llegaría nunca — o, peor, llegaría en cada arranque.
+ * agradecimiento no llegaría nunca, o, peor, llegaría en cada arranque.
  *
  * Reglas del marcador (por `user_id`, en `plan-events.json`):
  *

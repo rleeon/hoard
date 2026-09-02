@@ -4,7 +4,7 @@
  * The value is injected at build/dev time by Vite (`define` in
  * `vite.config.ts`) straight from `package.json`'s `version` field, so there
  * is exactly one number to bump. Both the sidebar badge and the "About"
- * section read this constant — never hardcode a version string in a component
+ * section read this constant, never hardcode a version string in a component
  * or a locale file again.
  *
  * The `"dev"` fallback only ever shows if the bundle is loaded without Vite's

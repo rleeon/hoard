@@ -10,8 +10,8 @@
    *
    * The vertical axis is opt-in: pass `onVerticalDrag` and the same drag also
    * reports how far down the pointer went, which the Dashboard turns into the
-   * cover's shape (2:3 ↔ square ↔ landscape). Library grids leave it out — their
-   * height is whatever the content needs — and behave exactly as before.
+   * cover's shape (2:3 ↔ square ↔ landscape). Library grids leave it out, their
+   * height is whatever the content needs, and behave exactly as before.
    *
    * Usage:
    *   <CardResizeHandle section="tracked" />
@@ -28,7 +28,7 @@
     section: SectionKey;
     /**
      * Optional. Called on every move with the pixels dragged down since the
-     * start and the card's laid-out width at that moment — enough to turn the
+     * start and the card's laid-out width at that moment, enough to turn the
      * drag into a ratio without measuring anything mid-gesture.
      */
     onVerticalDrag?: (dy: number, startCardWidth: number) => void;

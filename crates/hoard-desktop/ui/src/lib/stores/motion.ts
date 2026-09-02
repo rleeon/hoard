@@ -2,11 +2,11 @@
  * Intensidad del relieve (la inclinación 3D de `use:tilt` y su resplandor).
  *
  * Es un porcentaje continuo, no tres botones: 0 apaga el efecto, 100 son los 8°
- * históricos y el defecto —50— es la mitad. Una barra deja elegir el punto
+ * históricos y el defecto,50, es la mitad. Una barra deja elegir el punto
  * exacto en vez de obligar a escoger entre tres saltos.
  *
  * Es cosa puramente de la interfaz, así que vive en `localStorage` y nunca toca
- * el `Prefs` de Rust — mismo criterio que el tema y el tono del acento.
+ * el `Prefs` de Rust, mismo criterio que el tema y el tono del acento.
  *
  * **No se consulta `prefers-reduced-motion`.** Se hizo durante un rato, para
  * elegir el valor inicial, y en la práctica dejaba la aplicación sin relieve de
@@ -39,7 +39,7 @@ function readInitial(): number {
     const n = Number(raw);
     if (Number.isFinite(n)) return clamp(n);
   } catch {
-    /* almacenamiento deshabilitado — al defecto */
+    /* almacenamiento deshabilitado, al defecto */
   }
   return DEFAULT_PCT;
 }
@@ -70,8 +70,8 @@ motionIntensity.subscribe((v) => {
  *
  * `data-motion-on` marca "el usuario quiere movimiento", y lo usa `app.css`
  * para devolverle a `.tilt` su suavizado bajo movimiento reducido del sistema:
- * aplanárselo a quien ha subido la barra a mano no le da menos movimiento —los
- * grados son los que pidió—, sólo se lo da a saltos persiguiendo al ratón.
+ * aplanárselo a quien ha subido la barra a mano no le da menos movimiento,los
+ * grados son los que pidió, sólo se lo da a saltos persiguiendo al ratón.
  */
 function paint(pct: number): void {
   if (typeof document === "undefined") return;

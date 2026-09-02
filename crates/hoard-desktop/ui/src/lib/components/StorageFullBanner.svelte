@@ -2,7 +2,7 @@
   /**
    * Persistent "the account is full, uploads are parked" card.
    *
-   * The same message the ActivityFeed shows as a `backup_quota_full` row —
+   * The same message the ActivityFeed shows as a `backup_quota_full` row,
    * except the feed is a *scrolling log the user can hide*, so the one fact
    * that stops Hoard from doing its job used to scroll away (or never show up
    * at all if the panel was closed). This is the state version of it: it stays

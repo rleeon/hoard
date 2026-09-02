@@ -8,14 +8,14 @@
  *
  * Since ADR 0021 slice 4b the engine no longer lives inside this process: it
  * runs in the `hoardd` service and the Rust side relays its events onto the
- * same channels. **This store's public surface is unchanged on purpose** — the
+ * same channels. **This store's public surface is unchanged on purpose**, the
  * screens must not notice the backend swap. What's new is internal:
  *
- *  - `agent://backlog` — what the service journalled while we weren't
+ *  - `agent://backlog`, what the service journalled while we weren't
  *    connected (the app was closed, or we reconnected). Applied like any other
  *    event, but *silently*: replaying yesterday's backups must not fire today's
  *    toasts and notifications.
- *  - `agent://daemon-status` — the engine went up or down inside the service.
+ *  - `agent://daemon-status`, the engine went up or down inside the service.
  *    Engine liveness isn't an event in the journal, so this is how the tray
  *    stops lying when the service starts its engine 20s after we attached.
  *
@@ -24,9 +24,9 @@
  * The store is also responsible for two side effects that need to react to
  * the same event stream:
  *
- *  1. **Tray colouring** — we collapse all per-save states into a single
+ *  1. **Tray colouring**, we collapse all per-save states into a single
  *     "global state" and push it down to Rust so the tray icon recolours.
- *  2. **Desktop notifications** — a fallback now, not the source. Since ADR
+ *  2. **Desktop notifications**, a fallback now, not the source. Since ADR
  *     0021 D.14.1 the *service* fires them, which is the only way they arrive
  *     with the app closed; it says so in `AgentStatus.service_notifies` and
  *     then `notify()` here stays quiet. On a platform where the service can't
@@ -72,11 +72,11 @@ export type SaveActivity = {
    *  the elapsed-time counter in the Eye panel. */
   running_since?: number;
   /** The game this save belongs to, as it rides on the events. The map is
-   *  keyed by `save_id` — a UUID — so anything that wants to *name* what is
+   *  keyed by `save_id`, a UUID, so anything that wants to *name* what is
    *  running needs the slug kept next to it. */
   game_slug?: string;
   reason?: BackupReason;
-  /** The version **this device** now holds — set by an upload that committed
+  /** The version **this device** now holds, set by an upload that committed
    *  and by an auto-restore that landed. Never the cloud head: the panel keeps
    *  those apart on purpose (ADR 0021 D.10). */
   last_version?: number;
@@ -93,7 +93,7 @@ export const activity: Writable<ActivityMap> = writable({});
 export type StuckRestore = {
   /** Consecutive failures, so the badge can say "3×" and read as a pattern. */
   failures: number;
-  /** Last error chain — the badge's tooltip, so the user sees *why*. */
+  /** Last error chain, the badge's tooltip, so the user sees *why*. */
   error: string;
 };
 
@@ -102,7 +102,7 @@ export type StuckRestore = {
  * Deliberately separate from `activity`: that map tracks the *current* backup
  * lifecycle and gets overwritten by the next event, whereas this is a sticky
  * condition that must outlive unrelated activity. It's the persistent half of
- * the July-2026 fix — the transient toast is what let a save silently fail to
+ * the July-2026 fix, the transient toast is what let a save silently fail to
  * sync for eight days. Cleared only by a recovery (success or a new cloud
  * version), never by time passing. */
 export const restoreStuck: Writable<Record<string, StuckRestore>> = writable(
@@ -111,54 +111,55 @@ export const restoreStuck: Writable<Record<string, StuckRestore>> = writable(
 
 /** Saves whose tracked folder looks wrong: empty, and never once backed up.
  *
- * Same shape and reasoning as `restoreStuck` — a sticky condition, not an
+ * Same shape and reasoning as `restoreStuck`, a sticky condition, not an
  * activity blip. It deliberately does NOT toast: the reconciliation sweep
  * re-checks the folder every cycle, so a toast would fire forever. Instead the
  * Library card carries an amber hint until a backup actually lands, which is
  * also the only thing that can clear it. */
 export const wrongPathSuspected: Writable<Record<string, true>> = writable({});
 
-/** Un save cuya última copia se dejó ficheros fuera por no poder leerlos. */
+/** A save whose last backup left files out because it could not read them. */
 export type UnreadableFiles = {
-  /** Cuántos se quedaron fuera, para que el aviso diga "3 ficheros". */
+  /** How many were left out, so the notice can say "3 files". */
   count: number;
-  /** Una ruta de ejemplo y su error del sistema: el tooltip, que es lo único
-   *  que distingue "arranca OneDrive" de "revisa los permisos". */
+  /** One example path and its system error: the tooltip, and the only thing that
+   *  tells "start OneDrive" apart from "check the permissions". */
   path: string;
   error: string;
-  /** `false` = no se subió nada en absoluto (ni un fichero legible). */
+  /** `false` means nothing at all was uploaded (not one readable file). */
   uploaded: boolean;
 };
 
-/** Saves cuya última copia salió incompleta (o no salió), por `save_id`.
+/** Saves whose last backup came out incomplete (or did not come out at all), by
+ * `save_id`.
  *
- * Mismo trato pegajoso que `restoreStuck`: no es un parpadeo de actividad sino
- * una condición que dura mientras dure la causa —un placeholder de OneDrive sin
- * hidratar puede estar así semanas—, y una versión a la que le falta un fichero
- * sin que nadie lo diga es justo el fallo que sólo se descubre al restaurar.
- * Sin toast a propósito: la condición se repite en cada copia y el aviso
- * sonaría sin parar. Lo limpia la primera copia completa (`backup_success`
- * llega **antes** que este evento, así que una copia que sigue siendo parcial
- * lo vuelve a poner en el mismo tick). */
+ * The same sticky treatment as `restoreStuck`: this is not a flicker of activity
+ * but a condition that lasts as long as its cause (an un-hydrated OneDrive
+ * placeholder can sit like that for weeks), and a version missing a file with
+ * nobody saying so is exactly the failure you only discover when restoring. No
+ * toast, on purpose: the condition repeats on every backup and the notice would
+ * never stop. The first complete backup clears it (`backup_success` arrives
+ * **before** this event, so a backup that is still partial puts it back in the
+ * same tick). */
 export const filesUnreadable: Writable<Record<string, UnreadableFiles>> =
   writable({});
 
-/** Un save cuya subida se rindió ante un conflicto que no sabe resolver. */
+/** A save whose upload gave up against a conflict it cannot resolve. */
 export type BlockedBackup = {
-  /** Conflictos seguidos al rendirse, para que el aviso lea como un patrón. */
+  /** Consecutive conflicts on giving up, so the notice reads as a pattern. */
   conflicts: number;
-  /** La última cadena de error: el tooltip. */
+  /** The last error string: the tooltip. */
   error: string;
 };
 
-/** Saves cuya subida **ha dejado de reintentar** y espera al usuario, por
+/** Saves whose upload **has stopped retrying** and is waiting on the user, by
  * `save_id`.
  *
- * Pegajoso como `restoreStuck`, y por la misma razón exacta: el caso que lo
- * motivó llevaba 14 días reintentando cada 13 minutos sin que nada lo dijera.
- * La diferencia con un fallo normal es que aquí ya no hay reintento que
- * esperar — hace falta pulsar "copiar ahora", o que otro equipo publique una
- * versión nueva. Lo limpia `backup_attention_cleared`. */
+ * Sticky like `restoreStuck`, and for exactly the same reason: the case that
+ * motivated it had been retrying every 13 minutes for 14 days with nothing saying
+ * so. The difference from an ordinary failure is that there is no retry left to
+ * wait for; somebody has to press "back up now", or another machine has to publish
+ * a new version. `backup_attention_cleared` clears it. */
 export const backupBlocked: Writable<Record<string, BlockedBackup>> = writable(
   {},
 );
@@ -167,7 +168,7 @@ export const status: Writable<AgentStatus> = writable({
   watched_count: 0,
   // Nothing has told us anything yet. Every screen that paints a "the service
   // is down" state has to wait for this to flip, or it paints it during the
-  // second the window takes to boot — which is what the dashboard did.
+  // second the window takes to boot, which is what the dashboard did.
   known: false,
 });
 
@@ -192,7 +193,7 @@ export const trayState = derived<
   if (states.some((s) => s === "uploading")) return "uploading";
   if (states.some((s) => s === "scheduled")) return "uploading";
   if (states.some((s) => s === "running")) return "running";
-  // "partial" still means the last sync succeeded — the tray stays green so we
+  // "partial" still means the last sync succeeded, the tray stays green so we
   // don't cry wolf; the plan-limit warning lives on the save row + toast.
   if (states.some((s) => s === "ok" || s === "partial")) return "ok";
   return "idle";
@@ -204,7 +205,7 @@ let trayUnsub: (() => void) | null = null;
 let notificationsAllowed = false;
 
 async function ensureNotificationPermission() {
-  // Ask once on startup. If the user denies, future toasts no-op silently —
+  // Ask once on startup. If the user denies, future toasts no-op silently,
   // we don't want to nag, and Tauri's plugin already handles the system
   // dialog gracefully.
   try {
@@ -228,7 +229,7 @@ function notify(title: string, body: string) {
   if (replaying) return;
   // The service notifies by itself where it can (Linux today; ADR 0021 D.14.1).
   // Sending ours on top would show the same backup twice whenever the window
-  // happens to be open — and the whole point of moving them to the service is
+  // happens to be open, and the whole point of moving them to the service is
   // that they also arrive when it isn't. Where the service can't yet (Windows,
   // macOS) the flag is `false` and this stays exactly as it was.
   if (get(status).service_notifies) return;
@@ -247,7 +248,7 @@ function patch(save_id: string, partial: Partial<SaveActivity>) {
   });
 }
 
-/** Apply one event. `at` is when it actually happened (epoch ms) — it defaults
+/** Apply one event. `at` is when it actually happened (epoch ms), it defaults
  *  to "now" for live events and carries the journal's timestamp when we're
  *  replaying, so a session that started two hours ago reads as two hours and
  *  not as zero. */
@@ -274,15 +275,15 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
       patch(ev.save_id, { state: "uploading", next_backup_at: undefined });
       break;
     case "backup_success": {
-      // Una copia real es la única prueba de que la carpeta era la buena.
+      // A real backup is the only proof the folder was the right one.
       wrongPathSuspected.update((m) => {
         if (!(ev.save_id in m)) return m;
         const { [ev.save_id]: _gone, ...rest } = m;
         return rest;
       });
-      // Y una copia completa, la única prueba de que ya se lee todo. El motor
-      // manda `backup_files_unreadable` justo DESPUÉS del éxito cuando sigue
-      // faltando algo, así que limpiar aquí no borra un aviso vigente.
+      // And a complete backup is the only proof everything reads now. The engine
+      // sends `backup_files_unreadable` right AFTER the success when something is
+      // still missing, so clearing here erases no live notice.
       filesUnreadable.update((m) => {
         if (!(ev.save_id in m)) return m;
         const { [ev.save_id]: _gone, ...rest } = m;
@@ -291,17 +292,17 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
       patch(ev.save_id, {
         state: "ok",
         last_version: ev.version_num,
-        // Con `already_landed` no viajó ni un byte —el contenido ya estaba
-        // arriba—, así que pintar 0 B borraría el tamaño de la última copia de
-        // verdad. El número de versión sí es nuevo y sí se adopta.
+        // With `already_landed` not one byte travelled (the content was already up
+        // there), so painting 0 B would erase the size of the last real backup. The
+        // version number is new, and it is adopted.
         ...(ev.already_landed ? {} : { last_bytes: ev.total_bytes }),
         error: undefined,
         will_retry: undefined,
       });
       const $prefs = get(prefs);
-      // Avisar de una copia que no ha ocurrido ahora es la misma clase de
-      // mentira que sonar al reproducir el journal: el estado sí se actualiza,
-      // el aviso no se manda.
+      // Notifying about a backup that did not happen now is the same class of lie
+      // as chiming while replaying the journal: the state is updated, the notice is
+      // not sent.
       if ($prefs?.notify_on_success && !ev.already_landed) {
         notify(
           "Backup saved",
@@ -353,7 +354,7 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
       // A restore that landed moves *this device's* version forward, so record
       // it: without this the dashboard keeps flagging the cloud as ahead until
       // the next full `list_tracked_saves`. Deliberately doesn't touch `state`
-      // — a restore isn't a backup lifecycle transition.
+      //, a restore isn't a backup lifecycle transition.
       patch(ev.save_id, { last_version: ev.version_num });
       // Beyond that it's a one-shot adoption side-effect, but we do want to
       // surface a toast so the user notices files appeared under `~`. The
@@ -377,14 +378,14 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
     }
     case "save_auto_restore_failed": {
       // Surfaced in the activity feed (see live.ts), not as a toast. A stale
-      // session token at launch made this fire once per tracked save — a burst
+      // session token at launch made this fire once per tracked save, a burst
       // of popups every start. The agent now suppresses the transient 401 at
       // source; genuine per-save failures still land in the feed.
       break;
     }
     case "save_auto_restore_stuck": {
       // The agent only sends this once per (save, version), after repeated
-      // failures — so it's rare enough to deserve a notification, and the
+      // failures, so it's rare enough to deserve a notification, and the
       // Library card keeps an amber badge until it recovers.
       restoreStuck.update((m) => ({
         ...m,
@@ -412,13 +413,13 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
       patch(ev.save_id, {
         state: "failed",
         error: ev.error,
-        // Lo que separa esto de un fallo cualquiera: no hay reintento en
-        // camino. Decir "reintentando" sería exactamente la mentira que
-        // mantuvo el caso real invisible dos semanas.
+        // What separates this from an ordinary failure: there is no retry coming.
+        // Saying "retrying" would be exactly the lie that kept the real case
+        // invisible for two weeks.
         will_retry: false,
       });
-      // Una sola vez por atasco (el motor lo emite por flanco), así que sí
-      // merece notificación. Mismo pref que el resto de fallos.
+      // Once per jam (the engine emits it on the edge), so it does deserve a
+      // notification. The same pref as the other failures.
       const $prefs = get(prefs);
       if ($prefs?.notify_on_failure) {
         const t = get(i18n);
@@ -450,7 +451,7 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
     }
     case "backup_too_large": {
       // The upload was refused as too big, so it can never succeed as-is. Not a
-      // transient failure and not "retrying" — say it once, actionably, and mark
+      // transient failure and not "retrying", say it once, actionably, and mark
       // the row failed-without-retry so it stops spamming every folder change.
       //
       // Which sentence depends on WHO refused it, because the fix is somewhere
@@ -504,13 +505,13 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
         },
       });
       patch(ev.save_id, { state: "partial", error: msg, will_retry: false });
-      // No toast — surfaced in the activity feed (see live.ts).
+      // No toast, surfaced in the activity feed (see live.ts).
       break;
     }
     case "backup_skipped_empty": {
       // The folder resolved to empty/missing so we did *not* push an empty
       // snapshot (that would silently overwrite the user's last good copy on
-      // the server). This is a benign, recurring condition — the
+      // the server). This is a benign, recurring condition, the
       // reconciliation sweep re-checks the folder every cycle, and a
       // mis-detected/empty tracked folder (or a game that never wrote a save
       // yet) would fire this on every tick. So don't toast or notify; just
@@ -520,7 +521,7 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
       //
       // The one case worth surfacing is a save that has *never* backed up and
       // is empty: that's a mis-tracked folder, not a game between saves. It
-      // goes to a sticky flag on the card (not a toast — see the store).
+      // goes to a sticky flag on the card (not a toast, see the store).
       if (ev.likely_wrong_path) {
         wrongPathSuspected.update((m) => ({ ...m, [ev.save_id]: true }));
       }
@@ -542,7 +543,7 @@ function formatBytes(n: number): string {
 }
 
 /** The service's journal, replayed. `resync` means we can't claim continuity
- *  with what we already had — the ring dropped rows, or the service restarted —
+ *  with what we already had, the ring dropped rows, or the service restarted,
  *  so the event-derived state is rebuilt instead of patched. */
 type BacklogRow = { at: number; event: AgentEvent };
 type BacklogPayload = { rows: BacklogRow[]; resync: boolean };
@@ -565,7 +566,7 @@ function applyBacklog(payload: BacklogPayload) {
   }
 }
 
-/** Subscribe to all `agent://*` channels. Idempotent — safe to call from
+/** Subscribe to all `agent://*` channels. Idempotent, safe to call from
  * `onMount` more than once (we tear down previous listeners first). */
 export async function subscribeAgent() {
   await unsubscribeAgent();

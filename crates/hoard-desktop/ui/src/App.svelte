@@ -1,8 +1,8 @@
 <script lang="ts">
-  // svelte-spa-router 5 retiró los stores `location`/`querystring`/`params` y
-  // los sustituyó por el objeto `router`, que es estado con runas: leer
-  // `router.location` dentro de un `$derived`/`$effect`/markup ya es reactivo,
-  // sin `$` de suscripción.
+  // svelte-spa-router 5 dropped the `location`/`querystring`/`params` stores and
+  // replaced them with the `router` object, which is rune-based state: reading
+  // `router.location` inside a `$derived`, an `$effect` or the markup is already
+  // reactive, with no `$` subscription.
   import Router, { push, replace, router } from "svelte-spa-router";
   import { onMount, onDestroy } from "svelte";
   import { fly } from "svelte/transition";
@@ -26,11 +26,11 @@
   } from "@lucide/svelte";
   import { _ } from "svelte-i18n";
 
-  // Las rutas se cargan bajo demanda. Importarlas de forma estática metía las
-  // quince pantallas —Dashboard, Library, Settings, Logs, Diagnostics, el
-  // overlay…— en el chunk de entrada, así que el arranque parseaba media
-  // aplicación antes de pintar la primera. Cada `import()` es un chunk que Vite
-  // separa y el router pide cuando toca; ver `routes` más abajo.
+  // The routes are loaded on demand. Importing them statically put all fifteen
+  // screens (Dashboard, Library, Settings, Logs, Diagnostics, the overlay and the
+  // rest) into the entry chunk, so starting up parsed half the application before
+  // painting the first one. Every `import()` is a chunk Vite splits out and the
+  // router asks for when it needs it; see `routes` below.
   import { wrap } from "svelte-spa-router/wrap";
   import RouteFallback from "./lib/components/RouteFallback.svelte";
 
@@ -51,7 +51,7 @@
   const loadHoardWrapped = () => import("./routes/HoardWrapped.svelte");
   const loadPro = () => import("./routes/Pro.svelte");
 
-  /** Azúcar para no repetir el `loadingComponent` en cada ruta. */
+  /** Sugar so `loadingComponent` is not repeated on every route. */
   const lazy = (asyncComponent: () => Promise<unknown>) =>
     wrap({
       asyncComponent: asyncComponent as never,
@@ -130,7 +130,7 @@ import { tilt } from "./lib/actions/tilt";
    * The wizard routes (`/onboarding/*`) render full-screen and
    * own the entire viewport. The app routes (`/dashboard`, …) render inside
    * the persistent sidebar shell. We pick which to show based on the current
-   * URL — auth state decides which URL we land on at boot.
+   * URL, auth state decides which URL we land on at boot.
    */
   // svelte-spa-router routes. The catch-all is handled in `onMount`: we
   // hydrate auth, then `replace()` to the appropriate destination, so we
@@ -156,8 +156,8 @@ import { tilt } from "./lib/actions/tilt";
     // themselves are reachable so an unlocked user lands on the empty state).
     "/hoard-screen": lazy(loadHoardScreen),
     "/hoard-wrapped": lazy(loadHoardWrapped),
-    // Destino de todo candado. Vive dentro de la aplicación a propósito:
-    // antes estos botones abrían el navegador en la página de precios.
+    // Where every padlock leads. It lives inside the application on purpose: these
+    // buttons used to open the browser on the pricing page.
     "/pro": lazy(loadPro),
   };
 
@@ -190,7 +190,7 @@ import { tilt } from "./lib/actions/tilt";
 
   // Responsive sidebar: collapse to an icon-rail on narrow windows (Steam
   // Deck, half-width tiling). The aside swaps to `.is-narrow`, which CSS uses
-  // to hide labels and center icons — declarative, no per-element branching.
+  // to hide labels and center icons, declarative, no per-element branching.
   let narrow = $state(false);
   $effect(() => {
     const mq = window.matchMedia("(max-width: 760px)");
@@ -201,7 +201,7 @@ import { tilt } from "./lib/actions/tilt";
   });
 
   // Guided app tour. Opens after onboarding whenever the *identity* you signed
-  // in as differs from the one the tour was last shown for — so switching
+  // in as differs from the one the tour was last shown for, so switching
   // accounts or self-hosting a different server replays it, while an ordinary
   // relaunch of the same session stays quiet. forget/logout/delete clear the
   // stored identity (see `clearTourSeen`), so reconnecting shows it again too.
@@ -218,10 +218,11 @@ import { tilt } from "./lib/actions/tilt";
     const sig = tourSig;
     const loc = router.location;
     if (!booted || !sig || sig === lastSigChecked) return;
-    // El tour es "post-onboarding": no lo arranques mientras el wizard sigue en
-    // pantalla (la sesión ya existe desde el paso `token`, pero aún falta elegir
-    // el modo en `done`). Espera a que `finish()` navegue a una ruta de app; al
-    // depender de `router.location`, este efecto vuelve a evaluarse tras esa navegación.
+    // The tour is post-onboarding: it must not start while the wizard is still on
+    // screen (the session exists from the `token` step, but the mode still has to be
+    // picked in `done`). It waits for `finish()` to navigate to an app route; since
+    // it depends on `router.location`, this effect re-evaluates after that
+    // navigation.
     if (loc.startsWith("/onboarding")) return;
     lastSigChecked = sig;
     void loadTourSeen().then((seen) => {
@@ -237,9 +238,9 @@ import { tilt } from "./lib/actions/tilt";
   // The tour drives the real app shell: each step navigates the content area
   // to its section (`tourNavigate`) and the sidebar spotlight glides to the
   // matching rail item (measured by `TourOverlay` from the `data-tour*`
-  // markers). Keeping this in `App` — the owner of `<main>` and the nav — lets
+  // markers). Keeping this in `App`, the owner of `<main>` and the nav, lets
   // the overlay stay purely presentational while still moving the app behind
-  // it. The Pro sections navigate too — `tourActive` puts ProFeature in preview
+  // it. The Pro sections navigate too, `tourActive` puts ProFeature in preview
   // mode so opening `/hoard-screen` or `/hoard-wrapped` shows the feature
   // without burning the one-week trial. Only concept steps pass `null`.
   let mainViewport = $state<HTMLElement | null>(null);
@@ -276,7 +277,7 @@ import { tilt } from "./lib/actions/tilt";
 
   // Route transition: a soft fade+rise on the content viewport whenever the
   // URL changes (outside the tour, which runs its own zoom-settle). Reuses the
-  // same WAAPI surface as the tour — no library, no remount — so route state
+  // same WAAPI surface as the tour, no library, no remount, so route state
   // (scroll, focus, onMount fetches) survives.
   $effect(() => {
     router.location;
@@ -292,7 +293,7 @@ import { tilt } from "./lib/actions/tilt";
   });
 
   // Both sidebar toggles are derived from `$prefs` (not local state set once
-  // on mount) so they always reflect the source of truth — whether the change
+  // on mount) so they always reflect the source of truth, whether the change
   // came from this sidebar's own button or from Settings' mode picker. Before,
   // picking "Solo copia de seguridad" in Settings left the sidebar Sync button
   // stuck "on" because nothing re-derived it from the updated prefs.
@@ -306,7 +307,7 @@ import { tilt } from "./lib/actions/tilt";
   // A self-hosted session (address + token) is persisted on disk + the OS
   // keyring, so it survives folder deletion AND a full reinstall. If the
   // server is gone (decommissioned, different network, never coming back) the
-  // app would silently retry it forever with no obvious way out — the user
+  // app would silently retry it forever with no obvious way out, the user
   // ends up reinstalling in a loop. We probe the saved server once at boot;
   // if it's unreachable we surface a banner offering "Retry" / "Forget server"
   // so the dead session can actually be dropped without hunting through
@@ -346,7 +347,7 @@ import { tilt } from "./lib/actions/tilt";
     }
   }
 
-  // The update report is owned by `lastReport` in `stores/updates.ts` — both
+  // The update report is owned by `lastReport` in `stores/updates.ts`, both
   // the boot probe and the periodic re-check write to it. Reading via
   // `$lastReport` keeps this view in sync without a local mirror state.
   const updates = $derived<UpdateReport | null>($lastReport);
@@ -357,7 +358,7 @@ import { tilt } from "./lib/actions/tilt";
   // can cancel it.
   let disposeUpdatePoller: (() => void) | null = null;
 
-  // Hidden diagnostics unlock — 5 consecutive clicks on the sidebar version
+  // Hidden diagnostics unlock, 5 consecutive clicks on the sidebar version
   // string flips a session flag that reveals the Agent Diagnostics card in
   // Settings. Deliberately undocumented; only useful for triaging the silent
   // autobackup failure mode introduced before P1.4.0-0.
@@ -366,7 +367,7 @@ import { tilt } from "./lib/actions/tilt";
   function handleVersionClick() {
     const now = Date.now();
     // Reset the streak if the user pauses for >1.5s between taps. Keeps the
-    // gesture deliberate — a stray double-click on idle UI shouldn't drift
+    // gesture deliberate, a stray double-click on idle UI shouldn't drift
     // toward unlocking.
     versionClicks = now - lastVersionClick > 1500 ? 1 : versionClicks + 1;
     lastVersionClick = now;
@@ -387,26 +388,26 @@ import { tilt } from "./lib/actions/tilt";
   );
 
   onMount(async () => {
-    // La ventana nace oculta (`"visible": false` en tauri.conf.json) para que
-    // nadie vea el rectángulo blanco del webview mientras arranca. `onMount`
-    // garantiza el DOM, no el frame: pedimos mostrarla cuando el navegador ha
-    // pintado de verdad, con el spinner de arranque ya en pantalla. Esto va
-    // *antes* de las hidrataciones a propósito — la ventana debe aparecer al
-    // primer frame, no cuando el disco y la nube contesten.
+    // The window is born hidden (`"visible": false` in tauri.conf.json) so nobody
+    // sees the webview's white rectangle while it starts. `onMount` guarantees the
+    // DOM, not the frame: we ask to show it once the browser has really painted,
+    // with the startup spinner already on screen. This goes *before* the hydrations
+    // on purpose, since the window has to appear on the first frame, not when the
+    // disk and the cloud answer.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         void api.uiReady().catch(() => {
-          // El backend tiene su propio plazo de gracia; si la invocación falla
-          // la ventana aparece igual. Nada que hacer aquí.
+          // The backend has its own grace deadline; if the call fails the window
+          // appears anyway. Nothing to do here.
         });
       });
     });
 
-    // Precalienta los dos destinos posibles del arranque mientras hidratamos
-    // la sesión: con sesión se acaba en /dashboard, y sin ella en el asistente.
-    // Cuando el router pida el chunk ya estará en caché, así que dividir por
-    // rutas no le cuesta una espera al camino común. El resto de pantallas se
-    // cargan cuando el usuario las pide.
+    // Warms both possible startup destinations while the session hydrates: with a
+    // session you end up on /dashboard, without one on the wizard. By the time the
+    // router asks for the chunk it is already cached, so splitting by route costs
+    // the common path no wait. The other screens load when the user asks for
+    // them.
     const warm = (load: () => Promise<unknown>) => void load().catch(() => {});
     warm(loadDashboard);
     warm(loadLanguage);
@@ -414,7 +415,7 @@ import { tilt } from "./lib/actions/tilt";
     // Cheap OS detection so the global stylesheet can swap font-family per
     // platform without pulling `@tauri-apps/plugin-os` (not installed). The
     // Tauri WebView keeps the host UA on each platform, so this heuristic is
-    // reliable enough for cosmetic tweaks. Idempotent — classList dedupes.
+    // reliable enough for cosmetic tweaks. Idempotent, classList dedupes.
     const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
     let osTag: "linux" | "macos" | "windows" | "unknown" = "unknown";
     if (/Linux/i.test(ua) && !/Android/i.test(ua)) osTag = "linux";
@@ -473,7 +474,7 @@ import { tilt } from "./lib/actions/tilt";
 
     // Terminal cloud session expiry (Supabase revoked the refresh token). The
     // Rust side already cleared the session + stopped the pollers; here we calm
-    // the cloud dot, tell the user, and — if they're cloud-only — route them to
+    // the cloud dot, tell the user, and, if they're cloud-only, route them to
     // the welcome screen so they can sign in again. A self-hosted user stays put.
     initCloudSessionWatch(() => {
       resetCloudLoop();
@@ -481,17 +482,17 @@ import { tilt } from "./lib/actions/tilt";
       if (!$auth.user) replace("/onboarding/language");
     });
 
-    // Atajo global del HUD sobre el juego (Alt+H de fábrica). Se registra
-    // desde la ventana principal porque sigue viva aunque esté en la bandeja,
-    // que es justo cuando hace falta: con el juego delante no hay ventana a la
-    // que volver.
+    // The global shortcut for the HUD over the game (Alt+H out of the box). It is
+    // registered from the main window because that stays alive even in the tray,
+    // which is exactly when it is needed: with the game in front there is no window
+    // to go back to.
     initGameOverlay();
 
     // Register the Tauri listeners exactly once for the lifetime of this
-    // app instance. Modo Automático's detect/track/sweep work runs entirely in
+    // app instance. Automatic mode's detect, track and sweep work runs entirely in
     // Rust now (`commands/automatic.rs`); these listeners just mirror its
     // `automatic-phase` / `automatic-scan-complete` events into the sidebar UI.
-    // Idempotent — safe to call from any onMount path.
+    // Idempotent, safe to call from any onMount path.
     initAutomaticListener();
 
     // Hydrate the global prefs store so the sidebar toggle and any other
@@ -501,7 +502,7 @@ import { tilt } from "./lib/actions/tilt";
     await hydratePrefs();
     await hydrateCardSizes();
     // `automaticMode` / `globalSync` are $derived from `$prefs` above, so they
-    // populate on their own once hydratePrefs resolves — no manual seed here.
+    // populate on their own once hydratePrefs resolves, no manual seed here.
 
     // No startup scan kicked from here anymore: Rust's `restart_if_enabled`
     // (run during Tauri `setup()`) fires the first scan immediately when the
@@ -517,14 +518,14 @@ import { tilt } from "./lib/actions/tilt";
     void subscribeLive();
 
     // Listen for server-pushed notifications (hoard://notification Tauri
-    // event). No-op in browser dev — the listener just doesn't attach.
+    // event). No-op in browser dev, the listener just doesn't attach.
     void initServerNotifications();
 
     // Fire-and-forget update probe. The client-update check hits GitHub and
     // needs no session at all; the server half returns `null` when there's no
     // self-hosted server configured. Gating this on `$auth.user` meant a
     // user signed in only to Hoard Cloud (or fully signed out) never got the
-    // desktop "update available" banner — they had to open Settings and run a
+    // desktop "update available" banner, they had to open Settings and run a
     // manual check. So we probe unconditionally and keep the poller running
     // for the whole session regardless of auth state.
     checkForUpdates().catch((e) =>
@@ -542,7 +543,7 @@ import { tilt } from "./lib/actions/tilt";
   /**
    * "Descargar saves" from the liberate dialog: kick off the account export
    * and send the user to Account, which owns the progress + download UI. The
-   * dialog stays open — grabbing a copy first and *then* archiving is the whole
+   * dialog stays open, grabbing a copy first and *then* archiving is the whole
    * point of that button, so closing it would undo the user's train of thought.
    */
   async function handleLiberateDownload() {
@@ -566,7 +567,7 @@ import { tilt } from "./lib/actions/tilt";
   }
 
   // Live phase label used while a scan is in progress. When the scheduler
-  // is idle we show the plain "Modo Automático · ON/OFF" string built
+  // is idle we show the plain automatic-mode on/off string built
   // inline in the markup; this only kicks in for the transient phases the
   // background flow walks through.
   const automaticPhaseLabel = $derived.by(() => {
@@ -587,7 +588,7 @@ import { tilt } from "./lib/actions/tilt";
     }
   });
 
-  // Sidebar storage indicator lives in <QuotaMini /> now (footer) — it unifies
+  // Sidebar storage indicator lives in <QuotaMini /> now (footer), it unifies
   // the self-hosted and cloud sources; the old duplicate bar was removed.
 
   async function toggleAutomatic() {
@@ -599,13 +600,13 @@ import { tilt } from "./lib/actions/tilt";
       // Fan the updated Prefs out to every subscriber (Settings.svelte
       // watches `$prefs.auto_restore`, which `set_automatic_mode` cascades
       // to true). `automaticMode` is $derived from `$prefs`, so it re-flows
-      // from this same set — no separate local assignment needed.
+      // from this same set, no separate local assignment needed.
       prefs.set(updated);
       if (automaticMode) {
         toastSuccess($_("automatic.toggled_on"));
         // The Rust scheduler (`set_automatic_mode` → `automatic::start`) fires
         // an immediate scan tick the moment we flip the pref on, so there's
-        // nothing to kick from here — the `automatic-phase` listener will show
+        // nothing to kick from here, the `automatic-phase` listener will show
         // the progress and `automatic-scan-complete` will toast the result.
       } else {
         toastInfo($_("automatic.toggled_off"));
@@ -640,7 +641,7 @@ import { tilt } from "./lib/actions/tilt";
   // declarative: a plain navigable `link`, and a collapsible `group`
   // (Hoard-Saves) that owns a list of `link` children. `labelKey` is
   // resolved through `$_()` at render time so the rail re-translates
-  // instantly when the language changes in Settings — hard-coded English
+  // instantly when the language changes in Settings, hard-coded English
   // here was the long-standing reason German/Spanish UIs still showed
   // "Library / Dashboard …" in the rail.
   type NavLink = {
@@ -657,7 +658,7 @@ import { tilt } from "./lib/actions/tilt";
     children: NavLink[];
   };
   // A premium feature (Hoard-Screen / Hoard-Wrapped): navigable while the
-  // server entitlement allows it — paid Pro, an active trial, or a trial not
+  // server entitlement allows it, paid Pro, an active trial, or a trial not
   // yet started (opening the page is what starts the one-week clock).
   // Otherwise rendered locked with an upgrade CTA.
   type NavFeature = {
@@ -684,7 +685,7 @@ import { tilt } from "./lib/actions/tilt";
     try {
       localStorage.setItem("hoard-nav-saves-open", savesOpen ? "1" : "0");
     } catch {
-      /* private mode / storage disabled — toggle still works for the session */
+      /* private mode / storage disabled, toggle still works for the session */
     }
   }
 
@@ -709,24 +710,24 @@ import { tilt } from "./lib/actions/tilt";
   // Click on a locked premium item. A signed-in cloud user is sent to the
   // pricing page to upgrade; a self-hosted / signed-out user is sent to
   // /account to sign in to Hoard Cloud first (no plan to upgrade yet).
-  // Un elemento con candado lleva SIEMPRE a la pantalla `/pro`, tenga sesión
-  // o no: allí se explica qué es Pro y, si hace falta entrar primero o queda
-  // una prueba sin estrenar, se ofrece eso antes que el pago. Antes esto
-  // abría `hoard.services/pricing` en el navegador del sistema en cuanto
-  // había sesión — pulsar un elemento del menú te echaba de la aplicación.
-  // `feature` sólo sirve para que la pantalla nombre lo que ibas a abrir.
+  // A padlocked item ALWAYS leads to the `/pro` screen, session or no session:
+  // that is where Pro is explained and, when signing in first is needed or an
+  // unused trial is left, that is offered before the payment. This used to open
+  // `hoard.services/pricing` in the system browser the moment there was a session,
+  // so pressing a menu item threw you out of the application. `feature` only serves
+  // to let the screen name what you were about to open.
   function openPremiumUpsell(feature: FeatureKey) {
     push(`/pro?feature=${feature}`);
   }
 
-  // First entry is the account button: "Iniciar sesión" with no session at
-  // all, "Inicio" (the account view) once there is one — cloud **or**
-  // self-hosted. Keying it off the cloud session alone left a self-hoster
-  // staring at "Iniciar sesión" forever while their backups were reaching
-  // their own server: the app was asking them to sign up for the one thing
-  // they had deliberately not signed up for.
-  // Biblioteca / Panel / Mapa live under the collapsible Hoard-Saves group;
-  // Ajustes stays last. The old "Historial" item was removed — it just
+  // The first entry is the account button: "sign in" with no session at all, the
+  // account view once there is one, cloud **or** self-hosted. Keying it off the
+  // cloud session alone left a self-hoster staring at "sign in" for ever while
+  // their backups were reaching their own server: the app was asking them to sign
+  // up for the one thing they had deliberately not signed up for.
+  //
+  // Library, Dashboard and Map live under the collapsible Hoard-Saves group;
+  // Settings stays last. The old History item was removed, since it only
   // duplicated the Dashboard.
   const navEntries = $derived<NavEntry[]>([
     $cloud.account || $auth.user
@@ -743,7 +744,7 @@ import { tilt } from "./lib/actions/tilt";
       ],
     },
     // Hoard-Screen (overlay) is a Cloud-only paid feature: shown (and server
-    // gated) only when signed in to Hoard Cloud. Self-hosted never sees it —
+    // gated) only when signed in to Hoard Cloud. Self-hosted never sees it,
     // the overlay unlocks against a Cloud entitlement it can't obtain.
     ...($cloud.account
       ? [{ kind: "feature", labelKey: "nav.hoard_screen", icon: MonitorPlay, route: "/hoard-screen", feature: "screen" } as NavEntry]

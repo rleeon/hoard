@@ -18,7 +18,7 @@
   type Props = {
     open: boolean;
     onClose: () => void;
-    /** Optional context line — e.g. "Storage quota exceeded". Rendered
+    /** Optional context line, e.g. "Storage quota exceeded". Rendered
      *  above the plan grid in a subtle amber callout. */
     reason?: string | null;
   };

@@ -4,10 +4,10 @@
    *
    * Two things Hoard can't auto-detect, tracked by hand through one modal:
    *
-   *  - **Game** — a game the catalog/Steam scan misses (indie, DRM-free, odd
+   *  - **Game**, a game the catalog/Steam scan misses (indie, DRM-free, odd
    *    install). The user names it and points at its save folder; play-detection
    *    falls back to the slug, or to pinned processes if they add them.
-   *  - **Emulator** — no storefront/manifest entry at all, so we also collect
+   *  - **Emulator**, no storefront/manifest entry at all, so we also collect
    *    the emulator's executable(s) to know when the user is "playing". Presets
    *    pre-fill folder + processes for the common ones.
    *
@@ -179,7 +179,7 @@
       procs = [...selectedPreset.processes];
       folder = selectedPreset.save_paths[0] ?? "";
     } else {
-      // "Otro…" — start blank, let the user fill everything in.
+      // "Otro…", start blank, let the user fill everything in.
       procs = [];
       folder = "";
     }

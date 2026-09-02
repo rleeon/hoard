@@ -1,7 +1,7 @@
 import type { BillingCycle, PlanId } from '../types';
 
 /**
- * BillingProvider — swap-in interface for the payments backend. Hosted
+ * BillingProvider, swap-in interface for the payments backend. Hosted
  * checkout via a Merchant of Record. Swapping providers means writing one
  * new file and changing the export below.
  */

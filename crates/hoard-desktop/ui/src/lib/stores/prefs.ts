@@ -2,7 +2,7 @@
  * User preferences store.
  *
  * Mirrors the Rust `Prefs` struct. The store holds `null` until we've
- * round-tripped Rust on first load — components that depend on prefs should
+ * round-tripped Rust on first load, components that depend on prefs should
  * check for `null` and render a sensible "loading" placeholder, not a
  * defaults-baked UI that would flicker.
  *
@@ -18,7 +18,7 @@ import type { Prefs } from "../api";
 export const prefs: Writable<Prefs | null> = writable(null);
 
 /** Pull prefs from disk. Call once at boot. Failures fall back to defaults
- * so the Settings page can still render — the user can hit "Save" to repair
+ * so the Settings page can still render, the user can hit "Save" to repair
  * the file if it was corrupt. */
 export async function hydratePrefs(): Promise<void> {
   try {

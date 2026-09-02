@@ -2,18 +2,18 @@
  * Global error dialog store.
  *
  * `showError(e)` accepts:
- *   - An `AppError` shape (`{ title, body, detail? }`) — what Rust commands
+ *   - An `AppError` shape (`{ title, body, detail? }`), what Rust commands
  *     return when they fail with `Result<_, AppError>`. Title/body are i18n
  *     keys resolved by svelte-i18n at render time.
- *   - A raw string — surfaced verbatim under the generic title. Kept for
+ *   - A raw string, surfaced verbatim under the generic title. Kept for
  *     callers still on the `toastError(String(e))` pattern that haven't
  *     migrated to structured errors yet.
- *   - Anything else (unknown / Error instance) — coerced through
+ *   - Anything else (unknown / Error instance), coerced through
  *     `String(e)` and shown under the generic title, with the original in
  *     `detail` so the user can still see what went wrong technically.
  *
  * The dialog is rendered once at the root (App.svelte) and consumes this
- * store. Only one error is shown at a time — calling `showError` while
+ * store. Only one error is shown at a time, calling `showError` while
  * another is open replaces it. That's deliberate: the previous error is
  * usually the root cause of the new one and the user only needs to dismiss
  * once.

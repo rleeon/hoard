@@ -3,7 +3,7 @@
   //
   // Owns the "trial starts at first look" flow: on mount it refreshes the
   // entitlement snapshot and, if the feature is still `trial_available`,
-  // activates it right away — opening this page is what starts the one-week
+  // activates it right away, opening this page is what starts the one-week
   // clock (never signup, never app start). While that round-trip is in flight
   // nothing is rendered, so the locked gate doesn't flash before the real UI
   // unlocks.

@@ -33,7 +33,7 @@ export interface AccountProfile {
   displayName: string | null;
   avatarUrl: string | null;
   plan: PlanId;
-  /** 'active' | 'grace' | null — from the subscriptions table. */
+  /** 'active' | 'grace' | null, from the subscriptions table. */
   subscriptionStatus: string | null;
   planRenewsAt: string | null;
   planCancelAt: string | null;

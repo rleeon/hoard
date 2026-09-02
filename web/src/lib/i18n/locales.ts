@@ -10,7 +10,7 @@ export const DEFAULT_LOCALE = 'en';
 export const LOCALES = ['en', 'es', 'de', 'fr', 'it', 'ja', 'pt', 'zh'] as const;
 export type Locale = (typeof LOCALES)[number];
 
-/** Every locale except the default — these are the ones that carry a prefix. */
+/** Every locale except the default, these are the ones that carry a prefix. */
 export const PREFIXED_LOCALES: readonly Locale[] = LOCALES.filter((l) => l !== DEFAULT_LOCALE);
 
 /** Native names for the language switcher. */

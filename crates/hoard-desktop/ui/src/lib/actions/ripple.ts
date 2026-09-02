@@ -1,5 +1,5 @@
 /**
- * Ripple action — an expanding highlight spawns from the click point, the
+ * Ripple action, an expanding highlight spawns from the click point, the
  * Material-style affordance that makes a button feel like it "gives". The
  * host element only needs `position: relative; overflow: hidden;` (the
  * `.ripple-host` class) so the spawned span clips to its rounded corners.

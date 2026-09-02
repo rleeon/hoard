@@ -41,7 +41,7 @@ export const entitlements: Readable<Entitlements | null> = {
 };
 
 /** Pull a fresh snapshot from the server. Returns `null` (and caches `null`)
- *  on any failure — signed out, offline, self-hosted — so the gate falls back
+ *  on any failure, signed out, offline, self-hosted, so the gate falls back
  *  to the locked state instead of throwing. */
 export async function refreshEntitlements(): Promise<Entitlements | null> {
   try {
@@ -62,12 +62,12 @@ export async function refreshEntitlements(): Promise<Entitlements | null> {
 // The user wants to know WHEN the Hoard-Screen candado flips and WHY. Three
 // surfaces, each with a different audience:
 //   - the Rust `cloud_entitlements` command logs to tracing (target
-//     "entitlements") — shipped by logship, the durable log;
+//     "entitlements"), shipped by logship, the durable log;
 //   - `reevalGate` below logs every per-feature transition to the webview
 //     console with the exact cause (server snapshot or the invoke error);
 //   - `noteGateTransition` pushes an activity-feed row on a real
 //     locked↔unlocked flip so the cause is visible in-app without a log file.
-// We only log/print TRANSITIONS — a re-pull that reports the same state is a
+// We only log/print TRANSITIONS, a re-pull that reports the same state is a
 // no-op, so the backoff retry storm from App.svelte can't spam any surface.
 
 /** Previous per-feature gate state (true = unlocked). `null` = never
@@ -107,7 +107,7 @@ function reevalGate(ent: Entitlements | null, err: unknown): void {
     console.info(
       `[entitlements] ${f}: ${prevLabel} → ${next ? "unlocked" : "locked"} (${cause})`,
     );
-    // Feed row only on a real locked↔unlocked flip (both states known) — the
+    // Feed row only on a real locked↔unlocked flip (both states known), the
     // initial boot determination is logged but not fed.
     if (prev !== null && prev !== next) {
       noteGateTransition(!next, reasonKey);
@@ -130,7 +130,7 @@ export async function activateFeature(
     internal.update((ent) =>
       ent ? { ...ent, features: { ...ent.features, [feature]: fs } } : ent,
     );
-    // Starting a trial can flip the gate locked→unlocked — re-evaluate so the
+    // Starting a trial can flip the gate locked→unlocked, re-evaluate so the
     // transition is logged and the activity feed reflects it.
     reevalGate(get(internal), null);
     return fs;
@@ -153,8 +153,8 @@ export function featureDaysLeft(fs: FeatureState | null | undefined): number {
 }
 
 /** Whether a feature should render its REAL UI: paid Pro or an active trial.
- *  `trial_available` is intentionally NOT unlocked — the trial clock hasn't
- *  started yet (the route flips it via `activateFeature` on first view) —
+ *  `trial_available` is intentionally NOT unlocked, the trial clock hasn't
+ *  started yet (the route flips it via `activateFeature` on first view),
  *  and `trial_expired` is locked. This is the gate that makes the
  *  public binary safe: the Pro UI ships inside it, but only the server saying
  *  "entitled / trial" lets a user actually open it. */
@@ -165,6 +165,6 @@ export function featureUnlocked(fs: FeatureState | null | undefined): boolean {
 /** Build-time DEV override. A personal/test build sets `HOARD_PRO_UNLOCK=1`
  *  (see `vite.config.ts`) to open the Pro features without a server entitlement,
  *  so the owner can try them. It defaults to `false` and the public/CI build
- *  MUST never set it — the public binary stays server-gated. */
+ *  MUST never set it, the public binary stays server-gated. */
 export const PRO_DEV_UNLOCK: boolean =
   import.meta.env.VITE_HOARD_PRO_UNLOCK === true;

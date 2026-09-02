@@ -9,7 +9,7 @@
    * account uploads a fresh full copy of the mirror every few minutes,
    * deduplicates against nothing, and restores folders the game won't load.
    *
-   * Two acts, both explicit. Repointing is offered, never done — a silent
+   * Two acts, both explicit. Repointing is offered, never done, a silent
    * repoint is what broke pairing across machines in August. Archiving the old
    * row is offered second because repointing alone leaves the mirror's
    * versions sitting in the quota; it's Cloud-only (self-hosted has no black
@@ -46,7 +46,7 @@
   const visible = $derived(warnings.filter((w) => !dismissed.has(w.save_id)));
   const isCloud = $derived($auth.user?.is_local_server === false);
 
-  /** Last path segment — the whole path is in the tooltip. Windows and POSIX
+  /** Last path segment, the whole path is in the tooltip. Windows and POSIX
    *  separators both, since the warning crosses machines in a shared cache. */
   function leaf(p: string): string {
     const parts = p.split(/[\\/]+/).filter(Boolean);

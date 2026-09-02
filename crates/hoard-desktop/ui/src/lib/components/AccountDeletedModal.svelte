@@ -2,7 +2,7 @@
   /**
    * Blocking screen shown when the signed-in cloud account is scheduled for
    * deletion (`$cloud.account.deleted_at` is set). The account is frozen
-   * server-side during its 30-day grace — every data route 403s — so we replace
+   * server-side during its 30-day grace, every data route 403s, so we replace
    * the whole app with this until the user either reactivates or signs out.
    *
    * Reactivate (green) cancels the pending delete; "Cerrar sesión" (neutral)

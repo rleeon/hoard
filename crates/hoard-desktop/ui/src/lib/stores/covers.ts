@@ -3,13 +3,13 @@
  *
  * The Rust `cover_bytes` command downloads each game's art once, persists it
  * under the app cache dir, and returns the raw JPEG bytes as an `ArrayBuffer`
- * thereafter — no network round-trip after the first sight, no canvas-tainting
+ * thereafter, no network round-trip after the first sight, no canvas-tainting
  * cross-origin draws. Here we wrap those bytes in an object URL and memoise
  * the result so a given game is fetched/decoded at most once per session. A
  * `null` entry marks a permanent miss (no art / offline first run) so callers
  * fall back to the initial-letter placeholder without retrying.
  *
- * Covers are addressed by a **cover key**, not a Steam app id — see
+ * Covers are addressed by a **cover key**, not a Steam app id, see
  * {@link coverKey}. Rust owns the whole resolution chain behind that key
  * (local app id → catalog → our hosted index → Steam's fuzzy search), so the
  * UI never has to know which source a given game's art came from.
@@ -25,7 +25,7 @@ const inflight = new Map<string, Promise<string | null>>();
 const customCoverCache = new Map<string, boolean>();
 
 /** Sniff the image type from its magic bytes. Steam serves JPEG and the hosted
- *  index can point anywhere — Minecraft's poster on Microsoft's CDN is a PNG —
+ *  index can point anywhere, Minecraft's poster on Microsoft's CDN is a PNG,
  *  and a Blob is only as honest as the type you hand it. Browsers do sniff for
  *  `<img>`, so mislabelling happens to render, but the canvas paths in Map and
  *  WrappedCard deserve the truth. */
@@ -43,7 +43,7 @@ function mimeOf(buf: ArrayBuffer): string {
  *  load-bearing: the slug is the one identifier every screen has (SaveGameCard
  *  passes nothing else), so keying on it is what makes a custom cover set in
  *  the Library show up on the Map and in Wrapped too. Games with an app id and
- *  no slug — and there are none today, but the prop allows it — fall back to
+ *  no slug, and there are none today, but the prop allows it, fall back to
  *  the id. Returns `null` when the caller knows neither, i.e. there is nothing
  *  to look up. */
 export function coverKey(
@@ -56,7 +56,7 @@ export function coverKey(
 }
 
 /** Resolve a cover key to a usable `<img src>` object URL, or `null` if
- *  there's no cover to show. Safe to call repeatedly — memoised +
+ *  there's no cover to show. Safe to call repeatedly, memoised +
  *  de-duplicated. */
 export function coverUrl(key: string): Promise<string | null> {
   const hit = cache.get(key);
@@ -122,7 +122,7 @@ const slugIdCache = new Map<string, number | null>();
 const slugIdInflight = new Map<string, Promise<number | null>>();
 
 /** Resolve a game slug to its Steam app id via the embedded Ludusavi catalog.
- *  No longer used for covers — Rust owns that chain end to end now — but kept
+ *  No longer used for covers, Rust owns that chain end to end now, but kept
  *  as the JS-side handle on the command for anything that needs the id itself
  *  rather than the art. */
 export function steamIdForSlug(slug: string): Promise<number | null> {

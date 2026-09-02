@@ -1,5 +1,5 @@
 /**
- * Ajustes de la tarjeta compartible — **solo de este equipo**.
+ * Ajustes de la tarjeta compartible, **solo de este equipo**.
  *
  * Nombre, frase y rango viven en un `store` local (`wrapple_card.json`, junto
  * al resto de preferencias de la app) y la foto es un PNG bajo el app-data

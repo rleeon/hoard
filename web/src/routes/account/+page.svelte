@@ -20,7 +20,7 @@
   let devices = $state<DeviceRow[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
-  // The device list failing is not the same as the profile failing — the page
+  // The device list failing is not the same as the profile failing, the page
   // still renders, so its failure gets its own line inside that card.
   let devicesError = $state<string | null>(null);
   // Whatever the last button press failed with. Shown next to the danger zone,
@@ -112,7 +112,7 @@
       await api.deleteAccount();
     } catch (e) {
       // Signing out and redirecting on a failed DELETE is indistinguishable
-      // from success — the user walks away believing their account is gone
+      // from success, the user walks away believing their account is gone
       // while it is very much still there. Stop and say what happened.
       actionError = describeError(e, $_);
       return;

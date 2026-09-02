@@ -53,7 +53,7 @@
   /** Cuándo un grupo compartido merece que se hable de él.
    *
    *  El aviso existe para evitar un error caro: archivar medio par y no liberar
-   *  nada. Por debajo de un mega ese error no existe —no hay nada que liberar—
+   *  nada. Por debajo de un mega ese error no existe, no hay nada que liberar
    *  y la fila acababa diciendo "comparte 0 B con Factorio: archiva ambos para
    *  liberarlo", que además arrastraba al compañero a la selección sin ganar un
    *  byte.
@@ -105,7 +105,7 @@
       // se habla, nunca cuáles cuentan.
       sharedGroups = data.shared_groups ?? [];
       // Archived saves are already out of the quota; everything else is a
-      // candidate — including games whose own bytes are all shared
+      // candidate, including games whose own bytes are all shared
       // (`freeable_bytes === 0`), which the old filter dropped and which are
       // precisely the ones holding a duplicate hostage.
       games = data.games.filter((g) => !g.archived);
@@ -179,7 +179,7 @@
       usedBytes - maxFreeable > limitBytes,
   );
 
-  /** Games sharing bytes with the given one — the "this is the same save twice"
+  /** Games sharing bytes with the given one, the "this is the same save twice"
    *  hint. */
   function partners(saveId: string): StorageGame[] {
     const ids = new Set<string>();
@@ -198,8 +198,8 @@
   }
 
   // The list is one row per save; `game_slug` is the game and `label` is the
-  // save slot (almost always the default "main"). Show the game name — turn the
-  // slug into a title — and only surface the label when it disambiguates.
+  // save slot (almost always the default "main"). Show the game name, turn the
+  // slug into a title, and only surface the label when it disambiguates.
   const ROMAN = new Set([
     "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix",
     "x", "xi", "xii", "xiii", "xiv", "xv",

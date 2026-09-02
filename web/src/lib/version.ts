@@ -8,7 +8,7 @@ const REPO = 'rleeon/hoard';
 const SEED_VERSION: string = __HOARD_VERSION__;
 const SEED_DATE: string = __HOARD_RELEASE_DATE__;
 
-/** The "latest release" page — always points at the current version. */
+/** The "latest release" page, always points at the current version. */
 export const RELEASES_LATEST = `https://github.com/${REPO}/releases/latest`;
 export const ALL_RELEASES = `https://github.com/${REPO}/releases`;
 export const CHANGELOG_URL = `https://github.com/${REPO}/blob/main/CHANGELOG.md`;
@@ -17,7 +17,7 @@ export const CHANGELOG_URL = `https://github.com/${REPO}/blob/main/CHANGELOG.md`
  *  instead of landing on the release page. */
 export type ReleaseAssets = {
   // Hoard Setup: the graphical installer, one per platform. It is the normal
-  // way in — it fetches the right package for the machine it is on — and the
+  // way in, it fetches the right package for the machine it is on, and the
   // raw bundles below stay published for anyone who would rather not be
   // helped.
   setupWindows: string | null;
@@ -52,7 +52,7 @@ function assetsFor(v: string): ReleaseAssets {
   const base = `https://github.com/${REPO}/releases/download/v${v}`;
   return {
     // Hoard Setup and the ARM bundles are younger than the x86 ones, so a
-    // release from before they existed lists none of them — and a URL built
+    // release from before they existed lists none of them, and a URL built
     // from the convention would be a 404 wearing a plausible filename, which
     // is worse than not offering the download at all. No guess for these:
     // either the release names the file or the page does not offer it.
@@ -90,7 +90,7 @@ function pickAssets(urls: string[], v: string): ReleaseAssets {
     // Every one of these matches on the architecture too, which it did not
     // have to when a release carried a single bundle per format. Now that ARM
     // bundles ship alongside, a bare `/\.deb$/` would hand whichever GitHub
-    // happened to list first — an arm64 .deb to an x86 laptop is not a loud
+    // happened to list first, an arm64 .deb to an x86 laptop is not a loud
     // failure, it is dpkg complaining about something that looks unrelated.
     // Version-less names on purpose: the installer resolves the release
     // itself, so the file does not go stale between releases.
@@ -128,7 +128,7 @@ function readCache(): (ReleaseInfo & { at: number }) | null {
     if (!raw) return null;
     const c = JSON.parse(raw) as Partial<ReleaseInfo> & { at: number };
     if (typeof c?.v !== 'string' || typeof c?.at !== 'number') return null;
-    // Older cache entries predate `assets` — rebuild them from the version.
+    // Older cache entries predate `assets`, rebuild them from the version.
     return {
       v: c.v,
       date: c.date ?? SEED_DATE,
@@ -143,7 +143,7 @@ function readCache(): (ReleaseInfo & { at: number }) | null {
 /**
  * Latest published GitHub release, shown everywhere a version appears
  * (hero, footer, download). Seeds with the build-time values and, in the
- * browser, upgrades to the live `releases/latest` tag + publish date —
+ * browser, upgrades to the live `releases/latest` tag + publish date,
  * the displayed number therefore tracks GitHub automatically, with no
  * hand-edited string anywhere. The result is cached in localStorage for
  * an hour to stay clear of the unauthenticated API rate limit; on error
@@ -179,12 +179,12 @@ export const release = readable<ReleaseInfo>(
             JSON.stringify({ v: tag, date, assets, at: Date.now() })
           );
         } catch {
-          /* storage disabled — fine, next load refetches */
+          /* storage disabled, fine, next load refetches */
         }
       })
       .catch(() => {});
   }
 );
 
-/** Just the version string — most call sites only need this. */
+/** Just the version string, most call sites only need this. */
 export const version = derived(release, (r) => r.v);

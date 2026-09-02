@@ -28,7 +28,7 @@ export function formatBytes(bytes: number, decimals = 1): string {
 /**
  * "elden-ring" -> "Elden Ring". Purely cosmetic fallback for the visible
  * game name while the user hasn't set a per-device override (gameNames
- * store). The slug itself — the sync key — is never touched.
+ * store). The slug itself, the sync key, is never touched.
  */
 export function prettifySlug(slug: string): string {
   const pretty = slug

@@ -1,5 +1,5 @@
 <script lang="ts">
-  // hoard-wrapple — a personal "year in play" recap.
+  // hoard-wrapple, a personal "year in play" recap.
   //
   // Two pieces:
   //   1. An identity strip (avatar + name shown; only the EMAIL is masked by
@@ -10,7 +10,7 @@
   //
   // The agent clocks real playtime locally (time a tracked game's process was
   // running) and `syncPlaytime` pushes it to Hoard Cloud, then reads back the
-  // DEVICE-MERGED aggregate — so the recap reflects every machine you sign in
+  // DEVICE-MERGED aggregate, so the recap reflects every machine you sign in
   // from, not just this one. Signed out / offline it falls back to local data.
   import { onMount } from "svelte";
   import { tilt } from "../actions/tilt";
@@ -91,7 +91,7 @@
   );
 
   // Masked form of the email: keep its shape (@ and dots) but dot out every
-  // other character. A static placeholder beats blurring the real text — blur
+  // other character. A static placeholder beats blurring the real text, blur
   // + transition on antialiased glyphs flickered the colours mid-toggle.
   const maskedSub = $derived((identity.sub ?? "").replace(/[^@.]/g, "•") || "—");
 
@@ -119,7 +119,7 @@
       : totalBytes,
   );
 
-  // Per-day game breakdown (day → slug → secs) and the day totals — both feed
+  // Per-day game breakdown (day → slug → secs) and the day totals, both feed
   // the click-to-expand detail panel below.
   let dailyByGame = $state<Record<string, Record<string, number>>>({});
   let daysByKey = $state<Record<string, number>>({});
@@ -127,7 +127,7 @@
   let selectedKey = $state<string | null>(null);
   // La tarjeta compartible (el botón de la cámara, al final de la página).
   let showCard = $state(false);
-  // Year filter — buttons for every year with any playtime, plus the current
+  // Year filter, buttons for every year with any playtime, plus the current
   // year (so a fresh account still sees its own year). Latest first.
   let yearsAvailable = $state<number[]>([]);
   let selectedYear = $state<number>(new Date().getFullYear());
@@ -136,7 +136,7 @@
 
   // Games are tracked by `game_slug`; the per-save `label` is the save *slot*
   // name (usually the default "main"), NOT the game. For a per-game recap we
-  // render the game name by prettifying its slug — "planet-s" → "Planet S" —
+  // render the game name by prettifying its slug, "planet-s" → "Planet S",
   // so it never reads "main".
   function prettySlug(slug: string): string {
     return (
@@ -186,7 +186,7 @@
     return `${y}-${m}-${day}`;
   }
 
-  // Five shades, scaled to *your* busiest day — GitHub-style relative
+  // Five shades, scaled to *your* busiest day, GitHub-style relative
   // intensity, not a fixed clock-time bucket. A flat ">2h = darkest" bucket
   // made a 1h day and a 57h day render identically once both crossed it;
   // quartiles of `secs / maxSecs` fix that, since the max day always lands
@@ -212,7 +212,7 @@
   //   Sat, Fri, Thu, Wed, Tue, Mon, Sun.
   // Sunday (the week's first day) sits at the BOTTOM, not the top.
   // `ROW_ORDER` indexes each week (built Sun..Sat, so index == JS getDay) in
-  // that display order; `WEEKDAYS` is the matching label column — like GitHub
+  // that display order; `WEEKDAYS` is the matching label column, like GitHub
   // we only label Mon / Wed / Fri and leave the rest blank.
   const ROW_ORDER = [6, 5, 4, 3, 2, 1, 0];
   const WEEKDAYS = [
@@ -316,13 +316,13 @@
       saves = [];
     }
     totalGames = saves.length;
-    // Current server footprint across snapshots — the fallback for "Atesorado"
+    // Current server footprint across snapshots, the fallback for "Atesorado"
     // when the lifetime counter isn't available (see `hoardedBytes`).
     totalBytes = saves.reduce((a, s) => a + (s.total_size_bytes || 0), 0);
 
     // Real per-day playtime, read from the server only: the device-merged
     // aggregate for this account (cloud, or the user's own server when
-    // self-hosted). No local fallback — an unreachable server shows an empty
+    // self-hosted). No local fallback, an unreachable server shows an empty
     // recap, never this single machine's local store.
     let days: Record<string, number> = {};
     let byGame: Record<string, number> = {};
@@ -351,7 +351,7 @@
     mostPlayedSlug = topSlug;
 
     // Cover art: map each tracked slug to its Steam app id from the cached
-    // detection report (already on disk — no scan). Covers pop in reactively;
+    // detection report (already on disk, no scan). Covers pop in reactively;
     // a slug with no app id just keeps the initial-letter tile.
     try {
       const rep = await cachedDetection();
@@ -379,7 +379,7 @@
   }
 
   /** Rebuild the rolling 53-week grid ending today (today on the LEFT, reading
-   *  into the past rightward — the original GitHub-style order). The grid
+   *  into the past rightward, the original GitHub-style order). The grid
    *  always spans the last 365 days regardless of the selected year; the year
    *  filter only controls `inRange`, so days outside the chosen year stay in
    *  the bounding box (invisible, excluded from stats) but the layout never
@@ -421,7 +421,7 @@
       }
       grid.push(week);
     }
-    // Newest week first (today on the LEFT), reading into the past rightward —
+    // Newest week first (today on the LEFT), reading into the past rightward,
     // the original order.
     grid.reverse();
     weeks = grid;

@@ -4,7 +4,7 @@
  * If the user closes the app halfway through onboarding we bring them back
  * to the same step on the next launch. Storage lives in
  * `tauri-plugin-store` (a JSON file managed by Tauri), not in the browser's
- * localStorage — we want it to survive a webview cache wipe.
+ * localStorage, we want it to survive a webview cache wipe.
  */
 
 import { LazyStore } from "@tauri-apps/plugin-store";
@@ -15,7 +15,7 @@ const KEY_URL = "url";
 /** Identity (account / server) the post-onboarding tour was last shown for.
  *  We key the tour on *who* you signed in as, not a global "seen once" flag,
  *  so it replays when you switch to a different account or self-host a
- *  different server — but stays quiet on ordinary relaunches of the same
+ *  different server, but stays quiet on ordinary relaunches of the same
  *  session. Cleared on forget/logout/delete so reconnecting shows it again. */
 const KEY_TOUR_SEEN = "tour_seen_for";
 
@@ -65,7 +65,7 @@ export async function saveUrl(url: string): Promise<void> {
   await store.save();
 }
 
-/** Wipe wizard state — call this after a successful login. Does NOT clear the
+/** Wipe wizard state, call this after a successful login. Does NOT clear the
  *  tour flag: logging out and back in shouldn't replay the tour. */
 export async function clearOnboarding(): Promise<void> {
   await store.delete(KEY_STEP);
@@ -87,8 +87,8 @@ export async function markTourSeen(sig: string): Promise<void> {
   await store.save();
 }
 
-/** Forget which session saw the tour, so the next sign-in — even to the same
- *  account/server — replays it. Called from forget-server / logout / delete. */
+/** Forget which session saw the tour, so the next sign-in, even to the same
+ *  account/server, replays it. Called from forget-server / logout / delete. */
 export async function clearTourSeen(): Promise<void> {
   await store.delete(KEY_TOUR_SEEN);
   await store.save();

@@ -1,9 +1,9 @@
 <script lang="ts">
   /**
-   * Real OS logos as inline SVG — monochrome, inherits `currentColor` so the
+   * Real OS logos as inline SVG, monochrome, inherits `currentColor` so the
    * caller controls the tint (green when online, grey when offline).
    *
-   * No icon font, no external assets — the paths are baked in. Each logo is
+   * No icon font, no external assets, the paths are baked in. Each logo is
    * drawn at 16×16 by default and scaled via the `size` prop.
    *
    * Sources: the official Windows 4-squares mark, the Linux/Tux penguin

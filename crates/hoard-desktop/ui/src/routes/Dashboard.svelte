@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Dashboard — live view of every tracked save (1.1.0 redesign).
+   * Dashboard, live view of every tracked save (1.1.0 redesign).
    *
    * A cover grid (one SaveGameCard per save) instead of the old list rows,
    * plus a summary bar with library-wide totals. Hydrates from
@@ -70,7 +70,7 @@
 
   // Panel ordering. "recent" (default) = newest last backup first;
   // "size" = biggest cloud footprint first. Every size in this view is the
-  // SERVER-side one (`total_size_bytes`) — the panel never shows local sizes,
+  // SERVER-side one (`total_size_bytes`), the panel never shows local sizes,
   // that's the Library's job.
   let sortBy = $state<"recent" | "size">("recent");
 
@@ -105,7 +105,7 @@
 
   // ---------------------------------------------------------------------
   // Stored-version counts (per-card "Total versions" + summary bar).
-  // Fetched lazily after the list lands — one read-only call per save, never
+  // Fetched lazily after the list lands, one read-only call per save, never
   // blocking the grid. Refetched when the live session confirms a new
   // version for that save (upload committed / auto-restore landed).
   // ---------------------------------------------------------------------
@@ -145,7 +145,7 @@
   //
   // The manifest only carries each save's HEAD version (`total_size_bytes`),
   // so summing it answers "what would a restore pull down", never "what am I
-  // storing" — version history is forever, and a game whose folder is
+  // storing", version history is forever, and a game whose folder is
   // rewritten wholesale each save can hold many times its head size. Showing
   // the head sum next to the sidebar's quota bar put two contradictory
   // totals on the same screen; a user with 34.9 MB of heads and 79 MB of
@@ -153,7 +153,7 @@
   //
   // `/v1/cloud/storage/games` already computes the honest number (it drives
   // the "free up space" dialog): per save, its exclusive deduplicated blobs.
-  // Cloud-only — self-hosted has no quota and no black box, so there we keep
+  // Cloud-only, self-hosted has no quota and no black box, so there we keep
   // falling back to the head sum.
   // ---------------------------------------------------------------------
   let footprints = $state<Record<string, number>>({});
@@ -197,7 +197,7 @@
       footprintsLoaded = true;
     } catch {
       // Offline / signed out: the cards fall back to their head size and the
-      // summary keeps summing those. No error surfaced — this is a nicety on
+      // summary keeps summing those. No error surfaced, this is a nicety on
       // a view that must still render.
       footprintsLoaded = true;
     }
@@ -270,7 +270,7 @@
     try {
       if (next != null) {
         // Dry-run first: if this cap would prune stored versions, ask before
-        // touching anything. Clearing the cap never prunes — no dialog.
+        // touching anything. Clearing the cap never prunes, no dialog.
         const count = await api.previewMaxVersions(next, manual);
         if (count > 0) {
           confirmPrune = { cap: next, count, manual };
@@ -307,7 +307,7 @@
     if (manual) maxManual = next;
     else maxVersions = next;
     toastSuccess($_("dashboard.max_versions_saved"));
-    // Pruning frees server space right away — reflect it on the bar.
+    // Pruning frees server space right away, reflect it on the bar.
     refreshQuota().catch(() => {});
     // …and the stored-version counts this panel shows.
     for (const s of saves) void fetchVersions(s.save_id);
@@ -315,7 +315,7 @@
 
   // ---------------------------------------------------------------------
   // Rename (display name). Purely presentational, per-device: it writes the
-  // `gameNames` override store. The slug — the sync key — never changes.
+  // `gameNames` override store. The slug, the sync key, never changes.
   // ---------------------------------------------------------------------
   let renameTarget = $state<TrackedSave | null>(null);
   let renameDraft = $state("");
@@ -395,7 +395,7 @@
 
   /** Which sentence explains an engine that isn't up. An older service (or a
    *  failure we don't classify) reports nothing, and then the generic line is
-   *  the honest answer — inventing a cause would be worse than "it's down". */
+   *  the honest answer, inventing a cause would be worse than "it's down". */
   function offlineMessageKey(
     reason: EngineDownReason | undefined,
     keyring: KeyringFault | null | undefined,
@@ -418,7 +418,7 @@
    *  steps, and getting that wrong sends the user after the wrong thing: a
    *  machine with no secret-service daemon has nothing to unlock, and being told
    *  to unlock a login keyring there is a dead end. What all four share is that
-   *  signing in again works — the session then lands in Hoard's own protected
+   *  signing in again works, the session then lands in Hoard's own protected
    *  file instead, and stays there. An older service doesn't classify, and then
    *  the general sentence is what shows, exactly as before. */
   function keyringMessageKey(fault: KeyringFault | null | undefined): string {

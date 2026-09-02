@@ -3,7 +3,7 @@
    * Floating bottom-right panel listing recent `agent://*` activity.
    *
    * Toggled from the sidebar (📜 button) and persisted via
-   * `prefs.live_activity_visible`. Read-only — the entries come from
+   * `prefs.live_activity_visible`. Read-only, the entries come from
    * `live.ts`'s `activityFeed` circular buffer.
    *
    * We render at most 50 visible rows. The buffer holds more (80) so
@@ -149,7 +149,7 @@
 
   // Tick once a second so relative timestamps stay honest. Wrapped in a
   // counter so Svelte 5 notices the change. Skipped while the window is hidden
-  // — no visible timestamps to keep honest, so don't force re-renders.
+  //, no visible timestamps to keep honest, so don't force re-renders.
   let tick = $state(0);
   let timer: ReturnType<typeof setInterval>;
   $effect(() => {

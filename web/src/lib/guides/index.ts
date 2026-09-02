@@ -5,8 +5,8 @@ import { LOCALES, DEFAULT_LOCALE, type Locale } from '$lib/i18n/locales';
  * File-based guide content. Each guide is a folder under `content/<slug>/` with
  * one Markdown file per locale (`en.md`, `es.md`, …). Frontmatter carries the
  * title/description/order; the body is rendered to HTML at build time. Routing
- * uses a fixed `/guides/<slug>` segment in every language — what ranks is the
- * localized title/H1/body + hreflang, not a translated URL — so adding a guide
+ * uses a fixed `/guides/<slug>` segment in every language, what ranks is the
+ * localized title/H1/body + hreflang, not a translated URL, so adding a guide
  * is just dropping 8 Markdown files in, no routing changes.
  */
 
@@ -36,7 +36,7 @@ marked.setOptions({ gfm: true, breaks: false });
 // (`javascript:`/`data:`/`vbscript:`) in links and images. `walkTokens` runs
 // before rendering, so we neutralize those tokens in place: drop raw HTML
 // entirely and rewrite any unsafe link/image URL to a harmless anchor. Pure-JS
-// and isomorphic — it holds at prerender (Node) and on client navigation — with
+// and isomorphic, it holds at prerender (Node) and on client navigation, with
 // no extra runtime dependency (jsdom-based sanitizers break the SSR build).
 const SAFE_URL = /^(?:https?:|mailto:|tel:|#|\/|\.\/|\.\.\/)/i;
 

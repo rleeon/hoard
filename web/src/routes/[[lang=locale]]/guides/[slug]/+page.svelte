@@ -12,7 +12,7 @@
 
   // Guide bodies use root-relative links (e.g. /guides/ludusavi-alternative).
   // The HTML is parsed once per locale-file, so prefix in-app links with the
-  // active locale here — otherwise a Spanish page would link to bare English.
+  // active locale here, otherwise a Spanish page would link to bare English.
   // English prefix is '' (no change); external/anchor/mailto links don't match.
   const localizedHtml = $derived(
     localePrefix(active)
@@ -186,7 +186,7 @@
   }
   /* First guide to carry a Markdown table is the tool comparison, and a
      six-column table never fits a phone. `display: block` + `width: max-content`
-     is the only way to make it scroll on its own without a wrapper element —
+     is the only way to make it scroll on its own without a wrapper element,
      the Markdown pipeline strips raw HTML, so there is no div to hang it on. */
   .prose :global(table) {
     display: block;

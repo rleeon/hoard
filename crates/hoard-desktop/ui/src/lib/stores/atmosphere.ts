@@ -1,14 +1,14 @@
 /**
- * Background atmosphere — how the empty space behind the app is painted.
+ * Background atmosphere, how the empty space behind the app is painted.
  *
  * Obsidian's canvas is pure black with a faint grain tile over it. That was a
  * deliberate call for WOLED panels (see the note in `app.css`): no top glow,
  * so the black stays genuinely off and never blinks. It is a good default and
- * a bad decree — some people run an IPS panel and want the glow back, others
+ * a bad decree, some people run an IPS panel and want the glow back, others
  * want the grain gone. So the call becomes a choice, with today's look as the
  * one that stays selected for everyone who never opens this setting.
  *
- * Pure UI, so it lives in `localStorage` and never touches the Rust `Prefs` —
+ * Pure UI, so it lives in `localStorage` and never touches the Rust `Prefs`,
  * same reasoning as the theme, the accent and the relief intensity.
  *
  * The value lands on `<html data-atmos>` and everything else is `app.css`.
@@ -34,7 +34,7 @@ function readInitial(): AtmosphereId {
     const v = localStorage.getItem(STORAGE_KEY);
     if (v && (VALID as string[]).includes(v)) return v as AtmosphereId;
   } catch {
-    /* storage disabled / private mode — the default look for this session */
+    /* storage disabled / private mode, the default look for this session */
   }
   return DEFAULT;
 }

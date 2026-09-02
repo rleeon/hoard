@@ -1,8 +1,8 @@
 /**
  * Mandos de depuración del HUD. **TEMPORAL.**
  *
- * Existen para afinar el aspecto en vivo —opacidad del fondo, del texto,
- * tamaño de letra— y decidir los valores definitivos mirando el HUD sobre un
+ * Existen para afinar el aspecto en vivo,opacidad del fondo, del texto,
+ * tamaño de letra, y decidir los valores definitivos mirando el HUD sobre un
  * juego de verdad, que es la única forma de acertar con una superficie
  * translúcida. Cuando los números estén elegidos, esto se borra entero: el
  * store, `OverlayDebug.svelte` y su render en `Overlay.svelte`.
@@ -51,7 +51,7 @@ function read(): OverlayDebug {
     const raw = localStorage.getItem(KEY);
     if (raw) return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<OverlayDebug>) };
   } catch {
-    /* almacenamiento caído o JSON corrupto — a los valores por defecto */
+    /* almacenamiento caído o JSON corrupto, a los valores por defecto */
   }
   return { ...DEFAULTS };
 }

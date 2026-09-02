@@ -26,7 +26,7 @@ export const supabase = createClient(
  * even `{ scope: 'local' }` issues `POST /logout?scope=local`, which revokes
  * the shared session on the server and signs the desktop app out as soon as
  * its access token expires. Instead we kill the in-memory auto-refresh timer
- * and delete the persisted copy by hand — the tokens we handed the app stay
+ * and delete the persisted copy by hand, the tokens we handed the app stay
  * valid.
  */
 export async function dropLocalSession(): Promise<void> {

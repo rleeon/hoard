@@ -26,8 +26,8 @@
   // host: a local/private address (a self-hosted server with no reverse proxy)
   // speaks plain HTTP, while a public domain is assumed to sit behind TLS.
   // This avoids the classic trap of turning "myserver:12421" into an https://
-  // URL that a no-TLS LAN box can't answer — the #1 "can't reach" cause.
-  // Returns `null` when the string can't be a host at all (contains spaces —
+  // URL that a no-TLS LAN box can't answer, the #1 "can't reach" cause.
+  // Returns `null` when the string can't be a host at all (contains spaces,
   // e.g. someone typed a friendly name like "mi servidor").
   function normalizeUrl(raw: string): string | null {
     const s = raw.trim();
@@ -99,7 +99,7 @@
 
   // Back navigation. A user who already has an active session (they came here
   // from "connect to your server" inside the app) must not get trapped in the
-  // wizard — send them back to the account page. A brand-new user goes to the
+  // wizard, send them back to the account page. A brand-new user goes to the
   // welcome step as before.
   function back() {
     if ($auth.user) {

@@ -2,7 +2,7 @@
  * Texto de los eventos del feed (`agent://*`), compartido.
  *
  * Vivía dentro de `ActivityFeed.svelte`. Al aparecer una segunda superficie que
- * enseña los mismos eventos —el HUD sobre el juego— duplicarlo garantizaba que
+ * enseña los mismos eventos,el HUD sobre el juego, duplicarlo garantizaba que
  * los dos textos se separaran a la primera línea que alguien tocara, así que
  * está aquí.
  *
@@ -89,7 +89,7 @@ export function feedSummary(e: FeedEntry, $_: Translate): string {
     case "backup_too_large":
       // Which sentence depends on who refused it, because the fix is in a
       // different place each time. The feed used to say "Upgrade to Pro" no
-      // matter what — including to self-hosters, whose server had simply hit
+      // matter what, including to self-hosters, whose server had simply hit
       // `max_snapshot_size_mb`, and with `{size}` rendered as "0 B" because
       // only Cloud knows the save's real size up front.
       if (e.too_large_kind === "server_limit" && (e.limit_bytes ?? 0) > 0) {

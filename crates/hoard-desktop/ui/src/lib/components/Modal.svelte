@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Lightweight modal/dialog. We don't pull in a dialog library — a fixed
+   * Lightweight modal/dialog. We don't pull in a dialog library, a fixed
    * overlay + a focusable card covers our needs (confirm, restore, edit
    * path) and avoids one more JS dep in the bundle.
    *

@@ -3,7 +3,7 @@
  *
  * The detect + track + backup-sweep work itself now lives **entirely in Rust**
  * (`commands/automatic.rs`): two Tokio tickers drive it so it keeps running
- * while the window is minimized to the tray during a gaming session — back
+ * while the window is minimized to the tray during a gaming session, back
  * when this logic lived in the frontend it silently stalled whenever WebView2
  * suspended the background window ("nothing got monitored no matter how long
  * passed").
@@ -75,7 +75,7 @@ type SaveConflictsBackedUp = {
 
 /**
  * Subscribe to the Modo Automático events the Rust scheduler emits. Idempotent
- * — calling twice does nothing on the second call. Designed to be invoked once
+ *, calling twice does nothing on the second call. Designed to be invoked once
  * from `App.svelte::onMount` and never torn down (the listeners cost nothing
  * when no events fire).
  *
@@ -92,7 +92,7 @@ export function initAutomaticListener(): void {
     }),
     listen<ScanComplete>("automatic-scan-complete", (event) => {
       const { tracked } = event.payload;
-      // Stay silent when nothing new turned up — this fires on every periodic
+      // Stay silent when nothing new turned up, this fires on every periodic
       // scan (minutes apart), so a recurring "nothing new" toast is just noise.
       if (tracked > 0) {
         toastSuccess(tr("automatic.tracked_summary", { count: tracked }));

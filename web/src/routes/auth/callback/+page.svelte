@@ -17,7 +17,7 @@
 
   /**
    * A denied or failed provider round-trip comes back as `error` +
-   * `error_description` — in the query on PKCE, in the fragment on implicit.
+   * `error_description`, in the query on PKCE, in the fragment on implicit.
    * We used to ignore both and print "we couldn't finish signing you in",
    * which is how "you clicked Cancel on Google's consent screen" and "the
    * provider is misconfigured" became the same dead end.
@@ -34,7 +34,7 @@
   // Once we've handed off to the desktop app we stop the spinner and show a
   // terminal success state. Setting `window.location.href = "hoard://…"` blocks
   // the page (the browser hands control to the OS handler), so a CSS spinner
-  // appears frozen — we render a static checkmark instead and keep the deep
+  // appears frozen, we render a static checkmark instead and keep the deep
   // link around for a manual retry.
   let handoffUrl = $state<string | null>(null);
 
@@ -52,7 +52,7 @@
   // Either way the tokens ride in the QUERY string (not the fragment): a
   // fragment never reaches the loopback server, and on Linux/Windows the OS
   // scheme handler frequently drops it from argv too. There's no log-leak
-  // concern — 127.0.0.1 stays on the box and `hoard://` never hits a server.
+  // concern, 127.0.0.1 stays on the box and `hoard://` never hits a server.
   async function bounceToApp(s: Session) {
     const port = $page.url.searchParams.get('port');
     // CSRF nonce minted by the desktop app. Both handoff paths reject the
@@ -72,7 +72,7 @@
     message = $_('callback.desktop_return');
     // The desktop app now owns this session (it shares this tab's refresh-token
     // family). Stop this tab from auto-refreshing it in the background and drop
-    // its persisted copy — WITHOUT a server-side logout. See dropLocalSession:
+    // its persisted copy, WITHOUT a server-side logout. See dropLocalSession:
     // signOut({ scope: 'local' }) hits POST /logout and would revoke the shared
     // session, signing the app out too.
     await dropLocalSession();

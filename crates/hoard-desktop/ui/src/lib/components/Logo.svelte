@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Hoard mark — the green gradient "H" inside a dark rounded tile, matching
+   * Hoard mark, the green gradient "H" inside a dark rounded tile, matching
    * the app icon (`crates/hoard-desktop/icons/icon.png`). Replaces the generic
    * lucide `Archive` box that used to stand in for the logo in the sidebar.
    *
@@ -8,7 +8,7 @@
    * so it stays crisp at any size, and so the gem can be recoloured: the two
    * stops and the tile's ring read `--logo-gem-*`, which the accent picker in
    * Settings repoints to the user's chosen hue. The tile itself stays
-   * near-black on every theme — it's the mark, not a surface.
+   * near-black on every theme, it's the mark, not a surface.
    */
   type Props = { size?: number; class?: string };
   let { size = 36, class: klass = "" }: Props = $props();

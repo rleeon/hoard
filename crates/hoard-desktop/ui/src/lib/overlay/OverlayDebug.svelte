@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Panel de depuración del HUD. **TEMPORAL** — ver `debug.svelte.ts`.
+   * Panel de depuración del HUD. **TEMPORAL**, ver `debug.svelte.ts`.
    *
    * Deliberadamente sin traducir y sin pulir: es andamio para elegir los
    * valores definitivos de opacidad y tamaño mirando el HUD sobre un juego

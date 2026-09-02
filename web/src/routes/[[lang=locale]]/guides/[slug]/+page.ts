@@ -12,7 +12,7 @@ export const load = ({ params }) => {
 /**
  * Enumerate every (locale × slug) combo so each guide is prerendered in all 8
  * languages. Each slug is emitted at the bare path (English, no `lang`) AND
- * under every locale prefix — including `/en/...`, an explicit alias of the
+ * under every locale prefix, including `/en/...`, an explicit alias of the
  * bare English guide.
  */
 export const entries = () =>

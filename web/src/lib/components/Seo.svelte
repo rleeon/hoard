@@ -14,13 +14,13 @@
   interface Props {
     /** App path without locale prefix, e.g. '/pricing' or '/' for the home. */
     path: string;
-    /** i18n key base under `seo.` — reads `seo.<key>.title` / `seo.<key>.desc`. */
+    /** i18n key base under `seo.`, reads `seo.<key>.title` / `seo.<key>.desc`. */
     key?: string;
     /** Explicit title; overrides `key`. Used by content pages (guides). */
     title?: string;
     /** Explicit description; overrides `key`. */
     description?: string;
-    /** og:type — 'website' (default) or 'article' for guides/blog. */
+    /** og:type, 'website' (default) or 'article' for guides/blog. */
     type?: string;
     /** OG/Twitter image, absolute path under the site root. */
     image?: string;

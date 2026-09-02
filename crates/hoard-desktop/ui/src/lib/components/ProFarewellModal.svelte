@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * "Veo que te vas" — la despedida de Pro. Salta una sola vez, en mitad de la
+   * "Veo que te vas", la despedida de Pro. Salta una sola vez, en mitad de la
    * aplicación, cuando vemos por primera vez la cancelación: o una baja
    * programada (`cancel_at`, todavía en Pro) o la cuenta ya caída a Free sin
    * que hubiéramos visto la baja (ver `stores/planEvents.ts`).
@@ -8,7 +8,7 @@
    * Lleva dentro el picker de *Liberar espacio* a propósito. Cancelar no es un
    * trámite: el almacenamiento baja a 2 GB y lo que no quepa se archiva. Ese
    * número el usuario no lo tiene en la cabeza el día que cancela, y la
-   * aplicación sí — así que aquí se le enseña **con sus juegos y sus bytes**,
+   * aplicación sí, así que aquí se le enseña **con sus juegos y sus bytes**,
    * midiendo contra el límite al que va a caer y no contra el que aún tiene.
    * Puede elegir ahora qué se va a la caja negra, o volver a Pro y no tener que
    * elegir nada.

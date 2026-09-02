@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Notifications dropdown — anchored below the bell button (top-right).
+   * Notifications dropdown, anchored below the bell button (top-right).
    *
    * Shows server + app notifications from the `notifications` store. When
    * empty, displays a clean placeholder. Each notification renders its `body`

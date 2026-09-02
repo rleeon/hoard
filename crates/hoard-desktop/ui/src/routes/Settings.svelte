@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Settings — every persistent app preference lives here.
+   * Settings, every persistent app preference lives here.
    *
    * Each row is its own atomic toggle: flipping a switch writes to disk
    * immediately, so users don't have to hunt for a Save button. The "danger"
@@ -123,13 +123,13 @@
   }
 
   // The named gems. `gemFor` returns null for a hue that matches no preset,
-  // which is exactly when the custom slider should already be open — otherwise
+  // which is exactly when the custom slider should already be open, otherwise
   // someone who picked 187 degrees last week reopens Settings and finds no
   // gem selected and no slider to explain why.
   let customOpen = $state(gemFor($accentHue) == null);
   const selectedGem = $derived(gemFor($accentHue));
 
-  /** The mark's gradient for a given hue, as an inline `background` — same
+  /** The mark's gradient for a given hue, as an inline `background`, same
    *  maths the logo uses, so a swatch previews the real thing. */
   function gemStyle(hue: number | null): string {
     const { from, to } = gemSwatch(hue);
@@ -147,7 +147,7 @@
       "background: radial-gradient(90% 90% at 50% 45%, oklch(0.32 0.01 165), #050505 100%);",
   };
 
-  // Interface scale. Engine zoom, so `onchange` would feel laggy — `oninput`
+  // Interface scale. Engine zoom, so `onchange` would feel laggy, `oninput`
   // zooms while dragging, and the slider rides its own zoom, which is odd for
   // a second and then obviously right.
   function onScaleInput(e: Event): void {
@@ -155,8 +155,8 @@
     if (Number.isFinite(v)) setUiScale(v / 100);
   }
 
-  // Intensidad del relieve: 0 lo apaga, 100 son los 8° históricos, 50 —el
-  // defecto— la mitad. En `oninput` (no `onchange`) para que se note mientras
+  // Intensidad del relieve: 0 lo apaga, 100 son los 8° históricos, 50,el
+  // defecto, la mitad. En `oninput` (no `onchange`) para que se note mientras
   // se arrastra.
   function onMotionInput(e: Event): void {
     const v = Number((e.currentTarget as HTMLInputElement).value);
@@ -259,8 +259,8 @@
   }
 
   // Why the sync *service* isn't set to start at login, when it isn't. The
-  // switch below registers two things — the app's launcher entry and the
-  // service's own unit — and the second one can fail where the first can't:
+  // switch below registers two things, the app's launcher entry and the
+  // service's own unit, and the second one can fail where the first can't:
   // an AppImage runs from a mount that's gone by the next login, and a machine
   // without systemd has nowhere to declare a unit. Saying so here is the whole
   // point: this used to be a line in the service's log, so the switch read "on"
@@ -301,7 +301,7 @@
   let catalogStage = $state<string>("");
   let unlistenCatalog: UnlistenFn | null = null;
 
-  // Hidden diagnostics panel — only visible after 5 clicks on the sidebar
+  // Hidden diagnostics panel, only visible after 5 clicks on the sidebar
   // version. We re-poll every 2s while the page is open; the round-trip is
   // cheap (just locks a Mutex + a oneshot through the agent loop).
   let diagnosticsUnlocked = $state(false);
@@ -396,7 +396,7 @@
   );
   // The remote-upgrade button asks the server to upgrade *itself* over HTTP
   // (ADR 0017), so it works from any OS and whether the server is local or on
-  // another box. The only requirement is an admin token — the server rejects
+  // another box. The only requirement is an admin token, the server rejects
   // the request otherwise. Non-admins fall back to copying the shell command.
   const canInAppUpgrade = $derived(
     $auth.user?.is_admin === true && $auth.user?.is_cloud_server !== true,
@@ -442,7 +442,7 @@
         console.warn("post-upgrade probe failed:", e),
       );
     } catch (e) {
-      // The command fails with a structured AppError (i18n keys) — surface it
+      // The command fails with a structured AppError (i18n keys), surface it
       // through the global error dialog so the user sees the actual reason
       // (not logged in, forbidden, unreachable…) rather than a raw string.
       showError(e);
@@ -606,8 +606,8 @@
 
   // Dos interruptores, no uno: la telemetría de diagnóstico promete en su
   // texto que nunca manda nombres de juegos, y el playtime son nombres de
-  // juegos por construcción. Apagar el de Wrapple no manda nada — tampoco un
-  // aviso de que está apagado — y su descripción dice lo que cuesta.
+  // juegos por construcción. Apagar el de Wrapple no manda nada, tampoco un
+  // aviso de que está apagado, y su descripción dice lo que cuesta.
   const privacyRows: Row[] = $derived([
     {
       field: "anonymous_telemetry",
@@ -641,7 +641,7 @@
   // Cloud-only toggles. The old "Modo ahorro (solo subida)"
   // (`cloud_savings_mode`) toggle was removed from the UI (2026-07-04): it
   // confused more than it helped and the pref was never actually consumed by
-  // the agent. The pref field is kept as dead code for possible future use —
+  // the agent. The pref field is kept as dead code for possible future use,
   // see `Prefs.cloud_savings_mode`.
   const cloudRows: Row[] = $derived([
     {

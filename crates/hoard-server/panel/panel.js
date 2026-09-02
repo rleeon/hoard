@@ -3,7 +3,7 @@
  * No framework and no build step: the whole thing is three files compiled into
  * the server binary, and adding a toolchain would mean a self-hoster's `cargo
  * install` needs node. The trade is that state management is manual, so it is
- * kept trivial — every tab re-fetches and re-renders, there is no client-side
+ * kept trivial, every tab re-fetches and re-renders, there is no client-side
  * cache to invalidate, and the only shared state is the session and the
  * locale.
  *
@@ -181,7 +181,7 @@ class ApiError extends Error {
     super(code || String(status));
     this.status = status;
     this.code = code;
-    // Some failures carry a number worth showing — how long the login throttle
+    // Some failures carry a number worth showing, how long the login throttle
     // is holding the door, for one. Keeping the parsed body means the caller
     // doesn't have to re-read a consumed response.
     this.body = body || {};
@@ -199,8 +199,8 @@ async function api(path, opts = {}) {
   try { body = await res.json(); } catch { /* not every failure is JSON */ }
   const code = body.error || null;
 
-  // A 401 normally means the session died under us — expired, or revoked from
-  // the users tab — and the honest response is to show the gate. But the
+  // A 401 normally means the session died under us, expired, or revoked from
+  // the users tab, and the honest response is to show the gate. But the
   // password-change endpoint answers 401 for a wrong *current* password, and
   // treating that as a dead session threw the user out to the login screen
   // over a typo. The server distinguishes them by code; trust it.
@@ -840,7 +840,7 @@ async function newUser() {
     toast(t("users.created", { user: created.username }));
     await renderUsers();
     // The account is useless until a PC can reach it, and the operator is
-    // already here — offer the token instead of making them find the button.
+    // already here, offer the token instead of making them find the button.
     await newToken(created.id);
   } catch (e) {
     toast(errorText(e), true);
@@ -1015,7 +1015,7 @@ async function newToken(presetUserId) {
 }
 
 // The token in the clear, once. Only its SHA-256 is stored, so closing this
-// without copying means minting another one — which is why the dialog says so
+// without copying means minting another one, which is why the dialog says so
 // and the only button is "done".
 async function showToken(minted) {
   const dlg = $("dlg-confirm");
@@ -1144,8 +1144,8 @@ async function renderLogs() {
 // password change
 // ---------------------------------------------------------------------------
 
-/// Always open empty. Leaving whatever was there — a failed attempt, or the
-/// browser's autofill — is how you end up typing into a field that already had
+/// Always open empty. Leaving whatever was there, a failed attempt, or the
+/// browser's autofill, is how you end up typing into a field that already had
 /// content and getting "wrong password" with no idea why.
 function openPasswordDialog() {
   for (const id of ["f-current", "f-new"]) {
@@ -1251,7 +1251,7 @@ async function refresh() {
 /// EventSource sends it, reconnects on its own, and costs one idle connection.
 ///
 /// A "save" event means some machine just pushed a version. The panel does not
-/// try to patch the row in place — it re-runs whatever tab you are on, coalesced
+/// try to patch the row in place, it re-runs whatever tab you are on, coalesced
 /// so a device uploading five saves in a row repaints once.
 function listen() {
   let timer = null;
@@ -1346,8 +1346,8 @@ async function boot() {
   wireReveals();
   current = location.hash.replace(/^#/, "") || "summary";
 
-  // A live cookie means no login screen at all. Anything else — expired,
-  // revoked, never had one — lands on the gate without an error message: a
+  // A live cookie means no login screen at all. Anything else, expired,
+  // revoked, never had one, lands on the gate without an error message: a
   // first visit is not a failure.
   try {
     const who = await api("/v1/auth/whoami");

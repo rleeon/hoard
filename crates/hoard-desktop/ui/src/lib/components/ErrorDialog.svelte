@@ -3,7 +3,7 @@
    * Single-instance error dialog wired to the `errorDialog` store.
    *
    * We render `<Modal>` with `open` driven by `error != null` so the dialog
-   * mounts/unmounts cleanly. `title` and `body` are i18n keys — when they
+   * mounts/unmounts cleanly. `title` and `body` are i18n keys, when they
    * don't resolve (e.g. an `AppError::plain(raw_msg)` wrapping a verbatim
    * Rust error) svelte-i18n returns the key as-is, which still produces a
    * readable line for the user. The optional `detail` is hidden behind a

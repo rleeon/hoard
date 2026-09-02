@@ -1,13 +1,13 @@
 <script lang="ts">
   /**
-   * "Vincular a esta máquina" for a cloud orphan — a save that lives in the
+   * "Vincular a esta máquina" for a cloud orphan, a save that lives in the
    * cloud from ANOTHER machine, with no local folder here.
    *
    * The folder picker used to be the only way through, even when detection
    * already knew where the game saves on this machine. So the offer is now, in
    * order:
    *
-   * 1. Folders detected for THIS slug — one click, no thinking.
+   * 1. Folders detected for THIS slug, one click, no thinking.
    * 2. Any other game detected here, pickable by NAME. The slug match is exact,
    *    and two machines routinely slug one game differently (a Steam copy on
    *    one side, a loose install on the other): before this, that difference
@@ -15,7 +15,7 @@
    *    already found. Best name match comes first and is badged.
    * 3. The folder picker, still there for what detection genuinely missed.
    *
-   * Cold cache (never scanned — the case for anyone who never turned on Modo
+   * Cold cache (never scanned, the case for anyone who never turned on Modo
    * Automático) is deliberately NOT rendered as "nothing found": we don't
    * know, so we offer the scan.
    *
@@ -42,7 +42,7 @@
   type Props = {
     open: boolean;
     orphan: TrackedSave | null;
-    /** Folders this machine already tracks — dropped from the candidate list so
+    /** Folders this machine already tracks, dropped from the candidate list so
      *  two saves can't end up backing up one folder. */
     trackedPaths?: string[];
     onClose: () => void;
@@ -120,7 +120,7 @@
     }
   }
 
-  /** Picking a game links its strongest save folder — the same one automatic
+  /** Picking a game links its strongest save folder, the same one automatic
    *  tracking would have chosen. */
   function pickGame(c: LinkCandidate) {
     if (c.paths.length > 0) onPick(c.paths[0].path);

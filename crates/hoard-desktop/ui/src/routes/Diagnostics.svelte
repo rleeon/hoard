@@ -5,7 +5,7 @@
    * Unlocked via the 5-click gesture on the sidebar version button (the same
    * gesture that reveals the Agent Diagnostics card in Settings). Lets the
    * user (or a triager) type a slug and replay the detection pipeline,
-   * surfacing every step's input/output. The Tauri command is read-only —
+   * surfacing every step's input/output. The Tauri command is read-only,
    * nothing here writes to the detection cache or `state.json`.
    */
   import { ArrowLeft, Search } from "@lucide/svelte";

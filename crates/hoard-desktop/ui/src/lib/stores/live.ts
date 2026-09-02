@@ -4,16 +4,16 @@
  * Subscribes to the `agent://*` event firehose (the same one `agent.ts`
  * listens to, but for a different purpose):
  *
- *  - {@link liveStatus} — coarse derived state for the LiveStatus header
+ *  - {@link liveStatus}, coarse derived state for the LiveStatus header
  *    widget. Two dots: "watcher" (local fs watcher armed?) and "cloud"
  *    (manifest poller getting 2xx?). Pure UI.
- *  - {@link activityFeed} — bounded circular buffer of recent events for
+ *  - {@link activityFeed}, bounded circular buffer of recent events for
  *    the ActivityFeed panel. Capped at {@link MAX_FEED_ENTRIES} so a
  *    long-running session doesn't grow memory unbounded.
  *
  * The store is intentionally decoupled from `agent.ts`: that one drives
  * per-save state + tray + notifications. This one is the "honest status"
- * surface for the new 1.7.0 UX — keeping them separate lets each
+ * surface for the new 1.7.0 UX, keeping them separate lets each
  * subscriber own its concern without one's payload shape leaking into
  * the other.
  */
@@ -52,7 +52,7 @@ export type FeedEntry = {
     | "quota_reached"
     | "offline"
     | "online"
-    // Per-save plan-limit outcomes — surfaced here (not as toasts) so the
+    // Per-save plan-limit outcomes, surfaced here (not as toasts) so the
     // reconciliation sweep doesn't spam a popup per save on every launch.
     | "backup_too_large"
     // The account ran out of storage. Account-wide, not per-save: the engine
@@ -81,7 +81,7 @@ export type FeedEntry = {
     // nothing is deleted until the date. The row exists so the countdown is
     // seen *before* the shrink, which is the whole point of the window.
     | "storage_grace"
-    // Pro-gate (Hoard-Screen) transitions — pushed from the entitlements store
+    // Pro-gate (Hoard-Screen) transitions, pushed from the entitlements store
     // when the gate visibly flips between locked and unlocked, with the cause
     // in `reason_key` (an i18n key). Lets the user see WHY the candado
     // changed without opening a log file.
@@ -102,7 +102,7 @@ export type FeedEntry = {
   limit_bytes?: number;
   /** Who refused the upload, for the `backup_too_large` row. The row's sentence
    *  follows this: a plan cap, the user's own server's `max_snapshot_size_mb`,
-   *  or a proxy in front of it — three different fixes. Absent on rows written
+   *  or a proxy in front of it, three different fixes. Absent on rows written
    *  before this existed, which render as the plan cap they used to assume. */
   too_large_kind?: "plan_cap" | "server_limit" | "proxy";
   /** Consecutive failures, for the `auto_restore_stuck` row. */
@@ -141,16 +141,16 @@ export const cloudLoop: Writable<CloudState> = writable({
 
 export const activityFeed: Writable<FeedEntry[]> = writable([]);
 
-/** "The account is out of storage and uploads are parked" — the same fact the
+/** "The account is out of storage and uploads are parked", the same fact the
  *  `backup_quota_full` feed row reports, kept as *state* instead of a scrolling
  *  event so a surface that must be visible at all times can read it without the
  *  activity panel being open (see `StorageFullBanner.svelte`).
  *
  *  `null` = uploads are flowing. Non-null carries the figures for the message.
  *  Two writers, on purpose:
- *   - the engine's 402 (`agent://backup-quota-full`) — instant, fires the moment
+ *   - the engine's 402 (`agent://backup-quota-full`), instant, fires the moment
  *     an upload actually bounces;
- *   - the account refresh (`noteStorageStatus`) — authoritative, and the only
+ *   - the account refresh (`noteStorageStatus`), authoritative, and the only
  *     thing that ever *clears* the flag, so a stale latch can't outlive the
  *     problem it describes. */
 export type StorageBlock = { used: number; limit: number };
@@ -173,7 +173,7 @@ export const liveStatus: Readable<"ok" | "warn" | "error" | "unknown"> =
 /** Seed the watcher state straight from the agent's boot status.
  *
  *  The `agent://watcher-armed` events are emitted by `start_agent` the instant
- *  it spawns — which happens during `hydrateAuth()`/`bootAgent()`, *before*
+ *  it spawns, which happens during `hydrateAuth()`/`bootAgent()`, *before*
  *  `subscribeLive()` has registered its listener. Those events are therefore
  *  routinely missed, leaving the header stuck on "watcher off" even though the
  *  agent is happily watching. `bootAgent` calls this with the watched-save
@@ -206,7 +206,7 @@ type BacklogRow = { at: number; event: AgentEvent };
  *  One mapping, two callers: the backlog replay below and {@link adoptJournal}.
  *  They used to be one `switch` each, which is how two surfaces drift into
  *  telling slightly different stories about the same event. The pair that only
- *  exists as a *live* alias (`agent://throttled`) is deliberately absent —
+ *  exists as a *live* alias (`agent://throttled`) is deliberately absent,
  *  "queued, waiting" is a momentary state, not history worth resurrecting. */
 function feedRowFor(p: AgentEvent): Omit<FeedEntry, "id" | "at"> | null {
   switch (p.type) {
@@ -324,7 +324,7 @@ function feedRowFor(p: AgentEvent): Omit<FeedEntry, "id" | "at"> | null {
 }
 
 /** Rebuild feed rows from what the service journalled while nobody was
- *  listening — the app was closed, or we reconnected.
+ *  listening, the app was closed, or we reconnected.
  *
  *  The feed is **not** cleared on `resync`: rows only ever arrive newer than
  *  our cursor, and it also holds rows from other sources (cloud pulls, gate
@@ -338,7 +338,7 @@ function applyBacklogRow({ at, event }: BacklogRow) {
  *
  *  This is the read-only path, for a surface that doesn't subscribe at all: it
  *  asks Rust what the journal says and paints that. Replacing rather than
- *  merging is the whole point — there is no cursor to keep, no gap to reason
+ *  merging is the whole point, there is no cursor to keep, no gap to reason
  *  about and no way to double-count a row, because the snapshot *is* the state.
  *
  *  `seq` becomes the row id, so re-reading the same journal yields the same
@@ -527,7 +527,7 @@ export async function subscribeLive() {
           last_ok_at: Date.now(),
           retry_in: null,
         }));
-        // Only push to the feed when something actually changed — a
+        // Only push to the feed when something actually changed, a
         // baseline "247 saves, 0 new" poll is uninteresting noise.
         if (p.new_versions > 0) {
           pushEntry({
@@ -772,7 +772,7 @@ export function resetLive() {
 
 /** Reset only the cloud-loop dot to its neutral baseline, leaving the local
  *  watcher state and the activity feed intact. Used on terminal session expiry,
- *  where the cloud half is signed out but the local agent keeps watching — so a
+ *  where the cloud half is signed out but the local agent keeps watching, so a
  *  full `resetLive()` would wrongly blank the watcher dot. */
 export function resetCloudLoop() {
   cloudLoop.set({ status: "unknown", last_ok_at: null, retry_in: null });

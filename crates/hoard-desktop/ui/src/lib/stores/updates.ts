@@ -5,7 +5,7 @@
  * `/v1/health` `version` of the user's current server. The Rust side does
  * the work; this module is a thin TS shim with a result-type re-export.
  *
- * We don't poll on a timer — the Settings page hits the IPC on mount and
+ * We don't poll on a timer, the Settings page hits the IPC on mount and
  * the sidebar consumes the cached result via the `lastReport` store.
  * That keeps GitHub's rate limit happy (the API allows 60 req/h
  * unauthenticated) without forcing the user to think about it.
@@ -53,7 +53,7 @@ let notificationsAllowed = false;
 let permissionProbed = false;
 
 /** Ask the OS for permission once per session. Same pattern as
- *  `lib/stores/agent.ts`. Silent if the user denied — we just skip the
+ *  `lib/stores/agent.ts`. Silent if the user denied, we just skip the
  *  native banner; the amber sidebar badge is still there for when they
  *  open the window. */
 async function ensureNotificationPermission(): Promise<boolean> {
@@ -73,7 +73,7 @@ async function ensureNotificationPermission(): Promise<boolean> {
 }
 
 /**
- * Fire an OS notification when a new desktop release lands — but only the
+ * Fire an OS notification when a new desktop release lands, but only the
  * first time we see a given version. We persist the last notified version
  * in `prefs.last_update_notified_version`, so even across app restarts the
  * user only gets one banner per release.
@@ -108,7 +108,7 @@ async function notifyIfNewClientRelease(report: UpdateReport): Promise<void> {
   try {
     await updatePrefs({ last_update_notified_version: latest });
   } catch (e) {
-    // Persistence failures are non-fatal — worst case the user gets the
+    // Persistence failures are non-fatal, worst case the user gets the
     // banner again next session. That's preferable to silently never
     // notifying them because the prefs file was momentarily locked.
     console.warn("persisting last_update_notified_version failed:", e);
@@ -116,12 +116,12 @@ async function notifyIfNewClientRelease(report: UpdateReport): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// La actualización automática — lo que el servicio está haciendo
+// La actualización automática, lo que el servicio está haciendo
 // ---------------------------------------------------------------------------
 //
 // El bloque de abajo (`checkForUpdates` + `applyDesktopUpdate`) es el updater de
 // la ventana: mira GitHub y ofrece un botón. Sigue ahí como red de seguridad
-// —una máquina sin servicio corriendo no tiene quien la actualice—, pero ya no
+// una máquina sin servicio corriendo no tiene quien la actualice, pero ya no
 // es el camino normal.
 //
 // El normal es éste: **el servicio baja y aplica solo**, y la ventana lee su
@@ -202,7 +202,7 @@ export async function snoozeUpdate(hours: number): Promise<UpdateState> {
  *  Pasa de verdad y es el precio de que el servicio se actualice solo: releva
  *  los binarios y se reinicia, pero a la ventana ya abierta no la puede tocar.
  *  Sin esto el usuario se queda en la versión vieja hasta que cierre la app por
- *  su cuenta — que es exactamente el "se queda tan pancho" que veníamos a
+ *  su cuenta, que es exactamente el "se queda tan pancho" que veníamos a
  *  arreglar, sólo que un escalón más arriba. */
 export function windowIsBehind(
   state: UpdateState | null,
@@ -232,7 +232,7 @@ export function semverIsNewer(a: string, b: string): boolean {
 /**
  * Result of `apply_desktop_update`. `installer_launched` means we spawned the
  * platform installer (pkexec / msiexec / open); `downloaded` means we got the
- * file onto disk but couldn't launch — the UI tells the user to run it.
+ * file onto disk but couldn't launch, the UI tells the user to run it.
  */
 export type ApplyOutcome =
   | { kind: "installer_launched"; path: string; version: string }
@@ -241,7 +241,7 @@ export type ApplyOutcome =
 
 /** Download the latest desktop release asset and trigger the OS installer.
  *  Pass the version the modal offered (`expectedVersion`) so the Rust side can
- *  abort with `superseded` if a newer release appeared in the meantime — we
+ *  abort with `superseded` if a newer release appeared in the meantime, we
  *  never want to install an older build than GitHub's current "latest". */
 export async function applyDesktopUpdate(
   expectedVersion?: string,
@@ -265,7 +265,7 @@ export type ServerUpgradeOutcome =
 /**
  * Trigger an in-app upgrade of the user's self-hosted server. Linux only;
  * pops a polkit auth prompt (pkexec). Only works when the server shares the
- * machine with the desktop app — superseded by `triggerServerUpgrade` for
+ * machine with the desktop app, superseded by `triggerServerUpgrade` for
  * the general (cross-machine) case. Kept for the same-box convenience path.
  */
 export async function applyServerUpdate(): Promise<ServerUpgradeOutcome> {
@@ -284,7 +284,7 @@ export type RemoteUpgradeOutcome =
 
 /**
  * Ask the self-hosted server to upgrade *itself* over HTTP. Works from any
- * OS and whether the server is local or on another box — the server runs a
+ * OS and whether the server is local or on another box, the server runs a
  * signed self-upgrade and restarts. Requires an admin token; the Settings
  * panel gates the button on `auth.user.is_admin`.
  */
@@ -297,12 +297,12 @@ export async function triggerServerUpgrade(): Promise<RemoteUpgradeOutcome> {
 // ---------------------------------------------------------------------------
 //
 // Boot-time probes catch the moment the user opens the app, but the agent is
-// a tray-resident process — sessions stay alive for *days* in real usage and
+// a tray-resident process, sessions stay alive for *days* in real usage and
 // the original 6h cadence meant the user effectively had to reopen the
 // window to get an update prompt. 1.4.5 dropped the cadence to 30 minutes
 // because the GitHub API costs are still negligible (48 req/day worst-case,
 // well below the unauthenticated 60-req/h ceiling) and pairs each successful
-// detection with a native OS notification — the user no longer has to be
+// detection with a native OS notification, the user no longer has to be
 // looking at the window to find out.
 //
 // On failure (typically GitHub rate-limit or network hiccup) we
@@ -310,9 +310,9 @@ export async function triggerServerUpgrade(): Promise<RemoteUpgradeOutcome> {
 // capping at 6h. App tear-down (logout, app exit) cancels the timer via
 // the returned dispose function.
 
-/** 30 min in ms — the steady-state cadence when probes succeed. */
+/** 30 min in ms, the steady-state cadence when probes succeed. */
 const BASE_INTERVAL_MS = 30 * 60 * 1000;
-/** 6h — the longest we ever wait between attempts. */
+/** 6h, the longest we ever wait between attempts. */
 const MAX_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 /**
@@ -320,7 +320,7 @@ const MAX_INTERVAL_MS = 6 * 60 * 60 * 1000;
  * six hours. Returns a `dispose()` function the caller is expected to call
  * on logout / unmount.
  *
- * The first probe is NOT triggered here — the boot path in `App.svelte`
+ * The first probe is NOT triggered here, the boot path in `App.svelte`
  * already does an immediate probe right after auth settles, and we don't
  * want to fire two requests back-to-back. The first scheduled probe lands
  * `BASE_INTERVAL_MS` after `start()` returns.
@@ -339,11 +339,11 @@ export function startUpdatePoller(): () => void {
     timer = setTimeout(async () => {
       try {
         await checkForUpdates();
-        // Probe succeeded — reset the backoff so we resume the steady cadence.
+        // Probe succeeded, reset the backoff so we resume the steady cadence.
         delay = BASE_INTERVAL_MS;
       } catch (e) {
         // GitHub returns 403 on rate-limit and network blips throw too.
-        // We log at debug only — failing to know about a newer version
+        // We log at debug only, failing to know about a newer version
         // isn't user-facing.
         console.warn("scheduled update check failed:", e);
         delay = Math.min(delay * 2, MAX_INTERVAL_MS);

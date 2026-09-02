@@ -1,11 +1,11 @@
 <script lang="ts">
   /**
-   * "Gracias por apoyar Hoard" — salta una sola vez, en mitad de la aplicación,
+   * "Gracias por apoyar Hoard", salta una sola vez, en mitad de la aplicación,
    * la primera vez que vemos la cuenta en Pro después de no estarlo (ver
    * `stores/planEvents.ts`).
    *
    * No es un recibo: el recibo lo manda Polar. Es la única pantalla que explica
-   * qué acaba de comprar el usuario y —esto es lo importante— **qué parte se
+   * qué acaba de comprar el usuario y,esto es lo importante, **qué parte se
    * queda para siempre y qué parte depende de seguir pagando**. Los
    * dispositivos ilimitados no vuelven a bajar aunque cancele (`first_pro_at`
    * es un marcador de un solo sentido en el servidor); los 100 GB y Hoard

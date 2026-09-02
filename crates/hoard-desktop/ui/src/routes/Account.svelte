@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Account page — the entry point for everything Hoard Cloud.
+   * Account page, the entry point for everything Hoard Cloud.
    *
    * Three states:
    *   - signed out → render provider buttons (Google / GitHub / Discord /
@@ -217,7 +217,7 @@
    *
    * This page was Cloud-only: someone running their own server got the sign-up
    * pitch for a service they had deliberately not joined, with no view of the
-   * server they *were* signed in to — and, because the sidebar keys its first
+   * server they *were* signed in to, and, because the sidebar keys its first
    * entry off the cloud session too, a permanent "Sign in" while their backups
    * were reaching their own box just fine.
    *
@@ -245,7 +245,7 @@
     };
   });
 
-  /** `null` on a server too old to report the limit — a dash, never a zero. */
+  /** `null` on a server too old to report the limit, a dash, never a zero. */
   const maxSnapshotLabel = $derived(
     server?.max_snapshot_size_bytes && server.max_snapshot_size_bytes > 0
       ? formatBytes(server.max_snapshot_size_bytes)
@@ -304,7 +304,7 @@
     }
   }
 
-  /** Storage progress bar — 0 means "unlimited", which we surface as a
+  /** Storage progress bar, 0 means "unlimited", which we surface as a
    *  flat emerald bar and a "∞" cap label. */
   const storageView = $derived.by(() => {
     const a = account;
@@ -328,7 +328,7 @@
     // to the raw % only for older servers that don't send `storage_status`.
     const status = a.storage_status ?? "ok";
     const color =
-      // Sky first: inside a downgrade window the account is *fine* — it still
+      // Sky first: inside a downgrade window the account is *fine*, it still
       // has its old limit and nothing is being deleted. Painting it red or
       // amber would announce a problem that hasn't happened yet.
       status === "grace"
@@ -353,7 +353,7 @@
   });
 
   /** Scheduled storage downgrade not yet in effect. While this is set the user
-   *  keeps their current (larger) limit and nothing is purged — they have
+   *  keeps their current (larger) limit and nothing is purged, they have
    *  until `at` to export or trim. `null` when no change is pending. */
   const pendingDowngrade = $derived.by(() => {
     const a = account;
@@ -391,7 +391,7 @@
     };
   });
 
-  // Render `renews_at` / `cancel_at` as the user's local date — full RFC3339
+  // Render `renews_at` / `cancel_at` as the user's local date, full RFC3339
   // is too noisy for a billing card.
   function fmtDate(iso: string | null | undefined): string {
     if (!iso) return "—";

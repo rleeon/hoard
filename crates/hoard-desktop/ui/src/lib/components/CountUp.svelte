@@ -4,13 +4,13 @@
    * an ease-out curve whenever `value` changes (and on first mount). Renders a
    * tabular-num span so digits don't jitter as they change.
    *
-   * Under prefers-reduced-motion it snaps to `value` instantly — the figure is
+   * Under prefers-reduced-motion it snaps to `value` instantly, the figure is
    * still correct, just not animated.
    */
   type Props = {
     value: number;
     decimals?: number;
-    /** Suffix like "%" — kept out of the animated span so it never flashes. */
+    /** Suffix like "%", kept out of the animated span so it never flashes. */
     suffix?: string;
     duration?: number;
   };

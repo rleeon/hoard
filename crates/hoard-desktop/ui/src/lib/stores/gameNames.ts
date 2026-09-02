@@ -1,7 +1,7 @@
 /**
  * Local, per-device display-name overrides for tracked games.
  *
- * The backend key for a game is its `game_slug` — that never changes; it's
+ * The backend key for a game is its `game_slug`, that never changes; it's
  * what ties detection, cover art and the server row together. But detection
  * sometimes guesses an ugly or wrong-looking name, so we let the user pick a
  * prettier *visible* name. That override lives only on this machine

@@ -12,7 +12,7 @@
   //   - Step 02 "Detect your library": the real Dashboard screenshot.
   //   - Step 03 "Sync & history": the real History screenshot, in the same
   //     16:10 frame as step 02. This one is object-fill, so the smaller
-  //     screenshot fills the box exactly — no bars, nothing cropped — while
+  //     screenshot fills the box exactly, no bars, nothing cropped, while
   //     step 02 keeps object-cover.
   //
   // The ?v=1 on the screenshots is a cache key, not a version: the CDN in
@@ -21,7 +21,7 @@
   // A fresh query string sidesteps it; it can go once the cache is purged.
   //
   // Design (the user's pick out of ten layouts): step 01 as a full-width CTA
-  // banner — accent gradient, centered, download button — and steps 02/03 as
+  // banner, accent gradient, centered, download button, and steps 02/03 as
   // two cards below, both screenshots forced into the same 16:10 box so the
   // history one no longer reads as small next to the dashboard one.
 

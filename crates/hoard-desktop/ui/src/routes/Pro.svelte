@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Pantalla Pro — el destino de todo candado de la aplicación.
+   * Pantalla Pro, el destino de todo candado de la aplicación.
    *
    * Antes, pulsar un elemento bloqueado (Hoard-Screen en el rail, el CTA del
    * `ProGate`, la franja de prueba, el diálogo de cuota llena) llamaba a
@@ -10,8 +10,8 @@
    * navegador encima del juego.
    *
    * Ahora el candado trae aquí. Esta pantalla explica qué entra en Pro,
-   * compara los dos planes y deja el pago —que sí tiene que ocurrir fuera,
-   * porque la pasarela es Polar y no se puede empotrar— detrás de un botón
+   * compara los dos planes y deja el pago,que sí tiene que ocurrir fuera,
+   * porque la pasarela es Polar y no se puede empotrar, detrás de un botón
    * explícito que además avisa de que se abrirá el navegador. El salto al
    * exterior deja de ser una sorpresa y pasa a ser una decisión.
    *

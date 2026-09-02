@@ -16,13 +16,13 @@ import type { AccountProfile, BillingCycle, DeviceRow, PlanId, UsageEvent } from
  * concrete reason a user can quote in a bug report.
  *
  * `status === 0` is the special case for "the request never reached the
- * server" — DNS, CORS, offline. It reads very differently to a user than a
+ * server", DNS, CORS, offline. It reads very differently to a user than a
  * 500, and conflating the two is how "the checkout is broken" and "your wifi
  * dropped" ended up as the same sentence.
  *
  * Every method below throws this on failure. They used to fail three
- * different ways — a flat `Error` whose message was the only clue, a
- * swallowed failure that returned `[]`, or no status check at all — so
+ * different ways, a flat `Error` whose message was the only clue, a
+ * swallowed failure that returned `[]`, or no status check at all, so
  * "unlinking that device failed" and "you have no devices" rendered
  * identically, and a failed account deletion still signed you out and sent
  * you home as though it had worked.
@@ -59,8 +59,8 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
   }
   if (res.ok) return res;
 
-  // Errors come back as `{error, code}`. Anything else — a proxy's HTML 502,
-  // an empty body — still yields its raw text rather than nothing at all.
+  // Errors come back as `{error, code}`. Anything else, a proxy's HTML 502,
+  // an empty body, still yields its raw text rather than nothing at all.
   const body = await res.text().catch(() => '');
   let detail = body;
   let code = '';
@@ -85,7 +85,7 @@ export const api = {
     const j = await res.json();
     // Field names map 1:1 onto the server's `Me` wire shape (see
     // hoard-server/src/cloud/routes/me.rs). They are NOT `plan_renews_at` /
-    // `storage_bytes` / `devices_count` — using those (the old names) is why
+    // `storage_bytes` / `devices_count`, using those (the old names) is why
     // the account page showed 0 for everything.
     return {
       userId: j.user_id,
@@ -188,7 +188,7 @@ export const api = {
 
   /**
    * Record that this account accepted the Terms. Called once a browser
-   * sign-in completes — the tick happens on /login, before there is a session
+   * sign-in completes, the tick happens on /login, before there is a session
    * to attach it to.
    *
    * The server is idempotent per (user, version) and rejects any version other

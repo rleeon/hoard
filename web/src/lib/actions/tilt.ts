@@ -1,5 +1,5 @@
 /**
- * 3D tilt action — the element leans toward the cursor on hover and a soft
+ * 3D tilt action, the element leans toward the cursor on hover and a soft
  * directional glow follows the pointer. Ported from the desktop app
  * (crates/hoard-desktop/ui/src/lib/actions/tilt.ts) so the site and the app
  * share the same physical feel.

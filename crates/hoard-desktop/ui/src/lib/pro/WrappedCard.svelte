@@ -8,7 +8,7 @@
    * Dos decisiones que conviene no deshacer sin pensarlo:
    *
    * 1. **Todo lo editable es local.** La foto es un PNG bajo el app-data dir y
-   *    el resto vive en un `store` de este equipo — no se sube, no se
+   *    el resto vive en un `store` de este equipo, no se sube, no se
    *    sincroniza, no sale en el export de la cuenta. Ver `cardPrefs`.
    * 2. **Lo que se ve ES el canvas que se guarda.** La vista previa no es una
    *    maqueta HTML parecida al PNG: es el PNG, dibujado a 1× en pantalla y a

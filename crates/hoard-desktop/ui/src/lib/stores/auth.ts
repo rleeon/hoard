@@ -3,7 +3,7 @@
  *
  * The Rust side is the source of truth (it owns the keychain entry and the
  * session file). This store is a cache that the UI subscribes to. Calls that
- * mutate auth state — `signIn`, `signOut` — go through here so the rest of
+ * mutate auth state, `signIn`, `signOut`, go through here so the rest of
  * the app sees the change without each component having to refetch.
  */
 
@@ -38,13 +38,13 @@ export async function hydrateAuth(): Promise<void> {
     internal.set({ user, hydrated: true });
     if (user) {
       // Resume background watching for an already-logged-in session.
-      // Failures here shouldn't block the UI — the user can hit Settings →
+      // Failures here shouldn't block the UI, the user can hit Settings →
       // "Restart agent" later if it didn't come up.
       bootAgent().catch((e) =>
         console.warn("agent boot failed on hydrate:", e),
       );
       // The cached UserInfo from disk has zero quota (we don't persist it
-      // — see commands/auth.rs). Trigger a fresh whoami so the dashboard
+      //, see commands/auth.rs). Trigger a fresh whoami so the dashboard
       // shows real numbers as soon as it mounts.
       refreshQuota().catch((e) =>
         console.warn("initial refreshQuota failed:", e),
@@ -66,7 +66,7 @@ export async function refreshQuota(): Promise<void> {
     const user = await api.refreshQuota();
     internal.update(($s) => ({ ...$s, user }));
   } catch (e) {
-    // Network blips shouldn't blow up the UI — keep the last known numbers.
+    // Network blips shouldn't blow up the UI, keep the last known numbers.
     console.warn("refreshQuota failed:", e);
     // …but a *dead* self-hosted session (revoked key / reset server) makes
     // Rust clear the credentials. Re-sync from the source of truth: if the
@@ -95,7 +95,7 @@ export async function signIn(url: string, token: string): Promise<UserInfo> {
  * Also clears the persisted onboarding state (step + saved URL). Without
  * this the wizard re-prefills the old server address on the next launch, so
  * a user who signs out of a dead self-hosted box can never actually "forget"
- * it — it keeps coming back. Clearing here makes sign-out a true reset. */
+ * it, it keeps coming back. Clearing here makes sign-out a true reset. */
 export async function signOut(): Promise<void> {
   await shutdownAgent();
   await api.logout();

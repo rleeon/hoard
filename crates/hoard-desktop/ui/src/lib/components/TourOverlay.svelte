@@ -1,11 +1,11 @@
 <script lang="ts">
   /**
-   * Guided app tour — shown once, right after the user finishes signing in for
+   * Guided app tour, shown once, right after the user finishes signing in for
    * the first time. It is a coach-mark walkthrough over the *real* app: each
    * step navigates the content area to its section (via the `navigate` prop the
    * parent owns) and glides a spotlight across the matching sidebar rail item,
    * anchoring an explanation card beside it. The background genuinely changes
-   * section and zoom-settles into view — this is not a centered modal.
+   * section and zoom-settles into view, this is not a centered modal.
    *
    * The parent (`App.svelte`) owns navigation + the persisted "seen" flag, so
    * this component only choreographs the highlight and the card. Targets are
@@ -34,7 +34,7 @@
     onClose: () => void;
     /**
      * Navigate the app content to a route, or pass `null` to stay put (used by
-     * the conceptual + Pro steps — opening the Pro routes would start the
+     * the conceptual + Pro steps, opening the Pro routes would start the
      * one-week trial, so we only spotlight their rail item).
      */
     navigate: (route: string | null) => void;
@@ -49,7 +49,7 @@
     route: string | null;
     /**
      * What the spotlight lands on. `content` highlights the whole content
-     * viewport — the real screen the step just navigated to — so the section
+     * viewport, the real screen the step just navigated to, so the section
      * change is what the user sees. `item` highlights a sidebar rail entry,
      * used by the concept / Pro steps that must not open their route.
      */
@@ -116,7 +116,7 @@
       icon: RotateCw,
       titleKey: "tour.automatic_title",
       bodyKey: "tour.automatic_body",
-      // Concept — the toggle lives in the sidebar footer; don't change route.
+      // Concept, the toggle lives in the sidebar footer; don't change route.
       route: null,
       focus: "item",
       itemTarget: '[data-tour="automatic"]',
@@ -135,7 +135,7 @@
   const StepIcon = $derived(step.icon);
 
   // Reduced-motion degrades the glide, the background zoom and the card
-  // transition to a plain fade — no aggressive movement.
+  // transition to a plain fade, no aggressive movement.
   let reduce = $state(false);
 
   let cardEl = $state<HTMLDivElement | null>(null);

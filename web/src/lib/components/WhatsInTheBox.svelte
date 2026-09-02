@@ -6,7 +6,7 @@
 
   // The "What's in the box" section.
   //
-  // Content, as the user specified it: no photos at all — the placeholders
+  // Content, as the user specified it: no photos at all, the placeholders
   // were dropped; only the six features (icon, title, body) remain.
   //
   // Design (the user's pick out of ten layouts): one bordered panel with a

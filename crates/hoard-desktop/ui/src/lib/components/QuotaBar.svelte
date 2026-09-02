@@ -3,14 +3,14 @@
    * Storage usage indicator for the dashboard.
    *
    * Two display modes (driven by `is_local_server`, classified by Rust on
-   * login — see `commands/auth.rs::classify_server`):
+   * login, see `commands/auth.rs::classify_server`):
    *
    *  - Self-hosted (localhost / RFC1918 / .local): show MB used.
    *    The user owns the disk; a quota bar would be nonsense.
    *  - External SaaS: show percent + a coloured bar so heavy users see
    *    how close they are to hitting their limit.
    *
-   * The component is purely presentational — the parent owns refresh
+   * The component is purely presentational, the parent owns refresh
    * cadence (typically a 30s interval calling `refreshQuota` from the
    * auth store).
    */

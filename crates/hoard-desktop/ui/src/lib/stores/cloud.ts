@@ -26,7 +26,7 @@ export type CloudAccount = {
   avatar_url: string | null;
   /** "free" | "pro" */
   plan: string;
-  /** RFC3339 — account creation time. Informational only: the Hoard-Screen /
+  /** RFC3339, account creation time. Informational only: the Hoard-Screen /
    *  Hoard-Wrapped trials are per-feature and start at first look (see
    *  `./entitlements.ts`), never from this. `null` on older servers. */
   created_at: string | null;
@@ -48,18 +48,18 @@ export type CloudAccount = {
   bandwidth_quota_bytes: number;
   bandwidth_window_secs: number;
   subscription_status: string | null;
-  /** RFC3339 — when the current billing period renews. */
+  /** RFC3339, when the current billing period renews. */
   renews_at: string | null;
-  /** RFC3339 — populated only when the user has scheduled a cancellation. */
+  /** RFC3339, populated only when the user has scheduled a cancellation. */
   cancel_at: string | null;
-  /** RFC3339 — the first time this account was ever Pro, `null` if never.
+  /** RFC3339, the first time this account was ever Pro, `null` if never.
    *  One-way: a downgrade doesn't clear it. It's why an account on Free can
    *  legitimately report an unlimited `devices_limit`, and what lets the
    *  farewell dialog say which of the Pro perks survive the cancellation. */
   first_pro_at?: string | null;
-  /** Storage pressure: `"ok"` (green), `"purging"` (orange — old versions are
-   *  being auto-deleted to free room), `"full"` (red — at the hard limit, sync
-   *  stopped) or `"grace"` (blue — a downgrade is scheduled; the account still
+  /** Storage pressure: `"ok"` (green), `"purging"` (orange, old versions are
+   *  being auto-deleted to free room), `"full"` (red, at the hard limit, sync
+   *  stopped) or `"grace"` (blue, a downgrade is scheduled; the account still
    *  has its old, larger limit and **nothing is being deleted** until
    *  `storage_limit_change_at`). Absent on older servers → treat as `"ok"`. */
   storage_status?: "ok" | "purging" | "full" | "grace";
@@ -67,14 +67,14 @@ export type CloudAccount = {
    *  the account will drop to (bytes). During this grace window the user keeps
    *  the larger limit and nothing is purged. `null`/absent = no pending change. */
   pending_storage_limit_bytes?: number | null;
-  /** RFC3339 — when the pending downgrade takes effect (end of grace window).
+  /** RFC3339, when the pending downgrade takes effect (end of grace window).
    *  `null`/absent = no pending change. */
   storage_limit_change_at?: string | null;
-  /** RFC3339 — set while the account is soft-deleted and inside its 30-day
+  /** RFC3339, set while the account is soft-deleted and inside its 30-day
    *  grace. When present the app is frozen server-side and the desktop shows the
    *  reactivation screen instead of the normal UI. `null`/absent = live. */
   deleted_at?: string | null;
-  /** RFC3339 — when the account is hard-purged if not reactivated
+  /** RFC3339, when the account is hard-purged if not reactivated
    *  (`deleted_at` + 30 days). `null`/absent = live. */
   purges_at?: string | null;
 };
@@ -198,20 +198,20 @@ export async function completeCloudLogin(
     internal.set({ account, hydrated: true, loading: false });
     // Primer contacto con el plan de esta cuenta. Si la máquina nunca la había
     // visto, el marcador se siembra y calla: quien acaba de entrar ya sabe con
-    // qué plan lo hace. Si sí la conocía, la diferencia cuenta igual — pagar en
+    // qué plan lo hace. Si sí la conocía, la diferencia cuenta igual, pagar en
     // la web y volver aquí a iniciar sesión es una forma legítima de llegar.
     void notePlanSnapshot(account);
     // Leave a record of the acceptance the user gave on the onboarding screen.
     // It has to happen here and not there: the checkbox is ticked before the
     // OAuth round-trip, when there is no account yet to attach it to.
-    // Best-effort on purpose — a signed-in user must not be bounced back out
+    // Best-effort on purpose, a signed-in user must not be bounced back out
     // because a bookkeeping call failed, and the server is idempotent, so the
     // next launch writes it.
     invoke("cloud_accept_terms").catch((e) =>
       console.warn("terms acceptance not recorded:", e),
     );
     // Boot the live agent for the freshly signed-in account so watching starts
-    // immediately — same as `signIn` does for self-hosted. Rust already pointed
+    // immediately, same as `signIn` does for self-hosted. Rust already pointed
     // `CliState` at this account's context inside `cloud_complete_login`, so the
     // watch list hydrates from the right file. Idempotent.
     bootAgent().catch((e) =>
@@ -225,11 +225,11 @@ export async function completeCloudLogin(
 }
 
 /** Clear the cloud session locally. The server has no concept of "logout"
- *  for JWT-based auth — tokens just expire. */
+ *  for JWT-based auth, tokens just expire. */
 export async function logoutCloud(): Promise<void> {
   await invoke<void>("cloud_logout");
   internal.set({ account: null, hydrated: true, loading: false });
-  // Stop watching once the cloud session is gone — unless a self-hosted
+  // Stop watching once the cloud session is gone, unless a self-hosted
   // session is still active, which keeps its own agent. Leaving it running
   // would have it hammer a cleared token and 401 in a loop.
   if (!get(auth).user) {
@@ -290,7 +290,7 @@ export type StorageGame = {
 
 /** Blobs shared by two or more live saves, keyed by the exact set sharing
  *  them. Their bytes belong to no single game's `freeable_bytes`, so they only
- *  come back once every save in `save_ids` is archived — the "same folder
+ *  come back once every save in `save_ids` is archived, the "same folder
  *  tracked twice" case. */
 export type SharedGroup = {
   save_ids: string[];
@@ -311,7 +311,7 @@ export type StorageGames = {
 export type ArchiveResult = {
   save_id: string;
   archived: boolean;
-  /** RFC3339 — when the frozen copy is hard-deleted (archive instant + 7d). */
+  /** RFC3339, when the frozen copy is hard-deleted (archive instant + 7d). */
   purge_after: string;
   freed_bytes: number;
 };
@@ -415,7 +415,7 @@ let lastHandledUrl: string | null = null;
  *  every `hoard://…` URL AND drain any URL buffered before this listener
  *  existed (the cold-start case: the OS launches the app with the OAuth
  *  callback as a launch argument, well before the webview mounts). Parses
- *  the callback and calls `completeCloudLogin`. Idempotent — calling twice
+ *  the callback and calls `completeCloudLogin`. Idempotent, calling twice
  *  replaces the previous subscription. */
 export async function initCloudDeepLink(
   onSignedIn?: (account: CloudAccount) => void,
@@ -468,7 +468,7 @@ let seUnlisten: UnlistenFn | null = null;
  *  already cleared creds + stopped the pollers; we mirror that here so the
  *  signed-in shell collapses and the LiveStatus dot stops looping on "server
  *  unavailable". `onExpired` lets the caller toast + reset the cloud dot +
- *  route. Idempotent — calling twice replaces the previous subscription. */
+ *  route. Idempotent, calling twice replaces the previous subscription. */
 export async function initCloudSessionWatch(
   onExpired?: () => void,
 ): Promise<void> {

@@ -2,13 +2,13 @@
  * Helpers for surfacing the structured JSON errors that the cloud server
  * returns when a quota gate trips. The server uses three:
  *
- *   - **413 `save_too_large`** — per-save cap (`max_save_size_bytes`).
+ *   - **413 `save_too_large`**, per-save cap (`max_save_size_bytes`).
  *     Returned by `init_upload` before we presign R2 so the bytes never
  *     hit the wire.
- *   - **429 `bandwidth_limit_exceeded`** — rolling-window upload/download
+ *   - **429 `bandwidth_limit_exceeded`**, rolling-window upload/download
  *     bandwidth quota. Body includes `retry_after_seconds`; we mirror
  *     that into a human time in the toast.
- *   - **402 `storage_quota_exceeded`** — total stored bytes across all
+ *   - **402 `storage_quota_exceeded`**, total stored bytes across all
  *     saves. Returned by `init_upload` after the per-save cap check.
  *
  * Tauri reaches us with whatever the Rust side returned, which today is

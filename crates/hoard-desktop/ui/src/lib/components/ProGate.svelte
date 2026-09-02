@@ -40,7 +40,7 @@
 
   let starting = $state(false);
 
-  // Start the one-week trial (retry path — the normal start is automatic on
+  // Start the one-week trial (retry path, the normal start is automatic on
   // first look). The server flips the feature to `trial`, which re-renders the
   // parent shell into the real Pro UI.
   async function startTrial() {

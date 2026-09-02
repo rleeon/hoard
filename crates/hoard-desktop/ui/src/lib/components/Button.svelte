@@ -2,9 +2,9 @@
   /**
    * Reusable button with three variants and a loading state.
    *
-   * - `primary`   — emerald, used for the page's main action (one per screen).
-   * - `secondary` — neutral, used for "Back" / "Cancel" style actions.
-   * - `ghost`     — transparent, used inside cards or as quiet icon buttons.
+   * - `primary`  , emerald, used for the page's main action (one per screen).
+   * - `secondary`, neutral, used for "Back" / "Cancel" style actions.
+   * - `ghost`    , transparent, used inside cards or as quiet icon buttons.
    */
   import type { Snippet } from "svelte";
   import type {

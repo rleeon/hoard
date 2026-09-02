@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * SaveGameCard — the Dashboard's per-game card (1.1.0 redesign).
+   * SaveGameCard, the Dashboard's per-game card (1.1.0 redesign).
    *
    * Presentational component: every mutating action is delegated to the
    * parent through callbacks; live status is read from the agent activity
@@ -12,7 +12,7 @@
    * INVARIANT (ADR 0021 D.10): the status pill in the body reflects the
    * version **this device** holds; the chip overlaid on the cover is the
    * **cloud** head. They are rendered by separate elements with separate
-   * labels — never merge them.
+   * labels, never merge them.
    */
   import {
     AlertTriangle,
@@ -64,7 +64,7 @@
     onHistory,
   }: {
     save: TrackedSave;
-    /** Ticking clock (epoch ms) from the parent — drives the scheduled
+    /** Ticking clock (epoch ms) from the parent, drives the scheduled
      *  countdown and the "last saved" relative time. */
     now: number;
     /** Stored-version count for this save. `undefined` = still loading,
@@ -73,12 +73,12 @@
     /** What this game actually occupies in the cloud: every stored version,
      *  deduplicated. `undefined` = still loading, `null` = unavailable
      *  (self-hosted, offline), and then the card falls back to the head
-     *  version's size — which is all the manifest carries. The two differ by
+     *  version's size, which is all the manifest carries. The two differ by
      *  a lot on a game whose folder changes wholesale every save, and the
      *  head-only number is the one that made a user ask why 35 MB of saves
      *  reported 79 MB of quota. */
     footprintBytes: number | null | undefined;
-    /** Whether the sync service is up — gates the manual backup button. */
+    /** Whether the sync service is up, gates the manual backup button. */
     agentRunning: boolean;
     /** True when another tracked save shares this slug: the label chip is
      *  what tells the two folders apart. */
@@ -93,7 +93,7 @@
   } = $props();
 
   /** The visible name: the user's per-device override when set, otherwise a
-   *  prettified slug. The slug itself never changes — it's the sync key. */
+   *  prettified slug. The slug itself never changes, it's the sync key. */
   const displayName = $derived(
     $customNames[save.game_slug] ?? prettifySlug(save.game_slug),
   );
@@ -130,13 +130,13 @@
     return $_("dashboard.cloud_ahead_title", { values: { cloud, local } });
   }
 
-  /** The status pill. Reflects **local** state only — what this machine has
+  /** The status pill. Reflects **local** state only, what this machine has
    *  on disk and what the agent is doing about it. The cloud head gets its
    *  own chip on the cover so the two are never conflated. */
   function pillFor(save: TrackedSave) {
     const a = $activity[save.save_id];
     const local = localVersion(save);
-    // Live activity always wins — if the agent reports anything, the pill
+    // Live activity always wins, if the agent reports anything, the pill
     // reflects *that* (it's the freshest signal on screen). Falls through
     // to the server-side history check only when we have no in-memory state
     // for this save, which is the case on a cold app launch.
@@ -200,8 +200,8 @@
     }
   }
 
-  /** Resting pill (no live activity): what this device holds, or — when it
-   *  holds nothing — an explicit "only in the cloud" instead of a version
+  /** Resting pill (no live activity): what this device holds, or, when it
+   *  holds nothing, an explicit "only in the cloud" instead of a version
    *  number the user would read as their own. */
   function idlePill(save: TrackedSave, local: number | null) {
     if (local != null) {
@@ -232,7 +232,7 @@
     };
   }
 
-  /** Live status pill for this save (LOCAL state — see the invariant). */
+  /** Live status pill for this save (LOCAL state, see the invariant). */
   const pill = $derived(pillFor(save));
 
   /**
@@ -240,7 +240,7 @@
    * card. The handle opens every gesture with `dy = 0`, which is where the
    * anchor is taken; from there the ratio only ever moves *relative* to it, so
    * a mis-measured width changes how fast the cover reshapes and nothing
-   * else — it can't make it jump as the drag begins.
+   * else, it can't make it jump as the drag begins.
    */
   let aspectAtDragStart: number | null = null;
 
@@ -249,7 +249,7 @@
     setCoverAspect(snapCanonical(aspectAtDragStart + dy / cardW));
   }
 
-  /** 2:3 and 1:1 are the two ratios art is actually authored in — worth
+  /** 2:3 and 1:1 are the two ratios art is actually authored in, worth
    *  landing on exactly, not near. Everything between them is free. */
   function snapCanonical(a: number): number {
     for (const target of [POSTER, SQUARE]) {

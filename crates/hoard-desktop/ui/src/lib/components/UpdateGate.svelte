@@ -1,13 +1,13 @@
 <script lang="ts">
   /**
-   * La pantalla de "actualizando Hoard" — lo que hace que la app se actualice
+   * La pantalla de "actualizando Hoard", lo que hace que la app se actualice
    * **al abrirse**, como Steam o Discord.
    *
    * Sólo aparece cuando no queda alternativa, y hay tres motivos distintos:
    *
    * 1. **Se acabó el plazo** (`mandatory`). El servicio lleva dos días
-   *    intentando aplicar algo que necesita a alguien delante — un `.deb` que
-   *    quiere polkit, un `.dmg` que quiere una mano —, y aquí está ese alguien.
+   *    intentando aplicar algo que necesita a alguien delante, un `.deb` que
+   *    quiere polkit, un `.dmg` que quiere una mano,, y aquí está ese alguien.
    *    No se puede cerrar: es el escalón que el plazo existe para provocar.
    * 2. **El servicio ya se actualizó y esta ventana se quedó atrás.** Pasa por
    *    diseño: el servicio releva los binarios en silencio y se reinicia, pero
@@ -76,13 +76,13 @@
    *
    * Casi siempre no hay nada que hacer aquí: el servicio ya aplicó la
    * actualización antes de que nadie abriera nada, así que esta ventana **ya
-   * es** la nueva. Esto cubre el hueco — el servicio la tenía bajada y estaba
+   * es** la nueva. Esto cubre el hueco, el servicio la tenía bajada y estaba
    * esperando su próximo ciclo, o esperando a que cerraras un juego. Abrir la
    * app es la señal de que ahora es buen momento.
    *
    * Sólo cuando se aplica sola (`unattended`): sin diálogos, sin privilegios,
    * sin nada que aprobar. La vía que necesita un humano se ofrece, no se
-   * dispara — y cuando vence el plazo, es este mismo componente el que tapa la
+   * dispara, y cuando vence el plazo, es este mismo componente el que tapa la
    * pantalla y lo pide.
    */
   async function nudgeOnOpen() {

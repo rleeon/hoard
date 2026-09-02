@@ -3,7 +3,7 @@
    * Los corazones de los dos diálogos de plan: dibujados, nunca un emoji.
    *
    * Un emoji lo pinta la fuente del sistema, así que el mismo carácter sale
-   * plano en Linux, brillante en Windows y de otro color en cada uno — y
+   * plano en Linux, brillante en Windows y de otro color en cada uno, y
    * ninguno de ellos es el color de la aplicación. Esto es geometría: un
    * `path` con degradado, tres corazones en racimo, y el mismo trazo en las dos
    * caras (`broken` sólo parte cada uno en dos mitades separadas por una grieta
@@ -11,7 +11,7 @@
    *
    * Las mitades se rotan con el atributo `transform` del SVG y no con CSS: el
    * `transform` de CSS *sustituye* al del atributo en el mismo elemento, así
-   * que el latido —que sí es CSS, en su propio `<g>`— y la inclinación viven en
+   * que el latido,que sí es CSS, en su propio `<g>`, y la inclinación viven en
    * capas distintas para no pisarse. El latido es decoración: bajo
    * `prefers-reduced-motion` la regla global de `app.css` lo congela y el
    * dibujo se queda quieto, que es exactamente lo que debe pasar.

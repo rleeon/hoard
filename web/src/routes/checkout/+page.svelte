@@ -18,7 +18,7 @@
     ($page.url.searchParams.get('cycle') === 'yearly' ? 'yearly' : 'monthly') as BillingCycle
   );
 
-  // Where to come back to after login — this exact page, intent preserved.
+  // Where to come back to after login, this exact page, intent preserved.
   let selfUrl = $derived(`/checkout?plan=${plan}&cycle=${cycle}`);
 
   let busy = $state(false);
@@ -49,7 +49,7 @@
       // Hand off to Polar's hosted checkout.
       window.location.href = url;
     } catch (e) {
-      // The banner stays friendly, but the real status has to go *somewhere* —
+      // The banner stays friendly, but the real status has to go *somewhere*,
       // without this a failed checkout is unreportable: the user sees one
       // sentence and the server logs nothing when the request never got past
       // auth.

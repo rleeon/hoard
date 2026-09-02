@@ -3,8 +3,8 @@
  *
  * La tarjeta se pinta en un `<canvas>` y ese mismo canvas es a la vez lo que
  * se ve en pantalla y lo que se guarda en la galería: un solo layout, cero
- * divergencia entre vista previa y foto. La alternativa —maquetar en HTML y
- * volver a dibujarlo aquí para exportar— son dos diseños que se van
+ * divergencia entre vista previa y foto. La alternativa,maquetar en HTML y
+ * volver a dibujarlo aquí para exportar, son dos diseños que se van
  * separando en cuanto alguien toca uno.
  *
  * Todo se dibuja en un espacio lógico de 1200×675 (16:9, la proporción que
@@ -375,7 +375,7 @@ export function drawCard(ctx: CanvasRenderingContext2D, data: CardData): void {
   // de semana salen grandes y treinta de mes salen pequeños, pero el bloque
   // empieza y acaba donde el resto de la tarjeta. El alto se acota para no
   // comerse el pie, así que con pocos cubos dejan de ser cuadrados y pasan a
-  // ser losetas apaisadas — grandes, que es lo que se pidió.
+  // ser losetas apaisadas, grandes, que es lo que se pidió.
   const BAND_TOP = 500;
   const BAND_H = 92;
   ctx.fillStyle = "#71717a";
@@ -441,8 +441,8 @@ export function paint(canvas: HTMLCanvasElement, data: CardData, scale: number):
  * Renderiza la tarjeta y devuelve el PNG en base64 (sin la cabecera del
  * data-URL, que es lo que espera `wrapple_save_card`).
  *
- * Si el canvas quedó contaminado por una imagen remota sin CORS —el avatar de
- * la cuenta Cloud— `toDataURL` lanza `SecurityError`; entonces repetimos el
+ * Si el canvas quedó contaminado por una imagen remota sin CORS,el avatar de
+ * la cuenta Cloud, `toDataURL` lanza `SecurityError`; entonces repetimos el
  * dibujo con las iniciales en lugar de la foto, que es mejor que no poder
  * guardar nada.
  */

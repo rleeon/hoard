@@ -1,5 +1,5 @@
 /**
- * Notifications store — server + app messages for the bell dropdown.
+ * Notifications store, server + app messages for the bell dropdown.
  *
  * ============================================================================
  *  HOW TO SHOW A NOTIFICATION HERE
@@ -54,7 +54,7 @@
  *    [text](url)       → <a href="url" target="_blank">
  *    \n (line breaks)  → <br>
  *
- *  No raw HTML is allowed — everything is escaped before formatting, so
+ *  No raw HTML is allowed, everything is escaped before formatting, so
  *  server messages can't inject scripts. Keep messages short; the panel is
  *  288px wide.
  *
@@ -139,19 +139,19 @@ function persist(list: AppNotification[]): void {
       JSON.stringify(list.slice(0, MAX_ENTRIES)),
     );
   } catch {
-    /* storage disabled / quota — the in-memory list still works */
+    /* storage disabled / quota, the in-memory list still works */
   }
 }
 
 // ---------------------------------------------------------------------------
 //  Dismissing a broadcast
 // ---------------------------------------------------------------------------
-//  A broadcast is dismissed on the SERVER (per user, across devices) — the
+//  A broadcast is dismissed on the SERVER (per user, across devices), the
 //  local list is only a cache, and `reconcileServer` replaces it wholesale
 //  with whatever the server still serves. So dropping the entry locally is
 //  not enough: without telling the server, the next snapshot puts it right
-//  back. That's exactly what happened with the "Hello World" test broadcast —
-//  dismissed, back on restart, forever — while the other one seemed to
+//  back. That's exactly what happened with the "Hello World" test broadcast,
+//  dismissed, back on restart, forever, while the other one seemed to
 //  dismiss fine only because it had expired server-side.
 //
 //  Two halves, and both are needed:
@@ -178,7 +178,7 @@ function persistDismissed(): void {
   try {
     localStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissedIds]));
   } catch {
-    /* storage disabled — the server-side dismissal still carries it */
+    /* storage disabled, the server-side dismissal still carries it */
   }
 }
 
@@ -256,7 +256,7 @@ function forgetServerSide(id: string): void {
   void tellServer(id);
 }
 
-/** Unread count — for a badge on the bell. Simplified: all non-dismissed are
+/** Unread count, for a badge on the bell. Simplified: all non-dismissed are
  *  "unread". A read/unread flag can be added later if needed. */
 export { notifications as unreadCount };
 
@@ -265,7 +265,7 @@ let serverListener: (() => void) | null = null;
 /** Reconcile the store against the server's authoritative broadcast list.
  *
  *  The server (cloud/routes/notifications.rs) returns the FULL set of
- *  broadcasts this user should currently see — already filtered by signup
+ *  broadcasts this user should currently see, already filtered by signup
  *  date, expiry and per-user dismissals. So this is a replace, not a merge,
  *  for server-sourced entries: add rows that are new, and DROP server rows the
  *  server no longer delivers (expired, or dismissed on another device). App-
@@ -273,7 +273,7 @@ let serverListener: (() => void) | null = null;
  *  timestamps are preserved so the ordering doesn't churn on every snapshot. */
 function reconcileServer(rows: ServerNotification[]): void {
   // A tombstoned id still in the list means the server never got (or hasn't
-  // yet applied) the dismissal — offline when the user clicked, say. Retry it
+  // yet applied) the dismissal, offline when the user clicked, say. Retry it
   // now and keep the row hidden meanwhile.
   const served = new Set(rows.map((r) => r.id));
   for (const id of dismissedIds) {
@@ -337,7 +337,7 @@ export async function initServerNotifications(): Promise<void> {
     const rows = await invoke<ServerNotification[]>("notifications_backlog");
     reconcileServer(rows ?? []);
   } catch {
-    /* Tauri not available (e.g. dev in browser) — no-op */
+    /* Tauri not available (e.g. dev in browser), no-op */
   }
 }
 
@@ -352,7 +352,7 @@ export function renderMarkdown(md: string): string {
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   // 4. Italic.
   s = s.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-  // 5. Links [text](url) — only http/https, no javascript:.
+  // 5. Links [text](url), only http/https, no javascript:.
   s = s.replace(
     /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
     '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-emerald-400 hover:text-emerald-300 underline">$1</a>',

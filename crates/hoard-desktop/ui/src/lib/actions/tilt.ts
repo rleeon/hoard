@@ -1,5 +1,5 @@
 /**
- * 3D tilt action — the element leans toward the cursor on hover and a soft
+ * 3D tilt action, the element leans toward the cursor on hover and a soft
  * directional glow follows the pointer. Applied to cards, panels, and covers
  * so the UI feels physical rather than flat.
  *
@@ -7,7 +7,7 @@
  * (--tilt-rx/--tilt-ry and --tilt-glow-x/--tilt-glow-y); the `.tilt` class in
  * app.css consumes them, so the action itself stays transform-free (cheap to
  * attach/teardown). The CSS's global reduced-motion rule flattens transitions
- * automatically when the OS asks for it — we don't skip the listeners here
+ * automatically when the OS asks for it, we don't skip the listeners here
  * because the glow (opacity-only) is still useful even without the 3D tilt.
  *
  * Anti-flicker: the CSS transform skews the bounding box so `mouseleave`
@@ -19,7 +19,7 @@
  * ---------------------------------------------------------------
  * Estas inclinaciones **se anidan**: una tarjeta de partida lleva `use:tilt` y
  * dentro la carátula lleva el suyo, así que apuntando a la portada se mueven
- * las dos — la tarjeta entera y la foto encima. Eso es el efecto.
+ * las dos, la tarjeta entera y la foto encima. Eso es el efecto.
  *
  * La versión original lo conseguía enganchando `pointermove` y `pointerup` al
  * documento *dentro de la acción*: cada elemento llevaba su propio par y su
@@ -36,7 +36,7 @@
  * Así que el estado es un **conjunto**: todos los nodos en los que ha entrado
  * el puntero y de los que aún no ha salido. Como sólo pueden estar los que se
  * apilan bajo el cursor, el conjunto tiene el tamaño del anidamiento (dos, en
- * la práctica) y no el del número de tarjetas — que era el punto. Los
+ * la práctica) y no el del número de tarjetas, que era el punto. Los
  * listeners de documento siguen siendo uno, compartido por todas las
  * instancias, instalado con la primera y retirado con la última.
  */
@@ -47,7 +47,7 @@ import { tiltScale } from "../stores/motion";
  * Grados máximos de inclinación en cada eje, a plena intensidad.
  *
  * El recorte no vive aquí sino en el nivel de Ajustes (`stores/motion.ts`),
- * que multiplica esta base: `sutil` —el defecto— la deja en 4°, la mitad del
+ * que multiplica esta base: `sutil`,el defecto, la deja en 4°, la mitad del
  * efecto histórico. Así el usuario puede recuperar los 8° sin recompilar.
  *
  * Ojo con leer este número como "lo que se mueve la tarjeta": las
@@ -68,7 +68,7 @@ type Armed = {
 /** Nodos bajo el cursor ahora mismo. Es una cadena de anidamiento, no una
  *  lista de todo lo que hay en pantalla. */
 const armed = new Map<HTMLElement, Armed>();
-/** Instancias vivas — al llegar a 0 se retiran los listeners compartidos. */
+/** Instancias vivas, al llegar a 0 se retiran los listeners compartidos. */
 let liveCount = 0;
 let raf = 0;
 /** Último evento pendiente de pintar. Un solo rAF reparte a todo el conjunto,
@@ -102,7 +102,7 @@ function release(node: HTMLElement): void {
 
 function onDocMove(e: PointerEvent): void {
   if (armed.size === 0) return;
-  // Check against the ORIGINAL rects — ignore the transformed bboxes.
+  // Check against the ORIGINAL rects, ignore the transformed bboxes.
   for (const [node, { rect }] of armed) {
     const inBounds =
       e.clientX >= rect.left &&
@@ -128,7 +128,7 @@ export function tilt(node: HTMLElement, opts: { max?: number } = {}) {
   function onEnter(e: PointerEvent) {
     // El nivel se consulta al entrar, no al montar: cambiarlo en Ajustes surte
     // efecto en el siguiente elemento que apuntes, sin re-montar la pantalla.
-    // Aquí NO se mira `prefers-reduced-motion` — eso lo decide el valor inicial
+    // Aquí NO se mira `prefers-reduced-motion`, eso lo decide el valor inicial
     // del nivel (ver `stores/motion.ts`), para que una elección explícita del
     // usuario siempre gane.
     const max = base * tiltScale();

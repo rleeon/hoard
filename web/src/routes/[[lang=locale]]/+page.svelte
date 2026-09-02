@@ -19,7 +19,7 @@
   import { ArrowRight, Check } from 'lucide-svelte';
 
 
-  // Twelve facts, all of them checkable in the repo — a marquee with four
+  // Twelve facts, all of them checkable in the repo, a marquee with four
   // items announces its own loop every few seconds.
   const facts = [
     'sha',
@@ -39,7 +39,7 @@
   // so "does this have a label?" cannot be asked of the translation itself.
   const SENTENCE_FACTS = new Set(['privacy']);
   // Three copies, not two: the wrap needs one copy to be at least as wide as
-  // the viewport, and one copy of this list is ~3.7k px — short of a 4K panel
+  // the viewport, and one copy of this list is ~3.7k px, short of a 4K panel
   // at 100%. The action derives the wrap point from the copy count.
   const FACT_COPIES = [0, 1, 2];
 

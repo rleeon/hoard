@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * History — per-save timeline of snapshots with restore + soft-delete.
+   * History, per-save timeline of snapshots with restore + soft-delete.
    *
    * The page accepts `:saveId` from the router; we look it up in the
    * tracked-saves list (cached from the dashboard) for the header info,
@@ -8,7 +8,7 @@
    *
    * Restore goes through a modal that gates the destructive bit behind a
    * confirmation, and offers a "back up current state first" safety toggle
-   * (default ON). Deletion is soft on the server side — items go to a
+   * (default ON). Deletion is soft on the server side, items go to a
    * recoverable trash for `retention_days`.
    *
    * When the save isn't tracked locally yet (e.g. pulled from another
@@ -78,7 +78,7 @@
   let backupFirst = $state(true);
   // Write the snapshot's config over this machine's as well. Off by default:
   // it carries the resolution, the GPU and the paths of the PC that uploaded
-  // the copy, and it is what makes the game blow up. Every restore asks again —
+  // the copy, and it is what makes the game blow up. Every restore asks again,
   // unless the game has it settled in its settings (`allow_device_local`),
   // which is exactly for the games where the config and the save are the same
   // file and answering "no" every time restores half of it.
@@ -89,7 +89,7 @@
   // Qué le va a pasar a la carpeta. Se pide al abrir el modal y no descarga
   // nada: cruza el manifiesto de la versión con lo que hay en disco. `null`
   // mientras carga; `failed` si no se pudo mirar, en cuyo caso el restore
-  // sigue disponible — no saber qué cambia no es motivo para bloquearlo.
+  // sigue disponible, no saber qué cambia no es motivo para bloquearlo.
   let preview = $state<api.RestorePreview | null>(null);
   let previewFailed = $state(false);
 
@@ -97,7 +97,7 @@
     restoreTarget = snap;
     // Every restore starts from the game's setting (off when undecided): the
     // choice made for ONE restore is not remembered. Set BEFORE asking for the
-    // preview, which is why opening and reloading are two functions — the
+    // preview, which is why opening and reloading are two functions, the
     // switch reloads without resetting itself, or it turned itself off the
     // moment you touched it.
     allowConfig = save?.allow_device_local ?? false;
@@ -205,7 +205,7 @@
     return iso ? new Date(iso).toLocaleDateString() : null;
   });
 
-  // Sync presets — the catalog comes from the backend; `savingPreset` gates
+  // Sync presets, the catalog comes from the backend; `savingPreset` gates
   // the selector while a change is in flight.
   let presets = $state<string[]>([]);
   let savingPreset = $state(false);
@@ -240,7 +240,7 @@
         api.listSaveSnapshots(saveId, includeDeleted),
       ]);
       save = tracked.find((s) => s.save_id === saveId) ?? null;
-      // Newest first — server returns them descending too, but be defensive.
+      // Newest first, server returns them descending too, but be defensive.
       snapshots = snaps.sort((a, b) => b.version_num - a.version_num);
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
@@ -339,7 +339,7 @@
   }
 
   /** Bytes con signo: lo que esta versión pesa de más (o de menos) que la
-   *  anterior. El signo es la mitad del dato — "+2 MB" y "-2 MB" cuentan
+   *  anterior. El signo es la mitad del dato, "+2 MB" y "-2 MB" cuentan
    *  historias opuestas sobre la misma partida. */
   function formatDelta(n: number): string {
     const sign = n < 0 ? "-" : "+";
@@ -638,7 +638,7 @@
   // Toggle "show deleted" → re-fetch.
   $effect(() => {
     // Reading `includeDeleted` here makes Svelte rerun this effect when it
-    // flips. We don't await — fire and forget.
+    // flips. We don't await, fire and forget.
     void includeDeleted;
     if (saveId) hydrate();
   });

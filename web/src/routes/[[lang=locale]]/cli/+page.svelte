@@ -44,7 +44,7 @@
         if (copied === id) copied = null;
       }, 2000);
     } catch {
-      /* clipboard blocked — the command is still visible to select manually */
+      /* clipboard blocked, the command is still visible to select manually */
     }
   }
 

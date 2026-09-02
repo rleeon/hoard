@@ -9,7 +9,7 @@
    * icon appears; clicking it opens a file picker. If a custom cover is set,
    * the pencil changes to a "restore" icon to revert to the downloaded art.
    * The pencil is offered for **every** game, including the ones no CDN has
-   * art for — that is the only way a game like Minecraft Java ever gets a
+   * art for, that is the only way a game like Minecraft Java ever gets a
    * cover, and it used to be the one case where the button never appeared.
    *
    * Two knobs for how the image meets its frame:
@@ -37,7 +37,7 @@
 
   let {
     appId = null,
-    /** Game slug — the primary identity for cover art. Rust resolves it to
+    /** Game slug, the primary identity for cover art. Rust resolves it to
      *  real art through the catalog, our hosted index, or a store search. */
     slug = null,
     name = "",
@@ -45,7 +45,7 @@
     class: klass = "h-10 w-10 rounded-lg",
     /** Font-size class for the fallback initial. */
     initialClass = "text-sm",
-    /** How the image meets the frame — see the note above. */
+    /** How the image meets the frame, see the note above. */
     fit = "cover",
     /** `overlay` dims the whole thumbnail on hover (fine at 40px); `corner`
      *  puts a small button in the bottom-right instead, so a big poster stays
@@ -81,9 +81,9 @@
    *
    *   2:3 art  in a 2:3 frame →   0%  fill
    *   2:3 art  in a square    →  33%  fill (a mild top/bottom crop)
-   *   square   in a 2:3 frame →  50%  letterbox — custom square art, the case
+   *   square   in a 2:3 frame →  50%  letterbox, custom square art, the case
    *                                   the square option exists for
-   *   header   in either      → 114%+ letterbox — the 460×215 capsule
+   *   header   in either      → 114%+ letterbox, the 460×215 capsule
    */
   const letterbox = $derived.by(() => {
     if (fit !== "smart" || imgRatio == null || boxW === 0 || boxH === 0)
@@ -101,7 +101,7 @@
     url = null;
     imgRatio = null;
     isCustom = false;
-    // The key is known synchronously — no await, no network. That's what lets
+    // The key is known synchronously, no await, no network. That's what lets
     // the pencil appear for a game with no art at all: the old code resolved a
     // Steam app id first and bailed when there wasn't one, so Minecraft Java
     // couldn't even be given a cover by hand.
@@ -144,7 +144,7 @@
         isCustom = true;
       }
     } catch {
-      // User cancelled or file read error — ignore silently.
+      // User cancelled or file read error, ignore silently.
     }
   }
 

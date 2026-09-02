@@ -30,7 +30,7 @@ export const supportedLocales: { code: string; label: string }[] = [
   { code: "zh", label: "简体中文" },
 ];
 
-// Lazy registration — Vite splits each JSON into its own chunk, so users only
+// Lazy registration, Vite splits each JSON into its own chunk, so users only
 // pay the cost of the locale they actually pick.
 register("en", () => import("./locales/en.json"));
 register("es", () => import("./locales/es.json"));
@@ -75,7 +75,7 @@ const PREFS_LOCALE_BUDGET_MS = 250;
  *  importar el módulo para que corra en paralelo con el resto del bootstrap. */
 const persistedLocale: Promise<string | null> = getPrefs()
   .then((prefs) => pickSupported(prefs.language ?? null))
-  // Quedarnos con lo que eligió `init` es aceptable — la página de Ajustes
+  // Quedarnos con lo que eligió `init` es aceptable, la página de Ajustes
   // puede reparar un prefs.json corrupto.
   .catch(() => null);
 
@@ -98,12 +98,12 @@ async function applyPersisted(code: string | null): Promise<void> {
  *
  *  svelte-i18n's `$_` throws "Cannot format a message without first setting
  *  the initial locale" if a component renders before the locale loader has
- *  resolved. `init()` only *queues* the load — we must explicitly wait for
+ *  resolved. `init()` only *queues* the load, we must explicitly wait for
  *  it.
  *
  *  Lo que este promise **no** hace es esperar al disco sin límite. Antes
- *  encadenaba `getPrefs()` y luego `waitLocale()`, así que el `mount()` —y con
- *  él el primer pixel de la app— quedaba detrás de una ida y vuelta por IPC.
+ *  encadenaba `getPrefs()` y luego `waitLocale()`, así que el `mount()`,y con
+ *  él el primer pixel de la app, quedaba detrás de una ida y vuelta por IPC.
  *  Ahora la lectura de prefs corre en paralelo y sólo la esperamos
  *  `PREFS_LOCALE_BUDGET_MS`; si llega tarde, montamos con el idioma del sistema
  *  y [`i18nSettled`] la aplica después (svelte-i18n es reactivo: los textos se
@@ -140,7 +140,7 @@ let syncing: Promise<void> | null = null;
  * llama** y persiste a prefs, pero no avisa a nadie: cada ventana tiene su
  * propio contexto JS y, por tanto, su propio store de svelte-i18n. La ventana
  * principal es la única que pasa por Ajustes, así que una segunda ventana que
- * sobreviva al cambio se queda con el idioma con el que montó — y el HUD del
+ * sobreviva al cambio se queda con el idioma con el que montó, y el HUD del
  * juego sobrevive siempre, porque cerrarlo lo **esconde**, no lo destruye.
  *
  * Llamarlo al volver a enseñarse es la mitad barata del arreglo: una lectura de

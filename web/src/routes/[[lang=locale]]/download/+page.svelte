@@ -30,7 +30,7 @@
 
   /** One row, or none at all: a release that does not list the file has no
    *  business offering a link to it. This is how the ARM bundles and Hoard
-   *  Setup can be listed here before every published release carries them —
+   *  Setup can be listed here before every published release carries them,
    *  they appear on the releases that have them and nowhere else. */
   const row = (
     href: string | null,
@@ -38,7 +38,7 @@
     extra: { arch?: Arch; setup?: boolean } = {}
   ): Asset[] => (href ? [{ label: fileName(href), sublabel, href, ...extra }] : []);
 
-  // Direct links to the installers of the latest release — clicking starts
+  // Direct links to the installers of the latest release, clicking starts
   // the download. URLs come from the `release` store, so they follow GitHub
   // automatically when a new version ships.
   let downloads = $derived<Record<Platform, { name: string; assets: Asset[] }>>({
@@ -92,8 +92,8 @@
     else if (ua.includes('mac')) detected = 'macos';
     else if (ua.includes('linux')) detected = 'linux';
 
-    // Architecture, best effort. The user-agent string is no help — Windows on
-    // ARM reports x86_64 on purpose, for compatibility — so we ask Client
+    // Architecture, best effort. The user-agent string is no help, Windows on
+    // ARM reports x86_64 on purpose, for compatibility, so we ask Client
     // Hints, which only Chromium answers, and stay on x64 when nobody does.
     // Getting it wrong costs an ARM visitor one click, not a broken download:
     // every build stays listed below whatever we guess.

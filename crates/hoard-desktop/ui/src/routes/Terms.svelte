@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Onboarding step 3 (Cloud branch) — accept the legal terms, then kick off
+   * Onboarding step 3 (Cloud branch), accept the legal terms, then kick off
    * the OAuth sign-in. Self-hosted skips this screen entirely (it has no
    * account / hosted ToS). The sign-in only fires once the user has ticked
    * the acceptance box.

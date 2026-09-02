@@ -8,13 +8,13 @@
   //
   // Design (the user's pick, the zoom stack merged with the full-bleed one):
   // three infinite marquee lanes, same direction, each a step deeper than the
-  // one before — smaller chips, dimmer, slower as they recede, so the library
-  // reads as a deep conveyor — running edge to edge at full viewport width.
+  // one before, smaller chips, dimmer, slower as they recede, so the library
+  // reads as a deep conveyor, running edge to edge at full viewport width.
   //
   // The text is the original one, unchanged (kicker, title, body, the
   // hand-verified game list and the footnote). All motion is rAF-driven (no
   // CSS transitions/SMIL), and the strip wraps modulo one copy so the seam
-  // never shows — the library grows to thousands of games and the section
+  // never shows, the library grows to thousands of games and the section
   // still works, because the strip never ends.
 
   // Two copies of the list per strip: the marquee wraps modulo one copy, so

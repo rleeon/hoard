@@ -1,16 +1,16 @@
 /**
- * Live device list for the Eye panel — fed by the `hoard://devices` Tauri
+ * Live device list for the Eye panel, fed by the `hoard://devices` Tauri
  * event.
  *
  * The Rust side (commands/cloud_feed.rs) fetches `GET /v1/devices` whenever
  * Supabase Realtime pushes a `devices` change (a sibling machine's heartbeat,
- * a game starting, a closing beat) — plus a timed fallback — and re-emits the
+ * a game starting, a closing beat), plus a timed fallback, and re-emits the
  * response body as the event payload. This store just mirrors the latest
  * snapshot; there is nothing to persist (presence is live by definition).
  *
  * A self-hosted session gets no Realtime push, so nothing arrives on its own:
  * there, `refreshDevices()` below asks the server directly while the panel is
- * open. Same endpoint, same shape — only who does the asking changes.
+ * open. Same endpoint, same shape, only who does the asking changes.
  */
 import { writable } from "svelte/store";
 
@@ -25,7 +25,7 @@ export type RemoteDevice = {
   id: string;
   device_name: string;
   device_kind?: string | null;
-  /** "linux" | "windows" | "macos" — free-form, from the client's header. */
+  /** "linux" | "windows" | "macos", free-form, from the client's header. */
   os?: string | null;
   last_seen_at?: string | null;
   created_at?: string | null;
@@ -59,13 +59,13 @@ export async function initDevicesFeed(): Promise<void> {
     );
     listener = unlisten;
   } catch {
-    /* Tauri not available (e.g. dev in browser) — no-op */
+    /* Tauri not available (e.g. dev in browser), no-op */
   }
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("devices_refresh");
   } catch {
-    /* signed out / browser dev — the realtime/poll path covers it later */
+    /* signed out / browser dev, the realtime/poll path covers it later */
   }
 }
 
@@ -74,7 +74,7 @@ export async function initDevicesFeed(): Promise<void> {
  *
  * The Eye panel calls this while it's open. It's the only source on a
  * self-hosted session (no Realtime to push it) and a cheap freshener on a cloud
- * one — the endpoint is the same in both, and the Rust side picks whichever
+ * one, the endpoint is the same in both, and the Rust side picks whichever
  * session is signed in.
  *
  * Silent on failure by design: a device list that didn't load must never paint
@@ -86,6 +86,6 @@ export async function refreshDevices(): Promise<void> {
     const out = await invoke<{ devices?: RemoteDevice[] }>("devices_list");
     remoteDevices.set(out?.devices ?? []);
   } catch {
-    /* signed out, server too old, or browser dev — keep what we have */
+    /* signed out, server too old, or browser dev, keep what we have */
   }
 }

@@ -1,11 +1,11 @@
 /**
- * Shape of the cover frame in the Dashboard grid — a local, per-device
+ * Shape of the cover frame in the Dashboard grid, a local, per-device
  * preference, like `cardSizes`, and dragged from the same corner handle:
  * sideways sizes the card, downwards reshapes the cover.
  *
  * The value is the cover's height ÷ width. 1.5 (2:3) is the poster every store
  * ships (Steam's `library_600x900`, GOG, Epic) and stays the default; 1 is the
- * square plenty of curated art comes in — emulated or non-Steam games; below
+ * square plenty of curated art comes in, emulated or non-Steam games; below
  * that live the landscape header capsules (Steam's 460×215 ≈ 0.47), which the
  * old two-value toggle had no way to ask for. Those are just points on the
  * range now, and `SaveGameCard` snaps to the two canonical ones while dragging
@@ -13,7 +13,7 @@
  */
 import { LazyStore } from "@tauri-apps/plugin-store";
 
-/** 2:3 — the store-standard poster. */
+/** 2:3, the store-standard poster. */
 export const POSTER = 1.5;
 /** 1:1. */
 export const SQUARE = 1;
@@ -40,7 +40,7 @@ export async function hydrateCoverAspect(): Promise<void> {
       aspect = clamp(saved);
     }
   } catch {
-    /* first run / unreadable store — the default stands */
+    /* first run / unreadable store, the default stands */
   }
 }
 
@@ -70,7 +70,7 @@ async function persist(value: number): Promise<void> {
   }
 }
 
-/** Inline `aspect-ratio` for the cover box — free-form, so no Tailwind class. */
+/** Inline `aspect-ratio` for the cover box, free-form, so no Tailwind class. */
 export function coverAspectStyle(a: number = aspect): string {
   return `aspect-ratio: 1 / ${a.toFixed(3)}`;
 }

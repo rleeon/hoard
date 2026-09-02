@@ -23,7 +23,7 @@ import { writable } from "svelte/store";
 const KEY_ENABLED = "hoard-overlay-enabled";
 const KEY_HOTKEY = "hoard-overlay-hotkey";
 
-/** Alt+H — «h» de Hoard. */
+/** Alt+H, «h» de Hoard. */
 export const DEFAULT_HOTKEY = "Alt+H";
 
 function readEnabled(): boolean {
@@ -72,7 +72,7 @@ async function bind(accel: string): Promise<void> {
     active = accel;
   } catch (e) {
     // Lo más común: otra aplicación ya se quedó con esa combinación. No es
-    // fatal — el usuario puede elegir otra en Ajustes.
+    // fatal, el usuario puede elegir otra en Ajustes.
     console.warn(`no se pudo registrar «${accel}» para el overlay:`, e);
   }
 }

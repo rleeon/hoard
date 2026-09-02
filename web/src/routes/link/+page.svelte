@@ -52,7 +52,7 @@
       hostname = res.hostname;
       phase = 'approved';
     } catch (e) {
-      // Match the server's stable `code`, not the message — that now reads
+      // Match the server's stable `code`, not the message, that now reads
       // "/v1/cloud/device/approve failed: 404 …" and would never compare equal.
       // Anything we don't have dedicated copy for shows its real reason rather
       // than a shrug.

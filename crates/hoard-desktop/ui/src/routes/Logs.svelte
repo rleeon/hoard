@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Logs viewer — Settings → Advanced gateway into the agent log file.
+   * Logs viewer, Settings → Advanced gateway into the agent log file.
    *
    * Reads the latest rolling log file from the cache dir and presents the
    * tail. We deliberately keep the UI minimal: a search box, a level filter,

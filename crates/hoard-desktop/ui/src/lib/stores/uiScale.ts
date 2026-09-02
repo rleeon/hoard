@@ -11,7 +11,7 @@
  * Reachable two ways, because people reach for both: the slider in Settings,
  * and Ctrl + wheel / Ctrl +/- / Ctrl+0 anywhere in the app.
  *
- * Per-machine UI state, so `localStorage`, never the Rust `Prefs` — same as
+ * Per-machine UI state, so `localStorage`, never the Rust `Prefs`, same as
  * the theme, the accent, the relief and the atmosphere. The zoom itself does
  * not survive a restart on the engine's side, so it is re-applied at boot.
  */
@@ -39,7 +39,7 @@ function readInitial(): number {
     const n = raw == null ? NaN : Number(raw);
     if (Number.isFinite(n)) return clamp(n);
   } catch {
-    /* storage disabled — 100% for this session */
+    /* storage disabled, 100% for this session */
   }
   return DEFAULT_SCALE;
 }
@@ -52,8 +52,8 @@ export const uiScale = writable<number>(current);
  * Hand the factor to the engine.
  *
  * Swallows failures on purpose. `setZoom` needs the
- * `core:webview:allow-set-webview-zoom` capability, and outside Tauri —
- * `pnpm dev` in a plain browser — `getCurrentWebview()` throws outright. In
+ * `core:webview:allow-set-webview-zoom` capability, and outside Tauri,
+ * `pnpm dev` in a plain browser, `getCurrentWebview()` throws outright. In
  * both cases the honest outcome is an app at 100%, not an error the user can
  * do nothing about.
  *
@@ -76,7 +76,7 @@ async function paint(scale: number): Promise<void> {
     try {
       await getCurrentWebview().setZoom(next);
     } catch {
-      /* zoom unavailable here — stay at whatever the engine has */
+      /* zoom unavailable here, stay at whatever the engine has */
       pending = null;
     }
     next = pending;
@@ -112,17 +112,17 @@ export function resetUiScale(): void {
  *
  * Three things this has to get right:
  *
- * - `defaultPrevented` — the Map draws its constellation on a canvas with its
+ * - `defaultPrevented`, the Map draws its constellation on a canvas with its
  *   own Ctrl+wheel zoom, attached to that canvas and calling `preventDefault()`
  *   unconditionally. Its listener runs first (it's on the element, we're on the
  *   window, both bubbling), so bailing here leaves the map in charge of the
  *   pointer that's over it.
- * - `passive: false` — wheel listeners on `window` default to passive, where
+ * - `passive: false`, wheel listeners on `window` default to passive, where
  *   `preventDefault()` is a silent no-op and the page scrolls underneath the
  *   zoom. (No engine here zooms on its own: WebView2 has zoom hotkeys and
  *   pinch off unless `zoomHotkeysEnabled` is set, and neither WebKitGTK nor
  *   WKWebView implements the shortcut at all.)
- * - `deltaMode` — WebKitGTK reports scroll in lines, where one notch is a
+ * - `deltaMode`, WebKitGTK reports scroll in lines, where one notch is a
  *   deltaY of about 3, not the ~100 pixels the other engines send. Reading it
  *   raw would file every notch under "trackpad pinch".
  */
@@ -144,7 +144,7 @@ function onWheel(e: WheelEvent): void {
   // making the wheel crawl.
   const magnitude = Math.min(1, Math.abs(dy) / 40);
   residue += (dy < 0 ? 1 : -1) * STEP * magnitude;
-  // Nothing worth a whole percent yet — keep carrying.
+  // Nothing worth a whole percent yet, keep carrying.
   if (Math.abs(residue) < 0.01) return;
   const before = current;
   setUiScale(current + residue);
@@ -156,7 +156,7 @@ function onWheel(e: WheelEvent): void {
 
 /** Ctrl/Cmd +, - and 0. */
 function onKeydown(e: KeyboardEvent): void {
-  // Cmd on macOS, Ctrl everywhere else — Ctrl+plus is not the Mac convention,
+  // Cmd on macOS, Ctrl everywhere else, Ctrl+plus is not the Mac convention,
   // and a Mac user pressing Cmd+0 means it.
   if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
   switch (e.key) {
@@ -181,7 +181,7 @@ let wired = false;
 
 /**
  * Wire the shortcuts. Synchronous and cheap, so it runs at boot next to
- * `initTheme()` — otherwise Ctrl+wheel would be dead until the locale
+ * `initTheme()`, otherwise Ctrl+wheel would be dead until the locale
  * dictionary finished loading. The guard is for Vite's HMR in dev, which
  * re-executes the module and would otherwise stack a second listener and
  * double every notch.
@@ -194,7 +194,7 @@ export function initUiScaleShortcuts(): void {
 }
 
 /**
- * Apply the stored scale. Called from `main.ts` for the main window only —
+ * Apply the stored scale. Called from `main.ts` for the main window only,
  * the HUD is a separate webview sized against the game underneath it, and
  * zooming that would just misalign it.
  *

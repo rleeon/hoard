@@ -3,7 +3,7 @@
   import { onMount } from 'svelte';
 
   // ===========================================================================
-  // SYNC DIAGRAM — the animated diagram of the "Sync" section on the home page.
+  // SYNC DIAGRAM, the animated diagram of the "Sync" section on the home page.
   // ---------------------------------------------------------------------------
   // THE USER EXPLICITLY REQUESTED THIS DESIGN AND ANIMATION. Do not "simplify"
   // or "fix" it without asking them first. What they asked for, in their words:
@@ -39,7 +39,7 @@
   //   - Every ball travels along the EXACT curve that is painted as the SVG
   //     path: the same curve data drives both the <path> elements and the
   //     ball positions (64-point sampling), so the balls always pass precisely
-  //     on the drawn line — never near it.
+  //     on the drawn line, never near it.
   //
   // TECHNICAL NOTES (why it is built this way):
   //   - EVERYTHING is driven by a single requestAnimationFrame clock: ball
@@ -187,7 +187,7 @@
   // boundaries: cloud fades out over the last CROSS seconds of its phase and
   // fades in over the first CROSS seconds of the next one. The server's fade
   // is the same function shifted half a cycle, so the two hubs never overlap
-  // and never reset — no blink, and the idle hub keeps zero lines.
+  // and never reset, no blink, and the idle hub keeps zero lines.
   const cloudFadeOf = (tt: number): number => {
     const c = tt % (PHASE * 2);
     if (c < CROSS) return c / CROSS;

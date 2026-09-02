@@ -3,10 +3,10 @@
    * Compact storage bar for the sidebar footer (replaces the old
    * watcher/cloud LiveStatus line).
    *
-   * Same reading as the dashboard's QuotaBar — used / quota with the bar
-   * escalating emerald → amber (≥80%) → red (≥95%) — just shrunk to fit
+   * Same reading as the dashboard's QuotaBar, used / quota with the bar
+   * escalating emerald → amber (≥80%) → red (≥95%), just shrunk to fit
    * the rail. Two data sources: a self-hosted session (`auth.user`) or a
-   * Hoard Cloud account (`cloud.account`) — a cloud-only user has no
+   * Hoard Cloud account (`cloud.account`), a cloud-only user has no
    * `auth.user`, so reading only that store left the footer blank for
    * every Gmail login. Prefer self-hosted when both exist. Uncapped
    * sources (self-hosted "at home", or a `-1` cloud limit) get the plain
@@ -87,10 +87,10 @@
   // Colour tracks the *consequence*, not an arbitrary % threshold: amber only
   // once the server is actually purging old versions to make room, red only
   // when it's full and rejecting uploads. Below that it stays emerald however
-  // high the bar climbs — a plan at 85% that isn't purging anything is fine.
+  // high the bar climbs, a plan at 85% that isn't purging anything is fine.
   //
   // `grace` is sky: a downgrade is scheduled, so the figures are still those of
-  // the old, larger limit and nothing is being deleted — but the rail is the
+  // the old, larger limit and nothing is being deleted, but the rail is the
   // one surface visible from every screen, so it's where a shrink that hasn't
   // happened yet should be noticeable. Account has the date.
   const barClass = $derived(

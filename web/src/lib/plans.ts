@@ -5,7 +5,7 @@ const MB = 1024 * 1024;
 
 /**
  * Plan limits for the landing/pricing/account UI. Must match the server's
- * `crates/hoard-server/src/cloud/plans.rs` 1:1 — when one changes, the
+ * `crates/hoard-server/src/cloud/plans.rs` 1:1, when one changes, the
  * other has to follow in the same release. Two tiers post-1.6.1; Pro+ was
  * dropped.
  */
@@ -54,14 +54,14 @@ export function formatPlanQuota(plan: PlanId): string {
   return `${Math.round(limit / MB)} MB`;
 }
 
-/** "1 GB" / "10 GB" — used in plan-card feature list. */
+/** "1 GB" / "10 GB", used in plan-card feature list. */
 export function formatMaxSaveSize(plan: PlanId): string {
   const limit = PLANS[plan].maxSaveSizeBytes;
   if (limit >= GB) return `${Math.round(limit / GB)} GB`;
   return `${Math.round(limit / MB)} MB`;
 }
 
-/** "3 GB" / "15 GB" — used in plan-card feature list. */
+/** "3 GB" / "15 GB", used in plan-card feature list. */
 export function formatBandwidthQuota(plan: PlanId): string {
   const limit = PLANS[plan].bandwidthQuotaBytes;
   if (limit >= GB) return `${Math.round(limit / GB)} GB`;

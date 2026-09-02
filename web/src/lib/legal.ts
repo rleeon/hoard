@@ -4,7 +4,7 @@
  * These are dates, not semver: what matters when a dispute lands is "which
  * text was in force the day this person clicked accept", and a date answers
  * that without a changelog. Bump the stamp **only** when the substance
- * changes — a typo fix that bumps it would re-prompt every user for nothing.
+ * changes, a typo fix that bumps it would re-prompt every user for nothing.
  *
  * `TERMS_VERSION` is what the clients send to `POST /v1/me/terms`, and the
  * server stores it verbatim. Keep it in sync with `TERMS_VERSION` in
@@ -26,7 +26,7 @@ export const LAST_UPDATED: Record<string, string> = {
  * name, tax ID, registered address and a direct means of contact.
  *
  * `TAX_ID` and `ADDRESS` are the two fields that cannot be derived from the
- * repo — fill them in before deploying the legal notice. The page renders a
+ * repo, fill them in before deploying the legal notice. The page renders a
  * visible placeholder while they are empty, on purpose: a legal notice that
  * quietly omits the address is worse than one that admits it is unfinished.
  */

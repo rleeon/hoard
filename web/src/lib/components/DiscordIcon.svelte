@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Discord's own mark — lucide dropped brand glyphs, so the path is inlined.
+  // Discord's own mark, lucide dropped brand glyphs, so the path is inlined.
   // currentColor so the button decides the ink; `class` lets callers size it.
   let { class: klass = 'h-4 w-4' }: { class?: string } = $props();
 </script>

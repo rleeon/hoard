@@ -21,7 +21,7 @@
   onMount(async () => {
     url = await loadUrl();
     if (!url) {
-      // Should not happen — defensively send the user back to the URL step.
+      // Should not happen, defensively send the user back to the URL step.
       push("/onboarding/server");
     }
   });

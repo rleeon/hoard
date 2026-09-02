@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Library page — auto-detection results + tracked saves.
+   * Library page, auto-detection results + tracked saves.
    *
    * On mount we hydrate from the in-memory detection cache (if a previous
    * scan happened this session) and also fetch the user's tracked saves so
@@ -159,7 +159,7 @@
   /** Currently-open "dismiss detected game" modal. Two flavours: a
    *  session-only filter (default, no persistence) or a permanent blacklist
    *  entry recorded in CliState. The checkbox `dismissBlacklist` drives the
-   *  branch — unchecked drops the slug into `sessionDismissed`, checked
+   *  branch, unchecked drops the slug into `sessionDismissed`, checked
    *  calls `ignoreDetectedGame`. */
   let dismissTarget = $state<DetectedGame | null>(null);
   let dismissBlacklist = $state(false);
@@ -173,7 +173,7 @@
           .length
       : 0,
   );
-  /** Slugs the user dismissed in this session only — wiped on reload. They
+  /** Slugs the user dismissed in this session only, wiped on reload. They
    *  reappear on the next scan unless the user also blacklisted them. */
   let sessionDismissed = $state(new Set<string>());
   /** Slugs whose multi-path detection card is expanded to show every save
@@ -274,7 +274,7 @@
     // session reappears instead of needing an app restart to clear them.
     sessionDismissed = new Set();
     try {
-      // Use rescan when we already have a report — same wire payload, but the
+      // Use rescan when we already have a report, same wire payload, but the
       // explicit intent helps backend logs distinguish "user mashed the
       // button" from "page just mounted with no cache".
       report = report ? await api.rescanLibrary() : await api.scanLibrary();
@@ -377,12 +377,12 @@
   }
 
   /** Track one specific save folder from the per-path list inside a card.
-   *  Unlike the folder-picker flow it does NOT set a manual override — the
+   *  Unlike the folder-picker flow it does NOT set a manual override, the
    *  other detected paths must stay visible so the user can monitor them too.
    *  The first folder tracked for a slug keeps the server default label; any
    *  extra folder carries its own path as the label to stay collision-free. */
   async function trackPath(game: DetectedGame, path: string) {
-    // Only count THIS machine's own folders as "already tracked" — an orphan
+    // Only count THIS machine's own folders as "already tracked", an orphan
     // (cloud save from another machine) is not a local branch.
     const localFolders = tracked.filter(
       (t) => t.game_slug === game.slug && !t.orphan && t.local_path,
@@ -403,7 +403,7 @@
   }
 
   /** Add a folder to a title. The first one goes to slot 1 with no questions.
-   *  Once the title has slots — here or in the cloud — this opens the picker.
+   *  Once the title has slots, here or in the cloud, this opens the picker.
    *
    *  Auto-numbering does not work, and this is why: the same folder added on two
    *  machines came out with two different numbers (2 on Windows, 3 on Linux
@@ -429,8 +429,8 @@
   } | null>(null);
 
   /** Commit the chosen number. Hooking onto a slot that already exists in the
-   *  cloud means adopting its row — that is how the two machines share history,
-   *  which is the entire point — not minting a new one with the same number. */
+   *  cloud means adopting its row, that is how the two machines share history,
+   *  which is the entire point, not minting a new one with the same number. */
   async function confirmSlotPick() {
     const p = slotPick;
     slotPick = null;
@@ -514,7 +514,7 @@
    *  that one out of the way first, and silently swapping two folders' numbers
    *  is the last thing anybody wants from a rename dialog. A number that exists
    *  only **in the cloud** is offered, because that is the other machine's copy
-   *  of this same folder and joining it is what the user came here to do — it is
+   *  of this same folder and joining it is what the user came here to do, it is
    *  how a folder that came out 3 on the second machine pairs with the 2 on the
    *  first. Everything else is free. */
   function renumberChoices(
@@ -553,7 +553,7 @@
     return game.path_confidences?.[i] ?? game.confidence;
   }
 
-  /** Folder chosen for a game through the scan dialog — both the "another
+  /** Folder chosen for a game through the scan dialog, both the "another
    *  folder" button and the "no save folder yet" one land here. The override is
    *  persisted so a re-scan doesn't revert to the heuristic guess. */
   async function useFolderForTarget(chosen: string) {
@@ -565,7 +565,7 @@
     // config folder would put that one first on every rescan, so it is only
     // written when this folder is going to be slot 1.
     //
-    // If it gets rejected — the folder belongs to another game — tracking anyway
+    // If it gets rejected, the folder belongs to another game, tracking anyway
     // would keep the bad half of the deal: this game watching someone else's
     // bytes and the real owner unable to track its own.
     const primera = slotMap(game.slug).every((o) => o.kind === "free");
@@ -735,7 +735,7 @@
       const joining = movingTo === null ? null : cloudRowFor(target, movingTo);
       if (joining) {
         // That number is the same folder on another machine. Pairing means
-        // taking over ITS row — where the shared history lives — so this
+        // taking over ITS row, where the shared history lives, so this
         // machine's own row steps aside first. Renaming into it would only
         // bounce off `UNIQUE(user_id, game_slug, label)`.
         const path = target.local_path;
@@ -800,7 +800,7 @@
             tracked = tracked.filter((t) => t.game_slug !== target.slug);
           }
         }
-        // Re-fetch so the new blacklist entry takes effect immediately —
+        // Re-fetch so the new blacklist entry takes effect immediately,
         // the backend already filters on read, so we just consume the
         // current cached report.
         try {
@@ -823,7 +823,7 @@
         );
       } else {
         sessionDismissed.add(target.slug);
-        // Force a reactive update — Svelte 5 runes don't track Set mutations.
+        // Force a reactive update, Svelte 5 runes don't track Set mutations.
         sessionDismissed = new Set(sessionDismissed);
       }
       dismissTarget = null;
@@ -837,8 +837,8 @@
 
   // Saves with a local folder on this machine vs cloud-only saves from other
   // machines. Los primeros son los que salen marcados dentro de la rejilla
-  // única; los segundos van a "En la nube — otras máquinas" (adoptables), que
-  // sigue siendo una sección aparte porque la acción es otra — BUG 4.
+  // única; los segundos van a "En la nube, otras máquinas" (adoptables), que
+  // sigue siendo una sección aparte porque la acción es otra, BUG 4.
   const localSaves = $derived(tracked.filter((t) => !t.orphan));
   const cloudOrphans = $derived(tracked.filter((t) => t.orphan));
 
@@ -870,8 +870,8 @@
   }
 
   /** "Vincular a esta máquina…" on a cloud-orphan card. Opens the modal that
-   *  offers what detection already found here — the folders for this slug, or
-   *  any other detected game picked by name — and keeps the folder picker as
+   *  offers what detection already found here, the folders for this slug, or
+   *  any other detected game picked by name, and keeps the folder picker as
    *  the escape hatch. Going straight to the OS dialog (as 1.0.4 did after the
    *  UI rewrite dropped this wiring) makes the user hand-find a folder Hoard
    *  already knows. */
@@ -950,7 +950,7 @@
   );
 
   // Sum the cloud footprint of saves that live only on other machines, for the
-  // "En la nube — otras máquinas" header.
+  // "En la nube, otras máquinas" header.
   const cloudTotalBytes = $derived(
     cloudOrphans.reduce((acc, s) => acc + (s.total_size_bytes ?? 0), 0),
   );
@@ -972,7 +972,7 @@
   });
 
   // Slugs whose detection row has source=manual_override. Drives the
-  // "Volver a sugerencia automática" de las partidas monitorizadas — sólo se
+  // "Volver a sugerencia automática" de las partidas monitorizadas, sólo se
   // enseña cuando el usuario tiene de verdad un override que limpiar.
   const slugsWithManualOverride = $derived.by(() => {
     const s = new Set<string>();

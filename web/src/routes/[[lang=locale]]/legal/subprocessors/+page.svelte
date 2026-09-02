@@ -12,7 +12,7 @@
    * languages render the same rows and nobody has to remember to edit two
    * tables when a provider changes.
    *
-   * `since` is the date the provider started processing data for the Service —
+   * `since` is the date the provider started processing data for the Service,
    * that is what a customer needs in order to check whether they were given
    * the notice period before a new one came in.
    */

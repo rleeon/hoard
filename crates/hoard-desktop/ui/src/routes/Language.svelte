@@ -1,11 +1,11 @@
 <script lang="ts">
   /**
-   * Onboarding step 1 — language picker.
+   * Onboarding step 1, language picker.
    *
    * Replaces the old static "Welcome" screen. Picking a language persists it
    * (via `setLocale`, which writes the agent prefs) and advances to the
-   * sign-in chooser. The choice is not final — Settings → Language changes it
-   * later — so we let the user continue with whatever is already active too.
+   * sign-in chooser. The choice is not final, Settings → Language changes it
+   * later, so we let the user continue with whatever is already active too.
    */
   import { push } from "svelte-spa-router";
   import { ArrowRight } from "@lucide/svelte";

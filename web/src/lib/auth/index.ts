@@ -1,7 +1,7 @@
 import type { AccountSession } from '../types';
 
 /**
- * AuthProvider — swap-in interface. Today: Supabase. Tomorrow: anything
+ * AuthProvider, swap-in interface. Today: Supabase. Tomorrow: anything
  * that can produce a JWT and a session. Components and routes must
  * depend on this interface, never on the impl module directly.
  */

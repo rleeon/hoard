@@ -312,7 +312,7 @@
   /* The locale links live inside a closed <details> so the prerender crawler
      discovers all 8 URLs in the static HTML. But the panel is positioned
      absolute, and an absolutely-positioned child escapes the native
-     "hide when closed" behaviour of <details> — so without this it stayed
+     "hide when closed" behaviour of <details>, so without this it stayed
      painted on top of the page even while closed (clicking the summary
      toggled `open` but nothing visibly changed). Gate the panel on the
      parent's `open` state explicitly; the links stay in the DOM for SEO. */

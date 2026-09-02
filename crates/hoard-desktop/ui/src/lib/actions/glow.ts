@@ -1,5 +1,5 @@
 /**
- * Glow action — a cursor-following highlight without the 3D tilt. Used by
+ * Glow action, a cursor-following highlight without the 3D tilt. Used by
  * buttons and small interactive elements where a perspective rotation would
  * feel wrong, but the light that follows the pointer is still a nice touch.
  *

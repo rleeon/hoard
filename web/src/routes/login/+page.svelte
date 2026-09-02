@@ -71,7 +71,7 @@
   // CSRF nonce the desktop app generated for this login attempt. The loopback
   // listener only accepts the callback if this exact value comes back, so we
   // must thread it through Supabase's redirect to /auth/callback untouched.
-  // NB: must not be named `state` — that collides with the `$state` rune and
+  // NB: must not be named `state`, that collides with the `$state` rune and
   // makes the compiler read `$state(...)` above as a store subscription.
   let csrfState = $derived(browser ? $page.url.searchParams.get('state') ?? '' : '');
   let dlExtra = $derived(
@@ -155,7 +155,7 @@
   }
 
   // Supabase's own OTP rate limit (distinct from our client-side resend
-  // cooldown) surfaces as AuthApiError with this code — show a message that
+  // cooldown) surfaces as AuthApiError with this code, show a message that
   // explains it's temporary rather than the raw "email rate limit exceeded".
   function describeAuthError(err: unknown): string {
     if ((err as { code?: string })?.code === 'over_email_send_rate_limit') {

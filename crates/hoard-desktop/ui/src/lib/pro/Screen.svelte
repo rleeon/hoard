@@ -1,13 +1,13 @@
 <script module lang="ts">
-  // Escena viva del overlay, guardada a nivel de MÓDULO (no de instancia) para
-  // que sobreviva al desmontaje del componente: al cambiar de Screen a otra
-  // vista y volver, el proceso overlay nativo sigue corriendo, así que sus
-  // paneles deben reaparecer sin tener que entrar en modo editor para que el
-  // overlay reenvíe la escena. `onMount` la rehidrata cuando `screen_is_open`,
-  // `onDestroy` la vuelca antes de irse. No se persiste a disco: al cerrar la
-  // app el overlay muere y `screen_is_open` pasa a false.
-  // Parámetros de una mirilla (SourceRef::Crosshair del overlay). `color` es
-  // hex #rrggbb y `alpha` 0..1; el overlay recibe RGBA de 8 bits.
+  // The overlay's live scene, kept at MODULE level (not per instance) so it
+  // survives the component unmounting: switching from Screen to another view and
+  // back leaves the native overlay process running, so its panels have to reappear
+  // without entering editor mode just to make the overlay resend the scene.
+  // `onMount` rehydrates it when `screen_is_open`, and `onDestroy` dumps it before
+  // leaving. It is not persisted to disk: closing the app kills the overlay and
+  // `screen_is_open` goes false.
+  // A crosshair's parameters (the overlay's SourceRef::Crosshair). `color` is hex
+  // #rrggbb and `alpha` is 0..1; the overlay receives 8-bit RGBA.
   export type Ch = {
     style: "cross" | "x" | "dot" | "circle";
     size: number;
@@ -32,22 +32,22 @@
     };
   }
 
-  // Parámetros del visor de francotirador (SourceRef::Scope): lente que
-  // muestra aumentado lo que hay debajo del panel.
-  /** Botón o tecla que enciende el visor. Los botones van numerados como los
-   *  numera el navegador (`MouseEvent.button`: 0 izq, 1 rueda, 2 der, 3 atrás,
-   *  4 adelante) y las teclas por `KeyboardEvent.code`, que es lo que llega al
-   *  capturarlas — el overlay traduce a VK/keysym en su lado. */
+  // The sniper scope's parameters (SourceRef::Scope): a lens that magnifies
+  // whatever is under the panel.
+  /** The button or key that turns the scope on. Buttons are numbered the way the
+   *  browser numbers them (`MouseEvent.button`: 0 left, 1 wheel, 2 right, 3 back,
+   *  4 forward) and keys by `KeyboardEvent.code`, which is what arrives when they
+   *  are captured; the overlay translates to VK or keysym on its side. */
   export type ScBinding =
     | { type: "mouse"; button: number }
     | { type: "key"; code: string };
 
-  /** Cuándo se ve el visor: `toggle` alterna, `hold` sólo mientras se mantiene,
-   *  `timed` lo enciende `seconds` y se apaga solo. */
+  /** When the scope shows: `toggle` alternates, `hold` only while held down,
+   *  `timed` turns it on for `seconds` and it goes off by itself. */
   export type ScMode = "toggle" | "hold" | "timed";
 
-  /** A qué apunta la lente: lo que tiene debajo, el centro de la pantalla, o
-   *  un punto desplazado. Desacopla *dónde se ve* de *qué se ve*. */
+  /** What the lens aims at: whatever is under it, the centre of the screen, or an
+   *  offset point. It decouples *where you look* from *what you see*. */
   export type ScAim =
     | { kind: "under" }
     | { kind: "center" }
@@ -57,7 +57,7 @@
     shape: "circle" | "square";
     zoom: number;
     border: boolean;
-    /** Suavizar los píxeles ampliados (bilineal) o dejarlos duros (vecino). */
+    /** Smooth the magnified pixels (bilinear) or leave them hard (nearest). */
     smooth: boolean;
     /** Cruz fina en el centro de la vista ampliada. */
     reticle: boolean;
@@ -74,13 +74,13 @@
   export const ZOOM_MAX = 20;
 
   /**
-   * El deslizador de aumento NO es lineal, y no es un capricho: el aumento se
-   * percibe de forma multiplicativa (de ×1 a ×2 se nota tanto como de ×10 a
-   * ×20), así que un recorrido lineal de 1 a 20 dejaría todo el rango útil
-   * —de ×1 a ×4— apelotonado en el primer 16 % de la barra y sería imposible
-   * afinar ahí. Con la curva exponencial, un mismo tramo de barra siempre
-   * cambia el aumento en la misma *proporción*: la mitad de la barra cae en
-   * ×4,5 y el ×1,01 sigue siendo alcanzable.
+   * The magnification slider is NOT linear, and that is not a whim: magnification
+   * is perceived multiplicatively (×1 to ×2 reads as big a jump as ×10 to ×20), so
+   * a linear run from 1 to 20 would cram the whole useful range, ×1 to ×4, into the
+   * first 16% of the bar and make it impossible to fine-tune there. With the
+   * exponential curve, the same stretch of bar always changes the magnification by
+   * the same *proportion*: the middle of the bar lands on ×4.5 and ×1.01 is still
+   * reachable.
    */
   const ZOOM_STEPS = 1000;
 
@@ -94,7 +94,7 @@
     return Math.round((Math.log(z) / Math.log(ZOOM_MAX)) * ZOOM_STEPS);
   }
 
-  /** ×1,01 · ×2,5 · ×12 — sin decimales que no aportan nada. */
+  /** ×1,01 · ×2,5 · ×12, sin decimales que no aportan nada. */
   export function zoomLabel(zoom: number): string {
     const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom || ZOOM_MIN));
     const txt = z < 10 ? z.toFixed(2).replace(/\.?0+$/, "") : z.toFixed(0);
@@ -113,8 +113,8 @@
     };
   }
 
-  /** Nombre legible de un vínculo. Los botones del ratón se nombran, no se
-   *  numeran: "Ratón 4" dice bastante más que "botón 3". */
+  /** A binding's readable name. Mouse buttons are named, not numbered: "Mouse 4"
+   *  says considerably more than "button 3". */
   export function bindingLabel(b: ScBinding | null): string {
     if (!b) return tr({ es: "Sin asignar", en: "Unassigned" });
     if (b.type === "key") return b.code;
@@ -148,19 +148,19 @@
     crop: { top: number; right: number; bottom: number; left: number };
     scale: "fill" | "fit";
     z: number;
-    // En modo Juego la ventana es click-through (los clics pasan al juego). Con
-    // contenido de vídeo protegido/acelerado eso puede dejarla en negro; poner
-    // `passthrough: false` conserva el estilo original de la ventana (el vídeo
-    // compone normal) a cambio de que los clics sobre ese panel vayan a la app.
+    // In Game mode the window is click-through (the clicks reach the game). With
+    // protected or accelerated video content that can leave it black; setting
+    // `passthrough: false` keeps the window's original style (the video composites
+    // normally) in exchange for clicks on that panel reaching the app.
     passthrough: boolean;
-    // Modo compatibilidad Chromium: en lugar de colocar la ventana real
-    // recortada (cuyo recorte deja gris en Brave/Discord), captura la ventana
-    // y compone el recorte pixel-perfect; la ventana real se aparca fuera de
-    // pantalla. Puede dejar el vídeo en negro al reproducir (oclusión Chromium).
+    // Chromium compatibility mode: instead of placing the real window cropped
+    // (whose crop leaves grey in Brave and Discord), it captures the window and
+    // composites the crop pixel-perfect, parking the real window off-screen. It can
+    // leave video black during playback (Chromium's occlusion).
     compat: boolean;
-    // Radio (px) de la lente circular click-through que sigue al cursor cuando
-    // `passthrough` está ON: dentro del círculo ves/clicas lo que hay detrás del
-    // panel; fuera, el panel se ve normal.
+    // The radius in px of the circular click-through lens that follows the cursor
+    // when `passthrough` is on: inside the circle you see and click what is behind
+    // the panel; outside it, the panel looks normal.
     passthroughRadius: number;
     // Which screen this panel lives on. `mirror` = drawn on every monitor;
     // otherwise it's drawn only on `monitorId`. Rects are monitor-local.
@@ -179,7 +179,7 @@
 
 <script lang="ts">
   // hoard-screen launcher + editor. Drives the NATIVE overlay process
-  // (`hoard-screen` sidecar) — not a Tauri window anymore.
+  // (`hoard-screen` sidecar), not a Tauri window anymore.
   //
   // Model (v1): the overlay only composites panels and stays click-through
   // (View). Arranging happens here, in the main window, on a scaled preview of
@@ -326,15 +326,16 @@
     };
   }
 
-  // Última edición local: mientras sea reciente, una escena entrante del
-  // overlay no la pisa (el push ya la lleva; el poll re-sincroniza al calmarse).
+  // The last local edit: while it is recent, an incoming scene from the overlay
+  // does not overwrite it (the push already carries it; the poll resyncs once things
+  // settle).
   let lastPush = 0;
 
-  // Telemetría de Screen: qué se monta aquí dentro, para saber si esto se usa.
-  // El backend cronometra la sesión y el modo edición por su cuenta; lo que le
-  // falta es el vocabulario (qué es una mirilla, qué es un visor), y eso es lo
-  // único que sube por aquí. Nunca un título de ventana ni un nombre de app.
-  // Es best-effort: si falla, no se le cuenta al usuario como un error.
+  // Screen's telemetry: what gets placed in here, so we know whether this is used.
+  // The backend times the session and editor mode on its own; what it lacks is the
+  // vocabulary (what a crosshair is, what a scope is), and that is the only thing
+  // that goes up through here. Never a window title or an app name. Best-effort: a
+  // failure is not reported to the user as an error.
   function note(action: string, kind?: string) {
     invoke("screen_note", { action, kind: kind ?? null }).catch(() => {});
   }
@@ -431,8 +432,9 @@
               smooth: src.smooth ?? true,
               reticle: src.reticle ?? false,
               aim: src.aim ?? { kind: "under" },
-              // Un overlay antiguo no manda `activation`; sin este defecto el
-              // visor se quedaría sin objeto y el editor reventaría al leerlo.
+              // An older overlay sends no `activation`; without this default the
+              // scope would have no object and the editor would blow up reading
+              // it.
               activation: {
                 binding: src.activation?.binding ?? null,
                 mode: src.activation?.mode ?? "toggle",
@@ -526,9 +528,9 @@
     editing = false;
   }
 
-  // z para un panel nuevo no-mirilla: por encima de las demás apps/visores
-  // pero por debajo de cualquier mirilla (que por defecto vive en la banda
-  // +1000, "siempre encima"). La lista de Capas permite reordenar después.
+  // The z for a new non-crosshair panel: above the other apps and scopes but below
+  // any crosshair (which lives in the +1000 band by default, "always on top"). The
+  // Layers list allows reordering afterwards.
   function nextZ(): number {
     return (
       panels
@@ -597,16 +599,17 @@
     pushScene();
   }
 
-  // ── Captura de vínculo del visor ──────────────────────────────────────
+  // ---- capturing the scope's binding
   //
-  // "Pulsa el botón que quieras usar" y la app detecta cuál fue. Se escucha en
-  // captura (`capture: true`) y se corta la propagación: mientras se está
-  // asignando, el clic NO debe llegar al botón de debajo ni cerrar nada.
+  // "Press the button you want to use" and the app detects which one it was. It
+  // listens in the capture phase (`capture: true`) and stops propagation: while the
+  // binding is being assigned, the click must NOT reach the button underneath or
+  // close anything.
   //
-  // El ratón se escucha en `pointerdown` en vez de `click` porque los botones
-  // laterales (4 y 5) no generan `click` en muchos navegadores, y son justo los
-  // que se quieren asignar. El navegador además los usa para atrás/adelante en
-  // el historial: `preventDefault` lo evita.
+  // The mouse is listened to on `pointerdown` rather than `click` because the side
+  // buttons (4 and 5) generate no `click` in many browsers, and they are exactly
+  // the ones people want to bind. The browser also uses them for back and forward
+  // in the history: `preventDefault` stops that.
   let bindingFor = $state<string | null>(null);
 
   function startBindingCapture(panelId: string) {
@@ -618,8 +621,8 @@
     bindingFor = null;
     if (!p) return;
     p.sc.activation.binding = b;
-    // El modo (toggle/hold/timed) dice para qué lo quieren; el botón concreto
-    // que hayan elegido no le importa a nadie y no sube.
+    // The mode (toggle, hold, timed) says what they want it for; which specific
+    // button they picked is nobody's business and does not go up.
     if (b) note("binding", p.sc.activation.mode);
     pushScene();
   }
@@ -635,8 +638,8 @@
     if (!bindingFor) return;
     e.preventDefault();
     e.stopPropagation();
-    // Escape cancela sin asignar; sería la tecla más fácil de asignar sin
-    // querer y la que menos sentido tiene para un visor.
+    // Escape cancels without binding; it would be the easiest key to bind by
+    // accident and the one that makes least sense for a scope.
     if (e.code === "Escape") {
       bindingFor = null;
       return;
@@ -648,7 +651,7 @@
     if (!bindingFor) return;
     window.addEventListener("pointerdown", onBindingPointer, true);
     window.addEventListener("keydown", onBindingKey, true);
-    // `auxclick` es el que dispara el menú atrás/adelante en algunos navegadores.
+    // `auxclick` is what fires the back/forward menu in some browsers.
     const swallow = (e: Event) => e.preventDefault();
     window.addEventListener("auxclick", swallow, true);
     window.addEventListener("contextmenu", swallow, true);
@@ -688,9 +691,9 @@
     pushScene();
   }
 
-  // Reordena capas intercambiando z con el vecino en el orden actual — así
-  // cruza sin problemas la banda +1000 de las mirillas cuando el usuario
-  // decide explícitamente que algo vaya encima de ellas.
+  // Reorders layers by swapping z with the neighbour in the current order, so it
+  // crosses the crosshairs' +1000 band cleanly when the user explicitly decides
+  // something should go above them.
   function moveLayer(p: Panel, dir: 1 | -1) {
     const order = [...panels].sort((a, b) => a.z - b.z);
     const i = order.indexOf(p);
@@ -704,8 +707,8 @@
     pushScene();
   }
 
-  // Cambia el tamaño de una mirilla manteniendo su centro (el rect sigue al
-  // spec para que el blit sea 1:1 y los bordes queden nítidos).
+  // Resizes a crosshair keeping its centre (the rect follows the spec so the blit
+  // is 1:1 and the edges stay sharp).
   function setChSize(p: Panel, size: number) {
     const cx = p.x + p.w / 2;
     const cy = p.y + p.h / 2;
@@ -755,9 +758,8 @@
 
   type Handle = "move" | "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
-  // Tiradores de redimensión: el de arrastre completo ("move") es el propio
-  // cuerpo del panel; estos son los 8 bordes/esquinas que se pintan al
-  // seleccionar.
+  // The resize handles: the full-drag one ("move") is the panel's own body; these
+  // are the 8 edges and corners painted on selection.
   const HANDLES: { h: Handle; cls: string }[] = [
     { h: "nw", cls: "-left-1 -top-1 cursor-nwse-resize" },
     { h: "n", cls: "left-1/2 -top-1 -translate-x-1/2 cursor-ns-resize" },
@@ -771,7 +773,7 @@
 
   const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
-  // Estilos de mirilla del picker (tipado aquí para no castear en la plantilla).
+  // The picker's crosshair styles (typed here to avoid casting in the template).
   const CH_STYLES: { st: Ch["style"]; glyph: string }[] = [
     { st: "cross", glyph: "+" },
     { st: "x", glyph: "×" },
@@ -845,7 +847,7 @@
       right = clamp(right, -mon.w, 2 * mon.w);
       top = clamp(top, -mon.h, 2 * mon.h);
       bottom = clamp(bottom, -mon.h, 2 * mon.h);
-      // Respeta el tamaño mínimo moviendo solo el borde que se arrastra.
+      // Honours the minimum size by moving only the edge being dragged.
       if (h.includes("w")) left = Math.min(left, right - MIN_W);
       else right = Math.max(right, left + MIN_W);
       if (h.includes("n")) top = Math.min(top, bottom - MIN_H);
@@ -874,7 +876,7 @@
     if (!e.key.startsWith("Arrow")) return;
     const step = e.shiftKey ? 10 : 1;
     if (e.altKey) {
-      // El tamaño de una mirilla se cambia con su slider (rect = spec, 1:1).
+      // A crosshair's size is changed with its slider (rect = spec, 1:1).
       if (s.kind === "crosshair") return;
       if (e.key === "ArrowRight") s.w = Math.max(MIN_W, s.w + step);
       else if (e.key === "ArrowLeft") s.w = Math.max(MIN_W, s.w - step);
@@ -890,7 +892,7 @@
     pushScene();
   }
 
-  // Edición numérica directa de la caja del panel.
+  // Direct numeric editing of the panel's box.
   function setRect(p: Panel, key: "x" | "y" | "w" | "h", v: number) {
     if (!Number.isFinite(v)) return;
     v = Math.round(v);
@@ -901,9 +903,9 @@
     pushScene();
   }
 
-  // --- recorte -------------------------------------------------------------
-  // Modo recorte visual del panel seleccionado: se ve la ventana entera y lo
-  // que cae fuera del recorte se atenúa, con tiradores arrastrables por borde.
+  // ---- crop
+  // The selected panel's visual crop mode: the whole window is visible and whatever
+  // falls outside the crop is dimmed, with draggable handles on each edge.
   let cropId = $state<string | null>(null);
   const cropMode = $derived(cropId === selectedId && !!selected);
   function toggleCrop() {
@@ -981,9 +983,9 @@
     try {
       open = await invoke<boolean>("screen_is_open");
       if (open) {
-        // El overlay sigue vivo de un montaje anterior: pinta el buffer local al
-        // instante y pide la escena REAL al overlay (la copia local puede estar
-        // vacía o vieja tras una recarga — el bug del panel imborrable).
+        // The overlay is still alive from an earlier mount: paint the local buffer
+        // at once and ask the overlay for the REAL scene (the local copy can be
+        // empty or stale after a reload, the undeletable-panel bug).
         panels = savedPanels;
         await loadMonitors();
         await loadWindows();
@@ -996,8 +998,8 @@
   });
 
   onDestroy(() => {
-    // Preserva la escena viva para el próximo montaje (el overlay no se cierra
-    // al cambiar de vista, solo se desmonta este panel de control).
+    // Preserves the live scene for the next mount (the overlay does not close when
+    // the view changes, only this control panel unmounts).
     savedPanels = panels;
     stopPolling();
     unlisten?.();

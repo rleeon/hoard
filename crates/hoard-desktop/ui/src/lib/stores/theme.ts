@@ -3,7 +3,7 @@
  *
  * Hoard ships several themes. They are implemented purely in `app.css` by
  * re-pointing Tailwind's palette CSS variables (zinc / white / emerald) under
- * a `[data-theme]` scope on <html> — every component uses raw Tailwind
+ * a `[data-theme]` scope on <html>, every component uses raw Tailwind
  * utilities (bg-zinc-950, text-emerald-300, …) that read those variables, so
  * swapping a theme re-skins the whole app with zero markup edits.
  *
@@ -38,7 +38,7 @@ function readInitial(): ThemeId {
     const v = localStorage.getItem(STORAGE_KEY);
     if (v && (VALID_IDS as string[]).includes(v)) return v as ThemeId;
   } catch {
-    /* storage disabled / private mode — fall back to obsidian for the session */
+    /* storage disabled / private mode, fall back to obsidian for the session */
   }
   return "obsidian";
 }
@@ -75,16 +75,16 @@ export function applyTheme(id: ThemeId): void {
  * of whichever theme is active. Pass null to revert to the theme's own gem.
  *
  * Lightness/chroma track Obsidian's emerald so it reads well on dark themes; on
- * Quartz (light) it's an approximation — the picker is a power-user touch.
+ * Quartz (light) it's an approximation, the picker is a power-user touch.
  *
  * The scale is covered end to end, not just the shades that carry most of the
- * UI. A shade left out doesn't fall back to something neutral — it keeps
+ * UI. A shade left out doesn't fall back to something neutral, it keeps
  * Tailwind's own emerald, so it stays green while everything around it turns
  * the chosen hue. That is how the playtime heatmap ended up with a green square
  * in the middle of a purple ramp: its lowest level is `emerald-900`, and only
  * 300-700 were being repointed. Chroma tapers at both ends because the mid-ramp
  * 0.15 is not reachable at those lightnesses for every hue, and a value outside
- * the gamut gets clipped — which shifts the hue, the one thing this must hold.
+ * the gamut gets clipped, which shifts the hue, the one thing this must hold.
  *
  * The mark's gem (`--logo-gem-*`, drawn by `Logo.svelte`) follows along, but on
  * its own lightness/chroma: the logo always sits on a near-black tile, so it
@@ -139,7 +139,7 @@ export function applyAccentHue(hue: number | null): void {
  * Named gems offered in the Settings picker.
  *
  * The hue wheel is still there behind "Custom", but nobody thinks "I want 265
- * degrees" — they think "I want it blue". These seven walk the whole wheel
+ * degrees", they think "I want it blue". These seven walk the whole wheel
  * without two of them landing on the same colour.
  *
  * Emerald is `null`, not 160: it means "whatever gem this theme ships", which
@@ -225,7 +225,7 @@ function withCrossfade(fn: () => void): void {
 
 /** Wire up persistence + DOM application. Call once at boot, before mount,
  *  so the first paint already has the right palette (no flash). The store
- *  subscription lives for the app's lifetime — theme is a singleton. */
+ *  subscription lives for the app's lifetime, theme is a singleton. */
 export function initTheme(): void {
   applyTheme(readInitial());
   applyAccentHue(readAccent());
@@ -236,7 +236,7 @@ export function initTheme(): void {
     } catch {
       /* best-effort; the in-memory switch still applies */
     }
-    // Skip the crossfade on the boot emission — the palette is already painted
+    // Skip the crossfade on the boot emission, the palette is already painted
     // and a fade there would flash the whole app on launch.
     if (booted) withCrossfade(() => applyTheme(id));
     else applyTheme(id);

@@ -27,7 +27,7 @@
     } catch (e) {
       console.warn("setting sync mode on finish failed:", e);
     }
-    // Turn on autostart by default once setup completes — a save-sync tray
+    // Turn on autostart by default once setup completes, a save-sync tray
     // app is only useful if it's running. The OS-level enable can fail
     // (sandboxed/headless), so reflect what actually stuck back into prefs
     // and never let a failure block the user from reaching the dashboard.

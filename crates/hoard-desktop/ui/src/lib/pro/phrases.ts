@@ -2,7 +2,7 @@
  * Frases de la tarjeta de Hoard-Wrapped.
  *
  * La tarjeta remata con una frase elegida al azar a partir del juego más
- * jugado del rango: si el más jugado es un Fallout —cualquiera de ellos—,
+ * jugado del rango: si el más jugado es un Fallout, cualquiera de ellos,
  * sale "Supongo… que no cambia nunca."; si no reconocemos el juego, tira del
  * saco genérico. El usuario siempre puede escribir la suya encima (queda solo
  * en local) o volver a tirar el dado.
@@ -30,7 +30,7 @@ export type Quote = {
 };
 
 type QuoteEntry = {
-  /** Id estable — se usa para la semilla del dado y para depurar. */
+  /** Id estable, se usa para la semilla del dado y para depurar. */
   id: string;
   /** Se prueba contra `-<slug>-`. */
   test: RegExp;

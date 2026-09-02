@@ -1,13 +1,13 @@
 <script lang="ts">
   /**
-   * "Scan folder" dialog — the single answer to "point Hoard at a folder".
+   * "Scan folder" dialog, the single answer to "point Hoard at a folder".
    *
    * Two modes, one flow:
    *
    * * **add** (no `target`): the Library's own scan-folder button. Every
-   *   save-like dir found is listed as "found <Game> here — track it?" and
+   *   save-like dir found is listed as "found <Game> here, track it?" and
    *   tracks through the normal `addGameToTracking`.
-   * * **target** (`target` set): the same scan, but for ONE known game — "track
+   * * **target** (`target` set): the same scan, but for ONE known game, "track
    *   this game with another folder" and "no save folder yet". Picking a row
    *   hands the path back through `onPick` instead of creating a game, and the
    *   header keeps the explanation of why Hoard has no path plus the Steam
@@ -15,7 +15,7 @@
    *   scan it on open, no clicks).
    *
    * The backend walk (`scan_folder`) does not apply the periodic scan's
-   * precision gate — the user pointing at a folder IS the evidence — so what
+   * precision gate, the user pointing at a folder IS the evidence, so what
    * comes back is everything under there that holds data, including the folder
    * itself when that's the save folder.
    */
@@ -38,12 +38,12 @@
   export type ScanTarget = {
     slug: string;
     display_name: string;
-    /** Steam's install dir, when known — scanned on open. */
+    /** Steam's install dir, when known, scanned on open. */
     install_dir?: string | null;
     /** Folder already detected/tracked for this game; seeds the picker. */
     seed_path?: string | null;
     steam_app_id?: number | null;
-    /** No save folder detected at all — the case the explanation is about. */
+    /** No save folder detected at all, the case the explanation is about. */
     no_paths?: boolean;
   };
 
@@ -68,7 +68,7 @@
   // Cuando no hay ninguna carpeta detectada, abrir ya escaneando la de
   // instalación: enseñar esa ruta servía justo para que el usuario fuera a
   // mirar si el save está ahí, y hacerle dar dos clics más es la pereza que
-  // sobra. Con carpeta ya detectada no se escanea nada solo — se busca OTRA,
+  // sobra. Con carpeta ya detectada no se escanea nada solo, se busca OTRA,
   // así que la conocida únicamente siembra el selector.
   let autoScanned = $state(false);
   $effect(() => {
@@ -166,8 +166,8 @@
   }
 
   /** En modo dirigido, TODOS los resultados que no son el juego buscado. La
-   *  salida de emergencia sigue disponible —el usuario puede saber algo que la
-   *  detección no—, pero con el aviso de a quién pertenece esa carpeta. Son
+   *  salida de emergencia sigue disponible,el usuario puede saber algo que la
+   *  detección no, pero con el aviso de a quién pertenece esa carpeta. Son
    *  todos y no el primero: una carpeta madre puede tener varios juegos dentro,
    *  y nombrar solo a uno haría creer que los demás no están en juego. */
   const foreignOwners = $derived(
@@ -175,7 +175,7 @@
   );
 
   /** True when the scanned folder is itself among the results **for the game we
-   *  were sent here for** — only then does its row already hand the folder over
+   *  were sent here for**, only then does its row already hand the folder over
    *  (`usePath`), and only then is the "use the folder as-is" escape hatch a
    *  duplicate.
    *
@@ -184,7 +184,7 @@
    *  `Desktop\saves` for Factorio, attribution names that exact folder after
    *  something else, the escape hatch disappears, and the only thing left to
    *  click tracks it under the foreign slug. The row and the escape hatch do
-   *  opposite things — track it as its own game, or give it to the target —
+   *  opposite things, track it as its own game, or give it to the target,
    *  so one can never stand in for the other. */
   const folderInResults = $derived(
     results.some(

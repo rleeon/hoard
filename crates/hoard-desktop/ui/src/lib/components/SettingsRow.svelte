@@ -3,7 +3,7 @@
    * One toggleable setting in the Settings page.
    *
    * The shape is fixed (icon + label/description + switch) so the page reads
-   * as a uniform list — different visuals per row would make scanning the
+   * as a uniform list, different visuals per row would make scanning the
    * page slower. The switch is a styled checkbox; we don't depend on a third
    * party UI kit for something this small.
    */
@@ -21,7 +21,7 @@
 
   let { row, value, disabled = false, onChange }: Props = $props();
   // Reactive alias so the icon swaps if the row prop ever changes. Capturing
-  // it as `const` would freeze it to the initial render — which Svelte warns
+  // it as `const` would freeze it to the initial render, which Svelte warns
   // about explicitly, and which would bite future callers.
   const Icon = $derived(row.icon);
 </script>

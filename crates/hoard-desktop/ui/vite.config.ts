@@ -7,7 +7,7 @@ import pkg from "./package.json" with { type: "json" };
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 // `$pro` resolves to the Pro UI (Hoard-Screen / Hoard-Wrapped). The code now
-// lives in-repo (AGPL, open source); the real lock stays server-side — the
+// lives in-repo (AGPL, open source); the real lock stays server-side, the
 // overlay only unlocks against a Cloud entitlement, so shipping the source
 // doesn't hand out the feature. `PRO` is therefore always true.
 const proDir = here("./src/lib/pro");
@@ -31,7 +31,7 @@ export default defineConfig(async () => ({
       process.env.HOARD_PRO_UNLOCK === "1",
     ),
   },
-  // Tauri ignores everything not in src — make all paths relative so the
+  // Tauri ignores everything not in src, make all paths relative so the
   // built bundle works when loaded via the file:// scheme.
   base: "./",
   clearScreen: false,

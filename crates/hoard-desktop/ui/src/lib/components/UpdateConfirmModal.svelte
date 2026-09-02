@@ -36,7 +36,7 @@
 
   // We don't depend on `@tauri-apps/plugin-os` (not installed in this
   // workspace as of 1.5.3). The desktop WebView's UA string always carries
-  // the host OS family — that's good enough to gate a Linux-only pkexec
+  // the host OS family, that's good enough to gate a Linux-only pkexec
   // call. Hydrated in `onMount` to keep SSR-safe even though Tauri runs
   // CSR exclusively.
   let platformName = $state("");
@@ -90,7 +90,7 @@
         const r = await applyDesktopUpdate(report?.client.latest ?? undefined);
         if (r.kind === "superseded") {
           // A newer release landed since the modal opened. We didn't install
-          // the stale one — refresh the report so the badge/modal now point at
+          // the stale one, refresh the report so the badge/modal now point at
           // the latest, and tell the user to confirm again for that version.
           toastInfo(
             $_("updates.superseded", { values: { latest: r.latest } }),
@@ -105,7 +105,7 @@
         }
         onClose();
       } catch (e) {
-        // `apply_desktop_update` returns `Result<_, AppError>` since 1.5.3 —
+        // `apply_desktop_update` returns `Result<_, AppError>` since 1.5.3,
         // the invoke bridge serialises that to `{ title, body, detail }`.
         // `showError` also accepts raw strings as a retrocompat fallback for
         // any pre-migration code path that still throws plain text.

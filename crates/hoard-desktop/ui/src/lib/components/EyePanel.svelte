@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Eye dropdown — live overview of every device in the account.
+   * Eye dropdown, live overview of every device in the account.
    *
    * Each device shows: OS logo (emoji) + name + online dot + running game with
    * elapsed time. This machine is always first; other devices from the same
@@ -88,7 +88,7 @@
   }
 
   /** What to call a game on screen. Same rule as the Library cards: the
-   *  user's own name for it if they set one, the prettified slug otherwise —
+   *  user's own name for it if they set one, the prettified slug otherwise,
    *  so the panel and the cards never disagree about what a game is called.
    *  It applies to the other machines too: the override is this device's way
    *  of naming a slug, and the slug is the same everywhere. */

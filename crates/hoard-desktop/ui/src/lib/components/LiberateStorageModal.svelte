@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * "Libera espacio" dialog — the black-box escape hatch.
+   * "Libera espacio" dialog, the black-box escape hatch.
    *
    * Shown when the account's live saves exceed the plan limit and purging old
    * versions can't bring them under (the Pro→Free case). It lists the games by
@@ -13,7 +13,7 @@
    *                       never touched and it's reversible by reactivating
    *                       after upgrading.
    *
-   * El cuerpo —la lista, las casillas y el medidor— vive en
+   * El cuerpo,la lista, las casillas y el medidor, vive en
    * {@link LiberateStoragePanel}, porque la despedida de Pro enseña lo mismo
    * midiendo contra otro límite. Aquí quedan sólo las salidas.
    */
@@ -62,7 +62,7 @@
   }
 
   // A la pantalla Pro, no al navegador. Este diálogo salta cuando la cuota se
-  // llena —o sea, en mitad de otra cosa—, así que abrir una pestaña encima es
+  // llena, o sea, en mitad de otra cosa, así que abrir una pestaña encima es
   // el peor momento posible para hacerlo.
   function goPro() {
     onClose();
