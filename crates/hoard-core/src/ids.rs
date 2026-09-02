@@ -154,21 +154,21 @@ pub const GENERIC_IDENTITY_TOKENS: &[&str] = &[
 /// diagnosable without wrapping it.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum IdError {
-    #[error("{kind}: valor vacío")]
+    #[error("{kind}: empty value")]
     Empty { kind: &'static str },
-    #[error("{kind}: {len} caracteres, el máximo es {max}")]
+    #[error("{kind}: {len} characters, the maximum is {max}")]
     TooLong {
         kind: &'static str,
         len: usize,
         max: usize,
     },
-    #[error("{kind}: carácter inválido {ch:?} en {raw:?}")]
+    #[error("{kind}: invalid character {ch:?} in {raw:?}")]
     BadChar {
         kind: &'static str,
         ch: char,
         raw: String,
     },
-    #[error("{kind}: forma inválida ({expected}), recibido {raw:?}")]
+    #[error("{kind}: invalid shape ({expected}), got {raw:?}")]
     BadShape {
         kind: &'static str,
         expected: &'static str,
@@ -195,9 +195,9 @@ pub enum QuarantineReason {
 impl fmt::Display for QuarantineReason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            QuarantineReason::Empty => "vacío tras normalizar",
-            QuarantineReason::Degenerate => "token genérico de fontanería",
-            QuarantineReason::Unrecoverable => "forma irrecuperable",
+            QuarantineReason::Empty => "empty after normalising",
+            QuarantineReason::Degenerate => "a generic plumbing token",
+            QuarantineReason::Unrecoverable => "unrecoverable shape",
         };
         f.write_str(s)
     }
@@ -409,7 +409,7 @@ impl GameSlug {
         if !s.starts_with(|c: char| c.is_ascii_alphanumeric()) {
             return Err(IdError::BadShape {
                 kind: Self::KIND,
-                expected: "empieza por letra o dígito",
+                expected: "starts with a letter or a digit",
                 raw: raw.to_string(),
             });
         }
@@ -677,7 +677,7 @@ impl SaveId {
         if !is_canonical_uuid(s) {
             return Err(IdError::BadShape {
                 kind: Self::KIND,
-                expected: "UUID canónico en minúsculas (8-4-4-4-12)",
+                expected: "a canonical lowercase UUID (8-4-4-4-12)",
                 raw: raw.to_string(),
             });
         }
@@ -845,7 +845,7 @@ mod tests {
         ] {
             assert!(
                 serde_json::from_str::<GameSlug>(poison).is_err(),
-                "{poison} debería rebotar en la puerta"
+                "{poison} should bounce off the gate"
             );
         }
         assert!(serde_json::from_str::<Username>(r#""""#).is_err());
@@ -894,7 +894,7 @@ mod tests {
             "a",
             OTHER_SLUG,
         ] {
-            assert!(GameSlug::parse(ok).is_ok(), "{ok} debería pasar");
+            assert!(GameSlug::parse(ok).is_ok(), "{ok} should pass");
         }
         assert!(GameSlug::parse(&"a".repeat(MAX_SLUG_LEN)).is_ok());
         assert!(GameSlug::parse(&"a".repeat(MAX_SLUG_LEN + 1)).is_err());
@@ -931,7 +931,7 @@ mod tests {
                 assert_eq!(value.as_str(), "gse-saves");
                 assert_eq!(raw, "GSE Saves");
             }
-            other => panic!("esperaba Repaired, salió {other:?}"),
+            other => panic!("expected Repaired, got {other:?}"),
         }
     }
 
@@ -957,7 +957,7 @@ mod tests {
                     assert_eq!(reason, QuarantineReason::Degenerate);
                     assert_eq!(raw, poison);
                 }
-                other => panic!("{poison} debería ir a cuarentena, salió {other:?}"),
+                other => panic!("{poison} should be quarantined, got {other:?}"),
             }
         }
     }
@@ -969,7 +969,7 @@ mod tests {
         for empty in ["", "   ", "---", "!!!"] {
             assert!(
                 GameSlug::repair(empty).is_quarantined(),
-                "{empty:?} debería ir a cuarentena"
+                "{empty:?} should be quarantined"
             );
         }
     }
@@ -989,7 +989,7 @@ mod tests {
             Repair::Repaired { value, .. } => {
                 assert_eq!(value.as_str(), "3f2504e0-4f89-41d3-9a0c-0305e82c3301")
             }
-            other => panic!("esperaba Repaired, salió {other:?}"),
+            other => panic!("expected Repaired, got {other:?}"),
         }
         assert!(SaveId::repair("save-a").is_quarantined());
     }
@@ -1022,7 +1022,7 @@ mod tests {
             "3f2504e0-4f89-41d3-9a0c-0305e82c330g",          // no hex
             "urn:uuid:3f2504e0-4f89-41d3-9a0c-0305e82c3301", // URN
         ] {
-            assert!(SaveId::parse(bad).is_err(), "{bad} debería rebotar");
+            assert!(SaveId::parse(bad).is_err(), "{bad} should bounce");
         }
     }
 
@@ -1037,7 +1037,7 @@ mod tests {
     #[test]
     fn username_is_permissive_but_rejects_the_impossible() {
         for ok in ["jacka", "John Doe", "señor-ñ", "a"] {
-            assert!(Username::parse(ok).is_ok(), "{ok} debería pasar");
+            assert!(Username::parse(ok).is_ok(), "{ok} should pass");
         }
         assert!(Username::parse("").is_err());
         assert!(Username::parse("   ").is_err());

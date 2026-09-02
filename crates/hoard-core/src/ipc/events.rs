@@ -147,7 +147,7 @@ pub enum AgentEvent {
     /// upgrades. Its own event rather than a `BackupFailed` for two reasons:
     /// nothing about this save is wrong (a red "factorio falló" blames the
     /// wrong thing, and the raw 402 JSON was what actually reached the feed in
-    /// ago-2026), and it's account-wide, so the UI collapses every save's
+    /// Aug 2026), and it's account-wide, so the UI collapses every save's
     /// report into one actionable banner that opens "liberar espacio".
     ///
     /// The save keeps its pending changes and re-arms on a long park. The bytes
@@ -391,7 +391,7 @@ pub enum BackupReason {
     FilesystemSettled,
     GameStopped,
     Manual,
-    /// One save inside a staggered "backup sweep" (Modo Automático's hourly
+    /// One save inside a staggered "backup sweep" (automatic mode's hourly
     /// hash pass). Spaced out across an effective window so disk I/O doesn't
     /// burst. Kept quiet in the activity feed, since unlike a filesystem-settled
     /// backup there is no user-visible trigger and N queued rows every hour

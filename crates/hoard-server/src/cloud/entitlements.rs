@@ -62,7 +62,7 @@ pub enum FeatureState {
     TrialAvailable { days: i64 },
     /// Free account inside its active trial.
     Trial { expires_at: String },
-    /// Free account whose trial has elapsed. UI renders this as "función Pro".
+    /// Free account whose trial has elapsed. The UI renders this as a Pro feature.
     TrialExpired,
 }
 

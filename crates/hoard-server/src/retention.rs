@@ -49,8 +49,8 @@ fn lerp(k: f64, a: f64, b: f64) -> f64 {
 
 impl RetentionPolicy {
     /// Map the user-facing `data_saving` knob `k ∈ [0,1]` onto concrete
-    /// keep-counts (ADR 0018, Decisión 4). `k=0` ≈ keep a lot (close to the
-    /// pre-0018 "keep everything" feel); `k=1` ≈ keep only the essentials.
+    /// keep-counts (ADR 0018, decision 4). `k=0` is roughly keep a lot (close to the
+    /// pre-0018 "keep everything" feel); `k=1` is roughly keep only the essentials.
     /// `byte_cap` stays `None` here; it is opt-in via config or plan.
     pub fn from_data_saving(k: f64) -> Self {
         let k = k.clamp(0.0, 1.0);

@@ -4,11 +4,11 @@
 //! records a per-user dismissal. Rows are inserted exclusively via direct SQL
 //! with the service role (`tools/send-notification.sh`), never through HTTP,
 //! so the only possible sender is the operator. The `notifications` table has
-//! no user_id column — broadcasts by construction (see migration 0032) — but
+//! no user_id column, broadcasts by construction (see migration 0032), but
 //! DELIVERY is per-user: the list handler filters against
 //! `notification_dismissals` (migration 0033) and the caller's
 //! `profiles.created_at`, so a user only ever sees broadcasts sent after they
-//! signed up and never one they dismissed (on any device — the dismissal is
+//! signed up and never one they dismissed (on any device, the dismissal is
 //! server-side, the client's localStorage tombstones are just an optimistic
 //! cache).
 //!
@@ -38,7 +38,7 @@ const MAX_NOTIFICATIONS: i64 = 10;
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
     /// RFC3339 cursor: only return rows created strictly after this instant.
-    /// Absent on first run — the client then gets the current (non-expired)
+    /// Absent on first run, the client then gets the current (non-expired)
     /// broadcasts once and starts its cursor from the newest.
     pub since: Option<String>,
 }
@@ -102,10 +102,10 @@ pub async fn list(
         OffsetDateTime,
     )> = sqlx::query_as(
         // Per-user delivery filter (migration 0033):
-        //   1. `created_at >= profiles.created_at` — a user only sees
+        //   1. `created_at >= profiles.created_at`, a user only sees
         //      broadcasts created AFTER their signup, so a fresh account isn't
         //      greeted by months of historical operator messages.
-        //   2. `NOT EXISTS (... notification_dismissals ...)` — a broadcast
+        //   2. `NOT EXISTS (... notification_dismissals ...)`, a broadcast
         //      the user dismissed is never re-delivered, on any device. The
         //      dismissal is server-side; the client's localStorage tombstones
         //      are an optimistic cache only.
@@ -164,11 +164,11 @@ pub async fn list(
     Ok(Json(NotificationListOut { notifications }))
 }
 
-/// `POST /v1/notifications/:id/dismiss` — record a per-user dismissal so the
+/// `POST /v1/notifications/:id/dismiss`, record a per-user dismissal so the
 /// broadcast is never re-delivered to that user (on any device or after a
 /// reinstall). Idempotent: `ON CONFLICT DO NOTHING` makes re-dismissing the
 /// same broadcast a no-op. A `notification_id` that doesn't exist trips the
-/// FK; we swallow that as 204 too — the client only ever dismisses ids the
+/// FK; we swallow that as 204 too, the client only ever dismisses ids the
 /// server just delivered, so a FK miss is a benign race (the broadcast
 /// expired/was deleted between fetch and dismiss) and the user's intent
 /// ("don't show this again") is already satisfied. Responds `204 No Content`.
@@ -189,7 +189,7 @@ pub async fn dismiss(
     match res {
         Ok(_) => Ok(StatusCode::NO_CONTENT),
         // 23503 = foreign_key_violation: the notification_id no longer exists.
-        // No-op (see handler doc) — the dismissal is moot.
+        // No-op (see handler doc), the dismissal is moot.
         Err(sqlx::Error::Database(db)) if db.code().as_deref() == Some("23503") => {
             Ok(StatusCode::NO_CONTENT)
         }

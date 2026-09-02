@@ -1052,10 +1052,10 @@ pub async fn detail(
         // The sha is computed by the server itself on upload, so an invalid one
         // means a hand-edited DB. It is neither repaired nor skipped here: the
         // file list is what the client uses to restore and verify, and
-        // servirla incompleta escribiría un save a medias. Se falla ruidosamente.
+        // serving it incomplete would write half a save. It fails loudly.
         let sha = Sha256Hex::parse(&r.sha256).map_err(|e| {
             tracing::error!(error = %e, path = %r.relative_path,
-                "snapshot_files: sha256 corrupto en la DB");
+                "snapshot_files: corrupt sha256 in the DB");
             internal()
         })?;
         Ok(SnapshotFile {

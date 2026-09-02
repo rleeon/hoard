@@ -1,20 +1,20 @@
-//! # Test golden de round-trip del wire (ADR 0021, C.6 — Slice 3)
+//! # The wire's golden round-trip test (ADR 0021, C.6)
 //!
-//! Las formas de `wire` compilan a la vez en cliente y server, pero **eso sólo
-//! garantiza coherencia dentro de un build**: cliente y server se despliegan por
-//! separado (un self-hoster corre un server de hace tres versiones contra un
-//! desktop de ayer; Hoard Cloud actualiza el server sin tocar los clientes
-//! instalados). Un cambio que compile puede romper igual el contrato.
+//! The `wire` shapes compile in both the client and the server, but **that only
+//! guarantees coherence within one build**: client and server are deployed
+//! separately (a self-hoster runs a server from three versions ago against
+//! yesterday's desktop; Hoard Cloud updates the server without touching the
+//! installed clients). A change that compiles can still break the contract.
 //!
-//! Los ficheros de `tests/golden/` son el JSON **byte a byte de la última
-//! release** (v1.0.4). Cada uno se deserializa con el tipo de hoy y se vuelve a
-//! serializar: si el resultado no es el mismo objeto, el cambio rompe compat y
-//! el test cae. Renombrar un campo, quitarlo, cambiarle el tipo o dejar de
-//! emitirlo se caza aquí, no en producción.
+//! The files in `tests/golden/` are the **byte-for-byte JSON of the last release**
+//! (v1.0.4). Each one is deserialised with today's type and serialised again: if the
+//! result is not the same object, the change breaks compatibility and the test
+//! fails. Renaming a field, dropping it, changing its type or no longer emitting it
+//! is caught here, not in production.
 //!
-//! **Al añadir un campo**: se añade al tipo con `#[serde(default)]` y NO se toca
-//! el fixture (el JSON viejo debe seguir cargando). Sólo se añade un fixture
-//! nuevo cuando se quiere fijar además la forma nueva.
+//! **When adding a field**: add it to the type with `#[serde(default)]` and do NOT
+//! touch the fixture (the old JSON has to keep loading). Only add a new fixture when
+//! the new shape is also worth pinning.
 
 use std::path::PathBuf;
 
@@ -42,12 +42,12 @@ fn round_trip<T: DeserializeOwned + Serialize>(name: &str) {
     let after = serde_json::to_value(&parsed).unwrap();
     assert_eq!(
         before, after,
-        "{name}.json no sobrevive el round-trip: el wire cambió respecto a la release"
+        "{name}.json does not survive the round-trip: the wire changed since the release"
     );
 }
 
-/// Sólo comprueba que el JSON de la release **entra**. Para las formas que el
-/// tipo compartido normaliza al re-emitir (ver `cloud_rename_response_parses`).
+/// Only checks that the release's JSON **parses**. For the shapes the shared type
+/// normalises when re-emitting (see `cloud_rename_response_parses`).
 fn parses<T: DeserializeOwned>(name: &str) -> T {
     let raw = golden(name);
     serde_json::from_str(&raw)
@@ -57,19 +57,22 @@ fn parses<T: DeserializeOwned>(name: &str) -> T {
 #[test]
 fn health_round_trips() {
     round_trip::<Health>("health");
-    // El golden de la release no lleva `cas`, y el cliente debe leerlo como
-    // "este server no negocia el contenido" en vez de tropezar. Si esto se
-    // rompiera, un self-hoster con un server viejo vería subidas contra unas
-    // rutas que no existen.
+    // The release's golden carries no `cas`, and the client has to read that as
+    // "this server does not negotiate content" rather than trip over it. If this
+    // broke, a self-hoster on an old server would see uploads aimed at routes that
+    // do not exist.
     let h: Health = parses("health");
-    assert!(!h.cas, "ausente → el server sólo entiende el multipart");
+    assert!(
+        !h.cas,
+        "absent means the server only understands the multipart"
+    );
     assert!(!h.devices, "ausente → no lleva censo, no le mandes latidos");
 }
 
-/// El `/v1/health` de un server 1.1.3. Las banderas tienen que sobrevivir el
-/// round-trip **y** valer `true`: son lo único que separa hablar el protocolo
-/// nuevo de mandar la carpeta entera, y llevar censo de dispositivos de no
-/// mandarle latidos a un server que no sabe qué hacer con ellos.
+/// A 1.1.3 server's `/v1/health`. The flags have to survive the round-trip **and**
+/// be `true`: they are the only thing separating speaking the new protocol from
+/// sending the whole folder, and keeping a device census from beating at a server
+/// that has no idea what to do with it.
 #[test]
 fn cas_capable_health_round_trips() {
     round_trip::<Health>("health_cas");
@@ -79,9 +82,9 @@ fn cas_capable_health_round_trips() {
     assert!(h.mode.is_none(), "sigue siendo self-hosted");
 }
 
-/// Cloud emite su propio `HealthBody` (en `server::cloud::run`, fuera del
-/// alcance de este slice) y **no** lleva `uptime_secs`. El cliente ramifica el
-/// protocolo entero con este payload, así que lo que importa es que entre.
+/// Cloud emits its own `HealthBody` (in `server::cloud::run`) and it carries **no**
+/// `uptime_secs`. The client branches the whole protocol on this payload, so what
+/// matters is that it parses.
 #[test]
 fn cloud_health_parses() {
     let h: Health = parses("health_cloud");
@@ -124,11 +127,11 @@ fn logs_round_trip() {
     round_trip::<LogIngestResponse>("log_ingest_response");
 }
 
-/// La respuesta del rename cloud (`SaveSummary`, que sigue definida aparte en
-/// `server::cloud::routes::saves`) tiene que seguir entrando en el `Save`
-/// compartido: omite los campos opcionales y emite el offset como `+00:00` en
-/// vez de `Z`. Round-trip no aplica —al re-emitir se normaliza a `Z`, que es la
-/// misma instante— pero el parseo sí, y es lo que hace el cliente.
+/// The cloud rename's response (`SaveSummary`, still defined separately in
+/// `server::cloud::routes::saves`) has to keep parsing into the shared `Save`: it
+/// omits the optional fields and emits the offset as `+00:00` rather than `Z`. A
+/// round-trip does not apply, since re-emitting normalises to `Z`, the same instant,
+/// but the parse does, and parsing is what the client does.
 #[test]
 fn cloud_rename_response_parses() {
     let save: Save = parses("save_cloud_rename");
@@ -141,9 +144,9 @@ fn cloud_rename_response_parses() {
     assert_eq!(save.created_at.offset(), time::UtcOffset::UTC);
 }
 
-/// Los valores que cruzan el wire pasan por la puerta de `ids`, así que el
-/// golden también fija que los ids de la release **siguen siendo válidos** hoy.
-/// Si alguien endurece un `parse` de más, esto cae antes que un usuario.
+/// The values crossing the wire go through `ids`' gate, so the golden also pins
+/// that the release's ids are **still valid** today. If somebody tightens a `parse`
+/// too far, this falls before a user does.
 #[test]
 fn release_values_still_pass_the_gate() {
     let save: Save = parses("save");

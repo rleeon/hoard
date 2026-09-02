@@ -2,8 +2,8 @@
 //!
 //! Same approach as `devices_presence.rs`: the real handlers against a real
 //! database. What it pins down is the half of `hoard-admin` that a NAS operator
-//! can now reach without a shell — create, rename, set a password, mint a
-//! device token, delete — and, above all, the four refusals that keep an
+//! can now reach without a shell, create, rename, set a password, mint a
+//! device token, delete, and, above all, the four refusals that keep an
 //! operator from locking themselves out or losing saves by a stray click.
 
 use axum::extract::{Extension, Path, State};
@@ -410,7 +410,7 @@ async fn a_server_cannot_be_left_without_an_admin() {
         Err(StatusCode::CONFLICT)
     );
 
-    // Another admin, deleted by us, is allowed — we are still here.
+    // Another admin, deleted by us, is allowed, we are still here.
     let second = create(&h, "second-admin", "hunter2hunter2", true)
         .await
         .unwrap();

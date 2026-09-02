@@ -1,9 +1,9 @@
-//! Censo de dispositivos y presencia, de punta a punta (`routes::devices`).
+//! The device census and presence, end to end (`routes::devices`).
 //!
-//! Mismo enfoque que `cas_roundtrip.rs`: se llaman los manejadores reales contra
-//! una base de verdad. Lo que se comprueba es lo que un self-hoster con tres
-//! máquinas quiere saber — cuáles existen, cuál está encendida ahora y a qué
-//! está jugando — y que apagarse se note sin que nadie tenga que apagar nada.
+//! The same approach as `cas_roundtrip.rs`: the real handlers are called against a
+//! real database. What is checked is what a self-hoster with three machines wants to
+//! know, namely which ones exist, which is on right now and what it is playing, and
+//! that going away is noticed without anybody having to turn anything off.
 
 use axum::extract::{Extension, Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
@@ -30,7 +30,7 @@ async fn harness() -> Harness {
     let data_dir = dir.path().to_path_buf();
     let cfg_path = data_dir.join("config.toml");
     // `display()` writes the host's separators, and on Windows a `\` inside a
-    // TOML basic string is an escape sequence — `C:\Users\...` fails to parse
+    // TOML basic string is an escape sequence, `C:\Users\...` fails to parse
     // before a single test body runs. Forward slashes are accepted by both
     // Windows APIs and SQLite's URL parser, so normalising here keeps one
     // fixture correct on every platform.
@@ -101,7 +101,7 @@ format = "pretty"
     }
 }
 
-/// Las cabeceras de identidad que manda el cliente en cada petición.
+/// The identity headers the client sends on every request.
 fn machine(fp: &str, name: &str, os: &str) -> HeaderMap {
     let mut h = HeaderMap::new();
     h.insert("x-hoard-device-fp", HeaderValue::from_str(fp).unwrap());
@@ -143,8 +143,8 @@ async fn list(h: &Harness, headers: &HeaderMap) -> Vec<hoard_core::wire::DeviceO
     .devices
 }
 
-/// Las tres preguntas de golpe: qué máquinas hay, cuál está encendida, y a qué
-/// juega. Y que cada una se reconozca a sí misma en la lista.
+/// The three questions at once: which machines there are, which is on, and what it
+/// is playing. And that each recognises itself in the list.
 #[tokio::test]
 async fn the_census_answers_who_is_on_and_what_they_are_playing() {
     let h = harness().await;
@@ -167,7 +167,7 @@ async fn the_census_answers_who_is_on_and_what_they_are_playing() {
 
     let other = seen.iter().find(|d| !d.this_device).expect("la otra");
     assert_eq!(other.device_name, "steam-deck");
-    assert!(other.online, "latió, está encendida");
+    assert!(other.online, "it beat, so it is on");
     assert!(other.playing.is_empty(), "encendida pero sin jugar");
 
     // Desde la Deck, quien se reconoce es la Deck.
@@ -181,10 +181,9 @@ async fn the_census_answers_who_is_on_and_what_they_are_playing() {
     );
 }
 
-/// Apagarse se nota de dos maneras, y las dos tienen que funcionar: el adiós
-/// ordenado apaga el punto al instante, y una máquina que se va de golpe
-/// envejece sola. Sin lo segundo, un corte de luz deja un equipo "encendido"
-/// para siempre.
+/// Going away is noticed two ways, and both have to work: an orderly goodbye turns
+/// the dot off at once, and a machine that vanishes ages out on its own. Without the
+/// second, a power cut leaves a machine "on" for ever.
 #[tokio::test]
 async fn a_machine_goes_dark_whether_it_says_goodbye_or_not() {
     let h = harness().await;
@@ -193,16 +192,16 @@ async fn a_machine_goes_dark_whether_it_says_goodbye_or_not() {
     beat(&h, &pc, &[("stardew-valley", 30)], false).await;
     beat(&h, &deck, &[], false).await;
 
-    // Adiós ordenado: se apaga ya, y deja de decir a qué jugaba.
+    // An orderly goodbye: it goes dark now, and stops saying what it was playing.
     beat(&h, &pc, &[], true).await;
     let seen = list(&h, &deck).await;
     let pc_row = seen.iter().find(|d| d.device_name == "sobremesa").unwrap();
     assert!(!pc_row.online);
     assert!(pc_row.playing.is_empty());
 
-    // Muerte súbita: la Deck deja de latir. Se envejece su `last_seen_at` más
-    // allá de la ventana, sin tocar `closed_at` — que es exactamente el estado
-    // en el que queda un equipo al que le quitan la corriente.
+    // Sudden death: the Deck stops beating. Its `last_seen_at` is aged past the
+    // window without touching `closed_at`, which is exactly the state a machine is
+    // left in when the power goes.
     sqlx::query("UPDATE devices SET last_seen_at = '2020-01-01T00:00:00Z' WHERE fingerprint = ?")
         .bind("fp-deck")
         .execute(&h.state.pool)
@@ -227,8 +226,8 @@ async fn a_machine_goes_dark_whether_it_says_goodbye_or_not() {
     );
 }
 
-/// Reinstalar la app no duplica la máquina (la huella es estable), y renombrar
-/// el equipo actualiza la fila en vez de crear otra.
+/// Reinstalling the app does not duplicate the machine (the fingerprint is stable),
+/// and renaming the machine updates the row rather than creating another.
 #[tokio::test]
 async fn the_same_machine_stays_one_row() {
     let h = harness().await;
@@ -240,8 +239,8 @@ async fn the_same_machine_stays_one_row() {
     assert_eq!(seen[0].device_name, "portatil-nuevo");
 }
 
-/// Un cliente anterior a esto no manda huella. No debe registrar nada y, sobre
-/// todo, no debe fallar: sincroniza igual, sólo que no sale en la lista.
+/// A client older than this sends no fingerprint. It must register nothing and,
+/// above all, must not fail: it syncs just the same, it simply is not in the list.
 #[tokio::test]
 async fn a_client_without_a_fingerprint_is_ignored_not_rejected() {
     let h = harness().await;
@@ -249,8 +248,8 @@ async fn a_client_without_a_fingerprint_is_ignored_not_rejected() {
     assert!(list(&h, &HeaderMap::new()).await.is_empty());
 }
 
-/// Olvidar una máquina la saca del censo. Que sea el propio dueño quien lo pida
-/// es todo el control de acceso que hace falta: el `user_id` va en el WHERE.
+/// Forgetting a machine takes it out of the census. The owner being the one asking
+/// is all the access control needed: the `user_id` is in the WHERE.
 #[tokio::test]
 async fn forgetting_a_device_removes_it() {
     let h = harness().await;
@@ -279,7 +278,7 @@ async fn forgetting_a_device_removes_it() {
     assert_eq!(left[0].device_name, "sobremesa");
 }
 
-/// La limpieza periódica olvida lo que lleva meses sin aparecer, y sólo eso.
+/// The periodic cleanup forgets what has not shown up for months, and only that.
 #[tokio::test]
 async fn stale_devices_are_forgotten_and_live_ones_are_not() {
     let h = harness().await;
@@ -305,7 +304,7 @@ async fn stale_devices_are_forgotten_and_live_ones_are_not() {
     assert_eq!(left, vec!["sobremesa".to_string()]);
 }
 
-/// El censo es por cuenta: la máquina de otro usuario no aparece aquí.
+/// The census is per account: another user's machine does not appear here.
 #[tokio::test]
 async fn the_census_does_not_cross_accounts() {
     let h = harness().await;
@@ -334,8 +333,8 @@ async fn the_census_does_not_cross_accounts() {
     assert_eq!(mine[0].device_name, "la-mia");
 }
 
-/// El alta también ocurre en `whoami`, que es lo que llama el cliente al
-/// arrancar: una máquina aparece en el censo aunque nunca llegue a latir.
+/// Registration also happens in `whoami`, which is what the client calls on start:
+/// a machine shows up in the census even if it never gets round to beating.
 #[tokio::test]
 async fn signing_in_is_enough_to_appear() {
     let h = harness().await;
@@ -356,7 +355,7 @@ async fn signing_in_is_enough_to_appear() {
 }
 
 /// The account page reads the per-snapshot ceiling off `whoami`, so the number
-/// on screen has to be this server's own `storage.max_snapshot_size_mb` — not a
+/// on screen has to be this server's own `storage.max_snapshot_size_mb`, not a
 /// plan, not a constant. Before it travelled, the only way to learn the limit
 /// existed was for a backup to bounce off it with a 413.
 ///
@@ -377,11 +376,10 @@ async fn whoami_reports_this_servers_own_snapshot_ceiling() {
     assert_eq!(who.max_snapshot_size_bytes, Some(64 * 1024 * 1024));
 }
 
-/// El 413 del camino direccionado por contenido dice el tamaño **exacto** (el
-/// manifiesto lo declara antes de mover un byte), y por eso viaja como
-/// `actual_bytes` y no como `received_bytes`. Con el nombre equivocado el
-/// cliente le contaba a un self-hoster "3,6 GB enviados antes de parar" sobre una
-/// subida que no envió ninguno.
+/// The content-addressed path's 413 states the **exact** size (the manifest declares
+/// it before a byte moves), which is why it travels as `actual_bytes` and not as
+/// `received_bytes`. Under the wrong name the client told a self-hoster "3.6 GB sent
+/// before stopping" about an upload that sent none.
 #[test]
 fn a_declared_rejection_reports_the_size_not_bytes_received() {
     let (status, body) = hoard_server::routes::snapshots::snapshot_too_large_declared(
@@ -397,7 +395,7 @@ fn a_declared_rejection_reports_the_size_not_bytes_received() {
         body.0
     );
 
-    // Y el de la transmisión abortada, al revés: un suelo, nunca el tamaño.
+    // And the aborted transmission's, the other way round: a floor, never the size.
     let (_, streamed) = hoard_server::routes::snapshots::snapshot_too_large(1024, 1030);
     assert_eq!(streamed.0["received_bytes"], 1030i64);
     assert!(streamed.0.get("actual_bytes").is_none());

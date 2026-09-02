@@ -4,14 +4,14 @@
 //! 6.8 GB dropped to Free (2 GB) and the server shrank the limit the same
 //! second, so the auto-purge deleted the user's version history with no notice
 //! and every later upload bounced off a 402. The grace window meant to prevent
-//! exactly that was dead code — `settle_storage_on_active` sized "how much room
+//! exactly that was dead code, `settle_storage_on_active` sized "how much room
 //! do you have today" with the plan being moved *to*, so Pro→Free resolved to
 //! 2 GB on both sides and never scheduled anything.
 //!
 //! It runs against a throwaway database instead of a paid subscription because
 //! nothing here is Polar's decision: Polar only says "this subscription ended".
-//! Everything that matters — grant, deadline, what the limit resolves to while
-//! the plan column already says `free` — is [`quota::settle_storage_limit`] and
+//! Everything that matters, grant, deadline, what the limit resolves to while
+//! the plan column already says `free`, is [`quota::settle_storage_limit`] and
 //! [`plans::resolved_storage_limit`], and both are reachable from a test.
 //!
 //! Skipped unless `HOARD_PG_TEST_URL` is set, like the S3 one. To run it:
@@ -55,7 +55,7 @@ async fn pool() -> Option<PgPool> {
     // `profiles` FK off (0013), an `auth.uid()` for the RLS policies, and the
     // `anon` / `authenticated` roles the admin-metrics grants name (0030). A
     // bare Postgres has none of them, so stand up the shapes they reference.
-    // Nothing here authenticates anything — RLS is never the path the server
+    // Nothing here authenticates anything, RLS is never the path the server
     // takes (it connects as the owner); the objects just have to be creatable.
     for role in ["anon", "authenticated", "service_role"] {
         // No IF NOT EXISTS for roles before PG 16's syntax, and re-running the
@@ -195,7 +195,7 @@ async fn pro_to_free_over_footprint_gets_the_window() {
             .expect("deadline");
     assert_eq!(before, after, "a second event can't extend the window");
 
-    // Wind the clock past the deadline: now — and only now — it shrinks.
+    // Wind the clock past the deadline: now, and only now, it shrinks.
     sqlx::query("UPDATE profiles SET storage_limit_change_at = now() - interval '1 minute' WHERE user_id = $1")
         .bind(id)
         .execute(&pool)
@@ -246,7 +246,7 @@ async fn pro_to_free_within_the_limit_applies_immediately() {
     cleanup(&pool, id).await;
 }
 
-/// Coming back to Pro during the window cancels it outright — no lingering
+/// Coming back to Pro during the window cancels it outright, no lingering
 /// deadline waiting to shrink a paying account.
 #[tokio::test]
 async fn resubscribing_cancels_a_pending_downgrade() {
@@ -287,7 +287,7 @@ async fn resubscribing_cancels_a_pending_downgrade() {
 /// The "same folder tracked twice" shape, which is what made 1.25 GB invisible
 /// on a real account: two live saves referencing the same blob. Neither can
 /// claim those bytes as exclusive, so `freeable_bytes` reports 0 for both and
-/// archiving either one alone frees nothing — `shared_groups` is what makes
+/// archiving either one alone frees nothing, `shared_groups` is what makes
 /// them visible.
 ///
 /// It also pins the decode. `array_agg(f.save_id)` yields `text[]` **because
@@ -398,7 +398,7 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
 }
 
 /// Storage comes back on a downgrade; devices don't. An account that was ever
-/// Pro keeps its machines for life — dropping six paired PCs to three the day a
+/// Pro keeps its machines for life, dropping six paired PCs to three the day a
 /// subscription lapses is a working account turning into a broken-looking one.
 #[tokio::test]
 async fn an_ex_pro_account_keeps_its_devices_after_dropping_to_free() {

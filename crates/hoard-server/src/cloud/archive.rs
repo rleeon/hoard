@@ -395,9 +395,9 @@ pub async fn shared_groups(pool: &PgPool, user_id: Uuid) -> Result<Vec<SharedGro
         JOIN cloud_blobs b ON b.user_id = $1 AND b.sha256 = pb.sha256
         WHERE b.refcount > 0
         GROUP BY pb.save_ids
-        -- Un grupo que no libera nada no es un grupo. Dos saves que comparten
-        -- un fichero vacío cumplen la condición de arriba y llegaban al cliente
-        -- como "comparte 0 B con X: archiva ambos para liberarlo".
+        -- A group that frees nothing is not a group. Two saves sharing an empty
+        -- file satisfy the condition above and reached the client as "shares 0 B
+        -- with X: archive both to free it".
         HAVING COALESCE(SUM(b.size_bytes), 0) > 0
         ORDER BY 2 DESC
         "#,

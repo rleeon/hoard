@@ -302,8 +302,8 @@ pub async fn count_version_cap_excess(
 }
 
 /// Enforce the user's own "max versions per save" caps (`profiles.max_versions`
-/// for the automatic ones, `profiles.max_manual_versions` for the ones asked
-/// mano; NULL = sin límite). Unlike the quota purge this is user-opt-in and
+/// for the automatic ones, `profiles.max_manual_versions` for the ones asked for by
+/// hand; NULL means no limit). Unlike the quota purge this is user-opt-in and
 /// unconditional: for every save, the oldest committed live versions beyond
 /// the newest `cap` are deleted, never the head and never pinned ones. Handles
 /// both content-addressed versions (blob release, like [`purge_one`]) and
@@ -313,10 +313,9 @@ pub async fn count_version_cap_excess(
 /// The two classes are counted separately, and that is the whole point. With a
 /// single cap, a game autosaving every minute fills the entire history in one
 /// session and takes out the copy somebody deliberately made before a boss.
-/// Counted apart, an automatic burst can only
-/// desplazar a otras automáticas. De qué clase es cada versión lo dice
-/// `notes`; null means automatic, which is what every row from before
-/// esto (ver [`VersionOrigin`]).
+/// Counted apart, an automatic burst can only displace other automatic ones. Which
+/// class a version belongs to is what `notes` says; null means automatic, which is
+/// what every row from before this carries (see [`VersionOrigin`]).
 pub async fn prune_version_caps(state: &CloudState, user_id: Uuid) -> Result<usize, CloudError> {
     let caps: Option<(Option<i32>, Option<i32>)> =
         sqlx::query_as("SELECT max_versions, max_manual_versions FROM profiles WHERE user_id = $1")

@@ -903,7 +903,7 @@ pub struct AcceptTermsBody {
 
 #[derive(Debug, Serialize)]
 pub struct TermsStatusOut {
-    /// Última versión aceptada, o `null` si no consta ninguna.
+    /// The last version accepted, or `null` when none is on record.
     pub accepted_version: Option<String>,
     pub accepted_at: Option<String>,
     /// The one in force today.

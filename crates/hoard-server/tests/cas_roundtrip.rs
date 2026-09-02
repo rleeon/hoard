@@ -1,14 +1,13 @@
-//! Subida direccionada por contenido, de punta a punta (`routes::cas`).
+//! The content-addressed upload, end to end (`routes::cas`).
 //!
-//! Llama a los manejadores reales —los mismos que monta `main.rs`— contra una
-//! base y un almacén de verdad. Los extractores de axum son envoltorios, así que
-//! invocarlos directamente ejercita todo lo que importa (staging, verificación
-//! de hash, colocación en el almacén, transacción, contabilidad) sin levantar un
-//! servidor.
+//! It calls the real handlers, the same ones `main.rs` mounts, against a real
+//! database and a real store. Axum's extractors are wrappers, so invoking them
+//! directly exercises everything that matters (staging, hash verification, placement
+//! in the store, the transaction, the accounting) without standing a server up.
 //!
-//! Lo que se prueba es la promesa entera: **la segunda copia de una partida casi
-//! igual no vuelve a transmitir lo que el server ya tiene**. Es lo que separa
-//! esto del multipart, y lo único que un test de unidad no puede enseñar.
+//! What is tested is the whole promise: **the second backup of a nearly identical
+//! save does not retransmit what the server already has**. That is what separates
+//! this from the multipart, and the one thing a unit test cannot show.
 
 use axum::body::Body;
 use axum::extract::{Extension, Path, State};
@@ -40,10 +39,10 @@ async fn harness() -> Harness {
     let db_path = data_dir.join("hoard.db");
     let cfg_path = data_dir.join("config.toml");
 
-    // Config mínima pero real: se carga con el mismo `Config::load` del binario,
-    // así que un campo que se vuelva obligatorio rompe aquí y no en producción.
+    // A minimal but real config: it is loaded with the binary's own `Config::load`,
+    // so a field that becomes mandatory breaks here and not in production.
     // `display()` writes the host's separators, and on Windows a `\` inside a
-    // TOML basic string is an escape sequence — `C:\Users\...` fails to parse
+    // TOML basic string is an escape sequence, `C:\Users\...` fails to parse
     // before a single test body runs. Forward slashes are accepted by both
     // Windows APIs and SQLite's URL parser, so normalising here keeps one
     // fixture correct on every platform.
@@ -94,7 +93,7 @@ format = "pretty"
     seed(&pool).await;
     let store = hoard_server::store::build_store(&config)
         .await
-        .expect("almacén local");
+        .expect("local store");
 
     Harness {
         state: Arc::new(ServerState {
@@ -123,7 +122,7 @@ async fn seed(pool: &SqlitePool) {
     .execute(pool)
     .await
     .unwrap();
-    // Las migraciones ya siembran un catálogo; el juego puede estar o no.
+    // The migrations already seed a catalogue; the game may or may not be in it.
     sqlx::query("INSERT OR IGNORE INTO games (slug, display_name) VALUES ('factorio','Factorio')")
         .execute(pool)
         .await
@@ -147,9 +146,9 @@ fn manifest(files: &[(&str, &[u8])]) -> Vec<CasFile> {
     manifest_at(files, &[])
 }
 
-/// Como [`manifest`], con mtime por fichero: `mtimes[i]` es el del fichero
-/// `files[i]`. Sin mtime todos los ficheros empatan y el protagonista del
-/// historial se elige por tamaño, que es lo que pasa con un cliente viejo.
+/// Like [`manifest`], with a per-file mtime: `mtimes[i]` is `files[i]`'s. With no
+/// mtime every file ties and the history's headline file is picked by size, which is
+/// what happens with an older client.
 fn manifest_at(files: &[(&str, &[u8])], mtimes: &[i64]) -> Vec<CasFile> {
     files
         .iter()
@@ -163,14 +162,14 @@ fn manifest_at(files: &[(&str, &[u8])], mtimes: &[i64]) -> Vec<CasFile> {
         .collect()
 }
 
-/// Una copia completa: init → subir lo que falte → commit. Devuelve
-/// (versión, blobs que hubo que transmitir, bytes transmitidos).
+/// A full backup: init, upload what is missing, commit. Returns the version, the
+/// blobs that had to be transmitted, and the bytes transmitted.
 async fn backup(h: &Harness, files: &[(&str, &[u8])], base: Option<i64>) -> (i64, usize, i64) {
     backup_at(h, files, &[], base).await.0
 }
 
-/// Una copia con mtimes declarados, que además devuelve el `Snapshot` entero
-/// para poder mirar lo que la fila del historial va a contar.
+/// A backup with declared mtimes, which also returns the whole `Snapshot` so what
+/// the history's row will say can be inspected.
 async fn backup_at(
     h: &Harness,
     files: &[(&str, &[u8])],
@@ -198,7 +197,7 @@ async fn backup_at(
             .iter()
             .find(|(_, b)| sha_of(b) == missing.sha256.as_str())
             .map(|(_, b)| *b)
-            .expect("el server sólo pide shas del manifiesto");
+            .expect("the server only asks for shas from the manifest");
         let code = cas::upload_blob(
             State(h.state.clone()),
             Extension(h.user.clone()),
@@ -238,9 +237,9 @@ async fn used_bytes(pool: &SqlitePool) -> i64 {
         .unwrap()
 }
 
-/// El caso de doctorase (ago-2026): una partida grande en la que entre copia y
-/// copia cambia un fichero. La primera paga todo; la segunda sólo el fichero
-/// que cambió, y aun así la versión queda completa.
+/// The case that started it (Aug 2026): a large save where one file changes between
+/// backups. The first pays for everything; the second pays only for the file that
+/// changed, and the version is still complete.
 #[tokio::test]
 async fn the_second_backup_only_transmits_what_changed() {
     let h = harness().await;
@@ -263,10 +262,10 @@ async fn the_second_backup_only_transmits_what_changed() {
     assert_eq!(
         used_bytes(&h.state.pool).await,
         280_000,
-        "sólo se cobran los bytes nuevos"
+        "only the new bytes are charged"
     );
 
-    // La versión 2 está entera aunque medio contenido no se haya transmitido.
+    // Version 2 is whole even though half the content never travelled.
     let files: Vec<(String, i64)> = sqlx::query_as(
         "SELECT sf.relative_path, sf.size_bytes FROM snapshot_files sf
            JOIN snapshots s ON s.id = sf.snapshot_id
@@ -284,8 +283,8 @@ async fn the_second_backup_only_transmits_what_changed() {
         ]
     );
 
-    // Y el blob compartido está referenciado por las dos versiones, que es lo
-    // que impide que borrar una se lleve los bytes de la otra.
+    // And the shared blob is referenced by both versions, which is what stops
+    // deleting one from taking the other's bytes with it.
     let refcount: i64 =
         sqlx::query_scalar("SELECT refcount FROM blobs WHERE user_id=? AND sha256=?")
             .bind(USER)
@@ -296,11 +295,11 @@ async fn the_second_backup_only_transmits_what_changed() {
     assert_eq!(refcount, 2);
 }
 
-/// Lo que sube por CAS tiene que **volver**. La ruta de descarga no sabe nada
-/// del protocolo de subida —reconstruye el tar desde `snapshot_files`— así que
-/// esto comprueba que el commit deja las filas exactamente como ella las espera.
-/// Sin este test, una versión subida por CAS podría quedar irrecuperable y no
-/// nos enteraríamos hasta que alguien intentara restaurarla.
+/// What goes up through CAS has to **come back**. The download route knows nothing
+/// about the upload protocol: it rebuilds the tar from `snapshot_files`, so this
+/// checks the commit leaves the rows exactly as that route expects them. Without this
+/// test, a version uploaded through CAS could be unrecoverable and nobody would find
+/// out until somebody tried to restore it.
 #[tokio::test]
 async fn what_cas_uploads_restores_byte_for_byte() {
     use tokio::io::AsyncReadExt;
@@ -342,10 +341,10 @@ async fn what_cas_uploads_restores_byte_for_byte() {
     assert_eq!(got[1].1, a);
 }
 
-/// Bytes que no hashean a lo que prometen: se rechazan y no queda nada en
-/// staging. Es la defensa contra la corrupción silenciosa de ago-2026 — el juego
-/// rota el save entre que el cliente lo hashea y lo manda, y sin esto el server
-/// guardaría contenido nuevo bajo el sha del viejo.
+/// Bytes that do not hash to what they promise: they are rejected and nothing is
+/// left in staging. It is the defence against the silent corruption of Aug 2026,
+/// where the game rotates the save between the client hashing it and sending it, and
+/// without this the server would store new content under the old one's sha.
 #[tokio::test]
 async fn bytes_that_dont_match_their_sha_are_refused() {
     let h = harness().await;
@@ -400,22 +399,22 @@ async fn bytes_that_dont_match_their_sha_are_refused() {
         .fetch_one(&h.state.pool)
         .await
         .unwrap();
-    assert_eq!(versions, 0, "no se creó ninguna versión");
+    assert_eq!(versions, 0, "no version was created");
 }
 
-/// La otra cara del rechazo anterior: una base que no cuadra pero cuyo
-/// manifiesto trae la cabeza **entera y algo más**. No hay nada que enterrar —
-/// el contenido de la cabeza viaja fichero a fichero en la versión que se va a
-/// escribir— así que pasa. Es la salida para un cliente que perdió su sitio en
-/// la cuenta (historial podado, fila rehecha) y no sabe leer la cabeza del 409:
-/// sin esto reintenta cada diez minutos hasta rendirse.
+/// The other face of the rejection above: a base that does not line up but whose
+/// manifest carries the head **whole and then some**. There is nothing to bury, since
+/// the head's content travels file by file in the version about to be written, so it
+/// passes. It is the way out for a client that lost its place in the account (a
+/// pruned history, a rebuilt row) and cannot read the head off the 409: without it,
+/// it retries every ten minutes until it gives up.
 #[tokio::test]
 async fn a_diverged_base_passes_when_the_manifest_carries_the_whole_head() {
     let h = harness().await;
     let old = b"contenido".to_vec();
     backup(&h, &[("save", &old)], Some(0)).await;
 
-    // La cabeza es 1. Subimos con base 0 —desfasada— pero llevando el fichero
+    // La cabeza es 1. Subimos con base 0,desfasada, pero llevando el fichero
     // de la cabeza intacto y uno nuevo encima.
     let extra = b"nuevo".to_vec();
     let out = cas::init(
@@ -451,8 +450,8 @@ async fn a_diverged_base_passes_when_the_manifest_carries_the_whole_head() {
     assert_eq!(err.1["code"], "non_fast_forward");
 }
 
-/// Otro equipo empujó mientras subíamos. El init lo cortaría antes de mover un
-/// byte; el commit vuelve a comprobarlo porque entre los dos pasan minutos.
+/// Another machine pushed while we were uploading. The init would cut it off before
+/// moving a byte; the commit checks again because minutes pass between the two.
 #[tokio::test]
 async fn a_diverged_head_is_refused_before_and_after_the_upload() {
     let h = harness().await;
@@ -476,7 +475,7 @@ async fn a_diverged_head_is_refused_before_and_after_the_upload() {
     // The body has to name the row it rejected against, not just the versions.
     // On Cloud that id can be a row the client has never heard of (its local id
     // resolves by game+label), and a client that can't read it back has no way
-    // to find the head it must reconcile with — it looks itself up by the id it
+    // to find the head it must reconcile with, it looks itself up by the id it
     // knows, finds nothing, and parks the conflict forever.
     assert_eq!(err.1["code"], "non_fast_forward");
     assert_eq!(err.1["head_version"], 1);
@@ -521,13 +520,13 @@ async fn a_diverged_head_is_refused_before_and_after_the_upload() {
     assert_eq!(err.1["save_id"], SAVE);
 }
 
-/// El tope por versión se mide sobre el tamaño lógico de la partida, y ahora se
-/// sabe **antes** de transmitir. El multipart sólo podía abortar a media
-/// subida, que es lo que dejaba al usuario con un 413 sin cifra.
+/// The per-version cap is measured on the save's logical size, and it is now known
+/// **before** anything is transmitted. The multipart could only abort mid-upload,
+/// which is what left the user with a 413 and no number.
 #[tokio::test]
 async fn the_snapshot_cap_is_answered_before_any_byte_moves() {
     let h = harness().await;
-    // El harness pone el tope en 64 MB; se declara más sin subir nada.
+    // The harness sets the cap at 64 MB; more than that is declared without uploading.
     let files = vec![CasFile {
         relative_path: "enorme.bin".into(),
         sha256: Sha256Hex::parse(&sha_of(b"x")).unwrap(),
@@ -549,11 +548,11 @@ async fn the_snapshot_cap_is_answered_before_any_byte_moves() {
     let body = serde_json::to_value(&err.1 .0).unwrap();
     assert_eq!(body["code"], "snapshot_too_large");
     assert_eq!(body["limit_bytes"], 64 * 1024 * 1024);
-    // El tamaño real, y por eso va en `actual_bytes`: `received_bytes` significa
-    // "hasta dónde llegó la transmisión antes de cortar", y aquí no se ha
-    // transmitido nada todavía. Mandarlo con ese nombre hacía que el cliente le
-    // dijera al usuario "3,6 GB enviados antes de parar" de una subida que no
-    // envió ni un byte (ago-2026).
+    // The real size, which is why it goes in `actual_bytes`: `received_bytes` means
+    // "how far the transmission got before it was cut", and nothing has been
+    // transmitted here yet. Sending it under that name made the client tell the user
+    // "3.6 GB sent before stopping" about an upload that sent not one byte (Aug
+    // 2026).
     assert_eq!(body["actual_bytes"], 200 * 1024 * 1024);
     assert!(
         body.get("received_bytes").is_none(),
@@ -561,8 +560,8 @@ async fn the_snapshot_cap_is_answered_before_any_byte_moves() {
     );
 }
 
-/// El área de staging es de quien la abrió. Un id ajeno no deja subir ni
-/// confirmar, y responde lo mismo que uno inventado.
+/// The staging area belongs to whoever opened it. Somebody else's id allows neither
+/// upload nor commit, and answers the same as an invented one.
 #[tokio::test]
 async fn another_users_upload_area_is_not_reachable() {
     let h = harness().await;
@@ -603,17 +602,17 @@ async fn another_users_upload_area_is_not_reachable() {
         Body::from(data),
     )
     .await
-    .expect_err("id inválido");
+    .expect_err("invalid id");
     assert_eq!(err.0, StatusCode::BAD_REQUEST);
 }
 
-/// Lo que la fila del historial cuenta de una versión.
+/// What the history's row says about a version.
 ///
-/// Con 70 mundos en la misma carpeta, la fila tiene que nombrar el que se tocó
-/// y decir cuánto cambió; el número de versión y la fecha, que es todo lo que
-/// decía antes, no distinguen una copia de la siguiente. Se comprueba de punta
-/// a punta —mtime declarado por el cliente, manifiesto guardado, diff contra la
-/// versión anterior— porque cada pieza vive en un sitio distinto.
+/// With 70 worlds in the same folder, the row has to name the one that was touched
+/// and say how much changed; the version number and the date, which is all it used to
+/// say, tell no backup apart from the next. It is checked end to end (the mtime the
+/// client declares, the stored manifest, the diff against the previous version)
+/// because each piece lives somewhere different.
 #[tokio::test]
 async fn the_history_row_says_which_save_moved() {
     let h = harness().await;
@@ -628,9 +627,12 @@ async fn the_history_row_says_which_save_moved() {
         None,
     )
     .await;
-    let i = first.insight.expect("la primera versión ya trae insight");
-    // Nada cambió porque no hay versión anterior, pero la carpeta ya tiene dos
-    // partidas y una de ellas tiene nombre: el autosave no puede ser el titular.
+    let i = first
+        .insight
+        .expect("the first version already carries an insight");
+    // Nothing changed because there is no previous version, but the folder already
+    // holds two saves and one of them has a name: the autosave cannot be the
+    // headline.
     assert_eq!(i.title.as_deref(), Some("adwdaw"));
     assert_eq!(i.entries, 2);
     assert_eq!(i.changed_files, 0);
@@ -643,7 +645,7 @@ async fn the_history_row_says_which_save_moved() {
         Some(1),
     )
     .await;
-    let i = second.insight.expect("la segunda versión también");
+    let i = second.insight.expect("the second one too");
     assert_eq!(i.title.as_deref(), Some("adwdaw"));
     assert_eq!(i.primary_path.as_deref(), Some("adwdaw.zip"));
     assert_eq!(i.changed_files, 1);

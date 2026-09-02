@@ -5,7 +5,7 @@
 //! Every backup after that re-minted the empty row through `resolve_save_row`,
 //! was refused as a non-fast-forward against its own head of 0, and the refusal
 //! rolled the fresh row back with the transaction. So the account showed no
-//! Fallout 4 at all — the row never survived a request — while the client burned
+//! Fallout 4 at all, the row never survived a request, while the client burned
 //! its conflict budget and parked the save for good, told each time that
 //! "another device advanced this save", of which there was none.
 //!
@@ -14,7 +14,7 @@
 //! neither. So the server has to be the one that gives, and what it gives up is
 //! nothing: an empty row has no version to bury.
 //!
-//! What these pin down is the shape of that concession — that it applies to a
+//! What these pin down is the shape of that concession, that it applies to a
 //! row with no history, and *only* to one.
 //!
 //! Skipped unless `HOARD_PG_TEST_URL` is set, like `downgrade_grace`:
@@ -136,7 +136,7 @@ async fn a_deleted_save_does_not_diverge_from_its_own_replacement() {
 
 /// The concession is scoped to *no history*, not to a head that reads 0. If the
 /// bookkeeping column ever lags its versions, the versions win and the push is
-/// still refused — that column is the thing this check refuses to trust.
+/// still refused, that column is the thing this check refuses to trust.
 #[tokio::test]
 async fn history_under_a_stale_head_still_diverges() {
     let Some(pool) = pool().await else { return };

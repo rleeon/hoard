@@ -12,11 +12,11 @@ use crate::auth::AuthUser;
 use crate::routes::health::ServerState;
 use crate::routes::{parse_save_id, repair_slug, repair_ts};
 
-// ─── Request/Response types ─────────────────────────────────────────────────
+// ---- request and response types
 //
-// The shapes live in `hoard_core::wire` (ADR 0021 C.6): the client compiles
-// against the same ones, so drift between the two ends is a compile
-// compilación en vez de un 422 en producción.
+// The shapes live in `hoard_core::wire` (ADR 0021 C.6): the client compiles against
+// the same ones, so drift between the two ends is a compile error rather than a 422
+// in production.
 
 #[derive(Deserialize)]
 pub struct ListQuery {

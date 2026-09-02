@@ -690,13 +690,13 @@ mod tests {
         for level in ["trace", "debug", "info", "notice", "TRACE"] {
             assert!(
                 !ships_at(&entry(level, "hoard_agent::agent"), CLOUD_MIN_RANK),
-                "{level} no debería entrar en Cloud"
+                "{level} should not get into Cloud"
             );
         }
         for level in ["warn", "WARN", " error ", "error"] {
             assert!(
                 ships_at(&entry(level, "hoard_agent::agent"), CLOUD_MIN_RANK),
-                "{level} sí debería entrar en Cloud"
+                "{level} should get into Cloud"
             );
         }
         // Contradictions reach Cloud even at INFO, which is their level.

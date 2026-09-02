@@ -134,7 +134,7 @@ async fn main() -> Result<()> {
         };
         let report = hoard_server::cloud::verify::run(&cfg, opts).await?;
         hoard_server::cloud::verify::print_report(&report, dry_run);
-        // Salida distinta de cero si hay daño: así un cron lo nota.
+        // A non-zero exit when there is damage, so a cron job notices.
         if !report.damaged.is_empty() {
             std::process::exit(2);
         }

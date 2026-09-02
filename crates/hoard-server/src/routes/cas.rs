@@ -1112,7 +1112,7 @@ mod tests {
 
         assert!(valid_sha256(&sha("ab")));
         assert!(!valid_sha256("../x"));
-        assert!(!valid_sha256(&sha("AB")), "sólo hexadecimal en minúsculas");
+        assert!(!valid_sha256(&sha("AB")), "lowercase hexadecimal only");
         assert!(!valid_sha256("abc"), "longitud exacta");
     }
 
@@ -1134,7 +1134,7 @@ mod tests {
     #[test]
     fn manifests_that_could_write_outside_the_snapshot_are_refused() {
         let s = sha("aa");
-        assert!(validate_manifest(&[]).is_err(), "manifiesto vacío");
+        assert!(validate_manifest(&[]).is_err(), "an empty manifest");
         assert!(validate_manifest(&[file("../escape", &s, 1)]).is_err());
         assert!(validate_manifest(&[file("/abs", &s, 1)]).is_err());
         assert!(validate_manifest(&[file("saves/a.sav", &s, 1)]).is_ok());
@@ -1198,7 +1198,7 @@ mod tests {
                 assert_eq!(size_bytes, 200);
                 assert_eq!(file_id, "f2");
             }
-            other => panic!("se esperaba troceado, salió {other:?}"),
+            other => panic!("expected chunked, got {other:?}"),
         }
 
         assert!(stored_representation(&pool, "u1", &absent)

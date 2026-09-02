@@ -122,9 +122,9 @@ mod imp {
 
     pub const AVAILABLE: bool = true;
 
-    // Una conexión por hilo, abierta con pereza y reutilizada. El sondeo no
-    // abre ventanas ni captura nada, así que no puede interferir con la
-    // conexión propia del overlay.
+    // One connection per thread, opened lazily and reused. The probe opens no
+    // windows and captures nothing, so it cannot interfere with the overlay's own
+    // connection.
     thread_local! {
         static CONN: RefCell<Option<(RustConnection, u32)>> = const { RefCell::new(None) };
     }

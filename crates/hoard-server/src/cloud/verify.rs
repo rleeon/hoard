@@ -42,7 +42,7 @@ pub struct Options {
     pub limit: Option<i64>,
     /// Look again at the ones that already have a verdict.
     pub recheck: bool,
-    /// Lecturas simultáneas.
+    /// Concurrent reads.
     pub concurrency: usize,
     /// Do not write verdicts to the database, only report.
     pub dry_run: bool,

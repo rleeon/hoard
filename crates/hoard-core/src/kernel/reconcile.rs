@@ -833,14 +833,14 @@ mod tests {
             ..base_state()
         };
         let obs = Observation {
-            local_fingerprint: Some(0xABCD), // contenido idéntico a lo ya subido
+            local_fingerprint: Some(0xABCD), // content identical to what was already uploaded
             cloud_version: Some(7),          // nube no adelantada
             ..quiet_obs()
         };
         let (_next, ds) = reconcile(&state, &obs, world(0));
         assert!(
             acts(&ds).is_empty(),
-            "convergido debe emitir cero Act, salió: {ds:?}"
+            "converged must emit zero Act, got: {ds:?}"
         );
         assert_eq!(ds, vec![hold("converged")]);
     }
@@ -865,7 +865,7 @@ mod tests {
         let (_s2, d2) = reconcile(&s1, &obs, world(0));
         assert!(
             acts(&d2).is_empty(),
-            "sin nuevo delta no debe re-actuar, salió: {d2:?}"
+            "with no new delta it must not act again, got: {d2:?}"
         );
         assert_eq!(d2, vec![hold("operation in flight")]);
     }
@@ -882,7 +882,7 @@ mod tests {
             ..base_state()
         };
         let obs = Observation {
-            local_empty: true, // querríamos restaurar
+            local_empty: true, // we would want to restore
             cloud_version: Some(5),
             op_result: Some(OpResult::Throttled {
                 retry_after_secs: 30,
@@ -950,7 +950,7 @@ mod tests {
                 bds.iter().find_map(Decision::action),
                 Some(Action::Throttle { .. })
             ),
-            "backup también emite Throttle: {bds:?}"
+            "backup emits Throttle too: {bds:?}"
         );
     }
 
@@ -1017,7 +1017,7 @@ mod tests {
             QUOTA_FULL_BACKOFF_SECS,
             "el park del 402 es el largo, no el de un fallo cualquiera"
         );
-        assert!(next.has_pending, "los cambios locales siguen sin versión");
+        assert!(next.has_pending, "the local changes are still unversioned");
         assert!(next.next_restore_at.is_none(), "sin tocar el lado restore");
         assert_eq!(
             next.restore_failures,
@@ -1097,7 +1097,7 @@ mod tests {
             ..base_state()
         };
         let obs = Observation {
-            process_alive: false, // el juego se cerró
+            process_alive: false, // the game closed
             local_empty: true,    // hay algo que restaurar
             cloud_version: Some(2),
             ..quiet_obs()
@@ -1106,7 +1106,7 @@ mod tests {
         let (_n5, d5) = reconcile(&state, &obs, world(5));
         assert!(
             !acts(&d5).contains(&&Action::Restore),
-            "dentro de la gracia el veto aún retiene: {d5:?}"
+            "inside the grace period the veto still holds: {d5:?}"
         );
         // At 7 s: past the 6 s grace, the veto lifts and it restores.
         let (n7, d7) = reconcile(&state, &obs, world(7));
@@ -1149,7 +1149,7 @@ mod tests {
         );
         assert_eq!(
             n1.restore_failures.consecutive, 1,
-            "el 'éxito' que no progresa cuenta como intento, no limpia la escalada"
+            "a 'success' that makes no progress counts as an attempt and does not clear the escalation"
         );
         assert!(n1.next_restore_at.is_some(), "queda un backoff armado");
 
@@ -1181,7 +1181,7 @@ mod tests {
         let (n3, _d3) = reconcile(&state, &obs_ok, world(0));
         assert_eq!(
             n3.restore_failures.consecutive, 0,
-            "un restore con escritura real sí es progreso"
+            "a restore that really wrote is progress"
         );
     }
 
@@ -1268,7 +1268,7 @@ mod tests {
             ..quiet_obs()
         };
         let (s2, _d2) = reconcile(&s1, &obs_done, world(1));
-        assert!(!s2.has_pending, "la subida destrabó los cambios locales");
+        assert!(!s2.has_pending, "the upload unblocked the local changes");
         assert_eq!(s2.known_version, Some(7));
         assert!(
             s2.pull_pending,
@@ -1294,13 +1294,13 @@ mod tests {
         );
         assert!(
             !acts(&d4).contains(&&Action::DeferPull),
-            "pero NO re-notifica: `deferred_notified` de-duplica sólo el aviso: {d4:?}"
+            "but it does NOT notify again: `deferred_notified` de-duplicates the notice only: {d4:?}"
         );
         assert!(
             !acts(&d4).contains(&&Action::Restore),
-            "y jamás restaura mid-session: {d4:?}"
+            "and it never restores mid-session: {d4:?}"
         );
-        assert!(s4.pull_pending, "la intención de pull sigue viva");
+        assert!(s4.pull_pending, "the intent to pull is still alive");
     }
 
     /// The other half: between two advances, with the pull already deferred and
@@ -1328,7 +1328,7 @@ mod tests {
         let (next, ds) = reconcile(&state, &obs, world(0));
         assert!(
             acts(&ds).contains(&&Action::Backup),
-            "un pull pendiente no debe matar el autobackup de la sesión: {ds:?}"
+            "a pending pull must not kill the session's autobackup: {ds:?}"
         );
         assert!(next.pull_pending, "y el pull sigue esperando al cierre");
     }
@@ -1351,10 +1351,10 @@ mod tests {
             ..quiet_obs()
         };
         let (next, ds) = reconcile(&state, &obs, world(0));
-        assert_eq!(next.in_flight, None, "la op terminó");
+        assert_eq!(next.in_flight, None, "the op finished");
         assert!(
             next.has_pending,
-            "los cambios nunca llegaron a una versión: siguen pendientes"
+            "the changes never reached a version, so they are still pending"
         );
         assert_eq!(
             next.next_backup_at,
@@ -1413,13 +1413,13 @@ mod tests {
             );
             assert!(
                 !next.backup_conflict.needs_attention,
-                "aún queda presupuesto en el intento {}",
+                "there is budget left on attempt {}",
                 attempt + 1
             );
             assert_eq!(
                 next.next_backup_at,
                 Some(at(clock + backoff)),
-                "cada choque espera más que el anterior"
+                "each clash waits longer than the last"
             );
             assert!(next.has_pending, "los cambios siguen sin versionar");
             assert!(
@@ -1520,7 +1520,7 @@ mod tests {
 
         assert_eq!(
             attempts, CONFLICT_STALL_GIVE_UP_AFTER,
-            "el 409 sin salida sólo puede costar el presupuesto, no catorce días de intentos"
+            "a dead-end 409 can only cost the budget, not fourteen days of attempts"
         );
         assert!(
             state.backup_conflict.needs_attention,
@@ -1705,11 +1705,11 @@ mod tests {
             "un no-op no ancla el min-interval (R.E.P.O.)"
         );
         assert!(noop.next_backup_at.is_none(), "ni arma el suelo");
-        assert!(!noop.has_pending, "pero sí destraba los cambios");
+        assert!(!noop.has_pending, "but it does unblock the changes");
         assert_eq!(noop.synced_fingerprint, Some(2), "y adopta la firma");
         assert!(
             noop.last_restore_at.is_none(),
-            "un no-op sin versión no tocó la carpeta"
+            "a no-op with no version did not touch the folder"
         );
 
         // A real commit anchors the floor.
@@ -1743,7 +1743,7 @@ mod tests {
         assert_eq!(
             acts(&no_floor),
             vec![&Action::Backup],
-            "un no-op no dejó ancla, así que no frena nada"
+            "a no-op left no anchor, so it brakes nothing"
         );
 
         // A no-op WITH a version is the 409 settled onto the head: the merge wrote
@@ -1803,22 +1803,22 @@ mod tests {
         };
 
         let (next, ds) = reconcile(&state, &obs, world(0));
-        assert_eq!(next.in_flight, None, "la op terminó");
-        assert!(!next.has_pending, "el contenido está en una versión");
+        assert_eq!(next.in_flight, None, "the op finished");
+        assert!(!next.has_pending, "the content is in a version");
         assert_eq!(
             next.known_version,
             Some(9),
-            "adopta la versión que ya lo tenía"
+            "it adopts the version that already had it"
         );
         assert_eq!(next.synced_fingerprint, Some(2));
         assert!(
             next.last_backup_at.is_none(),
-            "no se subió nada: anclar el suelo aquí es la regresión R.E.P.O."
+            "nothing was uploaded: anchoring the floor here is the R.E.P.O. regression"
         );
         assert!(
             next.last_restore_at.is_none(),
-            "y no se escribió en la carpeta: sellar un toque que no existió \
-             falsearía la ventana de gracia del veto"
+            "and nothing was written to the folder: stamping a touch that never happened \
+             would falsify the veto's grace window"
         );
         assert!(
             !acts(&ds).iter().any(|a| matches!(a, Action::Backup)),
@@ -1858,7 +1858,7 @@ mod tests {
         };
         let quiet_cloud = Observation {
             process_alive: true,
-            cloud_version: Some(4), // nube al día
+            cloud_version: Some(4), // the cloud is up to date
             local_fingerprint: Some(2),
             ..quiet_obs()
         };
@@ -1933,7 +1933,7 @@ mod tests {
         assert_eq!(
             fresh.restore_failures,
             RestoreFailures::default(),
-            "versión nueva ⇒ escalada reseteada (el shell lo lee para 'recovered')"
+            "a new version means the escalation is reset (the shell reads it for 'recovered')"
         );
         assert_eq!(
             acts(&ds_new),
@@ -1964,7 +1964,7 @@ mod tests {
         assert_eq!(
             next.next_restore_at,
             Some(at(FAILURE_BACKOFF_SECS[0])),
-            "primer escalón del backoff"
+            "the backoff's first step"
         );
     }
 
@@ -2007,7 +2007,7 @@ mod tests {
         assert_eq!(
             stale,
             vec![hold(CLOUD_STALE_REASON)],
-            "una caché de nube envejecida no es convergencia"
+            "a stale cloud cache is not convergence"
         );
         assert!(
             acts(&stale).is_empty(),
@@ -2132,7 +2132,7 @@ mod tests {
         assert_eq!(
             acts(&ds),
             vec![&Action::Backup],
-            "una caché ciega no puede dejar el progreso local sin versionar: {ds:?}"
+            "a blind cache must not leave local progress unversioned: {ds:?}"
         );
 
         // And an empty folder still fires the restore off the old cache: what we
@@ -2311,7 +2311,7 @@ mod tests {
         #[test]
         fn inv_storage_acts_bounded(state in arb_state(), obs in arb_obs(false), w in arb_world()) {
             let (_n, ds) = reconcile(&state, &obs, w);
-            prop_assert!(storage_act_count(&ds) <= 1, "más de una acción de storage: {ds:?}");
+            prop_assert!(storage_act_count(&ds) <= 1, "more than one storage action: {ds:?}");
         }
 
         /// Backup and Restore never in the same tick; they must not fight.
@@ -2354,7 +2354,7 @@ mod tests {
             let (_s2, d2) = reconcile(&s1, &obs, w);
             prop_assert!(
                 acts(&d2).is_empty(),
-                "acción sin delta al reconciliar sobre la propia salida: {d2:?}"
+                "an action with no delta when reconciling over its own output: {d2:?}"
             );
         }
 
@@ -2400,7 +2400,7 @@ mod tests {
             if state.in_flight == Some(Op::Restore) && obs.op_result.is_none() {
                 prop_assert!(
                     !acts(&ds).contains(&&Action::Backup),
-                    "backup mientras un restore está en vuelo: {ds:?}"
+                    "a backup while a restore is in flight: {ds:?}"
                 );
             }
         }

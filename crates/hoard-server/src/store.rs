@@ -404,7 +404,7 @@ pub async fn purge_user_objects(
     Ok((removed, bytes))
 }
 
-/// Startup guard (self-host): datos en disco pero **base vacía**.
+/// Startup guard (self-host): data on disk but an **empty database**.
 ///
 /// The inverse of [`sanity_check`], and the one that really bites. If the
 /// `data_dir` holds content from an earlier deployment but the database has not a
@@ -534,17 +534,17 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
 
         // A genuinely fresh install: no users and no data. It has to pass,
-        // un falso positivo aquí rompería CADA primer arranque.
+        // since a false positive here would break EVERY first start.
         guard_against_lost_database(&pool, tmp.path())
             .await
-            .expect("una instalación nueva tiene que arrancar");
+            .expect("a fresh install has to start");
 
         // Now with leftover blobs and no users: the database was lost.
         std::fs::create_dir_all(tmp.path().join("blobs/user-1/ab")).unwrap();
         std::fs::write(tmp.path().join("blobs/user-1/ab/abcd"), b"x").unwrap();
         let err = guard_against_lost_database(&pool, tmp.path())
             .await
-            .expect_err("base vacía + datos en disco tiene que abortar");
+            .expect_err("an empty database with data on disk has to abort");
         let msg = err.to_string();
         assert!(
             msg.contains("no users") && msg.contains("previous deployment"),

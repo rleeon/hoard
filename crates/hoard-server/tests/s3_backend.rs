@@ -1,7 +1,7 @@
 //! Integration test for the S3-compatible blob backend (ADR 0020).
 //!
 //! Skipped unless `HOARD_S3_TEST_ENDPOINT` (and the credential vars below) are
-//! set — CI without a MinIO/S3 endpoint runs it as a no-op. To exercise it,
+//! set, CI without a MinIO/S3 endpoint runs it as a no-op. To exercise it,
 //! bring up MinIO and export:
 //!
 //! ```sh
@@ -99,7 +99,7 @@ async fn s3_backend_roundtrip() {
 }
 
 /// Every object we store is written from a file on disk, which is the case
-/// where the SDK switches to `aws-chunked` framing unless told otherwise —
+/// where the SDK switches to `aws-chunked` framing unless told otherwise,
 /// the shape that silently corrupted uploads through S3 gateways that don't
 /// unwrap it. Sizes here straddle the internal 8 MiB part size so the single
 /// PUT and any multipart path are both exercised end to end.
