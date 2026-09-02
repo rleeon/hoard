@@ -122,6 +122,15 @@ Hoard についての比較は、ほぼ必ずこの 2 つを一緒くたにし�
 
 バックアップ*と*、PC と Steam Deck をまたぐ同期が勝手に行われること、セッションごとに戻れるバージョンがあること、そして全部を自分でホストできる選択肢があること——それを求めるなら Hoard です。[ダウンロード](/download)するか、先に[Docker で自己ホストする方法](/guides/self-host-hoard)を読んでみてください。天秤にかけている相手が Ludusavi なら、[詳しい比較](/guides/ludusavi-alternative)もあります。
 
+## 一対一の比較
+
+以下はそれぞれ、上の節より踏み込んで扱っています。相手のほうが優れている点も含みます。
+
+- [Hoard と Ludusavi](/guides/ludusavi-alternative)
+- [Steam クラウドの代替としての Hoard](/guides/steam-cloud-alternative)
+- [ピアツーピア同期と自分のサーバー](/guides/opensave-alternative)
+- [Syncthing でセーブを同期すると何が壊れるか](/guides/syncthing-game-saves)
+
 <!-- faq -->
 
 ## よくある質問

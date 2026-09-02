@@ -122,6 +122,15 @@ Hoard 以一次游戏会话作为单位。引擎作为后台服务运行——`h
 
 如果你想要的是备份*和*跨 PC 与 Steam Deck 的同步自己就发生，每一次会话都有一个可以回退的版本，并且保留把整套东西自托管的选项——那正是 Hoard 存在的理由。[下载它](/download)，或者先读一读[如何用 Docker 自托管](/guides/self-host-hoard)。如果你正在权衡的对手就是 Ludusavi，这里还有一篇[更详细的对比](/guides/ludusavi-alternative)。
 
+## 一对一比较
+
+下面每一篇都比上面的段落更深入，也包括对方胜出的地方：
+
+- [Hoard 与 Ludusavi](/guides/ludusavi-alternative)
+- [用 Hoard 替代 Steam 云存档](/guides/steam-cloud-alternative)
+- [点对点同步与一台属于你的服务器](/guides/opensave-alternative)
+- [用 Syncthing 同步存档会坏在哪里](/guides/syncthing-game-saves)
+
 <!-- faq -->
 
 ## 常见问题

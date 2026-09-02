@@ -122,6 +122,15 @@ Se queres uma máquina protegida e mais nada, leva o Ludusavi ou o Game Backup M
 
 Se o que queres é que a cópia *e* a sincronização entre PC e Steam Deck aconteçam sozinhas, com uma versão por sessão à qual voltar e a opção de alojar tudo tu, é para isso que serve o Hoard. [Descarrega-o](/download), ou lê primeiro [como alojá-lo com Docker](/guides/self-host-hoard). Há também uma [comparação longa com o Ludusavi](/guides/ludusavi-alternative) se for essa a que estás a pesar.
 
+## Comparações um para um
+
+Cada uma vai mais fundo do que o bloco acima, incluindo onde a outra ferramenta ganha:
+
+- [Hoard frente ao Ludusavi](/guides/ludusavi-alternative)
+- [Hoard como alternativa à Steam Cloud](/guides/steam-cloud-alternative)
+- [Sincronização ponto a ponto frente a um servidor teu](/guides/opensave-alternative)
+- [Syncthing para saves: o que parte](/guides/syncthing-game-saves)
+
 <!-- faq -->
 
 ## Perguntas frequentes

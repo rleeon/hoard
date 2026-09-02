@@ -122,6 +122,15 @@ If you want one machine backed up and nothing else, take Ludusavi or Game Backup
 
 If you want backups *and* automatic sync across PCs and a Steam Deck to just happen, with a version per session you can roll back to and the option to self-host the whole thing, that's what Hoard is for. [Download it](/download), or read [how to self-host it with Docker](/guides/self-host-hoard) first. There's also a longer [Ludusavi comparison](/guides/ludusavi-alternative) if that's the one you're weighing it against.
 
+## One-on-one comparisons
+
+Each of these goes deeper than the section above, including where the other tool wins:
+
+- [Hoard vs Ludusavi](/guides/ludusavi-alternative)
+- [Hoard as a Steam Cloud alternative](/guides/steam-cloud-alternative)
+- [Peer-to-peer sync vs a server you own](/guides/opensave-alternative)
+- [Syncthing for game saves: what breaks](/guides/syncthing-game-saves)
+
 <!-- faq -->
 
 ## Frequently asked questions
