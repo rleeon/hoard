@@ -9,6 +9,7 @@
   "common.notifications": "Notifications",
   "common.error_title": "Error",
   "common.error_generic": "An unexpected error occurred.",
+  "common.cloud_only_no_local": "This save only exists in the cloud — there is no folder on this machine to act on. Link a local folder first.",
   "common.show_details": "Show details",
   "common.hide_details": "Hide details",
   "nav.library": "Library",

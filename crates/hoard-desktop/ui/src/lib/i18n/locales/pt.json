@@ -9,6 +9,7 @@
   "common.notifications": "Notificações",
   "common.error_title": "Erro",
   "common.error_generic": "Ocorreu um erro inesperado.",
+  "common.cloud_only_no_local": "Este save só existe na nuvem: não há nenhuma pasta nesta máquina sobre a qual agir. Associa primeiro uma pasta local.",
   "common.show_details": "Mostrar detalhes",
   "common.hide_details": "Ocultar detalhes",
   "nav.library": "Biblioteca",

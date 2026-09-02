@@ -9,6 +9,7 @@
   "common.notifications": "Notifications",
   "common.error_title": "Erreur",
   "common.error_generic": "Une erreur inattendue s'est produite.",
+  "common.cloud_only_no_local": "Cette sauvegarde n'existe que dans le cloud : aucun dossier sur cette machine sur lequel agir. Associez d'abord un dossier local.",
   "common.show_details": "Afficher les détails",
   "common.hide_details": "Masquer les détails",
   "nav.library": "Bibliothèque",

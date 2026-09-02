@@ -9,6 +9,7 @@
   "common.notifications": "Notifiche",
   "common.error_title": "Errore",
   "common.error_generic": "Si è verificato un errore inatteso.",
+  "common.cloud_only_no_local": "Questo salvataggio esiste solo nel cloud: su questa macchina non c'è una cartella su cui agire. Collega prima una cartella locale.",
   "common.show_details": "Mostra dettagli",
   "common.hide_details": "Nascondi dettagli",
   "nav.library": "Libreria",

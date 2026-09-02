@@ -9,6 +9,7 @@
   "common.notifications": "通知",
   "common.error_title": "エラー",
   "common.error_generic": "予期しないエラーが発生しました。",
+  "common.cloud_only_no_local": "このセーブはクラウドにのみ存在します。このPCには操作対象のフォルダーがありません。先にローカルフォルダーを紐付けてください。",
   "common.show_details": "詳細を表示",
   "common.hide_details": "詳細を隠す",
   "nav.library": "ライブラリ",

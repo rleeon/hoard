@@ -99,16 +99,6 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // WebKitGTK's DMABUF renderer breaks compositing on a number of setups
-    // (NVIDIA, nested/remote X, some Mesa versions): transparent webviews go
-    // black and reshaped regions (the Pro overlay's web panels) come back torn.
-    // Forcing the non-DMABUF path keeps GL compositing but avoids that buffer
-    // sharing. Linux-only and overridable: only set when the user hasn't.
-    #[cfg(target_os = "linux")]
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-    }
-
     // Set up tracing with two layers: stdout (for `RUST_LOG=...` development
     // and journald/Console capture in production) and a daily-rotating file
     // under the user's cache dir. The file layer is what the in-app Logs

@@ -271,8 +271,16 @@
     return () => window.removeEventListener("pointerdown", onDown);
   });
 
+  /** A row that exists only in the cloud (uploaded from another machine, or
+   *  not yet linked here) has no entry in `state.json`, so anything that
+   *  mutates it by `save_id` fails with the backend's raw "that save isn't
+   *  tracked on this machine". Gate those controls instead of offering them. */
+  const cloudOnly = $derived(save.orphan || !save.local_path);
+
   const menuItemClass =
     "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-zinc-50";
+  const menuItemDisabledClass =
+    "flex w-full cursor-not-allowed items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-zinc-500 opacity-50";
   const iconBtnClass =
     "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200";
 </script>
@@ -368,7 +376,9 @@
           </button>
           <button
             type="button"
-            class={menuItemClass}
+            class={cloudOnly ? menuItemDisabledClass : menuItemClass}
+            disabled={cloudOnly}
+            title={cloudOnly ? $_("common.cloud_only_no_local") : undefined}
             onclick={() => {
               menuOpen = false;
               onTogglePause(save);
@@ -472,12 +482,14 @@
         size="md"
         class="shrink-0 !px-3 !py-1.5 !text-xs"
         onclick={() => onBackup(save)}
-        disabled={!agentRunning}
-        title={!agentRunning
-          ? $_("dashboard.tooltip_offline")
-          : save.paused
-            ? $_("dashboard.tooltip_force_paused")
-            : $_("dashboard.tooltip_force")}
+        disabled={!agentRunning || cloudOnly}
+        title={cloudOnly
+          ? $_("common.cloud_only_no_local")
+          : !agentRunning
+            ? $_("dashboard.tooltip_offline")
+            : save.paused
+              ? $_("dashboard.tooltip_force_paused")
+              : $_("dashboard.tooltip_force")}
       >
         <UploadCloud size={13} />
         {$_("dashboard.back_up")}

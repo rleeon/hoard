@@ -9,6 +9,7 @@
   "common.notifications": "Benachrichtigungen",
   "common.error_title": "Fehler",
   "common.error_generic": "Ein unerwarteter Fehler ist aufgetreten.",
+  "common.cloud_only_no_local": "Dieser Spielstand existiert nur in der Cloud — auf diesem Rechner gibt es keinen Ordner, auf den sich das anwenden ließe. Verknüpfe zuerst einen lokalen Ordner.",
   "common.show_details": "Details anzeigen",
   "common.hide_details": "Details ausblenden",
   "nav.library": "Bibliothek",

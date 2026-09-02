@@ -9,6 +9,7 @@
   "common.notifications": "Notificaciones",
   "common.error_title": "Error",
   "common.error_generic": "Ocurrió un error inesperado.",
+  "common.cloud_only_no_local": "Esta partida sólo existe en la nube: no hay ninguna carpeta en este equipo sobre la que actuar. Vincula antes una carpeta local.",
   "common.show_details": "Ver detalles",
   "common.hide_details": "Ocultar detalles",
   "nav.library": "Biblioteca",
