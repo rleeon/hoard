@@ -18,6 +18,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   architecture for you and lists the rest; the in-app updater already refused to
   install a bundle from the wrong architecture, and now finds the right one.
 
+- **Hoard can be installed and updated as a Flatpak.** A
+  `services.hoard.saves` manifest builds the same `.deb` this repository
+  already builds and unpacks it into the sandbox, rather than compiling Rust
+  and the frontend a second time. Two things a sandboxed install cannot assume
+  got their own path: starting at login asks the desktop portal instead of
+  writing a systemd unit nothing would read, and the credential store falls
+  back to an encrypted file when the sandbox cannot reach the session's secret
+  service. The updater already knew an install like this cannot replace itself
+  and leaves new versions to whichever remote it came from. The manifest and
+  the store listing live in the repository now; the Flathub submission itself
+  is the next step, so this is a Flatpak you can build and install, not yet a
+  Flathub entry.
+
+- **Windows, Linux and macOS get a real installer, called Hoard Setup.** It is
+  drawn with Slint rather than a webview, since an installer is the one thing
+  that has to run before WebView2 or WebKitGTK exist to run anything else, and
+  it speaks the same eight languages as the app from translations compiled into
+  the binary. It decides nothing on its own: which components a machine wants,
+  which release asset matches it, and how each package is fetched, verified and
+  applied all stay in the same code `install.sh`, `hoard upgrade` and the
+  in-app updater already go through. A machine that already has Hoard is
+  offered update or uninstall instead of a second install. A few details it got
+  right only by being run on a real machine: the taskbar icon is embedded
+  rather than left blank, the window opens centred on whatever monitor it
+  actually landed on, and the close button sits a hand's width from the top
+  right corner instead of exactly where an aimless click lands. The download
+  page leads with it now, ahead of the per-platform packages.
+
 - **Accounts are managed from the web panel.** Creating a user, renaming one,
   setting a password, deleting an account and issuing a device token were all
   `hoard-admin` subcommands, so on a NAS the second person to use the server
@@ -30,6 +58,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   to selecting the text, because `navigator.clipboard` does not exist on the
   plain-HTTP origin a NAS panel is reached over.
 
+- **A save's history says what actually changed now.** Each version carries
+  which file inside the folder changed and by how much, chosen from the newest
+  file that both changed and looks like real player data rather than a rotating
+  autosave slot, so `world 47.zip` no longer hides behind `_autosave1.zip`. The
+  history page groups versions by day with that day's playtime, leads each row
+  with the save's own name instead of a size and a timestamp, and cleans that
+  name of the ids and markers games bury in it, so The Universim's `murray
+  heath_31852938(m)` reads as `murray heath`. It is derived once on the server
+  for both deployments, which also backfills versions a self-hosted server
+  accepted before this shipped. `hoard snapshots list` gains a SAVE column.
+
+- **A broadcast message can carry more than one button.** The bell's messages
+  carried a single action link, so a message that wants to point at both the
+  repository and a way to support it had nowhere to put the second one. A
+  message can carry a short list of buttons now, each naming an icon from a
+  fixed vocabulary the app owns, so an unrecognised name falls back to a plain
+  button instead of taking the bell down. A message can also target a single
+  account rather than everyone, which is what makes it possible to see a new
+  message rendered for real, with its real buttons, before it goes out to
+  anyone else.
+
+- **The CLI can be driven by a script, or by an assistant, without guessing.**
+  `--json` on the commands that support it prints one envelope on stdout and
+  nothing else, with a stable `error.code` and an exit status grouped by what
+  the caller should do about it: wait, ask the user, or give up. The new `hoard
+  doctor` checks every tracked save against mistakes Hoard has actually shipped
+  before, a folder that no longer exists, a backup mirror tracked instead of
+  the real save, a row named after an installer, and prints the exact command
+  that fixes each one; it reads only local state and changes nothing itself.
+  `hoard agents --skill` prints a skill file that teaches an assistant the
+  commands, the safety rules around `restore` and `delete`, and how to tell it
+  has gone stale against a newer Hoard.
+
+- **The self-hosted server image also publishes to Docker Hub.** Every release
+  has published a multi-arch image to GHCR since 1.1.4; the same job now
+  mirrors it to Docker Hub for anyone who would rather pull from there.
+  Nothing changes for an existing GHCR pull.
+
 ### Fixed
 - **The download page offered files no release had.** Hoard Setup and the ARM
   bundles are newer than the page that lists them, and every link was built from
@@ -39,6 +105,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   plausible filename looks exactly like a broken site. The page now lists a file
   only when the release names it, so each of those rows appears by itself on the
   first release that carries it, and nothing on the page is a guess.
+
+- **On Debian 12, Ubuntu 22.04 and Mint 21 the engine and the terminal could
+  not start at all, and the installer said it had finished.** One release
+  shipped `hoard` and `hoardd` at two different glibc floors, and which one you
+  got depended on how you installed: measured on the published 1.1.5
+  artifacts, the pair inside `Hoard_1.1.5_amd64.deb` needs GLIBC 2.34 and the
+  pair inside `hoard-1.1.5-linux-x86_64.tar.gz` needs 2.39. The desktop
+  workflow has always built on 22.04; the core one was on `ubuntu-latest`,
+  which is 24.04 now. The whole 2.39 floor is two symbols, `pidfd_spawnp` and
+  `pidfd_getpid`, which std links whenever the headers offer them, and nothing
+  in the source asks for either, so pinning the runner drops the floor with no
+  code change. The tarball is the half everything else reads, since
+  `install.sh`, `hoard upgrade` and Hoard Setup all take it, and it failed
+  quietly: `install.sh` runs `hoard install` behind a `|| warn` and exits 0,
+  and Hoard Setup ignored the result of `autostart::install`, so both reported
+  a finished install over binaries that could never run.
 
 - **The AppImage could reach nothing at all on SteamOS, Bazzite and other
   Arch-derived systems.** Every HTTPS call died with `certificate verify
@@ -68,6 +150,165 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   to demote the last one, because the admin flag guards its own route and a
   server with zero admins needs a shell to come back. The command that runs on
   that shell had no such check, and would happily leave the server without one.
+
+- **A save could go silently blind for weeks over one 409.** When a save's
+  local id drifted from the one the server had for it, after a re-detected
+  folder or a rebuilt state file, the server kept translating uploads by game
+  and label and accepting them, but the client could no longer find itself in
+  anything the server handed back: reconcile searched for the local id, found
+  nothing, decided the server had no snapshots, and parked the upload for good.
+  One Windows save stayed like that for two weeks. A 409 now arrives carrying
+  the head version and the canonical id it was rejected against, and every
+  lookup that used to search by local id goes through the same resolution, by
+  id and then by game and label, that the server itself uses.
+
+- **Uploads for a save whose cloud row had been deleted failed forever, with no
+  way out.** A save that had existed on the server and was then dropped from it
+  kept a local version number from its previous life. The next upload minted a
+  fresh row at head zero, saw its own old number look newer than that, and got
+  refused as a non-fast-forward; the refusal rolled back the very row it had
+  just created, so the next attempt started from the same nothing and failed
+  the same way, forever. A rejection naming head zero on a row with no version
+  history is not a real conflict, since there is nothing for another device to
+  have gotten ahead of, so it is accepted now as version one of a save whose
+  history is genuinely gone. A client too old to get the fix from the server
+  learns the same thing from the shape of the rejection itself.
+
+- **A push that already carried everything the server's head had was still
+  refused as a conflict.** Rejecting a push that has fallen behind exists to
+  stop it burying a version it never saw; a push whose manifest lists every
+  file the head lists cannot bury anything, since that content is about to
+  become the next version's content too. The server accepts a push like that
+  outright now, instead of waiting for the client to notice the rejection's
+  head number and rebase on its own, which is what left one save stuck on both
+  1.1.4 and 1.1.5, refused every ten minutes for ten days straight.
+
+- **A save with enough files could never finish uploading to a self-hosted
+  server, no matter how long it waited.** A save uploads one request per
+  missing blob, and that count is the server's own choice rather than the
+  client's: it is exactly what `cas/init` answered was missing. With the
+  shipped rate limit a 173-file save drained the whole burst in well under a
+  second, and every retry took a fresh upload id and resent everything, so it
+  hit the same wall on every attempt. Blob uploads are exempt from the per-IP
+  limiter now; login, the panel and polling stay behind it, which is where a
+  limiter is actually useful. Two smaller faults compounded it on Windows:
+  answering an oversized or rejected upload without reading the rest of its
+  body reset the connection before the client ever saw the real error, and a
+  connection that died that way mid-upload was treated as a hard failure
+  instead of the pacing signal it usually is, which could cancel every other
+  file in the same batch over one reset.
+
+- **The app could say the sync service was stopped while it had been running
+  for hours.** The status banner painted on the store's default value before
+  anything had actually answered, so it read "stopped" for the moment between
+  opening the app and the first real reply, and a status read that fails is not
+  the same fact as one that succeeds and says stopped, so the two get different
+  messages now. Two related faults surfaced in the same report: an engine that
+  was only down because the keyring kept refusing a saved session did not wake
+  up the moment that session became readable elsewhere, and signing out of a
+  self-hosted server tore down the Cloud engine too, since the two sessions
+  share one store but only one of them was actually ending. `keyring: refused`
+  gets its own sentence now, in all eight languages, instead of the generic
+  keyring failure that never mentioned a dismissed unlock prompt.
+
+- **A game's mods folder could get adopted as part of its save.** A catalog
+  entry that names a single save file widens to that file's parent folder,
+  which is right when the parent holds only saves and wrong when it also holds
+  the game's own mods, workshop downloads or cache. Teardown's save is a few
+  kilobytes at `savegame.xml`; its parent also holds `mods/`, so every backup
+  carried 42 MB of promotional art as if it were save data. A parent that holds
+  added content or heavy cache directly below it is treated as the game's
+  folder now, not its save's folder, and the single file the catalog named is
+  tracked on its own. The evidence has to be real to count: the folder must
+  actually be populated, and a log directory does not qualify, because a folder
+  full of save slots keeps one of those just as readily as a game's root does.
+  Both halves matter, since answering yes here narrows to one file and every
+  sibling save in that folder silently stops being backed up.
+
+- **Folders that held no save at all were still offered as one.** A folder
+  existing where the catalog said it would is not the same as that folder
+  holding a save, and detection treated the two as one: SiNKR's real save sits
+  in a `saves` subfolder, and what got offered instead was its parent, full of
+  engine logs. Every candidate is looked inside now, against the manifest's own
+  file patterns, and a folder that turns out empty is still offered rather than
+  hidden, just ranked behind any sibling that actually holds something, since a
+  game installed and never played has a real, empty save folder waiting.
+
+- **A game whose catalog path did not resolve had no fallback at all.** The
+  name a game is sold under and the folder it installs into are not always the
+  same string: Aven Colony installs into `prj_juniper` and saves inside it, and
+  a catalog entry with no Linux path meant nothing ever searched for that word.
+  The install directory, already parsed off the same manifest that reports
+  whether a game is installed, is tried now when the catalog comes up empty.
+
+- **A Steam library could be counted twice, and so could its Cloud saves.**
+  `~/.steam/steam` is a symlink to `~/.local/share/Steam` on every standard
+  Linux install, and both were probed as if they were different libraries: one
+  machine listed the same Steam Cloud save under `userdata` twice, 34 duplicate
+  paths across 24 games, indistinguishable in the UI from two real folders. The
+  symlink is resolved before it is used as a key now, so the two collapse into
+  the one library they always were.
+
+- **A Steam Cloud save that skips the usual `remote/` folder was missed
+  entirely.** The documented layout is `userdata/<id>/<appid>/remote/`, and
+  that was the only shape detection looked for; Mojo: Hanako writes straight
+  into the `<appid>` folder with no `remote/` inside it, so the only save it
+  has came back as a game with nothing to back up. The `<appid>` folder is the
+  fallback now when `remote/` is missing, gated on actually holding player data
+  so the bookkeeping file every Cloud-enabled game has does not pass for one.
+
+- **Hitting the per-save size cap rediscovered the same limit on every
+  autosave.** The only way a client learns its plan's per-save cap is to be
+  rejected with a 413 that names it, and the number was used once and thrown
+  away, so the very next autosave built the full snapshot again, got trimmed
+  again, and warned again: five users generated almost 13,000 copies of the
+  same warning in a week. The limit is cached now and applied before the upload
+  is even built, for thirty minutes, short enough that upgrading to a bigger
+  plan does not leave old copies trimmed against a cap that no longer applies.
+
+- **Saves named `user`, `game` or a bare number kept reaching the server.** The
+  check that catches a save named after a plumbing folder instead of the game
+  already existed, but it only ran once the save was loaded back from disk, by
+  which point it had already been created, uploaded and given a server row. The
+  same check runs now where a save is first tracked or adopted, which is where
+  naming it wrong can actually be prevented, and a poisoned name is reported
+  once per run instead of on every reload, which used to bury the rest of the
+  log under thousands of copies of the same warning.
+
+- **Playtime only reached the server when someone opened the recap screen.**
+  The store has always tracked hours correctly; sending them was wired into the
+  Wrapped screen, so an account that never opened it showed real hours locally
+  and zero on every device that reads them from the server. The engine ships
+  them itself every thirty minutes now, on its own opt-in switch rather than
+  the general telemetry one, since that one promises never to send a game's
+  name and playtime is a game's name by construction. Turning it off stops the
+  upload; the local history keeps accruing either way.
+
+- **`hoard scan --json` could not be parsed reliably, and hid what it found.**
+  The human table joins a save's folders with `, `, in a column whose real
+  values already contain a comma, so the two could never be told apart by
+  splitting on it. And `--json` without `--verbose` returned the summary counts
+  with no games at all. Every detected game also carries `needs_folder` now, so
+  a caller can tell "installed, but nothing to point at yet" apart from
+  "installed and trackable".
+
+- **Three bugs in the shared install code surfaced while building the new
+  installer.** Running an installer and asking where the app landed returned
+  the path of the installer's own temporary file instead, which is swept away
+  within minutes, so "Open Hoard" would have relaunched the installer and an
+  uninstall would have found nothing to remove. Uninstalling on Windows could
+  also report success while the files were still being deleted, since an NSIS
+  uninstaller relaunches itself detached and returns immediately. And
+  installing put the core tools on the Windows `PATH` without ever taking them
+  off again on uninstall, so a later reinstall found a stale entry already
+  there and skipped adding its own.
+
+- **`h2` is on a patched release.** RUSTSEC-2026-0258: the version behind
+  hyper and reqwest queued empty DATA frames without a limit, so a stream
+  nobody drained could grow memory or overflow a length. Low severity, and the
+  copy that carries the live networking stack is updated. A second, older copy
+  reaches the tree through the AWS SDK's legacy client and has no patched
+  release on its own line; it waits on that stack moving forward.
 
 ## [1.1.5] - 2026-08-24
 
