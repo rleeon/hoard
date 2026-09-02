@@ -1634,14 +1634,21 @@ fn refine_save_dir(slug: &str, hits: Vec<PathBuf>) -> Vec<PathBuf> {
         // broad to offer (the profile, Documents, the game's install root) is the
         // lone file tracked.
         //
-        // …or when the folder keeps mods, Workshop or cache next to the save
-        // (`junkdirs::holds_foreign_subdir`). That does not make it broad, since it
-        // belongs to the game, and `is_too_broad` approves it, but it does make
-        // it the GAME's folder rather than its saves' folder, and adopting it
-        // whole uploads hundreds of megabytes of content nobody asked for.
-        // Issue #17: Teardown's save is a `savegame.xml` of a few KB, and its
-        // folder dragged along 42 MB of `mods\` across 173 files. There we
-        // track the lone file, which is what the catalog named.
+        // …or when the folder keeps mods, Workshop or a heavy cache, with
+        // something in it, next to the save (`junkdirs::holds_foreign_subdir`).
+        // That does not make it broad, since it belongs to the game, and
+        // `is_too_broad` approves it, but it does make it the GAME's folder
+        // rather than its saves' folder, and adopting it whole uploads hundreds
+        // of megabytes of content nobody asked for. Issue #17: Teardown's save
+        // is a `savegame.xml` of a few KB, and its folder dragged along 42 MB of
+        // `mods\` across 173 files. There we track the lone file, which is what
+        // the catalog named.
+        //
+        // The bar for that is deliberately high, because this branch is the one
+        // that can lose data quietly: an empty `mods\`, or a `Logs\` of any
+        // size, leaves the folder adopted whole. Narrowing on either would drop
+        // every sibling save in the folder, meaning the other 45 slots the
+        // catalog did not name, with nothing in the UI to say it happened.
         if hit.is_file() {
             let candidate = match hit.parent() {
                 Some(parent)
@@ -4692,18 +4699,56 @@ mod tests {
         assert_eq!(refined, vec![file]);
     }
 
-    /// Same guard, cache flavour: a `ShaderCache/` sibling is just as much a
-    /// sign that the folder belongs to the game rather than to its saves.
+    /// Same guard, cache flavour: a `ShaderCache/` sibling with shaders in it is
+    /// just as much a sign that the folder belongs to the game rather than to
+    /// its saves.
     #[test]
     fn refine_save_dir_keeps_the_file_when_the_folder_holds_cache() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("SomeGame");
         std::fs::create_dir_all(dir.join("ShaderCache")).unwrap();
+        std::fs::write(dir.join("ShaderCache").join("pipeline.bin"), b"x").unwrap();
         let file = dir.join("player.sav");
         std::fs::write(&file, b"x").unwrap();
 
         let refined = refine_save_dir("some-game", vec![file.clone()]);
         assert_eq!(refined, vec![file]);
+    }
+
+    /// An empty `mods/` is what a game creates on first run. Narrowing on it
+    /// would cost the folder's other save slots to avoid uploading nothing.
+    #[test]
+    fn refine_save_dir_widens_when_the_foreign_sibling_is_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("SomeGame");
+        std::fs::create_dir_all(dir.join("mods")).unwrap();
+        let file = dir.join("savegame.xml");
+        std::fs::write(&file, b"<save/>").unwrap();
+        std::fs::write(dir.join("savegame2.xml"), b"<save/>").unwrap();
+
+        let refined = refine_save_dir("some-game", vec![file]);
+        assert_eq!(
+            refined,
+            vec![dir],
+            "the second slot must not be dropped over an empty mods folder"
+        );
+    }
+
+    /// A `Logs/` is cache to the rest of the pipeline and will not be uploaded,
+    /// but it is no evidence about whose folder this is: save folders keep one
+    /// too. Reading it as evidence dropped every slot the catalog did not name.
+    #[test]
+    fn refine_save_dir_widens_when_the_only_sibling_is_transient() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("SomeGame");
+        std::fs::create_dir_all(dir.join("Logs")).unwrap();
+        std::fs::write(dir.join("Logs").join("run.log"), b"x").unwrap();
+        let file = dir.join("slot1.sav");
+        std::fs::write(&file, b"x").unwrap();
+        std::fs::write(dir.join("slot2.sav"), b"x").unwrap();
+
+        let refined = refine_save_dir("some-game", vec![file]);
+        assert_eq!(refined, vec![dir]);
     }
 
     /// The guard must not fire on a folder whose odd name merely *contains* a

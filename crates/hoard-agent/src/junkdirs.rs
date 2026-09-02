@@ -126,15 +126,65 @@ pub fn is_foreign_dir_name(name: &str) -> bool {
     FOREIGN_DIR_NAMES.contains(&normalize_dir_name(name).as_str())
 }
 
-/// `true` when `dir` has, directly below it, a folder that is added content or
-/// regenerable cache: the sign that `dir` is the game's folder rather than its
-/// saves' folder, and that adopting it whole would drag in hundreds of megabytes
-/// nobody asked for.
+/// The cache flavours that are transient rather than the game's own weight: what
+/// a process writes while it runs and recreates without being asked. A subset of
+/// [`CACHE_DIR_NAMES`], split out for [`holds_foreign_subdir`] alone.
 ///
-/// One level only: what is being decided is whether `dir` itself gets offered, and
-/// a `mods\` buried three levels down does not change that answer. An IO error
-/// answers `false`, since not being able to read a folder is no reason to stop
-/// backing it up.
+/// Everywhere else the distinction would be noise: none of these is a save and
+/// none should be uploaded, which is what the rest of the pipeline asks. It only
+/// matters when the question is whether a folder is the GAME's or its SAVES'. A
+/// `ShaderCache\` of 400 MB answers that; a `Logs\` does not, since a folder full
+/// of save slots keeps one just as readily as a game's root does.
+const TRANSIENT_DIR_NAMES: &[&str] = &[
+    "temp",
+    "tmp",
+    "logs",
+    "log",
+    "crashes",
+    "crashdumps",
+    "crashreports",
+];
+
+/// `true` when the name is one of the transient flavours of cache, which carry no
+/// weight as evidence. See [`TRANSIENT_DIR_NAMES`].
+fn is_transient_dir_name(name: &str) -> bool {
+    TRANSIENT_DIR_NAMES.contains(&normalize_dir_name(name).as_str())
+}
+
+/// `true` when `dir` holds at least one entry of any kind, file or folder.
+///
+/// An unreadable folder answers `false`: not being able to look is not evidence
+/// of anything, and the caller's default is to keep backing things up.
+fn dir_is_populated(dir: &Path) -> bool {
+    std::fs::read_dir(dir).is_ok_and(|mut entries| entries.next().is_some())
+}
+
+/// `true` when `dir` has, directly below it, a **populated** folder of added
+/// content or heavy cache: the sign that `dir` is the game's folder rather than
+/// its saves' folder, and that adopting it whole would drag in hundreds of
+/// megabytes nobody asked for.
+///
+/// Both conditions are there because the two ways of being wrong do not cost the
+/// same. Answering `true` does not widen to the parent, it narrows to the single
+/// file the catalog named, so every sibling save in that folder silently stops
+/// being backed up. Answering `false` uploads some junk, which the user can see
+/// and complain about. Noisy when too lax, silent when too strict: that is what
+/// sets the bar at
+///
+/// * a name that is added content ([`FOREIGN_DIR_NAMES`]) or a cache with real
+///   weight behind it. The transient ones do not count
+///   ([`TRANSIENT_DIR_NAMES`]): a `Logs\` sits next to save slots as readily as
+///   next to a game's binaries, so it settles nothing and would cost the
+///   siblings;
+/// * **and** a folder with something in it. An empty `mods\` is what a game
+///   creates on first run, and adopting a parent because of one costs nothing.
+///
+/// One level only, on both counts: what is being decided is whether `dir` itself
+/// gets offered, and a `mods\` buried three levels down does not change that
+/// answer. "Populated" is likewise a single `read_dir`, so issue #17's
+/// `mods\promo\` of artwork counts through its subfolder without anyone walking
+/// it. An IO error answers `false`, since not being able to read a folder is no
+/// reason to stop backing it up.
 pub fn holds_foreign_subdir(dir: &Path) -> bool {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return false;
@@ -145,7 +195,9 @@ pub fn holds_foreign_subdir(dir: &Path) -> bool {
         }
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if is_foreign_dir_name(&name) || is_cache_dir_name(&name) {
+        let carries_weight = is_foreign_dir_name(&name)
+            || (is_cache_dir_name(&name) && !is_transient_dir_name(&name));
+        if carries_weight && dir_is_populated(&entry.path()) {
             return true;
         }
     }
@@ -756,5 +808,79 @@ mod tests {
                 "the folder of ONE game inside a blocked root is valid"
             );
         }
+    }
+
+    /// `TRANSIENT_DIR_NAMES` is a subset of `CACHE_DIR_NAMES`, and subtracting a
+    /// name that was never in the other list would quietly subtract nothing.
+    #[test]
+    fn every_transient_name_is_also_a_cache_name() {
+        for n in TRANSIENT_DIR_NAMES {
+            assert!(
+                CACHE_DIR_NAMES.contains(n),
+                "{n} is subtracted from a list it is not in"
+            );
+        }
+    }
+
+    /// Issue #17's shape: the artwork lives one level further down, in
+    /// `mods\promo\`, so the check has to count a subfolder as content.
+    #[test]
+    fn a_populated_mods_folder_marks_the_game_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("mods").join("promo")).unwrap();
+        touch(&tmp.path().join("savegame.xml"));
+        assert!(holds_foreign_subdir(tmp.path()));
+    }
+
+    /// The heavy caches still count, and they usually arrive with content.
+    #[test]
+    fn a_populated_shader_cache_marks_the_game_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        touch(&tmp.path().join("ShaderCache/pipeline.bin"));
+        assert!(holds_foreign_subdir(tmp.path()));
+    }
+
+    /// An empty one is what a game creates on first run: no weight, no verdict.
+    /// Narrowing on it would cost the folder's other saves for nothing.
+    #[test]
+    fn an_empty_foreign_folder_is_not_evidence() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("mods")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("ShaderCache")).unwrap();
+        touch(&tmp.path().join("savegame.xml"));
+        assert!(!holds_foreign_subdir(tmp.path()));
+    }
+
+    /// Logs, temp and crash dumps are cache everywhere else in the pipeline, and
+    /// rightly so, but they say nothing about whose folder this is: a folder full
+    /// of save slots keeps them too.
+    #[test]
+    fn transient_folders_do_not_decide_whose_folder_this_is() {
+        for n in ["Logs", "log", "Temp", "tmp", "CrashDumps", "crash reports"] {
+            let tmp = tempfile::tempdir().unwrap();
+            touch(&tmp.path().join(n).join("run.txt"));
+            touch(&tmp.path().join("slot1.sav"));
+            assert!(
+                !holds_foreign_subdir(tmp.path()),
+                "{n} must not narrow the folder down to one file"
+            );
+        }
+    }
+
+    /// The rest of the pipeline keeps treating them as cache: this split is local
+    /// to `holds_foreign_subdir` and must not leak into the walk's skip rule.
+    #[test]
+    fn transient_folders_are_still_cache_for_everyone_else() {
+        for n in ["Logs", "Temp", "CrashDumps"] {
+            assert!(is_cache_dir_name(n), "{n} is still cache");
+        }
+    }
+
+    /// A name that announces saves wins over the foreign list, populated or not.
+    #[test]
+    fn a_save_named_folder_is_never_foreign_content() {
+        let tmp = tempfile::tempdir().unwrap();
+        touch(&tmp.path().join("SaveMods/slot1.sav"));
+        assert!(!holds_foreign_subdir(tmp.path()));
     }
 }
