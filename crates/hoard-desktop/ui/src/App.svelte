@@ -389,18 +389,20 @@ import { tilt } from "./lib/actions/tilt";
 
   onMount(async () => {
     // The window is born hidden (`"visible": false` in tauri.conf.json) so nobody
-    // sees the webview's white rectangle while it starts. `onMount` guarantees the
-    // DOM, not the frame: we ask to show it once the browser has really painted,
-    // with the startup spinner already on screen. This goes *before* the hydrations
-    // on purpose, since the window has to appear on the first frame, not when the
-    // disk and the cloud answer.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        void api.uiReady().catch(() => {
-          // The backend has its own grace deadline; if the call fails the window
-          // appears anyway. Nothing to do here.
-        });
-      });
+    // sees an empty rectangle while the webview starts. Ask for it as soon as the
+    // DOM is up, *before* the hydrations: the window has to appear straight away,
+    // not when the disk and the cloud answer.
+    //
+    // Not from `requestAnimationFrame`: a hidden window never repaints, so the
+    // browser parks the callback and the call never leaves. The frontend was ready
+    // and the window still sat there until the backend's 8-second deadline gave up
+    // on it (`window.rs`), which is most of what "the app takes forever to open"
+    // was. Showing before the first paint costs nothing here anyway, because the
+    // window carries `backgroundColor` (`tauri.conf.json`): what appears in that
+    // gap is the app's own background, not a white flash.
+    void api.uiReady().catch(() => {
+      // The backend has its own grace deadline; if the call fails the window
+      // appears anyway. Nothing to do here.
     });
 
     // Warms both possible startup destinations while the session hydrates: with a
