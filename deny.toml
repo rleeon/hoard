@@ -100,13 +100,39 @@ allow = [
     "Zlib",
     "OpenSSL",
     "AGPL-3.0",
+    # Slint, which the graphical installer draws its window with, is offered as
+    # `GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR
+    # LicenseRef-Slint-Software-3.0`. We take the GPL arm: section 13 of the
+    # AGPL-3.0 we ship under grants permission to combine a covered work with a
+    # GPLv3 work and convey the result, so the copyleft arm costs nothing and
+    # asks nothing the project does not already do. The royalty-free arm would
+    # be worse for us, not better: it exists for people who want to stay
+    # proprietary, and it charges an attribution badge for the privilege.
+    # Allowing one arm of an OR expression satisfies it, so the two LicenseRef
+    # terms need no entry of their own.
+    "GPL-3.0-only",
 ]
 confidence-threshold = 0.8
 # `ring` ships under a custom license that doesn't have an SPDX identifier;
 # upstream has acknowledged this and the contents are equivalent to
 # BSD-3-Clause + OpenSSL. We accept it explicitly here.
+#
+# `libfuzzer-sys` is `(MIT OR Apache-2.0) AND NCSA`, and the `AND` means the
+# NCSA half cannot be satisfied by picking another arm. NCSA is the University
+# of Illinois licence, permissive and GPL-compatible, but we scope it to this
+# crate rather than opening it globally: it reaches us only as a leaf of the
+# image decoders Slint's compiler pulls in, and nothing else should be
+# arriving under it unnoticed.
+#
+# `webpki-roots` ships Mozilla's CA bundle, so it is data rather than code and
+# carries CDLA-Permissive-2.0 accordingly. Same reasoning: scoped, because a
+# data licence turning up on an actual code crate is exactly the surprise this
+# list exists to catch. Two versions are in the tree at once, and the exception
+# is keyed by name, so it covers both.
 exceptions = [
     { allow = ["OpenSSL"], crate = "ring" },
+    { allow = ["NCSA"], crate = "libfuzzer-sys" },
+    { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" },
 ]
 
 [[licenses.clarify]]
