@@ -12,8 +12,9 @@
 //! and it is fixed there. But it was found by chance while sweeping Fly logs
 //! eight days in, and the only way to stop it that afternoon was an `UPDATE
 //! saves SET backup_only = true` typed by hand against production, which hid
-//! that person's only cloud copy from their only machine, and which somebody
-//! then has to remember to undo. The same shape shows up at gigabyte scale:
+//! that person's only cloud copy from their only machine. That row stays set:
+//! it was reviewed on 2-sep-2026 and kept on purpose, so a sweep that finds it
+//! should leave it alone. The same shape shows up at gigabyte scale:
 //! 111 pulls of one 1,57 GB version in a fortnight, 170 GB.
 //!
 //! **The full-account loop.** When an account is over quota the upload is
