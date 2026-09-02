@@ -266,7 +266,7 @@ mod tests {
         let mut out = vec![0u8; (w * h * 4) as usize];
         e.render(&mut out, w, h);
         // At least one fully-opaque pixel was drawn.
-        assert!(out.chunks_exact(4).any(|p| p[3] == 255));
+        assert!(out.as_chunks::<4>().0.iter().any(|p| p[3] == 255));
     }
 
     #[test]

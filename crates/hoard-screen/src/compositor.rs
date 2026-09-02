@@ -152,7 +152,7 @@ fn draw_blit(
 /// Pack an RGBA8 buffer into the `0xAARRGGBB` u32 layout `softbuffer` expects.
 pub fn rgba_to_argb_u32(rgba: &[u8], out: &mut [u32]) {
     debug_assert_eq!(rgba.len(), out.len() * 4);
-    for (px, o) in rgba.chunks_exact(4).zip(out.iter_mut()) {
+    for (px, o) in rgba.as_chunks::<4>().0.iter().zip(out.iter_mut()) {
         *o = (px[3] as u32) << 24 | (px[0] as u32) << 16 | (px[1] as u32) << 8 | (px[2] as u32);
     }
 }

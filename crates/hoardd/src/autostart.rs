@@ -1355,8 +1355,10 @@ mod tests {
         assert_eq!(&bytes[..2], &[0xFF, 0xFE], "BOM must lead the file");
         assert_eq!(bytes.len() % 2, 0, "UTF-16 LE is an even byte count");
         let units: Vec<u16> = bytes[2..]
-            .chunks_exact(2)
-            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
             .collect();
         assert_eq!(String::from_utf16(&units).unwrap(), "<a>ñ</a>");
     }
