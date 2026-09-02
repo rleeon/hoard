@@ -86,10 +86,11 @@
   let restoring = $state(false);
   let restoreProgress = $state<RestoreProgress | null>(null);
 
-  // Qué le va a pasar a la carpeta. Se pide al abrir el modal y no descarga
-  // nada: cruza el manifiesto de la versión con lo que hay en disco. `null`
-  // mientras carga; `failed` si no se pudo mirar, en cuyo caso el restore
-  // sigue disponible, no saber qué cambia no es motivo para bloquearlo.
+  // What is going to happen to the folder. It is asked for when the modal opens and
+  // downloads nothing: it crosses the version's manifest with what is on disk.
+  // `null` while it loads; `failed` when it could not be looked at, in which case
+  // the restore is still available, since not knowing what changes is no reason to
+  // block it.
   let preview = $state<api.RestorePreview | null>(null);
   let previewFailed = $state(false);
 
@@ -115,7 +116,7 @@
         null,
         allowConfig,
       );
-      // Otro clic pudo cambiar de versión mientras esto viajaba.
+      // Another click may have changed the version while this was in flight.
       if (restoreTarget?.version_num === snap.version_num) preview = out;
     } catch {
       if (restoreTarget?.version_num === snap.version_num) previewFailed = true;
@@ -221,7 +222,7 @@
       .then((p) => (presets = p))
       .catch(() => (presets = []));
     void refreshArchivedSaves();
-    // Local y barato; si falla, los grupos se quedan sin la línea de horas.
+    // Local and cheap; if it fails, the groups go without their hours line.
     api
       .listPlaytime()
       .then((p) => (playtime = p))
@@ -261,9 +262,9 @@
     }
   }
 
-  // Horas jugadas por día, calculadas en local por el agente (no toca la red).
-  // La cabecera de cada grupo puede así decir cuánto se jugó ESE día a ESTE
-  // juego, que es el contexto que una fecha sola nunca da.
+  // Hours played per day, computed locally by the agent (it touches no network).
+  // Each group's header can then say how long THAT day was spent on THIS game,
+  // which is the context a date alone never gives.
   let playtime = $state<api.PlaytimeSummary | null>(null);
 
   const playedByDay = $derived.by(() => {
@@ -278,7 +279,7 @@
     return out;
   });
 
-  /** Clave de día LOCAL (`YYYY-MM-DD`), la misma forma que usa el playtime. */
+  /** A LOCAL day key (`YYYY-MM-DD`), the same shape playtime uses. */
   function dayKey(iso: string): string {
     const d = new Date(iso);
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -292,11 +293,11 @@
     playedSecs: number;
   };
 
-  /** La lista, partida por día.
+  /** The list, split by day.
    *
-   *  Un juego que autoguarda cada minuto produce cuarenta filas idénticas, y
-   *  leerlas como una lista plana es leer un muro. Agrupadas por día la
-   *  ráfaga se lee como lo que fue: una tarde jugando. */
+   *  A game that autosaves every minute produces forty identical rows, and reading
+   *  them as a flat list is reading a wall. Grouped by day, the burst reads as what
+   *  it was: an afternoon playing. */
   const groups = $derived.by<SnapshotGroup[]>(() => {
     const out: SnapshotGroup[] = [];
     let current: SnapshotGroup | null = null;
@@ -338,16 +339,16 @@
     return $_("history.dur_m", { values: { m: Math.max(m, 1) } });
   }
 
-  /** Bytes con signo: lo que esta versión pesa de más (o de menos) que la
-   *  anterior. El signo es la mitad del dato, "+2 MB" y "-2 MB" cuentan
-   *  historias opuestas sobre la misma partida. */
+  /** Signed bytes: how much more (or less) this version weighs than the previous
+   *  one. The sign is half the information, since "+2 MB" and "-2 MB" tell opposite
+   *  stories about the same save. */
   function formatDelta(n: number): string {
     const sign = n < 0 ? "-" : "+";
     return `${sign}${formatBytes(Math.abs(n))}`;
   }
 
-  /** Contra qué versión se compara cada fila: la anterior que exista en la
-   *  lista. Un "-29 MB" a secas no dice nada; "29 MB menos que la v41" sí. */
+  /** Which version each row is compared against: the previous one present in the
+   *  list. A bare "-29 MB" says nothing; "29 MB less than v41" does. */
   const previousVersion = $derived.by(() => {
     const out: Record<number, number> = {};
     for (let i = 0; i < snapshots.length - 1; i++) {

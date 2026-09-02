@@ -1,22 +1,21 @@
 <script lang="ts">
   /**
-   * Pantalla Pro, el destino de todo candado de la aplicación.
+   * The Pro screen, where every padlock in the application leads.
    *
-   * Antes, pulsar un elemento bloqueado (Hoard-Screen en el rail, el CTA del
-   * `ProGate`, la franja de prueba, el diálogo de cuota llena) llamaba a
-   * `openUpgradePage`, que abre `hoard.services/pricing` en el navegador del
-   * sistema. Eso saca al usuario de la aplicación de golpe, sin haberle contado
-   * antes qué está comprando: pulsas un elemento del menú y se te abre un
-   * navegador encima del juego.
+   * Pressing a locked item (Hoard-Screen in the rail, `ProGate`'s CTA, the trial
+   * strip, the quota-full dialog) used to call `openUpgradePage`, which opens
+   * `hoard.services/pricing` in the system browser. That throws the user out of the
+   * application without having told them what they are buying: you press a menu item
+   * and a browser opens on top of the game.
    *
-   * Ahora el candado trae aquí. Esta pantalla explica qué entra en Pro,
-   * compara los dos planes y deja el pago,que sí tiene que ocurrir fuera,
-   * porque la pasarela es Polar y no se puede empotrar, detrás de un botón
-   * explícito que además avisa de que se abrirá el navegador. El salto al
-   * exterior deja de ser una sorpresa y pasa a ser una decisión.
+   * The padlock now brings you here. This screen explains what Pro includes,
+   * compares the two plans, and puts the payment (which does have to happen outside,
+   * because the gateway is Polar and cannot be embedded) behind an explicit button
+   * that also warns the browser will open. The jump outside stops being a surprise
+   * and becomes a decision.
    *
-   * `?feature=screen` (lo pone quien nos trae) sólo sirve para encabezar la
-   * página nombrando la función que el usuario intentaba abrir.
+   * `?feature=screen` (set by whoever brings us here) only serves to head the page
+   * naming the feature the user was trying to open.
    */
   import { onMount } from "svelte";
   import { push, router } from "svelte-spa-router";
@@ -51,7 +50,7 @@
     await refreshEntitlements();
   });
 
-  /** Función que traía al usuario, si venía de un candado concreto. */
+  /** The feature that brought the user here, when they came from a specific padlock. */
   const fromFeature = $derived.by<FeatureKey | null>(() => {
     const qs = router.querystring;
     if (!qs) return null;
@@ -70,9 +69,9 @@
   const account = $derived($cloud.account);
   const isPro = $derived(account?.plan === "pro");
 
-  // Una prueba sin empezar es el camino más barato para el usuario: si la
-  // función que buscaba todavía la ofrece, el botón principal la arranca en
-  // lugar de mandarlo a pagar.
+  // An unstarted trial is the cheapest road for the user: if the feature they were
+  // after still offers one, the main button starts it instead of sending them to
+  // pay.
   const pending = $derived.by(() => {
     if (!fromFeature) return null;
     const fs = $entitlements?.features[fromFeature] ?? null;
@@ -85,7 +84,7 @@
     startingTrial = true;
     try {
       await activateFeature(fromFeature);
-      // La prueba ya corre: devuélvelo a la función que quería abrir.
+      // The trial is already running: send them back to the feature they wanted.
       push(fromFeature === "screen" ? "/hoard-screen" : "/hoard-wrapped");
     } finally {
       startingTrial = false;

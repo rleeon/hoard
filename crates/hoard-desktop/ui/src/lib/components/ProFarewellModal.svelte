@@ -1,20 +1,20 @@
 <script lang="ts">
   /**
-   * "Veo que te vas", la despedida de Pro. Salta una sola vez, en mitad de la
-   * aplicación, cuando vemos por primera vez la cancelación: o una baja
-   * programada (`cancel_at`, todavía en Pro) o la cuenta ya caída a Free sin
-   * que hubiéramos visto la baja (ver `stores/planEvents.ts`).
+   * The Pro farewell. It appears once, in the middle of the application, the first
+   * time the cancellation is seen: either a scheduled downgrade (`cancel_at`, still
+   * on Pro) or the account already fallen to Free without our having seen the
+   * cancellation (see `stores/planEvents.ts`).
    *
-   * Lleva dentro el picker de *Liberar espacio* a propósito. Cancelar no es un
-   * trámite: el almacenamiento baja a 2 GB y lo que no quepa se archiva. Ese
-   * número el usuario no lo tiene en la cabeza el día que cancela, y la
-   * aplicación sí, así que aquí se le enseña **con sus juegos y sus bytes**,
-   * midiendo contra el límite al que va a caer y no contra el que aún tiene.
-   * Puede elegir ahora qué se va a la caja negra, o volver a Pro y no tener que
-   * elegir nada.
+   * It carries the *free up space* picker inside it on purpose. Cancelling is not
+   * paperwork: storage drops to 2 GB and whatever does not fit gets archived. That
+   * number is not in the user's head on the day they cancel, and it is in the
+   * application's, so here it is shown **with their games and their bytes**,
+   * measured against the limit they are falling to and not the one they still have.
+   * They can pick now what goes into the black box, or go back to Pro and not have
+   * to pick anything.
    *
-   * Lo que **no** hace es esconder la parte buena: los dispositivos ilimitados
-   * se los queda de por vida, y eso se dice arriba del todo.
+   * What it does **not** do is hide the good half: the unlimited devices are theirs
+   * for life, and that is said right at the top.
    */
   import { _ } from "svelte-i18n";
   import { Infinity as InfinityIcon, HardDrive, MonitorPlay, Archive } from "@lucide/svelte";
@@ -45,10 +45,10 @@
 
   const account = $derived($cloud.account);
 
-  /** El límite al que va la cuenta, no el que tiene. Durante la ventana de
-   *  gracia el servidor sigue aplicando el grande, así que medir con
-   *  `storage_limit_bytes` diría "cabe todo" justo el día en que hay que
-   *  decidir. */
+  /** The limit the account is heading for, not the one it has. During the grace
+   *  window the server still applies the larger one, so measuring with
+   *  `storage_limit_bytes` would say "it all fits" on exactly the day the decision
+   *  has to be made. */
   const targetLimit = $derived.by(() => {
     const pending = account?.pending_storage_limit_bytes ?? null;
     if (pending != null && pending > 0) return pending;
@@ -60,8 +60,8 @@
   const used = $derived(account?.storage_used_bytes ?? 0);
   const overBytes = $derived(Math.max(0, used - targetLimit));
 
-  /** Cuándo se aplica el recorte. El servidor manda la fecha exacta durante la
-   *  gracia; si no la hay, la de la baja programada. */
+  /** When the cut lands. The server sends the exact date during the grace window;
+   *  failing that, the scheduled downgrade's. */
   const changeDate = $derived.by(() => {
     const raw = account?.storage_limit_change_at ?? account?.cancel_at ?? null;
     if (!raw) return null;

@@ -1,20 +1,19 @@
 /**
- * Frases de la tarjeta de Hoard-Wrapped.
+ * The Hoard-Wrapped card's phrases.
  *
- * La tarjeta remata con una frase elegida al azar a partir del juego más
- * jugado del rango: si el más jugado es un Fallout, cualquiera de ellos,
- * sale "Supongo… que no cambia nunca."; si no reconocemos el juego, tira del
- * saco genérico. El usuario siempre puede escribir la suya encima (queda solo
- * en local) o volver a tirar el dado.
+ * The card finishes with a phrase picked at random from the range's most-played
+ * game: if the most-played one is a Fallout, any of them, out comes "war never
+ * changes"; if we do not recognise the game, it draws from the generic bag. The user
+ * can always write their own over it (it stays local) or roll the dice again.
  *
- * Cada frase viene en los ocho idiomas de la app. Viven aquí, no en
- * `i18n/locales/*.json`, por la misma razón que el resto de textos de la capa
- * Pro: son copy de una superficie concreta y no tienen por qué inflar los
- * ficheros públicos de traducción.
+ * Every phrase comes in the app's eight languages. They live here and not in
+ * `i18n/locales/*.json` for the same reason as the rest of the Pro layer's text:
+ * they are copy for one specific surface and have no business inflating the public
+ * translation files.
  *
- * El emparejamiento es por *slug* y con límites de token: envolvemos el slug
- * en guiones (`-elden-ring-`) y probamos patrones sobre esa forma, así
- * `rust` casa con el juego Rust pero no con `rustler` ni con `trust-issues`.
+ * The matching is by *slug* and on token boundaries: the slug is wrapped in dashes
+ * (`-elden-ring-`) and the patterns are tried against that shape, so `rust` matches
+ * the game Rust but neither `rustler` nor `trust-issues`.
  */
 
 /** Una frase en los ocho idiomas de la app. */
@@ -37,7 +36,7 @@ type QuoteEntry = {
   quotes: Quote[];
 };
 
-/** Frases por juego. Añadir uno nuevo es añadir una entrada aquí. */
+/** Phrases per game. Adding a new one is adding an entry here. */
 const BY_GAME: QuoteEntry[] = [
   {
     id: "fallout",
@@ -613,7 +612,7 @@ const BY_GAME: QuoteEntry[] = [
   },
 ];
 
-/** Saco genérico: sale cuando el juego no está en la lista (o no hay juego). */
+/** The generic bag: it comes out when the game is not in the list (or there is no game). */
 const GENERIC: Quote[] = [
   {
     es: "Las horas no se pierden si se guardan.",
@@ -677,15 +676,15 @@ const GENERIC: Quote[] = [
   },
 ];
 
-/** Cuántos juegos reconoce el catálogo. Lo usa la UI para presumir. */
+/** How many games the catalogue recognises. The UI uses it to boast. */
 export const KNOWN_GAMES = BY_GAME.length;
 
-/** Normaliza un slug a `-token-token-` para poder casar por límites. */
+/** Normalises a slug to `-token-token-` so it can be matched on boundaries. */
 function bounded(slug: string): string {
   return `-${slug.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}-`;
 }
 
-/** Entrada que le toca a un slug, o `null` si no está en el catálogo. */
+/** The entry a slug maps to, or `null` when it is not in the catalogue. */
 export function matchGame(slug: string | null | undefined): string | null {
   if (!slug) return null;
   const key = bounded(slug);
@@ -693,9 +692,9 @@ export function matchGame(slug: string | null | undefined): string | null {
 }
 
 /**
- * Saco de frases para un slug. Si reconocemos el juego salen **solo** las
- * suyas: la gracia es que quien juega a un Fallout lea lo de la guerra, no una
- * frase de relleno. Las genéricas son para cuando no sabemos a qué juega.
+ * The bag of phrases for a slug. When we recognise the game, **only** its own come
+ * out: the point is that somebody who plays a Fallout reads the line about war, not
+ * a filler phrase. The generic ones are for when we do not know what they play.
  */
 export function quotesFor(slug: string | null | undefined): Quote[] {
   const id = matchGame(slug);
@@ -704,9 +703,9 @@ export function quotesFor(slug: string | null | undefined): Quote[] {
 }
 
 /**
- * Elige una frase de forma determinista: la misma semilla y el mismo juego dan
- * siempre la misma frase, así la tarjeta no parpadea entre renders y el botón
- * del dado no es más que "sube la semilla".
+ * Picks a phrase deterministically: the same seed and the same game always give the
+ * same phrase, so the card does not flicker between renders and the dice button is
+ * no more than "bump the seed".
  */
 export function pickQuote(slug: string | null | undefined, seed: number): Quote {
   const pool = quotesFor(slug);

@@ -62,24 +62,25 @@ init({
   initialLocale: pickSupported(getLocaleFromNavigator()) ?? "en",
 });
 
-/** Cuánto puede retrasar el idioma persistido al primer render.
+/** How long the persisted language may delay the first render.
  *
- *  Leer `prefs.json` es un `invoke` + una lectura de disco: normalmente un par
- *  de milisegundos, pero es I/O y nada garantiza que lo sea (disco dormido,
- *  perfil en red, un antivirus mirando el fichero). Por debajo de este plazo
- *  esperamos y el arranque sale ya en el idioma correcto; por encima montamos
- *  con el del sistema y corregimos cuando conteste. */
+ *  Reading `prefs.json` is an `invoke` plus a disk read: usually a couple of
+ *  milliseconds, but it is I/O and nothing guarantees it stays that way (a sleeping
+ *  disk, a profile on the network, an antivirus watching the file). Under this
+ *  deadline we wait and the start comes up in the right language; over it we mount
+ *  with the system's and correct once it answers. */
 const PREFS_LOCALE_BUDGET_MS = 250;
 
-/** Idioma guardado en prefs, o `null` si no hay o no se pudo leer. Arranca al
- *  importar el módulo para que corra en paralelo con el resto del bootstrap. */
+/** The language stored in prefs, or `null` when there is none or it could not be
+ *  read. It starts on module import so it runs in parallel with the rest of the
+ *  bootstrap. */
 const persistedLocale: Promise<string | null> = getPrefs()
   .then((prefs) => pickSupported(prefs.language ?? null))
-  // Quedarnos con lo que eligió `init` es aceptable, la página de Ajustes
-  // puede reparar un prefs.json corrupto.
+  // Keeping whatever `init` picked is acceptable, since the Settings page can
+  // repair a corrupt prefs.json.
   .catch(() => null);
 
-/** Resuelve a `null` si `promise` tarda más de `ms`, sin cancelarla. */
+/** Resolves to `null` when `promise` takes longer than `ms`, without cancelling it. */
 function withBudget<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   return Promise.race([
     promise,
@@ -101,13 +102,13 @@ async function applyPersisted(code: string | null): Promise<void> {
  *  resolved. `init()` only *queues* the load, we must explicitly wait for
  *  it.
  *
- *  Lo que este promise **no** hace es esperar al disco sin límite. Antes
- *  encadenaba `getPrefs()` y luego `waitLocale()`, así que el `mount()`,y con
- *  él el primer pixel de la app, quedaba detrás de una ida y vuelta por IPC.
- *  Ahora la lectura de prefs corre en paralelo y sólo la esperamos
- *  `PREFS_LOCALE_BUDGET_MS`; si llega tarde, montamos con el idioma del sistema
- *  y [`i18nSettled`] la aplica después (svelte-i18n es reactivo: los textos se
- *  cambian solos, sin remontar nada). */
+ *  What this promise does **not** do is wait on the disk without a bound. It used
+ *  to chain `getPrefs()` and then `waitLocale()`, so `mount()`, and with it the
+ *  app's first pixel, sat behind an IPC round-trip. The prefs read now runs in
+ *  parallel and is only waited on for `PREFS_LOCALE_BUDGET_MS`; if it arrives late,
+ *  we mount with the system's language and [`i18nSettled`] applies it afterwards
+ *  (svelte-i18n is reactive: the text changes on its own, with nothing
+ *  remounted). */
 export const i18nReady: Promise<void> = (async () => {
   await applyPersisted(await withBudget(persistedLocale, PREFS_LOCALE_BUDGET_MS));
   // Block until the active locale's dictionary is loaded. Without this the
@@ -125,28 +126,28 @@ export const i18nSettled: Promise<void> = (async () => {
     await i18nReady;
     await applyPersisted(await persistedLocale);
   } catch {
-    // Un diccionario que no carga deja los textos en el idioma anterior, que
-    // es mejor que una promesa rechazada sin dueño en la consola.
+    // A dictionary that fails to load leaves the text in the previous language,
+    // which beats an unowned rejected promise in the console.
   }
 })();
 
-/** Lectura en vuelo, para que una ráfaga de eventos colapse en una sola. */
+/** The read in flight, so a burst of events collapses into one. */
 let syncing: Promise<void> | null = null;
 
 /**
- * Relee el idioma guardado y lo aplica si se ha quedado atrás.
+ * Re-reads the stored language and applies it when it has fallen behind.
  *
- * Hace falta porque [`setLocale`] cambia el idioma **de la ventana que lo
- * llama** y persiste a prefs, pero no avisa a nadie: cada ventana tiene su
- * propio contexto JS y, por tanto, su propio store de svelte-i18n. La ventana
- * principal es la única que pasa por Ajustes, así que una segunda ventana que
- * sobreviva al cambio se queda con el idioma con el que montó, y el HUD del
- * juego sobrevive siempre, porque cerrarlo lo **esconde**, no lo destruye.
+ * It is needed because [`setLocale`] changes the language **of the window that
+ * calls it** and persists to prefs, but tells nobody: every window has its own JS
+ * context and therefore its own svelte-i18n store. The main window is the only one
+ * that goes through Settings, so a second window that survives the change keeps the
+ * language it mounted with, and the game HUD always survives, because closing it
+ * **hides** it rather than destroying it.
  *
- * Llamarlo al volver a enseñarse es la mitad barata del arreglo: una lectura de
- * prefs por apertura, sin eventos nuevos que emitir ni oír, y sin poder
- * disparar nada. Si prefs no se puede leer, o no hay idioma elegido, se queda
- * el que hubiera: no hay nada mejor que adivinar.
+ * Calling it when it is shown again is the cheap half of the fix: one prefs read per
+ * opening, with no new events to emit or hear, and nothing it can trigger. If prefs
+ * cannot be read, or no language was chosen, whatever was there stays: there is
+ * nothing better than guessing.
  */
 export function syncPersistedLocale(): Promise<void> {
   if (syncing) return syncing;

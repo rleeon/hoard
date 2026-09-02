@@ -1,28 +1,28 @@
 /**
- * Mandos de depuración del HUD. **TEMPORAL.**
+ * The HUD's debug controls. **TEMPORARY.**
  *
- * Existen para afinar el aspecto en vivo,opacidad del fondo, del texto,
- * tamaño de letra, y decidir los valores definitivos mirando el HUD sobre un
- * juego de verdad, que es la única forma de acertar con una superficie
- * translúcida. Cuando los números estén elegidos, esto se borra entero: el
- * store, `OverlayDebug.svelte` y su render en `Overlay.svelte`.
+ * They exist to tune the look live (background opacity, text opacity, font size)
+ * and settle the final values while looking at the HUD over a real game, which is
+ * the only way to get a translucent surface right. Once the numbers are picked,
+ * this gets deleted wholesale: the store, `OverlayDebug.svelte` and its render in
+ * `Overlay.svelte`.
  *
- * Por eso vive en su propio directorio y no toca `stores/`: es un bloque que se
- * quita de una pieza, no algo que haya que ir desenredando.
+ * That is why it lives in its own directory and does not touch `stores/`: it is a
+ * block that comes out in one piece, not something to be untangled.
  *
- * Se persiste en `localStorage` para que sobreviva a cerrar y reabrir el HUD
- * mientras se prueba; el HUD es su propia ventana y su propio contexto JS.
+ * It persists to `localStorage` so it survives closing and reopening the HUD while
+ * testing; the HUD is its own window with its own JS context.
  */
 
 /**
- * El interruptor. **Apagado**: los mandos no se pintan y el HUD usa los valores
- * de abajo tal cual.
+ * The switch. **Off**: the controls are not painted and the HUD uses the values
+ * below as they are.
  *
- * Está aquí, y en un `const` con nombre, para que volver a sacarlos sea cambiar
- * un `false` por un `true` y no reconstruir de memoria qué import y qué línea de
- * marcado hacían falta. El andamio se queda en el árbol a propósito: afinar una
- * superficie translúcida sobre un juego real hay que rehacerlo cada vez que
- * cambian los colores, y borrarlo obliga a reescribirlo entero.
+ * It is here, in a named `const`, so bringing them back is changing a `false` to a
+ * `true` rather than reconstructing from memory which import and which line of
+ * markup were needed. The scaffolding stays in the tree on purpose: tuning a
+ * translucent surface over a real game has to be redone every time the colours
+ * change, and deleting it means writing it all again.
  */
 export const OVERLAY_DEBUG_PANEL = false;
 
@@ -31,11 +31,11 @@ const KEY = "hoard-overlay-debug";
 export type OverlayDebug = {
   /** Opacidad del fondo del HUD (0 = solo se ve el juego). */
   bgOpacity: number;
-  /** Opacidad de TODO el contenido (texto, logo, botón). */
+  /** The opacity of ALL the content (text, logo, button). */
   textOpacity: number;
-  /** Tamaño base de la letra, en px. */
+  /** The base font size, in px. */
   fontSize: number;
-  /** Ocultar el propio panel de depuración sin cerrar el HUD. */
+  /** Hide the debug panel itself without closing the HUD. */
   panelOpen: boolean;
 };
 
@@ -51,7 +51,7 @@ function read(): OverlayDebug {
     const raw = localStorage.getItem(KEY);
     if (raw) return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<OverlayDebug>) };
   } catch {
-    /* almacenamiento caído o JSON corrupto, a los valores por defecto */
+    /* storage down or corrupt JSON: fall back to the defaults */
   }
   return { ...DEFAULTS };
 }
@@ -64,7 +64,7 @@ export function saveOverlayDebug(): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(overlayDebug));
   } catch {
-    /* best-effort: perder la preferencia de depuración no importa */
+    /* best-effort: losing the debug preference does not matter */
   }
 }
 

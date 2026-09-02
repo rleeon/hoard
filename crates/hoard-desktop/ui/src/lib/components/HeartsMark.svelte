@@ -1,46 +1,44 @@
 <script lang="ts">
   /**
-   * Los corazones de los dos diálogos de plan: dibujados, nunca un emoji.
+   * The hearts in the two plan dialogs: drawn, never an emoji.
    *
-   * Un emoji lo pinta la fuente del sistema, así que el mismo carácter sale
-   * plano en Linux, brillante en Windows y de otro color en cada uno, y
-   * ninguno de ellos es el color de la aplicación. Esto es geometría: un
-   * `path` con degradado, tres corazones en racimo, y el mismo trazo en las dos
-   * caras (`broken` sólo parte cada uno en dos mitades separadas por una grieta
-   * y las inclina).
+   * An emoji is painted by the system font, so the same character comes out flat on
+   * Linux, glossy on Windows and a different colour on each, and none of them is the
+   * application's colour. This is geometry: a `path` with a gradient, three hearts in
+   * a cluster, and the same stroke on both faces (`broken` only splits each into two
+   * halves separated by a crack and tilts them).
    *
-   * Las mitades se rotan con el atributo `transform` del SVG y no con CSS: el
-   * `transform` de CSS *sustituye* al del atributo en el mismo elemento, así
-   * que el latido,que sí es CSS, en su propio `<g>`, y la inclinación viven en
-   * capas distintas para no pisarse. El latido es decoración: bajo
-   * `prefers-reduced-motion` la regla global de `app.css` lo congela y el
-   * dibujo se queda quieto, que es exactamente lo que debe pasar.
+   * The halves are rotated with the SVG's `transform` attribute and not with CSS:
+   * CSS's `transform` *replaces* the attribute's on the same element, so the
+   * heartbeat (which is CSS, in its own `<g>`) and the tilt live on different layers
+   * so they cannot tread on each other. The heartbeat is decoration: under
+   * `prefers-reduced-motion` the global rule in `app.css` freezes it and the drawing
+   * stays still, which is exactly what should happen.
    */
 
   type Props = {
     /** Corazones partidos (despedida) en vez de enteros (agradecimiento). */
     broken?: boolean;
-    /** Ancho en píxeles. La altura sale de la proporción del `viewBox`. */
+    /** Width in pixels. The height comes from the `viewBox`'s ratio. */
     width?: number;
     class?: string;
   };
 
   let { broken = false, width = 168, class: extraClass = "" }: Props = $props();
 
-  /** Corazón en una caja de 24×24, punta abajo en (12, 21.6). */
+  /** A heart in a 24×24 box, point down at (12, 21.6). */
   const HEART =
     "M12 21.6C8.6 18.6 3 14.4 3 9.6C3 6.5 5.4 4.2 8.3 4.2" +
     "C10.1 4.2 11.4 5.1 12 6.3C12.6 5.1 13.9 4.2 15.7 4.2" +
     "C18.6 4.2 21 6.5 21 9.6C21 14.4 15.4 18.6 12 21.6Z";
 
-  /** La grieta: baja del hueco superior a la punta zigzagueando. Las dos
-   *  máscaras son el mismo recorrido recorrido al revés, así que las mitades
-   *  encajan sin solaparse. */
+  /** The crack: it zigzags down from the top notch to the point. The two masks are
+   *  the same route walked backwards, so the halves fit without overlapping. */
   const CRACK_L = "0,0 12,0 12,5.2 10.3,9.6 13.5,12.2 10.7,16.2 12,21.6 12,24 0,24";
   const CRACK_R = "12,0 24,0 24,24 12,24 12,21.6 10.7,16.2 13.5,12.2 10.3,9.6 12,5.2";
 
-  // Ids únicos por instancia: dos diálogos montados a la vez compartirían
-  // `url(#…)` y el segundo se quedaría sin degradado.
+  // Unique ids per instance: two dialogs mounted at once would share `url(#...)`
+  // and the second would end up with no gradient.
   const uid = `hearts-${Math.random().toString(36).slice(2, 9)}`;
 </script>
 
@@ -92,8 +90,8 @@
 </svg>
 
 <style>
-  /* El latido va en su propio `<g>`, sin `transform` de atributo, para que el
-     `transform` de CSS no borre la colocación del grupo de fuera. */
+  /* The heartbeat lives in its own `<g>`, with no `transform` attribute, so CSS's
+     `transform` does not erase the outer group's placement. */
   .beat {
     transform-box: fill-box;
     transform-origin: center;
