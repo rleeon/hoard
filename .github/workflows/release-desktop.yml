@@ -119,6 +119,12 @@ jobs:
           # spa_meta_region_is_valid / spa_video_info_raw.flags). Pull a recent
           # PipeWire from the upstream PPA. We stay on 22.04 so the AppImage
           # keeps linking against an older glibc and runs on more distros.
+          #
+          # `xdg-utils` is in the x86_64 image and not in the ARM one, which is
+          # the whole difference between the two Linux entries: without
+          # `xdg-mime` on the PATH Tauri's bundler stops at the AppImage with
+          # "xdg-mime binary not found" and the arm64 job produces no packages
+          # at all, not even the .deb it had already built.
           sudo add-apt-repository -y ppa:pipewire-debian/pipewire-upstream
           sudo apt-get update
           sudo apt-get install -y \
@@ -134,7 +140,8 @@ jobs:
             libwayland-dev \
             libxkbcommon-dev \
             libpipewire-0.3-dev \
-            clang
+            clang \
+            xdg-utils
 
       # The three sidecars the bundle ships: the overlay (hoard-screen), the sync
       # service (hoardd) and the terminal face (hoard). Without the second one
@@ -195,7 +202,13 @@ jobs:
             perl -0pi -e "s/^version = \"[^\"]+\"/version = \"$V\"/m" \
               crates/hoard-installer/Cargo.toml
           fi
-          cargo build -p hoard-installer --release ${{ matrix.args }}
+          # `--target`, never `matrix.args`: those are the *bundler's* flags.
+          # The ARM Windows entry passes `--bundles nsis`, which cargo rejects
+          # outright, and it did so after the app's bundle had already built, so
+          # the job died on its way to the upload and the arm64 release shipped
+          # neither installer. Naming the target also puts the binary where the
+          # step below looks for it first, on every platform.
+          cargo build -p hoard-installer --release --target ${{ matrix.target }}
 
       - name: Package Hoard Setup
         shell: bash
