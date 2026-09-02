@@ -408,7 +408,7 @@ fn tidy_name(name: &str) -> String {
     // A trailing run of digits behind a separator, six or more of them: an id
     // or a timestamp. Below six it is a number the player can read and may have
     // chosen (`mipartida-12379`, `world2`, `save01`) and it stays.
-    let cleaned = match without_marker.rsplit_once(|c| c == '_' || c == '-' || c == ' ') {
+    let cleaned = match without_marker.rsplit_once(['_', '-', ' ']) {
         Some((head, tail))
             if tail.len() >= 6 && tail.chars().all(|c| c.is_ascii_digit()) && !head.is_empty() =>
         {
