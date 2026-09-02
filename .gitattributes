@@ -1,0 +1,15 @@
+# Line endings are normalised to LF in the repository and checked out as LF
+# everywhere, Windows included.
+#
+# Without this, the Windows runner checks out CRLF, and a file the build
+# swallows whole stops matching what the code expects of it. That is how
+# `skill_carries_the_running_version` started failing: `hoard agents` embeds
+# `SKILL.md` with `include_str!` at compile time and asserts the frontmatter
+# opens with `---\n`, which a CRLF checkout turns into `---\r\n`. The test was
+# the messenger; the shipped binary would have carried the CRLF too. Every
+# other `include_str!` in the tree is exposed the same way, the panel locales
+# among them.
+#
+# Nothing in the tree wants CRLF. The PowerShell installer and the NSIS hook
+# are both LF already and both interpreters read LF fine.
+* text=auto eol=lf
