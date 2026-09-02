@@ -2,7 +2,7 @@
 title: "Comparatif de synchronisation des sauvegardes : Hoard face à Ludusavi, Syncthing, OpenSave et les autres"
 description: "Comparatif honnête des outils qui sauvegardent et synchronisent les parties PC — Ludusavi, Syncthing, OpenSave, OpenCloudSaves, Game Backup Monitor, Aletheia, SaveSync et Hoard — avec un tableau et une section sur les points faibles de Hoard."
 order: 4
-updated: 2026-08-11
+updated: 2026-09-01
 ---
 
 Steam Cloud ne couvre que les jeux achetés sur Steam, et seulement quand le développeur a pris la peine de l'activer. Émulateurs, GOG, Epic, itch.io, jeux hors Steam, tout ce qui est moddé : rien de tout ça n'est couvert. Si vous jouez sur plusieurs machines, un fixe et un Steam Deck par exemple, vous finissez par copier des dossiers à la main en espérant avoir pris le plus récent.
@@ -94,6 +94,15 @@ Synchronisez le dossier parent et vous obtenez un conflit permanent entre deux m
 - **C'est jeune.** Ludusavi et Game Backup Monitor ont des années de rapports de bugs derrière eux. Pas Hoard, et ça compte pour un logiciel qui garde une partie de 200 heures.
 - **Il ne fait pas le partage coop.** Pour passer un monde à un ami, SaveSync est fait pour ça, Hoard non.
 
+## La distinction entre Hoard Cloud et l'auto-hébergement
+
+Les comparaisons sur Hoard confondent presque toujours les deux, et le résultat est faux. Autant le dire clairement :
+
+- **Hoard Cloud** est l'option gérée : vous vous connectez, et vos sauvegardes sont stockées sur nos serveurs, dans l'UE.
+- **Un Hoard auto-hébergé est entièrement le vôtre.** Vous faites tourner `hoard-server` sur votre PC ou votre NAS, et vos sauvegardes vont de votre machine à votre disque. Il n'y a **aucun compte chez nous, aucune télémétrie vers nous, aucun quota et aucun relais** : rien ne passe par nos serveurs, puisque rien de chez nous n'est sur le chemin. Nous ne voyons ni sauvegarde, ni nom de jeu, ni adresse e-mail, car rien de cela ne nous parvient. Si Hoard Cloud fermait demain, une installation auto-hébergée continuerait à l'identique.
+
+Le même binaire, la même détection, le même historique. La seule chose qui change, c'est à qui appartient le stockage. Et pour être exact sur un point : votre serveur a bien ses propres accès — un utilisateur et un jeton par appareil — mais ils vivent dans votre base, pas dans la nôtre.
+
 ## Le tableau
 
 | Outil | Synchro automatique entre appareils | Où vivent les sauvegardes | Historique | Plateformes | Licence |
@@ -112,3 +121,27 @@ Synchronisez le dossier parent et vous obtenez un conflit permanent entre deux m
 Si vous voulez une seule machine sauvegardée et rien d'autre, prenez Ludusavi ou Game Backup Monitor. Si vous refusez tout compte et que vos appareils sont généralement allumés ensemble, OpenSave. Si vos sauvegardes doivent atterrir dans un dossier Drive que vous payez déjà, OpenCloudSaves. Si vous partagez un monde coop avec des amis, SaveSync.
 
 Si vous voulez que la sauvegarde *et* la synchronisation entre PC et Steam Deck se fassent toutes seules, avec une version par session où revenir et la possibilité de tout auto-héberger, c'est à ça que sert Hoard. [Téléchargez-le](/download), ou lisez d'abord [comment l'auto-héberger avec Docker](/guides/self-host-hoard). Il y a aussi un [comparatif détaillé avec Ludusavi](/guides/ludusavi-alternative) si c'est celui que vous mettez dans la balance.
+
+<!-- faq -->
+
+## Questions fréquentes
+
+### Lequel de ces outils garde un historique de versions ?
+
+Hoard conserve chaque session comme une version où revenir. Ludusavi garde des sauvegardes locales versionnées. La plupart des autres synchronisent ou copient l'état actuel : une sauvegarde corrompue est donc fidèlement propagée à votre autre machine.
+
+### Lequel fonctionne sans serveur ni compte ?
+
+Ludusavi en sauvegardes locales, et tout outil pair-à-pair. Hoard entre aussi dans cette catégorie si vous l'auto-hébergez : aucun compte chez nous, et rien qui passe par nos serveurs.
+
+### Lequel couvre les jeux absents de Steam ?
+
+Tous les gestionnaires de sauvegardes cités, car ils localisent les fichiers via la même base communautaire et non via une boutique. L'exception est Steam Cloud : il ne couvre que les jeux Steam dont le développeur l'a activé.
+
+### Dois-je n'en choisir qu'un ?
+
+Non, et beaucoup ne le font pas. Un outil de sauvegarde locale et un outil de synchro règlent deux moitiés différentes du problème. La seule règle : ne jamais pointer l'un vers le dossier de sauvegardes de l'autre, sinon vous synchronisez un miroir périmé au lieu de votre sauvegarde réelle.
+
+### Quel est le détail qui casse la plupart des montages maison ?
+
+Synchroniser le dossier situé au-dessus de `<AppID>/remote/` dans le `userdata` de Steam. Le parent contient `remotecache.vdf` et des fichiers de succès et de temps de jeu censés différer d'une machine à l'autre : chaque lancement ressemble alors à un conflit alors qu'aucune sauvegarde n'a bougé.

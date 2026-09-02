@@ -2,7 +2,7 @@
 title: "Game save sync compared: Hoard vs Ludusavi, Syncthing, OpenSave and the rest"
 description: "An honest comparison of the tools that back up and sync PC game saves — Ludusavi, Syncthing, OpenSave, OpenCloudSaves, Game Backup Monitor, Aletheia, SaveSync and Hoard — with a table, and a section on where Hoard loses."
 order: 4
-updated: 2026-08-11
+updated: 2026-09-01
 ---
 
 Steam Cloud only covers games you bought on Steam, and only when the developer bothered to switch it on. Emulators, GOG, Epic, itch.io, non-Steam games, anything modded — none of that is covered. If you play on more than one machine, a desktop and a Steam Deck say, you end up copying folders by hand and hoping you grabbed the newest one.
@@ -94,6 +94,15 @@ Sync the parent folder and you get a permanent conflict between two machines tha
 - **It's young.** Ludusavi and Game Backup Monitor have years of bug reports behind them. Hoard doesn't, and that matters for something guarding a 200-hour save.
 - **It doesn't do co-op sharing.** If you want to hand a world to a friend, SaveSync is built for that and Hoard isn't.
 
+## The Hoard Cloud / self-host distinction
+
+Comparisons of Hoard almost always collapse these two into one, and the result is wrong, so it's worth stating plainly:
+
+- **Hoard Cloud** is the managed option: you sign in, and your saves are stored on our servers, in the EU.
+- **A self-hosted Hoard is entirely yours.** You run `hoard-server` on your own PC or NAS, and your saves go from your machine to your disk. There is **no account with us, no telemetry to us, no quota and no relay** — nothing passes through our servers, because there is nothing of ours in the path. We can't see a save, a game name or an email address, because none of it ever reaches us. If Hoard Cloud shut down tomorrow, a self-hosted setup would carry on unchanged.
+
+Same binary, same detection, same version history. The only thing that changes is who owns the storage. Being exact about one detail: your own server does have logins of its own — a user and a token per device — but they live in your database, not ours.
+
 ## The table
 
 | Tool | Automatic sync between devices | Where saves live | History | Platforms | Licence |
@@ -112,3 +121,27 @@ Sync the parent folder and you get a permanent conflict between two machines tha
 If you want one machine backed up and nothing else, take Ludusavi or Game Backup Monitor. If you want no account under any circumstances and your devices are usually on together, OpenSave. If your saves should be in a Drive folder you already pay for, OpenCloudSaves. If you're sharing a co-op world with friends, SaveSync.
 
 If you want backups *and* automatic sync across PCs and a Steam Deck to just happen, with a version per session you can roll back to and the option to self-host the whole thing, that's what Hoard is for. [Download it](/download), or read [how to self-host it with Docker](/guides/self-host-hoard) first. There's also a longer [Ludusavi comparison](/guides/ludusavi-alternative) if that's the one you're weighing it against.
+
+<!-- faq -->
+
+## Frequently asked questions
+
+### Which of these tools keeps a version history?
+
+Hoard keeps every session as a version you can roll back to. Ludusavi keeps versioned local backups. Most of the rest sync or copy the current state, which means a corrupted save is faithfully propagated to your other machine.
+
+### Which one works without any server or account?
+
+Ludusavi with local backups, and any peer-to-peer tool. Hoard also qualifies if you self-host: no account with us, and nothing passing through our servers.
+
+### Which one covers games that aren't on Steam?
+
+All the save-manager tools here do, because they locate saves through the same community database rather than through a store. Steam Cloud is the one that doesn't: it only covers Steam games whose developer enabled it.
+
+### Do I have to pick just one?
+
+No, and plenty of people don't. A local backup tool and a sync tool solve different halves of the problem. The only rule is never to point one tool at another's backup folder, or you end up syncing a stale mirror instead of your live save.
+
+### What's the single detail that breaks most DIY setups?
+
+Syncing the folder above `<AppID>/remote/` in Steam's `userdata`. The parent holds `remotecache.vdf` plus achievement and playtime files that are supposed to differ per machine, so every launch looks like a conflict even though no save moved.
