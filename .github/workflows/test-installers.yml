@@ -39,7 +39,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # 22.04 as well as `ubuntu-latest`, because a runner as new as the one
+        # that built the tarball can never catch a glibc floor that is too
+        # high. This is the entry that fails when it is: the script downloads
+        # the published release and the `hoard --version` below is what reports
+        # a binary that will not start.
+        os: [ubuntu-latest, ubuntu-22.04, macos-latest]
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Run installer

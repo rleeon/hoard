@@ -22,18 +22,23 @@ jobs:
           # other platforms ship the `hoard` CLI only, the server/admin are
           # meant to run on a Linux box. Every target builds on a NATIVE runner
           # so we never cross-compile the dbus/keyring/OpenSSL C deps.
-          # `ubuntu-latest` is 24.04, so the binaries this job produces need
-          # GLIBC 2.39 and refuse to start on anything older: Debian 12
-          # (bookworm) is out, trixie and Ubuntu 24.04+ are in. Nothing in the
-          # source asks for that, it is the runner image, and moving the job to
-          # an older one (or building against a lower floor) is what widens it.
-          # Left as-is deliberately; noted so the next person reading a "GLIBC
-          # 2.39 not found" report knows where it comes from.
-          - os: ubuntu-latest
+          #
+          # 22.04, not `ubuntu-latest`, and the version is the point. On 24.04
+          # these binaries came out needing GLIBC 2.39, for exactly two symbols
+          # std reaches for when the headers offer them (`pidfd_spawnp`,
+          # `pidfd_getpid`), and then refused to start on anything older:
+          # Debian 12, Ubuntu 22.04, Mint 21. The same `hoard` and `hoardd`
+          # inside the desktop bundle ask for 2.34, because
+          # `release-desktop.yml` has always built on 22.04, so one release
+          # shipped one pair of binaries at two different floors, and which one
+          # you got depended on whether you installed the package or the
+          # tarball. `install.sh`, `hoard upgrade` and Hoard Setup all take the
+          # tarball, so they were the broken half.
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             artifact: linux-x86_64
             full: true
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
             artifact: linux-aarch64
             full: true
