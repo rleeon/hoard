@@ -1,4 +1,25 @@
+# Hoard is open source and this site exists to be found, so search engines and
+# AI crawlers are both welcome. Only the functional routes are kept out: they
+# need a session, so an indexed copy would be an empty shell.
+
 User-agent: *
+Content-Signal: search=yes,ai-input=yes,ai-train=yes
+Allow: /
+Disallow: /account
+Disallow: /checkout
+Disallow: /login
+Disallow: /auth
+
+# The crawlers behind search and answer engines, named on purpose. A blanket
+# "Allow: /" already covers them, but stating them one by one leaves no room for
+# a managed policy upstream to read the silence as a refusal.
+
+User-agent: ClaudeBot
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: Google-Extended
+User-agent: PerplexityBot
 Allow: /
 Disallow: /account
 Disallow: /checkout
