@@ -1,27 +1,28 @@
 <script lang="ts">
   /**
-   * La pantalla de "actualizando Hoard", lo que hace que la app se actualice
-   * **al abrirse**, como Steam o Discord.
+   * The "updating Hoard" screen: what makes the app update **when you open it**,
+   * the way Steam or Discord do.
    *
-   * Sólo aparece cuando no queda alternativa, y hay tres motivos distintos:
+   * It only appears when there is no alternative, and there are three distinct
+   * reasons:
    *
-   * 1. **Se acabó el plazo** (`mandatory`). El servicio lleva dos días
-   *    intentando aplicar algo que necesita a alguien delante, un `.deb` que
-   *    quiere polkit, un `.dmg` que quiere una mano,, y aquí está ese alguien.
-   *    No se puede cerrar: es el escalón que el plazo existe para provocar.
-   * 2. **El servicio ya se actualizó y esta ventana se quedó atrás.** Pasa por
-   *    diseño: el servicio releva los binarios en silencio y se reinicia, pero
-   *    a una ventana abierta no la puede tocar. Sin este aviso el usuario sigue
-   *    en la versión vieja hasta que cierre la app por su cuenta.
-   * 3. **Está aplicándose ahora mismo.** No se bloquea por gusto: los binarios
-   *    se están sustituyendo debajo, y dejar seguir clicando en una app cuyo
-   *    motor está reiniciándose sólo produce errores que no significan nada.
+   * 1. **The deadline ran out** (`mandatory`). The service has spent two days
+   *    trying to apply something that needs somebody present (a `.deb` that wants
+   *    polkit, a `.dmg` that wants a hand) and here is that somebody. It cannot be
+   *    closed: it is the step the deadline exists to provoke.
+   * 2. **The service already updated and this window fell behind.** That happens by
+   *    design: the service swaps the binaries quietly and restarts, but it cannot
+   *    touch an open window. Without this notice the user stays on the old version
+   *    until they close the app themselves.
+   * 3. **It is being applied right now.** It does not block for the fun of it: the
+   *    binaries are being replaced underneath, and letting somebody keep clicking in
+   *    an app whose engine is restarting only produces errors that mean nothing.
    *
-   * Lo que **no** hace: aparecer cada vez que sale una versión. El caso normal
-   * es silencioso (el servicio baja y aplica, y el usuario se entera por el
-   * número de versión); el caso "hay algo listo y es opcional" es la insignia
-   * ámbar de siempre en la barra lateral. Un modal por release sería el
-   * problema contrario.
+   * What it does **not** do: appear every time a version ships. The normal case is
+   * silent (the service downloads and applies, and the user finds out from the
+   * version number); the "something is ready and it is optional" case is the usual
+   * amber badge in the sidebar. A modal per release would be the opposite
+   * problem.
    */
   import { onMount, onDestroy } from "svelte";
   import { _ } from "svelte-i18n";
@@ -37,8 +38,8 @@
   } from "../stores/updates";
   import { APP_VERSION } from "../version";
 
-  /** Cada cuánto se re-pregunta mientras el gate está en pantalla. Corto a
-   *  propósito: aquí el usuario está mirando una barra que no se mueve. */
+  /** How often it asks again while the gate is on screen. Short on purpose: the
+   *  user is staring at a bar that does not move. */
   const TICK_MS = 2_000;
 
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -48,19 +49,19 @@
   const svc = $derived<UpdateState | null>($serviceUpdate);
   const phase = $derived(svc?.phase.phase ?? "up_to_date");
 
-  /** Esta ventana corre un binario más viejo que el del servicio. */
+  /** This window is running an older binary than the service's. */
   const behind = $derived(windowIsBehind(svc, APP_VERSION));
 
-  /** El servicio está tocando los binarios ahora mismo. */
+  /** The service is touching the binaries right now. */
   const busy = $derived(phase === "applying" || phase === "restarting");
 
-  /** ¿Se enseña algo? */
+  /** Is anything shown? */
   const visible = $derived(
     !!svc && (svc.mandatory || behind || busy || working),
   );
 
-  /** ¿Se puede cerrar? Sólo el caso "ya se actualizó, reinicia cuando quieras"
-   *  admite un no; el plazo vencido y una instalación en curso, no. */
+  /** Can it be closed? Only the "it already updated, restart whenever you like"
+   *  case takes a no; a passed deadline and an install in progress do not. */
   const dismissible = $derived(behind && !svc?.mandatory && !busy);
   let dismissed = $state(false);
 
@@ -72,18 +73,17 @@
   });
 
   /**
-   * "Que se actualice al abrirse", literalmente.
+   * "Update it when it opens", literally.
    *
-   * Casi siempre no hay nada que hacer aquí: el servicio ya aplicó la
-   * actualización antes de que nadie abriera nada, así que esta ventana **ya
-   * es** la nueva. Esto cubre el hueco, el servicio la tenía bajada y estaba
-   * esperando su próximo ciclo, o esperando a que cerraras un juego. Abrir la
-   * app es la señal de que ahora es buen momento.
+   * Almost always there is nothing to do here: the service applied the update before
+   * anybody opened anything, so this window **already is** the new one. This covers
+   * the gap where the service had it downloaded and was waiting for its next cycle,
+   * or waiting for you to close a game. Opening the app is the signal that now is a
+   * good moment.
    *
-   * Sólo cuando se aplica sola (`unattended`): sin diálogos, sin privilegios,
-   * sin nada que aprobar. La vía que necesita un humano se ofrece, no se
-   * dispara, y cuando vence el plazo, es este mismo componente el que tapa la
-   * pantalla y lo pide.
+   * Only when it applies itself (`unattended`): no dialogs, no privileges, nothing
+   * to approve. The route that needs a human is offered, not fired, and when the
+   * deadline passes it is this same component that covers the screen and asks.
    */
   async function nudgeOnOpen() {
     const s = await fetchServiceUpdate();
@@ -92,8 +92,8 @@
     try {
       await applyStagedUpdate(s.staged);
     } catch (e) {
-      // Silencioso a propósito: nadie ha pedido esto, así que nadie merece un
-      // error por ello. El ciclo de fondo del servicio lo reintenta.
+      // Silent on purpose: nobody asked for this, so nobody deserves an error over
+      // it. The service's background cycle retries.
       console.warn("update nudge on open failed:", e);
     }
   }
@@ -109,9 +109,9 @@
     try {
       await applyStagedUpdate(svc?.latest ?? undefined);
     } catch (e) {
-      // Lo más habitual aquí no es un fallo del updater: es que el usuario
-      // canceló el diálogo de privilegios. Se dice y se deja reintentar en vez
-      // de dejar la pantalla girando para siempre.
+      // The common case here is not the updater failing: it is the user cancelling
+      // the privilege dialog. It is said, and a retry is offered, rather than
+      // leaving the screen spinning for ever.
       failed = e instanceof Error ? e.message : String(e);
       working = false;
     }
@@ -126,7 +126,7 @@
     }
   }
 
-  /** El titular, que es lo único que casi nadie va a leer entero. */
+  /** The headline, which is the only part almost nobody will read in full. */
   const title = $derived(
     busy || working
       ? $_("update_gate.installing_title")

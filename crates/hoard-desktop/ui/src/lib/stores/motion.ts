@@ -1,30 +1,30 @@
 /**
- * Intensidad del relieve (la inclinación 3D de `use:tilt` y su resplandor).
+ * The tilt's intensity (`use:tilt`'s 3D lean and its glow).
  *
- * Es un porcentaje continuo, no tres botones: 0 apaga el efecto, 100 son los 8°
- * históricos y el defecto,50, es la mitad. Una barra deja elegir el punto
- * exacto en vez de obligar a escoger entre tres saltos.
+ * It is a continuous percentage, not three buttons: 0 turns the effect off, 100 is
+ * the historic 8 degrees, and the default, 50, is half. A slider lets you pick the
+ * exact point rather than forcing a choice between three jumps.
  *
- * Es cosa puramente de la interfaz, así que vive en `localStorage` y nunca toca
- * el `Prefs` de Rust, mismo criterio que el tema y el tono del acento.
+ * It is purely an interface matter, so it lives in `localStorage` and never touches
+ * Rust's `Prefs`, the same call as the theme and the accent hue.
  *
- * **No se consulta `prefers-reduced-motion`.** Se hizo durante un rato, para
- * elegir el valor inicial, y en la práctica dejaba la aplicación sin relieve de
- * fábrica: en WebKitGTK esa media query sale de `gtk-enable-animations`, un
- * ajuste que mucha gente tiene apagado sin pretender "cero efectos al pasar el
- * ratón". La respuesta de accesibilidad es esta barra, que se baja a 0 en un
- * gesto, no un defecto adivinado a partir de una señal que en este entorno no
- * significa lo que parece.
+ * **`prefers-reduced-motion` is not consulted.** It was for a while, to pick the
+ * initial value, and in practice it left the application with no tilt out of the
+ * box: on WebKitGTK that media query comes from `gtk-enable-animations`, a setting
+ * plenty of people have off without meaning "no hover effects at all". The
+ * accessibility answer is this slider, which goes to 0 in one gesture, not a default
+ * guessed from a signal that in this environment does not mean what it looks
+ * like.
  */
 import { writable } from "svelte/store";
 
 const STORAGE_KEY = "hoard-motion";
 
-/** Porcentaje por defecto: la mitad del efecto histórico. */
+/** The default percentage: half the historic effect. */
 const DEFAULT_PCT = 50;
 
-/** Valores de la versión anterior, cuando esto eran tres niveles con nombre.
- *  Se traducen al leer para que nadie pierda su elección al actualizar. */
+/** The previous version's values, from when this was three named levels. They are
+ *  translated on read so nobody loses their choice on updating. */
 const LEGACY: Record<string, number> = { off: 0, subtle: 50, full: 100 };
 
 function clamp(n: number): number {
@@ -44,16 +44,16 @@ function readInitial(): number {
   return DEFAULT_PCT;
 }
 
-/** Espejo síncrono del store. `tiltScale()` se llama desde una acción del DOM,
- *  no desde un componente, así que no puede suscribirse: lee esta variable, que
- *  la suscripción de abajo mantiene al día. */
+/** A synchronous mirror of the store. `tiltScale()` is called from a DOM action,
+ *  not from a component, so it cannot subscribe: it reads this variable, which the
+ *  subscription below keeps current. */
 let current = readInitial();
 
 export const motionIntensity = writable<number>(current);
 
-/** Factor 0–1 que multiplica los grados base. Lo lee `lib/actions/tilt.ts` en
- *  cada `pointerenter`, así que mover la barra se nota en el siguiente elemento
- *  que apuntes, sin re-montar nada. */
+/** A 0 to 1 factor multiplying the base degrees. `lib/actions/tilt.ts` reads it on
+ *  every `pointerenter`, so moving the slider shows on the next element you point
+ *  at, with nothing remounted. */
 export function tiltScale(): number {
   return current / 100;
 }
@@ -64,14 +64,15 @@ motionIntensity.subscribe((v) => {
 });
 
 /**
- * El resplandor que sigue al cursor no lo pone la acción sino `app.css`, y con
- * un valor continuo ya no se puede resolver con reglas por nivel: se escriben
- * las variables directamente sobre `<html>`.
+ * The glow that follows the cursor comes from `app.css` and not from the action,
+ * and with a continuous value it can no longer be resolved with per-level rules, so
+ * the variables are written straight onto `<html>`.
  *
- * `data-motion-on` marca "el usuario quiere movimiento", y lo usa `app.css`
- * para devolverle a `.tilt` su suavizado bajo movimiento reducido del sistema:
- * aplanárselo a quien ha subido la barra a mano no le da menos movimiento,los
- * grados son los que pidió, sólo se lo da a saltos persiguiendo al ratón.
+ * `data-motion-on` marks "the user wants motion", and `app.css` uses it to give
+ * `.tilt` its easing back under the system's reduced-motion setting: flattening it
+ * for somebody who raised the slider by hand does not give them less motion (the
+ * degrees are the ones they asked for), it only gives it to them in jerks chasing
+ * the mouse.
  */
 function paint(pct: number): void {
   if (typeof document === "undefined") return;
@@ -83,7 +84,7 @@ function paint(pct: number): void {
   else delete root.dataset.motionOn;
 }
 
-/** Fija la intensidad y la recuerda para el próximo arranque. */
+/** Sets the intensity and remembers it for the next start. */
 export function setMotionIntensity(pct: number): void {
   const v = clamp(pct);
   try {

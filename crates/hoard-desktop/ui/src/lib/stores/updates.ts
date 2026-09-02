@@ -115,23 +115,21 @@ async function notifyIfNewClientRelease(report: UpdateReport): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// La actualización automática, lo que el servicio está haciendo
-// ---------------------------------------------------------------------------
+// ---- the automatic update: what the service is doing
 //
-// El bloque de abajo (`checkForUpdates` + `applyDesktopUpdate`) es el updater de
-// la ventana: mira GitHub y ofrece un botón. Sigue ahí como red de seguridad
-// una máquina sin servicio corriendo no tiene quien la actualice, pero ya no
-// es el camino normal.
+// The block below (`checkForUpdates` plus `applyDesktopUpdate`) is the window's
+// updater: it looks at GitHub and offers a button. It is still there as a safety
+// net, since a machine with no service running has nobody to update it, but it is no
+// longer the normal road.
 //
-// El normal es éste: **el servicio baja y aplica solo**, y la ventana lee su
-// estado. La diferencia que importa es qué pasa con la app cerrada, que es la
-// mitad del tiempo: un botón que nadie ve no actualiza nada.
+// The normal one is this: **the service downloads and applies on its own**, and the
+// window reads its state. The difference that matters is what happens with the app
+// closed, which is half the time: a button nobody sees updates nothing.
 
-/** Por qué está frenada una actualización que ya está bajada. */
+/** Why an already-downloaded update is being held back. */
 export type UpdateHold = "game_running" | "transfer_in_flight" | "unknown";
 
-/** En qué punto está. Espejo de `hoard_core::ipc::UpdatePhase`. */
+/** Where it stands. A mirror of `hoard_core::ipc::UpdatePhase`. */
 export type UpdatePhase =
   | { phase: "up_to_date" }
   | { phase: "downloading" }
@@ -145,24 +143,25 @@ export type UpdatePhase =
 
 /** Lo que el servicio sabe. `null` = no hay servicio al que preguntar. */
 export type UpdateState = {
-  /** La versión que corre **el servicio**, que puede ir por delante de esta
-   *  ventana: si el servicio ya se relevó y la app sigue abierta con el
-   *  binario viejo, esto es lo que lo delata. */
+  /** The version **the service** is running, which can be ahead of this window: if
+   *  the service has already been relieved and the app is still open on the old
+   *  binary, this is what gives it away. */
   current: string;
   latest: string | null;
   staged: string | null;
   phase: UpdatePhase;
-  /** ISO-8601. Cuándo deja de ser opcional. */
+  /** ISO-8601. When it stops being optional. */
   deadline: string | null;
-  /** El plazo venció: la ventana no debe dejar seguir sin actualizar. */
+  /** The deadline has passed: the window must not let you carry on without updating. */
   mandatory: boolean;
-  /** Esta máquina se releva sola (AppImage / NSIS por-usuario / núcleo en el
-   *  home). `false` = hace falta un humano, y por eso hay algo que enseñar. */
+  /** This machine relieves itself (an AppImage, a per-user NSIS, a core in the
+   *  home). `false` means a human is needed, which is why there is something to
+   *  show. */
   unattended: boolean;
   last_error: string | null;
 };
 
-/** Último estado leído, para que la barra lateral y el gate compartan lectura. */
+/** The last state read, so the sidebar and the gate share one reading. */
 export const serviceUpdate: Writable<UpdateState | null> = writable(null);
 
 /** Pregunta al servicio. Nunca lanza: sin servicio devuelve `null`. */
@@ -190,20 +189,20 @@ export async function applyStagedUpdate(
   return s;
 }
 
-/** "Ahora no", durante `hours`. No mueve la fecha límite. */
+/** "Not now", for `hours`. It does not move the deadline. */
 export async function snoozeUpdate(hours: number): Promise<UpdateState> {
   const s = await invoke<UpdateState>("snooze_update", { hours });
   serviceUpdate.set(s);
   return s;
 }
 
-/** ¿Esta ventana se quedó atrás respecto al servicio?
+/** Has this window fallen behind the service?
  *
- *  Pasa de verdad y es el precio de que el servicio se actualice solo: releva
- *  los binarios y se reinicia, pero a la ventana ya abierta no la puede tocar.
- *  Sin esto el usuario se queda en la versión vieja hasta que cierre la app por
- *  su cuenta, que es exactamente el "se queda tan pancho" que veníamos a
- *  arreglar, sólo que un escalón más arriba. */
+ *  It really happens, and it is the price of the service updating itself: it swaps
+ *  the binaries and restarts, but it cannot touch a window that is already open.
+ *  Without this the user stays on the old version until they close the app
+ *  themselves, which is exactly the "it just carries on regardless" we set out to
+ *  fix, one step higher up. */
 export function windowIsBehind(
   state: UpdateState | null,
   windowVersion: string,

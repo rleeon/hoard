@@ -1,25 +1,25 @@
 /**
- * Dibujo de la tarjeta compartible de Hoard-Wrapped.
+ * Drawing the Hoard-Wrapped shareable card.
  *
- * La tarjeta se pinta en un `<canvas>` y ese mismo canvas es a la vez lo que
- * se ve en pantalla y lo que se guarda en la galería: un solo layout, cero
- * divergencia entre vista previa y foto. La alternativa,maquetar en HTML y
- * volver a dibujarlo aquí para exportar, son dos diseños que se van
- * separando en cuanto alguien toca uno.
+ * The card is painted on a `<canvas>` and that same canvas is both what shows on
+ * screen and what gets saved to the gallery: one layout, zero divergence between the
+ * preview and the picture. The alternative (laying it out in HTML and drawing it
+ * again here to export) is two designs that drift apart the moment somebody touches
+ * one.
  *
- * Todo se dibuja en un espacio lógico de 1200×675 (16:9, la proporción que
- * previsualizan las redes) y se escala con `ctx.scale`, así el mismo código
- * sirve para la vista (1×) y para el PNG que se guarda (2×).
+ * Everything is drawn in a logical 1200×675 space (16:9, the ratio the social
+ * networks preview) and scaled with `ctx.scale`, so the same code serves the view
+ * (1x) and the PNG that gets saved (2x).
  *
- * Ojo con las imágenes: el `toDataURL` del export falla si el canvas queda
- * "tainted", y eso pasa en cuanto dibujas una imagen remota sin CORS. Por eso
- * la foto local (bytes que nos da Rust, blob propio) y las carátulas (idem)
- * son seguras, mientras que el avatar de la cuenta Cloud es una URL de Google
- * que puede o no responder con CORS. `renderToPng` cuenta con ello: si el
- * export peta, repite el dibujo sin el avatar remoto.
+ * Mind the images: the export's `toDataURL` fails when the canvas is tainted, and
+ * that happens the moment you draw a remote image without CORS. That is why the
+ * local picture (bytes Rust gives us, our own blob) and the covers (likewise) are
+ * safe, while the Cloud account's avatar is a Google URL that may or may not answer
+ * with CORS. `renderToPng` accounts for it: if the export blows up, it draws again
+ * without the remote avatar.
  */
 
-/** Un cubo de actividad: un día, un mes… lo que toque según el rango. */
+/** One activity tile: a day, a month, whatever the range calls for. */
 export type Cube = {
   /** Segundos jugados en ese tramo. */
   secs: number;
@@ -37,16 +37,16 @@ export type CardData = {
   /** Foto local ya cargada, o el avatar de la cuenta. `null` → iniciales. */
   avatar: HTMLImageElement | null;
   quote: string;
-  /** "Últimos 7 días", "Último mes"… ya traducido. */
+  /** "Last 7 days", "Last month" and so on, already translated. */
   rangeLabel: string;
   cubes: Cube[];
   stats: CardStat[];
   topGame: { label: string; cover: HTMLImageElement | null } | null;
-  /** Rótulo sobre el juego más jugado ("Más jugado"). */
+  /** The label above the most-played game. */
   topGameLabel: string;
-  /** Rótulo del bloque de cubos ("Actividad"). */
+  /** The tile block's label. */
   cubesLabel: string;
-  /** Reclamo bajo la marca ("Copias automáticas de tus partidas"). */
+  /** The strapline under the brand. */
   tagline: string;
 };
 
@@ -67,8 +67,8 @@ function level(secs: number, max: number): number {
   return 4;
 }
 
-/** Rectángulo redondeado a mano: `ctx.roundRect` no está en todos los
- *  WebKit que nos toca soportar (SteamOS va por detrás). */
+/** A rounded rectangle by hand: `ctx.roundRect` is not in every WebKit we have to
+ *  support (SteamOS lags behind). */
 function roundRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -87,8 +87,8 @@ function roundRect(
   ctx.closePath();
 }
 
-/** Parte un texto en como mucho `maxLines` líneas que quepan en `maxWidth`.
- *  La última se recorta con puntos suspensivos si aún se pasa. */
+/** Splits a text into at most `maxLines` lines that fit `maxWidth`. The last one is
+ *  trimmed with an ellipsis when it still overflows. */
 function wrap(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -110,8 +110,8 @@ function wrap(
     }
   }
   if (lines.length < maxLines) lines.push(line);
-  // El japonés y el chino no separan por espacios: si una sola "palabra" no
-  // cabe, hay que cortarla por caracteres.
+  // Japanese and Chinese do not separate on spaces: when a single "word" does not
+  // fit, it has to be cut by characters.
   const out: string[] = [];
   for (const l of lines.slice(0, maxLines)) {
     if (ctx.measureText(l).width <= maxWidth) {
@@ -142,7 +142,7 @@ function wrap(
   return clipped;
 }
 
-/** Recorta un texto de una línea a lo ancho disponible. */
+/** Trims a single-line text to the available width. */
 function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
   if (ctx.measureText(text).width <= maxWidth) return text;
   let s = text;
@@ -190,7 +190,7 @@ function drawAvatar(
   ctx.closePath();
   ctx.clip();
   if (data.avatar) {
-    // `cover`: llenar el círculo recortando el sobrante del lado largo.
+    // `cover`: fill the circle, cropping the excess off the long side.
     const img = data.avatar;
     const scale = Math.max((r * 2) / img.width, (r * 2) / img.height);
     const w = img.width * scale;
@@ -214,8 +214,8 @@ function drawAvatar(
 }
 
 /**
- * Pinta la tarjeta entera en el contexto dado, en coordenadas lógicas
- * 1200×675. El llamante decide la escala.
+ * Paints the whole card into the given context, in logical 1200×675 coordinates.
+ * The caller decides the scale.
  */
 export function drawCard(ctx: CanvasRenderingContext2D, data: CardData): void {
   ctx.save();
@@ -260,8 +260,8 @@ export function drawCard(ctx: CanvasRenderingContext2D, data: CardData): void {
   // --- identidad --------------------------------------------------------
   drawAvatar(ctx, data, 112, 196, 52);
 
-  // El ancho del nombre depende de si la caja del "más jugado" ocupa la
-  // derecha: sin este recorte, un nombre largo se metía debajo de la caja.
+  // The name's width depends on whether the most-played box takes the right-hand
+  // side: without this trim, a long name slid under the box.
   const nameW = (data.topGame ? CARD_W - 56 - 300 - 24 : CARD_W - 56) - 196;
   ctx.textAlign = "left";
   ctx.fillStyle = "#fafafa";
@@ -272,7 +272,7 @@ export function drawCard(ctx: CanvasRenderingContext2D, data: CardData): void {
   ctx.font = `500 20px ${FONT}`;
   ctx.fillText(ellipsize(ctx, data.rangeLabel, nameW), 198, 228);
 
-  // juego más jugado, arriba a la derecha con su carátula
+  // the most-played game, top right with its cover
   if (data.topGame) {
     const boxW = 300;
     const x = CARD_W - 56 - boxW;
@@ -370,12 +370,12 @@ export function drawCard(ctx: CanvasRenderingContext2D, data: CardData): void {
     ctx.textAlign = "left";
   });
 
-  // --- cubitos ----------------------------------------------------------
-  // La fila ocupa siempre el ancho útil, sea cual sea el rango: siete cubos
-  // de semana salen grandes y treinta de mes salen pequeños, pero el bloque
-  // empieza y acaba donde el resto de la tarjeta. El alto se acota para no
-  // comerse el pie, así que con pocos cubos dejan de ser cuadrados y pasan a
-  // ser losetas apaisadas, grandes, que es lo que se pidió.
+  // ---- the tiles
+  // The row always takes the usable width, whatever the range: a week's seven tiles
+  // come out large and a month's thirty come out small, but the block starts and
+  // ends where the rest of the card does. The height is bounded so it does not eat
+  // the footer, so with few tiles they stop being squares and become wide landscape
+  // tiles, large, which is what was asked for.
   const BAND_TOP = 500;
   const BAND_H = 92;
   ctx.fillStyle = "#71717a";
@@ -390,8 +390,8 @@ export function drawCard(ctx: CanvasRenderingContext2D, data: CardData): void {
     const w = (avail - gapC * (cubes.length - 1)) / cubes.length;
     const h = Math.min(w, BAND_H);
     const top = BAND_TOP + (BAND_H - h) / 2;
-    // Con muchos cubos los números se amontonan: etiquetamos uno de cada
-    // cinco (y el último siempre, que es "hoy").
+    // With many tiles the numbers pile up, so one in five is labelled (and always
+    // the last, which is today).
     const step = cubes.length > 12 ? 5 : 1;
 
     cubes.forEach((c, i) => {
@@ -438,13 +438,12 @@ export function paint(canvas: HTMLCanvasElement, data: CardData, scale: number):
 }
 
 /**
- * Renderiza la tarjeta y devuelve el PNG en base64 (sin la cabecera del
- * data-URL, que es lo que espera `wrapple_save_card`).
+ * Renders the card and returns the PNG in base64 (without the data URL's header,
+ * which is what `wrapple_save_card` expects).
  *
- * Si el canvas quedó contaminado por una imagen remota sin CORS,el avatar de
- * la cuenta Cloud, `toDataURL` lanza `SecurityError`; entonces repetimos el
- * dibujo con las iniciales en lugar de la foto, que es mejor que no poder
- * guardar nada.
+ * When the canvas was tainted by a remote image with no CORS (the Cloud account's
+ * avatar), `toDataURL` throws `SecurityError`; the drawing is then repeated with the
+ * initials instead of the picture, which beats not being able to save anything.
  */
 export function renderToPng(data: CardData, scale = 2): string {
   const canvas = document.createElement("canvas");
@@ -468,8 +467,8 @@ export function loadImage(src: string, crossOrigin = false): Promise<HTMLImageEl
   });
 }
 
-/** Espera a que las fuentes propias estén listas: si dibujamos antes, el
- *  canvas cae a la fuente del sistema y la tarjeta sale con otra tipografía. */
+/** Waits for our own fonts to be ready: drawing earlier drops the canvas back to
+ *  the system font and the card comes out in a different typeface. */
 export async function waitForFonts(): Promise<void> {
   if (!("fonts" in document)) return;
   try {

@@ -1,23 +1,22 @@
 <script lang="ts">
   /**
-   * La tarjeta de Hoard-Wrapped: el mismo resumen, pero en una imagen que se
-   * puede enseñar. Foto, nombre, una frase con guasa según el juego más
-   * jugado, cuatro datos curiosos y una fila de cubitos con el rango elegido
-   * (semana → siete cuadros grandes, mes → un cubo por día, año → uno por mes).
+   * The Hoard-Wrapped card: the same recap, but as an image you can show. A
+   * picture, a name, a wry phrase based on the most-played game, four bits of
+   * trivia, and a row of tiles for the chosen range (a week gives seven large
+   * squares, a month one tile per day, a year one per month).
    *
-   * Dos decisiones que conviene no deshacer sin pensarlo:
+   * Two decisions worth not undoing without thinking:
    *
-   * 1. **Todo lo editable es local.** La foto es un PNG bajo el app-data dir y
-   *    el resto vive en un `store` de este equipo, no se sube, no se
-   *    sincroniza, no sale en el export de la cuenta. Ver `cardPrefs`.
-   * 2. **Lo que se ve ES el canvas que se guarda.** La vista previa no es una
-   *    maqueta HTML parecida al PNG: es el PNG, dibujado a 1× en pantalla y a
-   *    2× al guardar (`cardCanvas`). Así no hay dos diseños que mantener ni
-   *    sorpresas al compartir.
+   * 1. **Everything editable is local.** The picture is a PNG under the app-data dir
+   *    and the rest lives in a store on this machine. It is not uploaded, not
+   *    synced, and not in the account export. See `cardPrefs`.
+   * 2. **What you see IS the canvas that gets saved.** The preview is not an HTML
+   *    mock-up resembling the PNG: it is the PNG, drawn at 1x on screen and at 2x
+   *    when saving (`cardCanvas`). That way there are no two designs to maintain and
+   *    no surprises when sharing.
    *
-   * La imagen lleva la marca y `hoard.services` a la vista y también en los
-   * metadatos PNG que escribe Rust: si alguien la sube a cualquier sitio, va
-   * firmada.
+   * The image carries the brand and `hoard.services` visibly and in the PNG metadata
+   * Rust writes: if somebody uploads it anywhere, it goes signed.
    */
   import { onMount } from "svelte";
   import { locale } from "svelte-i18n";
@@ -60,13 +59,13 @@
   import { toastError, toastSuccess } from "../stores/toasts";
 
   let {
-    /** Segundos jugados por día, `YYYY-MM-DD` → segundos. */
+    /** Seconds played per day, `YYYY-MM-DD` to seconds. */
     daysByKey = {},
-    /** Desglose por día y juego, para saber a qué se jugó en el rango. */
+    /** The per-day, per-game breakdown, so we know what was played in the range. */
     dailyByGame = {},
-    /** slug → app id de Steam, solo para la carátula. */
+    /** Slug to Steam app id, for the cover art only. */
     appIdBySlug = {},
-    /** Nombre de la sesión: el que se usa mientras no escribas otro. */
+    /** The session's name: the one used until you type another. */
     sessionName = "",
     /** Avatar de la cuenta Cloud, si hay. La foto local manda sobre este. */
     sessionAvatar = null,
@@ -97,7 +96,7 @@
   const prefs = $derived(cardPrefs());
   const range = $derived(prefs.range);
 
-  // --- rango → días -------------------------------------------------------
+  // ---- range to days
   function dayKey(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
       d.getDate(),
@@ -110,7 +109,7 @@
     return d;
   }
 
-  /** Los días que entran en el rango, del más antiguo al de hoy. */
+  /** The days inside the range, oldest to today. */
   const rangeDays = $derived.by(() => {
     const today = startOfToday();
     const span = range === "week" ? 7 : range === "month" ? 30 : 365;
@@ -122,7 +121,7 @@
 
   const loc = $derived($locale ?? "en");
 
-  /** Los cubitos. El número depende del rango: 7 días, 30 días o 12 meses. */
+  /** The tiles. How many depends on the range: 7 days, 30 days or 12 months. */
   const cubes = $derived.by<Cube[]>(() => {
     const today = startOfToday();
     if (range === "year") {
@@ -166,7 +165,7 @@
         longest = Math.max(longest, run);
       } else run = 0;
     }
-    // Juego más jugado y juegos distintos, dentro del rango.
+    // The most-played game and the distinct games, within the range.
     const bySlug: Record<string, number> = {};
     for (const d of days) {
       for (const [slug, secs] of Object.entries(dailyByGame[d.key] ?? {})) {
@@ -211,7 +210,7 @@
         : tr({ es: "Último año", en: "Last year", de: "Letztes Jahr", fr: "Cette année", it: "Ultimo anno", ja: "この1年", pt: "Último ano", zh: "最近一年" }),
   );
 
-  /** La frase: la que escribió el usuario, o la del dado según el juego. */
+  /** The phrase: the one the user wrote, or the dice's, based on the game. */
   const quote = $derived.by(() => {
     void loc; // el idioma activo forma parte del resultado
     const own = prefs.quote.trim();
@@ -219,9 +218,9 @@
     return tr(pickQuote(facts.topSlug, prefs.seed + (facts.topSlug?.length ?? 0)));
   });
 
-  /** La tarjeta se hace para enseñarla, así que el nombre por defecto nunca
-   *  es el correo entero: si la sesión solo nos da el email, nos quedamos con
-   *  lo de delante de la arroba. El resumen enmascara el correo por algo. */
+  /** The card is made to be shown, so the default name is never the full email
+   *  address: when the session only gives us the email, we keep what is before the
+   *  at sign. The recap masks the address for a reason. */
   const suggestedName = $derived(sessionName.trim().split("@")[0].trim());
 
   const displayName = $derived(
@@ -290,10 +289,10 @@
     }),
   });
 
-  // --- imágenes -----------------------------------------------------------
-  // La foto local manda sobre el avatar de la cuenta. El remoto se pide con
-  // CORS: si Google no lo permite, la imagen se descarta antes de tocar el
-  // canvas (dibujarla lo dejaría "tainted" y el guardado fallaría).
+  // ---- images
+  // The local picture beats the account's avatar. The remote one is fetched with
+  // CORS: if Google does not allow it, the image is dropped before it touches the
+  // canvas (drawing it would taint the canvas and the save would fail).
   $effect(() => {
     const local = cardPhotoUrl();
     const remote = sessionAvatar;
@@ -370,7 +369,7 @@
     }
   }
 
-  /** "Sacar la foto": renderiza a 2× y la deja en la galería del sistema. */
+  /** "Take the picture": renders at 2x and leaves it in the system gallery. */
   async function shoot() {
     if (saving) return;
     saving = true;

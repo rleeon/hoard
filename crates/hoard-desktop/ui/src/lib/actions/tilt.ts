@@ -15,53 +15,51 @@
  * `pointermove` on the document and only reset when the pointer truly
  * exits the element's original (un-transformed) rect.
  *
- * Un listener compartido, pero varios nodos inclinándose a la vez
- * ---------------------------------------------------------------
- * Estas inclinaciones **se anidan**: una tarjeta de partida lleva `use:tilt` y
- * dentro la carátula lleva el suyo, así que apuntando a la portada se mueven
- * las dos, la tarjeta entera y la foto encima. Eso es el efecto.
+ * One shared listener, but several nodes tilting at once
+ * ------------------------------------------------------
+ * These tilts **nest**: a save card carries `use:tilt` and the cover inside it
+ * carries its own, so pointing at the cover moves both, the whole card and the
+ * picture on top of it. That is the effect.
  *
- * La versión original lo conseguía enganchando `pointermove` y `pointerup` al
- * documento *dentro de la acción*: cada elemento llevaba su propio par y su
- * propio estado. Funcionaba, pero en la biblioteca son dos listeners por juego
- * y todos comprueban límites en cada píxel que se mueve el ratón, descartando
- * el evento todos menos uno.
+ * The original version managed it by hooking `pointermove` and `pointerup` to the
+ * document *inside the action*: every element carried its own pair and its own
+ * state. It worked, but in the library that is two listeners per game, all of them
+ * checking bounds on every pixel the mouse moves, with all but one discarding the
+ * event.
  *
- * Reducirlo a "un único nodo activo global" NO vale, y es un error fácil de
- * cometer: al entrar en la carátula se suelta la tarjeta y, como el puntero
- * nunca llega a *salir* de ella, su `pointerenter` no vuelve a dispararse y se
- * queda muerta el resto del recorrido. En el Panel, donde la carátula ocupa
- * casi toda la tarjeta, el efecto desaparece de hecho.
+ * Reducing it to "one globally active node" does NOT work, and it is an easy mistake
+ * to make: entering the cover releases the card and, since the pointer never *exits*
+ * it, its `pointerenter` never fires again and it stays dead for the rest of the
+ * journey. On the Dashboard, where the cover takes almost the whole card, the effect
+ * disappears altogether.
  *
- * Así que el estado es un **conjunto**: todos los nodos en los que ha entrado
- * el puntero y de los que aún no ha salido. Como sólo pueden estar los que se
- * apilan bajo el cursor, el conjunto tiene el tamaño del anidamiento (dos, en
- * la práctica) y no el del número de tarjetas, que era el punto. Los
- * listeners de documento siguen siendo uno, compartido por todas las
- * instancias, instalado con la primera y retirado con la última.
+ * So the state is a **set**: every node the pointer has entered and not yet left.
+ * Since only the ones stacked under the cursor can be in it, the set is the size of
+ * the nesting (two, in practice) and not of the number of cards, which was the
+ * point. The document listeners stay at one, shared by every instance, installed
+ * with the first and removed with the last.
  */
 
 import { tiltScale } from "../stores/motion";
 
 /**
- * Grados máximos de inclinación en cada eje, a plena intensidad.
+ * The maximum tilt in degrees on each axis, at full intensity.
  *
- * El recorte no vive aquí sino en el nivel de Ajustes (`stores/motion.ts`),
- * que multiplica esta base: `sutil`,el defecto, la deja en 4°, la mitad del
- * efecto histórico. Así el usuario puede recuperar los 8° sin recompilar.
+ * The trimming does not live here but in the Settings level (`stores/motion.ts`),
+ * which multiplies this base: the default leaves it at 4 degrees, half the historic
+ * effect. That way the user can get the 8 back without recompiling.
  *
- * Ojo con leer este número como "lo que se mueve la tarjeta": las
- * inclinaciones anidadas se suman en pantalla, así que la carátula dentro de
- * una tarjeta llega al doble. Escalar la base las reduce a las dos en la misma
- * proporción, que es lo que se busca.
+ * Careful reading this number as "how much the card moves": nested tilts add up on
+ * screen, so a cover inside a card reaches double. Scaling the base reduces both in
+ * the same proportion, which is the point.
  */
 const BASE_MAX = 8;
 
 type Armed = {
   /** Rect capturado ANTES de que el transform lo deforme. */
   rect: DOMRect;
-  /** Grados máximos de ESTE nodo (una carátula puede pedir otros que la
-   *  tarjeta que la contiene). */
+  /** THIS node's maximum degrees (a cover can ask for different ones from the card
+   *  containing it). */
   max: number;
 };
 
@@ -71,8 +69,8 @@ const armed = new Map<HTMLElement, Armed>();
 /** Instancias vivas, al llegar a 0 se retiran los listeners compartidos. */
 let liveCount = 0;
 let raf = 0;
-/** Último evento pendiente de pintar. Un solo rAF reparte a todo el conjunto,
- *  así que apuntar a una tarjeta con carátula sigue costando un fotograma. */
+/** The last event waiting to be painted. One rAF serves the whole set, so pointing
+ *  at a card with a cover still costs one frame. */
 let pending: PointerEvent | null = null;
 
 function schedule(e: PointerEvent): void {
@@ -126,11 +124,10 @@ export function tilt(node: HTMLElement, opts: { max?: number } = {}) {
   const base = opts.max ?? BASE_MAX;
 
   function onEnter(e: PointerEvent) {
-    // El nivel se consulta al entrar, no al montar: cambiarlo en Ajustes surte
-    // efecto en el siguiente elemento que apuntes, sin re-montar la pantalla.
-    // Aquí NO se mira `prefers-reduced-motion`, eso lo decide el valor inicial
-    // del nivel (ver `stores/motion.ts`), para que una elección explícita del
-    // usuario siempre gane.
+    // The level is consulted on enter, not on mount: changing it in Settings takes
+    // effect on the next element you point at, with no screen remount. This does NOT
+    // look at `prefers-reduced-motion`; the level's initial value decides that (see
+    // `stores/motion.ts`), so an explicit choice by the user always wins.
     const max = base * tiltScale();
     armed.set(node, { rect: node.getBoundingClientRect(), max });
     schedule(e);
