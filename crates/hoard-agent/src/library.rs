@@ -2008,7 +2008,7 @@ fn local_label(save_id: &str) -> Result<String> {
         .saves
         .get(save_id)
         .map(|st| st.label.clone())
-        .context("That save isn't tracked on this machine.")
+        .context("This save isn't tracked on this machine; link a local folder before renaming it.")
 }
 
 fn is_conflict(e: &anyhow::Error) -> bool {
@@ -2219,7 +2219,12 @@ pub fn set_paused(save_id: &str, paused: bool) -> Result<LiveReseat> {
     let entry = cli_state
         .saves
         .get_mut(save_id)
-        .context("That save isn't tracked on this machine, so there is nothing to pause.")?;
+        // Cloud-only rows reach this with an id that is not in `state.json`
+        // (see `set_allow_device_local`): nothing to pause here, and the
+        // message says what to do instead of naming an internal fact.
+        .context(
+            "This save isn't tracked on this machine; link a local folder before pausing it.",
+        )?;
     entry.paused = paused;
     let snapshot = entry.clone();
     cli_state.save(&path)?;
@@ -2247,10 +2252,9 @@ pub fn set_preset(save_id: &str, preset: Option<String>) -> Result<LiveReseat> {
     }
 
     let (mut cli_state, path) = CliState::load_default()?;
-    let entry = cli_state
-        .saves
-        .get_mut(save_id)
-        .context("That save isn't tracked on this machine.")?;
+    let entry = cli_state.saves.get_mut(save_id).context(
+        "This save isn't tracked on this machine; link a local folder before setting a preset.",
+    )?;
     entry.preset = preset;
     let snapshot = entry.clone();
     cli_state.save(&path)?;
@@ -2355,7 +2359,12 @@ pub fn set_local_path(save_id: &str, new_path: &str) -> Result<LiveReseat> {
     let entry = cli_state
         .saves
         .get_mut(save_id)
-        .context("That save isn't tracked on this machine.")?;
+        // A cloud-only row has no entry to repoint. Restoring a version, or
+        // linking it from the Library, is what creates one, so say that
+        // rather than reporting the absence as if it were an error.
+        .context(
+            "This save isn't tracked on this machine; restore a version or link it from the Library to give it a folder here.",
+        )?;
     let previous = std::mem::replace(&mut entry.local_path, path_buf);
     let snapshot = entry.clone();
     cli_state.save(&path)?;

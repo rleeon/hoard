@@ -413,7 +413,6 @@ fn non_fast_forward(save_id: &str, head: i64, base: i64) -> ApiError {
 /// gets to see the 404 or the 413, only an `error writing a body to connection`
 /// (os error 10053/10054) that says nothing. Half of issue #17.
 ///
-/// Capped, because the body can be gigabytes and swallowing all of it just to
 /// Capped, because the body can be gigabytes and swallowing all of it just to be
 /// able to say "no" is exactly the work the error was trying to avoid. Past the
 /// cap we stop and the client gets the same reset as before: no worse than it was.

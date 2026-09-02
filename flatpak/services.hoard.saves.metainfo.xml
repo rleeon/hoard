@@ -67,6 +67,7 @@
     for a different purpose. Add the new one here when you tag.
   -->
   <releases>
+    <release version="1.1.6" date="2026-09-02" />
     <release version="1.1.5" date="2026-08-24" />
   </releases>
 

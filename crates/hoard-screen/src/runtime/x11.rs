@@ -270,12 +270,12 @@ pub fn run(mut engine: Engine) -> Result<(), String> {
             engine.render(&mut buf, sw as u32, sh as u32);
             rgba_to_bgrx(&buf, &mut bgrx);
             present(&conn, window, gc, &bgrx, sw, sh)?;
-            if frame_no % REASSERT_EVERY == 0 {
+            if frame_no.is_multiple_of(REASSERT_EVERY) {
                 restack(&conn, window)?;
             }
         }
 
-        if mode == Mode::View && frame_no % REASSERT_EVERY == 0 {
+        if mode == Mode::View && frame_no.is_multiple_of(REASSERT_EVERY) {
             reassert_above(&conn, root, &ewmh, &scene, &managed);
         }
 
@@ -324,18 +324,13 @@ fn apply_windows(
     for p in scene.draw_order() {
         let Some(win) = panel_win(p) else { continue };
         desired.insert(win);
-        if !managed.contains_key(&win) {
-            let saved = abs_geom(conn, root, win).unwrap_or((0, 0, 1, 1));
-            managed.insert(
-                win,
-                Managed {
-                    saved,
-                    cropped: false,
-                    shaped_input: false,
-                },
-            );
-        }
-        let m = managed.get_mut(&win).unwrap();
+        // The geometry is read once, the first time we take a window over, so
+        // that what we restore later is where the window actually was.
+        let m = managed.entry(win).or_insert_with(|| Managed {
+            saved: abs_geom(conn, root, win).unwrap_or((0, 0, 1, 1)),
+            cropped: false,
+            shaped_input: false,
+        });
         place_panel(conn, root, ewmh, win, p, interactive, m);
     }
     // Restore windows whose panel is gone.
@@ -765,7 +760,7 @@ fn keysym_to_keycode(conn: &impl Connection, keysym: u32) -> Option<u8> {
         return None;
     }
     for (i, chunk) in reply.keysyms.chunks(per).enumerate() {
-        if chunk.iter().any(|&k| k == keysym) {
+        if chunk.contains(&keysym) {
             return Some(min + i as u8);
         }
     }

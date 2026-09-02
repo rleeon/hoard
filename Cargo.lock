@@ -3828,7 +3828,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-admin"
-version = "7.7.8"
+version = "1.1.6"
 dependencies = [
  "anyhow",
  "clap",
@@ -3853,7 +3853,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-agent"
-version = "7.7.8"
+version = "1.1.6"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -3895,7 +3895,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-cli"
-version = "7.7.8"
+version = "1.1.6"
 dependencies = [
  "anyhow",
  "clap",
@@ -3917,7 +3917,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-core"
-version = "7.7.8"
+version = "1.1.6"
 dependencies = [
  "anyhow",
  "argon2",
@@ -3934,7 +3934,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-desktop"
-version = "7.7.8"
+version = "1.1.6"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3985,7 +3985,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-manifest"
-version = "7.7.8"
+version = "1.1.6"
 dependencies = [
  "directories",
  "hoard-core",
@@ -4001,7 +4001,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-screen"
-version = "7.7.8"
+version = "1.1.6"
 dependencies = [
  "ashpd",
  "cocoa",
@@ -4020,7 +4020,7 @@ dependencies = [
 
 [[package]]
 name = "hoard-server"
-version = "7.7.8"
+version = "1.1.6"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -4065,7 +4065,7 @@ dependencies = [
 
 [[package]]
 name = "hoardd"
-version = "7.7.8"
+version = "1.1.6"
 dependencies = [
  "anyhow",
  "ashpd",

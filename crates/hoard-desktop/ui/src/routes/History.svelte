@@ -760,10 +760,16 @@
         <Button variant="primary" onclick={backupNow} loading={backingUp}>
           <UploadCloud size={14} /> {$_("history.back_up_now")}
         </Button>
+        <!-- Same gate as the config button below: a cloud-only row has no
+             `state.json` entry, so pausing it fails on click. -->
         <Button
           variant="secondary"
           onclick={togglePause}
           loading={togglingPause}
+          disabled={save.orphan || !save.local_path}
+          title={save.orphan || !save.local_path
+            ? $_("common.cloud_only_no_local")
+            : undefined}
         >
           {#if save.paused}
             <PlayCircle size={14} /> {$_("history.resume_tracking")}
@@ -779,7 +785,10 @@
             <span class="text-zinc-500">{$_("presets.label")}</span>
             <select
               class="rounded-md border border-white/[0.08] bg-zinc-900 px-2 py-1.5 text-xs text-zinc-200 focus:border-emerald-500/40 focus:outline-none disabled:opacity-50"
-              disabled={savingPreset}
+              disabled={savingPreset || save.orphan || !save.local_path}
+              title={save.orphan || !save.local_path
+                ? $_("common.cloud_only_no_local")
+                : undefined}
               value={save.preset ?? "standard"}
               onchange={(e) =>
                 changePreset((e.currentTarget as HTMLSelectElement).value)}

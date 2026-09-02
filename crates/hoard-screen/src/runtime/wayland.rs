@@ -347,11 +347,9 @@ impl KeyboardHandler for Overlay {
     ) {
         // While focused (Editor mode), Ctrl+O or Esc drops back to View.
         let ctrl_o = self.modifiers.ctrl && event.keysym == Keysym::o;
-        if ctrl_o || event.keysym == Keysym::Escape {
-            if self.mode != Mode::View {
-                self.mode = Mode::View;
-                self.apply_input_region();
-            }
+        if (ctrl_o || event.keysym == Keysym::Escape) && self.mode != Mode::View {
+            self.mode = Mode::View;
+            self.apply_input_region();
         }
     }
     fn release_key(

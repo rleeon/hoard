@@ -693,19 +693,6 @@ mod platform {
                 .join(format!("{app_id}.desktop"))
         }
 
-        #[cfg(test)]
-        mod tests {
-            use super::*;
-
-            #[test]
-            fn the_entry_is_named_after_the_flatpak_id() {
-                assert_eq!(
-                    autostart_file_in(Path::new("/home/p"), "services.hoard.saves"),
-                    Path::new("/home/p/.config/autostart/services.hoard.saves.desktop")
-                );
-            }
-        }
-
         pub fn installed() -> bool {
             autostart_file().is_some_and(|p| p.exists())
         }
@@ -777,6 +764,19 @@ mod platform {
                 "autostart: the portal answered"
             );
             Ok(())
+        }
+
+        #[cfg(test)]
+        mod tests {
+            use super::*;
+
+            #[test]
+            fn the_entry_is_named_after_the_flatpak_id() {
+                assert_eq!(
+                    autostart_file_in(Path::new("/home/p"), "services.hoard.saves"),
+                    Path::new("/home/p/.config/autostart/services.hoard.saves.desktop")
+                );
+            }
         }
     }
 }

@@ -22,7 +22,7 @@ exclude = ["crates/hoard-pruebas"]
 
 [workspace.package]
 edition = "2021"
-version = "7.7.8"
+version = "1.1.6"
 authors = ["insider <raileonoliva@gmail.com>"]
 license = "AGPL-3.0"
 # Self-hosted app, never published to crates.io. Marking the members private

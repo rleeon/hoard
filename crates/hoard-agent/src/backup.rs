@@ -117,7 +117,7 @@ fn is_body_write_reset(e: &anyhow::Error) -> bool {
                 io.kind(),
                 std::io::ErrorKind::ConnectionAborted   // WSAECONNABORTED (10053)
                     | std::io::ErrorKind::ConnectionReset // WSAECONNRESET (10054)
-                    | std::io::ErrorKind::BrokenPipe // EPIPE, el mismo caso en unix
+                    | std::io::ErrorKind::BrokenPipe // EPIPE, the same case on unix
             )
         })
     })
@@ -1800,7 +1800,7 @@ mod trim_tests {
     /// The trim keeps the newest, not the first ones it sees.
     #[test]
     fn keeps_the_newest_files_that_fit() {
-        let files = vec![f("old", 60, 100), f("new", 30, 300), f("mid", 30, 200)];
+        let files = [f("old", 60, 100), f("new", 30, 300), f("mid", 30, 200)];
         let mut working: Vec<&UploadFile> = files.iter().collect();
         working.sort_by_key(|f| std::cmp::Reverse(f.modified));
 
@@ -1818,7 +1818,7 @@ mod trim_tests {
     /// as a terminal "too large" rather than uploading an empty copy.
     #[test]
     fn refuses_when_even_the_newest_file_is_over_the_cap() {
-        let files = vec![f("huge", 500, 300)];
+        let files = [f("huge", 500, 300)];
         let mut working: Vec<&UploadFile> = files.iter().collect();
         assert!(trim_to_cap(&mut working, 100, "free").is_none());
         // And it does not touch the set: nothing has been decided yet.
@@ -1828,7 +1828,7 @@ mod trim_tests {
     /// Everything fits: it is kept whole and the report says nothing was omitted.
     #[test]
     fn keeps_everything_when_it_all_fits() {
-        let files = vec![f("a", 10, 100), f("b", 10, 200)];
+        let files = [f("a", 10, 100), f("b", 10, 200)];
         let mut working: Vec<&UploadFile> = files.iter().collect();
         let info = trim_to_cap(&mut working, 1000, "pro").expect("all fits");
         assert_eq!(working.len(), 2);

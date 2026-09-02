@@ -43,7 +43,7 @@ pub fn run(engine: Engine) -> Result<(), String> {
     }
     #[cfg(feature = "runtime")]
     {
-        return x11::run(engine);
+        x11::run(engine)
     }
     #[cfg(not(feature = "runtime"))]
     {
