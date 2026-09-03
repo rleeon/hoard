@@ -472,8 +472,11 @@ fn default_aud() -> String {
 fn default_jwks_refresh_secs() -> u64 {
     3600
 }
-fn default_upgrade_url() -> String {
-    "https://hoard.services/upgrade".to_string()
+/// The page that actually links to the hosted checkout. `/upgrade` never
+/// existed on the site, and the deploy serves the SPA shell for unknown
+/// paths, so the old default answered a 402 with a blank page.
+pub fn default_upgrade_url() -> String {
+    "https://hoard.services/pricing".to_string()
 }
 fn default_storage_downgrade_grace_days() -> u64 {
     30

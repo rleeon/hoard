@@ -267,7 +267,7 @@ pub async fn check_storage(
             .cloud
             .as_ref()
             .map(|c| c.upgrade_url.clone())
-            .unwrap_or_else(|| "https://hoard.services/upgrade".to_string());
+            .unwrap_or_else(crate::config::default_upgrade_url);
         return Err(quota_response(&info, requested, url).into_response());
     }
     Ok(info)

@@ -58,7 +58,7 @@ supabase_jwks_url = ""
 supabase_audience = "authenticated"
 supabase_issuer = ""
 jwks_refresh_secs = 3600
-upgrade_url = "https://hoard.services/upgrade"
+upgrade_url = "https://hoard.services/pricing"
 
 [cloud.r2]
 # Cloudflare R2: see https://developers.cloudflare.com/r2/api/s3/

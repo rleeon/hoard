@@ -1879,7 +1879,7 @@ mod too_large_tests {
         let cloud = parse(
             r#"{"error":"save exceeds per-save size limit","code":"save_too_large",
                 "plan":"free","limit_bytes":1073741824,"actual_bytes":3865470566,
-                "upgrade_url":"https://hoard.services/upgrade"}"#,
+                "upgrade_url":"https://hoard.services/pricing"}"#,
         );
         assert_eq!(cloud.kind(), TooLargeKind::PlanCap);
         let s = cloud.human();
@@ -1967,13 +1967,13 @@ mod rate_limit_tests {
         let body = r#"{"error":"storage quota exceeded; retries are being spaced out",
             "code":"quota_exceeded_paced","retry_after_seconds":3600,"repeated":7,
             "plan":"free","used_bytes":2147483648,"limit_bytes":2147483648,
-            "requested_bytes":1048576,"upgrade_url":"https://hoard.services/upgrade"}"#;
+            "requested_bytes":1048576,"upgrade_url":"https://hoard.services/pricing"}"#;
         let d = paced_quota_detail(body).expect("the quota figures ride in the paced body");
         assert_eq!(d.plan, "free");
         assert_eq!(d.limit_bytes, 2 * 1024 * 1024 * 1024);
         assert_eq!(
             d.upgrade_url.as_deref(),
-            Some("https://hoard.services/upgrade")
+            Some("https://hoard.services/pricing")
         );
 
         // Every other budget 429 is genuinely just a wait: nothing to offer,

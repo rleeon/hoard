@@ -135,7 +135,7 @@ pub async fn init_upload(
             .cloud
             .as_ref()
             .map(|c| c.upgrade_url.clone())
-            .unwrap_or_else(|| "https://hoard.services/upgrade".to_string());
+            .unwrap_or_else(crate::config::default_upgrade_url);
         return Ok(SaveTooLargeResponse {
             error: "save exceeds per-save size limit",
             code: "save_too_large",
@@ -363,7 +363,7 @@ pub async fn commit_upload(
             .cloud
             .as_ref()
             .map(|c| c.upgrade_url.clone())
-            .unwrap_or_else(|| "https://hoard.services/upgrade".to_string())
+            .unwrap_or_else(crate::config::default_upgrade_url)
     };
     let real = head_size.max(0) as u64;
     let reject = real > limits.max_save_size_bytes
@@ -565,7 +565,7 @@ pub async fn cas_init(
             .cloud
             .as_ref()
             .map(|c| c.upgrade_url.clone())
-            .unwrap_or_else(|| "https://hoard.services/upgrade".to_string());
+            .unwrap_or_else(crate::config::default_upgrade_url);
         return Ok(SaveTooLargeResponse {
             error: "save exceeds per-save size limit",
             code: "save_too_large",
@@ -2208,7 +2208,7 @@ async fn paced_quota_reject(
                 .cloud
                 .as_ref()
                 .map(|c| c.upgrade_url.clone())
-                .unwrap_or_else(|| "https://hoard.services/upgrade".to_string()),
+                .unwrap_or_else(crate::config::default_upgrade_url),
         }),
         _ => serde_json::json!({ "requested_bytes": requested }),
     };
