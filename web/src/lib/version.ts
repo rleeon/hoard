@@ -122,6 +122,19 @@ function pickAssets(urls: string[], v: string): ReleaseAssets {
 const CACHE_KEY = 'hoard:release-latest';
 const CACHE_TTL_MS = 60 * 60 * 1000; // GitHub allows 60 unauthenticated req/h
 
+/** A release is published as soon as the CLI tarballs are up, and the desktop
+ *  workflow attaches the bundles about half an hour later. Asked in between,
+ *  GitHub answers with the new version and no Hoard Setup, which is true and
+ *  incomplete, and pinning that for the full hour hands the raw NSIS bundle to
+ *  exactly the person the installer was written for. Re-ask sooner instead. */
+const PARTIAL_TTL_MS = 5 * 60 * 1000;
+
+/** Hoard Setup exists for every platform or for none, so any one of them
+ *  answers whether the bundles had landed when this was cached. */
+function namesAnInstaller(a: ReleaseAssets): boolean {
+  return Boolean(a.setupWindows ?? a.setupMacos ?? a.setupLinux);
+}
+
 function readCache(): (ReleaseInfo & { at: number }) | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
@@ -157,7 +170,8 @@ export const release = readable<ReleaseInfo>(
     const cached = readCache();
     if (cached) {
       set({ v: cached.v, date: cached.date, assets: cached.assets });
-      if (Date.now() - cached.at < CACHE_TTL_MS) return;
+      const ttl = namesAnInstaller(cached.assets) ? CACHE_TTL_MS : PARTIAL_TTL_MS;
+      if (Date.now() - cached.at < ttl) return;
     }
 
     fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {

@@ -6,10 +6,17 @@ on:
     paths:
       - 'web/**'
       - '.github/workflows/deploy-web.yml'
-  # Rebuild on every published release so the version baked into the site
-  # (the build-time seed from Cargo.toml) tracks the app automatically. A
-  # release only bumps Cargo.toml/CHANGELOG, which the `paths` filter above
-  # ignores, so without this the displayed version would lag behind the app.
+      # The two files the build-time seed is read from. A release commit
+      # touches only these, and it is pushed by hand, so this is what actually
+      # gets the new version onto the site (see the `release` trigger below).
+      - 'Cargo.toml'
+      - 'CHANGELOG.md'
+  # Kept, but it has not fired since 2026-07-09: the release stopped being cut
+  # by hand and is now created by an action holding the default GITHUB_TOKEN,
+  # and GitHub does not start a workflow from an event one of its own tokens
+  # raised. That is why the site sat on 7.7.8 through 1.1.6 while its download
+  # links pointed at a tag that was never published. The `paths` entries above
+  # are what carry the version now; this stays for a release cut by a person.
   release:
     types: [published]
   workflow_dispatch:
