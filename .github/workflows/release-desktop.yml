@@ -367,3 +367,13 @@ jobs:
           files: |
             dist/*
           fail_on_unmatched_files: false
+      # `release.yml` creates the release as a draft so that nothing sees it
+      # half-uploaded. This is the last thing to touch it, so this is where it
+      # becomes visible. It runs under the same `success() || failure()` as the
+      # rest of the job: a release that is missing one platform's bundle is
+      # still worth publishing, one nobody can see is not. `--draft=false`
+      # leaves the prerelease flag alone.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false

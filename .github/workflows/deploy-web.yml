@@ -6,11 +6,12 @@ on:
     paths:
       - 'web/**'
       - '.github/workflows/deploy-web.yml'
-      # The two files the build-time seed is read from. A release commit
-      # touches only these, and it is pushed by hand, so this is what actually
-      # gets the new version onto the site (see the `release` trigger below).
+      # The version the build-time seed is read from. A release commit touches
+      # this and is pushed by hand, so it is what actually gets the new version
+      # onto the site (see the `release` trigger below). Not CHANGELOG.md: it
+      # is edited between releases too, and the seed date it feeds is corrected
+      # by the live lookup anyway.
       - 'Cargo.toml'
-      - 'CHANGELOG.md'
   # Kept, but it has not fired since 2026-07-09: the release stopped being cut
   # by hand and is now created by an action holding the default GITHUB_TOKEN,
   # and GitHub does not start a workflow from an event one of its own tokens

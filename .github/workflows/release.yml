@@ -228,7 +228,14 @@ jobs:
             # Signature (same key the in-app server upgrade trusts):
             minisign -Vm hoard-*.tar.gz -P <hoard-public-key>
             ```
-          draft: false
+          # Born as a draft, published by `release-desktop.yml` once it has
+          # attached the bundles. These tarballs are ready about half an hour
+          # before those are, and a release is `latest` the instant it is
+          # published: in between, the website offered the raw NSIS bundle
+          # instead of Hoard Setup and `hoard install` failed with "release
+          # X publishes no deb package", because both ask GitHub what the
+          # latest release is and both got one that was still uploading.
+          draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             dist/*.tar.gz
