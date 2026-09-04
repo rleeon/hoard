@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../../favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png" />
+    <link rel="mask-icon" href="../../favicon.svg" color="#047857" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0f0c" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Per-page title/description/canonical/OG/hreflang come from <Seo>; see $lib/components/Seo.svelte. -->
+    <link href="../../_app/immutable/entry/start.Bv9fO-Dl.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DM4nI_SJ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D280JA-S.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/R6czw0ix.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/OA8UcISh.js" rel="modulepreload">
+		<link href="../../_app/immutable/entry/app.DoJpZpIJ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Dp1pzeXC.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3cuW3tw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Bzak7iHL.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ogaUi5l8.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B709xuIM.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DiqhoAlS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BnhOS97m.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7_OtiQB.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/0.B7e3jHvd.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3ZM-Apl.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/C4BeUwog.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CjPXEXvS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CQcT7K4l.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B1IsZ4X6.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Baiqwrok.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ZljVK2eG.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BHEZUQJA.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BB8cOoWK.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Cft1C6nZ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CnUB1uiG.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DYjxnFFo.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/2.ClkBtYjW.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/8.BJWNUN1w.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CYf_2dI-.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7xU1dRw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DkuOv9M8.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DjQFue8R.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BgQYEE7T.js" rel="modulepreload">
+		<link href="../../_app/env.js" rel="modulepreload">
+		<!--6rcv4m--><!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"游戏存档同步工具对比：Hoard 与 Ludusavi、Syncthing、OpenSave 等","description":"对备份与同步 PC 游戏存档的各款工具做一次诚实对比——Ludusavi、Syncthing、OpenSave、OpenCloudSaves、Game Backup Monitor、Aletheia、SaveSync 和 Hoard——附对比表，以及 Hoard 输在哪里的一节。","inLanguage":"zh","datePublished":"2026-09-01","dateModified":"2026-09-01","mainEntityOfPage":"https://hoard.services/zh/guides/game-save-sync-comparison","author":{"@type":"Organization","name":"Hoard","url":"https://hoard.services"},"publisher":{"@type":"Organization","name":"Hoard","logo":{"@type":"ImageObject","url":"https://hoard.services/icon-512.png"}}}</script><!----> <!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","inLanguage":"zh","mainEntity":[{"@type":"Question","name":"这些工具里，哪个保留版本历史？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>Hoard 把每次游玩留成一个可回退的版本。Ludusavi 保留带版本的本地备份。其余大多数只是同步或复制当前状态，也就是说损坏的存档会被忠实地传到你的另一台机器上。\u003c/p>\n"}},{"@type":"Question","name":"哪个不需要服务器也不需要账号？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>用作本地备份的 Ludusavi，以及任何点对点工具。如果你自托管，Hoard 也算在内：没有我们这边的账号，也没有任何东西经过我们的服务器。\u003c/p>\n"}},{"@type":"Question","name":"哪个能覆盖不在 Steam 上的游戏？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>这里列出的存档管理工具都可以，因为它们通过同一份社区数据库定位存档，而不是通过商店。例外是 Steam 云存档：它只覆盖开发者启用了它的 Steam 游戏。\u003c/p>\n"}},{"@type":"Question","name":"我必须只选一个吗？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>不必，很多人也没有只选一个。本地备份工具和同步工具解决的是问题的不同一半。唯一的原则是：永远不要让其中一个指向另一个的备份文件夹，否则你同步的会是一份过期镜像，而不是真正的存档。\u003c/p>\n"}},{"@type":"Question","name":"让多数自制方案翻车的，是哪个细节？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>同步 Steam \u003ccode>userdata\u003c/code> 里 \u003ccode>&lt;AppID&gt;/remote/\u003c/code> 的上一层文件夹。上一层放着 \u003ccode>remotecache.vdf\u003c/code> 以及本就应该因机器而异的成就和游戏时长文件，于是每次启动都像冲突，尽管没有任何存档动过。\u003c/p>\n"}}]}</script><!----><!----><!--gsrl61--><meta name="description" content="对备份与同步 PC 游戏存档的各款工具做一次诚实对比——Ludusavi、Syncthing、OpenSave、OpenCloudSaves、Game Backup Monitor、Aletheia、SaveSync 和 Hoard——附对比表，以及 Hoard 输在哪里的一节。"/> <link rel="canonical" href="https://hoard.services/zh/guides/game-save-sync-comparison"/> <!--[--><link rel="alternate" hreflang="en" href="https://hoard.services/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="es" href="https://hoard.services/es/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="de" href="https://hoard.services/de/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="fr" href="https://hoard.services/fr/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="it" href="https://hoard.services/it/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="ja" href="https://hoard.services/ja/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="pt" href="https://hoard.services/pt/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="zh" href="https://hoard.services/zh/guides/game-save-sync-comparison"/><!--]--> <link rel="alternate" hreflang="x-default" href="https://hoard.services/guides/game-save-sync-comparison"/> <meta property="og:type" content="article"/> <meta property="og:site_name" content="Hoard"/> <meta property="og:title" content="游戏存档同步工具对比：Hoard 与 Ludusavi、Syncthing、OpenSave 等 — Hoard"/> <meta property="og:description" content="对备份与同步 PC 游戏存档的各款工具做一次诚实对比——Ludusavi、Syncthing、OpenSave、OpenCloudSaves、Game Backup Monitor、Aletheia、SaveSync 和 Hoard——附对比表，以及 Hoard 输在哪里的一节。"/> <meta property="og:url" content="https://hoard.services/zh/guides/game-save-sync-comparison"/> <meta property="og:image" content="https://hoard.services/app.webp"/> <meta property="og:locale" content="zh_CN"/> <!--[--><meta property="og:locale:alternate" content="en_US"/><meta property="og:locale:alternate" content="es_ES"/><meta property="og:locale:alternate" content="de_DE"/><meta property="og:locale:alternate" content="fr_FR"/><meta property="og:locale:alternate" content="it_IT"/><meta property="og:locale:alternate" content="ja_JP"/><meta property="og:locale:alternate" content="pt_PT"/><!--]--> <meta name="twitter:card" content="summary_large_image"/> <meta name="twitter:title" content="游戏存档同步工具对比：Hoard 与 Ludusavi、Syncthing、OpenSave 等 — Hoard"/> <meta name="twitter:description" content="对备份与同步 PC 游戏存档的各款工具做一次诚实对比——Ludusavi、Syncthing、OpenSave、OpenCloudSaves、Game Backup Monitor、Aletheia、SaveSync 和 Hoard——附对比表，以及 Hoard 输在哪里的一节。"/> <meta name="twitter:image" content="https://hoard.services/app.webp"/><!----><title>游戏存档同步工具对比：Hoard 与 Ludusavi、Syncthing、OpenSave 等 — Hoard</title>
+		<link href="../../_app/immutable/assets/0.9JCwSkJ0.css" rel="stylesheet">
+		<link href="../../_app/immutable/assets/8.9SD7pss8.css" rel="stylesheet">
+  </head>
+  <body class="antialiased">
+    <div style="display: contents"><!--[--><!--[0--><!--[--><div class="relative isolate flex min-h-full flex-col text-ink" data-sveltekit-preload-data="hover"><a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent-deep focus:px-3 focus:py-2 focus:text-sm focus:text-white">Skip to content</a> <header class="sticky top-0 z-40 w-full bg-bg/80 backdrop-blur-md"><nav class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]"><a href="/zh" class="nav-pill flex items-center gap-2.5 ring-focus md:justify-self-start" aria-label="Hoard home"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><rect x="1" y="1" width="62" height="62" rx="13" fill="var(--color-pine-elev, #19231c)" stroke="var(--color-pine-line, #28332b)" stroke-width="2"></rect><rect x="9" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="41" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="9" y="25" width="46" height="14" rx="5" fill="#34d399"></rect></svg><!----> <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span></a> <div class="hidden items-center gap-1 md:flex md:justify-self-center"><a href="/zh/download" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">下载</a> <a href="/zh/pricing" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">价格</a> <a href="/zh/cli" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">CLI</a> <a href="/zh/guides" class="nav-pill ring-focus text-sm nav-pill-active">指南</a> <a href="/zh/help" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">帮助</a></div> <div class="hidden items-center gap-3 md:flex md:justify-self-end"><details class="group relative svelte-1h32yp1"><summary class="nav-pill flex cursor-pointer list-none items-center gap-1.5 text-sm text-ink-soft ring-focus [&amp;::-webkit-details-marker]:hidden" aria-label="Language"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-globe h-4 w-4"><!--[--><!----><circle cx="12" cy="12" r="10"><!----></circle><!----><!----><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"><!----></path><!----><!----><path d="M2 12h20"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <span class="font-medium">中文</span></summary> <div data-sveltekit-preload-data="tap" class="lang-menu absolute right-0 z-50 mt-2 min-w-40 overflow-hidden rounded-lg border border-line bg-bg/95 py-1 shadow-lg backdrop-blur-md svelte-1h32yp1"><!--[--><a href="/guides/game-save-sync-comparison" hreflang="en" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">English <!--[-1--><!--]--></a><a href="/es/guides/game-save-sync-comparison" hreflang="es" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Español <!--[-1--><!--]--></a><a href="/de/guides/game-save-sync-comparison" hreflang="de" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Deutsch <!--[-1--><!--]--></a><a href="/fr/guides/game-save-sync-comparison" hreflang="fr" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Français <!--[-1--><!--]--></a><a href="/it/guides/game-save-sync-comparison" hreflang="it" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Italiano <!--[-1--><!--]--></a><a href="/ja/guides/game-save-sync-comparison" hreflang="ja" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">日本語 <!--[-1--><!--]--></a><a href="/pt/guides/game-save-sync-comparison" hreflang="pt" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Português <!--[-1--><!--]--></a><a href="/zh/guides/game-save-sync-comparison" hreflang="zh" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink">中文 <!--[0--><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-check h-3.5 w-3.5 text-accent"><!--[--><!----><path d="M20 6 9 17l-5-5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!--]--></a><!--]--></div></details> <!--[0--><span class="h-9 w-24 animate-pulse rounded-md bg-ink/5"></span><!--]--> <a href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer" aria-label="Discord" title="Discord" class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#5865F2] text-white ring-focus transition-colors hover:bg-[#4752C4]"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.515.0699.0699 0 0 0-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 0 1 .0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 0 1-.0066.1276 12.2986 12.2986 0 0 1-1.873.8914.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 0 0 .0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 0 0 .0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"></path></svg><!----></a></div> <button class="md:hidden grid h-10 w-10 place-items-center rounded-lg text-ink-soft ring-focus hover:bg-ink/5" aria-label="Toggle menu" aria-expanded="false"><span class="relative h-5 w-5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-menu absolute inset-0 h-5 w-5 transition-all duration-300 opacity-100 rotate-0"><!--[--><!----><line x1="4" x2="20" y1="12" y2="12"><!----></line><!----><!----><line x1="4" x2="20" y1="6" y2="6"><!----></line><!----><!----><line x1="4" x2="20" y1="18" y2="18"><!----></line><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-x absolute inset-0 h-5 w-5 transition-all duration-300 opacity-0 -rotate-90"><!--[--><!----><path d="M18 6 6 18"><!----></path><!----><!----><path d="m6 6 12 12"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></span></button></nav> <!--[-1--><!--]--> <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-line transition-opacity duration-500 ease-out" style="opacity: 0;" aria-hidden="true"></div></header><!----> <main id="main" class="relative z-10 flex-1"><!--[0--><!--[--><!--[--><!----> <article class="mx-auto max-w-2xl px-4 py-16 sm:px-6 sm:py-24"><a href="/zh/guides" class="inline-flex items-center gap-1.5 rounded-md text-sm text-ink-soft ring-focus transition-colors hover:text-ink"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-left h-4 w-4"><!--[--><!----><path d="m12 19-7-7 7-7"><!----></path><!----><!----><path d="M19 12H5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> 所有指南</a> <h1 class="mt-6 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">游戏存档同步工具对比：Hoard 与 Ludusavi、Syncthing、OpenSave 等</h1> <!--[0--><p class="mt-3 font-mono text-xs uppercase tracking-[0.14em] text-ink-faint">更新于
+      2026-09-01</p><!--]--> <div class="prose mt-8 svelte-6rcv4m"><!----><p>Steam 云存档只覆盖你在 Steam 上买的游戏，而且还得开发者愿意打开这个开关。模拟器、GOG、Epic、itch.io、非 Steam 的游戏、任何装了 MOD 的东西，统统不在其中。如果你在不止一台机器上玩——比如一台台式机加一台 Steam Deck——最后就是手动复制文件夹，然后祈祷自己拿的是最新的那一份。</p>
+<p>有好几款工具在解决这件事，而它们做的并不是同一件事。有的做本地备份，有的在设备之间镜像文件夹，有的上传到云端。这一页把它们逐个过一遍，说清楚每一款真正擅长什么。Hoard 是我自己的项目，所以诚实的部分放在最后：一节讲 Hoard 输在哪里，再加一张即使你一个字都不信正文也能读的表。</p>
+<h2>Ludusavi</h2>
+<p>最有名的一款，而且名副其实。Ludusavi（作者 mtkennerly）是一款免费开源的备份工具，有图形界面也有命令行，建立在收录了数万款游戏存档位置的社区清单之上——本页几乎所有工具用的都是同一份清单，Hoard 也不例外。它保留带版本的本地备份，并且可以通过配置 Rclone 推送到你自己的云。</p>
+<p><strong>适合：</strong> 想要本地备份、完全掌控，并且任何地方都不想有服务器的人。它是这份名单里最稳妥的选择，而且一分钱不花。</p>
+<p><strong>止步之处：</strong> 跨机器同步是要你自己拼出来的。安排备份、配置 Rclone 远端，然后记得在开玩<em>之前</em>到另一台电脑上还原。它确实可行，但没有任何东西会阻止你忘掉最后一步。</p>
+<h2>Syncthing</h2>
+<p>它根本不是游戏工具，而是一个通用的点对点文件夹镜像，而且做得很好。把存档文件夹指给它，它就会出现在你其他设备上。</p>
+<p><strong>适合：</strong> 你本来就在用它，并且希望文件同时存在两处、中间不经过任何云。</p>
+<p><strong>止步之处：</strong> 它做的是镜像，不是快照。一个损坏的存档会在几秒内到达每一台设备，速度和一个完好的存档一模一样。它的版本保留是按文件的，完全不知道&quot;一局游戏&quot;是什么概念，所以&quot;回到周二晚上的样子&quot;得靠你手工拼回来。两台机器都离线玩过之后，你拿到的是冲突文件，不是合并结果。</p>
+<h2>OpenSave</h2>
+<p>专为存档而做的点对点同步，用 Go 写成，MIT 许可，支持 Windows、Linux 和 Steam Deck。不需要账号也不需要服务器：设备之间互相配对，通过局域网或中继的房间码同步。每次改动都会生成快照，有分支可以放平行的存档进度，冲突按同步谱系而不是按时钟解决，传输只走变化的数据块。也可以选择镜像到 Drive、Dropbox、OneDrive 或 WebDAV。</p>
+<p><strong>适合：</strong> 说什么都不肯注册账号，而且设备同时开机的机会足够多的人。</p>
+<p><strong>止步之处：</strong> 点对点意味着存档只活在你自己的设备上。如果那台存着唯一一份最新存档的 Deck 坏了，而镜像又从来没配置过，那就到此为止。要同步，两台设备都得开着；另外没有 macOS 版本。</p>
+<h2>OpenCloudSaves</h2>
+<p>一个跨平台的图形界面，把你的存档文件夹同步到你已经在付费的云上——OneDrive、Google Drive、Dropbox、Nextcloud——底层用的是 Rclone。</p>
+<p><strong>适合：</strong> 想把存档放进已经拥有的存储空间，并且宁可点界面也不想写 Rclone 配置文件的人。</p>
+<p><strong>止步之处：</strong> 没有基于内容的去重。一个 2 GB 存档保十份，就是吃掉你 Drive 配额的 20 GB；而且网盘同步的是文件而不是游戏会话，你取回来的只是文件夹当时的样子。</p>
+<h2>Game Backup Monitor</h2>
+<p>以 Windows 为主，也是整个门类的鼻祖。GBM 盯着游戏进程，等你退出时用 7-Zip 压缩存档，并保留一份编号的历史。</p>
+<p><strong>适合：</strong> 只有一台 Windows 电脑，想要一份压缩好的本地归档、完全不用动脑的人。</p>
+<p><strong>止步之处：</strong> 它是备份工具，不是同步工具。把归档弄到第二台机器上是你自己的事，而 Steam Deck / SteamOS 也不是它的主场。</p>
+<h2>Aletheia</h2>
+<p>这一组里最新的一款，AGPL 许可，而且专攻别人都只覆盖了一半的那块：启动器。Heroic、itch.io、Lutris、Steam、GOG Galaxy 和 Xbox，覆盖 Windows、Linux 和 macOS。</p>
+<p><strong>适合：</strong> 游戏库散落在其他工具识别得不好的启动器上，尤其是 Xbox / Game Pass 和 Heroic。</p>
+<p><strong>止步之处：</strong> 这是一个年轻的项目，范围也是刻意收窄的。功能就是备份和还原，背后并没有一个带版本的云。</p>
+<h2>SaveSync</h2>
+<p>唯一的商业产品，在 Steam 上买断制出售，以 Windows 为主。它的巧思在于：它瞄准的并不是&quot;你和你的两台电脑&quot;，而是联机合作。存档会存进私有且不公开列出的 Steam 创意工坊条目，好让朋友把你的《Valheim》或《Factorio》世界拉走；另外也有局域网同步。</p>
+<p><strong>适合：</strong> 你要解决的问题是&quot;朋友开房，我需要他那份存档&quot;，而不是&quot;让我的存档跟着我走&quot;。</p>
+<p><strong>止步之处：</strong> 闭源、限 Windows、把 Steam 当作传输通道，而且支持的是一份联机游戏清单，不是你拥有的一切。</p>
+<h2>关于 EmuDeck 的一点说明</h2>
+<p>这类讨论里常常会提到 EmuDeck，但它并不是通常意义上的竞品：它是 Steam Deck 上的模拟器安装与配置工具，所提供的同步只是附在这份工作上的便利功能（用 Rclone 对接网盘，而且仅限模拟器存档）。它和上面这些工具有重叠，却不是同一类东西：EmuDeck 负责把模拟器给你装好配好，这里的工具负责照看整个游戏库的存档。确实有人把 EmuDeck 和其中一款搭配着用，那是合理的组合，并不重复。</p>
+<h2>Hoard</h2>
+<p>Hoard 以一次游戏会话作为单位。引擎作为后台服务运行——<code>hoardd</code>，没有窗口，所以在 SteamOS 的游戏模式下照样工作——它会察觉你已经不玩了，然后在那一刻拍下快照，而不是在游戏进行中对每一次文件写入做出反应。</p>
+<ul>
+<li><strong>按会话的版本历史。</strong> 每一次会话都是一个可以回退到的版本，哪怕是在硬盘故障或者全新安装之后。</li>
+<li><strong>基于内容哈希的去重。</strong> 一个 2 GB 存档的十个版本大约只占 2 GB，而不是 20 GB。传输使用 zstd 压缩。</li>
+<li><strong>上传和下载都做 SHA-256 校验。</strong> 损坏会在覆盖掉一个完好存档之前被抓出来。任何东西都不会被悄悄覆盖——整个设计就是围着这一点转的。</li>
+<li><strong>云端或自托管，同一个二进制。</strong> Hoard Cloud 有免费额度（2 GB、3 台设备、完整历史）。或者你用 Docker Compose 自己跑 <code>hoard-server</code>，对接任何兼容 S3 的存储——MinIO、Garage、Backblaze B2——不需要账号，也没有配额。AGPL-3.0。</li>
+<li><strong>Windows、Linux、macOS</strong>，另外还有一个无界面的命令行版本，适合 Steam Deck 或服务器。</li>
+<li><strong>模拟器支持处于测试阶段：</strong> PCSX2、RPCS3、Dolphin、Cemu、Ryujinx、RetroArch、DuckStation、PPSSPP 等以预设形式提供。</li>
+</ul>
+<h2>决定 Steam Deck ↔ PC 同步成败的那个细节</h2>
+<p>不管你最后选哪款工具，这一点都值得知道。Steam 游戏的云存档位于 <code>&lt;AppID&gt;/remote/</code>，而它<em>上一层</em>的文件夹里放着 <code>remotecache.vdf</code>、成就状态、统计数据和游戏时长计数器——这些东西在你的 Deck 和台式机上本来就应该不一样。</p>
+<p>同步父文件夹，你就会在两台从未在任何一个存档上产生分歧的机器之间，制造出永久的冲突。Hoard 跟踪的是 <code>remote/</code>，不是父文件夹。任何允许你手动指定文件夹的工具都可以照此设置；当一套同步配置莫名其妙地不断报冲突时，这也是第一个该去检查的地方。</p>
+<h2>Hoard 输在哪里</h2>
+<ul>
+<li><strong>它需要一台服务器。</strong> 云端账号也好，自己的机器也罢，总归是基础设施；而 OpenSave 或 Ludusavi 一台都不需要。</li>
+<li><strong>模拟器支持还在测试阶段。</strong> 便携式安装和各家模拟器的怪癖仍然会绊到它，某些启动器和模拟器的边缘情况，今天 Aletheia 和 OpenSave 处理得更好。</li>
+<li><strong>macOS 几乎没在真机上验证过。</strong> 能编译也能跑，但没有人在上面长期用过几个月。</li>
+<li><strong>它还年轻。</strong> Ludusavi 和 Game Backup Monitor 背后有好几年的问题反馈积累，Hoard 没有；对于一个要守着 200 小时存档的软件来说，这个差距不轻。</li>
+<li><strong>它不做联机存档共享。</strong> 想把一个世界递给朋友，那是 SaveSync 的活儿，不是 Hoard 的。</li>
+</ul>
+<h2>Hoard Cloud 与自托管的区别</h2>
+<p>关于 Hoard 的比较几乎总把这两者混为一谈，结论也就跟着错了。所以直说：</p>
+<ul>
+<li><strong>Hoard Cloud</strong> 是托管方案：你登录，存档保存在我们位于欧盟的服务器上。</li>
+<li><strong>自托管的 Hoard 完全属于你。</strong> 你在自己的 PC 或 NAS 上运行 <code>hoard-server</code>，存档从你的机器走到你的磁盘。<strong>没有我们这边的账号，没有发往我们的遥测，没有配额，也没有中转</strong>——不经过我们的任何服务器，因为这条路径上根本没有我们的东西。我们看不到任何存档、游戏名或邮箱地址，因为这些从未到达我们这里。就算 Hoard Cloud 明天关停，自托管的部署照常运行。</li>
+</ul>
+<p>同一个二进制、同样的检测、同样的版本历史。唯一变化的是存储归谁所有。有一点要说准确：你自己的服务器确实有它的登录——一个用户和每台设备一个令牌——但它们在你的数据库里，不在我们的。</p>
+<h2>对比表</h2>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>设备之间自动同步</th>
+<th>存档放在哪里</th>
+<th>历史</th>
+<th>平台</th>
+<th>许可</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Hoard</strong></td>
+<td>是，按游戏会话</td>
+<td>Hoard Cloud 或你自己的服务器（兼容 S3）</td>
+<td>按会话版本化，带去重</td>
+<td>Win · Linux · macOS · Deck</td>
+<td>AGPL-3.0，有免费额度</td>
+</tr>
+<tr>
+<td><strong>Ludusavi</strong></td>
+<td>手动，或你自己搭的 Rclone</td>
+<td>本地，外加你的 Rclone 远端</td>
+<td>带版本的本地备份</td>
+<td>Win · Linux · macOS</td>
+<td>免费开源</td>
+</tr>
+<tr>
+<td><strong>Syncthing</strong></td>
+<td>是，持续镜像</td>
+<td>只在你的设备上</td>
+<td>按文件的版本保留</td>
+<td>全平台</td>
+<td>免费开源</td>
+</tr>
+<tr>
+<td><strong>OpenSave</strong></td>
+<td>是，点对点</td>
+<td>你的设备，可选云端镜像</td>
+<td>快照与分支</td>
+<td>Win · Linux · Deck</td>
+<td>MIT</td>
+</tr>
+<tr>
+<td><strong>OpenCloudSaves</strong></td>
+<td>是，经由你的网盘</td>
+<td>OneDrive / Drive / Dropbox / Nextcloud</td>
+<td>取决于网盘保留什么</td>
+<td>Win · Linux · macOS</td>
+<td>免费开源</td>
+</tr>
+<tr>
+<td><strong>Game Backup Monitor</strong></td>
+<td>否</td>
+<td>本地 7-Zip 归档</td>
+<td>编号备份</td>
+<td>Windows</td>
+<td>免费开源</td>
+</tr>
+<tr>
+<td><strong>Aletheia</strong></td>
+<td>按启动器备份与还原</td>
+<td>你自己的存储</td>
+<td>备份</td>
+<td>Win · Linux · macOS</td>
+<td>AGPL-3.0</td>
+</tr>
+<tr>
+<td><strong>SaveSync</strong></td>
+<td>是，还能和朋友同步</td>
+<td>私有的 Steam 创意工坊条目</td>
+<td>视应用而定</td>
+<td>Windows</td>
+<td>付费闭源</td>
+</tr>
+</tbody></table>
+<h2>那么选哪个</h2>
+<p>如果你只想保住一台机器，别的都不管，选 Ludusavi 或 Game Backup Monitor。如果你无论如何都不想要账号，而且设备通常同时开着，选 OpenSave。如果存档应该落进一个你已经在付费的 Drive 文件夹里，选 OpenCloudSaves。如果你要和朋友共享一个联机世界，选 SaveSync。</p>
+<p>如果你想要的是备份<em>和</em>跨 PC 与 Steam Deck 的同步自己就发生，每一次会话都有一个可以回退的版本，并且保留把整套东西自托管的选项——那正是 Hoard 存在的理由。<a href="/zh/download">下载它</a>，或者先读一读<a href="/zh/guides/self-host-hoard">如何用 Docker 自托管</a>。如果你正在权衡的对手就是 Ludusavi，这里还有一篇<a href="/zh/guides/ludusavi-alternative">更详细的对比</a>。</p>
+<h2>一对一比较</h2>
+<p>下面每一篇都比上面的段落更深入，也包括对方胜出的地方：</p>
+<ul>
+<li><a href="/zh/guides/ludusavi-alternative">Hoard 与 Ludusavi</a></li>
+<li><a href="/zh/guides/steam-cloud-alternative">用 Hoard 替代 Steam 云存档</a></li>
+<li><a href="/zh/guides/opensave-alternative">点对点同步与一台属于你的服务器</a></li>
+<li><a href="/zh/guides/syncthing-game-saves">用 Syncthing 同步存档会坏在哪里</a></li>
+</ul>
+<h2>常见问题</h2>
+<h3>这些工具里，哪个保留版本历史？</h3>
+<p>Hoard 把每次游玩留成一个可回退的版本。Ludusavi 保留带版本的本地备份。其余大多数只是同步或复制当前状态，也就是说损坏的存档会被忠实地传到你的另一台机器上。</p>
+<h3>哪个不需要服务器也不需要账号？</h3>
+<p>用作本地备份的 Ludusavi，以及任何点对点工具。如果你自托管，Hoard 也算在内：没有我们这边的账号，也没有任何东西经过我们的服务器。</p>
+<h3>哪个能覆盖不在 Steam 上的游戏？</h3>
+<p>这里列出的存档管理工具都可以，因为它们通过同一份社区数据库定位存档，而不是通过商店。例外是 Steam 云存档：它只覆盖开发者启用了它的 Steam 游戏。</p>
+<h3>我必须只选一个吗？</h3>
+<p>不必，很多人也没有只选一个。本地备份工具和同步工具解决的是问题的不同一半。唯一的原则是：永远不要让其中一个指向另一个的备份文件夹，否则你同步的会是一份过期镜像，而不是真正的存档。</p>
+<h3>让多数自制方案翻车的，是哪个细节？</h3>
+<p>同步 Steam <code>userdata</code> 里 <code>&lt;AppID&gt;/remote/</code> 的上一层文件夹。上一层放着 <code>remotecache.vdf</code> 以及本就应该因机器而异的成就和游戏时长文件，于是每次启动都像冲突，尽管没有任何存档动过。</p>
+<!----></div> <div class="mt-14 rounded-xl border border-line bg-surface p-6"><h2 class="font-display text-lg font-semibold text-ink">准备好保护你的存档了吗？</h2> <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">下载 Hoard，几分钟即可设置自动、带版本管理的备份。</p> <a href="/zh/download" class="mt-4 inline-flex h-10 items-center rounded-lg bg-accent px-4 text-sm font-medium text-pine ring-focus transition-colors hover:bg-emerald-300">下载</a></div></article><!--]--><!----><!--]--><!--]--><!----></main> <footer class="mt-auto border-t border-line" data-sveltekit-preload-code="viewport"><div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 grid-cols-2 md:grid-cols-4"><div class="col-span-2 md:col-span-1"><div class="flex items-center gap-2.5"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="26" height="26" aria-hidden="true"><rect x="1" y="1" width="62" height="62" rx="13" fill="var(--color-pine-elev, #19231c)" stroke="var(--color-pine-line, #28332b)" stroke-width="2"></rect><rect x="9" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="41" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="9" y="25" width="46" height="14" rx="5" fill="#34d399"></rect></svg><!----> <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span> <span class="ml-1 rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[10px] tracking-wider text-ink-soft">v1.1.6</span></div> <p class="mt-3 max-w-xs text-sm leading-relaxed text-ink-soft">为你的游戏存档提供同步和带版本的备份。用 Rust 打造，开源。</p></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">产品</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/zh/pricing">价格</a></li> <li><a class="link-underline hover:text-ink" href="/zh/download">下载</a></li> <li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard/blob/main/CHANGELOG.md" rel="noreferrer">更新日志</a></li> <li><a class="link-underline hover:text-ink" href="/zh/guides">指南</a></li> <li><a class="link-underline hover:text-ink" href="/zh/help">状态</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">公司</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard" rel="noreferrer">GitHub</a></li> <li><a class="link-underline hover:text-ink" href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer">Discord</a></li> <li><a class="link-underline hover:text-ink" href="/zh/help">联系</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">法律</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/zh/legal/terms">条款</a></li> <li><a class="link-underline hover:text-ink" href="/zh/legal/privacy">隐私</a></li> <li><a class="link-underline hover:text-ink" href="/zh/legal/subprocessors">次级处理方</a></li> <li><a class="link-underline hover:text-ink" href="/zh/legal/notice">法律声明</a></li></ul></div></div> <div class="border-t border-line"><p class="mx-auto max-w-6xl px-4 py-4 text-xs text-ink-faint sm:px-6">© 2026 Hoard · Raimundo León Oliva · AGPL-3.0</p></div></footer><!----></div><!--]--><!--]--> <!--[-1--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_i6416b = {
+						base: new URL("../..", location).pathname.slice(0, -1),
+						env: null
+					};
+
+					const element = document.currentScript.parentElement;
+
+					import("../../_app/env.js").then(({ env }) => {
+						__sveltekit_i6416b.env = env;
+
+						Promise.all([
+							import("../../_app/immutable/entry/start.Bv9fO-Dl.js"),
+							import("../../_app/immutable/entry/app.DoJpZpIJ.js")
+						]).then(([kit, app]) => {
+							kit.start(app, element, {
+									node_ids: [0, 2, 8],
+									data: [null,null,null],
+									form: null,
+									error: null
+								});
+						});
+					});
+				}
+			</script>
+		</div>
+  </body>
+</html>

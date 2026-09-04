@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../../favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png" />
+    <link rel="mask-icon" href="../../favicon.svg" color="#047857" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0f0c" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Per-page title/description/canonical/OG/hreflang come from <Seo>; see $lib/components/Seo.svelte. -->
+    <link href="../../_app/immutable/entry/start.Bv9fO-Dl.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DM4nI_SJ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D280JA-S.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/R6czw0ix.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/OA8UcISh.js" rel="modulepreload">
+		<link href="../../_app/immutable/entry/app.DoJpZpIJ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Dp1pzeXC.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3cuW3tw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Bzak7iHL.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ogaUi5l8.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B709xuIM.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DiqhoAlS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BnhOS97m.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7_OtiQB.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/0.B7e3jHvd.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3ZM-Apl.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/C4BeUwog.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CjPXEXvS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CQcT7K4l.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B1IsZ4X6.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Baiqwrok.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ZljVK2eG.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BHEZUQJA.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BB8cOoWK.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Cft1C6nZ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CnUB1uiG.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DYjxnFFo.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/2.ClkBtYjW.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/8.BJWNUN1w.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CYf_2dI-.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7xU1dRw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DkuOv9M8.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DjQFue8R.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BgQYEE7T.js" rel="modulepreload">
+		<link href="../../_app/env.js" rel="modulepreload">
+		<!--6rcv4m--><!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Sincronizzazione dei salvataggi a confronto: Hoard contro Ludusavi, Syncthing, OpenSave e le altre","description":"Confronto onesto degli strumenti che copiano e sincronizzano i salvataggi PC — Ludusavi, Syncthing, OpenSave, OpenCloudSaves, Game Backup Monitor, Aletheia, SaveSync e Hoard — con tabella e una sezione su dove Hoard perde.","inLanguage":"it","datePublished":"2026-09-01","dateModified":"2026-09-01","mainEntityOfPage":"https://hoard.services/it/guides/game-save-sync-comparison","author":{"@type":"Organization","name":"Hoard","url":"https://hoard.services"},"publisher":{"@type":"Organization","name":"Hoard","logo":{"@type":"ImageObject","url":"https://hoard.services/icon-512.png"}}}</script><!----> <!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","inLanguage":"it","mainEntity":[{"@type":"Question","name":"Quale di questi strumenti tiene una cronologia delle versioni?","acceptedAnswer":{"@type":"Answer","text":"\u003cp>Hoard conserva ogni sessione come una versione a cui tornare. Ludusavi tiene backup locali versionati. Quasi tutti gli altri sincronizzano o copiano lo stato attuale, quindi un salvataggio corrotto viene propagato fedelmente all&#39;altra macchina.\u003c/p>\n"}},{"@type":"Question","name":"Quale funziona senza server né account?","acceptedAnswer":{"@type":"Answer","text":"\u003cp>Ludusavi con i backup locali, e qualsiasi strumento peer-to-peer. Ci rientra anche Hoard se fai self-hosting: nessun account con noi e niente che passi dai nostri server.\u003c/p>\n"}},{"@type":"Question","name":"Quale copre i giochi che non stanno su Steam?","acceptedAnswer":{"@type":"Answer","text":"\u003cp>Tutti i gestori di salvataggi elencati, perché individuano i file tramite lo stesso database comunitario e non attraverso un negozio. L&#39;eccezione è Steam Cloud: copre solo i giochi Steam il cui sviluppatore l&#39;ha attivata.\u003c/p>\n"}},{"@type":"Question","name":"Devo sceglierne uno solo?","acceptedAnswer":{"@type":"Answer","text":"\u003cp>No, e molti non lo fanno. Uno strumento di backup locale e uno di sincronizzazione risolvono metà diverse del problema. L&#39;unica regola è non puntare mai uno alla cartella di backup dell&#39;altro, o finisci per sincronizzare un mirror vecchio invece del salvataggio reale.\u003c/p>\n"}},{"@type":"Question","name":"Qual è il dettaglio che rompe quasi tutti i setup fai-da-te?","acceptedAnswer":{"@type":"Answer","text":"\u003cp>Sincronizzare la cartella sopra \u003ccode>&lt;AppID&gt;/remote/\u003c/code> dentro \u003ccode>userdata\u003c/code> di Steam. Quella superiore contiene \u003ccode>remotecache.vdf\u003c/code> e i file di obiettivi e tempo di gioco, che devono differire da macchina a macchina: ogni avvio sembra un conflitto anche se nessun salvataggio si è mosso.\u003c/p>\n"}}]}</script><!----><!----><!--gsrl61--><meta name="description" content="Confronto onesto degli strumenti che copiano e sincronizzano i salvataggi PC — Ludusavi, Syncthing, OpenSave, OpenCloudSaves, Game Backup Monitor, Aletheia, SaveSync e Hoard — con tabella e una sezione su dove Hoard perde."/> <link rel="canonical" href="https://hoard.services/it/guides/game-save-sync-comparison"/> <!--[--><link rel="alternate" hreflang="en" href="https://hoard.services/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="es" href="https://hoard.services/es/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="de" href="https://hoard.services/de/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="fr" href="https://hoard.services/fr/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="it" href="https://hoard.services/it/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="ja" href="https://hoard.services/ja/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="pt" href="https://hoard.services/pt/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="zh" href="https://hoard.services/zh/guides/game-save-sync-comparison"/><!--]--> <link rel="alternate" hreflang="x-default" href="https://hoard.services/guides/game-save-sync-comparison"/> <meta property="og:type" content="article"/> <meta property="og:site_name" content="Hoard"/> <meta property="og:title" content="Sincronizzazione dei salvataggi a confronto: Hoard contro Ludusavi, Syncthing, OpenSave e le altre — Hoard"/> <meta property="og:description" content="Confronto onesto degli strumenti che copiano e sincronizzano i salvataggi PC — Ludusavi, Syncthing, OpenSave, OpenCloudSaves, Game Backup Monitor, Aletheia, SaveSync e Hoard — con tabella e una sezione su dove Hoard perde."/> <meta property="og:url" content="https://hoard.services/it/guides/game-save-sync-comparison"/> <meta property="og:image" content="https://hoard.services/app.webp"/> <meta property="og:locale" content="it_IT"/> <!--[--><meta property="og:locale:alternate" content="en_US"/><meta property="og:locale:alternate" content="es_ES"/><meta property="og:locale:alternate" content="de_DE"/><meta property="og:locale:alternate" content="fr_FR"/><meta property="og:locale:alternate" content="ja_JP"/><meta property="og:locale:alternate" content="pt_PT"/><meta property="og:locale:alternate" content="zh_CN"/><!--]--> <meta name="twitter:card" content="summary_large_image"/> <meta name="twitter:title" content="Sincronizzazione dei salvataggi a confronto: Hoard contro Ludusavi, Syncthing, OpenSave e le altre — Hoard"/> <meta name="twitter:description" content="Confronto onesto degli strumenti che copiano e sincronizzano i salvataggi PC — Ludusavi, Syncthing, OpenSave, OpenCloudSaves, Game Backup Monitor, Aletheia, SaveSync e Hoard — con tabella e una sezione su dove Hoard perde."/> <meta name="twitter:image" content="https://hoard.services/app.webp"/><!----><title>Sincronizzazione dei salvataggi a confronto: Hoard contro Ludusavi, Syncthing, OpenSave e le altre — Hoard</title>
+		<link href="../../_app/immutable/assets/0.9JCwSkJ0.css" rel="stylesheet">
+		<link href="../../_app/immutable/assets/8.9SD7pss8.css" rel="stylesheet">
+  </head>
+  <body class="antialiased">
+    <div style="display: contents"><!--[--><!--[0--><!--[--><div class="relative isolate flex min-h-full flex-col text-ink" data-sveltekit-preload-data="hover"><a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent-deep focus:px-3 focus:py-2 focus:text-sm focus:text-white">Skip to content</a> <header class="sticky top-0 z-40 w-full bg-bg/80 backdrop-blur-md"><nav class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]"><a href="/it" class="nav-pill flex items-center gap-2.5 ring-focus md:justify-self-start" aria-label="Hoard home"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><rect x="1" y="1" width="62" height="62" rx="13" fill="var(--color-pine-elev, #19231c)" stroke="var(--color-pine-line, #28332b)" stroke-width="2"></rect><rect x="9" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="41" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="9" y="25" width="46" height="14" rx="5" fill="#34d399"></rect></svg><!----> <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span></a> <div class="hidden items-center gap-1 md:flex md:justify-self-center"><a href="/it/download" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">Scarica</a> <a href="/it/pricing" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">Prezzi</a> <a href="/it/cli" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">CLI</a> <a href="/it/guides" class="nav-pill ring-focus text-sm nav-pill-active">Guide</a> <a href="/it/help" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">Aiuto</a></div> <div class="hidden items-center gap-3 md:flex md:justify-self-end"><details class="group relative svelte-1h32yp1"><summary class="nav-pill flex cursor-pointer list-none items-center gap-1.5 text-sm text-ink-soft ring-focus [&amp;::-webkit-details-marker]:hidden" aria-label="Language"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-globe h-4 w-4"><!--[--><!----><circle cx="12" cy="12" r="10"><!----></circle><!----><!----><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"><!----></path><!----><!----><path d="M2 12h20"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <span class="font-medium">Italiano</span></summary> <div data-sveltekit-preload-data="tap" class="lang-menu absolute right-0 z-50 mt-2 min-w-40 overflow-hidden rounded-lg border border-line bg-bg/95 py-1 shadow-lg backdrop-blur-md svelte-1h32yp1"><!--[--><a href="/guides/game-save-sync-comparison" hreflang="en" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">English <!--[-1--><!--]--></a><a href="/es/guides/game-save-sync-comparison" hreflang="es" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Español <!--[-1--><!--]--></a><a href="/de/guides/game-save-sync-comparison" hreflang="de" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Deutsch <!--[-1--><!--]--></a><a href="/fr/guides/game-save-sync-comparison" hreflang="fr" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Français <!--[-1--><!--]--></a><a href="/it/guides/game-save-sync-comparison" hreflang="it" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink">Italiano <!--[0--><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-check h-3.5 w-3.5 text-accent"><!--[--><!----><path d="M20 6 9 17l-5-5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!--]--></a><a href="/ja/guides/game-save-sync-comparison" hreflang="ja" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">日本語 <!--[-1--><!--]--></a><a href="/pt/guides/game-save-sync-comparison" hreflang="pt" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Português <!--[-1--><!--]--></a><a href="/zh/guides/game-save-sync-comparison" hreflang="zh" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">中文 <!--[-1--><!--]--></a><!--]--></div></details> <!--[0--><span class="h-9 w-24 animate-pulse rounded-md bg-ink/5"></span><!--]--> <a href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer" aria-label="Discord" title="Discord" class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#5865F2] text-white ring-focus transition-colors hover:bg-[#4752C4]"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.515.0699.0699 0 0 0-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 0 1 .0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 0 1-.0066.1276 12.2986 12.2986 0 0 1-1.873.8914.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 0 0 .0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 0 0 .0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"></path></svg><!----></a></div> <button class="md:hidden grid h-10 w-10 place-items-center rounded-lg text-ink-soft ring-focus hover:bg-ink/5" aria-label="Toggle menu" aria-expanded="false"><span class="relative h-5 w-5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-menu absolute inset-0 h-5 w-5 transition-all duration-300 opacity-100 rotate-0"><!--[--><!----><line x1="4" x2="20" y1="12" y2="12"><!----></line><!----><!----><line x1="4" x2="20" y1="6" y2="6"><!----></line><!----><!----><line x1="4" x2="20" y1="18" y2="18"><!----></line><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-x absolute inset-0 h-5 w-5 transition-all duration-300 opacity-0 -rotate-90"><!--[--><!----><path d="M18 6 6 18"><!----></path><!----><!----><path d="m6 6 12 12"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></span></button></nav> <!--[-1--><!--]--> <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-line transition-opacity duration-500 ease-out" style="opacity: 0;" aria-hidden="true"></div></header><!----> <main id="main" class="relative z-10 flex-1"><!--[0--><!--[--><!--[--><!----> <article class="mx-auto max-w-2xl px-4 py-16 sm:px-6 sm:py-24"><a href="/it/guides" class="inline-flex items-center gap-1.5 rounded-md text-sm text-ink-soft ring-focus transition-colors hover:text-ink"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-left h-4 w-4"><!--[--><!----><path d="m12 19-7-7 7-7"><!----></path><!----><!----><path d="M19 12H5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> Tutte le guide</a> <h1 class="mt-6 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">Sincronizzazione dei salvataggi a confronto: Hoard contro Ludusavi, Syncthing, OpenSave e le altre</h1> <!--[0--><p class="mt-3 font-mono text-xs uppercase tracking-[0.14em] text-ink-faint">Aggiornato
+      2026-09-01</p><!--]--> <div class="prose mt-8 svelte-6rcv4m"><!----><p>Steam Cloud copre solo i giochi comprati su Steam, e solo quando lo sviluppatore si è preso la briga di attivarlo. Emulatori, GOG, Epic, itch.io, giochi non Steam, qualsiasi cosa con mod: niente di tutto questo rientra. Se giochi su più macchine, un fisso e uno Steam Deck per dire, finisci a copiare cartelle a mano sperando di aver preso la più recente.</p>
+<p>Diversi strumenti risolvono la cosa, e non fanno tutti lo stesso. Alcuni fanno copie locali, altri replicano cartelle tra dispositivi, altri caricano su un cloud. Questa pagina li passa in rassegna e dice in cosa ciascuno è davvero bravo. Hoard è il mio progetto, quindi la parte onesta arriva alla fine: una sezione su dove Hoard perde, e una tabella che puoi leggere senza credere a una parola del testo.</p>
+<h2>Ludusavi</h2>
+<p>Il più noto, e a ragione. Ludusavi (di mtkennerly) è uno strumento di backup gratuito e open source, con interfaccia e con CLI, costruito sul manifesto comunitario delle posizioni dei salvataggi che copre decine di migliaia di giochi: lo stesso manifesto che usano quasi tutti quelli di questa lista, Hoard compreso. Tiene copie locali versionate e può spingerle su un cloud tuo tramite Rclone.</p>
+<p><strong>Il migliore se:</strong> vuoi copie locali, controllo totale e nessun server da nessuna parte. È la scelta più sicura della lista e non costa nulla.</p>
+<p><strong>Dove si ferma:</strong> la sincronizzazione tra macchine è una cosa che monti tu. Pianifichi un backup, configuri un remote Rclone e ti ricordi di ripristinare sull&#39;altro PC <em>prima</em> di giocare. Funziona, ma nulla ti impedisce di dimenticare l&#39;ultimo passo.</p>
+<h2>Syncthing</h2>
+<p>Non è affatto uno strumento per giochi: è uno specchio di cartelle peer-to-peer generico, e molto buono. Gli indichi una cartella di salvataggi e compare sugli altri dispositivi.</p>
+<p><strong>Il migliore se:</strong> lo usi già e vuoi i file in due posti senza cloud in mezzo.</p>
+<p><strong>Dove si ferma:</strong> replica, non fotografa. Un salvataggio corrotto raggiunge ogni dispositivo in pochi secondi, esattamente alla stessa velocità di uno buono. Il versionamento è per file, senza alcuna idea di cosa sia una sessione di gioco, quindi «torna a com&#39;era martedì sera» te lo ricostruisci a mano. Due macchine che hanno giocato entrambe offline ti danno file di conflitto, non una fusione.</p>
+<h2>OpenSave</h2>
+<p>Sincronizzazione peer-to-peer costruita apposta per i salvataggi, in Go, con licenza MIT, per Windows, Linux e Steam Deck. Nessun account, nessun server: i dispositivi si accoppiano tra loro e sincronizzano sulla rete locale o tramite un codice stanza su un relay. Ogni modifica diventa uno snapshot, ci sono i branch per partite parallele, i conflitti si risolvono per lignaggio di sincronizzazione invece che per orologio, e viaggiano solo i blocchi cambiati. Volendo può replicare su Drive, Dropbox, OneDrive o WebDAV.</p>
+<p><strong>Il migliore se:</strong> ti rifiuti di avere un account e i tuoi dispositivi sono accesi insieme abbastanza spesso.</p>
+<p><strong>Dove si ferma:</strong> peer-to-peer vuol dire che il salvataggio vive solo sui tuoi dispositivi. Se muore il Deck con l&#39;unica copia recente e la replica non era configurata, è finita. Per sincronizzare devono essere accesi entrambi i dispositivi, e non c&#39;è una build per macOS.</p>
+<h2>OpenCloudSaves</h2>
+<p>Un&#39;interfaccia multipiattaforma che sincronizza le cartelle dei salvataggi su un cloud che già paghi — OneDrive, Google Drive, Dropbox, Nextcloud — con Rclone sotto.</p>
+<p><strong>Il migliore se:</strong> vuoi i salvataggi in uno spazio di archiviazione che hai già, con un&#39;interfaccia invece dei file di configurazione di Rclone.</p>
+<p><strong>Dove si ferma:</strong> non c&#39;è deduplicazione a livello di contenuto. Dieci copie di un salvataggio da 2 GB sono 20 GB della tua quota Drive, e i cloud di file sincronizzano file, non sessioni di gioco: quel che recuperi è com&#39;era la cartella in quel momento.</p>
+<h2>Game Backup Monitor</h2>
+<p>Prima Windows, e il capostipite di tutto il genere. GBM sorveglia il processo del gioco e, quando esci, comprime il salvataggio con 7-Zip tenendo una cronologia numerata.</p>
+<p><strong>Il migliore se:</strong> sei su un solo PC Windows e vuoi un archivio locale compresso senza pensarci.</p>
+<p><strong>Dove si ferma:</strong> è uno strumento di backup, non di sincronizzazione. Portare l&#39;archivio su una seconda macchina è affare tuo, e Steam Deck / SteamOS non è il suo terreno.</p>
+<h2>Aletheia</h2>
+<p>Il più nuovo del gruppo, AGPL, e va proprio sulla parte che gli altri coprono a metà: i launcher. Heroic, itch.io, Lutris, Steam, GOG Galaxy e Xbox, su Windows, Linux e macOS.</p>
+<p><strong>Il migliore se:</strong> la tua libreria è sparsa tra launcher che gli altri strumenti rilevano male, soprattutto Xbox/Game Pass e Heroic.</p>
+<p><strong>Dove si ferma:</strong> è un progetto giovane con un perimetro volutamente stretto. Copia e ripristino sono tutto il set di funzioni; dietro non c&#39;è un cloud versionato.</p>
+<h2>SaveSync</h2>
+<p>Quello commerciale, venduto su Steam con acquisto unico, centrato su Windows. Il suo trucco è che non punta a te-su-due-PC ma al cooperativo: i salvataggi finiscono in voci private e non elencate dello Steam Workshop così che un amico possa scaricarsi il tuo mondo di Valheim o di Factorio, e c&#39;è anche la sincronizzazione in rete locale.</p>
+<p><strong>Il migliore se:</strong> il problema che risolvi è «ospita il mio amico e mi serve il suo salvataggio», non «che i miei salvataggi mi seguano».</p>
+<p><strong>Dove si ferma:</strong> codice chiuso, Windows, legato a Steam come mezzo di trasporto, e un elenco di giochi cooperativi supportati invece di tutto quello che possiedi.</p>
+<h2>Una nota su EmuDeck</h2>
+<p>EmuDeck salta fuori in queste discussioni e non è un concorrente nel senso normale: è un installatore e configuratore di emulatori per Steam Deck, e la sincronizzazione che offre è una comodità innestata su quel lavoro (Rclone verso un cloud di file, solo per i salvataggi degli emulatori). Si sovrappone agli strumenti qui sopra senza essere la stessa cosa: EmuDeck ti sistema gli emulatori, quelli di qui si occupano dei salvataggi dell&#39;intera libreria. C&#39;è chi usa EmuDeck accanto a uno di questi, ed è una configurazione sensata, non ridondante.</p>
+<h2>Hoard</h2>
+<p>Hoard prende la sessione di gioco come unità. Il motore gira come servizio in background — <code>hoardd</code>, senza finestra, quindi funziona in modalità gioco su SteamOS —, si accorge che hai smesso di giocare e scatta lo snapshot allora, invece di reagire a ogni scrittura di file mentre giochi.</p>
+<ul>
+<li><strong>Cronologia versionata per sessione.</strong> Ogni sessione è una versione a cui tornare, anche dopo un guasto al disco o un&#39;installazione pulita.</li>
+<li><strong>Deduplicazione per hash del contenuto.</strong> Dieci versioni di un salvataggio da 2 GB costano circa 2 GB, non 20 GB. I trasferimenti sono compressi con zstd.</li>
+<li><strong>SHA-256 in salita e in discesa.</strong> La corruzione viene intercettata prima che possa sovrascrivere un salvataggio buono. Niente viene mai sovrascritto in silenzio: è tutto il senso del progetto.</li>
+<li><strong>Cloud o self-hosted, lo stesso binario.</strong> Hoard Cloud ha un piano gratuito (2 GB, 3 dispositivi, cronologia completa). Oppure avvii <code>hoard-server</code> da solo con Docker Compose su qualsiasi archiviazione compatibile S3 — MinIO, Garage, Backblaze B2 — senza account e senza quota. AGPL-3.0.</li>
+<li><strong>Windows, Linux, macOS</strong>, più una CLI senza interfaccia per uno Steam Deck o un server.</li>
+<li><strong>Emulatori in beta:</strong> PCSX2, RPCS3, Dolphin, Cemu, Ryujinx, RetroArch, DuckStation, PPSSPP e altri come preimpostazioni.</li>
+</ul>
+<h2>Il dettaglio che decide la sincronizzazione Steam Deck ↔ PC</h2>
+<p>Vale la pena saperlo qualunque strumento tu scelga. Il salvataggio cloud di un gioco Steam vive in <code>&lt;AppID&gt;/remote/</code>, e la cartella <em>sopra</em> contiene <code>remotecache.vdf</code>, lo stato degli obiettivi, le statistiche e i contatori delle ore giocate: tutte cose che legittimamente differiscono tra il Deck e il fisso.</p>
+<p>Sincronizza la cartella padre e ottieni un conflitto permanente tra due macchine che non hanno mai discordato su un solo salvataggio. Hoard traccia <code>remote/</code>, non la cartella padre. A qualsiasi strumento a cui indichi una cartella a mano si può dire lo stesso, ed è la prima cosa da controllare quando una configurazione di sincronizzazione segnala conflitti senza motivo visibile.</p>
+<h2>Dove Hoard perde</h2>
+<ul>
+<li><strong>Vuole un server.</strong> Account cloud o macchina tua, in ogni caso è infrastruttura, mentre OpenSave o Ludusavi non ne richiedono nessuna.</li>
+<li><strong>Il supporto agli emulatori è in beta.</strong> Le installazioni portatili e le manie dei singoli emulatori lo colgono ancora in fallo, e oggi Aletheia e OpenSave coprono meglio certi casi limite di launcher ed emulatori.</li>
+<li><strong>macOS è provato pochissimo su hardware vero.</strong> Compila e gira, ma nessuno ci ha vissuto per mesi.</li>
+<li><strong>È giovane.</strong> Ludusavi e Game Backup Monitor hanno anni di segnalazioni alle spalle. Hoard no, e per qualcosa che custodisce una partita da 200 ore la differenza conta.</li>
+<li><strong>Non fa condivisione cooperativa.</strong> Se vuoi passare un mondo a un amico, SaveSync è fatto per quello e Hoard no.</li>
+</ul>
+<h2>La distinzione tra Hoard Cloud e self-hosting</h2>
+<p>I confronti su Hoard quasi sempre fondono i due in uno solo, e il risultato è sbagliato. Quindi, chiaramente:</p>
+<ul>
+<li><strong>Hoard Cloud</strong> è l&#39;opzione gestita: accedi e i tuoi salvataggi stanno sui nostri server, nell&#39;UE.</li>
+<li><strong>Un Hoard self-hosted è interamente tuo.</strong> Fai girare <code>hoard-server</code> sul tuo PC o NAS e i salvataggi vanno dalla tua macchina al tuo disco. <strong>Nessun account con noi, nessuna telemetria verso di noi, nessuna quota e nessun relay</strong>: non passa nulla dai nostri server, perché sul percorso non c&#39;è niente di nostro. Non vediamo un salvataggio, il nome di un gioco o un indirizzo email, perché niente di tutto ciò ci arriva. Se Hoard Cloud chiudesse domani, un&#39;installazione self-hosted continuerebbe uguale.</li>
+</ul>
+<p>Stesso binario, stesso rilevamento, stessa cronologia. L&#39;unica cosa che cambia è di chi è lo spazio di archiviazione. E per essere esatti su un dettaglio: il tuo server ha eccome i suoi accessi — un utente e un token per dispositivo — ma vivono nel tuo database, non nel nostro.</p>
+<h2>La tabella</h2>
+<table>
+<thead>
+<tr>
+<th>Strumento</th>
+<th>Sincronizzazione automatica tra dispositivi</th>
+<th>Dove vivono i salvataggi</th>
+<th>Cronologia</th>
+<th>Piattaforme</th>
+<th>Licenza</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Hoard</strong></td>
+<td>Sì, per sessione di gioco</td>
+<td>Hoard Cloud o un tuo server (compatibile S3)</td>
+<td>Versionata per sessione, deduplicata</td>
+<td>Win · Linux · macOS · Deck</td>
+<td>AGPL-3.0, piano gratuito</td>
+</tr>
+<tr>
+<td><strong>Ludusavi</strong></td>
+<td>Manuale, o Rclone montato da te</td>
+<td>Locale, più il tuo remote Rclone</td>
+<td>Copie locali versionate</td>
+<td>Win · Linux · macOS</td>
+<td>Gratis, open source</td>
+</tr>
+<tr>
+<td><strong>Syncthing</strong></td>
+<td>Sì, specchio continuo</td>
+<td>Solo i tuoi dispositivi</td>
+<td>Versionamento per file</td>
+<td>Tutto</td>
+<td>Gratis, open source</td>
+</tr>
+<tr>
+<td><strong>OpenSave</strong></td>
+<td>Sì, peer-to-peer</td>
+<td>I tuoi dispositivi, replica cloud opzionale</td>
+<td>Snapshot e branch</td>
+<td>Win · Linux · Deck</td>
+<td>MIT</td>
+</tr>
+<tr>
+<td><strong>OpenCloudSaves</strong></td>
+<td>Sì, tramite il tuo cloud</td>
+<td>OneDrive / Drive / Dropbox / Nextcloud</td>
+<td>Quello che tiene il cloud</td>
+<td>Win · Linux · macOS</td>
+<td>Gratis, open source</td>
+</tr>
+<tr>
+<td><strong>Game Backup Monitor</strong></td>
+<td>No</td>
+<td>Archivi 7-Zip locali</td>
+<td>Backup numerati</td>
+<td>Windows</td>
+<td>Gratis, open source</td>
+</tr>
+<tr>
+<td><strong>Aletheia</strong></td>
+<td>Copia e ripristino per launcher</td>
+<td>Il tuo spazio</td>
+<td>Copie</td>
+<td>Win · Linux · macOS</td>
+<td>AGPL-3.0</td>
+</tr>
+<tr>
+<td><strong>SaveSync</strong></td>
+<td>Sì, e con gli amici</td>
+<td>Voci private dello Steam Workshop</td>
+<td>Secondo l&#39;app</td>
+<td>Windows</td>
+<td>A pagamento, codice chiuso</td>
+</tr>
+</tbody></table>
+<h2>Quindi quale</h2>
+<p>Se vuoi una sola macchina messa al sicuro e nient&#39;altro, prendi Ludusavi o Game Backup Monitor. Se non vuoi un account per nessun motivo e i tuoi dispositivi sono di solito accesi insieme, OpenSave. Se i salvataggi devono finire in una cartella di Drive che già paghi, OpenCloudSaves. Se condividi un mondo cooperativo con gli amici, SaveSync.</p>
+<p>Se invece vuoi che copia <em>e</em> sincronizzazione tra PC e Steam Deck avvengano da sole, con una versione per sessione a cui tornare e la possibilità di ospitare tutto da te, è per questo che c&#39;è Hoard. <a href="/it/download">Scaricalo</a>, o leggi prima <a href="/it/guides/self-host-hoard">come ospitarlo da solo con Docker</a>. C&#39;è anche un <a href="/it/guides/ludusavi-alternative">confronto approfondito con Ludusavi</a> se è quello che stai valutando.</p>
+<h2>Confronti uno contro uno</h2>
+<p>Ognuno va più a fondo del blocco qui sopra, compresi i punti in cui vince l&#39;altro strumento:</p>
+<ul>
+<li><a href="/it/guides/ludusavi-alternative">Hoard contro Ludusavi</a></li>
+<li><a href="/it/guides/steam-cloud-alternative">Hoard come alternativa a Steam Cloud</a></li>
+<li><a href="/it/guides/opensave-alternative">Sincronizzazione peer-to-peer contro un server tuo</a></li>
+<li><a href="/it/guides/syncthing-game-saves">Syncthing per i salvataggi: cosa si rompe</a></li>
+</ul>
+<h2>Domande frequenti</h2>
+<h3>Quale di questi strumenti tiene una cronologia delle versioni?</h3>
+<p>Hoard conserva ogni sessione come una versione a cui tornare. Ludusavi tiene backup locali versionati. Quasi tutti gli altri sincronizzano o copiano lo stato attuale, quindi un salvataggio corrotto viene propagato fedelmente all&#39;altra macchina.</p>
+<h3>Quale funziona senza server né account?</h3>
+<p>Ludusavi con i backup locali, e qualsiasi strumento peer-to-peer. Ci rientra anche Hoard se fai self-hosting: nessun account con noi e niente che passi dai nostri server.</p>
+<h3>Quale copre i giochi che non stanno su Steam?</h3>
+<p>Tutti i gestori di salvataggi elencati, perché individuano i file tramite lo stesso database comunitario e non attraverso un negozio. L&#39;eccezione è Steam Cloud: copre solo i giochi Steam il cui sviluppatore l&#39;ha attivata.</p>
+<h3>Devo sceglierne uno solo?</h3>
+<p>No, e molti non lo fanno. Uno strumento di backup locale e uno di sincronizzazione risolvono metà diverse del problema. L&#39;unica regola è non puntare mai uno alla cartella di backup dell&#39;altro, o finisci per sincronizzare un mirror vecchio invece del salvataggio reale.</p>
+<h3>Qual è il dettaglio che rompe quasi tutti i setup fai-da-te?</h3>
+<p>Sincronizzare la cartella sopra <code>&lt;AppID&gt;/remote/</code> dentro <code>userdata</code> di Steam. Quella superiore contiene <code>remotecache.vdf</code> e i file di obiettivi e tempo di gioco, che devono differire da macchina a macchina: ogni avvio sembra un conflitto anche se nessun salvataggio si è mosso.</p>
+<!----></div> <div class="mt-14 rounded-xl border border-line bg-surface p-6"><h2 class="font-display text-lg font-semibold text-ink">Pronto a proteggere i tuoi salvataggi?</h2> <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">Scarica Hoard e configura backup automatici e versionati in un paio di minuti.</p> <a href="/it/download" class="mt-4 inline-flex h-10 items-center rounded-lg bg-accent px-4 text-sm font-medium text-pine ring-focus transition-colors hover:bg-emerald-300">Scarica</a></div></article><!--]--><!----><!--]--><!--]--><!----></main> <footer class="mt-auto border-t border-line" data-sveltekit-preload-code="viewport"><div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 grid-cols-2 md:grid-cols-4"><div class="col-span-2 md:col-span-1"><div class="flex items-center gap-2.5"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="26" height="26" aria-hidden="true"><rect x="1" y="1" width="62" height="62" rx="13" fill="var(--color-pine-elev, #19231c)" stroke="var(--color-pine-line, #28332b)" stroke-width="2"></rect><rect x="9" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="41" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="9" y="25" width="46" height="14" rx="5" fill="#34d399"></rect></svg><!----> <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span> <span class="ml-1 rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[10px] tracking-wider text-ink-soft">v1.1.6</span></div> <p class="mt-3 max-w-xs text-sm leading-relaxed text-ink-soft">Sync e backup versionati per i tuoi salvataggi. Costruito in Rust, open source.</p></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">Prodotto</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/it/pricing">Prezzi</a></li> <li><a class="link-underline hover:text-ink" href="/it/download">Scarica</a></li> <li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard/blob/main/CHANGELOG.md" rel="noreferrer">Changelog</a></li> <li><a class="link-underline hover:text-ink" href="/it/guides">Guide</a></li> <li><a class="link-underline hover:text-ink" href="/it/help">Stato</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">Azienda</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard" rel="noreferrer">GitHub</a></li> <li><a class="link-underline hover:text-ink" href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer">Discord</a></li> <li><a class="link-underline hover:text-ink" href="/it/help">Contatti</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">Note legali</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/it/legal/terms">Termini</a></li> <li><a class="link-underline hover:text-ink" href="/it/legal/privacy">Privacy</a></li> <li><a class="link-underline hover:text-ink" href="/it/legal/subprocessors">Sub-responsabili</a></li> <li><a class="link-underline hover:text-ink" href="/it/legal/notice">Note legali</a></li></ul></div></div> <div class="border-t border-line"><p class="mx-auto max-w-6xl px-4 py-4 text-xs text-ink-faint sm:px-6">© 2026 Hoard · Raimundo León Oliva · AGPL-3.0</p></div></footer><!----></div><!--]--><!--]--> <!--[-1--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_i6416b = {
+						base: new URL("../..", location).pathname.slice(0, -1),
+						env: null
+					};
+
+					const element = document.currentScript.parentElement;
+
+					import("../../_app/env.js").then(({ env }) => {
+						__sveltekit_i6416b.env = env;
+
+						Promise.all([
+							import("../../_app/immutable/entry/start.Bv9fO-Dl.js"),
+							import("../../_app/immutable/entry/app.DoJpZpIJ.js")
+						]).then(([kit, app]) => {
+							kit.start(app, element, {
+									node_ids: [0, 2, 8],
+									data: [null,null,null],
+									form: null,
+									error: null
+								});
+						});
+					});
+				}
+			</script>
+		</div>
+  </body>
+</html>

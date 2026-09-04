@@ -1,0 +1,1 @@
+import{A as a}from"./BoXYNRlS.js";function n(r,s){if(r instanceof a)return r.status===0?s("err.unreachable"):r.status===401?s("err.session_expired"):r.detail?`${r.status} · ${r.detail}`:s("err.http",{values:{status:r.status}});const t=r==null?void 0:r.message;return t&&t.trim()?t:s("common.error")}export{n as d};

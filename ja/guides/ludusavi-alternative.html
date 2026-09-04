@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../../favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png" />
+    <link rel="mask-icon" href="../../favicon.svg" color="#047857" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0f0c" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Per-page title/description/canonical/OG/hreflang come from <Seo>; see $lib/components/Seo.svelte. -->
+    <link href="../../_app/immutable/entry/start.Bv9fO-Dl.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DM4nI_SJ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D280JA-S.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/R6czw0ix.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/OA8UcISh.js" rel="modulepreload">
+		<link href="../../_app/immutable/entry/app.DoJpZpIJ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Dp1pzeXC.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3cuW3tw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Bzak7iHL.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ogaUi5l8.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B709xuIM.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DiqhoAlS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BnhOS97m.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7_OtiQB.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/0.B7e3jHvd.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3ZM-Apl.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/C4BeUwog.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CjPXEXvS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CQcT7K4l.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B1IsZ4X6.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Baiqwrok.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ZljVK2eG.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BHEZUQJA.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BB8cOoWK.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Cft1C6nZ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CnUB1uiG.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DYjxnFFo.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/2.ClkBtYjW.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/8.BJWNUN1w.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CYf_2dI-.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7xU1dRw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DkuOv9M8.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DjQFue8R.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BgQYEE7T.js" rel="modulepreload">
+		<link href="../../_app/env.js" rel="modulepreload">
+		<!--6rcv4m--><!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Ludusavi の代替：セーブデータの自動クラウド同期","description":"Ludusavi と Hoard の公平な比較。Ludusavi はローカルバックアップに優れたオープンソースツール。Hoard は同じ位置データを使いつつ、すべての PC でマネージドなクラウド同期と世代履歴を追加します。","inLanguage":"ja","datePublished":"2026-09-01","dateModified":"2026-09-01","mainEntityOfPage":"https://hoard.services/ja/guides/ludusavi-alternative","author":{"@type":"Organization","name":"Hoard","url":"https://hoard.services"},"publisher":{"@type":"Organization","name":"Hoard","logo":{"@type":"ImageObject","url":"https://hoard.services/icon-512.png"}}}</script><!----> <!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","inLanguage":"ja","mainEntity":[{"@type":"Question","name":"Ludusavi と Hoard を同時に使えますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>はい。両者は同じセーブ位置を読み、どちらもファイルを掴んだままにしません。ローカルの保管用バックアップは Ludusavi に任せ、マシン間の同期は Hoard に任せている人は多くいます。唯一の注意は、一方をもう一方のバックアップフォルダーに向けないことです。\u003c/p>\n"}},{"@type":"Question","name":"Hoard は Ludusavi のバックアップを取り込みますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>いいえ。これは意図的です。バックアップフォルダーは独自のスケジュールで変わる複製なので、追跡すると実際のセーブではなく古い写しを同期してしまいます。Hoard はゲームが書き込むフォルダーを追跡し、次のセッションから独自の履歴を始めます。Ludusavi の保管分は安全網として残してください。\u003c/p>\n"}},{"@type":"Question","name":"Hoard は無料ですか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>Hoard Cloud には 2 GB・3 台の無料枠があり、多くのセーブ環境はこれで足ります。Pro は両方を引き上げます。サーバーを自分でホストする場合は無料で、容量制限もありません。すべて AGPL-3.0 のオープンソースです。\u003c/p>\n"}},{"@type":"Question","name":"Steam Deck で動きますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>はい。Steam Deck と任意の Linux デスクトップ、加えて Windows と macOS で動きます。Deck はまさに上の \u003ccode>remote/\u003c/code> の話が効く場面です。Deck とデスクトップは同じセーブの隣に、異なる実績・プレイ時間のファイルを書くからです。\u003c/p>\n"}},{"@type":"Question","name":"Rclone や自分のクラウドアカウントは必要ですか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>いいえ。そこが実用上の最大の違いです。Hoard Cloud ならサインインした時点で保存先が用意されています。保存先を自分で所有したい場合は、S3 互換のバケットか自分のマシンの普通のフォルダーを指定してサーバーを動かしてください。\u003c/p>\n"}},{"@type":"Question","name":"セルフホストは Hoard に何かを送信しますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>いいえ。セルフホストでは当方のアカウントも当方へのテレメトリもありません。セーブもユーザーもログも自分のサーバーの中にとどまり、当方のサーバーには一切触れません。それがこのモードの目的であり、サーバーが機能を削った別物ではなく、当方自身が動かしているものと同じオープンソースのバイナリである理由です。\u003c/p>\n"}}]}</script><!----><!----><!--gsrl61--><meta name="description" content="Ludusavi と Hoard の公平な比較。Ludusavi はローカルバックアップに優れたオープンソースツール。Hoard は同じ位置データを使いつつ、すべての PC でマネージドなクラウド同期と世代履歴を追加します。"/> <link rel="canonical" href="https://hoard.services/ja/guides/ludusavi-alternative"/> <!--[--><link rel="alternate" hreflang="en" href="https://hoard.services/guides/ludusavi-alternative"/><link rel="alternate" hreflang="es" href="https://hoard.services/es/guides/ludusavi-alternative"/><link rel="alternate" hreflang="de" href="https://hoard.services/de/guides/ludusavi-alternative"/><link rel="alternate" hreflang="fr" href="https://hoard.services/fr/guides/ludusavi-alternative"/><link rel="alternate" hreflang="it" href="https://hoard.services/it/guides/ludusavi-alternative"/><link rel="alternate" hreflang="ja" href="https://hoard.services/ja/guides/ludusavi-alternative"/><link rel="alternate" hreflang="pt" href="https://hoard.services/pt/guides/ludusavi-alternative"/><link rel="alternate" hreflang="zh" href="https://hoard.services/zh/guides/ludusavi-alternative"/><!--]--> <link rel="alternate" hreflang="x-default" href="https://hoard.services/guides/ludusavi-alternative"/> <meta property="og:type" content="article"/> <meta property="og:site_name" content="Hoard"/> <meta property="og:title" content="Ludusavi の代替：セーブデータの自動クラウド同期 — Hoard"/> <meta property="og:description" content="Ludusavi と Hoard の公平な比較。Ludusavi はローカルバックアップに優れたオープンソースツール。Hoard は同じ位置データを使いつつ、すべての PC でマネージドなクラウド同期と世代履歴を追加します。"/> <meta property="og:url" content="https://hoard.services/ja/guides/ludusavi-alternative"/> <meta property="og:image" content="https://hoard.services/app.webp"/> <meta property="og:locale" content="ja_JP"/> <!--[--><meta property="og:locale:alternate" content="en_US"/><meta property="og:locale:alternate" content="es_ES"/><meta property="og:locale:alternate" content="de_DE"/><meta property="og:locale:alternate" content="fr_FR"/><meta property="og:locale:alternate" content="it_IT"/><meta property="og:locale:alternate" content="pt_PT"/><meta property="og:locale:alternate" content="zh_CN"/><!--]--> <meta name="twitter:card" content="summary_large_image"/> <meta name="twitter:title" content="Ludusavi の代替：セーブデータの自動クラウド同期 — Hoard"/> <meta name="twitter:description" content="Ludusavi と Hoard の公平な比較。Ludusavi はローカルバックアップに優れたオープンソースツール。Hoard は同じ位置データを使いつつ、すべての PC でマネージドなクラウド同期と世代履歴を追加します。"/> <meta name="twitter:image" content="https://hoard.services/app.webp"/><!----><title>Ludusavi の代替：セーブデータの自動クラウド同期 — Hoard</title>
+		<link href="../../_app/immutable/assets/0.9JCwSkJ0.css" rel="stylesheet">
+		<link href="../../_app/immutable/assets/8.9SD7pss8.css" rel="stylesheet">
+  </head>
+  <body class="antialiased">
+    <div style="display: contents"><!--[--><!--[0--><!--[--><div class="relative isolate flex min-h-full flex-col text-ink" data-sveltekit-preload-data="hover"><a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent-deep focus:px-3 focus:py-2 focus:text-sm focus:text-white">Skip to content</a> <header class="sticky top-0 z-40 w-full bg-bg/80 backdrop-blur-md"><nav class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]"><a href="/ja" class="nav-pill flex items-center gap-2.5 ring-focus md:justify-self-start" aria-label="Hoard home"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><rect x="1" y="1" width="62" height="62" rx="13" fill="var(--color-pine-elev, #19231c)" stroke="var(--color-pine-line, #28332b)" stroke-width="2"></rect><rect x="9" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="41" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="9" y="25" width="46" height="14" rx="5" fill="#34d399"></rect></svg><!----> <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span></a> <div class="hidden items-center gap-1 md:flex md:justify-self-center"><a href="/ja/download" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">ダウンロード</a> <a href="/ja/pricing" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">料金</a> <a href="/ja/cli" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">CLI</a> <a href="/ja/guides" class="nav-pill ring-focus text-sm nav-pill-active">ガイド</a> <a href="/ja/help" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">ヘルプ</a></div> <div class="hidden items-center gap-3 md:flex md:justify-self-end"><details class="group relative svelte-1h32yp1"><summary class="nav-pill flex cursor-pointer list-none items-center gap-1.5 text-sm text-ink-soft ring-focus [&amp;::-webkit-details-marker]:hidden" aria-label="Language"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-globe h-4 w-4"><!--[--><!----><circle cx="12" cy="12" r="10"><!----></circle><!----><!----><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"><!----></path><!----><!----><path d="M2 12h20"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <span class="font-medium">日本語</span></summary> <div data-sveltekit-preload-data="tap" class="lang-menu absolute right-0 z-50 mt-2 min-w-40 overflow-hidden rounded-lg border border-line bg-bg/95 py-1 shadow-lg backdrop-blur-md svelte-1h32yp1"><!--[--><a href="/guides/ludusavi-alternative" hreflang="en" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">English <!--[-1--><!--]--></a><a href="/es/guides/ludusavi-alternative" hreflang="es" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Español <!--[-1--><!--]--></a><a href="/de/guides/ludusavi-alternative" hreflang="de" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Deutsch <!--[-1--><!--]--></a><a href="/fr/guides/ludusavi-alternative" hreflang="fr" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Français <!--[-1--><!--]--></a><a href="/it/guides/ludusavi-alternative" hreflang="it" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Italiano <!--[-1--><!--]--></a><a href="/ja/guides/ludusavi-alternative" hreflang="ja" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink">日本語 <!--[0--><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-check h-3.5 w-3.5 text-accent"><!--[--><!----><path d="M20 6 9 17l-5-5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!--]--></a><a href="/pt/guides/ludusavi-alternative" hreflang="pt" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Português <!--[-1--><!--]--></a><a href="/zh/guides/ludusavi-alternative" hreflang="zh" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">中文 <!--[-1--><!--]--></a><!--]--></div></details> <!--[0--><span class="h-9 w-24 animate-pulse rounded-md bg-ink/5"></span><!--]--> <a href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer" aria-label="Discord" title="Discord" class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#5865F2] text-white ring-focus transition-colors hover:bg-[#4752C4]"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.515.0699.0699 0 0 0-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 0 1 .0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 0 1-.0066.1276 12.2986 12.2986 0 0 1-1.873.8914.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 0 0 .0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 0 0 .0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"></path></svg><!----></a></div> <button class="md:hidden grid h-10 w-10 place-items-center rounded-lg text-ink-soft ring-focus hover:bg-ink/5" aria-label="Toggle menu" aria-expanded="false"><span class="relative h-5 w-5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-menu absolute inset-0 h-5 w-5 transition-all duration-300 opacity-100 rotate-0"><!--[--><!----><line x1="4" x2="20" y1="12" y2="12"><!----></line><!----><!----><line x1="4" x2="20" y1="6" y2="6"><!----></line><!----><!----><line x1="4" x2="20" y1="18" y2="18"><!----></line><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-x absolute inset-0 h-5 w-5 transition-all duration-300 opacity-0 -rotate-90"><!--[--><!----><path d="M18 6 6 18"><!----></path><!----><!----><path d="m6 6 12 12"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></span></button></nav> <!--[-1--><!--]--> <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-line transition-opacity duration-500 ease-out" style="opacity: 0;" aria-hidden="true"></div></header><!----> <main id="main" class="relative z-10 flex-1"><!--[0--><!--[--><!--[--><!----> <article class="mx-auto max-w-2xl px-4 py-16 sm:px-6 sm:py-24"><a href="/ja/guides" class="inline-flex items-center gap-1.5 rounded-md text-sm text-ink-soft ring-focus transition-colors hover:text-ink"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-left h-4 w-4"><!--[--><!----><path d="m12 19-7-7 7-7"><!----></path><!----><!----><path d="M19 12H5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> すべてのガイド</a> <h1 class="mt-6 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">Ludusavi の代替：セーブデータの自動クラウド同期</h1> <!--[0--><p class="mt-3 font-mono text-xs uppercase tracking-[0.14em] text-ink-faint">更新日
+      2026-09-01</p><!--]--> <div class="prose mt-8 svelte-6rcv4m"><!----><p>セーブデータをバックアップして同期する方法を探しているなら、おそらく <strong>Ludusavi</strong> にたどり着いたはずです――そして優れたツールです。このガイドは適切なツールを選べるよう正直に比較し、端末間での自動クラウド同期が欲しい場合に Hoard がどこに位置づくかを説明します。</p>
+<h2>Ludusavi の優れている点</h2>
+<p>Ludusavi は Windows、macOS、Linux で PC のセーブをバックアップ・復元する無料のオープンソースツール（mtkennerly 作）です。すっきりした GUI と CLI を備え、数千のゲームのセーブを自動で見つけ、世代管理されたローカルバックアップを保持し、<strong>Rclone</strong> を設定すれば自分のクラウド（Google Drive、Dropbox など）へバックアップを送れます。完全な制御と自前のセットアップが欲しいなら、Ludusavi は素晴らしい選択肢で、しかも完全に無料です。</p>
+<p>Hoard はそれを置き換えるためのものではありません。実際、<strong>Hoard は Ludusavi が依拠しているのと同じコミュニティのセーブ位置データベース</strong> を使って各ゲームのセーブ場所を特定するため、検出の品質は同等です。</p>
+<h2>Hoard が異なる点</h2>
+<p>ローカル中心のツールで多くの人がぶつかる壁が、<strong>端末間の同期</strong> です。Ludusavi では自分で行います。バックアップをスケジュールし、Rclone のリモートを設定し、プレイ前にもう一方の PC で復元する。動作はしますが、手作業です。</p>
+<p>Hoard はこれを <strong>マネージドなクラウド同期</strong> に変えます。</p>
+<ul>
+<li><strong>サインインするだけ。</strong> Rclone のリモートもスクリプトも不要。Hoard はプレイ後にセーブをアップロードし、開始前に最新版をダウンロードします。アカウント内のすべての PC で行われます。</li>
+<li><strong>クラウド上の世代履歴。</strong> すべてのバックアップが保持されるので、以前のどのセーブにも巻き戻せます――ディスク故障やクリーンインストールの後でも。</li>
+<li><strong>競合を認識。</strong> Hoard はタイムスタンプを比較し、置き換えるものすべてのローカルコピーを保持するため、同期が黙って進行を壊すことはありません。</li>
+<li><strong>引き続きオープンソースでセルフホスト可能。</strong> Ludusavi と同様にロックインはありません――Hoard Cloud を使うか、サーバーを自分でホストできます。</li>
+</ul>
+<h2>一覧で比較</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Ludusavi</th>
+<th>Hoard</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>ローカルバックアップ</td>
+<td>あり</td>
+<td>あり</td>
+</tr>
+<tr>
+<td>セーブの検出</td>
+<td>コミュニティのマニフェスト</td>
+<td>同じマニフェストに加え、Steam ライブラリ、実行中プロセス、ファイルシステムの走査</td>
+</tr>
+<tr>
+<td>クラウドの保存先</td>
+<td>自前、Rclone 経由</td>
+<td>同梱、または自分のサーバー</td>
+</tr>
+<tr>
+<td>PC 間の同期</td>
+<td>手動：こちらでバックアップ、あちらで復元</td>
+<td>自動：プレイ終了後と開始前</td>
+</tr>
+<tr>
+<td>世代履歴</td>
+<td>自分で整理するローカルバックアップ</td>
+<td>すべての世代をクラウドに保持し、内容ハッシュで重複排除</td>
+</tr>
+<tr>
+<td>エミュレーター</td>
+<td>対応</td>
+<td>対応</td>
+</tr>
+<tr>
+<td>インターフェース</td>
+<td>デスクトップアプリと CLI</td>
+<td>デスクトップアプリ、CLI、ゲーム内オーバーレイ</td>
+</tr>
+<tr>
+<td>価格</td>
+<td>無料</td>
+<td>無料枠は 2 GB・3 台、それ以上は Pro、セルフホストなら上限なし</td>
+</tr>
+<tr>
+<td>ライセンス</td>
+<td>MIT</td>
+<td>AGPL-3.0</td>
+</tr>
+</tbody></table>
+<h2>Ludusavi のほうが向いている場合</h2>
+<p>ほとんどの比較ページが省く部分です。次の場合は Ludusavi のほうが適しています。</p>
+<ul>
+<li><strong>PC 1 台でしか遊ばない。</strong> クラウド同期は存在しない問題を解決することになります。ローカルバックアップで十分で、Ludusavi はそれが得意です。</li>
+<li><strong>信頼している Rclone リモートがすでにある。</strong> 保存先が設定済みで動いているなら、Hoard の主な利点はすでに済ませた手間の肩代わりです。</li>
+<li><strong>Steam Deck のゲームモードから使いたい。</strong> Ludusavi には Decky プラグインがあり、コンソール画面を離れずにバックアップを実行できます。</li>
+<li><strong>緩やかなライセンスが必要。</strong> Ludusavi は MIT、Hoard は AGPL-3.0 です。上に何かを作って結果を公開しないつもりなら、この違いは大きく効きます。</li>
+<li><strong>常駐するものを増やしたくない。</strong> Hoard のセルフホストは、同じ PC 上であっても小さなサーバーを動かし続けることを意味します。Ludusavi は必要なときに開くアプリです。</li>
+</ul>
+<h2>Ludusavi から Hoard へ移る</h2>
+<p>インポート機能はなく、それは意図的です。手順は次のとおりです。</p>
+<ol>
+<li><strong>Ludusavi のバックアップはそのままの場所に残す。</strong> 何も移行せず、何も削除しません。最初の数週間は安全網として保管してください。</li>
+<li><strong>Hoard をインストールしてサインインする。</strong> あるいは自分のサーバーを指定します。</li>
+<li><strong>スキャンさせる。</strong> 同じマニフェストを読むので、検出されるゲームの一覧は見覚えのあるものになるはずです。</li>
+<li><strong>Hoard を Ludusavi のバックアップフォルダーに向けない。</strong> ゲーム自身が書き込むフォルダーを追跡してください。バックアップフォルダーはプレイ時ではなくスケジュールで変わる複製であり、複製の複製を同期すると昨日の進行を復元することになります。Hoard は自力で気づこうとし、<code>hoard doctor</code> がバックアップの写しに見える追跡フォルダーを警告しますが、最初から追跡しないほうが簡単です。</li>
+<li><strong>一度プレイする。</strong> 終了すると最初の世代が履歴に現れます。</li>
+<li><strong>2 台目の PC でも同じことを。</strong> サインインすれば、世代はもうそこにあります。</li>
+</ol>
+<h2>知っておく価値のある 2 点</h2>
+<p><strong>Steam のセーブは思っているより 1 階層深い。</strong> Steam のゲームでは、Hoard は <code>userdata</code> の中の <code>&lt;AppID&gt;/remote/</code> を追跡し、その上のフォルダーは追跡しません。上のフォルダーには <code>remotecache.vdf</code> や実績・プレイ時間のファイルもあり、これらはマシンごとに違って当然です。上を同期すると、セーブが動いていなくても起動のたびに競合に見えます。Steam Deck とデスクトップの自作構成が自分自身と喧嘩する、いちばん多い原因がこれです。</p>
+<p><strong>世代は安い。</strong> スナップショットは内容ハッシュで保存されるため、変わっていないファイルは一度だけ保存されます。2 GB のセーブの 10 世代は約 20 GB ではなく約 2 GB です。履歴を間引かずに丸ごと残せるのはこのためです。</p>
+<h2>セルフホストの本当の意味</h2>
+<p>Hoard について多くの比較が誤解している点なので、正確に書きます。動かし方は 2 通りあり、両者は本当に別物です。</p>
+<ul>
+<li><strong>Hoard Cloud</strong> はマネージドな選択肢です。サインインすると、セーブは EU にある当方のサーバーに保存されます。</li>
+<li><strong>セルフホストは完全にあなたのものです。</strong> 自分の PC や NAS で <code>hoard-server</code> を動かし、セーブは自分のマシンから自分のディスクへ移ります。<strong>当方のアカウントも、当方へのテレメトリも、容量制限も、中継もありません。</strong> 経路上に当方のものが何一つないため、当方のサーバーを何も通りません。セーブもゲーム名もメールアドレスも見えません。そもそも届かないからです。仮に明日 Hoard Cloud が消えても、セルフホスト構成はそのまま動き続けます。</li>
+</ul>
+<p>同じプログラム、同じ検出、同じ世代履歴。変わるのは保存先が誰のものかだけです。</p>
+<h2>どちらを選ぶべきか</h2>
+<ul>
+<li>無料でローカル中心のバックアップツールが欲しく、Rclone で自分のクラウドを組むのが苦でないなら <strong>Ludusavi</strong> を選びましょう。</li>
+<li>バックアップ <em>と</em> PC 間の同期が手間なく動き、世代付きのクラウド履歴を持ちつつ、セルフホストの選択肢も残したいなら <strong>Hoard</strong> を選びましょう。</li>
+</ul>
+<p>多くの人はローカルバックアップに Ludusavi で始め、複数のマシンで同じゲームをプレイするようになると Hoard に移行します。あなたがそうなら、<a href="/ja/guides/sync-game-saves-across-pcs">PC 間でセーブを同期する方法</a> をご覧いただくか、<a href="/ja/download">Hoard をダウンロード</a> してサインインしてください。全体像は <a href="/ja/guides/game-save-sync-comparison">セーブ同期ツールの比較</a> にまとめてあります。</p>
+<h2>よくある質問</h2>
+<h3>Ludusavi と Hoard を同時に使えますか？</h3>
+<p>はい。両者は同じセーブ位置を読み、どちらもファイルを掴んだままにしません。ローカルの保管用バックアップは Ludusavi に任せ、マシン間の同期は Hoard に任せている人は多くいます。唯一の注意は、一方をもう一方のバックアップフォルダーに向けないことです。</p>
+<h3>Hoard は Ludusavi のバックアップを取り込みますか？</h3>
+<p>いいえ。これは意図的です。バックアップフォルダーは独自のスケジュールで変わる複製なので、追跡すると実際のセーブではなく古い写しを同期してしまいます。Hoard はゲームが書き込むフォルダーを追跡し、次のセッションから独自の履歴を始めます。Ludusavi の保管分は安全網として残してください。</p>
+<h3>Hoard は無料ですか？</h3>
+<p>Hoard Cloud には 2 GB・3 台の無料枠があり、多くのセーブ環境はこれで足ります。Pro は両方を引き上げます。サーバーを自分でホストする場合は無料で、容量制限もありません。すべて AGPL-3.0 のオープンソースです。</p>
+<h3>Steam Deck で動きますか？</h3>
+<p>はい。Steam Deck と任意の Linux デスクトップ、加えて Windows と macOS で動きます。Deck はまさに上の <code>remote/</code> の話が効く場面です。Deck とデスクトップは同じセーブの隣に、異なる実績・プレイ時間のファイルを書くからです。</p>
+<h3>Rclone や自分のクラウドアカウントは必要ですか？</h3>
+<p>いいえ。そこが実用上の最大の違いです。Hoard Cloud ならサインインした時点で保存先が用意されています。保存先を自分で所有したい場合は、S3 互換のバケットか自分のマシンの普通のフォルダーを指定してサーバーを動かしてください。</p>
+<h3>セルフホストは Hoard に何かを送信しますか？</h3>
+<p>いいえ。セルフホストでは当方のアカウントも当方へのテレメトリもありません。セーブもユーザーもログも自分のサーバーの中にとどまり、当方のサーバーには一切触れません。それがこのモードの目的であり、サーバーが機能を削った別物ではなく、当方自身が動かしているものと同じオープンソースのバイナリである理由です。</p>
+<!----></div> <div class="mt-14 rounded-xl border border-line bg-surface p-6"><h2 class="font-display text-lg font-semibold text-ink">セーブデータを守る準備はできましたか？</h2> <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">Hoard をダウンロードして、数分で自動・バージョン管理付きバックアップを設定しましょう。</p> <a href="/ja/download" class="mt-4 inline-flex h-10 items-center rounded-lg bg-accent px-4 text-sm font-medium text-pine ring-focus transition-colors hover:bg-emerald-300">ダウンロード</a></div></article><!--]--><!----><!--]--><!--]--><!----></main> <footer class="mt-auto border-t border-line" data-sveltekit-preload-code="viewport"><div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 grid-cols-2 md:grid-cols-4"><div class="col-span-2 md:col-span-1"><div class="flex items-center gap-2.5"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="26" height="26" aria-hidden="true"><rect x="1" y="1" width="62" height="62" rx="13" fill="var(--color-pine-elev, #19231c)" stroke="var(--color-pine-line, #28332b)" stroke-width="2"></rect><rect x="9" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="41" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="9" y="25" width="46" height="14" rx="5" fill="#34d399"></rect></svg><!----> <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span> <span class="ml-1 rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[10px] tracking-wider text-ink-soft">v1.1.6</span></div> <p class="mt-3 max-w-xs text-sm leading-relaxed text-ink-soft">ゲームセーブの同期とバージョン管理されたバックアップ。Rust製、オープンソース。</p></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">製品</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/ja/pricing">料金</a></li> <li><a class="link-underline hover:text-ink" href="/ja/download">ダウンロード</a></li> <li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard/blob/main/CHANGELOG.md" rel="noreferrer">変更履歴</a></li> <li><a class="link-underline hover:text-ink" href="/ja/guides">ガイド</a></li> <li><a class="link-underline hover:text-ink" href="/ja/help">稼働状況</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">会社</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard" rel="noreferrer">GitHub</a></li> <li><a class="link-underline hover:text-ink" href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer">Discord</a></li> <li><a class="link-underline hover:text-ink" href="/ja/help">お問い合わせ</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">法的事項</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/ja/legal/terms">規約</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/privacy">プライバシー</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/subprocessors">再委託先</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/notice">法的表示</a></li></ul></div></div> <div class="border-t border-line"><p class="mx-auto max-w-6xl px-4 py-4 text-xs text-ink-faint sm:px-6">© 2026 Hoard · Raimundo León Oliva · AGPL-3.0</p></div></footer><!----></div><!--]--><!--]--> <!--[-1--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_i6416b = {
+						base: new URL("../..", location).pathname.slice(0, -1),
+						env: null
+					};
+
+					const element = document.currentScript.parentElement;
+
+					import("../../_app/env.js").then(({ env }) => {
+						__sveltekit_i6416b.env = env;
+
+						Promise.all([
+							import("../../_app/immutable/entry/start.Bv9fO-Dl.js"),
+							import("../../_app/immutable/entry/app.DoJpZpIJ.js")
+						]).then(([kit, app]) => {
+							kit.start(app, element, {
+									node_ids: [0, 2, 8],
+									data: [null,null,null],
+									form: null,
+									error: null
+								});
+						});
+					});
+				}
+			</script>
+		</div>
+  </body>
+</html>

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../../favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png" />
+    <link rel="mask-icon" href="../../favicon.svg" color="#047857" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0f0c" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Per-page title/description/canonical/OG/hreflang come from <Seo>; see $lib/components/Seo.svelte. -->
+    <link href="../../_app/immutable/entry/start.Bv9fO-Dl.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DM4nI_SJ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D280JA-S.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/R6czw0ix.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/OA8UcISh.js" rel="modulepreload">
+		<link href="../../_app/immutable/entry/app.DoJpZpIJ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Dp1pzeXC.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3cuW3tw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Bzak7iHL.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ogaUi5l8.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B709xuIM.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DiqhoAlS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BnhOS97m.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7_OtiQB.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/0.B7e3jHvd.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3ZM-Apl.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/C4BeUwog.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CjPXEXvS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CQcT7K4l.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B1IsZ4X6.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Baiqwrok.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ZljVK2eG.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BHEZUQJA.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BB8cOoWK.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Cft1C6nZ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CnUB1uiG.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DYjxnFFo.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/2.ClkBtYjW.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/8.BJWNUN1w.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CYf_2dI-.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7xU1dRw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DkuOv9M8.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DjQFue8R.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BgQYEE7T.js" rel="modulepreload">
+		<link href="../../_app/env.js" rel="modulepreload">
+		<!--6rcv4m--><!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"DockerでHoardをセルフホストする方法","description":"Docker Compose を使って数分で自分専用の Hoard サーバーを構築。オープンソースで無料、自分のハードウェア上に完全セルフホストのセーブデータ用クラウドを。アカウントも容量制限も不要。","inLanguage":"ja","datePublished":"2026-09-03","dateModified":"2026-09-03","mainEntityOfPage":"https://hoard.services/ja/guides/self-host-hoard","author":{"@type":"Organization","name":"Hoard","url":"https://hoard.services"},"publisher":{"@type":"Organization","name":"Hoard","logo":{"@type":"ImageObject","url":"https://hoard.services/icon-512.png"}}}</script><!----> <!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","inLanguage":"ja","mainEntity":[{"@type":"Question","name":"セルフホストした Hoard は外部に通信しますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>いいえ。デスクトップアプリは、あなたが指定したサーバーのアドレスとだけ通信します。セーブもユーザーもログもあなたのマシンにとどまり、そのいずれも当方には届きません。\u003c/p>\n"}},{"@type":"Question","name":"セルフホストのサーバーは Hoard Cloud と同じコードですか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>はい。AGPL-3.0 の同じ \u003ccode>hoard-server\u003c/code> バイナリです。機能を削ったコミュニティ版もなければ、ホスト版だけの機能もありません。\u003c/p>\n"}},{"@type":"Question","name":"セーブは実際どこに保存されますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>既定では、コンテナに与えた Docker ボリューム、つまりあなた自身のディスクです。すでにオブジェクトストレージを運用しているなら、サーバーは S3 も話せるので、MinIO、Garage、Backblaze B2 を保存先にできます。いずれの場合も、端末が通信する相手はあなたのサーバーだけです。\u003c/p>\n"}},{"@type":"Question","name":"NAS で動かせますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>はい、Docker が動く NAS なら動きます。リポジトリには Unraid 用のテンプレートが同梱されており、イメージは指定した \u003ccode>PUID\u003c/code>/\u003ccode>PGID\u003c/code> に降格するので、バインドマウントしたフォルダーの所有者が root ではなく適切なユーザーになります。\u003c/p>\n"}},{"@type":"Question","name":"ドメインと HTTPS は必要ですか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>自宅の LAN 内だけなら不要です。サーバーが外部から到達可能になった時点で、前段にリバースプロキシを置いて TLS を終端してください。Caddy、nginx、Traefik のいずれでも構いません。\u003c/p>\n"}},{"@type":"Question","name":"プレイ終了時にサーバーが落ちていたら？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>スナップショットはローカルで作られるので、失われるものはありません。サーバーが応答を再開すると自動でアップロードされます。\u003c/p>\n"}},{"@type":"Question","name":"Hoard Cloud で始めて、後から移れますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>はい、双方向に移れます。アカウントページからすべてをエクスポートでき、アプリは再インストールなしで別のサーバーを指すように変更できます。\u003c/p>\n"}}]}</script><!----><!----><!--gsrl61--><meta name="description" content="Docker Compose を使って数分で自分専用の Hoard サーバーを構築。オープンソースで無料、自分のハードウェア上に完全セルフホストのセーブデータ用クラウドを。アカウントも容量制限も不要。"/> <link rel="canonical" href="https://hoard.services/ja/guides/self-host-hoard"/> <!--[--><link rel="alternate" hreflang="en" href="https://hoard.services/guides/self-host-hoard"/><link rel="alternate" hreflang="es" href="https://hoard.services/es/guides/self-host-hoard"/><link rel="alternate" hreflang="de" href="https://hoard.services/de/guides/self-host-hoard"/><link rel="alternate" hreflang="fr" href="https://hoard.services/fr/guides/self-host-hoard"/><link rel="alternate" hreflang="it" href="https://hoard.services/it/guides/self-host-hoard"/><link rel="alternate" hreflang="ja" href="https://hoard.services/ja/guides/self-host-hoard"/><link rel="alternate" hreflang="pt" href="https://hoard.services/pt/guides/self-host-hoard"/><link rel="alternate" hreflang="zh" href="https://hoard.services/zh/guides/self-host-hoard"/><!--]--> <link rel="alternate" hreflang="x-default" href="https://hoard.services/guides/self-host-hoard"/> <meta property="og:type" content="article"/> <meta property="og:site_name" content="Hoard"/> <meta property="og:title" content="DockerでHoardをセルフホストする方法 — Hoard"/> <meta property="og:description" content="Docker Compose を使って数分で自分専用の Hoard サーバーを構築。オープンソースで無料、自分のハードウェア上に完全セルフホストのセーブデータ用クラウドを。アカウントも容量制限も不要。"/> <meta property="og:url" content="https://hoard.services/ja/guides/self-host-hoard"/> <meta property="og:image" content="https://hoard.services/app.webp"/> <meta property="og:locale" content="ja_JP"/> <!--[--><meta property="og:locale:alternate" content="en_US"/><meta property="og:locale:alternate" content="es_ES"/><meta property="og:locale:alternate" content="de_DE"/><meta property="og:locale:alternate" content="fr_FR"/><meta property="og:locale:alternate" content="it_IT"/><meta property="og:locale:alternate" content="pt_PT"/><meta property="og:locale:alternate" content="zh_CN"/><!--]--> <meta name="twitter:card" content="summary_large_image"/> <meta name="twitter:title" content="DockerでHoardをセルフホストする方法 — Hoard"/> <meta name="twitter:description" content="Docker Compose を使って数分で自分専用の Hoard サーバーを構築。オープンソースで無料、自分のハードウェア上に完全セルフホストのセーブデータ用クラウドを。アカウントも容量制限も不要。"/> <meta name="twitter:image" content="https://hoard.services/app.webp"/><!----><title>DockerでHoardをセルフホストする方法 — Hoard</title>
+		<link href="../../_app/immutable/assets/0.9JCwSkJ0.css" rel="stylesheet">
+		<link href="../../_app/immutable/assets/8.9SD7pss8.css" rel="stylesheet">
+  </head>
+  <body class="antialiased">
+    <div style="display: contents"><!--[--><!--[0--><!--[--><div class="relative isolate flex min-h-full flex-col text-ink" data-sveltekit-preload-data="hover"><a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent-deep focus:px-3 focus:py-2 focus:text-sm focus:text-white">Skip to content</a> <header class="sticky top-0 z-40 w-full bg-bg/80 backdrop-blur-md"><nav class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]"><a href="/ja" class="nav-pill flex items-center gap-2.5 ring-focus md:justify-self-start" aria-label="Hoard home"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><rect x="1" y="1" width="62" height="62" rx="13" fill="var(--color-pine-elev, #19231c)" stroke="var(--color-pine-line, #28332b)" stroke-width="2"></rect><rect x="9" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="41" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="9" y="25" width="46" height="14" rx="5" fill="#34d399"></rect></svg><!----> <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span></a> <div class="hidden items-center gap-1 md:flex md:justify-self-center"><a href="/ja/download" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">ダウンロード</a> <a href="/ja/pricing" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">料金</a> <a href="/ja/cli" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">CLI</a> <a href="/ja/guides" class="nav-pill ring-focus text-sm nav-pill-active">ガイド</a> <a href="/ja/help" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">ヘルプ</a></div> <div class="hidden items-center gap-3 md:flex md:justify-self-end"><details class="group relative svelte-1h32yp1"><summary class="nav-pill flex cursor-pointer list-none items-center gap-1.5 text-sm text-ink-soft ring-focus [&amp;::-webkit-details-marker]:hidden" aria-label="Language"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-globe h-4 w-4"><!--[--><!----><circle cx="12" cy="12" r="10"><!----></circle><!----><!----><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"><!----></path><!----><!----><path d="M2 12h20"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <span class="font-medium">日本語</span></summary> <div data-sveltekit-preload-data="tap" class="lang-menu absolute right-0 z-50 mt-2 min-w-40 overflow-hidden rounded-lg border border-line bg-bg/95 py-1 shadow-lg backdrop-blur-md svelte-1h32yp1"><!--[--><a href="/guides/self-host-hoard" hreflang="en" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">English <!--[-1--><!--]--></a><a href="/es/guides/self-host-hoard" hreflang="es" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Español <!--[-1--><!--]--></a><a href="/de/guides/self-host-hoard" hreflang="de" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Deutsch <!--[-1--><!--]--></a><a href="/fr/guides/self-host-hoard" hreflang="fr" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Français <!--[-1--><!--]--></a><a href="/it/guides/self-host-hoard" hreflang="it" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Italiano <!--[-1--><!--]--></a><a href="/ja/guides/self-host-hoard" hreflang="ja" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink">日本語 <!--[0--><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-check h-3.5 w-3.5 text-accent"><!--[--><!----><path d="M20 6 9 17l-5-5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!--]--></a><a href="/pt/guides/self-host-hoard" hreflang="pt" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Português <!--[-1--><!--]--></a><a href="/zh/guides/self-host-hoard" hreflang="zh" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">中文 <!--[-1--><!--]--></a><!--]--></div></details> <!--[0--><span class="h-9 w-24 animate-pulse rounded-md bg-ink/5"></span><!--]--> <a href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer" aria-label="Discord" title="Discord" class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#5865F2] text-white ring-focus transition-colors hover:bg-[#4752C4]"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.515.0699.0699 0 0 0-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 0 1 .0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 0 1-.0066.1276 12.2986 12.2986 0 0 1-1.873.8914.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 0 0 .0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 0 0 .0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"></path></svg><!----></a></div> <button class="md:hidden grid h-10 w-10 place-items-center rounded-lg text-ink-soft ring-focus hover:bg-ink/5" aria-label="Toggle menu" aria-expanded="false"><span class="relative h-5 w-5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-menu absolute inset-0 h-5 w-5 transition-all duration-300 opacity-100 rotate-0"><!--[--><!----><line x1="4" x2="20" y1="12" y2="12"><!----></line><!----><!----><line x1="4" x2="20" y1="6" y2="6"><!----></line><!----><!----><line x1="4" x2="20" y1="18" y2="18"><!----></line><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-x absolute inset-0 h-5 w-5 transition-all duration-300 opacity-0 -rotate-90"><!--[--><!----><path d="M18 6 6 18"><!----></path><!----><!----><path d="m6 6 12 12"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></span></button></nav> <!--[-1--><!--]--> <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-line transition-opacity duration-500 ease-out" style="opacity: 0;" aria-hidden="true"></div></header><!----> <main id="main" class="relative z-10 flex-1"><!--[0--><!--[--><!--[--><!----> <article class="mx-auto max-w-2xl px-4 py-16 sm:px-6 sm:py-24"><a href="/ja/guides" class="inline-flex items-center gap-1.5 rounded-md text-sm text-ink-soft ring-focus transition-colors hover:text-ink"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-left h-4 w-4"><!--[--><!----><path d="m12 19-7-7 7-7"><!----></path><!----><!----><path d="M19 12H5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> すべてのガイド</a> <h1 class="mt-6 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">DockerでHoardをセルフホストする方法</h1> <!--[0--><p class="mt-3 font-mono text-xs uppercase tracking-[0.14em] text-ink-faint">更新日
+      2026-09-03</p><!--]--> <div class="prose mt-8 svelte-6rcv4m"><!----><p>Hoard はオープンソースでセルフホスト可能です。Hoard Cloud を使う代わりに、同じ <code>hoard-server</code> を自分のマシンで動かし、すべての端末をそこへ接続できます。アカウントは不要で、容量制限は与えたディスク容量だけです。このガイドでは Docker を使って数分でサーバーを立ち上げます。</p>
+<h2>なぜ Hoard をセルフホストするのか</h2>
+<ul>
+<li><strong>完全な所有権。</strong> セーブデータは他人のクラウドではなく、自分が管理するハードウェアに保存されます。</li>
+<li><strong>容量制限なし。</strong> 容量は自分のディスクだけが上限です。</li>
+<li><strong>同じアプリ、同じ機能。</strong> バージョン履歴とバックグラウンド同期は Hoard Cloud とまったく同じように動作し、変わるのはバックエンドだけです。</li>
+<li><strong>オープンソース。</strong> サーバーを読み、監査し、改変できます。</li>
+</ul>
+<p>これが <a href="/ja/guides/ludusavi-alternative">Ludusavi</a> のようなツールとの決定的な違いです。Ludusavi はローカルバックアップや Rclone 経由の「自分のクラウドを持ち込む」方式に優れていますが、同期は自分で組む必要があります。Hoard は一度立ち上げればすべての端末が接続できる、管理された同期サーバーを提供します。</p>
+<h2>セルフホストがデータにとって何を意味するか</h2>
+<p>多くの比較が Hoard について誤解している点なので、はっきり書きます。</p>
+<p><strong>Hoard Cloud</strong> はマネージドな選択肢です。サインインすると、セーブは EU にある当方のサーバーに置かれます。</p>
+<p><strong>セルフホストした Hoard は完全にあなたのものです。</strong> あなたの端末は自分のサーバーとだけ通信し、他のどこにも接続しません。<strong>当方のアカウントも、当方へのテレメトリも、容量制限も、中継もありません。</strong> 経路上に当方のものが何一つないため、当方のサーバーを何も通りません。セーブもゲーム名もメールアドレスも見えません。そもそも届かないからです。仮に明日 Hoard Cloud が終了しても、あなたの構成はそのまま動き続けます。</p>
+<p>正確を期して 1 点だけ。あなたのサーバーには確かにログインがあります。下で作成するユーザーと、端末ごとのトークンです。それらはあなたのもので、あなたのマシンの、あなたのデータベースの中にあります。存在しないのは「当方のアカウント」です。</p>
+<h2>必要なもの</h2>
+<ul>
+<li>常時稼働するマシン（自宅サーバー、Docker が動く NAS、または小さな VPS）。</li>
+<li>Docker と Docker Compose がインストール済みであること。</li>
+<li>任意で、HTTPS 用のドメインとリバースプロキシ（LAN を越える用途では推奨）。</li>
+</ul>
+<h2>Docker Compose でインストール</h2>
+<p>リポジトリをクローンし、サンプルから設定を作成して、スタックを起動します。</p>
+<pre><code class="language-sh">git clone https://github.com/rleeon/hoard.git &amp;&amp; cd hoard
+mkdir -p deploy/docker/config
+cp deploy/config.toml.example deploy/docker/config/config.toml
+$EDITOR deploy/docker/config/config.toml      # Use nano or vim or something lol
+
+cd deploy/docker
+docker compose up -d
+docker compose logs -f                         # wait for &quot;listening&quot;
+</code></pre>
+<p>サーバーが待ち受け状態になったとログに表示されるまで待ちます。データは名前付き Docker ボリューム（<code>hoard-data</code>）に保存されるので、他のボリュームと同様にバックアップしてください。コンテナは内部でポート <code>12421</code> を待ち受けます。別のホストポートを使うには <code>HOARD_PORT=9000 docker compose up -d</code> とします。</p>
+<h2>ユーザーと端末トークンを作成</h2>
+<p>サーバーにサインアップ画面はありません。ユーザーはコマンドラインで作成します。</p>
+<pre><code class="language-sh">docker compose exec server hoard-admin --config /etc/hoard/config.toml \
+    user create alice --admin --password &#39;CHANGE_ME&#39;
+docker compose exec server hoard-admin --config /etc/hoard/config.toml \
+    token create alice --device &#39;desktop&#39;
+</code></pre>
+<p>トークンは一度だけ表示され、<strong>後から取得することはできません</strong>。今すぐコピーしてください。</p>
+<h2>デスクトップアプリを接続</h2>
+<p>各マシンに <a href="/ja/download">Hoard デスクトップアプリ</a> をインストールします。オンボーディングで <strong>セルフホスト</strong> を選び、サーバーの URL と作成したトークンを貼り付けます。あとは Hoard Cloud とまったく同じで、ゲームを検出し、自動でバックアップし、バージョン履歴を保持します。日常的な使い方は <a href="/ja/guides/sync-game-saves-across-pcs">複数の PC 間でセーブを同期する</a> を参照してください。</p>
+<h2>サーバーを最新に保つ</h2>
+<p>更新の方法はインストールの仕方によって変わります。しかも間違ったコマンドはエラーにならず、ただ何も起きないだけなので、自分がどれに当てはまるかを知っておく価値があります。</p>
+<p><strong>Docker Compose.</strong> 新しいイメージを取得し、コンテナを作り直します。次の順番で、両方とも実行してください。</p>
+<pre><code class="language-sh">docker compose pull
+docker compose up -d
+</code></pre>
+<p>最初のコマンドで止めると、古いコンテナがそのまま動き続けます。<code>/v1/health</code> は古いバージョンを返し続け、更新が黙って失敗したように見えます。<code>git pull</code> はどちらも更新しません。動いているのは公開イメージであって、あなたのチェックアウトではないからです。新しいイメージが来るタイミングを自分で決めたい場合は、<code>:latest</code> の代わりにバージョンを固定してください（<code>ghcr.io/rleeon/hoard:1.1</code>）。</p>
+<p><strong>Unraid.</strong> <em>Docker</em> タブ → Hoard → 更新が出たら <em>Apply update</em>。入力するものはありません。</p>
+<p><strong>ベアメタル（systemd）.</strong> <code>sudo hoard-server upgrade</code> を実行し、続けて <code>sudo systemctl restart hoard-server</code>。バイナリをアトミックに入れ替えますが、進行中の同期を切らないよう、サービスの再起動は意図的に行いません。</p>
+<p><code>hoard-server upgrade</code> はベアメタルのインストール専用です。コンテナ内では意図的に実行を拒否し（入れ替えたバイナリは次の <code>docker compose up -d</code> で消えてしまうため）、代わりに上の 2 つのコマンドを表示します。実際に確かめたい場合は <code>docker compose exec server hoard-server upgrade</code> を実行してください。データベースのマイグレーションは起動時にサーバーが適用するので、そのための別の手順はありません。</p>
+<h2>本番運用</h2>
+<p>ローカルネットワークを越えて公開する場合は、リバースプロキシ（Caddy、nginx、Traefik）で TLS を終端します。ベアメタルがよい場合は、リポジトリに <code>systemd</code> インストールスクリプトと、進行中の同期を止めずにバイナリをアトミックに入れ替える <code>hoard-server upgrade</code> コマンドも含まれています。</p>
+<h2>セルフホストと Hoard Cloud のどちら？</h2>
+<p>すでにサーバーを運用していて容量制限なしの完全な管理を望むなら、セルフホストが最適です。インフラの保守をしたくない場合は、<a href="/ja/pricing">Hoard Cloud</a> が同じ同期をこちらで管理して提供し、無料プランから始められます。どちらでもアプリとセーブデータは可搬性を保つので、後から切り替えられます。</p>
+<h2>よくある質問</h2>
+<h3>セルフホストした Hoard は外部に通信しますか？</h3>
+<p>いいえ。デスクトップアプリは、あなたが指定したサーバーのアドレスとだけ通信します。セーブもユーザーもログもあなたのマシンにとどまり、そのいずれも当方には届きません。</p>
+<h3>セルフホストのサーバーは Hoard Cloud と同じコードですか？</h3>
+<p>はい。AGPL-3.0 の同じ <code>hoard-server</code> バイナリです。機能を削ったコミュニティ版もなければ、ホスト版だけの機能もありません。</p>
+<h3>セーブは実際どこに保存されますか？</h3>
+<p>既定では、コンテナに与えた Docker ボリューム、つまりあなた自身のディスクです。すでにオブジェクトストレージを運用しているなら、サーバーは S3 も話せるので、MinIO、Garage、Backblaze B2 を保存先にできます。いずれの場合も、端末が通信する相手はあなたのサーバーだけです。</p>
+<h3>NAS で動かせますか？</h3>
+<p>はい、Docker が動く NAS なら動きます。リポジトリには Unraid 用のテンプレートが同梱されており、イメージは指定した <code>PUID</code>/<code>PGID</code> に降格するので、バインドマウントしたフォルダーの所有者が root ではなく適切なユーザーになります。</p>
+<h3>ドメインと HTTPS は必要ですか？</h3>
+<p>自宅の LAN 内だけなら不要です。サーバーが外部から到達可能になった時点で、前段にリバースプロキシを置いて TLS を終端してください。Caddy、nginx、Traefik のいずれでも構いません。</p>
+<h3>プレイ終了時にサーバーが落ちていたら？</h3>
+<p>スナップショットはローカルで作られるので、失われるものはありません。サーバーが応答を再開すると自動でアップロードされます。</p>
+<h3>Hoard Cloud で始めて、後から移れますか？</h3>
+<p>はい、双方向に移れます。アカウントページからすべてをエクスポートでき、アプリは再インストールなしで別のサーバーを指すように変更できます。</p>
+<!----></div> <div class="mt-14 rounded-xl border border-line bg-surface p-6"><h2 class="font-display text-lg font-semibold text-ink">セーブデータを守る準備はできましたか？</h2> <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">Hoard をダウンロードして、数分で自動・バージョン管理付きバックアップを設定しましょう。</p> <a href="/ja/download" class="mt-4 inline-flex h-10 items-center rounded-lg bg-accent px-4 text-sm font-medium text-pine ring-focus transition-colors hover:bg-emerald-300">ダウンロード</a></div></article><!--]--><!----><!--]--><!--]--><!----></main> <footer class="mt-auto border-t border-line" data-sveltekit-preload-code="viewport"><div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 grid-cols-2 md:grid-cols-4"><div class="col-span-2 md:col-span-1"><div class="flex items-center gap-2.5"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="26" height="26" aria-hidden="true"><rect x="1" y="1" width="62" height="62" rx="13" fill="var(--color-pine-elev, #19231c)" stroke="var(--color-pine-line, #28332b)" stroke-width="2"></rect><rect x="9" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="41" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="9" y="25" width="46" height="14" rx="5" fill="#34d399"></rect></svg><!----> <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span> <span class="ml-1 rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[10px] tracking-wider text-ink-soft">v1.1.6</span></div> <p class="mt-3 max-w-xs text-sm leading-relaxed text-ink-soft">ゲームセーブの同期とバージョン管理されたバックアップ。Rust製、オープンソース。</p></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">製品</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/ja/pricing">料金</a></li> <li><a class="link-underline hover:text-ink" href="/ja/download">ダウンロード</a></li> <li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard/blob/main/CHANGELOG.md" rel="noreferrer">変更履歴</a></li> <li><a class="link-underline hover:text-ink" href="/ja/guides">ガイド</a></li> <li><a class="link-underline hover:text-ink" href="/ja/help">稼働状況</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">会社</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard" rel="noreferrer">GitHub</a></li> <li><a class="link-underline hover:text-ink" href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer">Discord</a></li> <li><a class="link-underline hover:text-ink" href="/ja/help">お問い合わせ</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">法的事項</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/ja/legal/terms">規約</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/privacy">プライバシー</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/subprocessors">再委託先</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/notice">法的表示</a></li></ul></div></div> <div class="border-t border-line"><p class="mx-auto max-w-6xl px-4 py-4 text-xs text-ink-faint sm:px-6">© 2026 Hoard · Raimundo León Oliva · AGPL-3.0</p></div></footer><!----></div><!--]--><!--]--> <!--[-1--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_i6416b = {
+						base: new URL("../..", location).pathname.slice(0, -1),
+						env: null
+					};
+
+					const element = document.currentScript.parentElement;
+
+					import("../../_app/env.js").then(({ env }) => {
+						__sveltekit_i6416b.env = env;
+
+						Promise.all([
+							import("../../_app/immutable/entry/start.Bv9fO-Dl.js"),
+							import("../../_app/immutable/entry/app.DoJpZpIJ.js")
+						]).then(([kit, app]) => {
+							kit.start(app, element, {
+									node_ids: [0, 2, 8],
+									data: [null,null,null],
+									form: null,
+									error: null
+								});
+						});
+					});
+				}
+			</script>
+		</div>
+  </body>
+</html>

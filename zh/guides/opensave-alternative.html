@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../../favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png" />
+    <link rel="mask-icon" href="../../favicon.svg" color="#047857" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0f0c" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Per-page title/description/canonical/OG/hreflang come from <Seo>; see $lib/components/Seo.svelte. -->
+    <link href="../../_app/immutable/entry/start.Bv9fO-Dl.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DM4nI_SJ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D280JA-S.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/R6czw0ix.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/OA8UcISh.js" rel="modulepreload">
+		<link href="../../_app/immutable/entry/app.DoJpZpIJ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Dp1pzeXC.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3cuW3tw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Bzak7iHL.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ogaUi5l8.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B709xuIM.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DiqhoAlS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BnhOS97m.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7_OtiQB.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/0.B7e3jHvd.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3ZM-Apl.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/C4BeUwog.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CjPXEXvS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CQcT7K4l.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B1IsZ4X6.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Baiqwrok.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ZljVK2eG.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BHEZUQJA.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BB8cOoWK.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Cft1C6nZ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CnUB1uiG.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DYjxnFFo.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/2.ClkBtYjW.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/8.BJWNUN1w.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CYf_2dI-.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7xU1dRw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DkuOv9M8.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DjQFue8R.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BgQYEE7T.js" rel="modulepreload">
+		<link href="../../_app/env.js" rel="modulepreload">
+		<!--6rcv4m--><!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"OpenSave 的替代方案：机器之间直连，还是一台属于你的服务器","description":"OpenSave 在你的 PC 之间直接同步存档，中间不放任何东西。Hoard 通过服务器同步——我们的，或你自己的——并保留版本历史。这里坦白比较两种设计各自的胜场。","inLanguage":"zh","datePublished":"2026-09-01","dateModified":"2026-09-01","mainEntityOfPage":"https://hoard.services/zh/guides/opensave-alternative","author":{"@type":"Organization","name":"Hoard","url":"https://hoard.services"},"publisher":{"@type":"Organization","name":"Hoard","logo":{"@type":"ImageObject","url":"https://hoard.services/icon-512.png"}}}</script><!----> <!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","inLanguage":"zh","mainEntity":[{"@type":"Question","name":"Hoard 需要账号吗？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>用 Hoard Cloud 需要，同步就是绑定在账号上的。自托管则完全没有我们这边的账号：你的服务器有它自己的用户和每台设备一个的令牌，它们从不离开你的机器。\u003c/p>\n"}},{"@type":"Question","name":"Hoard 能完全不用云吗？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>能。在 PC 或 NAS 上运行 \u003ccode>hoard-server\u003c/code>，你的存档就从你的机器走到你的磁盘，没有任何东西经过我们的服务器。\u003c/p>\n"}},{"@type":"Question","name":"两台 PC 需要同时在线吗？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>不需要，这正是走服务器的实际好处。你停止游玩时存档上传，另一台机器下次索取时再下载。\u003c/p>\n"}},{"@type":"Question","name":"直接传输会保留版本历史吗？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>本身不会——把文件复制到另一台机器，只是让两边都停在当前状态。Hoard 把每次游玩都抓成一个版本，这才让从损坏存档中回退成为可能。\u003c/p>\n"}},{"@type":"Question","name":"Hoard 也是开源的吗？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>是的，AGPL-3.0，服务器也包含在内。自托管服务器就是我们自己在跑的那个二进制，不是删减版。\u003c/p>\n"}}]}</script><!----><!----><!--gsrl61--><meta name="description" content="OpenSave 在你的 PC 之间直接同步存档，中间不放任何东西。Hoard 通过服务器同步——我们的，或你自己的——并保留版本历史。这里坦白比较两种设计各自的胜场。"/> <link rel="canonical" href="https://hoard.services/zh/guides/opensave-alternative"/> <!--[--><link rel="alternate" hreflang="en" href="https://hoard.services/guides/opensave-alternative"/><link rel="alternate" hreflang="es" href="https://hoard.services/es/guides/opensave-alternative"/><link rel="alternate" hreflang="de" href="https://hoard.services/de/guides/opensave-alternative"/><link rel="alternate" hreflang="fr" href="https://hoard.services/fr/guides/opensave-alternative"/><link rel="alternate" hreflang="it" href="https://hoard.services/it/guides/opensave-alternative"/><link rel="alternate" hreflang="ja" href="https://hoard.services/ja/guides/opensave-alternative"/><link rel="alternate" hreflang="pt" href="https://hoard.services/pt/guides/opensave-alternative"/><link rel="alternate" hreflang="zh" href="https://hoard.services/zh/guides/opensave-alternative"/><!--]--> <link rel="alternate" hreflang="x-default" href="https://hoard.services/guides/opensave-alternative"/> <meta property="og:type" content="article"/> <meta property="og:site_name" content="Hoard"/> <meta property="og:title" content="OpenSave 的替代方案：机器之间直连，还是一台属于你的服务器 — Hoard"/> <meta property="og:description" content="OpenSave 在你的 PC 之间直接同步存档，中间不放任何东西。Hoard 通过服务器同步——我们的，或你自己的——并保留版本历史。这里坦白比较两种设计各自的胜场。"/> <meta property="og:url" content="https://hoard.services/zh/guides/opensave-alternative"/> <meta property="og:image" content="https://hoard.services/app.webp"/> <meta property="og:locale" content="zh_CN"/> <!--[--><meta property="og:locale:alternate" content="en_US"/><meta property="og:locale:alternate" content="es_ES"/><meta property="og:locale:alternate" content="de_DE"/><meta property="og:locale:alternate" content="fr_FR"/><meta property="og:locale:alternate" content="it_IT"/><meta property="og:locale:alternate" content="ja_JP"/><meta property="og:locale:alternate" content="pt_PT"/><!--]--> <meta name="twitter:card" content="summary_large_image"/> <meta name="twitter:title" content="OpenSave 的替代方案：机器之间直连，还是一台属于你的服务器 — Hoard"/> <meta name="twitter:description" content="OpenSave 在你的 PC 之间直接同步存档，中间不放任何东西。Hoard 通过服务器同步——我们的，或你自己的——并保留版本历史。这里坦白比较两种设计各自的胜场。"/> <meta name="twitter:image" content="https://hoard.services/app.webp"/><!----><title>OpenSave 的替代方案：机器之间直连，还是一台属于你的服务器 — Hoard</title>
+		<link href="../../_app/immutable/assets/0.9JCwSkJ0.css" rel="stylesheet">
+		<link href="../../_app/immutable/assets/8.9SD7pss8.css" rel="stylesheet">
+  </head>
+  <body class="antialiased">
+    <div style="display: contents"><!--[--><!--[0--><!--[--><div class="relative isolate flex min-h-full flex-col text-ink" data-sveltekit-preload-data="hover"><a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent-deep focus:px-3 focus:py-2 focus:text-sm focus:text-white">Skip to content</a> <header class="sticky top-0 z-40 w-full bg-bg/80 backdrop-blur-md"><nav class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]"><a href="/zh" class="nav-pill flex items-center gap-2.5 ring-focus md:justify-self-start" aria-label="Hoard home"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><rect x="1" y="1" width="62" height="62" rx="13" fill="var(--color-pine-elev, #19231c)" stroke="var(--color-pine-line, #28332b)" stroke-width="2"></rect><rect x="9" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="41" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="9" y="25" width="46" height="14" rx="5" fill="#34d399"></rect></svg><!----> <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span></a> <div class="hidden items-center gap-1 md:flex md:justify-self-center"><a href="/zh/download" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">下载</a> <a href="/zh/pricing" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">价格</a> <a href="/zh/cli" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">CLI</a> <a href="/zh/guides" class="nav-pill ring-focus text-sm nav-pill-active">指南</a> <a href="/zh/help" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">帮助</a></div> <div class="hidden items-center gap-3 md:flex md:justify-self-end"><details class="group relative svelte-1h32yp1"><summary class="nav-pill flex cursor-pointer list-none items-center gap-1.5 text-sm text-ink-soft ring-focus [&amp;::-webkit-details-marker]:hidden" aria-label="Language"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-globe h-4 w-4"><!--[--><!----><circle cx="12" cy="12" r="10"><!----></circle><!----><!----><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"><!----></path><!----><!----><path d="M2 12h20"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <span class="font-medium">中文</span></summary> <div data-sveltekit-preload-data="tap" class="lang-menu absolute right-0 z-50 mt-2 min-w-40 overflow-hidden rounded-lg border border-line bg-bg/95 py-1 shadow-lg backdrop-blur-md svelte-1h32yp1"><!--[--><a href="/guides/opensave-alternative" hreflang="en" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">English <!--[-1--><!--]--></a><a href="/es/guides/opensave-alternative" hreflang="es" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Español <!--[-1--><!--]--></a><a href="/de/guides/opensave-alternative" hreflang="de" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Deutsch <!--[-1--><!--]--></a><a href="/fr/guides/opensave-alternative" hreflang="fr" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Français <!--[-1--><!--]--></a><a href="/it/guides/opensave-alternative" hreflang="it" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Italiano <!--[-1--><!--]--></a><a href="/ja/guides/opensave-alternative" hreflang="ja" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">日本語 <!--[-1--><!--]--></a><a href="/pt/guides/opensave-alternative" hreflang="pt" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Português <!--[-1--><!--]--></a><a href="/zh/guides/opensave-alternative" hreflang="zh" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink">中文 <!--[0--><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-check h-3.5 w-3.5 text-accent"><!--[--><!----><path d="M20 6 9 17l-5-5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!--]--></a><!--]--></div></details> <!--[0--><span class="h-9 w-24 animate-pulse rounded-md bg-ink/5"></span><!--]--> <a href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer" aria-label="Discord" title="Discord" class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#5865F2] text-white ring-focus transition-colors hover:bg-[#4752C4]"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.515.0699.0699 0 0 0-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 0 1 .0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 0 1-.0066.1276 12.2986 12.2986 0 0 1-1.873.8914.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 0 0 .0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 0 0 .0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"></path></svg><!----></a></div> <button class="md:hidden grid h-10 w-10 place-items-center rounded-lg text-ink-soft ring-focus hover:bg-ink/5" aria-label="Toggle menu" aria-expanded="false"><span class="relative h-5 w-5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-menu absolute inset-0 h-5 w-5 transition-all duration-300 opacity-100 rotate-0"><!--[--><!----><line x1="4" x2="20" y1="12" y2="12"><!----></line><!----><!----><line x1="4" x2="20" y1="6" y2="6"><!----></line><!----><!----><line x1="4" x2="20" y1="18" y2="18"><!----></line><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-x absolute inset-0 h-5 w-5 transition-all duration-300 opacity-0 -rotate-90"><!--[--><!----><path d="M18 6 6 18"><!----></path><!----><!----><path d="m6 6 12 12"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></span></button></nav> <!--[-1--><!--]--> <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-line transition-opacity duration-500 ease-out" style="opacity: 0;" aria-hidden="true"></div></header><!----> <main id="main" class="relative z-10 flex-1"><!--[0--><!--[--><!--[--><!----> <article class="mx-auto max-w-2xl px-4 py-16 sm:px-6 sm:py-24"><a href="/zh/guides" class="inline-flex items-center gap-1.5 rounded-md text-sm text-ink-soft ring-focus transition-colors hover:text-ink"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-left h-4 w-4"><!--[--><!----><path d="m12 19-7-7 7-7"><!----></path><!----><!----><path d="M19 12H5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> 所有指南</a> <h1 class="mt-6 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">OpenSave 的替代方案：机器之间直连，还是一台属于你的服务器</h1> <!--[0--><p class="mt-3 font-mono text-xs uppercase tracking-[0.14em] text-ink-faint">更新于
+      2026-09-01</p><!--]--> <div class="prose mt-8 svelte-6rcv4m"><!----><p>两个工具解决的是同一个问题，分歧只在架构上，而这也是唯一值得比较的地方。本页把两种设计并排摆开，包括另一种才是更好答案的情形。</p>
+<h2>真正的差别：直连还是走服务器</h2>
+<p><strong>OpenSave</strong> 是点对点的。你的机器彼此直接通信，中间不隔任何东西。没有账号，也没有要付费的存储，还可以选择把副本镜像到你已有的云盘。</p>
+<p><strong>Hoard</strong> 通过服务器同步。这台服务器要么是我们运营的 Hoard Cloud，要么是跑在你自己 PC 或 NAS 上的 <code>hoard-server</code>。你停止游玩时存档上传，另一台机器需要时再下载。</p>
+<p>其余的一切，都从这一个选择衍生而来。</p>
+<h2>服务器带来什么</h2>
+<ul>
+<li><strong>另一台机器不必开着。</strong> 你在台式机上玩完，笔记本关着放一周，打开时最新存档就在等你。点对点要求两端同时醒着——在书桌前没问题，但对一个月只拿两次的掌机就很别扭。</li>
+<li><strong>版本历史，而不只是最新状态。</strong> 每次游玩都成为一个可回退的版本。模组吞掉你的世界、或存档写到一半的那天，这一点才见真章：直连同步会忠实地把损坏的文件复制到另一台 PC。</li>
+<li><strong>一份比硬件活得久的副本。</strong> 两台 PC 在同一间屋子里一起完蛋并不算离奇。只在这两台机器上存在过的存档，会跟着它们一起消失。</li>
+<li><strong>网络上无需张罗。</strong> 不用穿透 NAT，不用开端口，也没有&quot;两台必须在同一局域网&quot;的前提。</li>
+</ul>
+<h2>点对点带来什么</h2>
+<p>对另一边也要公平：</p>
+<ul>
+<li><strong>永远不必为存储付费。</strong> 没有配额可撞，因为根本没有存储桶。Hoard 的免费额度是 2 GB，超出就要付费或自托管。</li>
+<li><strong>从设计上中间就没有东西。</strong> 如果目标是让文件永远不碰第三方的磁盘，直接传输就是最短的答案。</li>
+<li><strong>没有需要维护的东西。</strong> 不必让任何服务器常驻，连你自己的也不用。</li>
+</ul>
+<p>如果你在两台都开着的台式机上玩，从不想回退，也不愿把存储纳入考虑，那种设计干净利落，Hoard 对你而言是多余的机械。</p>
+<h2>隐私问题，说得精确一点</h2>
+<p>这正是关于 Hoard 的比较最常出错的地方，所以说准确些：Hoard 有两种运行方式，而且确实不同。</p>
+<ul>
+<li><strong>Hoard Cloud</strong> 是托管方案：你登录，存档保存在我们位于欧盟的服务器上。</li>
+<li><strong>自托管完全属于你。</strong> 你在自己的 PC 或 NAS 上运行 <code>hoard-server</code>，存档从你的机器走到你的磁盘。<strong>没有我们这边的账号，没有发往我们的遥测，没有配额，也没有中转</strong>——不经过我们的任何服务器，因为这条路径上根本没有我们的东西。我们看不到任何存档、游戏名或邮箱地址，因为这些从未到达我们这里。就算 Hoard Cloud 明天关停，自托管的部署照常运行。</li>
+</ul>
+<p>所以除非你自己选择，&quot;服务器&quot;并不意味着&quot;别人的电脑&quot;。自托管的 Hoard 把存档留在属于你的硬件上，和直接传输一样，同时还多给你历史，以及那台可以关机的机器。</p>
+<h2>检测与覆盖</h2>
+<p>两个工具都能自动找到大量游戏的存档。Hoard 读取开源生态共享的同一份社区存档位置清单，覆盖两万余款游戏，并在此之上加了 Steam 库扫描、运行中进程和文件系统扫描。对 Steam 游戏，它追踪 <code>userdata</code> 里的 <code>&lt;AppID&gt;/remote/</code> 而不是上一层文件夹，因为上一层放着 <code>remotecache.vdf</code> 以及各机器各自的成就和游戏时长文件——同步它们，每次启动都会像冲突。特殊情况可以手动指定文件夹。</p>
+<h2>你该用哪个？</h2>
+<ul>
+<li><strong>点对点</strong>：如果你的机器同时开着，不希望存储进入这个话题，而最新存档也一直够用。</li>
+<li><strong>Hoard</strong>：如果你想要能回退的历史、一台可以关一周的机器，以及一份比两台 PC 都活得久的副本——并且可以在我们的云和你自己的服务器之间选择。</li>
+</ul>
+<p>想看完整的横向比较，可以读<a href="/zh/guides/game-save-sync-comparison">所有存档同步工具的比较</a>；本地备份那一侧，参见<a href="/zh/guides/ludusavi-alternative">与 Ludusavi 的比较</a>。</p>
+<h2>常见问题</h2>
+<h3>Hoard 需要账号吗？</h3>
+<p>用 Hoard Cloud 需要，同步就是绑定在账号上的。自托管则完全没有我们这边的账号：你的服务器有它自己的用户和每台设备一个的令牌，它们从不离开你的机器。</p>
+<h3>Hoard 能完全不用云吗？</h3>
+<p>能。在 PC 或 NAS 上运行 <code>hoard-server</code>，你的存档就从你的机器走到你的磁盘，没有任何东西经过我们的服务器。</p>
+<h3>两台 PC 需要同时在线吗？</h3>
+<p>不需要，这正是走服务器的实际好处。你停止游玩时存档上传，另一台机器下次索取时再下载。</p>
+<h3>直接传输会保留版本历史吗？</h3>
+<p>本身不会——把文件复制到另一台机器，只是让两边都停在当前状态。Hoard 把每次游玩都抓成一个版本，这才让从损坏存档中回退成为可能。</p>
+<h3>Hoard 也是开源的吗？</h3>
+<p>是的，AGPL-3.0，服务器也包含在内。自托管服务器就是我们自己在跑的那个二进制，不是删减版。</p>
+<!----></div> <div class="mt-14 rounded-xl border border-line bg-surface p-6"><h2 class="font-display text-lg font-semibold text-ink">准备好保护你的存档了吗？</h2> <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">下载 Hoard，几分钟即可设置自动、带版本管理的备份。</p> <a href="/zh/download" class="mt-4 inline-flex h-10 items-center rounded-lg bg-accent px-4 text-sm font-medium text-pine ring-focus transition-colors hover:bg-emerald-300">下载</a></div></article><!--]--><!----><!--]--><!--]--><!----></main> <footer class="mt-auto border-t border-line" data-sveltekit-preload-code="viewport"><div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 grid-cols-2 md:grid-cols-4"><div class="col-span-2 md:col-span-1"><div class="flex items-center gap-2.5"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="26" height="26" aria-hidden="true"><rect x="1" y="1" width="62" height="62" rx="13" fill="var(--color-pine-elev, #19231c)" stroke="var(--color-pine-line, #28332b)" stroke-width="2"></rect><rect x="9" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="41" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="9" y="25" width="46" height="14" rx="5" fill="#34d399"></rect></svg><!----> <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span> <span class="ml-1 rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[10px] tracking-wider text-ink-soft">v1.1.6</span></div> <p class="mt-3 max-w-xs text-sm leading-relaxed text-ink-soft">为你的游戏存档提供同步和带版本的备份。用 Rust 打造，开源。</p></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">产品</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/zh/pricing">价格</a></li> <li><a class="link-underline hover:text-ink" href="/zh/download">下载</a></li> <li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard/blob/main/CHANGELOG.md" rel="noreferrer">更新日志</a></li> <li><a class="link-underline hover:text-ink" href="/zh/guides">指南</a></li> <li><a class="link-underline hover:text-ink" href="/zh/help">状态</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">公司</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard" rel="noreferrer">GitHub</a></li> <li><a class="link-underline hover:text-ink" href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer">Discord</a></li> <li><a class="link-underline hover:text-ink" href="/zh/help">联系</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">法律</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/zh/legal/terms">条款</a></li> <li><a class="link-underline hover:text-ink" href="/zh/legal/privacy">隐私</a></li> <li><a class="link-underline hover:text-ink" href="/zh/legal/subprocessors">次级处理方</a></li> <li><a class="link-underline hover:text-ink" href="/zh/legal/notice">法律声明</a></li></ul></div></div> <div class="border-t border-line"><p class="mx-auto max-w-6xl px-4 py-4 text-xs text-ink-faint sm:px-6">© 2026 Hoard · Raimundo León Oliva · AGPL-3.0</p></div></footer><!----></div><!--]--><!--]--> <!--[-1--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_i6416b = {
+						base: new URL("../..", location).pathname.slice(0, -1),
+						env: null
+					};
+
+					const element = document.currentScript.parentElement;
+
+					import("../../_app/env.js").then(({ env }) => {
+						__sveltekit_i6416b.env = env;
+
+						Promise.all([
+							import("../../_app/immutable/entry/start.Bv9fO-Dl.js"),
+							import("../../_app/immutable/entry/app.DoJpZpIJ.js")
+						]).then(([kit, app]) => {
+							kit.start(app, element, {
+									node_ids: [0, 2, 8],
+									data: [null,null,null],
+									form: null,
+									error: null
+								});
+						});
+					});
+				}
+			</script>
+		</div>
+  </body>
+</html>

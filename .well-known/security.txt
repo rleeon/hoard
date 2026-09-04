@@ -1,0 +1,8 @@
+# https://securitytxt.org/ — machine-readable pointer to our disclosure policy.
+# Expires must stay in the future; bump it when you review this file.
+Contact: mailto:support@hoard.services
+Contact: https://github.com/rleeon/hoard/security/advisories/new
+Expires: 2027-08-11T00:00:00.000Z
+Policy: https://github.com/rleeon/hoard/blob/main/SECURITY.md
+Preferred-Languages: es, en
+Canonical: https://hoard.services/.well-known/security.txt

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../../favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png" />
+    <link rel="mask-icon" href="../../favicon.svg" color="#047857" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0f0c" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Per-page title/description/canonical/OG/hreflang come from <Seo>; see $lib/components/Seo.svelte. -->
+    <link href="../../_app/immutable/entry/start.Bv9fO-Dl.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DM4nI_SJ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D280JA-S.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/R6czw0ix.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/OA8UcISh.js" rel="modulepreload">
+		<link href="../../_app/immutable/entry/app.DoJpZpIJ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Dp1pzeXC.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3cuW3tw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Bzak7iHL.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ogaUi5l8.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B709xuIM.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DiqhoAlS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BnhOS97m.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7_OtiQB.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/0.B7e3jHvd.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3ZM-Apl.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/C4BeUwog.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CjPXEXvS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CQcT7K4l.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B1IsZ4X6.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Baiqwrok.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ZljVK2eG.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BHEZUQJA.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BB8cOoWK.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Cft1C6nZ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CnUB1uiG.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DYjxnFFo.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/2.ClkBtYjW.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/8.BJWNUN1w.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CYf_2dI-.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7xU1dRw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DkuOv9M8.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DjQFue8R.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BgQYEE7T.js" rel="modulepreload">
+		<link href="../../_app/env.js" rel="modulepreload">
+		<!--6rcv4m--><!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"ゲームのセーブデータを自動でバックアップする方法","description":"Hoard で PC ゲームのセーブデータを自動かつ世代管理付きでクラウドにバックアップ。クラッシュ・再インストール・不具合のある MOD でも進行データが消える心配はありません。","inLanguage":"ja","datePublished":"2026-09-01","dateModified":"2026-09-01","mainEntityOfPage":"https://hoard.services/ja/guides/back-up-game-saves","author":{"@type":"Organization","name":"Hoard","url":"https://hoard.services"},"publisher":{"@type":"Organization","name":"Hoard","logo":{"@type":"ImageObject","url":"https://hoard.services/icon-512.png"}}}</script><!----> <!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","inLanguage":"ja","mainEntity":[{"@type":"Question","name":"プレイ中もバックアップされますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>いいえ。プレイを終えてセーブフォルダーが静かになるまで待つので、書き込み途中のファイルがバックアップになることはありません。\u003c/p>\n"}},{"@type":"Question","name":"セーブにはどれくらいの容量が必要ですか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>思っているより少なくて済みます。世代は内容ハッシュで重複排除されるため、新たに容量を使うのはセッション間で実際に変わった分だけです。多くの場合、数ギガバイトに余裕で収まります。\u003c/p>\n"}},{"@type":"Question","name":"検出されないゲームがある場合は？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>そのフォルダーを手動で指定すれば、他と同じように追跡します。検出は数千タイトルをカバーしますが、変わった場所に保存するゲームや、手動でインストールしたものには、ヒントが要ることがあります。\u003c/p>\n"}},{"@type":"Question","name":"Mod もバックアップされますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>Hoard が追跡するのはセーブフォルダーなので、別の場所にある Mod はバックアップに入りません。これは意図的です。Mod は容量が大きく、再ダウンロードでき、マシン間で同期すると解決するより多くの問題を生むからです。\u003c/p>\n"}},{"@type":"Question","name":"セルフホストするとバックアップの動きは変わりますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>まったく変わりません。同じ検出、同じ世代、同じ自動取り込みです。自分のものになるのは保存先だけです。\u003c/p>\n"}}]}</script><!----><!----><!--gsrl61--><meta name="description" content="Hoard で PC ゲームのセーブデータを自動かつ世代管理付きでクラウドにバックアップ。クラッシュ・再インストール・不具合のある MOD でも進行データが消える心配はありません。"/> <link rel="canonical" href="https://hoard.services/ja/guides/back-up-game-saves"/> <!--[--><link rel="alternate" hreflang="en" href="https://hoard.services/guides/back-up-game-saves"/><link rel="alternate" hreflang="es" href="https://hoard.services/es/guides/back-up-game-saves"/><link rel="alternate" hreflang="de" href="https://hoard.services/de/guides/back-up-game-saves"/><link rel="alternate" hreflang="fr" href="https://hoard.services/fr/guides/back-up-game-saves"/><link rel="alternate" hreflang="it" href="https://hoard.services/it/guides/back-up-game-saves"/><link rel="alternate" hreflang="ja" href="https://hoard.services/ja/guides/back-up-game-saves"/><link rel="alternate" hreflang="pt" href="https://hoard.services/pt/guides/back-up-game-saves"/><link rel="alternate" hreflang="zh" href="https://hoard.services/zh/guides/back-up-game-saves"/><!--]--> <link rel="alternate" hreflang="x-default" href="https://hoard.services/guides/back-up-game-saves"/> <meta property="og:type" content="article"/> <meta property="og:site_name" content="Hoard"/> <meta property="og:title" content="ゲームのセーブデータを自動でバックアップする方法 — Hoard"/> <meta property="og:description" content="Hoard で PC ゲームのセーブデータを自動かつ世代管理付きでクラウドにバックアップ。クラッシュ・再インストール・不具合のある MOD でも進行データが消える心配はありません。"/> <meta property="og:url" content="https://hoard.services/ja/guides/back-up-game-saves"/> <meta property="og:image" content="https://hoard.services/app.webp"/> <meta property="og:locale" content="ja_JP"/> <!--[--><meta property="og:locale:alternate" content="en_US"/><meta property="og:locale:alternate" content="es_ES"/><meta property="og:locale:alternate" content="de_DE"/><meta property="og:locale:alternate" content="fr_FR"/><meta property="og:locale:alternate" content="it_IT"/><meta property="og:locale:alternate" content="pt_PT"/><meta property="og:locale:alternate" content="zh_CN"/><!--]--> <meta name="twitter:card" content="summary_large_image"/> <meta name="twitter:title" content="ゲームのセーブデータを自動でバックアップする方法 — Hoard"/> <meta name="twitter:description" content="Hoard で PC ゲームのセーブデータを自動かつ世代管理付きでクラウドにバックアップ。クラッシュ・再インストール・不具合のある MOD でも進行データが消える心配はありません。"/> <meta name="twitter:image" content="https://hoard.services/app.webp"/><!----><title>ゲームのセーブデータを自動でバックアップする方法 — Hoard</title>
+		<link href="../../_app/immutable/assets/0.9JCwSkJ0.css" rel="stylesheet">
+		<link href="../../_app/immutable/assets/8.9SD7pss8.css" rel="stylesheet">
+  </head>
+  <body class="antialiased">
+    <div style="display: contents"><!--[--><!--[0--><!--[--><div class="relative isolate flex min-h-full flex-col text-ink" data-sveltekit-preload-data="hover"><a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent-deep focus:px-3 focus:py-2 focus:text-sm focus:text-white">Skip to content</a> <header class="sticky top-0 z-40 w-full bg-bg/80 backdrop-blur-md"><nav class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]"><a href="/ja" class="nav-pill flex items-center gap-2.5 ring-focus md:justify-self-start" aria-label="Hoard home"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><rect x="1" y="1" width="62" height="62" rx="13" fill="var(--color-pine-elev, #19231c)" stroke="var(--color-pine-line, #28332b)" stroke-width="2"></rect><rect x="9" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="41" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="9" y="25" width="46" height="14" rx="5" fill="#34d399"></rect></svg><!----> <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span></a> <div class="hidden items-center gap-1 md:flex md:justify-self-center"><a href="/ja/download" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">ダウンロード</a> <a href="/ja/pricing" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">料金</a> <a href="/ja/cli" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">CLI</a> <a href="/ja/guides" class="nav-pill ring-focus text-sm nav-pill-active">ガイド</a> <a href="/ja/help" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">ヘルプ</a></div> <div class="hidden items-center gap-3 md:flex md:justify-self-end"><details class="group relative svelte-1h32yp1"><summary class="nav-pill flex cursor-pointer list-none items-center gap-1.5 text-sm text-ink-soft ring-focus [&amp;::-webkit-details-marker]:hidden" aria-label="Language"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-globe h-4 w-4"><!--[--><!----><circle cx="12" cy="12" r="10"><!----></circle><!----><!----><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"><!----></path><!----><!----><path d="M2 12h20"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <span class="font-medium">日本語</span></summary> <div data-sveltekit-preload-data="tap" class="lang-menu absolute right-0 z-50 mt-2 min-w-40 overflow-hidden rounded-lg border border-line bg-bg/95 py-1 shadow-lg backdrop-blur-md svelte-1h32yp1"><!--[--><a href="/guides/back-up-game-saves" hreflang="en" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">English <!--[-1--><!--]--></a><a href="/es/guides/back-up-game-saves" hreflang="es" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Español <!--[-1--><!--]--></a><a href="/de/guides/back-up-game-saves" hreflang="de" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Deutsch <!--[-1--><!--]--></a><a href="/fr/guides/back-up-game-saves" hreflang="fr" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Français <!--[-1--><!--]--></a><a href="/it/guides/back-up-game-saves" hreflang="it" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Italiano <!--[-1--><!--]--></a><a href="/ja/guides/back-up-game-saves" hreflang="ja" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink">日本語 <!--[0--><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-check h-3.5 w-3.5 text-accent"><!--[--><!----><path d="M20 6 9 17l-5-5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!--]--></a><a href="/pt/guides/back-up-game-saves" hreflang="pt" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Português <!--[-1--><!--]--></a><a href="/zh/guides/back-up-game-saves" hreflang="zh" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">中文 <!--[-1--><!--]--></a><!--]--></div></details> <!--[0--><span class="h-9 w-24 animate-pulse rounded-md bg-ink/5"></span><!--]--> <a href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer" aria-label="Discord" title="Discord" class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#5865F2] text-white ring-focus transition-colors hover:bg-[#4752C4]"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.515.0699.0699 0 0 0-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 0 1 .0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 0 1-.0066.1276 12.2986 12.2986 0 0 1-1.873.8914.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 0 0 .0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 0 0 .0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"></path></svg><!----></a></div> <button class="md:hidden grid h-10 w-10 place-items-center rounded-lg text-ink-soft ring-focus hover:bg-ink/5" aria-label="Toggle menu" aria-expanded="false"><span class="relative h-5 w-5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-menu absolute inset-0 h-5 w-5 transition-all duration-300 opacity-100 rotate-0"><!--[--><!----><line x1="4" x2="20" y1="12" y2="12"><!----></line><!----><!----><line x1="4" x2="20" y1="6" y2="6"><!----></line><!----><!----><line x1="4" x2="20" y1="18" y2="18"><!----></line><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-x absolute inset-0 h-5 w-5 transition-all duration-300 opacity-0 -rotate-90"><!--[--><!----><path d="M18 6 6 18"><!----></path><!----><!----><path d="m6 6 12 12"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></span></button></nav> <!--[-1--><!--]--> <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-line transition-opacity duration-500 ease-out" style="opacity: 0;" aria-hidden="true"></div></header><!----> <main id="main" class="relative z-10 flex-1"><!--[0--><!--[--><!--[--><!----> <article class="mx-auto max-w-2xl px-4 py-16 sm:px-6 sm:py-24"><a href="/ja/guides" class="inline-flex items-center gap-1.5 rounded-md text-sm text-ink-soft ring-focus transition-colors hover:text-ink"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-left h-4 w-4"><!--[--><!----><path d="m12 19-7-7 7-7"><!----></path><!----><!----><path d="M19 12H5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> すべてのガイド</a> <h1 class="mt-6 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">ゲームのセーブデータを自動でバックアップする方法</h1> <!--[0--><p class="mt-3 font-mono text-xs uppercase tracking-[0.14em] text-ink-faint">更新日
+      2026-09-01</p><!--]--> <div class="prose mt-8 svelte-6rcv4m"><!----><p>セーブデータを失うことは、何時間もの進行を失うことです。Hoard は PC ゲームのセーブデータを自動でバックアップし、完全なバージョン履歴を保持するので、いつでも巻き戻せます。</p>
+<h2>Hoard がバックアップするもの</h2>
+<p>Hoard はプレイしているゲームのセーブフォルダーを検出し、あなた自身のクラウド（Hoard Cloud または自分でホストするサーバー）へコピーします。各バックアップは世代管理されるため、古いコピーが上書きされることはありません。</p>
+<p>各ゲームがどこにセーブを保存しているかを見つけるために、Hoard は Ludusavi を支えているのと同じコミュニティのセーブ位置データベースを利用します。そのため数千タイトルで検出がすぐに機能します。違いはその後にあります。バックアップをディスクに残すのではなく、Hoard は自動的にクラウドで世代管理します。</p>
+<h2>自動バックアップを設定する</h2>
+<ol>
+<li>ダウンロードページから Windows、macOS、Linux 向けの <strong>Hoard をダウンロードしてインストール</strong> します。</li>
+<li>サインインするか、アプリを自分のセルフホストサーバーに向けます。</li>
+<li><strong>ライブラリ</strong> を開きます。Hoard がインストール済みのゲームを探し、見つけたセーブを一覧表示します。</li>
+<li>保護したいゲームを追加します。Hoard は各セーブフォルダーを自動で特定します。ゲームが検出されない場合は手動でパスを追加できます。</li>
+<li><strong>自動モード</strong> をオンのままにします。Hoard はセーブフォルダーを監視し、プレイを終えた後にバックアップします。</li>
+</ol>
+<p>これ以降、何もしなくても毎回のセッションが記録されます。</p>
+<h2>PC ゲームのセーブは実際どこに置かれるのか</h2>
+<p>置き場所は 1 か所に決まっていません。こういうツールが必要になる理由が、まさにそこにあります。実際には次のどこかに落ち着きます。</p>
+<ul>
+<li><strong>Steam の中</strong>、<code>userdata/&lt;UserID&gt;/&lt;AppID&gt;/remote/</code>。Steam クラウド自身が同期するフォルダーです。</li>
+<li><strong><code>ドキュメント\My Games\…</code></strong>。Windows にある慣習らしきものの中では、いちばん近いもの。</li>
+<li><strong><code>%APPDATA%</code>、<code>%LOCALAPPDATA%</code>、<code>LocalLow</code></strong>。Unity や Unreal のゲームの多くはここに書きます。</li>
+<li><strong><code>%USERPROFILE%\Saved Games</code></strong>。数は少ないものの、頑固に使い続けるタイトル群があります。</li>
+<li><strong>ゲームのインストールフォルダーそのもの</strong>。古いタイトルには、いまだにここへ保存するものが驚くほどあります。</li>
+<li><strong>Linux</strong> では、ネイティブのゲームは <code>~/.local/share</code> か <code>~/.config</code>、Windows 版のゲームは Proton プレフィックスの中、<code>steamapps/compatdata/&lt;AppID&gt;/pfx/drive_c/users/steamuser/…</code>。</li>
+<li><strong>macOS</strong> では <code>~/Library/Application Support</code>。</li>
+</ul>
+<p>ゲームの入手元はほとんど関係ありません。GOG、Epic、itch のタイトルも同じ数か所に落ち着きます。決めているのはストアではなく、エンジンと開発者だからです。</p>
+<h2>何がバックアップされ、何がされないか</h2>
+<p>セーブフォルダーの中身がセーブだけということはまずないので、Hoard は見つけたものを 3 つに仕分けます。</p>
+<ul>
+<li><strong>セーブデータ</strong> はバックアップされ、復元されます。これがあなたの進行です。</li>
+<li><strong>特定のマシンに属するファイル</strong>、つまり設定やログなどはバックアップに含めるためアップロードされますが、他の PC のコピーを上書きすることはありません。グラフィック設定はそのマシンのものであり続けます。</li>
+<li><strong>ゴミ</strong>、つまりキャッシュやクラッシュダンプ、一時ファイルは無視されます。二度と要らないもので、バックアップが膨らまないようにするためです。</li>
+</ul>
+<h2>バックアップが行われるタイミング</h2>
+<p>Hoard はフォルダーを監視し、<strong>プレイを終えたあと</strong> に取り込みます。ゲームがファイルを開いている最中には行いません。数秒前にセーブが書かれたばかりなら、落ち着くまで待ちます。書き込み中のファイルは、半端な状態で取り込む価値がないからです。</p>
+<p>取り込みのたびに 1 つの世代ができます。スナップショットは内容ハッシュで保存されるため、変わっていないファイルは一度だけ保存されます。2 GB のセーブの 10 世代は約 20 GB ではなく約 2 GB です。</p>
+<h2>当方のサーバーを介さないバックアップ</h2>
+<p>誰のクラウドも使いたくない場合は、<code>hoard-server</code> を自分で動かし、アプリをそこに向けてください。セーブは自分の PC から自分のディスクへ移ります。当方のアカウントも、当方へのテレメトリも、当方のサーバーを通るものもありません。<a href="/ja/guides/self-host-hoard">Hoard をセルフホストする方法</a> を参照してください。</p>
+<h2>ヒント：履歴を確認する</h2>
+<p>ゲームの <strong>履歴</strong> タブを開くと、各バックアップを日付とサイズ付きで確認できます。そこからどの過去バージョンもワンクリックで復元できます。セーブは暗号化されて転送され、EU 内に保存され、いつでもエクスポートや削除が可能です。</p>
+<p>すでに Ludusavi のようなローカルバックアップツールを使っていますか？ そのまま使い続けても構いません。ただし、それらのバックアップをクラウドに送り、Rclone を自分でスクリプトせずに端末間で同期したいなら、まさにそれを Hoard が自動化します。公平な比較は <a href="/ja/guides/ludusavi-alternative">Ludusavi と Hoard</a> をご覧ください。</p>
+<h2>よくある質問</h2>
+<h3>プレイ中もバックアップされますか？</h3>
+<p>いいえ。プレイを終えてセーブフォルダーが静かになるまで待つので、書き込み途中のファイルがバックアップになることはありません。</p>
+<h3>セーブにはどれくらいの容量が必要ですか？</h3>
+<p>思っているより少なくて済みます。世代は内容ハッシュで重複排除されるため、新たに容量を使うのはセッション間で実際に変わった分だけです。多くの場合、数ギガバイトに余裕で収まります。</p>
+<h3>検出されないゲームがある場合は？</h3>
+<p>そのフォルダーを手動で指定すれば、他と同じように追跡します。検出は数千タイトルをカバーしますが、変わった場所に保存するゲームや、手動でインストールしたものには、ヒントが要ることがあります。</p>
+<h3>Mod もバックアップされますか？</h3>
+<p>Hoard が追跡するのはセーブフォルダーなので、別の場所にある Mod はバックアップに入りません。これは意図的です。Mod は容量が大きく、再ダウンロードでき、マシン間で同期すると解決するより多くの問題を生むからです。</p>
+<h3>セルフホストするとバックアップの動きは変わりますか？</h3>
+<p>まったく変わりません。同じ検出、同じ世代、同じ自動取り込みです。自分のものになるのは保存先だけです。</p>
+<!----></div> <div class="mt-14 rounded-xl border border-line bg-surface p-6"><h2 class="font-display text-lg font-semibold text-ink">セーブデータを守る準備はできましたか？</h2> <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">Hoard をダウンロードして、数分で自動・バージョン管理付きバックアップを設定しましょう。</p> <a href="/ja/download" class="mt-4 inline-flex h-10 items-center rounded-lg bg-accent px-4 text-sm font-medium text-pine ring-focus transition-colors hover:bg-emerald-300">ダウンロード</a></div></article><!--]--><!----><!--]--><!--]--><!----></main> <footer class="mt-auto border-t border-line" data-sveltekit-preload-code="viewport"><div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 grid-cols-2 md:grid-cols-4"><div class="col-span-2 md:col-span-1"><div class="flex items-center gap-2.5"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="26" height="26" aria-hidden="true"><rect x="1" y="1" width="62" height="62" rx="13" fill="var(--color-pine-elev, #19231c)" stroke="var(--color-pine-line, #28332b)" stroke-width="2"></rect><rect x="9" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="41" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="9" y="25" width="46" height="14" rx="5" fill="#34d399"></rect></svg><!----> <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span> <span class="ml-1 rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[10px] tracking-wider text-ink-soft">v1.1.6</span></div> <p class="mt-3 max-w-xs text-sm leading-relaxed text-ink-soft">ゲームセーブの同期とバージョン管理されたバックアップ。Rust製、オープンソース。</p></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">製品</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/ja/pricing">料金</a></li> <li><a class="link-underline hover:text-ink" href="/ja/download">ダウンロード</a></li> <li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard/blob/main/CHANGELOG.md" rel="noreferrer">変更履歴</a></li> <li><a class="link-underline hover:text-ink" href="/ja/guides">ガイド</a></li> <li><a class="link-underline hover:text-ink" href="/ja/help">稼働状況</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">会社</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard" rel="noreferrer">GitHub</a></li> <li><a class="link-underline hover:text-ink" href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer">Discord</a></li> <li><a class="link-underline hover:text-ink" href="/ja/help">お問い合わせ</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">法的事項</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/ja/legal/terms">規約</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/privacy">プライバシー</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/subprocessors">再委託先</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/notice">法的表示</a></li></ul></div></div> <div class="border-t border-line"><p class="mx-auto max-w-6xl px-4 py-4 text-xs text-ink-faint sm:px-6">© 2026 Hoard · Raimundo León Oliva · AGPL-3.0</p></div></footer><!----></div><!--]--><!--]--> <!--[-1--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_i6416b = {
+						base: new URL("../..", location).pathname.slice(0, -1),
+						env: null
+					};
+
+					const element = document.currentScript.parentElement;
+
+					import("../../_app/env.js").then(({ env }) => {
+						__sveltekit_i6416b.env = env;
+
+						Promise.all([
+							import("../../_app/immutable/entry/start.Bv9fO-Dl.js"),
+							import("../../_app/immutable/entry/app.DoJpZpIJ.js")
+						]).then(([kit, app]) => {
+							kit.start(app, element, {
+									node_ids: [0, 2, 8],
+									data: [null,null,null],
+									form: null,
+									error: null
+								});
+						});
+					});
+				}
+			</script>
+		</div>
+  </body>
+</html>

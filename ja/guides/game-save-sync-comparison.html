@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../../favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png" />
+    <link rel="mask-icon" href="../../favicon.svg" color="#047857" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0f0c" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Per-page title/description/canonical/OG/hreflang come from <Seo>; see $lib/components/Seo.svelte. -->
+    <link href="../../_app/immutable/entry/start.Bv9fO-Dl.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DM4nI_SJ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D280JA-S.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/R6czw0ix.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/OA8UcISh.js" rel="modulepreload">
+		<link href="../../_app/immutable/entry/app.DoJpZpIJ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Dp1pzeXC.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3cuW3tw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Bzak7iHL.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ogaUi5l8.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B709xuIM.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DiqhoAlS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BnhOS97m.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7_OtiQB.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/0.B7e3jHvd.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3ZM-Apl.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/C4BeUwog.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CjPXEXvS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CQcT7K4l.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B1IsZ4X6.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Baiqwrok.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ZljVK2eG.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BHEZUQJA.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BB8cOoWK.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Cft1C6nZ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CnUB1uiG.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DYjxnFFo.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/2.ClkBtYjW.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/8.BJWNUN1w.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CYf_2dI-.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7xU1dRw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DkuOv9M8.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DjQFue8R.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BgQYEE7T.js" rel="modulepreload">
+		<link href="../../_app/env.js" rel="modulepreload">
+		<!--6rcv4m--><!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"セーブデータ同期ツール比較：Hoard と Ludusavi・Syncthing・OpenSave ほか","description":"PC のセーブデータをバックアップ・同期するツールの正直な比較。Ludusavi、Syncthing、OpenSave、OpenCloudSaves、Game Backup Monitor、Aletheia、SaveSync、Hoard を一覧表つきで比較し、Hoard が負けている点も書いています。","inLanguage":"ja","datePublished":"2026-09-01","dateModified":"2026-09-01","mainEntityOfPage":"https://hoard.services/ja/guides/game-save-sync-comparison","author":{"@type":"Organization","name":"Hoard","url":"https://hoard.services"},"publisher":{"@type":"Organization","name":"Hoard","logo":{"@type":"ImageObject","url":"https://hoard.services/icon-512.png"}}}</script><!----> <!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","inLanguage":"ja","mainEntity":[{"@type":"Question","name":"この中で世代履歴を残すのはどれですか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>Hoard は 1 セッションを 1 世代として残し、そこへ戻れます。Ludusavi は世代管理されたローカルバックアップを保持します。その他の多くは現在の状態を同期・コピーするだけなので、壊れたセーブはそのまま忠実にもう 1 台へ伝わります。\u003c/p>\n"}},{"@type":"Question","name":"サーバーもアカウントもなしで使えるのはどれですか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>ローカルバックアップとしての Ludusavi と、ピアツーピアのツール全般です。セルフホストするなら Hoard も該当します。当方のアカウントはなく、当方のサーバーを通るものもありません。\u003c/p>\n"}},{"@type":"Question","name":"Steam にないゲームをカバーするのはどれですか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>ここに挙げたセーブ管理ツールはすべてカバーします。ストア経由ではなく、同じコミュニティのデータベースでセーブの場所を突き止めるからです。例外は Steam クラウドで、開発者が有効にした Steam のゲームしか対象になりません。\u003c/p>\n"}},{"@type":"Question","name":"1 つだけ選ばないといけませんか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>いいえ。実際、多くの人は選んでいません。ローカルバックアップのツールと同期のツールは、問題の別々の半分を解いています。唯一の注意は、一方をもう一方のバックアップフォルダーに向けないこと。向けると、実際のセーブではなく古い写しを同期することになります。\u003c/p>\n"}},{"@type":"Question","name":"自作構成がいちばん壊れる原因は何ですか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>Steam の \u003ccode>userdata\u003c/code> にある \u003ccode>&lt;AppID&gt;/remote/\u003c/code> の 1 つ上のフォルダーを同期することです。上のフォルダーには \u003ccode>remotecache.vdf\u003c/code> や、マシンごとに違って当然の実績・プレイ時間のファイルが入っているため、セーブが動いていなくても起動のたびに競合に見えます。\u003c/p>\n"}}]}</script><!----><!----><!--gsrl61--><meta name="description" content="PC のセーブデータをバックアップ・同期するツールの正直な比較。Ludusavi、Syncthing、OpenSave、OpenCloudSaves、Game Backup Monitor、Aletheia、SaveSync、Hoard を一覧表つきで比較し、Hoard が負けている点も書いています。"/> <link rel="canonical" href="https://hoard.services/ja/guides/game-save-sync-comparison"/> <!--[--><link rel="alternate" hreflang="en" href="https://hoard.services/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="es" href="https://hoard.services/es/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="de" href="https://hoard.services/de/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="fr" href="https://hoard.services/fr/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="it" href="https://hoard.services/it/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="ja" href="https://hoard.services/ja/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="pt" href="https://hoard.services/pt/guides/game-save-sync-comparison"/><link rel="alternate" hreflang="zh" href="https://hoard.services/zh/guides/game-save-sync-comparison"/><!--]--> <link rel="alternate" hreflang="x-default" href="https://hoard.services/guides/game-save-sync-comparison"/> <meta property="og:type" content="article"/> <meta property="og:site_name" content="Hoard"/> <meta property="og:title" content="セーブデータ同期ツール比較：Hoard と Ludusavi・Syncthing・OpenSave ほか — Hoard"/> <meta property="og:description" content="PC のセーブデータをバックアップ・同期するツールの正直な比較。Ludusavi、Syncthing、OpenSave、OpenCloudSaves、Game Backup Monitor、Aletheia、SaveSync、Hoard を一覧表つきで比較し、Hoard が負けている点も書いています。"/> <meta property="og:url" content="https://hoard.services/ja/guides/game-save-sync-comparison"/> <meta property="og:image" content="https://hoard.services/app.webp"/> <meta property="og:locale" content="ja_JP"/> <!--[--><meta property="og:locale:alternate" content="en_US"/><meta property="og:locale:alternate" content="es_ES"/><meta property="og:locale:alternate" content="de_DE"/><meta property="og:locale:alternate" content="fr_FR"/><meta property="og:locale:alternate" content="it_IT"/><meta property="og:locale:alternate" content="pt_PT"/><meta property="og:locale:alternate" content="zh_CN"/><!--]--> <meta name="twitter:card" content="summary_large_image"/> <meta name="twitter:title" content="セーブデータ同期ツール比較：Hoard と Ludusavi・Syncthing・OpenSave ほか — Hoard"/> <meta name="twitter:description" content="PC のセーブデータをバックアップ・同期するツールの正直な比較。Ludusavi、Syncthing、OpenSave、OpenCloudSaves、Game Backup Monitor、Aletheia、SaveSync、Hoard を一覧表つきで比較し、Hoard が負けている点も書いています。"/> <meta name="twitter:image" content="https://hoard.services/app.webp"/><!----><title>セーブデータ同期ツール比較：Hoard と Ludusavi・Syncthing・OpenSave ほか — Hoard</title>
+		<link href="../../_app/immutable/assets/0.9JCwSkJ0.css" rel="stylesheet">
+		<link href="../../_app/immutable/assets/8.9SD7pss8.css" rel="stylesheet">
+  </head>
+  <body class="antialiased">
+    <div style="display: contents"><!--[--><!--[0--><!--[--><div class="relative isolate flex min-h-full flex-col text-ink" data-sveltekit-preload-data="hover"><a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent-deep focus:px-3 focus:py-2 focus:text-sm focus:text-white">Skip to content</a> <header class="sticky top-0 z-40 w-full bg-bg/80 backdrop-blur-md"><nav class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]"><a href="/ja" class="nav-pill flex items-center gap-2.5 ring-focus md:justify-self-start" aria-label="Hoard home"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><rect x="1" y="1" width="62" height="62" rx="13" fill="var(--color-pine-elev, #19231c)" stroke="var(--color-pine-line, #28332b)" stroke-width="2"></rect><rect x="9" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="41" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="9" y="25" width="46" height="14" rx="5" fill="#34d399"></rect></svg><!----> <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span></a> <div class="hidden items-center gap-1 md:flex md:justify-self-center"><a href="/ja/download" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">ダウンロード</a> <a href="/ja/pricing" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">料金</a> <a href="/ja/cli" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">CLI</a> <a href="/ja/guides" class="nav-pill ring-focus text-sm nav-pill-active">ガイド</a> <a href="/ja/help" class="nav-pill ring-focus text-sm text-ink-soft hover:text-ink">ヘルプ</a></div> <div class="hidden items-center gap-3 md:flex md:justify-self-end"><details class="group relative svelte-1h32yp1"><summary class="nav-pill flex cursor-pointer list-none items-center gap-1.5 text-sm text-ink-soft ring-focus [&amp;::-webkit-details-marker]:hidden" aria-label="Language"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-globe h-4 w-4"><!--[--><!----><circle cx="12" cy="12" r="10"><!----></circle><!----><!----><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"><!----></path><!----><!----><path d="M2 12h20"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <span class="font-medium">日本語</span></summary> <div data-sveltekit-preload-data="tap" class="lang-menu absolute right-0 z-50 mt-2 min-w-40 overflow-hidden rounded-lg border border-line bg-bg/95 py-1 shadow-lg backdrop-blur-md svelte-1h32yp1"><!--[--><a href="/guides/game-save-sync-comparison" hreflang="en" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">English <!--[-1--><!--]--></a><a href="/es/guides/game-save-sync-comparison" hreflang="es" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Español <!--[-1--><!--]--></a><a href="/de/guides/game-save-sync-comparison" hreflang="de" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Deutsch <!--[-1--><!--]--></a><a href="/fr/guides/game-save-sync-comparison" hreflang="fr" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Français <!--[-1--><!--]--></a><a href="/it/guides/game-save-sync-comparison" hreflang="it" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Italiano <!--[-1--><!--]--></a><a href="/ja/guides/game-save-sync-comparison" hreflang="ja" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink">日本語 <!--[0--><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-check h-3.5 w-3.5 text-accent"><!--[--><!----><path d="M20 6 9 17l-5-5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!--]--></a><a href="/pt/guides/game-save-sync-comparison" hreflang="pt" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Português <!--[-1--><!--]--></a><a href="/zh/guides/game-save-sync-comparison" hreflang="zh" class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">中文 <!--[-1--><!--]--></a><!--]--></div></details> <!--[0--><span class="h-9 w-24 animate-pulse rounded-md bg-ink/5"></span><!--]--> <a href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer" aria-label="Discord" title="Discord" class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#5865F2] text-white ring-focus transition-colors hover:bg-[#4752C4]"><svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.515.0699.0699 0 0 0-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 0 1 .0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 0 1-.0066.1276 12.2986 12.2986 0 0 1-1.873.8914.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 0 0 .0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 0 0 .0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"></path></svg><!----></a></div> <button class="md:hidden grid h-10 w-10 place-items-center rounded-lg text-ink-soft ring-focus hover:bg-ink/5" aria-label="Toggle menu" aria-expanded="false"><span class="relative h-5 w-5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-menu absolute inset-0 h-5 w-5 transition-all duration-300 opacity-100 rotate-0"><!--[--><!----><line x1="4" x2="20" y1="12" y2="12"><!----></line><!----><!----><line x1="4" x2="20" y1="6" y2="6"><!----></line><!----><!----><line x1="4" x2="20" y1="18" y2="18"><!----></line><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-x absolute inset-0 h-5 w-5 transition-all duration-300 opacity-0 -rotate-90"><!--[--><!----><path d="M18 6 6 18"><!----></path><!----><!----><path d="m6 6 12 12"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></span></button></nav> <!--[-1--><!--]--> <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-line transition-opacity duration-500 ease-out" style="opacity: 0;" aria-hidden="true"></div></header><!----> <main id="main" class="relative z-10 flex-1"><!--[0--><!--[--><!--[--><!----> <article class="mx-auto max-w-2xl px-4 py-16 sm:px-6 sm:py-24"><a href="/ja/guides" class="inline-flex items-center gap-1.5 rounded-md text-sm text-ink-soft ring-focus transition-colors hover:text-ink"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-left h-4 w-4"><!--[--><!----><path d="m12 19-7-7 7-7"><!----></path><!----><!----><path d="M19 12H5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> すべてのガイド</a> <h1 class="mt-6 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">セーブデータ同期ツール比較：Hoard と Ludusavi・Syncthing・OpenSave ほか</h1> <!--[0--><p class="mt-3 font-mono text-xs uppercase tracking-[0.14em] text-ink-faint">更新日
+      2026-09-01</p><!--]--> <div class="prose mt-8 svelte-6rcv4m"><!----><p>Steam クラウドが守ってくれるのは Steam で買ったゲームだけ、しかも開発者が対応をオンにした場合に限られます。エミュレーター、GOG、Epic、itch.io、Steam 以外のゲーム、MOD を入れたもの——どれも対象外です。デスクトップと Steam Deck のように複数の環境で遊んでいると、結局フォルダーを手でコピーして、新しいほうを掴んだと信じるしかなくなります。</p>
+<p>これを解決するツールはいくつもありますが、やっていることは同じではありません。ローカルにバックアップを取るもの、端末間でフォルダーをミラーするもの、クラウドへアップロードするもの。このページではそれぞれを見ていき、何が本当に得意なのかを書きます。Hoard は私のプロジェクトなので、正直な部分は最後に置きました。Hoard が負けている点の節と、本文を一切信じなくても読める比較表です。</p>
+<h2>Ludusavi</h2>
+<p>いちばん有名で、それも当然の一本です。Ludusavi（作者は mtkennerly）は GUI と CLI を備えた無料のオープンソースのバックアップツールで、何万本ものゲームのセーブ位置を収録したコミュニティ製マニフェストの上に成り立っています。このページのほとんどのツール（Hoard も含む）が使っているのと同じマニフェストです。ローカルにバージョン付きのバックアップを保持し、Rclone を設定すれば自分のクラウドへ送れます。</p>
+<p><strong>向いているのは：</strong> ローカルのバックアップと完全な制御が欲しくて、サーバーはどこにも置きたくない人。このリストで最も安全な選択で、しかも無料です。</p>
+<p><strong>足りないところ：</strong> 端末間の同期は自分で組み立てるものになります。バックアップを予約し、Rclone のリモートを設定し、遊ぶ<em>前</em>に別の PC で復元するのを忘れない。動きはしますが、最後の一手を忘れるのを止めてくれるものは何もありません。</p>
+<h2>Syncthing</h2>
+<p>そもそもゲーム用ではなく、汎用の P2P フォルダーミラーで、しかも良い出来です。セーブフォルダーを指定すれば、ほかの端末にも現れます。</p>
+<p><strong>向いているのは：</strong> すでに動かしていて、クラウドを挟まずにファイルを二か所に置きたい人。</p>
+<p><strong>足りないところ：</strong> ミラーであって、スナップショットではありません。壊れたセーブも、正常なセーブとまったく同じ速さで数秒のうちに全端末へ届きます。ファイル単位のバージョン管理はありますが、プレイセッションという概念はないので、「火曜の夜の状態に戻す」は手作業で組み直すことになります。両方の端末がオフラインで遊んでいれば、返ってくるのは競合ファイルであってマージではありません。</p>
+<h2>OpenSave</h2>
+<p>セーブデータ専用に作られた P2P 同期。Go 製、MIT ライセンス、Windows・Linux・Steam Deck 対応です。アカウントもサーバーも不要で、端末同士をペアリングして LAN 経由、あるいはリレーのルームコード経由で同期します。変更のたびにスナップショットを取り、並行プレイ用のブランチがあり、競合は時計ではなく同期の系譜で解決し、転送は変化したブロックだけ。任意で Drive・Dropbox・OneDrive・WebDAV へのミラーもできます。</p>
+<p><strong>向いているのは：</strong> アカウントは絶対に作りたくなくて、端末が同時に起動している機会が十分にある人。</p>
+<p><strong>足りないところ：</strong> P2P である以上、セーブはあなたの端末の上にしか存在しません。最新のコピーを持っていた Deck が壊れ、ミラーを設定していなければそれで終わりです。同期には両方の端末が動いている必要があり、macOS 版はありません。</p>
+<h2>OpenCloudSaves</h2>
+<p>すでに料金を払っているクラウド——OneDrive、Google Drive、Dropbox、Nextcloud——へセーブフォルダーを同期する、マルチプラットフォームの GUI です。中身は Rclone です。</p>
+<p><strong>向いているのは：</strong> すでに持っているストレージにセーブを置きたくて、Rclone の設定ファイルではなく画面で操作したい人。</p>
+<p><strong>足りないところ：</strong> 内容ベースの重複排除がありません。2 GB のセーブが 10 世代あれば Drive の容量を 20 GB 食いますし、クラウドドライブが同期するのはファイルであってプレイセッションではないので、戻ってくるのは「その時点のフォルダーの姿」だけです。</p>
+<h2>Game Backup Monitor</h2>
+<p>Windows 中心で、このジャンルの元祖です。GBM はゲームのプロセスを見張り、終了した時点でセーブを 7-Zip で圧縮し、連番の履歴として残します。</p>
+<p><strong>向いているのは：</strong> Windows PC 一台で、何も考えずに圧縮済みのローカルアーカイブが欲しい人。</p>
+<p><strong>足りないところ：</strong> バックアップのツールであって同期のツールではありません。アーカイブを二台目に持っていくのは自分の仕事ですし、Steam Deck / SteamOS は得意分野ではありません。</p>
+<h2>Aletheia</h2>
+<p>この中では最も新しく、AGPL。ほかが中途半端にしか押さえていない部分、つまりランチャーを正面から狙っています。Heroic、itch.io、Lutris、Steam、GOG Galaxy、Xbox に、Windows・Linux・macOS 対応。</p>
+<p><strong>向いているのは：</strong> ライブラリが、ほかのツールでは検出しづらいランチャー——とくに Xbox / Game Pass と Heroic——に散らばっている人。</p>
+<p><strong>足りないところ：</strong> 意図的に範囲を絞った若いプロジェクトです。機能はバックアップと復元まで。背後にバージョン管理されたクラウドがあるわけではありません。</p>
+<h2>SaveSync</h2>
+<p>唯一の商用で、Steam で買い切り販売、Windows 中心。特徴は、狙いが「二台の PC を使う自分」ではなく協力プレイにあることです。セーブは非公開・非掲載の Steam ワークショップの項目として保存され、友達があなたの Valheim や Factorio のワールドを持っていけます。LAN 同期もあります。</p>
+<p><strong>向いているのは：</strong> 解決したい問題が「自分のセーブについてきてほしい」ではなく「友達がホストで、その人のセーブが要る」である人。</p>
+<p><strong>足りないところ：</strong> クローズドソース、Windows、転送路として Steam に依存、そして対応するのは所有物すべてではなく協力プレイ向けの対応ゲーム一覧です。</p>
+<h2>EmuDeck についての注記</h2>
+<p>この手の話題では EmuDeck も名前が挙がりますが、通常の意味での競合ではありません。Steam Deck 向けのエミュレーターのインストーラー兼設定ツールであり、備わっている同期はその仕事に付け足された利便機能です（クラウドドライブに対する Rclone、しかもエミュレーターのセーブ限定）。上のツール群と重なる部分はあっても、同じ種類のものではありません。EmuDeck はエミュレーター環境を整えるもの、ここで挙げたものはライブラリ全体のセーブを見守るもの。EmuDeck とどれか一つを併用している人もいて、それは重複ではなく理にかなった構成です。</p>
+<h2>Hoard</h2>
+<p>Hoard はプレイセッションを単位として扱います。エンジンはバックグラウンドサービスとして動き（<code>hoardd</code>、ウィンドウを持たないので SteamOS のゲームモードでも動作します）、遊び終わったことを検知してからスナップショットを取ります。プレイ中のファイル書き込みに逐一反応するのではありません。</p>
+<ul>
+<li><strong>セッションごとのバージョン履歴。</strong> どのセッションにも戻れます。ディスク故障のあとでも、クリーンインストールのあとでも。</li>
+<li><strong>内容ハッシュによる重複排除。</strong> 2 GB のセーブが 10 世代あっても消費はおよそ 2 GB で、20 GB にはなりません。転送は zstd で圧縮されます。</li>
+<li><strong>アップロード時とダウンロード時の SHA-256。</strong> 破損は、正常なセーブを上書きする前に検出されます。何も黙って上書きされない——設計の核はそこにあります。</li>
+<li><strong>クラウドでも自己ホストでも、同じバイナリ。</strong> Hoard Cloud には無料プラン（2 GB、3 台、履歴は全部）があります。あるいは <code>hoard-server</code> を Docker Compose で自分で立て、S3 互換ストレージ（MinIO、Garage、Backblaze B2）に対して動かせば、アカウントも容量制限もありません。AGPL-3.0。</li>
+<li><strong>Windows・Linux・macOS</strong>、加えて Steam Deck やサーバー向けのヘッドレス CLI。</li>
+<li><strong>エミュレーターはベータ：</strong> PCSX2、RPCS3、Dolphin、Cemu、Ryujinx、RetroArch、DuckStation、PPSSPP ほかをプリセットで用意。</li>
+</ul>
+<h2>Steam Deck ↔ PC の同期を左右する細部</h2>
+<p>どのツールを選ぶにしても知っておく価値があります。Steam のゲームのクラウドセーブは <code>&lt;AppID&gt;/remote/</code> にあり、その<em>一つ上</em>のフォルダーには <code>remotecache.vdf</code>、実績の状態、統計、プレイ時間のカウンターが入っています。これらは Deck とデスクトップとで違っていて当たり前のものです。</p>
+<p>親フォルダーを同期すれば、セーブについては一度も食い違っていない二台の間で、恒久的な競合が起きます。Hoard が追いかけるのは <code>remote/</code> であって親フォルダーではありません。フォルダーを手動で指定できるツールなら同じ設定にできますし、同期の構成が理由もなく競合を出し続けるときに最初に確認すべき点でもあります。</p>
+<h2>Hoard が負けている点</h2>
+<ul>
+<li><strong>サーバーを欲しがる。</strong> クラウドのアカウントか自前のマシンか、いずれにせよインフラです。OpenSave や Ludusavi はどちらも必要としません。</li>
+<li><strong>エミュレーター対応はベータ。</strong> ポータブル構成や各エミュレーターの癖にまだ足をすくわれますし、ランチャーやエミュレーターの一部の特殊なケースは今日のところ Aletheia や OpenSave のほうがうまく扱えます。</li>
+<li><strong>macOS は実機での検証がほとんどない。</strong> ビルドも起動もしますが、何か月も常用した人がいません。</li>
+<li><strong>歴史が浅い。</strong> Ludusavi や Game Backup Monitor には何年分ものバグ報告が積み上がっています。Hoard にはそれがなく、200 時間のセーブを預かるものとしては軽くない差です。</li>
+<li><strong>協力プレイの共有はできない。</strong> 友達にワールドを渡したいなら、それは SaveSync のための仕事で、Hoard の仕事ではありません。</li>
+</ul>
+<h2>Hoard Cloud とセルフホストの違い</h2>
+<p>Hoard についての比較は、ほぼ必ずこの 2 つを一緒くたにし、その結果として誤った説明になります。はっきり書いておきます。</p>
+<ul>
+<li><strong>Hoard Cloud</strong> はマネージドな選択肢です。サインインすると、セーブは EU にある当方のサーバーに保存されます。</li>
+<li><strong>セルフホストした Hoard は完全にあなたのものです。</strong> 自分の PC や NAS で <code>hoard-server</code> を動かせば、セーブは自分のマシンから自分のディスクへ移ります。<strong>当方のアカウントも、当方へのテレメトリも、容量制限も、中継もありません。</strong> 経路上に当方のものが何一つないため、当方のサーバーを何も通りません。セーブもゲーム名もメールアドレスも見えません。届かないからです。仮に明日 Hoard Cloud が終了しても、セルフホスト構成はそのまま動き続けます。</li>
+</ul>
+<p>同じバイナリ、同じ検出、同じ世代履歴。変わるのは保存先が誰のものかだけです。正確を期して 1 点だけ補うと、あなたのサーバーには確かに自前のログイン、つまりユーザーと端末ごとのトークンがありますが、それらはあなたのデータベースの中にあり、当方のデータベースにはありません。</p>
+<h2>比較表</h2>
+<table>
+<thead>
+<tr>
+<th>ツール</th>
+<th>端末間の自動同期</th>
+<th>セーブの置き場所</th>
+<th>履歴</th>
+<th>対応環境</th>
+<th>ライセンス</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Hoard</strong></td>
+<td>あり（プレイセッション単位）</td>
+<td>Hoard Cloud または自前サーバー（S3 互換）</td>
+<td>セッション単位のバージョン、重複排除あり</td>
+<td>Win · Linux · macOS · Deck</td>
+<td>AGPL-3.0、無料プランあり</td>
+</tr>
+<tr>
+<td><strong>Ludusavi</strong></td>
+<td>手動、または自分で組む Rclone</td>
+<td>ローカル＋自分の Rclone リモート</td>
+<td>バージョン付きローカルバックアップ</td>
+<td>Win · Linux · macOS</td>
+<td>無料・オープンソース</td>
+</tr>
+<tr>
+<td><strong>Syncthing</strong></td>
+<td>あり（常時ミラー）</td>
+<td>自分の端末のみ</td>
+<td>ファイル単位のバージョン</td>
+<td>すべて</td>
+<td>無料・オープンソース</td>
+</tr>
+<tr>
+<td><strong>OpenSave</strong></td>
+<td>あり（P2P）</td>
+<td>自分の端末、任意でクラウドミラー</td>
+<td>スナップショットとブランチ</td>
+<td>Win · Linux · Deck</td>
+<td>MIT</td>
+</tr>
+<tr>
+<td><strong>OpenCloudSaves</strong></td>
+<td>あり（自分のクラウド経由）</td>
+<td>OneDrive / Drive / Dropbox / Nextcloud</td>
+<td>クラウド側が保持する範囲</td>
+<td>Win · Linux · macOS</td>
+<td>無料・オープンソース</td>
+</tr>
+<tr>
+<td><strong>Game Backup Monitor</strong></td>
+<td>なし</td>
+<td>ローカルの 7-Zip アーカイブ</td>
+<td>連番バックアップ</td>
+<td>Windows</td>
+<td>無料・オープンソース</td>
+</tr>
+<tr>
+<td><strong>Aletheia</strong></td>
+<td>ランチャーごとのバックアップと復元</td>
+<td>自分のストレージ</td>
+<td>バックアップ</td>
+<td>Win · Linux · macOS</td>
+<td>AGPL-3.0</td>
+</tr>
+<tr>
+<td><strong>SaveSync</strong></td>
+<td>あり（友達とも）</td>
+<td>非公開の Steam ワークショップ項目</td>
+<td>アプリの仕様による</td>
+<td>Windows</td>
+<td>有料・クローズドソース</td>
+</tr>
+</tbody></table>
+<h2>で、どれを選ぶか</h2>
+<p>一台だけ守れれば十分なら Ludusavi か Game Backup Monitor。アカウントだけは何があっても作りたくなくて、端末がだいたい同時に起動しているなら OpenSave。すでに料金を払っている Drive のフォルダーにセーブを置きたいなら OpenCloudSaves。友達と協力プレイのワールドを共有したいなら SaveSync。</p>
+<p>バックアップ<em>と</em>、PC と Steam Deck をまたぐ同期が勝手に行われること、セッションごとに戻れるバージョンがあること、そして全部を自分でホストできる選択肢があること——それを求めるなら Hoard です。<a href="/ja/download">ダウンロード</a>するか、先に<a href="/ja/guides/self-host-hoard">Docker で自己ホストする方法</a>を読んでみてください。天秤にかけている相手が Ludusavi なら、<a href="/ja/guides/ludusavi-alternative">詳しい比較</a>もあります。</p>
+<h2>一対一の比較</h2>
+<p>以下はそれぞれ、上の節より踏み込んで扱っています。相手のほうが優れている点も含みます。</p>
+<ul>
+<li><a href="/ja/guides/ludusavi-alternative">Hoard と Ludusavi</a></li>
+<li><a href="/ja/guides/steam-cloud-alternative">Steam クラウドの代替としての Hoard</a></li>
+<li><a href="/ja/guides/opensave-alternative">ピアツーピア同期と自分のサーバー</a></li>
+<li><a href="/ja/guides/syncthing-game-saves">Syncthing でセーブを同期すると何が壊れるか</a></li>
+</ul>
+<h2>よくある質問</h2>
+<h3>この中で世代履歴を残すのはどれですか？</h3>
+<p>Hoard は 1 セッションを 1 世代として残し、そこへ戻れます。Ludusavi は世代管理されたローカルバックアップを保持します。その他の多くは現在の状態を同期・コピーするだけなので、壊れたセーブはそのまま忠実にもう 1 台へ伝わります。</p>
+<h3>サーバーもアカウントもなしで使えるのはどれですか？</h3>
+<p>ローカルバックアップとしての Ludusavi と、ピアツーピアのツール全般です。セルフホストするなら Hoard も該当します。当方のアカウントはなく、当方のサーバーを通るものもありません。</p>
+<h3>Steam にないゲームをカバーするのはどれですか？</h3>
+<p>ここに挙げたセーブ管理ツールはすべてカバーします。ストア経由ではなく、同じコミュニティのデータベースでセーブの場所を突き止めるからです。例外は Steam クラウドで、開発者が有効にした Steam のゲームしか対象になりません。</p>
+<h3>1 つだけ選ばないといけませんか？</h3>
+<p>いいえ。実際、多くの人は選んでいません。ローカルバックアップのツールと同期のツールは、問題の別々の半分を解いています。唯一の注意は、一方をもう一方のバックアップフォルダーに向けないこと。向けると、実際のセーブではなく古い写しを同期することになります。</p>
+<h3>自作構成がいちばん壊れる原因は何ですか？</h3>
+<p>Steam の <code>userdata</code> にある <code>&lt;AppID&gt;/remote/</code> の 1 つ上のフォルダーを同期することです。上のフォルダーには <code>remotecache.vdf</code> や、マシンごとに違って当然の実績・プレイ時間のファイルが入っているため、セーブが動いていなくても起動のたびに競合に見えます。</p>
+<!----></div> <div class="mt-14 rounded-xl border border-line bg-surface p-6"><h2 class="font-display text-lg font-semibold text-ink">セーブデータを守る準備はできましたか？</h2> <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">Hoard をダウンロードして、数分で自動・バージョン管理付きバックアップを設定しましょう。</p> <a href="/ja/download" class="mt-4 inline-flex h-10 items-center rounded-lg bg-accent px-4 text-sm font-medium text-pine ring-focus transition-colors hover:bg-emerald-300">ダウンロード</a></div></article><!--]--><!----><!--]--><!--]--><!----></main> <footer class="mt-auto border-t border-line" data-sveltekit-preload-code="viewport"><div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 grid-cols-2 md:grid-cols-4"><div class="col-span-2 md:col-span-1"><div class="flex items-center gap-2.5"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="26" height="26" aria-hidden="true"><rect x="1" y="1" width="62" height="62" rx="13" fill="var(--color-pine-elev, #19231c)" stroke="var(--color-pine-line, #28332b)" stroke-width="2"></rect><rect x="9" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="41" y="9" width="14" height="46" rx="6" fill="#34d399"></rect><rect x="9" y="25" width="46" height="14" rx="5" fill="#34d399"></rect></svg><!----> <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span> <span class="ml-1 rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[10px] tracking-wider text-ink-soft">v1.1.6</span></div> <p class="mt-3 max-w-xs text-sm leading-relaxed text-ink-soft">ゲームセーブの同期とバージョン管理されたバックアップ。Rust製、オープンソース。</p></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">製品</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/ja/pricing">料金</a></li> <li><a class="link-underline hover:text-ink" href="/ja/download">ダウンロード</a></li> <li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard/blob/main/CHANGELOG.md" rel="noreferrer">変更履歴</a></li> <li><a class="link-underline hover:text-ink" href="/ja/guides">ガイド</a></li> <li><a class="link-underline hover:text-ink" href="/ja/help">稼働状況</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">会社</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard" rel="noreferrer">GitHub</a></li> <li><a class="link-underline hover:text-ink" href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer">Discord</a></li> <li><a class="link-underline hover:text-ink" href="/ja/help">お問い合わせ</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">法的事項</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/ja/legal/terms">規約</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/privacy">プライバシー</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/subprocessors">再委託先</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/notice">法的表示</a></li></ul></div></div> <div class="border-t border-line"><p class="mx-auto max-w-6xl px-4 py-4 text-xs text-ink-faint sm:px-6">© 2026 Hoard · Raimundo León Oliva · AGPL-3.0</p></div></footer><!----></div><!--]--><!--]--> <!--[-1--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_i6416b = {
+						base: new URL("../..", location).pathname.slice(0, -1),
+						env: null
+					};
+
+					const element = document.currentScript.parentElement;
+
+					import("../../_app/env.js").then(({ env }) => {
+						__sveltekit_i6416b.env = env;
+
+						Promise.all([
+							import("../../_app/immutable/entry/start.Bv9fO-Dl.js"),
+							import("../../_app/immutable/entry/app.DoJpZpIJ.js")
+						]).then(([kit, app]) => {
+							kit.start(app, element, {
+									node_ids: [0, 2, 8],
+									data: [null,null,null],
+									form: null,
+									error: null
+								});
+						});
+					});
+				}
+			</script>
+		</div>
+  </body>
+</html>

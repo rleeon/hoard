@@ -1,0 +1,45 @@
+# Hoard
+
+> Automatic, versioned game save sync across devices. Hoard watches the folders
+> your games save into, snapshots every change, and syncs those snapshots
+> between your machines. Steam, GOG, Epic, itch, emulators and 20,000+ games
+> from the community save-location manifest. Use the hosted Hoard Cloud, or run
+> the same open-source server yourself with no account and no quota.
+
+Free and open source under AGPL-3.0. Windows, Linux, macOS and Steam Deck.
+Every session becomes a new version you can roll back to, deduplicated by
+content hash so ten versions of a 2 GB save cost about 2 GB, not 20.
+
+Where Hoard is not the answer, and which tool to reach for instead, is laid
+out in the comparison guide below.
+
+
+## Guides
+
+- [How to self-host Hoard with Docker](https://hoard.services/guides/self-host-hoard): Run your own Hoard server with Docker Compose in minutes. Open source, free, on your hardware — a fully self-hosted cloud for your game saves, no account or quota.
+- [How to back up your game saves automatically](https://hoard.services/guides/back-up-game-saves): Set up automatic, versioned cloud backups for your PC game saves with Hoard — so a crash, reinstall or bad mod can never wipe your progress.
+- [How to sync game saves across multiple PCs](https://hoard.services/guides/sync-game-saves-across-pcs): Play the same game on your desktop and laptop without losing progress. Sync your game saves across PCs automatically with Hoard — managed cloud sync without wiring up Ludusavi and Rclone by hand.
+- [How to restore an old game save](https://hoard.services/guides/restore-a-game-save): Made a wrong move, corrupted a file or want a fresh start? Roll back to any previous version of your game save with Hoard's cloud history — including saves backed up by tools like Ludusavi.
+- [Game save sync compared: Hoard vs Ludusavi, Syncthing, OpenSave and the rest](https://hoard.services/guides/game-save-sync-comparison): An honest comparison of the tools that back up and sync PC game saves — Ludusavi, Syncthing, OpenSave, OpenCloudSaves, Game Backup Monitor, Aletheia, SaveSync and Hoard — with a table, and a section on where Hoard loses.
+- [Ludusavi alternative: automatic cloud sync for your game saves](https://hoard.services/guides/ludusavi-alternative): A fair comparison of Ludusavi and Hoard. Ludusavi is a great open-source local backup tool; Hoard adds managed cloud sync and versioned history across all your PCs — using the same save-location data.
+- [How to back up and sync emulator saves (RetroArch, Dolphin, PCSX2)](https://hoard.services/guides/back-up-emulator-saves): Back up and sync your emulator save files and save states across PCs — RetroArch, Dolphin, PCSX2, DuckStation and more — automatically with Hoard.
+- [Steam Cloud alternative: back up the saves Steam doesn't](https://hoard.services/guides/steam-cloud-alternative): Steam Cloud only covers Steam games whose developer switched it on, and it keeps no version history. Hoard backs up every game you play, from any launcher, with a versioned history you can roll back — in the cloud or on your own server.
+- [OpenSave alternative: peer-to-peer or a server you own](https://hoard.services/guides/opensave-alternative): OpenSave syncs game saves directly between your PCs, with no server in the middle. Hoard syncs through a server — ours or one you host — and keeps a versioned history. An honest look at when each design wins.
+- [Syncthing for game saves: what works and what breaks](https://hoard.services/guides/syncthing-game-saves): Syncthing is an excellent general-purpose file syncer, but game saves break three of its assumptions. What goes wrong, how people work around it, and when a save-aware tool is the better answer.
+
+## Product
+
+- [Download](https://hoard.services/download): Installers for Windows, Linux, macOS and Steam Deck.
+- [Pricing](https://hoard.services/pricing): Free tier, Pro, and what self-hosting costs instead (nothing).
+- [Command line](https://hoard.services/cli): The `hoard` CLI: track, back up, restore and inspect saves from a terminal.
+- [Help](https://hoard.services/help): Setup, troubleshooting and how detection works.
+
+## About
+
+- [Privacy](https://hoard.services/legal/privacy): What the service stores, for how long, and who runs it.
+- [Terms](https://hoard.services/legal/terms): Terms of service.
+
+## Source
+
+- [github.com/rleeon/hoard](https://github.com/rleeon/hoard): source, releases and issue tracker (AGPL-3.0).
+
