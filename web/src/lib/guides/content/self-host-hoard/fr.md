@@ -3,7 +3,7 @@ title: "Comment auto-héberger Hoard avec Docker (self-hosted)"
 description: "Lancez votre propre serveur Hoard en quelques minutes avec Docker Compose. Open source, gratuit, sur votre matériel : un cloud entièrement auto-hébergé pour vos sauvegardes de jeux, sans compte ni quota."
 order: 0
 featured: true
-updated: 2026-09-01
+updated: 2026-09-03
 ---
 
 Hoard est open source et auto-hébergeable. Au lieu d'utiliser Hoard Cloud, vous pouvez exécuter le même `hoard-server` sur votre propre machine et y connecter chaque appareil — sans compte, sans quota au-delà du disque que vous lui donnez. Ce guide met un serveur en route avec Docker en quelques minutes.
@@ -66,6 +66,25 @@ Le jeton n'est affiché qu'une fois et **ne peut pas être récupéré ensuite**
 ## Connectez l'application de bureau
 
 Installez l'[app de bureau Hoard](/download) sur chaque machine. Dans l'assistant, choisissez **Self-Host**, puis collez l'URL de votre serveur et le jeton que vous venez de créer. Ensuite, le comportement est identique à Hoard Cloud : détection des jeux, sauvegarde automatique et historique versionné. Voir [synchroniser ses sauvegardes entre PC](/guides/sync-game-saves-across-pcs) pour l'usage quotidien.
+
+## Gardez votre serveur à jour
+
+La façon de mettre à jour dépend de la façon dont vous l'avez installé, et se tromper de commande ne produit pas d'erreur : cela ne fait tout simplement rien. Autant savoir laquelle est la vôtre.
+
+**Docker Compose.** Récupérez la nouvelle image et recréez le conteneur. Les deux moitiés, dans cet ordre :
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+Si vous vous arrêtez à la première, l'ancien conteneur continue de tourner intact : `/v1/health` annonce toujours l'ancienne version et la mise à jour a l'air d'avoir échoué en silence. `git pull` ne met à jour ni l'un ni l'autre — ce qui tourne, c'est l'image publiée, pas votre copie du dépôt. Épinglez une version (`ghcr.io/rleeon/hoard:1.1`) au lieu de `:latest` si vous préférez choisir quand une nouvelle arrive.
+
+**Unraid.** Onglet *Docker* → Hoard → *Apply update* quand une mise à jour est proposée. Rien à taper.
+
+**Bare metal (systemd).** `sudo hoard-server upgrade`, puis `sudo systemctl restart hoard-server`. La commande remplace le binaire de façon atomique et ne redémarre volontairement pas le service elle-même, pour ne pas couper une synchro en cours.
+
+`hoard-server upgrade` ne concerne que l'installation bare metal. Dans un conteneur, elle refuse volontairement — le remplacement du binaire ne survivrait pas au prochain `docker compose up -d` — et affiche les deux commandes ci-dessus ; lancez `docker compose exec server hoard-server upgrade` si vous voulez le constater. Les migrations de base de données sont appliquées par le serveur au démarrage : il n'y a jamais d'étape séparée pour elles.
 
 ## En production
 

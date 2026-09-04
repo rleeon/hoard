@@ -3,7 +3,7 @@ title: "DockerでHoardをセルフホストする方法"
 description: "Docker Compose を使って数分で自分専用の Hoard サーバーを構築。オープンソースで無料、自分のハードウェア上に完全セルフホストのセーブデータ用クラウドを。アカウントも容量制限も不要。"
 order: 0
 featured: true
-updated: 2026-09-01
+updated: 2026-09-03
 ---
 
 Hoard はオープンソースでセルフホスト可能です。Hoard Cloud を使う代わりに、同じ `hoard-server` を自分のマシンで動かし、すべての端末をそこへ接続できます。アカウントは不要で、容量制限は与えたディスク容量だけです。このガイドでは Docker を使って数分でサーバーを立ち上げます。
@@ -66,6 +66,25 @@ docker compose exec server hoard-admin --config /etc/hoard/config.toml \
 ## デスクトップアプリを接続
 
 各マシンに [Hoard デスクトップアプリ](/download) をインストールします。オンボーディングで **セルフホスト** を選び、サーバーの URL と作成したトークンを貼り付けます。あとは Hoard Cloud とまったく同じで、ゲームを検出し、自動でバックアップし、バージョン履歴を保持します。日常的な使い方は [複数の PC 間でセーブを同期する](/guides/sync-game-saves-across-pcs) を参照してください。
+
+## サーバーを最新に保つ
+
+更新の方法はインストールの仕方によって変わります。しかも間違ったコマンドはエラーにならず、ただ何も起きないだけなので、自分がどれに当てはまるかを知っておく価値があります。
+
+**Docker Compose.** 新しいイメージを取得し、コンテナを作り直します。次の順番で、両方とも実行してください。
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+最初のコマンドで止めると、古いコンテナがそのまま動き続けます。`/v1/health` は古いバージョンを返し続け、更新が黙って失敗したように見えます。`git pull` はどちらも更新しません。動いているのは公開イメージであって、あなたのチェックアウトではないからです。新しいイメージが来るタイミングを自分で決めたい場合は、`:latest` の代わりにバージョンを固定してください（`ghcr.io/rleeon/hoard:1.1`）。
+
+**Unraid.** *Docker* タブ → Hoard → 更新が出たら *Apply update*。入力するものはありません。
+
+**ベアメタル（systemd）.** `sudo hoard-server upgrade` を実行し、続けて `sudo systemctl restart hoard-server`。バイナリをアトミックに入れ替えますが、進行中の同期を切らないよう、サービスの再起動は意図的に行いません。
+
+`hoard-server upgrade` はベアメタルのインストール専用です。コンテナ内では意図的に実行を拒否し（入れ替えたバイナリは次の `docker compose up -d` で消えてしまうため）、代わりに上の 2 つのコマンドを表示します。実際に確かめたい場合は `docker compose exec server hoard-server upgrade` を実行してください。データベースのマイグレーションは起動時にサーバーが適用するので、そのための別の手順はありません。
 
 ## 本番運用
 

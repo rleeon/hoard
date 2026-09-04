@@ -3,7 +3,7 @@ title: "How to self-host Hoard with Docker"
 description: "Run your own Hoard server with Docker Compose in minutes. Open source, free, on your hardware — a fully self-hosted cloud for your game saves, no account or quota."
 order: 0
 featured: true
-updated: 2026-09-01
+updated: 2026-09-03
 ---
 
 Hoard is open source and self-hostable. Instead of using Hoard Cloud, you can run the same `hoard-server` on your own machine and point every device at it — no account, no storage quota beyond the disk you give it. This guide gets a server running with Docker in a few minutes.
@@ -66,6 +66,25 @@ The token is printed once and **cannot be retrieved later**, so copy it now.
 ## Connect the desktop app
 
 Install the [Hoard desktop app](/download) on each machine. In the onboarding flow, pick **Self-Host**, then paste your server URL and the token you just created. From there it behaves exactly like Hoard Cloud: it detects your games, backs up saves automatically, and keeps versioned history. See [syncing saves across PCs](/guides/sync-game-saves-across-pcs) for the day-to-day flow.
+
+## Keep your server up to date
+
+How you update depends on how you installed it, and the wrong command is a no-op rather than an error — so it is worth knowing which one is yours.
+
+**Docker Compose.** Pull the new image and recreate the container. Both halves, in order:
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+Stop after the first and the old container keeps running untouched: `/v1/health` goes on reporting the old version and the update looks as if it silently failed. `git pull` updates neither — what runs is the published image, not your checkout. Pin a version (`ghcr.io/rleeon/hoard:1.1`) instead of `:latest` if you would rather choose when a new one lands.
+
+**Unraid.** *Docker* tab → Hoard → *Apply update* when one is offered. Nothing to type.
+
+**Bare metal (systemd).** `sudo hoard-server upgrade`, then `sudo systemctl restart hoard-server`. It swaps the binary atomically and deliberately does not restart the service itself, so an in-flight sync is not killed.
+
+`hoard-server upgrade` is for the bare-metal install only. Inside a container it refuses on purpose — the binary swap would not survive the next `docker compose up -d` — and prints the two commands above instead; run `docker compose exec server hoard-server upgrade` if you want to see it say so. Database migrations are applied by the server when it starts, so there is never a separate step for them.
 
 ## Run it in production
 

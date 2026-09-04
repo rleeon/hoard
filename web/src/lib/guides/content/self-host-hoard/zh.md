@@ -3,7 +3,7 @@ title: "如何用 Docker 自托管 Hoard"
 description: "用 Docker Compose 几分钟搭建你自己的 Hoard 服务器。开源、免费、运行在你自己的硬件上——一个完全自托管的游戏存档云，无需账号、没有容量限制。"
 order: 0
 featured: true
-updated: 2026-09-01
+updated: 2026-09-03
 ---
 
 Hoard 是开源且可自托管的。你可以不使用 Hoard Cloud，而是在自己的机器上运行同一个 `hoard-server`，让每台设备都连接到它——无需账号，容量只受你分配的磁盘大小限制。本指南用 Docker 在几分钟内把服务器跑起来。
@@ -66,6 +66,25 @@ docker compose exec server hoard-admin --config /etc/hoard/config.toml \
 ## 连接桌面应用
 
 在每台机器上安装 [Hoard 桌面应用](/download)。在初始引导中选择 **自托管**，然后粘贴你的服务器 URL 和刚创建的令牌。之后它的行为与 Hoard Cloud 完全相同：检测你的游戏、自动备份存档、保留版本历史。日常用法请参见[在多台 PC 之间同步存档](/guides/sync-game-saves-across-pcs)。
+
+## 保持服务器更新
+
+怎么更新取决于你是怎么安装的，而且用错命令不会报错，只是什么都不做 —— 所以值得先弄清楚哪一种是你的情况。
+
+**Docker Compose.** 拉取新镜像并重建容器。两条都要执行，按顺序：
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+只执行第一条的话，旧容器会原封不动地继续运行：`/v1/health` 仍然报告旧版本，看起来就像更新悄悄失败了。`git pull` 两者都更新不了 —— 运行的是已发布的镜像，不是你的代码副本。如果你想自己决定什么时候用上新版本，把 `:latest` 换成固定版本（`ghcr.io/rleeon/hoard:1.1`）。
+
+**Unraid.** *Docker* 标签页 → Hoard → 出现更新时点 *Apply update*。不需要输入任何命令。
+
+**裸机（systemd）.** 先 `sudo hoard-server upgrade`，再 `sudo systemctl restart hoard-server`。它会原子地替换二进制文件，并且故意不自己重启服务，以免中断正在进行的同步。
+
+`hoard-server upgrade` 只适用于裸机安装。在容器里它会故意拒绝执行 —— 替换后的二进制文件撑不过下一次 `docker compose up -d` —— 并改为打印上面那两条命令；想亲眼看看的话，执行 `docker compose exec server hoard-server upgrade`。数据库迁移由服务器在启动时应用，所以永远不需要单独的步骤。
 
 ## 在生产环境中运行
 
