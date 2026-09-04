@@ -22,6 +22,12 @@ pub enum SyncCommand {
     Stop,
     /// Restart the service
     Restart,
+    /// Show or set whether the sync starts at login (`on` / `off`)
+    Autostart {
+        /// Leave it out to print the current setting
+        #[arg(value_parser = ["on", "off"])]
+        state: Option<String>,
+    },
     /// Show the most recent service logs
     Logs,
     /// Follow the sync service's events in this terminal
@@ -47,6 +53,7 @@ pub async fn run(action: Option<SyncCommand>) -> Result<()> {
         Some(SyncCommand::Start) => start().await,
         Some(SyncCommand::Stop) => stop().await,
         Some(SyncCommand::Restart) => restart().await,
+        Some(SyncCommand::Autostart { state }) => autostart(state.as_deref()).await,
         Some(SyncCommand::Logs) => {
             // Two halves, and both matter: the engine's diagnosis is in the
             // service's log (it runs detached when a client brings it up, so it
@@ -86,10 +93,14 @@ async fn start() -> Result<()> {
 /// the other way round: stopping the service without removing the unit would
 /// resurrect it at the next login.
 async fn stop() -> Result<()> {
+    // Shutdown first, then the login entry. The other order used to be fine when
+    // removing the entry was itself a stop; now that it never is (and brings the
+    // service back where the manager can't separate the two) it would mean
+    // stopping a sync we had just relaunched.
+    let was_running = stop_service().await;
     let removed = hoardd::autostart::uninstall()
         .await
         .context("removing the Hoard sync service")?;
-    let was_running = stop_service().await;
     match (removed, was_running) {
         (true, _) => println!("hoard sync stopped and removed from autostart."),
         // No unit but a live service: a client brought it up (the app on open, a
@@ -113,6 +124,15 @@ async fn stop_service() -> bool {
     {
         eprintln!("warning: the Hoard service didn't acknowledge the stop: {err:#}");
     }
+    drop(client);
+    // Wait for the bind, not for the acknowledgement: a clean shutdown holds the
+    // socket while it winds the engine down, and `uninstall` reads that same
+    // socket to tell "the sync is going away on purpose" from "removing the login
+    // entry killed it". Answering before it is free would have it relaunch the
+    // daemon this command exists to stop.
+    if !hoardd::autostart::wait_until_free().await {
+        eprintln!("warning: the Hoard service is taking its time to let go of the socket");
+    }
     true
 }
 
@@ -125,6 +145,57 @@ async fn restart() -> Result<()> {
         installed.manager, installed.id
     );
     Ok(())
+}
+
+/// `hoard sync autostart [on|off]`: the same switch the window's Settings page
+/// draws, moved from a terminal.
+///
+/// There is no preference behind it on either side. "Does the sync start at
+/// login" is whether the unit is installed, so both frontends read and write the
+/// service manager and neither has a copy of the answer to go stale. The window
+/// used to keep one, and reasserting it on every launch is what removed a unit
+/// installed from here (issue #29).
+///
+/// `on` is `install`, the same as `hoard sync start`: registering it and leaving
+/// the sync stopped until the next login is not what anybody means. `off` takes
+/// it out of login start and **leaves a running sync alone**; stopping it now is
+/// `hoard sync stop`.
+async fn autostart(state: Option<&str>) -> Result<()> {
+    match state {
+        None => {
+            if hoardd::autostart::installed().await {
+                println!("hoard sync autostart: on ({}).", hoardd::autostart::UNIT_ID);
+            } else {
+                println!("hoard sync autostart: off.");
+                println!("  turn it on with `hoard sync autostart on`");
+            }
+            Ok(())
+        }
+        Some("on") => {
+            let installed = hoardd::autostart::install()
+                .await
+                .context("registering the Hoard sync service for login start")?;
+            println!(
+                "hoard sync autostart on ({} · {}), and running now.",
+                installed.manager, installed.id
+            );
+            Ok(())
+        }
+        Some("off") => {
+            let removed = hoardd::autostart::uninstall()
+                .await
+                .context("removing the Hoard sync service from login start")?;
+            if removed {
+                println!("hoard sync autostart off. The sync running now keeps running;");
+                println!("  stop it as well with `hoard sync stop`.");
+            } else {
+                println!("hoard sync autostart was already off.");
+            }
+            Ok(())
+        }
+        // clap's `value_parser` has already refused anything else.
+        Some(other) => anyhow::bail!("unknown autostart state `{other}`; use `on` or `off`"),
+    }
 }
 
 /// Bounce the resident sync service after `hoard upgrade` has swapped the binary,

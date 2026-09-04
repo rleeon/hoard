@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **Opening the window took the sync service out of login start, and stopped
+  it.** On a machine set up from the terminal, `hoard sync start` installed the
+  service and it came back after a reboot; then opening the app once left it
+  gone, and gone after the next reboot too. The app kept its own copy of "start
+  at login" and pushed it onto the service at every launch. Reaffirming it *on*
+  was a harmless rewrite, so nobody noticed that reaffirming it *off* ran
+  `systemctl --user disable --now` and deleted the unit: opening a window did
+  what `hoard sync stop` does. It read "off" because a `prefs.json` written
+  before that field existed answered "off" to a question it had never been
+  asked, and because the switch, once off, was never written again.
+
+  Whether the sync starts at login is no longer a preference anybody keeps a
+  copy of. It is whether the service is registered, and both halves of Hoard
+  read and write that same registration: a switch of its own in Settings, and
+  `hoard sync autostart` in the terminal. The app's own entry went back to
+  meaning what its label says, which is that the window opens at login.
+
+  Taking the sync out of login start no longer stops the sync that is running
+  either, on any of the three platforms. `systemd` can say that in one word;
+  `launchctl bootout` and the Task Scheduler cannot, so there the service is
+  brought back the way a client brings it up. Stopping it now is still
+  `hoard sync stop`, which says both things and means both.
+
 ## [1.1.6] - 2026-09-03
 
 ### Added

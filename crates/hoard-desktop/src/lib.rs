@@ -289,6 +289,7 @@ pub fn run() {
             commands::prefs::set_autostart,
             commands::prefs::is_autostart_enabled,
             commands::prefs::service_autostart_state,
+            commands::prefs::set_service_autostart,
             commands::prefs::set_automatic_mode,
             commands::prefs::set_global_sync,
             commands::prefs::set_sync_mode,
@@ -440,15 +441,20 @@ pub fn run() {
                     let _ = prefs.save(&path);
                 }
 
-                // And the other half of "start at login": the sync service (ADR
-                // 0021). The app and the service are two processes, so registering
-                // only the app would mean the sync did not run until somebody opened
-                // the window, which is exactly what this design fixes. It is
-                // reaffirmed on every start for the same reasons as the app's entry
-                // (an update moves the binary), it is idempotent and cheap (it
-                // rewrites nothing when the unit already matches), and it does **not**
-                // touch a service that is already running.
-                commands::prefs::sync_service_autostart(prefs.autostart);
+                // The sync service's login start is **not** reaffirmed here, and
+                // that is the point. It used to be: this line pushed
+                // `prefs.autostart` onto the service on every window start, so a
+                // value read off disk could run `systemctl --user disable --now`
+                // and delete a unit the terminal had installed. Reaffirming "on"
+                // was a harmless rewrite; reaffirming "off" stopped the sync and
+                // took it out of login start, which made opening the window a
+                // `hoard sync stop` (issue #29).
+                //
+                // Whether the service starts at login is not a preference and has
+                // no mirror: it is whether the unit is installed. The window reads
+                // it with `service_autostart_state` and moves it with
+                // `set_service_autostart`; the terminal reads and moves the same
+                // one with `hoard sync autostart`. Neither reaffirms the other.
 
                 // And the third leg: recording which components this machine has,
                 // and making `hoard` typeable in a terminal. It goes here because

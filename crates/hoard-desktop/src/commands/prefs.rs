@@ -139,10 +139,13 @@ pub async fn set_sync_mode(state: State<'_, AppState>, mode: SyncMode) -> Result
     Ok(prefs)
 }
 
-/// Enable or disable the autostart entry. We toggle via the plugin and only
-/// then mirror the new value into prefs: if the OS rejects the change (no
-/// permission, sandboxed environment) we surface the error and leave prefs
-/// untouched so the UI stays honest.
+/// Enable or disable **the app's** autostart entry: whether the window opens at
+/// login. We toggle via the plugin and only then mirror the new value into
+/// prefs: if the OS rejects the change (no permission, sandboxed environment) we
+/// surface the error and leave prefs untouched so the UI stays honest.
+///
+/// The sync service's login start is a different switch entirely; see
+/// [`set_service_autostart`].
 #[tauri::command]
 pub async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
     // On Linux the autostart plugin writes `~/.config/autostart/<app>.desktop`
@@ -174,18 +177,15 @@ pub async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String
     prefs.autostart = actually_enabled;
     prefs.save(&path).map_err(|e| e.to_string())?;
 
-    // The sync service follows the same switch as the app: they are two processes,
-    // so "start at login" has two entries to register, and turning it off has to
-    // remove both, or the user turns autostart off and the sync keeps starting on its
-    // own.
+    // The sync service is **not** touched here. It used to be: one switch drove
+    // both login entries, and reaffirming it at every window start meant a value
+    // read off disk could run `systemctl --user disable --now` on a service the
+    // terminal had installed. Opening the window was a `hoard sync stop`.
     //
-    // Awaited, unlike the app-start reaffirmation: the user is standing in front
-    // of the switch they just flipped, and a service half that failed has to be
-    // known by the time this returns or the page has nothing to show. The reason
-    // is typed and cached, so the page reads it back with
-    // `service_autostart_state`.
-    apply_service_autostart(actually_enabled).await;
-
+    // Whether the service starts at login is not a preference. It is whether the
+    // unit is installed, and that has its own switch (`set_service_autostart`)
+    // and its own command (`hoard sync autostart`), both writing to the same
+    // place.
     Ok(actually_enabled)
 }
 
@@ -250,7 +250,9 @@ pub(crate) fn register_installation() {
 /// login start is registered, and when it's off because the user turned it off.
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct ServiceAutostart {
-    /// Whether login start is meant to be on at all (mirrors `prefs.autostart`).
+    /// Whether the sync service is registered for login start. Probed from the
+    /// service manager, never mirrored from a pref: `hoard sync autostart` moves
+    /// the same switch, so a remembered flag would go stale behind the window.
     pub enabled: bool,
     /// Which service manager took it (`"systemd --user"`, `"Task Scheduler"`,
     /// `"Startup entry (HKCU Run)"`). The one that *actually* took it: on
@@ -286,26 +288,59 @@ fn record_service_autostart(state: ServiceAutostart) {
     *slot = state;
 }
 
-/// What the Settings page reads to explain a login start that isn't happening.
+/// What the Settings page reads: whether the sync service starts at login, plus
+/// whatever the last attempt had to say about it.
+///
+/// `enabled` is **probed** and the rest is remembered. Probing honestly means
+/// doing the work (whether an AppImage can leave a stable copy of the daemon is
+/// only answered by trying), so the reason a registration failed is cached from
+/// the attempt; but whether the unit is there right now is one cheap look, and it
+/// has to be a look, because `hoard sync start` and `hoard sync autostart` move
+/// the same switch from outside this process.
 #[tauri::command]
-pub fn service_autostart_state() -> ServiceAutostart {
-    service_autostart_slot()
+pub async fn service_autostart_state() -> ServiceAutostart {
+    let installed = hoardd::autostart::installed().await;
+    let mut state = service_autostart_slot()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .clone()
+        .clone();
+    state.enabled = installed;
+    // A cached failure describes an attempt that is over. Once the unit is
+    // there, keeping the old excuse on screen would be the switch reading "on"
+    // next to a sentence saying it can't be.
+    if installed {
+        state.unsupported = None;
+        state.detail = None;
+    }
+    state
+}
+
+/// The Settings switch for the sync service's login start, and the twin of
+/// `hoard sync autostart` in the terminal. Both write to the same place: the
+/// service manager.
+///
+/// Awaited rather than fired off, unlike the app's own entry: the user is
+/// standing in front of the switch they just flipped, and a failure has to be
+/// known by the time this returns or the page has nothing to show.
+#[tauri::command]
+pub async fn set_service_autostart(enabled: bool) -> Result<ServiceAutostart, String> {
+    Ok(apply_service_autostart(enabled).await)
 }
 
 /// Register (or remove) the sync service's login start and record how it went.
 ///
-/// Returns the outcome instead of only logging it. The service manager
-/// subprocesses (`systemctl`, `launchctl`, `schtasks`) are the slow part, but
-/// none of these declare-or-remove calls starts or stops a running service, so
-/// they're a couple of subprocesses and a file write, quick enough for the
-/// Settings toggle to wait on, which is the only way its failure can ever be
-/// said out loud.
+/// Turning it **on** is `install`, not `ensure_installed`: declaring a unit and
+/// leaving the sync stopped until the next login is not what anybody means by
+/// flipping this switch, and it left the window unable to reach the state
+/// `hoard sync start` reaches in one word. Turning it **off** removes the login
+/// entry and leaves a running sync alone; stopping it now is `hoard sync stop`.
+///
+/// Returns the outcome instead of only logging it, because the Settings toggle
+/// waits on it and a failure that only reaches the log is a switch that reads
+/// "on" next to a sync that never starts.
 pub(crate) async fn apply_service_autostart(enabled: bool) -> ServiceAutostart {
     let outcome = if enabled {
-        hoardd::autostart::ensure_installed().await.map(|i| {
+        hoardd::autostart::install().await.map(|i| {
             tracing::info!(
                 manager = i.manager,
                 unit = i.id,
@@ -352,13 +387,6 @@ pub(crate) async fn apply_service_autostart(enabled: bool) -> ServiceAutostart {
     };
     record_service_autostart(state.clone());
     state
-}
-
-/// The app-start half: reaffirm what prefs say without holding up the window.
-pub(crate) fn sync_service_autostart(enabled: bool) {
-    tauri::async_runtime::spawn(async move {
-        apply_service_autostart(enabled).await;
-    });
 }
 
 /// Best-effort creation of the XDG autostart directory

@@ -550,6 +550,23 @@
     }
   }
 
+  /** The sync service's login start. Not a pref: it writes to the service
+   *  manager, which is also where `hoard sync autostart` writes, so the answer
+   *  is read back rather than assumed. */
+  async function toggleServiceAutostart(value: boolean) {
+    saving = "service_autostart" as keyof api.Prefs;
+    try {
+      serviceAutostart = await api.setServiceAutostart(value);
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+      // The switch must not be left showing what we asked for when the service
+      // manager refused it.
+      await refreshServiceAutostart();
+    } finally {
+      saving = null;
+    }
+  }
+
   async function handleForgetServer() {
     signingOut = true;
     try {
@@ -1152,6 +1169,17 @@
                 onChange={(v) => toggle(row.field, v)}
               />
             {/each}
+            <SettingsRow
+              row={{
+                field: "service_autostart",
+                label: $_("settings.service_autostart_label"),
+                description: $_("settings.service_autostart_desc"),
+                icon: RefreshCw,
+              }}
+              value={serviceAutostart?.enabled ?? false}
+              disabled={saving === ("service_autostart" as keyof api.Prefs)}
+              onChange={toggleServiceAutostart}
+            />
           </div>
           {#if serviceAutostartBlocked}
             <div

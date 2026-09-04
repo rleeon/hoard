@@ -229,16 +229,48 @@ fn ensure_daemon_present() -> Result<()> {
     )
 }
 
-/// Removes the login start and stops the manager's service. It does **not** send
-/// `Shutdown` over IPC: that is a separate order (`hoard sync stop` does both, in
-/// case a client and not the unit brought the service up). Returns `false` when
-/// nothing was installed.
+/// Removes the login start. It **never** stops a sync that is running: that is a
+/// separate order, and `hoard sync stop` sends it. Returns `false` when nothing
+/// was installed.
+///
+/// Only systemd can express the two separately (`disable` without `--now`).
+/// `launchctl bootout` unloads the job and takes its process with it, and the
+/// Task Scheduler's `/Delete` may or may not, depending on the Windows it runs
+/// on. Rather than three behaviours, the guarantee is made uniform here: if the
+/// service was serving before and isn't afterwards, it is started again,
+/// detached, exactly as a client would have started it.
+///
+/// Relaunching into a service that never died is harmless by construction: the
+/// arbiter is the socket bind, and the copy that loses it exits with 0 having
+/// served nothing.
 pub async fn uninstall() -> Result<bool> {
     if !installed().await {
         return Ok(false);
     }
+    let was_serving = serving().await;
     platform::disable().await?;
+    if was_serving && !serving().await {
+        match crate::client::respawn_service() {
+            Ok(pid) => tracing::info!(
+                pid,
+                "autostart: login start removed; the sync kept running on its own"
+            ),
+            Err(err) => tracing::warn!(
+                error = %format!("{err:#}"),
+                "autostart: login start removed and the sync went with it"
+            ),
+        }
+    }
     Ok(true)
+}
+
+/// Is somebody listening on the endpoint? The **socket**, not a handshake: what
+/// this asks is whether a daemon holds the bind.
+async fn serving() -> bool {
+    let Ok(endpoint) = Endpoint::resolve() else {
+        return false;
+    };
+    crate::transport::connect(&endpoint).await.is_ok()
 }
 
 /// Reinicia el servicio bajo el gestor (tras un `hoard upgrade`, para que releve
@@ -286,18 +318,30 @@ async fn hand_over() {
         tracing::warn!(error = %format!("{err:#}"), "autostart: the service didn't acknowledge the stop");
     }
     drop(client);
+    if !wait_until_free().await {
+        tracing::warn!("autostart: the previous service is still holding the socket");
+    }
+}
+
+/// Waits for the endpoint to come free, and says whether it did.
+///
+/// The **socket** is probed, not the handshake: what has to come free is the
+/// bind. A daemon that has already said goodbye still holds it while it stops the
+/// engine, and treating it as gone there is what leaves the next start losing the
+/// race, or [`uninstall`] mistaking a shutdown already under way for one it
+/// caused itself.
+pub async fn wait_until_free() -> bool {
+    let Ok(endpoint) = Endpoint::resolve() else {
+        return true;
+    };
     let deadline = Instant::now() + HANDOVER_TIMEOUT;
     while Instant::now() < deadline {
-        // The **socket** is probed, not the handshake: what has to come free is the
-        // bind. A daemon that has already said goodbye still holds it while it stops
-        // the engine, and treating it as gone there is exactly what would leave the
-        // next start losing the race.
         if crate::transport::connect(&endpoint).await.is_err() {
-            return;
+            return true;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    tracing::warn!("autostart: the previous service is still holding the socket");
+    false
 }
 
 /// Starts the service through the manager and confirms it **listens**. The unit
@@ -601,12 +645,18 @@ mod platform {
         Ok(())
     }
 
+    /// `disable`, deliberately **without** `--now`: taking the service out of
+    /// login start is not the same order as stopping the sync that is running,
+    /// and conflating the two is how opening a window came to be a
+    /// `hoard sync stop`. Whoever does want both says so: `hoard sync stop`
+    /// sends `Shutdown` over IPC right after this, and the uninstaller calls
+    /// `remove::stop_running`.
     pub async fn disable() -> Result<()> {
         if flatpak::active() {
             return flatpak::disable().await;
         }
         ensure_systemd()?;
-        run_quiet("systemctl", &["--user", "disable", "--now", UNIT]).await?;
+        run_quiet("systemctl", &["--user", "disable", UNIT]).await?;
         let path = unit_path()?;
         let _ = std::fs::remove_file(&path);
         run_quiet("systemctl", &["--user", "daemon-reload"]).await?;

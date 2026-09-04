@@ -1040,9 +1040,20 @@ export type ServiceAutostart = {
 
 export type ServiceAutostartBlock = "no_stable_path" | "no_service_manager";
 
-/** Read the last outcome of registering the sync service for login start. */
+/** Whether the sync service starts at login, plus the last attempt's reason if
+ *  it can't. `enabled` is probed from the service manager, not remembered:
+ *  `hoard sync autostart` moves the same switch from a terminal. */
 export function serviceAutostartState(): Promise<ServiceAutostart> {
   return invoke<ServiceAutostart>("service_autostart_state");
+}
+
+/** Register the sync service for login start (and start it now), or take it out
+ *  of login start. Turning it off leaves a running sync alone; stopping it now
+ *  is `hoard sync stop`. The twin of `hoard sync autostart on|off`. */
+export function setServiceAutostart(
+  enabled: boolean,
+): Promise<ServiceAutostart> {
+  return invoke<ServiceAutostart>("set_service_autostart", { enabled });
 }
 
 /** Recolour the tray icon. The frontend derives the global state from the

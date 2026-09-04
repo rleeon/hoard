@@ -200,8 +200,10 @@ pub async fn uninstall(found: &install::Installed) -> Result<Vec<PathBuf>> {
 
     // Not fatal on its own: a machine with no unit installed answers `false`
     // and there is still an app and two binaries to take away.
-    let _ = hoardd::autostart::uninstall().await;
+    // Stop first: taking the service out of login start no longer stops it, and
+    // brings it back where the service manager cannot separate the two.
     remove::stop_running().await;
+    let _ = hoardd::autostart::uninstall().await;
 
     if let Some(path) = &found.desktop {
         let delivery = found

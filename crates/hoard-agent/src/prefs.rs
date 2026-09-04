@@ -57,11 +57,19 @@ pub struct Prefs {
     #[serde(default)]
     pub notify_on_failure: bool,
 
-    /// When `true`, the launcher integration registers Hoard to start on
-    /// login. We don't read this directly (the autostart plugin owns the truth)
-    /// but we mirror it so the Settings page can render without an
-    /// extra IPC round-trip.
-    #[serde(default)]
+    /// When `true`, the launcher integration opens **the window** at login. We
+    /// don't read this directly (the autostart plugin owns the truth) but we
+    /// mirror it so the Settings page can render without an extra IPC
+    /// round-trip.
+    ///
+    /// It governs the app and nothing else. Whether the *sync service* starts at
+    /// login is not a preference at all: it is whether the unit is installed,
+    /// which `hoardd::autostart` owns and both frontends read.
+    ///
+    /// `default_true` to match [`Prefs::default`]. A plain `#[serde(default)]`
+    /// read a file written before this field existed as "the user turned login
+    /// start off", which is not what a missing key means.
+    #[serde(default = "default_true")]
     pub autostart: bool,
 
     /// When `true`, Hoard launches with its window hidden (only the tray icon
@@ -451,6 +459,18 @@ mod tests {
         assert!(p.live_activity_visible);
         // Storage-efficiency: "ahorro de datos" defaults to 0.3 (ADR 0018).
         assert_eq!(p.data_saving, 0.3);
+    }
+
+    /// A prefs file that predates the `autostart` field must not read as "the
+    /// user turned login start off". It used to, through a plain
+    /// `#[serde(default)]`, and the desktop acted on that value by taking the
+    /// sync service out of login start on the next launch (issue #29).
+    #[test]
+    fn a_missing_autostart_key_is_not_a_no() {
+        let legacy = r#"{ "close_to_tray": true }"#;
+        let parsed: Prefs = serde_json::from_str(legacy).expect("legacy prefs parse");
+        assert!(parsed.autostart, "a missing key must mean the default");
+        assert_eq!(parsed.autostart, Prefs::default().autostart);
     }
 
     #[test]
