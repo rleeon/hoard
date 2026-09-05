@@ -67,6 +67,21 @@ impl JwksCache {
         }))
     }
 
+    /// A cache with an empty keyset and no fetch, for tests that need a
+    /// `CloudState` to reach the database and never authenticate anybody.
+    /// Verification against it fails closed: an empty `JwkSet` matches no
+    /// `kid`, so a token presented to one of these is rejected, not trusted.
+    #[doc(hidden)]
+    pub fn offline(audience: String) -> Arc<Self> {
+        Arc::new(Self {
+            inner: RwLock::new(JwkSet { keys: Vec::new() }),
+            audience,
+            issuer: None,
+            jwks_url: String::new(),
+            http: reqwest::Client::new(),
+        })
+    }
+
     /// Spawn the background refresh task. The cache lifetime equals the
     /// server lifetime; if the refresh fails, we log and keep the previous
     /// JWKS rather than panicking: a stale-but-valid keyset is far better

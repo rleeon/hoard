@@ -123,7 +123,11 @@ impl Swept {
 /// Run one round. Public so `hoard-admin` and the tests can drive it directly
 /// instead of waiting a day for the timer.
 pub async fn sweep(state: &CloudState) -> Result<Swept, sqlx::Error> {
-    let hours = ABANDONED_AFTER.as_secs() as i64 / 3600;
+    // i32, not i64: `make_interval(hours => ...)` is declared over `int4`,
+    // and a bigint argument matches no overload. Postgres answers that with
+    // `42883 function does not exist`, which the daily task swallowed into a
+    // log line, so the sweep never once ran and its work piled up unseen.
+    let hours = (ABANDONED_AFTER.as_secs() / 3600) as i32;
     let mut swept = Swept::default();
 
     // Accounts carrying at least one abandoned version. Doing this per account
@@ -160,7 +164,7 @@ pub async fn sweep(state: &CloudState) -> Result<Swept, sqlx::Error> {
 async fn sweep_account(
     state: &CloudState,
     user_id: Uuid,
-    hours: i64,
+    hours: i32,
 ) -> Result<Swept, sqlx::Error> {
     let mut swept = Swept::default();
 
