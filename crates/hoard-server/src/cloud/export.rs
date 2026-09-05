@@ -151,10 +151,12 @@ async fn run_job(state: &CloudState, job_id: Uuid, user_id: Uuid) -> anyhow::Res
     Ok(())
 }
 
-/// Build the ZIP on a temp file on disk. Each blob is pulled from R2 into
-/// memory one at a time and written straight through, so peak heap is a single
-/// file, not the whole archive. Returns the temp file (kept alive for upload),
-/// the archive size in bytes, and the number of entries written.
+/// Build the ZIP on a temp file on disk. Every blob is streamed from R2 through
+/// a fixed buffer straight into the archive, so peak heap is that buffer and not
+/// a whole file: the bucket holds objects past 800 MB against a 512 MB machine,
+/// and a compressed one would need its decoded copy resident at the same time.
+/// Returns the temp file (kept alive for upload), the archive size in bytes, and
+/// the number of entries written.
 async fn build_export_zip(
     state: &CloudState,
     user_id: Uuid,
@@ -210,8 +212,12 @@ async fn build_export_zip(
 
             for (rel, sha) in files {
                 let key = r2::key_for_blob(user_id, &sha);
-                let bytes = match state.r2.get_object(&key).await {
-                    Ok(b) => b,
+                // Opening the stream is what fails for a missing object, and it
+                // fails before `start_file`, so a skip still leaves no entry
+                // behind. A read that dies mid-blob cannot be taken back once
+                // the entry is open, so that one fails the job instead.
+                let reader = match state.r2.get_reader(&key).await {
+                    Ok(r) => r,
                     Err(e) => {
                         tracing::warn!(%save_id, rel, error = %e, "export skipped missing blob");
                         continue;
@@ -220,28 +226,20 @@ async fn build_export_zip(
                 // The export must contain the RAW file: undo the at-rest
                 // zstd rewrite when (and only when) it completed, the same
                 // rule as the blob proxy (`stored_bytes` set).
-                let bytes = if blob_is_compressed(state, user_id, &sha).await {
-                    match zstd_decode(&bytes).await {
-                        Ok(raw) => raw,
-                        Err(e) => {
-                            tracing::warn!(%save_id, rel, error = %e, "export skipped undecodable blob");
-                            continue;
-                        }
-                    }
-                } else {
-                    bytes
-                };
+                let compressed = blob_is_compressed(state, user_id, &sha).await;
                 let name = format!("{dir}/{}", sanitize_rel(&rel));
                 zip.start_file(name, opts)?;
-                zip.write_all(&bytes)?;
+                stream_into_zip(reader, compressed, &mut zip).await?;
                 file_count += 1;
             }
         } else if !legacy_key.is_empty() {
-            match state.r2.get_object(&legacy_key).await {
-                Ok(bytes) => {
+            // These ship as-is, still zstd: the name says `.tar.zst` and the
+            // client unpacks them. Nothing to decode on the way out.
+            match state.r2.get_reader(&legacy_key).await {
+                Ok(reader) => {
                     let name = format!("{dir}_v{version_num}.tar.zst");
                     zip.start_file(name, opts)?;
-                    zip.write_all(&bytes)?;
+                    stream_into_zip(reader, false, &mut zip).await?;
                     file_count += 1;
                 }
                 Err(e) => {
@@ -343,15 +341,34 @@ async fn blob_is_compressed(state: &CloudState, user_id: Uuid, sha: &str) -> boo
     .unwrap_or(false)
 }
 
-/// Decode a zstd frame held in memory. Export blobs are already buffered
-/// whole (`get_object`), so the in-memory decode matches the existing
-/// footprint.
-async fn zstd_decode(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
+/// Copy one R2 object into the open ZIP entry, decoding the at-rest zstd frame
+/// on the way when `compressed`. The buffer is the whole memory cost.
+///
+/// `ZipWriter` is a blocking writer over the temp file, which is what lets a
+/// plain `write_all` sit in this loop: it is a local disk write, not a network
+/// one, and the awaits either side of it are where the time actually goes.
+async fn stream_into_zip<W: std::io::Write + std::io::Seek>(
+    reader: impl tokio::io::AsyncBufRead + Unpin + Send,
+    compressed: bool,
+    zip: &mut zip::ZipWriter<W>,
+) -> anyhow::Result<()> {
     use tokio::io::AsyncReadExt;
-    let mut out = Vec::new();
-    let mut dec = async_compression::tokio::bufread::ZstdDecoder::new(bytes);
-    dec.read_to_end(&mut out).await?;
-    Ok(out)
+    // `Send` is not decoration: this runs inside the worker's `tokio::spawn`,
+    // and boxing drops the auto trait the concrete readers carry.
+    let mut src: Box<dyn tokio::io::AsyncRead + Unpin + Send> = if compressed {
+        Box::new(async_compression::tokio::bufread::ZstdDecoder::new(reader))
+    } else {
+        Box::new(reader)
+    };
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = src.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        zip.write_all(&buf[..n])?;
+    }
+    Ok(())
 }
 
 fn entry_dir(game_slug: &str, label: &str) -> String {
