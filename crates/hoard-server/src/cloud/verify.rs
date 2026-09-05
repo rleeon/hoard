@@ -167,7 +167,7 @@ pub async fn run(cfg: &Config, opts: Options) -> Result<Report> {
         .context("verify-blobs: building the R2 client")?;
 
     let mut sql = String::from(
-        "SELECT user_id, sha256, size_bytes, encoding, stored_bytes
+        "SELECT user_id, encode(sha256, 'hex') AS sha256, size_bytes, encoding, stored_bytes
            FROM cloud_blobs",
     );
     if !opts.recheck {
@@ -227,7 +227,7 @@ pub async fn run(cfg: &Config, opts: Options) -> Result<Report> {
         if !opts.dry_run {
             sqlx::query(
                 "UPDATE cloud_blobs SET verified_at = now(), integrity = $3
-                  WHERE user_id = $1 AND sha256 = $2",
+                  WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
             )
             .bind(user_id)
             .bind(&sha)
@@ -245,7 +245,7 @@ pub async fn run(cfg: &Config, opts: Options) -> Result<Report> {
             "SELECT s.game_slug, f.version_num, f.relative_path
                FROM save_version_files f
                JOIN saves s ON s.id = f.save_id
-              WHERE f.sha256 = $1 AND s.user_id = $2
+              WHERE f.sha256 = decode($1, 'hex') AND s.user_id = $2
               ORDER BY s.game_slug, f.version_num",
         )
         .bind(&sha)

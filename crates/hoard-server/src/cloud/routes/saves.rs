@@ -588,7 +588,11 @@ pub async fn cas_init(
     }
     let all_shas: Vec<String> = unique.keys().cloned().collect();
     let existing: Vec<(String,)> =
-        sqlx::query_as("SELECT sha256 FROM cloud_blobs WHERE user_id = $1 AND sha256 = ANY($2)")
+        sqlx::query_as(
+            "SELECT encode(sha256, 'hex') FROM cloud_blobs
+              WHERE user_id = $1
+                AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))",
+        )
             .bind(user.user_id)
             .bind(&all_shas)
             .fetch_all(&state.pool)
@@ -789,7 +793,7 @@ pub async fn cas_init(
     sqlx::query(
         r#"
         INSERT INTO save_version_files (save_id, version_num, relative_path, sha256, size_bytes, modified_at)
-        SELECT $1, $2, p, s, z, m
+        SELECT $1, $2, p, decode(s, 'hex'), z, m
           FROM UNNEST($3::text[], $4::text[], $5::bigint[], $6::bigint[]) AS t(p, s, z, m)
         ON CONFLICT (save_id, version_num, relative_path) DO NOTHING
         "#,
@@ -900,7 +904,7 @@ pub async fn cas_commit(
 
     // Full manifest, ordered, for the digest; distinct shas for refcounting.
     let manifest: Vec<(String, String, i64)> = sqlx::query_as(
-        "SELECT relative_path, sha256, size_bytes FROM save_version_files
+        "SELECT relative_path, encode(sha256, 'hex'), size_bytes FROM save_version_files
             WHERE save_id = $1 AND version_num = $2
          ORDER BY relative_path",
     )
@@ -932,7 +936,11 @@ pub async fn cas_commit(
     }
     let all_shas: Vec<String> = unique.keys().cloned().collect();
     let existing: Vec<(String,)> =
-        sqlx::query_as("SELECT sha256 FROM cloud_blobs WHERE user_id = $1 AND sha256 = ANY($2)")
+        sqlx::query_as(
+            "SELECT encode(sha256, 'hex') FROM cloud_blobs
+              WHERE user_id = $1
+                AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))",
+        )
             .bind(user.user_id)
             .bind(&all_shas)
             .fetch_all(&state.pool)
@@ -1081,7 +1089,7 @@ pub async fn cas_commit(
     sqlx::query(
         r#"
         INSERT INTO cloud_blobs (user_id, sha256, size_bytes, refcount)
-        SELECT $1, s, z, 1
+        SELECT $1, decode(s, 'hex'), z, 1
           FROM UNNEST($2::text[], $3::bigint[]) AS t(s, z)
         ON CONFLICT (user_id, sha256)
         DO UPDATE SET refcount = cloud_blobs.refcount + 1, purge_after = NULL
@@ -1229,7 +1237,7 @@ pub async fn version_manifest(
     }
 
     let rows: Vec<(String, String, i64, Option<i64>)> = sqlx::query_as(
-        "SELECT relative_path, sha256, size_bytes, modified_at FROM save_version_files
+        "SELECT relative_path, encode(sha256, 'hex'), size_bytes, modified_at FROM save_version_files
             WHERE save_id = $1 AND version_num = $2
          ORDER BY relative_path",
     )
@@ -1306,8 +1314,10 @@ pub async fn version_manifest(
     // stays on the presigned path.
     let shas: Vec<String> = unique_size.keys().cloned().collect();
     let compressed: std::collections::BTreeSet<String> = sqlx::query_as::<_, (String,)>(
-        "SELECT sha256 FROM cloud_blobs
-            WHERE user_id = $1 AND sha256 = ANY($2) AND encoding = 'zstd'",
+        "SELECT encode(sha256, 'hex') FROM cloud_blobs
+            WHERE user_id = $1
+              AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))
+              AND encoding = 'zstd'",
     )
     .bind(user.user_id)
     .bind(&shas)
@@ -1349,7 +1359,8 @@ pub async fn version_manifest(
     // just-minted direct URL might still be in flight.
     sqlx::query(
         "UPDATE cloud_blobs SET last_presigned_at = now()
-            WHERE user_id = $1 AND sha256 = ANY($2)",
+            WHERE user_id = $1
+              AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))",
     )
     .bind(user.user_id)
     .bind(&shas)
@@ -1775,7 +1786,7 @@ pub async fn delete_save(
     // this save that pointed at each blob. Read the counts before the manifest
     // cascades away with the save.
     let blob_refs: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT sha256, COUNT(DISTINCT version_num) FROM save_version_files
+        "SELECT encode(sha256, 'hex'), COUNT(DISTINCT version_num) FROM save_version_files
             WHERE save_id = $1 GROUP BY sha256",
     )
     .bind(&save_id)

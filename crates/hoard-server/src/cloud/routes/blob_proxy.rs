@@ -100,7 +100,7 @@ pub async fn download(
 
     let row: Option<(Option<String>, Option<i64>, i64)> = sqlx::query_as(
         "SELECT encoding, stored_bytes, size_bytes
-           FROM cloud_blobs WHERE user_id = $1 AND sha256 = $2",
+           FROM cloud_blobs WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
     )
     .bind(user_id)
     .bind(&sha256)

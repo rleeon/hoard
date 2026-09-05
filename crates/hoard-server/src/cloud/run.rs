@@ -417,7 +417,7 @@ pub async fn run(cfg: Config) -> Result<()> {
 
     // Either signal drains the listener: an operator's ctrl-c, or the memory
     // watchdog deciding the machine needs turning over.
-    let (bounce_tx, mut bounce_rx) = tokio::sync::watch::channel(false);
+    let (bounce_tx, bounce_rx) = tokio::sync::watch::channel(false);
     memwatch::spawn(bounce_tx);
 
     axum::serve(
@@ -427,7 +427,9 @@ pub async fn run(cfg: Config) -> Result<()> {
     .with_graceful_shutdown(async move {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => info!("received ctrl-c, shutting down"),
-            _ = bounce_rx.changed() => info!("memory watchdog asked for a bounce, draining"),
+            _ = memwatch::bounce_requested(bounce_rx) => {
+                info!("memory watchdog asked for a bounce, draining")
+            }
         }
     })
     .await?;

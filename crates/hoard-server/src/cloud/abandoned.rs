@@ -244,7 +244,7 @@ async fn sweep_account(
     }
 
     let referenced: Vec<(String,)> =
-        sqlx::query_as("SELECT sha256 FROM cloud_blobs WHERE user_id = $1")
+        sqlx::query_as("SELECT encode(sha256, 'hex') FROM cloud_blobs WHERE user_id = $1")
             .bind(user_id)
             .fetch_all(&state.pool)
             .await?;

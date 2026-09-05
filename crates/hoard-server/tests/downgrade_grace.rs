@@ -47,8 +47,15 @@ async fn pool() -> Option<PgPool> {
     // them racing on `CREATE OR REPLACE FUNCTION` ("tuple concurrently
     // updated"). An advisory lock is the fix rather than telling everyone to
     // remember `--test-threads=1`, which only works until someone forgets.
+    //
+    // Held on one connection, never on the pool. `pg_advisory_lock` is
+    // session-scoped, so through a pool the unlock can land on a different
+    // connection, quietly return false, and leave the lock held for the life of
+    // that session; every later test binary then blocks on it forever. That
+    // hung the suite once.
+    let mut guard = pool.acquire().await.expect("bootstrap connection");
     sqlx::query("SELECT pg_advisory_lock(8_233_119_402)")
-        .execute(&pool)
+        .execute(&mut *guard)
         .await
         .expect("bootstrap lock");
     // The migrations assume Supabase: an `auth.users` table to hang the
@@ -82,9 +89,10 @@ async fn pool() -> Option<PgPool> {
         .await
         .expect("migrations");
     sqlx::query("SELECT pg_advisory_unlock(8_233_119_402)")
-        .execute(&pool)
+        .execute(&mut *guard)
         .await
         .expect("bootstrap unlock");
+    drop(guard);
     Some(pool)
 }
 

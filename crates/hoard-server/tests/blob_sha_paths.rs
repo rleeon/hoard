@@ -46,11 +46,12 @@ async fn pool() -> Option<PgPool> {
     let pool = hoard_server::cloud::db::connect(&url, 5)
         .await
         .expect("connect to the test database");
-    // Same bootstrap dance as `downgrade_grace`: the migrations assume Supabase
-    // objects a bare Postgres has never heard of, and the test binaries race
-    // each other creating them.
+    // Same bootstrap dance as `downgrade_grace`, lock included: taken on one
+    // connection rather than the pool, or the unlock lands elsewhere and every
+    // later test binary blocks on it forever.
+    let mut guard = pool.acquire().await.expect("bootstrap connection");
     sqlx::query("SELECT pg_advisory_lock(8_233_119_402)")
-        .execute(&pool)
+        .execute(&mut *guard)
         .await
         .expect("bootstrap lock");
     for role in ["anon", "authenticated", "service_role"] {
@@ -76,9 +77,10 @@ async fn pool() -> Option<PgPool> {
         .await
         .expect("migrations");
     sqlx::query("SELECT pg_advisory_unlock(8_233_119_402)")
-        .execute(&pool)
+        .execute(&mut *guard)
         .await
         .expect("bootstrap unlock");
+    drop(guard);
     Some(pool)
 }
 
@@ -152,7 +154,7 @@ async fn seed(pool: &PgPool, versions: i64, files: u8) -> (Uuid, String) {
     for f in 0..files {
         sqlx::query(
             "INSERT INTO cloud_blobs (user_id, sha256, size_bytes, refcount)
-             VALUES ($1, $2, 1000, $3)",
+             VALUES ($1, decode($2, 'hex'), 1000, $3)",
         )
         .bind(user)
         .bind(sha(f))
@@ -179,7 +181,7 @@ async fn seed(pool: &PgPool, versions: i64, files: u8) -> (Uuid, String) {
             sqlx::query(
                 "INSERT INTO save_version_files
                    (save_id, version_num, relative_path, sha256, size_bytes, modified_at)
-                 VALUES ($1, $2, $3, $4, 1000, 0)",
+                 VALUES ($1, $2, $3, decode($4, 'hex'), 1000, 0)",
             )
             .bind(&save_id)
             .bind(v)

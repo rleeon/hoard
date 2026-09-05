@@ -136,7 +136,7 @@ async fn sweep_once(state: &CloudState, cfg: &CompressionConfig) -> anyhow::Resu
     // frozen in the archive grace window.
     let rows = sqlx::query(
         r#"
-        SELECT user_id, sha256, size_bytes
+        SELECT user_id, encode(sha256, 'hex') AS sha256, size_bytes
           FROM cloud_blobs
          WHERE (encoding IS NULL OR (encoding = 'zstd' AND stored_bytes IS NULL))
            AND compress_attempts < $5
@@ -173,7 +173,7 @@ async fn sweep_once(state: &CloudState, cfg: &CompressionConfig) -> anyhow::Resu
                 // one can't keep spending R2 ops every tick.
                 let attempts: Option<i16> = sqlx::query_scalar(
                     "UPDATE cloud_blobs SET compress_attempts = compress_attempts + 1
-                      WHERE user_id = $1 AND sha256 = $2
+                      WHERE user_id = $1 AND sha256 = decode($2, 'hex')
                       RETURNING compress_attempts",
                 )
                 .bind(user_id)
@@ -227,7 +227,7 @@ async fn compress_one(
     // Phase 1: claim. From here the manifest route proxies this blob.
     let claimed = sqlx::query(
         "UPDATE cloud_blobs SET encoding = 'zstd'
-          WHERE user_id = $1 AND sha256 = $2
+          WHERE user_id = $1 AND sha256 = decode($2, 'hex')
             AND (encoding IS NULL OR (encoding = 'zstd' AND stored_bytes IS NULL))",
     )
     .bind(user_id)
@@ -248,7 +248,7 @@ async fn compress_one(
     let Some(head) = state.r2.head(key).await? else {
         sqlx::query(
             "UPDATE cloud_blobs SET encoding = 'missing'
-              WHERE user_id = $1 AND sha256 = $2
+              WHERE user_id = $1 AND sha256 = decode($2, 'hex')
                 AND encoding = 'zstd' AND stored_bytes IS NULL",
         )
         .bind(user_id)
@@ -303,7 +303,7 @@ async fn compress_one(
         let _ = state.r2.delete_object(&tmp_key).await;
         sqlx::query(
             "UPDATE cloud_blobs SET encoding = 'raw'
-              WHERE user_id = $1 AND sha256 = $2
+              WHERE user_id = $1 AND sha256 = decode($2, 'hex')
                 AND encoding = 'zstd' AND stored_bytes IS NULL",
         )
         .bind(user_id)
@@ -330,7 +330,7 @@ async fn compress_one(
         // a corrupt source object. Loud on purpose.
         sqlx::query(
             "UPDATE cloud_blobs SET encoding = NULL
-              WHERE user_id = $1 AND sha256 = $2 AND stored_bytes IS NULL",
+              WHERE user_id = $1 AND sha256 = decode($2, 'hex') AND stored_bytes IS NULL",
         )
         .bind(user_id)
         .bind(sha)
@@ -370,7 +370,7 @@ async fn finalize(
 ) -> anyhow::Result<()> {
     let finalized = sqlx::query(
         "UPDATE cloud_blobs SET stored_bytes = $3
-          WHERE user_id = $1 AND sha256 = $2 AND encoding = 'zstd'",
+          WHERE user_id = $1 AND sha256 = decode($2, 'hex') AND encoding = 'zstd'",
     )
     .bind(user_id)
     .bind(sha)

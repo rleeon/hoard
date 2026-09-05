@@ -72,7 +72,7 @@ pub async fn record_cloud(
 #[cfg(feature = "cloud")]
 async fn cloud_manifest(pool: &PgPool, save_id: &str, version: i64) -> Result<Vec<ManifestFile>> {
     let rows: Vec<(String, String, i64, Option<i64>)> = sqlx::query_as(
-        "SELECT relative_path, sha256, size_bytes, modified_at
+        "SELECT relative_path, encode(sha256, 'hex'), size_bytes, modified_at
            FROM save_version_files
           WHERE save_id = $1 AND version_num = $2
           LIMIT $3",

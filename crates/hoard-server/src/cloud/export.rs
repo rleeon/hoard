@@ -202,7 +202,7 @@ async fn build_export_zip(
 
         if content_addressed {
             let files: Vec<(String, String)> = sqlx::query_as(
-                "SELECT relative_path, sha256 FROM save_version_files
+                "SELECT relative_path, encode(sha256, 'hex') FROM save_version_files
                    WHERE save_id = $1 AND version_num = $2",
             )
             .bind(save_id)
@@ -329,7 +329,7 @@ async fn expire_due(state: &CloudState) -> Result<(), sqlx::Error> {
 async fn blob_is_compressed(state: &CloudState, user_id: Uuid, sha: &str) -> bool {
     sqlx::query_as::<_, (Option<String>, Option<i64>)>(
         "SELECT encoding, stored_bytes FROM cloud_blobs
-            WHERE user_id = $1 AND sha256 = $2",
+            WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
     )
     .bind(user_id)
     .bind(sha)

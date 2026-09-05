@@ -405,7 +405,8 @@ async fn purge_one(
     version: i64,
 ) -> Result<(), CloudError> {
     let shas: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT sha256 FROM save_version_files WHERE save_id = $1 AND version_num = $2",
+        "SELECT DISTINCT encode(sha256, 'hex') FROM save_version_files
+          WHERE save_id = $1 AND version_num = $2",
     )
     .bind(save_id)
     .bind(version)

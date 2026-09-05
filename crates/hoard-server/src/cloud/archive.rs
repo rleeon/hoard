@@ -65,7 +65,7 @@ where
                     purge_after = CASE WHEN refcount - $3 <= 0
                                        THEN now() + make_interval(days => $4)
                                        ELSE purge_after END
-              WHERE user_id = $1 AND sha256 = $2",
+              WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
         )
         .bind(user_id)
         .bind(&sha)
@@ -190,7 +190,7 @@ pub async fn archive_save(
     // Reference counts this save contributes per blob, same shape as
     // delete_save. Read before we change anything.
     let blob_refs: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT sha256, COUNT(DISTINCT version_num) FROM save_version_files
+        "SELECT encode(sha256, 'hex'), COUNT(DISTINCT version_num) FROM save_version_files
             WHERE save_id = $1 GROUP BY sha256",
     )
     .bind(save_id)
@@ -283,7 +283,7 @@ pub async fn reactivate_save(
     // the cron won't sweep them. The trigger re-charges storage on the 0→>0
     // transition.
     let blob_refs: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT sha256, COUNT(DISTINCT version_num) FROM save_version_files
+        "SELECT encode(sha256, 'hex'), COUNT(DISTINCT version_num) FROM save_version_files
             WHERE save_id = $1 GROUP BY sha256",
     )
     .bind(save_id)
@@ -292,7 +292,7 @@ pub async fn reactivate_save(
     for (sha, inc) in blob_refs {
         sqlx::query(
             "UPDATE cloud_blobs SET refcount = refcount + $3, purge_after = NULL
-                WHERE user_id = $1 AND sha256 = $2",
+                WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
         )
         .bind(user_id)
         .bind(&sha)
@@ -564,7 +564,7 @@ pub async fn purge_expired(state: &CloudState) -> Result<(usize, usize), sqlx::E
     //    revived in the meantime (re-upload / reactivate) has refcount > 0 and
     //    a NULL purge_after, so it's skipped.
     let due_blobs: Vec<(Uuid, String)> = sqlx::query_as(
-        "SELECT user_id, sha256 FROM cloud_blobs
+        "SELECT user_id, encode(sha256, 'hex') FROM cloud_blobs
           WHERE refcount = 0 AND purge_after IS NOT NULL AND purge_after < now()",
     )
     .fetch_all(&state.pool)
@@ -576,7 +576,7 @@ pub async fn purge_expired(state: &CloudState) -> Result<(usize, usize), sqlx::E
         if let Err(e) = state.r2.delete_object(&key).await {
             tracing::warn!(error = %e, r2_key = %key, "archive purge: blob R2 delete failed");
         }
-        sqlx::query("DELETE FROM cloud_blobs WHERE user_id = $1 AND sha256 = $2")
+        sqlx::query("DELETE FROM cloud_blobs WHERE user_id = $1 AND sha256 = decode($2, 'hex')")
             .bind(user_id)
             .bind(&sha)
             .execute(&state.pool)
