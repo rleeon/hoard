@@ -348,8 +348,8 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
         .expect("file row");
     }
     sqlx::query(
-        "INSERT INTO cloud_blobs (user_id, sha256, size_bytes, r2_key, refcount)
-         VALUES ($1, $2, 1000, 'k1', 2), ($1, $3, 500, 'k2', 1)",
+        "INSERT INTO cloud_blobs (user_id, sha256, size_bytes, refcount)
+         VALUES ($1, $2, 1000, 2), ($1, $3, 500, 1)",
     )
     .bind(id)
     .bind(&shared_sha)
