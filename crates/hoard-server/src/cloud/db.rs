@@ -34,6 +34,12 @@ pub async fn connect(url: &str, max_connections: u32) -> Result<PgPool> {
 pub async fn run_migrations(pool: &PgPool) -> Result<()> {
     info!("running postgres migrations");
 
+    // `migrate!` embeds the directory at COMPILE time, and a new `.sql` file on
+    // its own does not invalidate cargo's fingerprint: the deploy reuses the
+    // cached build, boots, logs "migrations complete" and applies nothing. It
+    // fails silently, which is the worst way for a migration to fail. Adding a
+    // migration means touching a source file in this crate too, or building
+    // with the target cache cold.
     let mut migrator = sqlx::migrate!("./migrations/postgres");
     // Don't refuse to boot because the database is *ahead* of this binary.
     // Rolling back to the previous image is the standard way out of a bad
