@@ -4,7 +4,7 @@
 use crate::cloud::{
     abandoned, account_purge, archive,
     auth::{require_active_account, require_cloud_auth, JwksCache},
-    bandwidth, compress, db, export, polar, pollguard, r2,
+    bandwidth, compress, db, export, memwatch, polar, pollguard, r2,
     routes::{
         blob_proxy, checkout, device as device_routes, entitlements as ent_routes,
         logs as log_routes, me, notifications as notification_routes, playtime as playtime_routes,
@@ -414,15 +414,31 @@ pub async fn run(cfg: Config) -> Result<()> {
     let addr: SocketAddr = format!("{}:{}", cfg.server.host, cfg.server.port).parse()?;
     info!(%addr, "cloud mode listening");
     let listener = tokio::net::TcpListener::bind(addr).await?;
+
+    // Either signal drains the listener: an operator's ctrl-c, or the memory
+    // watchdog deciding the machine needs turning over.
+    let (bounce_tx, mut bounce_rx) = tokio::sync::watch::channel(false);
+    memwatch::spawn(bounce_tx);
+
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .with_graceful_shutdown(async {
-        tokio::signal::ctrl_c().await.ok();
-        info!("received ctrl-c, shutting down");
+    .with_graceful_shutdown(async move {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => info!("received ctrl-c, shutting down"),
+            _ = bounce_rx.changed() => info!("memory watchdog asked for a bounce, draining"),
+        }
     })
     .await?;
+
+    // A drain the watchdog asked for has to exit non-zero: Fly restarts on
+    // failure, and a clean exit would leave the machine stopped until the next
+    // request happened to wake it.
+    if memwatch::bouncing() {
+        tracing::error!("drained after the memory trip point, exiting for restart");
+        std::process::exit(1);
+    }
     Ok(())
 }
 
