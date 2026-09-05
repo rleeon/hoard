@@ -563,15 +563,16 @@ pub async fn purge_expired(state: &CloudState) -> Result<(usize, usize), sqlx::E
     // 2. Frozen blobs whose window elapsed and are still unreferenced. A blob
     //    revived in the meantime (re-upload / reactivate) has refcount > 0 and
     //    a NULL purge_after, so it's skipped.
-    let due_blobs: Vec<(Uuid, String, String)> = sqlx::query_as(
-        "SELECT user_id, sha256, r2_key FROM cloud_blobs
+    let due_blobs: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT user_id, sha256 FROM cloud_blobs
           WHERE refcount = 0 AND purge_after IS NOT NULL AND purge_after < now()",
     )
     .fetch_all(&state.pool)
     .await?;
 
     let mut blobs_deleted = 0usize;
-    for (user_id, sha, key) in due_blobs {
+    for (user_id, sha) in due_blobs {
+        let key = super::r2::key_for_blob(user_id, &sha);
         if let Err(e) = state.r2.delete_object(&key).await {
             tracing::warn!(error = %e, r2_key = %key, "archive purge: blob R2 delete failed");
         }

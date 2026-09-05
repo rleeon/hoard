@@ -1078,15 +1078,11 @@ pub async fn cas_commit(
         .iter()
         .map(|(sha, declared)| actual_size.get(sha).copied().unwrap_or(*declared))
         .collect();
-    let blob_keys: Vec<String> = blob_shas
-        .iter()
-        .map(|sha| r2::key_for_blob(user.user_id, sha))
-        .collect();
     sqlx::query(
         r#"
-        INSERT INTO cloud_blobs (user_id, sha256, size_bytes, r2_key, refcount)
-        SELECT $1, s, z, k, 1
-          FROM UNNEST($2::text[], $3::bigint[], $4::text[]) AS t(s, z, k)
+        INSERT INTO cloud_blobs (user_id, sha256, size_bytes, refcount)
+        SELECT $1, s, z, 1
+          FROM UNNEST($2::text[], $3::bigint[]) AS t(s, z)
         ON CONFLICT (user_id, sha256)
         DO UPDATE SET refcount = cloud_blobs.refcount + 1, purge_after = NULL
         "#,
@@ -1094,7 +1090,6 @@ pub async fn cas_commit(
     .bind(user.user_id)
     .bind(&blob_shas)
     .bind(&blob_sizes)
-    .bind(&blob_keys)
     .execute(&mut *tx)
     .await?;
 
@@ -2096,10 +2091,10 @@ where
     I: IntoIterator<Item = (String, i64)>,
 {
     for (sha, dec) in blobs {
-        let row: Result<Option<(i64, String)>, _> = sqlx::query_as(
+        let row: Result<Option<(i64,)>, _> = sqlx::query_as(
             "UPDATE cloud_blobs SET refcount = GREATEST(0, refcount - $3)
                 WHERE user_id = $1 AND sha256 = $2
-             RETURNING refcount, r2_key",
+             RETURNING refcount",
         )
         .bind(user_id)
         .bind(&sha)
@@ -2107,7 +2102,8 @@ where
         .fetch_optional(&state.pool)
         .await;
         match row {
-            Ok(Some((refcount, key))) if refcount <= 0 => {
+            Ok(Some((refcount,))) if refcount <= 0 => {
+                let key = r2::key_for_blob(user_id, &sha);
                 if let Err(e) = state.r2.delete_object(&key).await {
                     tracing::warn!(error = %e, r2_key = %key, "cloud blob GC: R2 delete failed");
                 }

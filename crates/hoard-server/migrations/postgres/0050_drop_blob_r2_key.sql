@@ -1,0 +1,38 @@
+-- `cloud_blobs.r2_key` stored the object's path in R2, and that path is
+-- literally the two columns that already form the primary key, joined:
+-- `blobs/{user_id}/{sha[0:2]}/{sha}`. Roughly 111 bytes per row spelling out
+-- what `r2::key_for_blob` has always computed. The column was in fact filled
+-- by calling that function, so the code already treated the derivation as the
+-- source of truth and the column as a copy of it.
+--
+-- Checked against all 127,549 production rows before writing this: 127,549
+-- derivable, 0 exceptions. The query that proves it, in case another instance
+-- needs the same check before applying:
+--
+--   SELECT count(*) FROM cloud_blobs
+--    WHERE r2_key <> 'blobs/'||user_id::text||'/'||substr(sha256,1,2)||'/'||sha256;
+--
+-- 14 MB on a database that had reached 452 of a 500 MB limit.
+--
+-- DEPLOY ORDER, and it matters: this migration ships in the deploy AFTER the
+-- one that removes every read of the column, never in the same one. Between
+-- the two the schema carries a column nobody reads, which is harmless, and
+-- rolling the code back still works. The other way round (dropping the column
+-- while the old code is still serving) breaks downloads, compression and the
+-- blob sweep at once.
+--
+-- The space is not returned until the VACUUM FULL that follows by hand:
+-- `DROP COLUMN` only marks the column dead.
+--
+-- Note there are two other `r2_key` columns in the schema, on `save_versions`
+-- (whole-archive versions from the old format, which use a different key
+-- pattern) and on `export_jobs` (export ZIPs). Neither is derivable and
+-- neither is touched here.
+ALTER TABLE public.cloud_blobs DROP COLUMN IF EXISTS r2_key;
+
+-- `profiles` had piled up 2.4 million updates over 195 rows (the
+-- `sync_blob_storage` trigger writes once per blob) and had grown to 6.2 MB
+-- holding 45 kB of actual data. It was compacted by hand on 2026-09-05; this
+-- leaves room on every page so HOT updates stop bloating it again, and above
+-- all it puts the setting in a migration so it survives a rebuild.
+ALTER TABLE public.profiles SET (fillfactor = 70);

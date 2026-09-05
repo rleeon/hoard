@@ -96,11 +96,15 @@ async fn purge_account(state: &CloudState, user_id: Uuid) -> Result<(), sqlx::Er
 async fn r2_keys_for(pool: &PgPool, user_id: Uuid) -> Result<Vec<String>, sqlx::Error> {
     let mut keys: Vec<String> = Vec::new();
 
-    let blobs: Vec<(String,)> = sqlx::query_as("SELECT r2_key FROM cloud_blobs WHERE user_id = $1")
+    let blobs: Vec<(String,)> = sqlx::query_as("SELECT sha256 FROM cloud_blobs WHERE user_id = $1")
         .bind(user_id)
         .fetch_all(pool)
         .await?;
-    keys.extend(blobs.into_iter().map(|(k,)| k));
+    keys.extend(
+        blobs
+            .into_iter()
+            .map(|(sha,)| crate::cloud::r2::key_for_blob(user_id, &sha)),
+    );
 
     // Legacy (non content-addressed) versions store one opaque archive each.
     let archives: Vec<(Option<String>,)> = sqlx::query_as(

@@ -98,8 +98,8 @@ pub async fn download(
         return Err(StatusCode::FORBIDDEN);
     };
 
-    let row: Option<(String, Option<String>, Option<i64>, i64)> = sqlx::query_as(
-        "SELECT r2_key, encoding, stored_bytes, size_bytes
+    let row: Option<(Option<String>, Option<i64>, i64)> = sqlx::query_as(
+        "SELECT encoding, stored_bytes, size_bytes
            FROM cloud_blobs WHERE user_id = $1 AND sha256 = $2",
     )
     .bind(user_id)
@@ -110,9 +110,10 @@ pub async fn download(
         tracing::warn!(error = %e, "blob proxy: row lookup failed");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    let Some((r2_key, encoding, stored_bytes, size_bytes)) = row else {
+    let Some((encoding, stored_bytes, size_bytes)) = row else {
         return Err(StatusCode::NOT_FOUND);
     };
+    let r2_key = crate::cloud::r2::key_for_blob(user_id, &sha256);
 
     let reader = state.r2.get_reader(&r2_key).await.map_err(|e| {
         tracing::warn!(error = %e, r2_key, "blob proxy: R2 get failed");

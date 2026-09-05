@@ -203,6 +203,33 @@ mod tests {
         );
     }
 
+    /// `cloud_blobs.r2_key` used to store this string per row (migration 0050
+    /// dropped it: ~111 bytes duplicating what these two arguments already
+    /// say). That makes this function the only record of where a blob lives,
+    /// so its format is now load-bearing for the 127k objects already in the
+    /// bucket: change it and they all become unreachable. Pinned here on
+    /// purpose. If this test fails, the fix is not to update the expectation.
+    #[test]
+    fn blob_key_format_stable() {
+        let u = Uuid::nil();
+        let sha = "ae2bcfee97e4b03b91985c5898168b7466dbd0c4da7e9cd6ca3ab8546ab0fd66";
+        assert_eq!(
+            key_for_blob(u, sha),
+            format!("blobs/00000000-0000-0000-0000-000000000000/ae/{sha}")
+        );
+    }
+
+    /// A sha shorter than its shard can't panic on the slice: the keyspace is
+    /// validated upstream (`is_valid_sha256`), but this path used to be fed
+    /// straight from a database column and now runs on every download.
+    #[test]
+    fn blob_key_survives_a_short_sha() {
+        assert_eq!(
+            key_for_blob(Uuid::nil(), "a"),
+            "blobs/00000000-0000-0000-0000-000000000000/00/a"
+        );
+    }
+
     #[test]
     fn export_key_format_stable() {
         let u = Uuid::nil();

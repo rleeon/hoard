@@ -136,7 +136,7 @@ async fn sweep_once(state: &CloudState, cfg: &CompressionConfig) -> anyhow::Resu
     // frozen in the archive grace window.
     let rows = sqlx::query(
         r#"
-        SELECT user_id, sha256, r2_key, size_bytes
+        SELECT user_id, sha256, size_bytes
           FROM cloud_blobs
          WHERE (encoding IS NULL OR (encoding = 'zstd' AND stored_bytes IS NULL))
            AND compress_attempts < $5
@@ -163,7 +163,7 @@ async fn sweep_once(state: &CloudState, cfg: &CompressionConfig) -> anyhow::Resu
     for row in rows {
         let user_id: Uuid = row.get("user_id");
         let sha: String = row.get("sha256");
-        let key: String = row.get("r2_key");
+        let key = super::r2::key_for_blob(user_id, &sha);
         let raw_size: i64 = row.get("size_bytes");
         match compress_one(state, cfg, user_id, &sha, &key, raw_size).await {
             Ok(()) => ok += 1,

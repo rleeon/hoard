@@ -167,7 +167,7 @@ pub async fn run(cfg: &Config, opts: Options) -> Result<Report> {
         .context("verify-blobs: building the R2 client")?;
 
     let mut sql = String::from(
-        "SELECT user_id, sha256, size_bytes, r2_key, encoding, stored_bytes
+        "SELECT user_id, sha256, size_bytes, encoding, stored_bytes
            FROM cloud_blobs",
     );
     if !opts.recheck {
@@ -185,7 +185,7 @@ pub async fn run(cfg: &Config, opts: Options) -> Result<Report> {
             let user_id: uuid::Uuid = row.get("user_id");
             let sha: String = row.get("sha256");
             let size: i64 = row.get("size_bytes");
-            let key: String = row.get("r2_key");
+            let key = super::r2::key_for_blob(user_id, &sha);
             let encoding: Option<String> = row.get("encoding");
             let stored: Option<i64> = row.get("stored_bytes");
             // Decompression is only needed when the sweep *finished* writing the
