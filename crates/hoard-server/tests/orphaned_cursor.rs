@@ -204,11 +204,21 @@ async fn a_real_head_never_takes_the_escape_hatch() {
     cleanup(&pool, user).await;
 }
 
+/// Expand a short readable label into a real 64-hex digest. `sha256` is bytea
+/// since migration 0052 and the inserts decode it, so "aaa" no longer goes in
+/// as itself; the tests keep their labels and this turns them into something
+/// `decode(..., 'hex')` accepts, distinct per label.
+fn sha_of(label: &str) -> String {
+    let mut h: String = label.bytes().map(|b| format!("{b:02x}")).collect();
+    h.truncate(64);
+    format!("{h:0<64}")
+}
+
 /// A file as the client declares it in a CAS manifest.
 fn f(path: &str, sha: &str) -> CasFileEntry {
     CasFileEntry {
         relative_path: path.to_string(),
-        sha256: sha.to_string(),
+        sha256: sha_of(sha),
         size_bytes: 1,
         modified_at: None,
     }
@@ -229,12 +239,12 @@ async fn seed_version(pool: &PgPool, save_id: &str, num: i64, files: &[(&str, &s
     for (path, sha) in files {
         sqlx::query(
             "INSERT INTO save_version_files (save_id, version_num, relative_path, sha256, size_bytes)
-             VALUES ($1, $2, $3, $4, 1)",
+             VALUES ($1, $2, $3, decode($4, 'hex'), 1)",
         )
         .bind(save_id)
         .bind(num)
         .bind(path)
-        .bind(sha)
+        .bind(sha_of(sha))
         .execute(pool)
         .await
         .expect("manifest row");

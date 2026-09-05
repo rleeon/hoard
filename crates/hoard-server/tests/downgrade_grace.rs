@@ -311,8 +311,11 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
     let twin_a = format!("save-a-{id}");
     let twin_b = format!("save-b-{id}");
     let lonely = format!("save-c-{id}");
-    let shared_sha = format!("sha-shared-{id}");
-    let own_sha = format!("sha-own-{id}");
+    // Real 64-hex digests, not labels: `sha256` is bytea since 0052 and the
+    // insert decodes them. The uuid's own hex, doubled, is unique per run.
+    let hex = id.simple().to_string();
+    let shared_sha = format!("aa{hex}{hex}").chars().take(64).collect::<String>();
+    let own_sha = format!("bb{hex}{hex}").chars().take(64).collect::<String>();
 
     for (save_id, slug) in [
         (&twin_a, "surviving-mars-relaunched"),
@@ -347,7 +350,7 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
     ] {
         sqlx::query(
             "INSERT INTO save_version_files (save_id, version_num, relative_path, sha256, size_bytes)
-             VALUES ($1, 1, 'save.dat', $2, 1000)",
+             VALUES ($1, 1, 'save.dat', decode($2, 'hex'), 1000)",
         )
         .bind(save_id)
         .bind(sha)
@@ -357,7 +360,7 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
     }
     sqlx::query(
         "INSERT INTO cloud_blobs (user_id, sha256, size_bytes, refcount)
-         VALUES ($1, $2, 1000, 2), ($1, $3, 500, 1)",
+         VALUES ($1, decode($2, 'hex'), 1000, 2), ($1, decode($3, 'hex'), 500, 1)",
     )
     .bind(id)
     .bind(&shared_sha)

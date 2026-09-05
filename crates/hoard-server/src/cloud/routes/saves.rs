@@ -1989,7 +1989,8 @@ pub async fn manifest_covers_head(
         return Ok(false);
     }
     let head_files: Vec<(String, String)> = sqlx::query_as(
-        "SELECT relative_path, sha256 FROM save_version_files WHERE save_id = $1 AND version_num = $2",
+        "SELECT relative_path, encode(sha256, 'hex') FROM save_version_files
+          WHERE save_id = $1 AND version_num = $2",
     )
     .bind(save_id)
     .bind(head)
@@ -2104,7 +2105,7 @@ where
     for (sha, dec) in blobs {
         let row: Result<Option<(i64,)>, _> = sqlx::query_as(
             "UPDATE cloud_blobs SET refcount = GREATEST(0, refcount - $3)
-                WHERE user_id = $1 AND sha256 = $2
+                WHERE user_id = $1 AND sha256 = decode($2, 'hex')
              RETURNING refcount",
         )
         .bind(user_id)
