@@ -348,17 +348,7 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
         (&twin_b, &shared_sha),
         (&lonely, &own_sha),
     ] {
-        // Both shapes: the reads go through the interned view now, and a
-        // fixture that fills only the old table leaves them blind.
-        sqlx::query(
-            "INSERT INTO save_version_files (save_id, version_num, relative_path, sha256, size_bytes)
-             VALUES ($1, 1, 'save.dat', decode($2, 'hex'), 1000)",
-        )
-        .bind(save_id)
-        .bind(sha)
-        .execute(&pool)
-        .await
-        .expect("file row");
+        // The catalogue entry, then the version's reference to it.
         sqlx::query(
             "WITH e AS (
                  INSERT INTO file_entries (save_id, relative_path, sha256, size_bytes)

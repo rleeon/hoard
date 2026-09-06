@@ -224,7 +224,7 @@ fn f(path: &str, sha: &str) -> CasFileEntry {
     }
 }
 
-/// Seeds `save_versions` + `save_version_files` for one version.
+/// Seeds `save_versions` + the interned manifest for one version.
 async fn seed_version(pool: &PgPool, save_id: &str, num: i64, files: &[(&str, &str)]) {
     sqlx::query(
         "INSERT INTO save_versions (save_id, version_num, size_bytes, sha256, r2_key, file_count, content_addressed)
@@ -237,19 +237,7 @@ async fn seed_version(pool: &PgPool, save_id: &str, num: i64, files: &[(&str, &s
     .await
     .expect("version");
     for (path, sha) in files {
-        sqlx::query(
-            "INSERT INTO save_version_files (save_id, version_num, relative_path, sha256, size_bytes)
-             VALUES ($1, $2, $3, decode($4, 'hex'), 1)",
-        )
-        .bind(save_id)
-        .bind(num)
-        .bind(path)
-        .bind(sha_of(sha))
-        .execute(pool)
-        .await
-        .expect("manifest row");
-        // The interned pair too: the reads go through the view now, so a
-        // fixture that fills only the old table leaves them blind.
+        // The catalogue entry, then the version's reference to it.
         sqlx::query(
             "WITH e AS (
                  INSERT INTO file_entries (save_id, relative_path, sha256, size_bytes)

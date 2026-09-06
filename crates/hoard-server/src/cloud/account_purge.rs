@@ -81,7 +81,7 @@ async fn purge_account(state: &CloudState, user_id: Uuid) -> Result<(), sqlx::Er
         }
     }
 
-    // Cascades to saves, save_versions, save_version_files, devices,
+    // Cascades to saves, save_versions, version_files, file_entries, devices,
     // subscriptions, sync_log, playtime, export_jobs, cloud_blobs; NULLs
     // audit_log.user_id.
     sqlx::query("DELETE FROM profiles WHERE user_id = $1")

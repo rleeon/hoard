@@ -791,26 +791,10 @@ pub async fn cas_init(
     let shas: Vec<String> = body.files.iter().map(|f| f.sha256.clone()).collect();
     let sizes: Vec<i64> = body.files.iter().map(|f| f.size_bytes.max(0)).collect();
     let mtimes: Vec<Option<i64>> = body.files.iter().map(|f| f.modified_at).collect();
-    sqlx::query(
-        r#"
-        INSERT INTO save_version_files (save_id, version_num, relative_path, sha256, size_bytes, modified_at)
-        SELECT $1, $2, p, decode(s, 'hex'), z, m
-          FROM UNNEST($3::text[], $4::text[], $5::bigint[], $6::bigint[]) AS t(p, s, z, m)
-        ON CONFLICT (save_id, version_num, relative_path) DO NOTHING
-        "#,
-    )
-    .bind(&save_row.0)
-    .bind(next_version)
-    .bind(&paths)
-    .bind(&shas)
-    .bind(&sizes)
-    .bind(&mtimes)
-    .execute(&mut *tx)
-    .await?;
 
-    // Second write, into the interned tables. The old table above is still what
-    // everything reads; this only fills the new shape so the backfill has less
-    // to catch up on and the two can be compared before the cutover.
+    // The interned tables are the manifest (phase 3): the catalogue holds each
+    // distinct (path, sha) once and the version keeps a reference per file, so
+    // a version that changes one file stops copying the other thousand.
     //
     // One statement, because the entry ids have to exist before the references
     // can point at them. `ins` returns only the rows it actually inserted, and
@@ -1728,7 +1712,8 @@ pub async fn delete_version(
 
     if content_addressed {
         // Gather this version's distinct blobs before the manifest cascades
-        // away, then drop the version row (cascades save_version_files) and
+        // away, then drop the version row (its `version_files` references
+        // cascade with it) and
         // release one reference per blob.
         let shas: Vec<(String,)> = sqlx::query_as(
             "SELECT DISTINCT sha256 FROM manifest_files WHERE save_id = $1 AND version_num = $2",
@@ -1834,8 +1819,9 @@ pub async fn delete_save(
     .fetch_all(&state.pool)
     .await?;
 
-    // Cascade: deleting the save removes its save_versions + save_version_files
-    // rows (FK ON DELETE CASCADE). The save_versions storage trigger skips
+    // Cascade: deleting the save removes its save_versions, and with them the
+    // `version_files` references and the save's `file_entries` catalogue (FK ON
+    // DELETE CASCADE). The save_versions storage trigger skips
     // content-addressed rows; blob storage is credited as refcounts hit 0 below.
     sqlx::query("DELETE FROM saves WHERE id = $1 AND user_id = $2")
         .bind(&save_id)

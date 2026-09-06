@@ -218,8 +218,8 @@ pub struct ManifestFile {
 /// Derive a version's insight from its manifest and the previous version's.
 ///
 /// This is the whole generic layer in one call, and the reason it takes
-/// manifests rather than a diff: the server holds both, `save_version_files`
-/// being exactly this, so it can compute the insight for a version uploaded long
+/// manifests rather than a diff: the server holds both, `manifest_files` being
+/// exactly this, so it can compute the insight for a version uploaded long
 /// before any of this existed, without asking a client for anything.
 ///
 /// `prev` empty means there is no previous version: nothing is "changed", the

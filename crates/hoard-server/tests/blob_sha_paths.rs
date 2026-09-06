@@ -178,10 +178,8 @@ async fn seed(pool: &PgPool, versions: i64, files: u8) -> (Uuid, String) {
         .await
         .expect("version");
         for f in 0..files {
-            // Both shapes, because that is what a real commit writes and the
-            // reads now go through the interned view. A fixture that fills only
-            // the old table leaves every read blind, which is a property of the
-            // fixture and not of the code under test.
+            // The interned pair is the manifest: the catalogue entry, then the
+            // version's reference to it.
             sqlx::query(
                 "WITH e AS (
                      INSERT INTO file_entries (save_id, relative_path, sha256, size_bytes)
@@ -205,18 +203,6 @@ async fn seed(pool: &PgPool, versions: i64, files: u8) -> (Uuid, String) {
             .execute(pool)
             .await
             .expect("interned rows");
-            sqlx::query(
-                "INSERT INTO save_version_files
-                   (save_id, version_num, relative_path, sha256, size_bytes, modified_at)
-                 VALUES ($1, $2, $3, decode($4, 'hex'), 1000, 0)",
-            )
-            .bind(&save_id)
-            .bind(v)
-            .bind(format!("file{f}.sav"))
-            .bind(sha(f))
-            .execute(pool)
-            .await
-            .expect("file row");
         }
     }
     (user, save_id)
@@ -304,7 +290,7 @@ async fn version_cap_preview_counts_without_touching_anything() {
 }
 
 /// `shared_groups` joins the two sha columns directly
-/// (`cloud_blobs.sha256 = save_version_files.sha256`). If one side changes
+/// (`cloud_blobs.sha256 = file_entries.sha256`). If one side changes
 /// storage type and the other does not, this is where Postgres says
 /// "operator does not exist".
 #[tokio::test]
@@ -357,7 +343,7 @@ async fn archive_and_reactivate_round_trip_the_refcounts() {
     cleanup(&pool, user).await;
 }
 
-/// The daily sweep reads `save_version_files` to size what it would drop.
+/// The daily sweep reads the manifest to size what it would drop.
 #[tokio::test]
 async fn the_abandoned_sweep_reads_the_manifest() {
     let Some(pool) = pool().await else { return };
@@ -389,16 +375,15 @@ async fn version_insight_diffs_two_manifests() {
     cleanup(&pool, user).await;
 }
 
-/// The dual write of the interned manifest (phase 3, step 2): every commit
-/// writes the old table and the new pair, and the two must say the same thing.
+/// Interning is the whole point of the manifest tables: a commit stores each
+/// distinct (path, sha) in the catalogue once, however many versions mention
+/// it, and spends one narrow reference per file per version.
 ///
-/// This is the test the cutover rests on. Nothing reads `file_entries` /
-/// `version_files` yet, so a divergence here is invisible in production until
-/// the day the reads switch over, at which point it is somebody's save with a
-/// file missing from it. Comparing the two representations on every commit is
-/// what makes that impossible to ship.
+/// The old per-version table is gone, so nothing external can catch a commit
+/// that writes the wrong shape any more. This is what does: it drives
+/// `cas_init` directly and reads back what landed.
 #[tokio::test]
-async fn the_interned_manifest_matches_the_old_table() {
+async fn a_commit_interns_each_distinct_content_once() {
     let Some(pool) = pool().await else { return };
     let (user, _existing) = seed(&pool, 1, 2).await;
     let state = state_for(pool.clone()).await;
@@ -444,86 +429,77 @@ async fn the_interned_manifest_matches_the_old_table() {
         )
         .await
         .expect("cas_init runs");
+
+        // `cas_init` opens a *pending* version and clears any previous pending
+        // one, so two calls in a row replace each other instead of stacking.
+        // A real `cas_commit` would settle the first, but it lists the user's
+        // blobs in R2 and this state's R2 points nowhere, so the commit is
+        // faked here: the version stops being pending and the head advances.
+        // What is under test is the shape `cas_init` writes, not the commit.
+        sqlx::query(
+            "UPDATE save_versions v SET sha256 = 'committed'
+               FROM saves s
+              WHERE s.id = v.save_id AND s.user_id = $1
+                AND s.game_slug = 'interned-game' AND v.sha256 = ''",
+        )
+        .bind(user)
+        .execute(&pool)
+        .await
+        .expect("settle the pending version");
+        sqlx::query(
+            "UPDATE saves SET latest_version_num = $2
+              WHERE user_id = $1 AND game_slug = 'interned-game'",
+        )
+        .bind(user)
+        .bind(i64::from(version))
+        .execute(&pool)
+        .await
+        .expect("advance the head");
     }
 
-    // `cas_init` opens a *pending* version and clears any previous pending one,
-    // so without a `cas_commit` in between the second call replaces the first
-    // rather than adding a version. That is fine for what is being checked
-    // here: the invariant is not how many versions exist, it is that whatever
-    // the old table says, the interned pair says the same.
-
-    // Everything below is scoped to this save: the `seed` fixture writes the
-    // old table directly, bypassing the dual write, so its rows legitimately
-    // have no interned counterpart.
-    //
-    // The catalogue stores each distinct (path, sha) once, however many rows
-    // the old table spends on them.
-    let (old_distinct, entries): (i64, i64) = sqlx::query_as(
-        "SELECT (SELECT count(DISTINCT (f.relative_path, f.sha256))
-                   FROM save_version_files f JOIN saves s ON s.id = f.save_id
+    // Scoped to this save, because the `seed` fixture writes its own rows.
+    let (entries, refs): (i64, i64) = sqlx::query_as(
+        "SELECT (SELECT count(*)
+                   FROM file_entries e JOIN saves s ON s.id = e.save_id
                   WHERE s.user_id = $1 AND s.game_slug = 'interned-game'),
                 (SELECT count(*)
-                   FROM file_entries e JOIN saves s ON s.id = e.save_id
+                   FROM version_files vf
+                   JOIN save_versions v ON v.id = vf.version_id
+                   JOIN saves s ON s.id = v.save_id
                   WHERE s.user_id = $1 AND s.game_slug = 'interned-game')",
     )
     .bind(user)
     .fetch_one(&pool)
     .await
     .expect("counts");
-    assert_eq!(
-        entries, old_distinct,
-        "the catalogue holds exactly the distinct contents, no more and no less"
-    );
 
-    // And the payload agrees, version by version, path by path. Any difference
-    // in path, digest, size or mtime shows up as a non-empty row set. The check
-    // runs both ways: a row the new tables cannot reproduce, and a row they
-    // invented that the old table never had.
-    let missing: Vec<(String, i64, String)> = sqlx::query_as(
-        "SELECT f.save_id, f.version_num, f.relative_path
-           FROM save_version_files f
-           JOIN saves s ON s.id = f.save_id
-          WHERE s.user_id = $1 AND s.game_slug = 'interned-game'
-            AND NOT EXISTS (
-                SELECT 1
-                  FROM version_files vf
-                  JOIN save_versions v ON v.id = vf.version_id
-                  JOIN file_entries e ON e.id = vf.entry_id
-                 WHERE v.save_id = f.save_id
-                   AND v.version_num = f.version_num
-                   AND e.relative_path = f.relative_path
-                   AND e.sha256 = f.sha256
-                   AND e.size_bytes = f.size_bytes
-                   AND vf.modified_at IS NOT DISTINCT FROM f.modified_at)",
-    )
-    .bind(user)
-    .fetch_all(&pool)
-    .await
-    .expect("comparison");
-    assert!(
-        missing.is_empty(),
-        "rows the interned tables do not reproduce: {missing:?}"
-    );
+    // Two versions of two files each: four references, because every version
+    // still lists everything it holds. But steady.sav carries the same digest
+    // in both, so the catalogue spends three entries, not four, and only the
+    // catalogue pays for the path and the digest. That gap is the whole saving,
+    // and it widens with every version that changes one file out of a thousand.
+    assert_eq!(entries, 3, "the catalogue holds each distinct content once");
+    assert_eq!(refs, 4, "each version references every file it holds");
 
-    let invented: i64 = sqlx::query_scalar(
+    // Every reference resolves, and to content this save actually owns. A
+    // reference into another save's catalogue would be a cross-save leak.
+    let dangling: i64 = sqlx::query_scalar(
         "SELECT count(*)
            FROM version_files vf
            JOIN save_versions v ON v.id = vf.version_id
-           JOIN file_entries e ON e.id = vf.entry_id
            JOIN saves s ON s.id = v.save_id
+           LEFT JOIN file_entries e ON e.id = vf.entry_id AND e.save_id = v.save_id
           WHERE s.user_id = $1 AND s.game_slug = 'interned-game'
-            AND NOT EXISTS (
-                SELECT 1 FROM save_version_files f
-                 WHERE f.save_id = v.save_id
-                   AND f.version_num = v.version_num
-                   AND f.relative_path = e.relative_path
-                   AND f.sha256 = e.sha256)",
+            AND e.id IS NULL",
     )
     .bind(user)
     .fetch_one(&pool)
     .await
-    .expect("reverse comparison");
-    assert_eq!(invented, 0, "the interned tables invented rows");
+    .expect("dangling check");
+    assert_eq!(
+        dangling, 0,
+        "every reference points at this save's catalogue"
+    );
 
     cleanup(&pool, user).await;
 }

@@ -29,7 +29,6 @@ pub mod email;
 pub mod entitlements;
 pub mod errors;
 pub mod export;
-pub mod intern;
 pub mod loopguard;
 pub mod memwatch;
 pub mod plans;

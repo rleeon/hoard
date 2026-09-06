@@ -11,7 +11,7 @@
 //! litter were building up in production (ago-2026: 23 abandoned versions
 //! across 15 accounts):
 //!
-//! 1. **Manifest rows.** 45.479 `save_version_files` rows describing versions
+//! 1. **Manifest rows.** 45.479 manifest rows describing versions
 //!    that will never exist. One account's emulator library accounted for
 //!    21.910 of them in a single attempt.
 //! 2. **Orphan blobs in R2.** Whatever the client managed to PUT before it gave
@@ -209,7 +209,7 @@ async fn sweep_account(
     }
 
     // The manifest rows go with the version row (ON DELETE CASCADE on
-    // `save_version_files`), so they're counted before the delete rather than
+    // `version_files`), so they're counted before the delete rather than
     // after.
     let (versions, manifest_rows): (i64, i64) = sqlx::query_as(
         "SELECT count(*),

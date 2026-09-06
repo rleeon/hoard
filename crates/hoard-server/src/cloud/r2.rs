@@ -181,7 +181,7 @@ pub fn key_for_blob(user_id: uuid::Uuid, sha256: &str) -> String {
 /// it's ever interpolated into an R2 key. R2 treats keys literally (no `..`
 /// traversal) and every key is already scoped under the authenticated user's
 /// prefix, so this is defense in depth, but it keeps malformed or oversized
-/// values out of the keyspace and out of `cloud_blobs`/`save_version_files`.
+/// values out of the keyspace and out of `cloud_blobs`/`file_entries`.
 pub fn is_valid_sha256(s: &str) -> bool {
     s.len() == 64
         && s.bytes()
