@@ -755,6 +755,23 @@ pub async fn cas_init(
     let next_version = head + 1;
     let parent_version: Option<i64> = (head > 0).then_some(head);
 
+    // What the attempt we are about to discard had already promised. Read it
+    // before the delete, because those rows are the only record that its blobs
+    // exist: once they cascade away, an object uploaded under the old manifest
+    // and dropped from the new one is unreachable, and no sweep looks for bytes
+    // the database never mentions. Cleaned up after the commit.
+    let stale_shas: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT encode(e.sha256, 'hex')
+           FROM version_files vf
+           JOIN file_entries e ON e.id = vf.entry_id
+           JOIN save_versions v ON v.id = vf.version_id
+          WHERE v.save_id = $1 AND v.version_num = $2 AND v.sha256 = ''",
+    )
+    .bind(&save_row.0)
+    .bind(next_version)
+    .fetch_all(&mut *tx)
+    .await?;
+
     // Replace any stale pending row at this version (an earlier init that never
     // committed). Its manifest rows cascade away with it.
     sqlx::query(
@@ -832,6 +849,14 @@ pub async fn cas_init(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
+
+    // Now that the new manifest is durable, drop what the abandoned attempt
+    // left behind. After the commit on purpose: an R2 delete inside a
+    // transaction that later rolls back takes bytes the surviving rows still
+    // need.
+    if !stale_shas.is_empty() {
+        collect_abandoned_blobs(&state, user.user_id, &stale_shas, &body.files).await;
+    }
 
     // Mint a presigned PUT for each missing blob.
     let mut missing = Vec::with_capacity(missing_shas.len());
@@ -2121,6 +2146,125 @@ async fn fetch_save_summary(
     }))
 }
 
+/// Delete the blobs an abandoned `cas_init` uploaded and the retry no longer
+/// wants. Only those: a sha the new manifest still names is about to be
+/// committed, and dedup means one this account references anywhere else is a
+/// live file of some other version.
+///
+/// Fails closed. The keep-set comes from a query, and a query that errors
+/// returns no rows; treating that as "nothing is referenced" would delete every
+/// candidate, which is how a cleanup takes an account's saves with it. So an
+/// error here skips the whole pass and leaves the bytes for another day.
+async fn collect_abandoned_blobs(
+    state: &CloudState,
+    user_id: Uuid,
+    stale: &[String],
+    keeping: &[CasFileEntry],
+) {
+    let drop = match abandoned_blobs_to_drop(&state.pool, user_id, stale, keeping).await {
+        Ok(shas) => shas,
+        Err(e) => {
+            tracing::warn!(error = %e, %user_id, "cas_init: abandoned-blob check failed, leaving them");
+            return;
+        }
+    };
+    let mut gone = 0usize;
+    for sha in &drop {
+        let key = r2::key_for_blob(user_id, sha);
+        match state.r2.delete_object(&key).await {
+            Ok(()) => gone += 1,
+            Err(e) => tracing::warn!(error = %e, r2_key = %key, "cas_init: abandoned blob delete failed"),
+        }
+    }
+    if gone > 0 {
+        tracing::info!(%user_id, blobs = gone, "cas_init: cleaned up an abandoned attempt");
+    }
+}
+
+/// Which of `stale` are safe to delete: promised by the attempt being replaced,
+/// absent from the manifest replacing it, and referenced nowhere else in the
+/// account. The error is propagated rather than swallowed into an empty answer,
+/// because an empty answer here means "delete nothing" and a failed query must
+/// not be able to mean "delete everything".
+pub async fn abandoned_blobs_to_drop(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+    stale: &[String],
+    keeping: &[CasFileEntry],
+) -> Result<Vec<String>, sqlx::Error> {
+    let fresh: std::collections::HashSet<&str> =
+        keeping.iter().map(|f| f.sha256.as_str()).collect();
+    let dropped: Vec<String> = stale
+        .iter()
+        .filter(|s| !fresh.contains(s.as_str()))
+        .cloned()
+        .collect();
+    if dropped.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Dedup means a sha from the dead attempt can be some other version's live
+    // file, so both the manifest catalogue and the blob table get a say.
+    let referenced: Vec<String> = sqlx::query_scalar(
+        "SELECT encode(e.sha256, 'hex')
+           FROM file_entries e
+           JOIN saves s ON s.id = e.save_id
+          WHERE s.user_id = $1
+            AND e.sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))
+         UNION
+         SELECT encode(b.sha256, 'hex')
+           FROM cloud_blobs b
+          WHERE b.user_id = $1
+            AND b.sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))",
+    )
+    .bind(user_id)
+    .bind(&dropped)
+    .fetch_all(pool)
+    .await?;
+
+    let referenced: std::collections::HashSet<String> = referenced.into_iter().collect();
+    Ok(dropped
+        .into_iter()
+        .filter(|s| !referenced.contains(s))
+        .collect())
+}
+
+/// Drop a blob's row once its object is gone. Split out so a test can run the
+/// real statement: `sha` is hex text and the column is bytea, and the missing
+/// `decode` here went unnoticed in production, deleting objects while their
+/// rows piled up.
+pub async fn delete_blob_row(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+    sha: &str,
+) -> Result<u64, sqlx::Error> {
+    let res = sqlx::query("DELETE FROM cloud_blobs WHERE user_id = $1 AND sha256 = decode($2, 'hex')")
+        .bind(user_id)
+        .bind(sha)
+        .execute(pool)
+        .await?;
+    Ok(res.rows_affected())
+}
+
+/// Leave a blob whose object would not delete on the queue `archive` drains, so
+/// tomorrow's pass retries instead of the row being dropped and the bytes
+/// stranded.
+pub async fn defer_blob_row(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+    sha: &str,
+) -> Result<u64, sqlx::Error> {
+    let res = sqlx::query(
+        "UPDATE cloud_blobs SET purge_after = now() + interval '1 day'
+          WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
+    )
+    .bind(user_id)
+    .bind(sha)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected())
+}
+
 /// Release `n` references from each blob, deleting the R2 object + row when a
 /// blob's refcount reaches zero (the cloud_blobs trigger credits the freed
 /// storage on the 0-transition). Best-effort: a failure here only leaks a blob,
@@ -2144,15 +2288,17 @@ where
             Ok(Some((refcount,))) if refcount <= 0 => {
                 let key = r2::key_for_blob(user_id, &sha);
                 if let Err(e) = state.r2.delete_object(&key).await {
-                    tracing::warn!(error = %e, r2_key = %key, "cloud blob GC: R2 delete failed");
+                    // Dropping the row here would strand the object: nothing
+                    // else in the tree looks for bytes the database no longer
+                    // mentions. Defer instead, so tomorrow's archive pass
+                    // retries the delete.
+                    tracing::warn!(error = %e, r2_key = %key, "cloud blob GC: R2 delete failed, deferring the row for retry");
+                    if let Err(e) = defer_blob_row(&state.pool, user_id, &sha).await {
+                        tracing::warn!(error = %e, sha = %sha, "cloud blob GC: deferring failed");
+                    }
+                    continue;
                 }
-                if let Err(e) =
-                    sqlx::query("DELETE FROM cloud_blobs WHERE user_id = $1 AND sha256 = $2")
-                        .bind(user_id)
-                        .bind(&sha)
-                        .execute(&state.pool)
-                        .await
-                {
+                if let Err(e) = delete_blob_row(&state.pool, user_id, &sha).await {
                     tracing::warn!(error = %e, sha = %sha, "cloud blob GC: row delete failed");
                 }
             }
