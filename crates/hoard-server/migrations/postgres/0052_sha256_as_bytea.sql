@@ -37,8 +37,26 @@
 -- binary cannot read bytea and the new one cannot read text, so the code and
 -- the schema have to land together.
 
+-- The primary key comes off first and goes back on after. Not for correctness:
+-- for room. `ALTER COLUMN TYPE` writes a new copy of the table *and* of every
+-- index on it before dropping the old, and on the free plan (500 MB) the peak
+-- with the 77 MB key in place is ~534 MB. Dropping it first puts the peak at
+-- ~374 MB, which fits with margin.
+--
+-- The window between the two statements is why this migration needs the app
+-- stopped: without that key there is no `ON CONFLICT (save_id, version_num,
+-- relative_path)` for the manifest insert to land on, so any upload arriving
+-- mid-migration would error. Stop the machine, deploy (the release command runs
+-- the migration), let it come back up.
+ALTER TABLE public.save_version_files
+    DROP CONSTRAINT save_version_files_pkey;
+
 ALTER TABLE public.save_version_files
     ALTER COLUMN sha256 TYPE bytea USING decode(sha256, 'hex');
 
+ALTER TABLE public.save_version_files
+    ADD CONSTRAINT save_version_files_pkey PRIMARY KEY (save_id, version_num, relative_path);
+
+-- Small enough (34 MB with its key) that it needs none of the above.
 ALTER TABLE public.cloud_blobs
     ALTER COLUMN sha256 TYPE bytea USING decode(sha256, 'hex');
