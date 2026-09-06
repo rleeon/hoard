@@ -19,6 +19,68 @@ use crate::api::{ApiClient, SnapshotDetail, SnapshotFile};
 use hoard_core::ids::Sha256 as Sha256Hex;
 use hoard_core::kernel::fileclass::RestoreGate;
 
+/// Stream one blob body into `dest_path`, decoding zstd on the way when the
+/// object holds it.
+///
+/// The sha of a blob is always taken over its *raw* content, so hashing happens
+/// after decoding, never before: what is verified is what lands on disk. `cap`
+/// bounds how many decoded bytes are allowed through, and only the compressed
+/// path passes one, because only there can a small body become a large file.
+/// The sha check would catch a bomb too, but only after writing all of it.
+///
+/// `on_bytes` is called with each batch that reaches the file, so the progress
+/// bar counts what the user actually gets rather than what crossed the wire.
+///
+/// Returns the hex sha of what was written when `verify`, and `None` when the
+/// caller asked to skip verification.
+async fn write_blob_body(
+    body: impl tokio::io::AsyncRead + Unpin + Send,
+    zstd: bool,
+    cap: Option<u64>,
+    dest_path: &Path,
+    verify: bool,
+    on_bytes: &(dyn Fn(u64) + Sync),
+) -> Result<Option<String>> {
+    let mut out = tokio::fs::File::create(dest_path)
+        .await
+        .with_context(|| format!("writing {}", dest_path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut written: u64 = 0;
+
+    let mut src: Box<dyn tokio::io::AsyncRead + Unpin + Send> = if zstd {
+        Box::new(ZstdDecoder::new(BufReader::new(body)))
+    } else {
+        Box::new(body)
+    };
+
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = src.read(&mut buf).await.context("reading the blob body")?;
+        if n == 0 {
+            break;
+        }
+        written += n as u64;
+        if let Some(cap) = cap {
+            if written > cap {
+                bail!(
+                    "blob at {} expanded past its declared {} bytes",
+                    dest_path.display(),
+                    cap
+                );
+            }
+        }
+        if verify {
+            hasher.update(&buf[..n]);
+        }
+        out.write_all(&buf[..n])
+            .await
+            .with_context(|| format!("writing {}", dest_path.display()))?;
+        on_bytes(n as u64);
+    }
+    out.flush().await.context("flushing file")?;
+    Ok(verify.then(|| hex::encode(hasher.finalize())))
+}
+
 /// Tunables for the restore flow.
 #[derive(Debug, Clone, Default)]
 pub struct RestoreOptions {
@@ -839,26 +901,28 @@ where
                     attempt += 1;
                     let fetch = async {
                         let resp = client.get_presigned(presigned).await?;
-                        let mut out = tokio::fs::File::create(&dest_path)
-                            .await
-                            .with_context(|| format!("writing {}", dest_path.display()))?;
-                        let mut hasher = Sha256::new();
-                        let mut stream = resp.bytes_stream();
-                        while let Some(chunk) = stream.next().await {
-                            let chunk = chunk.context("downloading blob")?;
-                            if !options.skip_verify {
-                                hasher.update(&chunk);
-                            }
-                            out.write_all(&chunk)
-                                .await
-                                .with_context(|| format!("writing {}", dest_path.display()))?;
-                            let done = landed.fetch_add(chunk.len() as u64, Ordering::Relaxed)
-                                + chunk.len() as u64;
-                            progress(done, total);
-                        }
-                        out.flush().await.context("flushing file")?;
-                        if !options.skip_verify {
-                            let got = hex::encode(hasher.finalize());
+                        let zstd = file.encoding.as_deref() == Some("zstd");
+                        let body =
+                            StreamReader::new(resp.bytes_stream().map_err(std::io::Error::other));
+                        // The cap is only for the compressed path: there a small
+                        // body can become a large file, and `size_bytes` says
+                        // exactly how large it is allowed to get. Raw bodies are
+                        // already their own size and have never been capped, so
+                        // leave that alone.
+                        let cap = zstd.then(|| file.size_bytes.max(0) as u64);
+                        let got = write_blob_body(
+                            body,
+                            zstd,
+                            cap,
+                            dest_path,
+                            !options.skip_verify,
+                            &|n| {
+                                let done = landed.fetch_add(n, Ordering::Relaxed) + n;
+                                progress(done, total);
+                            },
+                        )
+                        .await?;
+                        if let Some(got) = got {
                             if got != file.sha256 {
                                 bail!(
                                     "sha256 mismatch for {}: expected {}, got {}",
@@ -1518,6 +1582,7 @@ mod tests {
             size_bytes: blob.len() as i64,
             modified_at: None,
             download: None,
+            encoding: None,
         };
         copy_local_blob(&src, &dest, &good, &options).await.unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), blob);
@@ -1534,5 +1599,116 @@ mod tests {
             format!("{err:#}").contains("sha256 mismatch"),
             "unexpected error: {err:#}"
         );
+    }
+}
+
+#[cfg(test)]
+mod blob_body_tests {
+    use super::*;
+
+    /// zstd-compress in memory, the way the server's sweep would have.
+    async fn squash(raw: &[u8]) -> Vec<u8> {
+        let mut enc = async_compression::tokio::write::ZstdEncoder::new(Vec::new());
+        enc.write_all(raw).await.expect("compress");
+        enc.shutdown().await.expect("finish");
+        enc.into_inner()
+    }
+
+    fn sha_of(raw: &[u8]) -> String {
+        hex::encode(Sha256::digest(raw))
+    }
+
+    /// The whole point of letting the client fetch compressed blobs straight
+    /// from storage: what lands on disk is the raw file, and the sha that gets
+    /// verified is the raw file's. Hash the compressed bytes by mistake and
+    /// every restore fails; write them by mistake and the save is corrupt.
+    #[tokio::test]
+    async fn a_compressed_body_lands_raw_and_hashes_raw() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("save.dat");
+        let raw = b"a save file that repeats itself a save file that repeats itself".repeat(50);
+        let body = squash(&raw).await;
+        assert!(body.len() < raw.len(), "the fixture has to actually compress");
+
+        let seen = std::sync::atomic::AtomicU64::new(0);
+        let got = write_blob_body(
+            body.as_slice(),
+            true,
+            Some(raw.len() as u64),
+            &dest,
+            true,
+            &|n| {
+                seen.fetch_add(n, Ordering::Relaxed);
+            },
+        )
+        .await
+        .expect("decodes");
+
+        assert_eq!(tokio::fs::read(&dest).await.unwrap(), raw, "raw on disk");
+        assert_eq!(got.as_deref(), Some(sha_of(&raw).as_str()), "raw sha");
+        assert_eq!(
+            seen.load(Ordering::Relaxed),
+            raw.len() as u64,
+            "progress counts what the user gets, not what crossed the wire"
+        );
+    }
+
+    /// A raw body still goes through untouched, which is every blob today that
+    /// was never worth compressing and every response from an older server.
+    #[tokio::test]
+    async fn a_raw_body_is_passed_straight_through() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("save.dat");
+        let raw = b"not compressed at all".to_vec();
+
+        let got = write_blob_body(raw.as_slice(), false, None, &dest, true, &|_| {})
+            .await
+            .expect("copies");
+
+        assert_eq!(tokio::fs::read(&dest).await.unwrap(), raw);
+        assert_eq!(got.as_deref(), Some(sha_of(&raw).as_str()));
+    }
+
+    /// The bomb guard. A blob that keeps expanding past its declared size is
+    /// corrupt or hostile, and it has to stop before it fills the disk rather
+    /// than after, which is all the sha check on its own would give us.
+    #[tokio::test]
+    async fn a_body_that_expands_past_its_declared_size_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("save.dat");
+        // A megabyte of zeroes compresses to almost nothing: the shape of a
+        // decompression bomb, in miniature.
+        let raw = vec![0u8; 1024 * 1024];
+        let body = squash(&raw).await;
+
+        let err = write_blob_body(body.as_slice(), true, Some(1024), &dest, true, &|_| {})
+            .await
+            .expect_err("must refuse");
+        assert!(
+            format!("{err:#}").contains("expanded past its declared"),
+            "unexpected error: {err:#}"
+        );
+    }
+
+    /// Skipping verification skips the hash, not the writing.
+    #[tokio::test]
+    async fn skipping_verification_still_writes_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("save.dat");
+        let raw = b"bytes".repeat(100);
+
+        let got = write_blob_body(
+            squash(&raw).await.as_slice(),
+            true,
+            Some(raw.len() as u64),
+            &dest,
+            false,
+            &|_| {},
+        )
+        .await
+        .expect("decodes");
+
+        assert!(got.is_none(), "no sha was asked for");
+        assert_eq!(tokio::fs::read(&dest).await.unwrap(), raw);
     }
 }

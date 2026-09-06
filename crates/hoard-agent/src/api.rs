@@ -1181,6 +1181,11 @@ impl ApiClient {
     /// a download URL (restore) and bandwidth is charged; with `false` it's a
     /// cheap listing (History detail). Returns `content_addressed = false` for
     /// legacy archive versions.
+    ///
+    /// `zstd=1` says we can decode compressed blobs ourselves, so the server
+    /// hands them over as a direct link to storage with `encoding` set rather
+    /// than streaming them through its own decompressing proxy. Older servers
+    /// ignore the parameter and keep sending proxy URLs, which still work.
     pub async fn cloud_version_manifest(
         &self,
         save_id: &str,
@@ -1192,7 +1197,7 @@ impl ApiClient {
             .get(self.url(&format!(
                 "/v1/cloud/saves/{save_id}/versions/{version}/manifest"
             )))
-            .query(&[("presign", presign)])
+            .query(&[("presign", presign), ("zstd", true)])
             .header("authorization", self.auth_header())
             .send()
             .await?;
@@ -1810,11 +1815,18 @@ pub struct CloudCasInitOut {
 pub struct CloudManifestFile {
     pub relative_path: String,
     pub sha256: String,
+    /// The raw size, always: what lands on disk and what `sha256` is taken
+    /// over, never the number of bytes that travel.
     pub size_bytes: i64,
     #[serde(default)]
     pub modified_at: Option<i64>,
     #[serde(default)]
     pub download: Option<PresignedUrl>,
+    /// `Some("zstd")` when `download` serves compressed bytes we have to decode
+    /// ourselves. Absent means raw, which is every response from a server that
+    /// predates this and every blob that was never worth compressing.
+    #[serde(default)]
+    pub encoding: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

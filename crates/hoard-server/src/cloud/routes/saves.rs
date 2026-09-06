@@ -1228,11 +1228,18 @@ pub async fn cas_commit(
 pub struct ManifestFile {
     pub relative_path: String,
     pub sha256: String,
+    /// Size of the file's *raw* content, always. Never the stored size: this is
+    /// what gets written to disk, what the sha is taken over, and what the
+    /// bomb guard on the client caps decompression at.
     pub size_bytes: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modified_at: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub download: Option<r2::PresignedUrl>,
+    /// How the bytes behind `download` are encoded. `None` means raw, which is
+    /// also what a client that never asked for `zstd=1` always sees.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encoding: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1249,6 +1256,15 @@ pub struct ManifestQuery {
     /// When false (the default) just list the files: cheap, no bandwidth.
     #[serde(default)]
     pub presign: bool,
+    /// The client can decode zstd blobs itself, so compressed ones may be
+    /// handed over as a direct presigned GET with `encoding` set instead of
+    /// through the decompressing proxy.
+    ///
+    /// Defaults to false, which is what every client built before this existed
+    /// sends by omission: they keep the proxy and never see a compressed byte.
+    /// That default is the entire compatibility story, so it must not change.
+    #[serde(default)]
+    pub zstd: bool,
 }
 
 /// `GET /v1/cloud/saves/:save_id/versions/:version/manifest`: the per-file
@@ -1305,7 +1321,9 @@ pub async fn version_manifest(
                     sha256,
                     size_bytes,
                     modified_at,
+                    // No URL, so nothing to describe the encoding of.
                     download: None,
+                    encoding: None,
                 },
             )
             .collect();
@@ -1358,10 +1376,17 @@ pub async fn version_manifest(
         return Ok(resp);
     }
 
-    // Blobs the compression sweep claimed are served through the
-    // decompressing proxy instead of a direct presigned GET (the object may
-    // hold zstd bytes; the client must keep receiving raw). Everything else
-    // stays on the presigned path.
+    // Blobs the compression sweep claimed hold zstd bytes, and the client must
+    // end up with the raw ones. Who does the decoding depends on what the
+    // client says it can do:
+    //
+    //   * `zstd=1`: it decodes. Direct presigned GET, `encoding: "zstd"`, and
+    //     the bytes go straight from R2 to the user.
+    //   * otherwise: we decode, through the proxy, as it has always worked.
+    //
+    // The second path costs real money and a small machine's CPU: 36 GB of
+    // logical content sits behind it today, and every byte of it crosses Fly on
+    // every restore. The first exists to empty it as the fleet updates.
     let shas: Vec<String> = unique_size.keys().cloned().collect();
     let compressed: std::collections::BTreeSet<String> = sqlx::query_as::<_, (String,)>(
         "SELECT encode(sha256, 'hex') FROM cloud_blobs
@@ -1386,8 +1411,10 @@ pub async fn version_manifest(
     let public_base = state.config.server.public_url.trim_end_matches('/');
 
     let mut url_for: BTreeMap<String, r2::PresignedUrl> = BTreeMap::new();
+    let mut encoding_for: BTreeMap<String, String> = BTreeMap::new();
     for sha in unique_size.keys() {
-        let presigned = if compressed.contains(sha) {
+        let is_zstd = compressed.contains(sha);
+        let presigned = if is_zstd && !q.zstd {
             let token = super::blob_proxy::mint_token(&state, user.user_id, sha, ttl_secs);
             r2::PresignedUrl {
                 method: "GET".to_string(),
@@ -1395,6 +1422,9 @@ pub async fn version_manifest(
                 expires_in_secs: ttl_secs,
             }
         } else {
+            if is_zstd {
+                encoding_for.insert(sha.clone(), "zstd".to_string());
+            }
             let key = r2::key_for_blob(user.user_id, sha);
             state
                 .r2
@@ -1437,6 +1467,7 @@ pub async fn version_manifest(
         .map(
             |(relative_path, sha256, size_bytes, modified_at)| ManifestFile {
                 download: url_for.get(&sha256).cloned(),
+                encoding: encoding_for.get(&sha256).cloned(),
                 relative_path,
                 sha256,
                 size_bytes,

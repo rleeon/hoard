@@ -35,6 +35,32 @@ use hoard_server::cloud::state::CloudState;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+/// Drive the manifest route the way a client does and hand back the `files`
+/// array. `zstd` is the client saying whether it can decode compressed blobs.
+async fn manifest_files(
+    state: &CloudState,
+    user: &hoard_server::cloud::auth::CloudUser,
+    save_id: &str,
+    zstd: bool,
+) -> Vec<serde_json::Value> {
+    let resp = hoard_server::cloud::routes::saves::version_manifest(
+        axum::extract::State(state.clone()),
+        axum::Extension(user.clone()),
+        axum::extract::Path((save_id.to_string(), 1i64)),
+        axum::extract::Query(hoard_server::cloud::routes::saves::ManifestQuery {
+            presign: true,
+            zstd,
+        }),
+    )
+    .await
+    .expect("manifest runs");
+    let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
+    let json: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    json["files"].as_array().expect("files").clone()
+}
+
 /// A sha-shaped string: 64 lowercase hex. `seed` varies the tail so a test can
 /// mint several distinct ones without thinking about it.
 fn sha(seed: u8) -> String {
@@ -499,6 +525,71 @@ async fn a_commit_interns_each_distinct_content_once() {
     assert_eq!(
         dangling, 0,
         "every reference points at this save's catalogue"
+    );
+
+    cleanup(&pool, user).await;
+}
+
+/// Where a compressed blob's bytes come from is a routing decision, and it is
+/// the client that decides it: one that can decode zstd is sent straight to
+/// storage, one that cannot keeps the server's decompressing proxy.
+///
+/// Getting this backwards is expensive rather than merely wrong. 36 GB of
+/// logical content sits behind that proxy today and crosses Fly on every
+/// restore, which is the bill this routing exists to stop paying. And the
+/// default has to stay on the proxy: every client built before the `zstd`
+/// parameter existed omits it, and handing one of those a compressed body would
+/// write zstd bytes into somebody's save file.
+#[tokio::test]
+async fn a_compressed_blob_goes_direct_only_when_the_client_can_decode_it() {
+    let Some(pool) = pool().await else { return };
+    let (user, save_id) = seed(&pool, 1, 1).await;
+    let state = state_for(pool.clone()).await;
+
+    // What the compression sweep leaves behind: the object now holds zstd.
+    sqlx::query("UPDATE cloud_blobs SET encoding = 'zstd', stored_bytes = 400 WHERE user_id = $1")
+        .bind(user)
+        .execute(&pool)
+        .await
+        .expect("mark the blob compressed");
+
+    let user_ctx = hoard_server::cloud::auth::CloudUser {
+        user_id: user,
+        email: format!("{user}@test.invalid"),
+        role: "authenticated".into(),
+        avatar_url: None,
+        display_name: None,
+    };
+
+    let old = manifest_files(&state, &user_ctx, &save_id, false).await;
+    let url = old[0]["download"]["url"].as_str().expect("a url");
+    assert!(
+        url.contains("/v1/cloud/blob/"),
+        "a client that cannot decode zstd must keep the proxy, got {url}"
+    );
+    assert!(
+        old[0].get("encoding").is_none() || old[0]["encoding"].is_null(),
+        "the proxy serves raw bytes, so there is no encoding to declare"
+    );
+
+    let new = manifest_files(&state, &user_ctx, &save_id, true).await;
+    let url = new[0]["download"]["url"].as_str().expect("a url");
+    assert!(
+        !url.contains("/v1/cloud/blob/"),
+        "a client that can decode zstd must be sent straight to storage, got {url}"
+    );
+    assert_eq!(
+        new[0]["encoding"].as_str(),
+        Some("zstd"),
+        "and it has to be told what it is about to receive, or it writes zstd to disk"
+    );
+
+    // The raw size is what the client writes, verifies and caps against, so it
+    // must keep describing the content and never the transfer.
+    assert_eq!(
+        new[0]["size_bytes"].as_i64(),
+        Some(1000),
+        "size_bytes stays the raw size even when 400 bytes travel"
     );
 
     cleanup(&pool, user).await;
