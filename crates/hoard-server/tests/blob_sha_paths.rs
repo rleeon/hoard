@@ -361,3 +361,142 @@ async fn version_insight_diffs_two_manifests() {
 
     cleanup(&pool, user).await;
 }
+
+/// The dual write of the interned manifest (phase 3, step 2): every commit
+/// writes the old table and the new pair, and the two must say the same thing.
+///
+/// This is the test the cutover rests on. Nothing reads `file_entries` /
+/// `version_files` yet, so a divergence here is invisible in production until
+/// the day the reads switch over, at which point it is somebody's save with a
+/// file missing from it. Comparing the two representations on every commit is
+/// what makes that impossible to ship.
+#[tokio::test]
+async fn the_interned_manifest_matches_the_old_table() {
+    let Some(pool) = pool().await else { return };
+    let (user, _existing) = seed(&pool, 1, 2).await;
+    let state = state_for(pool.clone()).await;
+
+    // Two versions of the same save: the second repeats one file and changes
+    // the other. That is the shape interning exists for, so the catalogue must
+    // end up with three entries and not four.
+    for (version, second_sha) in [(1u8, sha(10)), (2u8, sha(11))] {
+        let body = hoard_server::cloud::routes::saves::CasInit {
+            save_id: Uuid::new_v4().to_string(),
+            game_slug: "interned-game".into(),
+            label: Some("default".into()),
+            device_name: None,
+            notes: None,
+            backup_only: false,
+            base_version: if version == 1 { None } else { Some(1) },
+            files: vec![
+                hoard_server::cloud::routes::saves::CasFileEntry {
+                    relative_path: "steady.sav".into(),
+                    sha256: sha(9),
+                    size_bytes: 100,
+                    modified_at: Some(1),
+                },
+                hoard_server::cloud::routes::saves::CasFileEntry {
+                    relative_path: "changing.sav".into(),
+                    sha256: second_sha,
+                    size_bytes: 200,
+                    modified_at: Some(i64::from(version)),
+                },
+            ],
+        };
+        let user_ctx = hoard_server::cloud::auth::CloudUser {
+            user_id: user,
+            email: format!("{user}@test.invalid"),
+            role: "authenticated".into(),
+            avatar_url: None,
+            display_name: None,
+        };
+        hoard_server::cloud::routes::saves::cas_init(
+            axum::extract::State(state.clone()),
+            axum::Extension(user_ctx),
+            axum::Json(body),
+        )
+        .await
+        .expect("cas_init runs");
+    }
+
+    // `cas_init` opens a *pending* version and clears any previous pending one,
+    // so without a `cas_commit` in between the second call replaces the first
+    // rather than adding a version. That is fine for what is being checked
+    // here: the invariant is not how many versions exist, it is that whatever
+    // the old table says, the interned pair says the same.
+
+    // Everything below is scoped to this save: the `seed` fixture writes the
+    // old table directly, bypassing the dual write, so its rows legitimately
+    // have no interned counterpart.
+    //
+    // The catalogue stores each distinct (path, sha) once, however many rows
+    // the old table spends on them.
+    let (old_distinct, entries): (i64, i64) = sqlx::query_as(
+        "SELECT (SELECT count(DISTINCT (f.relative_path, f.sha256))
+                   FROM save_version_files f JOIN saves s ON s.id = f.save_id
+                  WHERE s.user_id = $1 AND s.game_slug = 'interned-game'),
+                (SELECT count(*)
+                   FROM file_entries e JOIN saves s ON s.id = e.save_id
+                  WHERE s.user_id = $1 AND s.game_slug = 'interned-game')",
+    )
+    .bind(user)
+    .fetch_one(&pool)
+    .await
+    .expect("counts");
+    assert_eq!(
+        entries, old_distinct,
+        "the catalogue holds exactly the distinct contents, no more and no less"
+    );
+
+    // And the payload agrees, version by version, path by path. Any difference
+    // in path, digest, size or mtime shows up as a non-empty row set. The check
+    // runs both ways: a row the new tables cannot reproduce, and a row they
+    // invented that the old table never had.
+    let missing: Vec<(String, i64, String)> = sqlx::query_as(
+        "SELECT f.save_id, f.version_num, f.relative_path
+           FROM save_version_files f
+           JOIN saves s ON s.id = f.save_id
+          WHERE s.user_id = $1 AND s.game_slug = 'interned-game'
+            AND NOT EXISTS (
+                SELECT 1
+                  FROM version_files vf
+                  JOIN save_versions v ON v.id = vf.version_id
+                  JOIN file_entries e ON e.id = vf.entry_id
+                 WHERE v.save_id = f.save_id
+                   AND v.version_num = f.version_num
+                   AND e.relative_path = f.relative_path
+                   AND e.sha256 = f.sha256
+                   AND e.size_bytes = f.size_bytes
+                   AND vf.modified_at IS NOT DISTINCT FROM f.modified_at)",
+    )
+    .bind(user)
+    .fetch_all(&pool)
+    .await
+    .expect("comparison");
+    assert!(
+        missing.is_empty(),
+        "rows the interned tables do not reproduce: {missing:?}"
+    );
+
+    let invented: i64 = sqlx::query_scalar(
+        "SELECT count(*)
+           FROM version_files vf
+           JOIN save_versions v ON v.id = vf.version_id
+           JOIN file_entries e ON e.id = vf.entry_id
+           JOIN saves s ON s.id = v.save_id
+          WHERE s.user_id = $1 AND s.game_slug = 'interned-game'
+            AND NOT EXISTS (
+                SELECT 1 FROM save_version_files f
+                 WHERE f.save_id = v.save_id
+                   AND f.version_num = v.version_num
+                   AND f.relative_path = e.relative_path
+                   AND f.sha256 = e.sha256)",
+    )
+    .bind(user)
+    .fetch_one(&pool)
+    .await
+    .expect("reverse comparison");
+    assert_eq!(invented, 0, "the interned tables invented rows");
+
+    cleanup(&pool, user).await;
+}

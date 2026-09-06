@@ -768,11 +768,12 @@ pub async fn cas_init(
     // Pending content-addressed version. sha256 = '' until commit; r2_key is
     // unused (blobs carry their own keys). The storage trigger skips
     // content_addressed rows, so this charges nothing; blobs do, at commit.
-    sqlx::query(
+    let (version_id,): (i64,) = sqlx::query_as(
         r#"
         INSERT INTO save_versions
             (save_id, version_num, size_bytes, sha256, r2_key, notes, parent_version, file_count, content_addressed, device_name)
         VALUES ($1, $2, $3, '', '', $4, $5, $6, TRUE, $7)
+        RETURNING id
         "#,
     )
     .bind(&save_row.0)
@@ -782,7 +783,7 @@ pub async fn cas_init(
     .bind(parent_version)
     .bind(body.files.len() as i64)
     .bind(body.device_name.as_deref())
-    .execute(&mut *tx)
+    .fetch_one(&mut *tx)
     .await?;
 
     // Record the manifest in one round-trip via UNNEST.
@@ -804,6 +805,46 @@ pub async fn cas_init(
     .bind(&shas)
     .bind(&sizes)
     .bind(&mtimes)
+    .execute(&mut *tx)
+    .await?;
+
+    // Second write, into the interned tables. The old table above is still what
+    // everything reads; this only fills the new shape so the backfill has less
+    // to catch up on and the two can be compared before the cutover.
+    //
+    // One statement, because the entry ids have to exist before the references
+    // can point at them. `ins` returns only the rows it actually inserted, and
+    // the `file_entries` join sees the table as it was when the statement
+    // began, so the COALESCE takes whichever side has the id: freshly inserted,
+    // or already in the catalogue from an earlier version.
+    sqlx::query(
+        r#"
+        WITH input AS (
+            SELECT p, decode(s, 'hex') AS sha, z, m
+              FROM UNNEST($2::text[], $3::text[], $4::bigint[], $5::bigint[]) AS t(p, s, z, m)
+        ),
+        ins AS (
+            INSERT INTO file_entries (save_id, relative_path, sha256, size_bytes)
+            SELECT $1, p, sha, z FROM input
+            ON CONFLICT (save_id, relative_path, sha256) DO NOTHING
+            RETURNING id, relative_path, sha256
+        )
+        INSERT INTO version_files (version_id, entry_id, modified_at)
+        SELECT $6, COALESCE(ins.id, fe.id), i.m
+          FROM input i
+          LEFT JOIN ins ON ins.relative_path = i.p AND ins.sha256 = i.sha
+          LEFT JOIN file_entries fe
+                 ON fe.save_id = $1 AND fe.relative_path = i.p AND fe.sha256 = i.sha
+         WHERE COALESCE(ins.id, fe.id) IS NOT NULL
+        ON CONFLICT DO NOTHING
+        "#,
+    )
+    .bind(&save_row.0)
+    .bind(&paths)
+    .bind(&shas)
+    .bind(&sizes)
+    .bind(&mtimes)
+    .bind(version_id)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
