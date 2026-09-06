@@ -82,14 +82,25 @@ const MAX_ORPHAN_DELETES_PER_ACCOUNT: usize = 2_000;
 
 /// Spawn the daily sweep. Detached and best-effort, like the other sweepers:
 /// a failure warns and the next tick retries.
+/// How long after boot the first sweep runs. Long enough that a restart loop
+/// cannot turn into an R2 listing loop, short enough that the work actually
+/// happens on a service that rarely stays up for a day.
+const STARTUP_GRACE: Duration = Duration::from_secs(5 * 60);
+
 pub fn spawn(state: CloudState) {
     tokio::spawn(async move {
+        // Once shortly after boot, then daily. The old shape skipped the first
+        // tick and only fired a full day in, which on this service means never:
+        // the machine idles to zero, a deploy replaces it, the watchdog restarts
+        // it, and the clock goes back to zero every time. This sweep did exactly
+        // that, silently, from August until 2026-09-06.
+        //
+        // The grace delay keeps the work off the startup path and stops a crash
+        // loop from turning into a bucket-listing loop.
+        tokio::time::sleep(STARTUP_GRACE).await;
         let mut tick = tokio::time::interval(Duration::from_secs(24 * 60 * 60));
-        // Skip the immediate first tick so a deploy doesn't start a bucket
-        // listing while the server is still coming up.
-        tick.tick().await;
+        tick.tick().await; // the immediate one; the wait happens after the work
         loop {
-            tick.tick().await;
             match sweep(&state).await {
                 Ok(swept) if swept.is_empty() => {}
                 Ok(swept) => tracing::info!(
@@ -101,6 +112,7 @@ pub fn spawn(state: CloudState) {
                 ),
                 Err(e) => tracing::warn!(error = %e, "abandoned uploads: sweep failed"),
             }
+            tick.tick().await;
         }
     });
 }

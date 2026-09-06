@@ -507,10 +507,13 @@ pub async fn storage_games(
 /// `warn!`s and the next tick retries.
 pub fn spawn(state: CloudState) {
     tokio::spawn(async move {
+        // Once after boot, then daily. See the note in `abandoned::spawn`: a
+        // task that only fires 24h in never fires at all on a machine that
+        // idles to zero and gets restarted.
+        tokio::time::sleep(Duration::from_secs(5 * 60)).await;
         let mut tick = tokio::time::interval(Duration::from_secs(24 * 60 * 60));
-        tick.tick().await; // skip the immediate first tick
+        tick.tick().await; // the immediate one; the wait happens after the work
         loop {
-            tick.tick().await;
             match purge_expired(&state).await {
                 Ok((0, 0)) => {}
                 Ok((saves, blobs)) => tracing::info!(
@@ -520,6 +523,7 @@ pub fn spawn(state: CloudState) {
                 ),
                 Err(e) => tracing::warn!(error = %e, "archive purge: sweep failed"),
             }
+            tick.tick().await;
         }
     });
 }
