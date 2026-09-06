@@ -178,6 +178,33 @@ async fn seed(pool: &PgPool, versions: i64, files: u8) -> (Uuid, String) {
         .await
         .expect("version");
         for f in 0..files {
+            // Both shapes, because that is what a real commit writes and the
+            // reads now go through the interned view. A fixture that fills only
+            // the old table leaves every read blind, which is a property of the
+            // fixture and not of the code under test.
+            sqlx::query(
+                "WITH e AS (
+                     INSERT INTO file_entries (save_id, relative_path, sha256, size_bytes)
+                     VALUES ($1, $3, decode($4, 'hex'), 1000)
+                     ON CONFLICT (save_id, relative_path, sha256) DO NOTHING
+                     RETURNING id
+                 )
+                 INSERT INTO version_files (version_id, entry_id, modified_at)
+                 SELECT v.id, COALESCE((SELECT id FROM e),
+                                       (SELECT id FROM file_entries
+                                         WHERE save_id = $1 AND relative_path = $3
+                                           AND sha256 = decode($4, 'hex'))), 0
+                   FROM save_versions v
+                  WHERE v.save_id = $1 AND v.version_num = $2
+                 ON CONFLICT DO NOTHING",
+            )
+            .bind(&save_id)
+            .bind(v)
+            .bind(format!("file{f}.sav"))
+            .bind(sha(f))
+            .execute(pool)
+            .await
+            .expect("interned rows");
             sqlx::query(
                 "INSERT INTO save_version_files
                    (save_id, version_num, relative_path, sha256, size_bytes, modified_at)

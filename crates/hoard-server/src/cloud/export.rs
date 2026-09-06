@@ -202,7 +202,7 @@ async fn build_export_zip(
 
         if content_addressed {
             let files: Vec<(String, String)> = sqlx::query_as(
-                "SELECT relative_path, encode(sha256, 'hex') FROM save_version_files
+                "SELECT relative_path, encode(sha256, 'hex') FROM manifest_files
                    WHERE save_id = $1 AND version_num = $2",
             )
             .bind(save_id)

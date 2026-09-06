@@ -135,7 +135,7 @@ async fn exclusive_bytes(
         r#"
         WITH refs AS (
             SELECT sha256, COUNT(DISTINCT version_num) AS refs_here
-            FROM save_version_files WHERE save_id = $1 GROUP BY sha256
+            FROM manifest_files WHERE save_id = $1 GROUP BY sha256
         )
         SELECT COALESCE(SUM(CASE WHEN b.refcount <= r.refs_here THEN b.size_bytes ELSE 0 END), 0)::bigint
         FROM refs r
@@ -190,7 +190,7 @@ pub async fn archive_save(
     // Reference counts this save contributes per blob, same shape as
     // delete_save. Read before we change anything.
     let blob_refs: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT encode(sha256, 'hex'), COUNT(DISTINCT version_num) FROM save_version_files
+        "SELECT encode(sha256, 'hex'), COUNT(DISTINCT version_num) FROM manifest_files
             WHERE save_id = $1 GROUP BY sha256",
     )
     .bind(save_id)
@@ -259,7 +259,7 @@ pub async fn reactivate_save(
     let reclaim: Option<i64> = sqlx::query_scalar(
         r#"
         SELECT COALESCE(SUM(b.size_bytes), 0)::bigint
-        FROM (SELECT DISTINCT sha256 FROM save_version_files WHERE save_id = $1) r
+        FROM (SELECT DISTINCT sha256 FROM manifest_files WHERE save_id = $1) r
         JOIN cloud_blobs b ON b.user_id = $2 AND b.sha256 = r.sha256
         WHERE b.refcount = 0
         "#,
@@ -283,7 +283,7 @@ pub async fn reactivate_save(
     // the cron won't sweep them. The trigger re-charges storage on the 0→>0
     // transition.
     let blob_refs: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT encode(sha256, 'hex'), COUNT(DISTINCT version_num) FROM save_version_files
+        "SELECT encode(sha256, 'hex'), COUNT(DISTINCT version_num) FROM manifest_files
             WHERE save_id = $1 GROUP BY sha256",
     )
     .bind(save_id)
@@ -384,7 +384,7 @@ pub async fn shared_groups(pool: &PgPool, user_id: Uuid) -> Result<Vec<SharedGro
         r#"
         WITH per_blob AS (
             SELECT f.sha256, array_agg(DISTINCT f.save_id ORDER BY f.save_id) AS save_ids
-            FROM save_version_files f
+            FROM manifest_files f
             JOIN saves s ON s.id = f.save_id
             WHERE s.user_id = $1 AND s.archived_at IS NULL
             GROUP BY f.sha256
@@ -445,7 +445,7 @@ pub async fn storage_games(
         r#"
         WITH refs AS (
             SELECT f.save_id, f.sha256, COUNT(DISTINCT f.version_num) AS refs_here
-            FROM save_version_files f
+            FROM manifest_files f
             JOIN saves s ON s.id = f.save_id
             WHERE s.user_id = $1
             GROUP BY f.save_id, f.sha256

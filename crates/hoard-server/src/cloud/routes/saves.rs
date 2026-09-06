@@ -945,7 +945,7 @@ pub async fn cas_commit(
 
     // Full manifest, ordered, for the digest; distinct shas for refcounting.
     let manifest: Vec<(String, String, i64)> = sqlx::query_as(
-        "SELECT relative_path, encode(sha256, 'hex'), size_bytes FROM save_version_files
+        "SELECT relative_path, encode(sha256, 'hex'), size_bytes FROM manifest_files
             WHERE save_id = $1 AND version_num = $2
          ORDER BY relative_path",
     )
@@ -1278,7 +1278,7 @@ pub async fn version_manifest(
     }
 
     let rows: Vec<(String, String, i64, Option<i64>)> = sqlx::query_as(
-        "SELECT relative_path, encode(sha256, 'hex'), size_bytes, modified_at FROM save_version_files
+        "SELECT relative_path, encode(sha256, 'hex'), size_bytes, modified_at FROM manifest_files
             WHERE save_id = $1 AND version_num = $2
          ORDER BY relative_path",
     )
@@ -1731,7 +1731,7 @@ pub async fn delete_version(
         // away, then drop the version row (cascades save_version_files) and
         // release one reference per blob.
         let shas: Vec<(String,)> = sqlx::query_as(
-            "SELECT DISTINCT sha256 FROM save_version_files WHERE save_id = $1 AND version_num = $2",
+            "SELECT DISTINCT sha256 FROM manifest_files WHERE save_id = $1 AND version_num = $2",
         )
         .bind(&save_id)
         .bind(version)
@@ -1827,7 +1827,7 @@ pub async fn delete_save(
     // this save that pointed at each blob. Read the counts before the manifest
     // cascades away with the save.
     let blob_refs: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT encode(sha256, 'hex'), COUNT(DISTINCT version_num) FROM save_version_files
+        "SELECT encode(sha256, 'hex'), COUNT(DISTINCT version_num) FROM manifest_files
             WHERE save_id = $1 GROUP BY sha256",
     )
     .bind(&save_id)
@@ -2030,7 +2030,7 @@ pub async fn manifest_covers_head(
         return Ok(false);
     }
     let head_files: Vec<(String, String)> = sqlx::query_as(
-        "SELECT relative_path, encode(sha256, 'hex') FROM save_version_files
+        "SELECT relative_path, encode(sha256, 'hex') FROM manifest_files
           WHERE save_id = $1 AND version_num = $2",
     )
     .bind(save_id)

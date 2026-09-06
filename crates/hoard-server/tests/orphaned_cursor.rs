@@ -248,6 +248,31 @@ async fn seed_version(pool: &PgPool, save_id: &str, num: i64, files: &[(&str, &s
         .execute(pool)
         .await
         .expect("manifest row");
+        // The interned pair too: the reads go through the view now, so a
+        // fixture that fills only the old table leaves them blind.
+        sqlx::query(
+            "WITH e AS (
+                 INSERT INTO file_entries (save_id, relative_path, sha256, size_bytes)
+                 VALUES ($1, $3, decode($4, 'hex'), 1)
+                 ON CONFLICT (save_id, relative_path, sha256) DO NOTHING
+                 RETURNING id
+             )
+             INSERT INTO version_files (version_id, entry_id, modified_at)
+             SELECT v.id, COALESCE((SELECT id FROM e),
+                                   (SELECT id FROM file_entries
+                                     WHERE save_id = $1 AND relative_path = $3
+                                       AND sha256 = decode($4, 'hex'))), NULL
+               FROM save_versions v
+              WHERE v.save_id = $1 AND v.version_num = $2
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(save_id)
+        .bind(num)
+        .bind(path)
+        .bind(sha_of(sha))
+        .execute(pool)
+        .await
+        .expect("interned row");
     }
     sqlx::query("UPDATE saves SET latest_version_num = $2 WHERE id = $1")
         .bind(save_id)

@@ -213,7 +213,7 @@ async fn sweep_account(
     // after.
     let (versions, manifest_rows): (i64, i64) = sqlx::query_as(
         "SELECT count(*),
-                coalesce(sum((SELECT count(*) FROM save_version_files f
+                coalesce(sum((SELECT count(*) FROM manifest_files f
                                WHERE f.save_id = v.save_id
                                  AND f.version_num = v.version_num)), 0)
            FROM save_versions v

@@ -213,7 +213,7 @@ async fn load_candidates(
         r#"
         WITH ver_blobs AS (
             SELECT DISTINCT f.save_id, f.version_num, f.sha256
-            FROM save_version_files f
+            FROM manifest_files f
             JOIN saves s ON s.id = f.save_id
             WHERE s.user_id = $1
         ),
@@ -405,7 +405,7 @@ async fn purge_one(
     version: i64,
 ) -> Result<(), CloudError> {
     let shas: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT encode(sha256, 'hex') FROM save_version_files
+        "SELECT DISTINCT encode(sha256, 'hex') FROM manifest_files
           WHERE save_id = $1 AND version_num = $2",
     )
     .bind(save_id)

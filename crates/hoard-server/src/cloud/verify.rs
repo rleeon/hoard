@@ -243,7 +243,7 @@ pub async fn run(cfg: &Config, opts: Options) -> Result<Report> {
         // and the operator needs the whole list to warn people.
         let used_by: Vec<(String, i64, String)> = sqlx::query(
             "SELECT s.game_slug, f.version_num, f.relative_path
-               FROM save_version_files f
+               FROM manifest_files f
                JOIN saves s ON s.id = f.save_id
               WHERE f.sha256 = decode($1, 'hex') AND s.user_id = $2
               ORDER BY s.game_slug, f.version_num",

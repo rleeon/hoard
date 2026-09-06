@@ -348,6 +348,8 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
         (&twin_b, &shared_sha),
         (&lonely, &own_sha),
     ] {
+        // Both shapes: the reads go through the interned view now, and a
+        // fixture that fills only the old table leaves them blind.
         sqlx::query(
             "INSERT INTO save_version_files (save_id, version_num, relative_path, sha256, size_bytes)
              VALUES ($1, 1, 'save.dat', decode($2, 'hex'), 1000)",
@@ -357,6 +359,27 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
         .execute(&pool)
         .await
         .expect("file row");
+        sqlx::query(
+            "WITH e AS (
+                 INSERT INTO file_entries (save_id, relative_path, sha256, size_bytes)
+                 VALUES ($1, 'save.dat', decode($2, 'hex'), 1000)
+                 ON CONFLICT (save_id, relative_path, sha256) DO NOTHING
+                 RETURNING id
+             )
+             INSERT INTO version_files (version_id, entry_id, modified_at)
+             SELECT v.id, COALESCE((SELECT id FROM e),
+                                   (SELECT id FROM file_entries
+                                     WHERE save_id = $1 AND relative_path = 'save.dat'
+                                       AND sha256 = decode($2, 'hex'))), NULL
+               FROM save_versions v
+              WHERE v.save_id = $1 AND v.version_num = 1
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(save_id)
+        .bind(sha)
+        .execute(&pool)
+        .await
+        .expect("interned row");
     }
     sqlx::query(
         "INSERT INTO cloud_blobs (user_id, sha256, size_bytes, refcount)
