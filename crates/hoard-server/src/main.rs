@@ -76,6 +76,22 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+
+    /// Fill the interned manifest tables from the old `save_version_files`.
+    ///
+    /// Catch-up only: every commit already writes both shapes, so this is for
+    /// what was stored before that. Idempotent and resumable, walks save by
+    /// save, and reports any save whose two representations disagree. Nothing
+    /// reads the new tables yet, so it is safe to run at any time. Cloud only.
+    #[cfg(feature = "cloud")]
+    BackfillManifest {
+        /// Stop after N saves. Default: every save still pending.
+        #[arg(long)]
+        limit: Option<i64>,
+        /// Count what is pending without writing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[tokio::main]
@@ -136,6 +152,18 @@ async fn main() -> Result<()> {
         hoard_server::cloud::verify::print_report(&report, dry_run);
         // A non-zero exit when there is damage, so a cron job notices.
         if !report.damaged.is_empty() {
+            std::process::exit(2);
+        }
+        return Ok(());
+    }
+
+    #[cfg(feature = "cloud")]
+    if let Some(Cmd::BackfillManifest { limit, dry_run }) = args.cmd {
+        let opts = hoard_server::cloud::intern::Options { limit, dry_run };
+        let report = hoard_server::cloud::intern::run(&cfg, opts).await?;
+        hoard_server::cloud::intern::print_report(&report, dry_run);
+        // Non-zero when anything disagrees, so this can gate the next step.
+        if !report.mismatched.is_empty() {
             std::process::exit(2);
         }
         return Ok(());
