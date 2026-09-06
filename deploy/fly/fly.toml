@@ -66,7 +66,7 @@ kill_timeout = "10s"
 [[vm]]
   cpu_kind = "shared"
   cpus = 1
-  memory_mb = 512
+  memory_mb = 256
 
 # Rolling deploys across the app's machines. Note this says nothing about
 # how many stay up, that's `min_machines_running` above, which is 0. An
