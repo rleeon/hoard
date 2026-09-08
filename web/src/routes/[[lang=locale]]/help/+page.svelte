@@ -65,10 +65,9 @@
   {@html faqLd}
 </svelte:head>
 
-<section class="mx-auto max-w-3xl px-4 py-16 sm:px-6 sm:py-24">
+<section class="mx-auto max-w-3xl px-4 pb-16 pt-16 sm:px-6 sm:pb-24 sm:pt-24 2xl:pt-12">
   <div class="text-center">
-    <p class="kicker justify-center">Support</p>
-    <h1 class="mt-3 text-balance text-4xl font-semibold text-ink sm:text-5xl">
+    <h1 class="text-balance text-4xl font-semibold text-ink sm:text-5xl">
       {$_('help.title')}
     </h1>
     <p class="mx-auto mt-4 max-w-xl text-pretty leading-relaxed text-ink-soft">

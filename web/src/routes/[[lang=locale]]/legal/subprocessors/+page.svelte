@@ -71,7 +71,7 @@
 
 <Seo path="/legal/subprocessors" key="subprocessors" />
 
-<section class="mx-auto max-w-4xl px-4 py-16 sm:px-6 sm:py-20">
+<section class="mx-auto max-w-4xl px-4 pb-16 pt-16 sm:px-6 sm:pb-20 sm:pt-20 2xl:pt-12">
   <a
     href={$localeHref('/')}
     class="ring-focus inline-flex items-center gap-1.5 text-sm text-ink-soft transition-colors hover:text-ink"

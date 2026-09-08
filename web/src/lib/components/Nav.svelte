@@ -1,10 +1,11 @@
 <script lang="ts">
   import { _, locale } from 'svelte-i18n';
   import { page } from '$app/stores';
-  import { goto } from '$app/navigation';
+  import { afterNavigate, goto } from '$app/navigation';
   import { slide } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { session } from '$lib/stores/session';
+  import { preloadLocale } from '$lib/i18n';
   import { localeHref } from '$lib/i18n/href';
   import {
     LOCALES,
@@ -15,14 +16,32 @@
     withLocale,
     type Locale
   } from '$lib/i18n/locales';
-  import LogoMark from './LogoMark.svelte';
+  import LogoH from './LogoH.svelte';
   import DiscordIcon from './DiscordIcon.svelte';
   const DISCORD_URL = 'https://discord.gg/BYpXT8v4rh';
   import { Menu, X, Globe, Check } from 'lucide-svelte';
   import { onMount } from 'svelte';
 
   let open = $state(false);
+
+  // The mobile panel covers the whole viewport, so navigating from inside it
+  // (the wordmark, the browser's back button, anything that isn't one of the
+  // links below) used to leave it open on top of the new page: the route had
+  // changed but nothing looked like it had. Closing on every navigation lets
+  // the slide-out play as the page changes, which is the only motion that says
+  // "you moved".
+  afterNavigate(() => {
+    open = false;
+    langMobile = false;
+  });
   let langOpen = $state(false);
+  let langMobile = $state(false);
+  // Picking a language re-renders every `$_` on the page at the same moment the
+  // panel would be animating its height shut, and a height animation inside a
+  // `backdrop-blur` header is the expensive kind: the two together drop a frame
+  // or two. The panel closes instantly in that case, the page changing language
+  // is signal enough; the toggle keeps its slide.
+  let langInstant = $state(false);
   let scrolled = $state(false);
 
   // Current path with the locale prefix stripped, so the switcher can re-point
@@ -61,19 +80,26 @@
   });
 </script>
 
+<!-- Transparent only while the page is at the very top, where there is nothing
+     behind it to show through anyway. As soon as you scroll it goes solid: the
+     blur was both the priciest thing to repaint on every scrolled frame and,
+     without it, content showed straight through a merely 80% opaque bar. -->
 <header
-  class="sticky top-0 z-40 w-full bg-bg/80 backdrop-blur-md"
+  class="sticky top-0 z-40 w-full transition-colors duration-300 {scrolled
+    ? 'bg-bg'
+    : 'bg-bg/80 backdrop-blur-md'}"
 >
   <nav
     class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]"
   >
     <a
       href={$localeHref('/')}
-      class="nav-pill flex items-center gap-2.5 ring-focus md:justify-self-start"
+      class="nav-pill group flex items-center ring-focus md:justify-self-start"
       aria-label="Hoard home"
     >
-      <LogoMark size={28} />
-      <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span>
+      <span class="flex items-baseline text-[23px] font-semibold tracking-[-0.02em] text-ink">
+        <LogoH class="mr-[3px] h-[0.78em] w-auto" />oard
+      </span>
     </a>
 
     <div class="hidden items-center gap-1 md:flex md:justify-self-center">
@@ -130,8 +156,17 @@
           class="nav-pill flex cursor-pointer list-none items-center gap-1.5 text-sm text-ink-soft ring-focus [&::-webkit-details-marker]:hidden"
           aria-label="Language"
         >
-          <Globe class="h-4 w-4" />
-          <span class="font-medium">{LOCALE_NAMES[active]}</span>
+          <!-- Same spin as the phone's globe: one language of motion for the
+               same control on both sizes. -->
+          <Globe
+            class="lang-globe h-4 w-4 transition-transform duration-300 ease-out {langOpen
+              ? 'rotate-180'
+              : 'rotate-0'}"
+          />
+          <span
+            class="font-medium transition-colors duration-300 {langOpen ? 'text-ink' : ''}"
+            >{LOCALE_NAMES[active]}</span
+          >
         </summary>
         <!-- preload-data="tap" overrides the layout's "hover" default: the
              locale `load` calls `locale.set(lang)`, so a hover-preload would
@@ -146,6 +181,8 @@
               href={langTarget(l)}
               hreflang={l}
               onclick={() => (langOpen = false)}
+              onpointerdown={() => preloadLocale(l)}
+              onfocus={() => preloadLocale(l)}
               class="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 {l === active
                 ? 'text-ink'
                 : 'text-ink-soft hover:text-ink'}"
@@ -205,25 +242,62 @@
       </a>
     </div>
 
-    <button
-      class="md:hidden grid h-10 w-10 place-items-center rounded-lg text-ink-soft ring-focus hover:bg-ink/5"
-      onclick={() => (open = !open)}
-      aria-label="Toggle menu"
-      aria-expanded={open}
-    >
-      <span class="relative h-5 w-5">
-        <Menu
-          class="absolute inset-0 h-5 w-5 transition-all duration-300 {open
-            ? 'opacity-0 rotate-90'
-            : 'opacity-100 rotate-0'}"
-        />
-        <X
-          class="absolute inset-0 h-5 w-5 transition-all duration-300 {open
-            ? 'opacity-100 rotate-0'
-            : 'opacity-0 -rotate-90'}"
-        />
-      </span>
-    </button>
+    <div class="flex items-center gap-1 md:hidden">
+      <!-- Language gets its own toggle next to the burger: it used to live at
+           the bottom of the burger panel, past every link, which is a long way
+           down for the one control a visitor in the wrong language needs first.
+           The desktop <details> still carries all eight links in the static
+           HTML, so the prerender crawler keeps finding every locale URL. -->
+      <button
+        class="grid h-10 w-auto min-w-10 place-items-center gap-1 rounded-lg px-2 text-ink-soft ring-focus hover:bg-ink/5"
+        onclick={() => {
+          langInstant = false;
+          langMobile = !langMobile;
+          open = false;
+        }}
+        aria-label="Language"
+        aria-expanded={langMobile}
+      >
+        <span class="flex items-center gap-1.5">
+          <!-- The globe spins on its own axis when the panel opens and unwinds
+               when it closes, the same 300ms cross-fade the burger uses to
+               swap its icon: two different controls, one language of motion. -->
+          <Globe
+            class="lang-globe h-5 w-5 transition-transform duration-300 ease-out {langMobile
+              ? 'rotate-180'
+              : 'rotate-0'}"
+          />
+          <span
+            class="font-mono text-[11px] uppercase transition-colors duration-300 {langMobile
+              ? 'text-ink'
+              : ''}">{active}</span
+          >
+        </span>
+      </button>
+
+      <button
+        class="grid h-10 w-10 place-items-center rounded-lg text-ink-soft ring-focus hover:bg-ink/5"
+        onclick={() => {
+          open = !open;
+          langMobile = false;
+        }}
+        aria-label="Toggle menu"
+        aria-expanded={open}
+      >
+        <span class="relative h-5 w-5">
+          <Menu
+            class="absolute inset-0 h-5 w-5 transition-all duration-300 {open
+              ? 'opacity-0 rotate-90'
+              : 'opacity-100 rotate-0'}"
+          />
+          <X
+            class="absolute inset-0 h-5 w-5 transition-all duration-300 {open
+              ? 'opacity-100 rotate-0'
+              : 'opacity-0 -rotate-90'}"
+          />
+        </span>
+      </button>
+    </div>
   </nav>
 
   {#if open}
@@ -274,26 +348,33 @@
           Discord
         </a>
 
-        <div class="mt-2 border-t border-line pt-3">
-          <p class="px-3 pb-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
-            <Globe class="mr-1 inline h-3 w-3" />Language
-          </p>
-          <div class="grid grid-cols-2 gap-1" data-sveltekit-preload-data="tap">
-            {#each LOCALES as l (l)}
-              <a
-                class="flex items-center justify-between rounded-md px-3 py-2 text-sm hover:bg-ink/5 {l === active
-                  ? 'text-ink'
-                  : 'text-ink-soft'}"
-                href={langTarget(l)}
-                hreflang={l}
-                onclick={() => (open = false)}
-              >
-                {LOCALE_NAMES[l]}
-                {#if l === active}<Check class="h-3.5 w-3.5 text-accent" />{/if}
-              </a>
-            {/each}
-          </div>
-        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if langMobile}
+    <div
+      class="overflow-hidden border-t border-line bg-bg md:hidden"
+      transition:slide={{ duration: langInstant ? 0 : 220, easing: cubicOut }}
+    >
+      <div class="grid grid-cols-2 gap-1 px-4 py-3" data-sveltekit-preload-data="tap">
+        {#each LOCALES as l (l)}
+          <a
+            class="flex items-center justify-between rounded-md px-3 py-2.5 text-sm hover:bg-ink/5 {l === active
+              ? 'text-ink'
+              : 'text-ink-soft'}"
+            href={langTarget(l)}
+            hreflang={l}
+            onpointerdown={() => preloadLocale(l)}
+            onclick={() => {
+              langInstant = true;
+              langMobile = false;
+            }}
+          >
+            {LOCALE_NAMES[l]}
+            {#if l === active}<Check class="h-3.5 w-3.5 text-accent" />{/if}
+          </a>
+        {/each}
       </div>
     </div>
   {/if}

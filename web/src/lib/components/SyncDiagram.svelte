@@ -19,7 +19,7 @@
   // SCENE (always the same five nodes):
   //   - Two hubs on top: hoard-Cloud (badge "login") and hoard-server (badge
   //     "self-host"), left and right.
-  //   - Three devices below: PC1, SteamDeck, PC3.
+  //   - Three devices below: the desktop, the laptop, the second desktop.
   //
   // DESIGN (the "active hub" concept):
   //   - The two hubs alternate: while one hub is ACTIVE it is fully lit (green
@@ -32,9 +32,9 @@
   //     cycle (it never resets), so the scene never blinks.
   //
   // ANIMATION (one cycle = cloud phase + server phase, loops forever):
-  //   - Each phase: ball 1 departs from PC1 and rides the drawn curve up to
+  //   - Each phase: ball 1 departs from the desktop and rides the drawn curve up to
   //     the active hub. When it arrives, two balls split off along their own
-  //     drawn curves to SteamDeck and PC3 and STOP there for a beat. Then the
+  //     drawn curves to the laptop and the second desktop and STOP there for a beat. Then the
   //     phase ends and the same sequence plays for the other hub.
   //   - Every ball travels along the EXACT curve that is painted as the SVG
   //     path: the same curve data drives both the <path> elements and the
@@ -70,7 +70,7 @@
     b: T(dx, 140)
   });
 
-  // cloud->PC1, cloud->SteamDeck, cloud->PC3, server->PC1, server->SteamDeck, server->PC3
+  // cloud->desktop, cloud->laptop, cloud->desktop2, server->desktop, server->laptop, server->desktop2
   const conns: Curve[] = [bow(75, 45), bow(75, 150), bow(75, 255), bow(225, 45), bow(225, 150), bow(225, 255)];
   const paths = conns.map((c) => `M ${c.a.x} ${c.a.y} C ${c.c1.x} ${c.c1.y} ${c.c2.x} ${c.c2.y} ${c.b.x} ${c.b.y}`);
 
@@ -135,8 +135,8 @@
     pc3End: T(255, 140)
   };
 
-  // One phase: ball 1 rides PC1 -> hub (S1 seconds), two balls split to
-  // SteamDeck and PC3 (S2 seconds), then everything parks for a beat. Two
+  // One phase: ball 1 rides desktop -> hub (S1 seconds), two balls split to
+  // the laptop and the second desktop (S2 seconds), then everything parks for a beat. Two
   // phases per cycle: the cloud, then the self-hosted server. Forever.
   const PHASE = 4.8;
   const S1 = 1.6;
@@ -157,6 +157,12 @@
   const CROSS = 0.25;
   const CHIP_IDLE = 0.35;
 
+  let host: HTMLDivElement;
+  // Box size in pixels, refreshed on resize: the balls ride a transform, and a
+  // percentage translate would be a percentage of the ball, not of the scene.
+  let boxW = 0;
+  let boxH = 0;
+
   let dot1: HTMLDivElement;
   let dot2: HTMLDivElement;
   let dot3: HTMLDivElement;
@@ -169,13 +175,20 @@
     if (!el) return;
     el.style.opacity = String(opacity);
     if (!p) return;
-    el.style.left = `${((p.x / 300) * 100).toFixed(3)}%`;
-    el.style.top = `${((p.y / 210) * 100).toFixed(3)}%`;
+    // `left`/`top` meant a layout pass on every one of the 60 frames a second,
+    // on an element `will-change` had already promoted to its own layer. Chrome
+    // repainted that layer against freshly exposed pixels while scrolling and
+    // smeared a dark band along the edge the section entered from. A transform
+    // stays on the compositor: no layout, no repaint, no smear.
+    el.style.transform = `translate3d(${((p.x / 300) * boxW).toFixed(2)}px, ${(
+      (p.y / 210) *
+      boxH
+    ).toFixed(2)}px, 0)`;
   };
 
-  // Ball 1 is on screen from the phase start (riding PC1 -> hub) until it
+  // Ball 1 is on screen from the phase start (riding desktop -> hub) until it
   // parks at the hub at f2. Balls 2 and 3 appear at the hub when the split
-  // starts (f1) and stay parked at SteamDeck / PC3 until the phase ends.
+  // starts (f1) and stay parked at the laptop / second desktop until the phase ends.
   const envelope = (k: number, a: number, b: number): number => {
     if (k < a || k > b) return 0;
     const fadeIn = Math.min(1, (k - a) / fadeK);
@@ -198,6 +211,14 @@
 
   onMount(() => {
     let raf = 0;
+    const measure = () => {
+      boxW = host?.clientWidth ?? 0;
+      boxH = boxW * (210 / 300);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (host) ro.observe(host);
+
     const tick = (now: number) => {
       const sec = now / 1000;
       const cycle = sec % (PHASE * 2);
@@ -215,8 +236,8 @@
       cloudChip.style.opacity = String(CHIP_IDLE + (1 - CHIP_IDLE) * cf);
       serverChip.style.opacity = String(CHIP_IDLE + (1 - CHIP_IDLE) * sf);
 
-      // The three balls: ball 1 rides PC1 -> hub, then balls 2 and 3 split
-      // to SteamDeck and PC3 and park there until the phase ends.
+      // The three balls: ball 1 rides desktop -> hub, then balls 2 and 3 split
+      // to the laptop and the second desktop and park there until the phase ends.
       if (k < f1) {
         place(dot1, ride(hub.toHub, k / f1), envelope(k, 0, f2));
         place(dot2, hub.toDeck.at(0), envelope(k, f1, 1));
@@ -234,11 +255,14 @@
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
   });
 </script>
 
-<div class={`relative mx-auto block w-full ${className}`}>
+<div bind:this={host} class={`relative mx-auto block w-full ${className}`}>
   <!-- The SVG paints the scene. The two line groups and the two hub-chip
        groups have their opacity driven from the tick (active hub lit with
        its lines, idle hub dimmed with no lines). -->
@@ -269,9 +293,9 @@
       <rect class="dev-chip" x="13" y="140" width="64" height="24" rx="6" />
       <rect class="dev-chip" x="118" y="140" width="64" height="24" rx="6" />
       <rect class="dev-chip" x="223" y="140" width="64" height="24" rx="6" />
-      <text class="l-chip" x="45" y="157">PC1</text>
-      <text class="l-chip" x="150" y="157">SteamDeck</text>
-      <text class="l-chip" x="255" y="157">PC3</text>
+      <text class="l-chip" x="45" y="157">Desktop</text>
+      <text class="l-chip" x="150" y="157">Laptop</text>
+      <text class="l-chip" x="255" y="157">Desktop</text>
     </g>
   </svg>
 
@@ -286,15 +310,16 @@
 <style>
   .save-dot {
     position: absolute;
-    left: 15%;
-    top: 67.62%;
+    left: 0;
+    top: 0;
     width: 10px;
     height: 10px;
     margin: -5px 0 0 -5px;
     border-radius: 9999px;
     background: var(--color-accent);
     box-shadow: 0 0 8px color-mix(in oklab, var(--color-accent) 70%, transparent);
-    will-change: left, top;
+    will-change: transform;
+
     opacity: 0;
   }
 

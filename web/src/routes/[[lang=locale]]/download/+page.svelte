@@ -132,10 +132,9 @@
 
 <Seo path="/download" key="download" />
 
-<section class="mx-auto max-w-5xl px-4 py-16 sm:px-6 sm:py-24">
+<section class="mx-auto max-w-5xl px-4 pb-16 pt-16 sm:px-6 sm:pb-24 sm:pt-24 2xl:pt-12">
   <div class="mx-auto max-w-2xl text-center">
-    <p class="kicker justify-center">{$_('nav.download')}</p>
-    <h1 class="mt-3 text-balance text-4xl font-semibold text-ink sm:text-5xl">
+    <h1 class="text-balance text-4xl font-semibold text-ink sm:text-5xl">
       {$_('download.title')}
     </h1>
     <p class="mt-4 text-pretty leading-relaxed text-ink-soft">

@@ -6,8 +6,9 @@
     | 'ghost'
     | 'danger'
     | 'support'
-    | 'support-quiet';
-  type Size = 'sm' | 'md' | 'lg';
+    | 'support-quiet'
+    | 'star';
+  type Size = 'sm' | 'md' | 'lg' | 'xl';
 
   interface Props {
     href?: string;
@@ -56,13 +57,18 @@
     // The companion button inside the pink panel: the dark `secondary` would
     // vanish against it, so this one is light-on-pink.
     'support-quiet':
-      'border border-red-600/50 bg-white/70 text-red-950 hover:border-red-600 hover:bg-white'
+      'border border-red-600/50 bg-white/70 text-red-950 hover:border-red-600 hover:bg-white',
+    // The GitHub star: pure black so it sits inside the page rather than on it,
+    // with the border, the text and the glow all in the one amber. The glow is a
+    // colour change, not movement, so it stands even under reduced-motion.
+    star: 'border border-amber-400/60 bg-black text-amber-400 shadow-[0_0_0_0_rgba(251,191,36,0)] transition-[color,border-color,box-shadow] hover:border-amber-300 hover:text-amber-300 hover:shadow-[0_0_18px_-2px_rgba(251,191,36,0.45)]'
   };
 
   const sizes: Record<Size, string> = {
     sm: 'h-8 px-3 text-sm',
     md: 'h-10 px-4 text-sm',
-    lg: 'h-12 px-6 text-base'
+    lg: 'h-12 px-6 text-base',
+    xl: 'h-14 px-7 text-base'
   };
 
   let classes = $derived(

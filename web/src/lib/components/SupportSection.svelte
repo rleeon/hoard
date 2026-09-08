@@ -56,7 +56,7 @@
                   {$_('support.title')}
                 </h2>
               </div>
-              <p class="text-pretty text-sm text-rose-900">{$_('support.body')}</p>
+              <p class="whitespace-pre-line text-pretty text-sm text-rose-900">{$_('support.body')}</p>
             </div>
             <div class="shrink-0">
               <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">

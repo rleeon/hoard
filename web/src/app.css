@@ -236,6 +236,35 @@ h3 {
   .tilt {
     transform: none !important;
   }
+
+  /* Two exceptions to the blanket rule above, at the owner's request. Neither is
+     the kind of motion the preference exists to prevent: no travel across the
+     screen, no parallax, nothing that can induce nausea. The language fade is
+     opacity only, and the globe turns in place inside a 16px box. Everything
+     else stays flattened. */
+  .lang-fade,
+  .lang-fade.is-fading {
+    transition-duration: 0.62s !important;
+  }
+  .lang-fade.is-fading {
+    transition-duration: 0.34s !important;
+  }
+  .lang-globe {
+    transition-duration: 300ms !important;
+  }
+}
+
+/* Language swap: out in 380ms, in over 600ms, with the text replaced while the
+   page is blank. Opacity only, so it rides the compositor and cannot stutter
+   the way the panel's height animation did. */
+.lang-fade {
+  transition: opacity 0.62s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.lang-fade.is-fading {
+  /* Not quite zero: the dissolve reads as one continuous move instead of a
+     blackout, and there is nothing to "come back from" if the swap is quick. */
+  opacity: 0.04;
+  transition-duration: 0.34s;
 }
 
 /* View transitions (Chrome/Edge today; harmless elsewhere) */

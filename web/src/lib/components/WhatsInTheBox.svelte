@@ -36,7 +36,10 @@
     <div class="mt-12 grid overflow-hidden rounded-2xl border border-line bg-surface sm:grid-cols-2 lg:grid-cols-3">
       {#each features as f, i (f.key)}
         <article
-          class="reveal tilt group relative border-t border-line p-7 transition-colors hover:bg-bg max-sm:[&:nth-child(2n)]:border-l sm:[&:nth-child(-n+2)]:border-t-0 sm:[&:nth-child(2n)]:border-l lg:[&:nth-child(-n+3)]:border-t-0 lg:[&:nth-child(3n)]:border-l-0 lg:[&:nth-child(3n+1)]:border-l-0"
+          class="reveal tilt group relative border-line p-7 transition-colors hover:bg-bg
+                 border-t [&:first-child]:border-t-0
+                 sm:[&:nth-child(-n+2)]:border-t-0 sm:[&:nth-child(2n+1)]:border-l-0 sm:[&:nth-child(2n)]:border-l
+                 lg:[&:nth-child(-n+3)]:border-t-0 lg:[&:nth-child(3n+1)]:border-l-0 lg:[&:nth-child(3n+2)]:border-l lg:[&:nth-child(3n)]:border-l"
           use:reveal={{ delay: i * 60 }}
           use:tilt={{ max: 4 }}
         >

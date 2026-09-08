@@ -39,7 +39,7 @@
       publisher: {
         '@type': 'Organization',
         name: 'Hoard',
-        logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon-512.png` }
+        logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon.png` }
       }
     })
   );
@@ -74,7 +74,7 @@
   {@html faqLd}
 </svelte:head>
 
-<article class="mx-auto max-w-2xl px-4 py-16 sm:px-6 sm:py-24">
+<article class="mx-auto max-w-2xl px-4 pb-16 pt-16 sm:px-6 sm:pb-24 sm:pt-24 2xl:pt-12">
   <a
     href={$localeHref('/guides')}
     class="inline-flex items-center gap-1.5 rounded-md text-sm text-ink-soft ring-focus transition-colors hover:text-ink"

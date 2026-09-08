@@ -20,6 +20,12 @@ export function reveal(node: HTMLElement, opts: RevealOptions = {}) {
 
   if (delay) node.style.transitionDelay = `${delay}ms`;
 
+  // A percentage threshold is unreachable for a block taller than the viewport:
+  // 15% of the pricing table is more pixels than the fold can ever show, so it
+  // stayed invisible until a scroll pushed enough of it in. Anything that tall
+  // reveals as soon as its top edge crosses the margin instead.
+  const effectiveThreshold = node.offsetHeight > window.innerHeight ? 0 : threshold;
+
   const obs = new IntersectionObserver(
     (entries) => {
       for (const e of entries) {
@@ -31,7 +37,7 @@ export function reveal(node: HTMLElement, opts: RevealOptions = {}) {
         }
       }
     },
-    { threshold, rootMargin }
+    { threshold: effectiveThreshold, rootMargin }
   );
 
   obs.observe(node);

@@ -1,7 +1,9 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
-  import LogoMark from './LogoMark.svelte';
+  import LogoH from './LogoH.svelte';
   import { localeHref } from '$lib/i18n/href';
+  import Button from './Button.svelte';
+  import { Download } from 'lucide-svelte';
   import { version } from '$lib/version';
   const year = new Date().getFullYear();
 </script>
@@ -15,8 +17,9 @@
   <div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 grid-cols-2 md:grid-cols-4">
     <div class="col-span-2 md:col-span-1">
       <div class="flex items-center gap-2.5">
-        <LogoMark size={26} />
-        <span class="font-display text-base font-semibold tracking-tight text-ink">Hoard</span>
+        <span class="flex items-baseline text-[23px] font-semibold tracking-[-0.02em] text-ink">
+          <LogoH class="mr-[3px] h-[0.78em] w-auto" />oard
+        </span>
         <span
           class="ml-1 rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[10px] tracking-wider text-ink-soft"
         >
@@ -24,6 +27,15 @@
         </span>
       </div>
       <p class="mt-3 max-w-xs text-sm leading-relaxed text-ink-soft">{$_('footer.tagline')}</p>
+      <!-- The home lost its closing call to action, so the download lives here:
+           the brand column is the last thing read on every page, not just the
+           front one. -->
+      <div class="mt-5 max-w-[13rem]">
+        <Button href={$localeHref('/download')} variant="primary" size="md" full>
+          <Download class="h-4 w-4" aria-hidden="true" />
+          {$_('cta_section.cta')}
+        </Button>
+      </div>
     </div>
 
     <div>

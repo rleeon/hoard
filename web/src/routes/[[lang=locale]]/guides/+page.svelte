@@ -31,7 +31,7 @@
   {@html listLd}
 </svelte:head>
 
-<section class="mx-auto max-w-3xl px-4 py-16 sm:px-6 sm:py-24">
+<section class="mx-auto max-w-3xl px-4 pb-16 pt-16 sm:px-6 sm:pb-24 sm:pt-24 2xl:pt-12">
   <header use:reveal class="reveal">
     <h1 class="font-display text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
       {$_('guides.index_heading')}

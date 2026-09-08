@@ -26,9 +26,9 @@
   // history one no longer reads as small next to the dashboard one.
 
   const steps = [
-    { n: '01', title: 'how.s1_title', body: 'how.s1_body' },
-    { n: '02', title: 'how.s2_title', body: 'how.s2_body', img: '/dashboard.webp?v=1', alt: 'slot.how_library', fit: 'cover' },
-    { n: '03', title: 'how.s3_title', body: 'how.s3_body', img: '/history.webp?v=1', alt: 'slot.how_history', fit: 'fill' }
+    { n: '1', title: 'how.s1_title', body: 'how.s1_body' },
+    { n: '2', title: 'how.s2_title', body: 'how.s2_body', img: '/dashboard.webp?v=1', alt: 'slot.how_library', fit: 'cover' },
+    { n: '3', title: 'how.s3_title', body: 'how.s3_body', img: '/history.webp?v=1', alt: 'slot.how_history', fit: 'fill' }
   ];
 </script>
 
@@ -46,10 +46,9 @@
       {#each steps as s, i (s.n)}
         {#if !s.img}
           <article
-            class="reveal flex flex-col items-center justify-center gap-6 rounded-2xl border border-accent/30 bg-gradient-to-br from-accent/15 to-transparent p-10 text-center lg:col-span-2"
+            class="reveal relative flex flex-col items-center justify-center gap-6 rounded-2xl border border-accent/30 bg-gradient-to-br from-accent/15 to-transparent p-10 text-center lg:col-span-2"
             use:reveal
           >
-            <span class="font-mono text-[11px] font-medium tracking-[0.16em] text-accent">{s.n}</span>
             <h3 class="text-2xl font-semibold text-ink">{$_(s.title)}</h3>
             <p class="max-w-md text-sm leading-relaxed text-ink-soft">{$_(s.body)}</p>
             <div class="w-full max-w-sm">
@@ -58,11 +57,17 @@
                 <Download class="h-4 w-4" aria-hidden="true" />
               </Button>
             </div>
+            <span
+              class="absolute bottom-5 right-6 font-mono text-[11px] font-medium tracking-[0.16em] text-accent"
+              >{s.n}</span
+            >
           </article>
         {:else}
-          <article class="reveal rounded-2xl border border-line bg-surface p-7" use:reveal={{ delay: i * 80 }}>
-            <span class="font-mono text-[11px] font-medium tracking-[0.16em] text-accent">{s.n}</span>
-            <div class="mt-4 overflow-hidden rounded-xl border border-line">
+          <article
+            class="reveal relative rounded-2xl border border-line bg-surface p-7"
+            use:reveal={{ delay: i * 80 }}
+          >
+            <div class="overflow-hidden rounded-xl border border-line">
               <div class="aspect-[16/10] overflow-hidden">
                 <img
                   src={s.img}
@@ -74,7 +79,15 @@
               </div>
             </div>
             <h3 class="mt-5 text-lg font-semibold text-ink">{$_(s.title)}</h3>
-            <p class="mt-2 text-sm leading-relaxed text-ink-soft">{$_(s.body)}</p>
+            <!-- On a phone the last line can end up close to the corner number.
+                 That is fine and deliberate: `pr-7` keeps them from touching,
+                 and padding the text further just to widen a gap nobody reads
+                 as crowded would cost a line of copy. -->
+            <p class="mt-2 pr-7 text-sm leading-relaxed text-ink-soft">{$_(s.body)}</p>
+            <span
+              class="absolute bottom-5 right-6 font-mono text-[11px] font-medium tracking-[0.16em] text-accent"
+              >{s.n}</span
+            >
           </article>
         {/if}
       {/each}

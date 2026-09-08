@@ -6,7 +6,6 @@
   import WhatsInTheBox from '$lib/components/WhatsInTheBox.svelte';
   import GamesSection from '$lib/components/GamesSection.svelte';
   import SelfHostSection from '$lib/components/SelfHostSection.svelte';
-  import CtaSection from '$lib/components/CtaSection.svelte';
   import SupportSection from '$lib/components/SupportSection.svelte';
   import SyncDiagram from '$lib/components/SyncDiagram.svelte';
   import { reveal } from '$lib/actions/reveal';
@@ -16,7 +15,7 @@
   import { SITE_URL } from '$lib/i18n/locales';
   import { PLANS } from '$lib/plans';
   import { version } from '$lib/version';
-  import { ArrowRight, Check } from 'lucide-svelte';
+  import { Check, Star } from 'lucide-svelte';
 
 
   // Twelve facts, all of them checkable in the repo, a marquee with four
@@ -45,6 +44,20 @@
 
   // Structured data for rich results: the product + its two pricing tiers and
   // the operating organization. Description tracks the page locale.
+  // The platform line is centred on its middle item (macOS today), so the list
+  // is split around it instead of being centred as one string.
+  const platforms = $derived.by(() => {
+    const parts = $_('hero.subnote_platforms', { values: { v: $version } }).split(' · ');
+    const i = Math.floor(parts.length / 2);
+    const left = parts.slice(0, i).join(' · ');
+    const right = parts.slice(i + 1).join(' · ');
+    return {
+      left: left ? `${left} ·` : '',
+      mid: parts[i] ?? '',
+      right: right ? `· ${right}` : ''
+    };
+  });
+
   const jsonLd = $derived(
     `<script type="application/ld+json">${JSON.stringify({
       '@context': 'https://schema.org',
@@ -95,7 +108,8 @@
 
 <Seo path="/" key="home" />
 <svelte:head>
-  <link rel="preload" as="image" href="/WEB.png" fetchpriority="high" />
+  <link rel="preload" as="image" href="/WEB.webp" fetchpriority="high" />
+  <link rel="preload" as="image" href="/CLI.webp" fetchpriority="high" />
   <!-- eslint-disable-next-line svelte/no-at-html-tags -->
   {@html jsonLd}
 </svelte:head>
@@ -120,24 +134,40 @@
       </p>
 
       <div
-        class="mt-9 flex flex-col items-center gap-4 sm:flex-row animate-fade-up"
+        class="mt-9 grid w-full max-w-lg grid-cols-1 gap-4 sm:grid-cols-2 animate-fade-up"
         style="animation-delay:0.2s"
       >
-        <Button href={$localeHref('/download')} size="lg" variant="primary">
+        <Button href={$localeHref('/download')} size="xl" variant="primary" full>
           {$_('hero.cta_start')}
-          <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </Button>
-        <Button href={$localeHref('/pricing')} size="lg" variant="secondary">
-          {$_('hero.cta_pricing')}
+        <Button
+          href="https://github.com/rleeon/hoard"
+          target="_blank"
+          size="xl"
+          variant="star"
+          full
+        >
+          <Star class="h-4 w-4 fill-current" />
+          {$_('hero.cta_star')}
         </Button>
       </div>
 
-      <p class="mt-4 font-mono text-xs tracking-wide text-ink-faint animate-fade-up" style="animation-delay:0.26s">
-        {$_('hero.subnote_features')}
-      </p>
-      <p class="mt-1 font-mono text-xs tracking-wide text-ink-faint animate-fade-up" style="animation-delay:0.26s">
-        {$_('hero.subnote_platforms', { values: { v: $version } })}
-      </p>
+      <div
+        class="mt-4 w-full text-center font-mono text-xs tracking-wide text-ink-faint animate-fade-up sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-baseline sm:gap-x-2"
+        style="animation-delay:0.26s"
+      >
+        <span class="sm:text-right">{$_('hero.subnote_selfhost')}</span>
+        <span aria-hidden="true">&amp;</span>
+        <span class="sm:text-left">{$_('hero.subnote_cloud')}</span>
+      </div>
+      <div
+        class="mt-1 w-full text-center font-mono text-xs tracking-wide text-ink-faint animate-fade-up sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-baseline sm:gap-x-2"
+        style="animation-delay:0.26s"
+      >
+        <span class="sm:text-right">{platforms.left}</span>
+        <span>{platforms.mid}</span>
+        <span class="sm:text-left">{platforms.right}</span>
+      </div>
     </div>
   </div>
 </section>
@@ -148,10 +178,10 @@
     <div class="flex flex-col items-center gap-8 lg:flex-row lg:items-center lg:justify-center lg:gap-7">
       <figure class="tilt relative w-full lg:w-auto" use:tilt>
         <img
-          src="/WEB.png"
+          src="/WEB.webp"
           alt={$_('hero.screenshot_alt')}
-          width="1270"
-          height="920"
+          width="1321"
+          height="913"
           fetchpriority="high"
           decoding="async"
           class="block w-full rounded-2xl border border-line-strong shadow-[0_40px_90px_-40px_rgba(0,0,0,0.9)] lg:h-[22rem] lg:w-auto xl:h-[28rem] 2xl:h-[30rem]"
@@ -162,10 +192,11 @@
         use:tilt
       >
         <img
-          src="/CLI.png"
+          src="/CLI.webp"
           alt={$_('hero.screenshot_cli_alt')}
           width="664"
           height="630"
+          fetchpriority="high"
           decoding="async"
           class="block w-full rounded-2xl border border-line-strong shadow-[0_40px_90px_-40px_rgba(0,0,0,0.9)] lg:h-[22rem] lg:w-auto xl:h-[28rem] 2xl:h-[30rem]"
         />
@@ -190,9 +221,11 @@
               {#if !SENTENCE_FACTS.has(f)}
                 <dd class="text-xs text-ink-faint">{$_(`facts.${f}.label`)}</dd>
               {/if}
-              <span class="ml-4 h-1 w-1 shrink-0 rounded-full bg-accent/40" aria-hidden="true"
-              ></span>
             </div>
+            <!-- The dot separates two items, so it sits between them rather than
+                 inside one: as a child it only had the item's own gap on its left
+                 and both paddings on its right, which read as off-centre. -->
+            <span class="h-1 w-1 shrink-0 rounded-full bg-accent/40" aria-hidden="true"></span>
           {/each}
         </dl>
       {/each}
@@ -224,7 +257,7 @@
 
       <div class="reveal" use:reveal={{ delay: 100 }}>
         <div
-          class="tilt rounded-2xl border border-line bg-surface p-6 shadow-[0_40px_90px_-40px_rgba(0,0,0,0.9)] sm:p-8"
+          class="tilt rounded-2xl border border-line bg-surface p-6 sm:p-8"
           use:tilt
         >
           <SyncDiagram />
@@ -245,9 +278,6 @@
 
 <!-- ───────── SELF-HOST ───────── -->
 <SelfHostSection />
-
-<!-- ───────── FREE AND OPEN SOURCE ───────── -->
-<CtaSection />
 
 <!-- ───────── SUPPORT HOARD ───────── -->
 <SupportSection />
