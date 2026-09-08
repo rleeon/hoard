@@ -1382,11 +1382,23 @@ where
     //
     // An `Err` here is not fatal. Compression is an optimisation, so a machine
     // that will not give us a scratch directory uploads raw exactly as before.
-    let staging = match upload_staging_dir().await {
-        Ok(dir) => Some(dir),
-        Err(e) => {
-            tracing::warn!(error = %format!("{e:#}"), "no staging dir, uploading uncompressed");
-            None
+    //
+    // `HOARD_UPLOAD_COMPRESS=0` turns it off. It exists so `hoard-pruebas` can
+    // measure the same upload both ways in one run, and it doubles as the way
+    // out if compressing on the client ever turns out to be the wrong trade on
+    // some machine: no release needed, no server change.
+    let compress_enabled = std::env::var("HOARD_UPLOAD_COMPRESS")
+        .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
+        .unwrap_or(true);
+    let staging = if !compress_enabled {
+        None
+    } else {
+        match upload_staging_dir().await {
+            Ok(dir) => Some(dir),
+            Err(e) => {
+                tracing::warn!(error = %format!("{e:#}"), "no staging dir, uploading uncompressed");
+                None
+            }
         }
     };
     let compressed_shas = std::sync::Mutex::new(Vec::<String>::new());
