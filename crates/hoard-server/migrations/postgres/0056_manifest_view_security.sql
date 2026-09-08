@@ -1,0 +1,42 @@
+-- Close a live data leak: `manifest_files` was readable by anyone.
+--
+-- The view was created in 0054 without `security_invoker`, so it ran with its
+-- owner's rights (`postgres`, which has BYPASSRLS) instead of the caller's.
+-- Postgres was doing exactly what it was told; the problem is that the view
+-- also carried the default grants, so `anon` and `authenticated` could reach
+-- it through PostgREST and read straight past every RLS policy underneath.
+--
+-- Verified against production before writing this, with the publishable key
+-- that ships inside the web bundle and no session at all:
+--
+--   GET /rest/v1/manifest_files?limit=2
+--     -> [{"save_id":"0003a626...","relative_path":"default.sav","sha256":...}]
+--   GET /rest/v1/saves?limit=2
+--     -> []
+--
+-- The second line is the point: RLS was working everywhere else. One view
+-- undid it for 635.598 rows of file paths, digests and sizes belonging to
+-- every account.
+--
+-- Two changes, either of which would have been enough, because this is not a
+-- place to be economical:
+--
+--   1. Take the grants away. Nothing outside the server ever needed to read
+--      this: the view exists so the server's own SQL can keep speaking the old
+--      manifest shape, and the server connects as `postgres`.
+--   2. Make it run as its caller. Then the RLS on `file_entries` and
+--      `version_files` applies, and since neither has a policy, everything but
+--      a BYPASSRLS role gets nothing. The server is unaffected: `postgres` and
+--      `service_role` both carry BYPASSRLS, checked before this was written.
+REVOKE ALL ON public.manifest_files FROM anon, authenticated;
+ALTER VIEW public.manifest_files SET (security_invoker = true);
+
+-- Production has row level security on the migration ledger; staging did not,
+-- so it was turned on by hand somewhere and never written down. The deny-all
+-- policy has existed since 0012 and does nothing at all while RLS is off,
+-- which is the worst shape for a guard to be in: present, and asleep.
+--
+-- Same class as the `fillfactor` on `profiles`, the hand-made index that no
+-- migration created, and the RLS on the interned manifest tables. This base
+-- keeps accumulating settings that live only in production.
+ALTER TABLE public._sqlx_migrations ENABLE ROW LEVEL SECURITY;
