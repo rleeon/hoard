@@ -1707,7 +1707,8 @@ async fn upload_staging_dir() -> Result<PathBuf> {
 /// machine while they are playing, and the ratio between the two is worth a few
 /// percent of storage against several times the CPU. The number is a knob, and
 /// `hoard-pruebas` is where it gets argued with measurements rather than taste.
-async fn compress_for_upload(src: &Path, dest: &Path) -> Result<(String, u64, u64)> {
+#[doc(hidden)]
+pub async fn compress_for_upload(src: &Path, dest: &Path) -> Result<(String, u64, u64)> {
     use tokio::io::AsyncWriteExt;
 
     let mut input = tokio::fs::File::open(src)
@@ -1757,7 +1758,8 @@ async fn compress_for_upload(src: &Path, dest: &Path) -> Result<(String, u64, u6
 /// archives, audio) give back nothing at all for a full pass over their bytes.
 /// Whatever slips through both is still checked against the real ratio after
 /// the fact, so these only exist to avoid the wasted work, never to be right.
-fn worth_compressing(relative_path: &str, size_bytes: u64) -> bool {
+#[doc(hidden)]
+pub fn worth_compressing(relative_path: &str, size_bytes: u64) -> bool {
     const FLOOR: u64 = 16 * 1024;
     if size_bytes < FLOOR {
         return false;
