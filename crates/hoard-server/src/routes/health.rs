@@ -33,6 +33,11 @@ pub struct ServerState {
 /// doesn't see the flag is talking to a server old enough to only understand the
 /// multipart upload. There is no way to infer it from `version`: client and
 /// server are updated independently, which is the whole reason it's here.
+///
+/// `blob_zstd` says the same about compressed blob bodies. It matters more than
+/// most: a client that sent a zstd body to a server without this would have
+/// every upload rejected for not hashing to its declared sha, and self-hosted
+/// servers are updated by whoever runs them, whenever they feel like it.
 fn body(status: &str, uptime_secs: u64) -> Health {
     Health {
         status: status.to_string(),
@@ -42,6 +47,7 @@ fn body(status: &str, uptime_secs: u64) -> Health {
         mode: None,
         cas: true,
         devices: true,
+        blob_zstd: true,
     }
 }
 

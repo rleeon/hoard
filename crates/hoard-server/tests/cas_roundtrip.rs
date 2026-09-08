@@ -202,6 +202,7 @@ async fn backup_at(
             State(h.state.clone()),
             Extension(h.user.clone()),
             Path((init.upload_id.clone(), missing.sha256.as_str().to_string())),
+            axum::http::HeaderMap::new(),
             Body::from(bytes.to_vec()),
         )
         .await
@@ -370,6 +371,7 @@ async fn bytes_that_dont_match_their_sha_are_refused() {
             init.upload_id.clone(),
             init.missing[0].sha256.as_str().to_string(),
         )),
+        axum::http::HeaderMap::new(),
         Body::from(b"otra partida distinta".to_vec()),
     )
     .await
@@ -588,6 +590,7 @@ async fn another_users_upload_area_is_not_reachable() {
         State(h.state.clone()),
         Extension(intruder),
         Path((init.upload_id.clone(), sha_of(&data))),
+        axum::http::HeaderMap::new(),
         Body::from(data.clone()),
     )
     .await
@@ -599,6 +602,7 @@ async fn another_users_upload_area_is_not_reachable() {
         State(h.state.clone()),
         Extension(h.user.clone()),
         Path(("../../escape".to_string(), sha_of(&data))),
+        axum::http::HeaderMap::new(),
         Body::from(data),
     )
     .await
@@ -651,4 +655,129 @@ async fn the_history_row_says_which_save_moved() {
     assert_eq!(i.changed_files, 1);
     assert_eq!(i.removed_files, 0);
     assert_eq!(i.delta_bytes, 1_000);
+}
+
+/// A blob sent compressed lands raw, and the sha it is filed under is the raw
+/// content's.
+///
+/// This is the pair to the client compressing before it uploads. Getting it
+/// wrong does not fail loudly: the server would file zstd bytes under the raw
+/// file's sha, dedup would keep matching, and the corruption would only surface
+/// as a save that no longer loads, long after the upload that caused it.
+#[tokio::test]
+async fn a_compressed_blob_is_decoded_before_it_is_stored() {
+    let h = harness().await;
+    let raw = b"a save that repeats itself, a save that repeats itself, ".repeat(200);
+    let sha = sha_of(&raw);
+
+    let init = cas::init(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasInit {
+            base_version: None,
+            files: vec![CasFile {
+                relative_path: "save.dat".into(),
+                sha256: Sha256Hex::parse(&sha).unwrap(),
+                size_bytes: raw.len() as i64,
+                modified_at: None,
+            }],
+        }),
+    )
+    .await
+    .expect("init")
+    .0;
+    assert_eq!(init.missing.len(), 1, "the server has never seen this blob");
+
+    let squashed = zstd_bytes(&raw).await;
+    assert!(squashed.len() < raw.len(), "the fixture has to compress");
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert("x-hoard-blob-encoding", "zstd".parse().unwrap());
+    let code = cas::upload_blob(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path((init.upload_id.clone(), sha.clone())),
+        headers,
+        Body::from(squashed),
+    )
+    .await
+    .expect("the compressed body is accepted");
+    assert_eq!(code, StatusCode::NO_CONTENT);
+
+    let snap = cas::commit(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasCommit {
+            upload_id: init.upload_id.clone(),
+            base_version: None,
+            device_name: None,
+            notes: None,
+            files: vec![CasFile {
+                relative_path: "save.dat".into(),
+                sha256: Sha256Hex::parse(&sha).unwrap(),
+                size_bytes: raw.len() as i64,
+                modified_at: None,
+            }],
+        }),
+    )
+    .await
+    .expect("commit")
+    .1
+     .0;
+    assert_eq!(snap.file_count, 1);
+    assert_eq!(
+        snap.total_size_bytes,
+        raw.len() as i64,
+        "the size accounted for is the raw size, not what travelled"
+    );
+}
+
+/// The same body without the header is what it looks like: zstd bytes that do
+/// not hash to the sha they were announced under, and the server has to say so
+/// rather than store them.
+#[tokio::test]
+async fn compressed_bytes_without_the_header_are_rejected() {
+    let h = harness().await;
+    let raw = b"another save that repeats itself ".repeat(200);
+    let sha = sha_of(&raw);
+
+    let init = cas::init(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasInit {
+            base_version: None,
+            files: vec![CasFile {
+                relative_path: "save.dat".into(),
+                sha256: Sha256Hex::parse(&sha).unwrap(),
+                size_bytes: raw.len() as i64,
+                modified_at: None,
+            }],
+        }),
+    )
+    .await
+    .expect("init")
+    .0;
+
+    let err = cas::upload_blob(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path((init.upload_id.clone(), sha.clone())),
+        axum::http::HeaderMap::new(),
+        Body::from(zstd_bytes(&raw).await),
+    )
+    .await
+    .expect_err("undeclared compressed bytes must be refused");
+    assert_eq!(err.0, StatusCode::BAD_REQUEST);
+}
+
+/// zstd-compress in memory, the way the client does before it uploads.
+async fn zstd_bytes(raw: &[u8]) -> Vec<u8> {
+    use tokio::io::AsyncWriteExt;
+    let mut enc = async_compression::tokio::write::ZstdEncoder::new(Vec::new());
+    enc.write_all(raw).await.expect("compress");
+    enc.shutdown().await.expect("finish");
+    enc.into_inner()
 }

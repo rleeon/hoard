@@ -88,6 +88,14 @@ pub struct Health {
     /// when `false` so the release golden still matches byte for byte.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cas: bool,
+    /// This server accepts blob bodies compressed with zstd
+    /// (`x-hoard-blob-encoding: zstd` on the CAS blob PUT). Same discipline as
+    /// [`Health::cas`], and it carries more weight than most: a client that
+    /// compressed against a server without this would have every blob rejected
+    /// for not hashing to its declared sha, and a self-hosted server updates
+    /// whenever the person running it decides to.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub blob_zstd: bool,
     /// This server keeps a device registry and live presence (`/v1/devices`,
     /// `/v1/presence/heartbeat`). Same discipline as [`Health::cas`]: a property
     /// of the binary, not a setting. Absent means a server older than 1.1.3,

@@ -4,8 +4,16 @@
 //! disk (the default, unchanged) or on any S3-compatible endpoint, selected by
 //! `[storage] backend`. Everything else, the SQLite index, auth, dedup and
 //! refcounts, retention, the client API, is identical between the two: the
-//! bucket only ever holds opaque zstd blob/chunk bytes, addressed by the same
+//! bucket only ever holds opaque blob/chunk bytes, addressed by the same
 //! per-user, sha-sharded key scheme the on-disk layout uses.
+//!
+//! Those bytes are the file's own, uncompressed. This used to say "zstd blob
+//! bytes", left over from when a snapshot was one `tar.zst`; under the
+//! content-addressed layout each blob is stored raw and only the download
+//! rebuild compresses, which is a different thing entirely. A client may now
+//! send a blob compressed to save its own upstream
+//! (`x-hoard-blob-encoding: zstd`), and the server decodes it before it ever
+//! reaches this layer.
 //!
 //! The one key scheme (`blobs/<user>/<ab>/<sha>` and `chunks/<user>/<ab>/<sha>`)
 //! mirrors `blobs::blob_path` / `chunking::chunk_path`, so `LocalFs` maps a key

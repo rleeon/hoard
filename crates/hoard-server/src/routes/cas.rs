@@ -449,12 +449,35 @@ async fn drain_then(
 /// promises, which on restore hands back a different save with nothing
 /// complaining. That is the silent corruption of aug-2026; the client already
 /// defends itself by hashing what leaves the socket, and this is the other half.
+/// Header a client sets when the body it is PUTting is zstd rather than the
+/// file itself.
+///
+/// Deliberately not `Content-Encoding`: a self-hosted server usually sits
+/// behind nginx, Caddy or a tunnel, and those are entitled to act on
+/// `Content-Encoding` (rewrite it, decompress it, refuse it). This is our own
+/// header, so nothing in the middle has an opinion about it.
+pub const BLOB_ENCODING_HEADER: &str = "x-hoard-blob-encoding";
+
 pub async fn upload_blob(
     State(state): State<Arc<ServerState>>,
     Extension(user): Extension<AuthUser>,
     Path((upload_id, sha)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
     body: Body,
 ) -> Result<StatusCode, ApiError> {
+    // The client may compress a blob before sending it, which is bandwidth it
+    // does not spend, and on a self-hosted server that bandwidth is often a
+    // home connection or a tunnel rather than a LAN.
+    //
+    // What lands on disk is still the raw file. The sha is the digest of the
+    // raw content and stays the identity of the blob everywhere, so the bytes
+    // are decoded here and everything downstream (dedup, refcounts, the tar
+    // rebuild on download, quota) carries on unchanged and unaware.
+    let body_is_zstd = headers
+        .get(BLOB_ENCODING_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.eq_ignore_ascii_case("zstd"))
+        .unwrap_or(false);
     let user_id = user.user_id.to_string();
     // The body is taken as a stream before the first validation: every error
     // from here on has to empty it before answering, or the client never gets
@@ -497,30 +520,73 @@ pub async fn upload_blob(
     };
     let mut hasher = Sha256::new();
     let mut size: i64 = 0;
-    while let Some(chunk) = stream.next().await {
-        let chunk = match chunk {
-            Ok(c) => c,
-            Err(e) => {
-                warn!(error = %e, "cas blob stream error");
+    if body_is_zstd {
+        // Same loop, one decoder in front. The size cap is applied to the
+        // decoded bytes, which is both the number that matters (it is what the
+        // disk and the quota see) and the guard against a small body that
+        // expands without end.
+        //
+        // The error paths do not call `drain_then`: the raw stream now lives
+        // inside the decoder and cannot be drained separately. A failed
+        // compressed upload therefore closes rather than draining politely,
+        // which costs the client a retry it was going to do anyway.
+        let reader = tokio_util::io::StreamReader::new(
+            stream.map(|r| r.map_err(|e| std::io::Error::other(e.to_string()))),
+        );
+        let mut decoder =
+            async_compression::tokio::bufread::ZstdDecoder::new(tokio::io::BufReader::new(reader));
+        let mut buf = vec![0u8; 64 * 1024];
+        loop {
+            let n = match tokio::io::AsyncReadExt::read(&mut decoder, &mut buf).await {
+                Ok(0) => break,
+                Ok(n) => n,
+                Err(e) => {
+                    warn!(error = %e, "cas blob decode error");
+                    let _ = tokio::fs::remove_file(&dest).await;
+                    return Err(err(
+                        StatusCode::BAD_REQUEST,
+                        "the compressed body could not be decoded",
+                    ));
+                }
+            };
+            size += n as i64;
+            if size > max_per_blob {
                 let _ = tokio::fs::remove_file(&dest).await;
-                return Err(err(StatusCode::BAD_REQUEST, "stream error"));
+                return Err(snapshot_too_large(max_per_blob, size));
             }
-        };
-        size += chunk.len() as i64;
-        if size > max_per_blob {
-            let _ = tokio::fs::remove_file(&dest).await;
-            // What we already read counts against the drain cap: a blob over
-            // the server's limit is precisely the one not worth swallowing
-            // whole just to reject it politely.
-            let e = snapshot_too_large(max_per_blob, size);
-            return Err(drain_then(&mut stream, e, size.max(0) as u64).await);
+            hasher.update(&buf[..n]);
+            if let Err(e) = file.write_all(&buf[..n]).await {
+                warn!(error = %e, "cas blob write error");
+                let _ = tokio::fs::remove_file(&dest).await;
+                return Err(internal_logged("writing the uploaded blob", e));
+            }
         }
-        hasher.update(&chunk);
-        if let Err(e) = file.write_all(&chunk).await {
-            warn!(error = %e, "cas blob write error");
-            let _ = tokio::fs::remove_file(&dest).await;
-            let e = internal_logged("writing the uploaded blob", e);
-            return Err(drain_then(&mut stream, e, size.max(0) as u64).await);
+    } else {
+        while let Some(chunk) = stream.next().await {
+            let chunk = match chunk {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!(error = %e, "cas blob stream error");
+                    let _ = tokio::fs::remove_file(&dest).await;
+                    return Err(err(StatusCode::BAD_REQUEST, "stream error"));
+                }
+            };
+            size += chunk.len() as i64;
+            if size > max_per_blob {
+                let _ = tokio::fs::remove_file(&dest).await;
+                // What we already read counts against the drain cap: a blob over
+                // the server's limit is precisely the one not worth swallowing
+                // whole just to reject it politely.
+                let e = snapshot_too_large(max_per_blob, size);
+                return Err(drain_then(&mut stream, e, size.max(0) as u64).await);
+            }
+            hasher.update(&chunk);
+            if let Err(e) = file.write_all(&chunk).await {
+                warn!(error = %e, "cas blob write error");
+                let _ = tokio::fs::remove_file(&dest).await;
+                let e = internal_logged("writing the uploaded blob", e);
+                return Err(drain_then(&mut stream, e, size.max(0) as u64).await);
+            }
         }
     }
     if let Err(e) = file.flush().await {

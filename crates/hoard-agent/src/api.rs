@@ -1576,22 +1576,29 @@ impl ApiClient {
     /// Goes through `upload_http` (no total timeout) for the same reason as the
     /// multipart: a blob can be gigabytes and a fixed ceiling would kill the
     /// upload halfway through.
+    /// `zstd` says the body is compressed rather than the file itself. The sha
+    /// in the path is still the raw content's, and the server decodes before it
+    /// verifies. An older server does not know the header, ignores it, and
+    /// would then reject the body for not matching its sha, so the caller only
+    /// sets it once it knows the server understands it.
     pub async fn cas_upload_blob(
         &self,
         upload_id: &str,
         sha256: &str,
         body: reqwest::Body,
         content_length: u64,
+        zstd: bool,
     ) -> Result<()> {
-        let resp = self
+        let mut req = self
             .upload_http
             .put(self.url(&format!("/v1/cas/blobs/{upload_id}/{sha256}")))
             .header("authorization", self.auth_header())
             .header(reqwest::header::CONTENT_LENGTH, content_length)
-            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
-            .body(body)
-            .send()
-            .await?;
+            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream");
+        if zstd {
+            req = req.header("x-hoard-blob-encoding", "zstd");
+        }
+        let resp = req.body(body).send().await?;
         Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
         Ok(())
     }

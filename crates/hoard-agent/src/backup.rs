@@ -1091,14 +1091,66 @@ where
     // give-up budget has to be counted once for the whole upload.
     let paced_wait_ms = AtomicU64::new(0);
     progress(0, denom);
+    // Compressing before sending is worth the same here as it is against Cloud:
+    // the bytes that do not travel are the user's own upstream, which on a
+    // self-hosted setup is usually a home connection or a tunnel rather than a
+    // LAN. What the server stores is still the raw file, so nothing downstream
+    // changes: it decodes, verifies the sha and carries on.
+    //
+    // Gated on the server saying it understands the header. An older
+    // self-hosted server would ignore it and then reject every blob for not
+    // hashing to its declared sha, and those servers update when whoever runs
+    // them decides to, which may be never.
+    let server_takes_zstd = client.health().await.map(|h| h.blob_zstd).unwrap_or(false);
+    let staging = if !server_takes_zstd || !upload_compression_enabled() {
+        None
+    } else {
+        match upload_staging_dir().await {
+            Ok(dir) => Some(dir),
+            Err(e) => {
+                tracing::warn!(error = %format!("{e:#}"), "no staging dir, uploading uncompressed");
+                None
+            }
+        }
+    };
+
     let mut put_futs = Vec::with_capacity(pending.len());
     for (f, sha) in pending {
         let uploaded = &uploaded;
         let paced_wait_ms = &paced_wait_ms;
         let progress = &progress;
         let upload_id = init.upload_id.as_str();
+        let staging = staging.as_deref();
         put_futs.push(
             async move {
+                let zstd_tmp = match staging {
+                    Some(dir) => prepare_compressed(dir, &sha, f).await,
+                    None => None,
+                };
+                if let Some((tmp, stored)) = &zstd_tmp {
+                    put_blob_paced(&f.relative_path, paced_wait_ms, || async {
+                        let file = tokio::fs::File::open(tmp)
+                            .await
+                            .with_context(|| format!("opening {}", tmp.display()))?;
+                        let stream = tokio_util::io::ReaderStream::new(file);
+                        client
+                            .cas_upload_blob(
+                                upload_id,
+                                &sha,
+                                reqwest::Body::wrap_stream(stream),
+                                *stored,
+                                true,
+                            )
+                            .await
+                            .with_context(|| format!("uploading {}", f.relative_path))?;
+                        Ok(())
+                    })
+                    .await?;
+                    let _ = tokio::fs::remove_file(tmp).await;
+                    let done = uploaded.fetch_add(f.size_bytes, Ordering::Relaxed) + f.size_bytes;
+                    progress(done, denom);
+                    return Ok::<_, anyhow::Error>(());
+                }
                 put_blob_paced(&f.relative_path, paced_wait_ms, || async {
                     let file = tokio::fs::File::open(&f.absolute_path)
                         .await
@@ -1110,6 +1162,7 @@ where
                             &sha,
                             reqwest::Body::wrap_stream(stream),
                             f.size_bytes,
+                            false,
                         )
                         .await
                         .with_context(|| format!("uploading {}", f.relative_path))?;
@@ -1387,10 +1440,7 @@ where
     // measure the same upload both ways in one run, and it doubles as the way
     // out if compressing on the client ever turns out to be the wrong trade on
     // some machine: no release needed, no server change.
-    let compress_enabled = std::env::var("HOARD_UPLOAD_COMPRESS")
-        .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
-        .unwrap_or(true);
-    let staging = if !compress_enabled {
+    let staging = if !upload_compression_enabled() {
         None
     } else {
         match upload_staging_dir().await {
@@ -1412,44 +1462,10 @@ where
         let compressed_shas = &compressed_shas;
         put_futs.push(
             async move {
-                // Compress before sending when it looks like it will pay. Every
-                // failure here falls back to sending the file as it is: this
-                // saves the user bandwidth, and it must never be the reason a
-                // backup does not happen.
-                let mut zstd_tmp: Option<(PathBuf, u64)> = None;
-                if let Some(dir) = staging {
-                    if worth_compressing(&f.relative_path, f.size_bytes)
-                        && sample_compresses(&f.absolute_path, f.size_bytes).await
-                    {
-                        let dest = dir.join(format!("{}.zst", blob.sha256));
-                        match compress_for_upload(&f.absolute_path, &dest).await {
-                            Ok((raw_sha, raw_len, stored)) => {
-                                // Five percent or it is not worth a second copy
-                                // of the bytes and a decode on the way back.
-                                let pays = stored.saturating_add(stored / 20) < raw_len;
-                                // The digest is taken over the raw bytes as they
-                                // are read, so this is the same guarantee
-                                // `verify_sent` gives the raw path, just earlier:
-                                // a file that changed under us is caught before
-                                // anything is sent rather than after.
-                                let intact = raw_sha == blob.sha256 && raw_len == f.size_bytes;
-                                if pays && intact {
-                                    zstd_tmp = Some((dest, stored));
-                                } else {
-                                    let _ = tokio::fs::remove_file(&dest).await;
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    path = %f.relative_path,
-                                    error = %format!("{e:#}"),
-                                    "compressing for upload failed, sending it raw"
-                                );
-                                let _ = tokio::fs::remove_file(&dest).await;
-                            }
-                        }
-                    }
-                }
+                let zstd_tmp = match staging {
+                    Some(dir) => prepare_compressed(dir, &blob.sha256, f).await,
+                    None => None,
+                };
 
                 if let Some((tmp, stored)) = &zstd_tmp {
                     put_blob_paced(&f.relative_path, paced_wait_ms, || async {
@@ -1667,6 +1683,60 @@ fn hashing_stream(
         }
     });
     (stream, sent)
+}
+
+/// Is compressing uploads switched on at all?
+///
+/// `HOARD_UPLOAD_COMPRESS=0` turns it off. It exists so `hoard-pruebas` can
+/// measure the same upload both ways in one run, and it doubles as the way out
+/// if compressing on the client ever turns out to be the wrong trade on some
+/// machine: no release needed, no server change.
+fn upload_compression_enabled() -> bool {
+    std::env::var("HOARD_UPLOAD_COMPRESS")
+        .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
+        .unwrap_or(true)
+}
+
+/// Compress one blob into `dir` if it is worth it, returning the staged file
+/// and how many bytes it holds.
+///
+/// `None` means send the file as it is, and that is the answer for every case
+/// that goes wrong as well as every case that does not pay. Compression saves
+/// the user bandwidth; it must never be the reason a backup does not happen.
+async fn prepare_compressed(dir: &Path, sha: &str, f: &UploadFile) -> Option<(PathBuf, u64)> {
+    if !worth_compressing(&f.relative_path, f.size_bytes) {
+        return None;
+    }
+    if !sample_compresses(&f.absolute_path, f.size_bytes).await {
+        return None;
+    }
+    let dest = dir.join(format!("{sha}.zst"));
+    match compress_for_upload(&f.absolute_path, &dest).await {
+        Ok((raw_sha, raw_len, stored)) => {
+            // Five percent or it is not worth a second copy of the bytes and a
+            // decode on the way back.
+            let pays = stored.saturating_add(stored / 20) < raw_len;
+            // The digest is taken over the raw bytes as they are read, so this
+            // is the same guarantee `verify_sent` gives the uncompressed path,
+            // just earlier: a file that changed under us is caught before
+            // anything is sent rather than after.
+            let intact = raw_sha == sha && raw_len == f.size_bytes;
+            if pays && intact {
+                return Some((dest, stored));
+            }
+            let _ = tokio::fs::remove_file(&dest).await;
+            None
+        }
+        Err(e) => {
+            tracing::warn!(
+                path = %f.relative_path,
+                error = %format!("{e:#}"),
+                "compressing for upload failed, sending it raw"
+            );
+            let _ = tokio::fs::remove_file(&dest).await;
+            None
+        }
+    }
 }
 
 /// Scratch directory for blobs being compressed on their way out.
