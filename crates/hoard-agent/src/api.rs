@@ -619,6 +619,16 @@ pub struct ApiClient {
     /// `/v1/presence/heartbeat`)? Filled in by the same probe, for the same
     /// reason.
     devices: Arc<OnceCell<bool>>,
+    /// Does this server accept blob bodies compressed with zstd, and record the
+    /// encoding when it does?
+    ///
+    /// This one gates a write, not a read, which is why it cannot be guessed.
+    /// A client that compressed against a server without it would have the
+    /// blob stored as zstd bytes filed under the raw content's sha and the
+    /// encoding recorded nowhere. The upload would succeed and the version
+    /// would be **permanently unrestorable**: every later download hands back
+    /// compressed bytes that fail their own sha check.
+    blob_zstd: Arc<OnceCell<bool>>,
     /// The plan's per-save cap, learned from the last 413.
     ///
     /// It is not a probe like the ones above, which is why it is not a
@@ -697,6 +707,7 @@ impl ApiClient {
             mode: Arc::new(OnceCell::new()),
             cas: Arc::new(OnceCell::new()),
             devices: Arc::new(OnceCell::new()),
+            blob_zstd: Arc::new(OnceCell::new()),
             plan_cap: Arc::new(RwLock::new(None)),
         })
     }
@@ -771,6 +782,7 @@ impl ApiClient {
                 // capabilities always describe the same server.
                 let _ = self.cas.set(h.cas);
                 let _ = self.devices.set(h.devices);
+                let _ = self.blob_zstd.set(h.blob_zstd);
                 Ok::<_, anyhow::Error>(h.mode)
             })
             .await
@@ -796,6 +808,17 @@ impl ApiClient {
     /// [`Self::probed_is_cloud`], which is what [`Self::has_presence`] does.
     pub fn probed_supports_devices(&self) -> Option<bool> {
         self.devices.get().copied()
+    }
+
+    /// May this client compress blobs before uploading them?
+    ///
+    /// It probes when it has to, and answers **false** on any doubt: a failed
+    /// probe, an older server, anything. Compression is an optimisation and the
+    /// cost of getting it wrong is a version that can never be restored, so the
+    /// two sides of that trade are not close.
+    pub async fn accepts_compressed_blobs(&self) -> bool {
+        let _ = self.server_mode().await;
+        self.blob_zstd.get().copied().unwrap_or(false)
     }
 
     /// Is it worth sending this server presence heartbeats? Cloud always;

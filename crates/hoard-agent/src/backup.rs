@@ -1101,7 +1101,7 @@ where
     // self-hosted server would ignore it and then reject every blob for not
     // hashing to its declared sha, and those servers update when whoever runs
     // them decides to, which may be never.
-    let server_takes_zstd = client.health().await.map(|h| h.blob_zstd).unwrap_or(false);
+    let server_takes_zstd = client.accepts_compressed_blobs().await;
     let staging = if !server_takes_zstd || !upload_compression_enabled() {
         None
     } else {
@@ -1440,7 +1440,19 @@ where
     // measure the same upload both ways in one run, and it doubles as the way
     // out if compressing on the client ever turns out to be the wrong trade on
     // some machine: no release needed, no server change.
-    let staging = if !upload_compression_enabled() {
+    // Gated on the server saying it understands compressed blobs, exactly like
+    // the self-hosted path. Without this a 1.1.7 client against a server still
+    // on 1.1.6 would compress, the server would file the bytes under the raw
+    // sha with no encoding recorded anywhere, and that version would never
+    // restore again: the download hands back zstd bytes that fail their own sha
+    // check. The upload reports success, so nobody finds out until somebody
+    // tries to get their save back.
+    //
+    // It also settles the release order. The rule here is normally app first
+    // and server an hour later; for this change that order is backwards, and
+    // this gate is what makes it stop mattering.
+    let server_takes_zstd = client.accepts_compressed_blobs().await;
+    let staging = if !server_takes_zstd || !upload_compression_enabled() {
         None
     } else {
         match upload_staging_dir().await {

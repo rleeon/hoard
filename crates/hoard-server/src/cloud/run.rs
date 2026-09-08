@@ -466,6 +466,7 @@ async fn cloud_health(State(state): State<CloudState>) -> axum::Json<HealthBody>
         status: if db_ok { "ok" } else { "degraded" },
         version: env!("CARGO_PKG_VERSION"),
         mode: "cloud",
+        blob_zstd: true,
         log_min_level: "warn",
     })
 }
@@ -480,4 +481,9 @@ struct HealthBody {
     /// `EXEMPT_TARGETS` (detection contradictions and Screen telemetry) are
     /// exempt on both sides.
     log_min_level: &'static str,
+    /// This server understands `zstd` in the `cas/commit` body and records the
+    /// encoding it is told about. Without it a client must not compress: the
+    /// bytes would be stored compressed under the raw sha with nothing saying
+    /// so, and the version would never restore again.
+    blob_zstd: bool,
 }

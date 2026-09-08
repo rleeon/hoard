@@ -818,4 +818,30 @@ mod tests {
         assert_eq!(out["version_num"], 1);
         assert!(out["files"].is_array());
     }
+
+    /// A server that predates a capability does not mention it, and the client
+    /// has to read that silence as "no".
+    ///
+    /// `blob_zstd` is the one where getting this backwards is expensive. A
+    /// client that compressed against a server without it would upload zstd
+    /// bytes filed under the raw content's sha, with nothing recording the
+    /// encoding, and that version would never restore again: every download
+    /// hands back compressed bytes that fail their own sha check. The upload
+    /// reports success, so it surfaces the day somebody wants their save back.
+    #[test]
+    fn an_older_server_advertises_no_capabilities_at_all() {
+        let old: Health = serde_json::from_str(
+            r#"{"status":"ok","version":"1.1.6","mode":"cloud","log_min_level":"warn"}"#,
+        )
+        .expect("an older health body still parses");
+        assert!(!old.blob_zstd, "silence means the server cannot take zstd");
+        assert!(!old.cas);
+        assert!(!old.devices);
+
+        let new: Health = serde_json::from_str(
+            r#"{"status":"ok","version":"1.1.7","mode":"cloud","log_min_level":"warn","blob_zstd":true}"#,
+        )
+        .expect("the new body parses");
+        assert!(new.blob_zstd);
+    }
 }
