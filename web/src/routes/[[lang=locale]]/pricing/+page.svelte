@@ -111,8 +111,8 @@
 
   <!-- Billing cycle, centred on the table as a whole. The "2 months free" note
        hangs off the toggle absolutely so it cannot shove it off centre. -->
-  <div class="reveal relative mb-6 mt-14 flex justify-center" use:reveal>
-    <div class="relative">
+  <div class="reveal relative mb-6 mt-14 flex flex-col items-center gap-2 sm:block sm:text-center" use:reveal>
+    <div class="relative inline-block">
       <div class="inline-flex rounded-full border border-line bg-surface p-1">
         <button
           class="rounded-full px-4 py-1.5 text-sm transition-colors {cycle === 'monthly'
@@ -128,7 +128,7 @@
         >
       </div>
       <span
-        class="pointer-events-none absolute left-full top-1/2 ml-3 -translate-y-1/2 whitespace-nowrap font-mono text-[11px] text-accent transition-opacity"
+        class="pointer-events-none whitespace-nowrap font-mono text-[11px] text-accent transition-opacity max-sm:mt-2 max-sm:block sm:absolute sm:left-full sm:top-1/2 sm:ml-3 sm:-translate-y-1/2"
         style="opacity: {cycle === 'yearly' ? 1 : 0.5}">{$_('pricing.yearly_badge')}</span
       >
     </div>
@@ -136,7 +136,10 @@
 
   <!-- Comparison. The Pro column is a run of bordered cells, not a background
        panel with cells drawn over it, so nothing can eat its right edge. -->
-  <div class="grid grid-cols-[1.5fr_1fr_1.2fr] overflow-hidden rounded-2xl border border-line">
+  <!-- Three columns need room, so below `sm` the plans stack as two cards
+       instead. The old page did the same; rewriting it I dropped the phone half
+       and the Pro column ran off the screen. -->
+  <div class="hidden grid-cols-[1.5fr_1fr_1.2fr] overflow-hidden rounded-2xl border border-line sm:grid">
     <div class="border-b border-line p-5"></div>
     <div class="flex flex-col gap-2 border-b border-l border-line p-5 text-center">
       <h2 class="font-display text-lg font-semibold text-ink">Hoard Free</h2>
@@ -195,6 +198,63 @@
         {/if}
       </div>
     {/each}
+  </div>
+
+  <div class="grid gap-5 sm:hidden">
+    <div class="rounded-2xl border border-line bg-surface p-6">
+      <h2 class="font-display text-lg font-semibold text-ink">Hoard Free</h2>
+      <p class="mt-1 font-mono text-2xl text-ink">0 €</p>
+      <p class="text-xs text-ink-faint">{$_('pricing.free_forever')}</p>
+      <div class="mt-5">
+        <Button variant="outline" full onclick={() => choose('free')}>
+          {$_('pricing.cta_download_free')}
+        </Button>
+      </div>
+      <dl class="mt-6 space-y-2.5 text-sm">
+        {#each rows as r (r.label)}
+          <div class="flex items-center justify-between gap-4 border-t border-line pt-2.5">
+            <dt class="text-ink-soft">{r.label}</dt>
+            <dd class="font-mono text-ink">
+              {#if typeof r.free === 'boolean'}
+                {#if r.free}<Check class="h-4 w-4 text-accent" />{:else}<Minus
+                    class="h-4 w-4 text-ink-faint"
+                  />{/if}
+              {:else}{r.free}{/if}
+            </dd>
+          </div>
+        {/each}
+      </dl>
+    </div>
+
+    <div class="rounded-2xl border border-accent/45 bg-accent-tint p-6">
+      <h2 class="font-display text-lg font-semibold text-accent">Hoard Pro</h2>
+      <p class="mt-1 font-mono text-2xl text-ink">
+        {proPriceLabel}<span class="text-sm text-ink-faint">{proSuffix}</span>
+      </p>
+      <p class="text-xs text-ink-faint">
+        {cycle === 'monthly' ? $_('pricing.billed_monthly') : $_('pricing.billed_yearly')}
+      </p>
+      <div class="mt-5">
+        <Button variant="primary" full onclick={() => choose('pro')}>
+          {$_('pricing.cta_buy_pro')}
+        </Button>
+      </div>
+      <dl class="mt-6 space-y-2.5 text-sm">
+        {#each rows as r (r.label)}
+          <div class="flex items-center justify-between gap-4 border-t border-accent/20 pt-2.5">
+            <dt class="text-ink-soft">{r.label}</dt>
+            <dd class="text-right font-mono text-accent">
+              {#if typeof r.pro === 'boolean'}
+                {#if r.pro}<Check class="ml-auto h-4 w-4" />{:else}<Minus
+                    class="ml-auto h-4 w-4 text-ink-faint"
+                  />{/if}
+              {:else}{r.pro}{/if}
+            </dd>
+          </div>
+        {/each}
+      </dl>
+      <p class="mt-4 text-xs leading-relaxed text-accent/70">{$_('pricing.devices_tip')}</p>
+    </div>
   </div>
 
   <p class="reveal mx-auto mt-10 max-w-2xl text-center text-sm leading-relaxed text-ink-soft" use:reveal>
