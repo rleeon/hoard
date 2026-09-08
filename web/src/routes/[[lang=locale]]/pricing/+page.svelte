@@ -128,7 +128,7 @@
         >
       </div>
       <span
-        class="pointer-events-none whitespace-nowrap font-mono text-[11px] text-accent transition-opacity max-sm:mt-2 max-sm:block sm:absolute sm:left-full sm:top-1/2 sm:ml-3 sm:-translate-y-1/2"
+        class="pointer-events-none whitespace-nowrap font-mono text-[11px] text-accent transition-opacity max-sm:mt-2 max-sm:block max-sm:text-center sm:absolute sm:left-full sm:top-1/2 sm:ml-3 sm:-translate-y-1/2"
         style="opacity: {cycle === 'yearly' ? 1 : 0.5}">{$_('pricing.yearly_badge')}</span
       >
     </div>
