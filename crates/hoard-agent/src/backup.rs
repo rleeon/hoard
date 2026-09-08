@@ -9,6 +9,7 @@
 //! GUI gets it for free.
 
 use anyhow::{anyhow, bail, Context, Result};
+use async_compression::Level;
 use futures::stream::{self, StreamExt, TryStreamExt};
 use futures::FutureExt;
 use reqwest::multipart;
@@ -1374,41 +1375,120 @@ where
     // give-up budget has to be counted once for the whole upload.
     let paced_wait_ms = AtomicU64::new(0);
     progress(0, denom);
+    // Where the compressed copies live while they are being sent. Deliberately
+    // the cache directory and not the system temp: on most Linux boxes `/tmp` is
+    // a tmpfs, so staging a compressed save there would spend RAM to save
+    // bandwidth, which on a Steam Deck is the wrong trade entirely.
+    //
+    // An `Err` here is not fatal. Compression is an optimisation, so a machine
+    // that will not give us a scratch directory uploads raw exactly as before.
+    let staging = match upload_staging_dir().await {
+        Ok(dir) => Some(dir),
+        Err(e) => {
+            tracing::warn!(error = %format!("{e:#}"), "no staging dir, uploading uncompressed");
+            None
+        }
+    };
+    let compressed_shas = std::sync::Mutex::new(Vec::<String>::new());
+
     let mut put_futs = Vec::with_capacity(pending.len());
     for (blob, f) in pending {
         let uploaded = &uploaded;
         let paced_wait_ms = &paced_wait_ms;
         let progress = &progress;
+        let staging = staging.as_deref();
+        let compressed_shas = &compressed_shas;
         put_futs.push(
             async move {
-                put_blob_paced(&f.relative_path, paced_wait_ms, || async {
-                    let file = tokio::fs::File::open(&f.absolute_path)
-                        .await
-                        .with_context(|| format!("opening {}", f.absolute_path.display()))?;
-                    let (stream, sent) = hashing_stream(file);
-                    client
-                        .put_presigned(
-                            &blob.upload,
-                            reqwest::Body::wrap_stream(stream),
-                            f.size_bytes,
-                        )
-                        .await
-                        .with_context(|| format!("uploading {}", f.relative_path))?;
-                    // The object is already in the bucket, but without a commit it
-                    // exists for nobody: the `cloud_blobs` row is created when the
-                    // version is confirmed, and the server's dedup looks at that
-                    // table, not at the bucket. So aborting here leaves the object
-                    // orphaned (the GC sweeps it) and the next attempt asks for it
-                    // again and overwrites it with the good content. What must not
-                    // happen, and what did, is a version being confirmed that
-                    // points at bytes that are not its own.
-                    {
-                        let sent = sent.lock().map_err(|_| anyhow!("upload hasher poisoned"))?;
-                        verify_sent(&f.relative_path, &blob.sha256, f.size_bytes, &sent)?;
+                // Compress before sending when it looks like it will pay. Every
+                // failure here falls back to sending the file as it is: this
+                // saves the user bandwidth, and it must never be the reason a
+                // backup does not happen.
+                let mut zstd_tmp: Option<(PathBuf, u64)> = None;
+                if let Some(dir) = staging {
+                    if worth_compressing(&f.relative_path, f.size_bytes) {
+                        let dest = dir.join(format!("{}.zst", blob.sha256));
+                        match compress_for_upload(&f.absolute_path, &dest).await {
+                            Ok((raw_sha, raw_len, stored)) => {
+                                // Five percent or it is not worth a second copy
+                                // of the bytes and a decode on the way back.
+                                let pays = stored.saturating_add(stored / 20) < raw_len;
+                                // The digest is taken over the raw bytes as they
+                                // are read, so this is the same guarantee
+                                // `verify_sent` gives the raw path, just earlier:
+                                // a file that changed under us is caught before
+                                // anything is sent rather than after.
+                                let intact = raw_sha == blob.sha256 && raw_len == f.size_bytes;
+                                if pays && intact {
+                                    zstd_tmp = Some((dest, stored));
+                                } else {
+                                    let _ = tokio::fs::remove_file(&dest).await;
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    path = %f.relative_path,
+                                    error = %format!("{e:#}"),
+                                    "compressing for upload failed, sending it raw"
+                                );
+                                let _ = tokio::fs::remove_file(&dest).await;
+                            }
+                        }
                     }
-                    Ok(())
-                })
-                .await?;
+                }
+
+                if let Some((tmp, stored)) = &zstd_tmp {
+                    put_blob_paced(&f.relative_path, paced_wait_ms, || async {
+                        let file = tokio::fs::File::open(tmp)
+                            .await
+                            .with_context(|| format!("opening {}", tmp.display()))?;
+                        let stream = tokio_util::io::ReaderStream::new(file);
+                        client
+                            .put_presigned(
+                                &blob.upload,
+                                reqwest::Body::wrap_stream(stream),
+                                *stored,
+                            )
+                            .await
+                            .with_context(|| format!("uploading {}", f.relative_path))?;
+                        Ok(())
+                    })
+                    .await?;
+                    let _ = tokio::fs::remove_file(tmp).await;
+                    if let Ok(mut c) = compressed_shas.lock() {
+                        c.push(blob.sha256.clone());
+                    }
+                } else {
+                    put_blob_paced(&f.relative_path, paced_wait_ms, || async {
+                        let file = tokio::fs::File::open(&f.absolute_path)
+                            .await
+                            .with_context(|| format!("opening {}", f.absolute_path.display()))?;
+                        let (stream, sent) = hashing_stream(file);
+                        client
+                            .put_presigned(
+                                &blob.upload,
+                                reqwest::Body::wrap_stream(stream),
+                                f.size_bytes,
+                            )
+                            .await
+                            .with_context(|| format!("uploading {}", f.relative_path))?;
+                        // The object is already in the bucket, but without a commit it
+                        // exists for nobody: the `cloud_blobs` row is created when the
+                        // version is confirmed, and the server's dedup looks at that
+                        // table, not at the bucket. So aborting here leaves the object
+                        // orphaned (the GC sweeps it) and the next attempt asks for it
+                        // again and overwrites it with the good content. What must not
+                        // happen, and what did, is a version being confirmed that
+                        // points at bytes that are not its own.
+                        {
+                            let sent =
+                                sent.lock().map_err(|_| anyhow!("upload hasher poisoned"))?;
+                            verify_sent(&f.relative_path, &blob.sha256, f.size_bytes, &sent)?;
+                        }
+                        Ok(())
+                    })
+                    .await?;
+                }
                 let done = uploaded.fetch_add(f.size_bytes, Ordering::Relaxed) + f.size_bytes;
                 progress(done, denom);
                 Ok::<_, anyhow::Error>(())
@@ -1435,8 +1515,11 @@ where
             "cloud save id diverged, committing against the canonical cloud id"
         );
     }
+    let compressed_shas = compressed_shas
+        .into_inner()
+        .map_err(|_| anyhow!("compressed blob list poisoned"))?;
     let commit = client
-        .cloud_cas_commit(canonical_id, init.version_num)
+        .cloud_cas_commit(canonical_id, init.version_num, &compressed_shas)
         .await
         .context("cloud cas commit")?;
 
@@ -1570,6 +1653,128 @@ fn hashing_stream(
         }
     });
     (stream, sent)
+}
+
+/// Scratch directory for blobs being compressed on their way out.
+///
+/// Under the cache directory rather than the system temp on purpose: `/tmp` is
+/// a tmpfs on most Linux installs, so staging a compressed save there would
+/// spend RAM to save bandwidth. On a handheld that is exactly backwards.
+///
+/// Anything left behind by a crash is swept on the way in: the files are named
+/// by sha and are worthless once their upload is over, so an old one is only
+/// ever waste. An hour is long enough that a live upload is never touched.
+async fn upload_staging_dir() -> Result<PathBuf> {
+    let dir = crate::config::CliConfig::cache_dir()?.join("upload-tmp");
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .with_context(|| format!("creating {}", dir.display()))?;
+
+    if let Ok(mut entries) = tokio::fs::read_dir(&dir).await {
+        let cutoff = SystemTime::now() - Duration::from_secs(3600);
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let stale = match entry.metadata().await.and_then(|m| m.modified()) {
+                Ok(modified) => modified < cutoff,
+                Err(_) => false,
+            };
+            if stale {
+                let _ = tokio::fs::remove_file(entry.path()).await;
+            }
+        }
+    }
+    Ok(dir)
+}
+
+/// Compress `src` into `dest`, hashing the *raw* bytes on the way through.
+///
+/// Returns the raw sha, the raw length and the length that landed in `dest`.
+/// The sha of a blob is always the digest of its raw content, so it has to be
+/// taken here, before the encoder, and never off the bytes that travel.
+///
+/// Level 3 rather than the 9 the server's sweep uses: this runs on the player's
+/// machine while they are playing, and the ratio between the two is worth a few
+/// percent of storage against several times the CPU. The number is a knob, and
+/// `hoard-pruebas` is where it gets argued with measurements rather than taste.
+async fn compress_for_upload(src: &Path, dest: &Path) -> Result<(String, u64, u64)> {
+    use tokio::io::AsyncWriteExt;
+
+    let mut input = tokio::fs::File::open(src)
+        .await
+        .with_context(|| format!("opening {}", src.display()))?;
+    let out = tokio::fs::File::create(dest)
+        .await
+        .with_context(|| format!("creating {}", dest.display()))?;
+    let mut encoder =
+        async_compression::tokio::write::ZstdEncoder::with_quality(out, Level::Precise(3));
+
+    let mut digest = Sha256::new();
+    let mut raw_len: u64 = 0;
+    let mut buf = vec![0u8; 128 * 1024];
+    loop {
+        let n = tokio::io::AsyncReadExt::read(&mut input, &mut buf)
+            .await
+            .with_context(|| format!("reading {}", src.display()))?;
+        if n == 0 {
+            break;
+        }
+        digest.update(&buf[..n]);
+        raw_len += n as u64;
+        encoder
+            .write_all(&buf[..n])
+            .await
+            .with_context(|| format!("compressing into {}", dest.display()))?;
+    }
+    encoder
+        .shutdown()
+        .await
+        .with_context(|| format!("finishing {}", dest.display()))?;
+
+    let stored = tokio::fs::metadata(dest)
+        .await
+        .with_context(|| format!("sizing {}", dest.display()))?
+        .len();
+    Ok((hex::encode(digest.finalize()), raw_len, stored))
+}
+
+/// Is compressing this blob worth the CPU, the temporary file and the risk of
+/// getting nothing back?
+///
+/// Two gates, both cheap. Small files pay a per-file cost (a temp file, a read,
+/// a write) against a saving that cannot be large in absolute terms, and the
+/// already-compressed formats a save folder is full of (screenshots, packed
+/// archives, audio) give back nothing at all for a full pass over their bytes.
+/// Whatever slips through both is still checked against the real ratio after
+/// the fact, so these only exist to avoid the wasted work, never to be right.
+fn worth_compressing(relative_path: &str, size_bytes: u64) -> bool {
+    const FLOOR: u64 = 16 * 1024;
+    if size_bytes < FLOOR {
+        return false;
+    }
+    let ext = relative_path
+        .rsplit_once('.')
+        .map(|(_, e)| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    !matches!(
+        ext.as_str(),
+        "zst"
+            | "gz"
+            | "bz2"
+            | "xz"
+            | "zip"
+            | "7z"
+            | "rar"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "webp"
+            | "gif"
+            | "mp3"
+            | "ogg"
+            | "opus"
+            | "mp4"
+            | "webm"
+            | "bk2"
+    )
 }
 
 /// Is what went out what was declared? Pure, so it can be tested without a network.
@@ -2533,5 +2738,88 @@ mod paced_upload_tests {
         .await;
         assert!(r.is_err());
         assert_eq!(calls.load(Ordering::Relaxed), 1);
+    }
+}
+
+#[cfg(test)]
+mod compress_upload_tests {
+    use super::*;
+
+    /// The invariant the whole scheme rests on: compressing changes the bytes
+    /// that travel and nothing else. The sha stays the digest of the raw
+    /// content, because that is the dedup key the server matches on and the
+    /// value the client recomputes to know what is missing. Hash the compressed
+    /// bytes by mistake and every upload becomes a new blob forever.
+    #[tokio::test]
+    async fn compressing_preserves_the_raw_digest_and_length() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("save.dat");
+        let dest = dir.path().join("save.dat.zst");
+        let raw = b"a save that repeats itself over and over ".repeat(500);
+        tokio::fs::write(&src, &raw).await.unwrap();
+
+        let (sha, raw_len, stored) = compress_for_upload(&src, &dest).await.unwrap();
+
+        assert_eq!(sha, hex::encode(Sha256::digest(&raw)), "the raw digest");
+        assert_eq!(raw_len, raw.len() as u64, "the raw length");
+        assert!(
+            stored < raw_len,
+            "this fixture has to compress, got {stored} from {raw_len}"
+        );
+        assert_eq!(
+            tokio::fs::metadata(&dest).await.unwrap().len(),
+            stored,
+            "the reported size is the file on disk, which is the content-length"
+        );
+    }
+
+    /// Incompressible input still round-trips correctly. It just will not pass
+    /// the caller's "is this worth it" gate afterwards.
+    #[tokio::test]
+    async fn incompressible_input_still_reports_the_truth() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("noise.bin");
+        let dest = dir.path().join("noise.bin.zst");
+        // A counter is not random, but it is varied enough that zstd cannot do
+        // much with it, which is the shape being tested.
+        let raw: Vec<u8> = (0..40_000u32).flat_map(|n| n.to_le_bytes()).collect();
+        tokio::fs::write(&src, &raw).await.unwrap();
+
+        let (sha, raw_len, _stored) = compress_for_upload(&src, &dest).await.unwrap();
+        assert_eq!(sha, hex::encode(Sha256::digest(&raw)));
+        assert_eq!(raw_len, raw.len() as u64);
+    }
+
+    /// An empty file is a real thing in save folders and must not panic or
+    /// produce a bogus digest.
+    #[tokio::test]
+    async fn an_empty_file_compresses_without_drama() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("empty.dat");
+        let dest = dir.path().join("empty.dat.zst");
+        tokio::fs::write(&src, b"").await.unwrap();
+
+        let (sha, raw_len, _) = compress_for_upload(&src, &dest).await.unwrap();
+        assert_eq!(sha, hex::encode(Sha256::digest(b"")));
+        assert_eq!(raw_len, 0);
+    }
+
+    /// The gate exists to avoid wasted work, not to be clever. Tiny files and
+    /// formats that are already compressed give back nothing for a full pass
+    /// over their bytes plus a temporary copy of them.
+    #[test]
+    fn the_worth_it_gate_skips_the_pointless_cases() {
+        assert!(!worth_compressing("save.dat", 1024), "too small to bother");
+        assert!(worth_compressing("save.dat", 1024 * 1024), "worth a look");
+        assert!(
+            !worth_compressing("screenshot.PNG", 5 * 1024 * 1024),
+            "already compressed"
+        );
+        assert!(!worth_compressing("archive.zip", 5 * 1024 * 1024));
+        assert!(!worth_compressing("clip.mp4", 50 * 1024 * 1024));
+        assert!(
+            worth_compressing("no_extension_at_all", 1024 * 1024),
+            "a file with no extension is worth trying"
+        );
     }
 }

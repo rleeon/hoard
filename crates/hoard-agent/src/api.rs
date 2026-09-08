@@ -1159,10 +1159,15 @@ impl ApiClient {
 
     /// `POST /v1/cloud/saves/:id/versions/:n/cas/commit`: finalize a content-
     /// addressed upload once every missing blob has been PUT.
+    /// `zstd` names the blobs this upload stored compressed. Their `sha256` is
+    /// still the digest of the raw content; only the bytes in the bucket are
+    /// compressed, and the server needs telling because it cannot work it out
+    /// from the object alone. An older server ignores the body.
     pub async fn cloud_cas_commit(
         &self,
         save_id: &str,
         version: i64,
+        zstd: &[String],
     ) -> Result<CloudUploadCommitOut> {
         let resp = self
             .http
@@ -1170,6 +1175,7 @@ impl ApiClient {
                 "/v1/cloud/saves/{save_id}/versions/{version}/cas/commit"
             )))
             .header("authorization", self.auth_header())
+            .json(&serde_json::json!({ "zstd": zstd }))
             .send()
             .await?;
         let resp = Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;

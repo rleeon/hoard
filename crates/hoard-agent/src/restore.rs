@@ -1628,7 +1628,10 @@ mod blob_body_tests {
         let dest = dir.path().join("save.dat");
         let raw = b"a save file that repeats itself a save file that repeats itself".repeat(50);
         let body = squash(&raw).await;
-        assert!(body.len() < raw.len(), "the fixture has to actually compress");
+        assert!(
+            body.len() < raw.len(),
+            "the fixture has to actually compress"
+        );
 
         let seen = std::sync::atomic::AtomicU64::new(0);
         let got = write_blob_body(

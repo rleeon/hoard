@@ -121,7 +121,10 @@ async fn state_for(pool: PgPool) -> CloudState {
     //
     // Port 9 is discard, so the best-effort R2 deletes these paths make are
     // refused at once instead of hanging the test on a connect timeout.
-    let example = concat!(env!("CARGO_MANIFEST_DIR"), "/../../deploy/config.cloud.toml.example");
+    let example = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../deploy/config.cloud.toml.example"
+    );
     let base = std::fs::read_to_string(example).expect("read the cloud config example");
     let dir = std::env::temp_dir().join(format!("hoard-sha-test-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&dir).expect("temp dir");
@@ -396,7 +399,10 @@ async fn version_insight_diffs_two_manifests() {
         .expect("insight runs");
     // Both versions hold the same shas, so the diff is real but empty of
     // changes. What matters is that it produced one at all.
-    assert!(insight.is_some(), "a manifest of two files yields an insight");
+    assert!(
+        insight.is_some(),
+        "a manifest of two files yields an insight"
+    );
 
     cleanup(&pool, user).await;
 }

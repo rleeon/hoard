@@ -587,16 +587,15 @@ pub async fn cas_init(
             .or_insert(f.size_bytes.max(0));
     }
     let all_shas: Vec<String> = unique.keys().cloned().collect();
-    let existing: Vec<(String,)> =
-        sqlx::query_as(
-            "SELECT encode(sha256, 'hex') FROM cloud_blobs
+    let existing: Vec<(String,)> = sqlx::query_as(
+        "SELECT encode(sha256, 'hex') FROM cloud_blobs
               WHERE user_id = $1
                 AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))",
-        )
-            .bind(user.user_id)
-            .bind(&all_shas)
-            .fetch_all(&state.pool)
-            .await?;
+    )
+    .bind(user.user_id)
+    .bind(&all_shas)
+    .fetch_all(&state.pool)
+    .await?;
     let existing: std::collections::HashSet<String> = existing.into_iter().map(|(s,)| s).collect();
 
     let missing_shas: Vec<(&String, &i64)> = unique
@@ -902,11 +901,68 @@ pub async fn cas_init(
 /// for concurrent connections rather than this machine's 512 MB.
 const BLOB_CONCURRENCY: usize = 32;
 
+/// What one blob costs its owner, and what of it is worth recording.
+///
+/// Returns the bytes to charge and, for a compressed upload, the bytes actually
+/// sitting in the bucket.
+///
+/// What gets charged is the *raw* size, always. That is deliberate and it
+/// predates client-side compression: a user's quota is the size of their saves,
+/// not a number that moves with how well a given game happens to compress. The
+/// server's own sweep has never given quota back either.
+///
+/// For a raw upload the two sizes are the same thing and R2 is the authority,
+/// which is what stops a client understating its size at init and then PUTting
+/// something enormous at the presigned URL. A compressed upload breaks that: R2
+/// can only report the compressed size, so the raw size has to come from the
+/// client's manifest, which is exactly the number we refuse to trust elsewhere.
+///
+/// What keeps it honest is that compression cannot inflate. An object *larger*
+/// than the raw size it claims is lying or broken, and is refused. So the charge
+/// is never smaller than what R2 actually holds, and understating still buys
+/// nothing: claim a megabyte and you may store at most a megabyte.
+fn charge_for_blob(
+    sha: &str,
+    declared: i64,
+    stored: i64,
+    compressed: bool,
+) -> Result<(i64, Option<i64>), CloudError> {
+    if !compressed {
+        return Ok((stored, None));
+    }
+    if stored > declared {
+        return Err(CloudError::BadRequest(format!(
+            "blob {sha} was declared as {declared} raw bytes but stored {stored} compressed"
+        )));
+    }
+    Ok((declared, Some(stored)))
+}
+
+/// Optional body for `cas_commit`.
+///
+/// The client decides what to compress only *after* init tells it which blobs
+/// are missing, because compressing something the server already has is wasted
+/// work. So the declaration cannot ride along on init and arrives here instead.
+///
+/// A client that compresses nothing sends no body at all, which is what every
+/// client built before this does, hence `Option<Json<_>>` at the extractor.
+#[derive(Debug, Default, Deserialize)]
+pub struct CasCommitIn {
+    /// The shas this upload stored as zstd. Their `sha256` is still the digest
+    /// of the raw content: only the bytes in the bucket are compressed.
+    #[serde(default)]
+    pub zstd: Vec<String>,
+}
+
 pub async fn cas_commit(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
     Path((save_id, version)): Path<(String, i64)>,
+    body: Option<Json<CasCommitIn>>,
 ) -> Result<Response, CloudError> {
+    let zstd_shas: std::collections::HashSet<String> = body
+        .map(|Json(b)| b.zstd.into_iter().collect())
+        .unwrap_or_default();
     let owner: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
         .bind(&save_id)
         .fetch_optional(&state.pool)
@@ -985,16 +1041,15 @@ pub async fn cas_commit(
         unique.entry(sha.clone()).or_insert(*size);
     }
     let all_shas: Vec<String> = unique.keys().cloned().collect();
-    let existing: Vec<(String,)> =
-        sqlx::query_as(
-            "SELECT encode(sha256, 'hex') FROM cloud_blobs
+    let existing: Vec<(String,)> = sqlx::query_as(
+        "SELECT encode(sha256, 'hex') FROM cloud_blobs
               WHERE user_id = $1
                 AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))",
-        )
-            .bind(user.user_id)
-            .bind(&all_shas)
-            .fetch_all(&state.pool)
-            .await?;
+    )
+    .bind(user.user_id)
+    .bind(&all_shas)
+    .fetch_all(&state.pool)
+    .await?;
     let existing: std::collections::HashSet<String> = existing.into_iter().map(|(s,)| s).collect();
 
     // Verify every new blob actually landed in R2 and trust R2's reported
@@ -1059,15 +1114,22 @@ pub async fn cas_commit(
     // Walked in manifest order, not in completion order: a half-finished upload
     // has to name the same missing blob on every attempt, or the same failure
     // reads as a different one each time it is retried.
-    for sha in unique.keys() {
+    let mut stored_size: BTreeMap<String, i64> = BTreeMap::new();
+    for (sha, declared) in unique.iter() {
         if existing.contains(sha) {
             continue;
         }
-        let size = *landed
+        let stored = *landed
             .get(sha)
             .ok_or_else(|| CloudError::BadRequest(format!("blob {sha} was not uploaded")))?;
-        new_bytes += size.max(0) as u64;
-        actual_size.insert(sha.clone(), size);
+
+        let (charged, stored_bytes) =
+            charge_for_blob(sha, *declared, stored, zstd_shas.contains(sha))?;
+        if let Some(stored_bytes) = stored_bytes {
+            stored_size.insert(sha.clone(), stored_bytes);
+        }
+        new_bytes += charged.max(0) as u64;
+        actual_size.insert(sha.clone(), charged);
     }
 
     // Re-enforce the storage quota against the REAL uploaded bytes. `cas_init`
@@ -1136,11 +1198,23 @@ pub async fn cas_commit(
         .iter()
         .map(|(sha, declared)| actual_size.get(sha).copied().unwrap_or(*declared))
         .collect();
+    // `encoding` and `stored_bytes` are what the compression sweep would have
+    // written had it got there first; the client having done the work just means
+    // they are known already. Both NULL for a raw upload, which is what the
+    // sweep then treats as still eligible.
+    let blob_encodings: Vec<Option<String>> = blob_shas
+        .iter()
+        .map(|sha| stored_size.contains_key(sha).then(|| "zstd".to_string()))
+        .collect();
+    let blob_stored: Vec<Option<i64>> = blob_shas
+        .iter()
+        .map(|sha| stored_size.get(sha).copied())
+        .collect();
     sqlx::query(
         r#"
-        INSERT INTO cloud_blobs (user_id, sha256, size_bytes, refcount)
-        SELECT $1, decode(s, 'hex'), z, 1
-          FROM UNNEST($2::text[], $3::bigint[]) AS t(s, z)
+        INSERT INTO cloud_blobs (user_id, sha256, size_bytes, refcount, encoding, stored_bytes)
+        SELECT $1, decode(s, 'hex'), z, 1, e, sb
+          FROM UNNEST($2::text[], $3::bigint[], $4::text[], $5::bigint[]) AS t(s, z, e, sb)
         ON CONFLICT (user_id, sha256)
         DO UPDATE SET refcount = cloud_blobs.refcount + 1, purge_after = NULL
         "#,
@@ -1148,6 +1222,8 @@ pub async fn cas_commit(
     .bind(user.user_id)
     .bind(&blob_shas)
     .bind(&blob_sizes)
+    .bind(&blob_encodings)
+    .bind(&blob_stored)
     .execute(&mut *tx)
     .await?;
 
@@ -2204,7 +2280,9 @@ async fn collect_abandoned_blobs(
         let key = r2::key_for_blob(user_id, sha);
         match state.r2.delete_object(&key).await {
             Ok(()) => gone += 1,
-            Err(e) => tracing::warn!(error = %e, r2_key = %key, "cas_init: abandoned blob delete failed"),
+            Err(e) => {
+                tracing::warn!(error = %e, r2_key = %key, "cas_init: abandoned blob delete failed")
+            }
         }
     }
     if gone > 0 {
@@ -2269,11 +2347,12 @@ pub async fn delete_blob_row(
     user_id: Uuid,
     sha: &str,
 ) -> Result<u64, sqlx::Error> {
-    let res = sqlx::query("DELETE FROM cloud_blobs WHERE user_id = $1 AND sha256 = decode($2, 'hex')")
-        .bind(user_id)
-        .bind(sha)
-        .execute(pool)
-        .await?;
+    let res =
+        sqlx::query("DELETE FROM cloud_blobs WHERE user_id = $1 AND sha256 = decode($2, 'hex')")
+            .bind(user_id)
+            .bind(sha)
+            .execute(pool)
+            .await?;
     Ok(res.rows_affected())
 }
 
@@ -2511,4 +2590,59 @@ async fn plan_for_user(state: &CloudState, user_id: Uuid) -> Result<Option<Plan>
         .fetch_optional(&state.pool)
         .await?;
     Ok(row.map(|r| Plan::from_str(&r.0).unwrap_or(Plan::Free)))
+}
+
+#[cfg(test)]
+mod charge_tests {
+    use super::*;
+
+    /// A raw upload is charged what R2 says it holds, never what the client
+    /// claimed. This is the older rule and the one that stops a client
+    /// understating its size at init and then PUTting something enormous.
+    #[test]
+    fn a_raw_blob_is_charged_what_actually_landed() {
+        let (charged, stored) = charge_for_blob("aa", 10, 4096, false).expect("accepted");
+        assert_eq!(charged, 4096, "R2 is the authority for a raw upload");
+        assert_eq!(
+            stored, None,
+            "nothing to record: the object is its own size"
+        );
+    }
+
+    /// A compressed upload is charged the raw size, so the quota keeps meaning
+    /// "the size of my saves" rather than moving with how well a given game
+    /// happens to compress. The compressed size is recorded separately, which
+    /// is what the sweep would have written had it got there first.
+    #[test]
+    fn a_compressed_blob_is_charged_raw_and_records_what_it_stores() {
+        let (charged, stored) = charge_for_blob("bb", 10_000, 2_500, true).expect("accepted");
+        assert_eq!(
+            charged, 10_000,
+            "the user pays for their save, not for zstd"
+        );
+        assert_eq!(stored, Some(2_500), "and we keep what it really costs us");
+    }
+
+    /// The whole anti-abuse property in one case. Compression cannot inflate, so
+    /// an object larger than the raw size it claims is lying or broken. Refusing
+    /// it is what stops "declare one byte, store a gigabyte": the charge can
+    /// never come out below what R2 actually holds.
+    #[test]
+    fn a_blob_that_stores_more_than_it_declared_is_refused() {
+        let err = charge_for_blob("cc", 1, 1_000_000_000, true).expect_err("must refuse");
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("declared"),
+            "the refusal should say what was claimed: {msg}"
+        );
+    }
+
+    /// The boundary is allowed: an incompressible blob can come back the same
+    /// size it went in, and that is a normal outcome, not an attack.
+    #[test]
+    fn storing_exactly_the_declared_size_is_fine() {
+        let (charged, stored) = charge_for_blob("dd", 4096, 4096, true).expect("accepted");
+        assert_eq!(charged, 4096);
+        assert_eq!(stored, Some(4096));
+    }
 }
