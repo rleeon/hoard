@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **The size limit per save is yours to set.** Free stays at 1 GB by default and
+  Pro at 10 GB, but the number is no longer fixed: there is a pencil next to
+  "Per-save size" on the account screen, and it opens a slider that goes from
+  100 MB to 1.5 GB on Free (Pro can lower its own from 10 GB). It exists for one
+  shape of save the old ceiling handled badly: a single monolithic file that
+  clears 1 GB on its own. Trimming a save like that to fit means uploading none
+  of it, so the game with the biggest save is the one that never synced whole.
+  The account still holds 2 GB in total on Free, so what changes is how you are
+  allowed to spend the room you already had, not the room.
+
+### Changed
+- **Free's transfer window goes from 3 GB to 5 GB per 15 minutes.** The window
+  exists so one game rewriting its autosave cannot spend an afternoon's worth of
+  bandwidth in a minute, and 3 GB was sized against a 1 GB per-save cap. With
+  the cap movable to 1.5 GB it left room for a single upload and a half, so the
+  second copy of a big save met a 429 for no reason anybody could see. Pro's
+  15 GB is unchanged.
+
 ### Fixed
 - **Opening the window took the sync service out of login start, and stopped
   it.** On a machine set up from the terminal, `hoard sync start` installed the
