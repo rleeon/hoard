@@ -26,10 +26,16 @@ deploy/config.toml
 # says `cp deploy/config.toml.example ...`.
 deploy/docker/config/config.toml
 
-# Discord status bot: local infra with secrets in it.
+# Discord status bot: infra kept out of the repo by an earlier call. The
+# token lives only in .env.discord-bot (and in `fly secrets`); the rest is
+# ignored by inheritance from that decision, not because it holds anything.
 /deploy/.env.discord-bot
-/deploy/scripts/discord-status-bot.py
+/deploy/discord-bot/
 /deploy/systemd/hoard-discord-bot.service
+
+# The staging twin of deploy/fly/fly.toml: the same file under another app name.
+# Nothing secret in it, but committing it publishes the staging URL.
+/deploy/fly/fly.staging.toml
 
 # Admin metrics panel (uses service_role).
 /tools/admin-dashboard.html
