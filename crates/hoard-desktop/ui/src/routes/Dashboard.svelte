@@ -42,7 +42,8 @@
     MirrorWarning,
     TrackedSave,
   } from "../lib/api";
-  import { auth, refreshQuota, signOut } from "../lib/stores/auth";
+  import { auth, refreshQuota } from "../lib/stores/auth";
+  import { signOutEverything } from "../lib/stores/session";
   import { storageGamesCloud } from "../lib/stores/cloud";
   import { activity, status } from "../lib/stores/agent";
   import {
@@ -448,11 +449,15 @@
     );
   }
 
+  /** Closes both sessions, not just the self-hosted one. This button used to
+   *  call `signOut()`, which meant a Cloud user got the engine stopped and a
+   *  "signed out" toast while their Cloud session stayed on disk. */
   async function handleLogout() {
     signingOut = true;
     try {
-      await signOut();
+      await signOutEverything();
       toastSuccess($_("dashboard.signed_out"));
+      push("/onboarding/language");
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
     } finally {
@@ -725,7 +730,7 @@
       </label>
 
       <Button onclick={() => push("/library")}>
-        <Plus size={15} />
+        <Plus size={15} data-anim="pop" />
         {$_("dashboard.add_game")}
       </Button>
     </div>
@@ -753,7 +758,7 @@
         </p>
         <div class="mt-6">
           <Button onclick={() => push("/library")}>
-            <Plus size={15} />
+            <Plus size={15} data-anim="pop" />
             {$_("dashboard.add_game")}
           </Button>
         </div>

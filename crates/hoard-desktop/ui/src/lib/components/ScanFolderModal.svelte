@@ -246,7 +246,7 @@
         {#if target.install_dir}
           <div class="flex flex-wrap items-center gap-2">
             <span
-              class="min-w-0 flex-1 break-all rounded-md bg-zinc-950/60 px-3 py-2 font-mono text-[11px] text-zinc-400 ring-1 ring-inset ring-zinc-800"
+              class="min-w-0 flex-1 break-all rounded-md bg-layer-2 px-3 py-2 font-mono text-[11px] text-zinc-400 ring-1 ring-inset ring-zinc-800"
             >
               {$_("library.no_save_alert_install_hint", {
                 values: { path: target.install_dir },
@@ -272,7 +272,7 @@
       </Button>
       {#if folder}
         <span
-          class="flex min-w-0 flex-1 items-center truncate rounded-md bg-zinc-950/60 px-3 font-mono text-xs text-zinc-400 ring-1 ring-inset ring-zinc-800"
+          class="flex min-w-0 flex-1 items-center truncate rounded-md bg-layer-2 px-3 font-mono text-xs text-zinc-400 ring-1 ring-inset ring-zinc-800"
           title={folder}
         >
           {folder}
@@ -295,7 +295,7 @@
           {$_("scan_folder.found", { values: { count: results.length } })}
         </p>
         <ul
-          class="max-h-72 divide-y divide-zinc-800 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950/40"
+          class="max-h-72 divide-y divide-zinc-800 overflow-y-auto rounded-md border border-zinc-800 bg-layer-2"
         >
           {#each results as game (game.slug + game.found_paths[0])}
             {@const isAdded = addedSlugs.includes(game.slug)}

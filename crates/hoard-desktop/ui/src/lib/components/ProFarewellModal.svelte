@@ -141,9 +141,9 @@
     <!-- Lo que se va. -->
     <ul class="space-y-2">
       <li
-        class="flex items-start gap-3 rounded-lg border border-white/[0.08] bg-zinc-950/40 p-3"
+        class="flex items-start gap-3 rounded-lg border border-white/[0.08] bg-layer-2 p-3"
       >
-        <span class="mt-0.5 shrink-0 text-rose-400" aria-hidden="true">
+        <span class="mt-0.5 shrink-0 text-red-400" aria-hidden="true">
           <HardDrive size={16} />
         </span>
         <div class="min-w-0">
@@ -164,9 +164,9 @@
         </div>
       </li>
       <li
-        class="flex items-start gap-3 rounded-lg border border-white/[0.08] bg-zinc-950/40 p-3"
+        class="flex items-start gap-3 rounded-lg border border-white/[0.08] bg-layer-2 p-3"
       >
-        <span class="mt-0.5 shrink-0 text-rose-400" aria-hidden="true">
+        <span class="mt-0.5 shrink-0 text-red-400" aria-hidden="true">
           <MonitorPlay size={16} />
         </span>
         <div class="min-w-0">
@@ -183,11 +183,11 @@
     {#if overBytes > 0}
       <!-- El mismo picker del botón "Liberar espacio" de la aplicación, pero
            midiendo contra el límite al que la cuenta va a caer. -->
-      <div class="rounded-lg border border-rose-500/40 bg-rose-500/[0.07] p-3">
-        <p class="text-sm font-semibold text-rose-100">
+      <div class="rounded-lg border border-red-500/40 bg-red-500/[0.07] p-3">
+        <p class="text-sm font-semibold text-red-100">
           {$_("pro_farewell.over_title")}
         </p>
-        <p class="mt-1 text-xs leading-relaxed text-rose-200/90">
+        <p class="mt-1 text-xs leading-relaxed text-red-200/90">
           {$_("pro_farewell.over_body", {
             values: {
               used: formatBytes(used),
@@ -241,7 +241,7 @@
         type="button"
         onclick={onClose}
         disabled={busy}
-        class="rounded-lg border border-white/10 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800 disabled:opacity-50"
+        class="rounded-lg border border-white/[0.08] bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800 disabled:opacity-50"
       >
         {$_("pro_farewell.back")}
       </button>

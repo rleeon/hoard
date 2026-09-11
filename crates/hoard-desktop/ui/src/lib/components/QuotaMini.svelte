@@ -24,6 +24,7 @@
   import CountUp from "./CountUp.svelte";
   import { glow } from "../actions/glow";
   import { tilt } from "../actions/tilt";
+  import { motionIntensity } from "../stores/motion";
 
   function fmtBytes(n: number): string {
     if (n < 1024) return `${n} B`;
@@ -84,37 +85,51 @@
     capped ? Math.min(100, Math.max(0, (used / quota) * 100)) : 0,
   );
 
-  // Colour tracks the *consequence*, not an arbitrary % threshold: amber only
-  // once the server is actually purging old versions to make room, red only
-  // when it's full and rejecting uploads. Below that it stays emerald however
-  // high the bar climbs, a plan at 85% that isn't purging anything is fine.
-  //
-  // `grace` is sky: a downgrade is scheduled, so the figures are still those of
-  // the old, larger limit and nothing is being deleted, but the rail is the
-  // one surface visible from every screen, so it's where a shrink that hasn't
-  // happened yet should be noticeable. Account has the date.
+  // The rail escalates with the consequence. From 60 % it turns amber, a
+  // warning with nothing happening yet. Purging (the server is deleting old
+  // versions to make room) is red, and full (uploads rejected) is a harder red.
+  // Both of those flash every ten seconds, because they are the two states
+  // nobody should discover later. `grace` stays sky and quiet: a downgrade is
+  // scheduled and nothing is deleted yet. The motion slider at 0 keeps the
+  // colour and drops the flashing.
+  const level = $derived.by<"ok" | "warn" | "purging" | "full" | "grace">(() => {
+    if (!capped) return "ok";
+    if (src.status === "grace") return "grace";
+    if (src.status === "full") return "full";
+    if (src.status === "purging") return "purging";
+    return pct >= 60 ? "warn" : "ok";
+  });
   const barClass = $derived(
-    src.status === "full"
-      ? "bg-red-500"
-      : src.status === "purging"
-        ? "bg-amber-400"
-        : src.status === "grace"
-          ? "bg-sky-500"
-          : "bg-emerald-500",
+    {
+      full: "bg-red-600 shadow-[0_0_8px_1px_oklch(0.58_0.22_27/0.7)]",
+      purging: "bg-red-500",
+      warn: "bg-amber-400",
+      grace: "bg-sky-500",
+      ok: "bg-emerald-500",
+    }[level],
   );
   const pctClass = $derived(
-    src.status === "full"
-      ? "text-red-400"
-      : src.status === "purging"
-        ? "text-amber-400"
-        : src.status === "grace"
-          ? "text-sky-300"
-          : "text-zinc-300",
+    {
+      full: "text-red-300 font-bold",
+      purging: "text-red-400",
+      warn: "text-amber-400",
+      grace: "text-sky-300",
+      ok: "text-zinc-300",
+    }[level],
+  );
+  const flashing = $derived(
+    (level === "purging" || level === "full") && $motionIntensity > 0,
   );
 </script>
 
 {#if src.show}
-  <div class="glow tilt space-y-1.5 rounded-md px-1 py-0.5" title={$_("quota.label")} use:glow use:tilt>
+  <div
+    class="glow tilt space-y-1.5 rounded-md px-1 py-0.5 {flashing ? 'quota-alarm' : ''}"
+    data-anim={flashing ? "alarm" : undefined}
+    title={$_("quota.label")}
+    use:glow
+    use:tilt
+  >
     <div class="flex items-center justify-between gap-2 text-[11px] text-zinc-400">
       <span class="truncate">
         {#if capped}

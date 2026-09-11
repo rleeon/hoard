@@ -51,7 +51,7 @@
       {id}
       {type}
       bind:value
-      class="block w-full rounded-md border bg-zinc-950/40 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-500
+      class="block w-full rounded-md border bg-layer-2 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-500
              outline-none transition-colors focus:ring-1
              {error
         ? 'border-red-500/60 focus:border-red-500 focus:ring-red-500'

@@ -16,6 +16,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { bootAgent, shutdownAgent } from "./agent";
 import { auth } from "./auth";
+import { cloudOverrides } from "./debug";
 import { noteStorageStatus } from "./live";
 import { notePlanSnapshot } from "./planEvents";
 
@@ -44,6 +45,11 @@ export type CloudAccount = {
   version_history_forever: boolean;
   /** Per-save upload cap. Server returns 413 above this. */
   max_save_size_bytes: number;
+  /** The range the cap above can be moved inside, `PUT /v1/me/max-save-size`.
+   *  Both `0` on a server older than the setting, which is how the account
+   *  page decides whether to offer the control. */
+  save_size_min_bytes?: number;
+  save_size_max_bytes?: number;
   /** Rolling-window bandwidth quota (over `bandwidth_window_secs`). */
   bandwidth_quota_bytes: number;
   bandwidth_window_secs: number;
@@ -92,7 +98,15 @@ const internal = writable<CloudState>({
   loading: false,
 });
 
-export const cloud: Readable<CloudState> = { subscribe: internal.subscribe };
+/** The account as the UI sees it. In a dev build the panel behind Ctrl+Shift+D
+ *  can paint over the snapshot (a quota at 80 %, a plan, a device count) so the
+ *  states that are otherwise unreachable can be looked at. `cloudOverrides` is
+ *  always null in a shipped build, and nothing downstream knows the difference. */
+export const cloud: Readable<CloudState> = derived(
+  [internal, cloudOverrides],
+  ([$s, $o]) =>
+    $o && $s.account ? { ...$s, account: { ...$s.account, ...$o } } : $s,
+);
 
 /** True iff the user is signed in to Hoard Cloud. */
 export const isCloudLoggedIn: Readable<boolean> = derived(
@@ -386,6 +400,22 @@ export async function reactivateCloudAccount(): Promise<CloudAccount> {
     account.storage_limit_bytes,
   );
   return account;
+}
+
+/** Move the per-save cap, or restore the plan's own number with `null`.
+ *  Refreshes the account so the card and the sidebar agree without a poll. */
+export async function setMaxSaveSize(
+  maxSaveSizeBytes: number | null,
+): Promise<CloudAccount> {
+  await invoke("cloud_set_max_save_size", { maxSaveSizeBytes });
+  return await refreshCloud();
+}
+
+/** Open the web account page, where the devices linked to this account are
+ *  listed and can be unlinked. The app shows the count; the census, and the
+ *  button that removes one, live on the site. */
+export async function openWebAccount(): Promise<void> {
+  await openExternal("https://hoard.services/account");
 }
 
 /** Open the public pricing page in the browser, where the checkout buttons

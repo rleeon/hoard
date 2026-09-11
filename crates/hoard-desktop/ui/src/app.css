@@ -111,9 +111,38 @@ body,
      values (with alpha) that each theme repaints, not colours Tailwind should turn
      into utilities. They are consumed from the `.panel` and `.pop` classes below, or
      with `bg-[var(--surface-2)]` when it has to be done by hand. */
-  --surface-1: oklch(0.185 0.006 165 / 62%);
-  --surface-2: oklch(0.225 0.007 165 / 72%);
-  --surface-3: oklch(0.255 0.008 165 / 88%);
+  /* The neutral ramp, repainted.
+     Tailwind's `zinc` is a cool blue-grey (`zinc-950` is #09090b, hue 285), and
+     the app's own surfaces are tinted 165 like the accent. With 126 places
+     using `bg-zinc-950` / `bg-zinc-900` by hand, the two families sat side by
+     side and the panels read slightly blue against a pure black body. These
+     redefine the ramp in place, the same trick `applyAccentHue` uses for
+     emerald: darker at the bottom, and carrying the same 165 tint, so black is
+     black and the greys belong to the same room. */
+  --color-zinc-50: oklch(0.965 0.001 165);
+  --color-zinc-100: oklch(0.91 0.002 165);
+  --color-zinc-200: oklch(0.84 0.003 165);
+  --color-zinc-300: oklch(0.75 0.004 165);
+  --color-zinc-400: oklch(0.64 0.005 165);
+  --color-zinc-500: oklch(0.51 0.005 165);
+  --color-zinc-600: oklch(0.38 0.006 165);
+  --color-zinc-700: oklch(0.27 0.006 165);
+  --color-zinc-800: oklch(0.195 0.006 165);
+  --color-zinc-900: oklch(0.14 0.005 165);
+  --color-zinc-950: oklch(0.085 0.004 165);
+
+  --surface-1: oklch(0.05 0.006 165 / 62%);
+  --surface-2: oklch(0.06 0.006 165 / 72%);
+  --surface-3: oklch(0.05 0.006 165 / 88%);
+  /* Under the pointer, over a panel. One token instead of the half-dozen
+     `hover:bg-zinc-*` greys the rows used to pick from. */
+  --surface-hover: oklch(0.085 0.006 165 / 55%);
+  /* The left rail's top-to-bottom fade, as tokens so its black can be set on its
+     own, apart from the page floor (debug panel). Transparent by default: the
+     rail shows the pure black floor through its blur. */
+  --sidebar-from: transparent;
+  --sidebar-via: transparent;
+  --sidebar-to: transparent;
   --edge: oklch(1 0 0 / 9%);
   --edge-strong: oklch(1 0 0 / 15%);
   /* The top edge: the one-pixel line of light that makes a panel look raised rather
@@ -255,6 +284,359 @@ html.is-overlay ::-webkit-scrollbar-thumb {
   border-radius: 9999px;
 }
 
+/* ---- Scrollbars ------------------------------------------------------ */
+/* The engine paints these with the system theme, which on Windows is a wide
+   light strip and on a GTK light theme a white line: on a near-black app both
+   read as a seam glued to the right edge. This is the app's own, thin and
+   translucent, with the thumb only really appearing when the pointer is over
+   it. Firefox gets the two-property version, WebKit and Chromium the parts. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(1 0 0 / 14%) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(1 0 0 / 12%);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(1 0 0 / 22%);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ---- Layers ----------------------------------------------------------- */
+/* The four depths every surface belongs to, as utilities: `bg-layer-1` a panel,
+   `bg-layer-2` something raised inside one, `bg-layer-3` anything floating
+   (dropdowns, banners), `hover:bg-layer-hover` a row under the pointer. `inline`
+   so they resolve to the variables at the point of use, which is what lets the
+   quartz theme and the debug panel repaint them. */
+@theme inline {
+  --color-layer-1: var(--surface-1);
+  --color-layer-2: var(--surface-2);
+  --color-layer-3: var(--surface-3);
+  --color-layer-hover: var(--surface-hover);
+}
+
+.sidebar-fill {
+  background-image: linear-gradient(
+    to bottom,
+    var(--sidebar-from),
+    var(--sidebar-via),
+    var(--sidebar-to)
+  );
+}
+
+/* ---- Icon animations ------------------------------------------------- */
+/* Played by `actions/iconAnim.ts` when the state an icon stands for changes.
+   Short and single-shot: this is punctuation, not decoration, and an icon that
+   keeps moving after the fact turns into a distraction. */
+@keyframes icon-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes icon-pop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.3);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+/* Hung from the top, like a real one. */
+@keyframes icon-ring {
+  0% {
+    transform: rotate(0deg);
+  }
+  15% {
+    transform: rotate(-15deg);
+  }
+  32% {
+    transform: rotate(13deg);
+  }
+  49% {
+    transform: rotate(-9deg);
+  }
+  66% {
+    transform: rotate(6deg);
+  }
+  83% {
+    transform: rotate(-3deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+/* A little jump, then a small pop on landing: the Mario star's move. The pop
+   is deliberately slight, the jump is the point. */
+@keyframes icon-hop {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  35% {
+    transform: translateY(-3px) scale(1);
+  }
+  62% {
+    transform: translateY(0) scale(1);
+  }
+  80% {
+    transform: translateY(0) scale(1.08);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+/* A scroll opening: it unrolls downwards and settles. */
+@keyframes icon-unfurl {
+  0% {
+    transform: scaleY(0.5) translateY(-2px);
+    opacity: 0.6;
+  }
+  60% {
+    transform: scaleY(1.12) translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(1) translateY(0);
+  }
+}
+.icon-anim-spin {
+  --icon-anim-dur: 560ms;
+  animation: icon-spin var(--icon-anim-dur) cubic-bezier(0.4, 0, 0.2, 1);
+}
+.icon-anim-pop {
+  --icon-anim-dur: 360ms;
+  animation: icon-pop var(--icon-anim-dur) cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.icon-anim-ring {
+  --icon-anim-dur: 640ms;
+  animation: icon-ring var(--icon-anim-dur) ease-out;
+  transform-origin: 50% 15%;
+}
+/* The other half of the contract `AnimIcon` keeps: every animated icon also
+   moves when the pointer arrives, with the same move it makes on a toggle. The
+   hover target is the icon's own parent, not the icon: a 16px square is too
+   small to aim at, and a button or a row is the right size. Where the icon
+   sits inside a smaller box of its own (a settings row's 32px tile), the row
+   carries `anim-host` and is the target instead. */
+[data-anim="ring"] {
+  transform-origin: 50% 15%;
+}
+[data-anim="unfurl"] {
+  transform-origin: 50% 0%;
+}
+*:hover > [data-anim="spin"],
+.anim-host:hover [data-anim="spin"] {
+  --icon-anim-dur: 560ms;
+  animation: icon-spin var(--icon-anim-dur) cubic-bezier(0.4, 0, 0.2, 1);
+}
+*:hover > [data-anim="pop"],
+.anim-host:hover [data-anim="pop"] {
+  --icon-anim-dur: 360ms;
+  animation: icon-pop var(--icon-anim-dur) cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+*:hover > [data-anim="ring"],
+.anim-host:hover [data-anim="ring"] {
+  --icon-anim-dur: 640ms;
+  animation: icon-ring var(--icon-anim-dur) ease-out;
+}
+*:hover > [data-anim="hop"],
+.anim-host:hover [data-anim="hop"] {
+  --icon-anim-dur: 520ms;
+  animation: icon-hop var(--icon-anim-dur) cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+*:hover > [data-anim="unfurl"],
+.anim-host:hover [data-anim="unfurl"] {
+  --icon-anim-dur: 420ms;
+  animation: icon-unfurl var(--icon-anim-dur) cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.icon-anim-hop {
+  --icon-anim-dur: 520ms;
+  animation: icon-hop var(--icon-anim-dur) cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+.icon-anim-unfurl {
+  --icon-anim-dur: 420ms;
+  animation: icon-unfurl var(--icon-anim-dur) cubic-bezier(0.34, 1.4, 0.64, 1);
+  transform-origin: 50% 0%;
+}
+
+/* The storage rail once the server is deleting old versions: two flashes, then
+   quiet, every ten seconds. `filter` and not `transform`, which `.tilt` owns.
+   `--icon-anim-dur` is what lets it through the reduced-motion flattening. */
+@keyframes quota-alarm {
+  0%,
+  12%,
+  100% {
+    filter: none;
+  }
+  3%,
+  9% {
+    filter: brightness(1.9) drop-shadow(0 0 6px oklch(0.64 0.21 25 / 0.8));
+  }
+  6% {
+    filter: brightness(1.1);
+  }
+}
+.quota-alarm {
+  --icon-anim-dur: 10s;
+  animation: quota-alarm var(--icon-anim-dur) ease-in-out infinite;
+}
+
+/* ---- Vault door (the settings icon) --------------------------------- */
+/* Three phases set by `VaultDoor.svelte`: it rolls out to the left turning
+   anticlockwise, stays open while JS counts two seconds, then rolls back
+   turning clockwise. The mouth behind it, the floor under it and the two
+   beacons only exist while it is away. `fill-box` turns the door about its own
+   centre. */
+.vault-floor,
+.vault-hole,
+.vault-beacon {
+  opacity: 0;
+}
+.vault-door {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.vault-opening .vault-door {
+  --vault-dur: 1s;
+  animation: vault-door-open var(--vault-dur) cubic-bezier(0.3, 0.7, 0.2, 1) forwards;
+}
+.vault-open .vault-door {
+  transform: translateX(-13px) rotate(-120deg);
+}
+.vault-closing .vault-door {
+  --vault-dur: 1s;
+  animation: vault-door-close var(--vault-dur) cubic-bezier(0.6, 0, 0.4, 1) forwards;
+}
+.vault-opening .vault-hole,
+.vault-opening .vault-floor,
+.vault-opening .vault-beacon {
+  --vault-dur: 0.05s;
+  animation: vault-reveal var(--vault-dur) ease-out forwards;
+}
+.vault-open .vault-hole,
+.vault-open .vault-floor,
+.vault-open .vault-beacon {
+  opacity: 1;
+}
+.vault-closing .vault-hole,
+.vault-closing .vault-floor,
+.vault-closing .vault-beacon {
+  --vault-dur: 1s;
+  animation: vault-conceal var(--vault-dur) ease-in forwards;
+}
+@keyframes vault-door-open {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateX(-13px) rotate(-120deg);
+  }
+}
+@keyframes vault-door-close {
+  from {
+    transform: translateX(-13px) rotate(-120deg);
+  }
+  to {
+    transform: none;
+  }
+}
+/* The mouth and the floor are there from the first frame of the pointer
+   arriving, not once the door is out: the scene is set, then the door moves. */
+@keyframes vault-reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes vault-conceal {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+/* The beacons turn for as long as the door is away, slowly; the halo flares
+   once a turn, as the beam comes round. */
+.vault-beam {
+  --beam-dur: 1.4s;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.vault-beam-flip {
+  --beam-dir: reverse;
+}
+.vault-halo {
+  --beam-dur: 1.4s;
+}
+.vault-opening .vault-beam,
+.vault-open .vault-beam,
+.vault-closing .vault-beam {
+  animation: vault-beacon-spin var(--beam-dur) linear infinite var(--beam-dir, normal);
+}
+.vault-opening .vault-halo,
+.vault-open .vault-halo,
+.vault-closing .vault-halo {
+  animation: vault-beacon-flash var(--beam-dur) ease-in-out infinite;
+}
+@keyframes vault-beacon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes vault-beacon-flash {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ---- Custom title bar (Windows) -------------------------------------- */
+/* `main.ts` sets the class when the window is undecorated. The app keeps using
+   `h-full` everywhere, so instead of padding (which would push the content out
+   the bottom) the shell is shortened by the bar's height and pushed down. */
+html.has-titlebar body {
+  padding-top: 2rem;
+}
+/* Anything the app pins to the top of the viewport (the bell and the eye, their
+   dropdowns) is measured from the window, not from `#app`, so it needs the bar's
+   height added by hand or it ends up underneath it. */
+html.has-titlebar .pinned-top {
+  top: calc(0.75rem + 2rem);
+}
+/* With a title bar the bell and the eye live in it, so their panels drop from
+   just under the bar, lined up under the two buttons (the three window buttons
+   and the divider sit to their right). */
+html.has-titlebar .pinned-panel {
+  top: 2.5rem;
+  right: 7.75rem;
+}
+
 /* Keep app content above the grain layer. */
 #app {
   position: relative;
@@ -313,6 +695,14 @@ h2 {
    ponía ninguno); esto da uno solo, del color del acento, a cualquier cosa
    enfocada por teclado. `:focus-visible` no dispara con el ratón, así que no
    cambia nada al hacer clic. */
+/* An input that lives inside a box drawn to look like the control (the scale
+   percentage next to its slider) draws the ring on the box, with
+   `focus-within`, and not on itself: an outline inset two pixels inside a
+   bordered pill lands on top of the number. */
+.field-inner:focus-visible {
+  outline: none;
+}
+
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
@@ -356,9 +746,9 @@ html.is-linux .card-glass {
    they stack over another translucent layer: with no blur the alpha is enough, but
    raising it keeps the black from bleeding through. */
 html.is-linux {
-  --surface-1: oklch(0.185 0.006 165 / 80%);
-  --surface-2: oklch(0.225 0.007 165 / 88%);
-  --surface-3: oklch(0.255 0.008 165 / 96%);
+  --surface-1: oklch(0.05 0.006 165 / 80%);
+  --surface-2: oklch(0.06 0.006 165 / 88%);
+  --surface-3: oklch(0.05 0.006 165 / 96%);
 }
 
 /* ---- Motion --------------------------------------------------------- */
@@ -378,6 +768,27 @@ html.is-linux {
      slider at 0 there is nothing to ease. */
   :root[data-motion-on] .tilt {
     transition-duration: 220ms !important;
+  }
+
+  /* And the icon animations, for the same reason. On Windows this query is on
+     for anyone who turned off "animation effects" in Accessibility, which is a
+     performance habit among people who play games, not a request for a still
+     interface; on WebKitGTK it comes from `gtk-enable-animations`, which plenty
+     of desktops ship off. Flattening a 360ms bell to 0.001ms is what made every
+     icon look broken while the code was right. The slider above 0 is the
+     deliberate answer, and it wins. */
+  :root[data-motion-on] [data-anim] {
+    animation-duration: var(--icon-anim-dur, 360ms) !important;
+  }
+  :root[data-motion-on] .vault-door,
+  :root[data-motion-on] .vault-hole,
+  :root[data-motion-on] .vault-floor,
+  :root[data-motion-on] .vault-beacon {
+    animation-duration: var(--vault-dur, 1s) !important;
+  }
+  :root[data-motion-on] .vault-beam,
+  :root[data-motion-on] .vault-halo {
+    animation-duration: var(--beam-dur) !important;
   }
 }
 
@@ -428,6 +839,7 @@ html.is-linux {
 
   /* Elevation on paper: white pigment and short shadows, not dark alpha. */
   --surface-1: oklch(1 0 0 / 62%);
+  --surface-hover: oklch(0.2 0.01 95 / 6%);
   --surface-2: oklch(1 0 0 / 82%);
   --surface-3: oklch(1 0 0 / 96%);
   --edge: oklch(0.2 0.012 95 / 11%);

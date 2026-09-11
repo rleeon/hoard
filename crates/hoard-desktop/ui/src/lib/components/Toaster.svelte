@@ -18,7 +18,7 @@
   } as const;
 
   const TINTS = {
-    info: "border-zinc-700 bg-zinc-900/95 text-zinc-100",
+    info: "border-zinc-700 bg-layer-3 text-zinc-100",
     success: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
     error: "border-red-500/40 bg-red-500/10 text-red-100",
   } as const;

@@ -74,7 +74,7 @@
         <li
           class="flex items-start gap-3 rounded-lg border p-3 {perk.forever
             ? 'border-emerald-500/30 bg-emerald-500/[0.07]'
-            : 'border-white/[0.08] bg-zinc-950/40'}"
+            : 'border-white/[0.08] bg-layer-2'}"
         >
           <span
             class="mt-0.5 shrink-0 {perk.forever

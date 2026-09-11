@@ -76,3 +76,14 @@ export function formatDateTime(iso: string): string {
     minute: "2-digit",
   });
 }
+
+/** A readable name for a game we only know by its slug ("terraforming-mars" ->
+ *  "Terraforming Mars"). For settings lists, where the catalogue's own title is
+ *  not at hand and the raw slug reads like an error code. */
+export function titleFromSlug(slug: string): string {
+  return slug
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}

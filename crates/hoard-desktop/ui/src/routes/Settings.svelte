@@ -41,6 +41,10 @@
   import Card from "../lib/components/Card.svelte";
   import Button from "../lib/components/Button.svelte";
   import Modal from "../lib/components/Modal.svelte";
+  import AnimIcon from "../lib/components/AnimIcon.svelte";
+  import { customNames } from "../lib/stores/gameNames";
+  import { titleFromSlug } from "../lib/utils/format";
+  import MaskedEmail from "../lib/components/MaskedEmail.svelte";
   import SettingsRow from "../lib/components/SettingsRow.svelte";
   import { prefs, hydratePrefs, updatePrefs } from "../lib/stores/prefs";
   import {
@@ -153,6 +157,55 @@
   function onScaleInput(e: Event): void {
     const v = Number((e.currentTarget as HTMLInputElement).value);
     if (Number.isFinite(v)) setUiScale(v / 100);
+  }
+
+  // ---- typing the scale
+  // The number next to the slider is editable, and what you type is **not**
+  // applied keystroke by keystroke: typing "120" would zoom to 1 %, then 12 %,
+  // and the whole interface would jump twice under your hands before you got to
+  // the number you wanted. It lands on Enter, on leaving the field, or three
+  // seconds after you stop typing.
+  const SCALE_COMMIT_DELAY = 3000;
+  let scaleDraft = $state<string | null>(null);
+  let scaleTimer: ReturnType<typeof setTimeout> | null = null;
+  const scaleShown = $derived(
+    scaleDraft ?? String(Math.round($uiScale * 100)),
+  );
+
+  function commitScale(): void {
+    if (scaleTimer) {
+      clearTimeout(scaleTimer);
+      scaleTimer = null;
+    }
+    const raw = scaleDraft;
+    scaleDraft = null;
+    if (raw === null) return;
+    const n = Number(raw.replace(/[^\d]/g, ""));
+    if (!Number.isFinite(n) || n <= 0) return;
+    const pct = Math.min(
+      Math.round(MAX_SCALE * 100),
+      Math.max(Math.round(MIN_SCALE * 100), Math.round(n)),
+    );
+    setUiScale(pct / 100);
+  }
+
+  function onScaleType(e: Event): void {
+    scaleDraft = (e.currentTarget as HTMLInputElement).value;
+    if (scaleTimer) clearTimeout(scaleTimer);
+    scaleTimer = setTimeout(commitScale, SCALE_COMMIT_DELAY);
+  }
+
+  function onScaleKey(e: KeyboardEvent): void {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitScale();
+      (e.currentTarget as HTMLInputElement).blur();
+    } else if (e.key === "Escape") {
+      if (scaleTimer) clearTimeout(scaleTimer);
+      scaleTimer = null;
+      scaleDraft = null;
+      (e.currentTarget as HTMLInputElement).blur();
+    }
   }
 
   // The tilt's intensity: 0 turns it off, 100 is the historic 8 degrees, and 50,
@@ -591,6 +644,11 @@
     label: string;
     description: string;
     icon: any;
+    /** Paints the switch red while it is off. For the one setting whose "off"
+     *  is not a neutral choice but a feature switched off: with Wrapple's
+     *  telemetry down there is nothing to build the recap from, and a grey
+     *  switch does not say that. */
+    alarmWhenOff?: boolean;
   };
 
   // Rows are derived so they re-render when the active locale changes. Using
@@ -611,12 +669,14 @@
       label: $_("settings.autostart_label"),
       description: $_("settings.autostart_desc"),
       icon: LogIn,
+      anim: "pop",
     },
     {
       field: "start_minimised",
       label: $_("settings.start_minimised_label"),
       description: $_("settings.start_minimised_desc"),
       icon: Power,
+      anim: "pop",
     },
   ]);
 
@@ -636,6 +696,7 @@
       label: $_("settings.wrapple_telemetry_label"),
       description: $_("settings.wrapple_telemetry_desc"),
       icon: Clock,
+      alarmWhenOff: true,
     },
   ]);
 
@@ -645,12 +706,18 @@
       label: $_("settings.notify_success_label"),
       description: $_("settings.notify_success_desc"),
       icon: BellRing,
+      iconOff: BellOff,
+      anim: "ring",
+      animBothWays: true,
     },
     {
       field: "notify_on_failure",
       label: $_("settings.notify_failure_label"),
       description: $_("settings.notify_failure_desc"),
-      icon: BellOff,
+      icon: BellRing,
+      iconOff: BellOff,
+      anim: "ring",
+      animBothWays: true,
     },
   ]);
 
@@ -710,10 +777,10 @@
                 type="button"
                 disabled={saving === "sync_mode"}
                 onclick={() => commitSyncMode(opt.mode as api.SyncMode)}
-                class="flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors disabled:opacity-60 {syncMode ===
+                class="anim-host flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors disabled:opacity-60 {syncMode ===
                 opt.mode
                   ? 'border-emerald-500/60 bg-emerald-500/10'
-                  : 'border-white/[0.08] hover:bg-zinc-800/40'}"
+                  : 'border-white/[0.08] hover:bg-layer-hover'}"
               >
                 <span
                   class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md {syncMode ===
@@ -721,7 +788,12 @@
                     ? 'bg-emerald-500/20 text-emerald-400'
                     : 'bg-zinc-800 text-zinc-400'}"
                 >
-                  <opt.icon size={16} />
+                  <AnimIcon
+                    icon={opt.icon}
+                    on={syncMode === opt.mode}
+                    kind="pop"
+                    size={16}
+                  />
                 </span>
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2">
@@ -773,17 +845,17 @@
           <button
             type="button"
             onclick={() => push("/account")}
-            class="-mx-2 -my-1 flex w-[calc(100%+1rem)] items-center justify-between gap-3 rounded-md px-2 py-1 text-left transition-colors hover:bg-zinc-800/40"
+            class="-mx-2 -my-1 flex w-[calc(100%+1rem)] items-center justify-between gap-3 rounded-md px-2 py-1 text-left transition-colors hover:bg-layer-hover"
           >
             <div class="flex min-w-0 flex-1 items-start gap-3">
-              <Server size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+              <Server size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
               <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium text-zinc-100">
                   {$_("settings.account_label")}
                 </p>
                 <p class="mt-0.5 text-xs text-zinc-500">
                   {#if $cloud.account}
-                    {$cloud.account.email} · {$_("settings.account_plan", {
+                    <MaskedEmail email={$cloud.account.email} /> · {$_("settings.account_plan", {
                       values: { plan: planLabel($cloud.account.plan) },
                     })}
                   {:else}
@@ -792,7 +864,7 @@
                 </p>
               </div>
             </div>
-            <ChevronRight size={16} class="shrink-0 text-zinc-500" />
+            <ChevronRight size={16} class="shrink-0 text-zinc-500" data-anim="pop" />
           </button>
         </Card>
       </section>
@@ -806,7 +878,7 @@
         <Card>
           <div class="flex items-start justify-between gap-4">
             <div class="flex min-w-0 flex-1 items-start gap-3">
-              <Languages size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+              <Languages size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
               <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium text-zinc-100">
                   {$_("settings.language_label")}
@@ -838,7 +910,7 @@
         </h2>
         <Card>
           <div class="flex items-start gap-3 pb-4">
-            <Palette size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+            <Palette size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
             <div class="min-w-0 flex-1">
               <p class="text-sm font-medium text-zinc-100">
                 {$_("settings.themes_label")}
@@ -857,7 +929,7 @@
                 aria-pressed={active}
                 class="group flex flex-col items-start gap-2 rounded-lg border p-2.5 text-left transition-colors {active
                   ? 'border-emerald-500/60 bg-emerald-500/10'
-                  : 'border-white/[0.08] hover:bg-zinc-800/40'}"
+                  : 'border-white/[0.08] hover:bg-layer-hover'}"
               >
                 <span
                   class="relative flex h-12 w-full items-center justify-center overflow-hidden rounded-md border border-white/[0.08]"
@@ -889,7 +961,7 @@
                a hue tuned for a black background. -->
           <div class="mt-4 border-t border-white/[0.08] pt-4">
             <div class="flex items-start gap-3">
-              <Palette size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+              <Palette size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
               <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium text-zinc-100">
                   {$_("settings.accent_label")}
@@ -904,7 +976,7 @@
                 aria-expanded={customOpen}
                 class="shrink-0 rounded-md border px-2 py-1 text-xs transition-colors {customOpen
                   ? 'border-[var(--color-accent)]/40 bg-[var(--color-accent)]/10 text-zinc-100'
-                  : 'border-white/[0.08] text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100'}"
+                  : 'border-white/[0.08] text-zinc-400 hover:bg-layer-hover hover:text-zinc-100'}"
               >
                 {$_("settings.accent_custom")}
               </button>
@@ -960,7 +1032,7 @@
                 <button
                   type="button"
                   onclick={resetAccent}
-                  class="shrink-0 rounded-md border border-white/[0.08] px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-zinc-800/40 hover:text-zinc-100"
+                  class="shrink-0 rounded-md border border-white/[0.08] px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-layer-hover hover:text-zinc-100"
                 >
                   {$_("settings.accent_reset")}
                 </button>
@@ -974,7 +1046,7 @@
                words alone — "vignette" means nothing until you've seen one. -->
           <div class="mt-4 border-t border-white/[0.08] pt-4">
             <div class="flex items-start gap-3">
-              <Sparkles size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+              <Sparkles size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
               <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium text-zinc-100">
                   {$_("settings.atmos_label")}
@@ -1018,7 +1090,7 @@
                bound to Ctrl+wheel and Ctrl +/-/0 app-wide, which is the first
                thing anyone tries. -->
           <div class="mt-4 flex items-center gap-3 border-t border-white/[0.08] pt-4">
-            <ZoomIn size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+            <ZoomIn size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
             <div class="min-w-0 flex-1">
               <p class="text-sm font-medium text-zinc-100">
                 {$_("settings.scale_label")}
@@ -1038,13 +1110,25 @@
               aria-label={$_("settings.scale_label")}
               aria-valuetext="{Math.round($uiScale * 100)}%"
             />
-            <span class="w-10 shrink-0 text-right text-xs tabular-nums text-zinc-400">
-              {Math.round($uiScale * 100)}%
+            <span
+              class="flex shrink-0 items-center gap-0.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-1.5 py-1 text-xs text-zinc-400 transition-colors focus-within:border-emerald-500/60 focus-within:ring-2 focus-within:ring-emerald-500/25"
+            >
+              <input
+                type="text"
+                inputmode="numeric"
+                value={scaleShown}
+                oninput={onScaleType}
+                onkeydown={onScaleKey}
+                onblur={commitScale}
+                aria-label={$_("settings.scale_label")}
+                class="field-inner w-8 bg-transparent text-right tabular-nums outline-none"
+              />
+              <span class="text-zinc-500">%</span>
             </span>
             <button
               type="button"
               onclick={resetUiScale}
-              class="shrink-0 rounded-md border border-white/[0.08] px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-zinc-800/40 hover:text-zinc-100"
+              class="shrink-0 rounded-md border border-white/[0.08] px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-layer-hover hover:text-zinc-100"
             >
               {$_("settings.scale_reset")}
             </button>
@@ -1056,7 +1140,7 @@
                del todo era la única salida para quien lo encuentra excesivo, y
                se llevaba por delante un efecto que a otros les gusta. -->
           <div class="mt-4 flex items-center gap-3 border-t border-white/[0.08] pt-4">
-            <MousePointer2 size={16} class="shrink-0 text-zinc-500" />
+            <MousePointer2 size={16} class="shrink-0 text-zinc-500" data-anim="pop" />
             <div class="min-w-0 flex-1">
               <p class="text-sm font-medium text-zinc-100">
                 {$_("settings.motion_label")}
@@ -1092,7 +1176,7 @@
         </h2>
         <Card>
           <div class="flex items-start gap-3">
-            <Gamepad2 size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+            <Gamepad2 size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
             <div class="min-w-0 flex-1">
               <p class="text-sm font-medium text-zinc-100">
                 {$_("settings.overlay_label")}
@@ -1134,7 +1218,7 @@
                 onclick={() => (capturingHotkey = true)}
                 class="w-56 shrink-0 rounded-md border px-3 py-1.5 text-xs transition-colors {capturingHotkey
                   ? 'animate-pulse border-emerald-500 bg-emerald-600/20 text-emerald-200'
-                  : 'border-white/[0.08] text-zinc-200 hover:bg-zinc-800/40'}"
+                  : 'border-white/[0.08] text-zinc-200 hover:bg-layer-hover'}"
               >
                 {capturingHotkey
                   ? $_("settings.overlay_hotkey_capture")
@@ -1144,7 +1228,7 @@
                 <button
                   type="button"
                   onclick={() => setOverlayHotkey(DEFAULT_HOTKEY)}
-                  class="shrink-0 rounded-md border border-white/[0.08] px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100"
+                  class="shrink-0 rounded-md border border-white/[0.08] px-2 py-1 text-xs text-zinc-400 hover:bg-layer-hover hover:text-zinc-100"
                   >{$_("settings.overlay_hotkey_reset")}</button
                 >
               {/if}
@@ -1175,6 +1259,7 @@
                 label: $_("settings.service_autostart_label"),
                 description: $_("settings.service_autostart_desc"),
                 icon: RefreshCw,
+                anim: "spin",
               }}
               value={serviceAutostart?.enabled ?? false}
               disabled={saving === ("service_autostart" as keyof api.Prefs)}
@@ -1316,7 +1401,7 @@
         <Card>
           <div class="flex items-start justify-between gap-4">
             <div class="flex min-w-0 flex-1 items-start gap-3">
-              <Database size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+              <Database size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
               <div class="min-w-0 flex-1">
                 <p class="text-sm text-zinc-100">
                   {#if catalog}
@@ -1349,7 +1434,12 @@
               loading={updatingCatalog}
               disabled={updatingCatalog}
             >
-              <RefreshCw size={14} />
+              <AnimIcon
+                icon={RefreshCw}
+                on={updatingCatalog}
+                kind="spin"
+                size={14}
+              />
               {$_("settings.catalog_check")}
             </Button>
           </div>
@@ -1362,7 +1452,7 @@
         >
           {$_("settings.ignored_section_title")}
         </h2>
-        <Card>
+        <Card class="!py-4">
           {#if ignored.length === 0}
             <p class="py-1 text-sm text-zinc-500">
               {$_("settings.ignored_empty")}
@@ -1371,13 +1461,10 @@
             <ul class="divide-y divide-white/[0.06]">
               {#each ignored as slug (slug)}
                 <li
-                  class="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                  class="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
                 >
-                  <span
-                    class="truncate font-mono text-sm text-zinc-200"
-                    title={slug}
-                  >
-                    {slug}
+                  <span class="truncate text-sm text-zinc-200" title={slug}>
+                    {$customNames[slug] ?? titleFromSlug(slug)}
                   </span>
                   <Button
                     variant="ghost"
@@ -1405,10 +1492,12 @@
             <button
               type="button"
               onclick={() => push("/logs")}
-              class="-mx-6 -mt-6 flex w-[calc(100%+3rem)] items-center justify-between gap-4 px-6 py-5 text-left transition-colors hover:bg-zinc-900/60"
+              class="-mx-6 -mt-6 {showServerCard
+                ? 'rounded-t-[var(--radius-panel)]'
+                : '-mb-6 rounded-[var(--radius-panel)]'} flex w-[calc(100%+3rem)] items-center justify-between gap-4 px-6 py-4 text-left transition-colors hover:bg-layer-hover"
             >
               <div class="flex items-start gap-3">
-                <FileText size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+                <FileText size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
                 <div>
                   <p class="text-sm font-medium text-zinc-100">
                     {$_("settings.view_logs_title")}
@@ -1418,7 +1507,7 @@
                   </p>
                 </div>
               </div>
-              <ChevronRight size={16} class="shrink-0 text-zinc-500" />
+              <ChevronRight size={16} class="shrink-0 text-zinc-500" data-anim="pop" />
             </button>
 
             {#if showServerCard}
@@ -1430,7 +1519,7 @@
               -->
               <div class="-mx-6 px-6 pb-2 pt-6">
                 <div class="flex items-start gap-3">
-                  <Server size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+                  <Server size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
                   <div class="min-w-0 flex-1">
                     <p class="text-sm font-medium text-zinc-100">
                       {$_("settings.server_section_title")}
@@ -1576,10 +1665,10 @@
             <button
               type="button"
               onclick={() => push("/diagnostics")}
-              class="-m-4 flex w-[calc(100%+2rem)] items-center justify-between gap-3 rounded-lg p-4 text-left transition-colors hover:bg-zinc-900/60"
+              class="-m-4 flex w-[calc(100%+2rem)] items-center justify-between gap-3 rounded-lg p-4 text-left transition-colors hover:bg-layer-hover"
             >
               <span class="flex items-start gap-3">
-                <Activity size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+                <Activity size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
                 <span class="min-w-0">
                   <span class="block text-sm font-medium text-zinc-100">
                     {$_("diagnostics.title")}
@@ -1589,13 +1678,13 @@
                   </span>
                 </span>
               </span>
-              <ChevronRight size={16} class="shrink-0 text-zinc-500" />
+              <ChevronRight size={16} class="shrink-0 text-zinc-500" data-anim="pop" />
             </button>
           </Card>
 
           <Card>
             <div class="flex items-start gap-3">
-              <Activity size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+              <Activity size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
               <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium text-zinc-100">
                   {$_("diagnostics.heading")}
@@ -1612,7 +1701,7 @@
                   <ul class="mt-4 space-y-3">
                     {#each agentSlots as slot (slot.save_id)}
                       <li
-                        class="rounded-md border border-zinc-800 bg-zinc-900/40 p-3 text-xs"
+                        class="rounded-md border border-zinc-800 bg-layer-2 p-3 text-xs"
                       >
                         <div class="flex items-center justify-between gap-2">
                           <span class="truncate font-medium text-zinc-100">
@@ -1675,15 +1764,17 @@
         </h2>
         <Card>
           <div class="flex items-start gap-3 text-sm text-zinc-300">
-            <Info size={16} class="mt-0.5 shrink-0 text-zinc-500" />
+            <Info size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
             <div>
               <p>
-                {$_("settings.about_line_1", {
+                <!-- The self-hosted copy talks about your server; on Cloud it
+                     would be telling a Cloud user something untrue. -->
+                {$_($cloud.account ? "settings.about_cloud_line_1" : "settings.about_line_1", {
                   values: { version: APP_VERSION },
                 })}
               </p>
               <p class="mt-1 text-xs text-zinc-500">
-                {$_("settings.about_line_2")}
+                {$_($cloud.account ? "settings.about_cloud_line_2" : "settings.about_line_2")}
               </p>
               <!-- Attribution for the save-path catalogue. CC BY-NC-SA 3.0
                    requires crediting the source wherever the data is used, and

@@ -60,7 +60,7 @@
   aria-label={$_("account_deleted.title")}
 >
   <div
-    class="w-full max-w-md rounded-2xl border border-amber-500/40 bg-zinc-900/95 p-8 shadow-2xl"
+    class="w-full max-w-md rounded-2xl border border-amber-500/40 bg-layer-3 p-8 shadow-2xl"
   >
     <div class="flex items-center gap-3">
       <span

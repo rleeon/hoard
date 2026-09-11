@@ -111,8 +111,13 @@ export function formatCloudError(err: unknown): string {
         });
     }
   }
-  if (typeof err === "string" && err.length > 0) return err;
-  if (err instanceof Error && err.message.length > 0) return err.message;
+  // The Rust side hands back `i18n:<key>` for the coded refusals it wants
+  // rendered in the user's language (the per-device account cap, the device
+  // limit). Without this the key itself would end up in a toast.
+  const raw =
+    typeof err === "string" ? err : err instanceof Error ? err.message : "";
+  if (raw.startsWith("i18n:")) return t(raw.slice(5));
+  if (raw.length > 0) return raw;
   return t("cloud_error.generic");
 }
 

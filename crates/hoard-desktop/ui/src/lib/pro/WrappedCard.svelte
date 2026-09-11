@@ -403,7 +403,7 @@
 </script>
 
 <section
-  class="mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-zinc-900/60 shadow-[0_8px_30px_-12px_rgba(16,185,129,0.25)]"
+  class="mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-layer-1 shadow-[0_8px_30px_-12px_rgba(16,185,129,0.25)]"
 >
   <!-- cabecera -->
   <div
@@ -437,7 +437,7 @@
     <button
       type="button"
       onclick={onClose}
-      class="grid h-7 w-7 place-items-center rounded-lg border border-white/10 text-zinc-400 transition hover:bg-white/5 hover:text-white"
+      class="grid h-7 w-7 place-items-center rounded-lg border border-white/[0.08] text-zinc-400 transition hover:bg-white/5 hover:text-white"
       aria-label={tr({ es: "Cerrar", en: "Close" })}
     >
       <X size={15} />
@@ -460,7 +460,7 @@
     <!-- controles -->
     <div class="mt-4 grid gap-3 sm:grid-cols-2">
       <!-- foto -->
-      <div class="rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
+      <div class="rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
         <div class="mb-2 text-[11px] uppercase tracking-wide text-zinc-500">
           {tr({ es: "Foto", en: "Photo", de: "Foto", fr: "Photo", it: "Foto", ja: "写真", pt: "Foto", zh: "照片" })}
         </div>
@@ -478,7 +478,7 @@
             <button
               type="button"
               onclick={dropPhoto}
-              class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-white/5"
+              class="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-white/5"
             >
               <Trash2 size={13} />
               {tr({ es: "Quitar", en: "Remove", de: "Entfernen", fr: "Retirer", it: "Rimuovi", ja: "削除", pt: "Remover", zh: "移除" })}
@@ -488,7 +488,7 @@
       </div>
 
       <!-- nombre -->
-      <div class="rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
+      <div class="rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
         <div class="mb-2 text-[11px] uppercase tracking-wide text-zinc-500">
           {tr({ es: "Nombre", en: "Name", de: "Name", fr: "Nom", it: "Nome", ja: "名前", pt: "Nome", zh: "名称" })}
         </div>
@@ -498,12 +498,12 @@
           maxlength="40"
           oninput={(e) => setCardName(e.currentTarget.value)}
           placeholder={suggestedName}
-          class="w-full rounded-lg border border-white/10 bg-zinc-950/50 px-3 py-1.5 text-sm text-zinc-100 outline-none transition focus:border-emerald-500/50"
+          class="w-full rounded-lg border border-white/[0.08] bg-layer-2 px-3 py-1.5 text-sm text-zinc-100 outline-none transition focus:border-emerald-500/50"
         />
       </div>
 
       <!-- frase -->
-      <div class="rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
+      <div class="rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
         <div class="mb-2 text-[11px] uppercase tracking-wide text-zinc-500">
           {tr({ es: "Frase", en: "Line", de: "Spruch", fr: "Phrase", it: "Frase", ja: "ひとこと", pt: "Frase", zh: "标语" })}
         </div>
@@ -514,12 +514,12 @@
             maxlength="140"
             oninput={(e) => setCardQuote(e.currentTarget.value)}
             placeholder={quote}
-            class="min-w-0 flex-1 rounded-lg border border-white/10 bg-zinc-950/50 px-3 py-1.5 text-sm text-zinc-100 outline-none transition focus:border-emerald-500/50"
+            class="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-layer-2 px-3 py-1.5 text-sm text-zinc-100 outline-none transition focus:border-emerald-500/50"
           />
           <button
             type="button"
             onclick={rerollQuote}
-            class="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 text-zinc-300 transition hover:bg-white/5 hover:text-emerald-300"
+            class="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/[0.08] text-zinc-300 transition hover:bg-white/5 hover:text-emerald-300"
             title={tr({ es: "Otra frase", en: "Another line", de: "Anderer Spruch", fr: "Autre phrase", it: "Un'altra frase", ja: "別のひとこと", pt: "Outra frase", zh: "换一句" })}
             aria-label={tr({ es: "Otra frase", en: "Another line" })}
           >
@@ -529,11 +529,11 @@
       </div>
 
       <!-- rango -->
-      <div class="rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
+      <div class="rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
         <div class="mb-2 text-[11px] uppercase tracking-wide text-zinc-500">
           {tr({ es: "Qué se muestra", en: "What to show", de: "Was gezeigt wird", fr: "Ce qui s'affiche", it: "Cosa mostrare", ja: "表示する期間", pt: "O que mostrar", zh: "显示范围" })}
         </div>
-        <div class="flex gap-1 rounded-lg border border-white/[0.08] bg-zinc-950/40 p-1">
+        <div class="flex gap-1 rounded-lg border border-white/[0.08] bg-layer-2 p-1">
           {#each RANGES as r (r.key)}
             <button
               type="button"
@@ -554,7 +554,7 @@
       type="button"
       onclick={shoot}
       disabled={saving}
-      class="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-60"
+      class="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-60"
     >
       {#if saving}<Loader2 size={16} class="animate-spin" />{:else}<Camera size={16} />{/if}
       {tr({

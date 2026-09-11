@@ -10,17 +10,25 @@
    * Settings repoints to the user's chosen hue. The tile itself stays
    * near-black on every theme, it's the mark, not a surface.
    */
-  type Props = { size?: number; class?: string };
-  let { size = 36, class: klass = "" }: Props = $props();
+  /** `mono` drops the tile and the gem gradient and draws the H in
+   *  `currentColor`. It is for the places where the mark is a piece of
+   *  furniture and not the brand: the title bar, where a green tile next to the
+   *  window buttons would be the loudest thing on screen. */
+  type Props = { size?: number; class?: string; mono?: boolean };
+  let { size = 36, class: klass = "", mono = false }: Props = $props();
 
   // Unique gradient id per instance so multiple logos on a page don't clash.
   const gid = `hoard-h-${Math.random().toString(36).slice(2, 8)}`;
 </script>
 
+<!-- In `mono` the tile is gone, so the mark is just the H sitting in the middle
+     of a 48-unit box with a lot of air around it: next to a line of text it
+     reads as a small letter floating high. Cropping the box to the H itself
+     makes the glyph fill its space and sit on the same line as the words. -->
 <svg
   width={size}
   height={size}
-  viewBox="0 0 48 48"
+  viewBox={mono ? "10 10 28 28" : "0 0 48 48"}
   fill="none"
   xmlns="http://www.w3.org/2000/svg"
   class={klass}
@@ -40,20 +48,22 @@
       <stop offset="1" stop-color="var(--logo-gem-to)" />
     </linearGradient>
   </defs>
-  <!-- Dark rounded tile -->
-  <rect x="1" y="1" width="46" height="46" rx="12" fill="#0a0a0a" />
-  <rect
-    x="1"
-    y="1"
-    width="46"
-    height="46"
-    rx="12"
-    stroke="var(--logo-gem-ring)"
-    stroke-opacity="0.25"
-    stroke-width="1"
-  />
+  {#if !mono}
+    <!-- Dark rounded tile -->
+    <rect x="1" y="1" width="46" height="46" rx="12" fill="#0a0a0a" />
+    <rect
+      x="1"
+      y="1"
+      width="46"
+      height="46"
+      rx="12"
+      stroke="var(--logo-gem-ring)"
+      stroke-opacity="0.25"
+      stroke-width="1"
+    />
+  {/if}
   <!-- The H: two posts + crossbar -->
-  <g fill="url(#{gid})">
+  <g fill={mono ? "currentColor" : `url(#${gid})`}>
     <rect x="13" y="11" width="6.5" height="26" rx="1" />
     <rect x="28.5" y="11" width="6.5" height="26" rx="1" />
     <rect x="13" y="21" width="22" height="6" rx="1" />

@@ -10,9 +10,9 @@
     Archive,
     Library,
     Home,
-    Settings as SettingsIcon,
     Sparkles,
     AlertCircle,
+    Scroll,
     ScrollText,
     LogIn,
     RotateCw,
@@ -23,6 +23,7 @@
     Lock,
     Bell,
     Eye,
+    EyeOff,
   } from "@lucide/svelte";
   import { _ } from "svelte-i18n";
 
@@ -49,7 +50,6 @@
   const loadAccount = () => import("./routes/Account.svelte");
   const loadHoardScreen = () => import("./routes/HoardScreen.svelte");
   const loadHoardWrapped = () => import("./routes/HoardWrapped.svelte");
-  const loadPro = () => import("./routes/Pro.svelte");
 
   /** Sugar so `loadingComponent` is not repeated on every route. */
   const lazy = (asyncComponent: () => Promise<unknown>) =>
@@ -82,7 +82,34 @@ import { tilt } from "./lib/actions/tilt";
   } from "./lib/stores/live";
   import { APP_VERSION } from "./lib/version";
   import { errorDialog, dismissError, showError } from "./lib/stores/error_dialog";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { auth, hydrateAuth, signOut } from "./lib/stores/auth";
+  import { signOutEverything } from "./lib/stores/session";
+  import AnimIcon from "./lib/components/AnimIcon.svelte";
+  import {
+    eyeOpen,
+    notifOpen,
+    toggleEye,
+    toggleLiveActivity,
+    toggleNotif,
+    updatePromptOpen,
+  } from "./lib/stores/panels";
+  import { tapVersion } from "./lib/stores/versionTap";
+  import Modal from "./lib/components/Modal.svelte";
+  import DeviceLimitModal from "./lib/components/DeviceLimitModal.svelte";
+  import HylianUser from "./lib/components/HylianUser.svelte";
+  import MarioStar from "./lib/components/MarioStar.svelte";
+  import Triforce from "./lib/components/Triforce.svelte";
+  import VaultDoor from "./lib/components/VaultDoor.svelte";
+  import MaskedEmail from "./lib/components/MaskedEmail.svelte";
+  import DebugPanel from "./lib/components/DebugPanel.svelte";
+  import {
+    DEBUG_TOOLS,
+    debugDeviceLimit,
+    debugPanelOpen,
+    restoreSurfaces,
+  } from "./lib/stores/debug";
+  import Button from "./lib/components/Button.svelte";
   import {
     cloud,
     hydrateCloud,
@@ -91,6 +118,7 @@ import { tilt } from "./lib/actions/tilt";
     planLabel,
     refreshCloud,
     exportAllCloudData,
+    openUpgradePage,
   } from "./lib/stores/cloud";
   import {
     liberateOpen,
@@ -158,26 +186,30 @@ import { tilt } from "./lib/actions/tilt";
     "/hoard-wrapped": lazy(loadHoardWrapped),
     // Where every padlock leads. It lives inside the application on purpose: these
     // buttons used to open the browser on the pricing page.
-    "/pro": lazy(loadPro),
   };
 
   let booted = $state(false);
-  let updateModalOpen = $state(false);
 
   // Top-right overlay buttons: notifications (bell) + live status (eye).
   // Fixed to the top-right of the app window, above the sidebar + content.
   // The eye dropdown shows machines online + running games; the bell is a
   // placeholder for a future notifications panel (empty for now).
-  let eyeOpen = $state(false);
-  let notifOpen = $state(false);
-  function toggleEye() {
-    eyeOpen = !eyeOpen;
-    if (eyeOpen) notifOpen = false;
+  // Boot lands on its route with `replace`. After a webview reload the hash is
+  // already there, and a same-location `replace` still reassigns the router's
+  // location object. svelte-spa-router 5.1.1 cancels a lazy route's load when
+  // that happens mid-load, then takes its loading placeholder for the loaded
+  // component: the page sat on the spinner for good, with no error anywhere.
+  // Only navigate when it actually moves.
+  function landOn(path: string) {
+    if (router.location !== path) replace(path);
   }
-  function toggleNotif() {
-    notifOpen = !notifOpen;
-    if (notifOpen) eyeOpen = false;
-  }
+
+  // The bell and the eye: their open state is shared with the title bar, which
+  // hosts the two buttons on Windows (`stores/panels.ts`). `main.ts` mounts the
+  // bar before `App`, so the class is already there when this reads it.
+  const hasTitlebar =
+    typeof document !== "undefined" &&
+    document.documentElement.classList.contains("has-titlebar");
 
   // Ticking clock (1s) for the Eye panel's elapsed-time counter.
   let now = $state(Date.now());
@@ -300,6 +332,9 @@ import { tilt } from "./lib/actions/tilt";
   let automaticMode = $derived($prefs?.automatic_mode ?? false);
   let automaticBusy = $state(false);
   let globalSync = $derived($prefs?.global_sync ?? false);
+  // The activity panel's state, read in two places (the button's colours and
+  // the scroll that opens and closes with it).
+  let activityVisible = $derived($prefs?.live_activity_visible ?? true);
   let globalSyncBusy = $state(false);
 
   // Self-hosted reachability escape hatch.
@@ -357,28 +392,22 @@ import { tilt } from "./lib/actions/tilt";
   // exponential backoff on failure (24h cap). Captured here so logout / unmount
   // can cancel it.
   let disposeUpdatePoller: (() => void) | null = null;
+  let disposeTraySignOut: UnlistenFn | null = null;
+  let disposeDebugKey: (() => void) | null = null;
+  let deviceLimit = $state<{
+    used: number;
+    limit: number;
+    plan: string;
+  } | null>(null);
+  let traySignOutOpen = $state(false);
+  let traySigningOut = $state(false);
 
   // Hidden diagnostics unlock, 5 consecutive clicks on the sidebar version
   // string flips a session flag that reveals the Agent Diagnostics card in
   // Settings. Deliberately undocumented; only useful for triaging the silent
   // autobackup failure mode introduced before P1.4.0-0.
-  let versionClicks = $state(0);
-  let lastVersionClick = 0;
   function handleVersionClick() {
-    const now = Date.now();
-    // Reset the streak if the user pauses for >1.5s between taps. Keeps the
-    // gesture deliberate, a stray double-click on idle UI shouldn't drift
-    // toward unlocking.
-    versionClicks = now - lastVersionClick > 1500 ? 1 : versionClicks + 1;
-    lastVersionClick = now;
-    if (versionClicks >= 5) {
-      sessionStorage.setItem("hoard-diagnostics-unlocked", "1");
-      versionClicks = 0;
-      // Lazy import keeps the toast store out of the boot path.
-      import("./lib/stores/toasts").then(({ toastSuccess }) =>
-        toastSuccess($_("diagnostics.unlocked_toast")),
-      );
-    }
+    tapVersion($_("diagnostics.unlocked_toast"));
   }
 
   // Used by the small alert button next to the version. True when either the
@@ -427,12 +456,12 @@ import { tilt } from "./lib/actions/tilt";
 
     await Promise.all([hydrateAuth(), hydrateCloud()]);
     if ($auth.user) {
-      replace("/dashboard");
+      landOn("/dashboard");
     } else if ($cloud.account) {
       // Cloud-only user (signed in via Gmail, no self-hosted server). Without
       // this branch they'd be dumped back into the onboarding wizard on every
       // launch because the old boot only checked `$auth.user`.
-      replace("/account");
+      landOn("/account");
     } else {
       // No session at all → always start at the welcome screen. We used to
       // resume `routeForStep(loadStep())`, but a persisted "server" step (left
@@ -440,7 +469,7 @@ import { tilt } from "./lib/actions/tilt";
       // the user straight on "Connect to your server" instead of showing the
       // welcome / chooser. The wizard re-hydrates the saved URL anyway, so
       // restarting from welcome loses nothing.
-      replace("/onboarding/language");
+      landOn("/onboarding/language");
     }
     booted = true;
 
@@ -462,6 +491,14 @@ import { tilt } from "./lib/actions/tilt";
         toastSuccess($_("account.signin_success"));
       },
       (e) => {
+        // The account is full and this machine is new to it. A dialog and not a
+        // toast: the sign-in did not happen, and the user has to know why and
+        // what the ways out are.
+        const denial = api.deviceLimitDenial(e);
+        if (denial) {
+          deviceLimit = denial;
+          return;
+        }
         const msg = typeof e === "string" ? e : (e as Error).message;
         // The Rust side returns `i18n:<key>` for errors that should be shown
         // localized (e.g. the per-device free-account cap). Render the
@@ -534,13 +571,52 @@ import { tilt } from "./lib/actions/tilt";
       console.warn("update check failed:", e),
     );
     disposeUpdatePoller = startUpdatePoller();
+
+    // "Sign out" in the tray menu. `tray.rs` emits this and its comment claimed
+    // the frontend handled it; nothing did, so the item only opened the window
+    // and the session stayed. Confirmation lives here rather than in the menu
+    // because a tray click is easy to make by accident.
+    disposeTraySignOut = await listen("tray://sign-out", () => {
+      traySignOutOpen = true;
+    });
+
+    // Ctrl+Shift+D opens the dev console (dev builds only, see stores/debug.ts).
+    if (DEBUG_TOOLS) {
+      restoreSurfaces();
+      const onDebugKey = (e: KeyboardEvent) => {
+        if (e.ctrlKey && e.shiftKey && (e.key === "D" || e.key === "d")) {
+          e.preventDefault();
+          debugPanelOpen.update((v) => !v);
+        }
+      };
+      window.addEventListener("keydown", onDebugKey);
+      disposeDebugKey = () => window.removeEventListener("keydown", onDebugKey);
+    }
   });
 
   onDestroy(() => {
     disposeUpdatePoller?.();
     disposeUpdatePoller = null;
+    disposeTraySignOut?.();
+    disposeTraySignOut = null;
+    disposeDebugKey?.();
+    disposeDebugKey = null;
     void unsubscribeLive();
   });
+
+  async function confirmTraySignOut() {
+    traySigningOut = true;
+    try {
+      await signOutEverything();
+      traySignOutOpen = false;
+      toastSuccess($_("dashboard.signed_out"));
+      push("/onboarding/language");
+    } catch (e) {
+      showError(e);
+    } finally {
+      traySigningOut = false;
+    }
+  }
 
   /**
    * "Descargar saves" from the liberate dialog: kick off the account export
@@ -558,15 +634,6 @@ import { tilt } from "./lib/actions/tilt";
     }
   }
 
-  async function toggleActivityFeed() {
-    const visible = !($prefs?.live_activity_visible ?? true);
-    try {
-      const updated = await api.setLiveActivityVisible(visible);
-      prefs.set(updated);
-    } catch (e) {
-      showError(e);
-    }
-  }
 
   // Live phase label used while a scan is in progress. When the scheduler
   // is idle we show the plain automatic-mode on/off string built
@@ -709,17 +776,14 @@ import { tilt } from "./lib/actions/tilt";
     void refreshEntitlements();
   });
 
-  // Click on a locked premium item. A signed-in cloud user is sent to the
-  // pricing page to upgrade; a self-hosted / signed-out user is sent to
-  // /account to sign in to Hoard Cloud first (no plan to upgrade yet).
-  // A padlocked item ALWAYS leads to the `/pro` screen, session or no session:
-  // that is where Pro is explained and, when signing in first is needed or an
-  // unused trial is left, that is offered before the payment. This used to open
-  // `hoard.services/pricing` in the system browser the moment there was a session,
-  // so pressing a menu item threw you out of the application. `feature` only serves
-  // to let the screen name what you were about to open.
+  // Click on a locked premium item: straight to the feature's own page. That is
+  // where the one-week trial starts on first look (`ProFeature`), and where, once
+  // it has run out, `ProGate` explains the lock and offers the upgrade. There used
+  // to be an in-app plans screen in between, and its prices, perks and limits had
+  // drifted from the real ones; the plans live on hoard.services, and only an
+  // explicit "upgrade" button goes there.
   function openPremiumUpsell(feature: FeatureKey) {
-    push(`/pro?feature=${feature}`);
+    push(feature === "screen" ? "/hoard-screen" : "/hoard-wrapped");
   }
 
   // The first entry is the account button: "sign in" with no session at all, the
@@ -733,7 +797,7 @@ import { tilt } from "./lib/actions/tilt";
   // duplicated the Dashboard.
   const navEntries = $derived<NavEntry[]>([
     $cloud.account || $auth.user
-      ? { kind: "link", labelKey: "nav.home", icon: Home, route: "/account" }
+      ? { kind: "link", labelKey: "nav.home", icon: HylianUser, route: "/account" }
       : { kind: "link", labelKey: "nav.sign_in", icon: LogIn, route: "/account" },
     {
       kind: "group",
@@ -742,7 +806,7 @@ import { tilt } from "./lib/actions/tilt";
       icon: Boxes,
       children: [
         { kind: "link", labelKey: "nav.library", icon: Library, route: "/library" },
-        { kind: "link", labelKey: "nav.dashboard", icon: Archive, route: "/dashboard" },
+        { kind: "link", labelKey: "nav.dashboard", icon: Triforce, route: "/dashboard" },
       ],
     },
     // Hoard-Screen (overlay) is a Cloud-only paid feature: shown (and server
@@ -753,8 +817,8 @@ import { tilt } from "./lib/actions/tilt";
       : []),
     // Hoard-Wrapped is free for everyone (Cloud and self-hosted): a plain link,
     // no entitlement gate.
-    { kind: "link", labelKey: "nav.hoard_wrapped", icon: Sparkles, route: "/hoard-wrapped" },
-    { kind: "link", labelKey: "nav.settings", icon: SettingsIcon, route: "/settings" },
+    { kind: "link", labelKey: "nav.hoard_wrapped", icon: MarioStar, route: "/hoard-wrapped" },
+    { kind: "link", labelKey: "nav.settings", icon: VaultDoor, route: "/settings" },
   ]);
 
   // App-shell routes share the persistent sidebar; wizard routes own the
@@ -770,7 +834,6 @@ import { tilt } from "./lib/actions/tilt";
     "/account",
     "/hoard-screen",
     "/hoard-wrapped",
-    "/pro",
   ];
   const isAppRoute = $derived(
     APP_ROUTE_PREFIXES.some((p) => router.location.startsWith(p)),
@@ -804,8 +867,11 @@ import { tilt } from "./lib/actions/tilt";
 {:else if isAppRoute}
   <div class="flex h-full">
     <aside
-      class="sidebar-glass flex {narrow ? 'is-narrow' : 'w-60'} shrink-0 flex-col border-r border-white/[0.08] bg-gradient-to-b from-zinc-950/70 via-zinc-950/45 to-zinc-900/30 backdrop-blur-xl shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]"
+      class="sidebar-glass flex {narrow ? 'is-narrow' : 'w-60'} shrink-0 flex-col border-r border-white/[0.08] sidebar-fill backdrop-blur-xl shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]"
     >
+      <!-- On Windows the title bar carries the name, the version, the activity
+           toggle and the update alert, so this row would only repeat it. -->
+      {#if !hasTitlebar}
       <div class="flex items-center gap-2 px-4 py-4">
         <Logo size={36} class="shrink-0 rounded-lg" />
         <div class="hide-narrow min-w-0 flex-1">
@@ -826,14 +892,20 @@ import { tilt } from "./lib/actions/tilt";
              hidden so the affordance reads as "off". -->
         <button
           type="button"
-          onclick={toggleActivityFeed}
+          onclick={toggleLiveActivity}
           aria-label={$_("activity.toggle_label")}
           title={$_("activity.toggle_label")}
-          class="hide-narrow flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors {$prefs?.live_activity_visible ?? true
+          class="hide-narrow flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors {activityVisible
             ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
             : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-zinc-100'}"
         >
-          <ScrollText size={14} />
+          <AnimIcon
+            icon={ScrollText}
+            iconOff={Scroll}
+            on={activityVisible}
+            kind="unfurl"
+            size={14}
+          />
         </button>
         <!-- Small amber alert button. Same visual language as "Sin carpeta":
              border + tinted background, no rounded-full pill. Click pops a
@@ -841,7 +913,7 @@ import { tilt } from "./lib/actions/tilt";
         {#if hasUpdate}
           <button
             type="button"
-            onclick={() => (updateModalOpen = true)}
+            onclick={() => updatePromptOpen.set(true)}
             title={updates?.client.available
               ? $_("updates.client_available", {
                   values: { latest: updates?.client.latest ?? "?" },
@@ -852,11 +924,13 @@ import { tilt } from "./lib/actions/tilt";
             aria-label={$_("updates.button_label")}
             class="hide-narrow flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-300 transition-colors hover:bg-amber-500/20"
           >
-            <AlertCircle size={14} />
+            <!-- It appears out of nowhere in a sidebar the user was not
+                 looking at, so it announces itself once. -->
+            <AnimIcon icon={AlertCircle} on={hasUpdate} kind="pop" size={14} />
           </button>
         {/if}
-
       </div>
+      {/if}
 
       <!-- Shared button markup for top-level links and indented group
            children, so the two render paths can't drift apart. -->
@@ -871,9 +945,16 @@ import { tilt } from "./lib/actions/tilt";
             onclick={() => push(item.route)}
             use:glow
             use:tilt
-            class="glow tilt group flex w-full items-center gap-3 rounded-md border-l-2 py-2 text-sm transition-colors duration-150 {indented ? 'pl-9 pr-3' : 'px-3'} {active ? 'border-emerald-500 bg-zinc-800/50 text-zinc-50' : 'border-transparent text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100'}"
+            class="glow tilt group flex w-full items-center gap-3 rounded-md border-l-2 py-2 text-sm transition-colors duration-150 {indented ? 'pl-9 pr-3' : 'px-3'} {active ? 'border-emerald-500 bg-zinc-800/50 text-zinc-50' : 'border-transparent text-zinc-400 hover:bg-layer-hover hover:text-zinc-100'}"
           >
-            <item.icon size={indented ? 16 : 18} />
+            <item.icon
+              size={indented ? 16 : 18}
+              data-anim={item.route === "/settings"
+                ? "vault"
+                : item.route === "/hoard-wrapped"
+                  ? "hop"
+                  : "pop"}
+            />
             <span class="hide-narrow">{$_(item.labelKey)}</span>
           </button>
 {/snippet}
@@ -907,9 +988,9 @@ import { tilt } from "./lib/actions/tilt";
                 class="glow tilt group flex w-full items-center gap-3 rounded-md border-l-2 px-3 py-2 text-sm transition-colors duration-150
                   {active
                   ? 'border-emerald-500 bg-zinc-800/50 text-zinc-50'
-                  : 'border-transparent text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100'}"
+                  : 'border-transparent text-zinc-400 hover:bg-layer-hover hover:text-zinc-100'}"
               >
-                <entry.icon size={18} />
+                <entry.icon size={18} data-anim="pop" />
                 <span>{$_(entry.labelKey)}</span>
               </button>
             {:else}
@@ -923,9 +1004,9 @@ import { tilt } from "./lib/actions/tilt";
                   ? $_("nav.locked_pro")
                   : $_("nav.locked_signin")}
                 onclick={() => openPremiumUpsell(entry.feature)}
-                class="group flex w-full items-center gap-3 rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-zinc-500 transition-colors duration-150 hover:bg-zinc-800/40 hover:text-zinc-300"
+                class="group flex w-full items-center gap-3 rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-zinc-500 transition-colors duration-150 hover:bg-layer-hover hover:text-zinc-300"
               >
-                <entry.icon size={18} class="opacity-70" />
+                <entry.icon size={18} class="opacity-70" data-anim="pop" />
                 <span class="flex-1 text-left">{$_(entry.labelKey)}</span>
                 <Lock size={14} class="shrink-0 opacity-70" />
               </button>
@@ -944,9 +1025,9 @@ import { tilt } from "./lib/actions/tilt";
               aria-label={$_(entry.labelKey)}
               onclick={toggleSaves}
               use:glow
-              class="glow group flex w-full items-center gap-3 rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-zinc-400 transition-colors duration-150 hover:bg-zinc-800/40 hover:text-zinc-100"
+              class="glow group flex w-full items-center gap-3 rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-zinc-400 transition-colors duration-150 hover:bg-layer-hover hover:text-zinc-100"
             >
-              <entry.icon size={18} />
+              <entry.icon size={18} data-anim="pop" />
               <span class="hide-narrow flex-1 text-left">{$_(entry.labelKey)}</span>
               <ChevronDown
                 size={16}
@@ -985,7 +1066,7 @@ import { tilt } from "./lib/actions/tilt";
                 onclick={() => push("/account")}
                 use:glow
                 use:tilt
-                class="glow tilt flex min-w-0 flex-1 items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-800/60"
+                class="glow tilt flex min-w-0 flex-1 items-center gap-2 rounded-md border border-zinc-800 bg-layer-2 px-2 py-1.5 text-left transition-colors hover:border-zinc-700 hover:bg-layer-hover"
                 title={$_("sidebar.account_tooltip")}
               >
                 {#if $cloud.account.avatar_url && !avatarFailed}
@@ -1005,7 +1086,11 @@ import { tilt } from "./lib/actions/tilt";
                 {/if}
                 <span class="min-w-0 flex-1">
                   <span class="block truncate text-xs font-medium text-zinc-100">
-                    {$cloud.account.display_name ?? $cloud.account.email}
+                    {#if $cloud.account.display_name}
+                      {$cloud.account.display_name}
+                    {:else}
+                      <MaskedEmail email={$cloud.account.email} toggle={false} />
+                    {/if}
                   </span>
                   <span class="block truncate text-[10px] text-zinc-500">
                     {planLabel($cloud.account.plan)}
@@ -1015,11 +1100,11 @@ import { tilt } from "./lib/actions/tilt";
               {#if $cloud.account.plan === "free"}
                 <button
                   type="button"
-                  onclick={() => push("/pro")}
+                  onclick={() => openUpgradePage("pro")}
                   class="flex shrink-0 items-center gap-1 rounded-md bg-gradient-to-r from-emerald-400 to-teal-400 px-2.5 py-2 text-[11px] font-semibold text-emerald-950 shadow-sm shadow-emerald-500/30 transition-all hover:from-emerald-300 hover:to-teal-300 hover:shadow-emerald-500/50"
                   title={$_("sidebar.upgrade_tooltip")}
                 >
-                  <Sparkles size={12} />
+                  <Sparkles size={12} data-anim="pop" />
                   {$_("sidebar.upgrade")}
                 </button>
               {/if}
@@ -1029,15 +1114,19 @@ import { tilt } from "./lib/actions/tilt";
           type="button"
           onclick={toggleGlobalSync}
           disabled={globalSyncBusy}
-          use:glow
           use:tilt
-          class="glow tilt flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors {globalSync
-            ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
-            : 'border-rose-500/40 bg-rose-500/15 text-rose-300 hover:bg-rose-500/25'} disabled:cursor-wait disabled:opacity-60"
+          class="tilt flex w-full items-center justify-center gap-2 rounded-md border bg-black px-3 py-2 text-sm font-medium transition-colors {globalSync
+            ? 'border-emerald-800/80 text-emerald-500 hover:border-emerald-700 hover:bg-emerald-950/40'
+            : 'border-red-900/80 text-red-500 hover:border-red-800 hover:bg-red-950/40'} disabled:cursor-wait disabled:opacity-60"
           aria-label={$_("sync.aria_toggle")}
           title={$_("sync.help_tooltip")}
         >
-          <RefreshCw size={16} class={globalSync ? "animate-pulse" : ""} />
+          <AnimIcon
+            icon={RefreshCw}
+            on={globalSync}
+            kind="spin"
+            size={16}
+          />
           <span class="hide-narrow">
             {$_("sync.title")} ·
             {globalSync ? $_("sync.on") : $_("sync.off")}
@@ -1048,15 +1137,17 @@ import { tilt } from "./lib/actions/tilt";
           data-tour="automatic"
           onclick={toggleAutomatic}
           disabled={automaticBusy}
-          use:glow
           use:tilt
-          class="glow tilt flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors {automaticMode
-            ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
-            : 'border-rose-500/40 bg-rose-500/15 text-rose-300 hover:bg-rose-500/25'} disabled:cursor-wait disabled:opacity-60"
+          class="tilt flex w-full items-center justify-center gap-2 rounded-md border bg-black px-3 py-2 text-sm font-medium transition-colors {automaticMode
+            ? 'border-emerald-800/80 text-emerald-500 hover:border-emerald-700 hover:bg-emerald-950/40'
+            : 'border-red-900/80 text-red-500 hover:border-red-800 hover:bg-red-950/40'} disabled:cursor-wait disabled:opacity-60"
           aria-label={$_("automatic.aria_toggle")}
           title={$_("automatic.help_tooltip")}
         >
-          <Sparkles
+          <AnimIcon
+            icon={MarioStar}
+            on={automaticMode}
+            kind="hop"
             size={16}
             class={$automaticState.kind === "idle" ? "" : "animate-pulse"}
           />
@@ -1130,18 +1221,21 @@ import { tilt } from "./lib/actions/tilt";
        the top-right corner of the app window. Above both the sidebar and the
        content area. The eye opens a dropdown with machines + running games;
        the bell opens the notifications panel (server + app messages). -->
-  <div class="pointer-events-none fixed right-8 top-3 z-[60] flex items-center gap-2">
+  {#if !hasTitlebar}
+  <div
+    class="pinned-top pointer-events-none fixed right-8 top-3 z-[60] flex items-center gap-2"
+  >
     <button
       type="button"
       onclick={toggleNotif}
       aria-label={$_("notifications.title")}
       title={$_("notifications.title")}
-      aria-expanded={notifOpen}
-      class="pointer-events-auto relative flex h-8 w-8 items-center justify-center rounded-lg border transition-colors {notifOpen
+      aria-expanded={$notifOpen}
+      class="pointer-events-auto relative flex h-8 w-8 items-center justify-center rounded-lg border transition-colors {$notifOpen
         ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-        : 'border-white/[0.08] bg-zinc-950/60 text-zinc-400 backdrop-blur-md hover:text-zinc-100'}"
+        : 'border-white/[0.08] bg-layer-2 text-zinc-400 backdrop-blur-md hover:text-zinc-100'}"
     >
-      <Bell size={15} />
+      <AnimIcon icon={Bell} on={$notifOpen} kind="ring" size={15} />
       {#if $notifStore.length > 0}
         <span class="absolute -right-1 -top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-bold text-emerald-950 ring-2 ring-zinc-950">
           {$notifStore.length}
@@ -1153,27 +1247,28 @@ import { tilt } from "./lib/actions/tilt";
       onclick={toggleEye}
       aria-label={$_("eye.title")}
       title={$_("eye.title")}
-      aria-expanded={eyeOpen}
-      class="pointer-events-auto flex h-8 w-8 items-center justify-center rounded-lg border transition-colors {eyeOpen
+      aria-expanded={$eyeOpen}
+      class="pointer-events-auto flex h-8 w-8 items-center justify-center rounded-lg border transition-colors {$eyeOpen
         ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-        : 'border-white/[0.08] bg-zinc-950/60 text-zinc-400 backdrop-blur-md hover:text-zinc-100'}"
+        : 'border-white/[0.08] bg-layer-2 text-zinc-400 backdrop-blur-md hover:text-zinc-100'}"
     >
-      <Eye size={15} />
+      <AnimIcon icon={Eye} iconOff={EyeOff} on={$eyeOpen} kind="pop" size={15} />
     </button>
   </div>
+  {/if}
 
-  <!-- Eye dropdown — anchored below the eye button, top-right. -->
-  {#if eyeOpen}
+  <!-- Eye dropdown, anchored below the eye button, top-right. -->
+  {#if $eyeOpen}
     <div
-      class="fixed right-8 top-14 z-[61] w-72 overflow-hidden rounded-xl border border-white/[0.08] bg-zinc-950/95 shadow-xl backdrop-blur-xl"
+      class="pinned-panel fixed right-8 top-14 z-[61] w-72 overflow-hidden rounded-2xl border border-white/[0.08] bg-layer-3 shadow-xl backdrop-blur-xl"
       transition:fly={{ y: -8, duration: 180 }}
     >
       <EyePanel {now} />
     </div>
   {/if}
 
-  <!-- Notifications dropdown — anchored below the bell, top-right. -->
-  {#if notifOpen}
+  <!-- Notifications dropdown, anchored below the bell, top-right. -->
+  {#if $notifOpen}
     <NotificationsPanel />
   {/if}
 {:else}
@@ -1184,10 +1279,52 @@ import { tilt } from "./lib/actions/tilt";
 {/if}
 
 <UpdateConfirmModal
-  open={updateModalOpen}
+  open={$updatePromptOpen}
   report={updates}
-  onClose={() => (updateModalOpen = false)}
+  onClose={() => (updatePromptOpen.set(false))}
 />
+
+<!-- Tray → "Sign out". The menu item only opens the window; the confirmation
+     and the actual sign-out are here. -->
+<Modal
+  open={traySignOutOpen}
+  title={$_("tray.sign_out_confirm_title")}
+  dismissible={!traySigningOut}
+  onClose={() => (traySignOutOpen = false)}
+>
+  <p class="text-sm text-zinc-300">{$_("tray.sign_out_confirm_body")}</p>
+  {#snippet footer()}
+    <Button
+      variant="secondary"
+      disabled={traySigningOut}
+      onclick={() => (traySignOutOpen = false)}
+    >
+      {$_("common.cancel")}
+    </Button>
+    <Button
+      variant="danger"
+      loading={traySigningOut}
+      onclick={confirmTraySignOut}
+    >
+      {$_("dashboard.sign_out")}
+    </Button>
+  {/snippet}
+</Modal>
+
+<DeviceLimitModal
+  open={deviceLimit !== null || $debugDeviceLimit !== null}
+  used={deviceLimit?.used ?? $debugDeviceLimit?.used ?? 0}
+  limit={deviceLimit?.limit ?? $debugDeviceLimit?.limit ?? 0}
+  plan={deviceLimit?.plan ?? $debugDeviceLimit?.plan ?? "free"}
+  onClose={() => {
+    deviceLimit = null;
+    debugDeviceLimit.set(null);
+  }}
+/>
+
+{#if DEBUG_TOOLS}
+  <DebugPanel />
+{/if}
 
 <ErrorDialog error={$errorDialog} onClose={dismissError} />
 
@@ -1210,7 +1347,7 @@ import { tilt } from "./lib/actions/tilt";
 <!-- Los dos diálogos de plan: el agradecimiento al pagar Pro y la despedida al
      cancelarlo. Cada uno se ve UNA vez (el marcador vive en disco, por cuenta:
      `stores/planEvents.ts`) y en mitad de la aplicación, porque lo que los
-     dispara pasa fuera —en el navegador, en Polar— y aquí sólo llega en el
+     dispara pasa fuera (en el navegador, en Polar) y aquí sólo llega en el
      siguiente `/v1/me`. Sólo sobre las rutas de la aplicación: en mitad del
      asistente de alta no hay dónde volver, y con la cuenta congelada por
      borrado manda su pantalla. -->
@@ -1228,7 +1365,7 @@ import { tilt } from "./lib/actions/tilt";
   >
     <StorageFullBanner />
     {#if $prefs?.live_activity_visible ?? true}
-      <ActivityFeed onClose={() => toggleActivityFeed()} />
+      <ActivityFeed onClose={() => toggleLiveActivity()} />
     {/if}
   </div>
 {/if}

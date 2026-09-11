@@ -182,7 +182,7 @@
         class="absolute inset-0 h-full w-full scale-110 object-cover blur-xl saturate-150"
         draggable="false"
       />
-      <div class="absolute inset-0 bg-zinc-950/40" aria-hidden="true"></div>
+      <div class="absolute inset-0 bg-layer-2" aria-hidden="true"></div>
     {/if}
     <img
       src={url}
@@ -208,7 +208,7 @@
       title={label}
       aria-label={label}
       class={editor === "corner"
-        ? "absolute bottom-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.12] bg-zinc-950/70 text-zinc-100 backdrop-blur-md transition-colors hover:border-white/[0.24] hover:bg-zinc-950/90"
+        ? "absolute bottom-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.14] bg-layer-2 text-zinc-100 backdrop-blur-md transition-colors hover:border-white/[0.24] hover:bg-zinc-950/90"
         : "absolute inset-0 z-10 flex items-center justify-center bg-black/50 text-white transition-opacity"}
     >
       {#if isRestore}

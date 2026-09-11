@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { openUpgradePage } from "../lib/stores/cloud";
   /**
    * Account page, the entry point for everything Hoard Cloud.
    *
@@ -14,10 +15,12 @@
   import { onMount, onDestroy } from "svelte";
   import { push } from "svelte-spa-router";
   import { _ } from "svelte-i18n";
-  import { LogOut, ArrowUpRight, Mail, Download, Trash2, RefreshCw, ShieldCheck, AlertTriangle, CreditCard, HardDrive, Layers, Clock, FileArchive, Gauge, Server } from "@lucide/svelte";
+  import { LogOut, ArrowUpRight, Mail, Download, Trash2, RefreshCw, ShieldCheck, AlertTriangle, CreditCard, HardDrive, Layers, Clock, FileArchive, Gauge, Server, Pencil, Eye } from "@lucide/svelte";
 
   import Card from "../lib/components/Card.svelte";
   import Button from "../lib/components/Button.svelte";
+  import AnimIcon from "../lib/components/AnimIcon.svelte";
+  import MaskedEmail from "../lib/components/MaskedEmail.svelte";
   import Modal from "../lib/components/Modal.svelte";
   import { openLiberate } from "../lib/stores/liberate";
   import {
@@ -25,21 +28,23 @@
     hydrateCloud,
     refreshCloud,
     startCloudLogin,
-    logoutCloud,
     exportAllCloudData,
     exportStatusCloud,
     downloadCloudExport,
     deleteCloudAccount,
     openBillingPortal,
+    openWebAccount,
+    setMaxSaveSize,
     planLabel,
     type CloudExportStatus,
   } from "../lib/stores/cloud";
   import { auth, signOut, refreshQuota } from "../lib/stores/auth";
+  import { signOutEverything } from "../lib/stores/session";
   import { remoteDevices, refreshDevices } from "../lib/stores/devices";
   import { healthCheck, type HealthInfo } from "../lib/api";
-  import { toastError, toastInfo } from "../lib/stores/toasts";
-  import { clearOnboarding, clearTourSeen } from "../lib/stores/onboarding";
+  import { toastError, toastInfo, toastSuccess } from "../lib/stores/toasts";
   import { formatBytes } from "../lib/utils/format";
+  import { formatCloudError } from "../lib/utils/cloudErrors";
 
   let busyAction = $state<
     "signin" | "logout" | "refresh" | "export" | "delete" | null
@@ -55,6 +60,46 @@
   const exportBusy = $derived(
     exportState?.status === "pending" || exportState?.status === "running",
   );
+
+  // ---- per-save cap
+  //
+  // The number is in bytes on the wire and in tenths of a gigabyte on screen:
+  // a slider in bytes has 1.5 billion positions and no user wants any of the
+  // ones in between. The server clamps whatever arrives, so the range here is
+  // for the hand, not for safety.
+  const GB = 1024 * 1024 * 1024;
+  let capOpen = $state(false);
+  let capDraftGb = $state(1);
+  let capSaving = $state(false);
+
+  const capRange = $derived.by(() => {
+    const a = $cloud.account;
+    if (!a?.save_size_min_bytes || !a?.save_size_max_bytes) return null;
+    return {
+      minGb: Math.round((a.save_size_min_bytes / GB) * 10) / 10,
+      maxGb: Math.round((a.save_size_max_bytes / GB) * 10) / 10,
+    };
+  });
+
+  function openCapEditor() {
+    const a = $cloud.account;
+    if (!a) return;
+    capDraftGb = Math.round((a.max_save_size_bytes / GB) * 10) / 10;
+    capOpen = true;
+  }
+
+  async function saveCap() {
+    capSaving = true;
+    try {
+      await setMaxSaveSize(Math.round(capDraftGb * GB));
+      toastSuccess($_("account.max_save_size_saved"));
+      capOpen = false;
+    } catch (e) {
+      toastError(formatCloudError(e));
+    } finally {
+      capSaving = false;
+    }
+  }
 
   onMount(async () => {
     if (!$cloud.hydrated) {
@@ -127,14 +172,11 @@
     if (busyAction) return;
     busyAction = "logout";
     try {
-      await logoutCloud();
-      // Reset the wizard so the next launch (and this navigation) lands on the
-      // welcome screen, not a stale persisted step. Then leave /account
-      // immediately instead of sitting on the signed-out view, which is what
-      // made it look like the session "came back". Clear the tour too so it
-      // replays when you sign into another account.
-      await clearOnboarding();
-      await clearTourSeen();
+      // Both sessions, and the wizard and tour reset, live in `signOutEverything`
+      // so this button, the dashboard's and the tray's do the same thing. Leaving
+      // /account right after matters: sitting on the signed-out view is what made
+      // it look like the session "came back".
+      await signOutEverything();
       toastInfo($_("account.signed_out"));
       push("/onboarding/language");
     } catch (e) {
@@ -150,7 +192,7 @@
     try {
       await refreshCloud();
     } catch (e) {
-      toastError(typeof e === "string" ? e : (e as Error).message);
+      toastError(formatCloudError(e));
     } finally {
       busyAction = null;
     }
@@ -195,9 +237,7 @@
       await deleteCloudAccount();
       // Same exit as logout: drop the local session and land on the welcome
       // flow instead of sitting on a stale /account view of a deleted account.
-      await logoutCloud();
-      await clearOnboarding();
-      await clearTourSeen();
+      await signOutEverything();
       confirmDeleteOpen = false;
       toastInfo($_("account.delete_scheduled"));
       push("/onboarding/language");
@@ -241,7 +281,7 @@
       capLabel: formatBytes(server.storage_quota_bytes),
       pct,
       color:
-        pct >= 90 ? "bg-rose-500" : pct >= 75 ? "bg-amber-500" : "bg-emerald-500",
+        pct >= 90 ? "bg-red-500" : pct >= 60 ? "bg-amber-500" : "bg-emerald-500",
     };
   });
 
@@ -331,17 +371,19 @@
       // Sky first: inside a downgrade window the account is *fine*, it still
       // has its old limit and nothing is being deleted. Painting it red or
       // amber would announce a problem that hasn't happened yet.
+      // Then the consequence decides: full is a hard red with a glow, purging
+      // (old versions are being deleted) is red, and from 60 % with nothing
+      // happening yet it is a warning in amber. Red never arrives out of the
+      // blue: amber always comes first.
       status === "grace"
         ? "bg-sky-500"
         : status === "full" || pct >= 100
-          ? "bg-rose-500"
+          ? "bg-red-600 shadow-[0_0_10px_1px_oklch(0.58_0.22_27/0.75)]"
           : status === "purging"
-            ? "bg-amber-500"
-            : pct >= 90
-              ? "bg-rose-500"
-              : pct >= 75
-                ? "bg-amber-500"
-                : "bg-emerald-500";
+            ? "bg-red-500"
+            : pct >= 60
+              ? "bg-amber-500"
+              : "bg-emerald-500";
     return {
       usedLabel: formatBytes(a.storage_used_bytes),
       capLabel: formatBytes(a.storage_limit_bytes),
@@ -448,12 +490,16 @@
         </div>
         <Button
           variant="ghost"
-          loading={busyAction === "refresh"}
           disabled={busyAction !== null}
           onclick={handleServerRefresh}
           aria-label={$_("account.refresh")}
         >
-          <RefreshCw size={14} />
+          <AnimIcon
+            icon={RefreshCw}
+            on={busyAction === "refresh"}
+            kind="spin"
+            size={14}
+          />
           {$_("account.refresh")}
         </Button>
       </div>
@@ -484,7 +530,7 @@
         <!-- The ceiling that turns a backup into a 413. It is the operator's
              own knob, and until it was shown here the only way to learn it
              existed was to hit it. -->
-        <div class="rounded-xl border border-white/[0.08] bg-zinc-950/40 p-3.5">
+        <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3.5">
           <p class="flex items-center gap-2 text-xs text-zinc-500">
             <FileArchive size={12} />
             {$_("account.selfhost_max_snapshot")}
@@ -497,7 +543,7 @@
           {/if}
         </div>
 
-        <div class="rounded-xl border border-white/[0.08] bg-zinc-950/40 p-3.5">
+        <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3.5">
           <p class="flex items-center gap-2 text-xs text-zinc-500">
             <Clock size={12} />
             {$_("account.selfhost_versions")}
@@ -510,7 +556,7 @@
           </p>
         </div>
 
-        <div class="rounded-xl border border-white/[0.08] bg-zinc-950/40 p-3.5">
+        <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3.5">
           <p class="flex items-center gap-2 text-xs text-zinc-500">
             <Layers size={12} />
             {$_("account.devices")}
@@ -520,7 +566,7 @@
           </p>
         </div>
 
-        <div class="rounded-xl border border-white/[0.08] bg-zinc-950/40 p-3.5 sm:col-span-3">
+        <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3.5 sm:col-span-3">
           <p class="flex items-center gap-2 text-xs text-zinc-500">
             <Server size={12} />
             {$_("account.selfhost_server")}
@@ -599,7 +645,7 @@
       </div>
 
       <div class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div class="rounded-xl border border-white/[0.08] bg-zinc-950/40 p-3.5">
+        <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3.5">
           <p class="text-xs font-medium text-emerald-400">
             {$_("account.feature_storage")}
           </p>
@@ -607,7 +653,7 @@
             {$_("account.feature_storage_body")}
           </p>
         </div>
-        <div class="rounded-xl border border-white/[0.08] bg-zinc-950/40 p-3.5">
+        <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3.5">
           <p class="text-xs font-medium text-emerald-400">
             {$_("account.feature_sync")}
           </p>
@@ -615,7 +661,7 @@
             {$_("account.feature_sync_body")}
           </p>
         </div>
-        <div class="rounded-xl border border-white/[0.08] bg-zinc-950/40 p-3.5">
+        <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3.5">
           <p class="text-xs font-medium text-emerald-400">
             {$_("account.feature_privacy")}
           </p>
@@ -663,19 +709,25 @@
               {$_("account.signed_in_as")}
             </p>
             <p class="mt-1 truncate text-lg font-medium">
-              {account.display_name ?? account.email}
+              {#if account.display_name}{account.display_name}{:else}<MaskedEmail email={account.email} />{/if}
             </p>
-            <p class="truncate text-xs text-zinc-500">{account.email}</p>
+            <p class="min-w-0 text-xs text-zinc-500">
+              <MaskedEmail email={account.email} />
+            </p>
           </div>
         </div>
         <Button
           variant="ghost"
-          loading={busyAction === "refresh"}
           disabled={busyAction !== null}
           onclick={handleRefresh}
           aria-label={$_("account.refresh")}
         >
-          <RefreshCw size={14} />
+          <AnimIcon
+            icon={RefreshCw}
+            on={busyAction === "refresh"}
+            kind="spin"
+            size={14}
+          />
           {$_("account.refresh")}
         </Button>
       </div>
@@ -712,8 +764,8 @@
         </div>
         <div class="flex flex-col items-end gap-2">
           {#if account.plan === "free"}
-            <Button variant="primary" onclick={() => push("/pro")}>
-              <ArrowUpRight size={14} />
+            <Button variant="primary" onclick={() => openUpgradePage("pro")}>
+              <ArrowUpRight size={14} data-anim="pop" />
               {$_("account.upgrade")}
             </Button>
           {/if}
@@ -765,16 +817,16 @@
                   disabled={busyAction !== null || exportBusy}
                   onclick={handleExport}
                 >
-                  <Download size={14} />
+                  <Download size={14} data-anim="pop" />
                   {$_("account.export_all")}
                 </Button>
               </div>
             </div>
           {/if}
           {#if storageView.status === "purging"}
-            <p class="mt-1.5 text-xs text-amber-400">{$_("account.storage_purging")}</p>
+            <p class="mt-1.5 text-xs text-red-400">{$_("account.storage_purging")}</p>
           {:else if storageView.status === "full"}
-            <p class="mt-1.5 text-xs text-rose-400">{$_("account.storage_full")}</p>
+            <p class="mt-1.5 text-xs font-semibold text-red-300">{$_("account.storage_full")}</p>
             <div class="mt-2">
               <Button onclick={openLiberate}>
                 <HardDrive size={14} />
@@ -784,9 +836,13 @@
           {/if}
           {#if storageView.status === "purging" || storageView.status === "full"}
             <div
-              class="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5"
+              class="mt-2 rounded-lg border p-2.5 {storageView.status === 'full'
+                ? 'border-red-500/70 bg-red-600/20'
+                : 'border-red-500/40 bg-red-500/10'}"
             >
-              <p class="text-xs text-amber-200/90">{$_("account.storage_export_warning")}</p>
+              <p class="text-xs {storageView.status === 'full' ? 'text-red-100' : 'text-red-200/90'}">
+                {$_("account.storage_export_warning")}
+              </p>
               <div class="mt-2">
                 <Button
                   variant="secondary"
@@ -794,7 +850,7 @@
                   disabled={busyAction !== null || exportBusy}
                   onclick={handleExport}
                 >
-                  <Download size={14} />
+                  <Download size={14} data-anim="pop" />
                   {$_("account.export_all")}
                 </Button>
               </div>
@@ -805,18 +861,29 @@
 
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {#if devicesView}
-          <div class="rounded-xl border border-white/[0.08] bg-zinc-950/40 p-3.5">
-            <p class="flex items-center gap-2 text-xs text-zinc-500">
-              <Layers size={12} />
-              {$_("account.devices")}
-            </p>
+          <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3.5">
+            <div class="flex items-start justify-between gap-2">
+              <p class="flex items-center gap-2 text-xs text-zinc-500">
+                <Layers size={12} />
+                {$_("account.devices")}
+              </p>
+              <button
+                type="button"
+                class="-m-1 rounded-md p-1 text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
+                title={$_("account.devices_see")}
+                aria-label={$_("account.devices_see")}
+                onclick={() => openWebAccount()}
+              >
+                <Eye size={14} />
+              </button>
+            </div>
             <p class="mt-1 text-sm text-zinc-200">
               {devicesView.used} / {devicesView.cap}
             </p>
           </div>
         {/if}
         {#if savesView}
-          <div class="rounded-xl border border-white/[0.08] bg-zinc-950/40 p-3.5">
+          <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3.5">
             <p class="flex items-center gap-2 text-xs text-zinc-500">
               <Layers size={12} />
               {$_("account.saves")}
@@ -826,7 +893,7 @@
             </p>
           </div>
         {/if}
-        <div class="rounded-xl border border-white/[0.08] bg-zinc-950/40 p-3.5">
+        <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3.5">
           <p class="flex items-center gap-2 text-xs text-zinc-500">
             <Clock size={12} />
             {$_("account.history")}
@@ -838,18 +905,31 @@
           </p>
         </div>
         {#if account.max_save_size_bytes > 0}
-          <div class="rounded-xl border border-white/[0.08] bg-zinc-950/40 p-3.5">
-            <p class="flex items-center gap-2 text-xs text-zinc-500">
-              <FileArchive size={12} />
-              {$_("account.max_save_size")}
-            </p>
+          <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3.5">
+            <div class="flex items-start justify-between gap-2">
+              <p class="flex items-center gap-2 text-xs text-zinc-500">
+                <FileArchive size={12} />
+                {$_("account.max_save_size")}
+              </p>
+              {#if capRange}
+                <button
+                  type="button"
+                  class="-m-1 rounded-md p-1 text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
+                  title={$_("account.max_save_size_edit")}
+                  aria-label={$_("account.max_save_size_edit")}
+                  onclick={openCapEditor}
+                >
+                  <Pencil size={14} />
+                </button>
+              {/if}
+            </div>
             <p class="mt-1 text-sm text-zinc-200">
               {formatBytes(account.max_save_size_bytes)}
             </p>
           </div>
         {/if}
         {#if account.bandwidth_quota_bytes > 0}
-          <div class="rounded-xl border border-white/[0.08] bg-zinc-950/40 p-3.5">
+          <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3.5">
             <p class="flex items-center gap-2 text-xs text-zinc-500">
               <Gauge size={12} />
               {$_("account.bandwidth")}
@@ -879,7 +959,7 @@
           disabled={busyAction !== null || exportBusy}
           onclick={handleExport}
         >
-          <Download size={14} />
+          <Download size={14} data-anim="pop" />
           {$_("account.export_all")}
         </Button>
         {#if exportState?.status === "done" && exportState.download_url}
@@ -898,16 +978,16 @@
       {:else if exportState?.status === "expired" || (exportState?.status === "done" && !exportState.download_url)}
         <p class="mt-2 text-xs text-zinc-400">{$_("account.export_expired")}</p>
       {:else if exportState?.status === "failed"}
-        <p class="mt-2 text-xs text-rose-400">{$_("account.export_failed")}</p>
+        <p class="mt-2 text-xs text-red-400">{$_("account.export_failed")}</p>
       {/if}
     </Card>
 
-    <Card class="mb-4 border-rose-900/50 bg-rose-950/20">
-      <h3 class="flex items-center gap-2 text-sm font-semibold text-rose-300">
+    <Card class="mb-4 border-red-900/50 bg-red-950/20">
+      <h3 class="flex items-center gap-2 text-sm font-semibold text-red-300">
         <AlertTriangle size={14} />
         {$_("account.danger_zone")}
       </h3>
-      <p class="mt-1 text-sm text-rose-200/70">
+      <p class="mt-1 text-sm text-red-200/70">
         {$_("account.danger_zone_body")}
       </p>
       <div class="mt-3 flex flex-wrap gap-2">
@@ -917,16 +997,16 @@
           disabled={busyAction !== null}
           onclick={handleLogout}
         >
-          <LogOut size={14} />
+          <LogOut size={14} data-anim="pop" />
           {$_("account.sign_out")}
         </Button>
         <Button
           variant="secondary"
-          class="!bg-rose-900/40 !text-rose-200 hover:!bg-rose-900/60"
+          class="!bg-red-900/40 !text-red-200 hover:!bg-red-900/60"
           disabled={busyAction !== null}
           onclick={openDeleteModal}
         >
-          <Trash2 size={14} />
+          <Trash2 size={14} data-anim="pop" />
           {$_("account.delete_account")}
         </Button>
       </div>
@@ -956,6 +1036,58 @@
 </Modal>
 
 <Modal
+  open={capOpen}
+  title={$_("account.max_save_size_modal_title")}
+  dismissible={!capSaving}
+  onClose={() => (capOpen = false)}
+>
+  <p class="text-sm text-zinc-300">
+    {$_("account.max_save_size_modal_body")}
+  </p>
+  {#if capRange}
+    <div class="mt-4">
+      <div class="flex items-baseline justify-between">
+        <label class="text-xs text-zinc-400" for="cap-slider">
+          {$_("account.max_save_size")}
+        </label>
+        <span class="font-mono text-sm text-zinc-100">
+          {capDraftGb.toFixed(1)} GB
+        </span>
+      </div>
+      <input
+        id="cap-slider"
+        type="range"
+        class="mt-2 w-full accent-emerald-500"
+        min={capRange.minGb}
+        max={capRange.maxGb}
+        step="0.1"
+        disabled={capSaving}
+        bind:value={capDraftGb}
+      />
+      <div class="mt-1 flex justify-between font-mono text-[11px] text-zinc-600">
+        <span>{capRange.minGb.toFixed(1)} GB</span>
+        <span>{capRange.maxGb.toFixed(1)} GB</span>
+      </div>
+    </div>
+    {#if $cloud.account && $cloud.account.storage_limit_bytes > 0 && capDraftGb * GB > $cloud.account.storage_limit_bytes / 2}
+      <p class="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs leading-snug text-amber-200/90">
+        {$_("account.max_save_size_eats_storage", {
+          values: { total: formatBytes($cloud.account.storage_limit_bytes) },
+        })}
+      </p>
+    {/if}
+  {/if}
+  {#snippet footer()}
+    <Button variant="secondary" disabled={capSaving} onclick={() => (capOpen = false)}>
+      {$_("common.cancel")}
+    </Button>
+    <Button loading={capSaving} onclick={saveCap}>
+      {$_("common.save")}
+    </Button>
+  {/snippet}
+</Modal>
+
+<Modal
   open={confirmDeleteOpen}
   title={$_("account.delete_modal_title")}
   dismissible={true}
@@ -976,7 +1108,7 @@
       type="text"
       bind:value={deleteConfirmation}
       placeholder="DELETE"
-      class="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-mono text-zinc-100 placeholder:text-zinc-600 focus:border-rose-500 focus:outline-none"
+      class="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-mono text-zinc-100 placeholder:text-zinc-600 focus:border-red-500 focus:outline-none"
       autocomplete="off"
       spellcheck="false"
     />
@@ -991,7 +1123,7 @@
     </Button>
     <Button
       variant="secondary"
-      class="!bg-rose-600 !text-zinc-50 hover:!bg-rose-500"
+      class="!bg-red-600 !text-zinc-50 hover:!bg-red-500"
       loading={busyAction === "delete"}
       disabled={
         busyAction !== null ||

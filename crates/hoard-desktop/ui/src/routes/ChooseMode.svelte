@@ -36,7 +36,7 @@
       <button
         type="button"
         onclick={chooseSelfHost}
-        class="flex flex-col items-start gap-3 rounded-xl border border-zinc-700 bg-zinc-950/60 p-5 text-left transition hover:border-zinc-500 hover:bg-zinc-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400/50"
+        class="flex flex-col items-start gap-3 rounded-2xl border border-zinc-700 bg-layer-2 p-5 text-left transition hover:border-zinc-500 hover:bg-layer-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400/50"
       >
         <span
           class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-zinc-800 text-zinc-100"
@@ -55,7 +55,7 @@
       <button
         type="button"
         onclick={chooseCloud}
-        class="flex flex-col items-start gap-3 rounded-xl border border-emerald-500/40 bg-emerald-600 p-5 text-left transition hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50"
+        class="flex flex-col items-start gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-600 p-5 text-left transition hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50"
       >
         <span
           class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-700/60 text-emerald-50"

@@ -7,12 +7,22 @@
    * page slower. The switch is a styled checkbox; we don't depend on a third
    * party UI kit for something this small.
    */
+  import AnimIcon, { type AnimKind } from "./AnimIcon.svelte";
+
   type Props = {
     row: {
       field: string;
       label: string;
       description: string;
       icon: any;
+      /** Drawn instead of `icon` while the row is off: the bell that is not
+       *  going to ring is a crossed-out bell, not a grey one. */
+      iconOff?: any;
+      /** Which move plays when the row is flipped, if any. */
+      anim?: AnimKind;
+      /** Play the animation when it is switched off too. */
+      animBothWays?: boolean;
+      alarmWhenOff?: boolean;
     };
     value: boolean;
     disabled?: boolean;
@@ -23,17 +33,25 @@
   // Reactive alias so the icon swaps if the row prop ever changes. Capturing
   // it as `const` would freeze it to the initial render, which Svelte warns
   // about explicitly, and which would bite future callers.
-  const Icon = $derived(row.icon);
+  // Red only while off, and only where the row asks for it.
+  const alarm = $derived(row.alarmWhenOff === true && !value);
 </script>
 
 <label
-  class="flex items-start gap-4 py-4 first:pt-0 last:pb-0
+  class="anim-host flex items-start gap-4 py-4 first:pt-0 last:pb-0
     {disabled ? 'opacity-60' : 'cursor-pointer'}"
 >
   <div
     class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-zinc-800/60 text-zinc-400"
   >
-    <Icon size={16} />
+    <AnimIcon
+      icon={row.icon}
+      iconOff={row.iconOff}
+      on={value}
+      kind={row.anim ?? "pop"}
+      bothWays={row.animBothWays ?? true}
+      size={16}
+    />
   </div>
   <div class="min-w-0 flex-1">
     <div class="text-sm font-medium text-zinc-100">{row.label}</div>
@@ -48,8 +66,8 @@
       onchange={(e) => onChange((e.currentTarget as HTMLInputElement).checked)}
     />
     <span
-      class="absolute inset-0 rounded-full bg-zinc-700 transition-colors peer-checked:bg-emerald-600/90
-        peer-disabled:bg-zinc-800"
+      class="absolute inset-0 rounded-full transition-colors peer-checked:bg-emerald-600/90
+        peer-disabled:bg-zinc-800 {alarm ? 'bg-red-600/90' : 'bg-zinc-700'}"
     ></span>
     <span
       class="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-zinc-100 shadow transition-transform

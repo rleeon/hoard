@@ -185,7 +185,7 @@
                 <button
                   type="button"
                   onclick={() => onPick(p.path)}
-                  class="group flex w-full items-center gap-2.5 rounded-lg border border-white/[0.08] bg-zinc-950/60 px-3 py-2.5 text-left transition-colors hover:border-emerald-600/40 hover:bg-emerald-600/10"
+                  class="group flex w-full items-center gap-2.5 rounded-lg border border-white/[0.08] bg-layer-2 px-3 py-2.5 text-left transition-colors hover:border-emerald-600/40 hover:bg-emerald-600/10"
                 >
                   <Link
                     size={14}
@@ -213,7 +213,7 @@
           </p>
         </div>
       {:else if neverScanned}
-        <div class="rounded-lg border border-white/[0.08] bg-zinc-950/60 p-3">
+        <div class="rounded-lg border border-white/[0.08] bg-layer-2 p-3">
           <p class="text-sm text-zinc-300">{$_("library.link_never_scanned")}</p>
           <div class="mt-2.5">
             <Button variant="secondary" onclick={scan} loading={scanning}>
@@ -251,7 +251,7 @@
                 type="text"
                 bind:value={search}
                 placeholder={$_("library.link_search_games")}
-                class="w-full rounded-lg border border-white/[0.08] bg-zinc-950/60 py-1.5 pl-7 pr-2.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-emerald-600/40 focus:outline-none"
+                class="w-full rounded-lg border border-white/[0.08] bg-layer-2 py-1.5 pl-7 pr-2.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-emerald-600/40 focus:outline-none"
               />
             </div>
           {/if}
@@ -267,7 +267,7 @@
                   <button
                     type="button"
                     onclick={() => pickGame(c)}
-                    class="group flex w-full items-center gap-2.5 rounded-lg border border-white/[0.08] bg-zinc-950/60 px-3 py-2 text-left transition-colors hover:border-emerald-600/40 hover:bg-emerald-600/10"
+                    class="group flex w-full items-center gap-2.5 rounded-lg border border-white/[0.08] bg-layer-2 px-3 py-2 text-left transition-colors hover:border-emerald-600/40 hover:bg-emerald-600/10"
                   >
                     <Gamepad2
                       size={14}

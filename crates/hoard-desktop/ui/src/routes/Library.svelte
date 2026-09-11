@@ -1112,21 +1112,21 @@
         title={$_("scan_folder.title")}
         aria-label={$_("scan_folder.title")}
       >
-        <FolderSearch size={16} />
+        <FolderSearch size={16} data-anim="pop" />
       </Button>
       <Button variant="secondary" onclick={() => (emulatorModalOpen = true)}>
-        <Gamepad2 size={16} />
+        <Gamepad2 size={16} data-anim="pop" />
         {$_("manual.add_button")}
       </Button>
       <Button onclick={runScan} loading={scanning}>
-        <RefreshCw size={16} />
+        <RefreshCw size={16} data-anim="spin" />
         {scanning ? $_("library.scanning") : report ? $_("library.rescan") : $_("library.scan_now")}
       </Button>
     </div>
   </header>
 
   {#if scanning && progress}
-    <div class="mb-6 rounded-xl border border-white/[0.08] bg-zinc-950/40 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]">
+    <div class="mb-6 rounded-2xl border border-white/[0.08] bg-layer-2 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]">
       <div class="mb-2 flex items-center justify-between text-xs text-zinc-400">
         <span>{$_("library.scanning_catalog")}</span>
         <span class="tabular-nums">
@@ -1149,7 +1149,7 @@
       disabled={scanning}
       use:tilt
       title={$_("library.deep_scan_hint")}
-      class="tilt group flex flex-col rounded-xl border border-red-500/30 bg-red-950/20 p-4 text-left shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-red-500/55 hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-60"
+      class="tilt group flex flex-col rounded-2xl border border-red-500/30 bg-red-950/20 p-4 text-left shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-red-500/55 hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-60"
     >
       <div class="mb-2 flex items-start gap-2.5">
         <div
@@ -1442,10 +1442,10 @@
                         <button
                           type="button"
                           onclick={() => askDelete(save)}
-                          class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-700/40 hover:text-rose-400"
+                          class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-700/40 hover:text-red-400"
                           title={$_("library.delete_title")}
                         >
-                          <Trash size={11} class="text-rose-500" />
+                          <Trash size={11} class="text-red-500" />
                         </button>
                       </div>
                     </div>
@@ -1490,7 +1490,7 @@
                     {#if $backupBlocked[save.save_id]}
                       {@const blocked = $backupBlocked[save.save_id]}
                       <p
-                        class="flex items-start gap-1 text-[10px] text-rose-400/90"
+                        class="flex items-start gap-1 text-[10px] text-red-400/90"
                         title={`${$_("library.backup_blocked_help")}\n\n${blocked.error}`}
                       >
                         <AlertTriangle size={10} class="mt-px shrink-0" />
@@ -1507,7 +1507,7 @@
                       <p
                         class="flex items-start gap-1 text-[10px] {bad.uploaded
                           ? 'text-amber-400/90'
-                          : 'text-rose-400/90'}"
+                          : 'text-red-400/90'}"
                         title={`${bad.path} — ${bad.error}`}
                       >
                         <AlertTriangle size={10} class="mt-px shrink-0" />
@@ -1643,7 +1643,7 @@
                     onclick={() => askDismiss(game)}
                     aria-label={$_("library.ignore_confirm")}
                     title={$_("library.ignore_confirm")}
-                    class="ml-auto shrink-0 rounded p-1.5 text-rose-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+                    class="ml-auto shrink-0 rounded p-1.5 text-red-500 transition-colors hover:bg-red-500/10 hover:text-red-300"
                   >
                     <Trash size={14} />
                   </button>
@@ -1704,7 +1704,7 @@
       >
         {#each cloudOrphans as save (save.save_id)}
           <div
-            class="tilt group relative flex flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-zinc-950/40 p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-white/[0.12] hover:bg-zinc-900/50"
+            class="tilt group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-layer-2 p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-white/[0.14] hover:bg-layer-hover"
             use:tilt
           >
             <CardResizeHandle section="orphans" />
@@ -1739,9 +1739,9 @@
                       onclick={() => askDelete(save)}
                       aria-label={$_("library.delete_button")}
                       title={$_("library.delete_title")}
-                      class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-700/40 hover:text-rose-400"
+                      class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-700/40 hover:text-red-400"
                     >
-                      <Trash size={11} class="text-rose-500" />
+                      <Trash size={11} class="text-red-500" />
                     </button>
                   </div>
                 </div>
@@ -1793,8 +1793,8 @@
       >
         {#each playtimeGames as game (game.slug)}
           <div
-            class="group relative flex items-center justify-between gap-2 rounded-xl border p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 {game.excluded
-              ? 'border-white/[0.08] bg-zinc-950/40 opacity-50'
+            class="group relative flex items-center justify-between gap-2 rounded-2xl border p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 {game.excluded
+              ? 'border-white/[0.08] bg-layer-2 opacity-50'
               : 'border-amber-500/40 bg-amber-500/10 hover:border-amber-500/60'}"
           >
             <CardResizeHandle section="playtime" />
@@ -2026,7 +2026,7 @@
         type="button"
         onclick={confirmUntrack}
         disabled={untracking}
-        class="inline-flex items-center justify-center gap-2 rounded-md bg-rose-500 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-rose-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+        class="inline-flex items-center justify-center gap-2 rounded-md bg-red-500 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
       >
         <Trash2 size={14} />
         {$_("library.untrack_confirm_action")}
@@ -2065,7 +2065,7 @@
         type="button"
         onclick={confirmDelete}
         disabled={deleting}
-        class="inline-flex items-center justify-center gap-2 rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-rose-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+        class="inline-flex items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
       >
         <Trash size={14} />
         {$_("library.delete_confirm_action")}
@@ -2129,7 +2129,7 @@
         type="button"
         onclick={confirmDismiss}
         disabled={dismissBusy}
-        class="inline-flex items-center justify-center gap-2 rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-rose-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+        class="inline-flex items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
       >
         <Trash size={14} />
         {$_("library.ignore_confirm")}

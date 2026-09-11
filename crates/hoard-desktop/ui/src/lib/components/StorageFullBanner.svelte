@@ -24,15 +24,15 @@
 
 {#if $storageBlock}
   <div
-    class="pointer-events-auto overflow-hidden rounded-lg border border-rose-500/60 bg-zinc-950/95 shadow-xl backdrop-blur"
+    class="pointer-events-auto overflow-hidden rounded-lg border border-red-500/60 bg-layer-3 shadow-xl backdrop-blur"
     role="status"
     aria-live="polite"
     transition:fly={{ y: 12, duration: 180 }}
   >
     <!-- Tint layered *over* the opaque card rather than set on it: a single
          `bg-rose-500/10` would let whatever is behind the window bleed through. -->
-    <div class="flex items-start gap-2.5 bg-rose-500/10 p-3">
-      <span class="mt-0.5 shrink-0 text-rose-400" aria-hidden="true">
+    <div class="flex items-start gap-2.5 bg-red-500/10 p-3">
+      <span class="mt-0.5 shrink-0 text-red-400" aria-hidden="true">
         <HardDrive size={16} />
       </span>
       <div class="min-w-0 flex-1">
@@ -46,7 +46,7 @@
         </p>
         <button
           type="button"
-          class="mt-2 rounded-md border border-rose-500/50 bg-rose-500/20 px-2.5 py-1 text-[11px] font-medium text-rose-100 transition-colors hover:bg-rose-500/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+          class="mt-2 rounded-md border border-red-500/50 bg-red-500/20 px-2.5 py-1 text-[11px] font-medium text-red-100 transition-colors hover:bg-red-500/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
           onclick={openLiberate}
         >
           {$_("liberate.cta")}

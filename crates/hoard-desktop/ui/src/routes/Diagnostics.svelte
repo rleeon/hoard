@@ -88,7 +88,7 @@
     {:else}
       <Card>
         <pre
-          class="max-h-[70vh] overflow-auto rounded-md border border-zinc-800 bg-zinc-950/60 p-3 font-mono text-xs leading-relaxed text-zinc-200">{JSON.stringify(
+          class="max-h-[70vh] overflow-auto rounded-md border border-zinc-800 bg-layer-2 p-3 font-mono text-xs leading-relaxed text-zinc-200">{JSON.stringify(
             trace,
             null,
             2,

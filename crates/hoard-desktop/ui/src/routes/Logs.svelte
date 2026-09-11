@@ -2,10 +2,11 @@
   /**
    * Logs viewer, Settings → Advanced gateway into the agent log file.
    *
-   * Reads the latest rolling log file from the cache dir and presents the
-   * tail. We deliberately keep the UI minimal: a search box, a level filter,
-   * a "copy all" button. People come here to copy lines into a bug report,
-   * not to do real-time monitoring (the dashboard is for that).
+   * Reads the latest rolling log files from the cache dir, the window's and the
+   * service's, and presents the merged tail. We deliberately keep the UI
+   * minimal: a search box, a level filter, a "copy all" button. People come here
+   * to copy lines into a bug report, not to do real-time monitoring (the
+   * dashboard is for that).
    */
   import { onMount } from "svelte";
   import { ArrowLeft, Search, Copy, RefreshCw } from "@lucide/svelte";
@@ -60,7 +61,10 @@
   async function copyAll() {
     try {
       const text = filtered
-        .map((l) => `${l.timestamp} ${l.level} ${l.message}`)
+        .map(
+          (l) =>
+            `${l.timestamp} [${l.source}] ${l.level} ${l.message}`,
+        )
         .join("\n");
       await navigator.clipboard.writeText(text);
       toastSuccess(
@@ -132,7 +136,7 @@
     </div>
     <select
       bind:value={levelFilter}
-      class="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-emerald-500"
+      class="rounded-md border border-zinc-700 bg-layer-2 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-emerald-500"
     >
       <option value="all">{$_("logs.level_all")}</option>
       <option value="ERROR">{$_("logs.level_error")}</option>
@@ -161,12 +165,24 @@
     </Card>
   {:else}
     <div
-      class="max-h-[60vh] overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950/60 font-mono text-xs"
+      class="max-h-[60vh] overflow-y-auto rounded-lg border border-zinc-800 bg-layer-2 font-mono text-xs"
     >
       <ul class="divide-y divide-zinc-900">
         {#each filtered as line, i (i)}
-          <li class="flex gap-3 px-3 py-1.5 hover:bg-zinc-900/40">
+          <li class="flex gap-3 px-3 py-1.5 hover:bg-layer-hover">
             <span class="shrink-0 text-zinc-600">{line.timestamp}</span>
+            <span
+              class="w-14 shrink-0 {line.source === 'service'
+                ? 'text-violet-400'
+                : 'text-zinc-600'}"
+              title={line.source === "service"
+                ? $_("logs.source_service")
+                : $_("logs.source_app")}
+            >
+              {line.source === "service"
+                ? $_("logs.source_service_short")
+                : $_("logs.source_app_short")}
+            </span>
             <span class="w-12 shrink-0 font-medium {levelClass(line.level)}">
               {line.level || "·"}
             </span>

@@ -42,6 +42,7 @@
   import { _ } from "svelte-i18n";
 
   import Button from "../lib/components/Button.svelte";
+  import AnimIcon from "../lib/components/AnimIcon.svelte";
   import Card from "../lib/components/Card.svelte";
   import Modal from "../lib/components/Modal.svelte";
   import Input from "../lib/components/Input.svelte";
@@ -55,6 +56,9 @@
     RestoreProgress,
   } from "../lib/api";
   import { toastError, toastSuccess } from "../lib/stores/toasts";
+
+  /** Flipped on every restore press, for the icon to react to. */
+  let restorePressed = $state(false);
   import {
     isCloudLoggedIn,
     archivedSaves,
@@ -901,9 +905,9 @@
     {#if selected.size > 0}
       <!-- Bulk action bar: appears as soon as one version is ticked. -->
       <div
-        class="mb-3 flex items-center justify-between gap-3 rounded-lg border border-rose-500/25 bg-rose-500/[0.06] px-3 py-2"
+        class="mb-3 flex items-center justify-between gap-3 rounded-lg border border-red-500/25 bg-red-500/[0.06] px-3 py-2"
       >
-        <span class="text-xs text-rose-200">
+        <span class="text-xs text-red-200">
           {$_("history.selected_count", { values: { count: selected.size } })}
         </span>
         <div class="flex items-center gap-2">
@@ -966,7 +970,7 @@
               {@const isDeleted = !!snap.deleted_at}
               {@const insight = snap.insight}
               <li
-                class="group rounded-xl border border-white/[0.08] bg-zinc-950/40 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-white/[0.12]
+                class="group rounded-2xl border border-white/[0.08] bg-layer-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-white/[0.14]
                   {isDeleted ? 'opacity-60' : ''}"
               >
                 <div class="flex items-center gap-3 px-4 py-3">
@@ -1147,17 +1151,37 @@
                       <Button
                         variant="secondary"
                         size="md"
-                        onclick={() => recover(snap.version_num)}
+                        onclick={() => {
+                          restorePressed = !restorePressed;
+                          recover(snap.version_num);
+                        }}
                       >
-                        <RotateCcw size={12} /> {$_("history.recover")}
+                        <AnimIcon
+                          icon={RotateCcw}
+                          on={restorePressed}
+                          kind="spin"
+                          size={12}
+                        />
+                        {$_("history.recover")}
                       </Button>
                     {:else}
                       <Button
                         variant="secondary"
                         size="md"
-                        onclick={() => openRestore(snap)}
+                        onclick={() => {
+                          // Same trick as the upload button: a press flips a bit
+                          // so the arrow has a change to answer.
+                          restorePressed = !restorePressed;
+                          openRestore(snap);
+                        }}
                       >
-                        <RotateCcw size={12} /> {$_("history.restore")}
+                        <AnimIcon
+                          icon={RotateCcw}
+                          on={restorePressed}
+                          kind="spin"
+                          size={12}
+                        />
+                        {$_("history.restore")}
                       </Button>
                       <Button
                         variant="ghost"
@@ -1284,7 +1308,7 @@
 
     {#if !restoring}
       <div
-        class="rounded-md border border-white/[0.08] bg-zinc-900/60 p-3 text-xs"
+        class="rounded-md border border-white/[0.08] bg-layer-2 p-3 text-xs"
       >
         <div class="mb-1.5 font-medium text-zinc-300">
           {$_("history.preview_title")}

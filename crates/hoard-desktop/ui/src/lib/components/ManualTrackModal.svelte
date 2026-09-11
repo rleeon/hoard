@@ -337,7 +337,7 @@
   <div class="space-y-4">
     <!-- Mode toggle: game vs emulator -->
     <div
-      class="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1"
+      class="grid grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-layer-2 p-1"
     >
       <button
         type="button"
@@ -375,7 +375,7 @@
           bind:value={selectedId}
           onchange={onSelect}
           disabled={loadingPresets}
-          class="w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600 disabled:opacity-50"
+          class="w-full rounded-md border border-zinc-800 bg-layer-2 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600 disabled:opacity-50"
         >
           <option value="" disabled>{$_("emulators.choose_placeholder")}</option
           >
@@ -471,7 +471,7 @@
             </p>
           {:else}
             <div
-              class="max-h-40 space-y-1 overflow-y-auto rounded-md border border-white/[0.08] bg-zinc-900/60 p-2"
+              class="max-h-40 space-y-1 overflow-y-auto rounded-md border border-white/[0.08] bg-layer-2 p-2"
             >
               {#each titles as t (t.path)}
                 <div
@@ -526,7 +526,7 @@
                   type="button"
                   onclick={() => removeProc(p)}
                   aria-label={$_("emulators.remove_proc")}
-                  class="rounded-sm text-emerald-400/70 hover:text-emerald-200"
+                  class="rounded text-emerald-400/70 hover:text-emerald-200"
                 >
                   <X size={12} />
                 </button>
@@ -571,7 +571,7 @@
         {/if}
         {#if running.length > 0}
           <ul
-            class="mt-2 max-h-40 divide-y divide-zinc-800 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950/40"
+            class="mt-2 max-h-40 divide-y divide-zinc-800 overflow-y-auto rounded-md border border-zinc-800 bg-layer-2"
           >
             {#each running as proc (proc.name)}
               <li class="flex items-center justify-between gap-2 px-3 py-1.5">

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { openUpgradePage } from "../stores/cloud";
   // Shared shell for the two Pro feature routes (Hoard-Screen / Hoard-Wrapped).
   //
   // Owns the "trial starts at first look" flow: on mount it refreshes the
@@ -74,7 +75,7 @@
       >
         <span>{$_("pro.trial_days_left", { values: { n: days } })}</span>
         <button
-          onclick={() => push(`/pro?feature=${feature}`)}
+          onclick={() => openUpgradePage("pro")}
           class="font-medium underline decoration-emerald-500/50 underline-offset-2 transition-colors hover:text-emerald-200"
         >
           {$_("pro.upgrade")}

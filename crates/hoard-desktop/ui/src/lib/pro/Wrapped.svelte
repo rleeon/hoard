@@ -1,4 +1,5 @@
 <script lang="ts">
+  import MarioStar from "../components/MarioStar.svelte";
   // hoard-wrapple, a personal "year in play" recap.
   //
   // Two pieces:
@@ -436,7 +437,7 @@
     <div
       class="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/10 ring-1 ring-emerald-400/30"
     >
-      <Sparkles size={22} class="text-emerald-300" />
+      <MarioStar size={22} class="text-emerald-300" data-anim="hop" />
     </div>
     <div>
       <h1 class="font-display text-2xl font-semibold tracking-tight text-zinc-50">
@@ -453,16 +454,9 @@
 
   <!-- identity card — masked by default, reveal like a password -->
   <div
-    class="tilt relative overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-900/60 p-4"
+    class="tilt relative overflow-hidden rounded-2xl border border-white/[0.08] bg-layer-1 p-4"
     use:tilt
   >
-    <!-- Soft glow via a pre-blurred radial-gradient, not `filter: blur()`:
-         WebKitGTK (Linux, inside Wrapple) paints a black rectangle when a
-         backdrop-filtered sibling repaints over a blur layer. A gradient is
-         just a paint, no compositing filter, so the artifact never appears. -->
-    <div
-      class="pointer-events-none absolute -right-16 -top-16 h-40 w-40 [background:radial-gradient(closest-side,rgba(16,185,129,0.12),transparent)]"
-    ></div>
     <div class="flex items-center gap-4">
       <div
         class="h-14 w-14 shrink-0 overflow-hidden rounded-2xl ring-1 ring-emerald-400/30"
@@ -515,19 +509,19 @@
 
     <!-- small facts, not sensitive -->
     <div class="mt-4 grid grid-cols-3 gap-2 text-center">
-      <div class="rounded-xl bg-white/[0.03] px-2 py-2.5">
+      <div class="rounded-2xl bg-white/[0.03] px-2 py-2.5">
         <div class="flex items-center justify-center gap-1 text-[11px] uppercase tracking-wide text-zinc-500">
           <Gamepad2 size={12} />{tr({ es: "Juegos", en: "Games" })}
         </div>
         <div class="mt-0.5 text-xl font-semibold text-zinc-100">{totalGames}</div>
       </div>
-      <div class="rounded-xl bg-white/[0.03] px-2 py-2.5">
+      <div class="rounded-2xl bg-white/[0.03] px-2 py-2.5">
         <div class="text-[11px] uppercase tracking-wide text-zinc-500">
           {tr({ es: "Atesorado", en: "Hoarded" })}
         </div>
         <div class="mt-0.5 text-xl font-semibold text-zinc-100">{fmtBytes(hoardedBytes)}</div>
       </div>
-      <div class="rounded-xl bg-white/[0.03] px-2 py-2.5">
+      <div class="rounded-2xl bg-white/[0.03] px-2 py-2.5">
         <div class="flex items-center justify-center gap-1 text-[11px] uppercase tracking-wide text-zinc-500">
           <Crown size={12} />{tr({ es: "Más jugado", en: "Most played" })}
         </div>
@@ -559,7 +553,7 @@
        cambia el contexto de los `absolute` de dentro, que ya cuelgan de sus
        propios contenedores `relative`. -->
   <div
-    class="tilt relative mt-4 rounded-2xl border border-white/[0.08] bg-zinc-900/60 p-4"
+    class="tilt relative mt-4 rounded-2xl border border-white/[0.08] bg-layer-1 p-4"
     use:tilt
   >
     <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
@@ -578,7 +572,7 @@
         <!-- Year filter — always visible (even with a single year) so the
              user can tell which year they're looking at. GitHub-style. -->
         <div
-          class="flex gap-1 rounded-lg border border-white/[0.08] bg-zinc-950/40 p-1"
+          class="flex gap-1 rounded-lg border border-white/[0.08] bg-layer-2 p-1"
         >
           {#each yearsAvailable as y (y)}
             <button
@@ -690,7 +684,7 @@
              convincing zero: the hours ARE still being counted locally, and
              they come back the moment it is turned on again. -->
         <div
-          class="mt-3 flex items-center gap-2 rounded-xl bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 ring-1 ring-white/[0.05]"
+          class="mt-3 flex items-center gap-2 rounded-2xl bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 ring-1 ring-white/[0.05]"
         >
           <Clock size={14} class="text-amber-300" />
           {tr({
@@ -700,7 +694,7 @@
         </div>
       {:else if stats.totalSecs <= 0}
         <div
-          class="mt-3 flex items-center gap-2 rounded-xl bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 ring-1 ring-white/[0.05]"
+          class="mt-3 flex items-center gap-2 rounded-2xl bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 ring-1 ring-white/[0.05]"
         >
           <Clock size={14} class="text-emerald-300" />
           {tr({
@@ -710,7 +704,7 @@
         </div>
       {:else if stats.busiest && stats.busiest.secs > 0}
         <div
-          class="mt-3 flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500/10 to-transparent px-3 py-2 text-xs text-zinc-300 ring-1 ring-emerald-400/15"
+          class="mt-3 flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-transparent px-3 py-2 text-xs text-zinc-300 ring-1 ring-emerald-400/15"
         >
           <Trophy size={14} class="text-amber-300" />
           {tr({ es: "Tu día más intenso:", en: "Your busiest day:" })}
@@ -724,7 +718,7 @@
   <!-- day detail — opens when a calendar square is clicked -->
   {#if dayDetail}
     <div
-      class="tilt relative mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-zinc-900/60 shadow-[0_8px_30px_-12px_rgba(16,185,129,0.25)]"
+      class="tilt relative mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-layer-1 shadow-[0_8px_30px_-12px_rgba(16,185,129,0.25)]"
       use:tilt
     >
       <!-- header band -->
@@ -761,7 +755,7 @@
           <button
             type="button"
             onclick={() => (selectedKey = null)}
-            class="grid h-7 w-7 place-items-center rounded-lg border border-white/10 text-zinc-400 transition hover:bg-white/5 hover:text-white"
+            class="grid h-7 w-7 place-items-center rounded-lg border border-white/[0.08] text-zinc-400 transition hover:bg-white/5 hover:text-white"
             aria-label={tr({ es: "Cerrar", en: "Close" })}
           >
             <X size={15} />
@@ -777,7 +771,7 @@
                 ? Math.round((g.secs / dayDetail.dayTotal) * 100)
                 : 0}
             <li
-              class="flex items-center gap-3 rounded-xl bg-white/[0.03] p-2 ring-1 ring-white/[0.05] transition hover:bg-white/[0.05] hover:ring-emerald-400/25"
+              class="flex items-center gap-3 rounded-2xl bg-white/[0.03] p-2 ring-1 ring-white/[0.05] transition hover:bg-white/[0.05] hover:ring-emerald-400/25"
             >
               <Cover
                 appId={g.appId}
@@ -835,7 +829,7 @@
     use:tilt
     class="tilt relative group mt-4 flex w-full items-center justify-center gap-2.5 rounded-2xl border px-4 py-3.5 transition {showCard
       ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200'
-      : 'border-white/[0.08] bg-zinc-900/60 text-zinc-300 hover:border-emerald-400/30 hover:bg-emerald-500/[0.06] hover:text-emerald-200'}"
+      : 'border-white/[0.08] bg-layer-2 text-zinc-300 hover:border-emerald-400/30 hover:bg-emerald-500/[0.06] hover:text-emerald-200'}"
     aria-expanded={showCard}
     title={tr({
       es: "Crea una imagen de tu resumen para compartir",

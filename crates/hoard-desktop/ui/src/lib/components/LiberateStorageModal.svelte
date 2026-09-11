@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { openUpgradePage } from "../stores/cloud";
   /**
    * The "free up space" dialog, the black box's escape hatch.
    *
@@ -61,12 +62,13 @@
     }
   }
 
-  // To the Pro screen, not to the browser. This dialog appears when the quota
-  // fills, which is to say in the middle of something else, so opening a tab on top
-  // is the worst possible moment for it.
+  // To the pricing page, behind this explicit button. There used to be an in-app
+  // plans screen in between so the browser would not open in the middle of
+  // something; its prices and limits had drifted from the real ones, and a wrong
+  // number is worse than a browser tab.
   function goPro() {
     onClose();
-    push("/pro");
+    void openUpgradePage("pro");
   }
 </script>
 
@@ -104,7 +106,7 @@
         type="button"
         onclick={onDownload}
         disabled={busy}
-        class="flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800 disabled:opacity-50"
+        class="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800 disabled:opacity-50"
       >
         <Download size={15} />
         {$_("liberate.download")}

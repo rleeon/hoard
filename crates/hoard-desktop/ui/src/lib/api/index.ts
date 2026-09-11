@@ -1155,6 +1155,10 @@ export type LogLine = {
   timestamp: string;
   level: string;
   message: string;
+  /** Which log the line came from: the window (`app`) or the sync service
+   *  (`service`). The viewer merges both, since since ADR 0021 the cloud work
+   *  happens in the service and a report from the window alone misses it. */
+  source: "app" | "service";
 };
 
 export function listSaveSnapshots(
@@ -1339,6 +1343,20 @@ export function slotTaken(e: unknown): number | null {
   const msg = typeof e === "string" ? e : ((e as Error)?.message ?? "");
   const m = /^slot_taken:(\d+)$/.exec(msg);
   return m ? Number(m[1]) : null;
+}
+
+/** A sign-in the server refused because the account has all the devices its
+ *  plan covers. Rust encodes it as `device_limit:<used>:<limit>:<plan>` (same
+ *  shape as `slot_taken:` above), since a Tauri command can only fail with a
+ *  string and this one has to carry the numbers the dialog prints. */
+export function deviceLimitDenial(
+  e: unknown,
+): { used: number; limit: number; plan: string } | null {
+  const msg = typeof e === "string" ? e : ((e as Error)?.message ?? "");
+  const m = /^device_limit:(\d+):(\d+):(\w+)$/.exec(msg);
+  return m
+    ? { used: Number(m[1]), limit: Number(m[2]), plan: m[3] }
+    : null;
 }
 
 export function tailLogs(maxLines?: number): Promise<LogLine[]> {

@@ -57,7 +57,7 @@
 </script>
 
 <div
-  class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 shadow-sm"
+  class="rounded-2xl border border-zinc-800 bg-layer-1 p-4 shadow-sm"
 >
   <div class="flex items-center justify-between gap-4">
     <div class="flex items-center gap-3">

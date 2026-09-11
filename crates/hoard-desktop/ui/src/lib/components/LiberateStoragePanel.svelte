@@ -223,7 +223,7 @@
 
 {#if hopeless}
   <p
-    class="mb-3 rounded-lg border border-rose-500/40 bg-rose-500/10 p-2.5 text-xs text-rose-200/90"
+    class="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 p-2.5 text-xs text-red-200/90"
   >
     {$_("liberate.hopeless", { values: { limit: formatBytes(limitBytes) } })}
   </p>
@@ -238,11 +238,11 @@
     <p class="text-sm text-zinc-500">{$_("liberate.loading")}</p>
   {:else if loadError}
     <div class="flex items-center justify-between gap-3">
-      <p class="text-sm text-rose-400">{$_("liberate.load_error")}</p>
+      <p class="text-sm text-red-400">{$_("liberate.load_error")}</p>
       <button
         type="button"
         onclick={() => void load()}
-        class="shrink-0 rounded-lg border border-white/10 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-800"
+        class="shrink-0 rounded-lg border border-white/[0.08] bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-800"
       >
         {$_("liberate.retry")}
       </button>
@@ -258,8 +258,8 @@
         <li>
           <label
             class="flex cursor-pointer items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm {willArchive
-              ? 'border-rose-500/40 bg-rose-500/10'
-              : 'border-white/[0.08] bg-zinc-950/40'}"
+              ? 'border-red-500/40 bg-red-500/10'
+              : 'border-white/[0.08] bg-layer-2'}"
           >
             <span class="flex min-w-0 items-center gap-2.5">
               <input
@@ -267,7 +267,7 @@
                 checked={willArchive}
                 disabled={busy}
                 onchange={() => toggle(g.save_id)}
-                class="size-3.5 shrink-0 accent-rose-500"
+                class="size-3.5 shrink-0 accent-red-500"
               />
               <span class="flex min-w-0 flex-col">
                 <span class="truncate text-zinc-200">{gameName(g)}</span>
@@ -301,22 +301,22 @@
     </ul>
 
     <!-- Medidor: dónde deja la selección a la cuenta. -->
-    <div class="mt-3 rounded-lg border border-white/[0.08] bg-zinc-950/40 p-2.5">
+    <div class="mt-3 rounded-lg border border-white/[0.08] bg-layer-2 p-2.5">
       <div class="flex items-baseline justify-between text-xs">
         <span class="text-zinc-400">{$_("liberate.after")}</span>
-        <span class="font-mono {fits ? 'text-emerald-300' : 'text-rose-300'}">
+        <span class="font-mono {fits ? 'text-emerald-300' : 'text-red-300'}">
           {formatBytes(remaining)} / {formatBytes(limitBytes)}
         </span>
       </div>
       <div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
         <div
-          class="h-full rounded-full {fits ? 'bg-emerald-500' : 'bg-rose-500'}"
+          class="h-full rounded-full {fits ? 'bg-emerald-500' : 'bg-red-500'}"
           style="width: {limitBytes > 0
             ? Math.min(100, (remaining / limitBytes) * 100)
             : 0}%"
         ></div>
       </div>
-      <p class="mt-1.5 text-[11px] {fits ? 'text-emerald-300/90' : 'text-rose-300/90'}">
+      <p class="mt-1.5 text-[11px] {fits ? 'text-emerald-300/90' : 'text-red-300/90'}">
         {fits
           ? $_("liberate.fits")
           : $_("liberate.still_over", {

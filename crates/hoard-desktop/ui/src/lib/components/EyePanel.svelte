@@ -212,7 +212,7 @@
 
   <!-- Self-hosted server (if connected, separate section) -->
   {#if $auth.user?.server_url}
-    <div class="mt-2 flex items-center gap-2.5 border-t border-white/[0.06] px-1 pt-2.5">
+    <div class="mt-2 flex items-center gap-2.5 border-t border-white/[0.08] px-1 pt-2.5">
       <span class="relative flex h-2.5 w-2.5 shrink-0">
         <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
       </span>

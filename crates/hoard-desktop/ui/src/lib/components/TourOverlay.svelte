@@ -1,4 +1,8 @@
 <script lang="ts">
+  import HylianUser from "./HylianUser.svelte";
+  import MarioStar from "./MarioStar.svelte";
+  import Triforce from "./Triforce.svelte";
+  import VaultDoor from "./VaultDoor.svelte";
   /**
    * Guided app tour, shown once, right after the user finishes signing in for
    * the first time. It is a coach-mark walkthrough over the *real* app: each
@@ -21,11 +25,8 @@
   import {
     Home,
     Boxes,
-    Archive,
     RotateCw,
     MonitorPlay,
-    Sparkles,
-    Settings as SettingsIcon,
   } from "@lucide/svelte";
   import { _ } from "svelte-i18n";
   import Button from "./Button.svelte";
@@ -61,7 +62,7 @@
 
   const steps: Step[] = [
     {
-      icon: Home,
+      icon: HylianUser,
       titleKey: "tour.account_title",
       bodyKey: "tour.account_body",
       route: "/account",
@@ -77,7 +78,7 @@
       itemTarget: '[data-tour-route="/library"]',
     },
     {
-      icon: Archive,
+      icon: Triforce,
       titleKey: "tour.dashboard_title",
       bodyKey: "tour.dashboard_body",
       route: "/dashboard",
@@ -96,7 +97,7 @@
       pro: true,
     },
     {
-      icon: Sparkles,
+      icon: MarioStar,
       titleKey: "tour.wrapped_title",
       bodyKey: "tour.wrapped_body",
       route: "/hoard-wrapped",
@@ -105,7 +106,7 @@
       pro: true,
     },
     {
-      icon: SettingsIcon,
+      icon: VaultDoor,
       titleKey: "tour.settings_title",
       bodyKey: "tour.settings_body",
       route: "/settings",
@@ -359,7 +360,7 @@
     {#key i}
       <div
         in:cardIn
-        class="rounded-2xl border border-zinc-800 bg-zinc-900/95 p-6 shadow-2xl shadow-black/40 ring-1 ring-white/[0.04] backdrop-blur"
+        class="rounded-2xl border border-zinc-800 bg-layer-3 p-6 shadow-2xl shadow-black/40 ring-1 ring-white/[0.04] backdrop-blur"
       >
         <div class="flex items-start gap-3">
           <span

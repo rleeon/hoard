@@ -67,7 +67,7 @@
     </div>
 
     <label
-      class="mt-6 flex cursor-pointer items-start gap-3 rounded-xl border border-white/[0.08] bg-zinc-950/40 p-4 text-sm text-zinc-200"
+      class="mt-6 flex cursor-pointer items-start gap-3 rounded-2xl border border-white/[0.08] bg-layer-2 p-4 text-sm text-zinc-200"
     >
       <input
         type="checkbox"

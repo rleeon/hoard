@@ -346,9 +346,9 @@
           <span
             class="h-2 w-2 shrink-0 rounded-full {$status.running
               ? 'bg-emerald-500'
-              : 'bg-rose-500'}"
+              : 'bg-red-500'}"
           ></span>
-          <span class={$status.running ? "text-zinc-300" : "text-rose-300"}>
+          <span class={$status.running ? "text-zinc-300" : "text-red-300"}>
             {$status.running
               ? $_("overlay.status_service_on")
               : $_("overlay.status_service_off")}
@@ -448,7 +448,7 @@
                   style="font-size: 0.8em;">{r.when}</span
                 >
                 <span
-                  class="min-w-0 flex-1 leading-snug {r.bad ? 'text-rose-300' : ''}"
+                  class="min-w-0 flex-1 leading-snug {r.bad ? 'text-red-300' : ''}"
                   >{r.text}</span
                 >
               </li>

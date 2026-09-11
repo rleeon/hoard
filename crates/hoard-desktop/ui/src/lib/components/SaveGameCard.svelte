@@ -30,6 +30,7 @@
   } from "@lucide/svelte";
   import { _ } from "svelte-i18n";
 
+  import AnimIcon from "./AnimIcon.svelte";
   import Button from "./Button.svelte";
   import CardResizeHandle from "./CardResizeHandle.svelte";
   import Cover from "./Cover.svelte";
@@ -91,6 +92,9 @@
     onTogglePause: (save: TrackedSave) => void;
     onHistory: (save: TrackedSave) => void;
   } = $props();
+
+  /** Flipped on every press so the upload icon has something to react to. */
+  let backupPressed = $state(false);
 
   /** The visible name: the user's per-device override when set, otherwise a
    *  prettified slug. The slug itself never changes, it's the sync key. */
@@ -329,7 +333,7 @@
             save,
           )
             ? 'bg-amber-500/15 text-amber-300 ring-amber-500/40'
-            : 'bg-zinc-950/60 text-zinc-300 ring-white/[0.12]'}"
+            : 'bg-layer-2 text-zinc-300 ring-white/[0.12]'}"
           title={cloudTitle(save)}
         >
           <Cloud size={11} class={cloudAhead(save) ? "" : "text-zinc-500"} />
@@ -355,13 +359,13 @@
         aria-label={$_("dashboard.menu_open")}
         title={$_("dashboard.menu_open")}
         aria-expanded={menuOpen}
-        class="flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.10] bg-zinc-950/60 text-zinc-300 backdrop-blur-md transition-colors hover:border-white/[0.18] hover:text-zinc-50"
+        class="flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.08] bg-layer-2 text-zinc-300 backdrop-blur-md transition-colors hover:border-white/[0.18] hover:text-zinc-50"
       >
         <MoreHorizontal size={14} />
       </button>
       {#if menuOpen}
         <div
-          class="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-zinc-900/95 p-1 shadow-xl backdrop-blur-xl"
+          class="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-layer-3 p-1 shadow-xl backdrop-blur-xl"
         >
           <button
             type="button"
@@ -481,7 +485,13 @@
         variant="secondary"
         size="md"
         class="shrink-0 !px-3 !py-1.5 !text-xs"
-        onclick={() => onBackup(save)}
+        onclick={() => {
+          // A fire-and-forget button has no state to animate from, so it flips a
+          // bit of its own: with the animation playing both ways, every press
+          // moves the cloud.
+          backupPressed = !backupPressed;
+          onBackup(save);
+        }}
         disabled={!agentRunning || cloudOnly}
         title={cloudOnly
           ? $_("common.cloud_only_no_local")
@@ -491,7 +501,7 @@
               ? $_("dashboard.tooltip_force_paused")
               : $_("dashboard.tooltip_force")}
       >
-        <UploadCloud size={13} />
+        <AnimIcon icon={UploadCloud} on={backupPressed} kind="pop" size={13} />
         {$_("dashboard.back_up")}
       </Button>
     </div>
@@ -499,7 +509,7 @@
     <!-- Per-game stats: the answers "is it working?" (last save) and "how
          much am I dedicating to this game?" (total size across versions,
          stored-version count) without diving into History. -->
-    <div class="mt-4 space-y-2 border-t border-white/[0.06] pt-3 text-xs">
+    <div class="mt-4 space-y-2 border-t border-white/[0.08] pt-3 text-xs">
       <div class="flex items-baseline justify-between gap-3">
         <span class="shrink-0 text-zinc-500">{$_("dashboard.last_saved")}</span>
         {#if save.last_backup_at}

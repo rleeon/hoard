@@ -152,7 +152,7 @@
   <!-- Por encima de todo, incluidos los modales: si esto está en pantalla es
        porque nada de lo de debajo puede seguir su curso. -->
   <div
-    class="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950/95 backdrop-blur-sm"
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
     role="dialog"
     aria-modal="true"
     aria-labelledby="update-gate-title"

@@ -59,6 +59,25 @@ function isOverlayWindow(): boolean {
     .__TAURI_INTERNALS__?.metadata?.currentWindow?.label === "overlay";
 }
 
+/** Paints our own title bar when the window has no system one.
+ *
+ * Asking the window instead of sniffing the platform is what keeps this honest:
+ * Rust drops the decoration on Windows only, and if that ever fails the answer
+ * is `true` and the app does not end up wearing two title bars. */
+async function mountTitlebar(): Promise<void> {
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    if (await getCurrentWindow().isDecorated()) return;
+    const { default: Titlebar } = await import(
+      "./lib/components/Titlebar.svelte"
+    );
+    document.documentElement.classList.add("has-titlebar");
+    mount(Titlebar, { target: document.body });
+  } catch {
+    /* No Tauri (browser dev) or the call failed: the system bar stays. */
+  }
+}
+
 async function bootstrap() {
   await i18nReady;
   if (isOverlayWindow()) {
@@ -73,6 +92,7 @@ async function bootstrap() {
   // only shows it once the app is up, and buys a first frame already at the
   // chosen size instead of one that snaps to it a moment later.
   await initUiScale();
+  await mountTitlebar();
   return mount(App, {
     target: document.getElementById("app")!,
   });

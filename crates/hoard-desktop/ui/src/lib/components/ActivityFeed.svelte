@@ -80,26 +80,26 @@
     throttled: "text-amber-300",
     upload_started: "text-emerald-300",
     upload_completed: "text-emerald-400",
-    upload_failed: "text-rose-400",
+    upload_failed: "text-red-400",
     bandwidth_throttled: "text-amber-300",
     auto_restored: "text-sky-300",
     cloud_pull: "text-emerald-300",
     quota_reached: "text-amber-400",
-    offline: "text-rose-400",
+    offline: "text-red-400",
     online: "text-emerald-400",
-    backup_too_large: "text-rose-400",
-    backup_quota_full: "text-rose-400",
+    backup_too_large: "text-red-400",
+    backup_quota_full: "text-red-400",
     backup_trimmed: "text-amber-300",
     backup_files_unreadable: "text-amber-300",
-    auto_restore_failed: "text-rose-400",
+    auto_restore_failed: "text-red-400",
     auto_restore_stuck: "text-amber-400",
     auto_restore_recovered: "text-emerald-400",
-    backup_blocked: "text-rose-400",
+    backup_blocked: "text-red-400",
     backup_unblocked: "text-emerald-400",
     storage_purging: "text-amber-400",
-    storage_full: "text-rose-400",
+    storage_full: "text-red-400",
     storage_grace: "text-sky-300",
-    gate_locked: "text-rose-400",
+    gate_locked: "text-red-400",
     gate_unlocked: "text-emerald-400",
   } as const;
 
@@ -107,19 +107,19 @@
   // read at a glance: amber for reversible pressure (trimming / purging),
   // red for a hard stop (over-cap upload, restore failure, storage full).
   const ROW_ACCENT: Partial<Record<FeedEntry["kind"], string>> = {
-    backup_too_large: "my-1 rounded-md border border-rose-500/60 bg-rose-500/10",
+    backup_too_large: "my-1 rounded-md border border-red-500/60 bg-red-500/10",
     auto_restore_failed:
-      "my-1 rounded-md border border-rose-500/60 bg-rose-500/10",
+      "my-1 rounded-md border border-red-500/60 bg-red-500/10",
     // Amber, not red: the save still syncs once the cause clears, and the
     // agent keeps retrying on the escalating backoff.
     auto_restore_stuck:
       "my-1 rounded-md border border-amber-500/60 bg-amber-500/10",
-    storage_full: "my-1 rounded-md border border-rose-500/60 bg-rose-500/10",
+    storage_full: "my-1 rounded-md border border-red-500/60 bg-red-500/10",
     // Red, not amber: unlike `auto_restore_stuck`, there is no retry waiting here.
     // Without a person, this save never uploads again.
-    backup_blocked: "my-1 rounded-md border border-rose-500/60 bg-rose-500/10",
+    backup_blocked: "my-1 rounded-md border border-red-500/60 bg-red-500/10",
     backup_quota_full:
-      "my-1 rounded-md border border-rose-500/60 bg-rose-500/10",
+      "my-1 rounded-md border border-red-500/60 bg-red-500/10",
     backup_trimmed: "my-1 rounded-md border border-amber-500/60 bg-amber-500/10",
     // Amber: the backup is usable, it is just missing a piece. The day nothing
     // uploads, `upload_failed`'s red row appears next to it and that one rules.
@@ -165,7 +165,7 @@
      storage banner shares that corner and the two must not sit on top of each
      other. This is just the card. -->
 <aside
-  class="pointer-events-auto flex w-full flex-col rounded-lg border border-zinc-800 bg-zinc-950/95 shadow-xl backdrop-blur"
+  class="pointer-events-auto flex w-full flex-col rounded-lg border border-zinc-800 bg-layer-3 shadow-xl backdrop-blur"
   aria-label={$_("activity.panel_label")}
   transition:fly={{ y: 12, duration: 180 }}
 >
@@ -214,7 +214,7 @@
             {#if ACTIONABLE.has(entry.kind)}
               <button
                 type="button"
-                class="mt-1 rounded-md border border-rose-500/50 bg-rose-500/10 px-2 py-1 text-[11px] font-medium text-rose-200 transition-colors hover:bg-rose-500/20"
+                class="mt-1 rounded-md border border-red-500/50 bg-red-500/10 px-2 py-1 text-[11px] font-medium text-red-200 transition-colors hover:bg-red-500/20"
                 onclick={openLiberate}
               >
                 {$_("liberate.cta")}

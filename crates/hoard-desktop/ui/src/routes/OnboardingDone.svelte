@@ -66,7 +66,7 @@
 
     {#if $auth.user}
       <dl
-        class="mt-6 space-y-2 rounded-lg border border-white/[0.08] bg-zinc-950/40 p-4 text-sm"
+        class="mt-6 space-y-2 rounded-lg border border-white/[0.08] bg-layer-2 p-4 text-sm"
       >
         <div class="flex items-center justify-between gap-3">
           <dt class="text-zinc-500">{$_("onboarding_done.account")}</dt>
@@ -102,7 +102,7 @@
           class="flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors {mode ===
           opt.m
             ? 'border-[var(--color-accent)]/60 bg-[var(--color-accent)]/10'
-            : 'border-white/[0.08] hover:bg-zinc-800/40'}"
+            : 'border-white/[0.08] hover:bg-layer-hover'}"
         >
           <span
             class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md {mode ===

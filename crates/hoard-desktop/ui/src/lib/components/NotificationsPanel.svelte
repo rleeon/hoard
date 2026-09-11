@@ -50,13 +50,13 @@
   } as const;
 
   const PRIORITY_TINT = {
-    high: "text-rose-400",
+    high: "text-red-400",
     normal: "text-emerald-400",
     low: "text-zinc-400",
   } as const;
 
   const PRIORITY_BORDER = {
-    high: "border-l-rose-500/60",
+    high: "border-l-red-500/60",
     normal: "border-l-emerald-500/40",
     low: "border-l-zinc-700",
   } as const;
@@ -86,11 +86,11 @@
 </script>
 
 <div
-  class="fixed right-3 top-14 z-[61] w-80 overflow-hidden rounded-xl border border-white/[0.08] bg-zinc-950/95 shadow-xl backdrop-blur-xl"
+  class="pinned-panel fixed right-3 top-14 z-[61] w-80 overflow-hidden rounded-2xl border border-white/[0.08] bg-layer-3 shadow-xl backdrop-blur-xl"
   transition:fly={{ y: -8, duration: 180 }}
 >
   <!-- Header -->
-  <div class="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+  <div class="flex items-center justify-between border-b border-white/[0.08] px-4 py-3">
     <div class="flex items-center gap-2">
       <Bell size={15} class="text-emerald-400" />
       <span class="text-sm font-medium text-zinc-200">

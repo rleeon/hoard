@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { openUpgradePage } from "../stores/cloud";
   // Shared entitlement gate for the Pro features (Hoard-Screen / Hoard-Wrapped).
   // Reads the per-feature snapshot from the server (`GET /v1/cloud/entitlements`)
   // and maps it to one of three views:
@@ -56,7 +57,7 @@
 
 <div class="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
   <div
-    class="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/[0.08] bg-zinc-900/60"
+    class="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/[0.08] bg-layer-2"
   >
     {@render icon()}
   </div>
@@ -96,14 +97,14 @@
     <p class="max-w-sm text-sm text-zinc-500">{$_("pro.trial_desc")}</p>
   {:else}
     <span
-      class="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-zinc-900/60 px-3 py-1 text-xs font-medium text-zinc-400"
+      class="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-layer-2 px-3 py-1 text-xs font-medium text-zinc-400"
     >
       <Lock size={12} />
       {$_("pro.locked_title")}
     </span>
     <p class="max-w-sm text-sm text-zinc-500">{$_("pro.locked_desc")}</p>
     <button
-      onclick={() => push(`/pro?feature=${feature}`)}
+      onclick={() => openUpgradePage("pro")}
       class="mt-1 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
     >
       {$_("pro.upgrade")}

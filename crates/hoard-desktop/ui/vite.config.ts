@@ -38,11 +38,16 @@ export default defineConfig(async () => ({
   server: {
     port: 1420,
     strictPort: true,
-    host: false,
-    // Tauri expects HMR to point back at the dev server.
+    // `HOARD_DEV_HOST` is the address the *app* will reach this dev server at,
+    // for the split setup: Vite here, the Tauri window on another machine over
+    // the LAN (or Tailscale), so a UI change is on screen without rebuilding
+    // anything or copying the tree. Unset, it binds to localhost as always.
+    host: process.env.HOARD_DEV_HOST ? true : false,
     hmr: {
       protocol: "ws",
-      host: "localhost",
+      // Tauri expects HMR to point back at the dev server, which is this
+      // machine's address as seen from wherever the window runs.
+      host: process.env.HOARD_DEV_HOST ?? "localhost",
       port: 1421,
     },
     watch: {
