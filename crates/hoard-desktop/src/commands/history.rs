@@ -377,70 +377,27 @@ pub async fn restore_snapshot(
     // Resolve the destination. Priority: explicit override > CliState lookup.
     // If neither yields a path we surface a structured error the frontend
     // catches and turns into a folder-picker dialog.
-    let (mut cli_state, cli_state_path) = CliState::load_default().map_err(|e| e.to_string())?;
-
+    //
+    // A picked folder becomes the save's folder on this machine, through the same
+    // door as linking the save from the Library. It is checked here, before anything
+    // lands in it, and recorded only once the files are in. It used to be written
+    // up front, by hand, with the shape check alone.
+    let (cli_state, _) = CliState::load_default().map_err(|e| e.to_string())?;
+    let mut home = None;
     let local_path: PathBuf = if let Some(raw) = destination_override.as_deref() {
         let p = PathBuf::from(raw.trim());
         if p.as_os_str().is_empty() {
             return Err("Destination path can't be empty.".to_string());
         }
-        // The same structural guard as tracking and as the restore itself: this path
-        // does not only receive the snapshot, it is **persisted** below as the save's
-        // folder, so an impossible destination (a whole profile, a Proton prefix)
-        // would be fixed for every later backup. The agent's validation was not
-        // enough here: this command writes the `local_path` on its own.
-        hoard_agent::library::validate_path_shape(&p).map_err(|e| e.to_string())?;
-        // Auto-create the folder if it's missing: the user explicitly
-        // picked it as the restore target, so creating an empty dir is
-        // less surprising than failing.
-        if !p.exists() {
-            std::fs::create_dir_all(&p)
-                .map_err(|e| format!("Couldn't create {}: {e}", p.display()))?;
-        } else if !p.is_dir() {
+        // Tracking accepts a single-file save; a snapshot extracts into a folder.
+        if p.exists() && !p.is_dir() {
             return Err(format!("{} isn't a folder.", p.display()));
         }
-        // Persist the chosen path so future restores/backups know where
-        // this save lives. We need the server-side metadata to fill in
-        // `game_slug` / `label` if the entry is brand-new on this machine.
-        let entry = cli_state.saves.entry(save_id.clone()).or_insert_with(|| {
-            // Defaults that get patched below from the server response.
-            hoard_agent::state::SaveState {
-                allow_device_local: None,
-                local_path: p.clone(),
-                game_slug: String::new(),
-                label: String::new(),
-                last_backup_at: None,
-                last_version_num: None,
-                paused: false,
-                preset: None,
-                set_hash: None,
-                processes: Vec::new(),
-                shared_processes: false,
-            }
-        });
-        entry.local_path = p.clone();
-        if entry.game_slug.is_empty() || entry.label.is_empty() {
-            if client.is_cloud().await {
-                if let Ok(manifest) = client.cloud_sync().await {
-                    if let Some(e) = manifest.saves.into_iter().find(|e| e.save_id == save_id) {
-                        if entry.game_slug.is_empty() {
-                            entry.game_slug = e.game_slug;
-                        }
-                        if entry.label.is_empty() {
-                            entry.label = e.label;
-                        }
-                    }
-                }
-            } else if let Ok(server_save) = client.get_save(&save_id).await {
-                if entry.game_slug.is_empty() {
-                    entry.game_slug = server_save.game_slug.into_inner();
-                }
-                if entry.label.is_empty() {
-                    entry.label = server_save.label;
-                }
-            }
-        }
-        cli_state.save(&cli_state_path).map_err(|e| e.to_string())?;
+        home = Some(
+            hoard_agent::library::plan_home_for_restore(&client, &save_id, &p)
+                .await
+                .map_err(pretty_error)?,
+        );
         p
     } else {
         cli_state
@@ -450,13 +407,16 @@ pub async fn restore_snapshot(
             .ok_or_else(|| "NEEDS_DESTINATION".to_string())?
     };
 
-    // Slug/label for the cloud upload init (ignored by self-hosted). Read
-    // from CliState, which now holds the resolved entry from either branch.
-    let (game_slug, label) = cli_state
-        .saves
-        .get(&save_id)
-        .map(|s| (s.game_slug.clone(), s.label.clone()))
-        .unwrap_or_default();
+    // Slug/label for the cloud upload init (ignored by self-hosted). A save new to
+    // this machine has no row yet, so they come from the plan.
+    let (game_slug, label) = match &home {
+        Some(home) => (home.game_slug.clone(), home.label.clone()),
+        None => cli_state
+            .saves
+            .get(&save_id)
+            .map(|s| (s.game_slug.clone(), s.label.clone()))
+            .unwrap_or_default(),
+    };
 
     // 1) Optional pre-restore backup. Done synchronously so the user can be
     //    sure the safety net exists before we start overwriting files.
@@ -526,7 +486,15 @@ pub async fn restore_snapshot(
             // dedup against is the destination itself: anything already there
             // with the right bytes is copied (or left) instead of re-downloaded.
             reuse_from: Some(local_path.clone()),
-            gate: restore_gate(&save_id, allow_config),
+            // The shields go by game, and `restore_gate` reads the game from the
+            // row, which a save new to this machine does not have yet.
+            gate: match &home {
+                Some(home) => hoard_core::kernel::fileclass::RestoreGate {
+                    shields: hoard_agent::savefilter::shields_for_slug(&home.game_slug),
+                    allow_device_local: allow_config,
+                },
+                None => restore_gate(&save_id, allow_config),
+            },
         },
         move |downloaded, total| {
             let _ = app_for_dl.emit(
@@ -545,6 +513,20 @@ pub async fn restore_snapshot(
     .map_err(pretty_error)?;
 
     emit_phase(&app, &save_id, version, RestorePhase::Done, 0, 0);
+
+    // Only now, with the files in, is the picked folder recorded. Then the service
+    // is told: it rereads the watched set only when told, so without this the save
+    // showed as linked and synced nothing until the service next restarted.
+    if let Some(home) = home {
+        let reseat = home.commit(&client).await.map_err(|e| {
+            format!(
+                "Restored to {}, but couldn't keep it as this save's folder: {}",
+                local_path.display(),
+                pretty_error(e)
+            )
+        })?;
+        apply_reseat(&state, reseat).await;
+    }
 
     Ok(RestoreOutcome {
         files_extracted: outcome.files_extracted,

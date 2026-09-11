@@ -205,6 +205,10 @@ enum Commands {
         /// machine's resolution, GPU and paths, and games crash on them.
         #[arg(long, alias = "allow-config")]
         allow_ini: bool,
+        /// Keep --to as this save's folder on this machine: later restores and
+        /// backups use it, and the sync service starts watching it
+        #[arg(long, requires = "to")]
+        remember: bool,
     },
 }
 
@@ -414,9 +418,12 @@ async fn dispatch(cli: Cli) -> Result<()> {
             force,
             dry_run,
             allow_ini,
+            remember,
         } => {
-            commands::restore::apply(save_id, version, to, no_verify, force, dry_run, allow_ini)
-                .await
+            commands::restore::apply(
+                save_id, version, to, no_verify, force, dry_run, allow_ini, remember,
+            )
+            .await
         }
     }
 }

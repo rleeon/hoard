@@ -14,6 +14,8 @@ use hoard_agent::config::CliConfig;
 use hoard_agent::state::CliState;
 use hoard_core::wire::VersionOrigin;
 
+use crate::commands::link;
+
 pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Result<()> {
     let (cfg, _) = CliConfig::load_default()?;
     let token = cfg.require_token()?;
@@ -145,6 +147,18 @@ pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Re
         s.set_hash = Some(signature);
     }
     state.save(&state_path)?;
+
+    // `--remember` may just have given this save a folder here, and the sync
+    // service keeps no watcher on state.json: it rereads the watched set only when
+    // told. Without this the save showed as tracked and synced nothing until the
+    // service next restarted.
+    if remember {
+        let applied = link::notify_reload().await;
+        println!(
+            "remembered {} for {save_id} ({applied})",
+            canonical.display()
+        );
+    }
 
     Ok(())
 }

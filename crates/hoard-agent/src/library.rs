@@ -823,30 +823,35 @@ fn validate_folder(local_path: &Path, except_save_ids: &[&str]) -> Result<()> {
     }
     if let Ok((state, _)) = CliState::load_default() {
         if let Some(other) = conflicting_save(&state, local_path, except_save_ids) {
-            // A tracked folder INSIDE the one being added gets its own line.
-            // It is what a game with one folder per save leaves behind, a row
-            // per slot, tracked back when the parent was not on offer, and
-            // "one folder, one game" alone reads like a flat refusal there
-            // instead of the two-step it is: untrack the slots, add the folder
-            // that holds them.
-            if other.local_path != local_path
-                && crate::detection::path_is_inside(&other.local_path, local_path)
-            {
-                anyhow::bail!(
-                    "'{}' already tracks {}, which is inside this folder. \
-                     Untrack it first, then add this one.",
-                    other.game_slug,
-                    other.local_path.display()
-                );
-            }
-            anyhow::bail!(
-                "'{}' already tracks {}: one folder, one game.",
-                other.game_slug,
-                other.local_path.display()
-            );
+            return Err(folder_taken(other, local_path));
         }
     }
     Ok(())
+}
+
+/// The refusal for a folder another save already covers.
+fn folder_taken(other: &SaveState, local_path: &Path) -> anyhow::Error {
+    // A tracked folder INSIDE the one being added gets its own line.
+    // It is what a game with one folder per save leaves behind, a row
+    // per slot, tracked back when the parent was not on offer, and
+    // "one folder, one game" alone reads like a flat refusal there
+    // instead of the two-step it is: untrack the slots, add the folder
+    // that holds them.
+    if other.local_path != local_path
+        && crate::detection::path_is_inside(&other.local_path, local_path)
+    {
+        return anyhow::anyhow!(
+            "'{}' already tracks {}, which is inside this folder. \
+             Untrack it first, then add this one.",
+            other.game_slug,
+            other.local_path.display()
+        );
+    }
+    anyhow::anyhow!(
+        "'{}' already tracks {}: one folder, one game.",
+        other.game_slug,
+        other.local_path.display()
+    )
 }
 
 /// The save, if any, that already covers `local_path` and is none of the ones being
@@ -1389,20 +1394,13 @@ pub async fn adopt(client: &ApiClient, args: AdoptArgs) -> Result<TrackOutcome> 
     // What identifies the row being relieved is the FOLDER, which is the rule's own
     // unit.
     let superseded = CliState::load_default().ok().and_then(|(state, _)| {
-        state
-            .saves
-            .iter()
-            .find(|(id, st)| {
-                id.as_str() != args.save_id
-                    && st.game_slug == args.game_slug
-                    && st.label == args.label
-            })
-            .map(|(id, _)| id.clone())
-            .or_else(|| {
-                row_for_same_folder(&state, &local_path)
-                    .filter(|id| *id != args.save_id)
-                    .map(str::to_string)
-            })
+        adopt_twin(
+            &state,
+            &args.save_id,
+            &args.game_slug,
+            &args.label,
+            &local_path,
+        )
     });
     let except: Vec<&str> = std::iter::once(args.save_id.as_str())
         .chain(superseded.iter().map(String::as_str))
@@ -1468,6 +1466,154 @@ pub async fn adopt(client: &ApiClient, args: AdoptArgs) -> Result<TrackOutcome> 
         },
         watched,
     })
+}
+
+/// The row [`adopt`] relieves for `save_id`: its twin on this machine, found by
+/// slot (same slug and label) or, failing that, by folder.
+fn adopt_twin(
+    state: &CliState,
+    save_id: &str,
+    game_slug: &str,
+    label: &str,
+    local_path: &Path,
+) -> Option<String> {
+    state
+        .saves
+        .iter()
+        .find(|(id, st)| id.as_str() != save_id && st.game_slug == game_slug && st.label == label)
+        .map(|(id, _)| id.clone())
+        .or_else(|| {
+            row_for_same_folder(state, local_path)
+                .filter(|id| *id != save_id)
+                .map(str::to_string)
+        })
+}
+
+/// The row a restore of `save_id` into `local_path` will relieve, if any, or the
+/// refusal when the folder is another game's. [`adopt`]'s rule with the twin held
+/// to the same slug; [`plan_home_for_restore`] says why.
+fn restore_twin(
+    state: &CliState,
+    save_id: &str,
+    game_slug: &str,
+    label: &str,
+    local_path: &Path,
+) -> Result<Option<String>> {
+    let twin = adopt_twin(state, save_id, game_slug, label, local_path);
+    if let Some(row) = twin.as_deref().and_then(|id| state.saves.get(id)) {
+        if row.game_slug != game_slug {
+            return Err(folder_taken(row, local_path));
+        }
+    }
+    let except: Vec<&str> = std::iter::once(save_id).chain(twin.as_deref()).collect();
+    if let Some(other) = conflicting_save(state, local_path, &except) {
+        return Err(folder_taken(other, local_path));
+    }
+    Ok(twin)
+}
+
+/// A restore destination that passed the folder rules and is not recorded yet.
+///
+/// [`plan_home_for_restore`] makes it before any file lands; [`Self::commit`]
+/// records it once the restore went through. Recording first was tried and is
+/// wrong: a restore refused halfway (a folder that is not empty, a dropped
+/// connection) left the save pointing at a folder whose files were not its own,
+/// and the sync service would have backed that folder up into its history.
+pub struct HomeForRestore {
+    save_id: String,
+    local_path: PathBuf,
+    /// Set when the save is new to this machine; `None` repoints its row.
+    adopt: Option<AdoptArgs>,
+    /// Where the server files the save. The restore needs them before the row
+    /// exists: the shields come from the slug, and the desktop's safety copy
+    /// uploads under both.
+    pub game_slug: String,
+    pub label: String,
+}
+
+/// Checks `local_path` as the folder `save_id` will live in on this machine,
+/// because a restore was pointed at it: the desktop's folder picker after
+/// `NEEDS_DESTINATION`, or `hoard restore --to --remember`. Writes nothing.
+///
+/// The row itself is written by [`adopt`], or by [`set_local_path`] when this
+/// machine already tracks the save, so a restore gets the same preset, slug guard
+/// and twin-row relief as linking from the Library. The desktop used to write it
+/// by hand with the shape check alone, which let a restore put a second save on a
+/// folder another one already watched.
+///
+/// One rule is narrower here than in `adopt`. `adopt` relieves any row on the same
+/// folder as a twin, because in the Library that row is this very game detected
+/// under another slug (`vrising` from Steam, `v-rising` from the catalog). A
+/// restore destination is typed, not detected: a row there under another slug is
+/// far more likely another game, and relieving it handed that game's folder, files
+/// and all, to this save (caught end to end: Factorio restored with `--remember`
+/// over Stardew's folder took it over). So a twin has to share the slug; anything
+/// else is the usual one-folder-one-game refusal.
+pub async fn plan_home_for_restore(
+    client: &ApiClient,
+    save_id: &str,
+    local_path: &Path,
+) -> Result<HomeForRestore> {
+    validate_path_shape(local_path)?;
+    let (state, _) = CliState::load_default()?;
+    if let Some(row) = state.saves.get(save_id) {
+        if let Some(other) = conflicting_save(&state, local_path, &[save_id]) {
+            return Err(folder_taken(other, local_path));
+        }
+        return Ok(HomeForRestore {
+            save_id: save_id.to_string(),
+            local_path: local_path.to_path_buf(),
+            adopt: None,
+            game_slug: row.game_slug.clone(),
+            label: row.label.clone(),
+        });
+    }
+
+    let (game_slug, label) = server_name_of(client, save_id).await?;
+    reject_degenerate_slug(&game_slug)?;
+    restore_twin(&state, save_id, &game_slug, &label, local_path)?;
+    Ok(HomeForRestore {
+        save_id: save_id.to_string(),
+        local_path: local_path.to_path_buf(),
+        adopt: Some(AdoptArgs {
+            save_id: save_id.to_string(),
+            game_slug: game_slug.clone(),
+            label: label.clone(),
+            local_path: local_path.to_string_lossy().into_owned(),
+        }),
+        game_slug,
+        label,
+    })
+}
+
+impl HomeForRestore {
+    /// Records the folder, after the restore went through. The caller then owes the
+    /// sync service a reload: the watched set changed, and the service only rereads
+    /// it when told.
+    pub async fn commit(self, client: &ApiClient) -> Result<LiveReseat> {
+        match self.adopt {
+            None => set_local_path(&self.save_id, &self.local_path.to_string_lossy()),
+            Some(args) => Ok(LiveReseat::Attach(Box::new(
+                adopt(client, args).await?.watched,
+            ))),
+        }
+    }
+}
+
+/// The `(game_slug, label)` the server files a save under. Cloud mounts no
+/// `GET /v1/saves/:id`, so there it comes out of the sync manifest.
+async fn server_name_of(client: &ApiClient, save_id: &str) -> Result<(String, String)> {
+    if client.is_cloud().await {
+        let manifest = client.cloud_sync().await?;
+        let entry = manifest
+            .saves
+            .into_iter()
+            .find(|e| e.save_id == save_id)
+            .with_context(|| format!("the cloud has no save {save_id}"))?;
+        return Ok((entry.game_slug, entry.label));
+    }
+    let save = client.get_save(save_id).await?;
+    Ok((save.game_slug.into_inner(), save.label))
 }
 
 fn format_optional_time(t: Option<OffsetDateTime>) -> Option<String> {
@@ -2392,7 +2538,7 @@ mod tests {
     use super::{
         apply_excluded_paths, auto_track_decision, conflicting_save, detected_paths_in, folder_key,
         local_detection, manual_override_conflict, occupied_slot, prune_poisoned_rows,
-        reconcile_plan, resolve_processes, row_for_same_folder, rows_one_per_folder,
+        reconcile_plan, resolve_processes, restore_twin, row_for_same_folder, rows_one_per_folder,
         rows_unknown_to_server, spread_allow_device_local, superseded_rows,
         watched_saves_from_state, AutoTrack, CachedDetection, ServerRow, ERR_SLOT_OCCUPIED,
     };
@@ -2417,6 +2563,65 @@ mod tests {
             processes: Vec::new(),
             shared_processes: false,
         }
+    }
+
+    /// A restore pointed at a folder another game tracks must be refused, not
+    /// treated as that game's twin. Caught end to end: Factorio restored with
+    /// `--remember` over Stardew's folder took the row, and the folder with
+    /// Stardew's files in it, because `adopt` relieves any row on the same folder.
+    #[test]
+    fn a_restore_only_relieves_a_twin_of_the_same_game() {
+        let mut state = CliState::default();
+        let saves = "/home/u/.config/StardewValley/Saves";
+        state
+            .saves
+            .insert("local-stardew".into(), save_state("stardew-valley", saves));
+
+        let other_game = restore_twin(
+            &state,
+            "cloud-factorio",
+            "factorio",
+            "default",
+            Path::new(saves),
+        );
+        assert!(
+            format!("{:#}", other_game.unwrap_err()).contains("one folder, one game"),
+            "another game's folder is refused"
+        );
+
+        let same_game = restore_twin(
+            &state,
+            "cloud-stardew",
+            "stardew-valley",
+            "default",
+            Path::new(saves),
+        );
+        assert_eq!(
+            same_game.unwrap().as_deref(),
+            Some("local-stardew"),
+            "the same game under a local id is the twin the restore replaces"
+        );
+
+        let parent = restore_twin(
+            &state,
+            "cloud-factorio",
+            "factorio",
+            "default",
+            Path::new("/home/u/.config/StardewValley"),
+        );
+        assert!(
+            format!("{:#}", parent.unwrap_err()).contains("inside this folder"),
+            "a folder holding another game's tracked folder is refused too"
+        );
+
+        let elsewhere = restore_twin(
+            &state,
+            "cloud-factorio",
+            "factorio",
+            "default",
+            Path::new("/home/u/factorio"),
+        );
+        assert_eq!(elsewhere.unwrap(), None, "a free folder relieves nothing");
     }
 
     // ---- one folder, one watcher --------------------------------------

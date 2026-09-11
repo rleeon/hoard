@@ -12,9 +12,11 @@ use std::sync::{Arc, Mutex};
 
 use hoard_agent::api::ApiClient;
 use hoard_agent::config::CliConfig;
+use hoard_agent::library;
 use hoard_agent::restore::{download_snapshot, resolve_version, RestoreOptions};
 use hoard_agent::state::CliState;
 
+use crate::commands::link;
 use crate::output;
 
 /// What restoring this version would do to the folder, file by file.
@@ -66,8 +68,13 @@ pub struct RestoreOut {
     /// Absent on `--dry-run`: nothing was written.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub restored: Option<RestoredOut>,
+    /// Set with `--remember`: the destination is now this save's folder on this
+    /// machine, and this says whether the sync service has picked that up.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remembered: Option<String>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn apply(
     save_id: String,
     version: Option<i64>,
@@ -76,6 +83,7 @@ pub async fn apply(
     force: bool,
     dry_run: bool,
     allow_ini: bool,
+    remember: bool,
 ) -> Result<()> {
     let (cfg, _) = CliConfig::load_default()?;
     let token = output::require_token(&cfg)?;
@@ -97,14 +105,33 @@ pub async fn apply(
         }
     };
 
+    // `--remember` makes `dest` this save's folder here, through the same door as
+    // linking it from the desktop's Library. Checked now, before anything lands in
+    // it, and recorded only once the restore went through. A dry run checks too,
+    // and writes nothing: it is how to ask whether the folder would be accepted.
+    let home = if remember {
+        Some(
+            library::plan_home_for_restore(&client, &save_id, &dest)
+                .await
+                .with_context(|| format!("can't keep {} as this save's folder", dest.display()))?,
+        )
+    } else {
+        None
+    };
+
     // What is allowed to be written. The manifest's patterns can only be
     // consulted when we know which game the folder belongs to; a bare `--to` over
     // a save that is not in the local state gets no shields and the kernel
     // decides on its own.
     let shields = {
-        let slug = CliState::load_default()
-            .ok()
-            .and_then(|(st, _)| st.saves.get(&save_id).map(|s| s.game_slug.clone()));
+        // A save new to this machine has no row until the restore is done, so with
+        // `--remember` its game comes from the plan.
+        let slug = match &home {
+            Some(home) => Some(home.game_slug.clone()),
+            None => CliState::load_default()
+                .ok()
+                .and_then(|(st, _)| st.saves.get(&save_id).map(|s| s.game_slug.clone())),
+        };
         slug.map(|s| hoard_agent::savefilter::shields_for_slug(&s))
             .unwrap_or_default()
     };
@@ -148,6 +175,7 @@ pub async fn apply(
             preview,
             preview_error,
             restored: None,
+            remembered: None,
         };
         return output::emit(&out, |out| print_preview(out, true));
     }
@@ -161,6 +189,7 @@ pub async fn apply(
             preview: None,
             preview_error: None,
             restored: None,
+            remembered: None,
         };
         // Always shown, because restoring overwrites and that deserves saying
         // beforehand.
@@ -219,6 +248,21 @@ pub async fn apply(
         bar.finish_with_message("done");
     }
 
+    // Recorded only now that the files are in. Then the service is told, because
+    // it rereads the watched set only when told.
+    let remembered = match home {
+        Some(home) => {
+            home.commit(&client).await.with_context(|| {
+                format!(
+                    "restored to {}, but couldn't keep it as this save's folder",
+                    dest.display()
+                )
+            })?;
+            Some(link::notify_reload().await.to_string())
+        }
+        None => None,
+    };
+
     let out = RestoreOut {
         save_id,
         version,
@@ -233,6 +277,7 @@ pub async fn apply(
             bytes_reused: outcome.bytes_reused,
             destination: outcome.destination.display().to_string(),
         }),
+        remembered,
     };
 
     output::emit(&out, |out| {
@@ -248,6 +293,12 @@ pub async fn apply(
                 "  {} of them ({}) were already on disk — copied, not downloaded",
                 r.files_reused,
                 fmt_bytes(r.bytes_reused)
+            );
+        }
+        if let Some(applied) = &out.remembered {
+            println!(
+                "  {} is now this save's folder here ({applied})",
+                r.destination
             );
         }
     })
