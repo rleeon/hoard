@@ -15,7 +15,7 @@ import {
 } from "svelte-i18n";
 import { get } from "svelte/store";
 
-import { getPrefs, savePrefs } from "../api";
+import { getPrefs, savePrefs, uiLog } from "../api";
 
 /** Locales the UI ships translations for. Adding a new one means dropping a
  *  JSON in `locales/` and pushing an entry here. */
@@ -53,13 +53,36 @@ function pickSupported(candidate: string | null | undefined): string | null {
   return match ? match.code : null;
 }
 
+/** Every change of the display language goes to the app's log, with its reason.
+ *  The language has been seen to switch with nobody choosing it (on Linux at
+ *  least), and the webview is the only place that knows why. Best-effort: a
+ *  build without the command just drops the line. */
+function trace(message: string): void {
+  uiLog("i18n", message).catch(() => {});
+}
+
+/** Set right before a deliberate change and consumed by the watcher below, so a
+ *  change that arrives with no reason stands out in the log. */
+let reason: string | null = null;
+
 // Seed `init` synchronously with a best-effort initial locale (navigator),
 // then asynchronously override with the persisted preference once disk I/O
 // resolves. This keeps the first paint localized correctly for users whose
 // browser language matches their pref, which is the common case.
-init({
-  fallbackLocale: "en",
-  initialLocale: pickSupported(getLocaleFromNavigator()) ?? "en",
+const fromSystem = getLocaleFromNavigator();
+const initialLocale = pickSupported(fromSystem) ?? "en";
+init({ fallbackLocale: "en", initialLocale });
+trace(`start: the system says ${fromSystem ?? "nothing"}, starting in ${initialLocale}`);
+
+let active = get(locale);
+locale.subscribe((next) => {
+  if (next === active) return;
+  // `init` sets the first language once its dictionary has loaded, so every
+  // window starts with a change from nothing; that one is expected.
+  const why = reason ?? (active == null ? "first language of this window" : "no known reason");
+  trace(`${active ?? "none"} -> ${next ?? "none"} (${why})`);
+  active = next;
+  reason = null;
 });
 
 /** How long the persisted language may delay the first render.
@@ -75,22 +98,32 @@ const PREFS_LOCALE_BUDGET_MS = 250;
  *  read. It starts on module import so it runs in parallel with the rest of the
  *  bootstrap. */
 const persistedLocale: Promise<string | null> = getPrefs()
-  .then((prefs) => pickSupported(prefs.language ?? null))
+  .then((prefs) => {
+    trace(`stored preference: ${prefs.language ?? "none"}`);
+    return pickSupported(prefs.language ?? null);
+  })
   // Keeping whatever `init` picked is acceptable, since the Settings page can
   // repair a corrupt prefs.json.
-  .catch(() => null);
+  .catch((e) => {
+    trace(`stored preference unreadable: ${e}`);
+    return null;
+  });
 
-/** Resolves to `null` when `promise` takes longer than `ms`, without cancelling it. */
-function withBudget<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+const LATE = Symbol("late");
+
+/** Resolves to `LATE` when `promise` takes longer than `ms`, without cancelling it. */
+function withBudget<T>(promise: Promise<T>, ms: number): Promise<T | typeof LATE> {
   return Promise.race([
     promise,
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+    new Promise<typeof LATE>((resolve) => setTimeout(() => resolve(LATE), ms)),
   ]);
 }
 
-/** Aplica el idioma persistido si difiere del activo. */
-async function applyPersisted(code: string | null): Promise<void> {
+/** Applies the stored language when it differs from the active one. `why` is
+ *  for the log. */
+async function applyPersisted(code: string | null, why: string): Promise<void> {
   if (code && code !== get(locale)) {
+    reason = `stored preference, ${why}`;
     await locale.set(code);
   }
 }
@@ -110,7 +143,12 @@ async function applyPersisted(code: string | null): Promise<void> {
  *  (svelte-i18n is reactive: the text changes on its own, with nothing
  *  remounted). */
 export const i18nReady: Promise<void> = (async () => {
-  await applyPersisted(await withBudget(persistedLocale, PREFS_LOCALE_BUDGET_MS));
+  const stored = await withBudget(persistedLocale, PREFS_LOCALE_BUDGET_MS);
+  if (stored === LATE) {
+    trace(`stored preference took over ${PREFS_LOCALE_BUDGET_MS} ms, starting without it`);
+  } else {
+    await applyPersisted(stored, "at start");
+  }
   // Block until the active locale's dictionary is loaded. Without this the
   // very first render sees `$locale = null` and `$_` throws, which silently
   // unwinds Svelte's mount() and leaves the user with a blank window.
@@ -124,7 +162,7 @@ export const i18nReady: Promise<void> = (async () => {
 export const i18nSettled: Promise<void> = (async () => {
   try {
     await i18nReady;
-    await applyPersisted(await persistedLocale);
+    await applyPersisted(await persistedLocale, "arrived late");
   } catch {
     // A dictionary that fails to load leaves the text in the previous language,
     // which beats an unowned rejected promise in the console.
@@ -154,7 +192,7 @@ export function syncPersistedLocale(): Promise<void> {
   syncing = (async () => {
     try {
       const prefs = await getPrefs();
-      await applyPersisted(pickSupported(prefs.language ?? null));
+      await applyPersisted(pickSupported(prefs.language ?? null), "window shown again");
     } catch {
       /* best-effort */
     } finally {
@@ -165,13 +203,16 @@ export function syncPersistedLocale(): Promise<void> {
 }
 
 /** Update the active locale and persist it to prefs so the next launch
- *  remembers the choice. */
-export async function setLocale(code: string): Promise<void> {
+ *  remembers the choice. `source` names the control that asked, for the log. */
+export async function setLocale(code: string, source: string): Promise<void> {
+  if (code !== get(locale)) reason = `picked in ${source}`;
   await locale.set(code);
   try {
     const current = await getPrefs();
     await savePrefs({ ...current, language: code });
-  } catch {
+    trace(`saved ${code} as the stored preference (${source})`);
+  } catch (e) {
     // Persisting is best-effort; the in-memory switch already happened.
+    trace(`could not save ${code} as the stored preference: ${e}`);
   }
 }

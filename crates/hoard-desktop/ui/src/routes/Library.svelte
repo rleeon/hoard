@@ -10,7 +10,6 @@
    * `library://scan-progress` events to drive the progress bar.
    */
   import { onDestroy, onMount } from "svelte";
-  import { tilt } from "../lib/actions/tilt";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import {
     Search as SearchIcon,
@@ -1135,7 +1134,7 @@
       </div>
       <div class="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
         <div
-          class="h-full rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] transition-all"
+          class="h-full rounded-full bg-emerald-500 shadow-[0_0_8px_color-mix(in_oklch,var(--color-emerald-500)_50%,transparent)] transition-all"
           style="width: {pct}%"
         ></div>
       </div>
@@ -1147,9 +1146,8 @@
       type="button"
       onclick={runDeepScan}
       disabled={scanning}
-      use:tilt
       title={$_("library.deep_scan_hint")}
-      class="tilt group flex flex-col rounded-2xl border border-red-500/30 bg-red-950/20 p-4 text-left shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-red-500/55 hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-60"
+      class="group flex flex-col rounded-2xl border border-red-500/30 bg-red-950/20 p-4 text-left shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-red-500/55 hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-60"
     >
       <div class="mb-2 flex items-start gap-2.5">
         <div
@@ -1279,10 +1277,9 @@
           {@const pending = entry.game ? untrackedPaths(entry.game) : []}
           {@const expanded = expandedPaths.has(entry.slug)}
           <div
-            class="tilt panel group relative flex flex-col overflow-hidden transition-[background-color,border-color,box-shadow] duration-150 hover:bg-[var(--surface-2)] {isTracked
+            class="panel group relative flex flex-col overflow-hidden transition-[background-color,border-color,box-shadow] duration-150 hover:bg-[var(--surface-2)] {isTracked
               ? 'border-emerald-500/25 hover:border-emerald-500/40'
               : 'hover:border-[var(--edge-strong)]'}"
-            use:tilt
           >
             <CardResizeHandle section="detected" />
 
@@ -1704,8 +1701,7 @@
       >
         {#each cloudOrphans as save (save.save_id)}
           <div
-            class="tilt group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-layer-2 p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-white/[0.14] hover:bg-layer-hover"
-            use:tilt
+            class="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-layer-2 p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-white/[0.14] hover:bg-layer-hover"
           >
             <CardResizeHandle section="orphans" />
             <div class="flex items-start gap-2.5">

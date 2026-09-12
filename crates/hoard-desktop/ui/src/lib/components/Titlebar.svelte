@@ -169,7 +169,7 @@
     <button
       type="button"
       class="group flex h-7 w-9 items-center justify-center rounded-lg text-zinc-400 ring-1 ring-transparent transition-colors hover:bg-white/[0.07] hover:text-zinc-100 hover:ring-white/[0.10]"
-      aria-label="Minimize"
+      aria-label={$_("titlebar.minimize")}
       onclick={() => win.minimize()}
     >
       <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true" data-anim="pop">
@@ -179,7 +179,7 @@
     <button
       type="button"
       class="flex h-7 w-9 items-center justify-center rounded-lg text-zinc-400 ring-1 ring-transparent transition-colors hover:bg-white/[0.07] hover:text-zinc-100 hover:ring-white/[0.10]"
-      aria-label={maximized ? "Restore" : "Maximize"}
+      aria-label={maximized ? $_("titlebar.restore") : $_("titlebar.maximize")}
       onclick={() => win.toggleMaximize()}
     >
       {#if maximized}
@@ -212,7 +212,7 @@
     <button
       type="button"
       class="flex h-7 w-9 items-center justify-center rounded-lg text-zinc-400 ring-1 ring-transparent transition-colors hover:bg-red-600 hover:text-white hover:ring-red-400/40"
-      aria-label="Close"
+      aria-label={$_("titlebar.close")}
       onclick={() => win.close()}
     >
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" data-anim="spin">

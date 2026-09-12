@@ -14,7 +14,6 @@
   // DEVICE-MERGED aggregate, so the recap reflects every machine you sign in
   // from, not just this one. Signed out / offline it falls back to local data.
   import { onMount } from "svelte";
-  import { tilt } from "../actions/tilt";
   import {
     currentUser,
     listTrackedSaves,
@@ -75,7 +74,7 @@
       };
     }
     return {
-      name: tr({ es: "Sin sesión", en: "Signed out" }),
+      name: tr({ es: "Sin sesión", en: "Signed out", de: "Nicht angemeldet", fr: "Déconnecté", it: "Non connesso", ja: "未ログイン", pt: "Sem sessão", zh: "未登录" }),
       sub: "—",
       avatar: null as string | null,
       cloud: false,
@@ -218,11 +217,11 @@
   const ROW_ORDER = [6, 5, 4, 3, 2, 1, 0];
   const WEEKDAYS = [
     "",
-    tr({ es: "vie", en: "Fri" }),
+    tr({ es: "vie", en: "Fri", de: "Fr", fr: "ven", it: "ven", ja: "金", pt: "sex", zh: "周五" }),
     "",
-    tr({ es: "mié", en: "Wed" }),
+    tr({ es: "mié", en: "Wed", de: "Mi", fr: "mer", it: "mer", ja: "水", pt: "qua", zh: "周三" }),
     "",
-    tr({ es: "lun", en: "Mon" }),
+    tr({ es: "lun", en: "Mon", de: "Mo", fr: "lun", it: "lun", ja: "月", pt: "seg", zh: "周一" }),
     "",
   ];
 
@@ -441,12 +440,18 @@
     </div>
     <div>
       <h1 class="font-display text-2xl font-semibold tracking-tight text-zinc-50">
-        {tr({ es: "Tu año jugando", en: "Your year in play" })}
+        {tr({ es: "Tu año jugando", en: "Your year in play", de: "Dein Spielejahr", fr: "Ton année de jeu", it: "Il tuo anno di gioco", ja: "あなたのゲームの一年", pt: "Seu ano jogando", zh: "你的游戏年度" })}
       </h1>
       <p class="text-sm text-zinc-400">
         {tr({
           es: "Tu resumen personal, con tus horas de todos tus equipos.",
           en: "Your personal recap, with your hours from every device.",
+          de: "Deine persönliche Zusammenfassung, mit deinen Stunden von allen Geräten.",
+          fr: "Ton récap personnel, avec tes heures sur tous tes appareils.",
+          it: "Il tuo riepilogo personale, con le tue ore da tutti i tuoi dispositivi.",
+          ja: "すべてのデバイスでのプレイ時間をまとめた、あなただけのまとめです。",
+          pt: "Seu resumo pessoal, com suas horas de todos os seus dispositivos.",
+          zh: "你的个人总结，汇总了你所有设备上的游戏时长。",
         })}
       </p>
     </div>
@@ -454,8 +459,7 @@
 
   <!-- identity card — masked by default, reveal like a password -->
   <div
-    class="tilt relative overflow-hidden rounded-2xl border border-white/[0.08] bg-layer-1 p-4"
-    use:tilt
+    class="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-layer-1 p-4"
   >
     <div class="flex items-center gap-4">
       <div
@@ -495,11 +499,11 @@
             onclick={() => (revealed = !revealed)}
             class="grid h-4 w-4 shrink-0 place-items-center rounded text-zinc-500 transition hover:text-zinc-200"
             aria-label={revealed
-              ? tr({ es: "Ocultar correo", en: "Hide email" })
-              : tr({ es: "Mostrar correo", en: "Show email" })}
+              ? tr({ es: "Ocultar correo", en: "Hide email", de: "E-Mail ausblenden", fr: "Masquer l'e-mail", it: "Nascondi email", ja: "メールアドレスを隠す", pt: "Ocultar e-mail", zh: "隐藏邮箱" })
+              : tr({ es: "Mostrar correo", en: "Show email", de: "E-Mail anzeigen", fr: "Afficher l'e-mail", it: "Mostra email", ja: "メールアドレスを表示", pt: "Mostrar e-mail", zh: "显示邮箱" })}
             title={revealed
-              ? tr({ es: "Ocultar correo", en: "Hide email" })
-              : tr({ es: "Mostrar correo", en: "Show email" })}
+              ? tr({ es: "Ocultar correo", en: "Hide email", de: "E-Mail ausblenden", fr: "Masquer l'e-mail", it: "Nascondi email", ja: "メールアドレスを隠す", pt: "Ocultar e-mail", zh: "隐藏邮箱" })
+              : tr({ es: "Mostrar correo", en: "Show email", de: "E-Mail anzeigen", fr: "Afficher l'e-mail", it: "Mostra email", ja: "メールアドレスを表示", pt: "Mostrar e-mail", zh: "显示邮箱" })}
           >
             {#if revealed}<EyeOff size={11} />{:else}<Eye size={11} />{/if}
           </button>
@@ -511,19 +515,19 @@
     <div class="mt-4 grid grid-cols-3 gap-2 text-center">
       <div class="rounded-2xl bg-white/[0.03] px-2 py-2.5">
         <div class="flex items-center justify-center gap-1 text-[11px] uppercase tracking-wide text-zinc-500">
-          <Gamepad2 size={12} />{tr({ es: "Juegos", en: "Games" })}
+          <Gamepad2 size={12} />{tr({ es: "Juegos", en: "Games", de: "Spiele", fr: "Jeux", it: "Giochi", ja: "ゲーム", pt: "Jogos", zh: "游戏" })}
         </div>
         <div class="mt-0.5 text-xl font-semibold text-zinc-100">{totalGames}</div>
       </div>
       <div class="rounded-2xl bg-white/[0.03] px-2 py-2.5">
         <div class="text-[11px] uppercase tracking-wide text-zinc-500">
-          {tr({ es: "Atesorado", en: "Hoarded" })}
+          {tr({ es: "Atesorado", en: "Hoarded", de: "Gehortet", fr: "Amassé", it: "Accumulato", ja: "保管済み", pt: "Guardado", zh: "已囤积" })}
         </div>
         <div class="mt-0.5 text-xl font-semibold text-zinc-100">{fmtBytes(hoardedBytes)}</div>
       </div>
       <div class="rounded-2xl bg-white/[0.03] px-2 py-2.5">
         <div class="flex items-center justify-center gap-1 text-[11px] uppercase tracking-wide text-zinc-500">
-          <Crown size={12} />{tr({ es: "Más jugado", en: "Most played" })}
+          <Crown size={12} />{tr({ es: "Más jugado", en: "Most played", de: "Meistgespielt", fr: "Le plus joué", it: "Più giocato", ja: "最もプレイ", pt: "Mais jogado", zh: "最常玩" })}
         </div>
         <div
           class="mt-0.5 flex items-center justify-center gap-1.5"
@@ -546,25 +550,24 @@
   </div>
 
   <!-- activity calendar -->
-  <!-- Lleva `tilt` como los otros dos paneles: los tres son la misma clase de
-       tarjeta y sólo el primero lo tenía, así que al pasar el ratón por el
-       Wrapped uno respondía y los otros dos no. `relative` es para el
-       resplandor (`.tilt::after` va con `position:absolute; inset:0`); no
-       cambia el contexto de los `absolute` de dentro, que ya cuelgan de sus
-       propios contenedores `relative`. -->
   <div
-    class="tilt relative mt-4 rounded-2xl border border-white/[0.08] bg-layer-1 p-4"
-    use:tilt
+    class="relative mt-4 rounded-2xl border border-white/[0.08] bg-layer-1 p-4"
   >
     <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h2 class="text-sm font-semibold text-zinc-100">
-          {tr({ es: "Horas jugadas", en: "Hours played" })}
+          {tr({ es: "Horas jugadas", en: "Hours played", de: "Gespielte Stunden", fr: "Heures jouées", it: "Ore giocate", ja: "プレイ時間", pt: "Horas jogadas", zh: "游戏时长" })}
         </h2>
         <p class="text-xs text-zinc-500">
           {tr({
             es: "Cada cuadro es un día; el color, las horas. Haz clic en uno para ver a qué jugaste.",
             en: "Each square is a day; the shade is how long. Click one to see what you played.",
+            de: "Jedes Kästchen ist ein Tag, die Farbe zeigt die Stunden. Klick auf eines, um zu sehen, was du gespielt hast.",
+            fr: "Chaque case est un jour ; la couleur, les heures. Clique sur une case pour voir à quoi tu as joué.",
+            it: "Ogni quadrato è un giorno; il colore indica le ore. Clicca su uno per vedere a cosa hai giocato.",
+            ja: "1マスが1日で、色の濃さがプレイ時間です。クリックするとその日に遊んだゲームが見られます。",
+            pt: "Cada quadrado é um dia; a cor, as horas. Clique em um para ver o que você jogou.",
+            zh: "每个方格代表一天，颜色深浅代表时长。点击一个方格查看当天玩了什么。",
           })}
         </p>
       </div>
@@ -596,7 +599,7 @@
             {Math.round(stats.totalSecs / 3600)}
           </div>
           <div class="text-[11px] uppercase tracking-wide text-zinc-500">
-            {tr({ es: "horas", en: "hours" })}
+            {tr({ es: "horas", en: "hours", de: "Stunden", fr: "heures", it: "ore", ja: "時間", pt: "horas", zh: "小时" })}
           </div>
         </div>
       </div>
@@ -658,22 +661,22 @@
       <!-- legend + streaks -->
       <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-1.5 text-[11px] text-zinc-500">
-          {tr({ es: "Menos", en: "Less" })}
+          {tr({ es: "Menos", en: "Less", de: "Weniger", fr: "Moins", it: "Meno", ja: "少", pt: "Menos", zh: "少" })}
           {#each LEVEL_BG as bg}
             <span class="h-3 w-3 rounded-[3px] {bg} ring-1 ring-inset ring-white/[0.04]"></span>
           {/each}
-          {tr({ es: "Más", en: "More" })}
+          {tr({ es: "Más", en: "More", de: "Mehr", fr: "Plus", it: "Più", ja: "多", pt: "Mais", zh: "多" })}
         </div>
         <div class="flex items-center gap-4 text-xs">
           <span class="inline-flex items-center gap-1.5 text-zinc-300">
             <CalendarCheck size={13} class="text-emerald-400" />
             {stats.active}
-            {tr({ es: "días activos", en: "active days" })}
+            {tr({ es: "días activos", en: "active days", de: "aktive Tage", fr: "jours actifs", it: "giorni attivi", ja: "アクティブ日数", pt: "dias ativos", zh: "活跃天数" })}
           </span>
           <span class="inline-flex items-center gap-1.5 text-zinc-300">
             <Flame size={13} class="text-amber-400" />
             {stats.longest}
-            {tr({ es: "días racha", en: "day streak" })}
+            {tr({ es: "días racha", en: "day streak", de: "Tage in Folge", fr: "jours d'affilée", it: "giorni di fila", ja: "連続日数", pt: "dias seguidos", zh: "连续天数" })}
           </span>
         </div>
       </div>
@@ -690,6 +693,12 @@
           {tr({
             es: "Wrapple está desactivado en Ajustes › Privacidad. Tus horas se siguen contando en este equipo, pero no salen de él, así que aquí no hay nada que enseñar.",
             en: "Wrapple is turned off in Settings › Privacy. Your hours are still counted on this machine, but they never leave it, so there's nothing to show here.",
+            de: "Wrapple ist unter Einstellungen › Datenschutz deaktiviert. Deine Stunden werden auf diesem Gerät weiter gezählt, verlassen es aber nie, daher gibt es hier nichts zu zeigen.",
+            fr: "Wrapple est désactivé dans Paramètres › Confidentialité. Tes heures sont toujours comptées sur cet appareil, mais elles ne le quittent jamais, donc il n'y a rien à afficher ici.",
+            it: "Wrapple è disattivato in Impostazioni › Privacy. Le tue ore vengono ancora contate su questo dispositivo, ma non lo lasciano mai, quindi qui non c'è niente da mostrare.",
+            ja: "Wrapple は「設定 › プライバシー」でオフになっています。プレイ時間はこのデバイスで引き続き記録されますが、外には出ないため、ここに表示するものはありません。",
+            pt: "O Wrapple está desativado em Definições › Privacidade. Suas horas continuam sendo contadas neste dispositivo, mas nunca saem dele, então não há nada para mostrar aqui.",
+            zh: "Wrapple 已在“设置 › 隐私”中关闭。你的游戏时长仍会在这台设备上记录，但从不离开这台设备，所以这里没有可显示的内容。",
           })}
         </div>
       {:else if stats.totalSecs <= 0}
@@ -700,6 +709,12 @@
           {tr({
             es: "Aún no hay horas registradas. Juega con Hoard abierto y se irán contando solas.",
             en: "No hours logged yet. Play with Hoard open and they'll start counting.",
+            de: "Noch keine Stunden erfasst. Spiel mit geöffnetem Hoard, dann werden sie automatisch gezählt.",
+            fr: "Aucune heure enregistrée pour l'instant. Joue avec Hoard ouvert et elles se compteront toutes seules.",
+            it: "Nessuna ora registrata finora. Gioca con Hoard aperto e verranno contate da sole.",
+            ja: "まだプレイ時間の記録がありません。Hoard を開いたままプレイすると自動で記録されます。",
+            pt: "Ainda não há horas registradas. Jogue com o Hoard aberto e elas serão contadas sozinhas.",
+            zh: "还没有记录到游戏时长。开着 Hoard 玩游戏，时长会自动开始记录。",
           })}
         </div>
       {:else if stats.busiest && stats.busiest.secs > 0}
@@ -707,7 +722,7 @@
           class="mt-3 flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-transparent px-3 py-2 text-xs text-zinc-300 ring-1 ring-emerald-400/15"
         >
           <Trophy size={14} class="text-amber-300" />
-          {tr({ es: "Tu día más intenso:", en: "Your busiest day:" })}
+          {tr({ es: "Tu día más intenso:", en: "Your busiest day:", de: "Dein intensivster Tag:", fr: "Ta journée la plus intense :", it: "Il tuo giorno più intenso:", ja: "いちばん遊んだ日：", pt: "Seu dia mais intenso:", zh: "你玩得最多的一天：" })}
           <span class="font-semibold text-zinc-100">{fmtDay(stats.busiest.date)}</span>
           <span class="text-zinc-500">({fmtDur(stats.busiest.secs)})</span>
         </div>
@@ -718,15 +733,14 @@
   <!-- day detail — opens when a calendar square is clicked -->
   {#if dayDetail}
     <div
-      class="tilt relative mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-layer-1 shadow-[0_8px_30px_-12px_rgba(16,185,129,0.25)]"
-      use:tilt
+      class="relative mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-layer-1 shadow-[0_8px_30px_-12px_color-mix(in_oklch,var(--color-emerald-500)_25%,transparent)]"
     >
       <!-- header band -->
       <div
         class="relative flex items-center justify-between gap-3 border-b border-white/[0.08] bg-gradient-to-r from-emerald-500/15 via-emerald-500/[0.04] to-transparent px-4 py-3"
       >
         <div
-          class="pointer-events-none absolute -left-10 -top-10 h-28 w-28 [background:radial-gradient(closest-side,rgba(16,185,129,0.12),transparent)]"
+          class="pointer-events-none absolute -left-10 -top-10 h-28 w-28 [background:radial-gradient(closest-side,color-mix(in_oklch,var(--color-emerald-500)_12%,transparent),transparent)]"
         ></div>
         <div class="flex min-w-0 items-center gap-2.5">
           <div
@@ -736,7 +750,7 @@
           </div>
           <div class="min-w-0">
             <div class="text-[10px] font-medium uppercase tracking-wider text-emerald-300/80">
-              {tr({ es: "Ese día jugaste a", en: "That day you played" })}
+              {tr({ es: "Ese día jugaste a", en: "That day you played", de: "An diesem Tag hast du gespielt", fr: "Ce jour-là, tu as joué", it: "Quel giorno hai giocato", ja: "この日のプレイ", pt: "Nesse dia você jogou", zh: "当天你玩了" })}
             </div>
             <h3 class="truncate text-sm font-semibold text-zinc-50">
               {fmtDay(dayDetail.date)}
@@ -749,14 +763,14 @@
               {fmtDur(dayDetail.dayTotal)}
             </div>
             <div class="mt-0.5 text-[10px] uppercase tracking-wide text-zinc-500">
-              {tr({ es: "en total", en: "total" })}
+              {tr({ es: "en total", en: "total", de: "insgesamt", fr: "au total", it: "in totale", ja: "合計", pt: "no total", zh: "总计" })}
             </div>
           </div>
           <button
             type="button"
             onclick={() => (selectedKey = null)}
             class="grid h-7 w-7 place-items-center rounded-lg border border-white/[0.08] text-zinc-400 transition hover:bg-white/5 hover:text-white"
-            aria-label={tr({ es: "Cerrar", en: "Close" })}
+            aria-label={tr({ es: "Cerrar", en: "Close", de: "Schließen", fr: "Fermer", it: "Chiudi", ja: "閉じる", pt: "Fechar", zh: "关闭" })}
           >
             <X size={15} />
           </button>
@@ -808,11 +822,17 @@
           {tr({
             es: "Jugaste este día, pero sin desglose por juego (horas previas a esta función).",
             en: "You played this day, but with no per-game breakdown (hours predate this feature).",
+            de: "An diesem Tag hast du gespielt, aber ohne Aufschlüsselung nach Spiel (die Stunden stammen aus der Zeit vor dieser Funktion).",
+            fr: "Tu as joué ce jour-là, mais sans détail par jeu (ces heures datent d'avant cette fonction).",
+            it: "Hai giocato questo giorno, ma senza dettaglio per gioco (ore precedenti a questa funzione).",
+            ja: "この日はプレイしましたが、ゲームごとの内訳はありません（この機能より前の記録です）。",
+            pt: "Você jogou neste dia, mas sem detalhe por jogo (horas anteriores a este recurso).",
+            zh: "这天你玩过游戏，但没有按游戏的明细（这些时长早于此功能）。",
           })}
         </p>
       {:else}
         <p class="px-4 py-3 text-xs text-zinc-500">
-          {tr({ es: "No jugaste este día.", en: "You didn't play this day." })}
+          {tr({ es: "No jugaste este día.", en: "You didn't play this day.", de: "An diesem Tag hast du nicht gespielt.", fr: "Tu n'as pas joué ce jour-là.", it: "Non hai giocato questo giorno.", ja: "この日はプレイしていません。", pt: "Você não jogou neste dia.", zh: "这天你没有玩游戏。" })}
         </p>
       {/if}
     </div>
@@ -826,14 +846,19 @@
   <button
     type="button"
     onclick={() => (showCard = !showCard)}
-    use:tilt
-    class="tilt relative group mt-4 flex w-full items-center justify-center gap-2.5 rounded-2xl border px-4 py-3.5 transition {showCard
+    class="relative group mt-4 flex w-full items-center justify-center gap-2.5 rounded-2xl border px-4 py-3.5 transition {showCard
       ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200'
       : 'border-white/[0.08] bg-layer-2 text-zinc-300 hover:border-emerald-400/30 hover:bg-emerald-500/[0.06] hover:text-emerald-200'}"
     aria-expanded={showCard}
     title={tr({
       es: "Crea una imagen de tu resumen para compartir",
       en: "Turn your recap into a shareable image",
+      de: "Mach aus deiner Zusammenfassung ein Bild zum Teilen",
+      fr: "Transforme ton récap en image à partager",
+      it: "Trasforma il tuo riepilogo in un'immagine da condividere",
+      ja: "まとめをシェア用の画像にする",
+      pt: "Transforme seu resumo em uma imagem para compartilhar",
+      zh: "把你的总结做成可分享的图片",
     })}
   >
     <span

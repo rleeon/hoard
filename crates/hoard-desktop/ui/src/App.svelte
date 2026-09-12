@@ -59,13 +59,13 @@
     });
 
   import Toaster from "./lib/components/Toaster.svelte";
+  import ScaleBadge from "./lib/components/ScaleBadge.svelte";
   import TourOverlay from "./lib/components/TourOverlay.svelte";
   import AccountDeletedModal from "./lib/components/AccountDeletedModal.svelte";
   import EyePanel from "./lib/components/EyePanel.svelte";
   import NotificationsPanel from "./lib/components/NotificationsPanel.svelte";
   import { notifications as notifStore, initServerNotifications } from "./lib/stores/notifications";
   import { glow } from "./lib/actions/glow";
-import { tilt } from "./lib/actions/tilt";
   import { loadTourSeen, markTourSeen } from "./lib/stores/onboarding";
   import { tourActive } from "./lib/stores/tour";
   import UpdateConfirmModal from "./lib/components/UpdateConfirmModal.svelte";
@@ -944,8 +944,7 @@ import { tilt } from "./lib/actions/tilt";
             aria-current={active ? "page" : undefined}
             onclick={() => push(item.route)}
             use:glow
-            use:tilt
-            class="glow tilt group flex w-full items-center gap-3 rounded-md border-l-2 py-2 text-sm transition-colors duration-150 {indented ? 'pl-9 pr-3' : 'px-3'} {active ? 'border-emerald-500 bg-zinc-800/50 text-zinc-50' : 'border-transparent text-zinc-400 hover:bg-layer-hover hover:text-zinc-100'}"
+            class="glow group flex w-full items-center gap-3 rounded-md border-l-2 py-2 text-sm transition-colors duration-150 {indented ? 'pl-9 pr-3' : 'px-3'} {active ? 'border-emerald-500 bg-zinc-800/50 text-zinc-50' : 'border-transparent text-zinc-400 hover:bg-layer-hover hover:text-zinc-100'}"
           >
             <item.icon
               size={indented ? 16 : 18}
@@ -979,13 +978,12 @@ import { tilt } from "./lib/actions/tilt";
                 aria-current={active ? "page" : undefined}
                 onclick={() => push(entry.route)}
                 use:glow
-                use:tilt
                 title={fs?.state === "trial"
                   ? $_("nav.trial_days_left", { values: { n: featureDaysLeft(fs) } })
                   : fs?.state === "trial_available"
                     ? $_("pro.trial_available", { values: { n: fs.days } })
                     : undefined}
-                class="glow tilt group flex w-full items-center gap-3 rounded-md border-l-2 px-3 py-2 text-sm transition-colors duration-150
+                class="glow group flex w-full items-center gap-3 rounded-md border-l-2 px-3 py-2 text-sm transition-colors duration-150
                   {active
                   ? 'border-emerald-500 bg-zinc-800/50 text-zinc-50'
                   : 'border-transparent text-zinc-400 hover:bg-layer-hover hover:text-zinc-100'}"
@@ -1065,8 +1063,7 @@ import { tilt } from "./lib/actions/tilt";
                 type="button"
                 onclick={() => push("/account")}
                 use:glow
-                use:tilt
-                class="glow tilt flex min-w-0 flex-1 items-center gap-2 rounded-md border border-zinc-800 bg-layer-2 px-2 py-1.5 text-left transition-colors hover:border-zinc-700 hover:bg-layer-hover"
+                class="glow flex min-w-0 flex-1 items-center gap-2 rounded-md border border-zinc-800 bg-layer-2 px-2 py-1.5 text-left transition-colors hover:border-zinc-700 hover:bg-layer-hover"
                 title={$_("sidebar.account_tooltip")}
               >
                 {#if $cloud.account.avatar_url && !avatarFailed}
@@ -1101,7 +1098,7 @@ import { tilt } from "./lib/actions/tilt";
                 <button
                   type="button"
                   onclick={() => openUpgradePage("pro")}
-                  class="flex shrink-0 items-center gap-1 rounded-md bg-gradient-to-r from-emerald-400 to-teal-400 px-2.5 py-2 text-[11px] font-semibold text-emerald-950 shadow-sm shadow-emerald-500/30 transition-all hover:from-emerald-300 hover:to-teal-300 hover:shadow-emerald-500/50"
+                  class="keep-emerald flex shrink-0 items-center gap-1 rounded-md bg-gradient-to-r from-emerald-400 to-teal-400 px-2.5 py-2 text-[11px] font-semibold text-emerald-950 shadow-sm shadow-emerald-500/30 transition-all hover:from-emerald-300 hover:to-teal-300 hover:shadow-emerald-500/50"
                   title={$_("sidebar.upgrade_tooltip")}
                 >
                   <Sparkles size={12} data-anim="pop" />
@@ -1114,8 +1111,7 @@ import { tilt } from "./lib/actions/tilt";
           type="button"
           onclick={toggleGlobalSync}
           disabled={globalSyncBusy}
-          use:tilt
-          class="tilt flex w-full items-center justify-center gap-2 rounded-md border bg-black px-3 py-2 text-sm font-medium transition-colors {globalSync
+          class="keep-emerald flex w-full items-center justify-center gap-2 rounded-md border bg-black px-3 py-2 text-sm font-medium transition-colors {globalSync
             ? 'border-emerald-800/80 text-emerald-500 hover:border-emerald-700 hover:bg-emerald-950/40'
             : 'border-red-900/80 text-red-500 hover:border-red-800 hover:bg-red-950/40'} disabled:cursor-wait disabled:opacity-60"
           aria-label={$_("sync.aria_toggle")}
@@ -1137,8 +1133,7 @@ import { tilt } from "./lib/actions/tilt";
           data-tour="automatic"
           onclick={toggleAutomatic}
           disabled={automaticBusy}
-          use:tilt
-          class="tilt flex w-full items-center justify-center gap-2 rounded-md border bg-black px-3 py-2 text-sm font-medium transition-colors {automaticMode
+          class="keep-emerald flex w-full items-center justify-center gap-2 rounded-md border bg-black px-3 py-2 text-sm font-medium transition-colors {automaticMode
             ? 'border-emerald-800/80 text-emerald-500 hover:border-emerald-700 hover:bg-emerald-950/40'
             : 'border-red-900/80 text-red-500 hover:border-red-800 hover:bg-red-950/40'} disabled:cursor-wait disabled:opacity-60"
           aria-label={$_("automatic.aria_toggle")}
@@ -1371,6 +1366,7 @@ import { tilt } from "./lib/actions/tilt";
 {/if}
 
 <Toaster />
+<ScaleBadge />
 
 <!-- Account scheduled for deletion: a blocking screen over everything (incl. the
      tour). The account is frozen server-side, so the app behind is dead until

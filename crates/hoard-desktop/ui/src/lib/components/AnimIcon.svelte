@@ -11,11 +11,8 @@
    * works.
    *
    * The first paint stays still, so opening Settings does not set a dozen icons
-   * off at once, and the motion slider (`stores/motion.ts`) at 0 turns the
-   * whole thing off.
+   * off at once.
    */
-  import { motionIntensity } from "../stores/motion";
-
   export type AnimKind = "spin" | "pop" | "ring" | "unfurl" | "hop";
 
   type Props = {
@@ -67,7 +64,6 @@
   const animClass = $derived(
     pulse === 0 ||
       endedFor === pulse ||
-      $motionIntensity === 0 ||
       (!on && !bothWays)
       ? ""
       : `icon-anim-${kind}`,

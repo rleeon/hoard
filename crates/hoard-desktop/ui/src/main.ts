@@ -1,30 +1,18 @@
 // i18n must be imported first so registrations and `init()` happen before any
 // component subscribes to `$_`. The module has top-level side effects.
 import { i18nReady } from "./lib/i18n";
-import { initTheme } from "./lib/stores/theme";
-import { initMotion } from "./lib/stores/motion";
-import { initAtmosphere } from "./lib/stores/atmosphere";
+import { initAccent } from "./lib/stores/theme";
 import { initUiScale, initUiScaleShortcuts } from "./lib/stores/uiScale";
 import { mount } from "svelte";
 import "./app.css";
 import App from "./App.svelte";
 import Overlay from "./lib/overlay/Overlay.svelte";
 
-// Apply the persisted theme before mount so the first paint already uses the
-// right palette, otherwise the app flashes the default Obsidian look before
-// the store reads localStorage and swaps <html data-theme>. Pure DOM side
-// effect, no i18n dependency, so it's safe to run synchronously here.
-initTheme();
-// Igual con la intensidad del relieve: marca `<html data-motion>` antes del
-// primer pintado para que nadie vea el resplandor a tope y luego atenuarse.
-initMotion();
-// Same for the background, grain, glow or vignette settled before anything is
-// drawn, so nobody watches one background swap for another. Skipped in the HUD:
-// that window has to stay see-through, and while `app.css` already outranks any
-// atmosphere rule there, marking it at all invites the next person to write a
-// rule that lands a grain rectangle over the game.
+// Paint the stored accent before mount so the first frame already wears the
+// chosen gem instead of flashing emerald first. Pure DOM, no i18n, so it is
+// safe to run synchronously here.
+initAccent();
 if (!isOverlayWindow()) {
-  initAtmosphere();
   // Ctrl+wheel and Ctrl +/-/0. Wiring two listeners costs nothing and belongs
   // here rather than in the awaited scale below, where the shortcuts would sit
   // dead until the locale dictionary finished loading.

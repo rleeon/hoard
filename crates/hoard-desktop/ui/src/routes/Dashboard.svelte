@@ -15,7 +15,6 @@
    */
   import { onMount } from "svelte";
   import { push } from "svelte-spa-router";
-  import { tilt } from "../lib/actions/tilt";
   import {
     AlertTriangle,
     Clock,
@@ -507,7 +506,7 @@
           {/if}
           <span
             class="relative inline-flex h-3 w-3 rounded-full {$status.running
-              ? 'bg-emerald-400 shadow-[0_0_8px_2px_rgba(16,185,129,0.5)]'
+              ? 'bg-emerald-400 shadow-[0_0_8px_2px_color-mix(in_oklch,var(--color-emerald-500)_50%,transparent)]'
               : 'bg-zinc-600'}"
           ></span>
         </span>
@@ -588,8 +587,7 @@
        justo lo que se mira de un vistazo, así que van antes de las tarjetas. -->
   {#if !loading && saves.length > 0}
     <div
-      class="tilt panel relative mb-5 grid grid-cols-2 gap-x-4 gap-y-5 px-6 py-5 md:grid-cols-4"
-      use:tilt
+      class="panel relative mb-5 grid grid-cols-2 gap-x-4 gap-y-5 px-6 py-5 md:grid-cols-4"
     >
       <div>
         <p class="text-xs text-zinc-500">{$_("dashboard.total_games")}</p>

@@ -764,7 +764,7 @@
         </div>
         <div class="flex flex-col items-end gap-2">
           {#if account.plan === "free"}
-            <Button variant="primary" onclick={() => openUpgradePage("pro")}>
+            <Button variant="primary" class="keep-emerald" onclick={() => openUpgradePage("pro")}>
               <ArrowUpRight size={14} data-anim="pop" />
               {$_("account.upgrade")}
             </Button>

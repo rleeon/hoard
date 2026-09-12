@@ -49,7 +49,6 @@
     formatRelativeTime,
     prettifySlug,
   } from "../utils/format";
-  import { tilt } from "../actions/tilt";
 
   let {
     save,
@@ -290,8 +289,7 @@
 </script>
 
 <div
-  class="tilt panel group relative flex flex-col overflow-hidden transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--edge-strong)] hover:shadow-[var(--edge-top),var(--shadow-raised)]"
-  use:tilt
+  class="panel group relative flex flex-col overflow-hidden transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--edge-strong)] hover:shadow-[var(--edge-top),var(--shadow-raised)]"
 >
   <!-- Esquina de arrastre, la misma de la biblioteca: a lo ancho manda el
        tamaño de la tarjeta, a lo alto la forma de la carátula. Sustituye al

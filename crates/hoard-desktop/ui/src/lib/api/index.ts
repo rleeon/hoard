@@ -946,6 +946,11 @@ export function uiReady(): Promise<void> {
   return invoke<void>("ui_ready");
 }
 
+/** A line for the app's log file, from the interface (see `commands/misc.rs`). */
+export function uiLog(topic: string, message: string): Promise<void> {
+  return invoke<void>("ui_log", { topic, message });
+}
+
 /** Persist prefs. Returns the saved object so the caller can hydrate stores. */
 export function savePrefs(prefs: Prefs): Promise<Prefs> {
   return invoke<Prefs>("save_prefs", { prefs });

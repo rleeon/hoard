@@ -1,11 +1,10 @@
 /**
- * Glow action, a cursor-following highlight without the 3D tilt. Used by
- * buttons and small interactive elements where a perspective rotation would
- * feel wrong, but the light that follows the pointer is still a nice touch.
+ * Glow action, a highlight that follows the pointer across buttons and small
+ * interactive elements.
  *
- * Sets the same --tilt-glow-x/--tilt-glow-y CSS variables as `tilt`; the
- * `.glow` class in app.css consumes them. Cheaper than tilt (no transform,
- * no perspective) so it's safe to attach to every button.
+ * Sets the --tilt-glow-x/--tilt-glow-y CSS variables (named after the 3D tilt
+ * that used to share them); the `.glow` class in app.css consumes them. No
+ * transform, no perspective, so it's safe to attach to every button.
  */
 export function glow(node: HTMLElement) {
   let raf = 0;

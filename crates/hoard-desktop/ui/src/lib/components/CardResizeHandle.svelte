@@ -50,8 +50,7 @@
     startY = e.clientY;
     startW = cardWidth(section);
     // The positioned container's `offsetWidth` (the card), not
-    // `getBoundingClientRect`: the card is tilted by `use:tilt` and the rect would
-    // come from the already-transformed bbox, a few points wider.
+    // `getBoundingClientRect`, which would pick up any transform on the card.
     const card = el?.offsetParent as HTMLElement | null;
     startCardW = card?.offsetWidth || startW;
     document.body.style.cursor = "nwse-resize";

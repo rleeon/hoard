@@ -23,8 +23,6 @@
   import { cloud, refreshCloud } from "../stores/cloud";
   import CountUp from "./CountUp.svelte";
   import { glow } from "../actions/glow";
-  import { tilt } from "../actions/tilt";
-  import { motionIntensity } from "../stores/motion";
 
   function fmtBytes(n: number): string {
     if (n < 1024) return `${n} B`;
@@ -118,17 +116,16 @@
     }[level],
   );
   const flashing = $derived(
-    (level === "purging" || level === "full") && $motionIntensity > 0,
+    level === "purging" || level === "full",
   );
 </script>
 
 {#if src.show}
   <div
-    class="glow tilt space-y-1.5 rounded-md px-1 py-0.5 {flashing ? 'quota-alarm' : ''}"
+    class="glow space-y-1.5 rounded-md px-1 py-0.5 {flashing ? 'quota-alarm' : ''}"
     data-anim={flashing ? "alarm" : undefined}
     title={$_("quota.label")}
     use:glow
-    use:tilt
   >
     <div class="flex items-center justify-between gap-2 text-[11px] text-zinc-400">
       <span class="truncate">

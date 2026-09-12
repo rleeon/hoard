@@ -32,9 +32,7 @@
     HardDrive,
     Server,
     ServerCog,
-    MousePointer2,
     Gamepad2,
-    Sparkles,
     ZoomIn,
   } from "@lucide/svelte";
 
@@ -48,9 +46,6 @@
   import SettingsRow from "../lib/components/SettingsRow.svelte";
   import { prefs, hydratePrefs, updatePrefs } from "../lib/stores/prefs";
   import {
-    theme,
-    themes,
-    type ThemeId,
     accentHue,
     setAccentHue,
     gems,
@@ -58,22 +53,12 @@
     gemFor,
   } from "../lib/stores/theme";
   import {
-    atmosphere,
-    atmospheres,
-    setAtmosphere,
-    type AtmosphereId,
-  } from "../lib/stores/atmosphere";
-  import {
     uiScale,
     setUiScale,
     resetUiScale,
     MIN_SCALE,
     MAX_SCALE,
   } from "../lib/stores/uiScale";
-  import {
-    motionIntensity,
-    setMotionIntensity,
-  } from "../lib/stores/motion";
   import {
     overlayEnabled,
     overlayHotkey,
@@ -102,22 +87,7 @@
   // the app reconnecting to a dead/abandoned self-hosted box on every launch.
   let forgetModalOpen = $state(false);
 
-  // Theme picker swatch previews. Each is a representative bg + accent dot so
-  // the user can tell the palettes apart without applying each one. "Auto"
-  // paints half-dark / half-light to signal it follows the OS scheme.
-  const swatchBg: Record<ThemeId, string> = {
-    obsidian: "linear-gradient(135deg, #0e1210, #141a17)",
-    quartz: "linear-gradient(135deg, #f3f0ea, #e7e3d9)",
-    auto: "linear-gradient(135deg, #0e1210 0 50%, #f3f0ea 50% 100%)",
-  };
-  const swatchAccent: Record<ThemeId, string> = {
-    obsidian: "#34d399",
-    quartz: "#10b981",
-    auto: "#34d399",
-  };
-
-  // Accent picker: repoints the "gem" hue live via CSS variables on <html>,
-  // compositing on top of whichever theme is active.
+  // Accent picker: repoints the "gem" hue live via CSS variables on <html>.
   function onAccentInput(e: Event): void {
     const v = Number((e.currentTarget as HTMLInputElement).value);
     setAccentHue(Number.isFinite(v) ? v : null);
@@ -126,11 +96,7 @@
     setAccentHue(null);
   }
 
-  // The named gems. `gemFor` returns null for a hue that matches no preset,
-  // which is exactly when the custom slider should already be open, otherwise
-  // someone who picked 187 degrees last week reopens Settings and finds no
-  // gem selected and no slider to explain why.
-  let customOpen = $state(gemFor($accentHue) == null);
+  // The named gems; `gemFor` is null for a custom hue, which rings none of them.
   const selectedGem = $derived(gemFor($accentHue));
 
   /** The mark's gradient for a given hue, as an inline `background`, same
@@ -139,17 +105,6 @@
     const { from, to } = gemSwatch(hue);
     return `background: linear-gradient(140deg, ${from}, ${to});`;
   }
-
-  // Background atmosphere. Small inline previews rather than words alone:
-  // "vignette" means nothing until you have seen one.
-  const atmosPreview: Record<AtmosphereId, string> = {
-    grain:
-      "background: #0a0a0a; background-image: radial-gradient(oklch(1 0 0 / 0.14) 0.5px, transparent 0.5px); background-size: 3px 3px;",
-    flat: "background: #0a0a0a;",
-    glow: "background: radial-gradient(120% 80% at 50% -30%, color-mix(in oklch, var(--color-accent) 55%, transparent), #0a0a0a 70%);",
-    vignette:
-      "background: radial-gradient(90% 90% at 50% 45%, oklch(0.32 0.01 165), #050505 100%);",
-  };
 
   // Interface scale. Engine zoom, so `onchange` would feel laggy, `oninput`
   // zooms while dragging, and the slider rides its own zoom, which is odd for
@@ -206,14 +161,6 @@
       scaleDraft = null;
       (e.currentTarget as HTMLInputElement).blur();
     }
-  }
-
-  // The tilt's intensity: 0 turns it off, 100 is the historic 8 degrees, and 50,
-  // the default, is half. On `oninput` (not `onchange`) so it is visible while you
-  // drag.
-  function onMotionInput(e: Event): void {
-    const v = Number((e.currentTarget as HTMLInputElement).value);
-    if (Number.isFinite(v)) setMotionIntensity(v);
   }
 
   // ---- capturing the overlay's shortcut
@@ -738,7 +685,7 @@
   async function handleLanguageChange(e: Event) {
     const next = (e.currentTarget as HTMLSelectElement).value;
     try {
-      await setLocale(next);
+      await setLocale(next, "Settings");
       // `setLocale` already persists to prefs; refresh the local store so the
       // value sticks if the page is remounted.
       await hydratePrefs();
@@ -764,7 +711,7 @@
     </Card>
   {:else}
     <div class="space-y-6">
-      <section>
+      <section class="keep-emerald">
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >
@@ -906,60 +853,14 @@
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >
-          {$_("settings.section_themes")}
+          {$_("settings.section_appearance")}
         </h2>
         <Card>
-          <div class="flex items-start gap-3 pb-4">
-            <Palette size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
-            <div class="min-w-0 flex-1">
-              <p class="text-sm font-medium text-zinc-100">
-                {$_("settings.themes_label")}
-              </p>
-              <p class="mt-0.5 text-xs text-zinc-500">
-                {$_("settings.themes_desc")}
-              </p>
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {#each themes as t (t.id)}
-              {@const active = $theme === t.id}
-              <button
-                type="button"
-                onclick={() => theme.set(t.id)}
-                aria-pressed={active}
-                class="group flex flex-col items-start gap-2 rounded-lg border p-2.5 text-left transition-colors {active
-                  ? 'border-emerald-500/60 bg-emerald-500/10'
-                  : 'border-white/[0.08] hover:bg-layer-hover'}"
-              >
-                <span
-                  class="relative flex h-12 w-full items-center justify-center overflow-hidden rounded-md border border-white/[0.08]"
-                  style="background: {swatchBg[t.id]};"
-                >
-                  <span
-                    class="absolute inset-x-0 bottom-0 h-1.5"
-                    style="background: {swatchAccent[t.id]};"
-                  ></span>
-                </span>
-                <span class="min-w-0 w-full">
-                  <span class="block text-sm font-medium text-zinc-100">
-                    {$_(t.labelKey)}
-                  </span>
-                  {#if t.id === "auto"}
-                    <span class="block text-[11px] text-zinc-500">
-                      {$_("settings.theme_auto_hint")}
-                    </span>
-                  {/if}
-                </span>
-              </button>
-            {/each}
-          </div>
-          <!-- Named gems. The hue wheel is still here, one click away, but it
-               is no longer the only way in: nobody thinks "I want 265 degrees",
-               they think "I want it blue". Emerald is the `null` hue — the
-               theme's own gem — so picking it is what Reset used to be, and
-               Quartz keeps its darker emerald instead of being overridden with
-               a hue tuned for a black background. -->
-          <div class="mt-4 border-t border-white/[0.08] pt-4">
+          <!-- Named gems, with the hue wheel always open under them: nobody
+               thinks "I want 265 degrees", they think "I want it blue". Emerald
+               is the `null` hue, the default gem, so picking it is what Reset
+               used to be. -->
+          <div>
             <div class="flex items-start gap-3">
               <Palette size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
               <div class="min-w-0 flex-1">
@@ -970,26 +871,13 @@
                   {$_("settings.accent_desc")}
                 </p>
               </div>
-              <button
-                type="button"
-                onclick={() => (customOpen = !customOpen)}
-                aria-expanded={customOpen}
-                class="shrink-0 rounded-md border px-2 py-1 text-xs transition-colors {customOpen
-                  ? 'border-[var(--color-accent)]/40 bg-[var(--color-accent)]/10 text-zinc-100'
-                  : 'border-white/[0.08] text-zinc-400 hover:bg-layer-hover hover:text-zinc-100'}"
-              >
-                {$_("settings.accent_custom")}
-              </button>
             </div>
             <div class="mt-3 flex flex-wrap gap-2">
               {#each gems as g (g.id)}
                 {@const active = selectedGem?.id === g.id}
                 <button
                   type="button"
-                  onclick={() => {
-                    setAccentHue(g.hue);
-                    customOpen = false;
-                  }}
+                  onclick={() => setAccentHue(g.hue)}
                   aria-pressed={active}
                   class="group flex w-20 flex-col items-center gap-1.5 rounded-lg border p-1.5 transition-colors {active
                     ? 'border-[var(--color-accent)]/50 bg-white/[0.04]'
@@ -1017,70 +905,24 @@
                 </button>
               {/each}
             </div>
-            {#if customOpen}
-              <div class="mt-3 flex items-center gap-3">
-                <input
-                  type="range"
-                  min="0"
-                  max="359"
-                  step="1"
-                  value={$accentHue ?? 160}
-                  oninput={onAccentInput}
-                  class="hue-slider min-w-0 flex-1"
-                  aria-label={$_("settings.accent_label")}
-                />
-                <button
-                  type="button"
-                  onclick={resetAccent}
-                  class="shrink-0 rounded-md border border-white/[0.08] px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-layer-hover hover:text-zinc-100"
-                >
-                  {$_("settings.accent_reset")}
-                </button>
-              </div>
-            {/if}
-          </div>
-
-          <!-- Background atmosphere. The pure-black-plus-grain canvas was a
-               good call for WOLED panels and a bad decree for everyone else;
-               it stays the default and becomes a choice. Previews rather than
-               words alone — "vignette" means nothing until you've seen one. -->
-          <div class="mt-4 border-t border-white/[0.08] pt-4">
-            <div class="flex items-start gap-3">
-              <Sparkles size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
-              <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium text-zinc-100">
-                  {$_("settings.atmos_label")}
-                </p>
-                <p class="mt-0.5 text-xs text-zinc-500">
-                  {$_("settings.atmos_desc")}
-                </p>
-              </div>
-            </div>
-            <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {#each atmospheres as a (a.id)}
-                {@const active = $atmosphere === a.id}
-                <button
-                  type="button"
-                  onclick={() => setAtmosphere(a.id)}
-                  aria-pressed={active}
-                  class="flex flex-col gap-1.5 rounded-lg border p-1.5 text-left transition-colors {active
-                    ? 'border-[var(--color-accent)]/50 bg-white/[0.04]'
-                    : 'border-white/[0.08] hover:bg-white/[0.03]'}"
-                >
-                  <span
-                    class="block h-10 w-full rounded-md ring-1 ring-inset ring-white/[0.08]"
-                    style={atmosPreview[a.id]}
-                    aria-hidden="true"
-                  ></span>
-                  <span
-                    class="truncate text-[11px] {active
-                      ? 'text-zinc-100'
-                      : 'text-zinc-500'}"
-                  >
-                    {$_(a.labelKey)}
-                  </span>
-                </button>
-              {/each}
+            <div class="mt-3 flex items-center gap-3">
+              <input
+                type="range"
+                min="0"
+                max="359"
+                step="1"
+                value={$accentHue ?? 160}
+                oninput={onAccentInput}
+                class="hue-slider min-w-0 flex-1"
+                aria-label={$_("settings.accent_label")}
+              />
+              <button
+                type="button"
+                onclick={resetAccent}
+                class="shrink-0 rounded-md border border-white/[0.08] px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-layer-hover hover:text-zinc-100"
+              >
+                {$_("settings.accent_reset")}
+              </button>
             </div>
           </div>
 
@@ -1106,7 +948,7 @@
               step="5"
               value={Math.round($uiScale * 100)}
               oninput={onScaleInput}
-              class="motion-slider w-40 shrink-0"
+              class="scale-slider w-40 shrink-0"
               aria-label={$_("settings.scale_label")}
               aria-valuetext="{Math.round($uiScale * 100)}%"
             />
@@ -1134,36 +976,6 @@
             </button>
           </div>
 
-          <!-- Intensidad del relieve. Va aquí, junto al tema y al acento,
-               porque es lo mismo: aspecto puro, guardado en el navegador y sin
-               pasar por Rust. Tres niveles en vez de un interruptor — apagarlo
-               del todo era la única salida para quien lo encuentra excesivo, y
-               se llevaba por delante un efecto que a otros les gusta. -->
-          <div class="mt-4 flex items-center gap-3 border-t border-white/[0.08] pt-4">
-            <MousePointer2 size={16} class="shrink-0 text-zinc-500" data-anim="pop" />
-            <div class="min-w-0 flex-1">
-              <p class="text-sm font-medium text-zinc-100">
-                {$_("settings.motion_label")}
-              </p>
-              <p class="mt-0.5 text-xs text-zinc-500">
-                {$_("settings.motion_desc")}
-              </p>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="5"
-              value={$motionIntensity}
-              oninput={onMotionInput}
-              class="motion-slider w-40 shrink-0"
-              aria-label={$_("settings.motion_label")}
-              aria-valuetext="{$motionIntensity}%"
-            />
-            <span class="w-10 shrink-0 text-right text-xs tabular-nums text-zinc-400">
-              {$motionIntensity}%
-            </span>
-          </div>
         </Card>
       </section>
 

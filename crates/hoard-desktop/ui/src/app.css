@@ -67,8 +67,7 @@
      other.
 
      Como cada componente usa utilidades crudas (`bg-zinc-900`, `text-zinc-400`),
-     repintar la rampa reviste toda la aplicación sin tocar el marcado, y el
-     tema Quartz la vuelve a repintar más abajo para el modo claro. */
+     repintar la rampa reviste toda la aplicación sin tocar el marcado. */
   --color-zinc-50: oklch(0.98 0.004 165);
   --color-zinc-100: oklch(0.95 0.005 165);
   --color-zinc-200: oklch(0.89 0.006 165);
@@ -99,7 +98,7 @@ body,
 
   /* The mark's gem. Its own tokens rather than the `emerald` ramp: the logo
      always sits on a near-black tile, so it needs lightness fixed high enough
-     to read there even under Quartz (where the ramp is darkened for paper).
+     to read there.
      `applyAccentHue` rewrites just the hue, keeping the two-tone sweep, the
      top stop leads the bottom one by ~20 degrees, same as teal -> emerald. */
   --logo-gem-from: oklch(0.855 0.138 181);
@@ -108,7 +107,7 @@ body,
 
   /* ---- elevation */
   /* Three surfaces and their edge. Outside `@theme` on purpose: they are composite
-     values (with alpha) that each theme repaints, not colours Tailwind should turn
+     values (with alpha), not colours Tailwind should turn
      into utilities. They are consumed from the `.panel` and `.pop` classes below, or
      with `bg-[var(--surface-2)]` when it has to be done by hand. */
   /* The neutral ramp, repainted.
@@ -119,24 +118,27 @@ body,
      redefine the ramp in place, the same trick `applyAccentHue` uses for
      emerald: darker at the bottom, and carrying the same 165 tint, so black is
      black and the greys belong to the same room. */
-  --color-zinc-50: oklch(0.965 0.001 165);
-  --color-zinc-100: oklch(0.91 0.002 165);
-  --color-zinc-200: oklch(0.84 0.003 165);
-  --color-zinc-300: oklch(0.75 0.004 165);
-  --color-zinc-400: oklch(0.64 0.005 165);
-  --color-zinc-500: oklch(0.51 0.005 165);
-  --color-zinc-600: oklch(0.38 0.006 165);
-  --color-zinc-700: oklch(0.27 0.006 165);
-  --color-zinc-800: oklch(0.195 0.006 165);
-  --color-zinc-900: oklch(0.14 0.005 165);
-  --color-zinc-950: oklch(0.085 0.004 165);
+  /* The neutrals' hue. `applyAccentHue` moves it with the gem, so the greys
+     lean the way the accent does instead of always emerald. */
+  --tint-hue: 165;
+  --color-zinc-50: oklch(0.965 0.001 var(--tint-hue));
+  --color-zinc-100: oklch(0.91 0.002 var(--tint-hue));
+  --color-zinc-200: oklch(0.84 0.003 var(--tint-hue));
+  --color-zinc-300: oklch(0.75 0.004 var(--tint-hue));
+  --color-zinc-400: oklch(0.64 0.005 var(--tint-hue));
+  --color-zinc-500: oklch(0.51 0.005 var(--tint-hue));
+  --color-zinc-600: oklch(0.38 0.006 var(--tint-hue));
+  --color-zinc-700: oklch(0.27 0.006 var(--tint-hue));
+  --color-zinc-800: oklch(0.195 0.006 var(--tint-hue));
+  --color-zinc-900: oklch(0.14 0.005 var(--tint-hue));
+  --color-zinc-950: oklch(0.085 0.004 var(--tint-hue));
 
-  --surface-1: oklch(0.05 0.006 165 / 62%);
-  --surface-2: oklch(0.06 0.006 165 / 72%);
-  --surface-3: oklch(0.05 0.006 165 / 88%);
+  --surface-1: oklch(0.05 0.006 var(--tint-hue) / 62%);
+  --surface-2: oklch(0.06 0.006 var(--tint-hue) / 72%);
+  --surface-3: oklch(0.05 0.006 var(--tint-hue) / 88%);
   /* Under the pointer, over a panel. One token instead of the half-dozen
      `hover:bg-zinc-*` greys the rows used to pick from. */
-  --surface-hover: oklch(0.085 0.006 165 / 55%);
+  --surface-hover: oklch(0.085 0.006 var(--tint-hue) / 55%);
   /* The left rail's top-to-bottom fade, as tokens so its black can be set on its
      own, apart from the page floor (debug panel). Transparent by default: the
      rail shows the pure black floor through its blur. */
@@ -180,76 +182,6 @@ body::before {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* ---- Atmosphere ------------------------------------------------------ */
-/* The background above is the default ("grain"); `stores/atmosphere.ts` puts
-   the user's choice on `<html data-atmos>` and the rest is here.
-
-   The glow and the vignette get their own `::after` layer rather than the
-   body's `background-image`, because Quartz already uses that slot for its two
-   radial washes and the two would overwrite each other. Both layers sit at
-   z-index 0, under `#app`. */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 320ms ease;
-}
-
-/* Flat, the grain off, nothing else. */
-:root[data-atmos="flat"] body::before {
-  display: none;
-}
-
-/* Glow, the top light the WOLED default deliberately withholds, tinted with
-   whatever gem is active so it moves with the accent picker. */
-:root[data-atmos="glow"] body::after {
-  opacity: 1;
-  background: radial-gradient(
-    130% 75% at 50% -25%,
-    color-mix(in oklch, var(--color-accent) 26%, transparent) 0%,
-    color-mix(in oklch, var(--color-accent) 7%, transparent) 38%,
-    transparent 68%
-  );
-}
-
-/* Vignette, darkened edges to pull the eye to the middle.
-   It is the one atmosphere that has to raise the floor before it can dig:
-   Obsidian's canvas is already pure black, and black over black is an
-   expensive way to paint nothing. So the middle comes up a step and the
-   corners fall back to the same #000 as everywhere else, which keeps the
-   WOLED argument intact, since the black stays black exactly where the
-   vignette is darkest.
-
-   The floor rule ties on specificity with `[data-theme="quartz"] body`
-   further down, and later wins, so paper keeps its own background without
-   needing a compound selector. Load-bearing on source order: don't move
-   this block below the Quartz one. */
-:root[data-atmos="vignette"] body {
-  background-color: oklch(0.155 0.005 165);
-}
-:root[data-atmos="vignette"] body::after {
-  opacity: 1;
-  background: radial-gradient(
-    115% 95% at 50% 45%,
-    transparent 38%,
-    oklch(0 0 0 / 55%) 76%,
-    oklch(0 0 0) 100%
-  );
-}
-/* On paper, black at the edges reads as dirt rather than depth: the light
-   theme shades with its own warm ink, and much more gently. */
-:root[data-theme="quartz"][data-atmos="vignette"] body::after {
-  background: radial-gradient(
-    115% 95% at 50% 45%,
-    transparent 42%,
-    oklch(0.35 0.02 95 / 12%) 78%,
-    oklch(0.35 0.02 95 / 30%) 100%
-  );
-}
-
 /* La ventana del HUD es transparente: sin esto, el fondo negro del `body` (y
    su capa de grano) taparía el juego con un rectángulo opaco en vez de dejar
    ver lo de debajo. La pone `main.ts` al montar en esa ventana. */
@@ -257,8 +189,7 @@ html.is-overlay,
 html.is-overlay body {
   background: transparent !important;
 }
-html.is-overlay body::before,
-html.is-overlay body::after {
+html.is-overlay body::before {
   display: none !important;
 }
 
@@ -320,7 +251,7 @@ html.is-overlay ::-webkit-scrollbar-thumb {
    `bg-layer-2` something raised inside one, `bg-layer-3` anything floating
    (dropdowns, banners), `hover:bg-layer-hover` a row under the pointer. `inline`
    so they resolve to the variables at the point of use, which is what lets the
-   quartz theme and the debug panel repaint them. */
+   debug panel repaint them. */
 @theme inline {
   --color-layer-1: var(--surface-1);
   --color-layer-2: var(--surface-2);
@@ -384,23 +315,25 @@ html.is-overlay ::-webkit-scrollbar-thumb {
     transform: rotate(0deg);
   }
 }
-/* A little jump, then a small pop on landing: the Mario star's move. The pop
-   is deliberately slight, the jump is the point. */
+/* The star's move: a jump spinning about its own axis, then a small pop on
+   landing. A turn and a half, which is three flips of its face and reads as
+   three turns; three whole turns read as six and made it dizzy. It lands on
+   540deg, which is its mirror image, and the star is symmetric. */
 @keyframes icon-hop {
   0% {
-    transform: translateY(0) scale(1);
+    transform: translateY(0) rotateY(0deg) scale(1);
   }
-  35% {
-    transform: translateY(-3px) scale(1);
+  40% {
+    transform: translateY(-4px) rotateY(270deg) scale(1);
   }
-  62% {
-    transform: translateY(0) scale(1);
+  72% {
+    transform: translateY(0) rotateY(540deg) scale(1);
   }
-  80% {
-    transform: translateY(0) scale(1.08);
+  86% {
+    transform: translateY(0) rotateY(540deg) scale(1.08);
   }
   100% {
-    transform: translateY(0) scale(1);
+    transform: translateY(0) rotateY(540deg) scale(1);
   }
 }
 /* A scroll opening: it unrolls downwards and settles. */
@@ -459,7 +392,7 @@ html.is-overlay ::-webkit-scrollbar-thumb {
 }
 *:hover > [data-anim="hop"],
 .anim-host:hover [data-anim="hop"] {
-  --icon-anim-dur: 520ms;
+  --icon-anim-dur: 900ms;
   animation: icon-hop var(--icon-anim-dur) cubic-bezier(0.3, 0.7, 0.4, 1);
 }
 *:hover > [data-anim="unfurl"],
@@ -469,7 +402,7 @@ html.is-overlay ::-webkit-scrollbar-thumb {
 }
 
 .icon-anim-hop {
-  --icon-anim-dur: 520ms;
+  --icon-anim-dur: 900ms;
   animation: icon-hop var(--icon-anim-dur) cubic-bezier(0.3, 0.7, 0.4, 1);
 }
 .icon-anim-unfurl {
@@ -479,8 +412,8 @@ html.is-overlay ::-webkit-scrollbar-thumb {
 }
 
 /* The storage rail once the server is deleting old versions: two flashes, then
-   quiet, every ten seconds. `filter` and not `transform`, which `.tilt` owns.
-   `--icon-anim-dur` is what lets it through the reduced-motion flattening. */
+   quiet, every ten seconds. `--icon-anim-dur` is what lets it through the
+   reduced-motion flattening. */
 @keyframes quota-alarm {
   0%,
   12%,
@@ -516,7 +449,8 @@ html.is-overlay ::-webkit-scrollbar-thumb {
   transform-origin: center;
 }
 .vault-opening .vault-door {
-  --vault-dur: 1s;
+  /* Twice the close: rolling out is the show, rolling back only seals it. */
+  --vault-dur: 2s;
   animation: vault-door-open var(--vault-dur) cubic-bezier(0.3, 0.7, 0.2, 1) forwards;
 }
 .vault-open .vault-door {
@@ -746,9 +680,30 @@ html.is-linux .card-glass {
    they stack over another translucent layer: with no blur the alpha is enough, but
    raising it keeps the black from bleeding through. */
 html.is-linux {
-  --surface-1: oklch(0.05 0.006 165 / 80%);
-  --surface-2: oklch(0.06 0.006 165 / 88%);
-  --surface-3: oklch(0.05 0.006 165 / 96%);
+  --surface-1: oklch(0.05 0.006 var(--tint-hue) / 80%);
+  --surface-2: oklch(0.06 0.006 var(--tint-hue) / 88%);
+  --surface-3: oklch(0.05 0.006 var(--tint-hue) / 96%);
+}
+
+/* ---- Fixed emerald --------------------------------------------------- */
+/* Where green means "on" it stays green, whatever gem is picked: with the ruby
+   accent the Sync and Automatic buttons turned red, the colour they wear when
+   they are off. This puts Tailwind's own emerald, and the default accent, back
+   for the subtree, beneath the gem's inline values on <html>. */
+.keep-emerald {
+  --color-emerald-50: oklch(97.9% 0.021 166.113);
+  --color-emerald-100: oklch(95% 0.052 163.051);
+  --color-emerald-200: oklch(90.5% 0.093 164.15);
+  --color-emerald-300: oklch(84.5% 0.143 164.978);
+  --color-emerald-400: oklch(76.5% 0.177 163.223);
+  --color-emerald-500: oklch(69.6% 0.17 162.48);
+  --color-emerald-600: oklch(59.6% 0.145 163.225);
+  --color-emerald-700: oklch(50.8% 0.118 165.612);
+  --color-emerald-800: oklch(43.2% 0.095 166.913);
+  --color-emerald-900: oklch(37.8% 0.077 168.94);
+  --color-emerald-950: oklch(26.2% 0.051 172.552);
+  --color-accent: oklch(0.62 0.15 158);
+  --color-accent-hover: oklch(0.72 0.16 160);
 }
 
 /* ---- Motion --------------------------------------------------------- */
@@ -760,162 +715,34 @@ html.is-linux {
     transition-duration: 0.001ms !important;
   }
 
-  /* The exception: when the user picked a tilt level by hand (`data-motion-on`,
-     which `stores/motion.ts` sets while the slider is above 0), `.tilt` keeps its
-     easing. Flattening it does not give them less motion (the degrees are the ones
-     they asked for), it only gives it to them in jerks chasing the mouse, which is
-     the opposite of what somebody turning on the system setting wants. With the
-     slider at 0 there is nothing to ease. */
-  :root[data-motion-on] .tilt {
-    transition-duration: 220ms !important;
-  }
-
-  /* And the icon animations, for the same reason. On Windows this query is on
-     for anyone who turned off "animation effects" in Accessibility, which is a
-     performance habit among people who play games, not a request for a still
-     interface; on WebKitGTK it comes from `gtk-enable-animations`, which plenty
-     of desktops ship off. Flattening a 360ms bell to 0.001ms is what made every
-     icon look broken while the code was right. The slider above 0 is the
-     deliberate answer, and it wins. */
-  :root[data-motion-on] [data-anim] {
+  /* The exception: the icon animations and the vault door keep moving. On
+     Windows this query is on for anyone who turned off "animation effects" in
+     Accessibility, which is a performance habit among people who play games,
+     not a request for a still interface; on WebKitGTK it comes from
+     `gtk-enable-animations`, which plenty of desktops ship off. Flattening a
+     360ms bell to 0.001ms is what made every icon look broken while the code
+     was right. */
+  [data-anim] {
     animation-duration: var(--icon-anim-dur, 360ms) !important;
   }
-  :root[data-motion-on] .vault-door,
-  :root[data-motion-on] .vault-hole,
-  :root[data-motion-on] .vault-floor,
-  :root[data-motion-on] .vault-beacon {
+  .vault-door,
+  .vault-hole,
+  .vault-floor,
+  .vault-beacon {
     animation-duration: var(--vault-dur, 1s) !important;
   }
-  :root[data-motion-on] .vault-beam,
-  :root[data-motion-on] .vault-halo {
+  .vault-beam,
+  .vault-halo {
     animation-duration: var(--beam-dur) !important;
   }
-}
-
-/* ====================================================================== */
-/*  Theme variants                                                        */
-/*  Themes re-point Tailwind's palette variables (zinc / white / emerald)  */
-/*  plus the custom --color-* tokens under a [data-theme] scope on <html>. */
-/*  Because every component uses raw Tailwind utilities (bg-zinc-950,      */
-/*  text-emerald-300, …) that read these variables, re-skinning the whole  */
-/*  app needs no markup edits, values just resolve differently per theme. */
-/*  Obsidian is the un-overridden default (Tailwind zinc + the body        */
-/*  atmosphere above). `:root[data-theme=…]` wins the specificity duel      */
-/*  against Tailwind's emitted `:root`.                                    */
-/* ====================================================================== */
-
-/* Quartz, light, frosted paper. The zinc scale is inverted to warm paper;
-   white → ink so opacity tints read as dark hairlines; emerald darkened for
-   contrast on light. Crucially zinc-950 (the card surface) is a mid-light tint
-   DARKER than the body bg, so translucent cards read as frosted glass with body
-   colour showing through, not a flat wash. */
-:root[data-theme="quartz"] {
-  color-scheme: light;
-  --color-bg: oklch(0.975 0.005 95);
-  --color-bg-elev: oklch(0.94 0.007 95);
-  --color-fg: oklch(0.2 0.012 95);
-  --color-fg-muted: oklch(0.48 0.012 95);
-  --color-border: oklch(0.2 0.012 95 / 12%);
-  --color-accent: oklch(0.48 0.15 162);
-  --color-accent-hover: oklch(0.42 0.14 162);
-  --color-zinc-50: oklch(0.2 0.012 95);
-  --color-zinc-100: oklch(0.28 0.012 95);
-  --color-zinc-200: oklch(0.36 0.012 95);
-  --color-zinc-300: oklch(0.44 0.012 95);
-  --color-zinc-400: oklch(0.52 0.012 95);
-  --color-zinc-500: oklch(0.6 0.011 95);
-  --color-zinc-600: oklch(0.7 0.01 95);
-  --color-zinc-700: oklch(0.8 0.009 95);
-  --color-zinc-800: oklch(0.88 0.008 95);
-  --color-zinc-900: oklch(0.92 0.007 95);
-  --color-zinc-950: oklch(0.9 0.007 95);
-  --color-white: oklch(0.2 0.012 95);
-  --color-emerald-50: oklch(0.985 0.01 160);
-  --color-emerald-300: oklch(0.4 0.13 162);
-  --color-emerald-400: oklch(0.44 0.14 162);
-  --color-emerald-500: oklch(0.5 0.15 162);
-  --color-emerald-600: oklch(0.48 0.15 162);
-  --color-emerald-700: oklch(0.42 0.14 162);
-
-  /* Elevation on paper: white pigment and short shadows, not dark alpha. */
-  --surface-1: oklch(1 0 0 / 62%);
-  --surface-hover: oklch(0.2 0.01 95 / 6%);
-  --surface-2: oklch(1 0 0 / 82%);
-  --surface-3: oklch(1 0 0 / 96%);
-  --edge: oklch(0.2 0.012 95 / 11%);
-  --edge-strong: oklch(0.2 0.012 95 / 18%);
-  --edge-top: inset 0 1px 0 0 oklch(1 0 0 / 70%);
-  --shadow-panel: 0 1px 2px oklch(0.3 0.02 95 / 8%), 0 10px 28px -14px oklch(0.3 0.02 95 / 22%);
-  --shadow-raised: 0 2px 4px oklch(0.3 0.02 95 / 10%), 0 18px 40px -18px oklch(0.3 0.02 95 / 28%);
-  --shadow-pop: 0 4px 8px oklch(0.3 0.02 95 / 12%), 0 28px 56px -22px oklch(0.3 0.02 95 / 34%);
-}
-:root[data-theme="quartz"] body {
-  background-color: oklch(0.975 0.005 95);
-  background-image:
-    radial-gradient(120% 90% at 12% -8%, oklch(0.5 0.1 162 / 14%) 0%, transparent 55%),
-    radial-gradient(90% 80% at 108% 8%, oklch(0.72 0.07 95 / 12%) 0%, transparent 50%);
-}
-:root[data-theme="quartz"] select,
-:root[data-theme="quartz"] select option {
-  color: #1c1a17;
-  background-color: #f3f0ea;
 }
 
 /* ====================================================================== */
 /*  Motion & effects                                                        */
 /* ====================================================================== */
 
-/* Tilt 3D, the `.tilt` class consumes CSS vars set by the `tilt` action
-   (lib/actions/tilt.ts). The transform is kept here (not in JS) so teardown is
-   cheap and the transition survives re-renders. Glow uses the theme accent.
-   No `transform-style: preserve-3d`, it caused compositing issues on WebView2
-   (Windows) where the glow pseudo-element didn't render. No `mix-blend-mode`
-   for the same reason, a plain opacity fade is cross-platform safe. */
-.tilt {
-  transform: perspective(700px) rotateX(var(--tilt-rx, 0deg))
-    rotateY(var(--tilt-ry, 0deg));
-  /* The transition includes colour, not just the transform. `.tilt` is declared
-     after Tailwind's `@import`, so its `transition` beats the markup's `transition`
-     and `transition-colors` utilities: any element carrying both (the rail's
-     buttons, to name one) lost its colour easing and changed abruptly. Listing them
-     here gives that easing back without removing `tilt` from anything. */
-  transition:
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 150ms ease,
-    border-color 150ms ease,
-    color 150ms ease;
-  will-change: transform;
-}
-.tilt::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 220ms ease;
-  background: radial-gradient(
-    140px circle at var(--tilt-glow-x, 50%) var(--tilt-glow-y, 50%),
-    var(--color-accent) 0%,
-    transparent 60%
-  );
-}
-.tilt:hover::after {
-  opacity: var(--tilt-glow-strength, 0.18);
-}
-
-/* The tilt's intensity is a continuous percentage, so `stores/motion.ts` writes
-   `--tilt-glow-strength` and `--glow-strength` straight onto `<html>`; what is left
-   here are the fallback values in case the store never ran. The action itself scales
-   the degrees. The `transform`'s perspective is deliberately fixed: varying it
-   hides
-   un segundo multiplicador (reduce el desplazamiento igual que recortar
-   grados) y las dos reducciones se multiplican. */
-
-/* Glow-only, same cursor-following glow as .tilt but WITHOUT the 3D
-   rotation. Used by buttons and small interactive elements where a tilt
-   would feel wrong but the light-follow is still nice. The `glow` action
-   (lib/actions/glow.ts) sets the same --tilt-glow-x/y variables. */
+/* A glow that follows the pointer across buttons and small interactive
+   elements. The `glow` action (lib/actions/glow.ts) sets --tilt-glow-x/y. */
 .glow {
   position: relative;
   overflow: hidden;
@@ -935,7 +762,8 @@ html.is-linux {
   );
 }
 .glow:hover::after {
-  opacity: var(--glow-strength, 1);
+  /* Half strength, what the old relief setting's default painted. */
+  opacity: 0.5;
 }
 
 /* Ripple, host clips the spawned span to the button's rounded corners. */
@@ -985,17 +813,6 @@ html.is-linux {
   }
 }
 
-/* Theme crossfade, toggled on <html> for ~300ms around a theme switch so the
-   palette swap reads as a fade rather than a hard cut. */
-:root.theme-anim,
-:root.theme-anim * {
-  transition: background-color 280ms ease, border-color 280ms ease,
-    color 280ms ease, fill 280ms ease, stroke 280ms ease;
-}
-
-/* Reduced motion already kills transitions/animations globally (above); the
-   .tilt transform is also flattened there via the wildcard rule. */
-
 /* Responsive sidebar, icon-rail on narrow windows (Steam Deck, tiling).
    Hides `.hide-narrow` labels and centers the nav icons so the collapsed
    rail reads as a stack of glyphs rather than a clipped sidebar. */
@@ -1016,11 +833,14 @@ html.is-linux {
   padding-right: 0;
 }
 
-/* The tilt-intensity slider. The track runs from off to the accent, so the slider
-   itself shows what is being adjusted. The same manual treatment as `.hue-slider`:
-   browsers will not style a range without `appearance: none` and their per-engine
-   pseudo-elements. */
-.motion-slider {
+/* The interface-scale slider. The track runs from dark to the accent. The same
+   manual treatment as `.hue-slider`: browsers will not style a range without
+   `appearance: none` and their per-engine pseudo-elements.
+
+   `background-clip` is the fix for a green sliver on its left edge: the gradient
+   is sized to the padding box and repeats, so without the clip the 1px border
+   on the left showed the far (accent) end of the next tile. */
+.scale-slider {
   -webkit-appearance: none;
   appearance: none;
   height: 1.5rem;
@@ -1031,9 +851,10 @@ html.is-linux {
     var(--surface-3),
     color-mix(in oklch, var(--color-accent) 85%, transparent)
   );
+  background-clip: padding-box;
   border: 1px solid var(--edge);
 }
-.motion-slider::-webkit-slider-thumb {
+.scale-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   height: 1.5rem;
@@ -1044,7 +865,7 @@ html.is-linux {
   box-shadow: 0 1px 4px oklch(0 0 0 / 0.5);
   cursor: grab;
 }
-.motion-slider::-moz-range-thumb {
+.scale-slider::-moz-range-thumb {
   height: 1.5rem;
   width: 0.5rem;
   border: 2px solid oklch(1 0 0 / 0.85);

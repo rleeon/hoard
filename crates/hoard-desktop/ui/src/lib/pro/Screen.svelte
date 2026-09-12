@@ -116,21 +116,21 @@
   /** A binding's readable name. Mouse buttons are named, not numbered: "Mouse 4"
    *  says considerably more than "button 3". */
   export function bindingLabel(b: ScBinding | null): string {
-    if (!b) return tr({ es: "Sin asignar", en: "Unassigned" });
+    if (!b) return tr({ es: "Sin asignar", en: "Unassigned", de: "Nicht zugewiesen", fr: "Non assigné", it: "Non assegnato", ja: "未割り当て", pt: "Não atribuído", zh: "未分配" });
     if (b.type === "key") return b.code;
     switch (b.button) {
       case 0:
-        return tr({ es: "Clic izquierdo", en: "Left click" });
+        return tr({ es: "Clic izquierdo", en: "Left click", de: "Linksklick", fr: "Clic gauche", it: "Clic sinistro", ja: "左クリック", pt: "Clique esquerdo", zh: "左键" });
       case 1:
-        return tr({ es: "Rueda", en: "Middle click" });
+        return tr({ es: "Rueda", en: "Middle click", de: "Mittelklick", fr: "Clic molette", it: "Clic centrale", ja: "中クリック", pt: "Clique do meio", zh: "中键" });
       case 2:
-        return tr({ es: "Clic derecho", en: "Right click" });
+        return tr({ es: "Clic derecho", en: "Right click", de: "Rechtsklick", fr: "Clic droit", it: "Clic destro", ja: "右クリック", pt: "Clique direito", zh: "右键" });
       case 3:
-        return tr({ es: "Ratón 4 (atrás)", en: "Mouse 4 (back)" });
+        return tr({ es: "Ratón 4 (atrás)", en: "Mouse 4 (back)", de: "Maustaste 4 (zurück)", fr: "Souris 4 (précédent)", it: "Mouse 4 (indietro)", ja: "マウス4（戻る）", pt: "Mouse 4 (voltar)", zh: "鼠标4（后退）" });
       case 4:
-        return tr({ es: "Ratón 5 (adelante)", en: "Mouse 5 (forward)" });
+        return tr({ es: "Ratón 5 (adelante)", en: "Mouse 5 (forward)", de: "Maustaste 5 (vor)", fr: "Souris 5 (suivant)", it: "Mouse 5 (avanti)", ja: "マウス5（進む）", pt: "Mouse 5 (avançar)", zh: "鼠标5（前进）" });
       default:
-        return tr({ es: `Botón ${b.button}`, en: `Button ${b.button}` });
+        return tr({ es: `Botón ${b.button}`, en: `Button ${b.button}`, de: `Taste ${b.button}`, fr: `Bouton ${b.button}`, it: `Pulsante ${b.button}`, ja: `ボタン ${b.button}`, pt: `Botão ${b.button}`, zh: `按键 ${b.button}` });
     }
   }
 
@@ -266,7 +266,7 @@
 
   function monLabel(m: Monitor) {
     const n = monitors.findIndex((x) => x.id === m.id) + 1;
-    return `${tr({ es: "Pantalla", en: "Screen" })} ${n}${m.primary ? " ★" : ""}`;
+    return `${tr({ es: "Pantalla", en: "Screen", de: "Bildschirm", fr: "Écran", it: "Schermo", ja: "画面", pt: "Tela", zh: "屏幕" })} ${n}${m.primary ? " ★" : ""}`;
   }
 
   // hex #rrggbb + opacidad 0..1 → RGBA de 8 bits (el formato del overlay).
@@ -408,9 +408,9 @@
         label:
           prev?.label ??
           (isCh
-            ? tr({ es: "Mirilla", en: "Crosshair" })
+            ? tr({ es: "Mirilla", en: "Crosshair", de: "Fadenkreuz", fr: "Réticule", it: "Mirino", ja: "クロスヘア", pt: "Mira", zh: "准星" })
             : isSc
-              ? tr({ es: "Visor", en: "Scope" })
+              ? tr({ es: "Visor", en: "Scope", de: "Zielfernrohr", fr: "Lunette", it: "Cannocchiale", ja: "スコープ", pt: "Luneta", zh: "瞄准镜" })
               : (src.id ?? p.id)),
         ch: isCh
           ? {
@@ -580,7 +580,7 @@
       ch,
       sc: defaultSc(),
       windowId: "",
-      label: tr({ es: "Mirilla", en: "Crosshair" }),
+      label: tr({ es: "Mirilla", en: "Crosshair", de: "Fadenkreuz", fr: "Réticule", it: "Mirino", ja: "クロスヘア", pt: "Mira", zh: "准星" }),
       x: Math.round((mon.w - ch.size) / 2),
       y: Math.round((mon.h - ch.size) / 2),
       w: ch.size,
@@ -672,7 +672,7 @@
       ch: defaultCh(),
       sc: defaultSc(),
       windowId: "",
-      label: tr({ es: "Visor", en: "Scope" }),
+      label: tr({ es: "Visor", en: "Scope", de: "Zielfernrohr", fr: "Lunette", it: "Cannocchiale", ja: "スコープ", pt: "Luneta", zh: "瞄准镜" }),
       x: Math.round((mon.w - size) / 2),
       y: Math.round((mon.h - size) / 2),
       w: size,
@@ -1024,6 +1024,12 @@
         {tr({
           es: "Una capa nativa sobre el juego: captura ventanas de otras apps y colócalas flotando encima. Edítalo desde aquí; el overlay refleja los cambios en vivo.",
           en: "A native layer over your game: capture other apps' windows and float them on top. Edit here; the overlay reflects changes live.",
+          de: "Eine native Ebene über deinem Spiel: Fang Fenster anderer Apps ein und lass sie darüber schweben. Bearbeite es hier; das Overlay übernimmt Änderungen live.",
+          fr: "Une couche native au-dessus de ton jeu : capture les fenêtres d'autres applis et fais-les flotter par-dessus. Modifie ici ; l'overlay reflète les changements en direct.",
+          it: "Un livello nativo sopra il gioco: cattura le finestre di altre app e falle fluttuare sopra. Modificalo da qui; l'overlay riflette le modifiche in tempo reale.",
+          ja: "ゲームの上に重なるネイティブなレイヤーです。ほかのアプリのウィンドウをキャプチャして上に浮かべられます。ここで編集すると、オーバーレイにすぐ反映されます。",
+          pt: "Uma camada nativa sobre o jogo: capture janelas de outros apps e deixe-as flutuando por cima. Edite aqui; o overlay reflete as mudanças ao vivo.",
+          zh: "覆盖在游戏之上的原生图层：捕获其他应用的窗口，让它们悬浮在上方。在这里编辑，覆盖层会实时同步更改。",
         })}
       </p>
     </div>
@@ -1045,7 +1051,7 @@
       class="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-60"
     >
       <SquarePlus size={18} />
-      {tr({ es: "Abrir overlay", en: "Open overlay" })}
+      {tr({ es: "Abrir overlay", en: "Open overlay", de: "Overlay öffnen", fr: "Ouvrir l'overlay", it: "Apri overlay", ja: "オーバーレイを開く", pt: "Abrir overlay", zh: "打开覆盖层" })}
     </button>
   {:else}
     <div class="grid gap-6 md:grid-cols-[1fr_18rem]">
@@ -1058,7 +1064,7 @@
             class="flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800"
           >
             <SquareX size={15} />
-            {tr({ es: "Ocultar overlay", en: "Hide overlay" })}
+            {tr({ es: "Ocultar overlay", en: "Hide overlay", de: "Overlay ausblenden", fr: "Masquer l'overlay", it: "Nascondi overlay", ja: "オーバーレイを隠す", pt: "Ocultar overlay", zh: "隐藏覆盖层" })}
           </button>
           <div class="inline-flex rounded-md border border-zinc-700 p-0.5">
             <button
@@ -1067,7 +1073,7 @@
               class="flex items-center gap-1 rounded px-2.5 py-1 text-xs {!editing
                 ? 'bg-emerald-600 text-white'
                 : 'text-zinc-300'}"
-              ><Gamepad2 size={14} /> {tr({ es: "Juego", en: "Game" })}</button
+              ><Gamepad2 size={14} /> {tr({ es: "Juego", en: "Game", de: "Spiel", fr: "Jeu", it: "Gioco", ja: "ゲーム", pt: "Jogo", zh: "游戏" })}</button
             >
             <button
               type="button"
@@ -1075,7 +1081,7 @@
               class="flex items-center gap-1 rounded px-2.5 py-1 text-xs {editing
                 ? 'bg-emerald-600 text-white'
                 : 'text-zinc-300'}"
-              ><Pencil size={14} /> {tr({ es: "Editar", en: "Edit" })}</button
+              ><Pencil size={14} /> {tr({ es: "Editar", en: "Edit", de: "Bearbeiten", fr: "Modifier", it: "Modifica", ja: "編集", pt: "Editar", zh: "编辑" })}</button
             >
           </div>
           <span class="text-xs text-zinc-500">{mon.w}×{mon.h}</span>
@@ -1086,6 +1092,12 @@
             >{tr({
               es: "El juego debe ir en ventana sin bordes (borderless), no en pantalla completa exclusiva, o no se verá nada encima.",
               en: "Run the game in borderless windowed mode, not exclusive fullscreen, or nothing will show on top.",
+              de: "Das Spiel muss im randlosen Fenstermodus laufen, nicht im exklusiven Vollbild, sonst wird darüber nichts angezeigt.",
+              fr: "Lance le jeu en fenêtré sans bordure, pas en plein écran exclusif, sinon rien ne s'affichera par-dessus.",
+              it: "Avvia il gioco in finestra senza bordi, non a schermo intero esclusivo, altrimenti sopra non si vedrà nulla.",
+              ja: "ゲームは排他的フルスクリーンではなく、ボーダーレスウィンドウで起動してください。そうしないと上に何も表示されません。",
+              pt: "Rode o jogo em janela sem bordas (borderless), não em tela cheia exclusiva, ou nada vai aparecer por cima.",
+              zh: "游戏需以无边框窗口模式运行，而不是独占全屏，否则上方什么都不会显示。",
             })}</span
           >
         </p>
@@ -1105,6 +1117,12 @@
               >{tr({
                 es: "Arrastra cada app en la pantalla elegida; usa el selector del panel para moverla a otra o ponerla en espejo.",
                 en: "Arrange each app on the chosen screen; use the panel selector to move it to another or mirror it.",
+                de: "Ordne jede App auf dem gewählten Bildschirm an; mit der Auswahl im Panel verschiebst du sie auf einen anderen oder spiegelst sie.",
+                fr: "Place chaque appli sur l'écran choisi ; utilise le sélecteur du panneau pour la déplacer vers un autre ou la mettre en miroir.",
+                it: "Disponi ogni app sullo schermo scelto; usa il selettore del pannello per spostarla su un altro o metterla a specchio.",
+                ja: "選んだ画面上で各アプリを配置します。パネルのセレクターで別の画面へ移動したり、ミラー表示にしたりできます。",
+                pt: "Arraste cada app na tela escolhida; use o seletor do painel para movê-lo para outra ou espelhá-lo.",
+                zh: "在所选屏幕上摆放每个应用；用面板里的选择器把它移到另一块屏幕或设为镜像。",
               })}</span
             >
           </div>
@@ -1113,6 +1131,12 @@
           {tr({
             es: "Modo Editar: cada app se vuelve una ventana normal que mueves y redimensionas por cualquier borde. Al volver a Juego, la captura queda donde la dejaste. Ctrl+O o Esc cambian de modo.",
             en: "Edit mode: each app becomes a normal window you move and resize from any edge. Back in Game, the capture stays where you left it. Ctrl+O or Esc switch modes.",
+            de: "Bearbeitungsmodus: Jede App wird zu einem normalen Fenster, das du verschiebst und an jedem Rand in der Größe änderst. Zurück im Spielmodus bleibt die Aufnahme, wo du sie gelassen hast. Strg+O oder Esc wechseln den Modus.",
+            fr: "Mode Édition : chaque appli devient une fenêtre normale que tu déplaces et redimensionnes par n'importe quel bord. De retour en mode Jeu, la capture reste où tu l'as laissée. Ctrl+O ou Échap changent de mode.",
+            it: "Modalità Modifica: ogni app diventa una finestra normale che sposti e ridimensioni da qualsiasi bordo. Tornando a Gioco, la cattura resta dove l'hai lasciata. Ctrl+O o Esc cambiano modalità.",
+            ja: "編集モード：各アプリが通常のウィンドウになり、移動したり、どの辺からでもサイズを変えたりできます。ゲームモードに戻ると、キャプチャは置いた場所に残ります。Ctrl+O または Esc でモードを切り替えます。",
+            pt: "Modo Editar: cada app vira uma janela normal que você move e redimensiona por qualquer borda. Ao voltar para Jogo, a captura fica onde você deixou. Ctrl+O ou Esc trocam de modo.",
+            zh: "编辑模式：每个应用都会变成普通窗口，可以移动，也能从任意边缘调整大小。回到游戏模式后，捕获内容会留在你放置的位置。按 Ctrl+O 或 Esc 切换模式。",
           })}
         </p>
         <div
@@ -1241,13 +1265,13 @@
               <div class="flex items-center gap-1">
                 <button
                   type="button"
-                  title={tr({ es: "Subir capa", en: "Raise layer" })}
+                  title={tr({ es: "Subir capa", en: "Raise layer", de: "Ebene nach oben", fr: "Monter le calque", it: "Porta su il livello", ja: "レイヤーを上へ", pt: "Subir camada", zh: "上移图层" })}
                   onclick={() => moveLayer(s, 1)}
                   class="rounded p-1 text-zinc-300 hover:bg-zinc-700"><ArrowUp size={14} /></button
                 >
                 <button
                   type="button"
-                  title={tr({ es: "Bajar capa", en: "Lower layer" })}
+                  title={tr({ es: "Bajar capa", en: "Lower layer", de: "Ebene nach unten", fr: "Descendre le calque", it: "Porta giù il livello", ja: "レイヤーを下へ", pt: "Descer camada", zh: "下移图层" })}
                   onclick={() => moveLayer(s, -1)}
                   class="rounded p-1 text-zinc-300 hover:bg-zinc-700"
                   ><ArrowDown size={14} /></button
@@ -1260,7 +1284,7 @@
               </div>
             </div>
             <div class="grid grid-cols-4 gap-1.5">
-              {#each s.kind === "crosshair" ? [["x", "X"], ["y", "Y"]] : [["x", "X"], ["y", "Y"], ["w", tr({ es: "An", en: "W" })], ["h", tr({ es: "Al", en: "H" })]] as [key, lbl]}
+              {#each s.kind === "crosshair" ? [["x", "X"], ["y", "Y"]] : [["x", "X"], ["y", "Y"], ["w", tr({ es: "An", en: "W", de: "B", fr: "L", it: "L", ja: "幅", pt: "L", zh: "宽" })], ["h", tr({ es: "Al", en: "H", de: "H", fr: "H", it: "A", ja: "高", pt: "A", zh: "高" })]] as [key, lbl]}
                 <label class="flex flex-col gap-0.5 text-[10px] text-zinc-500">
                   <span>{lbl}</span>
                   <input
@@ -1275,7 +1299,7 @@
             </div>
             {#if monitors.length > 1}
               <label class="flex items-center gap-2 text-xs text-zinc-400">
-                <span>{tr({ es: "Pantalla", en: "Screen" })}</span>
+                <span>{tr({ es: "Pantalla", en: "Screen", de: "Bildschirm", fr: "Écran", it: "Schermo", ja: "画面", pt: "Tela", zh: "屏幕" })}</span>
                 <select
                   value={s.mirror ? "all" : String(s.monitorId)}
                   onchange={(e) => setPanelTarget(s, e.currentTarget.value)}
@@ -1284,7 +1308,7 @@
                   {#each monitors as m (m.id)}
                     <option value={String(m.id)}>{monLabel(m)} ({m.w}×{m.h})</option>
                   {/each}
-                  <option value="all">{tr({ es: "Espejo (todas)", en: "Mirror (all)" })}</option>
+                  <option value="all">{tr({ es: "Espejo (todas)", en: "Mirror (all)", de: "Spiegeln (alle)", fr: "Miroir (tous)", it: "Specchio (tutti)", ja: "ミラー（すべて）", pt: "Espelho (todas)", zh: "镜像（全部）" })}</option>
                 </select>
               </label>
             {/if}
@@ -1298,7 +1322,7 @@
                 }}
                 class="flex items-center gap-1 rounded px-2 py-1 text-xs {s.scale === 'fit'
                   ? 'bg-emerald-600 text-white'
-                  : 'text-zinc-300'}"><Proportions size={13} /> {tr({ es: "Ajustar", en: "Fit" })}</button
+                  : 'text-zinc-300'}"><Proportions size={13} /> {tr({ es: "Ajustar", en: "Fit", de: "Einpassen", fr: "Ajuster", it: "Adatta", ja: "フィット", pt: "Ajustar", zh: "适应" })}</button
               >
               <button
                 type="button"
@@ -1308,7 +1332,7 @@
                 }}
                 class="flex items-center gap-1 rounded px-2 py-1 text-xs {s.scale === 'fill'
                   ? 'bg-emerald-600 text-white'
-                  : 'text-zinc-300'}"><Maximize size={13} /> {tr({ es: "Llenar", en: "Fill" })}</button
+                  : 'text-zinc-300'}"><Maximize size={13} /> {tr({ es: "Llenar", en: "Fill", de: "Füllen", fr: "Remplir", it: "Riempi", ja: "フィル", pt: "Preencher", zh: "填充" })}</button
               >
             </div>
             <div class="flex items-center justify-between">
@@ -1319,11 +1343,11 @@
                   ? 'bg-emerald-600 text-white'
                   : 'border border-zinc-700 text-zinc-300 hover:bg-zinc-700'}"
                 ><Crop size={13} />
-                {tr({ es: "Recortar", en: "Crop" })}</button
+                {tr({ es: "Recortar", en: "Crop", de: "Zuschneiden", fr: "Rogner", it: "Ritaglia", ja: "トリミング", pt: "Recortar", zh: "裁剪" })}</button
               >
               <button
                 type="button"
-                title={tr({ es: "Quitar recorte", en: "Reset crop" })}
+                title={tr({ es: "Quitar recorte", en: "Reset crop", de: "Zuschnitt entfernen", fr: "Annuler le rognage", it: "Rimuovi ritaglio", ja: "トリミングを解除", pt: "Remover recorte", zh: "清除裁剪" })}
                 onclick={() => resetCrop(s)}
                 class="rounded p-1 text-zinc-400 hover:bg-zinc-700 hover:text-white"
                 ><RotateCcw size={13} /></button
@@ -1354,8 +1378,14 @@
                 ? tr({
                     es: "Arrastra los bordes en la vista previa; lo atenuado se recorta.",
                     en: "Drag the edges in the preview; the dimmed area is cropped.",
+                    de: "Zieh die Ränder in der Vorschau; der abgedunkelte Bereich wird abgeschnitten.",
+                    fr: "Fais glisser les bords dans l'aperçu ; la zone assombrie est rognée.",
+                    it: "Trascina i bordi nell'anteprima; l'area oscurata viene ritagliata.",
+                    ja: "プレビューで端をドラッグします。暗くなった部分が切り取られます。",
+                    pt: "Arraste as bordas na pré-visualização; a área escurecida é recortada.",
+                    zh: "在预览中拖动边缘，变暗的区域会被裁掉。",
                   })
-                : tr({ es: "Recorte (fracción del origen)", en: "Crop (fraction of source)" })}
+                : tr({ es: "Recorte (fracción del origen)", en: "Crop (fraction of source)", de: "Zuschnitt (Anteil der Quelle)", fr: "Rognage (fraction de la source)", it: "Ritaglio (frazione della sorgente)", ja: "トリミング（元に対する割合）", pt: "Recorte (fração da origem)", zh: "裁剪（占源的比例）" })}
             </p>
             <div class="mt-1 border-t border-zinc-800 pt-2">
               <button
@@ -1370,7 +1400,7 @@
               >
                 <span class="flex items-center gap-1"
                   ><MousePointerClick size={13} />
-                  {tr({ es: "Clics pasan al juego", en: "Clicks go to game" })}</span
+                  {tr({ es: "Clics pasan al juego", en: "Clicks go to game", de: "Klicks gehen ans Spiel", fr: "Les clics vont au jeu", it: "I clic vanno al gioco", ja: "クリックをゲームに通す", pt: "Cliques vão para o jogo", zh: "点击穿透到游戏" })}</span
                 >
                 <span class="tabular-nums">{s.passthrough ? "ON" : "OFF"}</span>
               </button>
@@ -1378,12 +1408,18 @@
                 {tr({
                   es: "Desactívalo solo si este vídeo sale en negro (Prime/Netflix). Entonces los clics sobre este panel irán a la app, no al juego.",
                   en: "Turn off only if this video shows black (Prime/Netflix). Then clicks on this panel go to the app, not the game.",
+                  de: "Nur ausschalten, wenn dieses Video schwarz bleibt (Prime/Netflix). Dann gehen Klicks auf dieses Panel an die App, nicht ans Spiel.",
+                  fr: "Désactive-le seulement si cette vidéo s'affiche en noir (Prime/Netflix). Les clics sur ce panneau iront alors à l'appli, pas au jeu.",
+                  it: "Disattivalo solo se questo video appare nero (Prime/Netflix). Allora i clic su questo pannello andranno all'app, non al gioco.",
+                  ja: "この動画が黒く表示される場合（Prime/Netflix）だけオフにしてください。その場合、このパネルへのクリックはゲームではなくアプリに送られます。",
+                  pt: "Desative só se este vídeo ficar preto (Prime/Netflix). Aí os cliques neste painel vão para o app, não para o jogo.",
+                  zh: "仅当此视频显示为黑屏（Prime/Netflix）时才关闭。关闭后，点击此面板会发送给应用而不是游戏。",
                 })}
               </p>
               {#if s.passthrough}
                 <div class="mt-1 flex items-center gap-2 px-2">
                   <span class="text-xs text-zinc-300">
-                    {tr({ es: "Lente click-through", en: "Click-through lens" })}
+                    {tr({ es: "Lente click-through", en: "Click-through lens", de: "Durchklick-Linse", fr: "Loupe traversante", it: "Lente passa-clic", ja: "クリック透過レンズ", pt: "Lente de clique direto", zh: "点击穿透镜" })}
                   </span>
                   <input
                     type="range"
@@ -1402,6 +1438,12 @@
                   {tr({
                     es: "Círculo que sigue al cursor: dentro ves y clicas lo que hay detrás del panel.",
                     en: "Circle that follows the cursor: inside it you see and click whatever is behind the panel.",
+                    de: "Kreis, der dem Cursor folgt: Darin siehst und klickst du, was hinter dem Panel liegt.",
+                    fr: "Cercle qui suit le curseur : à l'intérieur, tu vois et cliques ce qui se trouve derrière le panneau.",
+                    it: "Cerchio che segue il cursore: al suo interno vedi e clicchi ciò che sta dietro al pannello.",
+                    ja: "カーソルに追従する円です。その中ではパネルの後ろにあるものが見え、クリックもできます。",
+                    pt: "Círculo que segue o cursor: dentro dele você vê e clica no que está atrás do painel.",
+                    zh: "跟随光标的圆圈：圈内可以看到并点击面板后面的内容。",
                   })}
                 </p>
               {/if}
@@ -1419,7 +1461,7 @@
               >
                 <span class="flex items-center gap-1"
                   ><Crop size={13} />
-                  {tr({ es: "Modo compatibilidad Chromium", en: "Chromium compatibility mode" })}</span
+                  {tr({ es: "Modo compatibilidad Chromium", en: "Chromium compatibility mode", de: "Chromium-Kompatibilitätsmodus", fr: "Mode de compatibilité Chromium", it: "Modalità compatibilità Chromium", ja: "Chromium 互換モード", pt: "Modo de compatibilidade Chromium", zh: "Chromium 兼容模式" })}</span
                 >
                 <span class="tabular-nums">{s.compat ? "ON" : "OFF"}</span>
               </button>
@@ -1427,6 +1469,12 @@
                 {tr({
                   es: "Recorte limpio en Brave/Discord (Chromium) y permite encoger el panel por debajo del mínimo de la ventana. Para clicar el panel (pausar, etc.), apaga «Clics pasan al juego» en él: los clics se reenvían a la ventana. Es posible que este modo cause que la ventana se quede en negro al reproducir.",
                   en: "Clean crop on Brave/Discord (Chromium), and lets the panel shrink below the window's minimum size. To click the panel (pause, etc.), turn off \"Clicks pass to game\" on it: clicks are forwarded to the window. This mode may make the window go black while playing video.",
+                  de: "Sauberer Zuschnitt bei Brave/Discord (Chromium), und das Panel lässt sich unter die Mindestgröße des Fensters verkleinern. Um das Panel anzuklicken (Pause usw.), schalte dort „Klicks gehen ans Spiel“ aus: Die Klicks werden an das Fenster weitergeleitet. In diesem Modus kann das Fenster bei der Wiedergabe schwarz werden.",
+                  fr: "Rognage propre sur Brave/Discord (Chromium), et permet de réduire le panneau sous la taille minimale de la fenêtre. Pour cliquer sur le panneau (pause, etc.), désactive « Les clics vont au jeu » dessus : les clics sont transmis à la fenêtre. Ce mode peut faire passer la fenêtre au noir pendant la lecture.",
+                  it: "Ritaglio pulito su Brave/Discord (Chromium) e permette di rimpicciolire il pannello sotto la dimensione minima della finestra. Per cliccare sul pannello (pausa, ecc.), disattiva «I clic vanno al gioco» su di esso: i clic vengono inoltrati alla finestra. Questa modalità può rendere nera la finestra durante la riproduzione.",
+                  ja: "Brave/Discord（Chromium）できれいにトリミングでき、パネルをウィンドウの最小サイズより小さくできます。パネルをクリックする（一時停止など）には、そのパネルの「クリックをゲームに通す」をオフにしてください。クリックはウィンドウに転送されます。このモードでは、再生中にウィンドウが黒くなることがあります。",
+                  pt: "Recorte limpo no Brave/Discord (Chromium) e permite encolher o painel abaixo do tamanho mínimo da janela. Para clicar no painel (pausar etc.), desative nele \"Cliques vão para o jogo\": os cliques são repassados para a janela. Este modo pode deixar a janela preta durante a reprodução.",
+                  zh: "在 Brave/Discord（Chromium）中裁剪更干净，并允许把面板缩小到窗口最小尺寸以下。要点击面板（暂停等），请在该面板上关闭“点击穿透到游戏”：点击会被转发给窗口。此模式可能导致播放时窗口变黑。",
                 })}
               </p>
             </div>
@@ -1457,7 +1505,7 @@
                 </div>
                 <button
                   type="button"
-                  title={tr({ es: "Centrar en la pantalla", en: "Center on screen" })}
+                  title={tr({ es: "Centrar en la pantalla", en: "Center on screen", de: "Auf dem Bildschirm zentrieren", fr: "Centrer sur l'écran", it: "Centra sullo schermo", ja: "画面の中央に配置", pt: "Centralizar na tela", zh: "在屏幕上居中" })}
                   onclick={() => centerPanel(s)}
                   class="rounded border border-zinc-700 p-1.5 text-zinc-300 hover:bg-zinc-700"
                   ><Locate size={14} /></button
@@ -1473,12 +1521,12 @@
                     ? 'bg-emerald-600/20 text-emerald-300'
                     : 'text-zinc-300 hover:bg-zinc-700'}"
                 >
-                  <span>{tr({ es: "Borde", en: "Border" })}</span>
+                  <span>{tr({ es: "Borde", en: "Border", de: "Rahmen", fr: "Bordure", it: "Bordo", ja: "枠線", pt: "Borda", zh: "边框" })}</span>
                   <span class="tabular-nums">{s.sc.border ? "ON" : "OFF"}</span>
                 </button>
               </div>
               <label class="flex items-center gap-2 text-xs text-zinc-400">
-                <span class="w-16 shrink-0">{tr({ es: "Aumento", en: "Zoom" })}</span>
+                <span class="w-16 shrink-0">{tr({ es: "Aumento", en: "Zoom", de: "Vergrößerung", fr: "Grossissement", it: "Ingrandimento", ja: "倍率", pt: "Ampliação", zh: "放大倍数" })}</span>
                 <input
                   type="range"
                   min="0"
@@ -1490,7 +1538,7 @@
                     pushScene();
                   }}
                   class="flex-1 accent-emerald-500"
-                  aria-label={tr({ es: "Aumento", en: "Zoom" })}
+                  aria-label={tr({ es: "Aumento", en: "Zoom", de: "Vergrößerung", fr: "Grossissement", it: "Ingrandimento", ja: "倍率", pt: "Ampliação", zh: "放大倍数" })}
                   aria-valuetext={zoomLabel(s.sc.zoom)}
                 />
                 <!-- Campo numérico además de la barra: con un rango tan amplio,
@@ -1521,6 +1569,12 @@
                   title={tr({
                     es: "Con aumento alto, «Suave» difumina y «Nítido» deja los píxeles duros",
                     en: "At high zoom, Smooth blurs and Sharp keeps hard pixel edges",
+                    de: "Bei starker Vergrößerung zeichnet „Weich“ unscharf und „Scharf“ behält harte Pixelkanten",
+                    fr: "À fort grossissement, « Doux » floute et « Net » garde des pixels francs",
+                    it: "Con ingrandimento alto, «Morbido» sfoca e «Nitido» mantiene i pixel netti",
+                    ja: "倍率が高いとき、「なめらか」はぼかし、「シャープ」はピクセルの輪郭をくっきり残します",
+                    pt: "Com ampliação alta, \"Suave\" desfoca e \"Nítido\" mantém os pixels definidos",
+                    zh: "高倍放大时，“平滑”会模糊，“锐利”保留清晰的像素边缘",
                   })}
                   onclick={() => {
                     s.sc.smooth = !s.sc.smooth;
@@ -1529,8 +1583,8 @@
                   class="flex-1 rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-700"
                 >
                   {s.sc.smooth
-                    ? tr({ es: "Suave", en: "Smooth" })
-                    : tr({ es: "Nítido", en: "Sharp" })}
+                    ? tr({ es: "Suave", en: "Smooth", de: "Weich", fr: "Doux", it: "Morbido", ja: "なめらか", pt: "Suave", zh: "平滑" })
+                    : tr({ es: "Nítido", en: "Sharp", de: "Scharf", fr: "Net", it: "Nitido", ja: "シャープ", pt: "Nítido", zh: "锐利" })}
                 </button>
                 <button
                   type="button"
@@ -1542,16 +1596,16 @@
                     ? 'border-emerald-500/60 bg-emerald-600/20 text-emerald-300'
                     : 'border-zinc-700 text-zinc-300 hover:bg-zinc-700'}"
                 >
-                  {tr({ es: "Retícula", en: "Reticle" })}
+                  {tr({ es: "Retícula", en: "Reticle", de: "Absehen", fr: "Réticule", it: "Reticolo", ja: "レティクル", pt: "Retícula", zh: "十字线" })}
                   <span class="tabular-nums">{s.sc.reticle ? "ON" : "OFF"}</span>
                 </button>
               </div>
 
               <!-- ── A qué apunta ──────────────────────────────────────── -->
               <div class="flex items-center gap-2 text-xs text-zinc-400">
-                <span class="w-16 shrink-0">{tr({ es: "Apunta a", en: "Aims at" })}</span>
+                <span class="w-16 shrink-0">{tr({ es: "Apunta a", en: "Aims at", de: "Zielt auf", fr: "Vise", it: "Punta a", ja: "照準先", pt: "Aponta para", zh: "瞄准" })}</span>
                 <div class="inline-flex flex-1 rounded-md border border-zinc-700 p-0.5">
-                  {#each [{ k: "under", es: "Debajo", en: "Under" }, { k: "center", es: "Centro", en: "Center" }, { k: "offset", es: "Desplazado", en: "Offset" }] as opt (opt.k)}
+                  {#each [{ k: "under", es: "Debajo", en: "Under", de: "Darunter", fr: "Dessous", it: "Sotto", ja: "真下", pt: "Embaixo", zh: "下方" }, { k: "center", es: "Centro", en: "Center", de: "Mitte", fr: "Centre", it: "Centro", ja: "中央", pt: "Centro", zh: "中心" }, { k: "offset", es: "Desplazado", en: "Offset", de: "Versetzt", fr: "Décalé", it: "Spostato", ja: "オフセット", pt: "Deslocado", zh: "偏移" }] as opt (opt.k)}
                     <button
                       type="button"
                       onclick={() => {
@@ -1565,7 +1619,7 @@
                         .kind === opt.k
                         ? 'bg-emerald-600 text-white'
                         : 'text-zinc-300 hover:bg-zinc-700'}"
-                      >{tr({ es: opt.es, en: opt.en })}</button
+                      >{tr(opt)}</button
                     >
                   {/each}
                 </div>
@@ -1573,7 +1627,7 @@
 
               {#if s.sc.aim.kind === "offset"}
                 <div class="flex items-center gap-2 text-xs text-zinc-400">
-                  <span class="w-16 shrink-0">{tr({ es: "Distancia", en: "Distance" })}</span>
+                  <span class="w-16 shrink-0">{tr({ es: "Distancia", en: "Distance", de: "Abstand", fr: "Distance", it: "Distanza", ja: "距離", pt: "Distância", zh: "距离" })}</span>
                   {#each [{ ax: "dx" as const, lbl: "X" }, { ax: "dy" as const, lbl: "Y" }] as f (f.ax)}
                     <label class="flex flex-1 items-center gap-1">
                       <span class="text-zinc-500">{f.lbl}</span>
@@ -1599,22 +1653,40 @@
                   ? tr({
                       es: "Amplía lo que tiene justo debajo. Para ver el centro de la pantalla hay que ponerla encima… y entonces lo tapa.",
                       en: "Magnifies whatever sits under it. To see the screen centre you have to put it there — and then it covers it.",
+                      de: "Vergrößert, was direkt darunter liegt. Um die Bildschirmmitte zu sehen, musst du die Linse dorthin setzen … und dann verdeckt sie die Mitte.",
+                      fr: "Grossit ce qui se trouve juste en dessous. Pour voir le centre de l'écran, il faut la placer dessus… et alors elle le cache.",
+                      it: "Ingrandisce ciò che ha subito sotto. Per vedere il centro dello schermo bisogna metterla lì sopra… e allora lo copre.",
+                      ja: "真下にあるものを拡大します。画面の中央を見るにはそこに置く必要があり、そうすると中央が隠れてしまいます。",
+                      pt: "Amplia o que está logo embaixo. Para ver o centro da tela é preciso colocá-la em cima… e aí ela o cobre.",
+                      zh: "放大正下方的内容。要看屏幕中心就得把它放到中心上……而那样又会把中心挡住。",
                     })
                   : s.sc.aim.kind === "center"
                     ? tr({
                         es: "Amplía el centro de la pantalla estés donde estés: deja la lente en una esquina y sigue viendo el punto de mira.",
                         en: "Magnifies the screen centre wherever the lens sits: park it in a corner and still watch your crosshair.",
+                        de: "Vergrößert die Bildschirmmitte, egal wo die Linse ist: Park sie in einer Ecke und behalte dein Fadenkreuz im Blick.",
+                        fr: "Grossit le centre de l'écran où que soit la loupe : laisse-la dans un coin et garde l'œil sur ton viseur.",
+                        it: "Ingrandisce il centro dello schermo ovunque sia la lente: lasciala in un angolo e continua a vedere il mirino.",
+                        ja: "レンズの位置に関係なく画面中央を拡大します。レンズを隅に置いたまま照準を確認できます。",
+                        pt: "Amplia o centro da tela onde quer que a lente esteja: deixe-a num canto e continue vendo sua mira.",
+                        zh: "无论镜头放在哪里都会放大屏幕中心：把它放在角落，也能继续看到准星。",
                       })
                     : tr({
                         es: "Amplía un punto desplazado respecto a la lente. Y negativa sube; X positiva va a la derecha.",
                         en: "Magnifies a point offset from the lens. Negative Y is up; positive X is right.",
+                        de: "Vergrößert einen gegenüber der Linse versetzten Punkt. Negatives Y geht nach oben, positives X nach rechts.",
+                        fr: "Grossit un point décalé par rapport à la loupe. Un Y négatif monte ; un X positif va à droite.",
+                        it: "Ingrandisce un punto spostato rispetto alla lente. Y negativa va in alto; X positiva va a destra.",
+                        ja: "レンズからずらした位置を拡大します。Y がマイナスで上、X がプラスで右です。",
+                        pt: "Amplia um ponto deslocado em relação à lente. Y negativo sobe; X positivo vai para a direita.",
+                        zh: "放大相对镜头偏移的一个点。Y 为负向上，X 为正向右。",
                       })}
               </p>
 
               <!-- ── Activación ────────────────────────────────────────── -->
               <div class="mt-1 space-y-2 border-t border-zinc-700/60 pt-2">
                 <div class="flex items-center gap-2 text-xs text-zinc-400">
-                  <span class="w-16 shrink-0">{tr({ es: "Botón", en: "Button" })}</span>
+                  <span class="w-16 shrink-0">{tr({ es: "Botón", en: "Button", de: "Taste", fr: "Bouton", it: "Pulsante", ja: "ボタン", pt: "Botão", zh: "按键" })}</span>
                   <button
                     type="button"
                     onclick={() => startBindingCapture(s.id)}
@@ -1627,13 +1699,19 @@
                       ? tr({
                           es: "Pulsa un botón o tecla… (Esc cancela)",
                           en: "Press a button or key… (Esc cancels)",
+                          de: "Drück eine Taste oder Maustaste … (Esc bricht ab)",
+                          fr: "Appuie sur un bouton ou une touche… (Échap pour annuler)",
+                          it: "Premi un pulsante o un tasto… (Esc annulla)",
+                          ja: "ボタンまたはキーを押してください…（Esc でキャンセル）",
+                          pt: "Pressione um botão ou tecla… (Esc cancela)",
+                          zh: "按下一个按键或鼠标键……（Esc 取消）",
                         })
                       : bindingLabel(s.sc.activation.binding)}
                   </button>
                   {#if s.sc.activation.binding && bindingFor !== s.id}
                     <button
                       type="button"
-                      title={tr({ es: "Quitar el vínculo", en: "Clear binding" })}
+                      title={tr({ es: "Quitar el vínculo", en: "Clear binding", de: "Zuweisung entfernen", fr: "Supprimer l'association", it: "Rimuovi associazione", ja: "割り当てを解除", pt: "Remover atribuição", zh: "清除绑定" })}
                       onclick={() => {
                         s.sc.activation.binding = null;
                         pushScene();
@@ -1646,9 +1724,9 @@
 
                 {#if s.sc.activation.binding}
                   <div class="flex items-center gap-2 text-xs text-zinc-400">
-                    <span class="w-16 shrink-0">{tr({ es: "Modo", en: "Mode" })}</span>
+                    <span class="w-16 shrink-0">{tr({ es: "Modo", en: "Mode", de: "Modus", fr: "Mode", it: "Modalità", ja: "モード", pt: "Modo", zh: "模式" })}</span>
                     <div class="inline-flex flex-1 rounded-md border border-zinc-700 p-0.5">
-                      {#each [{ m: "toggle" as ScMode, es: "Alternar", en: "Toggle" }, { m: "hold" as ScMode, es: "Mantener", en: "Hold" }, { m: "timed" as ScMode, es: "Segundos", en: "Timed" }] as opt (opt.m)}
+                      {#each [{ m: "toggle" as ScMode, es: "Alternar", en: "Toggle", de: "Umschalten", fr: "Bascule", it: "Alterna", ja: "切り替え", pt: "Alternar", zh: "切换" }, { m: "hold" as ScMode, es: "Mantener", en: "Hold", de: "Halten", fr: "Maintien", it: "Tieni premuto", ja: "長押し", pt: "Segurar", zh: "按住" }, { m: "timed" as ScMode, es: "Segundos", en: "Timed", de: "Zeitgesteuert", fr: "Minuté", it: "A tempo", ja: "時間指定", pt: "Temporizado", zh: "定时" }] as opt (opt.m)}
                         <button
                           type="button"
                           onclick={() => {
@@ -1659,7 +1737,7 @@
                             .activation.mode === opt.m
                             ? 'bg-emerald-600 text-white'
                             : 'text-zinc-300 hover:bg-zinc-700'}"
-                          >{tr({ es: opt.es, en: opt.en })}</button
+                          >{tr(opt)}</button
                         >
                       {/each}
                     </div>
@@ -1667,7 +1745,7 @@
 
                   {#if s.sc.activation.mode === "timed"}
                     <label class="flex items-center gap-2 text-xs text-zinc-400">
-                      <span class="w-16 shrink-0">{tr({ es: "Duración", en: "Duration" })}</span>
+                      <span class="w-16 shrink-0">{tr({ es: "Duración", en: "Duration", de: "Dauer", fr: "Durée", it: "Durata", ja: "時間", pt: "Duração", zh: "时长" })}</span>
                       <input
                         type="range"
                         min="0.5"
@@ -1688,15 +1766,33 @@
                       ? tr({
                           es: "Una pulsación lo enciende y la siguiente lo apaga.",
                           en: "One press shows it, the next hides it.",
+                          de: "Ein Druck zeigt es an, der nächste blendet es aus.",
+                          fr: "Un appui l'affiche, le suivant le masque.",
+                          it: "Una pressione lo mostra, la successiva lo nasconde.",
+                          ja: "1回押すと表示、もう1回押すと非表示になります。",
+                          pt: "Um toque mostra, o seguinte esconde.",
+                          zh: "按一下显示，再按一下隐藏。",
                         })
                       : s.sc.activation.mode === "hold"
                         ? tr({
                             es: "Sólo se ve mientras mantienes el botón pulsado.",
                             en: "Only visible while you hold the button down.",
+                            de: "Nur sichtbar, solange du die Taste gedrückt hältst.",
+                            fr: "Visible uniquement tant que tu maintiens le bouton enfoncé.",
+                            it: "Visibile solo mentre tieni premuto il pulsante.",
+                            ja: "ボタンを押している間だけ表示されます。",
+                            pt: "Só aparece enquanto você segura o botão.",
+                            zh: "仅在按住按键时显示。",
                           })
                         : tr({
                             es: "Una pulsación lo enciende y se apaga solo; volver a pulsar reinicia la cuenta.",
                             en: "One press shows it until the time runs out; pressing again restarts the countdown.",
+                            de: "Ein Druck zeigt es an, bis die Zeit abläuft; erneutes Drücken startet den Countdown neu.",
+                            fr: "Un appui l'affiche jusqu'à la fin du temps ; appuyer à nouveau relance le compte à rebours.",
+                            it: "Una pressione lo mostra finché il tempo non scade; premere di nuovo fa ripartire il conto alla rovescia.",
+                            ja: "1回押すと時間切れまで表示されます。もう一度押すとカウントダウンがやり直しになります。",
+                            pt: "Um toque mostra até o tempo acabar; apertar de novo reinicia a contagem.",
+                            zh: "按一下显示到时间结束；再次按下会重新开始倒计时。",
                           })}
                   </p>
                 {/if}
@@ -1706,6 +1802,12 @@
                 {tr({
                   es: "Lente que aumenta lo que hay debajo (como una mira de francotirador). Arrástrala y redimensiónala; los clics pasan al juego. La mirilla se dibuja encima sin aumentar. Mientras haya un visor, el overlay no sale en grabaciones/OBS. Sin botón asignado se ve siempre; en el editor se ve igualmente para poder colocarlo.",
                   en: "Lens that magnifies what's underneath (sniper-style). Drag and resize it; clicks pass to the game. The crosshair draws on top unmagnified. While a scope exists, the overlay is hidden from recordings/OBS. With no button bound it's always on; in the editor it stays visible so you can position it.",
+                  de: "Linse, die vergrößert, was darunter liegt (wie ein Zielfernrohr). Zieh sie und ändere ihre Größe; Klicks gehen ans Spiel. Das Fadenkreuz wird unvergrößert darüber gezeichnet. Solange es ein Zielfernrohr gibt, taucht das Overlay nicht in Aufnahmen/OBS auf. Ohne zugewiesene Taste ist es immer sichtbar; im Editor bleibt es sichtbar, damit du es platzieren kannst.",
+                  fr: "Loupe qui grossit ce qui se trouve dessous (façon lunette de sniper). Fais-la glisser et redimensionne-la ; les clics passent au jeu. Le réticule se dessine par-dessus sans grossissement. Tant qu'une lunette existe, l'overlay n'apparaît pas dans les enregistrements/OBS. Sans bouton assigné, elle est toujours visible ; dans l'éditeur, elle reste visible pour que tu puisses la placer.",
+                  it: "Lente che ingrandisce ciò che c'è sotto (come un mirino da cecchino). Trascinala e ridimensionala; i clic passano al gioco. Il mirino viene disegnato sopra senza ingrandimento. Finché c'è un cannocchiale, l'overlay non compare nelle registrazioni/OBS. Senza pulsante assegnato è sempre visibile; nell'editor resta visibile per poterlo posizionare.",
+                  ja: "下にあるものを拡大するレンズです（スナイパースコープのように）。ドラッグとサイズ変更ができ、クリックはゲームに通ります。クロスヘアは拡大されずに上に描かれます。スコープがある間、オーバーレイは録画/OBS に映りません。ボタンを割り当てていないと常に表示され、エディターでは配置できるように表示されたままです。",
+                  pt: "Lente que amplia o que está embaixo (estilo mira de sniper). Arraste e redimensione; os cliques passam para o jogo. A mira é desenhada por cima, sem ampliação. Enquanto houver uma luneta, o overlay não aparece em gravações/OBS. Sem botão atribuído, fica sempre visível; no editor continua visível para você posicioná-la.",
+                  zh: "放大下方内容的镜头（类似狙击镜）。可以拖动和调整大小；点击会穿透到游戏。准星画在上方且不被放大。只要存在瞄准镜，覆盖层就不会出现在录像/OBS 中。未绑定按键时始终显示；在编辑器中也会保持显示，方便你摆放。",
                 })}
               </p>
             {:else}
@@ -1727,7 +1829,7 @@
                 </div>
                 <button
                   type="button"
-                  title={tr({ es: "Centrar en la pantalla", en: "Center on screen" })}
+                  title={tr({ es: "Centrar en la pantalla", en: "Center on screen", de: "Auf dem Bildschirm zentrieren", fr: "Centrer sur l'écran", it: "Centra sullo schermo", ja: "画面の中央に配置", pt: "Centralizar na tela", zh: "在屏幕上居中" })}
                   onclick={() => centerPanel(s)}
                   class="rounded border border-zinc-700 p-1.5 text-zinc-300 hover:bg-zinc-700"
                   ><Locate size={14} /></button
@@ -1736,13 +1838,13 @@
                   type="color"
                   bind:value={s.ch.color}
                   oninput={() => pushScene()}
-                  title={tr({ es: "Color", en: "Color" })}
+                  title={tr({ es: "Color", en: "Color", de: "Farbe", fr: "Couleur", it: "Colore", ja: "色", pt: "Cor", zh: "颜色" })}
                   class="h-7 w-9 cursor-pointer rounded border border-zinc-700 bg-zinc-900 p-0.5"
                 />
               </div>
               <div class="space-y-1.5 text-xs text-zinc-400">
                 <label class="flex items-center gap-2">
-                  <span class="w-16">{tr({ es: "Tamaño", en: "Size" })}</span>
+                  <span class="w-16">{tr({ es: "Tamaño", en: "Size", de: "Größe", fr: "Taille", it: "Dimensione", ja: "サイズ", pt: "Tamanho", zh: "大小" })}</span>
                   <input
                     type="range"
                     min="16"
@@ -1755,7 +1857,7 @@
                   <span class="w-10 text-right tabular-nums text-zinc-500">{s.ch.size}px</span>
                 </label>
                 <label class="flex items-center gap-2">
-                  <span class="w-16">{tr({ es: "Grosor", en: "Thickness" })}</span>
+                  <span class="w-16">{tr({ es: "Grosor", en: "Thickness", de: "Stärke", fr: "Épaisseur", it: "Spessore", ja: "太さ", pt: "Espessura", zh: "粗细" })}</span>
                   <input
                     type="range"
                     min="1"
@@ -1771,7 +1873,7 @@
                 </label>
                 {#if s.ch.style === "cross" || s.ch.style === "x"}
                   <label class="flex items-center gap-2">
-                    <span class="w-16">{tr({ es: "Hueco", en: "Gap" })}</span>
+                    <span class="w-16">{tr({ es: "Hueco", en: "Gap", de: "Abstand", fr: "Écart", it: "Spazio", ja: "隙間", pt: "Espaço", zh: "间隙" })}</span>
                     <input
                       type="range"
                       min="0"
@@ -1785,7 +1887,7 @@
                   </label>
                 {/if}
                 <label class="flex items-center gap-2">
-                  <span class="w-16">{tr({ es: "Opacidad", en: "Opacity" })}</span>
+                  <span class="w-16">{tr({ es: "Opacidad", en: "Opacity", de: "Deckkraft", fr: "Opacité", it: "Opacità", ja: "不透明度", pt: "Opacidade", zh: "不透明度" })}</span>
                   <input
                     type="range"
                     min="0.15"
@@ -1811,7 +1913,7 @@
                     ? 'bg-emerald-600/20 text-emerald-300'
                     : 'text-zinc-300 hover:bg-zinc-700'}"
                 >
-                  <span>{tr({ es: "Punto central", en: "Center dot" })}</span>
+                  <span>{tr({ es: "Punto central", en: "Center dot", de: "Mittelpunkt", fr: "Point central", it: "Punto centrale", ja: "センタードット", pt: "Ponto central", zh: "中心点" })}</span>
                   <span class="tabular-nums">{s.ch.dot ? "ON" : "OFF"}</span>
                 </button>
                 <button
@@ -1824,7 +1926,7 @@
                     ? 'bg-emerald-600/20 text-emerald-300'
                     : 'text-zinc-300 hover:bg-zinc-700'}"
                 >
-                  <span>{tr({ es: "Contorno", en: "Outline" })}</span>
+                  <span>{tr({ es: "Contorno", en: "Outline", de: "Kontur", fr: "Contour", it: "Contorno", ja: "アウトライン", pt: "Contorno", zh: "描边" })}</span>
                   <span class="tabular-nums">{s.ch.outline ? "ON" : "OFF"}</span>
                 </button>
               </div>
@@ -1832,6 +1934,12 @@
                 {tr({
                   es: "La mirilla es solo visual: los clics siempre pasan al juego. Arrástrala en la vista previa para colocarla donde quieras.",
                   en: "The crosshair is visual only: clicks always pass through to the game. Drag it in the preview to place it anywhere.",
+                  de: "Das Fadenkreuz ist rein optisch: Klicks gehen immer ans Spiel. Zieh es in der Vorschau, um es beliebig zu platzieren.",
+                  fr: "Le réticule est purement visuel : les clics passent toujours au jeu. Fais-le glisser dans l'aperçu pour le placer où tu veux.",
+                  it: "Il mirino è solo visivo: i clic passano sempre al gioco. Trascinalo nell'anteprima per posizionarlo dove vuoi.",
+                  ja: "クロスヘアは表示だけで、クリックは常にゲームに通ります。プレビューでドラッグして好きな位置に置けます。",
+                  pt: "A mira é só visual: os cliques sempre passam para o jogo. Arraste-a na pré-visualização para colocá-la onde quiser.",
+                  zh: "准星仅用于显示：点击始终穿透到游戏。在预览中拖动它即可放到任意位置。",
                 })}
               </p>
             {/if}
@@ -1843,7 +1951,7 @@
       <div>
         <div class="mb-4">
           <span class="text-sm font-medium text-zinc-200"
-            >{tr({ es: "Widgets", en: "Widgets" })}</span
+            >{tr({ es: "Widgets", en: "Widgets", de: "Widgets", fr: "Widgets", it: "Widget", ja: "ウィジェット", pt: "Widgets", zh: "小组件" })}</span
           >
           <button
             type="button"
@@ -1852,7 +1960,7 @@
           >
             <Crosshair size={14} class="shrink-0 text-emerald-400" />
             <span class="min-w-0 flex-1 truncate font-medium text-zinc-100"
-              >{tr({ es: "Añadir mirilla", en: "Add crosshair" })}</span
+              >{tr({ es: "Añadir mirilla", en: "Add crosshair", de: "Fadenkreuz hinzufügen", fr: "Ajouter un réticule", it: "Aggiungi mirino", ja: "クロスヘアを追加", pt: "Adicionar mira", zh: "添加准星" })}</span
             >
           </button>
           <button
@@ -1862,14 +1970,14 @@
           >
             <ZoomIn size={14} class="shrink-0 text-emerald-400" />
             <span class="min-w-0 flex-1 truncate font-medium text-zinc-100"
-              >{tr({ es: "Añadir visor (lupa)", en: "Add scope (magnifier)" })}</span
+              >{tr({ es: "Añadir visor (lupa)", en: "Add scope (magnifier)", de: "Zielfernrohr hinzufügen (Lupe)", fr: "Ajouter une lunette (loupe)", it: "Aggiungi cannocchiale (lente)", ja: "スコープを追加（拡大鏡）", pt: "Adicionar luneta (lupa)", zh: "添加瞄准镜（放大镜）" })}</span
             >
           </button>
         </div>
         {#if panels.length > 1}
           <div class="mb-4">
             <span class="flex items-center gap-1 text-sm font-medium text-zinc-200"
-              ><Layers size={14} /> {tr({ es: "Capas", en: "Layers" })}</span
+              ><Layers size={14} /> {tr({ es: "Capas", en: "Layers", de: "Ebenen", fr: "Calques", it: "Livelli", ja: "レイヤー", pt: "Camadas", zh: "图层" })}</span
             >
             <div class="mt-2 space-y-1">
               {#each [...panels].sort((a, b) => b.z - a.z) as p (p.id)}
@@ -1888,13 +1996,13 @@
                   >
                   <button
                     type="button"
-                    title={tr({ es: "Subir capa", en: "Raise layer" })}
+                    title={tr({ es: "Subir capa", en: "Raise layer", de: "Ebene nach oben", fr: "Monter le calque", it: "Porta su il livello", ja: "レイヤーを上へ", pt: "Subir camada", zh: "上移图层" })}
                     onclick={() => moveLayer(p, 1)}
                     class="rounded p-0.5 hover:bg-zinc-700"><ArrowUp size={12} /></button
                   >
                   <button
                     type="button"
-                    title={tr({ es: "Bajar capa", en: "Lower layer" })}
+                    title={tr({ es: "Bajar capa", en: "Lower layer", de: "Ebene nach unten", fr: "Descendre le calque", it: "Porta giù il livello", ja: "レイヤーを下へ", pt: "Descer camada", zh: "下移图层" })}
                     onclick={() => moveLayer(p, -1)}
                     class="rounded p-0.5 hover:bg-zinc-700"><ArrowDown size={12} /></button
                   >
@@ -1905,19 +2013,25 @@
               {tr({
                 es: "Arriba = encima. Mirillas y visores se dibujan siempre sobre las apps colocadas.",
                 en: "Top = above. Crosshairs and scopes always draw over placed apps.",
+                de: "Oben = davor. Fadenkreuze und Zielfernrohre werden immer über den platzierten Apps gezeichnet.",
+                fr: "En haut = au-dessus. Les réticules et les lunettes se dessinent toujours par-dessus les applis placées.",
+                it: "In alto = sopra. Mirini e cannocchiali vengono sempre disegnati sopra le app posizionate.",
+                ja: "上にあるほど手前です。クロスヘアとスコープは配置したアプリより常に上に描かれます。",
+                pt: "Em cima = na frente. Miras e lunetas sempre são desenhadas sobre os apps posicionados.",
+                zh: "越靠上越在前。准星和瞄准镜始终画在已摆放的应用之上。",
               })}
             </p>
           </div>
         {/if}
         <div class="mb-2 flex items-center justify-between">
           <span class="text-sm font-medium text-zinc-200"
-            >{tr({ es: "Apps", en: "Apps" })}</span
+            >{tr({ es: "Apps", en: "Apps", de: "Apps", fr: "Applis", it: "App", ja: "アプリ", pt: "Apps", zh: "应用" })}</span
           >
           <button
             type="button"
             onclick={loadWindows}
             class="rounded p-1 text-zinc-400 hover:bg-zinc-700 hover:text-white"
-            title={tr({ es: "Actualizar", en: "Refresh" })}><RefreshCw size={15} /></button
+            title={tr({ es: "Actualizar", en: "Refresh", de: "Aktualisieren", fr: "Actualiser", it: "Aggiorna", ja: "更新", pt: "Atualizar", zh: "刷新" })}><RefreshCw size={15} /></button
           >
         </div>
         <div class="space-y-1">
@@ -1937,7 +2051,7 @@
                 <TriangleAlert
                   size={13}
                   class="shrink-0 text-amber-400"
-                  aria-label={tr({ es: "Contenido protegido", en: "Protected content" })}
+                  aria-label={tr({ es: "Contenido protegido", en: "Protected content", de: "Geschützter Inhalt", fr: "Contenu protégé", it: "Contenuto protetto", ja: "保護されたコンテンツ", pt: "Conteúdo protegido", zh: "受保护的内容" })}
                 />
               {/if}
             </button>
@@ -1946,6 +2060,12 @@
               {tr({
                 es: "No hay ventanas. Abre una app y pulsa actualizar.",
                 en: "No windows. Open an app and refresh.",
+                de: "Keine Fenster. Öffne eine App und aktualisiere.",
+                fr: "Aucune fenêtre. Ouvre une appli et actualise.",
+                it: "Nessuna finestra. Apri un'app e aggiorna.",
+                ja: "ウィンドウがありません。アプリを開いて更新してください。",
+                pt: "Nenhuma janela. Abra um app e atualize.",
+                zh: "没有窗口。打开一个应用后点击刷新。",
               })}
             </p>
           {/each}

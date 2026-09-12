@@ -16,16 +16,13 @@
    * the door lands square; two seconds later it rolls back,
    * turning clockwise, and seals it. JavaScript owns the phases because the close
    * has to happen on its own, after the pointer has gone; `app.css` ("Vault
-   * door") draws each one. The motion slider at 0 keeps it shut.
+   * door") draws each one.
    *
    * Lucide's prop type, so it fits anywhere a lucide icon is expected (the nav's
    * `icon: typeof Home`, the tour's steps).
    */
   import { onMount } from "svelte";
-  import { get } from "svelte/store";
   import type { IconProps } from "@lucide/svelte";
-
-  import { motionIntensity } from "../stores/motion";
 
   let {
     size = 24,
@@ -63,12 +60,12 @@
   const beam = `vault-beam-${uid}`;
   const soft = `vault-soft-${uid}`;
 
-  // On the frame, a pixel and a bit clear of the door's upper-left and
+  // On the frame, a couple of pixels clear of the door's upper-left and
   // upper-right teeth. Each throws one beam; the right one starts mirrored
   // and turns the other way, so the pair sweeps symmetrically.
   const BEACONS = [
-    { x: 1.3, flip: false },
-    { x: 22.7, flip: true },
+    { x: 0.2, y: -3.77, flip: false },
+    { x: 23.8, y: -3.77, flip: true },
   ];
   const BEAM_REACH = 36;
   // Three nested fans, faint to bright: stacked, the light is strongest down the
@@ -92,7 +89,7 @@
   let hold: ReturnType<typeof setTimeout> | null = null;
 
   function play() {
-    if (phase !== "idle" || get(motionIntensity) === 0) return;
+    if (phase !== "idle") return;
     phase = "opening";
   }
 
@@ -202,7 +199,7 @@
     </filter>
   </defs>
   {#each BEACONS as b (b.x)}
-    <g class="vault-beacon" transform="translate({b.x} 1.3)">
+    <g class="vault-beacon" transform="translate({b.x} {b.y})">
       <g class="vault-beam" class:vault-beam-flip={b.flip}>
         <!-- Centres the box the beam turns about on the lamp; a lone beam's own
              box sits off to one side of it. -->

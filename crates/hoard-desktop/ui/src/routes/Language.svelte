@@ -22,7 +22,7 @@
     if (busy) return;
     busy = true;
     try {
-      if (code !== $locale) await setLocale(code);
+      if (code !== $locale) await setLocale(code, "onboarding");
     } finally {
       busy = false;
     }

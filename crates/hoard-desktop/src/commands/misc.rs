@@ -86,3 +86,13 @@ pub async fn open_external(url: String) -> Result<(), String> {
         .map(|_| ())
         .map_err(|e| format!("could not open browser: {e}"))
 }
+
+/// One line from the interface into the app's log, for what only the webview can
+/// see: today, which display language it picked and why. Capped, so a runaway
+/// caller can't flood the file.
+#[tauri::command]
+pub fn ui_log(window: tauri::Window, topic: String, message: String) {
+    let topic: String = topic.chars().take(32).collect();
+    let message: String = message.chars().take(400).collect();
+    tracing::info!(window = window.label(), topic = %topic, "ui: {message}");
+}

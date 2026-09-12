@@ -403,7 +403,7 @@
 </script>
 
 <section
-  class="mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-layer-1 shadow-[0_8px_30px_-12px_rgba(16,185,129,0.25)]"
+  class="mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-layer-1 shadow-[0_8px_30px_-12px_color-mix(in_oklch,var(--color-emerald-500)_25%,transparent)]"
 >
   <!-- cabecera -->
   <div
@@ -438,7 +438,7 @@
       type="button"
       onclick={onClose}
       class="grid h-7 w-7 place-items-center rounded-lg border border-white/[0.08] text-zinc-400 transition hover:bg-white/5 hover:text-white"
-      aria-label={tr({ es: "Cerrar", en: "Close" })}
+      aria-label={tr({ es: "Cerrar", en: "Close", de: "Schließen", fr: "Fermer", it: "Chiudi", ja: "閉じる", pt: "Fechar", zh: "关闭" })}
     >
       <X size={15} />
     </button>
@@ -521,7 +521,7 @@
             onclick={rerollQuote}
             class="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/[0.08] text-zinc-300 transition hover:bg-white/5 hover:text-emerald-300"
             title={tr({ es: "Otra frase", en: "Another line", de: "Anderer Spruch", fr: "Autre phrase", it: "Un'altra frase", ja: "別のひとこと", pt: "Outra frase", zh: "换一句" })}
-            aria-label={tr({ es: "Otra frase", en: "Another line" })}
+            aria-label={tr({ es: "Otra frase", en: "Another line", de: "Anderer Spruch", fr: "Autre phrase", it: "Un'altra frase", ja: "別のひとこと", pt: "Outra frase", zh: "换一句" })}
           >
             <Dices size={15} />
           </button>

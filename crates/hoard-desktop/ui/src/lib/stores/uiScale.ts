@@ -12,7 +12,7 @@
  * and Ctrl + wheel / Ctrl +/- / Ctrl+0 anywhere in the app.
  *
  * Per-machine UI state, so `localStorage`, never the Rust `Prefs`, same as
- * the theme, the accent, the relief and the atmosphere. The zoom itself does
+ * the accent. The zoom itself does
  * not survive a restart on the engine's side, so it is re-applied at boot.
  */
 import { writable } from "svelte/store";
@@ -47,6 +47,10 @@ function readInitial(): number {
 let current = readInitial();
 
 export const uiScale = writable<number>(current);
+
+/** Bumped on every change the user makes, never at boot, so the corner
+ *  readout (`ScaleBadge.svelte`) knows when to show. */
+export const scaleChanged = writable(0);
 
 /**
  * Hand the factor to the engine.
@@ -90,6 +94,7 @@ export function setUiScale(scale: number): void {
   const v = clamp(scale);
   current = v;
   uiScale.set(v);
+  scaleChanged.update((n) => n + 1);
   try {
     localStorage.setItem(STORAGE_KEY, String(v));
   } catch {
@@ -181,7 +186,7 @@ let wired = false;
 
 /**
  * Wire the shortcuts. Synchronous and cheap, so it runs at boot next to
- * `initTheme()`, otherwise Ctrl+wheel would be dead until the locale
+ * `initAccent()`, otherwise Ctrl+wheel would be dead until the locale
  * dictionary finished loading. The guard is for Vite's HMR in dev, which
  * re-executes the module and would otherwise stack a second listener and
  * double every notch.

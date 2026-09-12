@@ -33,7 +33,6 @@
     setCustomCover,
     removeCustomCover,
   } from "../stores/covers";
-  import { tilt } from "../actions/tilt";
 
   let {
     appId = null,
@@ -163,8 +162,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class={`tilt group relative shrink-0 overflow-hidden border border-white/[0.08] bg-zinc-800 ${klass}`}
-  use:tilt
+  class={`group relative shrink-0 overflow-hidden border border-white/[0.08] bg-zinc-800 ${klass}`}
   bind:clientWidth={boxW}
   bind:clientHeight={boxH}
   onmouseenter={() => (hovered = true)}

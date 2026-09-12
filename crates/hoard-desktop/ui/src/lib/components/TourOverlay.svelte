@@ -438,9 +438,9 @@
     pointer-events: none;
     box-shadow:
       0 0 0 9999px rgba(9, 9, 11, 0.55),
-      0 0 0 1.5px rgba(52, 211, 153, 0.9),
-      0 0 0 6px rgba(16, 185, 129, 0.16),
-      0 0 34px 6px rgba(16, 185, 129, 0.28);
+      0 0 0 1.5px color-mix(in oklch, var(--color-emerald-400) 90%, transparent),
+      0 0 0 6px color-mix(in oklch, var(--color-emerald-500) 16%, transparent),
+      0 0 34px 6px color-mix(in oklch, var(--color-emerald-500) 28%, transparent);
     transition:
       top 520ms cubic-bezier(0.22, 1, 0.36, 1),
       left 520ms cubic-bezier(0.22, 1, 0.36, 1),

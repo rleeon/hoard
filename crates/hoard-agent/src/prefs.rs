@@ -390,7 +390,19 @@ impl Prefs {
     /// This used to be a plain `fs::write`, which truncates first: a process
     /// that died mid-write left a 0-byte `prefs.json` and [`Self::load`] then
     /// silently reset every setting the user had chosen.
+    #[track_caller]
     pub fn save(&self, path: &Path) -> Result<()> {
+        // The display language has been seen to change with nobody choosing it
+        // (on Linux at least), so any write that moves it says so, and from where.
+        let before = Self::load(path).ok().and_then(|p| p.language);
+        if before != self.language {
+            tracing::info!(
+                from = before.as_deref().unwrap_or("none"),
+                to = self.language.as_deref().unwrap_or("none"),
+                caller = %std::panic::Location::caller(),
+                "prefs: display language changed"
+            );
+        }
         let text = serde_json::to_string_pretty(self).context("serializing prefs")?;
         crate::atomic_write::write_atomic(path, text.as_bytes())
     }
