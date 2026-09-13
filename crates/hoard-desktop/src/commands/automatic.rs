@@ -1,5 +1,11 @@
 //! The background schedulers behind the sidebar's automatic-mode toggle.
 //!
+//! **The service runs them when it can** (ADR 0021, Slice 8): they then go on
+//! with the window closed, and this process never loads the catalogue. The
+//! preferences on disk are what the service reads, so [`start`] and [`stop`]
+//! only tell it they changed. Everything below is the fallback for an older
+//! service.
+//!
 //! When the user flips the toggle on we persist `prefs.automatic_mode = true`
 //! and start **two** independent Tokio tickers, because the work splits into a
 //! cheap half and an expensive half:
@@ -44,6 +50,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{interval, MissedTickBehavior};
 
 use hoard_agent::prefs::Prefs;
+use hoard_core::ipc::Request;
 
 use crate::state::AppState;
 
@@ -73,6 +80,40 @@ pub struct AutomaticScheduler {
 /// `backup_interval_secs`. Safe to call repeatedly: each call cleanly replaces the
 /// previous handles.
 pub fn start(app: &AppHandle, scan_interval_secs: u64, backup_interval_secs: u64) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if hand_to_service(&app).await {
+            return;
+        }
+        // Read again: an "off" right after this "on" may have landed while we asked
+        // the service, and workers starting late must not undo it.
+        if !Prefs::load_default().is_ok_and(|(prefs, _)| prefs.automatic_mode) {
+            return;
+        }
+        start_here(&app, scan_interval_secs, backup_interval_secs);
+    });
+}
+
+/// Tells the service the preferences changed, when it runs automatic mode. `false`
+/// is an older service: the schedulers run here.
+async fn hand_to_service(app: &AppHandle) -> bool {
+    let state = app.state::<AppState>();
+    if !state.daemon.owns_detection().await {
+        return false;
+    }
+    // Workers started here before the service was updated would scan twice.
+    stop_here(app);
+    state
+        .daemon
+        .tell(
+            "tell the service automatic mode changed",
+            Request::AutomaticChanged,
+        )
+        .await;
+    true
+}
+
+fn start_here(app: &AppHandle, scan_interval_secs: u64, backup_interval_secs: u64) {
     let scheduler = app.state::<AutomaticScheduler>();
     {
         let mut s = scheduler.scan_handle.lock().unwrap();
@@ -112,31 +153,36 @@ const EVENT_SCAN_DEBOUNCE_SECS: u64 = 60;
 /// games the user never opted to monitor would surprise them. Debounced to
 /// `EVENT_SCAN_DEBOUNCE_SECS` so repeated signals don't stack scans.
 pub fn request_scan(app: AppHandle) {
-    match Prefs::load_default() {
-        Ok((prefs, _)) if prefs.automatic_mode => {}
-        Ok(_) => return,
-        Err(e) => {
-            tracing::warn!(error = %e, "event scan: couldn't load prefs; skipping");
+    tauri::async_runtime::spawn(async move {
+        // The service heard the same event and schedules its own scan.
+        if app.state::<AppState>().daemon.owns_detection().await {
             return;
         }
-    }
-
-    let scheduler = app.state::<AutomaticScheduler>();
-    {
-        let mut last = scheduler.last_event_scan.lock().unwrap();
-        let now = Instant::now();
-        if let Some(prev) = *last {
-            if now.duration_since(prev) < Duration::from_secs(EVENT_SCAN_DEBOUNCE_SECS) {
-                tracing::debug!("event scan: debounced, a scan ran recently");
+        match Prefs::load_default() {
+            Ok((prefs, _)) if prefs.automatic_mode => {}
+            Ok(_) => return,
+            Err(e) => {
+                tracing::warn!(error = %e, "event scan: couldn't load prefs; skipping");
                 return;
             }
         }
-        *last = Some(now);
-    }
 
-    tracing::info!("event scan: heavy untracked game detected; scanning now");
-    let app = app.clone();
-    tokio::task::spawn(async move { run_scan(&app).await });
+        {
+            let scheduler = app.state::<AutomaticScheduler>();
+            let mut last = scheduler.last_event_scan.lock().unwrap();
+            let now = Instant::now();
+            if let Some(prev) = *last {
+                if now.duration_since(prev) < Duration::from_secs(EVENT_SCAN_DEBOUNCE_SECS) {
+                    tracing::debug!("event scan: debounced, a scan ran recently");
+                    return;
+                }
+            }
+            *last = Some(now);
+        }
+
+        tracing::info!("event scan: heavy untracked game detected; scanning now");
+        run_scan(&app).await;
+    });
 }
 
 /// Which half of automatic mode a worker task drives.
@@ -399,9 +445,18 @@ pub async fn run_backup_sweep(app: &AppHandle) {
     }
 }
 
-/// Abort both running schedulers, if any. A no-op when nothing is scheduled, so it
-/// is safe to call from any wind-down path (toggle off, app shutdown).
+/// Abort both running schedulers, if any, and tell the service when it runs them. A
+/// no-op when nothing is scheduled, so it is safe to call from any wind-down path
+/// (toggle off, app shutdown).
 pub fn stop(app: &AppHandle) {
+    stop_here(app);
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        hand_to_service(&app).await;
+    });
+}
+
+fn stop_here(app: &AppHandle) {
     let scheduler = app.state::<AutomaticScheduler>();
     let mut stopped = false;
     if let Some(prev) = scheduler.scan_handle.lock().unwrap().take() {
@@ -422,6 +477,11 @@ pub fn stop(app: &AppHandle) {
 /// is managed. Errors are non-fatal: the toggle still shows the persisted value and
 /// the user can re-trigger by flipping it.
 pub async fn restart_if_enabled(app: &AppHandle) -> anyhow::Result<()> {
+    // The service keeps its own schedule and runs a pass as soon as its engine is
+    // up, after a sign-in included: nothing to rehydrate here.
+    if app.state::<AppState>().daemon.owns_detection().await {
+        return Ok(());
+    }
     let (prefs, _) = Prefs::load_default()?;
     if prefs.automatic_mode {
         tracing::info!(

@@ -40,10 +40,12 @@
 //! Custom covers are saved as `{key}_custom.{ext}` in the same cache dir and
 //! take priority over any downloaded art.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
 
 use tauri::ipc::Response;
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 
 const CUSTOM_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "gif", "bmp", "tiff", "tif"];
 
@@ -108,15 +110,31 @@ impl CoverKey {
 /// filed under before keys existed. Without it this change would silently
 /// orphan every cached cover on every machine, including the custom ones people
 /// picked by hand, which is the kind of loss that reads as a bug.
-fn stems_for(cover: &CoverKey) -> Vec<String> {
+async fn stems_for(app: &AppHandle, cover: &CoverKey) -> Vec<String> {
     let mut stems = vec![cover.stem()];
     if let CoverKey::Slug(slug) = cover {
-        if let Some(id) = hoard_manifest::ludusavi::find_by_slug(slug).and_then(|e| e.steam_app_id)
-        {
-            stems.push((id as u32).to_string());
+        if let Some(id) = catalog_app_id(app, slug).await {
+            stems.push(id.to_string());
         }
     }
     stems
+}
+
+/// The catalogue's Steam app id for a slug, asked of the service (see
+/// [`crate::commands::catalog::game_facts`]). Remembered for the session: a shelf
+/// paint asks for dozens of covers, each with the same question.
+async fn catalog_app_id(app: &AppHandle, slug: &str) -> Option<u32> {
+    static KNOWN: LazyLock<Mutex<HashMap<String, Option<u32>>>> = LazyLock::new(Default::default);
+    if let Some(id) = KNOWN.lock().unwrap().get(slug) {
+        return *id;
+    }
+    let state = app.state::<crate::state::AppState>();
+    let id = crate::commands::catalog::game_facts(&state, slug)
+        .await
+        .steam_app_id
+        .map(|v| v as u32);
+    KNOWN.lock().unwrap().insert(slug.to_string(), id);
+    id
 }
 
 /// Find a custom cover file for the given game, returning its path if it
@@ -156,7 +174,7 @@ pub async fn cover_bytes(
         .map_err(|e| e.to_string())?
         .join("covers");
 
-    let bytes = source_bytes(&cover, &dir).await?;
+    let bytes = source_bytes(&app, &cover, &dir).await?;
     let Some(side) = size.and_then(thumb_side) else {
         return Ok(Response::new(bytes));
     };
@@ -168,8 +186,12 @@ pub async fn cover_bytes(
 }
 
 /// The art as stored, in the order [`cover_bytes`] describes.
-async fn source_bytes(cover: &CoverKey, dir: &std::path::Path) -> Result<Vec<u8>, String> {
-    let stems = stems_for(cover);
+async fn source_bytes(
+    app: &AppHandle,
+    cover: &CoverKey,
+    dir: &std::path::Path,
+) -> Result<Vec<u8>, String> {
+    let stems = stems_for(app, cover).await;
     let stem = stems[0].clone();
 
     // Fast path 1: user has set a custom cover for this game.
@@ -220,8 +242,7 @@ async fn source_bytes(cover: &CoverKey, dir: &std::path::Path) -> Result<Vec<u8>
     };
     let app_id = match &cover {
         CoverKey::Steam(id) => Some(*id),
-        CoverKey::Slug(slug) => hoard_manifest::ludusavi::find_by_slug(slug)
-            .and_then(|e| e.steam_app_id.map(|v| v as u32)),
+        CoverKey::Slug(slug) => catalog_app_id(app, slug).await,
     };
 
     // Tier 3: a game with no Steam app id of its own. The hosted index is the
@@ -729,7 +750,8 @@ fn capsule_path(assets: &serde_json::Value) -> Option<String> {
 /// Returns `true` if the game has a user-set custom cover on disk.
 #[tauri::command]
 pub async fn has_custom_cover(app: tauri::AppHandle, key: String) -> Result<bool, String> {
-    let stems = stems_for(&CoverKey::parse(&key).ok_or_else(|| format!("cover: bad key {key:?}"))?);
+    let cover = CoverKey::parse(&key).ok_or_else(|| format!("cover: bad key {key:?}"))?;
+    let stems = stems_for(&app, &cover).await;
     let dir = app
         .path()
         .app_cache_dir()
@@ -797,7 +819,7 @@ pub async fn remove_custom_cover(app: tauri::AppHandle, key: String) -> Result<(
         .join("covers");
     // Both names, or "restore" would drop the new custom cover and surface one
     // the user set years ago under the app-id filename.
-    for stem in stems_for(&cover) {
+    for stem in stems_for(&app, &cover).await {
         for ext in CUSTOM_EXTENSIONS {
             let path = dir.join(format!("{stem}_custom.{ext}"));
             let _ = tokio::fs::remove_file(&path).await;
@@ -876,9 +898,9 @@ async fn appdetails_header_url(app_id: u32) -> Option<String> {
 /// arrives here with only its `game_slug`, and this machine never detected it, so
 /// the local detection report has no id for it. Two layered sources, cheapest
 /// first:
-///   1. The embedded Ludusavi catalog, keyed by the exact slug (offline,
-///      instant). Resolves the long tail of catalogued games (Victoria 3,
-///      Europa Universalis and the rest).
+///   1. The Ludusavi catalog, keyed by the exact slug, which the service
+///      answers (offline, instant). Resolves the long tail of catalogued games
+///      (Victoria 3, Europa Universalis and the rest).
 ///   2. Steam's store search, queried with the de-slugified name. This catches
 ///      games Ludusavi doesn't list at all (e.g. Rust, which has no documented
 ///      save path) but that still exist on Steam. Best-effort and network-bound;
@@ -888,9 +910,9 @@ async fn appdetails_header_url(app_id: u32) -> Option<String> {
 /// Returns `None` when neither source knows the game; the UI keeps the
 /// initial-letter tile.
 #[tauri::command]
-pub async fn steam_app_id_for_slug(slug: String) -> Option<u32> {
-    if let Some(id) = hoard_manifest::ludusavi::find_by_slug(&slug).and_then(|e| e.steam_app_id) {
-        return Some(id as u32);
+pub async fn steam_app_id_for_slug(app: AppHandle, slug: String) -> Option<u32> {
+    if let Some(id) = catalog_app_id(&app, &slug).await {
+        return Some(id);
     }
     steam_store_search_app_id(&deslugify(&slug)).await
 }

@@ -176,6 +176,7 @@ async fn a_foreign_protocol_is_rejected_with_the_daemon_version() {
         &ClientFrame::Hello(Hello {
             protocol: PROTOCOL_VERSION + 41,
             client: "from the future".into(),
+            caps: Vec::new(),
         }),
     )
     .await

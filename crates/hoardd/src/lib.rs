@@ -43,6 +43,7 @@ pub mod autostart;
 pub mod client;
 pub mod codec;
 pub mod endpoint;
+pub mod detect;
 pub mod engine;
 pub mod journal;
 pub mod notify;
@@ -162,12 +163,14 @@ pub async fn run(options: Options) -> Result<Outcome> {
         let log = log.clone();
         let notifier = notifier.clone();
         let events_rx = events_rx.clone();
+        let detect = daemon.detect.clone();
         supervisor::supervise("hoardd event pump", move || {
             engine::pump(
                 engine.clone(),
                 log.clone(),
                 notifier.clone(),
                 events_rx.clone(),
+                detect.clone(),
             )
         })
     }));
@@ -177,6 +180,22 @@ pub async fn run(options: Options) -> Result<Outcome> {
             let events_tx = events_tx.clone();
             supervisor::supervise("hoardd engine keeper", move || {
                 engine::keeper(engine.clone(), events_tx.clone())
+            })
+        }));
+        // Detection, automatic mode and the catalogue (Slice 8). Behind the engine
+        // flag like the keeper: a daemon a test starts must not walk the tester's
+        // disk or download the catalogue.
+        tasks.push(tokio::spawn({
+            let detect = daemon.detect.clone();
+            let engine = engine.clone();
+            supervisor::supervise("hoardd detection", move || {
+                detect::scheduler(detect.clone(), engine.clone())
+            })
+        }));
+        tasks.push(tokio::spawn({
+            let detect = daemon.detect.clone();
+            supervisor::supervise("hoardd catalogue", move || {
+                detect::catalog_keeper(detect.clone())
             })
         }));
     } else {

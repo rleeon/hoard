@@ -733,8 +733,13 @@ pub fn watched_saves_from_state(
     out
 }
 
-/// A `WatchedSave` for a freshly added or renamed save, from minimal inputs. It
-/// resolves the Steam dir, the policy and the processes exactly as the hydrate does.
+/// A `WatchedSave` for a freshly added or renamed save, from minimal inputs.
+///
+/// The Steam dir and the processes are left for the engine: it rebuilds the save
+/// from `state.json` on the `Reload` every caller sends next
+/// ([`watched_saves_from_state`]), and resolves both there. Resolving them here
+/// cost a Steam library walk and, for the processes, loading the whole catalogue
+/// (about 50 MB) in the window, which then kept it for as long as it ran.
 #[allow(clippy::too_many_arguments)]
 pub fn watched_save_from(
     save_id: String,
@@ -747,16 +752,8 @@ pub fn watched_save_from(
     shared_processes: bool,
     allow_device_local: Option<bool>,
 ) -> WatchedSave {
-    let steam_apps = steam::list_installed_steam_games(Os::current()).unwrap_or_default();
-    let steam_install_dir = steam_apps
-        .iter()
-        .find(|a| name_matches(&a.name, &game_slug))
-        .map(|a| a.install_dir.clone());
-    let processes = if processes_override.is_empty() {
-        resolve_processes(&game_slug)
-    } else {
-        processes_override
-    };
+    let steam_install_dir = None;
+    let processes = processes_override;
     let policy = resolve_policy(&game_slug, preset);
     WatchedSave {
         allow_device_local,
@@ -1685,6 +1682,275 @@ fn prune_poisoned_rows(state: &mut CliState) -> Vec<String> {
     }
     poisoned.sort();
     poisoned
+}
+
+// ---- detection and automatic mode, as the service runs them
+
+/// A detection sweep with the user's choices applied: the games they ignored left
+/// out, and the folders they discarded. `deep` is the Library's slow button, never
+/// the timer.
+pub async fn detect_filtered<F>(deep: bool, progress: F) -> Result<DetectionReport>
+where
+    F: Fn(usize, usize) + Send + Sync + 'static,
+{
+    let (state, _) = CliState::load_default()?;
+    let os = Os::current();
+    let mut report = if deep {
+        crate::detection::detect_all_deep(os, &state, progress).await?
+    } else {
+        crate::detection::detect_all(os, &state, progress).await?
+    };
+    // Ignored slugs go *after* the sweep, so the walker still uses their install
+    // dirs when cross-referencing other games on the same volume.
+    report.games.retain(|g| !state.is_ignored(&g.slug));
+    apply_excluded_paths(&mut report, &state);
+    Ok(report)
+}
+
+/// Stores a finished sweep as the cache the Library opens with. A disk failure
+/// only costs that cache, so it is logged and the report goes on.
+pub fn remember_detection(report: DetectionReport) -> CachedDetection {
+    let cached = CachedDetection {
+        report,
+        scanned_at: OffsetDateTime::now_utc(),
+    };
+    if let Err(e) = save_detection_to_disk_atomic(&cached) {
+        tracing::warn!(error = %e, "couldn't persist detection cache");
+    }
+    cached
+}
+
+/// What an automatic pass does with the games a sweep found.
+#[derive(Debug, Default)]
+pub struct AutoTrackPlan {
+    /// High confidence, untracked here, and already a row on the server from
+    /// another machine: the detected folder is bound to that row instead of
+    /// forking a new branch.
+    pub adopt: Vec<(TrackedSave, PathBuf)>,
+    /// High confidence, untracked, and new to the server.
+    pub track: Vec<DetectedGame>,
+    /// Untracked and below High: the engine probes them for process-to-write
+    /// correlation (ADR 0020 phase 3), so a later sweep can promote them.
+    pub probe: Vec<PathBuf>,
+}
+
+/// Splits a sweep's games three ways (see [`AutoTrackPlan`]) against what this
+/// machine already tracks.
+pub fn plan_auto_track(games: Vec<DetectedGame>, tracked: Vec<TrackedSave>) -> AutoTrackPlan {
+    // Slugs THIS machine actually tracks (has a local folder for). Orphan rows
+    // are cloud saves from *another* machine with no local state here, and they
+    // must NOT count as tracked, or the slug looks monitored and auto-track
+    // skips it (the cross-device bug: detected=1, tracked=0). They're collected
+    // separately so a High detection can ADOPT them instead.
+    let mut tracked_slugs: HashSet<String> = HashSet::new();
+    let mut tracked_paths: Vec<PathBuf> = Vec::new();
+    let mut orphans_by_slug: std::collections::HashMap<String, TrackedSave> =
+        std::collections::HashMap::new();
+    for t in tracked {
+        if t.orphan {
+            // Prefer the "main" label when a slug has several cloud branches;
+            // otherwise keep the first seen.
+            match orphans_by_slug.get(&t.game_slug) {
+                Some(existing) if existing.label == "main" => {}
+                _ => {
+                    orphans_by_slug.insert(t.game_slug.clone(), t);
+                }
+            }
+        } else {
+            if !t.local_path.is_empty() {
+                tracked_paths.push(PathBuf::from(&t.local_path));
+            }
+            tracked_slugs.insert(t.game_slug);
+        }
+    }
+
+    let mut plan = AutoTrackPlan::default();
+    for g in games {
+        if tracked_slugs.contains(&g.slug) || g.found_paths.is_empty() {
+            continue;
+        }
+        // The SAME folder already tracked under ANOTHER slug is not tracked again.
+        // A phase-4 discovery's name comes out of the correlation's attribution, and
+        // that attribution changes between scans (ChatGPT, then opencode, then code
+        // over Planet S's folder, reported Jul 2026): without this gate, every new
+        // name was a new slug and the folder ended up tracked N times. The per-slug
+        // guard does not see it because the slug changes.
+        if tracked_paths
+            .iter()
+            .any(|t| crate::detection::paths_overlap(&g.found_paths[0], t))
+        {
+            tracing::debug!(
+                slug = %g.slug,
+                path = %g.found_paths[0].display(),
+                "automatic scan: folder already tracked under another slug; skipping"
+            );
+            continue;
+        }
+        if g.confidence == Confidence::High {
+            let path = g.found_paths[0].clone();
+            // A folder with not one file and no row on the server: there is nothing
+            // to back up or restore yet. It is left for the next scan, minutes away.
+            // The path is not reserved: if another find claims it on this same pass,
+            // let it.
+            if auto_track_decision(&path, orphans_by_slug.contains_key(&g.slug))
+                == AutoTrack::SkipEmpty
+            {
+                tracing::debug!(
+                    slug = %g.slug,
+                    path = %path.display(),
+                    "automatic scan: folder is empty and the server has nothing; waiting for the game to write"
+                );
+                continue;
+            }
+            if let Some(orphan) = orphans_by_slug.remove(&g.slug) {
+                plan.adopt.push((orphan, path.clone()));
+            } else {
+                plan.track.push(g);
+            }
+            // Reserves the folder within THIS scan: two different finds over the
+            // same path (the same attribution churn, only inside a single report)
+            // must not track it twice.
+            tracked_paths.push(path);
+        } else {
+            plan.probe.extend(g.found_paths.iter().cloned());
+        }
+    }
+    plan
+}
+
+/// How an automatic pass went.
+#[derive(Debug, Default)]
+pub struct AutoTrackRun {
+    /// Games that started being watched, adopted or new.
+    pub tracked: usize,
+    /// Folders for the engine to probe.
+    pub probe: Vec<PathBuf>,
+    /// Duplicate rows the listing's self-heal dropped from `state.json`: the
+    /// engine has to hear about those too.
+    pub pruned: Vec<String>,
+}
+
+/// Carries out an automatic pass over `games`: adopts the server's rows, tracks
+/// the new ones and hands back the folders to probe. `phase(done, total)` runs
+/// before each game. One game failing does not stop the rest: a single 422/409 on
+/// an old server must not leave the other nine untracked. The caller tells the
+/// engine afterwards, once, that `state.json` changed.
+pub async fn run_auto_track(
+    client: &ApiClient,
+    games: Vec<DetectedGame>,
+    phase: impl Fn(usize, usize),
+) -> Result<AutoTrackRun> {
+    let (tracked, pruned) = list_tracked(client).await?;
+    let plan = plan_auto_track(games, tracked);
+    let total = plan.adopt.len() + plan.track.len();
+    let mut run = AutoTrackRun {
+        tracked: 0,
+        probe: plan.probe,
+        pruned,
+    };
+    let mut done = 0;
+
+    for (orphan, path) in plan.adopt {
+        phase(done, total);
+        done += 1;
+        let args = AdoptArgs {
+            save_id: orphan.save_id.clone(),
+            game_slug: orphan.game_slug.clone(),
+            label: orphan.label.clone(),
+            local_path: path.to_string_lossy().into_owned(),
+        };
+        match adopt(client, args).await {
+            Ok(_) => run.tracked += 1,
+            // "server save", not "cloud": an orphan is a save the server knows
+            // and this machine has not mapped, and that happens on self-hosted
+            // just the same. Saying "cloud" here sent one diagnosis down the
+            // wrong road in Aug 2026, with the log seeming to prove the user was
+            // on Cloud when they were self-hosting.
+            Err(e) => tracing::warn!(
+                slug = %orphan.game_slug,
+                error = %e,
+                "automatic scan: couldn't adopt server-side save"
+            ),
+        }
+    }
+
+    for game in plan.track {
+        phase(done, total);
+        done += 1;
+        let args = AddGameArgs {
+            name: None,
+            slot: None,
+            repoint: false,
+            game_slug: game.slug.clone(),
+            label: None,
+            local_path: game.found_paths[0].to_string_lossy().into_owned(),
+            display_name: Some(game.display_name),
+            steam_app_id: game.steam_app_id.map(|v| v as i64),
+            // Auto-detected real games: derive preset/processes from the slug.
+            preset: None,
+            processes: None,
+            // A detected game is one entry per game: its process is not shared with
+            // anything else tracked.
+            shared_processes: false,
+        };
+        match add_to_tracking(client, args).await {
+            Ok(_) => run.tracked += 1,
+            Err(e) => {
+                tracing::warn!(slug = %game.slug, error = %e, "automatic scan: couldn't track game")
+            }
+        }
+    }
+    Ok(run)
+}
+
+/// "Add from folder": the games inside ONE folder the user chose. It backs the
+/// Library's three explicit-folder flows (the "scan folder" button, "track this
+/// game with another folder" and "no save folder yet"), so pointing Hoard at a
+/// place always answers the same way.
+///
+/// It never touches the catalogue sweep or Steam and never lands in the cache: it
+/// is a one-off lookup the UI shows as "found <Game> here, track it?". The walk
+/// ([`crate::detection::discover_in_folder`]) skips the periodic sweep's precision
+/// gate on purpose, since the user pointing at the folder is the evidence, so a
+/// save with a proprietary extension comes back like any other. Folders a tracked
+/// save already covers are left out, so only new candidates show.
+///
+/// Synchronous filesystem work bounded by its own timeout: run it off the async
+/// runtime.
+pub fn scan_folder(root: &Path) -> Result<Vec<DetectedGame>> {
+    anyhow::ensure!(root.is_dir(), "{} isn't a folder.", root.display());
+    let (state, _) = CliState::load_default()?;
+    let known: HashSet<PathBuf> = state
+        .saves
+        .values()
+        .map(|s| s.local_path.clone())
+        .collect();
+    // Correlation store, best-effort (empty if absent), the same as the sweep, so a
+    // folder the agent has seen a game write to grades higher.
+    let store = crate::correlation::CorrelationStore::default_path()
+        .ok()
+        .map(|p| crate::correlation::CorrelationStore::load(&p))
+        .unwrap_or_default();
+    Ok(crate::detection::discover_in_folder(root, &store, &known)
+        .into_iter()
+        .map(|a| DetectedGame {
+            slug: a.slug,
+            display_name: a.display_name,
+            found_paths: vec![a.path],
+            path_confidences: vec![a.confidence],
+            path_reasons: vec![a.reason],
+            confidence: a.confidence,
+            source: crate::detection::DetectionSource::FilesystemHeuristic,
+            // Set only when the attribution landed on a catalogue entry: it is
+            // what gives the modal's row a cover.
+            steam_app_id: a.steam_app_id,
+            install_dir: None,
+            // The user pointed at the folder: the path is exactly what is there.
+            needs_folder: false,
+            // A loose folder resolves no catalogue entry, so there is no note to give.
+            steam_cloud: false,
+        })
+        .collect())
 }
 
 /// What to do with a folder just detected on an automatic add.

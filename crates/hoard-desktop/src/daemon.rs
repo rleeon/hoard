@@ -46,6 +46,7 @@
 //! yet.)
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -55,7 +56,7 @@ use hoard_agent::state::CliState;
 use hoard_agent::supervisor::{self, Finished};
 use hoard_core::ipc::{
     AdoptedSession, AgentSlotStatus, CloudToken, DaemonStatus, EngineDownReason, IpcError,
-    KeyringFault, Payload, Request, ServerSession, UpdateState,
+    KeyringFault, Payload, Request, ScanNote, ServerSession, UpdateState, CAP_DETECTION,
 };
 use hoardd::client::{Client, Push};
 use hoardd::endpoint::Endpoint;
@@ -69,6 +70,17 @@ use crate::state::AppState;
 fn client_name(role: &str) -> String {
     format!("hoard-desktop {} ({role})", env!("CARGO_PKG_VERSION"))
 }
+
+/// What this desktop tells the service it can do beyond protocol 1: leave
+/// detection, automatic mode and the catalogue to it (ADR 0021, Slice 8). Every
+/// connection says so, or the service would take that one for an older desktop
+/// and stand aside.
+const CAPS: &[&str] = &[CAP_DETECTION];
+
+/// Who runs detection, as the last welcome said (see [`DaemonLink::owns_detection`]).
+const DETECTION_UNKNOWN: u8 = 0;
+const DETECTION_SERVICE: u8 = 1;
+const DETECTION_HERE: u8 = 2;
 
 /// The wait between reconnects of the event pump. The normal case is a daemon that
 /// stays alive and never reaches this; it covers the service restarting (an update)
@@ -294,6 +306,9 @@ pub struct DaemonLink {
     /// its own. The same reason as the journal: its events are momentary and whoever
     /// was not listening cannot get them back.
     cloud: Mutex<(CloudPulse, Option<u32>)>,
+    /// One of the `DETECTION_*`. Every new connection rewrites it: the service can
+    /// be updated while this window stays open.
+    detection: AtomicU8,
 }
 
 impl DaemonLink {
@@ -334,11 +349,11 @@ impl DaemonLink {
             // launching: that is a TOCTOU and produces two engines. It launches and
             // reconnects; if two clients do it at once, one wins the bind and the
             // other exits.
-            *guard = Some(
-                Client::ensure_running(&endpoint, &client_name("commands"))
-                    .await
-                    .with_context(|| format!("connecting to the Hoard service at {endpoint}"))?,
-            );
+            let client = Client::ensure_running_with(&endpoint, &client_name("commands"), CAPS)
+                .await
+                .with_context(|| format!("connecting to the Hoard service at {endpoint}"))?;
+            self.note_caps(&client);
+            *guard = Some(client);
         }
         let client = guard.as_mut().expect("just connected");
         // With a ceiling: a service that accepts the connection and then does not
@@ -365,6 +380,45 @@ impl DaemonLink {
             *guard = None;
         }
         result
+    }
+
+    /// A request that may take minutes (a sweep, a catalogue download), on a
+    /// connection of its own: on the command connection it would hold every button
+    /// behind it, and [`REQUEST_TIMEOUT`] would cut it halfway.
+    pub async fn request_long(&self, request: Request, limit: Duration) -> Result<Payload> {
+        let endpoint = Self::endpoint()?;
+        let mut client = Client::ensure_running_with(&endpoint, &client_name("long"), CAPS)
+            .await
+            .with_context(|| format!("connecting to the Hoard service at {endpoint}"))?;
+        self.note_caps(&client);
+        match tokio::time::timeout(limit, client.request(request)).await {
+            Ok(result) => result,
+            Err(_) => Err(anyhow!(
+                "the Hoard service didn't finish in {} min",
+                limit.as_secs() / 60
+            )),
+        }
+    }
+
+    fn note_caps(&self, client: &Client) {
+        let who = if client.has_cap(CAP_DETECTION) {
+            DETECTION_SERVICE
+        } else {
+            DETECTION_HERE
+        };
+        self.detection.store(who, Ordering::Relaxed);
+    }
+
+    /// The service runs detection, automatic mode and the catalogue, so this window
+    /// must not: the catalogue alone is 50 MB, kept for as long as the app sits in
+    /// the tray. `false` is an older service, or none at all, and then the window
+    /// does it as it always did.
+    pub async fn owns_detection(&self) -> bool {
+        if self.detection.load(Ordering::Relaxed) == DETECTION_UNKNOWN {
+            // Any answer will do: the welcome is what carries the caps.
+            let _ = self.request(Request::Ping).await;
+        }
+        self.detection.load(Ordering::Relaxed) == DETECTION_SERVICE
     }
 
     /// Estado del daemon: motor, slots y cursor.
@@ -636,9 +690,10 @@ fn reconnect_delay() -> Duration {
 
 async fn pump_once(app: &AppHandle) -> Result<()> {
     let endpoint = DaemonLink::endpoint()?;
-    let mut client = Client::ensure_running(&endpoint, &client_name("events"))
+    let mut client = Client::ensure_running_with(&endpoint, &client_name("events"), CAPS)
         .await
         .with_context(|| format!("connecting to the Hoard service at {endpoint}"))?;
+    app.state::<AppState>().daemon.note_caps(&client);
     let epoch = client.welcome().epoch.clone();
     tracing::info!(
         pid = client.welcome().pid,
@@ -715,9 +770,52 @@ async fn pump_once(app: &AppHandle) -> Result<()> {
                 tracing::info!(reason, "desktop: the Hoard service was stopped on purpose");
                 return Ok(());
             }
+            // Detection's progress. Never in the journal: a window that wasn't
+            // listening has nothing to catch up on, the cache on disk says the rest.
+            Push::Scan(note) => relay_scan(app, note),
         }
     }
     Ok(())
+}
+
+/// Paints the service's detection on the channels the screens already listen to,
+/// so they cannot tell the sweep ran in another process.
+fn relay_scan(app: &AppHandle, note: ScanNote) {
+    match note {
+        ScanNote::Progress { done, total } => {
+            let _ = app.emit(
+                "library://scan-progress",
+                crate::commands::library::ScanProgress {
+                    done: done as usize,
+                    total: total as usize,
+                },
+            );
+        }
+        ScanNote::Phase { kind, done, total } => {
+            let _ = app.emit("automatic-phase", AutomaticPhase { kind, done, total });
+        }
+        ScanNote::Finished { tracked } => {
+            let _ = app.emit("automatic-scan-complete", ScanComplete { tracked });
+        }
+        ScanNote::Catalog { stage } => {
+            let _ = app.emit("catalog://update-progress", stage);
+        }
+        ScanNote::Unknown => {}
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct AutomaticPhase {
+    kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    done: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ScanComplete {
+    tracked: u32,
 }
 
 /// Asks for the state again and publishes it when it changes. The first pass runs
@@ -858,8 +956,8 @@ fn emit_event(app: &AppHandle, ev: &AgentEvent) {
     let _ = app.emit(topic, ev);
 
     // A heavy untracked game has just appeared, so bring the scan forward instead of
-    // waiting for the timer. `request_scan` does nothing when automatic mode is off,
-    // and it groups bursts.
+    // waiting for the timer. `request_scan` does nothing when automatic mode is off
+    // or the service scans (it heard the same event), and it groups bursts.
     if let AgentEvent::HeavyProcessDetected { name } = ev {
         tracing::info!(process = %name, "desktop: heavy untracked game suspected; requesting immediate scan");
         crate::commands::automatic::request_scan(app.clone());

@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use crate::commands::auth::{classify_cloud, classify_server, UserInfo};
 use crate::commands::cloud::CloudAccount;
-use crate::commands::library::{self, DetectionCache};
+use crate::commands::library::DetectionCache;
 use crate::daemon::DaemonLink;
 
 #[derive(Default)]
@@ -96,14 +96,10 @@ impl AppState {
                 None
             }
         };
-        let detection_cache = DetectionCache::default();
-        if let Some(cached) = library::load_detection_from_disk() {
-            *detection_cache.last.lock().unwrap() = Some(cached);
-        }
         let state = Self {
             user: Mutex::new(user),
             cloud_account: Mutex::new(None),
-            detection_cache,
+            detection_cache: DetectionCache::default(),
             daemon: DaemonLink::default(),
             pending_deep_link: Mutex::new(None),
             pending_login: Mutex::new(None),

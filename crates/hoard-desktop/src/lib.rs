@@ -484,17 +484,10 @@ pub fn run() {
             // rota se reporta; una app que "no abre", no.
             commands::window::spawn_fallback_show(app.handle().clone());
 
-            // Kick off a background Ludusavi-catalog refresh if the cached
-            // copy is missing or older than a week. Fire-and-forget: the
-            // app keeps running on the embedded catalog while the
-            // download happens, and the next launch picks up the fresh
-            // override transparently.
+            // The daily catalogue refresh and the daily detection refresh, for
+            // an older service: the current one keeps both itself, window or
+            // not, and these loops stand aside.
             commands::catalog::auto_update_catalog_in_background(app.handle().clone());
-
-            // Periodic detection refresh: if the cached scan is older than
-            // 24h, redo it in the background so the Library page is fresh
-            // when the user next opens it. Skipped entirely on a fresh
-            // install (no cache) so we don't spam disk on first launch.
             commands::library::spawn_periodic_rescan(app.handle().clone());
 
             // Re-arm the automatic-mode scheduler if the user had it on

@@ -354,7 +354,18 @@ pub fn catalog() -> &'static [LudusaviEntry] {
 /// override still lands on the next process, which is the contract above; what it
 /// can no longer do is land halfway.
 fn manifest_data() -> &'static (Vec<LudusaviEntry>, Vec<TitleEntry>) {
-    MANIFEST_DATA.get_or_init(|| (load_catalog(), load_titles()))
+    MANIFEST_DATA.get_or_init(|| {
+        let data = (load_catalog(), load_titles());
+        // Worth a line of its own: it is about 50 MB the first time anything asks,
+        // and which process pays for it is the thing to check. It should be the
+        // service, never the window.
+        tracing::info!(
+            games = data.0.len(),
+            titles = data.1.len(),
+            "Ludusavi catalogue loaded"
+        );
+        data
+    })
 }
 
 fn load_catalog() -> Vec<LudusaviEntry> {
@@ -899,19 +910,131 @@ pub fn convert_yaml_to_catalog(yaml_text: &str) -> Result<Vec<LudusaviEntry>, Ca
 pub fn convert_yaml(
     yaml_text: &str,
 ) -> Result<(Vec<LudusaviEntry>, Vec<TitleEntry>), CatalogError> {
-    let parsed: BTreeMap<String, YamlEntry> = serde_yaml::from_str(yaml_text)?;
-    let mut out = Vec::with_capacity(parsed.len());
-    let mut titles = Vec::new();
-    let mut seen_slugs: HashSet<String> = HashSet::with_capacity(parsed.len());
+    let games = match convert_by_entry(yaml_text) {
+        Some(games) => games,
+        None => serde_yaml::from_str::<BTreeMap<String, YamlEntry>>(yaml_text)?
+            .into_iter()
+            .filter_map(|(name, entry)| convert_entry(entry).map(|game| (name, game)))
+            .collect(),
+    };
+    Ok(finish_conversion(games))
+}
 
-    for (display_name, entry) in parsed {
-        if entry.alias.is_some() {
+/// One manifest entry, already cut down to what the catalogue keeps. It is what
+/// the conversion holds per game while it reads the rest, instead of the raw YAML.
+struct Converted {
+    paths: LudusaviPaths,
+    registry: Vec<RegistryPath>,
+    launch_exes: Vec<String>,
+    steam_app_id: Option<u64>,
+    install_dirs: Vec<String>,
+    steam_extra_ids: Vec<u64>,
+    lutris_slug: Option<String>,
+    cloud_steam: bool,
+}
+
+/// `None` for an alias, which the catalogue skips.
+fn convert_entry(entry: YamlEntry) -> Option<Converted> {
+    if entry.alias.is_some() {
+        return None;
+    }
+    Some(Converted {
+        paths: transform_files(&entry.files),
+        registry: transform_registry(&entry.registry),
+        launch_exes: launch_basenames(&entry.launch),
+        steam_app_id: entry.steam.as_ref().map(|s| s.id),
+        install_dirs: entry.install_dir.keys().cloned().collect(),
+        steam_extra_ids: entry
+            .id
+            .as_ref()
+            .map(|i| i.steam_extra.clone())
+            .unwrap_or_default(),
+        lutris_slug: entry.id.as_ref().and_then(|i| i.lutris.clone()),
+        cloud_steam: entry.cloud.as_ref().is_some_and(|c| c.steam),
+    })
+}
+
+/// The manifest parsed one game at a time.
+///
+/// `serde_yaml` builds a whole document in memory before handing any of it over,
+/// and for the 17.5 MB manifest that peaked at 488 MB, which glibc then kept: in
+/// the service, which never exits, for good. Every game is a top-level key, and a
+/// line that starts at column 0 can only be one (block content is always
+/// indented), so the text splits there into small documents that parse on their
+/// own and shrink to a [`Converted`] straight away.
+///
+/// `None` when the text does not have that shape: a directive, a second document,
+/// a key repeated, or a chunk that does not parse alone (an alias pointing into
+/// another game). The caller then parses it whole, which is always right, only
+/// heavier. The manifest as published had none of those on 2026-09-13.
+fn convert_by_entry(yaml_text: &str) -> Option<BTreeMap<String, Converted>> {
+    let mut games = BTreeMap::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut take = |chunk: &str| -> Option<()> {
+        let parsed: BTreeMap<String, YamlEntry> = serde_yaml::from_str(chunk).ok()?;
+        for (name, entry) in parsed {
+            if !seen.insert(name.clone()) {
+                return None;
+            }
+            if let Some(game) = convert_entry(entry) {
+                games.insert(name, game);
+            }
+        }
+        Some(())
+    };
+
+    let mut chunk_start: Option<usize> = None;
+    let mut opened = false;
+    let mut offset = 0;
+    for line in yaml_text.split_inclusive('\n') {
+        let at = offset;
+        offset += line.len();
+        let Some(&first) = line.as_bytes().first() else {
+            continue;
+        };
+        if matches!(first, b' ' | b'\t' | b'#' | b'\n' | b'\r') {
             continue;
         }
-        let paths = transform_files(&entry.files);
-        let registry = transform_registry(&entry.registry);
-        let launch_exes = launch_basenames(&entry.launch);
-        let steam_app_id = entry.steam.as_ref().map(|s| s.id);
+        if line.starts_with("---") {
+            // The marker the manifest opens with. Anywhere else it starts a second
+            // document.
+            if opened {
+                return None;
+            }
+            opened = true;
+            continue;
+        }
+        if matches!(first, b'%' | b'?' | b':' | b'-') || line.starts_with("...") {
+            return None;
+        }
+        opened = true;
+        if let Some(start) = chunk_start {
+            take(&yaml_text[start..at])?;
+        }
+        chunk_start = Some(at);
+    }
+    if let Some(start) = chunk_start {
+        take(&yaml_text[start..])?;
+    }
+    Some(games)
+}
+
+fn finish_conversion(games: BTreeMap<String, Converted>) -> (Vec<LudusaviEntry>, Vec<TitleEntry>) {
+    let mut out = Vec::with_capacity(games.len());
+    let mut titles = Vec::new();
+    let mut seen_slugs: HashSet<String> = HashSet::with_capacity(games.len());
+
+    for (display_name, game) in games {
+        let Converted {
+            paths,
+            registry,
+            launch_exes,
+            steam_app_id,
+            install_dirs,
+            steam_extra_ids,
+            lutris_slug,
+            cloud_steam,
+        } = game;
         if paths.windows.is_empty()
             && paths.linux.is_empty()
             && paths.mac.is_empty()
@@ -950,21 +1073,17 @@ pub fn convert_yaml(
             steam_app_id,
             paths,
             registry,
-            install_dirs: entry.install_dir.keys().cloned().collect(),
+            install_dirs,
             launch_exes,
-            steam_extra_ids: entry
-                .id
-                .as_ref()
-                .map(|i| i.steam_extra.clone())
-                .unwrap_or_default(),
-            lutris_slug: entry.id.as_ref().and_then(|i| i.lutris.clone()),
-            cloud_steam: entry.cloud.as_ref().is_some_and(|c| c.steam),
+            steam_extra_ids,
+            lutris_slug,
+            cloud_steam,
         });
     }
 
     out.sort_by(|a, b| a.slug.cmp(&b.slug));
     titles.sort_by(|a: &TitleEntry, b: &TitleEntry| a.display_name.cmp(&b.display_name));
-    Ok((out, titles))
+    (out, titles)
 }
 
 /// Executable basenames from a `launch:` block, lowercased and deduped.
@@ -1150,6 +1269,92 @@ pub use hoard_core::ids::slugify;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SPLIT_SAMPLE: &str = r#"---
+# a comment before the first game
+"! Quoted: Title !":
+  files:
+    <base>/save:
+      tags:
+        - save
+      when:
+        - os: windows
+  steam:
+    id: 10
+.hack//G.U. Last Recode:
+  installDir:
+    hack GU: {}
+  launch:
+    <base>/hackGU.exe:
+      - when:
+          - os: windows
+  steam:
+    id: 525480
+# a comment between two games
+Alias Game:
+  alias: Zeta
+Title Only:
+  steam:
+    id: 99
+Zeta:
+  files:
+    <home>/.zeta/save.dat:
+      tags:
+        - save
+  registry:
+    HKEY_CURRENT_USER/Software/Zeta: {}
+"#;
+
+    fn whole(yaml: &str) -> (Vec<LudusaviEntry>, Vec<TitleEntry>) {
+        let parsed: BTreeMap<String, YamlEntry> = serde_yaml::from_str(yaml).unwrap();
+        finish_conversion(
+            parsed
+                .into_iter()
+                .filter_map(|(name, entry)| convert_entry(entry).map(|game| (name, game)))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn one_game_at_a_time_converts_exactly_like_the_whole_document() {
+        let split = finish_conversion(convert_by_entry(SPLIT_SAMPLE).expect("splits"));
+        let whole = whole(SPLIT_SAMPLE);
+        assert_eq!(
+            serde_json::to_string(&split).unwrap(),
+            serde_json::to_string(&whole).unwrap()
+        );
+        assert_eq!(split.0.len(), 2, "the quoted title and Zeta have save paths");
+        assert_eq!(split.1.len(), 2, "the .hack launcher and the title-only entry");
+    }
+
+    #[test]
+    fn an_alias_into_another_game_falls_back_to_the_whole_document() {
+        let yaml = "A:\n  files: &shared\n    <home>/a:\n      tags:\n        - save\nB:\n  files: *shared\n";
+        assert!(convert_by_entry(yaml).is_none());
+        let (catalog, _) = convert_yaml(yaml).unwrap();
+        assert_eq!(catalog.len(), 2);
+    }
+
+    /// The published manifest, which no sample stands in for. By hand:
+    /// `HOARD_MANIFEST_YAML=manifest.yaml cargo test -p hoard-manifest -- --ignored real_manifest`
+    #[test]
+    #[ignore]
+    fn the_real_manifest_converts_the_same_one_game_at_a_time() {
+        let Ok(path) = std::env::var("HOARD_MANIFEST_YAML") else {
+            return;
+        };
+        let yaml = std::fs::read_to_string(path).unwrap();
+        let split = finish_conversion(convert_by_entry(&yaml).expect("the manifest splits"));
+        assert_eq!(
+            serde_json::to_string(&split).unwrap(),
+            serde_json::to_string(&whole(&yaml)).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_second_document_falls_back_to_the_whole_parse() {
+        assert!(convert_by_entry("---\nA:\n  steam:\n    id: 1\n---\nB: {}\n").is_none());
+    }
 
     #[test]
     fn catalog_parses_and_is_nonempty() {

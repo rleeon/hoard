@@ -789,6 +789,7 @@ pub async fn pump(
     log: Arc<EventLog>,
     notifier: Arc<crate::notify::Notifier>,
     events_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<AgentEvent>>>,
+    detect: Arc<crate::detect::Detect>,
 ) -> Finished {
     let mut rx = events_rx.lock().await;
     while let Some(event) = rx.recv().await {
@@ -804,6 +805,9 @@ pub async fn pump(
                     p.game_stopped(game_slug.clone());
                 }
             }
+            // A heavy untracked game: the next scan comes now rather than on the
+            // timer, when automatic mode is on (the scheduler decides).
+            AgentEvent::HeavyProcessDetected { .. } => detect.heavy_process(),
             _ => {}
         }
         // What the updater needs to know so it does not swap the binaries mid-upload.

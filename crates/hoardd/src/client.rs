@@ -34,7 +34,7 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
 use hoard_core::ipc::{
     AdoptedSession, Backlog, ClientFrame, CloudToken, DaemonStatus, Hello, JournalEntry, Payload,
-    Reply, Request, ServerFrame, ServerSession, Welcome, PROTOCOL_VERSION,
+    Reply, Request, ScanNote, ServerFrame, ServerSession, Welcome, PROTOCOL_VERSION,
 };
 use tokio::io::{ReadHalf, WriteHalf};
 
@@ -94,6 +94,8 @@ pub enum Push {
     /// the CLI finishes (its job was following a sync that no longer runs), the
     /// desktop paints the engine as stopped and waits. Neither relaunches it.
     Goodbye { reason: String },
+    /// How a detection pass is going (Slice 8). Ephemeral, not a journal row.
+    Scan(ScanNote),
 }
 
 /// A connection to the daemon.
@@ -115,7 +117,7 @@ impl Client {
         let stream = transport::connect(endpoint)
             .await
             .with_context(|| format!("connecting to {endpoint}"))?;
-        Self::handshake(stream, client_name).await
+        Self::handshake(stream, client_name, &[]).await
     }
 
     /// Connect; if there is no service, launch it and connect again.
@@ -124,8 +126,18 @@ impl Client {
     /// [`Client::connect`] and the error explains it has to be started. An attached
     /// client must not undo a `hoard sync stop` by the mere act of reconnecting.
     pub async fn ensure_running(endpoint: &Endpoint, client_name: &str) -> Result<Self> {
+        Self::ensure_running_with(endpoint, client_name, &[]).await
+    }
+
+    /// [`Client::ensure_running`], saying in the hello what this client does beyond
+    /// protocol 1 (see `hoard_core::ipc::CAP_DETECTION`).
+    pub async fn ensure_running_with(
+        endpoint: &Endpoint,
+        client_name: &str,
+        caps: &[&str],
+    ) -> Result<Self> {
         if let Ok(stream) = transport::connect(endpoint).await {
-            return Self::handshake(stream, client_name).await;
+            return Self::handshake(stream, client_name, caps).await;
         }
         if stopped_on_purpose() {
             bail!(
@@ -148,16 +160,17 @@ impl Client {
             .with_context(|| {
                 format!("waiting for the hoardd we just started to listen on {endpoint}")
             })?;
-        Self::handshake(stream, client_name).await
+        Self::handshake(stream, client_name, caps).await
     }
 
-    async fn handshake(stream: ClientStream, client_name: &str) -> Result<Self> {
+    async fn handshake(stream: ClientStream, client_name: &str, caps: &[&str]) -> Result<Self> {
         let (reader, mut writer) = tokio::io::split(stream);
         write_frame(
             &mut writer,
             &ClientFrame::Hello(Hello {
                 protocol: PROTOCOL_VERSION,
                 client: client_name.to_string(),
+                caps: caps.iter().map(|c| c.to_string()).collect(),
             }),
         )
         .await
@@ -204,6 +217,11 @@ impl Client {
         &self.welcome
     }
 
+    /// Does the daemon on the other end do `cap`?
+    pub fn has_cap(&self, cap: &str) -> bool {
+        self.welcome.caps.iter().any(|c| c == cap)
+    }
+
     /// Sends a request and waits for **its** response, queueing any push that
     /// arrives along the way.
     pub async fn request(&mut self, request: Request) -> Result<Payload> {
@@ -226,6 +244,7 @@ impl Client {
                 Some(ServerFrame::Resync { cursor, dropped }) => {
                     self.pushes.push_back(Push::Resync { cursor, dropped })
                 }
+                Some(ServerFrame::Scan(note)) => self.pushes.push_back(Push::Scan(note)),
                 // The farewell is noted **right here**, not when the push is
                 // consumed: this connection is about to close and whoever was waiting
                 // for a response may never get to read the queue.
@@ -342,6 +361,7 @@ impl Client {
                 Some(ServerFrame::Resync { cursor, dropped }) => {
                     return Ok(Some(Push::Resync { cursor, dropped }))
                 }
+                Some(ServerFrame::Scan(note)) => return Ok(Some(Push::Scan(note))),
                 Some(ServerFrame::Goodbye { reason }) => {
                     note_farewell(&reason);
                     return Ok(Some(Push::Goodbye { reason }));

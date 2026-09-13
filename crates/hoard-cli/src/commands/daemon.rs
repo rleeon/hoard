@@ -247,6 +247,8 @@ async fn follow_once() -> Result<Followed> {
     while let Some(push) = events.next_push().await? {
         match push {
             Push::Event(entry) => print_event(&entry.event),
+            // Detection's progress bars: nothing for a terminal.
+            Push::Scan(_) => {}
             // We fell behind and the channel dropped rows. The daemon owns up to
             // it rather than leaving the gap invisible; for a terminal stream,
             // saying so and carrying on from the new cursor is enough.

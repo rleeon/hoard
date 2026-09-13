@@ -54,6 +54,14 @@ pub use journal::{Backlog, JournalEntry};
 /// `#[serde(default)]`, or a variant the other side can ignore, is not one.
 pub const PROTOCOL_VERSION: u32 = 1;
 
+/// Detection, automatic mode's scheduler and the game catalogue live in the
+/// service (ADR 0021, Slice 8). A daemon that advertises it scans, tracks and
+/// refreshes the catalogue on its own, with no window open; a desktop that
+/// advertises it stops running its own copy of all that. Either side without it
+/// keeps the old split, so a new window over an old service, and the other way
+/// round, both keep working.
+pub const CAP_DETECTION: &str = "detection";
+
 /// Header bytes on every frame (the length `u32`).
 pub const HEADER_BYTES: usize = 4;
 
@@ -107,6 +115,10 @@ pub struct Hello {
     pub protocol: u32,
     /// Who is calling, for the daemon's logs: `"hoard-desktop 7.7.16"`.
     pub client: String,
+    /// What the client does beyond protocol 1 (see [`CAP_DETECTION`]). Absent
+    /// in older clients, which is how the daemon tells an old desktop apart.
+    #[serde(default)]
+    pub caps: Vec<String>,
 }
 
 /// Handshake accepted.
@@ -124,6 +136,10 @@ pub struct Welcome {
     /// The journal cursor right now, so the client knows how much is there
     /// without asking.
     pub cursor: u64,
+    /// What the daemon does beyond protocol 1. A newer client reads it to decide
+    /// whether to hand a job over or keep doing it itself, as it always did.
+    #[serde(default)]
+    pub caps: Vec<String>,
 }
 
 /// Handshake rejected. Carries the daemon's version so the client can say what
@@ -183,6 +199,11 @@ pub enum ServerFrame {
     Goodbye {
         reason: String,
     },
+    /// How a detection pass is going. Ephemeral: it never enters the journal, and
+    /// a client that was not listening has nothing to catch up on, since the
+    /// result lands in the detection cache on disk. Older clients drop it
+    /// through [`ServerFrame::Unknown`].
+    Scan(ScanNote),
     /// A frame this client does not know, sent by a newer daemon.
     ///
     /// Two or more artefacts update separately, so a daemon can learn a frame
@@ -375,6 +396,36 @@ pub enum Request {
     SnoozeUpdate {
         hours: u32,
     },
+    /// Run a detection sweep now and answer with the report, which also lands in
+    /// the cache on disk. `deep` looks in the slow places too (Wine prefixes,
+    /// Flatpak roots, deeper walks): it is the Library's button, never the timer.
+    /// Progress goes out to the subscribers as [`ServerFrame::Scan`]. It can take
+    /// minutes, so a client sends it on a connection of its own.
+    Scan {
+        #[serde(default)]
+        deep: bool,
+    },
+    /// Look for games inside one folder the user pointed at.
+    ScanFolder {
+        path: String,
+    },
+    /// Replay detection for one slug and explain every step it took (the hidden
+    /// diagnostics page).
+    DiagnoseDetection {
+        slug: String,
+    },
+    /// What the catalogue knows about one game that a client needs without
+    /// loading the catalogue itself. Answers [`Payload::GameFacts`].
+    GameFacts {
+        slug: String,
+    },
+    /// The catalogue in use: how many games, and when it was refreshed.
+    CatalogStatus,
+    /// Download the catalogue from upstream now and answer with its new status.
+    CatalogRefresh,
+    /// Automatic mode's preferences changed on disk (on, off, an interval): read
+    /// them again and, when it is on, scan and sweep right away.
+    AutomaticChanged,
     /// A request this daemon does not know, sent by a newer client.
     ///
     /// Without this variant the first unknown request would be a *framing* error,
@@ -414,6 +465,68 @@ pub enum Payload {
     /// How the update is going (answer to [`Request::UpdateStatus`] and to
     /// [`Request::ApplyUpdate`]).
     Update(UpdateState),
+    /// A detection report (answer to [`Request::Scan`]). Carried as JSON because
+    /// its type lives in `hoard_agent::detection`, which this crate cannot use.
+    Detection { report: serde_json::Value },
+    /// The games found in one folder (answer to [`Request::ScanFolder`]).
+    Detected { games: serde_json::Value },
+    /// One slug's trace through detection (answer to
+    /// [`Request::DiagnoseDetection`]).
+    DetectionTrace { trace: serde_json::Value },
+    GameFacts(GameFacts),
+    /// The catalogue in use (answer to [`Request::CatalogStatus`] and
+    /// [`Request::CatalogRefresh`]).
+    Catalog(CatalogInfo),
+}
+
+/// What a detection pass reports while it runs (see [`ServerFrame::Scan`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "note", rename_all = "snake_case")]
+pub enum ScanNote {
+    /// The automatic pass moved on: `detecting`, `tracking`, `starting_agent` or
+    /// `idle`. It drives the sidebar's pulse.
+    Phase {
+        kind: String,
+        #[serde(default)]
+        done: Option<u32>,
+        #[serde(default)]
+        total: Option<u32>,
+    },
+    /// How far a sweep has got through the catalogue.
+    Progress { done: u32, total: u32 },
+    /// A pass finished and the cache on disk is fresh. `tracked` counts the games
+    /// the automatic pass started watching; a manual scan reports 0.
+    Finished { tracked: u32 },
+    /// A catalogue refresh moved on: `downloading`, `parsing`, `saving`, `done`.
+    Catalog { stage: String },
+    /// A note from a newer service. A progress tick is never worth a connection.
+    #[serde(other)]
+    Unknown,
+}
+
+/// The catalogue's answer about one game (see [`Request::GameFacts`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameFacts {
+    /// For the cover art.
+    #[serde(default)]
+    pub steam_app_id: Option<u64>,
+    /// The patterns `savefilter::shields_for_slug` derives from the catalogue,
+    /// which the restore gate needs.
+    #[serde(default)]
+    pub shields: Vec<String>,
+}
+
+/// The catalogue in use.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CatalogInfo {
+    pub games: u64,
+    /// A downloaded copy is in use rather than the one the build shipped with.
+    pub has_runtime_override: bool,
+    /// Unix seconds of the last refresh, when there was one.
+    #[serde(default)]
+    pub updated_at: Option<u64>,
+    #[serde(default)]
+    pub size_bytes: Option<u64>,
 }
 
 /// Everything the service knows about the update, which is all of it: what is
@@ -814,10 +927,86 @@ mod tests {
         let bytes = encode_frame(&Hello {
             protocol: PROTOCOL_VERSION,
             client: "test".into(),
+            caps: Vec::new(),
         })
         .unwrap();
         let body = &bytes[HEADER_BYTES..bytes.len() - 3];
         assert!(decode_frame::<Hello>(body).is_err());
+    }
+
+    /// Every desktop and daemon released before the caps existed sends a hello or
+    /// a welcome without them, and has to keep being understood.
+    #[test]
+    fn a_handshake_from_before_the_caps_still_parses() {
+        let hello: Hello =
+            serde_json::from_str(r#"{"protocol":1,"client":"hoard-desktop 1.1.6 (events)"}"#)
+                .unwrap();
+        assert!(hello.caps.is_empty());
+        let welcome: Welcome = serde_json::from_str(
+            r#"{"protocol":1,"daemon_version":"1.1.6","pid":7,"epoch":"e","cursor":3}"#,
+        )
+        .unwrap();
+        assert!(welcome.caps.is_empty());
+    }
+
+    /// A scan note reaches clients that predate it, and they must drop it rather
+    /// than hang up: that is what `ServerFrame::Unknown` is for.
+    #[test]
+    fn a_note_from_a_newer_service_is_unknown_not_an_error() {
+        let note: ScanNote = serde_json::from_str(r#"{"note":"shelved","games":3}"#).unwrap();
+        assert_eq!(note, ScanNote::Unknown);
+    }
+
+    #[test]
+    fn a_scan_note_is_a_frame_an_older_client_can_ignore() {
+        let frame = ServerFrame::Scan(ScanNote::Progress { done: 3, total: 10 });
+        let json = serde_json::to_value(&frame).unwrap();
+        assert_eq!(json["frame"], "scan");
+        assert_eq!(json["note"], "progress");
+
+        #[derive(Deserialize)]
+        #[serde(tag = "frame", rename_all = "snake_case")]
+        enum BeforeScan {
+            #[allow(dead_code)]
+            Goodbye { reason: String },
+            #[serde(other)]
+            Unknown,
+        }
+        let old: BeforeScan = serde_json::from_value(json.clone()).unwrap();
+        assert!(matches!(old, BeforeScan::Unknown));
+
+        let back: ServerFrame = serde_json::from_value(json).unwrap();
+        assert!(matches!(
+            back,
+            ServerFrame::Scan(ScanNote::Progress { done: 3, total: 10 })
+        ));
+    }
+
+    /// And the other way round: a daemon from before the detection requests
+    /// answers them with `Unsupported`, which needs them to parse as `Unknown`.
+    #[test]
+    fn detection_requests_are_unknown_to_an_older_daemon() {
+        for request in [
+            Request::Scan { deep: true },
+            Request::GameFacts {
+                slug: "factorio".into(),
+            },
+            Request::CatalogRefresh,
+            Request::AutomaticChanged,
+        ] {
+            let json = serde_json::to_value(&request).unwrap();
+            #[derive(Deserialize)]
+            #[serde(tag = "op", rename_all = "snake_case")]
+            enum BeforeDetection {
+                #[allow(dead_code)]
+                Ping,
+                #[serde(other)]
+                Unknown,
+            }
+            let old: BeforeDetection = serde_json::from_value(json.clone()).unwrap();
+            assert!(matches!(old, BeforeDetection::Unknown), "{json}");
+            let _: Request = serde_json::from_value(json).unwrap();
+        }
     }
 
     /// The JSON shape of the events is the contract Slice 4a moved out of

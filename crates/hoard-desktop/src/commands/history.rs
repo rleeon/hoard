@@ -113,12 +113,18 @@ pub async fn list_save_snapshots(
 ///
 /// The preview and the restore compute it the same way, so the dialog does not
 /// promise one thing and the button do another.
-fn restore_gate(save_id: &str, allow_config: bool) -> hoard_core::kernel::fileclass::RestoreGate {
-    let shields = CliState::load_default()
+async fn restore_gate(
+    state: &AppState,
+    save_id: &str,
+    allow_config: bool,
+) -> hoard_core::kernel::fileclass::RestoreGate {
+    let slug = CliState::load_default()
         .ok()
-        .and_then(|(st, _)| st.saves.get(save_id).map(|s| s.game_slug.clone()))
-        .map(|slug| hoard_agent::savefilter::shields_for_slug(&slug))
-        .unwrap_or_default();
+        .and_then(|(st, _)| st.saves.get(save_id).map(|s| s.game_slug.clone()));
+    let shields = match slug {
+        Some(slug) => super::catalog::game_facts(state, &slug).await.shields,
+        None => Vec::new(),
+    };
     hoard_core::kernel::fileclass::RestoreGate {
         shields,
         allow_device_local: allow_config,
@@ -149,15 +155,10 @@ pub async fn preview_restore(
                 .ok_or_else(|| "NEEDS_DESTINATION".to_string())?
         }
     };
-    hoard_agent::preview::restore_preview(
-        &client,
-        &save_id,
-        version,
-        &dest,
-        &restore_gate(&save_id, allow_config),
-    )
-    .await
-    .map_err(pretty_error)
+    let gate = restore_gate(&state, &save_id, allow_config).await;
+    hoard_agent::preview::restore_preview(&client, &save_id, version, &dest, &gate)
+        .await
+        .map_err(pretty_error)
 }
 
 /// Detail view: snapshot metadata + per-file list, used by the expandable
@@ -468,6 +469,18 @@ pub async fn restore_snapshot(
         }
     }
 
+    // The shields go by game, and `restore_gate` reads the game from the row,
+    // which a save new to this machine does not have yet.
+    let gate = match &home {
+        Some(home) => hoard_core::kernel::fileclass::RestoreGate {
+            shields: super::catalog::game_facts(&state, &home.game_slug)
+                .await
+                .shields,
+            allow_device_local: allow_config,
+        },
+        None => restore_gate(&state, &save_id, allow_config).await,
+    };
+
     // 2) Download + verify + extract. We pass `force = true` because the
     //    user has explicitly confirmed they want to overwrite; refusing on
     //    "destination not empty" here would defeat the whole point.
@@ -486,15 +499,7 @@ pub async fn restore_snapshot(
             // dedup against is the destination itself: anything already there
             // with the right bytes is copied (or left) instead of re-downloaded.
             reuse_from: Some(local_path.clone()),
-            // The shields go by game, and `restore_gate` reads the game from the
-            // row, which a save new to this machine does not have yet.
-            gate: match &home {
-                Some(home) => hoard_core::kernel::fileclass::RestoreGate {
-                    shields: hoard_agent::savefilter::shields_for_slug(&home.game_slug),
-                    allow_device_local: allow_config,
-                },
-                None => restore_gate(&save_id, allow_config),
-            },
+            gate,
         },
         move |downloaded, total| {
             let _ = app_for_dl.emit(

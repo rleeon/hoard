@@ -59,6 +59,7 @@ mod tests {
         let hello = ClientFrame::Hello(Hello {
             protocol: PROTOCOL_VERSION,
             client: "test".into(),
+            caps: Vec::new(),
         });
         write_frame(&mut client, &hello).await.unwrap();
         write_frame(

@@ -12,18 +12,16 @@
 //! enriched with the local path from state so the UI doesn't need a second
 //! round-trip.
 
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::{Duration, SystemTime};
 
 use hoard_agent::api::{ApiClient, ApiError};
-use hoard_agent::correlation::CorrelationStore;
-use hoard_agent::detection::{
-    self, DetectedGame, DetectionReport, DetectionSource, DetectionTrace,
-};
+use hoard_agent::detection::{self, DetectedGame, DetectionReport, DetectionTrace};
 use hoard_agent::library;
 use hoard_agent::manifest::Os;
 use hoard_agent::state::CliState;
+use hoard_core::ipc::{Payload, Request};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use time::OffsetDateTime;
@@ -40,15 +38,44 @@ pub use hoard_agent::library::{
     load_detection_from_disk, save_detection_to_disk_atomic, CachedDetection,
 };
 
-/// In-memory cache of the most recent scan, so the Library page can
-/// re-render instantly when the user navigates back without forcing
-/// another sweep. Wrapped in a `Mutex<Option<…>>` and stored on
-/// `AppState`. Hydrated at boot from `detection.json` next to `state.json`;
-/// `scan_library` re-writes both memory and disk atomically.
+/// The most recent scan, so the Library page re-renders instantly when the user
+/// navigates back without another sweep.
+///
+/// `detection.json` is the truth: the service rewrites it on its own schedule
+/// (automatic mode, the daily refresh), often with no window listening, so a read
+/// checks the file's stamp and re-reads it when it moved. Nothing is read until
+/// something asks, so an app that never opens the Library never holds the report.
 #[derive(Default)]
 pub struct DetectionCache {
-    pub last: Mutex<Option<CachedDetection>>,
+    last: Mutex<Option<CachedDetection>>,
+    stamp: Mutex<Option<SystemTime>>,
 }
+
+impl DetectionCache {
+    pub fn current(&self) -> Option<CachedDetection> {
+        let stamp = library::detection_cache_path()
+            .ok()
+            .and_then(|p| std::fs::metadata(p).ok())
+            .and_then(|m| m.modified().ok());
+        let mut seen = self.stamp.lock().unwrap();
+        if stamp.is_some() && stamp != *seen {
+            *self.last.lock().unwrap() = load_detection_from_disk();
+            *seen = stamp;
+        }
+        self.last.lock().unwrap().clone()
+    }
+
+    fn set(&self, cached: CachedDetection) {
+        *self.last.lock().unwrap() = Some(cached);
+    }
+}
+
+/// How long a sweep in the service may take. A deep one walks every Wine prefix
+/// and mounted drive: minutes on a big disk are normal, an hour is not.
+const SCAN_LIMIT: Duration = Duration::from_secs(30 * 60);
+
+/// One folder, whose walk has its own timeout: this is only the backstop.
+const FOLDER_LIMIT: Duration = Duration::from_secs(5 * 60);
 
 /// Maximum age before the background scheduler triggers an automatic
 /// rescan. 24 hours mirrors the catalog-refresh cadence so the two stay
@@ -72,47 +99,15 @@ pub struct ScanProgress {
 // `commands::library::…` paths.
 pub use hoard_agent::library::{AddGameArgs, AdoptArgs, TrackedSave};
 
-/// Run a full auto-detection sweep against the **bundled** catalog (no
-/// server round-trips). Emits `library://scan-progress` events
-/// (`{ done, total }`) as it churns through the catalog. The completed
-/// `DetectionReport` is also stored on the app state so re-renders are free.
+/// Run a full auto-detection sweep (no server round-trips). Emits
+/// `library://scan-progress` events (`{ done, total }`) as it churns through the
+/// catalog. The completed `DetectionReport` is cached so re-renders are free.
 #[tauri::command]
 pub async fn scan_library(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<DetectionReport, String> {
-    let os = Os::current();
-
-    let app_for_progress = app.clone();
-    let progress = move |done: usize, total: usize| {
-        // Best-effort: a missing window means the user closed it mid-scan,
-        // and we just stop reporting. Any other emit error is noise.
-        let _ = app_for_progress.emit("library://scan-progress", ScanProgress { done, total });
-    };
-
-    // Load CliState so detect_all sees the user's manual_paths overrides.
-    // Failures here mean state.json is unreadable; we surface that instead
-    // of silently scanning without overrides, otherwise the user sees their
-    // manual picks vanish from the Library card on every re-scan.
-    let (cli_state, _) = CliState::load_default().map_err(|e| e.to_string())?;
-
-    let mut report = detection::detect_all(os, &cli_state, progress)
-        .await
-        .map_err(pretty_error)?;
-
-    // Drop user-blacklisted slugs *after* detection finishes so the walker
-    // still benefits from their install dirs when cross-referencing other
-    // games on the same volume. The filter is purely a UI-edge concern.
-    report.games.retain(|g| !cli_state.is_ignored(&g.slug));
-
-    // And the discarded folders. They are filtered by PATH, not by slug, because a
-    // phase-4 find is named after the process the correlation attributed to it and
-    // that name changes between scans: discarding by slug does not hold, it comes
-    // back with a new name.
-    hoard_agent::library::apply_excluded_paths(&mut report, &cli_state);
-
-    persist_scan(&state, report.clone());
-    Ok(report)
+    scan(&app, &state, false).await
 }
 
 /// Forced re-scan that ignores the in-memory cache. Functionally identical
@@ -129,8 +124,7 @@ pub async fn rescan_library(
 }
 
 /// The deep, user-triggered detection sweep behind the Library's deep-scan tile. It
-/// runs
-/// [`detection::detect_all_deep`], which on top of the normal pipeline looks
+/// runs [`detection::detect_all_deep`], which on top of the normal pipeline looks
 /// at the expensive places the periodic scan skips: arbitrary Wine prefixes
 /// (Heroic/CrossOver/Flatpak/mounted media), Flatpak/Snap/EmuDeck save roots,
 /// deeper directory walks and a relaxed precision gate. Slow by design, so
@@ -141,110 +135,90 @@ pub async fn deep_scan_library(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<DetectionReport, String> {
-    let os = Os::current();
+    scan(&app, &state, true).await
+}
 
-    let app_for_progress = app.clone();
-    let progress = move |done: usize, total: usize| {
-        let _ = app_for_progress.emit("library://scan-progress", ScanProgress { done, total });
+/// One sweep, blacklist and discarded folders already applied (see
+/// [`library::detect_filtered`]).
+///
+/// In the service when it runs detection (ADR 0021, Slice 8): this window then
+/// never loads the catalogue, and the progress arrives as the service's notes on
+/// the same `library://scan-progress` channel. An older service leaves it to this
+/// process, as before.
+async fn scan(app: &AppHandle, state: &AppState, deep: bool) -> Result<DetectionReport, String> {
+    if state.daemon.owns_detection().await {
+        let payload = state
+            .daemon
+            .request_long(Request::Scan { deep }, SCAN_LIMIT)
+            .await
+            .map_err(pretty_error)?;
+        return match payload {
+            // The service wrote the cache on disk already; `current` reads it.
+            Payload::Detection { report } => {
+                serde_json::from_value(report).map_err(|e| e.to_string())
+            }
+            other => Err(format!("unexpected answer to a scan: {other:?}")),
+        };
+    }
+    let progress = {
+        let app = app.clone();
+        // Best-effort: a missing window means the user closed it mid-scan,
+        // and we just stop reporting. Any other emit error is noise.
+        move |done: usize, total: usize| {
+            let _ = app.emit("library://scan-progress", ScanProgress { done, total });
+        }
     };
-
-    let (cli_state, _) = CliState::load_default().map_err(|e| e.to_string())?;
-
-    let mut report = detection::detect_all_deep(os, &cli_state, progress)
+    let report = library::detect_filtered(deep, progress)
         .await
         .map_err(pretty_error)?;
-
-    report.games.retain(|g| !cli_state.is_ignored(&g.slug));
-
-    persist_scan(&state, report.clone());
+    persist_scan(state, report.clone());
     Ok(report)
 }
 
-/// "Add from folder": scan ONE user-chosen folder and return the games found
-/// inside it. It backs all three explicit-folder flows in the Library (the "scan
-/// folder" button, "track this game with another folder", and "no save folder
-/// yet") so pointing Hoard at a place always answers the same way instead of
-/// dropping the user in the OS file picker.
-///
-/// It never touches the catalog or Steam and never persists into the library
-/// cache: it's a one-off lookup whose results the UI shows as "found <Game>
-/// here, track it?". The walk itself ([`detection::discover_in_folder`]) does
-/// NOT apply the periodic scan's precision gate, since the user pointing at the
-/// folder is the evidence, so a save folder with a proprietary extension comes
-/// back like any other.
-///
-/// Runs on the blocking pool: the walk is synchronous filesystem I/O bounded by
-/// its own timeout, so keeping it off the async runtime avoids stalling the UI
-/// event loop on a slow/large folder.
+/// "Add from folder": the games inside ONE folder the user chose (see
+/// [`library::scan_folder`]). In the service when it runs detection, since naming
+/// what is in the folder reads the catalogue.
 #[tauri::command]
-pub async fn scan_folder(path: String) -> Result<Vec<DetectedGame>, String> {
+pub async fn scan_folder(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<DetectedGame>, String> {
     let root = PathBuf::from(&path);
     if !root.is_dir() {
         return Err(format!("{} isn't a folder.", root.display()));
     }
-
-    // Skip folders already covered by a tracked save so the list only shows
-    // new candidates, not games the user already added.
-    let (cli_state, _) = CliState::load_default().map_err(|e| e.to_string())?;
-    let known: HashSet<PathBuf> = cli_state
-        .saves
-        .values()
-        .map(|s| s.local_path.clone())
-        .collect();
-
-    tokio::task::spawn_blocking(move || {
-        // Correlation store, best-effort (empty if absent), the same as detect_all,
-        // so a folder the agent has seen a game write to grades higher.
-        let store = CorrelationStore::default_path()
-            .ok()
-            .map(|p| CorrelationStore::load(&p))
-            .unwrap_or_default();
-        detection::discover_in_folder(&root, &store, &known)
-            .into_iter()
-            .map(|a| DetectedGame {
-                slug: a.slug,
-                display_name: a.display_name,
-                found_paths: vec![a.path],
-                path_confidences: vec![a.confidence],
-                path_reasons: vec![a.reason],
-                confidence: a.confidence,
-                source: DetectionSource::FilesystemHeuristic,
-                // Set only when the attribution landed on a catalogue entry: it is
-                // what gives the modal's row a cover.
-                steam_app_id: a.steam_app_id,
-                install_dir: None,
-                // The user pointed at the folder: the path is exactly what is there.
-                needs_folder: false,
-                // Scanning a loose folder: no catalogue entry is resolved here, so
-                // there is no note to give.
-                steam_cloud: false,
-            })
-            .collect()
-    })
-    .await
-    .map_err(|e| e.to_string())
+    if state.daemon.owns_detection().await {
+        let payload = state
+            .daemon
+            .request_long(Request::ScanFolder { path }, FOLDER_LIMIT)
+            .await
+            .map_err(pretty_error)?;
+        return match payload {
+            Payload::Detected { games } => serde_json::from_value(games).map_err(|e| e.to_string()),
+            other => Err(format!("unexpected answer to a folder scan: {other:?}")),
+        };
+    }
+    // The walk is synchronous filesystem I/O: off the async runtime, so a slow or
+    // large folder doesn't stall the UI's event loop.
+    tokio::task::spawn_blocking(move || library::scan_folder(&root))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
-/// Return the previous scan if one is in memory. Used by the Library page
-/// to render quickly on navigation; if `None`, the UI triggers `scan_library`.
+/// Return the previous scan if there is one. Used by the Library page to render
+/// quickly on navigation; if `None`, the UI triggers `scan_library`.
 #[tauri::command]
 pub fn cached_detection(state: State<'_, AppState>) -> Option<DetectionReport> {
-    state
-        .detection_cache
-        .last
-        .lock()
-        .unwrap()
-        .as_ref()
-        .map(|c| c.report.clone())
+    state.detection_cache.current().map(|c| c.report)
 }
 
 /// What local detection already knows about one slug, so the "link to this machine"
 /// dialog can offer the detected folders as one-click options instead of sending the
 /// user hunting through a folder picker.
 ///
-/// Reads the in-memory cache (fresher than disk: `scan_library` writes it first). A
-/// `scanned_at: None` result means nobody ever scanned here, and the UI offers a scan
-/// rather than claiming there's nothing.
+/// A `scanned_at: None` result means nobody ever scanned here, and the UI offers a
+/// scan rather than claiming there's nothing.
 ///
 /// `tracked_paths` (the folders this machine already tracks) comes from the caller:
 /// the Library already has that list on screen, so opening the dialog does not cost
@@ -259,19 +233,19 @@ pub fn detected_paths_for_game(
         .into_iter()
         .map(std::path::PathBuf::from)
         .collect();
-    let guard = state.detection_cache.last.lock().unwrap();
-    library::local_detection(guard.as_ref(), &game_slug, &tracked)
+    let cached = state.detection_cache.current();
+    library::local_detection(cached.as_ref(), &game_slug, &tracked)
 }
 
 /// Update both the in-memory cache and the on-disk copy. Disk failures are
 /// logged at WARN: the user still has a working session, we just lose the
 /// cold-start optimisation on next launch.
-fn persist_scan(state: &State<'_, AppState>, report: DetectionReport) {
+fn persist_scan(state: &AppState, report: DetectionReport) {
     let cached = CachedDetection {
         report,
         scanned_at: OffsetDateTime::now_utc(),
     };
-    *state.detection_cache.last.lock().unwrap() = Some(cached.clone());
+    state.detection_cache.set(cached.clone());
     if let Err(e) = save_detection_to_disk_atomic(&cached) {
         tracing::warn!(error = %e, "couldn't persist detection cache");
     }
@@ -459,7 +433,7 @@ pub async fn set_manual_path(
     // Pointing one game at ANOTHER's folder cannot undo itself: the override lives
     // in `device.json` and survives everything the user knows how to delete. It is
     // rejected here, naming the game that already claims it.
-    let cached = state.detection_cache.last.lock().unwrap().clone();
+    let cached = state.detection_cache.current();
     if let Some(owner) = hoard_agent::library::manual_override_conflict(
         &cli_state,
         cached.as_ref().map(|c| &c.report),
@@ -477,16 +451,8 @@ pub async fn set_manual_path(
     // without forcing the user to click "Rescan". A short-circuit failure
     // here is harmless: the next scheduled rescan will pick up the
     // override either way.
-    let app_for_progress = app.clone();
-    let progress = move |done: usize, total: usize| {
-        let _ = app_for_progress.emit("library://scan-progress", ScanProgress { done, total });
-    };
-    match detection::detect_all(Os::current(), &cli_state, progress).await {
-        Ok(mut report) => {
-            report.games.retain(|g| !cli_state.is_ignored(&g.slug));
-            persist_scan(&state, report);
-        }
-        Err(e) => tracing::warn!(error = %e, "post-override detection refresh failed"),
+    if let Err(e) = scan(&app, &state, false).await {
+        tracing::warn!(error = %e, "post-override detection refresh failed");
     }
     Ok(())
 }
@@ -505,16 +471,8 @@ pub async fn clear_manual_path(
     cli_state.clear_manual_path(&slug);
     cli_state.save(&state_path).map_err(|e| e.to_string())?;
 
-    let app_for_progress = app.clone();
-    let progress = move |done: usize, total: usize| {
-        let _ = app_for_progress.emit("library://scan-progress", ScanProgress { done, total });
-    };
-    match detection::detect_all(Os::current(), &cli_state, progress).await {
-        Ok(mut report) => {
-            report.games.retain(|g| !cli_state.is_ignored(&g.slug));
-            persist_scan(&state, report);
-        }
-        Err(e) => tracing::warn!(error = %e, "post-clear detection refresh failed"),
+    if let Err(e) = scan(&app, &state, false).await {
+        tracing::warn!(error = %e, "post-clear detection refresh failed");
     }
     Ok(())
 }
@@ -582,12 +540,29 @@ pub async fn list_ignored_slugs() -> Result<Vec<String>, AppError> {
 /// to the detection cache or `state.json`. Backs the hidden
 /// `/diagnostics` route unlocked by the 5-click sidebar gesture.
 #[tauri::command]
-pub async fn detection_diagnostics(slug: String) -> Result<DetectionTrace, String> {
-    if slug.trim().is_empty() {
+pub async fn detection_diagnostics(
+    slug: String,
+    state: State<'_, AppState>,
+) -> Result<DetectionTrace, String> {
+    let slug = slug.trim().to_string();
+    if slug.is_empty() {
         return Err("Slug is empty.".into());
     }
+    if state.daemon.owns_detection().await {
+        let payload = state
+            .daemon
+            .request_long(Request::DiagnoseDetection { slug }, SCAN_LIMIT)
+            .await
+            .map_err(pretty_error)?;
+        return match payload {
+            Payload::DetectionTrace { trace } => {
+                serde_json::from_value(trace).map_err(|e| e.to_string())
+            }
+            other => Err(format!("unexpected answer to a diagnosis: {other:?}")),
+        };
+    }
     let (cli_state, _path) = CliState::load_default().map_err(|e| e.to_string())?;
-    Ok(detection::diagnose(slug.trim(), Os::current(), &cli_state).await)
+    Ok(detection::diagnose(&slug, Os::current(), &cli_state).await)
 }
 
 /// Stop tracking a save. Removes the local-state row but leaves server data
@@ -678,7 +653,8 @@ pub(crate) fn sync_active_context(state: &AppState) -> Option<String> {
 }
 
 /// Spawn a long-lived background task that re-scans the catalog whenever the
-/// persisted cache turns 24 hours old. Wakes every 30 minutes; cheap on a
+/// persisted cache turns 24 hours old, for an older service: the current one keeps
+/// the cache fresh itself, window or not. Wakes every 30 minutes; cheap on a
 /// schedule clock that's "behind" because we just check timestamps. Errors
 /// are logged and swallowed: a transient detection failure must not crash
 /// the app loop.
@@ -691,66 +667,32 @@ pub fn spawn_periodic_rescan(app: AppHandle) {
     // platform after the upgrade until the user reopened it from a terminal
     // and saw the stack trace.
     tauri::async_runtime::spawn(async move {
-        use std::time::Duration;
         loop {
-            tokio::time::sleep(Duration::from_secs(POLL_INTERVAL_SECS)).await;
-            let needs_rescan = {
-                let state = app.state::<AppState>();
-                let guard = state.detection_cache.last.lock().unwrap();
-                match guard.as_ref() {
-                    Some(c) => {
-                        // Use unix timestamps so we don't depend on time
-                        // crate's Duration arithmetic: it's just a subtraction.
-                        let age_secs = OffsetDateTime::now_utc().unix_timestamp()
-                            - c.scanned_at.unix_timestamp();
-                        age_secs >= STALE_AFTER_SECS
-                    }
-                    // Nothing cached yet: leave it for the user's first
-                    // explicit scan rather than spinning up detection
-                    // silently on a fresh install.
-                    None => false,
+            tokio::time::sleep(std::time::Duration::from_secs(POLL_INTERVAL_SECS)).await;
+            let state = app.state::<AppState>();
+            if state.daemon.owns_detection().await {
+                continue;
+            }
+            let needs_rescan = match state.detection_cache.current() {
+                Some(c) => {
+                    OffsetDateTime::now_utc().unix_timestamp() - c.scanned_at.unix_timestamp()
+                        >= STALE_AFTER_SECS
                 }
+                // Nothing cached yet: leave it for the user's first
+                // explicit scan rather than spinning up detection
+                // silently on a fresh install.
+                None => false,
             };
             if !needs_rescan {
                 continue;
             }
             tracing::info!("detection cache older than 24h, refreshing in background");
-            let os = Os::current();
-            // Reload state on each background pass so manual_paths overrides
-            // that landed since the previous scan are honoured. Cheap (one
-            // small JSON file read) and skipping it would let manual picks
-            // silently disappear from the auto-refreshed report.
-            let cli_state = match CliState::load_default() {
-                Ok((s, _)) => s,
-                Err(e) => {
-                    tracing::warn!(error = %e, "couldn't load state for background rescan");
-                    continue;
-                }
-            };
             // No progress emit on the background path: the UI isn't
             // listening, and repainting a progress bar while the user is
             // on another page would be noise.
-            let mut report = match detection::detect_all(os, &cli_state, |_, _| {}).await {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::warn!(error = %e, "background detection refresh failed");
-                    continue;
-                }
-            };
-            // Honour the user's blacklist on the background path too, or
-            // the cache flips back to including ignored slugs
-            // every time the 24h scheduler fires.
-            report.games.retain(|g| !cli_state.is_ignored(&g.slug));
-            let cached = CachedDetection {
-                report,
-                scanned_at: OffsetDateTime::now_utc(),
-            };
-            {
-                let state = app.state::<AppState>();
-                *state.detection_cache.last.lock().unwrap() = Some(cached.clone());
-            }
-            if let Err(e) = save_detection_to_disk_atomic(&cached) {
-                tracing::warn!(error = %e, "couldn't persist refreshed detection cache");
+            match library::detect_filtered(false, |_, _| {}).await {
+                Ok(report) => persist_scan(&state, report),
+                Err(e) => tracing::warn!(error = %e, "background detection refresh failed"),
             }
         }
     });

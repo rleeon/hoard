@@ -21,7 +21,7 @@ use anyhow::{Context, Result};
 use hoard_agent::session::LendError;
 use hoard_core::ipc::{
     ClientFrame, DaemonStatus, Hello, IpcError, JournalEntry, Payload, Rejected, Reply, Request,
-    ServerFrame, Welcome, PROTOCOL_VERSION,
+    ScanNote, ServerFrame, Welcome, CAP_DETECTION, PROTOCOL_VERSION,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{broadcast, mpsc};
@@ -66,6 +66,8 @@ pub struct Daemon {
     /// [`crate::updater::watch`]), it only shows it and passes on what the clients
     /// ask for.
     pub updater: crate::updater::Updater,
+    /// Detection, automatic mode and the catalogue (Slice 8).
+    pub detect: Arc<crate::detect::Detect>,
 }
 
 impl Daemon {
@@ -81,6 +83,7 @@ impl Daemon {
             farewell: broadcast::channel(FAREWELL_CHANNEL).0,
             said: std::sync::OnceLock::new(),
             updater: crate::updater::Updater::new(),
+            detect: Arc::new(crate::detect::Detect::new()),
         }
     }
 
@@ -115,6 +118,7 @@ impl Daemon {
             pid: self.pid,
             epoch: self.epoch.clone(),
             cursor: self.log.cursor(),
+            caps: vec![CAP_DETECTION.to_string()],
         }
     }
 
@@ -390,6 +394,53 @@ impl Daemon {
                 self.updater.snooze(hours);
                 Reply::Ok(Payload::Update(self.updater.state()))
             }
+            // Detection and the catalogue (Slice 8). Not through `with_engine`: none
+            // of them needs the engine, and the Library works signed out. The long
+            // ones hold only their own connection, which clients open for them.
+            Request::Scan { deep } => match self.detect.scan(deep).await {
+                Ok(cached) => {
+                    // The other windows read the fresh cache too.
+                    self.detect.finished(0);
+                    json_payload(&cached.report, |report| Payload::Detection { report })
+                }
+                Err(err) => internal(err),
+            },
+            Request::ScanFolder { path } => {
+                let found = tokio::task::spawn_blocking(move || {
+                    hoard_agent::library::scan_folder(std::path::Path::new(&path))
+                })
+                .await;
+                match found {
+                    Ok(Ok(games)) => json_payload(&games, |games| Payload::Detected { games }),
+                    Ok(Err(err)) => internal(err),
+                    Err(err) => internal(err.into()),
+                }
+            }
+            Request::DiagnoseDetection { slug } => match crate::detect::diagnose(&slug).await {
+                Ok(trace) => json_payload(&trace, |trace| Payload::DetectionTrace { trace }),
+                Err(err) => internal(err),
+            },
+            // Blocking: the first question loads the catalogue.
+            Request::GameFacts { slug } => {
+                match tokio::task::spawn_blocking(move || hoard_agent::catalog::facts(&slug)).await {
+                    Ok(facts) => Reply::Ok(Payload::GameFacts(facts)),
+                    Err(err) => internal(err.into()),
+                }
+            }
+            Request::CatalogStatus => {
+                match tokio::task::spawn_blocking(crate::detect::catalog_info).await {
+                    Ok(info) => Reply::Ok(Payload::Catalog(info)),
+                    Err(err) => internal(err.into()),
+                }
+            }
+            Request::CatalogRefresh => match self.detect.refresh_catalog().await {
+                Ok(info) => Reply::Ok(Payload::Catalog(info)),
+                Err(err) => internal(err),
+            },
+            Request::AutomaticChanged => {
+                self.detect.automatic_changed();
+                Reply::Ok(Payload::Ack)
+            }
             // A request from a client newer than this service. It is answered, not
             // hung up on: the client has just updated and we are seconds from being
             // relieved.
@@ -432,6 +483,23 @@ impl Daemon {
         Reply::Error(IpcError::Internal {
             message: format!("{err:#}"),
         })
+    }
+}
+
+fn internal(err: anyhow::Error) -> Reply {
+    Reply::Error(IpcError::Internal {
+        message: format!("{err:#}"),
+    })
+}
+
+/// A payload whose type the IPC crate cannot name (see `Payload::Detection`).
+fn json_payload<T: serde::Serialize>(
+    value: &T,
+    wrap: impl FnOnce(serde_json::Value) -> Payload,
+) -> Reply {
+    match serde_json::to_value(value) {
+        Ok(value) => Reply::Ok(wrap(value)),
+        Err(err) => internal(err.into()),
     }
 }
 
@@ -559,6 +627,9 @@ where
     out.send(ServerFrame::Welcome(daemon.welcome()))
         .await
         .context("sending the welcome")?;
+    // A desktop from before Slice 8 runs its own automatic mode: ours stands aside
+    // for as long as this connection lives.
+    let _legacy = daemon.detect.note_client(&hello);
 
     // Signing up to the push: kept for when the `Subscribe` arrives. `None` until
     // then, so a client that only sends commands pays nothing for it.
@@ -604,6 +675,7 @@ where
                     .await;
                 if let Some(old) = pusher.replace(tokio::spawn(push_loop(
                     rx,
+                    daemon.detect.subscribe(),
                     out.clone(),
                     cursor,
                     daemon.log.clone(),
@@ -641,30 +713,45 @@ fn accepts(hello: &Hello) -> bool {
 /// rows, sends it a `Resync` instead of leaving it an invisible gap.
 async fn push_loop(
     mut rx: broadcast::Receiver<JournalEntry>,
+    mut notes: broadcast::Receiver<ScanNote>,
     out: mpsc::Sender<ServerFrame>,
     mut cursor: u64,
     log: Arc<EventLog>,
 ) {
+    let mut notes_open = true;
     loop {
-        match rx.recv().await {
-            Ok(entry) => {
-                if entry.seq <= cursor {
-                    continue;
+        tokio::select! {
+            entry = rx.recv() => match entry {
+                Ok(entry) => {
+                    if entry.seq <= cursor {
+                        continue;
+                    }
+                    cursor = entry.seq;
+                    if out.send(ServerFrame::Event(entry)).await.is_err() {
+                        return;
+                    }
                 }
-                cursor = entry.seq;
-                if out.send(ServerFrame::Event(entry)).await.is_err() {
-                    return;
+                Err(broadcast::error::RecvError::Lagged(dropped)) => {
+                    let _ = out
+                        .send(ServerFrame::Resync {
+                            cursor: log.cursor(),
+                            dropped,
+                        })
+                        .await;
                 }
-            }
-            Err(broadcast::error::RecvError::Lagged(dropped)) => {
-                let _ = out
-                    .send(ServerFrame::Resync {
-                        cursor: log.cursor(),
-                        dropped,
-                    })
-                    .await;
-            }
-            Err(broadcast::error::RecvError::Closed) => return,
+                Err(broadcast::error::RecvError::Closed) => return,
+            },
+            note = notes.recv(), if notes_open => match note {
+                Ok(note) => {
+                    if out.send(ServerFrame::Scan(note)).await.is_err() {
+                        return;
+                    }
+                }
+                // A note missed is a tick of a progress bar; the next one says where
+                // the pass is.
+                Err(broadcast::error::RecvError::Lagged(_)) => {}
+                Err(broadcast::error::RecvError::Closed) => notes_open = false,
+            },
         }
     }
 }
