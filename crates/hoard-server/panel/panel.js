@@ -109,6 +109,13 @@ function applyStatic() {
   for (const el of document.querySelectorAll("[data-i18n-label]")) {
     el.setAttribute("aria-label", t(el.dataset.i18nLabel));
   }
+  // A command inside a sentence. The sentence keeps a {cmd} slot so each
+  // language puts the command where its word order wants it, and the command
+  // goes into a <code> so it reads as something to type, not as prose.
+  for (const el of document.querySelectorAll("[data-i18n-cmd]")) {
+    const [before, after = ""] = t(el.dataset.i18nCmd).split("{cmd}");
+    clear(el, before, h("code", { text: t(el.dataset.cmdKey) }), after);
+  }
   document.title = me ? t("app.title_user", { user: me.username }) : "Hoard";
 }
 
