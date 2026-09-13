@@ -40,7 +40,7 @@
 //! Custom covers are saved as `{key}_custom.{ext}` in the same cache dir and
 //! take priority over any downloaded art.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::ipc::Response;
 use tauri::Manager;
@@ -137,20 +137,44 @@ fn find_custom_cover(dir: &std::path::Path, stems: &[String]) -> Option<PathBuf>
 /// Priority: the user's custom cover (`{key}_custom.*`), then the vertical
 /// 2:3 art (`{key}_600x900.jpg`), then, for Steam games only, the landscape
 /// capsule (`{key}.jpg`). Each tier downloads and persists on first miss.
+///
+/// `size` is the longer side of the frame the art will fill, in device pixels.
+/// Most frames are list icons of 32 to 74 px, and the webview keeps every image
+/// decoded at its own resolution, not the frame's: a 600×900 cover costs 2.2 MB
+/// of memory whether it is drawn as a poster or as a 36 px square. With a size,
+/// the answer is a copy scaled to the first of [`SIZES`] that covers the frame.
 #[tauri::command]
-pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response, String> {
+pub async fn cover_bytes(
+    app: tauri::AppHandle,
+    key: String,
+    size: Option<u32>,
+) -> Result<Response, String> {
     let cover = CoverKey::parse(&key).ok_or_else(|| format!("cover: bad key {key:?}"))?;
-    let stems = stems_for(&cover);
-    let stem = stems[0].clone();
     let dir = app
         .path()
         .app_cache_dir()
         .map_err(|e| e.to_string())?
         .join("covers");
 
+    let bytes = source_bytes(&cover, &dir).await?;
+    let Some(side) = size.and_then(thumb_side) else {
+        return Ok(Response::new(bytes));
+    };
+    let stem = cover.stem();
+    let served = tokio::task::spawn_blocking(move || sized_copy(&dir, &stem, side, bytes))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(Response::new(served))
+}
+
+/// The art as stored, in the order [`cover_bytes`] describes.
+async fn source_bytes(cover: &CoverKey, dir: &std::path::Path) -> Result<Vec<u8>, String> {
+    let stems = stems_for(cover);
+    let stem = stems[0].clone();
+
     // Fast path 1: user has set a custom cover for this game.
     if let Some(custom) = tokio::task::spawn_blocking({
-        let dir = dir.clone();
+        let dir = dir.to_path_buf();
         let stems = stems.clone();
         move || find_custom_cover(&dir, &stems)
     })
@@ -159,7 +183,7 @@ pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response,
     {
         if let Ok(bytes) = tokio::fs::read(&custom).await {
             if !bytes.is_empty() {
-                return Ok(Response::new(bytes));
+                return Ok(bytes);
             }
         }
     }
@@ -171,7 +195,7 @@ pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response,
     for s in &stems {
         if let Ok(bytes) = tokio::fs::read(dir.join(format!("{s}{PORTRAIT_SUFFIX}.jpg"))).await {
             if !bytes.is_empty() {
-                return Ok(Response::new(bytes));
+                return Ok(bytes);
             }
         }
     }
@@ -210,7 +234,7 @@ pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response,
                 let _ = tokio::fs::create_dir_all(&dir).await;
                 let _ = tokio::fs::write(&portrait, &bytes).await;
                 let _ = tokio::fs::remove_file(&marker).await;
-                return Ok(Response::new(bytes));
+                return Ok(bytes);
             }
             // Index in hand, game not in it: fall through to the fuzzy
             // search, which is all that's left.
@@ -258,7 +282,7 @@ pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response,
                 // A landscape capsule cached by an older build is now dead
                 // weight; the portrait supersedes it.
                 let _ = tokio::fs::remove_file(&landscape).await;
-                return Ok(Response::new(bytes));
+                return Ok(bytes);
             }
             // Steam answered "no such asset". Remember it, stamped with the
             // strategy that concluded it, and fall through to the header.
@@ -276,7 +300,7 @@ pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response,
     for s in &stems {
         if let Ok(bytes) = tokio::fs::read(dir.join(format!("{s}.jpg"))).await {
             if !bytes.is_empty() {
-                return Ok(Response::new(bytes));
+                return Ok(bytes);
             }
         }
     }
@@ -313,7 +337,135 @@ pub async fn cover_bytes(app: tauri::AppHandle, key: String) -> Result<Response,
     // Best-effort write: a failed cache write just means we re-fetch next time.
     let _ = tokio::fs::create_dir_all(&dir).await;
     let _ = tokio::fs::write(&landscape, &bytes).await;
-    Ok(Response::new(bytes))
+    Ok(bytes)
+}
+
+// ---- scaled copies
+
+/// The frame sizes a scaled copy is kept at, in device pixels of the frame's
+/// longer side. A 36 px list icon on a 1x screen lands on 96; the dashboard's
+/// posters (220 to 720 px wide) mostly ask for more than 768 and get the art
+/// as stored, which at 600×900 is about what they draw anyway.
+const SIZES: [u32; 4] = [96, 192, 384, 768];
+
+const THUMB_QUALITY: u8 = 85;
+
+/// Past this a custom cover is not worth decoding just to shrink it: an 8K
+/// square is 256 MB of pixels. It is served as stored, as it always was.
+const MAX_DECODE_SIDE: u32 = 8192;
+const MAX_DECODE_BYTES: u64 = 256 * 1024 * 1024;
+
+/// The step a request for `size` px lands on, or `None` past the largest one,
+/// where only the original will do.
+fn thumb_side(size: u32) -> Option<u32> {
+    if size == 0 {
+        return None;
+    }
+    SIZES.iter().copied().find(|&s| s >= size)
+}
+
+/// `bytes` scaled for a frame whose longer side is `side` px, read from disk
+/// when this exact art was scaled before. The file name carries a fingerprint
+/// of the source, so a new custom cover or a better download can never have an
+/// old copy served in its place, and there is nothing to invalidate by hand.
+///
+/// Returns `bytes` untouched when they are already about that small or can't
+/// be decoded: the frame shows what it always showed, only heavier.
+fn sized_copy(dir: &Path, stem: &str, side: u32, bytes: Vec<u8>) -> Vec<u8> {
+    let prefix = format!("{stem}_s{side}_");
+    let name = format!("{prefix}{:016x}", fingerprint(&bytes));
+    for ext in ["jpg", "png"] {
+        if let Ok(cached) = std::fs::read(dir.join(format!("{name}.{ext}"))) {
+            if !cached.is_empty() {
+                return cached;
+            }
+        }
+    }
+    let Some((small, ext)) = make_thumb(&bytes, side) else {
+        return bytes;
+    };
+    drop_stale_copies(dir, &prefix);
+    // Best effort, like every other write in here: a copy that didn't land is
+    // made again next time.
+    let _ = hoard_agent::atomic_write::write_atomic(&dir.join(format!("{name}.{ext}")), &small);
+    small
+}
+
+/// Delete this game's copies at this size, scaled from art it no longer has.
+fn drop_stale_copies(dir: &Path, prefix: &str) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(rest) = name.to_str().and_then(|n| n.strip_prefix(prefix)) else {
+            continue;
+        };
+        // Exactly `<16 hex>.<ext>`: the prefix alone also matches a game whose
+        // slug happens to end in `_s96`.
+        let rest = rest.as_bytes();
+        if rest.len() == 20 && rest[16] == b'.' && rest[..16].iter().all(u8::is_ascii_hexdigit) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// Decode, scale and re-encode. `None` means "serve the source": already small
+/// enough for the frame, too big to be worth decoding, or not an image we read.
+fn make_thumb(bytes: &[u8], side: u32) -> Option<(Vec<u8>, &'static str)> {
+    let reader = || {
+        let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+            .with_guessed_format()
+            .ok()?;
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(MAX_DECODE_SIDE);
+        limits.max_image_height = Some(MAX_DECODE_SIDE);
+        limits.max_alloc = Some(MAX_DECODE_BYTES);
+        reader.limits(limits);
+        Some(reader)
+    };
+    // The header alone says whether there is anything to gain.
+    let (w, h) = reader()?.into_dimensions().ok()?;
+    let (tw, th) = thumb_dims(w, h, side)?;
+    let small = reader()?
+        .decode()
+        .ok()?
+        .resize_exact(tw, th, image::imageops::FilterType::CatmullRom);
+
+    let mut out = Vec::new();
+    if small.color().has_alpha() {
+        small
+            .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+            .ok()?;
+        Some((out, "png"))
+    } else {
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, THUMB_QUALITY)
+            .encode_image(&small.to_rgb8())
+            .ok()?;
+        Some((out, "jpg"))
+    }
+}
+
+/// Target dimensions for a frame of `side` px, or `None` when the source is
+/// within a quarter of that already. The *shorter* side is the one scaled to
+/// `side`: the frame crops the art to fill, so both of its sides have to be
+/// covered whatever the art's shape.
+fn thumb_dims(w: u32, h: u32, side: u32) -> Option<(u32, u32)> {
+    let short = w.min(h);
+    if short == 0 || short <= side + side / 4 {
+        return None;
+    }
+    let scale = f64::from(side) / f64::from(short);
+    let fit = |n: u32| ((f64::from(n) * scale).round() as u32).max(1);
+    Some((fit(w), fit(h)))
+}
+
+/// FNV-1a over the whole file: stable across builds, which `DefaultHasher`
+/// does not promise, and plenty to tell one cached image from the next.
+fn fingerprint(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, &b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
 }
 
 /// Cache-name suffix for the vertical art, kept apart from the landscape
@@ -928,5 +1080,100 @@ mod tests {
         // queda con el header: hay que distinguirlo de un fallo de red.
         let payload = HASHED.replace("library_capsule", "library_hero");
         assert!(path_of(&payload).is_none());
+    }
+
+    fn encoded(img: image::DynamicImage, format: image::ImageFormat) -> Vec<u8> {
+        let mut out = Vec::new();
+        img.write_to(&mut std::io::Cursor::new(&mut out), format)
+            .unwrap();
+        out
+    }
+
+    fn dims(bytes: &[u8]) -> (u32, u32) {
+        let img = image::load_from_memory(bytes).unwrap();
+        (img.width(), img.height())
+    }
+
+    #[test]
+    fn a_frame_lands_on_the_first_step_that_covers_it() {
+        assert_eq!(super::thumb_side(36), Some(96));
+        assert_eq!(super::thumb_side(96), Some(96));
+        assert_eq!(super::thumb_side(97), Some(192));
+        assert_eq!(super::thumb_side(768), Some(768));
+        assert_eq!(super::thumb_side(769), None);
+        assert_eq!(super::thumb_side(0), None);
+    }
+
+    #[test]
+    fn the_short_side_is_the_one_scaled() {
+        assert_eq!(super::thumb_dims(600, 900, 96), Some((96, 144)));
+        // The landscape header: in a square frame its height runs out first.
+        assert_eq!(super::thumb_dims(460, 215, 96), Some((205, 96)));
+        // Within a quarter of the frame, the original is served as stored.
+        assert_eq!(super::thumb_dims(600, 900, 480), None);
+        assert_eq!(super::thumb_dims(600, 900, 768), None);
+    }
+
+    #[test]
+    fn a_poster_becomes_a_jpeg_and_transparency_stays_png() {
+        let poster = encoded(
+            image::DynamicImage::new_rgb8(600, 900),
+            image::ImageFormat::Jpeg,
+        );
+        let (small, ext) = super::make_thumb(&poster, 96).unwrap();
+        assert_eq!((ext, dims(&small)), ("jpg", (96, 144)));
+
+        let logo = encoded(
+            image::DynamicImage::new_rgba8(900, 900),
+            image::ImageFormat::Png,
+        );
+        let (small, ext) = super::make_thumb(&logo, 192).unwrap();
+        assert_eq!((ext, dims(&small)), ("png", (192, 192)));
+
+        assert!(super::make_thumb(&poster, 768).is_none());
+        assert!(super::make_thumb(b"not an image", 96).is_none());
+    }
+
+    #[test]
+    fn a_copy_is_reused_until_the_art_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let names = || {
+            let mut v: Vec<String> = std::fs::read_dir(dir.path())
+                .unwrap()
+                .map(|e| e.unwrap().file_name().into_string().unwrap())
+                .collect();
+            v.sort();
+            v
+        };
+        let first = encoded(
+            image::DynamicImage::new_rgb8(600, 900),
+            image::ImageFormat::Jpeg,
+        );
+        let copy = super::sized_copy(dir.path(), "slug-x", 96, first.clone());
+        assert_eq!(dims(&copy), (96, 144));
+        let made = names();
+        assert_eq!(made.len(), 1);
+
+        // Served from disk, not scaled again.
+        std::fs::write(dir.path().join(&made[0]), b"from disk").unwrap();
+        assert_eq!(
+            super::sized_copy(dir.path(), "slug-x", 96, first),
+            b"from disk"
+        );
+
+        // A game whose stem happens to end like a size step is none of its business.
+        let neighbour = format!("slug-x_s96_s96_{:016x}.jpg", 1);
+        std::fs::write(dir.path().join(&neighbour), b"x").unwrap();
+
+        // New art for the same game (a custom cover, say): new copy, old one gone.
+        let second = encoded(
+            image::DynamicImage::new_rgb8(900, 1350),
+            image::ImageFormat::Jpeg,
+        );
+        super::sized_copy(dir.path(), "slug-x", 96, second);
+        let now = names();
+        assert_eq!(now.len(), 2);
+        assert!(now.contains(&neighbour));
+        assert!(!now.contains(&made[0]));
     }
 }

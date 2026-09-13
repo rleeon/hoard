@@ -55,7 +55,7 @@
     type CardData,
     type Cube,
   } from "./cardCanvas";
-  import { coverKey, coverUrl } from "../stores/covers";
+  import { coverKey, coverSize, coverUrl } from "../stores/covers";
   import { toastError, toastSuccess } from "../stores/toasts";
 
   let {
@@ -319,7 +319,8 @@
         if (!cancelled) coverImg = null;
         return;
       }
-      const url = await coverUrl(key);
+      // The card paints at 2x, and its cover frame is 52×74 (`cardCanvas.ts`).
+      const url = await coverUrl(key, coverSize(74 * 2));
       const img = url ? await loadImage(url) : null;
       if (!cancelled) coverImg = img;
     })();

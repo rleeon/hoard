@@ -3,7 +3,7 @@
    * Game cover thumbnail. Shows the downloaded art (served from the on-device
    * cache) when one exists, otherwise a tinted box with the game's initial.
    * The image is loaded lazily via the `covers` store so the same game is
-   * fetched at most once per session.
+   * fetched at most once per session, scaled to the frame it is drawn in.
    *
    * Users can override the cover with a custom local image. On hover a pencil
    * icon appears; clicking it opens a file picker. If a custom cover is set,
@@ -27,7 +27,10 @@
   import { Pencil, RotateCcw } from "@lucide/svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import {
+    FULL,
+    coverFits,
     coverKey,
+    coverSize,
     coverUrl,
     hasCustomCover,
     setCustomCover,
@@ -96,29 +99,62 @@
     imgRatio = img.naturalHeight > 0 ? img.naturalWidth / img.naturalHeight : null;
   }
 
+  // The frame's longer side in device pixels, as a size step (`coverSize`).
+  // Null until the box has been measured, so nothing is fetched at a guess.
+  const wanted = $derived(
+    boxW > 0 && boxH > 0
+      ? coverSize(Math.max(boxW, boxH) * (window.devicePixelRatio || 1))
+      : null,
+  );
+
+  // What `url` currently shows. Plain on purpose: they only decide whether a
+  // frame that grew needs a sharper copy, never what gets drawn.
+  let shownKey: string | null = null;
+  let shownSize: number | null = null;
+
   $effect(() => {
-    url = null;
-    imgRatio = null;
-    isCustom = false;
     // The key is known synchronously, no await, no network. That's what lets
     // the pencil appear for a game with no art at all: the old code resolved a
     // Steam app id first and bailed when there wasn't one, so Minecraft Java
     // couldn't even be given a cover by hand.
     const key = coverKey(appId, slug);
+    const size = wanted;
     resolvedKey = key;
-    if (key == null) return;
-    let alive = true;
-    (async () => {
-      const [u, custom] = await Promise.all([coverUrl(key), hasCustomCover(key)]);
-      if (alive) {
-        url = u;
-        isCustom = custom;
+    if (key !== shownKey) {
+      shownKey = key;
+      shownSize = null;
+      url = null;
+      imgRatio = null;
+      isCustom = false;
+      if (key != null) {
+        hasCustomCover(key).then((custom) => {
+          if (shownKey === key) isCustom = custom;
+        });
       }
-    })();
+    }
+    // Growing past the art fetches a sharper copy; shrinking keeps what's there,
+    // so dragging a card's corner doesn't reload its cover on every step.
+    if (key == null || size == null) return;
+    if (shownSize != null && coverFits(shownSize, size)) return;
+    let alive = true;
+    coverUrl(key, size).then((u) => {
+      if (alive && shownKey === key) {
+        url = u;
+        shownSize = size;
+      }
+    });
     return () => {
       alive = false;
     };
   });
+
+  async function reload(key: string) {
+    const size = wanted ?? FULL;
+    url = null;
+    imgRatio = null;
+    url = await coverUrl(key, size);
+    shownSize = size;
+  }
 
   async function pickCover(e: MouseEvent) {
     e.stopPropagation();
@@ -136,10 +172,7 @@
       });
       if (typeof file === "string" && file.length > 0) {
         await setCustomCover(key, file);
-        // Reload the cover.
-        url = null;
-        imgRatio = null;
-        url = await coverUrl(key);
+        await reload(key);
         isCustom = true;
       }
     } catch {
@@ -152,10 +185,7 @@
     const key = resolvedKey;
     if (key == null) return;
     await removeCustomCover(key);
-    // Reload the cover.
-    url = null;
-    imgRatio = null;
-    url = await coverUrl(key);
+    await reload(key);
     isCustom = false;
   }
 </script>

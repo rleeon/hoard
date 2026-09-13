@@ -35,6 +35,16 @@ hoard-manifest = { path = "../hoard-manifest" }
 hoard-core = { path = "../hoard-core" }
 hoardd = { path = "../hoardd" }
 base64 = { workspace = true }
+# Scaled copies of the cover art (`commands/covers.rs`). Already in the tree
+# through Tauri; these are the formats a cover, custom ones included, arrives in.
+image = { version = "0.25", default-features = false, features = [
+    "jpeg",
+    "png",
+    "webp",
+    "gif",
+    "bmp",
+    "tiff",
+] }
 
 tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
 tauri-plugin-single-instance = "2"

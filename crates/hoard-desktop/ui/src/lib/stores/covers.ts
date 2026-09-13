@@ -5,9 +5,13 @@
  * under the app cache dir, and returns the raw JPEG bytes as an `ArrayBuffer`
  * thereafter, no network round-trip after the first sight, no canvas-tainting
  * cross-origin draws. Here we wrap those bytes in an object URL and memoise
- * the result so a given game is fetched/decoded at most once per session. A
- * `null` entry marks a permanent miss (no art / offline first run) so callers
- * fall back to the initial-letter placeholder without retrying.
+ * the result so a given game is fetched/decoded at most once per session and
+ * size. A `null` entry marks a permanent miss (no art / offline first run) so
+ * callers fall back to the initial-letter placeholder without retrying.
+ *
+ * Ask for the size the frame is drawn at (see {@link coverSize}). The webview
+ * keeps an image decoded at its own resolution, so a 600×900 cover in a 36 px
+ * list icon costs 2.2 MB of memory for what a 96 px copy shows just as well.
  *
  * Covers are addressed by a **cover key**, not a Steam app id, see
  * {@link coverKey}. Rust owns the whole resolution chain behind that key
@@ -55,30 +59,55 @@ export function coverKey(
   return null;
 }
 
+/** The steps Rust keeps a scaled copy at (`SIZES` in `commands/covers.rs`),
+ *  in device pixels of the frame's longer side. */
+const SIZES = [96, 192, 384, 768];
+
+/** The art as stored: frames past the largest step, and the Map. */
+export const FULL = 0;
+
+/** The step for a frame whose longer side is `px` device pixels. */
+export function coverSize(px: number): number {
+  return SIZES.find((s) => s >= px) ?? FULL;
+}
+
+/** Whether art fetched at step `have` is sharp enough for step `want`. */
+export function coverFits(have: number, want: number): boolean {
+  return have === FULL || (want !== FULL && have >= want);
+}
+
 /** Resolve a cover key to a usable `<img src>` object URL, or `null` if
  *  there's no cover to show. Safe to call repeatedly, memoised +
- *  de-duplicated. */
-export function coverUrl(key: string): Promise<string | null> {
-  const hit = cache.get(key);
+ *  de-duplicated per size. */
+export function coverUrl(key: string, size: number = FULL): Promise<string | null> {
+  const id = `${key}@${size}`;
+  const hit = cache.get(id);
   if (hit !== undefined) return Promise.resolve(hit);
-  const pending = inflight.get(key);
+  const pending = inflight.get(id);
   if (pending) return pending;
 
   const p = (async () => {
     try {
-      const buf = await invoke<ArrayBuffer>("cover_bytes", { key });
+      const buf = await invoke<ArrayBuffer>("cover_bytes", { key, size: size || null });
       const url = URL.createObjectURL(new Blob([buf], { type: mimeOf(buf) }));
-      cache.set(key, url);
+      cache.set(id, url);
       return url;
     } catch {
-      cache.set(key, null);
+      cache.set(id, null);
       return null;
     } finally {
-      inflight.delete(key);
+      inflight.delete(id);
     }
   })();
-  inflight.set(key, p);
+  inflight.set(id, p);
   return p;
+}
+
+/** Drop every size of one game's art, so the next `coverUrl()` reloads it. */
+function forget(key: string): void {
+  const prefix = `${key}@`;
+  for (const id of [...cache.keys()]) if (id.startsWith(prefix)) cache.delete(id);
+  for (const id of [...inflight.keys()]) if (id.startsWith(prefix)) inflight.delete(id);
 }
 
 /** Check if a game has a user-set custom cover on disk. */
@@ -98,24 +127,21 @@ export async function setCustomCover(
   sourcePath: string,
 ): Promise<void> {
   await invoke("set_custom_cover", { key, sourcePath });
-  // Invalidate caches so the cover reloads.
-  cache.delete(key);
-  inflight.delete(key);
+  forget(key);
   customCoverCache.set(key, true);
 }
 
 /** Remove a game's custom cover, reverting to the downloaded art. */
 export async function removeCustomCover(key: string): Promise<void> {
   await invoke("remove_custom_cover", { key });
-  cache.delete(key);
-  inflight.delete(key);
+  forget(key);
   customCoverCache.set(key, false);
 }
 
 /** Synchronous peek for already-resolved covers (used by the canvas loop,
  *  which can't await per frame). Returns `undefined` if not yet loaded. */
 export function cachedCoverUrl(key: string): string | null | undefined {
-  return cache.get(key);
+  return cache.get(`${key}@${FULL}`);
 }
 
 const slugIdCache = new Map<string, number | null>();
