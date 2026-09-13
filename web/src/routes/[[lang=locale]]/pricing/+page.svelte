@@ -2,7 +2,7 @@
   import { _, locale } from 'svelte-i18n';
   import Seo from '$lib/components/Seo.svelte';
   import Button from '$lib/components/Button.svelte';
-  import { PLANS, formatPlanQuota, formatMaxSaveSize } from '$lib/plans';
+  import { PLANS, formatPlanQuota, formatMaxSaveSize, formatMaxSaveSizeRange } from '$lib/plans';
   import type { BillingCycle, PlanId } from '$lib/types';
   import { goto } from '$app/navigation';
   import { reveal } from '$lib/actions/reveal';
@@ -56,7 +56,10 @@
     { label: $_('pricing.row_storage'), free: formatPlanQuota('free'), pro: formatPlanQuota('pro') },
     {
       label: $_('pricing.row_save_size'),
-      free: formatMaxSaveSize('free'),
+      // Stated as a range on Free: the cap is the user's to move from the app,
+      // and the number that decides whether their one big game syncs is the
+      // top of it, not the default.
+      free: formatMaxSaveSizeRange('free'),
       pro: formatMaxSaveSize('pro')
     },
     {

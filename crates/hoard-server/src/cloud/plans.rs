@@ -61,7 +61,12 @@ impl Plan {
                 // game's autosave a handful of times inside the window was
                 // saturating the old quota and tripping a confusing 429 on what
                 // the user saw as "one save".
-                bandwidth_quota_bytes: 3 * GB,
+                //
+                // 3→5 GB (2026-09-09), because the per-save cap is now the
+                // user's to move: somebody who sets it to 1.5 GB gets two
+                // uploads of that save inside the window before the limiter
+                // has anything to say, where 3 GB left them one and a half.
+                bandwidth_quota_bytes: 5 * GB,
             },
             Plan::Pro => PlanLimits {
                 plan: self,
@@ -100,6 +105,9 @@ pub struct PlanLimits {
     /// a future "rolling 30 days" tier could opt out without a wire
     /// rename.
     pub version_history_forever: bool,
+    /// The plan's default per-save cap. What is enforced is
+    /// [`resolved_save_size_limit`], which lets the user move it inside the
+    /// plan's range.
     pub max_save_size_bytes: u64,
     pub bandwidth_window_secs: u32,
     pub bandwidth_quota_bytes: u64,
@@ -184,6 +192,45 @@ pub fn resolved_devices_limit(plan: Plan, ever_pro: bool) -> u32 {
     plan.limits().devices
 }
 
+// ---- per-save cap
+
+/// Floor for the hand-set per-save cap, on both tiers.
+///
+/// Below this the cap stops being a budget and becomes a way to break your own
+/// sync without noticing: plenty of single modern saves clear 100 MB on their
+/// own, and a cap under their size means every backup uploads a trimmed copy
+/// forever.
+pub const MIN_SAVE_SIZE_BYTES: u64 = 100 * MB;
+
+/// How far up the per-save cap can be moved on this plan.
+///
+/// On Free the ceiling sits *above* the default on purpose. 1 GB is the number
+/// the tier is sized around and stays the default; 1.5 GB is what somebody with
+/// one enormous save can ask for when the alternative is that the game they
+/// actually play never syncs. It costs nothing extra: the account still holds
+/// 2 GB in total, so the limit that maps to a bill is untouched, and a save that
+/// big leaves the user 0.5 GB for everything else, which is its own argument
+/// against setting it there casually.
+pub fn max_save_size_ceiling(plan: Plan) -> u64 {
+    match plan {
+        Plan::Free => 1536 * MB,
+        Plan::Pro => Plan::Pro.limits().max_save_size_bytes,
+    }
+}
+
+/// The per-save cap actually enforced, given the plan and the user's own choice
+/// (`profiles.max_save_size_bytes`, NULL = the plan default).
+///
+/// Clamped, not merely validated on the way in. A 4 GB cap set while Pro has to
+/// stop being enforced the second the subscription lapses, and the endpoint's
+/// range check can only speak for the values it saw: the column outlives it.
+pub fn resolved_save_size_limit(plan: Plan, override_bytes: Option<i64>) -> u64 {
+    match override_bytes {
+        Some(b) if b > 0 => (b as u64).clamp(MIN_SAVE_SIZE_BYTES, max_save_size_ceiling(plan)),
+        _ => plan.limits().max_save_size_bytes,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -215,7 +262,7 @@ mod tests {
         assert!(l.version_history_forever);
         assert_eq!(l.max_save_size_bytes, 1 * GB);
         assert_eq!(l.bandwidth_window_secs, 15 * 60);
-        assert_eq!(l.bandwidth_quota_bytes, 3 * GB);
+        assert_eq!(l.bandwidth_quota_bytes, 5 * GB);
     }
 
     #[test]
@@ -228,6 +275,50 @@ mod tests {
         assert_eq!(l.max_save_size_bytes, 10 * GB);
         assert_eq!(l.bandwidth_window_secs, 15 * 60);
         assert_eq!(l.bandwidth_quota_bytes, 15 * GB);
+    }
+
+    #[test]
+    fn a_hand_set_save_cap_is_clamped_to_the_plan() {
+        // No choice made: the plan default, on both tiers.
+        assert_eq!(resolved_save_size_limit(Plan::Free, None), 1 * GB);
+        assert_eq!(resolved_save_size_limit(Plan::Pro, None), 10 * GB);
+        // Free can go up to 1.5 GB and no further, however big the column says.
+        assert_eq!(
+            resolved_save_size_limit(Plan::Free, Some(1536 * MB as i64)),
+            1536 * MB
+        );
+        assert_eq!(
+            resolved_save_size_limit(Plan::Free, Some(4 * GB as i64)),
+            1536 * MB
+        );
+        // The floor holds too, so a zero or a silly number can't wedge sync.
+        assert_eq!(
+            resolved_save_size_limit(Plan::Free, Some(1024)),
+            MIN_SAVE_SIZE_BYTES
+        );
+        assert_eq!(resolved_save_size_limit(Plan::Free, Some(0)), 1 * GB);
+        assert_eq!(resolved_save_size_limit(Plan::Free, Some(-5)), 1 * GB);
+        // Pro keeps its own ceiling, and lowering is the point of the knob.
+        assert_eq!(
+            resolved_save_size_limit(Plan::Pro, Some(20 * GB as i64)),
+            10 * GB
+        );
+        assert_eq!(
+            resolved_save_size_limit(Plan::Pro, Some(500 * MB as i64)),
+            500 * MB
+        );
+    }
+
+    /// A cap bought on Pro must not survive the downgrade. The column is not
+    /// cleared when a subscription lapses, so the clamp is what enforces it.
+    #[test]
+    fn a_pro_sized_cap_collapses_when_the_plan_does() {
+        let bought = 8 * GB as i64;
+        assert_eq!(resolved_save_size_limit(Plan::Pro, Some(bought)), 8 * GB);
+        assert_eq!(
+            resolved_save_size_limit(Plan::Free, Some(bought)),
+            1536 * MB
+        );
     }
 
     #[test]

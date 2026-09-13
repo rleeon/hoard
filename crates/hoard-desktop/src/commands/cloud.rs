@@ -108,6 +108,13 @@ pub struct CloudAccount {
     pub version_history_forever: bool,
     #[serde(default)]
     pub max_save_size_bytes: i64,
+    /// The range the per-save cap can be moved inside on this plan. Both are 0
+    /// on a server that predates the setting, which is what the UI reads to
+    /// decide whether to offer the control at all.
+    #[serde(default)]
+    pub save_size_min_bytes: i64,
+    #[serde(default)]
+    pub save_size_max_bytes: i64,
     #[serde(default)]
     pub bandwidth_window_secs: i32,
     #[serde(default)]
@@ -829,6 +836,39 @@ pub async fn cloud_archive_save(
     // reconcile only for the server to reject it with a 403, which is exactly the
     // perpetual "uploading" this exists to kill.
     state.daemon.notify_reload().await;
+    Ok(out)
+}
+
+/// `PUT /v1/me/max-save-size`: move the per-save cap inside the plan's range,
+/// or restore the plan's own number with `None`.
+///
+/// The service is told straight after. It caches the cap it was last refused
+/// with, and a raise produces no refusal to learn from, so without this the
+/// next backup would still be trimmed to the old number.
+#[tauri::command]
+pub async fn cloud_set_max_save_size(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    max_save_size_bytes: Option<i64>,
+) -> Result<cloud_account::SaveSizeCap, String> {
+    let creds = active_creds_or_msg(&app).await?;
+    let out = cloud_account::set_max_save_size(
+        &creds.server_url,
+        &creds.access_token,
+        max_save_size_bytes,
+    )
+    .await
+    .map_err(cloud_err_to_string)?;
+    state
+        .daemon
+        .tell(
+            "tell the service the per-save cap moved",
+            hoard_core::ipc::Request::SetPlanCap {
+                limit_bytes: out.max_save_size_bytes.max(0) as u64,
+                plan: creds.plan.clone().unwrap_or_else(|| "free".to_string()),
+            },
+        )
+        .await;
     Ok(out)
 }
 

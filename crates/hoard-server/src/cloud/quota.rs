@@ -58,14 +58,16 @@ pub async fn load(
         Option<i64>,
         Option<time::OffsetDateTime>,
         Option<time::OffsetDateTime>,
+        Option<i64>,
     )> = sqlx::query_as(
         "SELECT plan, storage_bytes, devices_count, storage_limit_bytes, \
-         storage_limit_change_at, first_pro_at FROM profiles WHERE user_id = $1",
+         storage_limit_change_at, first_pro_at, max_save_size_bytes \
+         FROM profiles WHERE user_id = $1",
     )
     .bind(user_id)
     .fetch_optional(pool)
     .await?;
-    let Some((plan_s, used, devs, limit_override, change_at, first_pro_at)) = row else {
+    let Some((plan_s, used, devs, limit_override, change_at, first_pro_at, save_cap)) = row else {
         return Ok(None);
     };
     let plan = Plan::from_str(&plan_s).unwrap_or(Plan::Free);
@@ -82,6 +84,10 @@ pub async fn load(
         change_at.map(|t| t.unix_timestamp()),
         time::OffsetDateTime::now_utc().unix_timestamp(),
     );
+    // Same reasoning for the per-save cap the user set by hand: resolve it once
+    // here so no caller can enforce the plan's default against somebody who
+    // moved it.
+    limits.max_save_size_bytes = super::plans::resolved_save_size_limit(plan, save_cap);
     let info = QuotaInfo {
         plan: plan.as_str(),
         used_bytes: used.max(0) as u64,

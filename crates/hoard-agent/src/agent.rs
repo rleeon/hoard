@@ -369,6 +369,12 @@ enum AgentCommand {
     /// immediate sweep so every outdated-but-idle save catches up right away.
     /// See [`AgentConfig::global_sync`].
     SetGlobalSync(bool),
+    /// Overwrite the client's cached per-save cap after the user changed it.
+    /// See [`hoard_core::ipc::Request::SetPlanCap`].
+    SetPlanCap {
+        limit_bytes: u64,
+        plan: String,
+    },
     /// Global sync, the low-latency path: the `cloud_pull` poller (or the
     /// self-hosted SSE) spotted that a particular save moved forward a version and
     /// asks to pull it now, skipping the sweep's cooldown. It honours the `restoring`
@@ -561,6 +567,15 @@ impl AgentHandle {
     /// [`AgentConfig::global_sync`].
     pub async fn set_global_sync(&self, enabled: bool) -> Result<()> {
         self.tx.send(AgentCommand::SetGlobalSync(enabled)).await?;
+        Ok(())
+    }
+
+    /// Tell the running agent the per-save cap moved, so the next backup is
+    /// trimmed against the new number instead of the remembered one.
+    pub async fn set_plan_cap(&self, limit_bytes: u64, plan: String) -> Result<()> {
+        self.tx
+            .send(AgentCommand::SetPlanCap { limit_bytes, plan })
+            .await?;
         Ok(())
     }
 
@@ -1931,6 +1946,10 @@ async fn run_agent(
                                 &cloud_heads,
                             );
                         }
+                    }
+                    Some(AgentCommand::SetPlanCap { limit_bytes, plan }) => {
+                        api.remember_plan_cap(limit_bytes, &plan);
+                        tracing::info!(limit_bytes, plan, "agent: per-save cap updated");
                     }
                     Some(AgentCommand::SetGlobalSync(enabled)) => {
                         let was = config.global_sync;

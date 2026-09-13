@@ -13,6 +13,9 @@ export interface PlanLimits {
   versionHistoryForever: boolean;
   /** Per-save upload cap in bytes. Server returns 413 above this. */
   maxSaveSizeBytes: number;
+  /** How far up the per-save cap can be moved from the account page in the
+   *  app. Mirrors `plans::max_save_size_ceiling` on the server. */
+  maxSaveSizeCeilingBytes: number;
   /** Rolling-window bandwidth quota in bytes (over `bandwidthWindowSecs`). */
   bandwidthQuotaBytes: number;
   bandwidthWindowSecs: number;

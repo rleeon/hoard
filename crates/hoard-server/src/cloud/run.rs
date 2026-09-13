@@ -225,6 +225,10 @@ pub async fn run(cfg: Config) -> Result<()> {
             axum::routing::put(me::set_max_versions),
         )
         .route(
+            "/v1/me/max-save-size",
+            axum::routing::put(me::set_max_save_size),
+        )
+        .route(
             "/v1/devices",
             get(me::list_devices).route_layer(guarded("devices")),
         )

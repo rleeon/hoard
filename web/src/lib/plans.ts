@@ -17,7 +17,8 @@ export const PLANS: Record<PlanId, PlanLimits> = {
     saves: null,
     versionHistoryForever: true,
     maxSaveSizeBytes: 1 * GB,
-    bandwidthQuotaBytes: 3 * GB,
+    maxSaveSizeCeilingBytes: 1536 * MB,
+    bandwidthQuotaBytes: 5 * GB,
     bandwidthWindowSecs: 15 * 60,
     priceMonthly: 0,
     priceYearly: 0
@@ -31,6 +32,7 @@ export const PLANS: Record<PlanId, PlanLimits> = {
     saves: null,
     versionHistoryForever: true,
     maxSaveSizeBytes: 10 * GB,
+    maxSaveSizeCeilingBytes: 10 * GB,
     bandwidthQuotaBytes: 15 * GB,
     bandwidthWindowSecs: 15 * 60,
     priceMonthly: 1.99,
@@ -61,7 +63,16 @@ export function formatMaxSaveSize(plan: PlanId): string {
   return `${Math.round(limit / MB)} MB`;
 }
 
-/** "3 GB" / "15 GB", used in plan-card feature list. */
+/** The cap's default and how far the user can push it: "1 GB" when the plan
+ *  has no room above the default, "1 GB (up to 1.5 GB)" when it does. */
+export function formatMaxSaveSizeRange(plan: PlanId): string {
+  const p = PLANS[plan];
+  if (p.maxSaveSizeCeilingBytes <= p.maxSaveSizeBytes) return formatMaxSaveSize(plan);
+  const ceiling = p.maxSaveSizeCeilingBytes / GB;
+  return `${formatMaxSaveSize(plan)} \u2013 ${ceiling.toFixed(1).replace(/\.0$/, '')} GB`;
+}
+
+/** "5 GB" / "15 GB", used in plan-card feature list. */
 export function formatBandwidthQuota(plan: PlanId): string {
   const limit = PLANS[plan].bandwidthQuotaBytes;
   if (limit >= GB) return `${Math.round(limit / GB)} GB`;

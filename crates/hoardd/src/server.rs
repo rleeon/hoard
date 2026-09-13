@@ -365,6 +365,10 @@ impl Daemon {
                 self.with_engine(|h| async move { h.set_global_sync(enabled).await })
                     .await
             }
+            Request::SetPlanCap { limit_bytes, plan } => {
+                self.with_engine(|h| async move { h.set_plan_cap(limit_bytes, plan).await })
+                    .await
+            }
             // How the update is going. Not through the engine: the updater belongs
             // to the daemon, and a downed engine (usually the very case where updating
             // fixes something) must not leave anybody unable to find out.

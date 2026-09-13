@@ -231,6 +231,19 @@ pub enum Request {
     SetGlobalSync {
         enabled: bool,
     },
+    /// The user just moved their per-save cap on the website or in the app, so
+    /// the engine's cached one is a plan behind.
+    ///
+    /// It matters in one direction only. The cap is learned by being refused
+    /// (see `ApiClient::plan_cap`), and a *raise* produces no refusal to learn
+    /// from: without this the engine would keep trimming copies to the old,
+    /// smaller number for the rest of the cache's half hour, which is exactly
+    /// the moment the user is watching to see whether their big save finally
+    /// goes up whole.
+    SetPlanCap {
+        limit_bytes: u64,
+        plan: String,
+    },
     /// The set of tracked saves changed on disk (`state.json`): re-hydrate it.
     /// The daemon owns the state, so the client *tells* it rather than sending
     /// the list. A `WatchedSave` on the wire would be the client deciding what

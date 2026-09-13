@@ -124,12 +124,13 @@ pub async fn init_upload(
     //    Resolve the plan from the cached load() in `check_storage` below
     //    would mean two queries; do a tiny direct lookup so we can 413
     //    before incurring the storage SUM.
-    let plan = match plan_for_user(&state, user.user_id).await? {
+    let (plan, max_save_size_bytes) = match save_limits_for_user(&state, user.user_id).await? {
         Some(p) => p,
         None => return Err(CloudError::NotFound("no profile")),
     };
-    let limits = plan.limits();
-    if body.size_bytes > limits.max_save_size_bytes {
+    let mut limits = plan.limits();
+    limits.max_save_size_bytes = max_save_size_bytes;
+    if body.size_bytes > max_save_size_bytes {
         let upgrade_url = state
             .config
             .cloud
@@ -140,7 +141,7 @@ pub async fn init_upload(
             error: "save exceeds per-save size limit",
             code: "save_too_large",
             plan: plan.as_str(),
-            limit_bytes: limits.max_save_size_bytes,
+            limit_bytes: max_save_size_bytes,
             actual_bytes: body.size_bytes,
             upgrade_url,
         }
@@ -551,11 +552,12 @@ pub async fn cas_init(
     // frozen blobs and re-inflate the quota. The client stops retrying on this.
     crate::cloud::archive::ensure_not_archived(&state, user.user_id, &body.save_id).await?;
 
-    let plan = match plan_for_user(&state, user.user_id).await? {
+    let (plan, max_save_size_bytes) = match save_limits_for_user(&state, user.user_id).await? {
         Some(p) => p,
         None => return Err(CloudError::NotFound("no profile")),
     };
-    let limits = plan.limits();
+    let mut limits = plan.limits();
+    limits.max_save_size_bytes = max_save_size_bytes;
 
     // Logical save size = sum of all file sizes. Drives the per-save cap.
     let logical_size: i64 = body.files.iter().map(|f| f.size_bytes.max(0)).sum();
@@ -2584,6 +2586,27 @@ async fn warn_on_repeat_download(
 /// Tiny one-query helper to fetch a user's plan tag without going through
 /// the full quota::load pipeline. Used by paths that need the plan but
 /// don't need (yet) the storage figures.
+/// Plan plus the limits actually in force for the per-save gates: the cap is
+/// the user's to move, so reading the plan alone would enforce a number they
+/// changed. One query, same cost as the plan lookup it replaces.
+async fn save_limits_for_user(
+    state: &CloudState,
+    user_id: Uuid,
+) -> Result<Option<(Plan, u64)>, CloudError> {
+    let row: Option<(String, Option<i64>)> =
+        sqlx::query_as("SELECT plan, max_save_size_bytes FROM profiles WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    Ok(row.map(|(plan_s, cap)| {
+        let plan = Plan::from_str(&plan_s).unwrap_or(Plan::Free);
+        (
+            plan,
+            crate::cloud::plans::resolved_save_size_limit(plan, cap),
+        )
+    }))
+}
+
 async fn plan_for_user(state: &CloudState, user_id: Uuid) -> Result<Option<Plan>, CloudError> {
     let row: Option<(String,)> = sqlx::query_as("SELECT plan FROM profiles WHERE user_id = $1")
         .bind(user_id)

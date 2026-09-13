@@ -117,8 +117,8 @@
         <tbody>
           <tr><td>Almacenamiento</td><td>2 GB</td><td>100 GB (ampliable en tramos de 25 GB)</td></tr>
           <tr><td>Dispositivos</td><td>3</td><td>Sin límite</td></tr>
-          <tr><td>Tamaño máximo por partida</td><td>1 GB</td><td>10 GB</td></tr>
-          <tr><td>Transferencia por ventana de 15 min</td><td>3 GB</td><td>15 GB</td></tr>
+          <tr><td>Tamaño máximo por partida</td><td>1 GB (ajustable por el usuario entre 100 MB y 1,5 GB)</td><td>10 GB (ajustable a la baja)</td></tr>
+          <tr><td>Transferencia por ventana de 15 min</td><td>5 GB</td><td>15 GB</td></tr>
         </tbody>
       </table>
       <p>
@@ -450,8 +450,8 @@
         <tbody>
           <tr><td>Storage</td><td>2 GB</td><td>100 GB (expandable in 25 GB steps)</td></tr>
           <tr><td>Devices</td><td>3</td><td>Unlimited</td></tr>
-          <tr><td>Maximum size per save</td><td>1 GB</td><td>10 GB</td></tr>
-          <tr><td>Transfer per 15-minute window</td><td>3 GB</td><td>15 GB</td></tr>
+          <tr><td>Maximum size per save</td><td>1 GB (user-adjustable between 100 MB and 1.5 GB)</td><td>10 GB (adjustable downwards)</td></tr>
+          <tr><td>Transfer per 15-minute window</td><td>5 GB</td><td>15 GB</td></tr>
         </tbody>
       </table>
       <p>

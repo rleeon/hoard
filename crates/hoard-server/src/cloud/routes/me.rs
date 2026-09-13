@@ -55,6 +55,12 @@ pub struct Me {
     /// that used to be missing.
     pub version_history_forever: bool,
     pub max_save_size_bytes: i64,
+    /// The range `max_save_size_bytes` can be moved to on this plan, via
+    /// `PUT /v1/me/max-save-size`. The client shows the control only when both
+    /// are present, which is also how it tells a server that predates the
+    /// setting from one that has it.
+    pub save_size_min_bytes: i64,
+    pub save_size_max_bytes: i64,
     pub bandwidth_window_secs: i32,
     pub bandwidth_quota_bytes: i64,
     /// Storage pressure state for the UI gauge:
@@ -218,8 +224,8 @@ pub async fn get_me(
     // Read on its own rather than widening the tuple above: this is the one
     // fact that outlives the plan, and a positional 15-tuple is already the
     // most fragile line in this handler.
-    let first_pro_at: Option<time::OffsetDateTime> =
-        sqlx::query_scalar("SELECT first_pro_at FROM profiles WHERE user_id = $1")
+    let (first_pro_at, save_cap): (Option<time::OffsetDateTime>, Option<i64>) =
+        sqlx::query_as("SELECT first_pro_at, max_save_size_bytes FROM profiles WHERE user_id = $1")
             .bind(user.user_id)
             .fetch_one(&state.pool)
             .await?;
@@ -274,6 +280,7 @@ pub async fn get_me(
     // Devices bought on Pro are kept for life; only the storage goes back. See
     // `plans::resolved_devices_limit` for why the two part ways.
     limits.devices = crate::cloud::plans::resolved_devices_limit(plan, first_pro_at.is_some());
+    limits.max_save_size_bytes = crate::cloud::plans::resolved_save_size_limit(plan, save_cap);
     // A pending downgrade exists iff a change instant is set; while it's in the
     // future `storage_limit_bytes` is the absolute grant the user keeps and the
     // plan column may already say "free", so resolve rather than just read the tier.
@@ -311,6 +318,8 @@ pub async fn get_me(
         saves_limit: limits.saves_tracked.map(|n| n as i32).unwrap_or(-1),
         version_history_forever: limits.version_history_forever,
         max_save_size_bytes: bytes_or_unlimited(limits.max_save_size_bytes),
+        save_size_min_bytes: bytes_or_unlimited(crate::cloud::plans::MIN_SAVE_SIZE_BYTES),
+        save_size_max_bytes: bytes_or_unlimited(crate::cloud::plans::max_save_size_ceiling(plan)),
         storage_status: storage_status(
             plan,
             row.4,
@@ -407,6 +416,69 @@ pub async fn set_max_versions(
         max_versions: body.max_versions,
         manual: body.manual,
         pruned,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MaxSaveSizeBody {
+    /// `null` restores the plan's own number.
+    pub max_save_size_bytes: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MaxSaveSizeOut {
+    /// What is enforced from now on, the plan default included when the caller
+    /// cleared the setting. Never an echo: the client renders this.
+    pub max_save_size_bytes: i64,
+    pub save_size_min_bytes: i64,
+    pub save_size_max_bytes: i64,
+}
+
+/// `PUT /v1/me/max-save-size`: move the per-save cap inside the plan's range,
+/// or clear it with `null`.
+///
+/// Nothing is deleted and nothing is re-checked: the cap only ever gates the
+/// *next* upload, so unlike the version caps there is no prune and no dry run.
+/// Lowering it below a save already stored leaves that save alone; the client
+/// trims the following backup to fit.
+pub async fn set_max_save_size(
+    State(state): State<CloudState>,
+    Extension(user): Extension<CloudUser>,
+    Json(body): Json<MaxSaveSizeBody>,
+) -> Result<Json<MaxSaveSizeOut>, CloudError> {
+    let plan: String = sqlx::query_scalar("SELECT plan FROM profiles WHERE user_id = $1")
+        .bind(user.user_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or(CloudError::NotFound("no profile"))?;
+    let plan = Plan::from_str(&plan).unwrap_or(Plan::Free);
+    let min = crate::cloud::plans::MIN_SAVE_SIZE_BYTES;
+    let max = crate::cloud::plans::max_save_size_ceiling(plan);
+
+    if let Some(n) = body.max_save_size_bytes {
+        if n < min as i64 || n > max as i64 {
+            return Err(CloudError::BadRequest(format!(
+                "max_save_size_bytes must be between {min} and {max} on the {} plan",
+                plan.as_str()
+            )));
+        }
+    }
+
+    sqlx::query(
+        "UPDATE profiles SET max_save_size_bytes = $1, updated_at = now() WHERE user_id = $2",
+    )
+    .bind(body.max_save_size_bytes)
+    .bind(user.user_id)
+    .execute(&state.pool)
+    .await?;
+
+    Ok(Json(MaxSaveSizeOut {
+        max_save_size_bytes: crate::cloud::plans::resolved_save_size_limit(
+            plan,
+            body.max_save_size_bytes,
+        ) as i64,
+        save_size_min_bytes: min as i64,
+        save_size_max_bytes: max as i64,
     }))
 }
 

@@ -24,7 +24,7 @@ pub enum CloudError {
     /// Any other non-2xx, 402 payment-required included. `status` is the raw HTTP
     /// code.
     Http { status: u16, body: String },
-    /// Error de red / transporte.
+    /// Network or transport error.
     Network(String),
     /// An unreadable response (JSON that does not parse).
     Parse(String),
@@ -197,6 +197,41 @@ pub async fn storage_games(base: &str, token: &str) -> Result<StorageGames, Clou
     let resp = http_client()?
         .get(&url)
         .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| CloudError::Network(format!("Network error: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(into_error(resp).await);
+    }
+    let body = resp.text().await.unwrap_or_default();
+    parse_json(&body)
+}
+
+/// What `PUT /v1/me/max-save-size` reports back: the cap now in force, plus the
+/// range it can be moved inside on this plan.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct SaveSizeCap {
+    pub max_save_size_bytes: i64,
+    pub save_size_min_bytes: i64,
+    pub save_size_max_bytes: i64,
+}
+
+/// `PUT {base}/v1/me/max-save-size`: moves the per-save cap, or restores the
+/// plan's own number with `None`.
+///
+/// A server without the setting answers 404 and the caller surfaces that as
+/// "not supported here", which is the honest reading: self-hosted has its own
+/// ceiling in `config.toml` and no plan to move it inside.
+pub async fn set_max_save_size(
+    base: &str,
+    token: &str,
+    max_save_size_bytes: Option<i64>,
+) -> Result<SaveSizeCap, CloudError> {
+    let url = format!("{base}/v1/me/max-save-size");
+    let resp = http_client()?
+        .put(&url)
+        .bearer_auth(token)
+        .json(&serde_json::json!({ "max_save_size_bytes": max_save_size_bytes }))
         .send()
         .await
         .map_err(|e| CloudError::Network(format!("Network error: {e}")))?;
