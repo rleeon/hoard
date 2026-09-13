@@ -588,6 +588,35 @@ pub async fn cloud_complete_login(
         return Err("auth callback state mismatch".into());
     }
     let base = cloud_base_url();
+
+    // Does this machine fit on the account? Asked before anything is stored, so a
+    // refusal leaves nothing behind: no session on disk, no engine pointed at it,
+    // and the device row the question itself created is handed back. The decision
+    // is the agent's (`device_slot`) so the terminal answers the same as the
+    // window.
+    match hoard_agent::device_slot::admit(&base, &access).await {
+        Ok(hoard_agent::device_slot::Admission::Allowed) => {}
+        Ok(hoard_agent::device_slot::Admission::Denied(d)) => {
+            if let Some(id) = d.device_id.as_deref() {
+                if let Err(e) = hoard_agent::device_slot::release(&base, &access, id).await {
+                    tracing::warn!(error = %e, "cloud login: couldn't hand back the device row");
+                }
+            }
+            tracing::info!(
+                used = d.used,
+                limit = d.limit,
+                plan = %d.plan,
+                "cloud login: refused, the account is at its device limit"
+            );
+            *state.pending_login.lock().unwrap() = None;
+            return Err(format!("device_limit:{}:{}:{}", d.used, d.limit, d.plan));
+        }
+        Err(e) => {
+            // Never block a login because we could not ask.
+            tracing::warn!(error = %e, "cloud login: couldn't check the device limit, letting it through");
+        }
+    }
+
     let me = fetch_me(&base, &access).await.map_err(prettify)?;
     save_creds(&app, &access, &refresh, &base, &me)
         .await
@@ -1144,6 +1173,7 @@ fn format_http_error(status: StatusCode, body: &str) -> String {
 fn i18n_key_for_code(code: &str) -> Option<&'static str> {
     match code {
         "device_free_cap" => Some("errors.device_free_cap"),
+        "device_limit_reached" => Some("errors.device_limit_reached"),
         _ => None,
     }
 }

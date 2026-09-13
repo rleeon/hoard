@@ -14,6 +14,7 @@ use anyhow::{bail, Result};
 use hoard_agent::api::ApiClient;
 use hoard_agent::cloud_auth;
 use hoard_agent::config::CliConfig;
+use hoard_agent::device_slot::{self, Admission};
 use hoard_agent::state;
 
 use crate::commands::link;
@@ -233,6 +234,25 @@ async fn login_cloud_email(base: &str) -> Result<()> {
 /// It gets handed over by IPC, and that alone tells the service the session
 /// changed, so no separate notice is needed.
 async fn finish_cloud_login(base: &str, tokens: &cloud_auth::Tokens) -> Result<()> {
+    // Room on the account? Asked before the session is stored or handed over, so
+    // a refusal leaves nothing behind. Same check the window makes, same module.
+    if let Admission::Denied(d) = device_slot::admit(base, &tokens.access)
+        .await
+        .unwrap_or(Admission::Allowed)
+    {
+        if let Some(id) = d.device_id.as_deref() {
+            let _ = device_slot::release(base, &tokens.access, id).await;
+        }
+        anyhow::bail!(
+            "this account is on the {} plan, which covers {} devices, and it already has {}.\n\
+             This machine was not linked. Unlink one at https://hoard.services/account, \
+             or go Pro for as many as you like: https://hoard.services/pricing",
+            d.plan,
+            d.limit,
+            d.used - 1
+        );
+    }
+
     // The handover includes forgetting the previous one, so signing in with
     // another account does not leave its `user` or `server_url` on disk.
     let handed = link::hand_over_session(hoard_core::ipc::AdoptedSession {
