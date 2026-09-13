@@ -1955,7 +1955,10 @@ pub async fn delete_save(
 
     // Cascade: deleting the save removes its save_versions, and with them the
     // `version_files` references and the save's `file_entries` catalogue (FK ON
-    // DELETE CASCADE). The save_versions storage trigger skips
+    // DELETE CASCADE). The two roads meet at `version_files`, and which one
+    // Postgres runs first is an accident of trigger OIDs; the reference FK is
+    // deferred to commit so it doesn't matter (0058). Every save delete in
+    // production failed until it was. The save_versions storage trigger skips
     // content-addressed rows; blob storage is credited as refcounts hit 0 below.
     sqlx::query("DELETE FROM saves WHERE id = $1 AND user_id = $2")
         .bind(&save_id)
