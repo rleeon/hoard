@@ -187,8 +187,7 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         }
         "tray::sign-out" => {
             // The frontend confirms and calls `signOut()` from auth.ts.
-            let _ = app.emit("tray://sign-out", ());
-            show_main_window(app);
+            crate::commands::window::send_intent(app, "sign-out");
         }
         "tray::quit" => {
             // Properly tear down rather than just app.exit so the agent gets
@@ -216,28 +215,20 @@ fn handle_icon_event(tray: &tauri::tray::TrayIcon, event: TrayIconEvent) {
 }
 
 fn show_main_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
+    crate::commands::window::reveal_main(app);
 }
 
 fn toggle_main_window(app: &AppHandle) {
-    let Some(window) = app.get_webview_window("main") else {
-        return;
-    };
-    match window.is_visible() {
-        Ok(true) => {
-            // Already visible: clicking the tray on a visible window is the
-            // user telling us they're done. Hide it; the agent keeps running.
-            let _ = window.hide();
-        }
-        _ => {
-            let _ = window.unminimize();
-            let _ = window.show();
-            let _ = window.set_focus();
-        }
+    let visible = app
+        .get_webview_window(crate::commands::window::MAIN_LABEL)
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(false);
+    if visible {
+        // Already visible: clicking the tray on a visible window is the
+        // user telling us they're done. Hide it; the agent keeps running.
+        crate::commands::window::stash_main(app);
+    } else {
+        crate::commands::window::reveal_main(app);
     }
 }
 

@@ -941,9 +941,16 @@ export function getPrefs(): Promise<Prefs> {
 /** Tells the backend the UI has painted its first frame so it can show the window
  *  (it is born hidden; see `commands/window.rs`). Idempotent, with a safety net on
  *  the Rust side, so nothing breaks if it is late or if the start is silent, in
- *  which case the backend ignores it. */
-export function uiReady(): Promise<void> {
-  return invoke<void>("ui_ready");
+ *  which case the backend ignores it. Resolves `true` when the window was rebuilt
+ *  after being dropped in the tray, so the UI can go back to the page it was on. */
+export function uiReady(): Promise<boolean> {
+  return invoke<boolean>("ui_ready");
+}
+
+/** A tray action sent while the window was being rebuilt, before any listener
+ *  existed to hear it (`commands/window.rs`). */
+export function takeWindowIntent(): Promise<string | null> {
+  return invoke<string | null>("window_take_intent");
 }
 
 /** A line for the app's log file, from the interface (see `commands/misc.rs`). */

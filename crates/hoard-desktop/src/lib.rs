@@ -173,11 +173,7 @@ pub fn run() {
         // Single instance: clicking the launcher again brings the existing
         // window to the front instead of spawning a second copy.
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            commands::window::reveal_main(app);
             // On Linux/Windows a `hoard://…` deep link opened while the app is
             // already running arrives as a *second launch*, since the OS hands the
             // URL to this callback as an argv entry, NOT through the deep-link
@@ -226,13 +222,16 @@ pub fn run() {
         // La ventana nace oculta (`"visible": false`) y este flag decide si
         // llega a mostrarse: en un arranque silencioso, no.
         .manage(commands::window::StartHidden::default())
+        .manage(commands::window::WindowLife::default())
         .invoke_handler(tauri::generate_handler![
             commands::misc::greet,
             commands::window::ui_ready,
+            commands::window::window_take_intent,
             // HUD sobre el juego (la app normal, no Hoard-Screen).
             commands::overlay::overlay_toggle,
             commands::overlay::overlay_set_visible,
             commands::overlay::overlay_is_visible,
+            commands::overlay::overlay_bind,
             commands::misc::open_external,
             commands::misc::ui_log,
             commands::covers::cover_bytes,
@@ -534,11 +533,7 @@ pub fn run() {
             app.deep_link().on_open_url(move |event| {
                 for url in event.urls() {
                     tracing::info!(url = %url, "deep link opened (on_open_url)");
-                    if let Some(window) = dl_handle.get_webview_window("main") {
-                        let _ = window.unminimize();
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                    commands::window::reveal_main(&dl_handle);
                     capture_deep_link(&dl_handle, url.to_string(), true);
                 }
             });
@@ -584,7 +579,25 @@ pub fn run() {
         // no token rotation was halfway through (GoTrue rotates server-side before we
         // persist, and dying in that gap orphaned the new pair, losing the session on
         // the next start). What rotates is the service, and it outlives us closing.
-        if let RunEvent::ExitRequested { .. } = event {
+        if let RunEvent::ExitRequested { code, api, .. } = &event {
+            // The last window going is the user quitting only when the user closed
+            // it; the one `commands/window.rs` drops to save memory is not.
+            if code.is_none() && commands::window::keep_running_after_last_window(app_handle) {
+                api.prevent_exit();
+            }
+            return;
+        }
+        // A window with the focus is on screen, whatever path showed it: if that
+        // path skipped `reveal_main`, its webview comes out of the background here.
+        if let RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::Focused(true),
+            ..
+        } = &event
+        {
+            if let Some(window) = app_handle.get_webview_window(label) {
+                commands::window::foreground(app_handle, &window, label);
+            }
             return;
         }
         if let RunEvent::WindowEvent {
@@ -606,9 +619,7 @@ pub fn run() {
 
             if close_to_tray {
                 api.prevent_close();
-                if let Some(window) = app_handle.get_webview_window(&label) {
-                    let _ = window.hide();
-                }
+                commands::window::stash_main(app_handle);
                 // The frontend pops a one-time toast explaining we're still
                 // running. That's gated by `Prefs::seen_tray_hint` so power
                 // users don't see it after they've understood the deal.

@@ -23,6 +23,13 @@ path = "src/lib.rs"
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 
+# What a hidden window's WebView2 can give back (`commands/window.rs`). Same
+# versions Tauri's own `wry` builds against, so the controller it hands out is
+# the type these crates know.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38"
+windows-core = "0.61"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

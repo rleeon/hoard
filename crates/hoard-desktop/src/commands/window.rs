@@ -1,4 +1,4 @@
-//! The main window: when it gets shown.
+//! The main window: when it gets shown, and what it costs while it isn't.
 //!
 //! The window is declared `"visible": false` in `tauri.conf.json`. Tauri would
 //! create it visible the moment the Rust side finished building it, but the webview
@@ -6,11 +6,33 @@
 //! rectangle (the webview's default background, not our `bg-zinc-950`) for that
 //! whole gap. Born hidden, the window appears already drawn: the frontend is what
 //! asks to show it, through [`ui_ready`], right after the first paint.
+//!
+//! Hidden in the tray is where the app spends most of its life, and a hidden
+//! webview costs what a visible one does: 201 MB on WebView2 and 194 MB on
+//! WebKitGTK for the same page, measured on 13-09. What it can give back depends
+//! on the engine:
+//!
+//! - **WebView2** has a knob for exactly this. Asked for a low memory target while
+//!   hidden it came down to 60 MB and was back on screen in 5 ms with everything in
+//!   place, so on Windows a window is only ever hidden.
+//! - **WebKitGTK** has nothing like it: the only way to get the memory back is to
+//!   drop the webview (7 MB stay, the network process). So on Linux a window hidden
+//!   for [`RELEASE_AFTER`] is destroyed, and rebuilt the next time it is asked for,
+//!   which is a cold start (~0.6 s) instead of 5 ms. What the screens paint from
+//!   lives on this side (the session, the service's journal, the notifications), so
+//!   the rebuilt UI comes up with it and lands back on the page the user left.
+//!
+//! macOS keeps the old behaviour: neither path has been tried there.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
+
+use crate::commands::overlay::OVERLAY_LABEL;
+
+pub const MAIN_LABEL: &str = "main";
 
 /// How long we wait for the frontend before showing the window ourselves.
 ///
@@ -20,6 +42,11 @@ use tauri::{AppHandle, Manager};
 /// start". This deadline guarantees there is always something on screen, even if it
 /// is the broken page, which is what the user can report.
 const FALLBACK_SHOW_AFTER: Duration = Duration::from_secs(8);
+
+/// How long a hidden window keeps its webview on Linux. Long enough that closing
+/// the window to glance at a game and opening it again never pays a rebuild.
+#[cfg(target_os = "linux")]
+const RELEASE_AFTER: Duration = Duration::from_secs(10 * 60);
 
 /// Decides whether the window should be shown on this start.
 ///
@@ -40,12 +67,48 @@ impl StartHidden {
     }
 }
 
+/// What outlives the windows themselves.
+#[derive(Debug, Default)]
+pub struct WindowLife {
+    /// Bumped whenever a window is shown or hidden: a release armed by an older
+    /// hide finds a different number and leaves the window alone.
+    main_epoch: AtomicU64,
+    overlay_epoch: AtomicU64,
+    /// Set when the main window is rebuilt. The UI reads it once, through
+    /// [`ui_ready`], to land back where the user was instead of on the start page.
+    reopened: AtomicBool,
+    /// Set just before this module drops a window, so the "last window closed"
+    /// that follows is not taken for the user quitting.
+    releasing: AtomicBool,
+    /// Games running right now, per the service. The HUD is kept while any is.
+    pub(crate) games: AtomicUsize,
+    /// The HUD's shortcut, when one is registered (`overlay_bind`).
+    pub(crate) overlay_accel: Mutex<Option<String>>,
+    /// A tray action for a UI that had to be rebuilt first, and so had no listener
+    /// yet when it was sent.
+    pending_intent: Mutex<Option<String>>,
+}
+
+impl WindowLife {
+    fn epoch(&self, label: &str) -> &AtomicU64 {
+        if label == OVERLAY_LABEL {
+            &self.overlay_epoch
+        } else {
+            &self.main_epoch
+        }
+    }
+
+    fn bump(&self, label: &str) -> u64 {
+        self.epoch(label).fetch_add(1, Ordering::SeqCst) + 1
+    }
+}
+
 /// Muestra la ventana principal salvo que este arranque sea silencioso.
 fn show_main(app: &AppHandle) {
     if app.state::<StartHidden>().get() {
         return;
     }
-    if let Some(w) = app.get_webview_window("main") {
+    if let Some(w) = app.get_webview_window(MAIN_LABEL) {
         let _ = w.show();
         // Without this the window appears behind on some Linux compositors when the
         // start was slow: another window took the focus while we were still hidden.
@@ -56,10 +119,12 @@ fn show_main(app: &AppHandle) {
 /// The frontend has painted its first frame and the window can be shown.
 ///
 /// Idempotent: `show()` on an already visible window does nothing, so it does not
-/// matter if the fallback got there first.
+/// matter if the fallback got there first. Answers whether this window was rebuilt
+/// after being released, so the UI knows to go back to the page it was on.
 #[tauri::command]
-pub fn ui_ready(app: AppHandle) {
+pub fn ui_ready(app: AppHandle) -> bool {
     show_main(&app);
+    app.state::<WindowLife>().reopened.swap(false, Ordering::SeqCst)
 }
 
 /// Red de seguridad: si el frontend no ha llamado a [`ui_ready`] dentro de
@@ -68,7 +133,7 @@ pub fn spawn_fallback_show(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(FALLBACK_SHOW_AFTER).await;
         let already_visible = app
-            .get_webview_window("main")
+            .get_webview_window(MAIN_LABEL)
             .and_then(|w| w.is_visible().ok())
             .unwrap_or(false);
         if already_visible || app.state::<StartHidden>().get() {
@@ -83,14 +148,178 @@ pub fn spawn_fallback_show(app: AppHandle) {
 }
 
 /// Marca este arranque como silencioso: la ventana se queda oculta hasta que
-/// el usuario la invoque desde la bandeja.
+/// el usuario la invoque desde la bandeja. A window that starts in the tray is a
+/// hidden window from its first second, and gets treated as one.
 pub fn mark_start_hidden(app: &AppHandle, hidden: bool) {
     app.state::<StartHidden>().set(hidden);
+    if hidden {
+        if let Some(window) = app.get_webview_window(MAIN_LABEL) {
+            background(app, &window, MAIN_LABEL);
+        }
+    }
 }
+
+/// Shows the main window, rebuilding it first if it was released while hidden.
+/// Every way of bringing the window back goes through here: the tray, a second
+/// launch, a deep link, the login loopback.
+pub fn reveal_main(app: &AppHandle) {
+    // Whoever asks for the window wants it, silent start or not.
+    app.state::<StartHidden>().set(false);
+    let window = match app.get_webview_window(MAIN_LABEL) {
+        Some(w) => w,
+        None => match rebuild_main(app) {
+            Ok(w) => w,
+            Err(e) => {
+                tracing::error!(error = %e, "window: couldn't rebuild the main window");
+                return;
+            }
+        },
+    };
+    foreground(app, &window, MAIN_LABEL);
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
+/// Hides the main window and lets its webview give back what it can.
+pub fn stash_main(app: &AppHandle) {
+    let Some(window) = app.get_webview_window(MAIN_LABEL) else {
+        return;
+    };
+    let _ = window.hide();
+    background(app, &window, MAIN_LABEL);
+}
+
+/// A tray action for the main UI (`tray://<intent>`), bringing the window up. When
+/// the window had to be rebuilt the UI isn't listening yet, so the action waits in
+/// [`window_take_intent`] instead of being emitted into nothing.
+pub fn send_intent(app: &AppHandle, intent: &str) {
+    let rebuilding = app.get_webview_window(MAIN_LABEL).is_none();
+    reveal_main(app);
+    if rebuilding {
+        *app.state::<WindowLife>().pending_intent.lock().unwrap() = Some(intent.to_string());
+    } else {
+        let _ = app.emit(&format!("tray://{intent}"), ());
+    }
+}
+
+#[tauri::command]
+pub fn window_take_intent(app: AppHandle) -> Option<String> {
+    app.state::<WindowLife>().pending_intent.lock().unwrap().take()
+}
+
+/// `true` when the app must keep running although its last window just closed:
+/// this module dropped it to save memory, the user didn't close anything.
+pub fn keep_running_after_last_window(app: &AppHandle) -> bool {
+    app.state::<WindowLife>().releasing.swap(false, Ordering::SeqCst)
+}
+
+/// A window has come back on screen, or is about to.
+pub(crate) fn foreground(app: &AppHandle, window: &WebviewWindow, label: &str) {
+    app.state::<WindowLife>().bump(label);
+    set_backgrounded(window, false);
+}
+
+/// A window has just been hidden: what it does with its memory, per engine (see
+/// the module docs).
+pub(crate) fn background(app: &AppHandle, window: &WebviewWindow, label: &'static str) {
+    let _epoch = app.state::<WindowLife>().bump(label);
+    set_backgrounded(window, true);
+    #[cfg(target_os = "linux")]
+    release_later(app.clone(), label, _epoch);
+}
+
+/// Builds the main window again from its `tauri.conf.json` entry, the one it was
+/// born from at startup.
+fn rebuild_main(app: &AppHandle) -> Result<WebviewWindow, String> {
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|w| w.label == MAIN_LABEL)
+        .cloned()
+        .ok_or("no main window in tauri.conf.json")?;
+    let window = tauri::WebviewWindowBuilder::from_config(app, &config)
+        .and_then(|b| b.build())
+        .map_err(|e| e.to_string())?;
+    // As at startup (`lib.rs`): on Windows the frontend paints its own title bar.
+    #[cfg(windows)]
+    let _ = window.set_decorations(false);
+    app.state::<WindowLife>().reopened.store(true, Ordering::SeqCst);
+    tracing::info!("window: main window rebuilt");
+    Ok(window)
+}
+
+#[cfg(target_os = "linux")]
+fn release_after() -> Duration {
+    // For trying the release by hand without waiting ten minutes.
+    std::env::var("HOARD_RELEASE_HIDDEN_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .map(Duration::from_secs)
+        .unwrap_or(RELEASE_AFTER)
+}
+
+#[cfg(target_os = "linux")]
+fn release_later(app: AppHandle, label: &'static str, epoch: u64) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(release_after()).await;
+        let life = app.state::<WindowLife>();
+        if life.epoch(label).load(Ordering::SeqCst) != epoch {
+            return;
+        }
+        // The HUD stays while a game is on, so the next Alt+H is instant;
+        // `overlay::game_stopped` arms this again when the last one ends.
+        if label == OVERLAY_LABEL && life.games.load(Ordering::SeqCst) > 0 {
+            return;
+        }
+        let Some(window) = app.get_webview_window(label) else {
+            return;
+        };
+        if window.is_visible().unwrap_or(true) {
+            return;
+        }
+        tracing::info!(label, "window: dropping a webview that has been hidden for a while");
+        life.releasing.store(true, Ordering::SeqCst);
+        if window.destroy().is_err() {
+            life.releasing.store(false, Ordering::SeqCst);
+        }
+    });
+}
+
+#[cfg(windows)]
+fn set_backgrounded(window: &WebviewWindow, background: bool) {
+    let _ = window.with_webview(move |webview| unsafe {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
+            COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+        };
+        use windows_core::Interface;
+        let controller = webview.controller();
+        let _ = controller.SetIsVisible(!background);
+        let level = if background {
+            COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+        } else {
+            COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
+        };
+        // A runtime too old for `_19` doesn't know the knob and keeps its memory.
+        if let Ok(core) = controller
+            .CoreWebView2()
+            .and_then(|c| c.cast::<ICoreWebView2_19>())
+        {
+            let _ = core.SetMemoryUsageTargetLevel(level);
+        }
+    });
+}
+
+#[cfg(not(windows))]
+fn set_backgrounded(_window: &WebviewWindow, _background: bool) {}
 
 #[cfg(test)]
 mod tests {
-    use super::StartHidden;
+    use super::{StartHidden, WindowLife, MAIN_LABEL};
+    use crate::commands::overlay::OVERLAY_LABEL;
 
     #[test]
     fn start_hidden_defaults_to_showing_the_window() {
@@ -104,5 +333,22 @@ mod tests {
         assert!(flag.get());
         flag.set(false);
         assert!(!flag.get());
+    }
+
+    #[test]
+    fn a_release_armed_before_the_window_was_used_again_is_stale() {
+        let life = WindowLife::default();
+        let armed = life.bump(MAIN_LABEL);
+        // Shown and hidden again before the timer fired: a newer epoch.
+        life.bump(MAIN_LABEL);
+        assert_ne!(
+            life.epoch(MAIN_LABEL).load(std::sync::atomic::Ordering::SeqCst),
+            armed
+        );
+        // The HUD counts on its own.
+        assert_eq!(
+            life.epoch(OVERLAY_LABEL).load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
     }
 }

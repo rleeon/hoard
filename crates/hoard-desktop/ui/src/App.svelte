@@ -429,10 +429,10 @@
     // was. Showing before the first paint costs nothing here anyway, because the
     // window carries `backgroundColor` (`tauri.conf.json`): what appears in that
     // gap is the app's own background, not a white flash.
-    void api.uiReady().catch(() => {
-      // The backend has its own grace deadline; if the call fails the window
-      // appears anyway. Nothing to do here.
-    });
+    // The backend has its own grace deadline; if the call fails the window
+    // appears anyway. What it answers is whether the window was rebuilt after
+    // being dropped in the tray (Linux, see `commands/window.rs`).
+    const reopened = api.uiReady().catch(() => false);
 
     // Warms both possible startup destinations while the session hydrates: with a
     // session you end up on /dashboard, without one on the wizard. By the time the
@@ -455,13 +455,16 @@
     document.documentElement.classList.add(`is-${osTag}`);
 
     await Promise.all([hydrateAuth(), hydrateCloud()]);
+    // A window rebuilt from the tray goes back to the page it was on; a fresh
+    // start lands where it always did.
+    const back = (await reopened) ? lastAppRoute() : null;
     if ($auth.user) {
-      landOn("/dashboard");
+      landOn(back ?? "/dashboard");
     } else if ($cloud.account) {
       // Cloud-only user (signed in via Gmail, no self-hosted server). Without
       // this branch they'd be dumped back into the onboarding wizard on every
       // launch because the old boot only checked `$auth.user`.
-      landOn("/account");
+      landOn(back ?? "/account");
     } else {
       // No session at all → always start at the welcome screen. We used to
       // resume `routeForStep(loadStep())`, but a persisted "server" step (left
@@ -579,6 +582,10 @@
     disposeTraySignOut = await listen("tray://sign-out", () => {
       traySignOutOpen = true;
     });
+    // Sent while this window was being rebuilt, before the listener existed.
+    if ((await api.takeWindowIntent().catch(() => null)) === "sign-out") {
+      traySignOutOpen = true;
+    }
 
     // Ctrl+Shift+D opens the dev console (dev builds only, see stores/debug.ts).
     if (DEBUG_TOOLS) {
@@ -838,6 +845,29 @@
   const isAppRoute = $derived(
     APP_ROUTE_PREFIXES.some((p) => router.location.startsWith(p)),
   );
+
+  // The page the user is on, for a window that gets rebuilt after being dropped
+  // in the tray (see `onMount`). App routes only: coming back into the middle of
+  // the wizard would be a trap.
+  const LAST_ROUTE_KEY = "hoard-last-route";
+  $effect(() => {
+    const loc = router.location;
+    if (!booted || !APP_ROUTE_PREFIXES.some((p) => loc.startsWith(p))) return;
+    try {
+      localStorage.setItem(LAST_ROUTE_KEY, loc);
+    } catch {
+      /* best-effort */
+    }
+  });
+
+  function lastAppRoute(): string | null {
+    try {
+      const loc = localStorage.getItem(LAST_ROUTE_KEY);
+      return loc && APP_ROUTE_PREFIXES.some((p) => loc.startsWith(p)) ? loc : null;
+    } catch {
+      return null;
+    }
+  }
 
   // First letter for the avatar fallback when the cloud account has no
   // `avatar_url` (email/password sign-ups, or providers that don't return

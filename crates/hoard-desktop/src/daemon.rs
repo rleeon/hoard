@@ -865,6 +865,13 @@ fn emit_event(app: &AppHandle, ev: &AgentEvent) {
         crate::commands::automatic::request_scan(app.clone());
     }
 
+    // The HUD waits loaded while a game runs (see `overlay::game_started`).
+    match ev {
+        AgentEvent::GameStarted { .. } => crate::commands::overlay::game_started(app),
+        AgentEvent::GameStopped { .. } => crate::commands::overlay::game_stopped(app),
+        _ => {}
+    }
+
     // Aliases with semantic names for the LiveStatus and ActivityFeed surface. The
     // same payload on a more readable channel; the original channels stay alive.
     match ev {

@@ -80,11 +80,7 @@ pub async fn start(app: AppHandle, state: String) -> Result<u16> {
                             let url = format!(
                                 "hoard://auth/callback?access_token={access}&refresh_token={refresh}&state={expected_state}"
                             );
-                            if let Some(w) = app.get_webview_window("main") {
-                                let _ = w.unminimize();
-                                let _ = w.show();
-                                let _ = w.set_focus();
-                            }
+                            crate::commands::window::reveal_main(&app);
                             crate::capture_deep_link(&app, url, true);
                             // Deliberately NOT `break`. `cloud_login_url` keeps
                             // handing this same port out for the whole

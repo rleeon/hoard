@@ -9,16 +9,11 @@
  * It lives in `localStorage`, like the theme and the accent: it is *this* machine's
  * interface preference and has no reason to travel to the service's `prefs.json`.
  *
- * The shortcut is registered from here (the main window) and not from Rust: the
- * global-shortcut plugin is already mounted and the main window stays alive even
- * hidden in the tray, which is exactly the case where it is needed.
+ * The shortcut itself is registered by Rust (`overlay_bind`), not from this page:
+ * the page belongs to the main window, and on Linux that window is dropped while
+ * it sits hidden in the tray, which is exactly when the shortcut is needed.
  */
 import { invoke } from "@tauri-apps/api/core";
-import {
-  register,
-  unregister,
-  isRegistered,
-} from "@tauri-apps/plugin-global-shortcut";
 import { writable } from "svelte/store";
 
 const KEY_ENABLED = "hoard-overlay-enabled";
@@ -54,7 +49,7 @@ let active: string | null = null;
 async function unbind(): Promise<void> {
   if (!active) return;
   try {
-    if (await isRegistered(active)) await unregister(active);
+    await invoke("overlay_bind", { accel: null });
   } catch (e) {
     console.warn("no se pudo liberar el atajo del overlay:", e);
   }
@@ -62,14 +57,9 @@ async function unbind(): Promise<void> {
 }
 
 async function bind(accel: string): Promise<void> {
-  await unbind();
+  // Rust drops the previous shortcut itself before taking this one.
   try {
-    await register(accel, (event) => {
-      // The plugin reports both the press AND the release; unfiltered, one tap
-      // toggled twice and the HUD looked like it never opened.
-      if (event.state !== "Pressed") return;
-      void invoke("overlay_toggle");
-    });
+    await invoke("overlay_bind", { accel });
     active = accel;
   } catch (e) {
     // The common case: another application already took that combination. Not
