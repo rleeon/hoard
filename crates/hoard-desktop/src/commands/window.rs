@@ -32,6 +32,12 @@ use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 use crate::commands::overlay::OVERLAY_LABEL;
 
+#[cfg(windows)]
+use webview2_com::Microsoft::Web::WebView2::Win32::{
+    ICoreWebView2ProcessFailedEventArgs, COREWEBVIEW2_PROCESS_FAILED_KIND,
+    COREWEBVIEW2_PROCESS_FAILED_REASON,
+};
+
 pub const MAIN_LABEL: &str = "main";
 
 /// How long we wait for the frontend before showing the window ourselves.
@@ -246,6 +252,8 @@ fn rebuild_main(app: &AppHandle) -> Result<WebviewWindow, String> {
     // As at startup (`lib.rs`): on Windows the frontend paints its own title bar.
     #[cfg(windows)]
     let _ = window.set_decorations(false);
+    #[cfg(windows)]
+    watch_engine(&window);
     app.state::<WindowLife>().reopened.store(true, Ordering::SeqCst);
     tracing::info!("window: main window rebuilt");
     Ok(window)
@@ -315,6 +323,135 @@ fn set_backgrounded(window: &WebviewWindow, background: bool) {
 
 #[cfg(not(windows))]
 fn set_backgrounded(_window: &WebviewWindow, _background: bool) {}
+
+/// Logs every WebView2 process that dies under `window`, with what the engine says
+/// about it, and one line when the engine comes up.
+///
+/// On 14-09 the browser process went two seconds after a start and the window stayed
+/// black until the user quit. All the log had was a `0x8007139F` for each emit that
+/// followed, and Crashpad had already uploaded its dump and deleted it: there was no
+/// way left to tell which process died, or why.
+#[cfg(windows)]
+pub(crate) fn watch_engine(window: &WebviewWindow) {
+    let label = window.label().to_string();
+    let watched = window.with_webview(move |webview| unsafe {
+        let core = match webview.controller().CoreWebView2() {
+            Ok(core) => core,
+            Err(e) => {
+                tracing::warn!(window = %label, error = %e, "webview2: no engine to watch");
+                return;
+            }
+        };
+        let mut browser_pid = 0u32;
+        let _ = core.BrowserProcessId(&mut browser_pid);
+        let mut version = windows_core::PWSTR::null();
+        let version = match webview.environment().BrowserVersionString(&mut version) {
+            Ok(()) => webview2_com::take_pwstr(version),
+            Err(_) => String::new(),
+        };
+        tracing::info!(window = %label, browser_pid, %version, "webview2: engine up");
+
+        let failed = label.clone();
+        let handler = webview2_com::ProcessFailedEventHandler::create(Box::new(move |_, args| {
+            if let Some(args) = args {
+                log_process_failed(&failed, &args);
+            }
+            Ok(())
+        }));
+        let mut token = 0i64;
+        if let Err(e) = core.add_ProcessFailed(&handler, &mut token) {
+            tracing::warn!(
+                window = %label, error = %e,
+                "webview2: couldn't watch the engine's processes"
+            );
+        }
+    });
+    if let Err(e) = watched {
+        tracing::warn!(error = %e, "webview2: couldn't reach the webview to watch it");
+    }
+}
+
+#[cfg(windows)]
+fn log_process_failed(label: &str, args: &ICoreWebView2ProcessFailedEventArgs) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2ProcessFailedEventArgs2, ICoreWebView2ProcessFailedEventArgs3,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED,
+    };
+    use windows_core::Interface;
+
+    let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
+    // Reason, exit code and module came with later runtimes; an old one only gives
+    // the kind, and -1 keeps it from reading as a real reason.
+    let mut reason = COREWEBVIEW2_PROCESS_FAILED_REASON(-1);
+    let mut exit_code = 0i32;
+    let mut process = String::new();
+    let mut module = String::new();
+    unsafe {
+        let _ = args.ProcessFailedKind(&mut kind);
+        if let Ok(args) = args.cast::<ICoreWebView2ProcessFailedEventArgs2>() {
+            let _ = args.Reason(&mut reason);
+            let _ = args.ExitCode(&mut exit_code);
+            let mut text = windows_core::PWSTR::null();
+            if args.ProcessDescription(&mut text).is_ok() {
+                process = webview2_com::take_pwstr(text);
+            }
+        }
+        if let Ok(args) = args.cast::<ICoreWebView2ProcessFailedEventArgs3>() {
+            let mut text = windows_core::PWSTR::null();
+            if args.FailureSourceModulePath(&mut text).is_ok() {
+                module = webview2_com::take_pwstr(text);
+            }
+        }
+    }
+    // The browser and the page's renderer take the window down with them; GPU,
+    // utility and the rest the engine restarts on its own.
+    let takes_the_window = kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED
+        || kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED;
+    let exit_code = format!("0x{:08X}", exit_code as u32);
+    let (kind, reason) = (kind_name(kind), reason_name(reason));
+    if takes_the_window {
+        tracing::error!(
+            window = label, kind, reason, %exit_code, %process, %module,
+            "webview2: an engine process died"
+        );
+    } else {
+        tracing::warn!(
+            window = label, kind, reason, %exit_code, %process, %module,
+            "webview2: an engine process died"
+        );
+    }
+}
+
+#[cfg(windows)]
+fn kind_name(kind: COREWEBVIEW2_PROCESS_FAILED_KIND) -> &'static str {
+    use webview2_com::Microsoft::Web::WebView2::Win32::*;
+    match kind {
+        COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED => "browser",
+        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED => "renderer",
+        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE => "renderer unresponsive",
+        COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED => "frame renderer",
+        COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED => "gpu",
+        COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED => "utility",
+        COREWEBVIEW2_PROCESS_FAILED_KIND_SANDBOX_HELPER_PROCESS_EXITED => "sandbox helper",
+        _ => "other",
+    }
+}
+
+#[cfg(windows)]
+fn reason_name(reason: COREWEBVIEW2_PROCESS_FAILED_REASON) -> &'static str {
+    use webview2_com::Microsoft::Web::WebView2::Win32::*;
+    match reason {
+        COREWEBVIEW2_PROCESS_FAILED_REASON_UNEXPECTED => "unexpected",
+        COREWEBVIEW2_PROCESS_FAILED_REASON_UNRESPONSIVE => "unresponsive",
+        COREWEBVIEW2_PROCESS_FAILED_REASON_TERMINATED => "terminated",
+        COREWEBVIEW2_PROCESS_FAILED_REASON_CRASHED => "crashed",
+        COREWEBVIEW2_PROCESS_FAILED_REASON_LAUNCH_FAILED => "launch failed",
+        COREWEBVIEW2_PROCESS_FAILED_REASON_OUT_OF_MEMORY => "out of memory",
+        COREWEBVIEW2_PROCESS_FAILED_REASON_PROFILE_DELETED => "profile deleted",
+        _ => "unknown",
+    }
+}
 
 #[cfg(test)]
 mod tests {

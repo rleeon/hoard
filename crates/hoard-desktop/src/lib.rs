@@ -374,6 +374,7 @@ pub fn run() {
                 if let Err(e) = window.set_decorations(false) {
                     tracing::warn!(error = %e, "window: couldn't drop the system title bar");
                 }
+                commands::window::watch_engine(&window);
             }
 
             // Build the tray as soon as we have an AppHandle. Failures here
