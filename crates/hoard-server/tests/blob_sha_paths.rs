@@ -372,17 +372,59 @@ async fn archive_and_reactivate_round_trip_the_refcounts() {
     cleanup(&pool, user).await;
 }
 
-/// The daily sweep reads the manifest to size what it would drop.
+/// The daily sweep actually drops an abandoned upload: the uncommitted version
+/// row and, through the cascade, its manifest, while the version that did
+/// commit is left alone.
+///
+/// Until 2026-09-10 this test only proved the query parsed. It seeded nothing
+/// abandoned, so the per-account path never ran, and that is the path that
+/// failed in production on every account, every day (`sum()` returns NUMERIC,
+/// which does not decode into `i64`). `sweep` also swallows per-account errors
+/// into a log line, so its `Ok` proves nothing; hence the checks on the rows.
 #[tokio::test]
-async fn the_abandoned_sweep_reads_the_manifest() {
+async fn the_abandoned_sweep_drops_an_abandoned_upload() {
     let Some(pool) = pool().await else { return };
-    let (user, _save) = seed(&pool, 2, 2).await;
+    let (user, save_id) = seed(&pool, 2, 2).await;
+    // Version 2 becomes an upload that started a day ago and never committed.
+    sqlx::query(
+        "UPDATE save_versions SET sha256 = '', created_at = now() - interval '1 day'
+          WHERE save_id = $1 AND version_num = 2",
+    )
+    .bind(&save_id)
+    .execute(&pool)
+    .await
+    .expect("abandon version 2");
     let state = state_for(pool.clone()).await;
 
-    // Nothing here is abandoned; what is being tested is that the query runs.
-    hoard_server::cloud::abandoned::sweep(&state)
+    let swept = hoard_server::cloud::abandoned::sweep(&state)
         .await
         .expect("sweep runs");
+    assert!(
+        swept.versions >= 1,
+        "the abandoned version was not swept: {swept:?}"
+    );
+    assert!(
+        swept.manifest_rows >= 2,
+        "its manifest was not counted: {swept:?}"
+    );
+
+    let left: Vec<(i64,)> = sqlx::query_as(
+        "SELECT version_num FROM save_versions WHERE save_id = $1 ORDER BY version_num",
+    )
+    .bind(&save_id)
+    .fetch_all(&pool)
+    .await
+    .expect("versions left");
+    assert_eq!(left, vec![(1,)], "only the committed version survives");
+
+    let manifest: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM manifest_files WHERE save_id = $1 AND version_num = 1",
+    )
+    .bind(&save_id)
+    .fetch_one(&pool)
+    .await
+    .expect("manifest left");
+    assert_eq!(manifest, 2, "the committed version keeps its manifest");
 
     cleanup(&pool, user).await;
 }

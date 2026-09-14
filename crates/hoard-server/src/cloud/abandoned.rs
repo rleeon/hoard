@@ -211,11 +211,17 @@ async fn sweep_account(
     // The manifest rows go with the version row (ON DELETE CASCADE on
     // `version_files`), so they're counted before the delete rather than
     // after.
+    //
+    // The `::bigint` is load-bearing. `sum()` over a bigint returns NUMERIC,
+    // which does not decode into `i64`, so without it every account failed
+    // right here with "mismatched types", before its DELETE, every day, and
+    // the sweep reclaimed nothing. Second time this task has been silently
+    // dead (see `hours` above for the first).
     let (versions, manifest_rows): (i64, i64) = sqlx::query_as(
         "SELECT count(*),
                 coalesce(sum((SELECT count(*) FROM manifest_files f
                                WHERE f.save_id = v.save_id
-                                 AND f.version_num = v.version_num)), 0)
+                                 AND f.version_num = v.version_num)), 0)::bigint
            FROM save_versions v
            JOIN saves s ON s.id = v.save_id
           WHERE s.user_id = $1
