@@ -27,6 +27,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
+#[cfg(any(windows, test))]
+use std::time::Instant;
 
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
@@ -34,7 +36,7 @@ use crate::commands::overlay::OVERLAY_LABEL;
 
 #[cfg(windows)]
 use webview2_com::Microsoft::Web::WebView2::Win32::{
-    ICoreWebView2ProcessFailedEventArgs, COREWEBVIEW2_PROCESS_FAILED_KIND,
+    ICoreWebView2, ICoreWebView2ProcessFailedEventArgs, COREWEBVIEW2_PROCESS_FAILED_KIND,
     COREWEBVIEW2_PROCESS_FAILED_REASON,
 };
 
@@ -54,6 +56,14 @@ const FALLBACK_SHOW_AFTER: Duration = Duration::from_secs(8);
 #[cfg(target_os = "linux")]
 const RELEASE_AFTER: Duration = Duration::from_secs(10 * 60);
 
+/// Rebuilds a dead engine gets within [`RECOVERY_WINDOW`]. A runtime that dies on
+/// every start would otherwise rebuild the window in a loop for as long as the app
+/// runs.
+#[cfg(any(windows, test))]
+const MAX_RECOVERIES: usize = 3;
+#[cfg(any(windows, test))]
+const RECOVERY_WINDOW: Duration = Duration::from_secs(10 * 60);
+
 /// Decides whether the window should be shown on this start.
 ///
 /// Starting silently (autostart with `--silent` plus `start_minimised`) is the only
@@ -70,6 +80,23 @@ impl StartHidden {
 
     pub fn get(&self) -> bool {
         self.0.load(Ordering::Relaxed)
+    }
+}
+
+#[cfg(any(windows, test))]
+#[derive(Debug, Default)]
+struct RecoveryBudget(Mutex<Vec<Instant>>);
+
+#[cfg(any(windows, test))]
+impl RecoveryBudget {
+    fn take(&self, now: Instant) -> bool {
+        let mut recent = self.0.lock().unwrap();
+        recent.retain(|&at| now.saturating_duration_since(at) < RECOVERY_WINDOW);
+        if recent.len() >= MAX_RECOVERIES {
+            return false;
+        }
+        recent.push(now);
+        true
     }
 }
 
@@ -93,6 +120,8 @@ pub struct WindowLife {
     /// A tray action for a UI that had to be rebuilt first, and so had no listener
     /// yet when it was sent.
     pending_intent: Mutex<Option<String>>,
+    #[cfg(windows)]
+    recoveries: RecoveryBudget,
 }
 
 impl WindowLife {
@@ -325,7 +354,8 @@ fn set_backgrounded(window: &WebviewWindow, background: bool) {
 fn set_backgrounded(_window: &WebviewWindow, _background: bool) {}
 
 /// Logs every WebView2 process that dies under `window`, with what the engine says
-/// about it, and one line when the engine comes up.
+/// about it, and one line when the engine comes up. The deaths that take the window
+/// down go on to [`recover`].
 ///
 /// On 14-09 the browser process went two seconds after a start and the window stayed
 /// black until the user quit. All the log had was a `0x8007139F` for each emit that
@@ -333,6 +363,7 @@ fn set_backgrounded(_window: &WebviewWindow, _background: bool) {}
 /// way left to tell which process died, or why.
 #[cfg(windows)]
 pub(crate) fn watch_engine(window: &WebviewWindow) {
+    let app = window.app_handle().clone();
     let label = window.label().to_string();
     let watched = window.with_webview(move |webview| unsafe {
         let core = match webview.controller().CoreWebView2() {
@@ -352,12 +383,14 @@ pub(crate) fn watch_engine(window: &WebviewWindow) {
         tracing::info!(window = %label, browser_pid, %version, "webview2: engine up");
 
         let failed = label.clone();
-        let handler = webview2_com::ProcessFailedEventHandler::create(Box::new(move |_, args| {
-            if let Some(args) = args {
-                log_process_failed(&failed, &args);
-            }
-            Ok(())
-        }));
+        let handler =
+            webview2_com::ProcessFailedEventHandler::create(Box::new(move |core, args| {
+                if let Some(args) = args {
+                    let kind = log_process_failed(&failed, &args);
+                    recover(&app, &failed, kind, core);
+                }
+                Ok(())
+            }));
         let mut token = 0i64;
         if let Err(e) = core.add_ProcessFailed(&handler, &mut token) {
             tracing::warn!(
@@ -372,7 +405,10 @@ pub(crate) fn watch_engine(window: &WebviewWindow) {
 }
 
 #[cfg(windows)]
-fn log_process_failed(label: &str, args: &ICoreWebView2ProcessFailedEventArgs) {
+fn log_process_failed(
+    label: &str,
+    args: &ICoreWebView2ProcessFailedEventArgs,
+) -> COREWEBVIEW2_PROCESS_FAILED_KIND {
     use webview2_com::Microsoft::Web::WebView2::Win32::{
         ICoreWebView2ProcessFailedEventArgs2, ICoreWebView2ProcessFailedEventArgs3,
         COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,
@@ -409,18 +445,98 @@ fn log_process_failed(label: &str, args: &ICoreWebView2ProcessFailedEventArgs) {
     let takes_the_window = kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED
         || kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED;
     let exit_code = format!("0x{:08X}", exit_code as u32);
-    let (kind, reason) = (kind_name(kind), reason_name(reason));
+    let (name, reason) = (kind_name(kind), reason_name(reason));
     if takes_the_window {
         tracing::error!(
-            window = label, kind, reason, %exit_code, %process, %module,
+            window = label, kind = name, reason, %exit_code, %process, %module,
             "webview2: an engine process died"
         );
     } else {
         tracing::warn!(
-            window = label, kind, reason, %exit_code, %process, %module,
+            window = label, kind = name, reason, %exit_code, %process, %module,
             "webview2: an engine process died"
         );
     }
+    kind
+}
+
+/// Brings the main window back from a dead engine process. WebView2 doesn't restart
+/// its browser process by itself: left alone, the window stays black until the user
+/// quits, and every emit fails with `0x8007139F`.
+#[cfg(windows)]
+fn recover(
+    app: &AppHandle,
+    label: &str,
+    kind: COREWEBVIEW2_PROCESS_FAILED_KIND,
+    core: Option<ICoreWebView2>,
+) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED,
+    };
+    let browser = kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED;
+    let renderer = kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED;
+    if label != MAIN_LABEL || !(browser || renderer) {
+        return;
+    }
+    let life = app.state::<WindowLife>();
+    if !life.recoveries.take(Instant::now()) {
+        tracing::error!("webview2: the engine keeps dying, leaving the window as it is");
+        return;
+    }
+    if renderer {
+        // The browser lives on, and the window with it: a reload gets a new renderer.
+        life.reopened.store(true, Ordering::SeqCst);
+        match core.map(|core| unsafe { core.Reload() }) {
+            Some(Ok(())) => tracing::info!("webview2: page reloaded after its renderer died"),
+            Some(Err(e)) => tracing::error!(error = %e, "webview2: couldn't reload the page"),
+            None => {}
+        }
+        return;
+    }
+    // Not from inside the engine's own callback: the window it came through is about
+    // to go.
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move { rebuild_dead_main(&app).await });
+}
+
+#[cfg(windows)]
+async fn rebuild_dead_main(app: &AppHandle) {
+    let life = app.state::<WindowLife>();
+    // The HUD ran on the same browser process. Dropped, its next use builds a live one.
+    if let Some(hud) = app.get_webview_window(OVERLAY_LABEL) {
+        let _ = hud.destroy();
+    }
+    let Some(dead) = app.get_webview_window(MAIN_LABEL) else {
+        return;
+    };
+    let was_visible = dead.is_visible().unwrap_or(false);
+    life.releasing.store(true, Ordering::SeqCst);
+    if let Err(e) = dead.destroy() {
+        life.releasing.store(false, Ordering::SeqCst);
+        tracing::error!(error = %e, "webview2: couldn't drop the dead window");
+        return;
+    }
+    // `destroy` only queues the close; the label stays taken until the event loop
+    // gets to it, and building "main" before that fails.
+    for _ in 0..40 {
+        if app.get_webview_window(MAIN_LABEL).is_none() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    // A window that was in the tray stays there, or `ui_ready` would pop it up.
+    if !was_visible {
+        app.state::<StartHidden>().set(true);
+    }
+    match rebuild_main(app) {
+        Ok(window) if !was_visible => background(app, &window, MAIN_LABEL),
+        Ok(_) => {}
+        Err(e) => tracing::error!(error = %e, "window: couldn't rebuild the main window"),
+    }
+    // Spent already if the dead window was the last one; if the HUD outlived it, it
+    // wasn't.
+    life.releasing.store(false, Ordering::SeqCst);
 }
 
 #[cfg(windows)]
@@ -455,8 +571,23 @@ fn reason_name(reason: COREWEBVIEW2_PROCESS_FAILED_REASON) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{StartHidden, WindowLife, MAIN_LABEL};
+    use super::{
+        RecoveryBudget, StartHidden, WindowLife, MAIN_LABEL, MAX_RECOVERIES, RECOVERY_WINDOW,
+    };
     use crate::commands::overlay::OVERLAY_LABEL;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn recoveries_run_out_and_come_back() {
+        let budget = RecoveryBudget::default();
+        let start = Instant::now();
+        for _ in 0..MAX_RECOVERIES {
+            assert!(budget.take(start));
+        }
+        assert!(!budget.take(start + Duration::from_secs(1)));
+        // Once the first ones fall out of the window there is room again.
+        assert!(budget.take(start + RECOVERY_WINDOW));
+    }
 
     #[test]
     fn start_hidden_defaults_to_showing_the_window() {
