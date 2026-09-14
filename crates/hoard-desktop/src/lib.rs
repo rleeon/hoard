@@ -362,6 +362,20 @@ pub fn run() {
             commands::screen::screen_note,
         ])
         .setup(|app| {
+            // Windows draws a light grey caption with square corners, which on a
+            // near-black app reads as a strip of tape across the top. The frontend
+            // paints its own instead (`Titlebar.svelte`), and asks the window
+            // whether it is decorated before doing it, so a failure here means the
+            // system bar stays rather than two bars stacking. Only Windows: GNOME
+            // and macOS integrate their own well enough that replacing them would
+            // cost more than it buys.
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(e) = window.set_decorations(false) {
+                    tracing::warn!(error = %e, "window: couldn't drop the system title bar");
+                }
+            }
+
             // Build the tray as soon as we have an AppHandle. Failures here
             // shouldn't kill the app: Linux desktops without an AppIndicator
             // host (some minimal Wayland sessions) will reject our tray and

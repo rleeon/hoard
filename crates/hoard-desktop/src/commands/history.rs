@@ -641,10 +641,20 @@ pub struct LogLine {
     pub timestamp: String,
     pub level: String,
     pub message: String,
+    /// Which of the two logs it came from: `"app"` (this window) or
+    /// `"service"` (`hoardd`). Since ADR 0021 the sync work happens in the
+    /// service, so a report built from the window alone is blind to half of it.
+    pub source: &'static str,
 }
 
-/// Read the tail of the most recent rolling log file. `max_lines` is capped
-/// server-side so a malicious frontend can't ask us to slurp 200 MB.
+/// Read the tail of the most recent rolling log files, the window's and the
+/// service's, merged in time order. `max_lines` is capped server-side so a
+/// malicious frontend can't ask us to slurp 200 MB.
+///
+/// Both are needed: the window writes `agent.log`, the service writes
+/// `hoardd.log`, and everything that talks to the cloud (token refresh, uploads,
+/// restores) lives in the service. Reading only the first is why a bug report
+/// gathered with the copy button could not show a failed token refresh.
 #[tauri::command]
 pub fn tail_logs(max_lines: Option<usize>) -> Result<Vec<LogLine>, String> {
     let cap = max_lines.unwrap_or(500).min(5000);
@@ -653,37 +663,46 @@ pub fn tail_logs(max_lines: Option<usize>) -> Result<Vec<LogLine>, String> {
         return Ok(Vec::new());
     }
 
-    // `tracing-appender::rolling::daily` produces files named
-    // `agent.log.YYYY-MM-DD`. Lex-sorting by name puts the freshest one
-    // last; we reverse-sort and take the head so we read the newest
-    // available file (which is also the most useful for "what just
-    // happened").
-    let mut entries: Vec<_> = std::fs::read_dir(&dir)
+    let mut merged: Vec<LogLine> = Vec::new();
+    for (prefix, source) in [("agent.log", "app"), ("hoardd.log", "service")] {
+        let Some(path) = newest_log(&dir, prefix)? else {
+            continue;
+        };
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| format!("reading {}: {e}", path.display()))?;
+        let lines: Vec<&str> = text.lines().collect();
+        // Trim per file before merging: two files at the cap is twice the work
+        // and the tail is all anyone reads anyway.
+        let start = lines.len().saturating_sub(cap);
+        merged.extend(lines[start..].iter().map(|raw| parse_log_line(raw, source)));
+    }
+
+    // Both files open with an RFC3339 timestamp, so sorting the strings sorts
+    // the lines. A line we failed to parse keeps an empty timestamp and sinks to
+    // the top, which is where an unreadable line is least in the way.
+    merged.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    let start = merged.len().saturating_sub(cap);
+    Ok(merged.split_off(start))
+}
+
+/// The freshest file of a rolling set. `tracing-appender::rolling::daily` names
+/// them `<prefix>.YYYY-MM-DD`, so the last one by name is the newest.
+fn newest_log(dir: &std::path::Path, prefix: &str) -> Result<Option<std::path::PathBuf>, String> {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
         .map_err(|e| format!("reading {}: {e}", dir.display()))?
         .filter_map(|e| e.ok())
-        .filter(|e| e.file_name().to_string_lossy().starts_with("agent.log"))
+        .filter(|e| e.file_name().to_string_lossy().starts_with(prefix))
         .map(|e| e.path())
         .collect();
     entries.sort();
-    let Some(latest) = entries.into_iter().next_back() else {
-        return Ok(Vec::new());
-    };
-
-    let text = std::fs::read_to_string(&latest)
-        .map_err(|e| format!("reading {}: {e}", latest.display()))?;
-    let lines: Vec<&str> = text.lines().collect();
-    let start = lines.len().saturating_sub(cap);
-    Ok(lines[start..]
-        .iter()
-        .map(|raw| parse_log_line(raw))
-        .collect())
+    Ok(entries.pop())
 }
 
 /// Best-effort parse of a tracing pretty-format line into (timestamp, level,
 /// message). The format is roughly `2024-12-31T22:14:33.123456Z  INFO module:
 /// message`. We don't fight too hard for malformed lines: the user just wants to
 /// read them, not query them.
-fn parse_log_line(raw: &str) -> LogLine {
+fn parse_log_line(raw: &str, source: &'static str) -> LogLine {
     // Try to split on the first two whitespace runs after the timestamp.
     // Fall back to dumping the whole thing in `message` if that fails.
     let mut parts = raw.splitn(3, ' ');
@@ -713,14 +732,15 @@ fn parse_log_line(raw: &str) -> LogLine {
         timestamp: ts,
         level,
         message,
+        source,
     }
 }
 
-/// Where the log file lives, so the Settings page can show "logs are at
-/// /home/.../agent.log", which helps users who want to attach them to a bug
-/// report.
+/// Where the logs live, so the Settings page can show the folder for someone who
+/// wants to attach them to a bug report. The folder and not one file: there are
+/// two, the window's and the service's.
 #[tauri::command]
 pub fn logs_path() -> Result<String, String> {
     let dir = CliConfig::logs_dir().map_err(|e| e.to_string())?;
-    Ok(dir.join("agent.log").to_string_lossy().into_owned())
+    Ok(dir.to_string_lossy().into_owned())
 }
