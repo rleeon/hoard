@@ -66,6 +66,11 @@ checkout — that's only the source, and it's used only if you uncommented
 `build:`. Pin a version (`ghcr.io/rleeon/hoard:1.1`) in place of `:latest` if
 you'd rather choose when that happens.
 
+`hoard-server upgrade` is the bare-metal command and does not apply here: it
+swaps the binary in place, and the next `up -d` would discard it. It knows that
+about itself, so `docker compose exec server hoard-server upgrade` refuses and
+prints the two commands above rather than downloading anything.
+
 ### Unraid
 
 Hoard ships an Unraid template, so on a NAS none of the above is needed:
@@ -97,6 +102,11 @@ Two folders under `/mnt/user/appdata/hoard/` hold everything — `data/` (the
 database and every version of every save) and `config/` (`config.toml`, for when
 you want to raise a limit or move storage to S3). Back up `data/` and you have
 backed up the lot.
+
+Updating is the *Docker* tab's job: it marks the container when a new image is
+published, and *Apply update* pulls it and recreates it. Neither `hoard-server
+upgrade` nor the app's *Upgrade server* button applies here; both swap a binary
+in place, which a container recreate discards.
 
 Not in the Apps tab yet? The template can be installed by hand — from the Unraid
 terminal:

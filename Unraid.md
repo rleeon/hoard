@@ -48,6 +48,19 @@ Two folders under `/mnt/user/appdata/hoard/`:
 The container pulls `ghcr.io/rleeon/hoard:latest` (amd64 and arm64), built on
 every release.
 
+## Updating
+
+Unraid does it for you. The *Docker* tab marks the container once a new image is
+on the registry, and *Apply update* pulls it and recreates the container. Both
+folders above are bind mounts, so nothing of yours lives in the layer that gets
+thrown away, and the server applies any pending database migration on start.
+
+`hoard-server upgrade` is not the command here, and neither is the desktop app's
+*Upgrade server* button. Both are built around swapping the binary in place,
+which is what a bare-metal systemd install needs and what the next container
+recreate would discard; run inside the container, `upgrade` says so and points
+at the image instead.
+
 ## Maintaining the template
 
 `templates/hoard.xml` describes the image built from [`deploy/docker/`](deploy/docker),
