@@ -146,7 +146,29 @@ pub fn unsupported_reason(err: &anyhow::Error) -> Option<Unsupported> {
 /// daemon?" uses [`crate::client::daemon_binary`], which starts from exactly what
 /// gets written here.
 pub fn service_binary() -> PathBuf {
-    crate::client::own_daemon_binary()
+    let own = crate::client::own_daemon_binary();
+    resolve_on_path(&own, std::env::var_os("PATH").as_deref()).unwrap_or(own)
+}
+
+/// A bare `hoardd`, turned into the absolute path the caller's `PATH` finds.
+///
+/// A service manager is not a shell. systemd searches its own `PATH` for a bare
+/// `ExecStart`, but the Task Scheduler does not resolve `<Command>hoardd.exe</Command>`
+/// against the user's `PATH` at all: the task fails with `0x80070002` (file not
+/// found) at every logon, and `install` had already stopped the running service to
+/// hand over to it, so turning on "sync in the background" left the machine with no
+/// sync. It happened on a build whose `hoardd` was not beside it and was only
+/// reachable through `PATH`. Resolved here once, the unit is right on every backend.
+///
+/// `None` when there is nothing to resolve (already a path) or nothing found.
+fn resolve_on_path(exe: &Path, path_var: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+    let bare = exe.parent().is_none_or(|p| p.as_os_str().is_empty());
+    if !bare {
+        return None;
+    }
+    std::env::split_paths(path_var?)
+        .map(|dir| dir.join(exe))
+        .find(|candidate| candidate.is_file())
 }
 
 /// The `hoardd` the installed service runs, read from the service manager's own
@@ -167,9 +189,35 @@ pub async fn install() -> Result<Installed> {
     // brought up and wait for it to release the socket, or the one the unit launches
     // will lose the bind and exit (a dead unit with a live sync, the worst of both
     // worlds to diagnose).
+    let was_serving = serving().await;
     hand_over().await;
-    start_now().await?;
+    if let Err(err) = start_now().await {
+        keep_serving(was_serving, "the unit didn't take over").await;
+        return Err(err);
+    }
     Ok(installed)
+}
+
+/// The promise [`uninstall`] already keeps, extended to the paths that hand the
+/// socket over: if a sync was running when we started and nobody serves once the
+/// unit had its chance, bring one back up the way a client would. Asking for login
+/// start must never cost the sync that was already there.
+async fn keep_serving(was_serving: bool, why: &'static str) {
+    if !was_serving || serving().await {
+        return;
+    }
+    match crate::client::respawn_service() {
+        Ok(pid) => tracing::warn!(
+            pid,
+            reason = why,
+            "autostart: relaunched the sync the handover had stopped"
+        ),
+        Err(err) => tracing::error!(
+            error = %format!("{err:#}"),
+            reason = why,
+            "autostart: the handover stopped the sync and it couldn't be brought back"
+        ),
+    }
 }
 
 /// Writes or updates the unit and leaves it enabled for the next login,
@@ -208,16 +256,10 @@ pub async fn ensure_installed() -> Result<Installed> {
 /// else is half an install, and it is said in those words rather than left for
 /// systemd to say in a journal nobody is watching.
 fn ensure_daemon_present() -> Result<()> {
-    let exe = crate::client::own_daemon_binary();
+    // `service_binary` has already turned a bare name into whatever `PATH`
+    // finds, so the only question left is whether that is a file.
+    let exe = service_binary();
     if exe.is_file() {
-        return Ok(());
-    }
-    // A bare name (`own_daemon_binary`'s fallback): let the `PATH` decide, just as
-    // the service manager will.
-    if exe.parent().is_none_or(|p| p.as_os_str().is_empty())
-        && std::env::var_os("PATH")
-            .is_some_and(|paths| std::env::split_paths(&paths).any(|d| d.join(&exe).is_file()))
-    {
         return Ok(());
     }
     anyhow::bail!(
@@ -280,9 +322,16 @@ pub async fn restart() -> Result<Installed> {
         return install().await;
     }
     let (installed, _) = platform::declare()?;
+    let was_serving = serving().await;
     hand_over().await;
-    platform::restart().await?;
-    wait_until_serving().await?;
+    let restarted = match platform::restart().await {
+        Ok(()) => wait_until_serving().await,
+        Err(err) => Err(err),
+    };
+    if let Err(err) = restarted {
+        keep_serving(was_serving, "the unit didn't come back after the restart").await;
+        return Err(err);
+    }
     Ok(installed)
 }
 
@@ -1375,6 +1424,44 @@ mod tests {
         );
     }
 
+    /// The Task Scheduler does not search `PATH` for a bare `<Command>`, so a unit
+    /// must never be declared with one: the task fails at every logon with
+    /// `0x80070002` and, worse, `install` had stopped the running sync to hand
+    /// over to it.
+    #[test]
+    fn a_bare_daemon_name_is_resolved_to_the_path_entry_that_has_it() {
+        let root = std::env::temp_dir().join(format!("hoard-resolve-{}", std::process::id()));
+        let empty = root.join("empty");
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&empty).expect("mkdir");
+        std::fs::create_dir_all(&bin).expect("mkdir");
+        let name = format!("hoardd{}", std::env::consts::EXE_SUFFIX);
+        std::fs::write(bin.join(&name), b"").expect("touch");
+
+        let path_var = std::env::join_paths([&empty, &bin]).expect("join");
+        let got = resolve_on_path(Path::new(&name), Some(&path_var));
+        assert_eq!(got, Some(bin.join(&name)));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_path_is_left_alone_and_a_missing_name_resolves_to_nothing() {
+        let abs = std::env::temp_dir().join("somewhere").join("hoardd");
+        assert_eq!(
+            resolve_on_path(&abs, Some(std::ffi::OsStr::new("/usr/bin"))),
+            None
+        );
+        assert_eq!(
+            resolve_on_path(
+                Path::new("definitely-not-a-real-daemon-xyz"),
+                Some(std::ffi::OsStr::new("/usr/bin"))
+            ),
+            None
+        );
+        assert_eq!(resolve_on_path(Path::new("hoardd"), None), None);
+    }
+
     /// The Windows task: scoped to the account that creates it (never the machine)
     /// and running the daemon **with no arguments**, since there is no `sync run` in
     /// the way any more.
@@ -1419,7 +1506,19 @@ mod tests {
     /// read and the service would start the previous binary for ever.
     #[test]
     fn the_unit_declares_this_installations_daemon() {
-        assert_eq!(service_binary(), crate::client::own_daemon_binary());
+        let own = crate::client::own_daemon_binary();
+        let got = service_binary();
+        if own.parent().is_some_and(|p| !p.as_os_str().is_empty()) {
+            // A real path (the sibling, `HOARDD_BIN`) is declared exactly as is.
+            assert_eq!(got, own);
+        } else {
+            // A bare name is never declared bare while `PATH` can find it: the Task
+            // Scheduler would not look there, and the task dies at every logon.
+            assert!(
+                got.is_absolute() || got == own,
+                "declared {got:?} for {own:?}"
+            );
+        }
     }
 
     /// And a client asks for **the machine's** daemon, which starts from exactly
