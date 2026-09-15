@@ -102,7 +102,11 @@ fn ceiling() -> Ceiling {
     if let Some(n) = v2.or_else(v1).as_deref().and_then(parse_cgroup_limit) {
         return Ceiling::Cgroup(n);
     }
-    match std::fs::read_to_string("/proc/meminfo").ok().as_deref().and_then(parse_mem_total) {
+    match std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .as_deref()
+        .and_then(parse_mem_total)
+    {
         Some(n) => Ceiling::MemTotal(n),
         None => Ceiling::Unknown,
     }
@@ -160,7 +164,9 @@ pub fn spawn(shutdown: tokio::sync::watch::Sender<bool>) {
         let mut tick = tokio::time::interval(INTERVAL);
         loop {
             tick.tick().await;
-            let Some(rss) = resident_bytes() else { continue };
+            let Some(rss) = resident_bytes() else {
+                continue;
+            };
             let Some(trip) = trip else { continue };
             if rss < trip {
                 continue;
@@ -215,7 +221,10 @@ mod tests {
             return;
         }
         let rss = resident_bytes().expect("statm parses");
-        assert!(rss > 1024 * 1024, "a running test process holds more than 1 MB");
+        assert!(
+            rss > 1024 * 1024,
+            "a running test process holds more than 1 MB"
+        );
     }
 
     #[test]
@@ -231,7 +240,11 @@ mod tests {
     fn a_real_ceiling_survives_the_parse() {
         assert_eq!(parse_cgroup_limit("268435456\n"), Some(256 * 1024 * 1024));
         let trip = (parse_cgroup_limit("268435456").unwrap() as f64 * TRIP_FRACTION) as u64;
-        assert_eq!(trip / 1024 / 1024, 240, "94% of the 256 MB machine is 240 MB");
+        assert_eq!(
+            trip / 1024 / 1024,
+            240,
+            "94% of the 256 MB machine is 240 MB"
+        );
     }
 
     #[test]

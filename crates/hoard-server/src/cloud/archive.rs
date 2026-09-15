@@ -25,6 +25,7 @@
 //! This mirrors the account soft-delete + `account_purge` pattern, scoped to a
 //! single game.
 
+use super::incidents::{self, Kind};
 use crate::cloud::auth::CloudUser;
 use crate::cloud::errors::CloudError;
 use crate::cloud::quota;
@@ -75,6 +76,7 @@ where
         .await
         {
             tracing::warn!(error = %e, sha = %sha, "archive: blob freeze failed");
+            incidents::record(Kind::Other, "archive: blob freeze failed");
         }
     }
 }
@@ -521,7 +523,10 @@ pub fn spawn(state: CloudState) {
                     blobs,
                     "archive purge: hard-deleted expired archived games"
                 ),
-                Err(e) => tracing::warn!(error = %e, "archive purge: sweep failed"),
+                Err(e) => {
+                    tracing::warn!(error = %e, "archive purge: sweep failed");
+                    incidents::record(Kind::Delete, "archive purge: sweep failed");
+                }
             }
             tick.tick().await;
         }
@@ -555,6 +560,7 @@ pub async fn purge_expired(state: &CloudState) -> Result<(usize, usize), sqlx::E
         for (key,) in keys {
             if let Err(e) = state.r2.delete_object(&key).await {
                 tracing::warn!(error = %e, r2_key = %key, "archive purge: legacy R2 delete failed");
+                incidents::record(Kind::Delete, "archive purge: legacy R2 delete failed");
             }
         }
         sqlx::query("DELETE FROM saves WHERE id = $1")
@@ -579,6 +585,7 @@ pub async fn purge_expired(state: &CloudState) -> Result<(usize, usize), sqlx::E
         let key = super::r2::key_for_blob(user_id, &sha);
         if let Err(e) = state.r2.delete_object(&key).await {
             tracing::warn!(error = %e, r2_key = %key, "archive purge: blob R2 delete failed");
+            incidents::record(Kind::Delete, "archive purge: blob R2 delete failed");
         }
         sqlx::query("DELETE FROM cloud_blobs WHERE user_id = $1 AND sha256 = decode($2, 'hex')")
             .bind(user_id)

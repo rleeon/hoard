@@ -14,6 +14,7 @@
 //! would duplicate the client's restore pipeline for a shrinking set of old
 //! accounts.
 
+use super::incidents::{self, Kind};
 use crate::cloud::state::CloudState;
 use crate::cloud::{email, r2};
 use std::io::Write;
@@ -63,12 +64,14 @@ pub fn spawn(state: CloudState) {
                     Ok(Some((job_id, user_id))) => {
                         if let Err(e) = run_job(&state, job_id, user_id).await {
                             tracing::error!(%job_id, %user_id, error = %e, "export job failed");
+                            incidents::record(Kind::Other, "export job failed");
                             mark_failed(&state, job_id, &e.to_string()).await;
                         }
                     }
                     Ok(None) => break,
                     Err(e) => {
                         tracing::error!(error = %e, "export claim query failed");
+                        incidents::record(Kind::Other, "export claim query failed");
                         break;
                     }
                 }
@@ -220,6 +223,7 @@ async fn build_export_zip(
                     Ok(r) => r,
                     Err(e) => {
                         tracing::warn!(%save_id, rel, error = %e, "export skipped missing blob");
+                        incidents::record(Kind::Other, "export skipped missing blob");
                         continue;
                     }
                 };
@@ -294,6 +298,7 @@ async fn mark_failed(state: &CloudState, job_id: Uuid, error: &str) {
     .await
     {
         tracing::error!(%job_id, error = %e, "could not mark export job failed");
+        incidents::record(Kind::Other, "could not mark export job failed");
     }
 }
 
@@ -310,6 +315,7 @@ async fn expire_due(state: &CloudState) -> Result<(), sqlx::Error> {
         if let Some(key) = r2_key.filter(|k| !k.is_empty()) {
             if let Err(e) = state.r2.delete_object(&key).await {
                 tracing::warn!(%id, error = %e, "export expiry: R2 delete failed");
+                incidents::record(Kind::Delete, "export expiry: R2 delete failed");
             }
         }
         sqlx::query("UPDATE export_jobs SET status = 'expired', r2_key = NULL WHERE id = $1")

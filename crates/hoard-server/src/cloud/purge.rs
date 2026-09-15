@@ -16,6 +16,7 @@
 //! and rechecks the *real* footprint between deletes (dedup means a version's
 //! reclaimable size is only the bytes of blobs nothing else references).
 
+use super::incidents::{self, Kind};
 use crate::cloud::errors::CloudError;
 use crate::cloud::plans::{resolved_storage_limit, Plan};
 use crate::cloud::routes::saves::release_blobs;
@@ -373,6 +374,7 @@ pub async fn prune_version_caps(state: &CloudState, user_id: Uuid) -> Result<usi
         } else {
             if let Err(e) = state.r2.delete_object(&r2_key).await {
                 tracing::warn!(error = %e, r2_key = %r2_key, "version cap: R2 object delete failed");
+                incidents::record(Kind::Delete, "version cap: R2 object delete failed");
             }
             sqlx::query("DELETE FROM save_versions WHERE save_id = $1 AND version_num = $2")
                 .bind(&save_id)

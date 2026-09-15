@@ -28,10 +28,23 @@ crates/hoard-desktop/src-tauri/target/
 .gitignore
 .githooks/
 
-# Secrets and local env
+# The AI layer and the session notes. `.local/` never leaves this machine, and
+# a remote builder is off it: the context is uploaded whole even though only
+# the binary survives into the image.
+.local/
+.claude/
+
+# Secrets and local env. The bare names only match at the context root, and
+# the context is the whole repo (`COPY . .` in the builder stage), so without
+# the `**/` forms `deploy/.env.discord-bot` and `web/.env` rode along to the
+# remote builder on every deploy. They never reached the runtime image, but a
+# builder layer cache is still somewhere a token should not be.
 .env
 .env.local
 .env.*.local
+**/.env
+**/.env.*
+!**/.env.example
 
 # Editor / OS noise
 .vscode/

@@ -57,6 +57,7 @@
 //!   change that archived by *removing* the row would turn this task into a
 //!   deleter of other people's archives.
 
+use super::incidents::{self, Kind};
 use crate::cloud::state::CloudState;
 use std::time::Duration;
 use uuid::Uuid;
@@ -110,7 +111,10 @@ pub fn spawn(state: CloudState) {
                     orphan_bytes = swept.orphan_bytes,
                     "abandoned uploads: swept"
                 ),
-                Err(e) => tracing::warn!(error = %e, "abandoned uploads: sweep failed"),
+                Err(e) => {
+                    tracing::warn!(error = %e, "abandoned uploads: sweep failed");
+                    incidents::record(Kind::Delete, "abandoned uploads: sweep failed");
+                }
             }
             tick.tick().await;
         }
@@ -167,6 +171,7 @@ pub async fn sweep(state: &CloudState) -> Result<Swept, sqlx::Error> {
             }
             Err(e) => {
                 tracing::warn!(error = %e, %user_id, "abandoned uploads: account failed");
+                incidents::record(Kind::Delete, "abandoned uploads: account failed");
             }
         }
     }
@@ -254,6 +259,7 @@ async fn sweep_account(
         Ok(m) => m,
         Err(e) => {
             tracing::warn!(error = %e, %user_id, "abandoned uploads: bucket listing failed");
+            incidents::record(Kind::Delete, "abandoned uploads: bucket listing failed");
             return Ok(swept);
         }
     };
@@ -286,6 +292,7 @@ async fn sweep_account(
             }
             Err(e) => {
                 tracing::warn!(error = %e, r2_key = %key, "abandoned uploads: R2 delete failed");
+                incidents::record(Kind::Delete, "abandoned uploads: R2 delete failed");
             }
         }
     }

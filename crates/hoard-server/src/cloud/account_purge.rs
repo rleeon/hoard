@@ -18,6 +18,7 @@
 //! user who signs in again after the purge starts fresh with a new, empty
 //! account, which is the intended outcome of a completed deletion.
 
+use super::incidents::{self, Kind};
 use crate::cloud::routes::me::GRACE_DAYS;
 use crate::cloud::state::CloudState;
 use sqlx::PgPool;
@@ -39,7 +40,10 @@ pub fn spawn(state: CloudState) {
                 Ok(n) => {
                     tracing::info!(accounts = n, "account purge: hard-deleted expired accounts")
                 }
-                Err(e) => tracing::warn!(error = %e, "account purge: sweep failed"),
+                Err(e) => {
+                    tracing::warn!(error = %e, "account purge: sweep failed");
+                    incidents::record(Kind::Delete, "account purge: sweep failed");
+                }
             }
         }
     });
@@ -64,6 +68,7 @@ pub async fn purge_due(state: &CloudState) -> Result<usize, sqlx::Error> {
             Ok(()) => purged += 1,
             Err(e) => {
                 tracing::warn!(error = %e, user_id = %user_id, "account purge: account failed");
+                incidents::record(Kind::Delete, "account purge: account failed");
             }
         }
     }
@@ -78,6 +83,7 @@ async fn purge_account(state: &CloudState, user_id: Uuid) -> Result<(), sqlx::Er
     for key in r2_keys_for(&state.pool, user_id).await? {
         if let Err(e) = state.r2.delete_object(&key).await {
             tracing::warn!(error = %e, r2_key = %key, user_id = %user_id, "account purge: R2 delete failed");
+            incidents::record(Kind::Delete, "account purge: R2 delete failed");
         }
     }
 
@@ -96,10 +102,11 @@ async fn purge_account(state: &CloudState, user_id: Uuid) -> Result<(), sqlx::Er
 async fn r2_keys_for(pool: &PgPool, user_id: Uuid) -> Result<Vec<String>, sqlx::Error> {
     let mut keys: Vec<String> = Vec::new();
 
-    let blobs: Vec<(String,)> = sqlx::query_as("SELECT encode(sha256, 'hex') FROM cloud_blobs WHERE user_id = $1")
-        .bind(user_id)
-        .fetch_all(pool)
-        .await?;
+    let blobs: Vec<(String,)> =
+        sqlx::query_as("SELECT encode(sha256, 'hex') FROM cloud_blobs WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?;
     keys.extend(
         blobs
             .into_iter()

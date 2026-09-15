@@ -156,7 +156,9 @@ async fn freeing_a_blob_actually_removes_its_row() {
 async fn deleting_a_blob_that_is_not_there_reports_zero() {
     let Some(pool) = pool().await else { return };
     let user = seed_user(&pool).await;
-    let removed = delete_blob_row(&pool, user, &sha(0x11)).await.expect("delete");
+    let removed = delete_blob_row(&pool, user, &sha(0x11))
+        .await
+        .expect("delete");
     assert_eq!(removed, 0);
     cleanup(&pool, user).await;
 }
@@ -175,15 +177,19 @@ async fn a_blob_whose_object_survives_is_deferred_not_dropped() {
         blob_exists(&pool, user, &s).await,
         "deferring must keep the row: without it nothing looks for the object again"
     );
-    let due: Option<time::OffsetDateTime> =
-        sqlx::query("SELECT purge_after FROM cloud_blobs WHERE user_id = $1 AND sha256 = decode($2, 'hex')")
-            .bind(user)
-            .bind(&s)
-            .fetch_one(&pool)
-            .await
-            .expect("row")
-            .get(0);
-    assert!(due.is_some(), "the retry queue is `purge_after`, so it has to be stamped");
+    let due: Option<time::OffsetDateTime> = sqlx::query(
+        "SELECT purge_after FROM cloud_blobs WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
+    )
+    .bind(user)
+    .bind(&s)
+    .fetch_one(&pool)
+    .await
+    .expect("row")
+    .get(0);
+    assert!(
+        due.is_some(),
+        "the retry queue is `purge_after`, so it has to be stamped"
+    );
 
     cleanup(&pool, user).await;
 }
@@ -229,7 +235,9 @@ async fn a_retried_upload_only_drops_what_it_orphaned() {
 async fn a_first_attempt_has_nothing_to_clean_up() {
     let Some(pool) = pool().await else { return };
     let user = seed_user(&pool).await;
-    let drop = abandoned_blobs_to_drop(&pool, user, &[], &[]).await.expect("check");
+    let drop = abandoned_blobs_to_drop(&pool, user, &[], &[])
+        .await
+        .expect("check");
     assert!(drop.is_empty());
     cleanup(&pool, user).await;
 }

@@ -51,6 +51,7 @@
 //! `r2_key`, which never changes; if the row vanishes mid-flight the
 //! freshly-written objects are removed instead of finalized.
 
+use super::incidents::{self, Kind};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -118,6 +119,7 @@ pub fn spawn(state: CloudState) {
                     }
                     Err(e) => {
                         tracing::warn!(error = %e, "blob compression sweep failed");
+                        incidents::record(Kind::Other, "blob compression sweep failed");
                         break;
                     }
                 }

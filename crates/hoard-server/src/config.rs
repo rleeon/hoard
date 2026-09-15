@@ -387,6 +387,51 @@ pub struct CloudConfig {
     /// default; enable in dev first. Fields from `HOARD__CLOUD__COMPRESSION__*`.
     #[serde(default)]
     pub compression: CompressionConfig,
+    /// Discord status channel: the server keeps one embed in a channel in step
+    /// with its own health. Off unless both fields are set. Fields from
+    /// `HOARD__CLOUD__DISCORD__*`.
+    #[serde(default)]
+    pub discord: DiscordConfig,
+}
+
+/// Discord status-channel settings. Fields usually come from
+/// `HOARD__CLOUD__DISCORD__*`; the token is a secret and belongs in the
+/// deployment's secret store, never in a config file.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DiscordConfig {
+    /// Bot token from the Discord Developer Portal. Empty = feature off.
+    #[serde(default)]
+    pub bot_token: String,
+    /// Snowflake id of the channel to keep updated. 0 = feature off.
+    ///
+    /// A number and not a string on purpose: figment parses an all-digit
+    /// environment value as an integer, so a `String` here would fail to
+    /// deserialize from `HOARD__CLOUD__DISCORD__CHANNEL_ID` and the server
+    /// would refuse to boot over a status-channel setting.
+    #[serde(default)]
+    pub channel_id: u64,
+    /// Seconds between health updates. Floored at 15s by the task.
+    #[serde(default = "default_discord_poll_secs")]
+    pub poll_interval_secs: u64,
+}
+
+/// Hand-written rather than derived: a derived `Default` would leave
+/// `poll_interval_secs` at 0, and `#[serde(default)]` on the parent field
+/// takes that path whenever `[cloud.discord]` is absent, which is the common
+/// case. The task floors it anyway, but a zero here would be a trap for the
+/// next person who reads the struct and believes it.
+impl Default for DiscordConfig {
+    fn default() -> Self {
+        Self {
+            bot_token: String::new(),
+            channel_id: 0,
+            poll_interval_secs: default_discord_poll_secs(),
+        }
+    }
+}
+
+fn default_discord_poll_secs() -> u64 {
+    60
 }
 
 /// Background blob-compression sweep settings. Purely server-side: clients

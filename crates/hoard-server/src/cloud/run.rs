@@ -4,7 +4,7 @@
 use crate::cloud::{
     abandoned, account_purge, archive,
     auth::{require_active_account, require_cloud_auth, JwksCache},
-    bandwidth, compress, db, export, memwatch, polar, pollguard, r2,
+    bandwidth, compress, db, discord, export, incidents, memwatch, polar, pollguard, r2,
     routes::{
         blob_proxy, checkout, device as device_routes, entitlements as ent_routes,
         logs as log_routes, me, notifications as notification_routes, playtime as playtime_routes,
@@ -145,6 +145,10 @@ pub async fn run(cfg: Config) -> Result<()> {
     // enables it). Rewrites old raw blobs as zstd in place; quota and
     // everything user-visible keep counting raw bytes.
     compress::spawn(state.clone());
+
+    // Discord status channel: keeps one embed in step with this instance's
+    // health. No-op unless `[cloud.discord]` carries a token and a channel.
+    discord::spawn(state.clone());
 
     // 4e. Hard-purge of archived games ("caja negra") past their 7-day grace:
     //     deletes the save rows and GCs the frozen R2 blobs whose window
@@ -391,7 +395,11 @@ pub async fn run(cfg: Config) -> Result<()> {
         // 512 MB machine, so the headroom above is memory, not generosity.
         // `/v1/cloud/logs` keeps its own smaller cap, since a route-level limit is
         // applied inside this one and wins.
-        .layer(DefaultBodyLimit::max(32 * 1024 * 1024));
+        .layer(DefaultBodyLimit::max(32 * 1024 * 1024))
+        // Counts every 5xx by what it was doing (upload, download, delete),
+        // for the Discord status embed. After routing, so it sees the route
+        // template rather than a path full of ids.
+        .layer(middleware::from_fn(incidents::track));
 
     // Per-IP rate limiting. SmartIpKeyExtractor keys off X-Forwarded-For
     // (Fly/CDN set it), falling back to the connection peer, which the
