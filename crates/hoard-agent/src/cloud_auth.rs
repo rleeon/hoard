@@ -38,7 +38,10 @@ use serde::{Deserialize, Serialize};
 use crate::keychain::{keyring_op, KeyringTimeout, KeyringUnreadable, KEYRING_TIMEOUT};
 
 const CLOUD_DEFAULT_URL: &str = "https://api.hoard.services";
-const KEYRING_SERVICE: &str = "hoard-desktop-cloud";
+/// Per profile (`HOARD_PROFILE`): see [`crate::config::profile_suffix`].
+fn keyring_service() -> String {
+    crate::config::profile_name("hoard-desktop-cloud")
+}
 const KEYRING_USER: &str = "default";
 
 // The public Supabase GoTrue project, the same one the web and the desktop use.
@@ -481,13 +484,28 @@ fn write_session_file(s: &SessionFile) -> Result<()> {
 // which is the same path the self-hosted token takes (`credentials`): one keyring,
 // one thread.
 
+/// What the keyring ended up holding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stored {
+    /// Both tokens, the way every platform but one takes them.
+    Pair,
+    /// The refresh token alone. Windows' Credential Manager caps a secret at
+    /// 2560 UTF-16 characters and a Supabase access JWT plus its refresh token
+    /// does not fit, so every Windows user was falling back to the file for the
+    /// whole session ("Attribute 'password encoded as UTF-16' is longer than
+    /// platform limit of 2560 chars"). The refresh token is the half that
+    /// matters: it is the long-lived one, and the access JWT is an hour of life
+    /// that gets renewed on the next start anyway.
+    RefreshOnly,
+}
+
 fn keyring_set(access: &str, refresh: &str) -> Result<()> {
     let blob = toml::to_string(&AuthSection {
         access_token: access.to_string(),
         refresh_token: refresh.to_string(),
     })?;
     keyring_op("saving the Cloud session", KEYRING_TIMEOUT, move || {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)?;
+        let entry = keyring::Entry::new(&keyring_service(), KEYRING_USER)?;
         entry.set_password(&blob)?;
         Ok(())
     })
@@ -495,7 +513,7 @@ fn keyring_set(access: &str, refresh: &str) -> Result<()> {
 
 fn keyring_get() -> Result<Option<AuthSection>> {
     keyring_op("reading the Cloud session", KEYRING_TIMEOUT, || {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)?;
+        let entry = keyring::Entry::new(&keyring_service(), KEYRING_USER)?;
         match entry.get_password() {
             Ok(blob) => Ok(Some(toml::from_str(&blob)?)),
             Err(keyring::Error::NoEntry) => Ok(None),
@@ -506,7 +524,7 @@ fn keyring_get() -> Result<Option<AuthSection>> {
 
 fn keyring_delete() -> Result<()> {
     keyring_op("deleting the Cloud session", KEYRING_TIMEOUT, || {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)?;
+        let entry = keyring::Entry::new(&keyring_service(), KEYRING_USER)?;
         match entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(e.into()),
@@ -559,6 +577,23 @@ pub async fn load_session_async() -> Result<Option<Session>> {
     }
 }
 
+/// Fills the keyring's blanks from the file. They are two halves of one session
+/// when the keyring could only take the refresh token: the file's access JWT
+/// belongs to the refresh token next to it, and a stale one costs a refresh, not
+/// a login.
+fn merge(mut from_keyring: AuthSection, from_file: Option<AuthSection>) -> AuthSection {
+    let Some(file) = from_file else {
+        return from_keyring;
+    };
+    if from_keyring.access_token.is_empty() {
+        from_keyring.access_token = file.access_token;
+    }
+    if from_keyring.refresh_token.is_empty() {
+        from_keyring.refresh_token = file.refresh_token;
+    }
+    from_keyring
+}
+
 /// Which tokens count: the keyring's when it answers, the file's when the keyring
 /// fails for something repairable (locked, no D-Bus in a headless session). That
 /// is not "there is no session".
@@ -573,7 +608,7 @@ fn pick_auth(
     from_file: Option<AuthSection>,
 ) -> Result<Option<AuthSection>> {
     match from_keyring {
-        Ok(Some(a)) => Ok(Some(a)),
+        Ok(Some(a)) => Ok(Some(merge(a, from_file))),
         Ok(None) => Ok(from_file),
         Err(e) => match from_file {
             Some(a) => {
@@ -614,7 +649,15 @@ pub fn store_tokens(tokens: &Tokens, server_url: &str) -> Result<()> {
         session.server_url = server_url.to_string();
     }
     match store_in_keyring(tokens) {
-        Ok(()) => session.auth = None,
+        Ok(Stored::Pair) => session.auth = None,
+        // The refresh token is in the keyring; the file keeps the access JWT
+        // alone, which is an hour of life and useless without the other half.
+        Ok(Stored::RefreshOnly) => {
+            session.auth = Some(AuthSection {
+                access_token: tokens.access.clone(),
+                refresh_token: String::new(),
+            })
+        }
         Err(err) => {
             tracing::warn!(
                 error = %format!("{err:#}"),
@@ -641,10 +684,28 @@ pub fn store_tokens(tokens: &Tokens, server_url: &str) -> Result<()> {
 /// recover from. The read-back is one extra call on a healthy keyring, in the
 /// milliseconds it answers in, and it is the whole difference between degrading
 /// to the 0600 file and having no session at all.
-fn store_in_keyring(tokens: &Tokens) -> Result<()> {
-    keyring_set(&tokens.access, &tokens.refresh)?;
+fn store_in_keyring(tokens: &Tokens) -> Result<Stored> {
+    match write_and_read_back(&tokens.access, &tokens.refresh) {
+        Ok(()) => Ok(Stored::Pair),
+        Err(pair_err) => match write_and_read_back("", &tokens.refresh) {
+            Ok(()) => {
+                tracing::debug!(
+                    error = %format!("{pair_err:#}"),
+                    "keyring: the pair didn't fit, keeping the refresh token there"
+                );
+                Ok(Stored::RefreshOnly)
+            }
+            Err(_) => Err(pair_err),
+        },
+    }
+}
+
+/// Writes and reads back, which is the check that matters: on Windows the
+/// Credential Manager can accept a secret and hand back something else.
+fn write_and_read_back(access: &str, refresh: &str) -> Result<()> {
+    keyring_set(access, refresh)?;
     match keyring_get() {
-        Ok(Some(saved)) if saved.access_token == tokens.access => Ok(()),
+        Ok(Some(saved)) if saved.access_token == access && saved.refresh_token == refresh => Ok(()),
         Ok(_) => bail!("the keyring accepted the session and didn't give it back"),
         Err(err) => Err(err.context("reading back the session we just saved")),
     }
@@ -959,6 +1020,37 @@ mod tests {
             .expect("tokens");
         assert_eq!(got.access_token, "jwt-del-fichero");
         assert!(pick_auth(Ok(None), None).expect("ok").is_none());
+    }
+
+    /// Windows: the pair does not fit in the Credential Manager, so the keyring
+    /// holds the refresh token and the file the access JWT. Neither half is a
+    /// session on its own, and reading has to put them back together.
+    #[test]
+    fn a_keyring_holding_only_the_refresh_token_takes_the_jwt_from_the_file() {
+        let from_keyring = AuthSection {
+            access_token: String::new(),
+            refresh_token: "refresh-del-llavero".to_string(),
+        };
+        let got = pick_auth(Ok(Some(from_keyring)), Some(tokens_in_the_file()))
+            .expect("ok")
+            .expect("tokens");
+        assert_eq!(got.access_token, "jwt-del-fichero");
+        // And the keyring's refresh token wins: it is the one that rotated last.
+        assert_eq!(got.refresh_token, "refresh-del-llavero");
+    }
+
+    /// The half in the keyring is still the authority when the file has nothing.
+    #[test]
+    fn half_a_session_in_the_keyring_survives_a_missing_file() {
+        let from_keyring = AuthSection {
+            access_token: String::new(),
+            refresh_token: "refresh-del-llavero".to_string(),
+        };
+        let got = pick_auth(Ok(Some(from_keyring)), None)
+            .expect("ok")
+            .expect("tokens");
+        assert_eq!(got.refresh_token, "refresh-del-llavero");
+        assert!(got.access_token.is_empty());
     }
 
     /// Isolates the config directory in a tempdir. Linux only: that is where

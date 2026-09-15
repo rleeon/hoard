@@ -44,7 +44,11 @@ use crate::api::Whoami;
 use crate::config::CliConfig;
 use crate::keychain::{keyring_op, KeyringTimeout, KeyringUnreadable, KEYRING_TIMEOUT};
 
-const KEYRING_SERVICE: &str = "hoard-desktop";
+/// Per profile (`HOARD_PROFILE`), like the directories: a staging build must not
+/// overwrite the entry the installed Hoard reads.
+fn keyring_service() -> String {
+    crate::config::profile_name("hoard-desktop")
+}
 const KEYRING_USER: &str = "default";
 
 /// In-memory view of the desktop client's saved session.
@@ -623,7 +627,7 @@ fn try_keyring_set(creds: &Credentials) -> Result<()> {
         "saving the self-hosted session",
         KEYRING_TIMEOUT,
         move || {
-            let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)?;
+            let entry = keyring::Entry::new(&keyring_service(), KEYRING_USER)?;
             entry.set_password(&blob)?;
             Ok(())
         },
@@ -646,7 +650,7 @@ fn store_in_keyring(creds: &Credentials) -> Result<()> {
 
 fn try_keyring_get() -> Result<Option<KeyringBlob>> {
     keyring_op("reading the self-hosted session", KEYRING_TIMEOUT, || {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)?;
+        let entry = keyring::Entry::new(&keyring_service(), KEYRING_USER)?;
         match entry.get_password() {
             Ok(raw) => Ok(Some(parse_keyring_blob(&raw))),
             Err(keyring::Error::NoEntry) => Ok(None),
@@ -670,7 +674,7 @@ fn parse_keyring_blob(raw: &str) -> KeyringBlob {
 
 fn try_keyring_delete() -> Result<()> {
     keyring_op("deleting the self-hosted session", KEYRING_TIMEOUT, || {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)?;
+        let entry = keyring::Entry::new(&keyring_service(), KEYRING_USER)?;
         match entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(e.into()),

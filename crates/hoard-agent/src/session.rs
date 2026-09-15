@@ -45,6 +45,18 @@ const REFRESH_EVERY: Duration = Duration::from_secs(45 * 60);
 /// WARN for days.
 const RELOGIN_RECHECK_EVERY: Duration = Duration::from_secs(5 * 60);
 
+/// How long a transient failure waits before trying again, in order. Waiting the
+/// full cadence is what cost a user an hour: the JWT lives about an hour and
+/// `REFRESH_EVERY` is 45 minutes, so one network bump leaves a stretch with no
+/// valid token, and everything in it comes back 401 ("token rejected by server")
+/// until the next tick heals it with nobody the wiser. The last entry is the
+/// floor, we do not climb back to 45 minutes while the refresh keeps failing.
+const TRANSIENT_BACKOFF: [Duration; 3] = [
+    Duration::from_secs(60),
+    Duration::from_secs(5 * 60),
+    Duration::from_secs(15 * 60),
+];
+
 /// How long the boot keeps insisting on a *transient* failure of the initial
 /// refresh before starting with the stored token.
 const BOOT_REFRESH_GRACE: Duration = Duration::from_secs(60);
@@ -580,7 +592,10 @@ struct Step {
 
 /// The refresher's cadence as a pure function: "say it once then go quiet" is
 /// checkable without a Cloud session and without waiting 45 minutes.
-fn next_step(phase: Phase, outcome: Outcome) -> Step {
+///
+/// `failures` is how many transient failures came before this one, which is what
+/// picks the retry from [`TRANSIENT_BACKOFF`].
+fn next_step(phase: Phase, outcome: Outcome, failures: u32) -> Step {
     match (phase, outcome) {
         (Phase::Normal, Outcome::Expired) => Step {
             phase: Phase::Expired,
@@ -595,6 +610,11 @@ fn next_step(phase: Phase, outcome: Outcome) -> Step {
         (Phase::Expired, _) => Step {
             phase: Phase::Expired,
             sleep: RELOGIN_RECHECK_EVERY,
+            announce: Announce::Nothing,
+        },
+        (Phase::Normal, Outcome::Transient) => Step {
+            phase: Phase::Normal,
+            sleep: TRANSIENT_BACKOFF[(failures as usize).min(TRANSIENT_BACKOFF.len() - 1)],
             announce: Announce::Nothing,
         },
         (Phase::Normal, _) => Step {
@@ -653,6 +673,8 @@ pub async fn refresh_loop(
 ) -> Finished {
     let mut phase = Phase::Normal;
     let mut sleep_for = REFRESH_EVERY;
+    // Consecutive transient failures, which is what picks the retry delay.
+    let mut failures: u32 = 0;
     // The refresh token GoTrue declared dead, to tell a fresh login from the same
     // dead session still sitting on disk.
     let mut dead: Option<String> = None;
@@ -676,7 +698,17 @@ pub async fn refresh_loop(
                     Outcome::Expired
                 }
                 Err(err) => {
-                    tracing::warn!(error = %err, "session: periodic Cloud refresh failed");
+                    // `{err:#}` and not `%err`: an `anyhow` with `.context()` prints
+                    // only its outer layer, which is why the reports we have say the
+                    // URL of the token endpoint and not one word about the cause.
+                    // First one at WARN, the rest at DEBUG: a laptop offline for a
+                    // day retries every 15 minutes, and that is a lot of identical
+                    // lines for something already said.
+                    if failures == 0 {
+                        tracing::warn!(error = %format!("{err:#}"), "session: periodic Cloud refresh failed, retrying shortly");
+                    } else {
+                        tracing::debug!(error = %format!("{err:#}"), attempt = failures + 1, "session: Cloud refresh still failing");
+                    }
                     Outcome::Transient
                 }
             },
@@ -693,7 +725,18 @@ pub async fn refresh_loop(
             },
         };
 
-        let step = next_step(phase, outcome);
+        let step = next_step(phase, outcome, failures);
+        if outcome == Outcome::Transient {
+            failures = failures.saturating_add(1);
+        } else {
+            if failures > 0 && outcome == Outcome::Renewed {
+                tracing::info!(
+                    attempts = failures,
+                    "session: Cloud refresh recovered after failing"
+                );
+            }
+            failures = 0;
+        }
         match step.announce {
             Announce::Expired => {
                 tracing::error!("session: the Cloud session expired, run `hoard login`")
@@ -759,13 +802,13 @@ mod tests {
 
     #[test]
     fn announces_the_death_once_and_then_stays_quiet() {
-        let died = next_step(Phase::Normal, Outcome::Expired);
+        let died = next_step(Phase::Normal, Outcome::Expired, 0);
         assert_eq!(died.phase, Phase::Expired);
         assert_eq!(died.announce, Announce::Expired);
         assert_eq!(died.sleep, RELOGIN_RECHECK_EVERY);
 
         // Every later check with no pending login: same state, quiet.
-        let again = next_step(died.phase, Outcome::Expired);
+        let again = next_step(died.phase, Outcome::Expired, 0);
         assert_eq!(again.phase, Phase::Expired);
         assert_eq!(again.announce, Announce::Nothing);
         assert_eq!(again.sleep, RELOGIN_RECHECK_EVERY);
@@ -773,7 +816,7 @@ mod tests {
 
     #[test]
     fn a_relogin_restores_the_normal_cadence() {
-        let back = next_step(Phase::Expired, Outcome::Renewed);
+        let back = next_step(Phase::Expired, Outcome::Renewed, 0);
         assert_eq!(back.phase, Phase::Normal);
         assert_eq!(back.announce, Announce::Restored);
         assert_eq!(back.sleep, REFRESH_EVERY);
@@ -781,22 +824,41 @@ mod tests {
 
     #[test]
     fn a_transient_failure_neither_announces_nor_changes_phase() {
-        let step = next_step(Phase::Normal, Outcome::Transient);
+        let step = next_step(Phase::Normal, Outcome::Transient, 0);
         assert_eq!(step.phase, Phase::Normal);
         assert_eq!(step.announce, Announce::Nothing);
-        assert_eq!(step.sleep, REFRESH_EVERY);
+    }
+
+    /// The one that cost an hour of 401s: a bump used to sleep the whole 45
+    /// minutes, longer than the token had left. Now it comes back in a minute
+    /// and slows down from there, with 15 minutes as the floor.
+    #[test]
+    fn a_transient_failure_retries_long_before_the_token_dies() {
+        let first = next_step(Phase::Normal, Outcome::Transient, 0);
+        assert_eq!(first.sleep, Duration::from_secs(60));
+        assert!(first.sleep < REFRESH_EVERY);
+
+        let second = next_step(Phase::Normal, Outcome::Transient, 1);
+        assert_eq!(second.sleep, Duration::from_secs(5 * 60));
+
+        let third = next_step(Phase::Normal, Outcome::Transient, 2);
+        assert_eq!(third.sleep, Duration::from_secs(15 * 60));
+
+        // And it stays there instead of climbing back to the full cadence.
+        let tenth = next_step(Phase::Normal, Outcome::Transient, 9);
+        assert_eq!(tenth.sleep, third.sleep);
     }
 
     #[test]
     fn a_transient_failure_while_expired_keeps_waiting_for_a_login() {
-        let step = next_step(Phase::Expired, Outcome::Transient);
+        let step = next_step(Phase::Expired, Outcome::Transient, 0);
         assert_eq!(step.phase, Phase::Expired);
         assert_eq!(step.announce, Announce::Nothing);
     }
 
     #[test]
     fn the_happy_path_holds_the_normal_cadence() {
-        let step = next_step(Phase::Normal, Outcome::Renewed);
+        let step = next_step(Phase::Normal, Outcome::Renewed, 3);
         assert_eq!(step.phase, Phase::Normal);
         assert_eq!(step.announce, Announce::Nothing);
         assert_eq!(step.sleep, REFRESH_EVERY);

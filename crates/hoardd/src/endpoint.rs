@@ -74,7 +74,12 @@ impl Endpoint {
 
     #[cfg(unix)]
     pub fn user_default() -> Result<Self> {
-        let path = runtime_dir()?.join("hoardd.sock");
+        // Per profile, so a `HOARD_PROFILE=dev` daemon and the installed one do
+        // not fight over the same socket (nor answer each other's clients).
+        let path = runtime_dir()?.join(format!(
+            "{}.sock",
+            hoard_agent::config::profile_name("hoardd")
+        ));
         // `sockaddr_un.sun_path` is 108 bytes on Linux and 104 on macOS. Going over
         // gives a `bind` with an opaque error, so it is said here, with the path in
         // front of you.
@@ -91,7 +96,11 @@ impl Endpoint {
     #[cfg(windows)]
     pub fn user_default() -> Result<Self> {
         let user = std::env::var("USERNAME").unwrap_or_default();
-        Ok(Self::new(windows_pipe_name(&user)))
+        // The profile goes in the pipe name for the same reason it goes in the
+        // socket path on unix.
+        Ok(Self::new(windows_pipe_name(
+            &hoard_agent::config::profile_name(&user),
+        )))
     }
 
     /// An isolated endpoint with a name of its own: the user's, without treading on

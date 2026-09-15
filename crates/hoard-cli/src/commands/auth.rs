@@ -99,7 +99,7 @@ async fn login_selfhost(token: String, server: Option<String>) -> Result<()> {
         link::notify_session_changed().await;
     }
     println!(
-        "connected to self-host ({}) as {} (admin: {}) — saved to {}",
+        "connected to self-host ({}) as {} (admin: {}), saved to {}",
         cfg.server.url,
         me.username,
         me.is_admin,
@@ -370,7 +370,7 @@ pub async fn whoami() -> Result<()> {
         // session (ADR 0021, part A).
         let active = link::resolve_session().await?;
         let Some(sess) = active.cloud else {
-            bail!("the stored Cloud session is unreadable — run `hoard login`");
+            bail!("the stored Cloud session is unreadable, run `hoard login`");
         };
         let me = cloud_auth::fetch_me(&sess.server_url, &sess.access).await?;
         WhoamiOut::Cloud {

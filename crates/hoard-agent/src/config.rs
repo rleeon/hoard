@@ -95,9 +95,39 @@ fn relocated_state_dir(old: &Path, new: &Path) -> PathBuf {
     }
 }
 
+/// A second Hoard on the same machine, side by side with the real one.
+///
+/// `HOARD_PROFILE=dev` moves the directories, the keyring entries and the
+/// service's socket out of the way, so a build pointed at the staging server can
+/// run while the installed Hoard keeps syncing the person's actual saves. Without
+/// it there is one keyring item and one socket, and testing means signing out of
+/// your own account.
+///
+/// Unset (the normal case) it changes nothing at all. The name is sanitised
+/// because it ends up in paths and in a Windows pipe name.
+pub fn profile_suffix() -> Option<String> {
+    let raw = std::env::var("HOARD_PROFILE").ok()?;
+    let clean: String = raw
+        .trim()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(16)
+        .collect();
+    (!clean.is_empty()).then_some(clean)
+}
+
+/// `hoard`, or `hoard-<profile>`. The stem for anything that has to be per
+/// profile: directories, keyring services, the socket.
+pub fn profile_name(base: &str) -> String {
+    match profile_suffix() {
+        Some(p) => format!("{base}-{p}"),
+        None => base.to_string(),
+    }
+}
+
 impl CliConfig {
     pub fn project_dirs() -> Result<ProjectDirs> {
-        ProjectDirs::from("dev", "hoard", "hoard")
+        ProjectDirs::from("dev", "hoard", &profile_name("hoard"))
             .context("could not determine user config directory")
     }
 
