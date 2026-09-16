@@ -32,6 +32,8 @@ crates/
 
 **User-provided text goes as-is.** If you want to suggest different wording, ask first; do not rewrite on your own.
 
+**Changelog: evidence only, never automatic.** Draft entries only from code and diffs you have actually read. Never from memory. Never invent numbers, filenames, versions, or behavior. Do not write to `CHANGELOG.md` on your own: propose to the user to write changelog, or propose in the AI Zone in the PR or issue and wait for explicit human confirmation.
+
 **Ask before doing anything.** You may read and run tests locally, but you need permission before writing code.
 
 ## Tech stack

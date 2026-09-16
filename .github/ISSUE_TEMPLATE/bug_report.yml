@@ -8,6 +8,7 @@ body:
       value: |
         Thanks for the report! Please fill out as much as you can.
         Vague reports are hard to act on.
+        Human Zone: everything except AI Zone at the end must be written and verified by you.
 
   - type: input
     id: version
@@ -72,3 +73,10 @@ body:
         For server bugs: `journalctl -u hoard-server` or `docker compose logs server`.
         For CLI bugs: re-run with `RUST_LOG=hoard_cli=debug` and paste the output.
       render: shell
+
+  - type: textarea
+    id: ai_zone
+    attributes:
+      label: AI Zone (optional, unverified)
+      description: Paste raw AI analysis here, not in the fields above. This section is not treated as fact.
+      render: markdown

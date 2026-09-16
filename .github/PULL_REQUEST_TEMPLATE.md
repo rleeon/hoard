@@ -1,3 +1,4 @@
+<!-- Human Zone: everything above AI Zone must be written and verified by you. -->
 <!-- Thanks for the PR! A few quick checks first. -->
 
 ## What does this change?
@@ -16,3 +17,9 @@ Closes #
 - [ ] If I added a new SQL migration, I did **not** modify any existing released migration.
 - [ ] I updated `CHANGELOG.md` under `[Unreleased]` if this is user-visible.
 - [ ] I updated docs (`docs/`, `README.md`) if this changes user-facing behavior.
+- [ ] I used AI assistance and I vouch for every line outside AI Zone (raw output in AI Zone below)
+- [ ] I not use AI.
+
+## AI Zone (optional, unverified)
+
+<!-- Raw AI output only here. Never above. Treated as context, not as your claim. -->

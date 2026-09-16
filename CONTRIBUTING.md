@@ -4,11 +4,13 @@ Thanks for your interest in contributing.
 
 ## AI tools
 
-AI coding assistants (Cursor, Copilot, Claude, etc.) are welcome. You can use them to draft code and even write commit messages — just make sure the `Co-authored-by` trailer is never added for an AI tool. The human who reviews and pushes the patch is the sole author.
+AI assistance is allowed, but you are the author. Human-written sections must be yours and verified. Raw AI output is allowed only in the section named "AI Zone".
 
-- **No co-author trailers.** Commits must not carry `Co-authored-by` lines for AI tools.
-- **You are responsible.** Understand what the AI produced, test it, and ensure it follows the project's style before submitting.
-- **No bulk AI-generated PRs.** Submissions that are clearly machine-generated without human review will be closed.
+- **You vouch for every line outside AI Zone.** Understand it, test it, cut what you cannot defend.
+- **No AI dumps outside AI Zone.** Huge, vague, or clearly unedited AI texts outside AI Zone will be closed without review.
+- **AI Zone is unverified context.** It may help, but it is never treated as fact.
+- **Issues:** one problem, with steps to reproduce and what you actually saw. No walls of guesses.
+- **PRs:** only what you verified, including `CHANGELOG.md` entries. No co-author trailers for AI tools.
 - **Use the AGENTS.md.** This file has our own rules to guide LLMs with project context and how to work with us.
 
 ## Getting started

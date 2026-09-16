@@ -7,6 +7,7 @@ body:
     attributes:
       value: |
         Before opening, search existing issues — odds are someone got there first.
+        Human Zone: everything except AI Zone at the end must be written and verified by you.
 
   - type: textarea
     id: problem
@@ -35,3 +36,10 @@ body:
       options:
         - label: This is in scope for a self-hosted save-sync server (i.e., not a generic file-sync tool, not a game library manager)
           required: true
+
+  - type: textarea
+    id: ai_zone
+    attributes:
+      label: AI Zone (optional, unverified)
+      description: Paste raw AI analysis here, not in the fields above. This section is not treated as fact.
+      render: markdown
