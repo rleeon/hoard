@@ -27,6 +27,13 @@ const LINE_HEIGHT = 16;
 export function smoothWheel(): () => void {
   if (typeof window === 'undefined') return () => {};
   if (window.matchMedia('(pointer: coarse)').matches) return () => {};
+  // Reduced motion only. Anywhere else the browser already glides on its own,
+  // and the global `scroll-behavior: smooth` in app.css turns every `scrollTo`
+  // below into an animation: `scrollY` has not moved yet when the frame reads it
+  // back, the loop takes that for the end of the page and quits, and a notch
+  // travels a fifth of its distance. It shipped like that for everyone with
+  // animations on: a crawling wheel, and a trackpad that stalled mid-swipe.
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) return () => {};
 
   const root = document.documentElement;
   let target = window.scrollY;
