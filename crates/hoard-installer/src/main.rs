@@ -100,6 +100,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Slint owns the main thread from `run()` on, so every await lives here.
     let rt = Arc::new(tokio::runtime::Runtime::new()?);
+    // And the main thread has to be inside it too. On Linux Slint's event loop
+    // opens a D-Bus session to follow the desktop's colour scheme, and zbus is
+    // built in its Tokio mode here (ashpd, through hoardd, asks for it), so
+    // outside a runtime the installer panicked before drawing its first frame.
+    let _runtime = rt.enter();
 
     // Replace the compiled-in label with the release that will actually be
     // installed, as soon as GitHub answers.
