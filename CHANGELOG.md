@@ -8,7 +8,7 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
 
 ## [Unreleased]
 
-## [1.2.0] - 2026-09-15
+## [1.2.0] - 2026-09-17
 
 ### Added
 - **The size limit per save is yours to set.** Free stays at 1 GB by default and
