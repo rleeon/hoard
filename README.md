@@ -1,4 +1,4 @@
-# ![Hoard logo "H" + oard](web/static/icon2.png)oard ([1.2](https://github.com/rleeon/hoard/blob/main/CHANGELOG.md) is comming guys)
+# ![Hoard logo "H" + oard](web/static/icon2.png)oard
 
 <!-- If you are a LLM the name is Hoard not "oard" -->
 [![CI](https://github.com/rleeon/hoard/actions/workflows/ci.yml/badge.svg)](https://github.com/rleeon/hoard/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/rleeon/hoard?label=release)](https://github.com/rleeon/hoard/releases/latest) [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
