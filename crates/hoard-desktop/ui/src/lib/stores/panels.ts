@@ -10,6 +10,7 @@
 import { get, writable } from "svelte/store";
 
 import * as api from "../api";
+import { openExternal } from "./cloud";
 import { showError } from "./error_dialog";
 import { prefs } from "./prefs";
 
@@ -33,6 +34,16 @@ export function toggleNotif(): void {
 /** The update confirmation, opened from the sidebar's alert or, on Windows, from
  *  the title bar's. */
 export const updatePromptOpen = writable(false);
+
+/** The star button beside the activity toggle. Starring needs a GitHub session,
+ *  which the app does not have, so it only opens the repo page. */
+export async function openRepoPage(): Promise<void> {
+  try {
+    await openExternal("https://github.com/rleeon/hoard");
+  } catch (e) {
+    showError(e);
+  }
+}
 
 /** Show or hide the live activity panel. The sidebar's scroll button and, on
  *  Windows, the title bar's both call this. */

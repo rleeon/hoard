@@ -851,6 +851,7 @@
   "notifications.from_app": "App",
   "notifications.open": "Ouvrir",
   "activity.toggle_label": "Basculer le panneau d'activité",
+  "github.star_label": "Mettre une étoile à Hoard sur GitHub",
   "activity.hide_panel": "Masquer le panneau",
   "activity.empty": "Rien pour l'instant, lance un jeu et tu le verras apparaître ici.",
   "activity.time_just_now": "à l'instant",

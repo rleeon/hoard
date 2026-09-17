@@ -851,6 +851,7 @@
   "notifications.from_app": "アプリ",
   "notifications.open": "開く",
   "activity.toggle_label": "アクティビティ パネルを切替",
+  "github.star_label": "GitHub で Hoard にスターを付ける",
   "activity.hide_panel": "パネルを隠す",
   "activity.empty": "まだ何もありません、ゲームを起動するとここに表示されます。",
   "activity.time_just_now": "たった今",

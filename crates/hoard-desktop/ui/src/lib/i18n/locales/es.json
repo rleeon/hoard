@@ -851,6 +851,7 @@
   "notifications.from_app": "App",
   "notifications.open": "Abrir",
   "activity.toggle_label": "Mostrar/ocultar panel",
+  "github.star_label": "Dale una estrella a Hoard en GitHub",
   "activity.hide_panel": "Ocultar panel",
   "activity.empty": "Aún nada, lanza un juego y aparecerá aquí.",
   "activity.time_just_now": "ahora mismo",

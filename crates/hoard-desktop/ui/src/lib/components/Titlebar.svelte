@@ -20,10 +20,12 @@
 
   import AnimIcon from "./AnimIcon.svelte";
   import Logo from "./Logo.svelte";
+  import MarioStar from "./MarioStar.svelte";
   import { notifications } from "../stores/notifications";
   import {
     eyeOpen,
     notifOpen,
+    openRepoPage,
     toggleEye,
     toggleLiveActivity,
     toggleNotif,
@@ -122,6 +124,17 @@
        the icon set so they can be thicker and round-capped; at 10 px a hairline
        stroke reads as a smudge. -->
   <div class="flex items-center gap-0.5">
+    <!-- `pop` rather than the star's usual `hop`: the jump goes up and the bar
+         is 32 px tall, so it left the window. -->
+    <button
+      type="button"
+      onclick={openRepoPage}
+      aria-label={$_("github.star_label")}
+      title={$_("github.star_label")}
+      class="flex h-7 w-9 items-center justify-center rounded-lg text-yellow-400 ring-1 ring-transparent transition-colors hover:bg-white/[0.07] hover:ring-white/[0.10]"
+    >
+      <AnimIcon icon={MarioStar} on={false} kind="pop" size={14} />
+    </button>
     <button
       type="button"
       onclick={toggleLiveActivity}

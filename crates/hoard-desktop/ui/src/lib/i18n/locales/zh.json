@@ -851,6 +851,7 @@
   "notifications.from_app": "应用",
   "notifications.open": "打开",
   "activity.toggle_label": "切换活动面板",
+  "github.star_label": "在 GitHub 上给 Hoard 点星",
   "activity.hide_panel": "隐藏面板",
   "activity.empty": "暂无活动，启动一款游戏就会在这里出现。",
   "activity.time_just_now": "刚刚",

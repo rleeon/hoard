@@ -89,6 +89,7 @@
   import {
     eyeOpen,
     notifOpen,
+    openRepoPage,
     toggleEye,
     toggleLiveActivity,
     toggleNotif,
@@ -918,6 +919,15 @@
             v{APP_VERSION}
           </button>
         </div>
+        <button
+          type="button"
+          onclick={openRepoPage}
+          aria-label={$_("github.star_label")}
+          title={$_("github.star_label")}
+          class="hide-narrow flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-yellow-400/40 bg-yellow-400/10 text-yellow-400 transition-colors hover:bg-yellow-400/20"
+        >
+          <AnimIcon icon={MarioStar} on={false} kind="hop" size={14} />
+        </button>
         <!-- ActivityFeed toggle: small scroll icon, dim when the panel is
              hidden so the affordance reads as "off". -->
         <button

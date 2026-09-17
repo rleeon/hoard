@@ -851,6 +851,7 @@
   "notifications.from_app": "App",
   "notifications.open": "Öffnen",
   "activity.toggle_label": "Aktivitätsfenster ein-/ausblenden",
+  "github.star_label": "Hoard auf GitHub einen Stern geben",
   "activity.hide_panel": "Fenster ausblenden",
   "activity.empty": "Noch nichts. Starte ein Spiel und es erscheint hier.",
   "activity.time_just_now": "gerade eben",

@@ -851,6 +851,7 @@
   "notifications.from_app": "App",
   "notifications.open": "Apri",
   "activity.toggle_label": "Attiva/disattiva pannello attività",
+  "github.star_label": "Metti una stella a Hoard su GitHub",
   "activity.hide_panel": "Nascondi pannello",
   "activity.empty": "Ancora nulla. Avvia un gioco e lo vedrai apparire qui.",
   "activity.time_just_now": "proprio ora",

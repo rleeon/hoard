@@ -851,6 +851,7 @@
   "notifications.from_app": "App",
   "notifications.open": "Open",
   "activity.toggle_label": "Toggle activity panel",
+  "github.star_label": "Star Hoard on GitHub",
   "activity.hide_panel": "Hide panel",
   "activity.empty": "Nothing yet. Launch a game and you'll see it land here.",
   "activity.time_just_now": "just now",
