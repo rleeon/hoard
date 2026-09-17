@@ -47,6 +47,12 @@ const BACKOFF_MAX_SECS: u64 = 60;
 /// grow one in a minute. The poll carries the sync meanwhile.
 const UNSUPPORTED_RETRY_SECS: u64 = 30 * 60;
 
+/// An account the server refuses (403, scheduled for deletion) comes back only
+/// when its owner reactivates it from the web, so there is no point asking every
+/// minute. Refreshing the token does not change the answer either, and each
+/// refresh rotates the session for nothing.
+const REFUSED_RETRY_SECS: u64 = 30 * 60;
+
 /// The parked mode's cadence: with no usable session, the stream only re-reads
 /// the session file waiting for a fresh login. It mirrors the daemon's periodic
 /// refresher recheck (session.rs::RELOGIN_RECHECK_EVERY), since it is the same
@@ -191,8 +197,10 @@ async fn run_pull(
 enum Outcome {
     /// The server closed it or the life cap expired: reconnect.
     Ended,
-    /// 401 or 403: the token needs refreshing first.
+    /// 401: the token needs refreshing first.
     Unauthorized,
+    /// 403: the token is fine and the account is not (scheduled for deletion).
+    Refused,
     /// The server has no `/v1/events`.
     Unsupported,
 }
@@ -212,6 +220,14 @@ async fn events_loop(client: ApiClient, kick_tx: mpsc::Sender<()>) {
                     "cloud-live: this server has no event stream, the poll carries the sync"
                 );
                 sleep(Duration::from_secs(UNSUPPORTED_RETRY_SECS)).await;
+                continue;
+            }
+            Ok(Outcome::Refused) => {
+                tracing::info!(
+                    "cloud-live: the server refuses this account, the stream waits for it to be reactivated"
+                );
+                sleep(Duration::from_secs(REFUSED_RETRY_SECS)).await;
+                backoff = BACKOFF_MIN_SECS;
                 continue;
             }
             Ok(Outcome::Unauthorized) => {
@@ -274,7 +290,8 @@ fn session_renewed(dead: Option<&str>, disk: Option<&cloud_auth::Session>) -> bo
 async fn connect_once(client: &ApiClient, kick_tx: &mpsc::Sender<()>) -> anyhow::Result<Outcome> {
     let resp = client.event_stream().await?;
     match resp.status().as_u16() {
-        401 | 403 => return Ok(Outcome::Unauthorized),
+        401 => return Ok(Outcome::Unauthorized),
+        403 => return Ok(Outcome::Refused),
         404 | 405 => return Ok(Outcome::Unsupported),
         s if !(200..300).contains(&s) => anyhow::bail!("/v1/events answered {s}"),
         _ => {}
@@ -421,6 +438,17 @@ mod tests {
         assert_eq!(
             connect_once(&client(base), &tx).await.unwrap(),
             Outcome::Unsupported
+        );
+        // A 403 is the account, not the token: refreshing would rotate the session
+        // once a minute against an answer that cannot change.
+        let base = server(
+            "HTTP/1.1 403 Forbidden\r\ncontent-length: 0\r\n\r\n",
+            vec![],
+        )
+        .await;
+        assert_eq!(
+            connect_once(&client(base), &tx).await.unwrap(),
+            Outcome::Refused
         );
         assert!(
             rx.try_recv().is_err(),
