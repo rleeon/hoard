@@ -35,7 +35,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 hoard-agent = { path = "../hoard-agent" }
-hoard-manifest = { path = "../hoard-manifest" }
 # El desktop es un cliente del servicio local desde el Slice 4b (ADR 0021):
 # `hoardd` trae el cliente IPC + "spawn if absent", y `hoard-core` los tipos que
 # viajan por el socket. Ninguno arrastra el motor: el motor vive en el servicio.
