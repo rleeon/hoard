@@ -1323,8 +1323,16 @@ Zeta:
             serde_json::to_string(&split).unwrap(),
             serde_json::to_string(&whole).unwrap()
         );
-        assert_eq!(split.0.len(), 2, "the quoted title and Zeta have save paths");
-        assert_eq!(split.1.len(), 2, "the .hack launcher and the title-only entry");
+        assert_eq!(
+            split.0.len(),
+            2,
+            "the quoted title and Zeta have save paths"
+        );
+        assert_eq!(
+            split.1.len(),
+            2,
+            "the .hack launcher and the title-only entry"
+        );
     }
 
     #[test]

@@ -1920,11 +1920,7 @@ pub async fn run_auto_track(
 pub fn scan_folder(root: &Path) -> Result<Vec<DetectedGame>> {
     anyhow::ensure!(root.is_dir(), "{} isn't a folder.", root.display());
     let (state, _) = CliState::load_default()?;
-    let known: HashSet<PathBuf> = state
-        .saves
-        .values()
-        .map(|s| s.local_path.clone())
-        .collect();
+    let known: HashSet<PathBuf> = state.saves.values().map(|s| s.local_path.clone()).collect();
     // Correlation store, best-effort (empty if absent), the same as the sweep, so a
     // folder the agent has seen a game write to grades higher.
     let store = crate::correlation::CorrelationStore::default_path()

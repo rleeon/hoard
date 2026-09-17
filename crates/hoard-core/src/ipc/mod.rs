@@ -467,12 +467,18 @@ pub enum Payload {
     Update(UpdateState),
     /// A detection report (answer to [`Request::Scan`]). Carried as JSON because
     /// its type lives in `hoard_agent::detection`, which this crate cannot use.
-    Detection { report: serde_json::Value },
+    Detection {
+        report: serde_json::Value,
+    },
     /// The games found in one folder (answer to [`Request::ScanFolder`]).
-    Detected { games: serde_json::Value },
+    Detected {
+        games: serde_json::Value,
+    },
     /// One slug's trace through detection (answer to
     /// [`Request::DiagnoseDetection`]).
-    DetectionTrace { trace: serde_json::Value },
+    DetectionTrace {
+        trace: serde_json::Value,
+    },
     GameFacts(GameFacts),
     /// The catalogue in use (answer to [`Request::CatalogStatus`] and
     /// [`Request::CatalogRefresh`]).

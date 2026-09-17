@@ -250,7 +250,7 @@ async fn source_bytes(
     // landscape fallback to be had.
     if app_id.is_none() && !known_artless {
         let slug = slug.clone().unwrap_or_default();
-        match index_cover(&slug, &dir).await {
+        match index_cover(&slug, dir).await {
             Fetch::Bytes(bytes) => {
                 let _ = tokio::fs::create_dir_all(&dir).await;
                 let _ = tokio::fs::write(&portrait, &bytes).await;
@@ -342,7 +342,7 @@ async fn source_bytes(
                     // On Steam and still nothing to show: neither the vertical
                     // capsule nor the header. Rare enough to be worth telling
                     // apart from the games that simply aren't on Steam.
-                    report_no_cover(&cover, "steam");
+                    report_no_cover(cover, "steam");
                     return Err(format!("steam cover {app_id}: no header image"));
                 }
             };
@@ -448,10 +448,11 @@ fn make_thumb(bytes: &[u8], side: u32) -> Option<(Vec<u8>, &'static str)> {
     // The header alone says whether there is anything to gain.
     let (w, h) = reader()?.into_dimensions().ok()?;
     let (tw, th) = thumb_dims(w, h, side)?;
-    let small = reader()?
-        .decode()
-        .ok()?
-        .resize_exact(tw, th, image::imageops::FilterType::CatmullRom);
+    let small =
+        reader()?
+            .decode()
+            .ok()?
+            .resize_exact(tw, th, image::imageops::FilterType::CatmullRom);
 
     let mut out = Vec::new();
     if small.color().has_alpha() {

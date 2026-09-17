@@ -42,8 +42,8 @@
 pub mod autostart;
 pub mod client;
 pub mod codec;
-pub mod endpoint;
 pub mod detect;
+pub mod endpoint;
 pub mod engine;
 pub mod journal;
 pub mod notify;

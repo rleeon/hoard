@@ -158,11 +158,7 @@ impl Detect {
         // whole percents go out.
         let shown = AtomicU32::new(u32::MAX);
         let progress = move |done: usize, total: usize| {
-            let pct = if total == 0 {
-                100
-            } else {
-                (done * 100 / total) as u32
-            };
+            let pct = (done * 100).checked_div(total).map_or(100, |p| p as u32);
             if shown.swap(pct, Ordering::Relaxed) != pct {
                 let _ = notes.send(ScanNote::Progress {
                     done: done as u32,
@@ -248,13 +244,13 @@ pub async fn scheduler(detect: Arc<Detect>, engine: Engine) -> Finished {
                 let scan_every =
                     Duration::from_secs(prefs.automatic_scan_interval_secs).max(MIN_SCAN_INTERVAL);
                 let owed = detect.scan_now.swap(false, Ordering::SeqCst);
-                if owed || last_scan.map_or(true, |t| t.elapsed() >= scan_every) {
+                if owed || last_scan.is_none_or(|t| t.elapsed() >= scan_every) {
                     automatic_pass(&detect, &engine).await;
                     last_scan = Some(Instant::now());
                 }
                 let sweep_every = Duration::from_secs(prefs.automatic_backup_interval_secs)
                     .max(MIN_SWEEP_INTERVAL);
-                if last_sweep.map_or(true, |t| t.elapsed() >= sweep_every) {
+                if last_sweep.is_none_or(|t| t.elapsed() >= sweep_every) {
                     // No engine yet is not a sweep missed: the next tick tries again.
                     if let Some(handle) = engine.handle() {
                         match handle.sweep_all(prefs.automatic_backup_interval_secs).await {
@@ -276,7 +272,7 @@ pub async fn scheduler(detect: Arc<Detect>, engine: Engine) -> Finished {
                 if !prefs.automatic_mode {
                     detect.scan_now.store(false, Ordering::SeqCst);
                 }
-                if last_stale_check.map_or(true, |t| t.elapsed() >= STALE_CHECK) {
+                if last_stale_check.is_none_or(|t| t.elapsed() >= STALE_CHECK) {
                     last_stale_check = Some(Instant::now());
                     if cache_is_stale() {
                         tracing::info!("detection cache older than 24h, refreshing in background");
@@ -354,8 +350,13 @@ async fn automatic_pass(detect: &Detect, engine: &Engine) {
     if let Some(handle) = engine.handle() {
         let count = run.probe.len();
         match handle.set_probe_candidates(run.probe).await {
-            Ok(()) => tracing::debug!(count, "automatic scan: probe candidates handed to the engine"),
-            Err(e) => tracing::warn!(error = %format!("{e:#}"), "automatic scan: couldn't hand over the probe candidates"),
+            Ok(()) => tracing::debug!(
+                count,
+                "automatic scan: probe candidates handed to the engine"
+            ),
+            Err(e) => {
+                tracing::warn!(error = %format!("{e:#}"), "automatic scan: couldn't hand over the probe candidates")
+            }
         }
     }
     detect.phase("idle", None, None);
@@ -411,7 +412,9 @@ mod tests {
     #[test]
     fn only_a_desktop_without_the_cap_makes_automatic_mode_stand_aside() {
         let detect = Arc::new(Detect::new());
-        assert!(detect.note_client(&hello("hoard 1.2.0 (sync)", &[])).is_none());
+        assert!(detect
+            .note_client(&hello("hoard 1.2.0 (sync)", &[]))
+            .is_none());
         assert!(detect
             .note_client(&hello("hoard-desktop 1.2.0 (events)", &[CAP_DETECTION]))
             .is_none());
@@ -420,7 +423,10 @@ mod tests {
         let old = detect.note_client(&hello("hoard-desktop 1.1.6 (events)", &[]));
         assert!(detect.standing_aside());
         drop(old);
-        assert!(!detect.standing_aside(), "its connection closing gives it back");
+        assert!(
+            !detect.standing_aside(),
+            "its connection closing gives it back"
+        );
     }
 
     #[test]

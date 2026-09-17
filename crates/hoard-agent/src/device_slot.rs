@@ -121,10 +121,7 @@ pub async fn admit(base: &str, token: &str) -> Result<Admission, CloudError> {
 /// Give back the row the check created. Best-effort: the count self-heals on the
 /// next `/v1/me` from a machine that is actually signed in.
 pub async fn release(base: &str, token: &str, device_id: &str) -> Result<(), CloudError> {
-    let url = format!(
-        "{}/v1/devices/{device_id}",
-        base.trim_end_matches('/')
-    );
+    let url = format!("{}/v1/devices/{device_id}", base.trim_end_matches('/'));
     let resp = client()?
         .delete(&url)
         .bearer_auth(token)
@@ -146,7 +143,8 @@ fn just_registered(created_at: Option<&str>) -> bool {
         // there, so we treat it as one.
         return false;
     };
-    let Ok(created) = time::OffsetDateTime::parse(raw, &time::format_description::well_known::Rfc3339)
+    let Ok(created) =
+        time::OffsetDateTime::parse(raw, &time::format_description::well_known::Rfc3339)
     else {
         return false;
     };

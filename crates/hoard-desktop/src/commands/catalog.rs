@@ -51,7 +51,9 @@ pub async fn update_catalog(
                 // Diagnostics only, and the file is the service's.
                 path: String::new(),
             }),
-            other => Err(format!("unexpected answer to a catalogue refresh: {other:?}")),
+            other => Err(format!(
+                "unexpected answer to a catalogue refresh: {other:?}"
+            )),
         };
     }
     catalog::refresh(|stage| emit_stage(&app, stage))

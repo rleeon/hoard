@@ -113,7 +113,8 @@ pub fn overlay_bind(app: AppHandle, accel: Option<String>) -> Result<(), String>
 pub fn game_started(app: &AppHandle) {
     let life = app.state::<WindowLife>();
     life.games.fetch_add(1, Ordering::SeqCst);
-    if life.overlay_accel.lock().unwrap().is_none() || app.get_webview_window(OVERLAY_LABEL).is_some()
+    if life.overlay_accel.lock().unwrap().is_none()
+        || app.get_webview_window(OVERLAY_LABEL).is_some()
     {
         return;
     }
@@ -128,7 +129,9 @@ pub fn game_stopped(app: &AppHandle) {
     let life = app.state::<WindowLife>();
     let _ = life
         .games
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| Some(n.saturating_sub(1)));
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
+            Some(n.saturating_sub(1))
+        });
     if life.games.load(Ordering::SeqCst) > 0 {
         return;
     }

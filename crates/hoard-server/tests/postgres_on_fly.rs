@@ -7,6 +7,8 @@
 //!
 //! Skipped unless `HOARD_PG_TEST_URL` is set, like `blob_sha_paths`.
 
+#![cfg(feature = "cloud")]
+
 use axum::extract::{Extension, Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;

@@ -159,7 +159,9 @@ fn show_main(app: &AppHandle) {
 #[tauri::command]
 pub fn ui_ready(app: AppHandle) -> bool {
     show_main(&app);
-    app.state::<WindowLife>().reopened.swap(false, Ordering::SeqCst)
+    app.state::<WindowLife>()
+        .reopened
+        .swap(false, Ordering::SeqCst)
 }
 
 /// Red de seguridad: si el frontend no ha llamado a [`ui_ready`] dentro de
@@ -240,13 +242,19 @@ pub fn send_intent(app: &AppHandle, intent: &str) {
 
 #[tauri::command]
 pub fn window_take_intent(app: AppHandle) -> Option<String> {
-    app.state::<WindowLife>().pending_intent.lock().unwrap().take()
+    app.state::<WindowLife>()
+        .pending_intent
+        .lock()
+        .unwrap()
+        .take()
 }
 
 /// `true` when the app must keep running although its last window just closed:
 /// this module dropped it to save memory, the user didn't close anything.
 pub fn keep_running_after_last_window(app: &AppHandle) -> bool {
-    app.state::<WindowLife>().releasing.swap(false, Ordering::SeqCst)
+    app.state::<WindowLife>()
+        .releasing
+        .swap(false, Ordering::SeqCst)
 }
 
 /// A window has come back on screen, or is about to.
@@ -283,7 +291,9 @@ fn rebuild_main(app: &AppHandle) -> Result<WebviewWindow, String> {
     let _ = window.set_decorations(false);
     #[cfg(windows)]
     watch_engine(&window);
-    app.state::<WindowLife>().reopened.store(true, Ordering::SeqCst);
+    app.state::<WindowLife>()
+        .reopened
+        .store(true, Ordering::SeqCst);
     tracing::info!("window: main window rebuilt");
     Ok(window)
 }
@@ -317,7 +327,10 @@ fn release_later(app: AppHandle, label: &'static str, epoch: u64) {
         if window.is_visible().unwrap_or(true) {
             return;
         }
-        tracing::info!(label, "window: dropping a webview that has been hidden for a while");
+        tracing::info!(
+            label,
+            "window: dropping a webview that has been hidden for a while"
+        );
         life.releasing.store(true, Ordering::SeqCst);
         if window.destroy().is_err() {
             life.releasing.store(false, Ordering::SeqCst);
@@ -610,12 +623,14 @@ mod tests {
         // Shown and hidden again before the timer fired: a newer epoch.
         life.bump(MAIN_LABEL);
         assert_ne!(
-            life.epoch(MAIN_LABEL).load(std::sync::atomic::Ordering::SeqCst),
+            life.epoch(MAIN_LABEL)
+                .load(std::sync::atomic::Ordering::SeqCst),
             armed
         );
         // The HUD counts on its own.
         assert_eq!(
-            life.epoch(OVERLAY_LABEL).load(std::sync::atomic::Ordering::SeqCst),
+            life.epoch(OVERLAY_LABEL)
+                .load(std::sync::atomic::Ordering::SeqCst),
             0
         );
     }

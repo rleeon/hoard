@@ -422,7 +422,8 @@ impl Daemon {
             },
             // Blocking: the first question loads the catalogue.
             Request::GameFacts { slug } => {
-                match tokio::task::spawn_blocking(move || hoard_agent::catalog::facts(&slug)).await {
+                match tokio::task::spawn_blocking(move || hoard_agent::catalog::facts(&slug)).await
+                {
                     Ok(facts) => Reply::Ok(Payload::GameFacts(facts)),
                     Err(err) => internal(err.into()),
                 }
