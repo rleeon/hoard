@@ -62,3 +62,6 @@ msgstr "同期エンジンのみ"
 
 msgid "Your settings and sync history are still in {}"
 msgstr "設定と同期履歴は {} に残っています"
+
+msgid "The password prompt closed before you could answer it. Nothing was changed. Press Try again to bring it back."
+msgstr "パスワードの入力画面が、応答する前に閉じました。変更は何も行われていません。「再試行」を押すと、もう一度表示されます。"

@@ -62,3 +62,6 @@ msgstr "nur der Sync-Dienst"
 
 msgid "Your settings and sync history are still in {}"
 msgstr "Deine Einstellungen und dein Verlauf liegen weiterhin in {}"
+
+msgid "The password prompt closed before you could answer it. Nothing was changed. Press Try again to bring it back."
+msgstr "Die Passwortabfrage wurde geschlossen, bevor sie beantwortet werden konnte. Es wurde nichts geändert. Mit „Erneut versuchen“ erscheint sie wieder."

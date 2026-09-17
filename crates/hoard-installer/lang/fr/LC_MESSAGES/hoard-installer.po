@@ -62,3 +62,6 @@ msgstr "moteur de synchronisation uniquement"
 
 msgid "Your settings and sync history are still in {}"
 msgstr "Vos réglages et votre historique sont toujours dans {}"
+
+msgid "The password prompt closed before you could answer it. Nothing was changed. Press Try again to bring it back."
+msgstr "La demande de mot de passe s'est fermée avant que vous puissiez y répondre. Rien n'a été modifié. Cliquez sur Réessayer pour la faire réapparaître."

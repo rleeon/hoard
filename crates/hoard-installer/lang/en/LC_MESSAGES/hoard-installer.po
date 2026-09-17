@@ -62,3 +62,6 @@ msgstr ""
 
 msgid "Your settings and sync history are still in {}"
 msgstr ""
+
+msgid "The password prompt closed before you could answer it. Nothing was changed. Press Try again to bring it back."
+msgstr ""

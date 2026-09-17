@@ -62,3 +62,6 @@ msgstr "仅同步引擎"
 
 msgid "Your settings and sync history are still in {}"
 msgstr "你的设置和同步记录仍在 {}"
+
+msgid "The password prompt closed before you could answer it. Nothing was changed. Press Try again to bring it back."
+msgstr "密码输入窗口在你回答之前就关闭了。没有做任何更改。点击“重试”即可再次显示。"

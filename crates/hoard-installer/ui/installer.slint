@@ -696,9 +696,12 @@ component Done inherits VerticalLayout {
 
 // 5 · It didn't work. Not in the sketch, but an installer without it hangs on
 // the animation for ever and tells the user nothing. The message is whatever
-// the agent said, unedited — it is written for a person.
+// the agent said, unedited: it is written for a person. Except a password
+// prompt that closed unanswered, which gets a sentence of its own here because
+// the agent's cannot be translated.
 component Failed inherits VerticalLayout {
     in property <string> message;
+    in property <bool> prompt-dismissed;
     callback close();
     callback retry();
 
@@ -713,7 +716,9 @@ component Failed inherits VerticalLayout {
         padding-top: 16px;
 
         Text {
-            text: root.message;
+            text: root.prompt-dismissed
+                ? @tr("The password prompt closed before you could answer it. Nothing was changed. Press Try again to bring it back.")
+                : root.message;
             font-family: "Geist";
             font-size: 12.5px;
             color: Theme.danger;
@@ -751,6 +756,7 @@ export component Installer inherits Window {
     in property <int> screen: 0;
     in property <string> version: "";
     in property <string> message: "";
+    in property <bool> prompt-dismissed: false;
     in property <bool> can-launch: false;
     // Set once at startup: is there a Hoard on this machine already?
     in property <bool> installed: false;
@@ -914,6 +920,7 @@ export component Installer inherits Window {
 
             if root.screen == 4: Failed {
                 message: root.message;
+                prompt-dismissed: root.prompt-dismissed;
                 close => {
                     root.quit();
                 }

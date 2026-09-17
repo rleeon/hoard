@@ -164,6 +164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 _ => ui.get_want_desktop(),
             };
             ui.set_message(Default::default());
+            ui.set_prompt_dismissed(false);
             ui.set_kept_path(Default::default());
             ui.set_screen(DOING);
 
@@ -184,6 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // "installing the desktop app: dpkg exited with 1" says
                         // where it broke, which "1" alone does not.
                         ui.set_message(format!("{err:#}").into());
+                        ui.set_prompt_dismissed(prompt_dismissed(&err));
                         ui.set_screen(FAILED);
                     }
                 });
@@ -200,6 +202,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return;
             };
             ui.set_message(Default::default());
+            ui.set_prompt_dismissed(false);
             ui.set_screen(DOING);
 
             let weak = weak.clone();
@@ -217,6 +220,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Err(err) => {
                         ui.set_message(format!("{err:#}").into());
+                        ui.set_prompt_dismissed(prompt_dismissed(&err));
                         ui.set_screen(FAILED);
                     }
                 });
@@ -253,6 +257,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     present(ui.as_weak());
     ui.run()?;
     Ok(())
+}
+
+/// The password prompt closed unanswered, somewhere under whatever context the
+/// steps wrapped it in.
+fn prompt_dismissed(err: &anyhow::Error) -> bool {
+    err.chain()
+        .any(|e| e.is::<hoard_agent::install::fetch::PromptDismissed>())
 }
 
 /// Puts the window in the middle of the screen and in front, once.

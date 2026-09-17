@@ -478,6 +478,25 @@ async fn elevated(cmd: &[&str], path: &Path, noninteractive: bool) -> Result<()>
     elevated_argv(&argv, noninteractive).await
 }
 
+/// `pkexec` ran nothing because its password prompt closed without an answer.
+/// A Cancel does that, and so does GNOME Shell when it cannot draw the prompt at
+/// all: "Failed to show modal dialog. Dismissing authentication request", which
+/// is how the 1.2.0 Linux installer failed its first attempt on a machine where
+/// the second one went through. A type of its own, so a window can say it in the
+/// user's language next to the button that asks again.
+#[derive(Debug)]
+pub struct PromptDismissed;
+
+impl std::fmt::Display for PromptDismissed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(
+            "the password prompt closed before it was answered, so nothing was changed; try again",
+        )
+    }
+}
+
+impl std::error::Error for PromptDismissed {}
+
 /// The same, for a command whose last word isn't a path: `dpkg -r hoard`
 /// takes a package name, not a file, and taking one away needs the same
 /// privileges as putting it there.
@@ -519,6 +538,11 @@ pub(super) async fn elevated_argv(argv: &[String], noninteractive: bool) -> Resu
         .await
         .with_context(|| format!("running `{program}`"))?;
     if !status.success() {
+        // 126 is pkexec saying the prompt was dismissed; dpkg and rpm have no
+        // use for that code, so here it cannot be theirs.
+        if program == "pkexec" && status.code() == Some(126) {
+            return Err(PromptDismissed.into());
+        }
         bail!("`{program} {}` exited with {status}", args.join(" "));
     }
     Ok(())
