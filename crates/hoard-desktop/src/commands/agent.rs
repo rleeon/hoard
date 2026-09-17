@@ -84,8 +84,8 @@ pub async fn start_agent(
         None => status,
     };
 
-    // The self-hosted server-to-app push (SSE). Cloud receives it through Supabase
-    // Realtime, so this only comes up with a live self-hosted session. It is decided
+    // The self-hosted server-to-app push (SSE). Cloud's is opened by the engine in
+    // `hoardd`, so this only comes up with a live self-hosted session. It is decided
     // from what is already in memory: probing `/v1/health` just for this was one
     // network request on the startup path.
     let selfhosted = state

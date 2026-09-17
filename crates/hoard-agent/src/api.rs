@@ -726,6 +726,19 @@ impl ApiClient {
         }
     }
 
+    /// Opens `GET /v1/events`, the server's push stream. On the download client
+    /// because a stream lives for hours: no total timeout, and a 60 s stall
+    /// timeout the server's 25 s keep-alive never trips, so silence that long
+    /// means the socket is gone.
+    pub async fn event_stream(&self) -> Result<reqwest::Response, reqwest::Error> {
+        self.download_http
+            .get(self.url("/v1/events"))
+            .header("authorization", self.auth_header())
+            .header("accept", "text/event-stream")
+            .send()
+            .await
+    }
+
     fn auth_header(&self) -> String {
         let token = self.token.read().map(|t| t.clone()).unwrap_or_default();
         format!("Bearer {token}")

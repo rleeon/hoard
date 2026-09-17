@@ -122,18 +122,6 @@ directories = "5"
 indicatif = "0.17"
 tokio-util = { version = "0.7", features = ["io"] }
 futures = "0.3"
-# WebSocket client for the Supabase Realtime push (near-instant sync). Same
-# rustls pair as reqwest above, for the same reason: with native-tls the
-# AppImage's bundled libssl looks for its cert store where Ubuntu keeps it and
-# finds nothing on SteamOS. Note tokio-tungstenite prefers native-tls whenever
-# that feature is on, so it has to be absent, not merely outvoted.
-tokio-tungstenite = { version = "0.24", features = [
-    "rustls-tls-native-roots",
-    "rustls-tls-webpki-roots",
-] }
-# Direct dep for one call: naming the crypto provider tungstenite's connector
-# would otherwise have to guess at. See `hoard_agent::tls`.
-rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 bytes = "1"
 regex = "1"
 strsim = "0.11"

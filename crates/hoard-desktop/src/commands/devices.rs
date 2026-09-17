@@ -1,9 +1,8 @@
 //! The active session's device census, for the Eye panel.
 //!
 //! It exists because the road that was already there is cloud-only: `cloud_feed`
-//! asks `/v1/devices` with the Supabase credentials and Realtime fires it when
-//! another machine beats. A server of your own has neither of those, so it has to
-//! ask on its own.
+//! asks `/v1/devices` with the Supabase credentials. A server of your own has no
+//! such session, so it has to ask on its own.
 //!
 //! This serves both: `current_client` picks the active session (self-hosted wins,
 //! otherwise cloud) and `/v1/devices` is the same route on both deployments. The UI

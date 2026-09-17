@@ -24,31 +24,6 @@ use crate::state::AppState;
 
 const CLOUD_DEFAULT_URL: &str = "https://api.hoard.services";
 
-// The Supabase GoTrue project, the same public one the web app talks to
-// (`web/.env`'s `PUBLIC_SUPABASE_*`, baked into the static bundle). The anon
-// key is a public, browser-exposed credential, so embedding it here is no more
-// sensitive than shipping the web client. Both are overridable at runtime
-// (env var) or build time (`option_env!`) so a dev build can point at a
-// different project without touching code.
-const SUPABASE_DEFAULT_URL: &str = "https://zddepgqdiuhhzqdimsks.supabase.co";
-const SUPABASE_DEFAULT_ANON_KEY: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkZGVwZ3FkaXVoaHpxZGltc2tzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2MzM2MTksImV4cCI6MjA5NTIwOTYxOX0.3nZebGwCzFO1byTqhowq9ip89GE9fMRxPscgYSlPzFk";
-
-pub(crate) fn supabase_url() -> String {
-    std::env::var("HOARD_SUPABASE_URL")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .or_else(|| option_env!("HOARD_SUPABASE_URL").map(str::to_string))
-        .unwrap_or_else(|| SUPABASE_DEFAULT_URL.to_string())
-}
-
-pub(crate) fn supabase_anon_key() -> String {
-    std::env::var("HOARD_SUPABASE_ANON_KEY")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .or_else(|| option_env!("HOARD_SUPABASE_ANON_KEY").map(str::to_string))
-        .unwrap_or_else(|| SUPABASE_DEFAULT_ANON_KEY.to_string())
-}
-
 // ---- session model ----------------------------------------------------
 
 /// The cached cloud session: `/v1/me`'s snapshot and which Cloud it belongs to. It
@@ -659,9 +634,6 @@ pub async fn cloud_complete_login(
     // Boot the cloud-pull poller so LiveStatus has fresh manifest data
     // within one poll interval.
     cloud_pull::start(&app);
-    // Realtime push for near-instant cross-device sync; rides alongside the
-    // poller (which stays as the fallback).
-    crate::commands::cloud_realtime::start(&app);
 
     // A login completed, so any buffered deep-link URL has served its purpose.
     // Clearing it stops a stale (and by now expired) token from being replayed
@@ -747,7 +719,6 @@ pub async fn cloud_logout(app: AppHandle, state: State<'_, AppState>) -> Result<
     // Stop the cloud-pull poller, or it would keep asking the service
     // for a token and quietly do nothing forever.
     cloud_pull::stop(&app);
-    crate::commands::cloud_realtime::stop(&app);
     // The credentials are gone, so the service should drop the engine and resolve
     // again instead of carrying on with a token we just deleted.
     crate::commands::agent::notify_session_changed(&app);
@@ -773,12 +744,12 @@ pub fn is_session_expired(e: &anyhow::Error) -> bool {
 }
 
 /// Tear down a terminally-expired cloud session: clear the stored creds and the
-/// in-memory account, stop the pull poller and the Realtime subscriber, and
+/// in-memory account, stop the pull poller, and
 /// emit `agent://session-expired` so the UI swaps the looping offline dot for a
 /// clear "sign in again" prompt. Idempotent, so it is safe to call from whichever
 /// loop
-/// first learns the refresh token is dead (poller, Realtime, or the manual
-/// account refresh).
+/// first learns the refresh token is dead (the poller or the manual account
+/// refresh).
 pub fn handle_session_expired(app: &AppHandle) {
     if let Err(e) = forget_session_in_background(app) {
         tracing::warn!(error = %e, "cloud: clearing creds during session-expiry teardown failed");
@@ -787,7 +758,6 @@ pub fn handle_session_expired(app: &AppHandle) {
         *state.cloud_account.lock().unwrap() = None;
     }
     cloud_pull::stop(app);
-    crate::commands::cloud_realtime::stop(app);
     let _ = app.emit("agent://session-expired", ());
     tracing::info!(
         "cloud: session expired (refresh token revoked), signed out locally, awaiting re-login"

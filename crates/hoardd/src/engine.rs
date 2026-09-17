@@ -610,8 +610,8 @@ async fn start(events_tx: mpsc::Sender<AgentEvent>) -> anyhow::Result<Started> {
     let (handle, task) = agent::spawn(active.client, config, saves, events_tx);
 
     let mut aux = vec![presence_task];
-    // The low-latency Cloud push (Realtime plus a backup poll). Cloud only, and only
-    // with global sync: `backup_only` never writes.
+    // The low-latency Cloud push (the server's event stream plus a backup poll). Cloud
+    // only, and only with global sync: `backup_only` never writes.
     if active.is_cloud && global_sync {
         aux.push(spawn_cloud_live(live_client, handle.clone()));
     }
@@ -714,7 +714,7 @@ fn engine_config() -> AgentConfig {
 }
 
 /// The Cloud push, supervised. `cloud_live::spawn` sets up two loose `tokio::spawn`
-/// tasks (poll and Realtime) that survive errors but not a panic, so the keeper
+/// tasks (poll and the server's event stream) that survive errors but not a panic, so the keeper
 /// covers it from outside: when either task finishes, the pair is dropped and rearmed.
 ///
 /// This is its **only** caller, so the supervision could move inside `cloud_live`

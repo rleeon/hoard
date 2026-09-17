@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Fixed cadence for the `/v1/cloud/sync` airbag poll (desktop poller and
-/// CLI daemon). Deliberately **not** a pref: Realtime push is the primary
+/// CLI daemon). Deliberately **not** a pref: the event-stream push is the primary
 /// trigger and the poll only catches the rare missed push, so there's no
 /// user-visible gain in going faster, but a hand-edited `prefs.json`
 /// could hammer the server (2 s ≈ 43k req/day per client). Server cost is

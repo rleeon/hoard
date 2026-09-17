@@ -1,14 +1,14 @@
-//! Self-hosted server-to-app push over Server-Sent Events, the self-hosted twin
-//! of `commands::cloud_realtime`.
+//! Self-hosted server-to-app push over Server-Sent Events.
 //!
-//! Cloud gets near-instant cross-device sync from Supabase Realtime; self-hosted
-//! has no such broker, so historically the only "another device uploaded" path
-//! was the agent's reconciliation sweep (up to a cooldown of latency). The
+//! Cloud gets near-instant cross-device sync from the same stream, opened by
+//! the engine in `hoardd` (`hoard_agent::cloud_live`). Without it the only
+//! "another device uploaded" path is the agent's reconciliation sweep (up to a
+//! cooldown of latency). The
 //! server now exposes `GET /v1/events` (see `hoard-server::routes::events`): a
 //! long-lived SSE stream that emits one frame the instant a new save version
 //! commits. This module holds that stream open and, on each `save` frame,
 //! force-restores the advanced save when "sync global" is on, exactly what the
-//! cloud poller does on a Realtime push.
+//! engine does for Cloud on a pushed frame.
 //!
 //! Like its cloud sibling this is strictly an accelerator. It never restores
 //! anything on its own beyond the explicit `force_restore` under sync global;
@@ -33,7 +33,7 @@ use tokio::time::sleep;
 
 use crate::state::AppState;
 
-/// Reconnect backoff bounds. Mirrors `cloud_realtime`.
+/// Reconnect backoff bounds. Mirrors `hoard_agent::cloud_live`.
 const BACKOFF_MIN_SECS: u64 = 2;
 const BACKOFF_MAX_SECS: u64 = 60;
 
@@ -55,8 +55,7 @@ struct SaveEvent {
     version_num: i64,
 }
 
-/// Managed singleton holding the active SSE task, if any. Mirrors
-/// `RealtimeScheduler`.
+/// Managed singleton holding the active SSE task, if any.
 #[derive(Default)]
 pub struct SelfHostedEventsScheduler {
     handle: Arc<Mutex<Option<JoinHandle<()>>>>,
@@ -235,9 +234,9 @@ async fn handle_event(app: &AppHandle, ev_type: &str, data: &str) {
                 return;
             }
             // The engine lives in the service, so this goes over IPC. It is still
-            // the only server-to-client push self-hosted has: `hoardd` sets Realtime
-            // up for Cloud only, and the SSE needs the self-hosted credentials that
-            // live here.
+            // the only server-to-client push self-hosted has: `hoardd` opens the
+            // event stream for Cloud only, and the self-hosted one needs the
+            // credentials that live here.
             let Some(state) = app.try_state::<AppState>() else {
                 return;
             };

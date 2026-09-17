@@ -6,8 +6,8 @@
 //! their event loops already consume get forwarded to it, and:
 //!
 //! - An immediate beat when the reported game changes, so starting a game on this
-//!   machine shows up in every other machine's Eye panel in a second or two (the
-//!   server pushes the `devices` UPDATE over Supabase Realtime).
+//!   machine shows up in every other machine's Eye panel on that machine's next
+//!   devices refresh.
 //! - A keepalive every [`KEEPALIVE_SECS`], because the server ages a device out
 //!   after 90 s with no beat (three missed), so a crash expires on its own.
 //! - A final `closing` beat on an orderly shutdown, so the dot goes out at once.

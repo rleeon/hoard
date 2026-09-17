@@ -13,17 +13,15 @@
 //!   dir so a restart never re-delivers; the UI's own localStorage dedup by
 //!   id is the second belt.
 //!
-//! Kicked from two places, mirroring the `cloud_pull` design: the Realtime
-//! subscriber (`cloud_realtime`) on every pushed `devices`/`notifications`
-//! change and on (re)join, which is the "responds within a second" path, and
-//! the timed poller as fallback (at most every [`FALLBACK_MIN_SECS`]) for
-//! when the socket is down. Each feed runs behind a single-flight gate with a
-//! short spacing floor so a burst of Realtime events (e.g. three devices'
-//! keepalives landing together) collapses into one HTTP fetch.
+//! Kicked by the timed poller, at most every [`FALLBACK_MIN_SECS`]. Supabase
+//! Realtime used to push `devices` and `notifications` changes too, and has
+//! nothing to push since those tables left Supabase. Each feed runs behind a
+//! single-flight gate with a short spacing floor so kicks landing together
+//! collapse into one HTTP fetch.
 //!
 //! Cloud-only by construction: both endpoints exist only on the cloud
-//! server, and every kick path (Realtime, cloud poller) already runs only
-//! with a cloud session. Best-effort throughout: a failed fetch logs at
+//! server, and the cloud poller that kicks them already runs only with a cloud
+//! session. Best-effort throughout: a failed fetch logs at
 //! debug and waits for the next kick, and there is nothing to roll back.
 
 use std::sync::{Arc, Mutex};
@@ -32,16 +30,13 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::time::Instant;
 
-/// Spacing floor between fetches of the same feed. Keepalive heartbeats
-/// arrive every ~30s per sibling device, each one pushing a `devices` UPDATE
-/// through Realtime; without a floor every beat would cost one GET. 10s
-/// keeps a many-device account at 6 GETs/min or fewer, safely under the server's
-/// per-device poll guard (10/min), and beats still land within one beat interval of
-/// each other.
+/// Spacing floor between fetches of the same feed. 10s keeps a many-device
+/// account at 6 GETs/min or fewer, safely under the server's per-device poll
+/// guard (10/min).
 const SPACING_SECS: u64 = 10;
 
-/// The timed poller may tick as fast as every 5s; the fallback feed refresh
-/// doesn't need that, since Realtime covers immediacy. Cap it to once a minute.
+/// The timed poller may tick as fast as every 5s; the feeds don't need that.
+/// Cap them to once a minute.
 pub const FALLBACK_MIN_SECS: u64 = 60;
 
 /// Managed singleton: one gate per feed + the notifications cursor cache.
@@ -106,8 +101,7 @@ pub fn kick_notifications(app: &AppHandle) {
     });
 }
 
-/// Both feeds. The Realtime (re)join and the poller fallback want them
-/// together.
+/// Both feeds, which the poller refreshes together.
 pub fn kick_all(app: &AppHandle) {
     kick_devices(app);
     kick_notifications(app);

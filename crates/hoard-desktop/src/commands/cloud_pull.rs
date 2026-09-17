@@ -2,17 +2,17 @@
 //!
 //! Pairs with `commands::automatic`. The automatic scheduler does the heavy
 //! lifting (scan-library + backup-stale sweep) on the hourly scale; this
-//! poller hits `/v1/cloud/sync` every [`CLOUD_POLL_INTERVAL_SECS`] as the
-//! airbag for the Supabase Realtime push (`cloud_realtime`), which is the
-//! primary near-instant trigger. Immediacy comes from `kick()`; the timed
-//! tick only catches a missed push.
+//! poller hits `/v1/cloud/sync` every [`CLOUD_POLL_INTERVAL_SECS`] to keep the
+//! UI's picture of the server honest. Immediacy is not its job: the engine in
+//! `hoardd` hears about a new version within a second over the server's event
+//! stream and pulls it, and the UI learns that from the engine's own events.
 //!
 //! Decoupling the two cadences was an ADR-0016 call. The manifest endpoint
 //! returns under 5 KB and is explicitly excluded from the bandwidth quota
 //! (`hoard-server::cloud::routes::sync`, with no `bandwidth::check` call). The
-//! cadence itself stopped being a pref: it has no user-visible effect with
-//! Realtime as the primary trigger, and the old knob let a hand-edited
-//! `prefs.json` hammer the server.
+//! cadence itself stopped being a pref: it has no user-visible effect with the
+//! engine's event stream as the primary trigger, and the old knob let a
+//! hand-edited `prefs.json` hammer the server.
 //!
 //! What this poller deliberately does **not** do: it never overwrites a
 //! local save file. The "remote is newer, pull it" pathway still goes
@@ -76,14 +76,10 @@ pub struct CloudPullScheduler {
     /// fresh session is correct: the first poll just emits "0 new" and
     /// subsequent polls show real deltas.
     seen: Arc<Mutex<Vec<ManifestSeenEntry>>>,
-    /// Single-flight coalescing gate shared by the timed poller and every
-    /// Realtime `kick()`. Without it, a catch-up backup sweep that touches
-    /// N saves makes Supabase push N near-simultaneous `saves` UPDATEs, and
-    /// each one used to spawn its own `/v1/cloud/sync`: N concurrent pulls
-    /// that race on token refresh, so a single transient timeout among them
-    /// emitted `agent://offline` and the LiveStatus dot flapped to "agent
-    /// stopped". With the gate, at most one pull runs at a time and a burst
-    /// of kicks collapses into a single follow-up pull.
+    /// Single-flight gate: at most one pull runs at a time, and a tick that
+    /// lands while one is in flight becomes a single follow-up pass. Concurrent
+    /// pulls race on token refresh, and one transient timeout among them used
+    /// to emit `agent://offline` and flap the LiveStatus dot to "agent stopped".
     gate: Arc<Mutex<PullGate>>,
 }
 
@@ -280,10 +276,9 @@ async fn poll_loop(
     // zero-delay first tick of `tokio::time::interval` is the right
     // shape, so we don't manually emit before the loop.
     let mut ticker = interval(period);
-    // Fallback refresh for the Eye-panel devices + bell feeds when the
-    // Realtime socket is down. Immediacy comes from Realtime; this only
-    // needs to keep them *eventually* honest, so it's throttled to at
-    // most once per `FALLBACK_MIN_SECS`.
+    // The only refresh the Eye-panel devices + bell feeds get: nothing pushes
+    // them since their tables left Supabase. They only need to be *eventually*
+    // honest, so it's throttled to at most once per `FALLBACK_MIN_SECS`.
     //
     // Backdated so the first tick primes both feeds. Plain subtraction used to
     // do it and panicked with "overflow when subtracting duration from instant"
@@ -316,28 +311,10 @@ fn feed_refresh_is_due(last_feed: Option<tokio::time::Instant>) -> bool {
         .is_none_or(|t| t.elapsed().as_secs() >= crate::commands::cloud_feed::FALLBACK_MIN_SECS)
 }
 
-/// Fire a single manifest pull immediately, off the regular cadence.
-///
-/// Used by the Realtime push (`cloud_realtime`): when another device commits
-/// a new save version, Supabase pushes a `saves` UPDATE and we refresh state
-/// in ~1 s instead of waiting for the next timed tick. Reuses the
-/// scheduler's `seen` map so delta detection stays consistent with the timed
-/// poll. No-op when signed out (`run_one_pull` bails on missing creds).
-pub fn kick(app: &AppHandle) {
-    let scheduler = app.state::<CloudPullScheduler>();
-    let seen = scheduler.seen.clone();
-    let gate = scheduler.gate.clone();
-    let app = app.clone();
-    tokio::task::spawn(async move {
-        guarded_pull(&app, &seen, &gate, "kick").await;
-    });
-}
-
 /// Run a pull behind the single-flight [`PullGate`]. If a pull is already in
 /// flight this only flags a re-run and returns immediately; the in-flight
-/// caller drains that flag with exactly one extra pass when it finishes. A
-/// burst of kicks (e.g. a backup sweep touching every save) therefore costs
-/// at most two `/v1/cloud/sync` requests instead of one per save.
+/// caller drains that flag with exactly one extra pass when it finishes, so
+/// requests landing during a pull cost at most one more `/v1/cloud/sync`.
 /// The gate is released by [`GateGuard`]'s `Drop`, so an abort or a panic can
 /// no longer wedge the poller shut (ADR 0021 D.10).
 async fn guarded_pull(

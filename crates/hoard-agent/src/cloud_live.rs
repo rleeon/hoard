@@ -1,16 +1,15 @@
-//! Low-latency Cloud push for the headless engine (`hoard daemon`): the same
-//! thing the desktop app gets from `cloud_pull` plus `cloud_realtime`, but with no
-//! Tauri and operating directly on the [`AgentHandle`].
+//! Low-latency Cloud push for the engine that `hoardd` runs.
 //!
 //! Two halves that complement each other:
-//! - Realtime (`realtime_loop`): a WebSocket to Supabase Realtime subscribed to
-//!   the `saves` table (RLS scopes it to your user). As soon as another device
-//!   commits, the transaction raises `saves.latest_version_num` and Supabase
-//!   pushes an `UPDATE`; we turn that into an immediate pull, around a second
-//!   instead of waiting for the poll. The Hoard server never hears about it: the
-//!   messenger is Supabase.
+//! - The event stream (`events_loop`): `GET /v1/events` on the Hoard server, a
+//!   long-lived SSE response that carries one `save` frame the moment another
+//!   device of the account commits a version. Each frame turns into an
+//!   immediate pull, around a second instead of waiting for the poll. The server
+//!   is the messenger because it is the only one that sees the commit: Supabase
+//!   Realtime watched the `saves` table, and has had nothing to watch since the
+//!   tables left Supabase (17-sep-2026).
 //! - The backup poll (`poll_loop`): it hits `/v1/cloud/sync` every
-//!   `poll_interval` in case the socket drops or a push is lost. The manifest is
+//!   `poll_interval` in case the stream drops or a frame is lost. The manifest is
 //!   excluded from the bandwidth quota, so it is free in both money and bytes.
 //!
 //! Both end in the same place: the agent's version cache is fed
@@ -19,38 +18,37 @@
 //! mid-session vetoes live inside the agent, so asking for too much never walks
 //! over data.
 //!
-//! All best-effort: a failing socket reconnects with backoff and a failing poll
+//! All best-effort: a failing stream reconnects with backoff and a failing poll
 //! retries on the next tick. The daemon never dies over this.
 
 use std::collections::HashMap;
 use std::time::Duration;
 
-use futures::{SinkExt, StreamExt};
-use serde_json::{json, Value};
+use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, sleep, Instant, MissedTickBehavior};
-use tokio_tungstenite::tungstenite::Message;
 
 use crate::agent::AgentHandle;
 use crate::api::ApiClient;
 use crate::cloud_auth;
+use crate::sse;
 
-/// Cadencia de heartbeat: Supabase Realtime cierra sockets ociosos ~30s sin
-/// latido en el topic `phoenix`.
-const HEARTBEAT_SECS: u64 = 25;
-
-/// A connection's maximum life. A Supabase JWT lasts about an hour; we recycle
-/// the socket well inside that window so it reconnects with a fresh token off
-/// disk rather than tracking its exact expiry.
+/// A connection's maximum life. Authentication happens once, when the stream
+/// opens; recycling it now and then means a signed-out or revoked session stops
+/// hearing about the account within the hour.
 const CONNECTION_MAX_SECS: u64 = 45 * 60;
 
 /// Bounds on the reconnection backoff.
 const BACKOFF_MIN_SECS: u64 = 2;
 const BACKOFF_MAX_SECS: u64 = 60;
 
-/// The parked mode's cadence: with no usable session, realtime only re-reads the
-/// session file waiting for a fresh login. It mirrors the daemon's periodic
+/// A server without `/v1/events` (older than the move off Supabase) will not
+/// grow one in a minute. The poll carries the sync meanwhile.
+const UNSUPPORTED_RETRY_SECS: u64 = 30 * 60;
+
+/// The parked mode's cadence: with no usable session, the stream only re-reads
+/// the session file waiting for a fresh login. It mirrors the daemon's periodic
 /// refresher recheck (session.rs::RELOGIN_RECHECK_EVERY), since it is the same
 /// event and there is no sense in learning about it at two different rates.
 const RELOGIN_RECHECK_SECS: u64 = 5 * 60;
@@ -64,22 +62,22 @@ pub struct Config {
     pub global_sync: bool,
 }
 
-/// Starts the poll and realtime loops and returns their tasks. The daemon keeps
-/// them so they live as long as it does; they only stop if explicitly aborted, or
-/// when the process dies.
+/// Starts the poll and event-stream loops and returns their tasks. The daemon
+/// keeps them so they live as long as it does; they only stop if explicitly
+/// aborted, or when the process dies.
 pub fn spawn(client: ApiClient, handle: AgentHandle, cfg: Config) -> Vec<JoinHandle<()>> {
-    // A "kick" channel of capacity 1: a realtime push asks for a pull off cadence.
+    // A "kick" channel of capacity 1: a pushed frame asks for a pull off cadence.
     // With one already pending, the `try_send` drops it, so a burst of changes
     // collapses into a single extra pull.
     let (kick_tx, kick_rx) = mpsc::channel::<()>(1);
 
+    let events = tokio::spawn(events_loop(client.clone(), kick_tx));
     let poll = tokio::spawn(poll_loop(client, handle, cfg, kick_rx));
-    let realtime = tokio::spawn(realtime_loop(kick_tx));
-    vec![poll, realtime]
+    vec![poll, events]
 }
 
 /// The backup poll plus the kick consumer. It runs a pull on every timer tick and
-/// on every realtime nudge, serialised by the `select!` so never two at once. It
+/// on every pushed frame, serialised by the `select!` so never two at once. It
 /// keeps the `save_id` to `version_num` map it has seen, to spot advances.
 async fn poll_loop(
     client: ApiClient,
@@ -90,7 +88,7 @@ async fn poll_loop(
     tracing::info!(
         poll_secs = cfg.poll_interval.as_secs(),
         global_sync = cfg.global_sync,
-        "cloud-live: empuje Cloud arrancado"
+        "cloud-live: Cloud push started"
     );
 
     // The map lives in memory: a new session starts from nothing and the first
@@ -108,7 +106,7 @@ async fn poll_loop(
             _ = ticker.tick() => {}
             k = kick_rx.recv() => {
                 if k.is_none() {
-                    // The sender died (which should not happen while realtime runs).
+                    // The sender died (which should not happen while the stream runs).
                     return;
                 }
             }
@@ -182,46 +180,62 @@ async fn run_pull(
     if global_sync {
         for id in advanced {
             if let Err(e) = handle.force_restore(id).await {
-                tracing::warn!(error = %format!("{e:#}"), "cloud-live: no pude pedir force-restore");
+                tracing::warn!(error = %format!("{e:#}"), "cloud-live: could not ask for a force-restore");
             }
         }
     }
 }
 
-/// The WebSocket's outer reconnection loop. It never ends on its own: if the
-/// Cloud session disappears or GoTrue revokes the token family, instead of dying
-/// it parks watching the session file, with no network, until a `hoard login`
-/// (here or on the desktop, which share the file) leaves a new session, and then
-/// it reconnects. It used to return: the periodic refresher did re-adopt the
-/// re-login (Expired to Normal) but realtime no longer existed, and the daemon was
-/// left at poll latency (up to 60 s) until somebody restarted it.
-async fn realtime_loop(kick_tx: mpsc::Sender<()>) {
+/// How one connection to the stream ended.
+#[derive(Debug, PartialEq, Eq)]
+enum Outcome {
+    /// The server closed it or the life cap expired: reconnect.
+    Ended,
+    /// 401 or 403: the token needs refreshing first.
+    Unauthorized,
+    /// The server has no `/v1/events`.
+    Unsupported,
+}
+
+/// The stream's outer reconnection loop. It never ends on its own: if the Cloud
+/// session disappears or GoTrue revokes the token family, instead of dying it
+/// parks watching the session file, with no network, until a `hoard login` (here
+/// or on the desktop, which share the file) leaves a new session, and then it
+/// reconnects.
+async fn events_loop(client: ApiClient, kick_tx: mpsc::Sender<()>) {
     let mut backoff = BACKOFF_MIN_SECS;
     loop {
-        match connect_once(&kick_tx).await {
-            Ok(true) => {
-                // A clean end of cycle (the life cap): reconnect now with the
-                // fresh token left on disk.
-                backoff = BACKOFF_MIN_SECS;
+        match connect_once(&client, &kick_tx).await {
+            Ok(Outcome::Ended) => backoff = BACKOFF_MIN_SECS,
+            Ok(Outcome::Unsupported) => {
+                tracing::info!(
+                    "cloud-live: this server has no event stream, the poll carries the sync"
+                );
+                sleep(Duration::from_secs(UNSUPPORTED_RETRY_SECS)).await;
+                continue;
             }
-            Ok(false) => {
-                // No usable session (absent or revoked). Watch the disk without
-                // touching the network: replaying a revoked token against GoTrue
-                // every few minutes is exactly the noise the refresher shed.
-                let dead = cloud_auth::load_session().ok().flatten().map(|s| s.refresh);
-                tracing::info!("cloud-live: realtime parked, waiting for a fresh login");
-                loop {
-                    sleep(Duration::from_secs(RELOGIN_RECHECK_SECS)).await;
-                    let disk = cloud_auth::load_session().ok().flatten();
-                    if session_renewed(dead.as_deref(), disk.as_ref()) {
-                        break;
+            Ok(Outcome::Unauthorized) => {
+                // Through `refresh_freshest`, never by replaying a token captured
+                // earlier: by now the periodic refresher may have rotated it, and
+                // replaying a rotated one is reuse detection, which GoTrue answers
+                // by revoking the whole token family. The fresh pair lands on disk
+                // and in the shared client.
+                match cloud_auth::refresh_freshest().await {
+                    Ok(tokens) => client.set_token(tokens.access),
+                    Err(e) if e.downcast_ref::<cloud_auth::RefreshTokenStale>().is_some() => {
+                        park_until_new_login().await;
+                        if let Ok(Some(s)) = cloud_auth::load_session() {
+                            client.set_token(s.access);
+                        }
+                        backoff = BACKOFF_MIN_SECS;
+                    }
+                    Err(e) => {
+                        tracing::debug!(error = %format!("{e:#}"), "cloud-live: refresh before reconnecting failed");
                     }
                 }
-                tracing::info!("cloud-live: new session on disk, realtime reconnecting");
-                backoff = BACKOFF_MIN_SECS;
             }
             Err(e) => {
-                tracing::debug!(error = %format!("{e:#}"), "cloud-live: realtime connection dropped, retrying");
+                tracing::debug!(error = %format!("{e:#}"), "cloud-live: event stream dropped, retrying");
             }
         }
         sleep(Duration::from_secs(backoff)).await;
@@ -229,9 +243,24 @@ async fn realtime_loop(kick_tx: mpsc::Sender<()>) {
     }
 }
 
+/// Watch the disk without touching the network: replaying a revoked token
+/// against GoTrue every few minutes is exactly the noise the refresher shed.
+async fn park_until_new_login() {
+    let dead = cloud_auth::load_session().ok().flatten().map(|s| s.refresh);
+    tracing::info!("cloud-live: event stream parked, waiting for a fresh login");
+    loop {
+        sleep(Duration::from_secs(RELOGIN_RECHECK_SECS)).await;
+        let disk = cloud_auth::load_session().ok().flatten();
+        if session_renewed(dead.as_deref(), disk.as_ref()) {
+            tracing::info!("cloud-live: new session on disk, event stream reconnecting");
+            return;
+        }
+    }
+}
+
 /// Is what is on disk no longer the session that died? Only then is reconnecting
 /// worth it: a different refresh token, or a session where there was none, is a
-/// fresh login; the same dead session would keep bouncing off the join.
+/// fresh login; the same dead session would keep bouncing off the stream.
 fn session_renewed(dead: Option<&str>, disk: Option<&cloud_auth::Session>) -> bool {
     let Some(s) = disk else { return false };
     if s.refresh.trim().is_empty() {
@@ -240,176 +269,38 @@ fn session_renewed(dead: Option<&str>, disk: Option<&cloud_auth::Session>) -> bo
     dead != Some(s.refresh.as_str())
 }
 
-/// One connection cycle: connect, join the `saves` channel, and pump heartbeats
-/// and changes until the socket dies or the life cap expires. `Ok(true)` is a
-/// clean end (reconnect), `Ok(false)` is no usable session, absent or revoked (the
-/// caller parks to wait for a new login).
-async fn connect_once(kick_tx: &mpsc::Sender<()>) -> anyhow::Result<bool> {
-    let sess = match cloud_auth::load_session()? {
-        Some(s) => s,
-        None => return Ok(false),
-    };
+/// One connection: open the stream and turn its frames into kicks until it
+/// closes, stalls or reaches its life cap.
+async fn connect_once(client: &ApiClient, kick_tx: &mpsc::Sender<()>) -> anyhow::Result<Outcome> {
+    let resp = client.event_stream().await?;
+    match resp.status().as_u16() {
+        401 | 403 => return Ok(Outcome::Unauthorized),
+        404 | 405 => return Ok(Outcome::Unsupported),
+        s if !(200..300).contains(&s) => anyhow::bail!("/v1/events answered {s}"),
+        _ => {}
+    }
+    // Whatever landed while this device was not listening produced no frame for
+    // it, so a (re)connection starts with a catch-up pull.
+    let _ = kick_tx.try_send(());
 
-    // wss://<project>.supabase.co/realtime/v1/websocket?apikey=<anon>&vsn=1.0.0
-    let base = cloud_auth::supabase_url();
-    let ws_base = base
-        .strip_prefix("https://")
-        .map(|h| format!("wss://{h}"))
-        .or_else(|| base.strip_prefix("http://").map(|h| format!("ws://{h}")))
-        .unwrap_or_else(|| base.clone());
-    let anon = cloud_auth::supabase_anon_key();
-    let url = format!("{ws_base}/realtime/v1/websocket?apikey={anon}&vsn=1.0.0");
-
-    crate::tls::ensure_crypto_provider();
-    let (ws, _resp) = tokio_tungstenite::connect_async(&url).await?;
-    let (mut write, mut read) = ws.split();
-
-    // Join the channel subscribing to UPDATE and INSERT on public.saves. The
-    // token's RLS guarantees only our own rows arrive, with no client-side
-    // user_id filter.
-    let join = json!({
-        "topic": "realtime:hoard",
-        "event": "phx_join",
-        "payload": {
-            "config": {
-                "broadcast": { "ack": false },
-                "presence": { "key": "" },
-                "private": false,
-                "postgres_changes": [
-                    { "event": "UPDATE", "schema": "public", "table": "saves" },
-                    { "event": "INSERT", "schema": "public", "table": "saves" }
-                ]
-            },
-            "access_token": sess.access
-        },
-        "ref": "1"
-    });
-    write.send(Message::Text(join.to_string())).await?;
-
-    let mut hb = interval(Duration::from_secs(HEARTBEAT_SECS));
-    hb.tick().await; // consume el primer tick inmediato
-    let mut hb_ref: u64 = 2;
     let deadline = Instant::now() + Duration::from_secs(CONNECTION_MAX_SECS);
-
+    let mut parser = sse::Parser::default();
+    let mut body = resp.bytes_stream();
     loop {
         tokio::select! {
-            _ = tokio::time::sleep_until(deadline) => {
-                // The life cap: recycle to pick up a fresh token.
-                let _ = write.send(Message::Close(None)).await;
-                return Ok(true);
-            }
-            _ = hb.tick() => {
-                let beat = json!({
-                    "topic": "phoenix",
-                    "event": "heartbeat",
-                    "payload": {},
-                    "ref": hb_ref.to_string()
-                });
-                hb_ref += 1;
-                if write.send(Message::Text(beat.to_string())).await.is_err() {
-                    anyhow::bail!("fallo al enviar heartbeat");
-                }
-            }
-            msg = read.next() => {
-                let Some(msg) = msg else { return Ok(true) };
-                match msg? {
-                    Message::Text(txt) => match classify(&txt) {
-                        Some(Action::Change) => {
-                            tracing::debug!("cloud-live: cambio en saves → pull");
-                            let _ = kick_tx.try_send(());
-                        }
-                        Some(Action::Resubscribed) => {
-                            // Just (re)joined: whatever changed while the socket
-                            // was down produced no `postgres_changes`, so a
-                            // recovery pull closes that gap.
-                            tracing::debug!("cloud-live: (re)subscribed, running a recovery pull");
-                            let _ = kick_tx.try_send(());
-                        }
-                        Some(Action::TokenError) => {
-                            // The JWT was rejected on join: refresh (it lands on
-                            // disk) and reconnect with the rotated token. If the
-                            // refresh is terminally expired, stop trying.
-                            //
-                            // Through `refresh_freshest`, never with this
-                            // connection's `sess`: it was captured on connect and
-                            // by the time a TokenError arrives it can be up to
-                            // CONNECTION_MAX_SECS old, ample time for the periodic
-                            // refresher to have rotated it. Replaying it would be
-                            // reuse detection, and GoTrue answers by revoking the
-                            // whole token family.
-                            tracing::debug!("cloud-live: token rejected, refreshing");
-                            match cloud_auth::refresh_freshest().await {
-                                Ok(_) => anyhow::bail!("the refresh forced a reconnect"),
-                                Err(e) if e.downcast_ref::<cloud_auth::RefreshTokenStale>().is_some() => {
-                                    tracing::info!("cloud-live: refresh token revoked, realtime parks until a fresh login");
-                                    return Ok(false);
-                                }
-                                Err(_) => anyhow::bail!("the refresh forced a reconnect"),
-                            }
-                        }
-                        None => {}
-                    },
-                    Message::Ping(p) => {
-                        let _ = write.send(Message::Pong(p)).await;
+            _ = tokio::time::sleep_until(deadline) => return Ok(Outcome::Ended),
+            chunk = body.next() => {
+                let Some(chunk) = chunk else { return Ok(Outcome::Ended) };
+                for event in parser.push(&chunk?) {
+                    // `lagged` means the server dropped frames for us: the same
+                    // pull catches up on whatever they said.
+                    if event.kind == "save" || event.kind == "lagged" {
+                        tracing::debug!(kind = %event.kind, "cloud-live: pushed change, pulling");
+                        let _ = kick_tx.try_send(());
                     }
-                    Message::Close(_) => return Ok(true),
-                    _ => {}
                 }
             }
         }
-    }
-}
-
-enum Action {
-    /// A relevant row of `saves` changed, so refresh.
-    Change,
-    /// The join succeeded: (re)subscribed, so fire a recovery pull.
-    Resubscribed,
-    /// The token was rejected; refresh and reconnect.
-    TokenError,
-}
-
-/// Interprets a Realtime frame. `None` for the ones we do not act on (heartbeat,
-/// presence, system status).
-fn classify(txt: &str) -> Option<Action> {
-    let v: Value = serde_json::from_str(txt).ok()?;
-    let event = v.get("event").and_then(|e| e.as_str()).unwrap_or("");
-    match event {
-        "postgres_changes" => {
-            let table = v
-                .pointer("/payload/data/table")
-                .and_then(|t| t.as_str())
-                .unwrap_or("");
-            (table == "saves").then_some(Action::Change)
-        }
-        "phx_reply" | "system" => {
-            let status = v
-                .pointer("/payload/status")
-                .and_then(|s| s.as_str())
-                .unwrap_or("");
-            if status == "error" {
-                let reason = v
-                    .pointer("/payload/response")
-                    .map(|r| r.to_string())
-                    .unwrap_or_default()
-                    .to_lowercase();
-                let token_ish = reason.contains("token")
-                    || reason.contains("jwt")
-                    || reason.contains("unauthorized");
-                return token_ish.then_some(Action::TokenError);
-            }
-            // The join carries `ref: "1"`, and its "ok" reply means (re)subscribed.
-            // Heartbeat acks reuse `phx_reply` with refs 2, 3 and so on, so gating
-            // on ref "1" fires exactly once per (re)connection.
-            if event == "phx_reply" && status == "ok" {
-                let join_ref = v.get("ref").and_then(|r| r.as_str()).unwrap_or("");
-                if join_ref == "1" {
-                    return Some(Action::Resubscribed);
-                }
-            }
-            None
-        }
-        _ => None,
     }
 }
 
@@ -417,6 +308,8 @@ fn classify(txt: &str) -> Option<Action> {
 mod tests {
     use super::*;
     use crate::cloud_auth::Session;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
 
     fn disk(refresh: &str) -> Session {
         Session {
@@ -427,7 +320,7 @@ mod tests {
     }
 
     /// The parked loop only wakes for a session that is NOT the dead one: the same
-    /// one that blew up the join cannot do any better the second time.
+    /// one that was refused cannot do any better the second time.
     #[test]
     fn session_renewed_ignores_the_dead_session_and_wakes_on_a_new_one() {
         // With nothing on disk, or an empty refresh: keep waiting.
@@ -446,5 +339,100 @@ mod tests {
         assert!(!session_renewed(None, None));
         assert!(!session_renewed(None, Some(&disk(""))));
         assert!(session_renewed(None, Some(&disk("rt-fresh"))));
+    }
+
+    /// A one-shot HTTP server: answers the first request with `head` and then
+    /// writes `body` in the pieces given, closing after the last one.
+    async fn server(head: &'static str, body: Vec<&'static str>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut req = Vec::new();
+            let mut byte = [0u8; 1];
+            while !req.ends_with(b"\r\n\r\n") {
+                if sock.read(&mut byte).await.unwrap() == 0 {
+                    return;
+                }
+                req.push(byte[0]);
+            }
+            let text = String::from_utf8_lossy(&req);
+            assert!(text.starts_with("GET /v1/events "), "{text}");
+            assert!(
+                text.to_lowercase().contains("authorization: bearer tok"),
+                "{text}"
+            );
+            sock.write_all(head.as_bytes()).await.unwrap();
+            for piece in body {
+                sock.write_all(piece.as_bytes()).await.unwrap();
+                sock.flush().await.unwrap();
+                sleep(Duration::from_millis(20)).await;
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    fn client(base: String) -> ApiClient {
+        ApiClient::new(base, "tok").unwrap()
+    }
+
+    const SSE_HEAD: &str =
+        "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n";
+
+    #[tokio::test]
+    async fn a_pushed_save_becomes_a_pull_and_so_does_connecting() {
+        let base = server(
+            SSE_HEAD,
+            vec![
+                ":\n\n",
+                "event: save\ndata: {\"save_id\":\"s\",",
+                "\"version_num\":7}\n\n",
+                "event: something-else\ndata: x\n\n",
+            ],
+        )
+        .await;
+        let (tx, mut rx) = mpsc::channel(8);
+        let outcome = connect_once(&client(base), &tx).await.unwrap();
+        assert_eq!(outcome, Outcome::Ended);
+        let mut kicks = 0;
+        while rx.try_recv().is_ok() {
+            kicks += 1;
+        }
+        assert_eq!(kicks, 2, "one catch-up on connect, one for the save frame");
+    }
+
+    #[tokio::test]
+    async fn a_refused_token_and_an_old_server_are_told_apart() {
+        let (tx, mut rx) = mpsc::channel(8);
+        let base = server(
+            "HTTP/1.1 401 Unauthorized\r\ncontent-length: 0\r\n\r\n",
+            vec![],
+        )
+        .await;
+        assert_eq!(
+            connect_once(&client(base), &tx).await.unwrap(),
+            Outcome::Unauthorized
+        );
+        let base = server(
+            "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\n\r\n",
+            vec![],
+        )
+        .await;
+        assert_eq!(
+            connect_once(&client(base), &tx).await.unwrap(),
+            Outcome::Unsupported
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "nothing to pull when the stream never opened"
+        );
+
+        // Maintenance answers 429: an error that backs off, not a reason to park.
+        let base = server(
+            "HTTP/1.1 429 Too Many Requests\r\ncontent-length: 0\r\n\r\n",
+            vec![],
+        )
+        .await;
+        assert!(connect_once(&client(base), &tx).await.is_err());
     }
 }

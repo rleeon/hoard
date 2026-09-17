@@ -210,7 +210,6 @@ pub fn run() {
         .manage(TrayController::default())
         .manage(AutomaticScheduler::default())
         .manage(commands::cloud_pull::CloudPullScheduler::default())
-        .manage(commands::cloud_realtime::RealtimeScheduler::default())
         // Gates of the devices + bell feeds. Missing here until ADR 0021 D.12,
         // and `app.state::<T>()` panics on unmanaged state: every `kick_*` call
         // took its caller's task down with it, including the cloud-pull timer
@@ -525,10 +524,6 @@ pub fn run() {
                 if let Err(e) = commands::cloud_pull::restart_if_enabled(&cloud_pull_handle).await {
                     tracing::warn!(error = %e, "couldn't rehydrate cloud-pull poller");
                 }
-                // Realtime push rides alongside the poller: it accelerates
-                // "something changed" from up to one poll interval down to
-                // about 1 s. Best-effort: the poll above is the fallback.
-                commands::cloud_realtime::restart_if_enabled(&cloud_pull_handle);
             });
 
             // Wire the deep-link receiver. `hoard://auth/callback?...` URLs
