@@ -577,6 +577,10 @@ pub async fn load_session_async() -> Result<Option<Session>> {
     }
 }
 
+fn is_whole_pair(auth: &AuthSection) -> bool {
+    !auth.access_token.is_empty() && !auth.refresh_token.is_empty()
+}
+
 /// Fills the keyring's blanks from the file. They are two halves of one session
 /// when the keyring could only take the refresh token: the file's access JWT
 /// belongs to the refresh token next to it, and a stale one costs a refresh, not
@@ -598,6 +602,16 @@ fn merge(mut from_keyring: AuthSection, from_file: Option<AuthSection>) -> AuthS
 /// fails for something repairable (locked, no D-Bus in a headless session). That
 /// is not "there is no session".
 ///
+/// Except when the file holds a whole pair. `store_tokens` empties `auth` every
+/// time the keyring takes the session and leaves only the access JWT when it took
+/// the refresh token alone, so a whole pair means the last write went to the file:
+/// the keyring refused it (locked for a moment, then unlocked), or a client with
+/// no service stored a new login, which never touches the keyring. What the
+/// keyring still holds is the session before that, and its refresh token has
+/// usually been rotated already. Refreshing with it trips GoTrue's reuse
+/// detection, which revokes the whole family; after a sign-out and a sign-in to
+/// another account it would quietly sync the old one.
+///
 /// Swallowing the `Err` as though it were `NoEntry` fell back to the file, which
 /// with a healthy keyring carries `auth = None` (see `store_tokens`), so
 /// `load_session` returned `Ok(None)` and the user appeared signed out with their
@@ -608,6 +622,7 @@ fn pick_auth(
     from_file: Option<AuthSection>,
 ) -> Result<Option<AuthSection>> {
     match from_keyring {
+        Ok(Some(_)) if from_file.as_ref().is_some_and(is_whole_pair) => Ok(from_file),
         Ok(Some(a)) => Ok(Some(merge(a, from_file))),
         Ok(None) => Ok(from_file),
         Err(e) => match from_file {
@@ -1002,19 +1017,20 @@ mod tests {
         );
     }
 
-    /// Y un llavero sano gana al fichero, con o sin fichero.
+    /// A healthy keyring is the session when the file carries no tokens, and an
+    /// empty one falls back to the file.
     #[test]
     fn a_healthy_keyring_wins_and_an_empty_one_falls_back() {
         let from_keyring = AuthSection {
             access_token: "jwt-del-llavero".to_string(),
             refresh_token: "refresh-del-llavero".to_string(),
         };
-        let got = pick_auth(Ok(Some(from_keyring)), Some(tokens_in_the_file()))
+        let got = pick_auth(Ok(Some(from_keyring)), None)
             .expect("ok")
             .expect("tokens");
         assert_eq!(got.access_token, "jwt-del-llavero");
 
-        // `NoEntry`: no hay entrada, no hay fallo. Cae al fichero en silencio.
+        // `NoEntry` is no entry, not a failure: it falls back to the file quietly.
         let got = pick_auth(Ok(None), Some(tokens_in_the_file()))
             .expect("ok")
             .expect("tokens");
@@ -1031,12 +1047,44 @@ mod tests {
             access_token: String::new(),
             refresh_token: "refresh-del-llavero".to_string(),
         };
-        let got = pick_auth(Ok(Some(from_keyring)), Some(tokens_in_the_file()))
+        // What `store_tokens` leaves in the file in this mode: the JWT alone.
+        let jwt_only = AuthSection {
+            access_token: "jwt-del-fichero".to_string(),
+            refresh_token: String::new(),
+        };
+        let got = pick_auth(Ok(Some(from_keyring)), Some(jwt_only))
             .expect("ok")
             .expect("tokens");
         assert_eq!(got.access_token, "jwt-del-fichero");
         // And the keyring's refresh token wins: it is the one that rotated last.
         assert_eq!(got.refresh_token, "refresh-del-llavero");
+    }
+
+    /// A whole pair in the file was written after whatever the keyring holds (a
+    /// refused keyring write, or a login stored with no service), so the file's
+    /// refresh token is the live one and the keyring's has been rotated. Taking the
+    /// keyring's is what would get the whole token family revoked.
+    #[test]
+    fn a_whole_pair_in_the_file_beats_an_older_keyring_entry() {
+        let stale_pair = AuthSection {
+            access_token: "jwt-viejo".to_string(),
+            refresh_token: "refresh-viejo".to_string(),
+        };
+        let got = pick_auth(Ok(Some(stale_pair)), Some(tokens_in_the_file()))
+            .expect("ok")
+            .expect("tokens");
+        assert_eq!(got.access_token, "jwt-del-fichero");
+        assert_eq!(got.refresh_token, "refresh-del-fichero");
+
+        // The same with the refresh-only entry Windows leaves in the keyring.
+        let stale_half = AuthSection {
+            access_token: String::new(),
+            refresh_token: "refresh-viejo".to_string(),
+        };
+        let got = pick_auth(Ok(Some(stale_half)), Some(tokens_in_the_file()))
+            .expect("ok")
+            .expect("tokens");
+        assert_eq!(got.refresh_token, "refresh-del-fichero");
     }
 
     /// The half in the keyring is still the authority when the file has nothing.
