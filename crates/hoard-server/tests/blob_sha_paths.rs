@@ -642,3 +642,78 @@ async fn a_compressed_blob_goes_direct_only_when_the_client_can_decode_it() {
 
     cleanup(&pool, user).await;
 }
+
+/// Deleting one version by hand reads its shas off the manifest to release
+/// them. The manifest has served them as bytea since 0054, and reading one into
+/// a `String` turned every manual delete into a 500 from 2026-09-06 to
+/// 2026-09-15.
+#[tokio::test]
+async fn deleting_a_version_releases_its_blobs() {
+    let Some(pool) = pool().await else { return };
+    let (user, save_id) = seed(&pool, 2, 2).await;
+    let state = state_for(pool.clone()).await;
+    let user_ctx = hoard_server::cloud::auth::CloudUser {
+        user_id: user,
+        email: format!("{user}@test.invalid"),
+        role: "authenticated".into(),
+        avatar_url: None,
+        display_name: None,
+    };
+
+    let resp = hoard_server::cloud::routes::saves::delete_version(
+        axum::extract::State(state.clone()),
+        axum::Extension(user_ctx),
+        axum::extract::Path((save_id.clone(), 1i64)),
+    )
+    .await
+    .expect("delete_version runs");
+    assert_eq!(resp.status(), axum::http::StatusCode::NO_CONTENT);
+
+    let left: i64 = sqlx::query_scalar("SELECT count(*) FROM save_versions WHERE save_id = $1")
+        .bind(&save_id)
+        .fetch_one(&pool)
+        .await
+        .expect("versions left");
+    assert_eq!(left, 1, "only version 2 is left");
+
+    // Both versions point at the same two blobs, so each goes from 2 to 1.
+    let refs: Vec<i64> = sqlx::query_scalar(
+        "SELECT refcount::bigint FROM cloud_blobs WHERE user_id = $1 ORDER BY sha256",
+    )
+    .bind(user)
+    .fetch_all(&pool)
+    .await
+    .expect("refcounts");
+    assert_eq!(refs, vec![1, 1], "one reference released per blob");
+
+    cleanup(&pool, user).await;
+}
+
+/// The repeat-download brake needs how long ago the last download was, and
+/// `extract(epoch ...)` has returned numeric since Postgres 14. Decoded into an
+/// `f64` it failed, the brake fails open, and so it served every download
+/// without ever pacing one.
+#[tokio::test]
+async fn the_repeat_download_brake_can_fire() {
+    let Some(pool) = pool().await else { return };
+    let (user, save_id) = seed(&pool, 1, 1).await;
+    let state = state_for(pool.clone()).await;
+    for _ in 0..8 {
+        sqlx::query(
+            "INSERT INTO sync_log (user_id, save_id, version_num, kind) VALUES ($1, $2, 1, 'download')",
+        )
+        .bind(user)
+        .bind(&save_id)
+        .execute(&pool)
+        .await
+        .expect("download row");
+    }
+
+    let pace = hoard_server::cloud::loopguard::download_brake(&state, user, &save_id, 1).await;
+    assert!(
+        pace.is_some(),
+        "8 downloads of one version inside a day have to be paced"
+    );
+
+    cleanup(&pool, user).await;
+}

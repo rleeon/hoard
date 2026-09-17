@@ -1849,8 +1849,10 @@ pub async fn delete_version(
         // away, then drop the version row (its `version_files` references
         // cascade with it) and
         // release one reference per blob.
+        // The manifest serves the sha as bytea and `release_blobs` wants hex.
         let shas: Vec<(String,)> = sqlx::query_as(
-            "SELECT DISTINCT sha256 FROM manifest_files WHERE save_id = $1 AND version_num = $2",
+            "SELECT DISTINCT encode(sha256, 'hex') FROM manifest_files
+              WHERE save_id = $1 AND version_num = $2",
         )
         .bind(&save_id)
         .bind(version)

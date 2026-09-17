@@ -166,9 +166,11 @@ pub async fn download_brake(
     save_id: &str,
     version: i64,
 ) -> Option<Pace> {
+    // extract() has returned numeric since Postgres 14, which does not decode
+    // as f64: without the cast this failed open on every download.
     let row: Result<(i64, Option<f64>), _> = sqlx::query_as(
         "SELECT count(*),
-                extract(epoch FROM now() - max(at))
+                extract(epoch FROM now() - max(at))::float8
            FROM sync_log
           WHERE user_id = $1 AND save_id = $2 AND version_num = $3
             AND kind = 'download' AND at > now() - interval '24 hours'",
