@@ -179,7 +179,33 @@ fn resolve_on_path(exe: &Path, path_var: Option<&std::ffi::OsStr>) -> Option<Pat
 /// installer each install the whole of Hoard: there is one daemon per user, and the
 /// one that counts is the one the system already starts.
 pub fn installed_exec_start() -> Option<PathBuf> {
+    if hoard_agent::config::profile_suffix().is_some() {
+        return None;
+    }
     platform::exec_start()
+}
+
+/// A Hoard running under `HOARD_PROFILE` has no login start, and does not see
+/// the real one.
+///
+/// The unit, the launchd label and the scheduled task are one per user, not per
+/// profile. A staging build that declared one would point the installed Hoard's
+/// login start at the staging `hoardd`, which then comes up at the next login
+/// without the variable, as the real profile, with the real session. Turning the
+/// switch off in it would remove the real one, and a client of the profile asking
+/// which daemon to launch would get the installed one instead of its own.
+fn refuse_under_profile(profile: Option<String>) -> Result<()> {
+    let Some(profile) = profile else {
+        return Ok(());
+    };
+    Err(LoginStartUnsupported {
+        kind: Unsupported::NoServiceManager,
+        detail: format!(
+            "login start is per user, not per profile, so the `{profile}` profile \
+             (HOARD_PROFILE) doesn't declare one: it would replace the installed Hoard's"
+        ),
+    }
+    .into())
 }
 
 /// Instala la unidad y **arranca el servicio ahora**. Idempotente.
@@ -225,6 +251,7 @@ async fn keep_serving(was_serving: bool, why: &'static str) {
 /// calls it on every start (just as it reaffirms its own autostart), where stopping
 /// the sync to reinstall it would be absurd.
 pub async fn ensure_installed() -> Result<Installed> {
+    refuse_under_profile(hoard_agent::config::profile_suffix())?;
     // Declaring the unit without checking the engine is there is the most expensive
     // way to fail. `own_daemon_binary` falls back to a bare name when it cannot find
     // the sibling, so the `ExecStart` comes out as plain `"hoardd"`, systemd accepts
@@ -337,6 +364,9 @@ pub async fn restart() -> Result<Installed> {
 
 /// Is there a unit installed for this user?
 pub async fn installed() -> bool {
+    if hoard_agent::config::profile_suffix().is_some() {
+        return false;
+    }
     platform::installed().await
 }
 
@@ -1422,6 +1452,20 @@ mod tests {
             xml_escape(r"C:\Program Files\hoardd.exe"),
             r"C:\Program Files\hoardd.exe"
         );
+    }
+
+    /// A staging profile must not declare the unit the installed Hoard starts
+    /// from, and the refusal has to reach the window typed, not as loose text.
+    #[test]
+    fn a_profile_refuses_login_start_and_the_default_does_not() {
+        assert!(refuse_under_profile(None).is_ok());
+
+        let err = refuse_under_profile(Some("dev".to_string())).expect_err("refused");
+        assert_eq!(
+            unsupported_reason(&err),
+            Some(Unsupported::NoServiceManager)
+        );
+        assert!(format!("{err:#}").contains("`dev` profile"), "{err:#}");
     }
 
     /// The Task Scheduler does not search `PATH` for a bare `<Command>`, so a unit
