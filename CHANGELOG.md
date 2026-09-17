@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
+Entries are reviewed line by line by the [maintainer](https://github.com/rleeon) pushing the release.
 
 ## [Unreleased]
+
+## [1.2.0] - Working in a release guys
 
 ### Added
 - **The size limit per save is yours to set.** Free stays at 1 GB by default and
@@ -17,6 +20,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   of it, so the game with the biggest save is the one that never synced whole.
   The account still holds 2 GB in total on Free, so what changes is how you are
   allowed to spend the room you already had, not the room.
+- **Hoard finds new games with the window closed.** Detection, automatic mode
+  and the Ludusavi catalogue moved into `hoardd`, the sync service that keeps
+  running when the window is gone. Until now a game installed while the app was
+  closed went unnoticed until somebody opened it, and the catalogue refreshed
+  only with the window up, which on a machine that runs Hoard from the tray or
+  the terminal could mean never. The service runs the automatic pass every 10
+  minutes (30 games in about 4 seconds on a real Windows install) and refreshes
+  the catalogue once it is a day old, and the window asks it instead of loading
+  a copy of its own, which was about 50 MB. The catalogue is also read one game
+  at a time now: parsing the 17.5 MB manifest in one go peaked at 488 MB, and
+  the service, which never exits, used to keep 125 MB of that for good.
+- **The log viewer shows the sync service too.** Everything that talks to the
+  cloud (token refresh, uploads, restores) happens in `hoardd`, which writes its
+  own `hoardd.log`, and the viewer and its copy button read only the window's
+  `agent.log`, so a bug report gathered with them could not show a failed token
+  refresh. Both are merged in time order now, each line tagged with the process
+  it came from, and Settings points at the logs folder instead of one file.
+- **Windows: a title bar that belongs to the app.** Windows drew a light grey
+  caption with square corners, which on a near-black window read as a strip of
+  tape across the top. The app paints its own now, with minimise, maximise and
+  close, and drags and resizes like any other window. If the system bar cannot
+  be dropped it stays, so there are never two stacked. GNOME and macOS keep
+  theirs.
+- **`hoard restore --remember`.** `hoard restore --to <folder> --remember`
+  keeps that folder as the game's home, the way `hoard backup --remember`
+  already could, and the sync starts watching it straight away (with
+  `--dry-run` it checks without writing anything). `backup --remember` takes
+  effect without restarting the sync, too. Restoring from the History page
+  follows the same rules, which closes a hole where it could take over a folder
+  that belonged to another game (#34).
+- **Uploads are compressed before they leave your machine.** Files go up
+  compressed with zstd, to Hoard Cloud and to a self-hosted server alike, and
+  restores bring them down compressed and unpack them locally, so less travels
+  over the wire. Hoard tastes the start of each file first and sends anything
+  already compressed as it is, and never compresses for a server too old to
+  decode it. Deduplication still goes by the original content, so identical
+  files are still stored once. `HOARD_UPLOAD_COMPRESS=0` turns it off.
+- **The self-hosted panel says what to do about a forgotten password.** The
+  sign-in screen now ends with the command that resets it:
+  `hoard-admin user passwd <user>`, run on the server.
 
 ### Changed
 - **Free's transfer window goes from 3 GB to 5 GB per 15 minutes.** The window
@@ -25,6 +68,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the cap movable to 1.5 GB it left room for a single upload and a half, so the
   second copy of a big save met a 429 for no reason anybody could see. Pro's
   15 GB is unchanged.
+- **The window gives its memory back while it is hidden.** Closed to the tray,
+  it used to hold on to everything it had drawn. On Windows the webview drops to
+  its low-memory mode when hidden (the renderer goes from 25 to 6.7 MB and comes
+  back in under 200 ms with its state intact). WebKitGTK has no such mode, so on
+  Linux the webview is torn down after 10 minutes hidden (77 MB to 8) and
+  rebuilt on the page you left, in about 90 ms, when you open it again. Covers
+  are scaled to the size they are drawn at instead of decoded at 600×900: 25
+  small icons went from 58 MB to 3. And the in-game HUD (Alt+H) is no longer
+  built just to be hidden: it is prepared when a game starts.
+- **A visual refresh across the app.**
 
 ### Fixed
 - **Opening the window took the sync service out of login start, and stopped
@@ -49,6 +102,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `launchctl bootout` and the Task Scheduler cannot, so there the service is
   brought back the way a client brings it up. Stopping it now is still
   `hoard sync stop`, which says both things and means both.
+- **Windows: turning on sync at login could leave you with no sync at all.**
+  When `hoardd` was reachable only through `PATH`, the scheduled task was
+  written with its bare name, and the Task Scheduler does not search `PATH`: the
+  task failed at every logon with `0x80070002`. Turning the switch on had
+  already stopped the running sync to hand over to that task, so the machine was
+  left with none. The task gets the full path now, and if the service does not
+  take over, or does not come back after a restart, the sync that was running
+  is brought back up.
+- **Windows kept the Cloud session in a file instead of the Credential
+  Manager.** The Credential Manager caps a secret at 2,560 characters and an
+  access token plus its refresh token do not fit, so on every Windows machine
+  the session fell back to the file for its whole life. The refresh token, the
+  long-lived half, goes into the Credential Manager now, and the access token,
+  good for an hour, stays in the file.
+- **One network hiccup could cost an hour of "token rejected by server".** The
+  session renews every 45 minutes and a token lives about an hour, so a renewal
+  that failed on a bad connection waited out the full 45 minutes, and
+  everything in the gap came back 401 until the next attempt healed it without
+  a word. A failed renewal is retried after 1 minute, then 5, then every 15, and
+  the log says why it failed instead of only naming the URL it failed on.
+- **The upgrade link in quota errors led nowhere.** The `upgrade_url` in every
+  402, and in the 413 for a save that is too large, pointed at
+  hoard.services/upgrade, which has never existed. It points at /pricing now.
+  The app never followed it, but self-hosted admins and scripts reading the JSON
+  did.
 
 ## [1.1.6] - 2026-09-03
 
