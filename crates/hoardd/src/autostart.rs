@@ -48,7 +48,6 @@
 //! there first and wait for it to release the socket: it is how the process's owner
 //! really becomes the service manager.
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
