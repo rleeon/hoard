@@ -1,0 +1,244 @@
+name: Reship Hoard Setup
+
+# Rebuilds Hoard Setup, and nothing else, from the ref it is dispatched on and
+# swaps it into a release that already exists: the installer, its .minisig and
+# its .sha256. It is for an installer that shipped broken beside an app that is
+# fine, which is what happened to the Linux one in 1.2.0: it panicked on start
+# (zbus asked for a Tokio runtime the Slint thread was not in) while every other
+# file in the release worked. A new version for that would make every client
+# update to an identical app.
+#
+# The build and package steps repeat the two Hoard Setup steps in
+# `release-desktop.yml`. A change to one belongs in the other.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Release whose Hoard Setup gets replaced, e.g. v1.2.0"
+        required: true
+        type: string
+      platforms:
+        description: "Which installers to rebuild"
+        required: true
+        default: linux
+        type: choice
+        options:
+          - linux
+          - windows
+          - macos
+          - all
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reship-setup-${{ inputs.release }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The ref has to be the release it is shipping into. From a tree already
+      # stamped for the next version, the installer would carry that version's
+      # code under this release's name, and nothing downstream would notice.
+      - name: Check the ref is that release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE: ${{ inputs.release }}
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE" --repo "$GITHUB_REPOSITORY" --json tagName >/dev/null
+          tree=$(sed -n '/^\[workspace\.package\]/,/^\[/{s/^version = "\(.*\)"$/\1/p}' Cargo.toml)
+          if [ "v$tree" != "$RELEASE" ]; then
+            echo "::error::this ref is version $tree, not $RELEASE"
+            exit 1
+          fi
+
+      # Same runners as `release-desktop.yml`: 22.04 for the older glibc, and
+      # the two optional entries stay optional.
+      - name: Matrix
+        id: matrix
+        env:
+          PLATFORMS: ${{ inputs.platforms }}
+        run: |
+          set -euo pipefail
+          all='[
+            {"os":"ubuntu-22.04","label":"linux-x86_64","target":"x86_64-unknown-linux-gnu","setup_arch":"x86_64"},
+            {"os":"ubuntu-22.04-arm","label":"linux-aarch64","target":"aarch64-unknown-linux-gnu","setup_arch":"aarch64"},
+            {"os":"windows-latest","label":"windows-x86_64","target":"x86_64-pc-windows-msvc","setup_arch":"x86_64"},
+            {"os":"windows-11-arm","label":"windows-aarch64","target":"aarch64-pc-windows-msvc","setup_arch":"aarch64","optional":true},
+            {"os":"macos-14","label":"macos-aarch64","target":"aarch64-apple-darwin","setup_arch":"aarch64","optional":true}
+          ]'
+          if [ "$PLATFORMS" = all ]; then
+            picked=$(jq -c . <<<"$all")
+          else
+            picked=$(jq -c --arg p "$PLATFORMS-" '[.[] | select(.label | startswith($p))]' <<<"$all")
+          fi
+          echo "matrix={\"include\":$picked}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build (${{ matrix.label }})
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.optional == true }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: setup-${{ matrix.label }}
+
+      # The list `release-desktop.yml` installs, minus the PipeWire PPA and its
+      # dev package: those are for the overlay sidecar, which the installer does
+      # not link.
+      - name: System deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libwayland-dev \
+            libxkbcommon-dev \
+            clang
+
+      - name: Build Hoard Setup
+        shell: bash
+        env:
+          HOARD_SETUP_VERSION: ${{ inputs.release }}
+        run: |
+          set -e
+          V="${HOARD_SETUP_VERSION#v}"
+          perl -0pi -e "s/^version = \"[^\"]+\"/version = \"$V\"/m" \
+            crates/hoard-installer/Cargo.toml
+          cargo build -p hoard-installer --release --target ${{ matrix.target }}
+
+      - name: Package Hoard Setup
+        shell: bash
+        run: |
+          set -e
+          mkdir -p setup
+          BIN="target/${{ matrix.target }}/release/hoard-installer"
+          [ -f "$BIN" ] || [ -f "$BIN.exe" ] || BIN="target/release/hoard-installer"
+          ARCH="${{ matrix.setup_arch }}"
+          case "${{ runner.os }}" in
+            Windows)
+              cp "$BIN.exe" "setup/HoardSetup-$ARCH.exe"
+              ;;
+            Linux)
+              cp "$BIN" "setup/HoardSetup-$ARCH"
+              chmod +x "setup/HoardSetup-$ARCH"
+              ;;
+            macOS)
+              APP="setup/Hoard Setup.app"
+              mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+              cp "$BIN" "$APP/Contents/MacOS/HoardSetup"
+              chmod +x "$APP/Contents/MacOS/HoardSetup"
+              cp crates/hoard-installer/icons/icon.icns "$APP/Contents/Resources/HoardSetup.icns"
+              cat > "$APP/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleName</key><string>Hoard Setup</string>
+            <key>CFBundleDisplayName</key><string>Hoard Setup</string>
+            <key>CFBundleIdentifier</key><string>dev.hoard.setup</string>
+            <key>CFBundleExecutable</key><string>HoardSetup</string>
+            <key>CFBundleIconFile</key><string>HoardSetup</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>NSHighResolutionCapable</key><true/>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+          </dict></plist>
+          PLIST
+              ( cd setup && ditto -c -k --keepParent "Hoard Setup.app" "HoardSetup-$ARCH.zip" \
+                && rm -rf "Hoard Setup.app" )
+              ;;
+          esac
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256_cmd() { sha256sum "$1"; }
+          else
+            sha256_cmd() { shasum -a 256 "$1"; }
+          fi
+          ( cd setup && for f in *; do sha256_cmd "$f" > "$f.sha256"; done )
+          ls -la setup/
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: setup-${{ matrix.label }}
+          path: setup/*
+
+  publish:
+    name: Replace in release
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ success() || failure() }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          merge-multiple: true
+
+      # Unlike a first release, a missing key fails here instead of warning. The
+      # release already carries a .minisig for every one of these files, and
+      # swapping the installer without its signature would leave one that no
+      # longer matches.
+      - name: Sign (minisign)
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_KEY_PASSWORD: ${{ secrets.MINISIGN_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::no installer was built, nothing to replace"
+            exit 1
+          fi
+          if [ -z "${MINISIGN_SECRET_KEY:-}" ]; then
+            echo "::error::MINISIGN_SECRET_KEY is not set"
+            exit 1
+          fi
+          sudo apt-get update && sudo apt-get install -y minisign
+          printf '%s' "$MINISIGN_SECRET_KEY" > minisign.key
+          for f in dist/*; do
+            case "$f" in
+              *.sha256|*.minisig) continue ;;
+            esac
+            printf '%s\n' "${MINISIGN_KEY_PASSWORD:-}" | \
+              minisign -S -s minisign.key -m "$f"
+            test -f "$f.minisig" || { echo "::error::signing produced no .minisig for $f"; exit 1; }
+          done
+          rm -f minisign.key
+          ls -la dist/
+
+      - name: Replace in release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE: ${{ inputs.release }}
+        run: gh release upload "$RELEASE" dist/* --clobber --repo "$GITHUB_REPOSITORY"

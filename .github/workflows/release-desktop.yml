@@ -187,6 +187,9 @@ jobs:
       # Named `HoardSetup-*` and nothing else: `hoard_agent::install::fetch`
       # filters the release's assets on that prefix so the in-app updater can
       # never mistake this for a copy of the app. Renaming here breaks that.
+      #
+      # `reship-setup.yml` repeats this step and the next one to replace the
+      # installers of a release already out. A change here belongs there too.
       - name: Build Hoard Setup
         shell: bash
         env:
