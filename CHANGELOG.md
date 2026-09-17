@@ -8,7 +8,7 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
 
 ## [Unreleased]
 
-## [1.2.0] - Working in a release guys
+## [1.2.0] - 15/09/2026
 
 ### Added
 - **The size limit per save is yours to set.** Free stays at 1 GB by default and
@@ -60,6 +60,11 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
 - **The self-hosted panel says what to do about a forgotten password.** The
   sign-in screen now ends with the command that resets it:
   `hoard-admin user passwd <user>`, run on the server.
+- **A star that opens Hoard on GitHub.** A small yellow star beside the
+  activity toggle (in the title bar on Windows) opens the repository page in
+  your browser. Starring needs a GitHub session the app does not have, so the
+  star itself is given there. It hides when the sidebar folds into its icon
+  rail.
 
 ### Changed
 - **Free's transfer window goes from 3 GB to 5 GB per 15 minutes.** The window
@@ -77,7 +82,34 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
   are scaled to the size they are drawn at instead of decoded at 600×900: 25
   small icons went from 58 MB to 3. And the in-game HUD (Alt+H) is no longer
   built just to be hidden: it is prepared when a game starts.
-- **A visual refresh across the app.**
+- **Changes from your other devices arrive through Hoard's own server.** The
+  near-instant push used to come from the database host watching the `saves`
+  table, and it had nothing left to watch once the database moved (17 September
+  2026). The sync service now keeps one connection open to `GET /v1/events` on
+  the Hoard server, which sends a frame the moment another device of the account
+  commits a version, and the save is pulled within about a second, as before.
+  Every reconnection starts with a catch-up pull for whatever landed while it
+  was not listening, and a server without the stream is left to the one-minute
+  poll. Self-hosted servers already had this stream; Hoard Cloud has it now.
+  The Eye panel's device list and the bell are no longer pushed and refresh once
+  a minute. Older versions keep syncing, on that one-minute poll.
+- **A visual refresh across the app.** Hoard has one look now, the dark one:
+  the Quartz and Auto themes are gone, and the gem you pick tints the greys and
+  the surfaces as well as the accent, where a ruby or a sapphire used to sit on
+  greys that still leaned green. The cards no longer lean under the pointer and
+  the background has a single finish, so "Depth on hover" and "Atmosphere" left
+  Settings, whose "Themes" section is "Appearance" now. The sidebar's icons move
+  when what they stand for changes (the bell rings, the sync arrow turns, a
+  scroll unrolls) and the settings icon is a vault door that rolls away when
+  you point at it. Your email is masked everywhere it shows, the account page,
+  the settings card and the sidebar, because that is what ends up in a
+  screenshot or a stream; one eye reveals it in all three at once. The plans
+  screen is gone: its prices and limits had drifted from the real ones, so a
+  padlocked feature now opens its own page, where the one-week trial starts or
+  the lock is explained, and the plans live on hoard.services. Scrollbars are
+  thin and translucent instead of the system's wide light strip on Windows, and
+  changing the interface scale (the slider, Ctrl + wheel, Ctrl +/-/0) flashes
+  the new percentage in the corner.
 
 ### Fixed
 - **Opening the window took the sync service out of login start, and stopped
@@ -116,6 +148,24 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
   the session fell back to the file for its whole life. The refresh token, the
   long-lived half, goes into the Credential Manager now, and the access token,
   good for an hour, stays in the file.
+- **Windows: the window could go black and stay black.** Reopening the app
+  right after quitting it from the tray could leave a window that painted for an
+  instant and then went black, title bar included, until you quit again. The
+  webview's engine process had died, and WebView2 does not restart it on its
+  own: every update the app sent it failed with `0x8007139F` while `hoardd` went
+  on syncing behind a dead window. The app now notices the engine dying and
+  brings the window back by itself, a reload when only the page's renderer went
+  and a rebuild when the whole engine did (about 70 ms), and a window that was in
+  the tray stays in the tray. After three recoveries in ten minutes it stops
+  trying rather than rebuild in a loop, and the log says which process died and
+  why.
+- **"Sign out" left a Hoard Cloud session behind.** The buttons on the
+  dashboard and in the tray only closed a self-hosted session, so a Cloud user
+  who pressed them got the sync stopped, a toast saying it was done, and their
+  session still on disk. One user spent an hour trying to sign out of a stale
+  token that way. Every sign-out button now closes both sessions, whichever is
+  open, without a network call, so it works offline too, and the tray asks
+  before doing it.
 - **One network hiccup could cost an hour of "token rejected by server".** The
   session renews every 45 minutes and a token lives about an hour, so a renewal
   that failed on a bad connection waited out the full 45 minutes, and
