@@ -186,7 +186,7 @@ pub fn request_scan(app: AppHandle) {
 }
 
 /// Which half of automatic mode a worker task drives.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum TickKind {
     Scan,
     Backup,
@@ -204,6 +204,17 @@ fn spawn_worker(app: AppHandle, kind: TickKind, period_secs: u64) -> JoinHandle<
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
+            // These only start when the service didn't answer for detection, and a
+            // service that was slow to come up (a cold Windows logon) answers later
+            // and runs automatic mode itself. Both going on would track the same
+            // new game twice.
+            if app.state::<AppState>().daemon.owns_detection().await {
+                tracing::info!(
+                    ?kind,
+                    "automatic mode: the service runs it now, the window's scheduler stops"
+                );
+                return;
+            }
             match kind {
                 TickKind::Scan => run_scan(&app).await,
                 TickKind::Backup => run_backup_sweep(&app).await,
