@@ -58,7 +58,6 @@ use std::time::Duration;
 use async_compression::tokio::bufread::{ZstdDecoder, ZstdEncoder};
 use async_compression::Level;
 use sha2::{Digest, Sha256};
-use sqlx::Row;
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
@@ -133,40 +132,12 @@ pub fn spawn(state: CloudState) {
 /// (compressed, kept raw, or marked missing). Failures retry on a later
 /// tick; the caller uses `ok` to stop draining when nothing progresses.
 async fn sweep_once(state: &CloudState, cfg: &CompressionConfig) -> anyhow::Result<(usize, usize)> {
-    // Eligible: raw (or claimed-but-unfinished) blobs old enough, with no
-    // recent direct-download URL out in the wild, still referenced and not
-    // frozen in the archive grace window.
-    let rows = sqlx::query(
-        r#"
-        SELECT user_id, encode(sha256, 'hex') AS sha256, size_bytes
-          FROM cloud_blobs
-         WHERE (encoding IS NULL OR (encoding = 'zstd' AND stored_bytes IS NULL))
-           AND compress_attempts < $5
-           AND size_bytes >= $1
-           AND refcount > 0
-           AND purge_after IS NULL
-           AND created_at < now() - make_interval(hours => $2)
-           AND (last_presigned_at IS NULL
-                OR last_presigned_at < now() - make_interval(hours => $3))
-         ORDER BY created_at
-         LIMIT $4
-        "#,
-    )
-    .bind(MIN_BLOB_BYTES)
-    .bind(cfg.min_age_hours as i32)
-    .bind(cfg.idle_hours as i32)
-    .bind(cfg.batch as i64)
-    .bind(MAX_ATTEMPTS)
-    .fetch_all(&state.pool)
-    .await?;
+    let rows = eligible(&state.pool, cfg).await?;
 
     let n = rows.len();
     let mut ok = 0usize;
-    for row in rows {
-        let user_id: Uuid = row.get("user_id");
-        let sha: String = row.get("sha256");
+    for (user_id, sha, raw_size) in rows {
         let key = super::r2::key_for_blob(user_id, &sha);
-        let raw_size: i64 = row.get("size_bytes");
         match compress_one(state, cfg, user_id, &sha, &key, raw_size).await {
             Ok(()) => ok += 1,
             Err(e) => {
@@ -216,6 +187,51 @@ async fn sweep_once(state: &CloudState, cfg: &CompressionConfig) -> anyhow::Resu
         }
     }
     Ok((n, ok))
+}
+
+/// Eligible: raw (or claimed-but-unfinished) blobs old enough, with no recent
+/// direct-download URL out in the wild, still referenced and not frozen in the
+/// archive grace window. Oldest first.
+///
+/// Two branches rather than one `OR` across the states: the `OR` kept the
+/// planner off both partial indexes and read the whole table every sweep (see
+/// migration 0061).
+#[doc(hidden)]
+pub async fn eligible(
+    pool: &sqlx::PgPool,
+    cfg: &CompressionConfig,
+) -> sqlx::Result<Vec<(Uuid, String, i64)>> {
+    const FILTERS: &str = "
+           AND compress_attempts < $5
+           AND size_bytes >= $1
+           AND refcount > 0
+           AND purge_after IS NULL
+           AND created_at < now() - make_interval(hours => $2)
+           AND (last_presigned_at IS NULL
+                OR last_presigned_at < now() - make_interval(hours => $3))
+         ORDER BY created_at
+         LIMIT $4";
+    let sql = format!(
+        "SELECT user_id, sha256, size_bytes FROM (
+            (SELECT user_id, encode(sha256, 'hex') AS sha256, size_bytes, created_at
+               FROM cloud_blobs
+              WHERE encoding IS NULL {FILTERS})
+            UNION ALL
+            (SELECT user_id, encode(sha256, 'hex'), size_bytes, created_at
+               FROM cloud_blobs
+              WHERE encoding = 'zstd' AND stored_bytes IS NULL {FILTERS})
+         ) e
+         ORDER BY created_at
+         LIMIT $4"
+    );
+    sqlx::query_as(&sql)
+        .bind(MIN_BLOB_BYTES)
+        .bind(cfg.min_age_hours as i32)
+        .bind(cfg.idle_hours as i32)
+        .bind(cfg.batch as i64)
+        .bind(MAX_ATTEMPTS)
+        .fetch_all(pool)
+        .await
 }
 
 async fn compress_one(

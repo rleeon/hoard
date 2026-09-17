@@ -1,0 +1,4 @@
+^[0-9]+; [0-9]+ [0-9]+ SCHEMA - public 
+^[0-9]+; [0-9]+ [0-9]+ COMMENT - SCHEMA public 
+ FK CONSTRAINT public profiles profiles_user_id_fkey 
+rls_auto_enable

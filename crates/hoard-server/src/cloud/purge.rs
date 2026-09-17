@@ -21,6 +21,9 @@ use crate::cloud::errors::CloudError;
 use crate::cloud::plans::{resolved_storage_limit, Plan};
 use crate::cloud::routes::saves::release_blobs;
 use crate::cloud::state::CloudState;
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 #[allow(clippy::identity_op)]
@@ -141,6 +144,26 @@ pub fn plan_quota_purge(
     plan
 }
 
+/// Users over the threshold whose last purge found nothing it was allowed to
+/// delete, and when. They live above the line on purpose (pinned history, one
+/// version per game) and every commit asked again: 24.064 `load_candidates` in
+/// four days, ~14k buffers each, the heaviest query the server ran after
+/// Realtime's own. On a 256 MB machine that is a disk read per commit.
+static NOTHING_TO_FREE: LazyLock<Mutex<HashMap<Uuid, Instant>>> = LazyLock::new(Default::default);
+
+/// Worst case a version that became deletable waits this long for its purge.
+/// The quota check at upload does not depend on it.
+const NOTHING_TO_FREE_TTL: Duration = Duration::from_secs(600);
+
+fn found_nothing_recently(map: &HashMap<Uuid, Instant>, user_id: Uuid, now: Instant) -> bool {
+    map.get(&user_id)
+        .is_some_and(|at| now.saturating_duration_since(*at) < NOTHING_TO_FREE_TTL)
+}
+
+fn nothing_to_free() -> std::sync::MutexGuard<'static, HashMap<Uuid, Instant>> {
+    NOTHING_TO_FREE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Run a purge for `user_id` if their footprint is over the plan threshold.
 /// Returns the number of versions deleted. Best-effort and idempotent: safe to
 /// call after every commit.
@@ -173,14 +196,23 @@ pub async fn maybe_purge(state: &CloudState, user_id: Uuid) -> Result<usize, Clo
     ) as i64;
     let target = (limit as f64 * purge_threshold(plan)) as i64;
     if used <= target {
+        nothing_to_free().remove(&user_id);
+        return Ok(0);
+    }
+    if found_nothing_recently(&nothing_to_free(), user_id, Instant::now()) {
         return Ok(0);
     }
 
     let candidates = load_candidates(state, user_id).await?;
     let plan_list = plan_quota_purge(&candidates, floor_per_game(plan), used, target);
     if plan_list.is_empty() {
+        let mut map = nothing_to_free();
+        let now = Instant::now();
+        map.retain(|_, at| now.saturating_duration_since(*at) < NOTHING_TO_FREE_TTL);
+        map.insert(user_id, now);
         return Ok(0);
     }
+    nothing_to_free().remove(&user_id);
 
     let mut deleted = 0usize;
     for (save_id, version) in plan_list {
@@ -522,5 +554,33 @@ mod tests {
         let target = used - 500 * MB; // need ~one big deletion
         let plan = plan_quota_purge(&cs, 1, used, target);
         assert_eq!(plan.first().map(|(s, _)| s.as_str()), Some("big"));
+    }
+
+    #[test]
+    fn a_fruitless_purge_is_not_repeated_for_ten_minutes() {
+        let mut map = HashMap::new();
+        let user = Uuid::new_v4();
+        let t0 = Instant::now();
+        assert!(!found_nothing_recently(&map, user, t0), "never tried");
+        map.insert(user, t0);
+        assert!(found_nothing_recently(
+            &map,
+            user,
+            t0 + Duration::from_secs(60)
+        ));
+        assert!(found_nothing_recently(
+            &map,
+            user,
+            t0 + Duration::from_secs(599)
+        ));
+        assert!(!found_nothing_recently(
+            &map,
+            user,
+            t0 + NOTHING_TO_FREE_TTL
+        ));
+        assert!(
+            !found_nothing_recently(&map, Uuid::new_v4(), t0),
+            "one user's memo says nothing about another"
+        );
     }
 }

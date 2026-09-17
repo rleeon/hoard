@@ -30,9 +30,21 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-/// Fraction of the machine's memory that trips the bounce. Scales with the
-/// machine instead of hard-coding a number that goes stale on the next resize.
+/// Fraction of the machine's memory that trips the bounce when the config does
+/// not say otherwise. Scales with the machine instead of hard-coding a number
+/// that goes stale on the next resize.
 const TRIP_FRACTION: f64 = 0.94;
+
+/// The configured fraction, or the default when it makes no sense. A zero here
+/// (a `CloudConfig` built by `Default`, not by serde) would bounce a healthy
+/// server every fifteen minutes.
+fn trip_fraction(configured: f64) -> f64 {
+    if (0.1..=1.0).contains(&configured) {
+        configured
+    } else {
+        TRIP_FRACTION
+    }
+}
 
 /// How long a process must have been up before the watchdog may fire.
 const MIN_UPTIME: Duration = Duration::from_secs(15 * 60);
@@ -139,9 +151,14 @@ struct Watch(tokio::sync::watch::Sender<bool>);
 /// Start the watchdog. `shutdown` is fired rather than exiting outright so the
 /// listener drains first; the caller checks [`bouncing`] afterwards to pick the
 /// exit code.
-pub fn spawn(shutdown: tokio::sync::watch::Sender<bool>) {
+///
+/// With Postgres on the same machine the server's share is `fraction` of it,
+/// not nearly all: at 0.94 the kernel would pick a victim long before this
+/// fired, and the biggest process in the box is not always the server.
+pub fn spawn(shutdown: tokio::sync::watch::Sender<bool>, fraction: f64) {
     let found = ceiling();
-    let trip = found.bytes().map(|n| (n as f64 * TRIP_FRACTION) as u64);
+    let fraction = trip_fraction(fraction);
+    let trip = found.bytes().map(|n| (n as f64 * fraction) as u64);
     match trip {
         Some(t) => tracing::info!(
             source = found.source(),
@@ -245,6 +262,18 @@ mod tests {
             240,
             "94% of the 256 MB machine is 240 MB"
         );
+    }
+
+    #[test]
+    fn a_nonsense_fraction_falls_back_to_the_default() {
+        assert_eq!(trip_fraction(0.45), 0.45);
+        assert_eq!(trip_fraction(0.0), TRIP_FRACTION);
+        assert_eq!(trip_fraction(1.5), TRIP_FRACTION);
+        assert_eq!(trip_fraction(f64::NAN), TRIP_FRACTION);
+        // What 0.45 leaves the server on the two sizes in play: MemTotal reads
+        // 207 MiB on the 256 MB machine.
+        let at_256 = (207.0 * 1024.0 * 1024.0 * trip_fraction(0.45)) as u64 / 1024 / 1024;
+        assert_eq!(at_256, 93);
     }
 
     #[test]

@@ -2,6 +2,7 @@
 
 use crate::cloud::{auth::JwksCache, r2::R2Store};
 use crate::config::Config;
+use crate::routes::events::EventBus;
 use sqlx::PgPool;
 use std::{sync::Arc, time::Instant};
 
@@ -12,6 +13,7 @@ pub struct CloudState {
     pub jwks: Arc<JwksCache>,
     pub r2: Arc<R2Store>,
     pub start_time: Instant,
+    pub events: Arc<EventBus>,
 }
 
 impl CloudState {
@@ -28,6 +30,7 @@ impl CloudState {
             jwks: JwksCache::offline(String::new()),
             r2,
             start_time: Instant::now(),
+            events: Arc::default(),
         }
     }
 }

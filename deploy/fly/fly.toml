@@ -1,30 +1,53 @@
 # Fly.io configuration for Hoard Cloud.
 #
+# One machine holds the API and the cloud database: hoard-server, and Postgres
+# on the `pgdata` volume beside it (deploy/fly/pg/). Supabase keeps Auth only.
+# Never `fly scale count 2`: a volume belongs to one machine, and a second one
+# would start with an empty database of its own.
+#
 # Provision:
-#   fly apps create hoard-server-cloud --org <org>
-#   fly volumes create hoard_data -r cdg -s 1  # not really used (R2 is the store)
-#   fly secrets set \
+#   fly volumes create pgdata -a hoard-server -r cdg -s 3
+#   fly secrets set -a hoard-server --stage \
 #     HOARD__DATABASE__URL=postgres://... \
 #     HOARD__CLOUD__SUPABASE_JWKS_URL=... \
+#     HOARD__CLOUD__SUPABASE_URL=... \
+#     HOARD__CLOUD__SUPABASE_SERVICE_ROLE_KEY=... \
+#     HOARD__CLOUD__R2__ENDPOINT=... \
 #     HOARD__CLOUD__R2__ACCESS_KEY_ID=... \
 #     HOARD__CLOUD__R2__SECRET_ACCESS_KEY=... \
 #     HOARD__CLOUD__POLAR__WEBHOOK_SECRET=... \
-#     HOARD__CLOUD__POLAR__ACCESS_TOKEN=...
+#     HOARD__CLOUD__POLAR__ACCESS_TOKEN=... \
+#     HOARD_PG_PASSWORD=... \
+#     PGBACKREST_REPO1_S3_ENDPOINT=<account>.r2.cloudflarestorage.com \
+#     PGBACKREST_REPO1_S3_KEY=... \
+#     PGBACKREST_REPO1_S3_KEY_SECRET=... \
+#     PGBACKREST_REPO1_CIPHER_PASS=...
+#
+# HOARD__DATABASE__URL names Supabase until the cutover (deploy/fly/pg/cutover.sh)
+# and the local socket after it, when HOARD_MIGRATE_DATABASE_URL is set too.
 #
 # Billing is Polar (Merchant of Record, Stripe underneath) and nothing else.
 # The deployed app still carries three `HOARD__CLOUD__LEMONSQUEEZY__*`
 # secrets from the pre-Polar era; no config field reads them, so they are
 # inert credentials sitting in the deployment, `fly secrets unset` them and
 # revoke the key on the LS side.
-#   fly deploy --dockerfile deploy/fly/Dockerfile
+#   fly deploy --config deploy/fly/fly.toml --dockerfile deploy/fly/Dockerfile
 
 app = "hoard-server"
 primary_region = "cdg"
 kill_signal = "SIGINT"
-kill_timeout = "10s"
+# The server drains for up to 20 s, then Postgres stops. A hard kill before
+# Postgres is done costs a WAL replay on the next boot.
+kill_timeout = "30s"
+# A cushion for a spike, not memory to plan with.
+swap_size_mb = 256
 
 [build]
   dockerfile = "Dockerfile"
+
+[mounts]
+  source = "pgdata"
+  destination = "/data"
 
 [env]
   HOARD__SERVER__HOST = "0.0.0.0"
@@ -32,10 +55,9 @@ kill_timeout = "10s"
   HOARD__LOGGING__LEVEL = "info"
   HOARD__LOGGING__FORMAT = "json"
   HOARD__DATABASE__BACKEND = "postgres"
-  # Per-machine Postgres pool. The Supabase pooler caps session-mode clients at
-  # 15; with up to 3 machines (autoscale) 3×5 = 15 stays under the ceiling.
-  # Avoids "EMAXCONNSESSION max clients reached" rejections under load.
-  HOARD__DATABASE__MAX_CONNECTIONS = "5"
+  # The server's pool. Postgres takes 12 connections, 3 reserved for
+  # superusers, and the release_command's migrator needs one beside these.
+  HOARD__DATABASE__MAX_CONNECTIONS = "6"
   # Per-IP rate limit. Defaults (20/s, burst 60) are too tight for a legit
   # client: a full library re-sync after install fires a burst of one request
   # per tracked save, blows past burst 60, and the governor 429s it. The app
@@ -44,34 +66,42 @@ kill_timeout = "10s"
   # runaway loops (the real cost control is the storage/bandwidth quota).
   HOARD__SERVER__RATE_LIMIT__PER_SECOND = "50"
   HOARD__SERVER__RATE_LIMIT__BURST = "600"
+  # On the volume, so it survives the restart that switches databases.
+  HOARD__CLOUD__MAINTENANCE_FLAG = "/data/MAINTENANCE"
+  # The rest of the machine belongs to Postgres: 93 MiB for the server at
+  # 256 MB, 211 at 512.
+  HOARD__CLOUD__MEMWATCH_TRIP_FRACTION = "0.45"
+  # The resident set grew from 85 to 128 MB in four days. The suspect is
+  # glibc's per-thread arenas under tokio; two is the cap that tests it.
+  MALLOC_ARENA_MAX = "2"
+  PGBACKREST_REPO1_S3_BUCKET = "hoard-pg-backups"
+  PGBACKREST_REPO1_PATH = "/prod"
 
 [http_service]
   internal_port = 8082
   force_https = true
-  auto_stop_machines = "stop"
+  # Every installed client beats /v1/presence/heartbeat twice a minute, so the
+  # machine never idles anyway, and with the database inside a stop would take
+  # Postgres down with it.
+  auto_stop_machines = "off"
   auto_start_machines = true
-  # Idle to zero: with no recurrent users we don't keep a machine warm. Fly's
-  # proxy cold-starts the app on the first request (a ~1-2s penalty on a small
-  # Rust binary). Flip back to 1 once there's steady traffic worth the warm VM.
-  min_machines_running = 0
+  min_machines_running = 1
   processes = ["app"]
 
 [[http_service.checks]]
   interval = "15s"
   timeout = "5s"
-  grace_period = "10s"
+  # Postgres starts first, and after a hard stop it replays WAL before
+  # accepting anything.
+  grace_period = "60s"
   method = "GET"
   path = "/v1/health"
 
 [[vm]]
   cpu_kind = "shared"
   cpus = 1
-  memory_mb = 256
+  memory_mb = 512
 
-# Rolling deploys across the app's machines. Note this says nothing about
-# how many stay up, that's `min_machines_running` above, which is 0. An
-# earlier version of this comment claimed one machine is kept warm; it is
-# not, and believing it hid a machine that sat started for 16 days.
 [deploy]
   strategy = "rolling"
   max_unavailable = 0.3
@@ -80,4 +110,6 @@ kill_timeout = "10s"
   # serving keeps serving. Run from inside `serve`, which is what happened on
   # 2026-08-13, the same failure exits the process, Fly restarts it into the
   # identical failure, and the API stays down until someone rolls back by hand.
+  # That machine has no volume: after the cutover it reaches Postgres over the
+  # private network (HOARD_MIGRATE_DATABASE_URL).
   release_command = "migrate"

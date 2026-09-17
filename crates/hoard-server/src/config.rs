@@ -392,6 +392,21 @@ pub struct CloudConfig {
     /// `HOARD__CLOUD__DISCORD__*`.
     #[serde(default)]
     pub discord: DiscordConfig,
+    /// Path of the file whose presence starts the server in maintenance mode
+    /// (`cloud::maintenance`). Empty = never. On Fly it sits on the database
+    /// volume, so it survives the restart that switches databases.
+    #[serde(default)]
+    pub maintenance_flag: String,
+    /// Share of the machine's memory the server's own resident set may reach
+    /// before the watchdog bounces it (`cloud::memwatch`). 0.94 while the
+    /// process had the machine to itself; with Postgres beside it, the rest
+    /// belongs to Postgres.
+    #[serde(default = "default_memwatch_trip_fraction")]
+    pub memwatch_trip_fraction: f64,
+}
+
+fn default_memwatch_trip_fraction() -> f64 {
+    0.94
 }
 
 /// Discord status-channel settings. Fields usually come from

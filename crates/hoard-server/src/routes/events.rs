@@ -1,12 +1,11 @@
-//! Server→app push for self-hosted deployments (Server-Sent Events).
+//! Server→app push (Server-Sent Events).
 //!
-//! The cloud deployment gets near-instant cross-device sync from Supabase
-//! Realtime (Postgres logical replication → WebSocket). Self-hosted has no
-//! such thing, so historically the only "another device uploaded" path was the
-//! agent's reconciliation sweep, up to a cooldown of latency. This module adds
-//! the missing push: clients open a long-lived `GET /v1/events` SSE stream and
-//! the snapshot-commit path publishes a [`SaveEvent`] the instant a new version
-//! lands, so the listening device pulls within ~1s.
+//! Without it the only "another device uploaded" path is the agent's
+//! reconciliation sweep, up to a cooldown of latency. Clients open a
+//! long-lived `GET /v1/events` SSE stream and the commit path publishes a
+//! [`SaveEvent`] the instant a new version lands, so the listening device
+//! pulls within ~1s. Self-hosted serves it from here; cloud's handler is
+//! `cloud::routes::events`, over the same bus and frames.
 //!
 //! Reverse-proxy note: SSE needs response buffering disabled. Nginx works with
 //! `proxy_buffering off;` + `proxy_set_header X-Accel-Buffering no;` and a high
@@ -46,7 +45,7 @@ const CHANNEL_CAPACITY: usize = 64;
 /// lazily on their first `/v1/events` subscribe; the snapshot-commit path
 /// publishes into it. Lives in [`ServerState`]; uses interior mutability so it
 /// can sit behind the shared `Arc<ServerState>` without its own lock dance at
-/// the call sites. Empty/unused on the cloud deployment.
+/// the call sites. Cloud keeps its own in `CloudState`.
 #[derive(Default)]
 pub struct EventBus {
     inner: Mutex<HashMap<Uuid, broadcast::Sender<SaveEvent>>>,
@@ -63,6 +62,15 @@ impl EventBus {
         map.entry(user)
             .or_insert_with(|| broadcast::channel(CHANNEL_CAPACITY).0)
             .subscribe()
+    }
+
+    /// End every open stream. A graceful shutdown waits for responses in
+    /// flight, and an SSE response never finishes by itself: without this each
+    /// restart sat out the whole drain grace before exiting. Dropping the
+    /// senders closes the channels, the streams return `None`, the clients
+    /// reconnect to whatever comes up next.
+    pub fn close_all(&self) {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
 
     /// Publish `ev` to every device of `user` currently listening. A cheap
@@ -88,7 +96,14 @@ pub async fn stream(
     State(state): State<Arc<ServerState>>,
     Extension(user): Extension<AuthUser>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let rx = state.events.subscribe(user.user_id);
+    sse(state.events.subscribe(user.user_id))
+}
+
+/// The frames both deployments send for one subscription. Cloud's handler
+/// lives in `cloud::routes::events`, behind its own auth.
+pub fn sse(
+    rx: broadcast::Receiver<SaveEvent>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let stream = futures::stream::unfold(rx, |mut rx| async move {
         match rx.recv().await {
             Ok(ev) => {
@@ -103,8 +118,8 @@ pub async fn stream(
             Err(broadcast::error::RecvError::Lagged(_)) => {
                 Some((Ok(Event::default().event("lagged").data("")), rx))
             }
-            // Sender gone (shouldn't happen while ServerState is alive):
-            // end the stream so the client reconnects.
+            // Sender gone, which means the server is shutting down
+            // (`close_all`): end the stream so the client reconnects.
             Err(broadcast::error::RecvError::Closed) => None,
         }
     });

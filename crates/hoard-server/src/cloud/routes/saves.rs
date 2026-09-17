@@ -434,6 +434,7 @@ pub async fn commit_upload(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
+    crate::cloud::routes::events::publish(&state, user.user_id, &save_id, version);
 
     // Credit the bandwidth window with the observed size. Done after the
     // commit so a failed upload doesn't eat into the user's quota. We log
@@ -1248,6 +1249,7 @@ pub async fn cas_commit(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
+    crate::cloud::routes::events::publish(&state, user.user_id, &save_id, version);
 
     // Credit bandwidth with the bytes actually transferred (the new blobs).
     if let Err(e) = bandwidth::record(&state.pool, user.user_id, new_bytes).await {

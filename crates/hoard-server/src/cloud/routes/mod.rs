@@ -1,7 +1,9 @@
+pub mod admin;
 pub mod blob_proxy;
 pub mod checkout;
 pub mod device;
 pub mod entitlements;
+pub mod events;
 pub mod logs;
 pub mod me;
 pub mod notifications;

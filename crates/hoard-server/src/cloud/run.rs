@@ -4,11 +4,13 @@
 use crate::cloud::{
     abandoned, account_purge, archive,
     auth::{require_active_account, require_cloud_auth, JwksCache},
-    bandwidth, compress, db, discord, export, incidents, memwatch, polar, pollguard, r2,
+    auth_mirror, bandwidth, compress, db, discord, export, incidents, maintenance, memwatch, polar,
+    pollguard, r2,
     routes::{
-        blob_proxy, checkout, device as device_routes, entitlements as ent_routes,
-        logs as log_routes, me, notifications as notification_routes, playtime as playtime_routes,
-        saves, sync as sync_routes,
+        admin as admin_routes, blob_proxy, checkout, device as device_routes,
+        entitlements as ent_routes, events as event_routes, logs as log_routes, me,
+        notifications as notification_routes, playtime as playtime_routes, saves,
+        sync as sync_routes,
     },
     state::CloudState,
 };
@@ -59,128 +61,17 @@ pub async fn run(cfg: Config) -> Result<()> {
         jwks,
         r2: r2_store,
         start_time: Instant::now(),
+        events: Arc::default(),
     };
 
-    // 4b. Bandwidth bucket cleanup. 10-minute cadence is far below the
-    //     1-hour cutoff, so a missed tick after a deploy can't let the
-    //     table grow more than ~1.5h before the next run trims it back.
-    //     Spawned as a detached task: failures just `warn!` and the
-    //     next tick retries; not worth crashing the server over.
-    {
-        let pool = pool.clone();
-        tokio::spawn(async move {
-            let mut tick = tokio::time::interval(Duration::from_secs(600));
-            // The first tick fires immediately; skip it so we don't double
-            // up with startup work.
-            tick.tick().await;
-            loop {
-                tick.tick().await;
-                match bandwidth::cleanup_old(&pool).await {
-                    Ok(n) if n > 0 => {
-                        tracing::debug!(rows = n, "bandwidth: cleaned old buckets");
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        tracing::warn!(error = %e, "bandwidth: cleanup failed");
-                    }
-                }
-            }
-        });
-    }
-
-    // 4c. Client-log retention. Diagnostic logs are kept 14 days; an hourly
-    //     sweep deletes anything older. Detached task: failures `warn!` and
-    //     the next tick retries.
-    //
-    //     The `EXEMPT_TARGETS` live 180 days rather than 14. They are not
-    //     diagnostics: they are the two signals collected on purpose (detection
-    //     contradictions and Hoard Screen usage) and the two questions they
-    //     answer are longitudinal ("is detection getting better?", "is overlay
-    //     use growing?"). With the short prune the panel showed a rolling
-    //     two-week window and passed it off as the total, which is the worst way
-    //     to be wrong: no error, no gap, and the trend erased. Volume is not the
-    //     problem, at a couple of rows per session against the
-    //     ~15.000 de log corriente.
-    {
-        let pool = pool.clone();
-        tokio::spawn(async move {
-            let mut tick = tokio::time::interval(Duration::from_secs(3600));
-            tick.tick().await; // skip the immediate first tick
-            loop {
-                tick.tick().await;
-                let res = sqlx::query(
-                    "DELETE FROM client_logs
-                      WHERE received_at < now() - interval '14 days'
-                        AND NOT (target = ANY($1) AND received_at > now() - interval '180 days')",
-                )
-                .bind(hoard_core::wire::EXEMPT_TARGETS)
-                .execute(&pool)
-                .await;
-                match res {
-                    Ok(r) if r.rows_affected() > 0 => {
-                        tracing::debug!(rows = r.rows_affected(), "client logs: pruned expired");
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        tracing::warn!(error = %e, "client logs: prune failed");
-                    }
-                }
-            }
-        });
-    }
-
-    // 4d. Hard-purge of soft-deleted accounts past their 30-day grace. Daily
-    //     cadence; deletes R2 objects then cascades the DB rows. Detached like
-    //     the sweepers above.
-    account_purge::spawn(state.clone());
-    // Picks up after uploads that started and never committed: their manifest
-    // rows, and the blobs they left in the bucket with nothing referencing them.
-    abandoned::spawn(state.clone());
-
-    // Fulfils `export_jobs` rows: builds the ZIP, uploads to R2, emails the
-    // link, and expires old exports.
-    export::spawn(state.clone());
-
-    // At-rest blob compression sweep (no-op unless `[cloud.compression]`
-    // enables it). Rewrites old raw blobs as zstd in place; quota and
-    // everything user-visible keep counting raw bytes.
-    compress::spawn(state.clone());
-
-    // Discord status channel: keeps one embed in step with this instance's
-    // health. No-op unless `[cloud.discord]` carries a token and a channel.
-    discord::spawn(state.clone());
-
-    // 4e. Hard-purge of archived games ("caja negra") past their 7-day grace:
-    //     deletes the save rows and GCs the frozen R2 blobs whose window
-    //     elapsed. Daily cadence, detached like the sweepers above.
-    archive::spawn(state.clone());
-
-    // 4f. Device-pairing sweep. Approved/expired rows are deleted inline on
-    //     poll, but a pairing that's started and never polled (or approved and
-    //     never collected) would linger. Drop anything past its expiry every
-    //     10 minutes. Detached like the sweepers above.
-    {
-        let pool = pool.clone();
-        tokio::spawn(async move {
-            let mut tick = tokio::time::interval(Duration::from_secs(600));
-            tick.tick().await; // skip the immediate first tick
-            loop {
-                tick.tick().await;
-                let res = sqlx::query("DELETE FROM device_pairings WHERE expires_at < now()")
-                    .execute(&pool)
-                    .await;
-                match res {
-                    Ok(r) if r.rows_affected() > 0 => {
-                        tracing::debug!(
-                            rows = r.rows_affected(),
-                            "device pairings: pruned expired"
-                        );
-                    }
-                    Ok(_) => {}
-                    Err(e) => tracing::warn!(error = %e, "device pairings: prune failed"),
-                }
-            }
-        });
+    let in_maintenance = maintenance::active(&cloud_cfg.maintenance_flag);
+    if in_maintenance {
+        tracing::warn!(
+            flag = %cloud_cfg.maintenance_flag,
+            "maintenance mode: every route but /v1/health answers 429, background tasks stay off"
+        );
+    } else {
+        spawn_background_tasks(&state);
     }
 
     // 5. Build routers.
@@ -316,6 +207,13 @@ pub async fn run(cfg: Config) -> Result<()> {
             "/v1/cloud/sync",
             get(sync_routes::manifest).route_layer(guarded("sync")),
         )
+        // Save-landed push for the other devices of the account. Replaces
+        // Supabase Realtime on `saves`, which cannot see a database it does
+        // not host.
+        .route("/v1/events", get(event_routes::stream))
+        // The admin panel's metrics functions. Whether the caller may read
+        // them is decided inside each function.
+        .route("/v1/admin/rpc/:name", post(admin_routes::rpc))
         .route(
             "/v1/cloud/playtime",
             get(playtime_routes::aggregate).post(playtime_routes::upload),
@@ -363,6 +261,8 @@ pub async fn run(cfg: Config) -> Result<()> {
             HeaderValue::from_static("https://hoard.services"),
             HeaderValue::from_static("http://localhost:5173"),
             HeaderValue::from_static("http://localhost:4173"),
+            // tools/serve-dashboard.sh, the admin panel.
+            HeaderValue::from_static("http://127.0.0.1:8787"),
         ])
         .allow_methods([Method::GET, Method::POST, Method::DELETE])
         .allow_headers([header::AUTHORIZATION, header::ACCEPT, header::CONTENT_TYPE]);
@@ -400,6 +300,9 @@ pub async fn run(cfg: Config) -> Result<()> {
         // for the Discord status embed. After routing, so it sees the route
         // template rather than a path full of ids.
         .layer(middleware::from_fn(incidents::track));
+    if in_maintenance {
+        app = app.layer(middleware::from_fn(maintenance::guard));
+    }
 
     // Per-IP rate limiting. SmartIpKeyExtractor keys off X-Forwarded-For
     // (Fly/CDN set it), falling back to the connection peer, which the
@@ -430,8 +333,9 @@ pub async fn run(cfg: Config) -> Result<()> {
     // Either signal drains the listener: an operator's ctrl-c, or the memory
     // watchdog deciding the machine needs turning over.
     let (bounce_tx, bounce_rx) = tokio::sync::watch::channel(false);
-    memwatch::spawn(bounce_tx);
+    memwatch::spawn(bounce_tx, cloud_cfg.memwatch_trip_fraction);
 
+    let events = state.events.clone();
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -443,6 +347,7 @@ pub async fn run(cfg: Config) -> Result<()> {
                 info!("memory watchdog asked for a bounce, draining")
             }
         }
+        events.close_all();
     })
     .await?;
 
@@ -454,6 +359,139 @@ pub async fn run(cfg: Config) -> Result<()> {
         std::process::exit(1);
     }
     Ok(())
+}
+
+/// Every sweeper and worker the server runs besides answering requests. All of
+/// them write to the database or to R2, which is why maintenance mode starts
+/// none of them.
+fn spawn_background_tasks(state: &CloudState) {
+    let pool = &state.pool;
+
+    // Bandwidth bucket cleanup. 10-minute cadence is far below the
+    //     1-hour cutoff, so a missed tick after a deploy can't let the
+    //     table grow more than ~1.5h before the next run trims it back.
+    //     Spawned as a detached task: failures just `warn!` and the
+    //     next tick retries; not worth crashing the server over.
+    {
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(600));
+            // The first tick fires immediately; skip it so we don't double
+            // up with startup work.
+            tick.tick().await;
+            loop {
+                tick.tick().await;
+                match bandwidth::cleanup_old(&pool).await {
+                    Ok(n) if n > 0 => {
+                        tracing::debug!(rows = n, "bandwidth: cleaned old buckets");
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error = %e, "bandwidth: cleanup failed");
+                    }
+                }
+            }
+        });
+    }
+
+    // Client-log retention. Diagnostic logs are kept 14 days; an hourly
+    //     sweep deletes anything older. Detached task: failures `warn!` and
+    //     the next tick retries.
+    //
+    //     The `EXEMPT_TARGETS` live 180 days rather than 14. They are not
+    //     diagnostics: they are the two signals collected on purpose (detection
+    //     contradictions and Hoard Screen usage) and the two questions they
+    //     answer are longitudinal ("is detection getting better?", "is overlay
+    //     use growing?"). With the short prune the panel showed a rolling
+    //     two-week window and passed it off as the total, which is the worst way
+    //     to be wrong: no error, no gap, and the trend erased. Volume is not the
+    //     problem, at a couple of rows per session against the
+    //     ~15.000 de log corriente.
+    {
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(3600));
+            tick.tick().await; // skip the immediate first tick
+            loop {
+                tick.tick().await;
+                let res = sqlx::query(
+                    "DELETE FROM client_logs
+                      WHERE received_at < now() - interval '14 days'
+                        AND NOT (target = ANY($1) AND received_at > now() - interval '180 days')",
+                )
+                .bind(hoard_core::wire::EXEMPT_TARGETS)
+                .execute(&pool)
+                .await;
+                match res {
+                    Ok(r) if r.rows_affected() > 0 => {
+                        tracing::debug!(rows = r.rows_affected(), "client logs: pruned expired");
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error = %e, "client logs: prune failed");
+                    }
+                }
+            }
+        });
+    }
+
+    // Hard-purge of soft-deleted accounts past their 30-day grace. Daily
+    //     cadence; deletes R2 objects then cascades the DB rows. Detached like
+    //     the sweepers above.
+    account_purge::spawn(state.clone());
+    // Picks up after uploads that started and never committed: their manifest
+    // rows, and the blobs they left in the bucket with nothing referencing them.
+    abandoned::spawn(state.clone());
+
+    // Fulfils `export_jobs` rows: builds the ZIP, uploads to R2, emails the
+    // link, and expires old exports.
+    export::spawn(state.clone());
+
+    // At-rest blob compression sweep (no-op unless `[cloud.compression]`
+    // enables it). Rewrites old raw blobs as zstd in place; quota and
+    // everything user-visible keep counting raw bytes.
+    compress::spawn(state.clone());
+
+    // Discord status channel: keeps one embed in step with this instance's
+    // health. No-op unless `[cloud.discord]` carries a token and a channel.
+    discord::spawn(state.clone());
+
+    // Hard-purge of archived games ("caja negra") past their 7-day grace:
+    //     deletes the save rows and GCs the frozen R2 blobs whose window
+    //     elapsed. Daily cadence, detached like the sweepers above.
+    archive::spawn(state.clone());
+
+    // Device-pairing sweep. Approved/expired rows are deleted inline on
+    //     poll, but a pairing that's started and never polled (or approved and
+    //     never collected) would linger. Drop anything past its expiry every
+    //     10 minutes. Detached like the sweepers above.
+    {
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(600));
+            tick.tick().await; // skip the immediate first tick
+            loop {
+                tick.tick().await;
+                let res = sqlx::query("DELETE FROM device_pairings WHERE expires_at < now()")
+                    .execute(&pool)
+                    .await;
+                match res {
+                    Ok(r) if r.rows_affected() > 0 => {
+                        tracing::debug!(
+                            rows = r.rows_affected(),
+                            "device pairings: pruned expired"
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!(error = %e, "device pairings: prune failed"),
+                }
+            }
+        });
+    }
+
+    // Copies the Supabase Auth account list into auth.users when the database
+    // is not Supabase's, for the admin metrics.
+    auth_mirror::spawn(state.clone());
 }
 
 async fn cloud_health(State(state): State<CloudState>) -> axum::Json<HealthBody> {
