@@ -1,0 +1,22 @@
+{{game}} gets deleted in {{days}} days
+
+You archived {{game}} on {{archived_on}} to free up space. Archived games stay
+downloadable for seven days. After that they are gone for good, every version
+with them, and no one can bring them back.
+
+  Deleted on: {{delete_on}}
+  What goes:  {{versions}} versions, {{size}}
+
+Reactivating it puts it back exactly as it was, but only while there is quota
+to hold it. That is the catch: you archived it because there was no room, and
+there still is not.
+
+HOARD PRO - get {{game}} back, and never archive again
+100 GB means {{size}} is a rounding error. Upgrade before {{delete_on}} and
+every version comes straight back, untouched. Five versions kept per game,
+10 GB per game, unlimited devices.
+
+  Save {{game}}, 1.99 EUR/mo: https://hoard.services/pricing
+  19.99 EUR a year, two months free. Cancel whenever.
+
+Or download it while it lasts: https://hoard.services/account

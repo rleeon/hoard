@@ -21,7 +21,7 @@ use crate::cloud::errors::CloudError;
 use crate::cloud::plans::{resolved_storage_limit, Plan};
 use crate::cloud::routes::saves::release_blobs;
 use crate::cloud::state::CloudState;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -197,6 +197,11 @@ pub async fn maybe_purge(state: &CloudState, user_id: Uuid) -> Result<usize, Clo
     let target = (limit as f64 * purge_threshold(plan)) as i64;
     if used <= target {
         nothing_to_free().remove(&user_id);
+        // Re-arming the storage notices belongs here logically, but this runs on
+        // every upload and the overwhelming majority are from accounts that are
+        // nowhere near full. `notices::rearm_storage` does it once a day
+        // instead, over the handful of users who actually have a notice on
+        // record. A day late is irrelevant: the condition takes weeks to return.
         return Ok(0);
     }
     if found_nothing_recently(&nothing_to_free(), user_id, Instant::now()) {
@@ -215,9 +220,12 @@ pub async fn maybe_purge(state: &CloudState, user_id: Uuid) -> Result<usize, Clo
     nothing_to_free().remove(&user_id);
 
     let mut deleted = 0usize;
+    let mut games: HashSet<String> = HashSet::new();
+    let mut left = used;
     for (save_id, version) in plan_list {
         purge_one(state, user_id, &save_id, version).await?;
         deleted += 1;
+        games.insert(save_id);
         // Dedup means the planned freeable is only an estimate; stop as soon as
         // the real footprint is back under target.
         let now: Option<i64> =
@@ -225,12 +233,16 @@ pub async fn maybe_purge(state: &CloudState, user_id: Uuid) -> Result<usize, Clo
                 .bind(user_id)
                 .fetch_optional(&state.pool)
                 .await?;
+        left = now.unwrap_or(left);
         if now.map(|u| u <= target).unwrap_or(true) {
             break;
         }
     }
 
     tracing::info!(user_id = %user_id, deleted, "quota purge: reclaimed old versions");
+    // History just disappeared. Tell them once, with what it cost, after the
+    // work: the send is spawned, so it cannot slow the upload that triggered it.
+    crate::cloud::notify::storage_purge_started(state, user_id, left, limit, deleted, games.len());
     Ok(deleted)
 }
 

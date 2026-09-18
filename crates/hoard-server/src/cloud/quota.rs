@@ -274,6 +274,16 @@ pub async fn check_storage(
             .as_ref()
             .map(|c| c.upgrade_url.clone())
             .unwrap_or_else(crate::config::default_upgrade_url);
+        // Backups have stopped, and the client only shows that in the app. This
+        // is the point the user is most likely to be away from it. The notice
+        // is claimed once, which matters here more than anywhere: the agent
+        // re-tries every save on a timer and would otherwise mail on each pass.
+        crate::cloud::notify::storage_full(
+            state,
+            user_id,
+            info.used_bytes as i64,
+            limits.storage_bytes as i64,
+        );
         return Err(quota_response(&info, requested, url).into_response());
     }
     Ok(info)

@@ -1,0 +1,23 @@
+Hoard is deleting your old versions
+
+Your account crossed 80% of its limit. To keep new backups going, Hoard has
+started deleting the oldest versions of your games. It will keep doing it every
+time you run out of room.
+
+  Used:             {{used}} of {{limit}} ({{percent}}%)
+  Deleted just now: {{deleted_versions}} versions, {{deleted_games}} games
+
+What is never deleted: the most recent version of every game, and any version
+you pinned. Your saves stay restorable, but the history behind them is going,
+one pass at a time, and it does not come back.
+
+HOARD PRO - 100 GB, fifty times the room you have now
+Stop losing history. Pro keeps five versions of every game before it ever
+considers deleting one, and only starts at 90% of a limit you will not reach.
+Per-game cap goes to 10 GB, devices become unlimited, for life, even if you
+cancel later.
+
+  Go Pro, 1.99 EUR/mo: https://hoard.services/pricing
+  19.99 EUR a year, two months free. Cancel whenever.
+
+Or free up space by hand: https://hoard.services/account

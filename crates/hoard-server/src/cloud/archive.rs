@@ -315,6 +315,15 @@ pub async fn reactivate_save(
         .bind(save_id)
         .execute(&state.pool)
         .await?;
+    // The countdown is off, so the warning about it should be able to fire
+    // again if the game is archived a second time.
+    let _ = crate::cloud::notices::clear(
+        &state.pool,
+        user_id,
+        crate::cloud::notices::Kind::ArchiveExpiring,
+        save_id,
+    )
+    .await;
 
     tracing::info!(user_id = %user_id, save_id, "archive: game reactivated");
     Ok(())
@@ -567,6 +576,9 @@ pub async fn purge_expired(state: &CloudState) -> Result<(usize, usize), sqlx::E
             .bind(save_id)
             .execute(&state.pool)
             .await?;
+        // `email_notices` keys per-save rows on the save id with no foreign key
+        // to lean on, so the row has to go with the save it talks about.
+        let _ = crate::cloud::notices::clear_scope(&state.pool, save_id).await;
         saves_deleted += 1;
     }
 

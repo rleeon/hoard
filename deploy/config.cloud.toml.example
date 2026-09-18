@@ -147,3 +147,19 @@ interval = "year"
 # storage_gb = 50
 
 # --- Pro x3 (75 GB), x4 (100 GB), x5 (125 GB), x6 (150 GB) … same shape ---
+
+# --- Transactional email (Resend) ---
+# Optional. Empty (or absent) = no mail is sent: every feature that would mail
+# you still works and surfaces the same information in-app, the message is just
+# skipped. That keeps a fresh deploy usable before an email provider exists.
+#
+# In production both values come from Fly secrets, not this file:
+#   HOARD__CLOUD__EMAIL__API_KEY   (re_...)
+#   HOARD__CLOUD__EMAIL__FROM
+#
+# The From domain must be verified in Resend. Verification lives on a
+# subdomain (send./rsend. CNAMEs plus the resend._domainkey TXT), so it does
+# not disturb whatever handles *incoming* mail for the root domain.
+[cloud.email]
+api_key = ""
+from = "Hoard <noreply@hoard.services>"

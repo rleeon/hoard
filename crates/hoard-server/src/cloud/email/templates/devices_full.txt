@@ -1,0 +1,23 @@
+You are out of device slots
+
+{{device_name}} just signed in and took your last slot. Every machine already
+on the account keeps working, but the next one you sit down at will not be able
+to join until you free a place.
+
+  Devices: {{used}} of {{limit}} on {{plan}}
+  Newest:  {{device_name}}, {{device_os}}
+
+A machine you no longer use can be removed from your account page and its place
+frees up immediately. Devices nobody has seen in 90 days are removed on their
+own.
+
+HOARD PRO - unlimited devices, yours for good
+Desktop, laptop, handheld, the machine at your parents' place: sign in on all
+of them and stop counting. And the device allowance is kept for life, go Pro
+once and even if you cancel later, you never drop back to three. Plus 100 GB
+and 10 GB per game.
+
+  Unlock every device, 1.99 EUR/mo: https://hoard.services/pricing
+  19.99 EUR a year, two months free. Cancel whenever.
+
+Or remove an old machine: https://hoard.services/account

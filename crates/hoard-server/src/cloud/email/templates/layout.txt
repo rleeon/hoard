@@ -1,0 +1,11 @@
+{{body}}
+
+--
+You are getting this because it affects the saves in your Hoard account.
+It is a service notice, not marketing.
+
+This mailbox is not monitored. Questions go to Discord
+(https://discord.gg/BYpXT8v4rh) or GitHub issues
+(https://github.com/rleeon/hoard/issues).
+
+Read this in your language: {{notice_url}}

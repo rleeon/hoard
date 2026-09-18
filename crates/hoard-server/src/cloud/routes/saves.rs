@@ -137,6 +137,19 @@ pub async fn init_upload(
             .as_ref()
             .map(|c| c.upgrade_url.clone())
             .unwrap_or_else(crate::config::default_upgrade_url);
+        // Only this game stopped syncing, and the app says so in a place the
+        // user may not look at for weeks. Scoped to the save, so two oversized
+        // games are two mails and twenty retries of one game are still one.
+        crate::cloud::notify::save_too_large(
+            &state,
+            user.user_id,
+            body.save_id.clone(),
+            body.game_slug.clone(),
+            body.size_bytes as i64,
+            max_save_size_bytes as i64,
+            plan.as_str(),
+            crate::cloud::plans::Plan::Pro.limits().max_save_size_bytes as i64,
+        );
         return Ok(SaveTooLargeResponse {
             error: "save exceeds per-save size limit",
             code: "save_too_large",
@@ -1969,6 +1982,10 @@ pub async fn delete_save(
         .bind(user.user_id)
         .execute(&state.pool)
         .await?;
+    // Per-save notices key on the save id and have no foreign key to ride, so
+    // a game re-added under the same id would inherit warnings about a folder
+    // that no longer exists.
+    let _ = crate::cloud::notices::clear_scope(&state.pool, &save_id).await;
 
     release_blobs(&state, user.user_id, blob_refs).await;
 
