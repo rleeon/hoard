@@ -3,24 +3,43 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark">
-<meta name="supported-color-schemes" content="dark">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
 <title>{{subject}}</title>
+<style>
+  /* The page around the card follows the reader's own setting. The card itself
+     never does: it is pure black in both, which is the whole look.
+     Clients that drop <style> (some Outlook builds) keep the light inline
+     default below, and the card still reads correctly on it. */
+  @media (prefers-color-scheme: dark) {
+    .page { background: #050506 !important; }
+  }
+</style>
 </head>
-<body style="margin:0;padding:0;background:#000000;">
+<body style="margin:0;padding:0;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;">{{preheader}}</div>
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#000000" style="background:#000000;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="page" bgcolor="#eceef1" style="background:#eceef1;">
 <tr><td align="center" style="padding:32px 12px;">
 
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#0b0b0d" style="max-width:600px;background:#0b0b0d;border:1px solid #1c1c20;border-radius:14px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  <tr><td style="padding:30px 32px 0;">
-    <div style="font-size:13px;font-weight:800;letter-spacing:.18em;color:#10b981;">HOARD</div>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#000000" style="max-width:600px;background:#000000;border:1px solid #2e2e33;border-radius:14px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <tr><td style="padding:28px 32px 0;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding-right:10px;vertical-align:middle;">
+          <img src="https://hoard.services/icon-512.png" width="28" height="28" alt="Hoard"
+               style="display:block;width:28px;height:28px;border:0;border-radius:6px;">
+        </td>
+        <td style="vertical-align:middle;">
+          <div style="font-size:13px;font-weight:800;letter-spacing:.18em;color:#10b981;">HOARD</div>
+        </td>
+      </tr>
+    </table>
   </td></tr>
 
 {{body}}
 
   <tr><td style="padding:30px 32px 32px;">
-    <div style="height:1px;background:#1c1c20;margin:0 0 16px;"></div>
+    <div style="height:1px;background:#2e2e33;margin:0 0 16px;"></div>
     <p style="margin:0 0 10px;font-size:12px;line-height:1.6;color:#6b7280;">
       You are getting this because it affects the saves in your Hoard account.
       It is a service notice, not marketing.
