@@ -382,6 +382,13 @@ pub struct CloudConfig {
     /// ZIP surfaced in-app; it just skips the email leg.
     #[serde(default)]
     pub email: EmailConfig,
+    /// Turn away a machine the account has never seen once the plan's device
+    /// allowance is full. Off by default, and deliberately a knob rather than a
+    /// deploy: the clients that explain the refusal have to be in people's
+    /// hands before the server starts refusing, and only a flag lets the two
+    /// happen on different days. The count is kept truthful either way.
+    #[serde(default)]
+    pub devices_enforce: bool,
     /// At-rest zstd compression of content-addressed blobs (cost saver:
     /// R2 bills physical bytes, quota keeps charging raw bytes). Off by
     /// default; enable in dev first. Fields from `HOARD__CLOUD__COMPRESSION__*`.

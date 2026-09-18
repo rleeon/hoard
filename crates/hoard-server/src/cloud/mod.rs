@@ -26,6 +26,7 @@ pub mod auth_mirror;
 pub mod bandwidth;
 pub mod compress;
 pub mod db;
+pub mod device_prune;
 pub mod discord;
 pub mod email;
 pub mod entitlements;

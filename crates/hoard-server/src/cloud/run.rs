@@ -4,7 +4,8 @@
 use crate::cloud::{
     abandoned, account_purge, archive,
     auth::{require_active_account, require_cloud_auth, JwksCache},
-    auth_mirror, bandwidth, compress, db, discord, export, incidents, maintenance, memwatch, notify,
+    auth_mirror, bandwidth, compress, db, device_prune, discord, export, incidents, maintenance,
+    memwatch, notify,
     polar, pollguard, r2,
     routes::{
         admin as admin_routes, blob_proxy, checkout, device as device_routes,
@@ -465,6 +466,11 @@ fn spawn_background_tasks(state: &CloudState) {
     // notices of accounts that are no longer full, and warns the owner of an
     // archived game a few days before the sweep above deletes it.
     notify::spawn_daily(state.clone());
+
+    // Give back the slots of machines nobody has switched on in 90 days. Has to
+    // run before the device allowance is ever enforced, or a dead laptop holds
+    // a slot nobody can free.
+    device_prune::spawn(state.clone());
 
     // Device-pairing sweep. Approved/expired rows are deleted inline on
     //     poll, but a pairing that's started and never polled (or approved and
