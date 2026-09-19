@@ -271,20 +271,34 @@ async fn notify_by_email(
     let Some(cfg) = state.config.cloud.as_ref().map(|c| &c.email) else {
         return Ok(());
     };
+    send_ready_email(&state.pool, &state.r2, cfg, user_id, key, expires).await?;
+    Ok(())
+}
+
+/// The mail itself, shared by the worker and by `resend_ready_emails`.
+/// `Ok(false)` when there is nobody to send it to or email is off.
+async fn send_ready_email(
+    pool: &sqlx::PgPool,
+    r2: &r2::R2Store,
+    cfg: &crate::config::EmailConfig,
+    user_id: Uuid,
+    key: &str,
+    expires: OffsetDateTime,
+) -> anyhow::Result<bool> {
     if !email::is_configured(cfg) {
-        return Ok(());
+        return Ok(false);
     }
     let row: Option<(String, String, Option<OffsetDateTime>, Uuid)> = sqlx::query_as(
         "SELECT email, plan, offers_opt_out_at, offers_token FROM profiles WHERE user_id = $1",
     )
     .bind(user_id)
-    .fetch_optional(&state.pool)
+    .fetch_optional(pool)
     .await?;
     let Some((to, plan, opted_out, token)) = row else {
-        return Ok(());
+        return Ok(false);
     };
     if to.is_empty() {
-        return Ok(());
+        return Ok(false);
     }
     // Pro gets this mail too, being a reply to something they asked for, but
     // never the line that sells them the plan they already have. Nor does
@@ -293,9 +307,82 @@ async fn notify_by_email(
         .unwrap_or(crate::cloud::plans::Plan::Free)
         == crate::cloud::plans::Plan::Free;
     let offers = (free && opted_out.is_none()).then_some(token);
-    let link = state.r2.presign_get(key, Some(LINK_TTL)).await?;
-    email::send_export_ready(cfg, &to, offers, &link.url, expires).await?;
-    Ok(())
+    // Never promise a link longer than the object it points at: the sweep
+    // deletes the ZIP at `expires`, and a mail sent days late would otherwise
+    // hand out six days of a link that dies sooner.
+    let left = (expires - OffsetDateTime::now_utc()).whole_seconds().max(0) as u64;
+    let ttl = LINK_TTL.min(Duration::from_secs(left));
+    let link = r2.presign_get(key, Some(ttl)).await?;
+    email::send_export_ready(cfg, &to, offers, &link.url, expires).await
+}
+
+/// One export whose mail `resend_ready_emails` handled, for the report.
+pub struct Resent {
+    pub job_id: Uuid,
+    pub user_id: Uuid,
+    pub expires: OffsetDateTime,
+    pub outcome: String,
+}
+
+/// Mail the link of every finished, still-valid export that ended before
+/// `finished_before`.
+///
+/// For the exports that completed while email was switched off: the worker
+/// skips the mail then and never looks back, so those users have a ZIP ready
+/// that nobody told them about. Eight of them, six accounts, when email went
+/// live on 19-sep-2026. Exports within the hour of their deletion are left out,
+/// a link that dies before anyone opens the message is worse than none.
+///
+/// Not idempotent: there is no record of which mails went out, so run it once,
+/// with `dry_run` first.
+pub async fn resend_ready_emails(
+    cfg: &crate::config::Config,
+    finished_before: OffsetDateTime,
+    dry_run: bool,
+) -> anyhow::Result<Vec<Resent>> {
+    use anyhow::Context;
+    let cloud = cfg
+        .cloud
+        .as_ref()
+        .context("resend-export-emails: this server has no [cloud] section")?;
+    if !dry_run && !email::is_configured(&cloud.email) {
+        anyhow::bail!("resend-export-emails: email is not configured, nothing would be sent");
+    }
+    let pool = super::db::connect(&cfg.database.url, cfg.database.max_connections).await?;
+    let r2 = r2::R2Store::from_config(&cloud.r2).await?;
+
+    let jobs: Vec<(Uuid, Uuid, String, OffsetDateTime)> = sqlx::query_as(
+        "SELECT id, user_id, r2_key, expires_at FROM export_jobs
+          WHERE status = 'done'
+            AND r2_key IS NOT NULL
+            AND expires_at > now() + interval '1 hour'
+            AND finished_at < $1
+          ORDER BY finished_at",
+    )
+    .bind(finished_before)
+    .fetch_all(&pool)
+    .await?;
+
+    let mut out = Vec::with_capacity(jobs.len());
+    for (job_id, user_id, key, expires) in jobs {
+        let outcome = if dry_run {
+            "would send".to_string()
+        } else {
+            match send_ready_email(&pool, &r2, &cloud.email, user_id, &key, expires).await {
+                Ok(true) => "sent".to_string(),
+                Ok(false) => "skipped: no address".to_string(),
+                Err(e) => format!("failed: {e:#}"),
+            }
+        };
+        out.push(Resent {
+            job_id,
+            user_id,
+            expires,
+            outcome,
+        });
+    }
+    pool.close().await;
+    Ok(out)
 }
 
 async fn mark_failed(state: &CloudState, job_id: Uuid, error: &str) {

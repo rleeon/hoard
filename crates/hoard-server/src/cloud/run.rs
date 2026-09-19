@@ -123,6 +123,9 @@ pub async fn run(cfg: Config) -> Result<()> {
             "/v1/me/max-save-size",
             axum::routing::put(me::set_max_save_size),
         )
+        // POST rather than PUT: the browser calls it, and CORS here allows
+        // GET, POST and DELETE only.
+        .route("/v1/me/offers", post(me::set_offers))
         .route(
             "/v1/devices",
             get(me::list_devices).route_layer(guarded("devices")),

@@ -1125,6 +1125,42 @@ pub async fn accept_terms(
     terms_status(&state, user.user_id).await.map(Json)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct OffersBody {
+    /// `true` refuses the offers for Pro inside service emails, `false` takes
+    /// them back.
+    pub opt_out: bool,
+}
+
+/// POST /v1/me/offers: the same refusal as the link in every email's footer,
+/// from a signed-in client. The sign-in page offers it next to the Terms,
+/// which is where Spanish law (LSSI art. 21.2) wants it offered first: when
+/// the address is collected.
+///
+/// Upserts the profile before writing, because the sign-in page fires this in
+/// the same breath as the session is created, often before anything has called
+/// `/v1/me`, and an `UPDATE` on a row that does not exist yet would drop the
+/// refusal on the floor. Refusing twice keeps the first date: that date is the
+/// evidence.
+pub async fn set_offers(
+    State(state): State<CloudState>,
+    Extension(user): Extension<CloudUser>,
+    headers: HeaderMap,
+    Json(body): Json<OffersBody>,
+) -> Result<StatusCode, CloudError> {
+    upsert_profile_for(&state, &user, &headers).await?;
+    sqlx::query(
+        "UPDATE profiles
+            SET offers_opt_out_at = CASE WHEN $2 THEN COALESCE(offers_opt_out_at, now()) END
+          WHERE user_id = $1",
+    )
+    .bind(user.user_id)
+    .bind(body.opt_out)
+    .execute(&state.pool)
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// GET /v1/me/terms: what this account accepted and whether it has to be asked
 /// again. The user can request this record under GDPR article 15, and this is what
 /// they are handed.

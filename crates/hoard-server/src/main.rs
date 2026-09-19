@@ -76,6 +76,21 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+
+    /// Email the download link of finished exports whose mail never went out.
+    ///
+    /// For the exports that completed while email was switched off. Not
+    /// idempotent, so run it once, and with `--dry-run` first. Cloud only.
+    #[cfg(feature = "cloud")]
+    ResendExportEmails {
+        /// Only exports that finished before this instant (RFC 3339): the
+        /// moment email was switched on.
+        #[arg(long)]
+        finished_before: String,
+        /// List what would be sent, send nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[tokio::main]
@@ -136,6 +151,31 @@ async fn main() -> Result<()> {
         hoard_server::cloud::verify::print_report(&report, dry_run);
         // A non-zero exit when there is damage, so a cron job notices.
         if !report.damaged.is_empty() {
+            std::process::exit(2);
+        }
+        return Ok(());
+    }
+
+    #[cfg(feature = "cloud")]
+    if let Some(Cmd::ResendExportEmails {
+        finished_before,
+        dry_run,
+    }) = args.cmd
+    {
+        let before = time::OffsetDateTime::parse(
+            &finished_before,
+            &time::format_description::well_known::Rfc3339,
+        )
+        .map_err(|e| anyhow::anyhow!("--finished-before wants RFC 3339: {e}"))?;
+        let done = hoard_server::cloud::export::resend_ready_emails(&cfg, before, dry_run).await?;
+        for r in &done {
+            println!(
+                "{}  user {}  expires {}  {}",
+                r.job_id, r.user_id, r.expires, r.outcome
+            );
+        }
+        println!("{} export(s)", done.len());
+        if done.iter().any(|r| r.outcome.starts_with("failed")) {
             std::process::exit(2);
         }
         return Ok(());
