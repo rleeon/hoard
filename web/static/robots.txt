@@ -9,6 +9,7 @@ Disallow: /account
 Disallow: /checkout
 Disallow: /login
 Disallow: /auth
+Disallow: /notices/mute
 
 # The crawlers behind search and answer engines, named on purpose. A blanket
 # "Allow: /" already covers them, but stating them one by one leaves no room for
@@ -25,5 +26,6 @@ Disallow: /account
 Disallow: /checkout
 Disallow: /login
 Disallow: /auth
+Disallow: /notices/mute
 
 Sitemap: https://hoard.services/sitemap.xml
