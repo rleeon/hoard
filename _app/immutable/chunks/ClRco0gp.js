@@ -1,0 +1,1 @@
+const e="hoard:no_offers";function o(t){try{t?localStorage.setItem(e,"1"):localStorage.removeItem(e)}catch{}}function s(){try{const t=localStorage.getItem(e)==="1";return localStorage.removeItem(e),t}catch{return!1}}function n(t,r="/account"){return!t||!t.startsWith("/")||t.startsWith("//")||t.startsWith("/\\")||/[\s\u0000-\u001f]/.test(t)?r:t}export{o as r,n as s,s as t};
