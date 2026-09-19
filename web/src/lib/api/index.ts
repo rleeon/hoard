@@ -196,9 +196,34 @@ export const api = {
    * instead of quietly filing an acceptance of a text nobody read.
    */
   async acceptTerms(source: 'web' = 'web'): Promise<void> {
+    // The header is not optional. Without it fetch sends a string body as
+    // text/plain, the server's JSON extractor answers 415, and because the
+    // caller only logs a warning, no web sign-in was ever recorded: 105
+    // acceptances on file by 19-sep-2026, every one of them from the app.
     await request('/v1/me/terms', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ version: TERMS_VERSION, source })
     });
+  },
+
+  /**
+   * Refuse (or take back) the offers for Pro inside service emails.
+   *
+   * Takes the access token explicitly, and sends with `keepalive`, because the
+   * sign-in callback fires it on its way out: in the desktop hand-off the tab
+   * drops its own session and navigates to the app straight after, and neither
+   * may cut this request short.
+   */
+  refuseOffers(accessToken: string, optOut = true): void {
+    fetch(`${config.api.baseUrl}/v1/me/offers`, {
+      method: 'POST',
+      keepalive: true,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ opt_out: optOut })
+    }).catch((e) => console.warn('offers refusal not recorded:', e));
   }
 };

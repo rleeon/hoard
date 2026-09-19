@@ -364,7 +364,7 @@
   "legal.privacy_title": "プライバシーポリシー",
   "legal.notice_title": "法的表示",
   "legal.subprocessors_title": "再委託先",
-  "legal.last_updated": "最終更新：2026年9月9日",
+  "legal.last_updated": "最終更新：2026年9月19日",
   "legal.back_home": "ホームに戻る",
   "legal.courtesy_notice": "参考訳です。このページは英語で表示されています。法的に有効なのはスペイン語版です。",
   "seo.home.title": "Hoard — セーブデータの同期とバックアップ · セルフホストまたはEUクラウド",
@@ -437,5 +437,6 @@
   "notices.export_ready.title": "データのエクスポートが完了しました",
   "notices.export_ready.p1": "エクスポートをリクエストすると、Hoard はアカウント内の各ゲームの最新バージョンを 1 つの ZIP にまとめ、ダウンロードリンクをメールで送ります。",
   "notices.export_ready.p2": "リンクは数日で期限切れになり、ファイルも同時に削除されます。期限が切れていた場合は、Hoard のアカウントページから新しいエクスポートをリクエストしてください。1 分もかからずに用意できます。",
-  "notices.export_ready.p3": "ダウンロードはストレージ事業者から直接行われるため、Hoard のサーバーを経由することはありません。"
+  "notices.export_ready.p3": "ダウンロードはストレージ事業者から直接行われるため、Hoard のサーバーを経由することはありません。",
+  "login.no_offers": "アカウントに関するメールに Hoard Pro のご案内を含めないでください。お知らせ自体は引き続き届きます。"
 }

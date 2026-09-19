@@ -124,6 +124,28 @@
         fiscal ni tu dirección postal.</strong>
       </p>
 
+      <h3>1.7. Avisos de servicio por correo</h3>
+      <p>
+        Te escribimos cuando algo afecta a tus partidas y no está a la vista en la aplicación:
+        cuando la limpieza automática borra versiones antiguas para hacer sitio, cuando una copia
+        no cabe en tu espacio, cuando un juego supera el tamaño máximo por juego, cuando un juego
+        archivado está a punto de borrarse, cuando tu cuenta usa todos sus dispositivos, y cuando
+        está lista una exportación que has pedido. Las cuentas Pro sólo reciben el de la
+        exportación.
+      </p>
+      <p>
+        Para no repetirte el mismo aviso guardamos qué aviso te mandamos y cuándo. El de la
+        limpieza automática se repite como mucho una vez al día mientras dure, y lleva un enlace
+        para dejar de recibirlo; ese enlace no identifica tu cuenta y deja de tener efecto a las
+        dos semanas sin limpiezas.
+      </p>
+      <p>
+        Algunos de esos avisos incluyen una oferta para pasarte a Pro. Puedes rechazarlas al
+        registrarte o en cualquier momento desde el enlace que va al pie de cada uno: dejan de
+        llegarte las ofertas y sigues recibiendo los avisos sobre tus partidas. Nunca te mandamos
+        correos que sólo sean publicidad.
+      </p>
+
       <h2>2. Para qué los usamos y con qué base legal</h2>
       <table>
         <thead>
@@ -138,6 +160,7 @@
           <tr><td>Seguridad, prevención de abuso y captcha en el inicio de sesión</td><td>Interés legítimo (art. 6.1.f)</td></tr>
           <tr><td>Diagnóstico y telemetría de producto</td><td>Interés legítimo, con interruptor de desactivación (apartado 1.4)</td></tr>
           <tr><td>Comunicaciones de servicio y avisos críticos</td><td>Ejecución del contrato</td></tr>
+          <tr><td>Ofertas de Pro dentro de los avisos de servicio</td><td>Interés legítimo y art. 21.2 LSSI (cliente, servicio propio similar), con rechazo en cada mensaje</td></tr>
           <tr><td>Obligaciones fiscales y requerimientos de autoridades</td><td>Obligación legal (art. 6.1.c)</td></tr>
         </tbody>
       </table>
@@ -159,10 +182,10 @@
           <tr><th>Proveedor</th><th>Función</th><th>Datos alojados en</th></tr>
         </thead>
         <tbody>
-          <tr><td>Supabase (Supabase Pte Ltd, sobre AWS)</td><td>Autenticación y base de datos de metadatos</td><td>Fráncfort, Alemania</td></tr>
+          <tr><td>Supabase (Supabase Pte Ltd, sobre AWS)</td><td>Autenticación</td><td>Fráncfort, Alemania</td></tr>
           <tr><td>Cloudflare R2 (Cloudflare, Inc.)</td><td>Almacenamiento de instantáneas, cifrado en reposo</td><td>Unión Europea</td></tr>
           <tr><td>Cloudflare Turnstile (Cloudflare, Inc.)</td><td>Captcha del inicio de sesión web</td><td>Red global de Cloudflare</td></tr>
-          <tr><td>Fly.io (Fly.io, Inc.)</td><td>Alojamiento de la API</td><td>París, Francia</td></tr>
+          <tr><td>Fly.io (Fly.io, Inc.)</td><td>Alojamiento de la API y de la base de datos</td><td>París, Francia</td></tr>
           <tr><td>GitHub Pages (Microsoft Corp.)</td><td>Alojamiento del sitio público</td><td>Red CDN</td></tr>
           <tr><td>Polar Software Inc.</td><td>Comerciante Registrado: cobro, IVA, facturación</td><td>Estados Unidos</td></tr>
           <tr><td>Resend (Resend, Inc.)</td><td>Correo transaccional</td><td>Unión Europea</td></tr>
@@ -172,9 +195,9 @@
       <h2>4. Ubicación y transferencias internacionales</h2>
       <p>
         Tu cuenta, tus metadatos, tu tiempo de juego y tus instantáneas
-        <strong>se almacenan en la Unión Europea</strong>: la base de datos en Fráncfort y los
-        archivos en almacenamiento de Cloudflare R2 con jurisdicción europea. No replicamos ese
-        contenido fuera de la UE.
+        <strong>se almacenan en la Unión Europea</strong>: la base de datos en París y los
+        archivos en almacenamiento de Cloudflare R2 con jurisdicción europea. La autenticación se
+        sirve desde Fráncfort. No replicamos ese contenido fuera de la UE.
       </p>
       <p>
         Hay tratamientos accesorios que sí implican a proveedores establecidos en Estados
@@ -198,6 +221,8 @@
           <tr><td>Logs técnicos de la API (IP, agente de usuario)</td><td>Hasta 30 días</td></tr>
           <tr><td>Eventos de diagnóstico de la aplicación</td><td>14 días</td></tr>
           <tr><td>Telemetría de producto (detección y uso de Screen)</td><td>180 días</td></tr>
+          <tr><td>Registro de avisos enviados por correo</td><td>Hasta que se resuelve lo que los motivó; el de la limpieza automática, 14 días después del último</td></tr>
+          <tr><td>Fecha en que rechazaste las ofertas</td><td>Mientras exista la cuenta</td></tr>
           <tr><td>Registro de aceptación de los términos</td><td>Mientras dure la relación y 5 años más</td></tr>
           <tr><td>Facturación</td><td>Conservada por el Comerciante Registrado durante los plazos fiscales aplicables</td></tr>
         </tbody>
@@ -368,6 +393,26 @@
         identifier. <strong>We never see or store your card, tax name or postal address.</strong>
       </p>
 
+      <h3>1.7. Service notices by email</h3>
+      <p>
+        We write to you when something affects your saves and is not in front of you in the app:
+        when automatic cleanup deletes old versions to make room, when a backup does not fit in
+        your space, when a game goes over the per-game size limit, when an archived game is about
+        to be deleted, when your account is using all its devices, and when an export you asked
+        for is ready. Pro accounts only receive the export one.
+      </p>
+      <p>
+        So as not to repeat ourselves we keep a record of which notice we sent you and when. The
+        cleanup notice repeats at most once a day while it lasts and carries a link to stop it;
+        that link does not identify your account, and it lapses after two weeks without a
+        cleanup.
+      </p>
+      <p>
+        Some of those notices include an offer to move to Pro. You can refuse them when you sign up
+        or at any time from the link at the foot of each one: the offers stop and the notices about
+        your saves keep coming. We never send email that is only advertising.
+      </p>
+
       <h2>2. Purposes and legal bases</h2>
       <table>
         <thead>
@@ -382,6 +427,7 @@
           <tr><td>Security, abuse prevention and sign-in captcha</td><td>Legitimate interest (art. 6(1)(f))</td></tr>
           <tr><td>Diagnostics and product telemetry</td><td>Legitimate interest, with an off switch (section 1.4)</td></tr>
           <tr><td>Service communications and critical notices</td><td>Performance of contract</td></tr>
+          <tr><td>Offers for Pro inside service notices</td><td>Legitimate interest and art. 21.2 LSSI (existing customer, similar own service), with a refusal in every message</td></tr>
           <tr><td>Tax obligations and requests from authorities</td><td>Legal obligation (art. 6(1)(c))</td></tr>
         </tbody>
       </table>
@@ -402,10 +448,10 @@
           <tr><th>Provider</th><th>Function</th><th>Data hosted in</th></tr>
         </thead>
         <tbody>
-          <tr><td>Supabase (Supabase Pte Ltd, on AWS)</td><td>Authentication and metadata database</td><td>Frankfurt, Germany</td></tr>
+          <tr><td>Supabase (Supabase Pte Ltd, on AWS)</td><td>Authentication</td><td>Frankfurt, Germany</td></tr>
           <tr><td>Cloudflare R2 (Cloudflare, Inc.)</td><td>Snapshot storage, encrypted at rest</td><td>European Union</td></tr>
           <tr><td>Cloudflare Turnstile (Cloudflare, Inc.)</td><td>Web sign-in captcha</td><td>Cloudflare global network</td></tr>
-          <tr><td>Fly.io (Fly.io, Inc.)</td><td>API hosting</td><td>Paris, France</td></tr>
+          <tr><td>Fly.io (Fly.io, Inc.)</td><td>API and database hosting</td><td>Paris, France</td></tr>
           <tr><td>GitHub Pages (Microsoft Corp.)</td><td>Public site hosting</td><td>CDN network</td></tr>
           <tr><td>Polar Software Inc.</td><td>Merchant of Record: charging, VAT, invoicing</td><td>United States</td></tr>
           <tr><td>Resend (Resend, Inc.)</td><td>Transactional email</td><td>European Union</td></tr>
@@ -415,9 +461,9 @@
       <h2>4. Location and international transfers</h2>
       <p>
         Your account, metadata, playtime and snapshots are
-        <strong>stored in the European Union</strong>: the database in Frankfurt and the files
-        in Cloudflare R2 storage with EU jurisdiction. We do not replicate that content outside
-        the EU.
+        <strong>stored in the European Union</strong>: the database in Paris and the files in
+        Cloudflare R2 storage with EU jurisdiction. Sign-in is served from Frankfurt. We do not
+        replicate that content outside the EU.
       </p>
       <p>
         Some ancillary processing does involve providers established in the United States: the
@@ -441,6 +487,8 @@
           <tr><td>API technical logs (IP, user agent)</td><td>Up to 30 days</td></tr>
           <tr><td>Application diagnostic events</td><td>14 days</td></tr>
           <tr><td>Product telemetry (detection and Screen usage)</td><td>180 days</td></tr>
+          <tr><td>Record of email notices sent</td><td>Until what caused them is resolved; the cleanup one, 14 days after the last</td></tr>
+          <tr><td>Date you refused offers</td><td>For as long as the account exists</td></tr>
           <tr><td>Record of terms acceptance</td><td>For the duration of the relationship plus 5 years</td></tr>
           <tr><td>Billing</td><td>Kept by the Merchant of Record for the applicable tax periods</td></tr>
         </tbody>

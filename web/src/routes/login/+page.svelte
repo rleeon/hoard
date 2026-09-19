@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rememberNoOffers } from '$lib/offers';
   import { _ } from 'svelte-i18n';
   import { onDestroy } from 'svelte';
   import { browser } from '$app/environment';
@@ -30,6 +31,10 @@
   // "By continuing you accept" is an inference; a tick is a decision, and it is
   // the one we can actually record against the account afterwards.
   let accepted = $state(false);
+  // Refusing the offers for Pro that some service emails carry. Offered here,
+  // next to the Terms, because the law wants the refusal offered where the
+  // address is collected. Unticked: offers are the default, not a trap.
+  let noOffers = $state(false);
   let sent = $state(false);
   let busy = $state(false);
   let error = $state<string | null>(null);
@@ -125,7 +130,10 @@
   /** Guard shared by the three sign-in paths. Returns false and explains
    *  itself rather than silently doing nothing on a disabled-looking button. */
   function requireAcceptance(): boolean {
-    if (accepted) return true;
+    if (accepted) {
+      rememberNoOffers(noOffers);
+      return true;
+    }
     error = $_('login.terms_required');
     return false;
   }
@@ -256,6 +264,17 @@
         class="ring-focus mt-0.5 h-4 w-4 shrink-0 rounded border-line-strong bg-bg text-accent"
       />
       <span>{@html $_('login.terms_html')}</span>
+    </label>
+
+    <label
+      class="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-4 text-left text-xs leading-relaxed text-ink-soft"
+    >
+      <input
+        type="checkbox"
+        bind:checked={noOffers}
+        class="ring-focus mt-0.5 h-4 w-4 shrink-0 rounded border-line-strong bg-bg text-accent"
+      />
+      <span>{$_('login.no_offers')}</span>
     </label>
 
     <button

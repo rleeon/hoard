@@ -364,7 +364,7 @@
   "legal.privacy_title": "Politique de confidentialité",
   "legal.notice_title": "Mentions légales",
   "legal.subprocessors_title": "Sous-traitants",
-  "legal.last_updated": "Dernière mise à jour : 9 septembre 2026",
+  "legal.last_updated": "Dernière mise à jour : 19 septembre 2026",
   "legal.back_home": "Retour à l'accueil",
   "legal.courtesy_notice": "Traduction de courtoisie. Cette page est affichée en anglais ; la version espagnole fait foi juridiquement.",
   "seo.home.title": "Hoard — Sync et sauvegardes de parties · Auto-hébergé ou cloud UE",
@@ -437,5 +437,6 @@
   "notices.export_ready.title": "Ton export de données est prêt",
   "notices.export_ready.p1": "Quand tu demandes un export à Hoard, il rassemble la version la plus récente de chaque jeu de ton compte dans un seul ZIP et t'envoie un lien par e-mail.",
   "notices.export_ready.p2": "Le lien expire au bout de quelques jours, et le fichier est supprimé avec lui. Si le tien a expiré, demande un nouvel export depuis la page de compte dans Hoard ; il est prêt en moins d'une minute.",
-  "notices.export_ready.p3": "Le téléchargement vient directement de notre fournisseur de stockage : il ne passe jamais par les serveurs de Hoard."
+  "notices.export_ready.p3": "Le téléchargement vient directement de notre fournisseur de stockage : il ne passe jamais par les serveurs de Hoard.",
+  "login.no_offers": "Pas d'offres pour Hoard Pro dans les e-mails concernant mon compte. Les avis eux-mêmes continuent d'arriver."
 }

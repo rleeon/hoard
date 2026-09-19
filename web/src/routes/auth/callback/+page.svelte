@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { takeNoOffers } from '$lib/offers';
   import { onMount } from 'svelte';
   import { _ } from 'svelte-i18n';
   import { goto } from '$app/navigation';
@@ -80,6 +81,10 @@
   }
 
   async function done(s: Session) {
+    // The refusal ticked on /login, recorded before either branch: the desktop
+    // one drops this tab's session and leaves straight away, which is why the
+    // call carries its own token and is sent with keepalive.
+    if (takeNoOffers()) api.refuseOffers(s.access_token);
     if (isDesktop()) {
       bounceToApp(s);
       return;

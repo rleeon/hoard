@@ -19,8 +19,8 @@
   const ROWS = [
     {
       name: 'Supabase Pte Ltd',
-      purpose: { es: 'Autenticación y base de datos de metadatos', en: 'Authentication and metadata database' },
-      data: { es: 'Correo, identificadores, metadatos de partidas', en: 'Email, identifiers, save metadata' },
+      purpose: { es: 'Autenticación', en: 'Authentication' },
+      data: { es: 'Correo e identificadores de cuenta', en: 'Email and account identifiers' },
       location: { es: 'Fráncfort, Alemania (AWS)', en: 'Frankfurt, Germany (AWS)' },
       since: '2026-01'
     },
@@ -40,8 +40,14 @@
     },
     {
       name: 'Fly.io, Inc.',
-      purpose: { es: 'Alojamiento de la API', en: 'API hosting' },
-      data: { es: 'Todo el tráfico de la API en tránsito', en: 'All API traffic in transit' },
+      purpose: {
+        es: 'Alojamiento de la API y de la base de datos de metadatos',
+        en: 'API and metadata database hosting'
+      },
+      data: {
+        es: 'Metadatos de cuenta y de partidas, tiempo de juego y todo el tráfico de la API',
+        en: 'Account and save metadata, playtime and all API traffic'
+      },
       location: { es: 'París, Francia', en: 'Paris, France' },
       since: '2026-01'
     },
