@@ -250,3 +250,46 @@ async fn a_quiet_fortnight_lifts_the_mute() {
         .unwrap()
         .is_some());
 }
+
+#[tokio::test]
+async fn the_footer_link_turns_offers_off_for_good() {
+    let Some(pool) = pool().await else { return };
+    let u = user(&pool).await;
+    let token: Uuid = sqlx::query_scalar("SELECT offers_token FROM profiles WHERE user_id = $1")
+        .bind(u)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    // Every profile gets its own token, including the ones that existed before
+    // the column did: that is what the volatile default is for.
+    let other = user(&pool).await;
+    let other_token: Uuid =
+        sqlx::query_scalar("SELECT offers_token FROM profiles WHERE user_id = $1")
+            .bind(other)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_ne!(token, other_token);
+
+    assert!(notices::opt_out_of_offers(&pool, token).await.unwrap());
+    // A second click, or a replay, changes nothing and says so.
+    assert!(!notices::opt_out_of_offers(&pool, token).await.unwrap());
+    // An invented token touches nobody.
+    assert!(!notices::opt_out_of_offers(&pool, Uuid::new_v4())
+        .await
+        .unwrap());
+
+    let (mine, theirs): (Option<time::OffsetDateTime>, Option<time::OffsetDateTime>) =
+        sqlx::query_as(
+            "SELECT (SELECT offers_opt_out_at FROM profiles WHERE user_id = $1),
+                    (SELECT offers_opt_out_at FROM profiles WHERE user_id = $2)",
+        )
+        .bind(u)
+        .bind(other)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(mine.is_some(), "the refusal is recorded with its date");
+    assert!(theirs.is_none(), "and only for the account it belongs to");
+}

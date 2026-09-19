@@ -13,11 +13,13 @@ is not protected.
 Deleting old versions could not free enough this time, which usually means one
 or two games are holding most of the space.
 
+{{#offer}}
 HOARD PRO - 100 GB, fifty times the room you have now
 Nothing to delete, nothing to choose between, no afternoon spent deciding which
 game deserves to survive. Less than a coffee a month.
 
   Go Pro, 1.99 EUR/mo: https://hoard.services/pricing
   19.99 EUR a year, two months free. Cancel whenever.
+{{/offer}}
 
 Or free up space: https://hoard.services/account

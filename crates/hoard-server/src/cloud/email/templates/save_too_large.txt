@@ -11,6 +11,7 @@ This is not your quota: the limit applies even with an empty account. It exists
 so one runaway folder cannot eat a whole plan. Often it is autosaves, replays
 or logs piling up inside the save folder.
 
+{{#offer}}
 HOARD PRO - {{pro_limit}} per game, ten times the cap
 {{game}} at {{size}} fits with room to spare, and you never have to prune a
 save folder to keep it protected. 100 GB total, unlimited devices, five
@@ -18,5 +19,6 @@ versions kept per game.
 
   Back up {{game}}, 1.99 EUR/mo: https://hoard.services/pricing
   19.99 EUR a year, two months free. Cancel whenever.
+{{/offer}}
 
 Or trim the folder yourself: https://hoard.services/account

@@ -11,6 +11,7 @@ What is never deleted: the most recent version of every game, and any version
 you pinned. Your saves stay restorable, but the history behind them is going,
 one pass at a time, and it does not come back.
 
+{{#offer}}
 HOARD PRO - 100 GB, fifty times the room you have now
 Stop losing history. Pro keeps five versions of every game before it ever
 considers deleting one, and only starts at 90% of a limit you will not reach.
@@ -19,6 +20,7 @@ cancel later.
 
   Go Pro, 1.99 EUR/mo: https://hoard.services/pricing
   19.99 EUR a year, two months free. Cancel whenever.
+{{/offer}}
 
 Or free up space by hand: https://hoard.services/account
 

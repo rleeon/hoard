@@ -184,5 +184,23 @@ pub async fn expire_stale(pool: &PgPool, kind: Kind, after: Duration) -> Result<
     Ok(res.rows_affected())
 }
 
+/// Stop the offers for Pro inside every service email, for whoever owns
+/// `token`. The notices keep coming; only the pitch goes. `true` when this call
+/// is what did it, `false` for an unknown token or one already opted out, so
+/// the endpoint can answer both the same way.
+///
+/// The date, not a flag, is what gets stored: it is the evidence that the
+/// refusal was honoured from that moment on.
+pub async fn opt_out_of_offers(pool: &PgPool, token: Uuid) -> Result<bool, sqlx::Error> {
+    let res = sqlx::query(
+        "UPDATE profiles SET offers_opt_out_at = now()
+          WHERE offers_token = $1 AND offers_opt_out_at IS NULL",
+    )
+    .bind(token)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() == 1)
+}
+
 /// Account-wide notices carry no scope.
 pub const ACCOUNT: &str = "";

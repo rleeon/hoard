@@ -9,6 +9,8 @@ Download it: {{download_url}}
 The link expires on {{expires}} and the file is deleted with it. If it lapses,
 ask for a fresh export from the account page; building it takes under a minute.
 
+{{#offer}}
 Exporting because you are running out of room? Pro is 100 GB for 1.99 EUR a
 month and keeps five versions of every game instead of one:
 https://hoard.services/pricing
+{{/offer}}

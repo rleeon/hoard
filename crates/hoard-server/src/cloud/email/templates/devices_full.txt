@@ -11,6 +11,7 @@ A machine you no longer use can be removed from your account page and its place
 frees up immediately. Devices nobody has seen in 90 days are removed on their
 own.
 
+{{#offer}}
 HOARD PRO - unlimited devices, yours for good
 Desktop, laptop, handheld, the machine at your parents' place: sign in on all
 of them and stop counting. And the device allowance is kept for life, go Pro
@@ -19,5 +20,6 @@ and 10 GB per game.
 
   Unlock every device, 1.99 EUR/mo: https://hoard.services/pricing
   19.99 EUR a year, two months free. Cancel whenever.
+{{/offer}}
 
 Or remove an old machine: https://hoard.services/account

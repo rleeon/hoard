@@ -234,3 +234,28 @@ pub async fn mute(
         muted: kind.is_some(),
     }))
 }
+
+// ---- refusing the offers inside them
+
+#[derive(Debug, Serialize)]
+pub struct OffersOut {
+    /// Same contract as [`MuteOut::muted`]: true only for the call that made
+    /// the change, and indistinguishable otherwise.
+    pub opted_out: bool,
+}
+
+/// `POST /v1/notices/no-offers`: stop the pitch for Pro inside service emails.
+///
+/// This is the refusal Spanish law (LSSI art. 21) requires every commercial
+/// message to offer, free and simple, so it takes nothing but the token from
+/// the footer: no session, no confirmation email, no second step.
+pub async fn no_offers(
+    State(state): State<CloudState>,
+    Json(body): Json<MuteIn>,
+) -> Result<Json<OffersOut>, CloudError> {
+    let opted_out = crate::cloud::notices::opt_out_of_offers(&state.pool, body.token).await?;
+    if opted_out {
+        tracing::info!("offers in service emails turned off from the footer link");
+    }
+    Ok(Json(OffersOut { opted_out }))
+}

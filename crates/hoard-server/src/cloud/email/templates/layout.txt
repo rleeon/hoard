@@ -2,7 +2,10 @@
 
 --
 You are getting this because it affects the saves in your Hoard account.
-It is a service notice, not marketing.
+{{#offer}}
+This notice includes an offer for Hoard Pro. Stop the offers, keep the
+notices: {{offers_url}}
+{{/offer}}
 
 This mailbox is not monitored. Questions go to Discord
 (https://discord.gg/BYpXT8v4rh) or GitHub issues

@@ -39,26 +39,35 @@ const ARCHIVE_WARN_DAYS: i64 = 3;
 /// the app, where it belongs. The one mail Pro still receives is the export
 /// link, which is a reply to something they asked for and does not come
 /// through here.
-async fn prepare(state: &CloudState, user_id: Uuid) -> Option<(EmailConfig, String)> {
+///
+/// The third value is the reader's offers token, or `None` when they turned
+/// offers off: then the notice still goes out, without the pitch for Pro.
+async fn prepare(state: &CloudState, user_id: Uuid) -> Option<(EmailConfig, String, Option<Uuid>)> {
     let cfg = state.config.cloud.as_ref().map(|c| c.email.clone())?;
     if !email::is_configured(&cfg) {
         return None;
     }
-    let row: Option<(String, String)> =
-        sqlx::query_as("SELECT email, plan FROM profiles WHERE user_id = $1")
-            .bind(user_id)
-            .fetch_optional(&state.pool)
-            .await
-            .ok()
-            .flatten();
-    let (to, plan) = row?;
+    let row: Option<(String, String, Option<time::OffsetDateTime>, Uuid)> = sqlx::query_as(
+        "SELECT email, plan, offers_opt_out_at, offers_token FROM profiles WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten();
+    let (to, plan, opted_out, token) = row?;
     if Plan::from_str(&plan).unwrap_or(Plan::Free) != Plan::Free {
         return None;
     }
     if to.is_empty() {
         return None;
     }
-    Some((cfg, to))
+    let offers = if opted_out.is_none() {
+        Some(token)
+    } else {
+        None
+    };
+    Some((cfg, to, offers))
 }
 
 /// Log the outcome and, on failure, re-arm the notice.
@@ -117,7 +126,7 @@ pub fn storage_purge_started(
 ) {
     let state = state.clone();
     tokio::spawn(async move {
-        let Some((cfg, to)) = prepare(&state, user_id).await else {
+        let Some((cfg, to, offers)) = prepare(&state, user_id).await else {
             return;
         };
         let kind = Kind::StoragePurgeStarted;
@@ -141,6 +150,7 @@ pub fn storage_purge_started(
         let r = email::send_storage_purge_started(
             &cfg,
             &to,
+            offers,
             used,
             limit,
             deleted_versions,
@@ -173,7 +183,7 @@ pub fn storage_full(
 ) {
     let state = state.clone();
     tokio::spawn(async move {
-        let Some((cfg, to)) = prepare(&state, user_id).await else {
+        let Some((cfg, to, offers)) = prepare(&state, user_id).await else {
             return;
         };
         let kind = Kind::StorageFull;
@@ -191,7 +201,7 @@ pub fn storage_full(
                 .ok()
                 .flatten();
         let game = slug.unwrap_or_else(|| save_id.clone());
-        let r = email::send_storage_full(&cfg, &to, &game, requested, used, limit).await;
+        let r = email::send_storage_full(&cfg, &to, offers, &game, requested, used, limit).await;
         settle(&state, user_id, kind, notices::ACCOUNT, r).await;
     });
 }
@@ -210,7 +220,7 @@ pub fn save_too_large(
 ) {
     let state = state.clone();
     tokio::spawn(async move {
-        let Some((cfg, to)) = prepare(&state, user_id).await else {
+        let Some((cfg, to, offers)) = prepare(&state, user_id).await else {
             return;
         };
         // The cap check runs before `init_upload` resolves the save, so the id
@@ -232,7 +242,8 @@ pub fn save_too_large(
             return;
         }
         let r =
-            email::send_save_too_large(&cfg, &to, &game_slug, size, limit, plan, pro_limit).await;
+            email::send_save_too_large(&cfg, &to, offers, &game_slug, size, limit, plan, pro_limit)
+                .await;
         settle(&state, user_id, kind, &save_id, r).await;
     });
 }
@@ -252,7 +263,7 @@ pub fn archive_expiring(
 ) {
     let state = state.clone();
     tokio::spawn(async move {
-        let Some((cfg, to)) = prepare(&state, user_id).await else {
+        let Some((cfg, to, offers)) = prepare(&state, user_id).await else {
             return;
         };
         let kind = Kind::ArchiveExpiring;
@@ -262,6 +273,7 @@ pub fn archive_expiring(
         let r = email::send_archive_expiring(
             &cfg,
             &to,
+            offers,
             &game_slug,
             days,
             &archived_on,
@@ -286,15 +298,24 @@ pub fn devices_full(
 ) {
     let state = state.clone();
     tokio::spawn(async move {
-        let Some((cfg, to)) = prepare(&state, user_id).await else {
+        let Some((cfg, to, offers)) = prepare(&state, user_id).await else {
             return;
         };
         let kind = Kind::DevicesFull;
         if !claimed(&state, user_id, kind, notices::ACCOUNT).await {
             return;
         }
-        let r =
-            email::send_devices_full(&cfg, &to, &device_name, &device_os, used, limit, plan).await;
+        let r = email::send_devices_full(
+            &cfg,
+            &to,
+            offers,
+            &device_name,
+            &device_os,
+            used,
+            limit,
+            plan,
+        )
+        .await;
         settle(&state, user_id, kind, notices::ACCOUNT, r).await;
     });
 }

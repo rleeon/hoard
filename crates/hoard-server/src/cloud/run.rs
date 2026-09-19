@@ -253,6 +253,12 @@ pub async fn run(cfg: Config) -> Result<()> {
         // above: asking someone in their mail client to sign in first would
         // make the link pointless.
         .route("/v1/notices/mute", post(notification_routes::mute))
+        // The refusal of the offers inside those emails, from their footer.
+        // Same token-only trust model, and required to be one step.
+        .route(
+            "/v1/notices/no-offers",
+            post(notification_routes::no_offers),
+        )
         // Health is *also* available unauthed in cloud mode so Fly can probe it.
         .route("/v1/health", get(cloud_health));
 

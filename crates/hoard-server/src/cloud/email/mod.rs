@@ -90,6 +90,7 @@ pub fn is_configured(cfg: &EmailConfig) -> bool {
 pub async fn send_export_ready(
     cfg: &EmailConfig,
     to: &str,
+    offers: Option<uuid::Uuid>,
     download_url: &str,
     expires: OffsetDateTime,
 ) -> Result<bool> {
@@ -99,6 +100,7 @@ pub async fn send_export_ready(
     send(
         cfg,
         to,
+        offers,
         EXPORT_READY,
         &[("download_url", download_url), ("expires", &expires)],
     )
@@ -107,9 +109,11 @@ pub async fn send_export_ready(
 
 /// "Old versions are going." Repeats daily while the purge keeps running, and
 /// carries the link that ends it.
+#[allow(clippy::too_many_arguments)]
 pub async fn send_storage_purge_started(
     cfg: &EmailConfig,
     to: &str,
+    offers: Option<uuid::Uuid>,
     used: i64,
     limit: i64,
     deleted_versions: usize,
@@ -120,6 +124,7 @@ pub async fn send_storage_purge_started(
     send(
         cfg,
         to,
+        offers,
         STORAGE_PURGE_STARTED,
         &[
             ("used", &fmt_bytes(used)),
@@ -139,6 +144,7 @@ pub async fn send_storage_purge_started(
 pub async fn send_storage_full(
     cfg: &EmailConfig,
     to: &str,
+    offers: Option<uuid::Uuid>,
     game_slug: &str,
     requested: i64,
     used: i64,
@@ -147,6 +153,7 @@ pub async fn send_storage_full(
     send(
         cfg,
         to,
+        offers,
         STORAGE_FULL,
         &[
             ("game", &prettify_slug(game_slug)),
@@ -160,9 +167,11 @@ pub async fn send_storage_full(
 }
 
 /// "This one game is over the per-game cap." Once per save.
+#[allow(clippy::too_many_arguments)]
 pub async fn send_save_too_large(
     cfg: &EmailConfig,
     to: &str,
+    offers: Option<uuid::Uuid>,
     game_slug: &str,
     size: i64,
     limit: i64,
@@ -172,6 +181,7 @@ pub async fn send_save_too_large(
     send(
         cfg,
         to,
+        offers,
         SAVE_TOO_LARGE,
         &[
             ("game", &prettify_slug(game_slug)),
@@ -189,6 +199,7 @@ pub async fn send_save_too_large(
 pub async fn send_archive_expiring(
     cfg: &EmailConfig,
     to: &str,
+    offers: Option<uuid::Uuid>,
     game_slug: &str,
     days: i64,
     archived_on: &str,
@@ -199,6 +210,7 @@ pub async fn send_archive_expiring(
     send(
         cfg,
         to,
+        offers,
         ARCHIVE_EXPIRING,
         &[
             ("game", &prettify_slug(game_slug)),
@@ -213,9 +225,11 @@ pub async fn send_archive_expiring(
 }
 
 /// "Every device slot is taken." Once, until one frees up.
+#[allow(clippy::too_many_arguments)]
 pub async fn send_devices_full(
     cfg: &EmailConfig,
     to: &str,
+    offers: Option<uuid::Uuid>,
     device_name: &str,
     device_os: &str,
     used: i64,
@@ -225,6 +239,7 @@ pub async fn send_devices_full(
     send(
         cfg,
         to,
+        offers,
         DEVICES_FULL,
         &[
             ("device_name", device_name),
@@ -279,11 +294,19 @@ fn prettify_slug(slug: &str) -> String {
 ///
 /// `Ok(false)` means "email is switched off", which is a normal state and not
 /// a failure. An error means the message was meant to go out and did not.
-async fn send(cfg: &EmailConfig, to: &str, tpl: Template, vars: &[(&str, &str)]) -> Result<bool> {
+/// `offers` is the reader's opt-out token when the message may carry an offer
+/// for Pro, and `None` when it must not: they said no, or they already pay.
+async fn send(
+    cfg: &EmailConfig,
+    to: &str,
+    offers: Option<uuid::Uuid>,
+    tpl: Template,
+    vars: &[(&str, &str)],
+) -> Result<bool> {
     if !is_configured(cfg) {
         return Ok(false);
     }
-    let msg = render(tpl, vars);
+    let msg = render(tpl, vars, offers);
     let client = reqwest::Client::new();
     let payload = serde_json::json!({
         "from": cfg.from,
@@ -357,7 +380,7 @@ struct Rendered {
 
 /// Fill `tpl` in, wrap it in the layout, and split the subject off the text
 /// part's first line.
-fn render(tpl: Template, vars: &[(&str, &str)]) -> Rendered {
+fn render(tpl: Template, vars: &[(&str, &str)], offers: Option<uuid::Uuid>) -> Rendered {
     let (subject, body_text) = split_subject(tpl.text);
     let notice_url = if tpl.notice.is_empty() {
         format!("{SITE}/")
@@ -385,11 +408,61 @@ fn render(tpl: Template, vars: &[(&str, &str)]) -> Rendered {
         .replace("{{preheader}}", &html_escape(preheader))
         .replace("{{notice_url}}", &html_escape(&notice_url));
 
+    // Offers last, over the assembled message, because the footer's opt-out
+    // line lives in the layout and has to come and go with the pitch it
+    // refers to.
+    let offers_url = offers
+        .map(|t| format!("{SITE}/notices/no-offers?t={t}"))
+        .unwrap_or_default();
+    let text = collapse_blank_lines(&offer_sections(&text, offers.is_some()))
+        .replace("{{offers_url}}", &offers_url);
+    let html = offer_sections(&html, offers.is_some())
+        .replace("{{offers_url}}", &html_escape(&offers_url));
+
     Rendered {
         subject,
         text,
         html,
     }
+}
+
+/// Keep or drop every `{{#offer}}...{{/offer}}` section.
+///
+/// Everything that sells Pro sits inside one: the green block, the one-line
+/// pitch in the export mail, and the footer line that offers the opt-out.
+/// Dropping them is what "no offers" means, and the notice around them is left
+/// whole. An unclosed section runs to the end of the message, so a template
+/// mistake can only ever hide too much from someone who opted out, never show
+/// them an offer.
+fn offer_sections(s: &str, keep: bool) -> String {
+    const OPEN: &str = "{{#offer}}";
+    const CLOSE: &str = "{{/offer}}";
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(a) = rest.find(OPEN) {
+        out.push_str(&rest[..a]);
+        let inner = &rest[a + OPEN.len()..];
+        let (section, after) = match inner.find(CLOSE) {
+            Some(b) => (&inner[..b], &inner[b + CLOSE.len()..]),
+            None => (inner, ""),
+        };
+        if keep {
+            out.push_str(section);
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out
+}
+
+/// A dropped section leaves the blank lines that framed it behind. In HTML
+/// nobody sees them; in the text part they read as a hole.
+fn collapse_blank_lines(s: &str) -> String {
+    let mut out = s.to_string();
+    while out.contains("\n\n\n") {
+        out = out.replace("\n\n\n", "\n\n");
+    }
+    out
 }
 
 /// First line is the subject; the rest, past the blank line, is the body.
@@ -437,6 +510,7 @@ mod tests {
                 ("download_url", "https://r2.example/x.zip?sig=a&b=c"),
                 ("expires", "2026-09-25T10:40:57Z"),
             ],
+            Some(TOKEN),
         );
         assert_eq!(r.subject, "Your Hoard data export is ready");
         for part in [&r.text, &r.html, &r.subject] {
@@ -493,6 +567,7 @@ mod tests {
                 ("plan", "Free"),
                 ("pro_limit", "10 GB"),
             ],
+            Some(TOKEN),
         );
         assert_eq!(r.subject, "Command & Conquer is too big to back up");
         assert!(r.html.contains("Command &amp; Conquer"));
@@ -504,9 +579,29 @@ mod tests {
 
     /// Every template ships complete: a placeholder nobody fills goes to a user
     /// verbatim, and the only way to catch that is to render them all.
-    #[test]
-    fn every_template_renders_with_its_callers_values() {
-        let cases: Vec<(Template, Vec<(&str, &str)>)> = vec![
+    const TOKEN: uuid::Uuid = uuid::Uuid::from_u128(0x6f1c2a9e_0000_4000_8000_000000000042);
+
+    /// Every notice, with the values its caller passes. Export is in the list
+    /// because it carries an offer too.
+    fn cases() -> Vec<(Template, Vec<(&'static str, &'static str)>)> {
+        vec![
+            (
+                EXPORT_READY,
+                vec![
+                    ("download_url", "https://r2.example/x.zip"),
+                    ("expires", "2026-09-25T10:40:57Z"),
+                ],
+            ),
+            (
+                SAVE_TOO_LARGE,
+                vec![
+                    ("game", "Factorio"),
+                    ("size", "1.4 GB"),
+                    ("limit", "1 GB"),
+                    ("plan", "Free"),
+                    ("pro_limit", "10 GB"),
+                ],
+            ),
             (
                 STORAGE_PURGE_STARTED,
                 vec![
@@ -549,15 +644,56 @@ mod tests {
                     ("plan", "Free"),
                 ],
             ),
-        ];
-        for (tpl, vars) in cases {
-            let r = render(tpl, &vars);
+        ]
+    }
+
+    #[test]
+    fn every_template_renders_with_its_callers_values() {
+        for (tpl, vars) in cases() {
+            let r = render(tpl, &vars, Some(TOKEN));
             assert!(!r.subject.is_empty());
             for part in [&r.text, &r.html] {
                 assert!(!part.contains("{{"), "unfilled placeholder: {part}");
                 assert!(part.contains("hoard.services/pricing"), "no Pro pitch");
+                assert!(
+                    part.contains(&format!("/notices/no-offers?t={TOKEN}")),
+                    "an offer without the way to refuse it"
+                );
             }
         }
+    }
+
+    /// The refusal the law requires has to actually hold: someone who turned
+    /// offers off gets every notice whole and not one word about Pro, in either
+    /// part, including the footer line that would offer the opt-out again.
+    #[test]
+    fn opted_out_readers_get_the_notice_and_no_offer() {
+        for (tpl, vars) in cases() {
+            let r = render(tpl, &vars, None);
+            for part in [&r.text, &r.html] {
+                assert!(!part.contains("{{"), "leftover marker: {part}");
+                assert!(!part.contains("pricing"), "offer left in: {part}");
+                assert!(!part.contains("HOARD PRO"), "offer left in: {part}");
+                assert!(!part.contains("no-offers"), "opt-out link left in");
+                // The service half is intact.
+                assert!(part.contains("/notices/"), "lost the notice link");
+            }
+            assert!(!r.text.contains("\n\n\n"), "a hole where the offer was");
+            // What remains is still well-formed rows.
+            assert_eq!(
+                r.html.matches("<tr>").count(),
+                r.html.matches("</tr>").count()
+            );
+        }
+    }
+
+    /// An unclosed section is a template mistake, and the safe failure is
+    /// hiding too much from someone who opted out, never showing them an offer.
+    #[test]
+    fn an_unclosed_offer_section_hides_to_the_end() {
+        assert_eq!(offer_sections("a {{#offer}}b{{/offer}} c", false), "a  c");
+        assert_eq!(offer_sections("a {{#offer}}b{{/offer}} c", true), "a b c");
+        assert_eq!(offer_sections("a {{#offer}}b c", false), "a ");
     }
 
     #[test]

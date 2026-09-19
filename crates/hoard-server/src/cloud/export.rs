@@ -274,15 +274,27 @@ async fn notify_by_email(
     if !email::is_configured(cfg) {
         return Ok(());
     }
-    let to: Option<String> = sqlx::query_scalar("SELECT email FROM profiles WHERE user_id = $1")
-        .bind(user_id)
-        .fetch_optional(&state.pool)
-        .await?;
-    let Some(to) = to.filter(|e| !e.is_empty()) else {
+    let row: Option<(String, String, Option<OffsetDateTime>, Uuid)> = sqlx::query_as(
+        "SELECT email, plan, offers_opt_out_at, offers_token FROM profiles WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((to, plan, opted_out, token)) = row else {
         return Ok(());
     };
+    if to.is_empty() {
+        return Ok(());
+    }
+    // Pro gets this mail too, being a reply to something they asked for, but
+    // never the line that sells them the plan they already have. Nor does
+    // anyone who turned offers off.
+    let free = crate::cloud::plans::Plan::from_str(&plan)
+        .unwrap_or(crate::cloud::plans::Plan::Free)
+        == crate::cloud::plans::Plan::Free;
+    let offers = (free && opted_out.is_none()).then_some(token);
     let link = state.r2.presign_get(key, Some(LINK_TTL)).await?;
-    email::send_export_ready(cfg, &to, &link.url, expires).await?;
+    email::send_export_ready(cfg, &to, offers, &link.url, expires).await?;
     Ok(())
 }
 
