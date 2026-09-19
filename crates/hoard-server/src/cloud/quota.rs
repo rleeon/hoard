@@ -257,9 +257,15 @@ pub fn quota_response(info: &QuotaInfo, requested: u64, upgrade_url: String) -> 
 
 /// Helper used by upload handlers: load + check + return a quota-shaped
 /// 402 response if exceeded.
+///
+/// `save_id` only ever reaches the email, which names the backup that was
+/// turned away rather than claiming the account is full: this rejects an upload
+/// that does not *fit*, which happens with most of a plan still free. The name
+/// is resolved from it later, off the request path.
 pub async fn check_storage(
     state: &CloudState,
     user_id: Uuid,
+    save_id: &str,
     requested: u64,
 ) -> Result<QuotaInfo, Response> {
     let (limits, info) = match load(&state.pool, user_id).await {
@@ -281,6 +287,8 @@ pub async fn check_storage(
         crate::cloud::notify::storage_full(
             state,
             user_id,
+            save_id.to_string(),
+            requested as i64,
             info.used_bytes as i64,
             limits.storage_bytes as i64,
         );

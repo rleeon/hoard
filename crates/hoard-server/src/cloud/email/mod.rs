@@ -105,7 +105,8 @@ pub async fn send_export_ready(
     .await
 }
 
-/// "You are at 80%, versions are going." Sent once per crossing.
+/// "Old versions are going." Repeats daily while the purge keeps running, and
+/// carries the link that ends it.
 pub async fn send_storage_purge_started(
     cfg: &EmailConfig,
     to: &str,
@@ -113,6 +114,7 @@ pub async fn send_storage_purge_started(
     limit: i64,
     deleted_versions: usize,
     deleted_games: usize,
+    mute_token: uuid::Uuid,
 ) -> Result<bool> {
     let percent = if limit > 0 { used * 100 / limit } else { 100 };
     send(
@@ -125,18 +127,34 @@ pub async fn send_storage_purge_started(
             ("percent", &percent.to_string()),
             ("deleted_versions", &deleted_versions.to_string()),
             ("deleted_games", &deleted_games.to_string()),
+            ("mute_url", &format!("{SITE}/notices/mute?t={mute_token}")),
         ],
     )
     .await
 }
 
-/// "Backups have stopped." The 402, once.
-pub async fn send_storage_full(cfg: &EmailConfig, to: &str, used: i64, limit: i64) -> Result<bool> {
+/// "This backup did not fit." The 402, once, and it names the game rather than
+/// claiming the account is full: the quota check rejects an upload that does
+/// not fit, which can happen with most of the plan still free.
+pub async fn send_storage_full(
+    cfg: &EmailConfig,
+    to: &str,
+    game_slug: &str,
+    requested: i64,
+    used: i64,
+    limit: i64,
+) -> Result<bool> {
     send(
         cfg,
         to,
         STORAGE_FULL,
-        &[("used", &fmt_bytes(used)), ("limit", &fmt_bytes(limit))],
+        &[
+            ("game", &prettify_slug(game_slug)),
+            ("requested", &fmt_bytes(requested)),
+            ("used", &fmt_bytes(used)),
+            ("limit", &fmt_bytes(limit)),
+            ("free", &fmt_bytes((limit - used).max(0))),
+        ],
     )
     .await
 }
@@ -159,7 +177,7 @@ pub async fn send_save_too_large(
             ("game", &prettify_slug(game_slug)),
             ("size", &fmt_bytes(size)),
             ("limit", &fmt_bytes(limit)),
-            ("plan", plan),
+            ("plan", &prettify_slug(plan)),
             ("pro_limit", &fmt_bytes(pro_limit)),
         ],
     )
@@ -213,7 +231,7 @@ pub async fn send_devices_full(
             ("device_os", device_os),
             ("used", &used.to_string()),
             ("limit", &limit.to_string()),
-            ("plan", plan),
+            ("plan", &prettify_slug(plan)),
         ],
     )
     .await
@@ -261,12 +279,7 @@ fn prettify_slug(slug: &str) -> String {
 ///
 /// `Ok(false)` means "email is switched off", which is a normal state and not
 /// a failure. An error means the message was meant to go out and did not.
-async fn send(
-    cfg: &EmailConfig,
-    to: &str,
-    tpl: Template,
-    vars: &[(&str, &str)],
-) -> Result<bool> {
+async fn send(cfg: &EmailConfig, to: &str, tpl: Template, vars: &[(&str, &str)]) -> Result<bool> {
     if !is_configured(cfg) {
         return Ok(false);
     }
@@ -358,7 +371,10 @@ fn render(tpl: Template, vars: &[(&str, &str)]) -> Rendered {
     // The line most clients show next to the subject. Taking it from the text
     // part keeps it honest: it is the message's own first sentence, never a
     // separate string somebody forgets to update.
-    let preheader = body_text.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
+    let preheader = body_text
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("");
 
     let text = LAYOUT_TEXT
         .replace("{{body}}", body_text.trim_end())
@@ -389,7 +405,11 @@ fn split_subject(text: &str) -> (&str, &str) {
 fn fill(s: &str, vars: &[(&str, &str)], escape: bool) -> String {
     let mut out = s.to_string();
     for (k, v) in vars {
-        let v = if escape { html_escape(v) } else { (*v).to_string() };
+        let v = if escape {
+            html_escape(v)
+        } else {
+            (*v).to_string()
+        };
         out = out.replace(&format!("{{{{{k}}}}}"), &v);
     }
     out
@@ -495,9 +515,19 @@ mod tests {
                     ("percent", "86"),
                     ("deleted_versions", "6"),
                     ("deleted_games", "2"),
+                    ("mute_url", "https://hoard.services/notices/mute?t=abc"),
                 ],
             ),
-            (STORAGE_FULL, vec![("used", "2 GB"), ("limit", "2 GB")]),
+            (
+                STORAGE_FULL,
+                vec![
+                    ("game", "Factorio"),
+                    ("requested", "1.4 GB"),
+                    ("used", "1.8 GB"),
+                    ("limit", "2 GB"),
+                    ("free", "200 MB"),
+                ],
+            ),
             (
                 ARCHIVE_EXPIRING,
                 vec![

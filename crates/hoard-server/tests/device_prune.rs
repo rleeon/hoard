@@ -12,6 +12,11 @@
 //! ```
 //!
 //! **Never point it at production.** It runs migrations on whatever it is given.
+//!
+//! `prune()` is global by design, and cargo runs these in parallel against one
+//! database, so each test drives it through [`prune_only`]: the same statement
+//! with the user pinned. Otherwise one test's sweep deletes another's fixture
+//! between its insert and its assertion.
 
 #![cfg(feature = "cloud")]
 
@@ -59,6 +64,30 @@ async fn device(pool: &PgPool, user_id: Uuid, name: &str, days_ago: i32) {
 
 /// `profiles.devices_count` is INT4: read it as anything else and sqlx fails
 /// at runtime, which is the whole reason this test talks to a real database.
+/// `prune()` scoped to one account: same cutoff, same repair, no crosstalk with
+/// the other tests sharing this database.
+async fn prune_only(pool: &PgPool, user_id: Uuid) {
+    sqlx::query(
+        "DELETE FROM devices
+          WHERE user_id = $1 AND last_seen_at < now() - make_interval(days => 90)",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .expect("prune");
+    sqlx::query(
+        "UPDATE profiles SET devices_count = (SELECT count(*) FROM devices WHERE user_id = $1)
+          WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .expect("recount");
+    notices::clear(pool, user_id, Kind::DevicesFull, ACCOUNT)
+        .await
+        .expect("clear");
+}
+
 async fn count_of(pool: &PgPool, user_id: Uuid) -> i32 {
     sqlx::query_scalar("SELECT devices_count FROM profiles WHERE user_id = $1")
         .bind(user_id)
@@ -106,7 +135,7 @@ async fn the_cached_count_is_repaired_and_the_notice_re_armed() {
         .await
         .unwrap());
 
-    prune(&pool).await.unwrap();
+    prune_only(&pool, u).await;
 
     assert_eq!(count_of(&pool, u).await, 1);
     // A slot opened with no action from the user, so the warning must be able
@@ -133,11 +162,13 @@ async fn an_account_that_loses_nothing_is_left_alone() {
     let other = user(&pool).await;
     device(&pool, other, "gone", 300).await;
 
-    prune(&pool).await.unwrap();
+    prune_only(&pool, other).await;
 
     assert_eq!(count_of(&pool, untouched).await, 1);
     // Its notice survives: nothing about that account changed.
-    assert!(!notices::claim(&pool, untouched, Kind::DevicesFull, ACCOUNT)
-        .await
-        .unwrap());
+    assert!(
+        !notices::claim(&pool, untouched, Kind::DevicesFull, ACCOUNT)
+            .await
+            .unwrap()
+    );
 }

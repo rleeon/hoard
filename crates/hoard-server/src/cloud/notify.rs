@@ -31,19 +31,34 @@ use uuid::Uuid;
 const ARCHIVE_WARN_DAYS: i64 = 3;
 
 /// Email config plus the address, or `None` when there is nothing to do:
-/// email switched off, no profile, or a profile with no address.
+/// email switched off, no profile, a profile with no address, or a paying one.
+///
+/// **Pro accounts get none of these.** Every notice here ends in a pitch for
+/// the plan they already bought, and the numbers around it read as nonsense to
+/// them ("100 GB instead of 100 GB"). Their copy of the same information is in
+/// the app, where it belongs. The one mail Pro still receives is the export
+/// link, which is a reply to something they asked for and does not come
+/// through here.
 async fn prepare(state: &CloudState, user_id: Uuid) -> Option<(EmailConfig, String)> {
     let cfg = state.config.cloud.as_ref().map(|c| c.email.clone())?;
     if !email::is_configured(&cfg) {
         return None;
     }
-    let to: Option<String> = sqlx::query_scalar("SELECT email FROM profiles WHERE user_id = $1")
-        .bind(user_id)
-        .fetch_optional(&state.pool)
-        .await
-        .ok()
-        .flatten();
-    Some((cfg, to.filter(|e| !e.is_empty())?))
+    let row: Option<(String, String)> =
+        sqlx::query_as("SELECT email, plan FROM profiles WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_optional(&state.pool)
+            .await
+            .ok()
+            .flatten();
+    let (to, plan) = row?;
+    if Plan::from_str(&plan).unwrap_or(Plan::Free) != Plan::Free {
+        return None;
+    }
+    if to.is_empty() {
+        return None;
+    }
+    Some((cfg, to))
 }
 
 /// Log the outcome and, on failure, re-arm the notice.
@@ -79,6 +94,18 @@ async fn claimed(state: &CloudState, user_id: Uuid, kind: Kind, scope: &str) -> 
     }
 }
 
+/// Shortest gap between two "we deleted more of your history" emails.
+///
+/// This notice repeats on purpose: unlike the others it describes something
+/// that happened *again* today, and a purge that runs every day is deleting
+/// history every day. One a day is the ceiling, and the link in the message
+/// ends it for good.
+const PURGE_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// How long without a purge before the notice, and any mute on it, expire.
+/// A fortnight of quiet means the situation passed; the next purge is news.
+pub const PURGE_NOTICE_TTL: Duration = Duration::from_secs(14 * 24 * 60 * 60);
+
 /// The purge just deleted history to make room.
 pub fn storage_purge_started(
     state: &CloudState,
@@ -94,9 +121,23 @@ pub fn storage_purge_started(
             return;
         };
         let kind = Kind::StoragePurgeStarted;
-        if !claimed(&state, user_id, kind, notices::ACCOUNT).await {
-            return;
-        }
+        let token = match notices::claim_periodic(
+            &state.pool,
+            user_id,
+            kind,
+            notices::ACCOUNT,
+            PURGE_COOLDOWN,
+        )
+        .await
+        {
+            Ok(Some(t)) => t,
+            // Muted, or already sent today.
+            Ok(None) => return,
+            Err(e) => {
+                tracing::warn!(%user_id, error = %e, "purge notice claim failed");
+                return;
+            }
+        };
         let r = email::send_storage_purge_started(
             &cfg,
             &to,
@@ -104,14 +145,32 @@ pub fn storage_purge_started(
             limit,
             deleted_versions,
             deleted_games,
+            token,
         )
         .await;
-        settle(&state, user_id, kind, notices::ACCOUNT, r).await;
+        // No `settle`: a failed send must not delete the row, or the next
+        // upload in the same minute would try again and the daily ceiling would
+        // stop meaning anything. It just waits for tomorrow.
+        if let Err(e) = r {
+            tracing::warn!(%user_id, error = %e, "purge notice email failed");
+        }
     });
 }
 
 /// An upload was rejected for want of space.
-pub fn storage_full(state: &CloudState, user_id: Uuid, used: i64, limit: i64) {
+///
+/// It says which backup was turned away, because that is the true statement:
+/// the quota check rejects an upload that does not *fit*, which happens long
+/// before the account is literally full. "Your storage is full" over a table
+/// reading 600 MB of 2 GB is how you lose someone's trust in one message.
+pub fn storage_full(
+    state: &CloudState,
+    user_id: Uuid,
+    save_id: String,
+    requested: i64,
+    used: i64,
+    limit: i64,
+) {
     let state = state.clone();
     tokio::spawn(async move {
         let Some((cfg, to)) = prepare(&state, user_id).await else {
@@ -121,12 +180,24 @@ pub fn storage_full(state: &CloudState, user_id: Uuid, used: i64, limit: i64) {
         if !claimed(&state, user_id, kind, notices::ACCOUNT).await {
             return;
         }
-        let r = email::send_storage_full(&cfg, &to, used, limit).await;
+        // Resolved here rather than at the call site: this runs once per
+        // account per fill, while `check_storage` runs on every upload.
+        let slug: Option<String> =
+            sqlx::query_scalar("SELECT game_slug FROM saves WHERE id = $1 AND user_id = $2")
+                .bind(&save_id)
+                .bind(user_id)
+                .fetch_optional(&state.pool)
+                .await
+                .ok()
+                .flatten();
+        let game = slug.unwrap_or_else(|| save_id.clone());
+        let r = email::send_storage_full(&cfg, &to, &game, requested, used, limit).await;
         settle(&state, user_id, kind, notices::ACCOUNT, r).await;
     });
 }
 
 /// One save is over the per-game cap, so only that game stopped syncing.
+#[allow(clippy::too_many_arguments)]
 pub fn save_too_large(
     state: &CloudState,
     user_id: Uuid,
@@ -142,6 +213,20 @@ pub fn save_too_large(
         let Some((cfg, to)) = prepare(&state, user_id).await else {
             return;
         };
+        // The cap check runs before `init_upload` resolves the save, so the id
+        // is whatever the client sent. Without this, N invented ids are N
+        // emails and N rows nothing ever cleans up.
+        let owned: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM saves WHERE id = $1 AND user_id = $2)",
+        )
+        .bind(&save_id)
+        .bind(user_id)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(false);
+        if !owned {
+            return;
+        }
         let kind = Kind::SaveTooLarge;
         if !claimed(&state, user_id, kind, &save_id).await {
             return;
@@ -244,12 +329,10 @@ pub fn spawn_daily(state: CloudState) {
 /// threshold. Driven off `email_notices` rather than off `profiles`, so the
 /// work is proportional to the few users who were ever warned.
 async fn rearm_storage(state: &CloudState) -> Result<(), sqlx::Error> {
-    let warned: Vec<(Uuid,)> = sqlx::query_as(
-        "SELECT DISTINCT user_id FROM email_notices
-          WHERE kind IN ('storage_purge_started', 'storage_full')",
-    )
-    .fetch_all(&state.pool)
-    .await?;
+    let warned: Vec<(Uuid,)> =
+        sqlx::query_as("SELECT DISTINCT user_id FROM email_notices WHERE kind = 'storage_full'")
+            .fetch_all(&state.pool)
+            .await?;
 
     for (user_id,) in warned {
         let row: Option<(String, i64, Option<i64>, Option<time::OffsetDateTime>)> = sqlx::query_as(
@@ -272,9 +355,18 @@ async fn rearm_storage(state: &CloudState) -> Result<(), sqlx::Error> {
         if used > (limit as f64 * purge_threshold(plan)) as i64 {
             continue;
         }
-        for kind in [Kind::StoragePurgeStarted, Kind::StorageFull] {
-            notices::clear(&state.pool, user_id, kind, notices::ACCOUNT).await?;
-        }
+        notices::clear(&state.pool, user_id, Kind::StorageFull, notices::ACCOUNT).await?;
+    }
+    // The purge notice is not re-armed by going under the threshold: it is
+    // periodic, and its row expires on its own once nothing refreshes it. That
+    // also lifts any mute the reader set while it was happening.
+    let expired =
+        notices::expire_stale(&state.pool, Kind::StoragePurgeStarted, PURGE_NOTICE_TTL).await?;
+    if expired > 0 {
+        tracing::info!(
+            rows = expired,
+            "purge notices expired after a quiet fortnight"
+        );
     }
     rearm_oversized_saves(state).await
 }
@@ -334,11 +426,16 @@ async fn warn_expiring_archives(state: &CloudState) -> Result<(), sqlx::Error> {
     .await?;
 
     for (save_id, user_id, game_slug, archived_at) in due {
-        let versions: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM save_versions WHERE save_id = $1")
-                .bind(&save_id)
-                .fetch_one(&state.pool)
-                .await?;
+        // Live versions only. Counting soft-deleted or half-uploaded rows would
+        // put a number next to a size that filters them, and the two figures
+        // sit in the same table row of the email.
+        let versions: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM save_versions
+              WHERE save_id = $1 AND deleted_at IS NULL AND sha256 <> ''",
+        )
+        .bind(&save_id)
+        .fetch_one(&state.pool)
+        .await?;
         // The bytes that actually disappear: this save's frozen blobs, the same
         // sum `reactivate_save` charges back against the quota.
         let size: Option<i64> = sqlx::query_scalar(

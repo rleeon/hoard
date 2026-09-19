@@ -76,13 +76,7 @@ pub async fn prune(pool: &PgPool) -> Result<u64, sqlx::Error> {
         .await?;
         // A slot just opened without the user doing anything, so the warning
         // about being full should be able to fire again.
-        notices::clear(
-            pool,
-            user_id,
-            notices::Kind::DevicesFull,
-            notices::ACCOUNT,
-        )
-        .await?;
+        notices::clear(pool, user_id, notices::Kind::DevicesFull, notices::ACCOUNT).await?;
     }
     Ok(deleted)
 }

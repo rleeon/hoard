@@ -1,9 +1,9 @@
   <tr><td style="padding:20px 32px 0;">
     <h1 style="margin:0;font-size:23px;line-height:1.25;color:#ffffff;font-weight:700;letter-spacing:-.01em;">Hoard is deleting your old versions</h1>
     <p style="margin:14px 0 0;font-size:15px;line-height:1.65;color:#a1a1aa;">
-      Your account crossed 80% of its limit. To keep new backups going, Hoard has started deleting the
-      <strong style="color:#ffffff;">oldest versions</strong> of your games. It will keep doing it every
-      time you run out of room.
+      Your account is at {{percent}}% of its limit, so Hoard is deleting the
+      <strong style="color:#ffffff;">oldest versions</strong> of your games to keep new backups going.
+      It will do it again every time you run out of room.
     </p>
   </td></tr>
   <tr><td style="padding:22px 32px 0;">
@@ -44,4 +44,9 @@
   </td></tr>
   <tr><td style="padding:22px 32px 0;">
     <a href="https://hoard.services/account" style="display:inline-block;color:#10b981;text-decoration:none;font-size:15px;font-weight:600;">Or free up space by hand &rarr;</a>
+    <p style="margin:16px 0 0;font-size:13px;line-height:1.6;color:#6b7280;">
+      Getting this every day?
+      <a href="{{mute_url}}" style="color:#8a8a92;text-decoration:underline;">Stop these emails</a>.
+      They come back on their own if a fortnight passes without a purge.
+    </p>
   </td></tr>

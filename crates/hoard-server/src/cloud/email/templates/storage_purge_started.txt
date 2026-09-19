@@ -1,8 +1,8 @@
 Hoard is deleting your old versions
 
-Your account crossed 80% of its limit. To keep new backups going, Hoard has
-started deleting the oldest versions of your games. It will keep doing it every
-time you run out of room.
+Your account is at {{percent}}% of its limit, so Hoard is deleting the oldest
+versions of your games to keep new backups going. It will do it again every time
+you run out of room.
 
   Used:             {{used}} of {{limit}} ({{percent}}%)
   Deleted just now: {{deleted_versions}} versions, {{deleted_games}} games
@@ -21,3 +21,6 @@ cancel later.
   19.99 EUR a year, two months free. Cancel whenever.
 
 Or free up space by hand: https://hoard.services/account
+
+Getting this every day? Stop these emails: {{mute_url}}
+(They come back on their own if a fortnight passes without a purge.)

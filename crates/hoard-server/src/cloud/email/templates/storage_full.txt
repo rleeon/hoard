@@ -1,22 +1,23 @@
-Your storage is full. Backups have stopped.
+{{game}} could not be backed up
 
-There is no room left, so new backups are being rejected. Everything already
-backed up is safe and still restorable, but from this moment on your saves are
-not being kept. Every hour you play is an hour you could lose.
+Your last backup of {{game}} was turned away: it needs {{requested}} and your
+account has {{free}} free.
 
-  Used:   {{used}} of {{limit}}
-  Status: uploads paused
+  {{game}} needs: {{requested}}
+  You have free: {{free}} of {{limit}}
 
-Deleting old versions could not free enough this time. That usually means one
-or two games are holding most of the space, and trimming them buys you weeks,
-not months.
+Nothing you already backed up has been touched. Hoard will keep trying, and the
+moment there is room the backup goes through on its own. Until then, this game
+is not protected.
 
-HOARD PRO - backups restart the second you upgrade
-100 GB instead of {{limit}}. Nothing to delete, nothing to choose between, no
-afternoon spent deciding which game deserves to survive. Less than a coffee a
-month.
+Deleting old versions could not free enough this time, which usually means one
+or two games are holding most of the space.
 
-  Turn backups back on, 1.99 EUR/mo: https://hoard.services/pricing
+HOARD PRO - 100 GB, fifty times the room you have now
+Nothing to delete, nothing to choose between, no afternoon spent deciding which
+game deserves to survive. Less than a coffee a month.
+
+  Go Pro, 1.99 EUR/mo: https://hoard.services/pricing
   19.99 EUR a year, two months free. Cancel whenever.
 
-Or delete games to make room: https://hoard.services/account
+Or free up space: https://hoard.services/account

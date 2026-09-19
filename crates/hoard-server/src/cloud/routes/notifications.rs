@@ -196,3 +196,41 @@ pub async fn dismiss(
         Err(e) => Err(CloudError::from(e)),
     }
 }
+
+// ---- muting a service email
+
+/// Body of `POST /v1/notices/mute`. The token is the whole credential: it comes
+/// out of a link in an email, identifies one row, and says nothing about whose
+/// account it is.
+#[derive(Debug, serde::Deserialize)]
+pub struct MuteIn {
+    pub token: Uuid,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MuteOut {
+    /// True when this call is what silenced it. False for an unknown token and
+    /// for one that was already muted, on purpose: the page says the same thing
+    /// either way, and a caller cannot use the answer to tell a real token from
+    /// an invented one.
+    pub muted: bool,
+}
+
+/// `POST /v1/notices/mute`: stop one repeating service email.
+///
+/// Unauthenticated, because the reader is in their mail client and asking them
+/// to sign in first would make the link useless. The mute is not permanent: the
+/// daily sweep drops the row once nothing has refreshed it for a fortnight, so
+/// silence lasts exactly as long as the situation that earned it.
+pub async fn mute(
+    State(state): State<CloudState>,
+    Json(body): Json<MuteIn>,
+) -> Result<Json<MuteOut>, CloudError> {
+    let kind = crate::cloud::notices::mute_by_token(&state.pool, body.token).await?;
+    if let Some(kind) = &kind {
+        tracing::info!(kind, "service email muted from its link");
+    }
+    Ok(Json(MuteOut {
+        muted: kind.is_some(),
+    }))
+}

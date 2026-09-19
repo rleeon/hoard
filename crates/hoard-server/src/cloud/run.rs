@@ -5,8 +5,7 @@ use crate::cloud::{
     abandoned, account_purge, archive,
     auth::{require_active_account, require_cloud_auth, JwksCache},
     auth_mirror, bandwidth, compress, db, device_prune, discord, export, incidents, maintenance,
-    memwatch, notify,
-    polar, pollguard, r2,
+    memwatch, notify, polar, pollguard, r2,
     routes::{
         admin as admin_routes, blob_proxy, checkout, device as device_routes,
         entitlements as ent_routes, events as event_routes, logs as log_routes, me,
@@ -249,6 +248,11 @@ pub async fn run(cfg: Config) -> Result<()> {
         // Decompressing blob download proxy: the HMAC token in the path is
         // the auth, same trust model as a presigned URL.
         .route("/v1/cloud/blob/:token", get(blob_proxy::download))
+        // Stop one repeating service email, from the link inside it. The token
+        // in the body is the credential, same trust model as the blob proxy
+        // above: asking someone in their mail client to sign in first would
+        // make the link pointless.
+        .route("/v1/notices/mute", post(notification_routes::mute))
         // Health is *also* available unauthed in cloud mode so Fly can probe it.
         .route("/v1/health", get(cloud_health));
 

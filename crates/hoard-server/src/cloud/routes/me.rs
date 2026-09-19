@@ -658,28 +658,6 @@ async fn register_device(
     let os = header("x-hoard-device-os").filter(|s| !s.is_empty());
     let app_version = header("x-hoard-app-version").filter(|s| !s.is_empty());
 
-    let known: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM devices WHERE user_id = $1 AND fingerprint = $2)",
-    )
-    .bind(user.user_id)
-    .bind(fingerprint)
-    .fetch_one(&state.pool)
-    .await?;
-
-    // `devices_count` is INT4, so it decodes as i32 and nothing but a runtime
-    // error says otherwise: this is `query_as`, not the checked macro.
-    let (plan, first_pro_at, count): (String, Option<time::OffsetDateTime>, i32) = sqlx::query_as(
-        "SELECT plan, first_pro_at, devices_count FROM profiles WHERE user_id = $1",
-    )
-    .bind(user.user_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .unwrap_or_else(|| ("free".to_string(), None, 0));
-    let count = count as i64;
-    let plan = crate::cloud::plans::Plan::from_str(&plan).unwrap_or(crate::cloud::plans::Plan::Free);
-    let limit = crate::cloud::plans::resolved_devices_limit(plan, first_pro_at.is_some());
-    let full = limit != u32::MAX && count >= limit as i64;
-
     // The notice rides with the brake, never ahead of it. Its words are "a new
     // machine cannot join until a slot frees up", and with the brake off that
     // is simply false: the machine joins and the account sits at 4 of 3.
@@ -689,6 +667,40 @@ async fn register_device(
         .as_ref()
         .is_some_and(|c| c.devices_enforce);
 
+    // One round trip, and it counts **rows** rather than trusting
+    // `profiles.devices_count`. The cached column is repaired in a separate
+    // statement by three different writers, so a sweep interrupted between the
+    // delete and the repair would leave a user with two machines, a cached 3,
+    // and no way back into their own account. Skipped entirely when the brake
+    // is off: this sits on `/v1/me`, which every agent polls every 60 seconds.
+    let (known, count) = if enforce {
+        let row: (bool, i64) = sqlx::query_as(
+            "SELECT EXISTS (SELECT 1 FROM devices WHERE user_id = $1 AND fingerprint = $2),
+                    (SELECT count(*) FROM devices WHERE user_id = $1)",
+        )
+        .bind(user.user_id)
+        .bind(fingerprint)
+        .fetch_one(&state.pool)
+        .await?;
+        row
+    } else {
+        (true, 0)
+    };
+
+    let (plan, first_pro_at): (String, Option<time::OffsetDateTime>) = if enforce {
+        sqlx::query_as("SELECT plan, first_pro_at FROM profiles WHERE user_id = $1")
+            .bind(user.user_id)
+            .fetch_optional(&state.pool)
+            .await?
+            .unwrap_or_else(|| ("free".to_string(), None))
+    } else {
+        ("free".to_string(), None)
+    };
+    let plan =
+        crate::cloud::plans::Plan::from_str(&plan).unwrap_or(crate::cloud::plans::Plan::Free);
+    let limit = crate::cloud::plans::resolved_devices_limit(plan, first_pro_at.is_some());
+    let full = limit != u32::MAX && count >= limit as i64;
+
     if !known && full {
         if enforce {
             crate::cloud::notify::devices_full(
@@ -696,7 +708,10 @@ async fn register_device(
                 user.user_id,
                 name.to_string(),
                 os.unwrap_or("Unknown").to_string(),
-                count,
+                // Clamped: a handful of accounts predate the allowance meaning
+                // anything, and "Devices: 6 of 3" reads as a broken counter
+                // rather than as a limit.
+                count.min(limit as i64),
                 limit as i64,
                 plan.as_str(),
             );
