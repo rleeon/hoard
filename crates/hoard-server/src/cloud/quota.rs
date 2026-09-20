@@ -258,13 +258,17 @@ pub fn quota_response(info: &QuotaInfo, requested: u64, upgrade_url: String) -> 
 /// Helper used by upload handlers: load + check + return a quota-shaped
 /// 402 response if exceeded.
 ///
-/// `save_id` only ever reaches the email, which names the backup that was
-/// turned away rather than claiming the account is full: this rejects an upload
-/// that does not *fit*, which happens with most of a plan still free. The name
-/// is resolved from it later, off the request path.
+/// `game_slug` and `save_id` only ever reach the email, which names the backup
+/// that was turned away rather than claiming the account is full: this rejects
+/// an upload that does not *fit*, which happens with most of a plan still free.
+///
+/// Both, because neither is always at hand: the upload routes carry the slug
+/// the client declared, while the content-addressed commit knows only the id of
+/// the row. Pass `""` for whichever is missing.
 pub async fn check_storage(
     state: &CloudState,
     user_id: Uuid,
+    game_slug: &str,
     save_id: &str,
     requested: u64,
 ) -> Result<QuotaInfo, Response> {
@@ -287,6 +291,7 @@ pub async fn check_storage(
         crate::cloud::notify::storage_full(
             state,
             user_id,
+            game_slug.to_string(),
             save_id.to_string(),
             requested as i64,
             info.used_bytes as i64,

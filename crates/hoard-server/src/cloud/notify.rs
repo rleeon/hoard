@@ -173,9 +173,11 @@ pub fn storage_purge_started(
 /// the quota check rejects an upload that does not *fit*, which happens long
 /// before the account is literally full. "Your storage is full" over a table
 /// reading 600 MB of 2 GB is how you lose someone's trust in one message.
+#[allow(clippy::too_many_arguments)]
 pub fn storage_full(
     state: &CloudState,
     user_id: Uuid,
+    game_slug: String,
     save_id: String,
     requested: i64,
     used: i64,
@@ -190,17 +192,25 @@ pub fn storage_full(
         if !claimed(&state, user_id, kind, notices::ACCOUNT).await {
             return;
         }
-        // Resolved here rather than at the call site: this runs once per
-        // account per fill, while `check_storage` runs on every upload.
-        let slug: Option<String> =
-            sqlx::query_scalar("SELECT game_slug FROM saves WHERE id = $1 AND user_id = $2")
+        // The name, in order of trust: what the client declared, then the row
+        // if the id happens to be the cloud one, and failing both a phrase that
+        // is at least true. Never the id itself: it is a UUID on this side and
+        // whatever the client invented on the other, and the first run of this
+        // notice put four of those in a subject line.
+        let mut game = game_slug;
+        if game.is_empty() {
+            game = sqlx::query_scalar("SELECT game_slug FROM saves WHERE id = $1 AND user_id = $2")
                 .bind(&save_id)
                 .bind(user_id)
                 .fetch_optional(&state.pool)
                 .await
                 .ok()
-                .flatten();
-        let game = slug.unwrap_or_else(|| save_id.clone());
+                .flatten()
+                .unwrap_or_default();
+        }
+        if game.is_empty() {
+            game = "one of your games".to_string();
+        }
         let r = email::send_storage_full(&cfg, &to, offers, &game, requested, used, limit).await;
         settle(&state, user_id, kind, notices::ACCOUNT, r).await;
     });

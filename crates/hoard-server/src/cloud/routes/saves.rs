@@ -179,21 +179,28 @@ pub async fn init_upload(
     }
 
     // 3. Storage quota.
-    let info =
-        match quota::check_storage(&state, user.user_id, &body.save_id, body.size_bytes).await {
-            Ok(i) => i,
-            Err(resp) => {
-                return Ok(paced_quota_reject(
-                    &state,
-                    user.user_id,
-                    &body.save_id,
-                    Some(&body.game_slug),
-                    body.size_bytes,
-                    resp,
-                )
-                .await);
-            }
-        };
+    let info = match quota::check_storage(
+        &state,
+        user.user_id,
+        &body.game_slug,
+        &body.save_id,
+        body.size_bytes,
+    )
+    .await
+    {
+        Ok(i) => i,
+        Err(resp) => {
+            return Ok(paced_quota_reject(
+                &state,
+                user.user_id,
+                &body.save_id,
+                Some(&body.game_slug),
+                body.size_bytes,
+                resp,
+            )
+            .await);
+        }
+    };
 
     // 4. Ensure the saves row exists. UPSERT semantics: the first version
     //    of a save creates it; subsequent versions just bump latest_version_num.
@@ -643,7 +650,15 @@ pub async fn cas_init(
         .await;
         return Ok(resp);
     }
-    let info = match quota::check_storage(&state, user.user_id, &body.save_id, new_bytes).await {
+    let info = match quota::check_storage(
+        &state,
+        user.user_id,
+        &body.game_slug,
+        &body.save_id,
+        new_bytes,
+    )
+    .await
+    {
         Ok(i) => i,
         Err(resp) => {
             tracing::warn!(
@@ -1153,7 +1168,9 @@ pub async fn cas_commit(
     // only saw client-declared sizes; this is the authoritative gate before we
     // reference (and charge) the blobs. On reject, best-effort delete the
     // orphaned blobs so a refused commit can't squat un-accounted R2 storage.
-    if let Err(resp) = quota::check_storage(&state, user.user_id, &save_id, new_bytes).await {
+    // No slug here: `cas_commit` is addressed by the row's own id, which is
+    // what the notice resolves the name from.
+    if let Err(resp) = quota::check_storage(&state, user.user_id, "", &save_id, new_bytes).await {
         let mut cleanup = Vec::with_capacity(actual_size.len());
         for sha in actual_size.keys() {
             let r2 = state.r2.clone();
