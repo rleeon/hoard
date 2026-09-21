@@ -69,6 +69,7 @@
     wrongPathSuspected,
   } from "../lib/stores/agent";
   import CardResizeHandle from "../lib/components/CardResizeHandle.svelte";
+  import { fmtDate, fmtNumber } from "../lib/utils/format";
 
   let report = $state<DetectionReport | null>(null);
   let tracked = $state<TrackedSave[]>([]);
@@ -213,7 +214,7 @@
    *  archived. Reads `$archivedSaves` so it re-derives when the map changes. */
   function purgeDate(saveId: string): string | null {
     const iso = $archivedSaves[saveId];
-    return iso ? new Date(iso).toLocaleDateString() : null;
+    return iso ? $fmtDate(iso) : null;
   }
 
   async function reactivate(save: TrackedSave) {
@@ -1095,7 +1096,7 @@
       <h1 class="font-display text-[28px] leading-tight font-semibold tracking-[-0.02em] text-zinc-50">{$_("library.title")}</h1>
       <p class="mt-2 text-sm text-zinc-400">
         {#if report}
-          {$_("library.subtitle_scanned", { values: { catalog: report.catalog_size.toLocaleString(), found: report.games.length } })}
+          {$_("library.subtitle_scanned", { values: { catalog: $fmtNumber(report.catalog_size), found: report.games.length } })}
           {#if report.steam_apps_found > 0}
             {$_("library.subtitle_steam_addendum", { values: { steam: report.steam_apps_found } })}
           {/if}
@@ -1129,7 +1130,7 @@
       <div class="mb-2 flex items-center justify-between text-xs text-zinc-400">
         <span>{$_("library.scanning_catalog")}</span>
         <span class="tabular-nums">
-          {progress.done.toLocaleString()} / {progress.total.toLocaleString()}
+          {$fmtNumber(progress.done)} / {$fmtNumber(progress.total)}
         </span>
       </div>
       <div class="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">

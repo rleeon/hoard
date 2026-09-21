@@ -45,8 +45,8 @@
   import { customNames } from "../stores/gameNames";
   import {
     formatBytes,
-    formatDateTime,
-    formatRelativeTime,
+    fmtDateTime,
+    fmtRelativeTime,
     prettifySlug,
   } from "../utils/format";
 
@@ -513,10 +513,10 @@
         {#if save.last_backup_at}
           <span class="min-w-0 text-right">
             <span class="block truncate font-medium text-zinc-200">
-              {formatRelativeTime(save.last_backup_at, now)}
+              {$fmtRelativeTime(save.last_backup_at, now)}
             </span>
             <span class="block text-[11px] tabular-nums text-zinc-500">
-              {formatDateTime(save.last_backup_at)}
+              {$fmtDateTime(save.last_backup_at)}
             </span>
           </span>
         {:else}

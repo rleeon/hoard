@@ -43,6 +43,7 @@
     X,
   } from "@lucide/svelte";
   import { tr, fmtBytes } from "./lib";
+  import { fmtDate } from "../utils/format";
   import { prefs } from "../stores/prefs";
 
   // ---- identity
@@ -74,7 +75,7 @@
       };
     }
     return {
-      name: tr({ es: "Sin sesión", en: "Signed out", de: "Nicht angemeldet", fr: "Déconnecté", it: "Non connesso", ja: "未ログイン", pt: "Sem sessão", zh: "未登录" }),
+      name: $tr({ es: "Sin sesión", en: "Signed out", de: "Nicht angemeldet", fr: "Déconnecté", it: "Non connesso", ja: "未ログイン", pt: "Sem sessão", zh: "未登录" }),
       sub: "—",
       avatar: null as string | null,
       cloud: false,
@@ -217,11 +218,11 @@
   const ROW_ORDER = [6, 5, 4, 3, 2, 1, 0];
   const WEEKDAYS = [
     "",
-    tr({ es: "vie", en: "Fri", de: "Fr", fr: "ven", it: "ven", ja: "金", pt: "sex", zh: "周五" }),
+    $tr({ es: "vie", en: "Fri", de: "Fr", fr: "ven", it: "ven", ja: "金", pt: "sex", zh: "周五" }),
     "",
-    tr({ es: "mié", en: "Wed", de: "Mi", fr: "mer", it: "mer", ja: "水", pt: "qua", zh: "周三" }),
+    $tr({ es: "mié", en: "Wed", de: "Mi", fr: "mer", it: "mer", ja: "水", pt: "qua", zh: "周三" }),
     "",
-    tr({ es: "lun", en: "Mon", de: "Mo", fr: "lun", it: "lun", ja: "月", pt: "seg", zh: "周一" }),
+    $tr({ es: "lun", en: "Mon", de: "Mo", fr: "lun", it: "lun", ja: "月", pt: "seg", zh: "周一" }),
     "",
   ];
 
@@ -275,7 +276,7 @@
       if (m !== last) {
         out.push({
           col,
-          label: first.date.toLocaleDateString(undefined, { month: "short" }),
+          label: $fmtDate(first.date, { month: "short" }),
         });
         last = m;
       }
@@ -284,7 +285,7 @@
   });
 
   function fmtDay(d: Date): string {
-    return d.toLocaleDateString(undefined, {
+    return $fmtDate(d, {
       day: "numeric",
       month: "short",
       year: "numeric",
@@ -440,10 +441,10 @@
     </div>
     <div>
       <h1 class="font-display text-2xl font-semibold tracking-tight text-zinc-50">
-        {tr({ es: "Tu año jugando", en: "Your year in play", de: "Dein Spielejahr", fr: "Ton année de jeu", it: "Il tuo anno di gioco", ja: "あなたのゲームの一年", pt: "Seu ano jogando", zh: "你的游戏年度" })}
+        {$tr({ es: "Tu año jugando", en: "Your year in play", de: "Dein Spielejahr", fr: "Ton année de jeu", it: "Il tuo anno di gioco", ja: "あなたのゲームの一年", pt: "Seu ano jogando", zh: "你的游戏年度" })}
       </h1>
       <p class="text-sm text-zinc-400">
-        {tr({
+        {$tr({
           es: "Tu resumen personal, con tus horas de todos tus equipos.",
           en: "Your personal recap, with your hours from every device.",
           de: "Deine persönliche Zusammenfassung, mit deinen Stunden von allen Geräten.",
@@ -499,11 +500,11 @@
             onclick={() => (revealed = !revealed)}
             class="grid h-4 w-4 shrink-0 place-items-center rounded text-zinc-500 transition hover:text-zinc-200"
             aria-label={revealed
-              ? tr({ es: "Ocultar correo", en: "Hide email", de: "E-Mail ausblenden", fr: "Masquer l'e-mail", it: "Nascondi email", ja: "メールアドレスを隠す", pt: "Ocultar e-mail", zh: "隐藏邮箱" })
-              : tr({ es: "Mostrar correo", en: "Show email", de: "E-Mail anzeigen", fr: "Afficher l'e-mail", it: "Mostra email", ja: "メールアドレスを表示", pt: "Mostrar e-mail", zh: "显示邮箱" })}
+              ? $tr({ es: "Ocultar correo", en: "Hide email", de: "E-Mail ausblenden", fr: "Masquer l'e-mail", it: "Nascondi email", ja: "メールアドレスを隠す", pt: "Ocultar e-mail", zh: "隐藏邮箱" })
+              : $tr({ es: "Mostrar correo", en: "Show email", de: "E-Mail anzeigen", fr: "Afficher l'e-mail", it: "Mostra email", ja: "メールアドレスを表示", pt: "Mostrar e-mail", zh: "显示邮箱" })}
             title={revealed
-              ? tr({ es: "Ocultar correo", en: "Hide email", de: "E-Mail ausblenden", fr: "Masquer l'e-mail", it: "Nascondi email", ja: "メールアドレスを隠す", pt: "Ocultar e-mail", zh: "隐藏邮箱" })
-              : tr({ es: "Mostrar correo", en: "Show email", de: "E-Mail anzeigen", fr: "Afficher l'e-mail", it: "Mostra email", ja: "メールアドレスを表示", pt: "Mostrar e-mail", zh: "显示邮箱" })}
+              ? $tr({ es: "Ocultar correo", en: "Hide email", de: "E-Mail ausblenden", fr: "Masquer l'e-mail", it: "Nascondi email", ja: "メールアドレスを隠す", pt: "Ocultar e-mail", zh: "隐藏邮箱" })
+              : $tr({ es: "Mostrar correo", en: "Show email", de: "E-Mail anzeigen", fr: "Afficher l'e-mail", it: "Mostra email", ja: "メールアドレスを表示", pt: "Mostrar e-mail", zh: "显示邮箱" })}
           >
             {#if revealed}<EyeOff size={11} />{:else}<Eye size={11} />{/if}
           </button>
@@ -515,19 +516,19 @@
     <div class="mt-4 grid grid-cols-3 gap-2 text-center">
       <div class="rounded-2xl bg-white/[0.03] px-2 py-2.5">
         <div class="flex items-center justify-center gap-1 text-[11px] uppercase tracking-wide text-zinc-500">
-          <Gamepad2 size={12} />{tr({ es: "Juegos", en: "Games", de: "Spiele", fr: "Jeux", it: "Giochi", ja: "ゲーム", pt: "Jogos", zh: "游戏" })}
+          <Gamepad2 size={12} />{$tr({ es: "Juegos", en: "Games", de: "Spiele", fr: "Jeux", it: "Giochi", ja: "ゲーム", pt: "Jogos", zh: "游戏" })}
         </div>
         <div class="mt-0.5 text-xl font-semibold text-zinc-100">{totalGames}</div>
       </div>
       <div class="rounded-2xl bg-white/[0.03] px-2 py-2.5">
         <div class="text-[11px] uppercase tracking-wide text-zinc-500">
-          {tr({ es: "Atesorado", en: "Hoarded", de: "Gehortet", fr: "Amassé", it: "Accumulato", ja: "保管済み", pt: "Guardado", zh: "已囤积" })}
+          {$tr({ es: "Atesorado", en: "Hoarded", de: "Gehortet", fr: "Amassé", it: "Accumulato", ja: "保管済み", pt: "Guardado", zh: "已囤积" })}
         </div>
         <div class="mt-0.5 text-xl font-semibold text-zinc-100">{fmtBytes(hoardedBytes)}</div>
       </div>
       <div class="rounded-2xl bg-white/[0.03] px-2 py-2.5">
         <div class="flex items-center justify-center gap-1 text-[11px] uppercase tracking-wide text-zinc-500">
-          <Crown size={12} />{tr({ es: "Más jugado", en: "Most played", de: "Meistgespielt", fr: "Le plus joué", it: "Più giocato", ja: "最もプレイ", pt: "Mais jogado", zh: "最常玩" })}
+          <Crown size={12} />{$tr({ es: "Más jugado", en: "Most played", de: "Meistgespielt", fr: "Le plus joué", it: "Più giocato", ja: "最もプレイ", pt: "Mais jogado", zh: "最常玩" })}
         </div>
         <div
           class="mt-0.5 flex items-center justify-center gap-1.5"
@@ -556,10 +557,10 @@
     <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h2 class="text-sm font-semibold text-zinc-100">
-          {tr({ es: "Horas jugadas", en: "Hours played", de: "Gespielte Stunden", fr: "Heures jouées", it: "Ore giocate", ja: "プレイ時間", pt: "Horas jogadas", zh: "游戏时长" })}
+          {$tr({ es: "Horas jugadas", en: "Hours played", de: "Gespielte Stunden", fr: "Heures jouées", it: "Ore giocate", ja: "プレイ時間", pt: "Horas jogadas", zh: "游戏时长" })}
         </h2>
         <p class="text-xs text-zinc-500">
-          {tr({
+          {$tr({
             es: "Cada cuadro es un día; el color, las horas. Haz clic en uno para ver a qué jugaste.",
             en: "Each square is a day; the shade is how long. Click one to see what you played.",
             de: "Jedes Kästchen ist ein Tag, die Farbe zeigt die Stunden. Klick auf eines, um zu sehen, was du gespielt hast.",
@@ -599,7 +600,7 @@
             {Math.round(stats.totalSecs / 3600)}
           </div>
           <div class="text-[11px] uppercase tracking-wide text-zinc-500">
-            {tr({ es: "horas", en: "hours", de: "Stunden", fr: "heures", it: "ore", ja: "時間", pt: "horas", zh: "小时" })}
+            {$tr({ es: "horas", en: "hours", de: "Stunden", fr: "heures", it: "ore", ja: "時間", pt: "horas", zh: "小时" })}
           </div>
         </div>
       </div>
@@ -661,22 +662,22 @@
       <!-- legend + streaks -->
       <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-1.5 text-[11px] text-zinc-500">
-          {tr({ es: "Menos", en: "Less", de: "Weniger", fr: "Moins", it: "Meno", ja: "少", pt: "Menos", zh: "少" })}
+          {$tr({ es: "Menos", en: "Less", de: "Weniger", fr: "Moins", it: "Meno", ja: "少", pt: "Menos", zh: "少" })}
           {#each LEVEL_BG as bg}
             <span class="h-3 w-3 rounded-[3px] {bg} ring-1 ring-inset ring-white/[0.04]"></span>
           {/each}
-          {tr({ es: "Más", en: "More", de: "Mehr", fr: "Plus", it: "Più", ja: "多", pt: "Mais", zh: "多" })}
+          {$tr({ es: "Más", en: "More", de: "Mehr", fr: "Plus", it: "Più", ja: "多", pt: "Mais", zh: "多" })}
         </div>
         <div class="flex items-center gap-4 text-xs">
           <span class="inline-flex items-center gap-1.5 text-zinc-300">
             <CalendarCheck size={13} class="text-emerald-400" />
             {stats.active}
-            {tr({ es: "días activos", en: "active days", de: "aktive Tage", fr: "jours actifs", it: "giorni attivi", ja: "アクティブ日数", pt: "dias ativos", zh: "活跃天数" })}
+            {$tr({ es: "días activos", en: "active days", de: "aktive Tage", fr: "jours actifs", it: "giorni attivi", ja: "アクティブ日数", pt: "dias ativos", zh: "活跃天数" })}
           </span>
           <span class="inline-flex items-center gap-1.5 text-zinc-300">
             <Flame size={13} class="text-amber-400" />
             {stats.longest}
-            {tr({ es: "días racha", en: "day streak", de: "Tage in Folge", fr: "jours d'affilée", it: "giorni di fila", ja: "連続日数", pt: "dias seguidos", zh: "连续天数" })}
+            {$tr({ es: "días racha", en: "day streak", de: "Tage in Folge", fr: "jours d'affilée", it: "giorni di fila", ja: "連続日数", pt: "dias seguidos", zh: "连续天数" })}
           </span>
         </div>
       </div>
@@ -690,7 +691,7 @@
           class="mt-3 flex items-center gap-2 rounded-2xl bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 ring-1 ring-white/[0.05]"
         >
           <Clock size={14} class="text-amber-300" />
-          {tr({
+          {$tr({
             es: "Wrapple está desactivado en Ajustes › Privacidad. Tus horas se siguen contando en este equipo, pero no salen de él, así que aquí no hay nada que enseñar.",
             en: "Wrapple is turned off in Settings › Privacy. Your hours are still counted on this machine, but they never leave it, so there's nothing to show here.",
             de: "Wrapple ist unter Einstellungen › Datenschutz deaktiviert. Deine Stunden werden auf diesem Gerät weiter gezählt, verlassen es aber nie, daher gibt es hier nichts zu zeigen.",
@@ -706,7 +707,7 @@
           class="mt-3 flex items-center gap-2 rounded-2xl bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 ring-1 ring-white/[0.05]"
         >
           <Clock size={14} class="text-emerald-300" />
-          {tr({
+          {$tr({
             es: "Aún no hay horas registradas. Juega con Hoard abierto y se irán contando solas.",
             en: "No hours logged yet. Play with Hoard open and they'll start counting.",
             de: "Noch keine Stunden erfasst. Spiel mit geöffnetem Hoard, dann werden sie automatisch gezählt.",
@@ -722,7 +723,7 @@
           class="mt-3 flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-transparent px-3 py-2 text-xs text-zinc-300 ring-1 ring-emerald-400/15"
         >
           <Trophy size={14} class="text-amber-300" />
-          {tr({ es: "Tu día más intenso:", en: "Your busiest day:", de: "Dein intensivster Tag:", fr: "Ta journée la plus intense :", it: "Il tuo giorno più intenso:", ja: "いちばん遊んだ日：", pt: "Seu dia mais intenso:", zh: "你玩得最多的一天：" })}
+          {$tr({ es: "Tu día más intenso:", en: "Your busiest day:", de: "Dein intensivster Tag:", fr: "Ta journée la plus intense :", it: "Il tuo giorno più intenso:", ja: "いちばん遊んだ日：", pt: "Seu dia mais intenso:", zh: "你玩得最多的一天：" })}
           <span class="font-semibold text-zinc-100">{fmtDay(stats.busiest.date)}</span>
           <span class="text-zinc-500">({fmtDur(stats.busiest.secs)})</span>
         </div>
@@ -750,7 +751,7 @@
           </div>
           <div class="min-w-0">
             <div class="text-[10px] font-medium uppercase tracking-wider text-emerald-300/80">
-              {tr({ es: "Ese día jugaste a", en: "That day you played", de: "An diesem Tag hast du gespielt", fr: "Ce jour-là, tu as joué", it: "Quel giorno hai giocato", ja: "この日のプレイ", pt: "Nesse dia você jogou", zh: "当天你玩了" })}
+              {$tr({ es: "Ese día jugaste a", en: "That day you played", de: "An diesem Tag hast du gespielt", fr: "Ce jour-là, tu as joué", it: "Quel giorno hai giocato", ja: "この日のプレイ", pt: "Nesse dia você jogou", zh: "当天你玩了" })}
             </div>
             <h3 class="truncate text-sm font-semibold text-zinc-50">
               {fmtDay(dayDetail.date)}
@@ -763,14 +764,14 @@
               {fmtDur(dayDetail.dayTotal)}
             </div>
             <div class="mt-0.5 text-[10px] uppercase tracking-wide text-zinc-500">
-              {tr({ es: "en total", en: "total", de: "insgesamt", fr: "au total", it: "in totale", ja: "合計", pt: "no total", zh: "总计" })}
+              {$tr({ es: "en total", en: "total", de: "insgesamt", fr: "au total", it: "in totale", ja: "合計", pt: "no total", zh: "总计" })}
             </div>
           </div>
           <button
             type="button"
             onclick={() => (selectedKey = null)}
             class="grid h-7 w-7 place-items-center rounded-lg border border-white/[0.08] text-zinc-400 transition hover:bg-white/5 hover:text-white"
-            aria-label={tr({ es: "Cerrar", en: "Close", de: "Schließen", fr: "Fermer", it: "Chiudi", ja: "閉じる", pt: "Fechar", zh: "关闭" })}
+            aria-label={$tr({ es: "Cerrar", en: "Close", de: "Schließen", fr: "Fermer", it: "Chiudi", ja: "閉じる", pt: "Fechar", zh: "关闭" })}
           >
             <X size={15} />
           </button>
@@ -819,7 +820,7 @@
         </ul>
       {:else if dayDetail.dayTotal > 0}
         <p class="px-4 py-3 text-xs text-zinc-400">
-          {tr({
+          {$tr({
             es: "Jugaste este día, pero sin desglose por juego (horas previas a esta función).",
             en: "You played this day, but with no per-game breakdown (hours predate this feature).",
             de: "An diesem Tag hast du gespielt, aber ohne Aufschlüsselung nach Spiel (die Stunden stammen aus der Zeit vor dieser Funktion).",
@@ -832,7 +833,7 @@
         </p>
       {:else}
         <p class="px-4 py-3 text-xs text-zinc-500">
-          {tr({ es: "No jugaste este día.", en: "You didn't play this day.", de: "An diesem Tag hast du nicht gespielt.", fr: "Tu n'as pas joué ce jour-là.", it: "Non hai giocato questo giorno.", ja: "この日はプレイしていません。", pt: "Você não jogou neste dia.", zh: "这天你没有玩游戏。" })}
+          {$tr({ es: "No jugaste este día.", en: "You didn't play this day.", de: "An diesem Tag hast du nicht gespielt.", fr: "Tu n'as pas joué ce jour-là.", it: "Non hai giocato questo giorno.", ja: "この日はプレイしていません。", pt: "Você não jogou neste dia.", zh: "这天你没有玩游戏。" })}
         </p>
       {/if}
     </div>
@@ -850,7 +851,7 @@
       ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200'
       : 'border-white/[0.08] bg-layer-2 text-zinc-300 hover:border-emerald-400/30 hover:bg-emerald-500/[0.06] hover:text-emerald-200'}"
     aria-expanded={showCard}
-    title={tr({
+    title={$tr({
       es: "Crea una imagen de tu resumen para compartir",
       en: "Turn your recap into a shareable image",
       de: "Mach aus deiner Zusammenfassung ein Bild zum Teilen",
@@ -868,8 +869,8 @@
     </span>
     <span class="text-sm font-medium">
       {showCard
-        ? tr({ es: "Cerrar la tarjeta", en: "Close the card", de: "Karte schließen", fr: "Fermer la carte", it: "Chiudi la card", ja: "カードを閉じる", pt: "Fechar o card", zh: "关闭卡片" })
-        : tr({ es: "Tu tarjeta para compartir", en: "Your shareable card", de: "Deine Karte zum Teilen", fr: "Ta carte à partager", it: "La tua card da condividere", ja: "共有用カード", pt: "Seu card para compartilhar", zh: "可分享的卡片" })}
+        ? $tr({ es: "Cerrar la tarjeta", en: "Close the card", de: "Karte schließen", fr: "Fermer la carte", it: "Chiudi la card", ja: "カードを閉じる", pt: "Fechar o card", zh: "关闭卡片" })
+        : $tr({ es: "Tu tarjeta para compartir", en: "Your shareable card", de: "Deine Karte zum Teilen", fr: "Ta carte à partager", it: "La tua card da condividere", ja: "共有用カード", pt: "Seu card para compartilhar", zh: "可分享的卡片" })}
     </span>
   </button>
 

@@ -204,10 +204,10 @@
 
   const rangeLabel = $derived(
     range === "week"
-      ? tr({ es: "Últimos 7 días", en: "Last 7 days", de: "Letzte 7 Tage", fr: "7 derniers jours", it: "Ultimi 7 giorni", ja: "直近7日間", pt: "Últimos 7 dias", zh: "最近 7 天" })
+      ? $tr({ es: "Últimos 7 días", en: "Last 7 days", de: "Letzte 7 Tage", fr: "7 derniers jours", it: "Ultimi 7 giorni", ja: "直近7日間", pt: "Últimos 7 dias", zh: "最近 7 天" })
       : range === "month"
-        ? tr({ es: "Últimos 30 días", en: "Last 30 days", de: "Letzte 30 Tage", fr: "30 derniers jours", it: "Ultimi 30 giorni", ja: "直近30日間", pt: "Últimos 30 dias", zh: "最近 30 天" })
-        : tr({ es: "Último año", en: "Last year", de: "Letztes Jahr", fr: "Cette année", it: "Ultimo anno", ja: "この1年", pt: "Último ano", zh: "最近一年" }),
+        ? $tr({ es: "Últimos 30 días", en: "Last 30 days", de: "Letzte 30 Tage", fr: "30 derniers jours", it: "Ultimi 30 giorni", ja: "直近30日間", pt: "Últimos 30 dias", zh: "最近 30 天" })
+        : $tr({ es: "Último año", en: "Last year", de: "Letztes Jahr", fr: "Cette année", it: "Ultimo anno", ja: "この1年", pt: "Último ano", zh: "最近一年" }),
   );
 
   /** The phrase: the one the user wrote, or the dice's, based on the game. */
@@ -215,7 +215,7 @@
     void loc; // el idioma activo forma parte del resultado
     const own = prefs.quote.trim();
     if (own) return own;
-    return tr(pickQuote(facts.topSlug, prefs.seed + (facts.topSlug?.length ?? 0)));
+    return $tr(pickQuote(facts.topSlug, prefs.seed + (facts.topSlug?.length ?? 0)));
   });
 
   /** The card is made to be shown, so the default name is never the full email
@@ -226,7 +226,7 @@
   const displayName = $derived(
     prefs.name.trim() ||
       suggestedName ||
-      tr({ es: "Jugador", en: "Player", de: "Spieler", fr: "Joueur", it: "Giocatore", ja: "プレイヤー", pt: "Jogador", zh: "玩家" }),
+      $tr({ es: "Jugador", en: "Player", de: "Spieler", fr: "Joueur", it: "Giocatore", ja: "プレイヤー", pt: "Jogador", zh: "玩家" }),
   );
 
   const initials = $derived(
@@ -254,30 +254,30 @@
     cubes,
     stats: [
       {
-        label: tr({ es: "Horas", en: "Hours", de: "Stunden", fr: "Heures", it: "Ore", ja: "時間", pt: "Horas", zh: "小时" }),
+        label: $tr({ es: "Horas", en: "Hours", de: "Stunden", fr: "Heures", it: "Ore", ja: "時間", pt: "Horas", zh: "小时" }),
         value: fmtHours(facts.totalSecs),
       },
       {
-        label: tr({ es: "Días activos", en: "Active days", de: "Aktive Tage", fr: "Jours actifs", it: "Giorni attivi", ja: "プレイ日数", pt: "Dias ativos", zh: "活跃天数" }),
+        label: $tr({ es: "Días activos", en: "Active days", de: "Aktive Tage", fr: "Jours actifs", it: "Giorni attivi", ja: "プレイ日数", pt: "Dias ativos", zh: "活跃天数" }),
         value: String(facts.active),
       },
       {
-        label: tr({ es: "Racha", en: "Streak", de: "Serie", fr: "Série", it: "Serie", ja: "連続記録", pt: "Sequência", zh: "连续天数" }),
+        label: $tr({ es: "Racha", en: "Streak", de: "Serie", fr: "Série", it: "Serie", ja: "連続記録", pt: "Sequência", zh: "连续天数" }),
         value: String(facts.longest),
       },
       {
-        label: tr({ es: "Juegos", en: "Games", de: "Spiele", fr: "Jeux", it: "Giochi", ja: "ゲーム数", pt: "Jogos", zh: "游戏数" }),
+        label: $tr({ es: "Juegos", en: "Games", de: "Spiele", fr: "Jeux", it: "Giochi", ja: "ゲーム数", pt: "Jogos", zh: "游戏数" }),
         value: String(facts.played || totalGames),
       },
       {
-        label: tr({ es: "Atesorado", en: "Hoarded", de: "Gehortet", fr: "Amassé", it: "Accumulato", ja: "保管量", pt: "Guardado", zh: "已收藏" }),
+        label: $tr({ es: "Atesorado", en: "Hoarded", de: "Gehortet", fr: "Amassé", it: "Accumulato", ja: "保管量", pt: "Guardado", zh: "已收藏" }),
         value: fmtBytes(hoardedBytes),
       },
     ],
     topGame: topGameName ? { label: topGameName, cover: coverImg } : null,
-    topGameLabel: tr({ es: "Más jugado", en: "Most played", de: "Meistgespielt", fr: "Le plus joué", it: "Più giocato", ja: "最多プレイ", pt: "Mais jogado", zh: "玩得最多" }),
-    cubesLabel: tr({ es: "Actividad", en: "Activity", de: "Aktivität", fr: "Activité", it: "Attività", ja: "アクティビティ", pt: "Atividade", zh: "活跃度" }),
-    tagline: tr({
+    topGameLabel: $tr({ es: "Más jugado", en: "Most played", de: "Meistgespielt", fr: "Le plus joué", it: "Più giocato", ja: "最多プレイ", pt: "Mais jogado", zh: "玩得最多" }),
+    cubesLabel: $tr({ es: "Actividad", en: "Activity", de: "Aktivität", fr: "Activité", it: "Attività", ja: "アクティビティ", pt: "Atividade", zh: "活跃度" }),
+    tagline: $tr({
       es: "Copias automáticas de tus partidas",
       en: "Automatic backups for your game saves",
       de: "Automatische Backups für deine Spielstände",
@@ -349,7 +349,7 @@
         directory: false,
         filters: [
           {
-            name: tr({ es: "Imágenes", en: "Images", de: "Bilder", fr: "Images", it: "Immagini", ja: "画像", pt: "Imagens", zh: "图片" }),
+            name: $tr({ es: "Imágenes", en: "Images", de: "Bilder", fr: "Images", it: "Immagini", ja: "画像", pt: "Imagens", zh: "图片" }),
             extensions: ["jpg", "jpeg", "png", "webp", "gif", "bmp"],
           },
         ],
@@ -378,7 +378,7 @@
       const png = renderToPng(cardData, 2);
       const path = await saveCardToGallery(png, topGameName);
       toastSuccess(
-        tr({
+        $tr({
           es: `Guardada en ${path}`,
           en: `Saved to ${path}`,
           de: `Gespeichert unter ${path}`,
@@ -397,9 +397,9 @@
   }
 
   const RANGES: { key: CardRange; label: string }[] = $derived([
-    { key: "week", label: tr({ es: "Semana", en: "Week", de: "Woche", fr: "Semaine", it: "Settimana", ja: "1週間", pt: "Semana", zh: "一周" }) },
-    { key: "month", label: tr({ es: "Mes", en: "Month", de: "Monat", fr: "Mois", it: "Mese", ja: "1か月", pt: "Mês", zh: "一个月" }) },
-    { key: "year", label: tr({ es: "Año", en: "Year", de: "Jahr", fr: "Année", it: "Anno", ja: "1年", pt: "Ano", zh: "一年" }) },
+    { key: "week", label: $tr({ es: "Semana", en: "Week", de: "Woche", fr: "Semaine", it: "Settimana", ja: "1週間", pt: "Semana", zh: "一周" }) },
+    { key: "month", label: $tr({ es: "Mes", en: "Month", de: "Monat", fr: "Mois", it: "Mese", ja: "1か月", pt: "Mês", zh: "一个月" }) },
+    { key: "year", label: $tr({ es: "Año", en: "Year", de: "Jahr", fr: "Année", it: "Anno", ja: "1年", pt: "Ano", zh: "一年" }) },
   ]);
 </script>
 
@@ -418,11 +418,11 @@
       </div>
       <div class="min-w-0">
         <h3 class="truncate text-sm font-semibold text-zinc-50">
-          {tr({ es: "Tu tarjeta", en: "Your card", de: "Deine Karte", fr: "Ta carte", it: "La tua card", ja: "あなたのカード", pt: "Seu card", zh: "你的卡片" })}
+          {$tr({ es: "Tu tarjeta", en: "Your card", de: "Deine Karte", fr: "Ta carte", it: "La tua card", ja: "あなたのカード", pt: "Seu card", zh: "你的卡片" })}
         </h3>
         <p class="flex items-center gap-1 text-[11px] text-zinc-500">
           <Lock size={10} />
-          {tr({
+          {$tr({
             es: "Foto y nombre solo en este equipo",
             en: "Photo and name stay on this device",
             de: "Foto und Name bleiben auf diesem Gerät",
@@ -439,7 +439,7 @@
       type="button"
       onclick={onClose}
       class="grid h-7 w-7 place-items-center rounded-lg border border-white/[0.08] text-zinc-400 transition hover:bg-white/5 hover:text-white"
-      aria-label={tr({ es: "Cerrar", en: "Close", de: "Schließen", fr: "Fermer", it: "Chiudi", ja: "閉じる", pt: "Fechar", zh: "关闭" })}
+      aria-label={$tr({ es: "Cerrar", en: "Close", de: "Schließen", fr: "Fermer", it: "Chiudi", ja: "閉じる", pt: "Fechar", zh: "关闭" })}
     >
       <X size={15} />
     </button>
@@ -463,7 +463,7 @@
       <!-- foto -->
       <div class="rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
         <div class="mb-2 text-[11px] uppercase tracking-wide text-zinc-500">
-          {tr({ es: "Foto", en: "Photo", de: "Foto", fr: "Photo", it: "Foto", ja: "写真", pt: "Foto", zh: "照片" })}
+          {$tr({ es: "Foto", en: "Photo", de: "Foto", fr: "Photo", it: "Foto", ja: "写真", pt: "Foto", zh: "照片" })}
         </div>
         <div class="flex items-center gap-2">
           <button
@@ -473,7 +473,7 @@
             class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
           >
             {#if busyPhoto}<Loader2 size={13} class="animate-spin" />{:else}<ImagePlus size={13} />{/if}
-            {tr({ es: "Elegir foto", en: "Choose photo", de: "Foto wählen", fr: "Choisir une photo", it: "Scegli foto", ja: "写真を選ぶ", pt: "Escolher foto", zh: "选择照片" })}
+            {$tr({ es: "Elegir foto", en: "Choose photo", de: "Foto wählen", fr: "Choisir une photo", it: "Scegli foto", ja: "写真を選ぶ", pt: "Escolher foto", zh: "选择照片" })}
           </button>
           {#if cardPhotoUrl()}
             <button
@@ -482,7 +482,7 @@
               class="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-white/5"
             >
               <Trash2 size={13} />
-              {tr({ es: "Quitar", en: "Remove", de: "Entfernen", fr: "Retirer", it: "Rimuovi", ja: "削除", pt: "Remover", zh: "移除" })}
+              {$tr({ es: "Quitar", en: "Remove", de: "Entfernen", fr: "Retirer", it: "Rimuovi", ja: "削除", pt: "Remover", zh: "移除" })}
             </button>
           {/if}
         </div>
@@ -491,7 +491,7 @@
       <!-- nombre -->
       <div class="rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
         <div class="mb-2 text-[11px] uppercase tracking-wide text-zinc-500">
-          {tr({ es: "Nombre", en: "Name", de: "Name", fr: "Nom", it: "Nome", ja: "名前", pt: "Nome", zh: "名称" })}
+          {$tr({ es: "Nombre", en: "Name", de: "Name", fr: "Nom", it: "Nome", ja: "名前", pt: "Nome", zh: "名称" })}
         </div>
         <input
           type="text"
@@ -506,7 +506,7 @@
       <!-- frase -->
       <div class="rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
         <div class="mb-2 text-[11px] uppercase tracking-wide text-zinc-500">
-          {tr({ es: "Frase", en: "Line", de: "Spruch", fr: "Phrase", it: "Frase", ja: "ひとこと", pt: "Frase", zh: "标语" })}
+          {$tr({ es: "Frase", en: "Line", de: "Spruch", fr: "Phrase", it: "Frase", ja: "ひとこと", pt: "Frase", zh: "标语" })}
         </div>
         <div class="flex items-center gap-2">
           <input
@@ -521,8 +521,8 @@
             type="button"
             onclick={rerollQuote}
             class="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/[0.08] text-zinc-300 transition hover:bg-white/5 hover:text-emerald-300"
-            title={tr({ es: "Otra frase", en: "Another line", de: "Anderer Spruch", fr: "Autre phrase", it: "Un'altra frase", ja: "別のひとこと", pt: "Outra frase", zh: "换一句" })}
-            aria-label={tr({ es: "Otra frase", en: "Another line", de: "Anderer Spruch", fr: "Autre phrase", it: "Un'altra frase", ja: "別のひとこと", pt: "Outra frase", zh: "换一句" })}
+            title={$tr({ es: "Otra frase", en: "Another line", de: "Anderer Spruch", fr: "Autre phrase", it: "Un'altra frase", ja: "別のひとこと", pt: "Outra frase", zh: "换一句" })}
+            aria-label={$tr({ es: "Otra frase", en: "Another line", de: "Anderer Spruch", fr: "Autre phrase", it: "Un'altra frase", ja: "別のひとこと", pt: "Outra frase", zh: "换一句" })}
           >
             <Dices size={15} />
           </button>
@@ -532,7 +532,7 @@
       <!-- rango -->
       <div class="rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
         <div class="mb-2 text-[11px] uppercase tracking-wide text-zinc-500">
-          {tr({ es: "Qué se muestra", en: "What to show", de: "Was gezeigt wird", fr: "Ce qui s'affiche", it: "Cosa mostrare", ja: "表示する期間", pt: "O que mostrar", zh: "显示范围" })}
+          {$tr({ es: "Qué se muestra", en: "What to show", de: "Was gezeigt wird", fr: "Ce qui s'affiche", it: "Cosa mostrare", ja: "表示する期間", pt: "O que mostrar", zh: "显示范围" })}
         </div>
         <div class="flex gap-1 rounded-lg border border-white/[0.08] bg-layer-2 p-1">
           {#each RANGES as r (r.key)}
@@ -558,7 +558,7 @@
       class="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-60"
     >
       {#if saving}<Loader2 size={16} class="animate-spin" />{:else}<Camera size={16} />{/if}
-      {tr({
+      {$tr({
         es: "Sacar la foto y guardarla en la galería",
         en: "Take the photo and save it to your gallery",
         de: "Foto machen und in der Galerie speichern",

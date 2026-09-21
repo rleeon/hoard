@@ -40,6 +40,7 @@
     SlidersHorizontal,
   } from "@lucide/svelte";
   import { _ } from "svelte-i18n";
+  import { fmtDate, fmtDateTime } from "../lib/utils/format";
 
   import Button from "../lib/components/Button.svelte";
   import AnimIcon from "../lib/components/AnimIcon.svelte";
@@ -207,7 +208,7 @@
   // null. Reads `$archivedSaves` so it re-derives when the map refreshes.
   const purgeDate = $derived.by(() => {
     const iso = $archivedSaves[saveId];
-    return iso ? new Date(iso).toLocaleDateString() : null;
+    return iso ? $fmtDate(iso) : null;
   });
 
   // Sync presets, the catalog comes from the backend; `savingPreset` gates
@@ -329,7 +330,7 @@
     yesterday.setDate(yesterday.getDate() - 1);
     if (key === dayKey(yesterday.toISOString()))
       return $_("history.group_yesterday");
-    return new Date(iso).toLocaleDateString(undefined, {
+    return $fmtDate(iso, {
       weekday: "long",
       day: "numeric",
       month: "long",
@@ -384,18 +385,11 @@
       return $_("history.relative_days", {
         values: { count: Math.floor(diff / 86400) },
       });
-    return new Date(iso).toLocaleDateString();
+    return $fmtDate(iso);
   }
 
   function formatAbsolute(iso: string): string {
-    const d = new Date(iso);
-    return d.toLocaleString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return $fmtDateTime(iso, { month: "short", day: "numeric" });
   }
 
   /** Compact ISO-ish stamp for the snapshot label, e.g. "2026-05-08 14:30".

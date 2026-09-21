@@ -54,7 +54,7 @@ fn ensure(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
         // leaves a grey halo over the game.
         .shadow(false)
         .build()
-        .map_err(|e| format!("no se pudo crear el overlay: {e}"))
+        .map_err(|e| format!("couldn't create the overlay: {e}"))
 }
 
 /// Muestra u oculta el HUD. Devuelve el estado en que queda.

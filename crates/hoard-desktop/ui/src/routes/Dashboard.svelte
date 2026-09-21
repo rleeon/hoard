@@ -58,8 +58,8 @@
   import { toastError, toastSuccess } from "../lib/stores/toasts";
   import {
     formatBytes,
-    formatDateTime,
-    formatRelativeTime,
+    fmtDateTime,
+    fmtRelativeTime,
     prettifySlug,
   } from "../lib/utils/format";
 
@@ -636,10 +636,10 @@
             class="mt-1.5 flex items-center gap-2 text-xl font-semibold text-zinc-100"
           >
             <Clock size={18} class="text-zinc-500" />
-            {formatRelativeTime(lastBackupAt, now)}
+            {$fmtRelativeTime(lastBackupAt, now)}
           </p>
           <p class="mt-0.5 pl-[26px] text-[11px] tabular-nums text-zinc-500">
-            {formatDateTime(lastBackupAt)}
+            {$fmtDateTime(lastBackupAt)}
           </p>
         {:else}
           <p

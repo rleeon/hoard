@@ -41,7 +41,7 @@
   import Modal from "../lib/components/Modal.svelte";
   import AnimIcon from "../lib/components/AnimIcon.svelte";
   import { customNames } from "../lib/stores/gameNames";
-  import { titleFromSlug } from "../lib/utils/format";
+  import { titleFromSlug, fmtNumber } from "../lib/utils/format";
   import MaskedEmail from "../lib/components/MaskedEmail.svelte";
   import SettingsRow from "../lib/components/SettingsRow.svelte";
   import { prefs, hydratePrefs, updatePrefs } from "../lib/stores/prefs";
@@ -481,7 +481,7 @@
       };
       toastSuccess(
         $_("settings.catalog_updated_toast", {
-          values: { count: result.games.toLocaleString() },
+          values: { count: $fmtNumber(result.games) },
         }),
       );
     } catch (e) {
@@ -1218,7 +1218,7 @@
                 <p class="text-sm text-zinc-100">
                   {#if catalog}
                     {$_("settings.catalog_games", {
-                      values: { count: catalog.games.toLocaleString() },
+                      values: { count: $fmtNumber(catalog.games) },
                     })}
                     <span class="text-zinc-500">·</span>
                     <span class="text-zinc-400">

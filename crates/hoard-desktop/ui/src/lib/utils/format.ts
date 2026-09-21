@@ -11,8 +11,23 @@
  * `0` short-circuits to `"0 B"`. The `B` unit suppresses decimals because
  * "512.0 B" looks silly; everything else honors `decimals` (default 1).
  */
-import { get } from "svelte/store";
-import { _ } from "svelte-i18n";
+import { derived } from "svelte/store";
+import { _, locale } from "svelte-i18n";
+
+/**
+ * The BCP-47 tag `Intl` should format with: the language the user picked in the
+ * app, never the machine's.
+ *
+ * Passing `undefined` to `toLocaleDateString` (which is what every call site used
+ * to do) means "whatever the system says", so an English UI on a Spanish desktop
+ * printed "domingo, 21 de septiembre" between English sentences. Plain `en` would
+ * swing to the other extreme and print month-first American dates, so English maps
+ * to `en-GB` and keeps the day-first order the rest of the app shows.
+ */
+export function intlLocale(tag: string | null | undefined): string {
+  const code = (tag ?? "en").slice(0, 2).toLowerCase();
+  return code === "en" ? "en-GB" : code;
+}
 
 export function formatBytes(bytes: number, decimals = 1): string {
   if (!bytes || bytes <= 0) return "0 B";
@@ -44,9 +59,11 @@ export function prettifySlug(slug: string): string {
  * Reuses the History route's relative strings so the two panels read the
  * same; `dashboard.time_yesterday` covers the 1-day case the mockup shows.
  * Future dates (clock skew) collapse to "just now".
+ *
+ * A store, not a plain function, so the text repaints when the language changes:
+ * reading `_` with `get()` froze whatever language was active at first render.
  */
-export function formatRelativeTime(iso: string, now: number = Date.now()): string {
-  const t = get(_);
+export const fmtRelativeTime = derived(_, (t) => (iso: string, now: number = Date.now()): string => {
   const diff = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
   if (diff < 60) return t("history.relative_just_now");
   if (diff < 3600) {
@@ -63,19 +80,41 @@ export function formatRelativeTime(iso: string, now: number = Date.now()): strin
   return t("history.relative_days", {
     values: { count: Math.floor(diff / 86400) },
   });
-}
+});
 
-/** Absolute companion for the relative time: "21/07/2026 17:47"-style,
- *  locale-aware via `toLocaleString`. Seconds are noise at this granularity. */
-export function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+/** `toLocaleDateString` in the app's language. A store so the date repaints when
+ *  the language changes, and so no call site has to remember `intlLocale`. */
+export const fmtDate = derived(
+  locale,
+  (l) =>
+    (iso: string | number | Date, opts?: Intl.DateTimeFormatOptions): string =>
+      new Date(iso).toLocaleDateString(intlLocale(l), opts),
+);
+
+/** Absolute companion for the relative time: "21/07/2026 17:47"-style. Seconds are
+ *  noise at this granularity. */
+export const fmtDateTime = derived(
+  locale,
+  (l) =>
+    (iso: string | number | Date, opts?: Intl.DateTimeFormatOptions): string =>
+      new Date(iso).toLocaleString(intlLocale(l), {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        ...opts,
+      }),
+);
+
+/** Thousands separators in the app's language: the catalogue's "21.926 games"
+ *  read as a version number in an otherwise English window. */
+export const fmtNumber = derived(
+  locale,
+  (l) =>
+    (n: number, opts?: Intl.NumberFormatOptions): string =>
+      n.toLocaleString(intlLocale(l), opts),
+);
 
 /** A readable name for a game we only know by its slug ("terraforming-mars" ->
  *  "Terraforming Mars"). For settings lists, where the catalogue's own title is

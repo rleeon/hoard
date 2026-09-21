@@ -29,7 +29,7 @@
     refreshCloud,
   } from "../stores/cloud";
   import { toastError, toastSuccess } from "../stores/toasts";
-  import { formatBytes } from "../utils/format";
+  import { formatBytes, fmtDate } from "../utils/format";
 
   type Props = {
     open: boolean;
@@ -68,7 +68,7 @@
     const d = new Date(raw);
     return Number.isNaN(d.getTime())
       ? null
-      : d.toLocaleDateString(undefined, {
+      : $fmtDate(d, {
           year: "numeric",
           month: "long",
           day: "numeric",

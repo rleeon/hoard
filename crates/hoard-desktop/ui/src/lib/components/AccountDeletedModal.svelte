@@ -14,13 +14,14 @@
   import Button from "./Button.svelte";
   import { cloud, reactivateCloudAccount, logoutCloud } from "../stores/cloud";
   import { toastError } from "../stores/toasts";
+  import { fmtDate } from "../utils/format";
 
   let busy = $state(false);
 
   const purgesAt = $derived($cloud.account?.purges_at ?? null);
   const purgeDate = $derived(
     purgesAt
-      ? new Date(purgesAt).toLocaleDateString(undefined, {
+      ? $fmtDate(purgesAt, {
           year: "numeric",
           month: "long",
           day: "numeric",

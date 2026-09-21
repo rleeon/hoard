@@ -60,15 +60,15 @@ fn decode_png(data: &str) -> Result<Vec<u8>, String> {
     let payload = data.rsplit_once(",").map_or(data, |(_, tail)| tail);
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(payload.trim())
-        .map_err(|e| format!("imagen ilegible: {e}"))?;
+        .map_err(|e| format!("unreadable image: {e}"))?;
     if bytes.is_empty() {
-        return Err("imagen vacía".into());
+        return Err("the image is empty".into());
     }
     if bytes.len() > MAX_PNG_BYTES {
-        return Err("imagen demasiado grande".into());
+        return Err("the image is too large".into());
     }
     if !bytes.starts_with(&PNG_SIGNATURE) {
-        return Err("la imagen no es un PNG".into());
+        return Err("that image is not a PNG".into());
     }
     Ok(bytes)
 }
@@ -82,21 +82,21 @@ const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
 pub async fn wrapple_read_image(source_path: String) -> Result<Response, String> {
     let src = PathBuf::from(&source_path);
     if !has_image_extension(&src) {
-        return Err("ese fichero no es una imagen".into());
+        return Err("that file is not an image".into());
     }
     let meta = tokio::fs::metadata(&src)
         .await
-        .map_err(|e| format!("no se pudo leer la imagen: {e}"))?;
+        .map_err(|e| format!("couldn't read the image: {e}"))?;
     if !meta.is_file() {
-        return Err("la ruta no es un fichero".into());
+        return Err("that path is not a file".into());
     }
     if meta.len() > MAX_SOURCE_BYTES {
-        return Err("la imagen pesa demasiado (máx. 32 MB)".into());
+        return Err("that image is too heavy (32 MB max)".into());
     }
     tokio::fs::read(&src)
         .await
         .map(Response::new)
-        .map_err(|e| format!("no se pudo leer la imagen: {e}"))
+        .map_err(|e| format!("couldn't read the image: {e}"))
 }
 
 /// Stores the card's avatar (PNG already cropped by the webview). Local and nothing
@@ -128,9 +128,9 @@ pub async fn wrapple_avatar_bytes(app: tauri::AppHandle) -> Result<Response, Str
     let path = avatar_path(&app)?;
     let bytes = tokio::fs::read(&path)
         .await
-        .map_err(|_| "sin avatar".to_string())?;
+        .map_err(|_| "no avatar".to_string())?;
     if bytes.is_empty() {
-        return Err("sin avatar".into());
+        return Err("no avatar".into());
     }
     Ok(Response::new(bytes))
 }
@@ -164,16 +164,16 @@ pub async fn wrapple_save_card(
         .picture_dir()
         .or_else(|_| paths.download_dir())
         .or_else(|_| paths.home_dir())
-        .map_err(|e| format!("no se encontró carpeta de imágenes: {e}"))?
+        .map_err(|e| format!("no pictures folder found: {e}"))?
         .join("Hoard");
     tokio::fs::create_dir_all(&gallery)
         .await
-        .map_err(|e| format!("no se pudo crear {}: {e}", gallery.display()))?;
+        .map_err(|e| format!("couldn't create {}: {e}", gallery.display()))?;
 
     let dest = gallery.join(format!("hoard-wrapped-{}.png", timestamp_slug()));
     tokio::fs::write(&dest, &bytes)
         .await
-        .map_err(|e| format!("no se pudo guardar la imagen: {e}"))?;
+        .map_err(|e| format!("couldn't save the image: {e}"))?;
     Ok(dest.to_string_lossy().into_owned())
 }
 
