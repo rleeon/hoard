@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { openUpgradePage } from "../lib/stores/cloud";
   /**
    * Account page, the entry point for everything Hoard Cloud.
    *
@@ -19,6 +18,7 @@
 
   import Card from "../lib/components/Card.svelte";
   import Button from "../lib/components/Button.svelte";
+  import UpgradeButton from "../lib/components/UpgradeButton.svelte";
   import AnimIcon from "../lib/components/AnimIcon.svelte";
   import MaskedEmail from "../lib/components/MaskedEmail.svelte";
   import Modal from "../lib/components/Modal.svelte";
@@ -43,7 +43,7 @@
   import { remoteDevices, refreshDevices } from "../lib/stores/devices";
   import { healthCheck, type HealthInfo } from "../lib/api";
   import { toastError, toastInfo, toastSuccess } from "../lib/stores/toasts";
-  import { formatBytes } from "../lib/utils/format";
+  import { formatBytes, fmtDate as dateIn } from "../lib/utils/format";
   import { formatCloudError } from "../lib/utils/cloudErrors";
 
   let busyAction = $state<
@@ -406,7 +406,7 @@
     const days = Math.max(0, Math.ceil((at.getTime() - Date.now()) / 86_400_000));
     return {
       newLimitLabel: formatBytes(a.pending_storage_limit_bytes),
-      dateLabel: at.toLocaleDateString(),
+      dateLabel: $dateIn(at),
       days,
     };
   });
@@ -439,7 +439,7 @@
     if (!iso) return "—";
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleDateString(undefined, {
+    return $dateIn(d, {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -764,10 +764,7 @@
         </div>
         <div class="flex flex-col items-end gap-2">
           {#if account.plan === "free"}
-            <Button variant="primary" class="keep-emerald" onclick={() => openUpgradePage("pro")}>
-              <ArrowUpRight size={14} data-anim="pop" />
-              {$_("account.upgrade")}
-            </Button>
+            <UpgradeButton />
           {/if}
           {#if account.plan !== "free"}
             <Button variant="ghost" onclick={openBillingPortal}>

@@ -805,6 +805,24 @@ pub async fn cloud_export_status(app: AppHandle) -> Result<ExportStatus, String>
         .map_err(cloud_err_to_string)
 }
 
+/// `POST /v1/cloud/checkout`: the Polar payment URL for this account.
+///
+/// The app opens it straight in the browser. The website's own checkout asks
+/// for a second sign-in, and every screen between the button and the card
+/// loses buyers.
+#[tauri::command]
+pub async fn cloud_create_checkout(
+    app: AppHandle,
+    interval: Option<String>,
+) -> Result<String, String> {
+    let creds = active_creds_or_msg(&app).await?;
+    let interval = interval.as_deref().unwrap_or("month");
+    cloud_account::create_checkout(&creds.server_url, &creds.access_token, "pro", interval)
+        .await
+        .map(|c| c.url)
+        .map_err(cloud_err_to_string)
+}
+
 // ---- Caja negra: archived games ----
 
 /// `GET /v1/cloud/storage/games`: the per-game freeable footprint plus the quota

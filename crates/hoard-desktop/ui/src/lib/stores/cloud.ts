@@ -418,11 +418,25 @@ export async function openWebAccount(): Promise<void> {
   await openExternal("https://hoard.services/account");
 }
 
-/** Open the public pricing page in the browser, where the checkout buttons
- *  live. There is no `/upgrade` route on the site (it 404'd); `/pricing` is
- *  the page that links to the Polar hosted checkout. The optional
+/** Open the payment page for this account, skipping the website.
+ *
+ *  The server turns the session we already have into a Polar checkout, so the
+ *  buyer goes from the button to the card in one hop. Going through
+ *  `/pricing` meant signing in a second time on the site, and that is where
+ *  people gave up. The public page stays as the fallback: a self-hosted
+ *  server sells nothing, and neither does an expired session. The optional
  *  `plan` is kept for future deep-linking but `/pricing` ignores it today. */
-export async function openUpgradePage(plan?: "pro"): Promise<void> {
+export async function openUpgradePage(
+  plan?: "pro",
+  interval: "month" | "year" = "month",
+): Promise<void> {
+  try {
+    const url = await invoke<string>("cloud_create_checkout", { interval });
+    await openExternal(url);
+    return;
+  } catch (e) {
+    console.warn("[cloud] checkout unavailable, falling back to /pricing", e);
+  }
   const base = "https://hoard.services";
   const url = plan ? `${base}/pricing?plan=${plan}` : `${base}/pricing`;
   await openExternal(url);

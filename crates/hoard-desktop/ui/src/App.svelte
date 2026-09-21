@@ -10,7 +10,6 @@
     Archive,
     Library,
     Home,
-    Sparkles,
     AlertCircle,
     Scroll,
     ScrollText,
@@ -103,6 +102,7 @@
   import Triforce from "./lib/components/Triforce.svelte";
   import VaultDoor from "./lib/components/VaultDoor.svelte";
   import MaskedEmail from "./lib/components/MaskedEmail.svelte";
+  import UpgradeButton from "./lib/components/UpgradeButton.svelte";
   import DebugPanel from "./lib/components/DebugPanel.svelte";
   import {
     DEBUG_TOOLS,
@@ -119,7 +119,6 @@
     planLabel,
     refreshCloud,
     exportAllCloudData,
-    openUpgradePage,
   } from "./lib/stores/cloud";
   import {
     liberateOpen,
@@ -1135,15 +1134,7 @@
                 </span>
               </button>
               {#if $cloud.account.plan === "free"}
-                <button
-                  type="button"
-                  onclick={() => openUpgradePage("pro")}
-                  class="keep-emerald flex shrink-0 items-center gap-1 rounded-md bg-gradient-to-r from-emerald-400 to-teal-400 px-2.5 py-2 text-[11px] font-semibold text-emerald-950 shadow-sm shadow-emerald-500/30 transition-all hover:from-emerald-300 hover:to-teal-300 hover:shadow-emerald-500/50"
-                  title={$_("sidebar.upgrade_tooltip")}
-                >
-                  <Sparkles size={12} data-anim="pop" />
-                  {$_("sidebar.upgrade")}
-                </button>
+                <UpgradeButton placement="top" />
               {/if}
             </div>
         {/if}

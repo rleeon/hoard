@@ -140,6 +140,41 @@ pub async fn export_status(base: &str, token: &str) -> Result<ExportStatus, Clou
     parse_json(&body)
 }
 
+// ---- checkout
+
+/// The hosted Polar URL a checkout session lives at.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Checkout {
+    pub url: String,
+}
+
+/// `POST {base}/v1/cloud/checkout`: a checkout session already tied to this
+/// account, for the given plan and billing interval ("month" | "year").
+///
+/// The frontends open the URL in the browser and land on the payment page.
+/// Going through the website instead costs a second sign-in there, which is
+/// four screens between wanting to pay and paying.
+pub async fn create_checkout(
+    base: &str,
+    token: &str,
+    plan: &str,
+    interval: &str,
+) -> Result<Checkout, CloudError> {
+    let url = format!("{base}/v1/cloud/checkout");
+    let resp = http_client()?
+        .post(&url)
+        .bearer_auth(token)
+        .json(&serde_json::json!({ "plan": plan, "interval": interval }))
+        .send()
+        .await
+        .map_err(|e| CloudError::Network(format!("Network error: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(into_error(resp).await);
+    }
+    let body = resp.text().await.unwrap_or_default();
+    parse_json(&body)
+}
+
 // ---- caja negra: storage / archived games -----------------------------
 
 /// A save's freeable footprint. Mirrors the server's `GameFootprint`.

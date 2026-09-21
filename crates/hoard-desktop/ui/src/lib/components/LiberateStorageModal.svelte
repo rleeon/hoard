@@ -92,6 +92,10 @@
       {$_("liberate.pro")}
     </button>
 
+    <!-- The button said "upgrade" and nothing else, so the only way to learn
+         what Pro costs was to open a browser and find out. -->
+    <p class="text-center text-xs text-zinc-400">{$_("pro_trust.price")}</p>
+
     <LiberateStoragePanel {open} {busy} bind:selected />
 
     <p class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-200/90">

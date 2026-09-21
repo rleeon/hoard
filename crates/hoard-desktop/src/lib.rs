@@ -337,6 +337,7 @@ pub fn run() {
             commands::cloud::cloud_logout,
             commands::cloud::cloud_export_all,
             commands::cloud::cloud_export_status,
+            commands::cloud::cloud_create_checkout,
             commands::cloud::cloud_storage_games,
             commands::cloud::cloud_archive_save,
             commands::cloud::cloud_set_max_save_size,
