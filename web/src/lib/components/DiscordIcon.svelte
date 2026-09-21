@@ -1,11 +1,15 @@
 <script lang="ts">
   // Discord's own mark, lucide dropped brand glyphs, so the path is inlined.
   // currentColor so the button decides the ink; `class` lets callers size it.
-  let { class: klass = 'h-4 w-4' }: { class?: string } = $props();
+  // The rest spreads onto the <svg> so callers can hang `data-anim` on it the
+  // way they do on a lucide icon.
+  let { class: klass = 'h-4 w-4', ...rest }: { class?: string } & Record<string, unknown> =
+    $props();
 </script>
 
 <svg
   class={klass}
+  {...rest}
   viewBox="0 0 24 24"
   fill="currentColor"
   aria-hidden="true"

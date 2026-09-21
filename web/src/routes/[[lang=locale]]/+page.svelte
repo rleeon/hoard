@@ -147,7 +147,9 @@
           variant="star"
           full
         >
-          <Star class="h-4 w-4 fill-current" />
+          <!-- The star jumps and flips, the same `hop` the app's star makes,
+               on top of the button's own pop. -->
+          <Star data-anim="hop" class="h-4 w-4 fill-current" />
           {$_('hero.cta_star')}
         </Button>
       </div>
@@ -180,8 +182,8 @@
         <img
           src="/WEB.webp"
           alt={$_('hero.screenshot_alt')}
-          width="1321"
-          height="913"
+          width="1101"
+          height="812"
           fetchpriority="high"
           decoding="async"
           class="block w-full rounded-2xl border border-line-strong shadow-[0_40px_90px_-40px_rgba(0,0,0,0.9)] lg:h-[22rem] lg:w-auto xl:h-[28rem] 2xl:h-[30rem]"

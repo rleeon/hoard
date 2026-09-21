@@ -202,7 +202,7 @@
             <li>
               <a
                 href={a.href}
-                class="block rounded-lg border border-line bg-bg px-4 py-3 ring-focus transition-colors hover:border-accent hover:bg-accent-tint"
+                class="glow block rounded-lg border border-line bg-bg px-4 py-3 ring-focus transition-colors hover:border-accent hover:bg-accent-tint"
               >
                 <span class="font-mono text-sm font-medium text-ink">{a.label}</span>
                 <span class="mt-0.5 block text-xs text-ink-faint">{a.sublabel}</span>
@@ -229,9 +229,9 @@
         href={CHANGELOG_URL}
         target="_blank"
         rel="noopener noreferrer"
-        class="inline-flex items-center justify-center gap-2 rounded-lg border border-pine-line bg-white/5 px-5 py-2.5 text-sm font-medium text-white ring-focus transition-colors hover:bg-white/10"
+        class="glow pop-self anim-host inline-flex items-center justify-center gap-2 rounded-lg border border-pine-line bg-white/5 px-5 py-2.5 text-sm font-medium text-white ring-focus transition-colors hover:bg-white/10"
       >
-        <Github class="h-4 w-4" />
+        <Github data-anim="pop" class="h-4 w-4" />
         {$_('download.changelog_cta')}
       </a>
     </div>

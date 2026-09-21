@@ -105,13 +105,16 @@
             use:reveal={{ delay: i * 40 }}
           >
             <button
-              class="ring-focus flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-bg"
+              class="glow anim-host ring-focus flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-bg"
               onclick={() => (openKey = openKey === f.q ? null : f.q)}
               aria-expanded={openKey === f.q}
               aria-controls={`faq-${f.q}`}
             >
               <span class="font-medium text-ink">{$_(f.q)}</span>
+              <!-- The pop is off once this row is open: the animation drives
+                   `transform`, and it would drop the chevron's 180deg turn. -->
               <ChevronDown
+                data-anim={openKey === f.q ? undefined : 'pop'}
                 class="h-4 w-4 flex-none text-ink-faint transition-transform duration-300 {openKey ===
                 f.q
                   ? 'rotate-180 text-accent'

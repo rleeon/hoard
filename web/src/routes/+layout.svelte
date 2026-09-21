@@ -5,6 +5,7 @@
   import { onMount } from 'svelte';
   import { onNavigate } from '$app/navigation';
   import { smoothWheel } from '$lib/actions/smoothWheel';
+  import { initHoverMotion } from '$lib/hoverMotion';
   import { stripLocale } from '$lib/i18n/locales';
 
   interface Props {
@@ -21,6 +22,7 @@
   let fadeGuard: ReturnType<typeof setTimeout>;
 
   onMount(() => smoothWheel());
+  onMount(() => initHoverMotion());
 
   onNavigate((navigation) => {
     if (typeof document === 'undefined') return;

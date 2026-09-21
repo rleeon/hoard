@@ -110,7 +110,9 @@
       </div>
     {/each}
   </div>
-  <p class="mt-4 max-w-2xl text-sm leading-relaxed text-ink-faint">{$_('pricing.bands_note')}</p>
+  <p class="mx-auto mt-4 max-w-2xl text-center text-sm leading-relaxed text-ink-faint">
+    {$_('pricing.bands_note')}
+  </p>
 
   <!-- Billing cycle, centred on the table as a whole. The "2 months free" note
        hangs off the toggle absolutely so it cannot shove it off centre. -->
@@ -118,13 +120,13 @@
     <div class="relative inline-block">
       <div class="inline-flex rounded-full border border-line bg-surface p-1">
         <button
-          class="rounded-full px-4 py-1.5 text-sm transition-colors {cycle === 'monthly'
+          class="glow pop-self rounded-full px-4 py-1.5 text-sm transition-colors {cycle === 'monthly'
             ? 'bg-accent text-pine'
             : 'text-ink-soft hover:text-ink'}"
           onclick={() => (cycle = 'monthly')}>{$_('pricing.toggle_monthly')}</button
         >
         <button
-          class="rounded-full px-4 py-1.5 text-sm transition-colors {cycle === 'yearly'
+          class="glow pop-self rounded-full px-4 py-1.5 text-sm transition-colors {cycle === 'yearly'
             ? 'bg-accent text-pine'
             : 'text-ink-soft hover:text-ink'}"
           onclick={() => (cycle = 'yearly')}>{$_('pricing.toggle_yearly')}</button
@@ -161,6 +163,16 @@
       </p>
       <p class="text-xs text-ink-faint">
         {cycle === 'monthly' ? $_('pricing.billed_monthly') : $_('pricing.billed_yearly')}
+      </p>
+      <p class="relative flex items-center justify-center gap-1 text-xs text-ink-faint">
+        {$_('pricing.tax_note')}
+        <span class="group inline-flex">
+          <HelpCircle class="h-3.5 w-3.5 cursor-help text-accent/70" />
+          <span
+            class="pointer-events-none absolute left-1/2 top-6 z-20 w-56 -translate-x-1/2 rounded-lg border border-line bg-bg p-3 text-left font-sans text-xs leading-relaxed text-ink-soft opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+            >{$_('pricing.tax_tip')}</span
+          >
+        </span>
       </p>
       <div class="mt-auto pt-3">
         <Button variant="primary" full onclick={() => choose('pro')}>
@@ -236,6 +248,16 @@
       </p>
       <p class="text-xs text-ink-faint">
         {cycle === 'monthly' ? $_('pricing.billed_monthly') : $_('pricing.billed_yearly')}
+      </p>
+      <p class="relative flex items-center justify-center gap-1 text-xs text-ink-faint">
+        {$_('pricing.tax_note')}
+        <span class="group inline-flex">
+          <HelpCircle class="h-3.5 w-3.5 cursor-help text-accent/70" />
+          <span
+            class="pointer-events-none absolute left-1/2 top-6 z-20 w-56 -translate-x-1/2 rounded-lg border border-line bg-bg p-3 text-left font-sans text-xs leading-relaxed text-ink-soft opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+            >{$_('pricing.tax_tip')}</span
+          >
+        </span>
       </p>
       <div class="mt-5">
         <Button variant="primary" full onclick={() => choose('pro')}>

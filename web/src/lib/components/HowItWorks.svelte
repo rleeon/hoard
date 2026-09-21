@@ -11,9 +11,11 @@
   //   - Step 01 "Install & sign in": a download button, no image.
   //   - Step 02 "Detect your library": the real Dashboard screenshot.
   //   - Step 03 "Sync & history": the real History screenshot, in the same
-  //     16:10 frame as step 02. This one is object-fill, so the smaller
-  //     screenshot fills the box exactly, no bars, nothing cropped, while
-  //     step 02 keeps object-cover.
+  //     16:10 frame as step 02. It is wider than the frame (773x444 against
+  //     16:10), so it is `object-contain` over the screenshot's own near-black:
+  //     `fill` stretched the rows 9% and `cover` would eat the Restore buttons
+  //     at the right edge. The letterbox is invisible because the tile behind
+  //     it is the same colour as the shot. Step 02 keeps object-cover.
   //
   // The ?v=1 on the screenshots is a cache key, not a version: the CDN in
   // front of the site cached a 404 for these paths in the minutes between the
@@ -28,7 +30,7 @@
   const steps = [
     { n: '1', title: 'how.s1_title', body: 'how.s1_body' },
     { n: '2', title: 'how.s2_title', body: 'how.s2_body', img: '/dashboard.webp?v=1', alt: 'slot.how_library', fit: 'cover' },
-    { n: '3', title: 'how.s3_title', body: 'how.s3_body', img: '/history.webp?v=1', alt: 'slot.how_history', fit: 'fill' }
+    { n: '3', title: 'how.s3_title', body: 'how.s3_body', img: '/history.webp?v=2', alt: 'slot.how_history', fit: 'contain' }
   ];
 </script>
 
@@ -68,13 +70,17 @@
             use:reveal={{ delay: i * 80 }}
           >
             <div class="overflow-hidden rounded-xl border border-line">
-              <div class="aspect-[16/10] overflow-hidden">
+              <div
+                class="aspect-[16/10] overflow-hidden {s.fit === 'contain' ? 'bg-[#030303]' : ''}"
+              >
                 <img
                   src={s.img}
                   alt={$_(s.alt)}
                   loading="lazy"
                   decoding="async"
-                  class="block h-full w-full {s.fit === 'cover' ? 'object-cover object-top' : 'object-fill'}"
+                  class="block h-full w-full {s.fit === 'cover'
+                    ? 'object-cover object-top'
+                    : 'object-contain'}"
                 />
               </div>
             </div>

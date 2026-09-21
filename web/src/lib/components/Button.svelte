@@ -23,6 +23,12 @@
     onclick?: (e: MouseEvent) => void;
     children: import('svelte').Snippet;
     full?: boolean;
+    /** Cursor-following highlight, the same one the app's buttons wear. On by
+     *  default: every button on the site reacts the same way. */
+    glow?: boolean;
+    /** Bounce the whole button when the pointer lands on it. Icons inside it
+     *  carry their own `data-anim` and bounce with it. */
+    pop?: boolean;
   }
 
   let {
@@ -37,11 +43,13 @@
     ariaLabel,
     onclick,
     children,
-    full = false
+    full = false,
+    glow = true,
+    pop = true
   }: Props = $props();
 
   const base =
-    'group inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors duration-200 ring-focus disabled:cursor-not-allowed disabled:opacity-50 active:brightness-95';
+    'group anim-host inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors duration-200 ring-focus disabled:cursor-not-allowed disabled:opacity-50 active:brightness-95';
 
   const variants: Record<Variant, string> = {
     primary: 'bg-accent text-pine hover:bg-emerald-300',
@@ -72,7 +80,9 @@
   };
 
   let classes = $derived(
-    `${base} ${variants[variant]} ${sizes[size]} ${full ? 'w-full' : ''}`
+    `${base} ${variants[variant]} ${sizes[size]} ${full ? 'w-full' : ''} ${
+      glow ? 'glow' : ''
+    } ${pop ? 'pop-self' : ''}`
   );
 
   let isExternal = $derived(!!href && /^https?:\/\//i.test(href));

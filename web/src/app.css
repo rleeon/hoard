@@ -209,7 +209,10 @@ h3 {
 }
 
 /* Glow-only, cursor-following light with no 3D rotation, for smaller
-   interactive surfaces. Shares the --tilt-glow-x/y vars. */
+   interactive surfaces (the nav pills use it). Shares the --tilt-glow-x/y
+   vars, set here by the `glow` action (lib/actions/glow.ts). Radius and
+   strength match the desktop app's sidebar buttons, so hovering a nav item
+   feels the same in both. */
 .glow {
   position: relative;
   overflow: hidden;
@@ -221,15 +224,76 @@ h3 {
   border-radius: inherit;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 200ms ease;
+  /* The fade-out is the trail: sweep across a row and each button you crossed
+     is still cooling off behind the cursor. Lighting up is near-instant
+     (below), so a button you only flicked past still lights fully. */
+  transition: opacity 520ms ease;
   background: radial-gradient(
-    120px circle at var(--tilt-glow-x, 50%) var(--tilt-glow-y, 50%),
-    rgba(255, 255, 255, 0.14) 0%,
+    100px circle at var(--tilt-glow-x, 50%) var(--tilt-glow-y, 50%),
+    rgba(255, 255, 255, 0.18) 0%,
     transparent 60%
   );
 }
+/* `glow-lit` is set by lib/hoverMotion.ts on the way in and dropped on the way
+   out; `:hover` is the no-JS fallback, which can only light what the pointer
+   is actually resting on. */
+.glow.glow-lit::after,
 .glow:hover::after {
-  opacity: 1;
+  opacity: 0.5;
+  /* Instant: at 60ms a button crossed in a flick only got halfway up before
+     it was dropped again, and half-lit buttons make a faint trail. */
+  transition-duration: 0s;
+}
+
+/* Pop, the same 360ms bell the app plays when the pointer lands on one of its
+   sidebar buttons (crates/hoard-desktop/ui/src/app.css). The hover target for
+   an icon is its own parent, not the icon: a 16px square is too small to aim
+   at, and a button is the right size. Where the icon sits inside a wrapper of
+   its own, that wrapper carries `.anim-host` and is the target instead.
+   `.pop-self` plays it on the control itself, for the nav items that are text
+   and have no icon to bounce, with a scale a whole button can wear. */
+@keyframes icon-pop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(var(--pop-scale, 1.3));
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+/* The star's move: a little jump with a flip, then a small pop on landing.
+   No `perspective` on purpose, the flat spin is what the app's star does. */
+@keyframes icon-hop {
+  0% {
+    transform: translateY(0) rotateY(0deg) scale(1);
+  }
+  40% {
+    transform: translateY(-4px) rotateY(270deg) scale(1);
+  }
+  72% {
+    transform: translateY(0) rotateY(540deg) scale(1);
+  }
+  86% {
+    transform: translateY(0) rotateY(540deg) scale(1.08);
+  }
+  100% {
+    transform: translateY(0) rotateY(540deg) scale(1);
+  }
+}
+[data-anim="pop"].anim-run {
+  --icon-anim-dur: 360ms;
+  animation: icon-pop var(--icon-anim-dur) cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+[data-anim="hop"].anim-run {
+  --icon-anim-dur: 900ms;
+  animation: icon-hop var(--icon-anim-dur) cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+.pop-self.anim-run {
+  --pop-scale: 1.06;
+  --icon-anim-dur: 360ms;
+  animation: icon-pop var(--icon-anim-dur) cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -251,6 +315,16 @@ h3 {
   }
   .lang-globe {
     transition-duration: 300ms !important;
+  }
+
+  /* Same reasoning for the nav's pop: it scales in place for 360ms, it does not
+     travel. Flattening a bell to 0.001ms doesn't remove the motion, it makes
+     the control look broken, which is what the app learned first: on Windows
+     this query is also on for anyone who turned off "animation effects" for
+     performance, and on WebKitGTK it follows `gtk-enable-animations`, which
+     plenty of desktops ship off. */
+  .anim-run {
+    animation-duration: var(--icon-anim-dur, 360ms) !important;
   }
 }
 

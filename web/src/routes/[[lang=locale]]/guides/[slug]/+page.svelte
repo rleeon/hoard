@@ -77,9 +77,9 @@
 <article class="mx-auto max-w-2xl px-4 pb-16 pt-16 sm:px-6 sm:pb-24 sm:pt-24 2xl:pt-12">
   <a
     href={$localeHref('/guides')}
-    class="inline-flex items-center gap-1.5 rounded-md text-sm text-ink-soft ring-focus transition-colors hover:text-ink"
+    class="anim-host inline-flex items-center gap-1.5 rounded-md text-sm text-ink-soft ring-focus transition-colors hover:text-ink"
   >
-    <ArrowLeft class="h-4 w-4" />
+    <ArrowLeft data-anim="pop" class="h-4 w-4" />
     {$_('guides.back')}
   </a>
 
@@ -102,7 +102,7 @@
     <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">{$_('guides.cta_text')}</p>
     <a
       href={$localeHref('/download')}
-      class="mt-4 inline-flex h-10 items-center rounded-lg bg-accent px-4 text-sm font-medium text-pine ring-focus transition-colors hover:bg-emerald-300"
+      class="glow pop-self mt-4 inline-flex h-10 items-center rounded-lg bg-accent px-4 text-sm font-medium text-pine ring-focus transition-colors hover:bg-emerald-300"
     >
       {$_('nav.download')}
     </a>

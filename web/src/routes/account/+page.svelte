@@ -266,7 +266,7 @@
                 </div>
               </div>
               <button
-                class="ring-focus text-sm text-ink-soft transition-colors hover:text-red-400"
+                class="pop-self ring-focus text-sm text-ink-soft transition-colors hover:text-red-400"
                 onclick={() => unlink(d.id)}
               >
                 {$_('account.unlink_device')}

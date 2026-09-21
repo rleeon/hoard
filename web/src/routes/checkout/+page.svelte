@@ -124,6 +124,15 @@
         <span class="text-sm text-ink">{priceLabel}</span>
       </div>
 
+      <!-- What is about to be charged, who charges it and how it stops. The
+           people who never got this far did not balk at two euros; they balked
+           at handing a card to a name they had known for four minutes. -->
+      <ul class="mt-4 space-y-2 text-left text-xs leading-relaxed text-ink-soft">
+        <li>{$_('checkout.trust_tax')}</li>
+        <li>{$_('checkout.trust_card')}</li>
+        <li>{$_('checkout.trust_cancel')}</li>
+      </ul>
+
       {#if error}
         <!-- Headline stays friendly; the concrete reason goes underneath. A
              lone "try again in a moment" is what made a dead session, an
@@ -136,7 +145,7 @@
 
       <div class="mt-6 flex items-center gap-3">
         <button
-          class="ring-focus flex-1 rounded-lg border border-line-strong bg-surface px-4 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-bg disabled:opacity-50"
+          class="glow pop-self ring-focus flex-1 rounded-lg border border-line-strong bg-surface px-4 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-bg disabled:opacity-50"
           onclick={changeAccount}
           disabled={busy}
         >

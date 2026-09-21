@@ -142,13 +142,13 @@
             >
             <button
               onclick={() => copy(row.cmd, row.id)}
-              class="grid w-11 flex-none place-items-center rounded-lg border border-line bg-bg text-ink-soft ring-focus transition-colors hover:border-accent hover:text-accent"
+              class="glow pop-self anim-host grid w-11 flex-none place-items-center rounded-lg border border-line bg-bg text-ink-soft ring-focus transition-colors hover:border-accent hover:text-accent"
               aria-label={$_('cli.copy')}
             >
               {#if copied === row.id}
-                <Check class="h-4 w-4 text-accent" />
+                <Check data-anim="pop" class="h-4 w-4 text-accent" />
               {:else}
-                <Copy class="h-4 w-4" />
+                <Copy data-anim="pop" class="h-4 w-4" />
               {/if}
             </button>
           </div>
@@ -260,7 +260,7 @@
             <li>
               <a
                 href={a.href}
-                class="block rounded-lg border border-line bg-bg px-4 py-3 ring-focus transition-colors hover:border-accent hover:bg-accent-tint"
+                class="glow block rounded-lg border border-line bg-bg px-4 py-3 ring-focus transition-colors hover:border-accent hover:bg-accent-tint"
               >
                 <span class="block break-all font-mono text-sm font-medium text-ink">{a.label}</span>
                 <span class="mt-0.5 block text-xs text-ink-faint">{a.sublabel}</span>

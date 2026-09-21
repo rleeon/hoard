@@ -46,7 +46,7 @@
       <li use:reveal class="reveal">
         <a
           href={$localeHref(`/guides/${g.slug}`)}
-          class="group block rounded-xl border p-5 ring-focus transition-colors {g.featured
+          class="glow group block rounded-xl border p-5 ring-focus transition-colors {g.featured
             ? 'border-accent bg-accent-tint hover:border-accent-deep'
             : 'border-line bg-surface hover:border-line-strong'}"
         >
