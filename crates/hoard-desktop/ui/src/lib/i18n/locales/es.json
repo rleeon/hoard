@@ -737,7 +737,6 @@
   "account.signed_out": "Sesión cerrada en Hoard Cloud.",
   "account.refresh": "Refrescar",
   "account.plan": "Plan",
-  "account.upgrade": "Mejorar plan",
   "account.manage_billing": "Gestionar suscripción",
   "account.storage": "Almacenamiento",
   "account.storage_purging": "Liberando espacio, borrando tus versiones de guardado más antiguas para no pasar del límite.",

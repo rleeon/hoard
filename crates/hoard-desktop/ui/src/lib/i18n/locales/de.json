@@ -737,7 +737,6 @@
   "account.signed_out": "Bei Hoard Cloud abgemeldet.",
   "account.refresh": "Aktualisieren",
   "account.plan": "Plan",
-  "account.upgrade": "Upgrade",
   "account.manage_billing": "Abo verwalten",
   "account.storage": "Speicher",
   "account.storage_purging": "Speicher wird freigegeben, älteste Spielstand-Versionen werden gelöscht, um im Limit zu bleiben.",

@@ -737,7 +737,6 @@
   "account.signed_out": "已退出 Hoard 云。",
   "account.refresh": "刷新",
   "account.plan": "方案",
-  "account.upgrade": "升级",
   "account.manage_billing": "管理订阅",
   "account.storage": "存储",
   "account.storage_purging": "正在释放空间，删除最旧的存档版本以保持在配额内。",

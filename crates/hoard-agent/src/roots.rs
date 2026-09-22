@@ -233,6 +233,18 @@ pub fn internal_drive_roots(_os: Os) -> Vec<PathBuf> {
 /// `/Volumes` is macOS's.
 #[cfg(not(windows))]
 pub fn internal_drive_roots(os: Os) -> Vec<PathBuf> {
+    let containers: &[&str] = match os {
+        Os::Mac => &["/Volumes"],
+        _ => &["/media", "/run/media", "/mnt", "/var/mnt"],
+    };
+    drive_roots_under(containers.iter().map(Path::new))
+}
+
+/// The two levels below each container, which is the rule the function above is
+/// made of. It takes the containers so a test can hand it a temporary tree
+/// instead of the machine's own mount points.
+#[cfg(not(windows))]
+fn drive_roots_under<'a>(containers: impl Iterator<Item = &'a Path>) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
     let mut push = |p: PathBuf, out: &mut Vec<PathBuf>| {
@@ -241,10 +253,6 @@ pub fn internal_drive_roots(os: Os) -> Vec<PathBuf> {
         }
     };
 
-    let containers: &[&str] = match os {
-        Os::Mac => &["/Volumes"],
-        _ => &["/media", "/run/media", "/mnt", "/var/mnt"],
-    };
     for container in containers {
         let Ok(entries) = std::fs::read_dir(container) else {
             continue;
@@ -254,18 +262,20 @@ pub fn internal_drive_roots(os: Os) -> Vec<PathBuf> {
                 continue;
             }
             // `/media/<user>/<volume>` and `/media/<volume>` coexist depending
-            // on the distro, so both levels are accepted.
-            let mut had_child = false;
-            if let Ok(children) = std::fs::read_dir(&entry) {
-                for child in children.flatten().map(|e| e.path()) {
-                    if child.is_dir() {
-                        had_child = true;
-                        push(child, &mut out);
-                    }
+            // on the distro, so both levels are taken. Both, and not whichever
+            // of the two has subdirectories: a disk mounted by hand at
+            // `/mnt/games` with an `Emulation/` inside it used to come back as
+            // `/mnt/games/Emulation` alone, and every caller then looked for
+            // `Emulation/saves` one level too deep. A root that leads nowhere
+            // costs each caller one `stat`.
+            push(entry.clone(), &mut out);
+            let Ok(children) = std::fs::read_dir(&entry) else {
+                continue;
+            };
+            for child in children.flatten().map(|e| e.path()) {
+                if child.is_dir() {
+                    push(child, &mut out);
                 }
-            }
-            if !had_child {
-                push(entry, &mut out);
             }
         }
     }
@@ -354,5 +364,35 @@ mod tests {
         // A bogus prefix has none of the steamuser subdirs.
         let roots = prefix_user_roots(Path::new("/nonexistent/prefix/pfx"));
         assert!(roots.is_empty());
+    }
+
+    /// The disk itself is a root, not only the folders inside it. Both layouts
+    /// a distro can mount with are in the same tree here: `<container>/<volume>`
+    /// and `<container>/<user>/<volume>`, and a caller that joins
+    /// `Emulation/saves` has to reach it in either.
+    #[cfg(not(windows))]
+    #[test]
+    fn a_mounted_disk_is_a_root_even_when_it_has_folders_inside() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mnt = tmp.path().join("mnt");
+        std::fs::create_dir_all(mnt.join("games/Emulation/saves")).unwrap();
+        let media = tmp.path().join("media");
+        std::fs::create_dir_all(media.join("insider/SD/Emulation/saves")).unwrap();
+
+        let roots = drive_roots_under([mnt.as_path(), media.as_path()].into_iter());
+
+        assert!(
+            roots.contains(&mnt.join("games")),
+            "the disk mounted by hand is missing, got {roots:?}"
+        );
+        assert!(
+            roots.contains(&media.join("insider/SD")),
+            "the volume under the user directory is missing, got {roots:?}"
+        );
+        // And every one of them exactly once.
+        let mut seen = HashSet::new();
+        for r in &roots {
+            assert!(seen.insert(r.clone()), "duplicate root: {r:?}");
+        }
     }
 }

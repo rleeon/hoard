@@ -737,7 +737,6 @@
   "account.signed_out": "Disconnesso da Hoard Cloud.",
   "account.refresh": "Aggiorna",
   "account.plan": "Piano",
-  "account.upgrade": "Aggiorna piano",
   "account.manage_billing": "Gestisci abbonamento",
   "account.storage": "Spazio",
   "account.storage_purging": "Liberazione spazio, eliminazione delle versioni di salvataggio più vecchie per restare entro il limite.",

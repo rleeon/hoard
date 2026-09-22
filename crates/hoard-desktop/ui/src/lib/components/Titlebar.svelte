@@ -66,7 +66,7 @@
   /** The eight grips that replace the frame the decoration took with it. `dir`
    *  is the direction as `startResizeDragging` names it.
    *
-   *  Windows keeps the one-pixel filo it has always had: the engine's scrollbar
+   *  Windows keeps the one-pixel edge it has always had: the engine's scrollbar
    *  sits flush against the right edge and a thicker grip eats the last pixels
    *  of its thumb. Linux gets 4 px because there the edge is all there is, and
    *  tao's own 5 px border for undecorated windows never gets a look in: the

@@ -381,16 +381,35 @@ struct Rendered {
 /// Fill `tpl` in, wrap it in the layout, and split the subject off the text
 /// part's first line.
 fn render(tpl: Template, vars: &[(&str, &str)], offers: Option<uuid::Uuid>) -> Rendered {
-    let (subject, body_text) = split_subject(tpl.text);
     let notice_url = if tpl.notice.is_empty() {
         format!("{SITE}/")
     } else {
         format!("{SITE}{}", tpl.notice)
     };
+    let offers_url = offers
+        .map(|t| format!("{SITE}/notices/no-offers?t={t}"))
+        .unwrap_or_default();
 
+    // The offer sections come out first, while everything in hand is still a
+    // template of ours, and the two URLs go in at the same moment. A value is
+    // data: a device name is whatever the client sent, and a game name is
+    // whatever the folder was called, and neither may open a section, close one,
+    // or land on the reader's own opt-out link. Cutting afterwards left all
+    // three a `{{` away.
+    let keep = offers.is_some();
+    let tpl_text = offer_sections(tpl.text, keep);
+    let tpl_html = offer_sections(tpl.html, keep);
+    let layout_text = offer_sections(LAYOUT_TEXT, keep)
+        .replace("{{notice_url}}", &notice_url)
+        .replace("{{offers_url}}", &offers_url);
+    let layout_html = offer_sections(LAYOUT_HTML, keep)
+        .replace("{{notice_url}}", &html_escape(&notice_url))
+        .replace("{{offers_url}}", &html_escape(&offers_url));
+
+    let (subject, body_text) = split_subject(&tpl_text);
     let subject = fill(subject, vars, false);
     let body_text = fill(body_text, vars, false);
-    let body_html = fill(tpl.html, vars, true);
+    let body_html = fill(&tpl_html, vars, true);
     // The line most clients show next to the subject. Taking it from the text
     // part keeps it honest: it is the message's own first sentence, never a
     // separate string somebody forgets to update.
@@ -399,25 +418,13 @@ fn render(tpl: Template, vars: &[(&str, &str)], offers: Option<uuid::Uuid>) -> R
         .find(|l| !l.trim().is_empty())
         .unwrap_or("");
 
-    let text = LAYOUT_TEXT
-        .replace("{{body}}", body_text.trim_end())
-        .replace("{{notice_url}}", &notice_url);
-    let html = LAYOUT_HTML
-        .replace("{{body}}", &body_html)
+    let text = collapse_blank_lines(&layout_text.replace("{{body}}", body_text.trim_end()));
+    // Subject and preheader before the body, so that the one string carrying
+    // filled values goes in last and nothing scans it again.
+    let html = layout_html
         .replace("{{subject}}", &html_escape(&subject))
         .replace("{{preheader}}", &html_escape(preheader))
-        .replace("{{notice_url}}", &html_escape(&notice_url));
-
-    // Offers last, over the assembled message, because the footer's opt-out
-    // line lives in the layout and has to come and go with the pitch it
-    // refers to.
-    let offers_url = offers
-        .map(|t| format!("{SITE}/notices/no-offers?t={t}"))
-        .unwrap_or_default();
-    let text = collapse_blank_lines(&offer_sections(&text, offers.is_some()))
-        .replace("{{offers_url}}", &offers_url);
-    let html = offer_sections(&html, offers.is_some())
-        .replace("{{offers_url}}", &html_escape(&offers_url));
+        .replace("{{body}}", &body_html);
 
     Rendered {
         subject,
@@ -683,6 +690,46 @@ mod tests {
             assert_eq!(
                 r.html.matches("<tr>").count(),
                 r.html.matches("</tr>").count()
+            );
+        }
+    }
+
+    /// A value is data, and data does not get to edit the message around it.
+    /// The device name is whatever the client sent: with the sections cut after
+    /// the values went in, a name carrying `{{/offer}}` ended the offer early
+    /// and took the footer with it, and one carrying `{{offers_url}}` put the
+    /// reader's own opt-out token in the middle of a sentence.
+    #[test]
+    fn a_value_cannot_open_or_close_a_section() {
+        let vars = vec![
+            ("device_name", "{{/offer}} {{offers_url}} {{#offer}}"),
+            ("device_os", "Linux"),
+            ("used", "3"),
+            ("limit", "3"),
+            ("plan", "Free"),
+        ];
+
+        let r = render(DEVICES_FULL, &vars, Some(TOKEN));
+        for part in [&r.text, &r.html] {
+            assert!(
+                part.contains("/notices/devices-full"),
+                "the message was cut short: {part}"
+            );
+            assert!(part.contains("hoard.services/pricing"), "the offer was cut");
+            assert!(
+                part.contains("{{offers_url}}"),
+                "the name's own text was treated as a placeholder: {part}"
+            );
+        }
+
+        // And the same name buys nothing from a reader who said no to offers.
+        let r = render(DEVICES_FULL, &vars, None);
+        for part in [&r.text, &r.html] {
+            assert!(part.contains("/notices/devices-full"), "lost the notice");
+            assert!(!part.contains("pricing"), "offer smuggled in: {part}");
+            assert!(
+                !part.contains(&TOKEN.to_string()),
+                "handed out the opt-out token: {part}"
             );
         }
     }

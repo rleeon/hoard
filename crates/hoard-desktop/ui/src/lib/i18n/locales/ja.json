@@ -737,7 +737,6 @@
   "account.signed_out": "Hoard Cloud からサインアウトしました。",
   "account.refresh": "更新",
   "account.plan": "プラン",
-  "account.upgrade": "アップグレード",
   "account.manage_billing": "サブスクを管理",
   "account.storage": "ストレージ",
   "account.storage_purging": "空き容量を確保中、上限内に収めるため古いセーブ版を削除しています。",

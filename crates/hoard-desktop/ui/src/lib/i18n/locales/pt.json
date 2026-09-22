@@ -737,7 +737,6 @@
   "account.signed_out": "Você saiu da Hoard Cloud.",
   "account.refresh": "Atualizar",
   "account.plan": "Plano",
-  "account.upgrade": "Atualizar plano",
   "account.manage_billing": "Gerenciar assinatura",
   "account.storage": "Armazenamento",
   "account.storage_purging": "Liberando espaço, apagando suas versões de save mais antigas para não passar do limite.",
