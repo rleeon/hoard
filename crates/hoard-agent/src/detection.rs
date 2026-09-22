@@ -1706,6 +1706,12 @@ fn refine_save_dir(slug: &str, hits: Vec<PathBuf>) -> Vec<PathBuf> {
             }
             continue;
         }
+        if keep_whole && subdirs_found.is_empty() && holds_a_manifest_named_save(slug, &hit) {
+            if !refined.contains(&hit) {
+                refined.push(hit);
+            }
+            continue;
+        }
         let mut subdirs = subdirs_found;
         // Content validation (ADR 0019): when a single hit yields several
         // save-named subdirs, prefer the ones that actually hold a recent
@@ -1754,6 +1760,44 @@ fn refine_save_dir(slug: &str, hits: Vec<PathBuf>) -> Vec<PathBuf> {
         }
     }
     kept
+}
+
+/// The manifest named FILES in this exact folder, and at least one of them is
+/// there.
+///
+/// The commonest shape in the catalogue is the one every test above answers no
+/// to: `…/Team Cherry/Hollow Knight/*.dat` resolves to the folder holding the
+/// saves and then nothing about the folder says so. The name is the game's
+/// rather than a save word, there is no save-named subfolder to refine into, and
+/// it is no nest of slots, so without this the hit goes and the game comes out
+/// as the amber "pick a folder" alert. 5,581 of the catalogue's Windows
+/// templates have that shape and 1,918 of them sit under `LocalLow`, which is
+/// all of issue #10 ("all my games in AppData\LocalLow are not being found").
+///
+/// The evidence is the manifest's own pattern and nothing else, so this can only
+/// ever rescue a folder the catalogue already pointed at. `holds_foreign_subdir`
+/// is the other half: `<base>/*.sav` resolves to the install root, and a folder
+/// carrying the game's own engine directories is the game, not its saves.
+fn holds_a_manifest_named_save(slug: &str, dir: &Path) -> bool {
+    // One listing, and the answer is in its first entries or it is not worth the
+    // syscalls: a save folder does not hide its saves behind a thousand others.
+    const MAX_ENTRIES: usize = 512;
+
+    let shields = crate::savefilter::shields_for_slug(slug);
+    if shields.is_empty() {
+        return false;
+    }
+    if crate::junkdirs::holds_foreign_subdir(dir) {
+        return false;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    entries
+        .flatten()
+        .take(MAX_ENTRIES)
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .any(|e| fileclass::matches_shield(&e.file_name().to_string_lossy(), &shields))
 }
 
 /// The last segment *talks about* saves without being one of the exact spellings:
@@ -4789,6 +4833,36 @@ mod tests {
 
         let refined = refine_save_dir("game-root", vec![root]);
         assert!(refined.is_empty());
+    }
+
+    /// The catalogue names files rather than a folder
+    /// (`…/Team Cherry/Hollow Knight/*.dat`), and the folder that resolves to
+    /// carries the game's name, has no save-named subfolder and is no nest of
+    /// slots, so every other rule here drops it.
+    #[test]
+    fn refine_save_dir_keeps_the_folder_the_manifest_named_files_in() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("Team Cherry").join("Hollow Knight");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("user1.dat"), b"save").unwrap();
+
+        assert_eq!(
+            refine_save_dir("hollow-knight", vec![dir.clone()]),
+            vec![dir]
+        );
+    }
+
+    /// The same shape with nothing the manifest named inside stays dropped: the
+    /// rescue runs on the catalogue's own evidence, never on the folder being
+    /// where a save could be.
+    #[test]
+    fn refine_save_dir_drops_the_same_folder_without_a_named_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("Team Cherry").join("Hollow Knight");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("readme.txt"), b"nope").unwrap();
+
+        assert!(refine_save_dir("hollow-knight", vec![dir]).is_empty());
     }
 
     /// One folder per save inside the game's own: the Cyberpunk 2077 shape,

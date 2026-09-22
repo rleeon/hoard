@@ -211,7 +211,7 @@ pub fn classify(rel_path: &str, shields: &[String]) -> FileClass {
     let name = lower.rsplit('/').next().unwrap_or(&lower);
 
     // 1. The manifest rules: if it says this is a save, it is a save.
-    if shields.iter().any(|p| glob_match(p, name)) {
+    if shielded(name, shields) {
         return FileClass::SaveData;
     }
 
@@ -303,6 +303,25 @@ pub fn is_useful_shield(pattern: &str) -> bool {
         return !p.is_empty();
     }
     !matches!(p, "*" | "*.*" | "?" | "**")
+}
+
+/// Does the manifest name this file?
+///
+/// [`classify`] answers the wider question, since a file no pattern covers can
+/// still be save data by its own name. This is the narrow one, and the
+/// difference matters to detection: the manifest naming a file inside a folder
+/// is the only evidence strong enough to keep a folder the name rules would
+/// throw away.
+pub fn matches_shield(rel_path: &str, shields: &[String]) -> bool {
+    let lower = rel_path.to_ascii_lowercase();
+    shielded(&lower, shields)
+}
+
+/// [`matches_shield`] with the lowercasing already done, for [`classify`], which
+/// runs once per file of every backup and has the lowered path in hand.
+fn shielded(lower: &str, shields: &[String]) -> bool {
+    let name = lower.rsplit('/').next().unwrap_or(lower);
+    shields.iter().any(|p| glob_match(p, name))
 }
 
 /// Single-segment glob: `*` is anything including empty, `?` is one character.
