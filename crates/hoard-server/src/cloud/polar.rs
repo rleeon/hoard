@@ -204,6 +204,63 @@ pub fn resolve_product<'a>(
         .map(|x| (x.plan.as_str(), x.interval.as_str()))
 }
 
+/// The account a Polar payload is about: the metadata we stamp at checkout
+/// creation, falling back to the customer's `external_id`. Both are set by
+/// `routes::checkout`, so anything born from our own checkout carries one.
+fn user_id_of(event: &PolarEvent) -> Option<Uuid> {
+    event
+        .data
+        .metadata
+        .as_ref()
+        .and_then(|m| m.user_id.as_deref())
+        .or_else(|| {
+            event
+                .data
+                .customer
+                .as_ref()
+                .and_then(|c| c.external_id.as_deref())
+        })
+        .and_then(|u| Uuid::parse_str(u).ok())
+}
+
+/// Append a checkout event to `audit_log`.
+///
+/// Best-effort, and the caller answers 200 either way: nothing downstream reads
+/// these rows, so a delivery we fail to store is a gap in the funnel, not a
+/// reason for Polar to keep retrying. A checkout opened outside our own flow
+/// has no user id to attach and is dropped with a warning rather than guessed
+/// at, because a row on the wrong account is worse than a missing one.
+async fn record_checkout_event(pool: &PgPool, event: &PolarEvent) {
+    let Some(user_id) = user_id_of(event) else {
+        warn!(
+            event = %event.event_type,
+            "polar webhook: checkout event with no user id, not recorded"
+        );
+        return;
+    };
+    let meta = serde_json::json!({
+        "checkout_id": event.data.id,
+        "status": event.data.status,
+        "product_id": event.data.product_id,
+    })
+    .to_string();
+    if let Err(e) = sqlx::query(
+        "INSERT INTO audit_log (user_id, actor, event_type, metadata)
+             VALUES ($1, 'polar', $2, $3::jsonb)",
+    )
+    .bind(user_id)
+    .bind(&event.event_type)
+    .bind(meta)
+    .execute(pool)
+    .await
+    {
+        warn!(
+            error = %e, %user_id, event = %event.event_type,
+            "polar webhook: couldn't record the checkout event"
+        );
+    }
+}
+
 pub async fn handle(
     State(state): State<CloudState>,
     headers: HeaderMap,
@@ -256,6 +313,19 @@ pub async fn handle(
         }
     };
 
+    // Checkout events grant nothing (`subscription.*` below is what moves a
+    // plan), but they are the only place an abandoned payment leaves a mark.
+    // Polar opens a session with `checkout.created` and then `checkout.updated`
+    // carries it to `succeeded`, `expired` or `failed`. Paired with the
+    // `checkout.requested` row that `routes::checkout` writes, that is what
+    // separates "nobody presses the button" from "they press it and don't
+    // finish", which are opposite problems and were indistinguishable while
+    // `status_for_event` dropped these on the floor.
+    if event.event_type.starts_with("checkout.") {
+        record_checkout_event(&state.pool, &event).await;
+        return (StatusCode::OK, "recorded").into_response();
+    }
+
     let status = match status_for_event(&event.event_type, event.data.status.as_deref()) {
         Some(s) => s,
         None => {
@@ -264,21 +334,7 @@ pub async fn handle(
         }
     };
 
-    // user_id: prefer checkout metadata, fall back to customer.external_id.
-    let user_id = event
-        .data
-        .metadata
-        .as_ref()
-        .and_then(|m| m.user_id.as_deref())
-        .or_else(|| {
-            event
-                .data
-                .customer
-                .as_ref()
-                .and_then(|c| c.external_id.as_deref())
-        })
-        .and_then(|u| Uuid::parse_str(u).ok());
-    let user_id = match user_id {
+    let user_id = match user_id_of(&event) {
         Some(u) => u,
         None => {
             warn!(
@@ -519,6 +575,45 @@ mod tests {
         ));
         // Empty secret never verifies.
         assert!(!verify_signature(b"{}", "", "id", "1", "v1,x"));
+    }
+
+    #[test]
+    fn checkout_events_carry_a_user_and_never_move_a_plan() {
+        // Our own checkouts stamp metadata.user_id; the customer's external_id
+        // is the fallback for payloads that lost it.
+        let uid = "3f2b6c1e-0a4d-4f7e-9c8b-1d2e3f4a5b6c";
+        let from_meta: PolarEvent = serde_json::from_str(&format!(
+            r#"{{"type":"checkout.updated","data":{{"id":"co_1","status":"succeeded",
+                 "metadata":{{"user_id":"{uid}"}}}}}}"#
+        ))
+        .unwrap();
+        assert_eq!(
+            user_id_of(&from_meta),
+            Some(Uuid::parse_str(uid).unwrap()),
+            "metadata.user_id is the primary source"
+        );
+
+        let from_customer: PolarEvent = serde_json::from_str(&format!(
+            r#"{{"type":"checkout.created","data":{{"id":"co_2",
+                 "customer":{{"external_id":"{uid}"}}}}}}"#
+        ))
+        .unwrap();
+        assert_eq!(
+            user_id_of(&from_customer),
+            Some(Uuid::parse_str(uid).unwrap()),
+            "customer.external_id is the fallback"
+        );
+
+        // A checkout opened outside our flow has nothing to attach to, and is
+        // dropped rather than guessed at.
+        let anonymous: PolarEvent =
+            serde_json::from_str(r#"{"type":"checkout.created","data":{"id":"co_3"}}"#).unwrap();
+        assert_eq!(user_id_of(&anonymous), None);
+
+        // And none of them grants anything: only subscription.* maps to a plan
+        // status, so recording a checkout can never upgrade an account.
+        assert_eq!(status_for_event("checkout.updated", Some("succeeded")), None);
+        assert_eq!(status_for_event("checkout.created", Some("open")), None);
     }
 
     #[test]

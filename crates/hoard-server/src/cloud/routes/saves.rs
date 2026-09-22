@@ -150,6 +150,15 @@ pub async fn init_upload(
             plan.as_str(),
             crate::cloud::plans::Plan::Pro.limits().max_save_size_bytes as i64,
         );
+        log_sync_block(
+            &state,
+            user.user_id,
+            "save_too_large",
+            &body.save_id,
+            Some(body.game_slug.as_str()),
+            body.size_bytes,
+        )
+        .await;
         return Ok(SaveTooLargeResponse {
             error: "save exceeds per-save size limit",
             code: "save_too_large",
@@ -406,6 +415,17 @@ pub async fn commit_upload(
         .execute(&state.pool)
         .await?;
         if real > limits.max_save_size_bytes {
+            // No game_slug on this path, same as the quota reject below: the
+            // commit body carries the save id only.
+            log_sync_block(
+                &state,
+                user.user_id,
+                "save_too_large",
+                &save_id,
+                None,
+                real,
+            )
+            .await;
             return Ok(SaveTooLargeResponse {
                 error: "save exceeds per-save size limit",
                 code: "save_too_large",
@@ -590,6 +610,15 @@ pub async fn cas_init(
             .as_ref()
             .map(|c| c.upgrade_url.clone())
             .unwrap_or_else(crate::config::default_upgrade_url);
+        log_sync_block(
+            &state,
+            user.user_id,
+            "save_too_large",
+            &body.save_id,
+            Some(body.game_slug.as_str()),
+            logical_size as u64,
+        )
+        .await;
         return Ok(SaveTooLargeResponse {
             error: "save exceeds per-save size limit",
             code: "save_too_large",
@@ -2466,9 +2495,18 @@ where
 
 /// Record a rejected sync in `sync_log` so failed syncs land in the same
 /// analytics stream as successful uploads/downloads. `kind` is `'quota_block'`
-/// (over storage limit) or `'bandwidth_block'` (over the moving bandwidth
-/// window). Both extend the enum documented in migration 0006. Without this a
-/// sync that 402/429s leaves no trace and the failure rate is invisible.
+/// (over storage limit), `'bandwidth_block'` (over the moving bandwidth
+/// window) or `'save_too_large'` (over the per-save cap). All three extend the
+/// enum documented in migration 0006; the column is plain TEXT with no CHECK,
+/// so a new kind needs no migration. Without this a sync that 402/413/429s
+/// leaves no trace and the failure rate is invisible.
+///
+/// `'save_too_large'` was added in sep-2026, after a read of prod found 24
+/// accounts hitting the per-save cap and not one of them visible in the quota
+/// metrics: only `paced_quota_reject` wrote here, so a 413 was counted nowhere.
+/// The rejections it hides are not marginal: they are whole Wine prefixes and
+/// game installs picked up as a save, which is a detection bug wearing a quota
+/// error, and it stayed invisible for as long as nothing logged it.
 ///
 /// Best-effort: a logging failure must never turn a clean rejection into a 500.
 /// The FK `save_id` column stays NULL because on the init paths the `saves` row

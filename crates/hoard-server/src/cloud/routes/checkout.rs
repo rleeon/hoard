@@ -44,6 +44,12 @@ pub struct CheckoutOut {
 #[derive(Debug, Deserialize)]
 struct PolarCheckoutResp {
     url: String,
+    /// Polar's checkout id. We don't redirect with it, we record it: it is the
+    /// only key that joins "asked to pay" here with "paid" or "expired" in the
+    /// webhook (`polar::record_checkout_event`). Without it an abandoned
+    /// checkout is indistinguishable from one that never started.
+    #[serde(default)]
+    id: Option<String>,
 }
 
 pub async fn create_checkout(
@@ -118,6 +124,31 @@ pub async fn create_checkout(
         warn!(error = %e, "checkout: malformed polar response");
         CloudError::Internal(anyhow::anyhow!("malformed checkout response"))
     })?;
+
+    // Record the intent. Both the app's Pro button and the web's /checkout page
+    // come through this route, so one row here counts everybody, not just the
+    // clients new enough to skip the second sign-in.
+    //
+    // Best-effort on purpose: the user is in the middle of paying, and a failed
+    // INSERT must never cost them the redirect they asked for.
+    let meta = json!({
+        "plan": body.plan,
+        "interval": body.interval,
+        "storage_gb": body.storage_gb,
+        "checkout_id": parsed.id,
+    })
+    .to_string();
+    if let Err(e) = sqlx::query(
+        "INSERT INTO audit_log (user_id, actor, event_type, metadata)
+             VALUES ($1, 'user', 'checkout.requested', $2::jsonb)",
+    )
+    .bind(user.user_id)
+    .bind(meta)
+    .execute(&state.pool)
+    .await
+    {
+        warn!(error = %e, user_id = %user.user_id, "checkout: couldn't record the intent");
+    }
 
     Ok(Json(CheckoutOut { url: parsed.url }))
 }
