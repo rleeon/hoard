@@ -15,21 +15,6 @@ version = 2
 # to the tracking issue explaining the exposure.
 yanked = "deny"
 ignore = [
-    # gtk-rs GTK3 bindings: unmaintained but still the only way to render
-    # the Tauri webview on Linux. Pulled in transitively by tauri-runtime-wry
-    # → webkit2gtk → atk/gtk/gdk/cairo/glib/pango/etc. Upstream Tauri is
-    # tracking the migration to GTK4; until that ships there is no safe
-    # upgrade.
-    "RUSTSEC-2024-0411",
-    "RUSTSEC-2024-0412",
-    "RUSTSEC-2024-0413",
-    "RUSTSEC-2024-0414",
-    "RUSTSEC-2024-0415",
-    "RUSTSEC-2024-0416",
-    "RUSTSEC-2024-0417",
-    "RUSTSEC-2024-0418",
-    "RUSTSEC-2024-0419",
-    "RUSTSEC-2024-0420",
     # proc-macro-error: unmaintained, used by older proc-macro crates we
     # don't control (transitive via tauri-macros or similar).
     "RUSTSEC-2024-0370",
