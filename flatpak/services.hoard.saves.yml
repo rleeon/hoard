@@ -39,6 +39,15 @@ finish-args:
   # needs the broad grant rather than a handful of --filesystem entries that
   # would silently miss whichever drive a game happens to be installed on.
   - --filesystem=host
+  # `host` is not the whole host: /var is on its blocklist, and that is where
+  # the rpm-ostree distros keep everything writable. Bazzite, Silverblue,
+  # Kinoite and Aurora mount extra drives at /var/mnt/<label>, so a second disk
+  # full of games was not merely undetected, it did not exist inside the
+  # sandbox (issue #39, a Heroic prefix under /var/mnt on Bazzite). Only the
+  # mount point is named: the home directory arrives through Flatpak's own home
+  # binding wherever the distro keeps it. If a report ever shows /var/home
+  # missing too, that is one more entry here, not a different fix.
+  - --filesystem=/var/mnt
 
 modules:
   - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
