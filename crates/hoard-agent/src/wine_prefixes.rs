@@ -126,8 +126,8 @@ fn canonical(p: &Path) -> PathBuf {
 ///   desktop dir, `/usr/share/applications`). This covers prefixes in fully
 ///   arbitrary locations.
 ///
-/// A candidate only qualifies when its `drive_c/` exists, mirroring the
-/// other discoverers. Results are deduplicated by canonical path; the
+/// A candidate only qualifies when [`prefix_root_at`] recognises it, mirroring
+/// the other discoverers. Results are deduplicated by canonical path; the
 /// identifier is the prefix directory name (best-effort, not a game slug).
 fn discover_generic_prefixes() -> Vec<WinePrefix> {
     let Some(home) = home() else {
@@ -151,14 +151,14 @@ fn discover_generic_prefixes() -> Vec<WinePrefix> {
 
     let mut out: Vec<WinePrefix> = Vec::new();
     let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
-    for root in candidates {
-        if !root.join("drive_c").is_dir() {
+    for dir in candidates {
+        let Some(root) = prefix_root_at(&dir) else {
             continue;
-        }
+        };
         if !seen.insert(canonical(&root)) {
             continue;
         }
-        let identifier = root
+        let identifier = dir
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("wine")
@@ -172,31 +172,57 @@ fn discover_generic_prefixes() -> Vec<WinePrefix> {
     out
 }
 
-/// Deep sweep: find Wine prefixes in arbitrary locations by scanning the
-/// directories under a set of likely parents for a child holding `drive_c/`.
+/// Where a launcher keeps its prefixes, relative to a base that is either
+/// `$HOME` or the root of a mounted drive.
 ///
-/// Parents (each scanned one level down, so `<parent>/<name>/drive_c`):
-/// - Heroic: `~/Games/Heroic/Prefixes` and its `default/` subtree.
+/// Heroic appears at three depths because its install path is configurable and
+/// each level is the real parent depending on where the user pointed it: the
+/// stock layout is `<games path>/Prefixes/default/<game>`, and somebody who set
+/// the games path to `<drive>/Heroic` ends up with the prefix one level under
+/// that instead.
+const PREFIX_PARENTS: &[&str] = &[
+    "Games/Heroic/Prefixes/default",
+    "Games/Heroic/Prefixes",
+    "Heroic/Prefixes/default",
+    "Heroic/Prefixes",
+    "Heroic",
+    "Games",
+    // The base can already be the games directory itself: a drive listing hands
+    // back the folders inside a volume, so `<disk>/Heroic` arrives as a base of
+    // its own and its prefixes hang straight off it.
+    "Prefixes/default",
+    "Prefixes",
+];
+
+/// Deep sweep: find Wine prefixes in arbitrary locations by scanning the
+/// directories under a set of likely parents for a child that is a prefix.
+///
+/// Parents (each scanned one level down, so `<parent>/<name>` is the prefix):
+/// - [`PREFIX_PARENTS`] under `$HOME` and under every mounted drive.
 /// - CrossOver: `~/.cxoffice`.
 /// - Flatpak'd Wine front-ends keep prefixes under their app data dir.
-/// - Anything the user dropped under `~/Games`, `~/.local/share`, `/opt`, or a
-///   mounted volume (`/run/media/<user>/<label>`).
+/// - Anything the user dropped under `~/.local/share`, `/opt`, or the root of a
+///   mounted drive.
+///
+/// The drives come from [`crate::roots::internal_drive_roots`], which is the
+/// only list of mount points in the agent: a sweep that knows `/run/media` and
+/// nothing else sees nothing at all on an rpm-ostree distro, where the second
+/// games disk is at `/var/mnt/<label>` (issue #39).
 ///
 /// Bounded: each parent is read once and only its immediate children are
-/// stat'd for `drive_c/`; no recursion. Identifier is the prefix dir name.
+/// stat'd; no recursion. Identifier is the prefix dir name.
 fn discover_deep_prefixes() -> Vec<WinePrefix> {
     let Some(home) = home() else {
         return Vec::new();
     };
 
-    let mut parents: Vec<PathBuf> = vec![
-        home.join("Games/Heroic/Prefixes"),
-        home.join("Games/Heroic/Prefixes/default"),
-        home.join(".cxoffice"),
-        home.join("Games"),
-        home.join(".local/share"),
-        PathBuf::from("/opt"),
-    ];
+    let mut parents: Vec<PathBuf> = Vec::new();
+    for rel in PREFIX_PARENTS {
+        parents.push(home.join(rel));
+    }
+    parents.push(home.join(".cxoffice"));
+    parents.push(home.join(".local/share"));
+    parents.push(PathBuf::from("/opt"));
     // Flatpak Lutris/Heroic prefixes live under their app data dir.
     for app in [
         "net.lutris.Lutris/data/lutris/runners/wine",
@@ -204,14 +230,19 @@ fn discover_deep_prefixes() -> Vec<WinePrefix> {
     ] {
         parents.push(home.join(".var/app").join(app));
     }
-    // Mounted volumes: one level for the volume, then look inside.
-    if let Ok(users) = std::fs::read_dir("/run/media") {
-        for user in users.flatten().map(|e| e.path()) {
-            if let Ok(vols) = std::fs::read_dir(&user) {
-                for vol in vols.flatten().map(|e| e.path()) {
-                    parents.push(vol);
-                }
+    // Moving the games to another disk moves the launcher's layout with them,
+    // so the same relative parents apply there. The drive root itself stays in
+    // the list for a prefix dropped by hand at the top of the disk.
+    //
+    // Guarded on the running host, not on `os`: the drive enumeration reads real
+    // mount points, and a cross-OS unit test asking for Linux from a Windows
+    // runner has no business walking that machine's disks.
+    if Os::current() == Os::Linux {
+        for drive in crate::roots::internal_drive_roots(Os::Linux) {
+            for rel in PREFIX_PARENTS {
+                parents.push(drive.join(rel));
             }
+            parents.push(drive);
         }
     }
 
@@ -222,11 +253,13 @@ fn discover_deep_prefixes() -> Vec<WinePrefix> {
             Err(_) => continue,
         };
         for entry in entries.flatten() {
-            let root = entry.path();
-            if !root.join("drive_c").is_dir() {
+            let dir = entry.path();
+            let Some(root) = prefix_root_at(&dir) else {
                 continue;
-            }
-            let identifier = root
+            };
+            // The name comes from `dir`, not from `root`: when the prefix is
+            // nested the tail is a literal `pfx`, which names nothing.
+            let identifier = dir
                 .file_name()
                 .and_then(|s| s.to_str())
                 .unwrap_or("wine")
@@ -239,6 +272,20 @@ fn discover_deep_prefixes() -> Vec<WinePrefix> {
         }
     }
     out
+}
+
+/// The prefix root at `dir`, if `dir` is one.
+///
+/// Wine puts `drive_c/` straight inside the prefix. The Proton runners nest it
+/// one deeper, under `pfx/`, the way Steam's compatdata does, and Heroic runs on
+/// those by default, so a plain `drive_c` test answers `false` for a game
+/// installed through it.
+fn prefix_root_at(dir: &Path) -> Option<PathBuf> {
+    if dir.join("drive_c").is_dir() {
+        return Some(dir.to_path_buf());
+    }
+    let pfx = dir.join("pfx");
+    pfx.join("drive_c").is_dir().then_some(pfx)
 }
 
 /// Scan desktop-entry directories for `WINEPREFIX=` assignments and return the
@@ -468,6 +515,34 @@ mod tests {
             assert_eq!(bottles.len(), 1, "got {prefixes:?}");
             assert_eq!(bottles[0].identifier, "MyBottle");
             assert_eq!(bottles[0].prefix_root, bottle_root);
+        });
+    }
+
+    /// Issue #39: the games live on another disk, so Heroic's layout is rooted
+    /// there rather than under `$HOME`, and its runner nests `drive_c` under
+    /// `pfx/`. Both halves have to hold for the prefix to be found.
+    #[test]
+    fn deep_scan_finds_a_heroic_prefix_with_a_nested_drive_c() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        let game = home.join("Heroic/Alone In The Dark (2023)");
+        std::fs::create_dir_all(game.join("pfx/drive_c/users/steamuser")).unwrap();
+
+        with_home(home, || {
+            let shallow = list_wine_prefixes(Os::Linux);
+            assert!(
+                !shallow.iter().any(|p| p.prefix_root.starts_with(&game)),
+                "the periodic tick must not pay for the deep sweep, got {shallow:?}"
+            );
+
+            let deep = list_wine_prefixes_deep(Os::Linux);
+            let found: Vec<&WinePrefix> = deep
+                .iter()
+                .filter(|p| p.prefix_root.starts_with(&game))
+                .collect();
+            assert_eq!(found.len(), 1, "got {deep:?}");
+            assert_eq!(found[0].prefix_root, game.join("pfx"));
+            assert_eq!(found[0].identifier, "Alone In The Dark (2023)");
         });
     }
 

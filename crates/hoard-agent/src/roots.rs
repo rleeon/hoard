@@ -65,7 +65,7 @@ pub fn user_save_roots(os: Os) -> Vec<PathBuf> {
 ///   EmuDeck and RetroDECK emulators.
 /// - Snap: `~/snap/<app>/{common,current}/.local/share` and `/.config`.
 /// - EmuDeck and RetroDECK: `~/Emulation/saves`, `~/Emulation/storage`, and the
-///   microSD copies at `/run/media/<user>/<label>/Emulation/saves`.
+///   copies on every other drive ([`internal_drive_roots`]).
 ///
 /// All filtered down to the ones that exist; empty on anything but Linux.
 pub fn deep_save_roots(os: Os) -> Vec<PathBuf> {
@@ -103,18 +103,14 @@ pub fn deep_save_roots(os: Os) -> Vec<PathBuf> {
         }
     }
 
-    // EmuDeck / RetroDECK conventional save roots, local and on microSD.
+    // EmuDeck / RetroDECK conventional save roots, local and on every other
+    // drive. The mount points come from `internal_drive_roots` so that a microSD
+    // under `/run/media` is not the only other disk a save can be on.
     push(home.join("Emulation/saves"), &mut out, &mut seen);
     push(home.join("Emulation/storage"), &mut out, &mut seen);
-    if let Ok(mounts) = std::fs::read_dir("/run/media") {
-        for user in mounts.flatten().map(|e| e.path()) {
-            if let Ok(vols) = std::fs::read_dir(&user) {
-                for vol in vols.flatten().map(|e| e.path()) {
-                    push(vol.join("Emulation/saves"), &mut out, &mut seen);
-                    push(vol.join("Emulation/storage"), &mut out, &mut seen);
-                }
-            }
-        }
+    for vol in internal_drive_roots(os) {
+        push(vol.join("Emulation/saves"), &mut out, &mut seen);
+        push(vol.join("Emulation/storage"), &mut out, &mut seen);
     }
 
     out
@@ -232,6 +228,8 @@ pub fn internal_drive_roots(_os: Os) -> Vec<PathBuf> {
 /// The non-Windows equivalent: the mount points where a secondary disk turns up.
 /// `/media/<user>` and `/run/media/<user>` are what Linux desktops use (and the
 /// Deck for its microSD); `/mnt` is the by-hand mount of long tradition;
+/// `/var/mnt` is where the rpm-ostree distros put it, Bazzite and Silverblue and
+/// the rest, `/var` being the writable half of an image-based system;
 /// `/Volumes` is macOS's.
 #[cfg(not(windows))]
 pub fn internal_drive_roots(os: Os) -> Vec<PathBuf> {
@@ -245,7 +243,7 @@ pub fn internal_drive_roots(os: Os) -> Vec<PathBuf> {
 
     let containers: &[&str] = match os {
         Os::Mac => &["/Volumes"],
-        _ => &["/media", "/run/media", "/mnt"],
+        _ => &["/media", "/run/media", "/mnt", "/var/mnt"],
     };
     for container in containers {
         let Ok(entries) = std::fs::read_dir(container) else {

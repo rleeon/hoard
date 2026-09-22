@@ -472,6 +472,9 @@ fn scan_bases(os: Os) -> Vec<PathBuf> {
             PathBuf::from("/mnt"),
             PathBuf::from("/media"),
             PathBuf::from("/run/media"),
+            // rpm-ostree distros (Bazzite, Silverblue, Aurora) mount extra
+            // drives here: `/mnt` is part of the read-only image there.
+            PathBuf::from("/var/mnt"),
         ];
         if let Some(h) = home() {
             v.push(h);
