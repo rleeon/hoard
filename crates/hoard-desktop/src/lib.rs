@@ -8,6 +8,7 @@ mod commands;
 mod daemon;
 mod screen_telemetry;
 mod state;
+mod titlebar;
 mod tray;
 
 use hoard_agent::config::CliConfig;
@@ -222,10 +223,12 @@ pub fn run() {
         // llega a mostrarse: en un arranque silencioso, no.
         .manage(commands::window::StartHidden::default())
         .manage(commands::window::WindowLife::default())
+        .manage(titlebar::TitlebarState::default())
         .invoke_handler(tauri::generate_handler![
             commands::misc::greet,
             commands::window::ui_ready,
             commands::window::window_take_intent,
+            titlebar::window_titlebar,
             // HUD sobre el juego (la app normal, no Hoard-Screen).
             commands::overlay::overlay_toggle,
             commands::overlay::overlay_set_visible,
@@ -362,18 +365,14 @@ pub fn run() {
             commands::screen::screen_note,
         ])
         .setup(|app| {
-            // Windows draws a light grey caption with square corners, which on a
-            // near-black app reads as a strip of tape across the top. The frontend
-            // paints its own instead (`Titlebar.svelte`), and asks the window
-            // whether it is decorated before doing it, so a failure here means the
-            // system bar stays rather than two bars stacking. Only Windows: GNOME
-            // and macOS integrate their own well enough that replacing them would
-            // cost more than it buys.
-            #[cfg(windows)]
+            // Who draws the title bar (`titlebar.rs`). Here, before the window
+            // is ever shown, so it is never seen wearing a bar that is then taken
+            // off it. The frontend asks what came of it rather than sniffing the
+            // platform, so a failure means the system bar stays instead of two
+            // bars stacking.
             if let Some(window) = app.get_webview_window("main") {
-                if let Err(e) = window.set_decorations(false) {
-                    tracing::warn!(error = %e, "window: couldn't drop the system title bar");
-                }
+                titlebar::apply(app.handle(), &window);
+                #[cfg(windows)]
                 commands::window::watch_engine(&window);
             }
 

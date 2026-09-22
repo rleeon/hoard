@@ -65,6 +65,7 @@
   import NotificationsPanel from "./lib/components/NotificationsPanel.svelte";
   import { notifications as notifStore, initServerNotifications } from "./lib/stores/notifications";
   import { glow } from "./lib/actions/glow";
+  import { tagOs } from "./lib/os";
   import { loadTourSeen, markTourSeen } from "./lib/stores/onboarding";
   import { tourActive } from "./lib/stores/tour";
   import UpdateConfirmModal from "./lib/components/UpdateConfirmModal.svelte";
@@ -443,16 +444,8 @@
     warm(loadDashboard);
     warm(loadLanguage);
 
-    // Cheap OS detection so the global stylesheet can swap font-family per
-    // platform without pulling `@tauri-apps/plugin-os` (not installed). The
-    // Tauri WebView keeps the host UA on each platform, so this heuristic is
-    // reliable enough for cosmetic tweaks. Idempotent, classList dedupes.
-    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
-    let osTag: "linux" | "macos" | "windows" | "unknown" = "unknown";
-    if (/Linux/i.test(ua) && !/Android/i.test(ua)) osTag = "linux";
-    else if (/Mac/i.test(ua)) osTag = "macos";
-    else if (/Windows/i.test(ua)) osTag = "windows";
-    document.documentElement.classList.add(`is-${osTag}`);
+    // `is-<os>` on <html>, which the global stylesheet keys the font stack off.
+    tagOs();
 
     await Promise.all([hydrateAuth(), hydrateCloud()]);
     // A window rebuilt from the tray goes back to the page it was on; a fresh

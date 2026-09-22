@@ -1,16 +1,18 @@
 <script lang="ts">
   /**
-   * The window's own title bar, Windows only.
+   * The window's own title bar, on Windows and Linux.
    *
-   * Windows draws a light grey caption with square corners that sits on a
-   * near-black app like a strip of tape. With the decoration off, the bar is
-   * ours: same black, same edge, and the buttons keep the geometry everyone
-   * already knows (46 x 32, close goes red on hover), because a title bar is
-   * the one place where being inventive only makes people miss.
+   * Both draw a light caption with square corners that sits on a near-black app
+   * like a strip of tape. Without it the bar is ours: same black, same edge, and
+   * the buttons keep the geometry everyone already knows (46 x 32, close goes
+   * red on hover), because a title bar is the one place where being inventive
+   * only makes people miss.
    *
    * `data-tauri-drag-region` is what moves the window, and it also gives us the
    * double-click to maximise for free. What it does not give back is the resize
    * border, hence the invisible grips below.
+   *
+   * Which bar is mounted at all is Rust's call, asked for in `main.ts`.
    */
   import { onMount } from "svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -32,11 +34,17 @@
     updatePromptOpen,
   } from "../stores/panels";
   import { prefs } from "../stores/prefs";
+  import { isWindows } from "../os";
   import { lastReport } from "../stores/updates";
   import { tapVersion } from "../stores/versionTap";
   import { APP_VERSION } from "../version";
 
   const win = getCurrentWindow();
+  /** Three things differ between the two platforms: the blur, which WebKitGTK
+   *  paints as a black rectangle the moment anything hovers over it (the bug
+   *  that cost the sidebar its glass), how thick the resize grips can be, and
+   *  who draws the window's edge. */
+  const windows = isWindows();
 
   const activityVisible = $derived($prefs?.live_activity_visible ?? true);
   const hasUpdate = $derived(
@@ -55,21 +63,43 @@
     return () => dispose?.();
   });
 
-  /** The eight grips that replace the frame Windows took away with the
-   *  decoration. `start` is the direction as `startResizeDragging` names it. */
-  const GRIPS = [
-    { dir: "North", class: "left-2 right-2 top-0 h-1 cursor-ns-resize" },
-    { dir: "South", class: "bottom-0 left-2 right-2 h-1 cursor-ns-resize" },
-    { dir: "West", class: "bottom-2 left-0 top-2 w-1 cursor-ew-resize" },
-    { dir: "East", class: "bottom-2 right-0 top-2 w-1 cursor-ew-resize" },
-    { dir: "NorthWest", class: "left-0 top-0 h-2 w-2 cursor-nwse-resize" },
-    { dir: "NorthEast", class: "right-0 top-0 h-2 w-2 cursor-nesw-resize" },
-    { dir: "SouthWest", class: "bottom-0 left-0 h-2 w-2 cursor-nesw-resize" },
-    { dir: "SouthEast", class: "bottom-0 right-0 h-2 w-2 cursor-nwse-resize" },
-  ] as const;
+  /** The eight grips that replace the frame the decoration took with it. `dir`
+   *  is the direction as `startResizeDragging` names it.
+   *
+   *  Windows keeps the one-pixel filo it has always had: the engine's scrollbar
+   *  sits flush against the right edge and a thicker grip eats the last pixels
+   *  of its thumb. Linux gets 4 px because there the edge is all there is, and
+   *  tao's own 5 px border for undecorated windows never gets a look in: the
+   *  webview takes the press first. */
+  const GRIPS = windows
+    ? ([
+        { dir: "North", class: "left-2 right-2 top-0 h-1 cursor-ns-resize" },
+        { dir: "South", class: "bottom-0 left-2 right-2 h-1 cursor-ns-resize" },
+        { dir: "West", class: "bottom-2 left-0 top-2 w-1 cursor-ew-resize" },
+        { dir: "East", class: "bottom-2 right-0 top-2 w-1 cursor-ew-resize" },
+        { dir: "NorthWest", class: "left-0 top-0 h-2 w-2 cursor-nwse-resize" },
+        { dir: "NorthEast", class: "right-0 top-0 h-2 w-2 cursor-nesw-resize" },
+        { dir: "SouthWest", class: "bottom-0 left-0 h-2 w-2 cursor-nesw-resize" },
+        { dir: "SouthEast", class: "bottom-0 right-0 h-2 w-2 cursor-nwse-resize" },
+      ] as const)
+    : ([
+        { dir: "North", class: "left-3 right-3 top-0 h-[4px] cursor-ns-resize" },
+        { dir: "South", class: "bottom-0 left-3 right-3 h-[4px] cursor-ns-resize" },
+        { dir: "West", class: "bottom-3 left-0 top-3 w-[4px] cursor-ew-resize" },
+        { dir: "East", class: "bottom-3 right-0 top-3 w-[4px] cursor-ew-resize" },
+        { dir: "NorthWest", class: "left-0 top-0 h-3 w-3 cursor-nwse-resize" },
+        { dir: "NorthEast", class: "right-0 top-0 h-3 w-3 cursor-nesw-resize" },
+        { dir: "SouthWest", class: "bottom-0 left-0 h-3 w-3 cursor-nesw-resize" },
+        { dir: "SouthEast", class: "bottom-0 right-0 h-3 w-3 cursor-nwse-resize" },
+      ] as const);
 
   function grip(e: MouseEvent, dir: (typeof GRIPS)[number]["dir"]) {
     if (e.button !== 0) return;
+    // The top grips overlap the bar, and the bar is a drag region: without this
+    // the press reaches Tauri's own handler too and the window is moved instead
+    // of resized, which is why the top edge did nothing on Linux.
+    e.preventDefault();
+    e.stopPropagation();
     // The cast keeps this readable: the enum is a plain string union on the
     // wire and the API accepts it as such.
     void win.startResizeDragging(dir as never);
@@ -80,7 +110,8 @@
      to close the window. -->
 <div
   data-tauri-drag-region
-  class="fixed inset-x-0 top-0 z-[400] flex h-8 select-none items-center justify-between border-b border-white/[0.08] bg-layer-3 pl-3 pr-1 backdrop-blur-xl"
+  class="fixed inset-x-0 top-0 z-[400] flex h-8 select-none items-center justify-between border-b border-white/[0.08] bg-layer-3 pl-3 pr-1"
+  class:backdrop-blur-xl={windows}
 >
   <span
     data-tauri-drag-region
@@ -88,8 +119,8 @@
   >
     <Logo size={15} mono class="opacity-90" />
     <span class="translate-y-[2px] text-[13px] font-medium tracking-wide">Hoard</span>
-    <!-- On Windows the version lives here: the sidebar drops its brand row when
-         the title bar is ours. Five quick taps unlock diagnostics, the same
+    <!-- The version lives here whenever the bar is ours, because the sidebar
+         drops its brand row then. Five quick taps unlock diagnostics, the same
          gesture the sidebar's version has. -->
     <button
       type="button"
@@ -251,6 +282,16 @@
     </button>
   </div>
 </div>
+
+<!-- The edge the decoration took with it. Windows keeps drawing a 1 px border
+     of its own around an undecorated window; Linux draws nothing, and a
+     near-black app on a dark desktop then has no visible edge at all. Above the
+     bar and the grips (400 and 401), which would otherwise paint over its top
+     edge, and it takes no clicks, so the grips underneath still get theirs.
+     Gone while maximised, where there is no edge to mark. -->
+{#if !windows && !maximized}
+  <div class="pointer-events-none fixed inset-0 z-[402] border border-white/[0.22]"></div>
+{/if}
 
 {#each GRIPS as g (g.dir)}
   <!-- svelte-ignore a11y_no_static_element_interactions -->

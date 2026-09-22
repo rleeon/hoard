@@ -44,6 +44,16 @@ pub struct Prefs {
     #[serde(default = "default_true")]
     pub close_to_tray: bool,
 
+    /// When `true`, the window keeps the title bar the system draws instead of
+    /// the one the frontend paints (`Titlebar.svelte`). Purely cosmetic, and it
+    /// exists as an escape hatch: the app's own bar depends on what the desktop
+    /// does with an undecorated window, and no switch means a user whose
+    /// compositor renders it badly has nothing to fall back on. The desktop
+    /// reads it once, before the window is first shown, so a change lands on the
+    /// next start.
+    #[serde(default)]
+    pub system_titlebar: bool,
+
     /// When `true`, show a desktop notification after every successful backup.
     /// Off by default (1.0.0): the activity feed already narrates uploads,
     /// so the native banner is opt-in for users who want the extra nudge.
@@ -264,6 +274,7 @@ impl Default for Prefs {
     fn default() -> Self {
         Self {
             close_to_tray: true,
+            system_titlebar: false,
             notify_on_success: false,
             notify_on_failure: true,
             // Default on: Hoard registers itself at login and boots silently
@@ -526,6 +537,24 @@ mod tests {
         // Old value (12h) is gone; new fields are at their defaults, not 12.
         assert_eq!(parsed.automatic_scan_interval_secs, 600);
         assert_eq!(parsed.automatic_backup_interval_secs, 3600);
+    }
+
+    #[test]
+    fn a_prefs_file_from_before_the_switch_keeps_our_own_title_bar() {
+        // The absent key has to read as "the app draws it". Were the default the
+        // other way, every existing install would come back wearing the system
+        // bar after an update, which is a change nobody asked for.
+        let before: Prefs = serde_json::from_str(r#"{ "close_to_tray": true }"#)
+            .expect("a prefs.json without the key should still parse");
+        assert!(!before.system_titlebar);
+
+        let asked = Prefs {
+            system_titlebar: true,
+            ..Prefs::default()
+        };
+        let round_tripped: Prefs =
+            serde_json::from_str(&serde_json::to_string(&asked).unwrap()).unwrap();
+        assert!(round_tripped.system_titlebar);
     }
 
     #[test]

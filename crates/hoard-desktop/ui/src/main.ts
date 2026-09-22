@@ -3,6 +3,7 @@
 import { i18nReady } from "./lib/i18n";
 import { initAccent } from "./lib/stores/theme";
 import { initUiScale, initUiScaleShortcuts } from "./lib/stores/uiScale";
+import { tagOs } from "./lib/os";
 import { mount } from "svelte";
 import "./app.css";
 import App from "./App.svelte";
@@ -49,13 +50,16 @@ function isOverlayWindow(): boolean {
 
 /** Paints our own title bar when the window has no system one.
  *
- * Asking the window instead of sniffing the platform is what keeps this honest:
- * Rust drops the decoration on Windows only, and if that ever fails the answer
- * is `true` and the app does not end up wearing two title bars. */
+ * Rust decides and Rust answers (`titlebar.rs`), which is what keeps this
+ * honest: it reports the bar the window ended up wearing, so a failure on that
+ * side, the switch in Settings, gamescope and macOS all end the same way, with
+ * the system bar and nothing mounted here. The window's own `isDecorated` only
+ * knows about the decoration, and a bar the user asked to keep is not the same
+ * question. */
 async function mountTitlebar(): Promise<void> {
   try {
-    const { getCurrentWindow } = await import("@tauri-apps/api/window");
-    if (await getCurrentWindow().isDecorated()) return;
+    const { windowTitlebar } = await import("./lib/api");
+    if (!(await windowTitlebar()).own) return;
     const { default: Titlebar } = await import(
       "./lib/components/Titlebar.svelte"
     );
@@ -80,6 +84,9 @@ async function bootstrap() {
   // only shows it once the app is up, and buys a first frame already at the
   // chosen size instead of one that snaps to it a moment later.
   await initUiScale();
+  // The title bar's own markup keys off `is-windows`, so the class has to be on
+  // <html> before it mounts rather than when `App` comes up.
+  tagOs();
   await mountTitlebar();
   return mount(App, {
     target: document.getElementById("app")!,

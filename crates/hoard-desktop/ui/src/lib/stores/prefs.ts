@@ -29,6 +29,7 @@ export async function hydratePrefs(): Promise<void> {
     // Pessimistic defaults so the rest of the UI keeps functioning.
     prefs.set({
       close_to_tray: true,
+      system_titlebar: false,
       notify_on_success: false,
       notify_on_failure: true,
       autostart: true,

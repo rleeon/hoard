@@ -34,6 +34,7 @@
     ServerCog,
     Gamepad2,
     ZoomIn,
+    PanelTop,
   } from "@lucide/svelte";
 
   import Card from "../lib/components/Card.svelte";
@@ -81,6 +82,10 @@
   import { clearOnboarding, clearTourSeen } from "../lib/stores/onboarding";
 
   let saving = $state<string | null>(null);
+  /** Whether the switch for the system title bar is offered at all: on macOS
+   *  there is no bar of ours to turn off, and under gamescope or with
+   *  `HOARD_SYSTEM_TITLEBAR` set the answer is already decided (`titlebar.rs`). */
+  let titlebarToggleable = $state(false);
   let signingOut = $state(false);
   // Gate the "forget server" action behind a confirm modal. Forgetting wipes
   // the saved address + token (session.toml + keyring), which is what stops
@@ -351,6 +356,12 @@
     }
     await refreshServiceAutostart();
     try {
+      titlebarToggleable = (await api.windowTitlebar()).toggleable;
+    } catch (e) {
+      // Nothing to offer is the right answer when we can't ask.
+      console.warn("windowTitlebar failed:", e);
+    }
+    try {
       catalog = await api.catalogStatus();
     } catch (e) {
       console.warn("catalogStatus failed:", e);
@@ -542,6 +553,12 @@
         await refreshServiceAutostart();
       } else {
         await updatePrefs({ [field]: value });
+        // Which bar a window wears is settled before it is shown, so the one
+        // on screen keeps the one it opened with. Saying nothing here would
+        // read as a switch that does nothing.
+        if (field === "system_titlebar") {
+          toastSuccess($_("settings.system_titlebar_restart"));
+        }
       }
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
@@ -608,6 +625,18 @@
       description: $_("settings.close_to_tray_desc"),
       icon: Minimize2,
     },
+    // The escape hatch for a desktop that draws an undecorated window badly.
+    // Hidden where it would change nothing, so the switch never lies.
+    ...(titlebarToggleable
+      ? [
+          {
+            field: "system_titlebar" as keyof api.Prefs,
+            label: $_("settings.system_titlebar_label"),
+            description: $_("settings.system_titlebar_desc"),
+            icon: PanelTop,
+          },
+        ]
+      : []),
   ]);
 
   const startupRows: Row[] = $derived([

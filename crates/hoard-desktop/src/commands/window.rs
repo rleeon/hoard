@@ -286,9 +286,11 @@ fn rebuild_main(app: &AppHandle) -> Result<WebviewWindow, String> {
     let window = tauri::WebviewWindowBuilder::from_config(app, &config)
         .and_then(|b| b.build())
         .map_err(|e| e.to_string())?;
-    // As at startup (`lib.rs`): on Windows the frontend paints its own title bar.
-    #[cfg(windows)]
-    let _ = window.set_decorations(false);
+    // As at startup (`lib.rs`): a rebuilt window is born decorated, from the same
+    // `tauri.conf.json` entry, so it needs the same answer applied again. It is
+    // also where a change to the switch in Settings lands, since the window the
+    // user was looking at keeps the bar it opened with.
+    crate::titlebar::apply(app, &window);
     #[cfg(windows)]
     watch_engine(&window);
     app.state::<WindowLife>()

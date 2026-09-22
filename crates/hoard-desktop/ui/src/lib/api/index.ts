@@ -839,6 +839,10 @@ export function agentStatus(): Promise<AgentSlotStatus[]> {
 /** Mirrors `hoard_agent::prefs::Prefs`. Persisted to `prefs.json`. */
 export type Prefs = {
   close_to_tray: boolean;
+  /** When `true`, the window keeps the title bar the system draws instead of
+   *  the one `Titlebar.svelte` paints. Cosmetic escape hatch for a desktop that
+   *  renders an undecorated window badly; applies on the next start. */
+  system_titlebar: boolean;
   notify_on_success: boolean;
   notify_on_failure: boolean;
   autostart: boolean;
@@ -951,6 +955,22 @@ export function uiReady(): Promise<boolean> {
  *  existed to hear it (`commands/window.rs`). */
 export function takeWindowIntent(): Promise<string | null> {
   return invoke<string | null>("window_take_intent");
+}
+
+/** Who ended up drawing the title bar (`titlebar.rs`). */
+export type Titlebar = {
+  /** The window has no system bar, so the frontend paints `Titlebar.svelte`.
+   *  It reports what happened, not what was asked for: if dropping the system
+   *  bar failed, this is `false` and the window keeps the bar it already had. */
+  own: boolean;
+  /** Whether Settings offers the switch. False where the choice is not the
+   *  user's: macOS, or an override (gamescope, `HOARD_SYSTEM_TITLEBAR`). */
+  toggleable: boolean;
+};
+
+/** Asks which title bar the window is wearing. */
+export function windowTitlebar(): Promise<Titlebar> {
+  return invoke<Titlebar>("window_titlebar");
 }
 
 /** A line for the app's log file, from the interface (see `commands/misc.rs`). */
