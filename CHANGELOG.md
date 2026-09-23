@@ -8,6 +8,109 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
 
 ## [Unreleased]
 
+## [1.2.1] - Working in it
+
+   Just two things: Hoard now can send you emails, a new detection upgrade,
+   the new titlebar in windows now is in linux in this new version.
+
+### Added
+- **The service can write to you.** Hoard Cloud ships with transactional
+  email now, sent through Resend, and dark until an operator turns it on: with
+  no `[cloud.email]` in the config nothing is sent and the same news still
+  reaches the app. Five situations mail the account — a cleanup that started
+  deleting old versions, an account out of space, a save over its cap, an
+  archived save about to be deleted, and every device on the plan taken — and
+  the export is mailed too. Pro accounts get none but the export one. Each
+  notice is sent once, on a row that turns the loop of retries into a single
+  message; a cleanup notice repeats once a day while it is still deleting, and
+  everything stops when the situation clears. Each email carries a mute link
+  that silences that one notice for a fortnight, then expires on its own, and
+  points at its own page on hoard.services in all eight languages.
+- **Hoard Cloud enforces its device allowance now, one machine at a time.**
+  The plan's device count (three on Free, Pro unlimited) was shown and kept,
+  never imposed. It is imposed now, behind an opt-in switch
+  (`cloud.devices_enforce` in the server config), because a refusal has to
+  land in clients that explain it before the server starts refusing. A machine
+  the account has already seen always gets through, whatever the count says; a
+  never-seen fingerprint is turned away with `device_limit_reached` and a mail
+  naming the machine the account is out of room for. Devices unseen for 90
+  days are swept, which opens a slot and re-arms the notice. Self-hosted
+  servers already pruned on the same 90 days.
+- **Upgrading to Pro stays in the app.** The upgrade button — the same one in
+  the sidebar and on the account page — used to open the pricing site and
+  ask for a second sign-in. It now asks the server for a check-out tied to
+  the signed-in account and opens it straight away, and the price (€1.99 a
+  month, taxes not included) hangs off the hover where the wall of text used
+  to sit. Abandoned check-outs land in the audit log as `checkout.requested`,
+  by whom and for which plan, so a funnel that nobody finishes reads as a
+  funnel instead of as buyers who never clicked.
+- **The export emails of an install can be re-sent.** `hoard-admin
+  resend-export-emails --finished-before <RFC3339> --dry-run` mails the
+  exports that finished while email was off — eight of them, on six accounts,
+  when mail went live on 19-sep-2026 — and a link that would die before the
+  message is opened is left out.
+- **The web sign-in asks whether you want offers.** Every service email ends
+  with a pitch for Pro, and the law (LSSI art. 21) wants the refusal offered
+  where the address is collected: a checkbox on sign-in, carried across the
+  identity-provider round trip, and the working `/notices/no-offers` link at
+  the foot of every message. Refusing silences the pitch only — the notices
+  keep coming — and the refusal is stored as a date, when it was given, along
+  with the token the footer carried.
+
+### Changed
+- **Your own title bar, on Linux too.** The bar the app paints for itself was
+  a Windows thing; Linux drops the system bar now and shares the same one,
+  with grips sized to the platform and the blur turned off where WebKitGTK
+  would paint it as a black rectangle. Two ways back to the system bar: a
+  switch in Settings, and under gamescope — where the app paints on top of a
+  full-screen compositor that cannot float a bar of its own — the system bar
+  stays automatically. macOS keeps its own window chrome and has no toggle.
+- **A broken installer can be re-shipped without a new version.** A
+  `reship` workflow rebuilds Hoard Setup from a release that already exists
+  and swaps it in, installer, minisig and checksum — written for the Linux
+  installer of 1.2.0, which panicked on its first frame while every other
+  file in the release worked, and an identical app beside it.
+- **The web moves under the pointer.** Hovering a nav item now leaves a glow
+  trail and the icon pops or hops, tuned to match the desktop sidebar so both
+  halves of Hoard feel the same under the cursor. The pricing cards say taxes
+  are not included, and the check-out page says what the money is for, who
+  handles the card (Polar, not Hoard) and that cancelling is one click away in
+  the account.
+
+### Fixed
+- **A game whose manifest names whole files was never offered.** When a
+  catalog entry points at files rather than folders, the folder that actually
+  holds them was discarded on a name rule, so games writing a single save
+  file — 1,918 of the 5,581 templates live under `AppData/LocalLow` — came
+  back as installed but with nothing to back up, which is all of issue #10
+  ("all my games in AppData\LocalLow are not being found"). A folder the
+  manifest names save files in is kept as a save root now, unless it also
+  holds foreign subdirectories where the file it named would be one of many.
+- **Heroic and Wine prefixes on another disk went unseen.** Prefix discovery
+  looked under the home directory, so a second disk full of games — or a
+  Flatpak sandbox, whose `/var` is on its blocklist — did not exist for
+  detection even when the drive was mounted inside it: issue #39, a Heroic
+  prefix under `/var/mnt` on Bazzite. Prefixes are now searched on every
+  mounted drive the engine already knows, including `/var/mnt` where the
+  rpm-ostree distros keep them, a mount point is a root even when it has
+  folders under it, and a prefix whose `drive_c` sits one level deeper under
+  `pfx/`, the shape Heroic writes, is recognised instead of being named "pfx".
+  The Flatpak opens `/var/mnt` too.
+- **The Linux installer said nothing when you closed its password prompt.**
+  pkexec exits with 126 when the prompt is dismissed, which read like any
+  other failure. It has its own sentence now — the prompt closed before you
+  could answer, nothing was changed, try again — and the installer no longer
+  panics before its first frame when the session needs D-Bus.
+- **The web had accepted terms from the app alone.** Web sign-in sent the
+  terms acceptance without a JSON content type, the server answered 415, and
+  the failure was only logged: the 105 acceptances on file by 19-sep-2026
+  were every one of them from the app. The header is explicit now.
+- **A value could reopen an email's knots.** Offer sections were cut after
+  the message was assembled, so a device or game name carrying the section
+  markers could close an offer section early, or splice the reader's own
+  opt-out token into a message. The cuts happen on the template before the
+  values land.
+
 ## [1.2.0] - 2026-09-17
 
 ### Added
