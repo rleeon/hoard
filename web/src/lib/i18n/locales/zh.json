@@ -443,5 +443,5 @@
   "notices.export_ready.p1": "当你请求导出时，Hoard 会把你账户里每个游戏的最新版本打包成一个 ZIP，并通过邮件发给你下载链接。",
   "notices.export_ready.p2": "链接几天后失效，文件也会随之删除。如果你的链接已过期，请在 Hoard 的账户页面重新请求导出；不到一分钟就能准备好。",
   "notices.export_ready.p3": "下载直接来自我们的存储服务商，从不经过 Hoard 的服务器。",
-  "login.no_offers": "关于我账户的邮件中不要包含 Hoard Pro 的优惠信息。通知本身仍会照常发送。"
+  "login.no_offers": "可选：账户通知邮件中不提及 Hoard Pro。"
 }

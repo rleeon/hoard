@@ -443,5 +443,5 @@
   "notices.export_ready.p1": "Quando chiedi un'esportazione a Hoard, mette la versione più recente di ogni gioco del tuo account in un unico ZIP e ti manda un link via email.",
   "notices.export_ready.p2": "Il link scade dopo pochi giorni e il file viene eliminato con lui. Se il tuo è scaduto, chiedi una nuova esportazione dalla pagina dell'account in Hoard; è pronta in meno di un minuto.",
   "notices.export_ready.p3": "Il download arriva direttamente dal nostro fornitore di archiviazione, quindi non passa mai dai server di Hoard.",
-  "login.no_offers": "Niente offerte per Hoard Pro nelle email sul mio account. Gli avvisi continueranno ad arrivare."
+  "login.no_offers": "Facoltativo: non menzionare Hoard Pro nelle email di avviso del mio account."
 }

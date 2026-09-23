@@ -31,9 +31,12 @@
   // "By continuing you accept" is an inference; a tick is a decision, and it is
   // the one we can actually record against the account afterwards.
   let accepted = $state(false);
-  // Refusing the offers for Pro that some service emails carry. Offered here,
-  // next to the Terms, because the law wants the refusal offered where the
-  // address is collected. Unticked: offers are the default, not a trap.
+  // Refusing the offers for Pro that some service emails carry. The law wants
+  // the refusal offered where the address is collected, so it stays on this
+  // page, but at the foot and plainly styled: next to the Terms it read as a
+  // second required box. Unticked: offers are the default, not a trap. It is
+  // also stored on change, since it now sits below the buttons and can be
+  // ticked after the magic link has already gone out.
   let noOffers = $state(false);
   let sent = $state(false);
   let busy = $state(false);
@@ -266,17 +269,6 @@
       <span>{@html $_('login.terms_html')}</span>
     </label>
 
-    <label
-      class="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-4 text-left text-xs leading-relaxed text-ink-soft"
-    >
-      <input
-        type="checkbox"
-        bind:checked={noOffers}
-        class="ring-focus mt-0.5 h-4 w-4 shrink-0 rounded border-line-strong bg-bg text-accent"
-      />
-      <span>{$_('login.no_offers')}</span>
-    </label>
-
     <button
       class="glow pop-self anim-host ring-focus flex w-full items-center justify-center gap-3 rounded-lg border border-line-strong bg-surface px-4 py-3 text-sm font-medium text-ink transition-colors hover:bg-bg disabled:opacity-50"
       onclick={withGoogle}
@@ -392,6 +384,18 @@
     {#if error}
       <p class="text-sm text-red-400">{error}</p>
     {/if}
+
+    <label
+      class="flex cursor-pointer items-start gap-2 border-t border-line pt-4 text-left text-xs leading-relaxed text-ink-faint"
+    >
+      <input
+        type="checkbox"
+        bind:checked={noOffers}
+        onchange={(e) => rememberNoOffers(e.currentTarget.checked)}
+        class="ring-focus mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-line-strong bg-bg text-accent"
+      />
+      <span>{$_('login.no_offers')}</span>
+    </label>
 
   </div>
   {/if}
