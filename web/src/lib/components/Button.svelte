@@ -5,8 +5,6 @@
     | 'outline'
     | 'ghost'
     | 'danger'
-    | 'support'
-    | 'support-quiet'
     | 'star';
   type Size = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -59,13 +57,6 @@
       'border border-accent/40 bg-accent/[0.07] text-ink hover:border-accent/70 hover:bg-accent/15',
     ghost: 'text-ink-soft hover:bg-ink/5 hover:text-ink',
     danger: 'bg-red-700 text-white hover:bg-red-600',
-    // Sponsor red, deliberately off the emerald palette so the ask reads as
-    // its own thing rather than another product CTA.
-    support: 'bg-red-600 text-white hover:bg-red-500',
-    // The companion button inside the pink panel: the dark `secondary` would
-    // vanish against it, so this one is light-on-pink.
-    'support-quiet':
-      'border border-red-600/50 bg-white/70 text-red-950 hover:border-red-600 hover:bg-white',
     // The GitHub star: pure black so it sits inside the page rather than on it,
     // with the border, the text and the glow all in the one amber. The glow is a
     // colour change, not movement, so it stands even under reduced-motion.

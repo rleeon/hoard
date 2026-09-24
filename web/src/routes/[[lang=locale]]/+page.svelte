@@ -6,7 +6,6 @@
   import WhatsInTheBox from '$lib/components/WhatsInTheBox.svelte';
   import GamesSection from '$lib/components/GamesSection.svelte';
   import SelfHostSection from '$lib/components/SelfHostSection.svelte';
-  import SupportSection from '$lib/components/SupportSection.svelte';
   import SyncDiagram from '$lib/components/SyncDiagram.svelte';
   import { reveal } from '$lib/actions/reveal';
   import { marquee } from '$lib/actions/marquee';
@@ -280,6 +279,3 @@
 
 <!-- ───────── SELF-HOST ───────── -->
 <SelfHostSection />
-
-<!-- ───────── SUPPORT HOARD ───────── -->
-<SupportSection />
