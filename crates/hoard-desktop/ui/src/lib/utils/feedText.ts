@@ -152,17 +152,5 @@ export function feedSummary(e: FeedEntry, $_: Translate): string {
       return $_("activity.storage_full");
     case "storage_grace":
       return $_("activity.storage_grace");
-    case "gate_locked":
-      return $_("activity.gate_locked", {
-        values: {
-          reason: $_(e.reason_key ?? "activity.gate_reason_fetch_failed"),
-        },
-      });
-    case "gate_unlocked":
-      return $_("activity.gate_unlocked", {
-        values: {
-          reason: $_(e.reason_key ?? "activity.gate_reason_pro"),
-        },
-      });
   }
 }

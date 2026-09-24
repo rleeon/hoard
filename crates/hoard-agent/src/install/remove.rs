@@ -30,6 +30,8 @@ use super::{fetch, Delivery};
 /// writing"). Best-effort throughout: something we can't stop shows up as a
 /// deletion that fails, with its own message.
 pub async fn stop_running() {
+    // `hoard-screen` no longer ships, but an older install can still have one
+    // running out of the install dir.
     let names = ["hoard-desktop", "hoard-screen", "hoardd"];
 
     #[cfg(windows)]

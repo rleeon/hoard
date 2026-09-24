@@ -18,8 +18,6 @@
     RefreshCw,
     Boxes,
     ChevronDown,
-    MonitorPlay,
-    Lock,
     Bell,
     Eye,
     EyeOff,
@@ -47,7 +45,6 @@
   const loadLogs = () => import("./routes/Logs.svelte");
   const loadDiagnostics = () => import("./routes/Diagnostics.svelte");
   const loadAccount = () => import("./routes/Account.svelte");
-  const loadHoardScreen = () => import("./routes/HoardScreen.svelte");
   const loadHoardWrapped = () => import("./routes/HoardWrapped.svelte");
 
   /** Sugar so `loadingComponent` is not repeated on every route. */
@@ -67,7 +64,6 @@
   import { glow } from "./lib/actions/glow";
   import { tagOs } from "./lib/os";
   import { loadTourSeen, markTourSeen } from "./lib/stores/onboarding";
-  import { tourActive } from "./lib/stores/tour";
   import UpdateConfirmModal from "./lib/components/UpdateConfirmModal.svelte";
   import ErrorDialog from "./lib/components/ErrorDialog.svelte";
   import UpdateGate from "./lib/components/UpdateGate.svelte";
@@ -137,14 +133,6 @@
   import { prefs, hydratePrefs } from "./lib/stores/prefs";
   import { initGameOverlay } from "./lib/stores/gameOverlay";
   import { hydrateCardSizes } from "./lib/stores/cardSizes.svelte";
-  import {
-    entitlements,
-    refreshEntitlements,
-    featureDaysLeft,
-    featureUnlocked,
-    PRO_DEV_UNLOCK,
-    type FeatureKey,
-  } from "./lib/stores/entitlements";
   import * as api from "./lib/api";
   import {
     checkForUpdates,
@@ -181,12 +169,7 @@
     "/logs": lazy(loadLogs),
     "/diagnostics": lazy(loadDiagnostics),
     "/account": lazy(loadAccount),
-    // Premium feature placeholders (gated in the sidebar; the routes
-    // themselves are reachable so an unlocked user lands on the empty state).
-    "/hoard-screen": lazy(loadHoardScreen),
     "/hoard-wrapped": lazy(loadHoardWrapped),
-    // Where every padlock leads. It lives inside the application on purpose: these
-    // buttons used to open the browser on the pricing page.
   };
 
   let booted = $state(false);
@@ -273,16 +256,12 @@
   // matching rail item (measured by `TourOverlay` from the `data-tour*`
   // markers). Keeping this in `App`, the owner of `<main>` and the nav, lets
   // the overlay stay purely presentational while still moving the app behind
-  // it. The Pro sections navigate too, `tourActive` puts ProFeature in preview
-  // mode so opening `/hoard-screen` or `/hoard-wrapped` shows the feature
-  // without burning the one-week trial. Only concept steps pass `null`.
+  // it. Only concept steps pass `null`.
   let mainViewport = $state<HTMLElement | null>(null);
 
   // While the tour runs, keep the Hoard-Saves group expanded so its Library /
-  // Dashboard children exist for the spotlight to land on, and flag the tour so
-  // the Pro sections render in preview mode (no trial spent on the walkthrough).
+  // Dashboard children exist for the spotlight to land on.
   $effect(() => {
-    tourActive.set(showTour);
     if (showTour) savesOpen = true;
   });
 
@@ -726,18 +705,7 @@
     icon: typeof Home;
     children: NavLink[];
   };
-  // A premium feature (Hoard-Screen / Hoard-Wrapped): navigable while the
-  // server entitlement allows it, paid Pro, an active trial, or a trial not
-  // yet started (opening the page is what starts the one-week clock).
-  // Otherwise rendered locked with an upgrade CTA.
-  type NavFeature = {
-    kind: "feature";
-    labelKey: string;
-    icon: typeof Home;
-    route: string;
-    feature: FeatureKey;
-  };
-  type NavEntry = NavLink | NavGroup | NavFeature;
+  type NavEntry = NavLink | NavGroup;
 
   // Collapsed/expanded state for the Hoard-Saves group, remembered across
   // sessions. Defaults to open on first run or when storage is unreadable.
@@ -756,34 +724,6 @@
     } catch {
       /* private mode / storage disabled, toggle still works for the session */
     }
-  }
-
-  // Keep the per-feature entitlement snapshot (nav gating + tooltips for
-  // Hoard-Screen / Hoard-Wrapped) in step with the cloud session: boot
-  // hydrate, sign-in, sign-out and account switches all change the account
-  // identity. Key the refresh on `user_id` AND `plan` so an in-session upgrade
-  // (Free → Pro, when the `/v1/me` poller flips `plan`) re-pulls entitlements
-  // and unlocks the feature immediately, instead of keeping the pre-upgrade
-  // snapshot (which shows Pro as still locked) until the app is restarted. The
-  // store caches `null` when signed out, which renders both items locked.
-  let lastEntitlementsKey: string | null | undefined = undefined;
-  $effect(() => {
-    const key = $cloud.account
-      ? `${$cloud.account.user_id}:${$cloud.account.plan}`
-      : null;
-    if (key === lastEntitlementsKey) return;
-    lastEntitlementsKey = key;
-    void refreshEntitlements();
-  });
-
-  // Click on a locked premium item: straight to the feature's own page. That is
-  // where the one-week trial starts on first look (`ProFeature`), and where, once
-  // it has run out, `ProGate` explains the lock and offers the upgrade. There used
-  // to be an in-app plans screen in between, and its prices, perks and limits had
-  // drifted from the real ones; the plans live on hoard.services, and only an
-  // explicit "upgrade" button goes there.
-  function openPremiumUpsell(feature: FeatureKey) {
-    push(feature === "screen" ? "/hoard-screen" : "/hoard-wrapped");
   }
 
   // The first entry is the account button: "sign in" with no session at all, the
@@ -809,12 +749,6 @@
         { kind: "link", labelKey: "nav.dashboard", icon: Triforce, route: "/dashboard" },
       ],
     },
-    // Hoard-Screen (overlay) is a Cloud-only paid feature: shown (and server
-    // gated) only when signed in to Hoard Cloud. Self-hosted never sees it,
-    // the overlay unlocks against a Cloud entitlement it can't obtain.
-    ...($cloud.account
-      ? [{ kind: "feature", labelKey: "nav.hoard_screen", icon: MonitorPlay, route: "/hoard-screen", feature: "screen" } as NavEntry]
-      : []),
     // Hoard-Wrapped is free for everyone (Cloud and self-hosted): a plain link,
     // no entitlement gate.
     { kind: "link", labelKey: "nav.hoard_wrapped", icon: MarioStar, route: "/hoard-wrapped" },
@@ -832,7 +766,6 @@
     "/logs",
     "/diagnostics",
     "/account",
-    "/hoard-screen",
     "/hoard-wrapped",
   ];
   const isAppRoute = $derived(
@@ -994,53 +927,6 @@
         {#each navEntries as entry (entry.kind === "group" ? entry.id : entry.route)}
           {#if entry.kind === "link"}
             {@render navLink(entry, false)}
-          {:else if entry.kind === "feature"}
-            {@const active = router.location === entry.route}
-            <!-- The per-feature server entitlement decides; `PRO_DEV_UNLOCK` is
-                 the owner's local test override, never set in public builds.
-                 `trial_available` stays navigable: the trial only starts when
-                 the user actually opens the page (first look), never from
-                 here. -->
-            {@const fs = $entitlements?.features[entry.feature] ?? null}
-            {#if PRO_DEV_UNLOCK || featureUnlocked(fs) || fs?.state === "trial_available"}
-              <button
-                type="button"
-                data-tour-route={entry.route}
-                aria-label={$_(entry.labelKey)}
-                aria-current={active ? "page" : undefined}
-                onclick={() => push(entry.route)}
-                use:glow
-                title={fs?.state === "trial"
-                  ? $_("nav.trial_days_left", { values: { n: featureDaysLeft(fs) } })
-                  : fs?.state === "trial_available"
-                    ? $_("pro.trial_available", { values: { n: fs.days } })
-                    : undefined}
-                class="glow group flex w-full items-center gap-3 rounded-md border-l-2 px-3 py-2 text-sm transition-colors duration-150
-                  {active
-                  ? 'border-emerald-500 bg-zinc-800/50 text-zinc-50'
-                  : 'border-transparent text-zinc-400 hover:bg-layer-hover hover:text-zinc-100'}"
-              >
-                <entry.icon size={18} data-anim="pop" />
-                <span>{$_(entry.labelKey)}</span>
-              </button>
-            {:else}
-              <!-- Locked: neutral/zinc styling (not amber) + lock glyph. Click
-                   routes to upgrade/sign-in instead of the gated view. -->
-              <button
-                type="button"
-                data-tour-route={entry.route}
-                aria-label={$_(entry.labelKey)}
-                title={$cloud.account
-                  ? $_("nav.locked_pro")
-                  : $_("nav.locked_signin")}
-                onclick={() => openPremiumUpsell(entry.feature)}
-                class="group flex w-full items-center gap-3 rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-zinc-500 transition-colors duration-150 hover:bg-layer-hover hover:text-zinc-300"
-              >
-                <entry.icon size={18} class="opacity-70" data-anim="pop" />
-                <span class="flex-1 text-left">{$_(entry.labelKey)}</span>
-                <Lock size={14} class="shrink-0 opacity-70" />
-              </button>
-            {/if}
           {:else}
             <!-- A child on the active route forces the group open even if the
                  user had collapsed it, so the highlight is never hidden. -->

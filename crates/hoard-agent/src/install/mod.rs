@@ -1,7 +1,7 @@
 //! Which pieces of Hoard this machine needs, and how they update together.
 //!
 //! Hoard is not a program: it is an engine (`hoardd`) and two faces that drive it,
-//! the terminal (`hoard`) and the app (`hoard-desktop` plus `hoard-screen`). Until
+//! the terminal (`hoard`) and the app (`hoard-desktop`). Until
 //! now they were published cut along the wrong axis, "CLI" against "desktop", and
 //! each cut left out something essential: the tarball carried a terminal with no
 //! engine (which cannot start) and the bundle carried an engine with no terminal.
@@ -53,7 +53,7 @@ use serde::{Deserialize, Serialize};
 pub enum Component {
     /// `hoardd` + `hoard`. Obligatorio.
     Core,
-    /// The graphical app (`hoard-desktop` and its `hoard-screen` overlay).
+    /// The graphical app (`hoard-desktop`).
     Desktop,
 }
 

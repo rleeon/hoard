@@ -1,9 +1,8 @@
 //! The HUD over the game: a second, nearly transparent window carrying the sync
 //! service's live log.
 //!
-//! It is **the normal app**, not Hoard-Screen. Hoard-Screen is a separate process
-//! that composes native panels; this is one more Tauri window, with the same
-//! frontend bundle, told apart by its label (`OVERLAY_LABEL`). The frontend looks at
+//! It is one more Tauri window of the normal app, with the same frontend bundle,
+//! told apart by its label (`OVERLAY_LABEL`). The frontend looks at
 //! that label on start and mounts the HUD instead of the whole application (see
 //! `main.ts`).
 //!
@@ -11,11 +10,6 @@
 //! transparent, always on top and out of the taskbar, and those are construction-time
 //! properties. Creating it from the webview would also mean widening the capabilities
 //! to allow arbitrary window creation, which is exactly what should stay shut.
-//!
-//! **Ordering against Hoard-Screen**: the Pro overlay is an independent process that
-//! also puts itself always on top, and between two "always on top" windows the
-//! compositor's activation order decides, so this window is shown **without stealing
-//! focus** (`focused = false`) so it does not jump over it.
 
 use std::sync::atomic::Ordering;
 

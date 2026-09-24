@@ -10,7 +10,7 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
 
 ## [1.2.1] - Working in it
 
-   Just two things: Hoard now can send you emails, a new detection upgrade,
+   Hoard now can send you emails, a new detection upgrade, removed hoard-screen,
    the new titlebar in windows now is in linux in this new version.
 
 ### Added
@@ -76,6 +76,14 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
   are not included, and the check-out page says what the money is for, who
   handles the card (Polar, not Hoard) and that cancelling is one click away in
   the account.
+
+### Removed
+- **Hoard Screen is gone.** The in-game overlay is no longer built or shipped:
+  its crate, its sidecar in every installer and its page in the app are out,
+  and so is the Pro padlock in the app, which only ever guarded it. Updating
+  over an older install deletes the leftover overlay binary. The Alt+H HUD,
+  the service's live log over the game, stays. Pro keeps its 100 GB and
+  unlimited devices.
 
 ### Fixed
 - **A game whose manifest names whole files was never offered.** When a

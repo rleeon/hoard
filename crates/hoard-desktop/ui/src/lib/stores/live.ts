@@ -80,13 +80,7 @@ export type FeedEntry = {
     // A storage downgrade is scheduled: the account keeps its old limit and
     // nothing is deleted until the date. The row exists so the countdown is
     // seen *before* the shrink, which is the whole point of the window.
-    | "storage_grace"
-    // Pro-gate (Hoard-Screen) transitions, pushed from the entitlements store
-    // when the gate visibly flips between locked and unlocked, with the cause
-    // in `reason_key` (an i18n key). Lets the user see WHY the candado
-    // changed without opening a log file.
-    | "gate_locked"
-    | "gate_unlocked";
+    | "storage_grace";
   /** Optional save_id / game_slug for renderers that want a hint. */
   save_id?: string;
   game_slug?: string;
@@ -107,8 +101,6 @@ export type FeedEntry = {
   too_large_kind?: "plan_cap" | "server_limit" | "proxy";
   /** Consecutive failures, for the `auto_restore_stuck` row. */
   failures?: number;
-  /** i18n key for the cause of a `gate_locked`/`gate_unlocked` row. */
-  reason_key?: string;
 };
 
 const MAX_FEED_ENTRIES = 80;
@@ -327,8 +319,8 @@ function feedRowFor(p: AgentEvent): Omit<FeedEntry, "id" | "at"> | null {
  *  listening, the app was closed, or we reconnected.
  *
  *  The feed is **not** cleared on `resync`: rows only ever arrive newer than
- *  our cursor, and it also holds rows from other sources (cloud pulls, gate
- *  flips) that a wipe would throw away. */
+ *  our cursor, and it also holds rows from other sources (cloud pulls, storage
+ *  status) that a wipe would throw away. */
 function applyBacklogRow({ at, event }: BacklogRow) {
   const row = feedRowFor(event);
   if (row) pushEntry(row, at);
@@ -730,24 +722,6 @@ export function noteStorageStatus(
   else if (s === "grace") pushEntry({ kind: "storage_grace" });
 }
 
-/** Last gate state we pushed a feed row for, so a re-pull that reports the
- *  same locked/unlocked state doesn't duplicate the row. */
-let lastGateState: "locked" | "unlocked" | null = null;
-
-/** Called by the entitlements store when the Hoard-Screen gate visibly flips
- *  between locked and unlocked. `reasonKey` is an i18n key naming the cause
- *  (fetch failed, Free plan, trial ended, Pro plan, …). Deduped on state so a
- *  healthy re-poll never spams the panel. */
-export function noteGateTransition(locked: boolean, reasonKey: string): void {
-  const state = locked ? "locked" : "unlocked";
-  if (state === lastGateState) return;
-  lastGateState = state;
-  pushEntry({
-    kind: locked ? "gate_locked" : "gate_unlocked",
-    reason_key: reasonKey,
-  });
-}
-
 export async function unsubscribeLive() {
   for (const u of unlisteners) {
     try {
@@ -767,7 +741,6 @@ export function resetLive() {
   activityFeed.set([]);
   storageBlock.set(null);
   lastStorageStatus = null;
-  lastGateState = null;
 }
 
 /** Reset only the cloud-loop dot to its neutral baseline, leaving the local

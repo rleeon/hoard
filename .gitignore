@@ -67,7 +67,6 @@ crates/hoard-desktop/ui/src/routes/Map.svelte
 # Internal per-crate and per-folder READMEs.
 /crates/hoard-agent/tests/fixtures/README.md
 /crates/hoard-manifest/data/README.md
-/crates/hoard-screen/README.md
 /deploy/docker/README.md
 
 # Lists only the user writes.
@@ -100,12 +99,14 @@ crates/hoard-desktop/ui/node_modules/
 crates/hoard-desktop/ui/dist/
 crates/hoard-desktop/ui/.vite/
 
-# Compiled sidecars (`hoard-screen-<triple>`, `hoardd-<triple>`,
-# `hoard-<triple>`), which `scripts/build-sidecar.sh` leaves next to
-# `tauri.conf.json` so the bundler flattens them beside the exe. The runtime
-# resolver looks for them there, and the old `binaries/` subdirectory broke that
-# resolution. The sources live in `crates/`.
+# Compiled sidecars (`hoardd-<triple>`, `hoard-<triple>`), which
+# `scripts/build-sidecar.sh` leaves next to `tauri.conf.json` so the bundler
+# flattens them beside the exe. The runtime resolver looks for them there, and
+# the old `binaries/` subdirectory broke that resolution. The sources live in
+# `crates/`.
 crates/hoard-desktop/binaries/
+# The overlay's, which no longer ships. Still ignored so a stale copy left in an
+# older working tree never gets committed.
 crates/hoard-desktop/hoard-screen-*
 crates/hoard-desktop/hoardd-*
 crates/hoard-desktop/hoard-x86_64-*

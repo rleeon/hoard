@@ -436,7 +436,6 @@ pub struct CloudEntitlements {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudFeatures {
-    pub screen: FeatureState,
     pub wrapple: FeatureState,
 }
 
@@ -462,36 +461,6 @@ pub async fn entitlements(base: &str, token: &str) -> Result<CloudEntitlements, 
         .await
         .map_err(|e| CloudError::Network(format!("Network error: {e}")))?;
     if !resp.status().is_success() {
-        return Err(into_error(resp).await);
-    }
-    let body = resp.text().await.unwrap_or_default();
-    parse_json(&body)
-}
-
-/// `POST {base}/v1/cloud/features/:feature/activate`: opens a Pro feature,
-/// starting the one-month trial on first use (the server is idempotent). A `402`
-/// (locked: no Pro, trial spent) is translated to `TrialExpired` so the UI keeps
-/// the padlock rather than showing an error.
-pub async fn activate_feature(
-    base: &str,
-    token: &str,
-    feature: &str,
-) -> Result<FeatureState, CloudError> {
-    let url = format!("{base}/v1/cloud/features/{feature}/activate");
-    let resp = http_client()?
-        .post(&url)
-        .bearer_auth(token)
-        .send()
-        .await
-        .map_err(|e| CloudError::Network(format!("Network error: {e}")))?;
-    let status = resp.status();
-    if status == reqwest::StatusCode::UNAUTHORIZED {
-        return Err(CloudError::Unauthorized);
-    }
-    if status == reqwest::StatusCode::PAYMENT_REQUIRED {
-        return Ok(FeatureState::TrialExpired);
-    }
-    if !status.is_success() {
         return Err(into_error(resp).await);
     }
     let body = resp.text().await.unwrap_or_default();

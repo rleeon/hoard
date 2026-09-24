@@ -22,7 +22,6 @@ pub mod misc;
 pub mod overlay;
 pub mod playtime;
 pub mod prefs;
-pub mod screen;
 pub mod selfhosted_events;
 pub mod supervisor;
 pub mod updates;

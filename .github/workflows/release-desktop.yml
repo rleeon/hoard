@@ -114,18 +114,14 @@ jobs:
       - name: System deps (Linux)
         if: runner.os == 'Linux'
         run: |
-          # ubuntu-22.04 ships libpipewire-0.3-dev 0.3.48, too old for the
-          # `libspa` 0.10 Rust bindings the Wayland sidecar uses (missing
-          # spa_meta_region_is_valid / spa_video_info_raw.flags). Pull a recent
-          # PipeWire from the upstream PPA. We stay on 22.04 so the AppImage
-          # keeps linking against an older glibc and runs on more distros.
+          # We stay on ubuntu-22.04 so the AppImage keeps linking against an
+          # older glibc and runs on more distros.
           #
           # `xdg-utils` is in the x86_64 image and not in the ARM one, which is
           # the whole difference between the two Linux entries: without
           # `xdg-mime` on the PATH Tauri's bundler stops at the AppImage with
           # "xdg-mime binary not found" and the arm64 job produces no packages
           # at all, not even the .deb it had already built.
-          sudo add-apt-repository -y ppa:pipewire-debian/pipewire-upstream
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
@@ -139,16 +135,15 @@ jobs:
             patchelf \
             libwayland-dev \
             libxkbcommon-dev \
-            libpipewire-0.3-dev \
             clang \
             xdg-utils
 
-      # The three sidecars the bundle ships: the overlay (hoard-screen), the sync
-      # service (hoardd) and the terminal face (hoard). Without the second one
-      # the app installs without an engine, it's a thin client of the daemon
-      # since ADR 0021's Slice 4. The third is what makes installing the app
-      # install the whole of Hoard, at one version and in one pass.
-      - name: Build sidecars (hoard-screen, hoardd, hoard)
+      # The two sidecars the bundle ships: the sync service (hoardd) and the
+      # terminal face (hoard). Without the first one the app installs without an
+      # engine, it's a thin client of the daemon since ADR 0021's Slice 4. The
+      # second is what makes installing the app install the whole of Hoard, at
+      # one version and in one pass.
+      - name: Build sidecars (hoardd, hoard)
         shell: bash
         run: bash scripts/build-sidecar.sh
 

@@ -3,8 +3,7 @@
 # the desktop src-tauri root as Tauri `externalBin`s, named with the host target
 # triple (+ `.exe` on Windows) exactly as Tauri's bundler expects.
 #
-# Three of them:
-#   - `hoard-screen`, the in-game overlay (Pro layer).
+# Two of them:
 #   - `hoardd`      , the local sync service that owns the engine (ADR 0021).
 #                      The desktop is a thin client of it and starts it when it's
 #                      absent, so a bundle without `hoardd` is an app that can't
@@ -14,7 +13,7 @@
 #                      no second download. Which copy ends up on PATH is decided
 #                      by `hoard_agent::install`, not by whoever wrote last.
 #
-# `bundle.externalBin` in tauri.conf.json lists all three, which means every
+# `bundle.externalBin` in tauri.conf.json lists both, which means every
 # desktop bundle needs them present first, run before `tauri build`. The compiled
 # artifacts are gitignored (only the sources under `crates/` are tracked). Run
 # once per matrix OS in CI, or locally before a desktop build.
@@ -27,9 +26,8 @@ DESK="$HOARD/crates/hoard-desktop"
 triple="$(rustc -Vv | awk '/^host:/ { print $2 }')"
 
 case "$triple" in
-  *windows*)      features="runtime" ;         ext=".exe" ;;
-  *apple-darwin*) features="runtime" ;         ext="" ;;
-  *)              features="runtime wayland" ; ext="" ;;
+  *windows*) ext=".exe" ;;
+  *)         ext="" ;;
 esac
 
 # Place each sidecar in the src-tauri root (next to tauri.conf.json), NOT a
@@ -58,10 +56,6 @@ place() {
   [ -x "$dest" ] || { echo "ERROR: $dest isn't executable" >&2; exit 1; }
   echo "Placed sidecar: $dest"
 }
-
-echo "Building hoard-screen sidecar ($triple, features: $features)"
-cargo build --manifest-path "$HOARD/Cargo.toml" --release -p hoard-screen --features "$features"
-place hoard-screen
 
 # The sync service. It's also what the per-user autostart unit execs, so the copy
 # that ships next to the app is the one the OS runs at login, the client

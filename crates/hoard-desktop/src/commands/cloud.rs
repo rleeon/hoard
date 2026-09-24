@@ -769,9 +769,7 @@ use hoard_agent::cloud_account::{self, CloudError};
 /// `hoard_agent::cloud_account` (shared with the CLI). What happens here is
 /// re-exporting the types (the JS bindings do not change) and wrapping each call in
 /// the Supabase session glue (resolve creds, refresh the JWT, touch `AppState`).
-pub use hoard_agent::cloud_account::{
-    ArchiveResult, CloudEntitlements, ExportJob, ExportStatus, FeatureState, StorageGames,
-};
+pub use hoard_agent::cloud_account::{ArchiveResult, ExportJob, ExportStatus, StorageGames};
 
 /// Traduce un [`CloudError`] al `String` que la UI ya esperaba, reusando
 /// `format_http_error` para conservar el mapeo `i18n:<key>` intacto.
@@ -982,94 +980,6 @@ pub async fn cloud_reactivate_account(
         .map_err(|e| format!("Couldn't update session: {e}"))?;
     *state.cloud_account.lock().unwrap() = Some(me.clone());
     Ok(me)
-}
-
-// ---- Pro entitlements -------------------------------------------------
-
-/// Fetch the per-feature entitlement snapshot. Transparently renews the JWT and
-/// retries once on a 401, mirroring `cloud_refresh_account`.
-#[tauri::command]
-pub async fn cloud_entitlements(app: AppHandle) -> Result<CloudEntitlements, String> {
-    let creds = active_creds_or_msg(&app).await?;
-    match cloud_account::entitlements(&creds.server_url, &creds.access_token).await {
-        Ok(ent) => {
-            tracing::info!(
-                target: "entitlements",
-                plan = %ent.plan,
-                screen = ?ent.features.screen,
-                wrapple = ?ent.features.wrapple,
-                "entitlements refresh ok",
-            );
-            Ok(ent)
-        }
-        Err(CloudError::Unauthorized) => {
-            tracing::warn!(target: "entitlements", status = 401, "entitlements: 401, borrowing a fresh token");
-            let fresh = borrow_access_token(&app, Some(creds.access_token.clone()))
-                .await
-                .map_err(|e| {
-                    if is_session_expired(&e) {
-                        handle_session_expired(&app);
-                    }
-                    prettify(e)
-                })?;
-            match cloud_account::entitlements(&fresh.server_url, &fresh.access_token).await {
-                Ok(ent) => {
-                    tracing::info!(
-                        target: "entitlements",
-                        plan = %ent.plan,
-                        screen = ?ent.features.screen,
-                        wrapple = ?ent.features.wrapple,
-                        retried_401 = true,
-                        "entitlements refresh ok after 401 retry",
-                    );
-                    Ok(ent)
-                }
-                Err(other) => {
-                    tracing::warn!(
-                        target: "entitlements",
-                        error = %other,
-                        retried_401 = true,
-                        "entitlements: failed after 401 retry",
-                    );
-                    Err(cloud_err_to_string(other))
-                }
-            }
-        }
-        Err(other) => {
-            tracing::warn!(target: "entitlements", error = %other, "entitlements: fetch failed");
-            Err(cloud_err_to_string(other))
-        }
-    }
-}
-
-/// Open a Pro feature: this is the call that *starts* the one-month trial on a
-/// Free account's first use (the server is idempotent) and reports the resulting
-/// state. A locked feature (paid-only, no active trial, or an elapsed trial)
-/// comes back from the server as `402`, which we surface as `TrialExpired` so
-/// the UI keeps the lock. Renews the JWT and retries once on a 401.
-#[tauri::command]
-pub async fn cloud_activate_feature(
-    app: AppHandle,
-    feature: String,
-) -> Result<FeatureState, String> {
-    let creds = active_creds_or_msg(&app).await?;
-    match cloud_account::activate_feature(&creds.server_url, &creds.access_token, &feature).await {
-        Ok(st) => Ok(st),
-        Err(CloudError::Unauthorized) => {
-            let fresh = borrow_access_token(&app, Some(creds.access_token.clone()))
-                .await
-                .map_err(|e| {
-                    if is_session_expired(&e) {
-                        handle_session_expired(&app);
-                    }
-                    prettify(e)
-                })?;
-            cloud_account::activate_feature(&fresh.server_url, &fresh.access_token, &feature)
-                .await
-                .map_err(cloud_err_to_string)
-        }
-        Err(other) => Err(cloud_err_to_string(other)),
-    }
 }
 
 // ---- HTTP helpers -----------------------------------------------------

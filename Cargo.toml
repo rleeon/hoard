@@ -9,7 +9,6 @@ members = [
     "crates/hoard-desktop",
     "crates/hoardd",
     "crates/hoard-manifest",
-    "crates/hoard-screen",
     "crates/hoard-installer",
 ]
 

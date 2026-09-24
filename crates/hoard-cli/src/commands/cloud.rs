@@ -29,7 +29,7 @@ pub enum CloudCommand {
         /// Save id (UUID)
         save_id: String,
     },
-    /// Show Pro entitlements: plan plus per-feature (screen, wrapple) state
+    /// Show Pro entitlements: plan plus per-feature state
     Entitlements,
     /// Sync + show this account's cross-device playtime recap
     Playtime,
@@ -136,7 +136,6 @@ pub async fn run(cmd: CloudCommand) -> Result<()> {
                 .await
                 .map_err(err)?;
             println!("plan: {}", ent.plan);
-            println!("screen:  {}", fmt_feature(&ent.features.screen));
             println!("wrapple: {}", fmt_feature(&ent.features.wrapple));
         }
         CloudCommand::Playtime => {

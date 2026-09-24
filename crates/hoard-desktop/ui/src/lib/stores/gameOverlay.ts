@@ -2,10 +2,6 @@
  * The settings for the HUD over the game: whether it is on and which shortcut
  * opens it.
  *
- * Mind the name: this is **not** Hoard-Screen. Hoard-Screen is the Pro layer, a
- * separate process that composes native panels and always sits above this. This HUD
- * is the normal app showing its live log.
- *
  * It lives in `localStorage`, like the theme and the accent: it is *this* machine's
  * interface preference and has no reason to travel to the service's `prefs.json`.
  *

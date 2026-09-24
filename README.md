@@ -14,18 +14,18 @@ needs no Hoard account and has no quota beyond your own disk.
 
 > *Ships in eight languages, You can ask for other Language.*
 
-Steam Cloud, GOG Galaxy and friends work fine — right up until they overwrite
+Steam Cloud, GOG Galaxy and friends work fine, right up until they overwrite
 a 200-hour save with a corrupted one from another machine, the publisher
 kills the service, or the game just isn't covered. Hoard is the boring,
 paranoid alternative: it snapshots your saves every time you stop playing,
 hashes every file, and lets you roll back to any earlier version or pull
 your entire library onto a fresh machine. Nothing is ever silently
-overwritten — that's the entire point.
+overwritten, that's the entire point.
 
 Auto-detects your games. Watches your saves. Syncs in the background.
 Rolls back when things go wrong. That's it. That's Hoard.
 
-*Necessity is the mother of invention — I created **Hoard** because I needed it.*
+*Necessity is the mother of invention, I created **Hoard** because I needed it.*
 
 | Feature | What it means for you |
 |---------|----------------------|
@@ -48,27 +48,25 @@ One codebase, two ways to run it:
 
 ![Hoard server photo](web/static/cloud.png)
 
-- **Self-hosted** — run the same `hoard-server` binary on your own box and
+- **Self-hosted** Run the same `hoard-server` binary on your own box and
   point the app at it. No account, no quota — just your cloud. On a NAS it is
-  two boxes to fill in: the [Unraid template](Unraid.md), or the [Docker image](https://github.com/rleeon/hoard/pkgs/container/hoard) — `docker pull ghcr.io/rleeon/hoard`, 
+  two boxes to fill in: the [Unraid template](Unraid.md), or the [Docker image](https://github.com/rleeon/hoard/pkgs/container/hoard), `docker pull ghcr.io/rleeon/hoard`, 
   mirrored to Docker Hub as `rleeon/hoard` (amd64 and arm64, published on every release). 
   [Self-hosting guide](SELF-HOST_GUIDE.md) for the rest.
 &nbsp;
-- **Hoard Cloud** — the hosted service at [hoard.services](https://hoard.services).
+- **Hoard Cloud** The hosted service at [hoard.services](https://hoard.services).
   Sign in with Google, install the app, done. Free tier: 2 GB, 3 devices,
-  full version history — free forever.
+  full version history, free forever.
 
-I have a Pro feature to all guys wanna help Hoard, gives you 100 GB. And unlocks
-**Hoard Screen**, an in-game overlay to see YT or other windows without
-alt-tabbing. Free includes a 1-week trial to this overlay feature, and a free user
-dont need Pro, is just comodity, only limit is Storage 2GB, if you hit it, [Self-Host](SELF-HOST_GUIDE.md).
+I have a Pro feature to all guys wanna help Hoard, gives you 100 GB. Free user
+dont need Pro, is just comodity, only limit is Storage 2GB, if you hit it just [Self-Host](SELF-HOST_GUIDE.md).
 
 
 ## One installer, whatever your machine is
 
 Hoard is an engine (`hoardd`) plus two faces: the terminal (`hoard`) and the
 app. The installer works out which ones your machine wants and puts them all in
-at the same version — a NAS or a server stops at the engine and the terminal, a
+at the same version, a NAS or a server stops at the engine and the terminal, a
 desktop or a Steam Deck gets the app too, in the same pass. Upgrades move
 everything together, so the pieces can't drift apart.
 
@@ -89,14 +87,6 @@ here is the [installer](https://hoard.services/cli).
 
 ## Documentation
 
-- **[Self-hosting guide](SELF-HOST_GUIDE.md)** — Docker, Unraid, bare-metal + systemd, and the headless CLI.
-- **[Contributing](CONTRIBUTING.md)** — building from source, the release flow, and the architecture.
-- **[Funding](FUNDING.md)** — where the money goes and what your sponsorship covers.
-
-# [❤️ Support Hoard ❤️](https://github.com/sponsors/rleeon)
-
-- Hoard is free and open-source. Your support helps cover server costs and funds development.
-[Sponsor on GitHub](https://github.com/sponsors/rleeon)
-
-- See how Hoard use the money to finance Hoard-Cloud
-[Funding breakdown](FUNDING.md)
+- **[Self-hosting guide](SELF-HOST_GUIDE.md)** Docker, Unraid, bare-metal + systemd, and the headless CLI.
+- **[Contributing](CONTRIBUTING.md)** Building from source, the release flow, and the architecture.
+- **[Funding](FUNDING.md)** Where the money goes.

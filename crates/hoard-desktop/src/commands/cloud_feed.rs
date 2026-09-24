@@ -290,7 +290,7 @@ pub async fn devices_refresh(app: AppHandle) -> Result<(), String> {
 
 /// `POST /v1/notifications/:id/dismiss`: record a per-user, cross-device
 /// dismissal on the server. Thin wrapper over `cloud_account::dismiss_notification`
-/// with the same 401-refresh-once dance as `cloud_entitlements`: the Supabase
+/// with the same 401-refresh-once dance as `cloud_refresh_account`: the Supabase
 /// JWT rotates hourly and a stale one must never block a dismiss. The UI calls
 /// this fire-and-forget (optimistic: the localStorage tombstone hides the row
 /// immediately, and a dropped network call just means the server picks the

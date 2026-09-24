@@ -22,12 +22,7 @@
   import { fade } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
   import { onMount, onDestroy, tick } from "svelte";
-  import {
-    Home,
-    Boxes,
-    RotateCw,
-    MonitorPlay,
-  } from "@lucide/svelte";
+  import { Home, Boxes, RotateCw } from "@lucide/svelte";
   import { _ } from "svelte-i18n";
   import Button from "./Button.svelte";
 
@@ -84,17 +79,6 @@
       route: "/dashboard",
       focus: "content",
       itemTarget: '[data-tour-route="/dashboard"]',
-    },
-    {
-      icon: MonitorPlay,
-      titleKey: "tour.screen_title",
-      bodyKey: "tour.screen_body",
-      // Pro: navigating opens the section in preview mode (see `tourActive`),
-      // so it shows the feature without starting the one-week trial.
-      route: "/hoard-screen",
-      focus: "content",
-      itemTarget: '[data-tour-route="/hoard-screen"]',
-      pro: true,
     },
     {
       icon: MarioStar,

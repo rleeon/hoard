@@ -8,12 +8,12 @@
    * explains what the user just bought and, this is the important part, **which
    * half stays for ever and which half depends on carrying on paying**. Unlimited
    * devices never come back down even if they cancel (`first_pro_at` is a one-way
-   * marker on the server); the 100 GB and Hoard Screen do go with the subscription.
+   * marker on the server); the 100 GB do go with the subscription.
    * Saying it here, on the day they pay and are in a good mood, is more honest than
    * letting them find out on the day they cancel.
    */
   import { _ } from "svelte-i18n";
-  import { Infinity as InfinityIcon, HardDrive, MonitorPlay } from "@lucide/svelte";
+  import { Infinity as InfinityIcon, HardDrive } from "@lucide/svelte";
 
   import Modal from "./Modal.svelte";
   import HeartsMark from "./HeartsMark.svelte";
@@ -46,13 +46,6 @@
       icon: HardDrive,
       title: $_("pro_thanks.storage_title"),
       body: $_("pro_thanks.storage_body"),
-      badge: $_("pro_thanks.badge_with_pro"),
-      forever: false,
-    },
-    {
-      icon: MonitorPlay,
-      title: $_("pro_thanks.screen_title"),
-      body: $_("pro_thanks.screen_body"),
       badge: $_("pro_thanks.badge_with_pro"),
       forever: false,
     },

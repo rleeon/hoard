@@ -30,8 +30,6 @@
     Trash2,
     HardDrive,
     AlertTriangle,
-    Lock,
-    LockOpen,
     X,
   } from "@lucide/svelte";
 
@@ -69,8 +67,6 @@
     storage_purging: Trash2,
     storage_full: AlertTriangle,
     storage_grace: Clock,
-    gate_locked: Lock,
-    gate_unlocked: LockOpen,
   } as const;
 
   const TINTS = {
@@ -99,8 +95,6 @@
     storage_purging: "text-amber-400",
     storage_full: "text-red-400",
     storage_grace: "text-sky-300",
-    gate_locked: "text-red-400",
-    gate_unlocked: "text-emerald-400",
   } as const;
 
   // Alert rows get a tinted "card" so plan-limit / storage-pressure events

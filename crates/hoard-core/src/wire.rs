@@ -557,7 +557,8 @@ pub struct DeviceListOut {
 pub const TELEMETRY_TARGET: &str = "hoard::telemetry";
 
 /// The `target` of Hoard Screen's telemetry: when the overlay opens, how long it
-/// stays up and what gets put inside it (`hoard_desktop::screen_telemetry`).
+/// stays up and what gets put inside it. The overlay is gone from the app, but
+/// desktop builds up to 1.2.0 still send it and the server keeps it 180 days.
 ///
 /// Separate from [`TELEMETRY_TARGET`] on purpose, rather than being one more
 /// `verdict`. They answer two different questions ("where does detection fail"

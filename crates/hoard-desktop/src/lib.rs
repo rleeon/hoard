@@ -6,7 +6,6 @@
 
 mod commands;
 mod daemon;
-mod screen_telemetry;
 mod state;
 mod titlebar;
 mod tray;
@@ -217,8 +216,6 @@ pub fn run() {
         // loop, which is why the poller died after exactly one tick.
         .manage(commands::cloud_feed::CloudFeed::default())
         .manage(commands::selfhosted_events::SelfHostedEventsScheduler::default())
-        .manage(commands::screen::ScreenProc::default())
-        .manage(screen_telemetry::ScreenTelemetry::default())
         // La ventana nace oculta (`"visible": false`) y este flag decide si
         // llega a mostrarse: en un arranque silencioso, no.
         .manage(commands::window::StartHidden::default())
@@ -229,7 +226,7 @@ pub fn run() {
             commands::window::ui_ready,
             commands::window::window_take_intent,
             titlebar::window_titlebar,
-            // HUD sobre el juego (la app normal, no Hoard-Screen).
+            // HUD sobre el juego.
             commands::overlay::overlay_toggle,
             commands::overlay::overlay_set_visible,
             commands::overlay::overlay_is_visible,
@@ -349,20 +346,11 @@ pub fn run() {
             commands::cloud::cloud_accept_terms,
             commands::cloud::cloud_terms_status,
             commands::cloud::cloud_reactivate_account,
-            commands::cloud::cloud_entitlements,
-            commands::cloud::cloud_activate_feature,
             commands::cloud::cloud_sync_playtime,
             commands::cloud_feed::notifications_backlog,
             commands::cloud_feed::devices_refresh,
             commands::devices::devices_list,
             commands::cloud_feed::notification_dismiss,
-            commands::screen::screen_open,
-            commands::screen::screen_send,
-            commands::screen::screen_close,
-            commands::screen::screen_is_open,
-            commands::screen::screen_list_windows,
-            commands::screen::screen_list_monitors,
-            commands::screen::screen_note,
         ])
         .setup(|app| {
             // Who draws the title bar (`titlebar.rs`). Here, before the window

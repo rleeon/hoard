@@ -17,7 +17,6 @@ crates/
 ├── hoard-cli        `hoard` binary (thin client)
 ├── hoard-admin      server-side admin CLI
 ├── hoard-server     HTTP server (Axum), owns the database
-├── hoard-screen     in-game overlay (Pro feature, desktop sidecar)
 └── hoard-desktop    Tauri shell + Svelte UI (thin client)
     └── ui/          Svelte 5 + Tailwind v4 + Vite
 ```
@@ -79,5 +78,4 @@ Everything already listed in `.gitignore`.
 | Sans-IO kernel | `crates/hoard-core/CLAUDE.md` |
 | Tauri plumbing, updater, sidecars | `crates/hoard-desktop/CLAUDE.md` |
 | Svelte, Tailwind, i18n, modals, toasts | `crates/hoard-desktop/ui/CLAUDE.md` |
-| Overlay Pro | `crates/hoard-screen/CLAUDE.md` |
 | Public website | `web/CLAUDE.md` |

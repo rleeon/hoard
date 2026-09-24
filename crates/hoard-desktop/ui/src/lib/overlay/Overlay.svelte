@@ -2,7 +2,7 @@
   /**
    * The HUD over the game, Hoard's Shift+Tab.
    *
-   * It is **the normal app**, not Hoard-Screen: a second Tauri window (label
+   * It is **the normal app**: a second Tauri window (label
    * `overlay`, created in `commands/overlay.rs`), undecorated, transparent and
    * always on top, which mounts this component instead of `App.svelte`. `main.ts`
    * does the routing by looking at the label.

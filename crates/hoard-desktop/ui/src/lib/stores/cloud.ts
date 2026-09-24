@@ -27,9 +27,8 @@ export type CloudAccount = {
   avatar_url: string | null;
   /** "free" | "pro" */
   plan: string;
-  /** RFC3339, account creation time. Informational only: the Hoard-Screen /
-   *  Hoard-Wrapped trials are per-feature and start at first look (see
-   *  `./entitlements.ts`), never from this. `null` on older servers. */
+  /** RFC3339, account creation time. Informational only. `null` on older
+   *  servers. */
   created_at: string | null;
   storage_used_bytes: number;
   /** `-1` = unlimited. */

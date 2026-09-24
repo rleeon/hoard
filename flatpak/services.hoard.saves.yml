@@ -70,10 +70,10 @@ modules:
       - ar -x hoard.deb --output deb-extract
       - tar -C deb-extract -xf deb-extract/data.tar.*
 
-      # Main binary plus every externalBin sidecar (hoardd, hoard-screen, hoard
-      # CLI) the bundler drops next to it, hoardd::client::own_daemon_binary
-      # and the screen sidecar both resolve as a bare-named sibling of
-      # current_exe, so they all need to land in the same /app/bin.
+      # Main binary plus every externalBin sidecar (hoardd, hoard CLI) the
+      # bundler drops next to it, hoardd::client::own_daemon_binary resolves
+      # the daemon as a bare-named sibling of current_exe, so they all need to
+      # land in the same /app/bin.
       - |
         for bin in deb-extract/usr/bin/*; do
           install -Dm755 "$bin" "/app/bin/$(basename "$bin")"

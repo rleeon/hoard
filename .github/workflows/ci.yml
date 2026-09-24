@@ -89,14 +89,12 @@ jobs:
       - name: Build frontend
         run: pnpm --dir crates/hoard-desktop/ui build
       # hoard-desktop's tauri build script requires every `externalBin` to
-      # exist: the overlay (hoard-screen), the sync service (hoardd) and the
-      # terminal face (hoard). Lint/test jobs don't bundle or run them, so
-      # zero-byte placeholders satisfy the existence check; the release workflow
-      # builds the real ones.
+      # exist: the sync service (hoardd) and the terminal face (hoard).
+      # Lint/test jobs don't bundle or run them, so zero-byte placeholders
+      # satisfy the existence check; the release workflow builds the real ones.
       - name: Placeholder sidecars (externalBin)
         run: |
           triple="$(rustc -Vv | sed -n 's/^host: //p')"
-          touch "crates/hoard-desktop/hoard-screen-$triple"
           touch "crates/hoard-desktop/hoardd-$triple"
           touch "crates/hoard-desktop/hoard-$triple"
       - run: cargo clippy --workspace --all-targets -- -D warnings
@@ -161,7 +159,6 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           triple="$(rustc -Vv | sed -n 's/^host: //p')"
-          touch "crates/hoard-desktop/hoard-screen-$triple"
           touch "crates/hoard-desktop/hoardd-$triple"
           touch "crates/hoard-desktop/hoard-$triple"
       # On Linux the full workspace builds (hoard-desktop included). On Windows
@@ -226,7 +223,6 @@ jobs:
       - name: Placeholder sidecars (externalBin)
         run: |
           triple="$(rustc -Vv | sed -n 's/^host: //p')"
-          touch "crates/hoard-desktop/hoard-screen-$triple"
           touch "crates/hoard-desktop/hoardd-$triple"
           touch "crates/hoard-desktop/hoard-$triple"
       - name: Install sqlx-cli

@@ -69,10 +69,10 @@
       </p>
       <p>
         Junto al sync, el Servicio incluye funciones accesorias que pueden cambiar o
-        retirarse: <strong>Hoard Screen</strong>, una superposición que muestra paneles sobre
-        el juego; el registro de <strong>tiempo de juego</strong> por juego y día, y el resumen
-        anual que se genera a partir de él; notificaciones, y la biblioteca con carátulas. El
-        Servicio no está afiliado a ningún editor, plataforma ni tienda de videojuegos.
+        retirarse: el registro de <strong>tiempo de juego</strong> por juego y día, y el
+        resumen anual que se genera a partir de él; notificaciones, y la biblioteca con
+        carátulas. El Servicio no está afiliado a ningún editor, plataforma ni tienda de
+        videojuegos.
       </p>
 
       <h2>3. Aceptación, versión y cambios</h2>
@@ -216,8 +216,7 @@
         <li>acceder o intentar acceder a cuentas, datos o infraestructura que no sean tuyos, ni sondear o poner a prueba la seguridad del Servicio salvo por el cauce del apartado 18;</li>
         <li>sobrecargar la infraestructura, saltarse las cuotas publicadas o automatizar el Servicio más allá de lo que hacen nuestros propios clientes;</li>
         <li>compartir una cuenta entre varias personas, o crear varias cuentas gratuitas para multiplicar los límites;</li>
-        <li>revender, sublicenciar o rehospedar el servicio gestionado sin autorización escrita (el auto-alojamiento del software libre está permitido y es bienvenido: apartado 14);</li>
-        <li>usar Hoard Screen para capturar, mostrar o difundir contenido de terceros sin su permiso, ni en ningún contexto en el que la captura de pantalla esté prohibida.</li>
+        <li>revender, sublicenciar o rehospedar el servicio gestionado sin autorización escrita (el auto-alojamiento del software libre está permitido y es bienvenido: apartado 14).</li>
       </ul>
       <p>
         Podemos suspender o limitar cuentas que incumplan estas reglas, con aviso previo cuando
@@ -404,10 +403,9 @@
       </p>
       <p>
         Alongside sync, the Service includes ancillary features that may change or be
-        withdrawn: <strong>Hoard Screen</strong>, an overlay that shows panels on top of your
-        game; <strong>playtime</strong> tracking per game and day, and the yearly recap built
-        from it; notifications, and the library with cover art. The Service is not affiliated
-        with any game publisher, platform or store.
+        withdrawn: <strong>playtime</strong> tracking per game and day, and the yearly recap
+        built from it; notifications, and the library with cover art. The Service is not
+        affiliated with any game publisher, platform or store.
       </p>
 
       <h2>3. Acceptance, version and changes</h2>
@@ -548,8 +546,7 @@
         <li>access or attempt to access accounts, data or infrastructure that are not yours, or probe or test the Service's security other than through section 16;</li>
         <li>overload the infrastructure, bypass published quotas, or automate the Service beyond what our own clients do;</li>
         <li>share one account between several people, or create multiple free accounts to multiply the limits;</li>
-        <li>resell, sublicense or rehost the managed service without written authorisation (self-hosting the open source software is allowed and welcome: section 14);</li>
-        <li>use Hoard Screen to capture, display or distribute third-party content without permission, or in any context where screen capture is prohibited.</li>
+        <li>resell, sublicense or rehost the managed service without written authorisation (self-hosting the open source software is allowed and welcome: section 14).</li>
       </ul>
       <p>
         We may suspend or limit accounts that breach these rules, with prior notice where

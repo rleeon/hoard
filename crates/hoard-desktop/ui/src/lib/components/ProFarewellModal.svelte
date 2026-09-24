@@ -17,7 +17,7 @@
    * for life, and that is said right at the top.
    */
   import { _ } from "svelte-i18n";
-  import { Infinity as InfinityIcon, HardDrive, MonitorPlay, Archive } from "@lucide/svelte";
+  import { Infinity as InfinityIcon, HardDrive, Archive } from "@lucide/svelte";
 
   import Modal from "./Modal.svelte";
   import HeartsMark from "./HeartsMark.svelte";
@@ -160,21 +160,6 @@
               : $_("pro_farewell.storage_body", {
                   values: { used: formatBytes(used) },
                 })}
-          </p>
-        </div>
-      </li>
-      <li
-        class="flex items-start gap-3 rounded-lg border border-white/[0.08] bg-layer-2 p-3"
-      >
-        <span class="mt-0.5 shrink-0 text-red-400" aria-hidden="true">
-          <MonitorPlay size={16} />
-        </span>
-        <div class="min-w-0">
-          <p class="text-sm font-semibold text-zinc-100">
-            {$_("pro_farewell.screen_title")}
-          </p>
-          <p class="mt-0.5 text-xs leading-relaxed text-zinc-400">
-            {$_("pro_farewell.screen_body")}
           </p>
         </div>
       </li>

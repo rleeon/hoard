@@ -108,9 +108,8 @@ jobs:
         with:
           shared-key: setup-${{ matrix.label }}
 
-      # The list `release-desktop.yml` installs, minus the PipeWire PPA and its
-      # dev package: those are for the overlay sidecar, which the installer does
-      # not link.
+      # The list `release-desktop.yml` installs, minus `xdg-utils`, which only
+      # Tauri's AppImage step needs.
       - name: System deps (Linux)
         if: runner.os == 'Linux'
         run: |

@@ -71,8 +71,7 @@
     { label: $_('pricing.row_history'), free: true, pro: true },
     { label: $_('pricing.row_sync'), free: true, pro: true },
     { label: $_('pricing.row_export'), free: true, pro: true },
-    { label: $_('pricing.compare_selfhost'), free: true, pro: true },
-    { label: 'Hoard Screen', free: false, pro: true }
+    { label: $_('pricing.compare_selfhost'), free: true, pro: true }
   ]);
 
   const notes = [

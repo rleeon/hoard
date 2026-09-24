@@ -40,7 +40,7 @@
   "bundle": {
     "active": true,
     "targets": ["deb", "rpm", "appimage", "nsis", "msi", "app", "dmg"],
-    "externalBin": ["hoard-screen", "hoardd", "hoard"],
+    "externalBin": ["hoardd", "hoard"],
     "publisher": "Hoard",
     "homepage": "https://github.com/rleeon/hoard",
     "icon": [

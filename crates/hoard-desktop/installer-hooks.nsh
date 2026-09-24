@@ -48,6 +48,9 @@
 !macro NSIS_HOOK_POSTINSTALL
   Delete "$APPDATA\hoard\hoard\data\swapping-binaries"
   Delete "$LOCALAPPDATA\hoard\hoard\data\swapping-binaries"
+  ; The overlay no longer ships, and an install over an older one leaves its
+  ; exe behind in the install dir.
+  Delete "$INSTDIR\hoard-screen.exe"
   ; Service first, same as everywhere else: the app expects it to be there.
   IfFileExists "$TEMP\hoard-restart-service.flag" 0 hoard_post_no_service
     Delete "$TEMP\hoard-restart-service.flag"
@@ -62,7 +65,6 @@
 ; Uninstall kills in the same order and brings nothing back.
 !macro NSIS_HOOK_PREUNINSTALL
   ExecWait 'taskkill /F /IM hoard-desktop.exe'
-  ExecWait 'taskkill /F /IM hoard-screen.exe'
   ExecWait 'taskkill /F /IM hoardd.exe'
   Sleep 1500
 !macroend
