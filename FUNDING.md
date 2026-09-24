@@ -7,18 +7,17 @@ Every € goes to keeping it running and improving.
 
 ## Costs (Monthly / Total)
 
-Last change **31/8/2026**.
-- Hoard-Cloud: **197 Users**
+Last change **24/9/2026**.
+- Hoard-Cloud: **302 Users**
 
-| Service | 07/2026 | 08/2026 |
-|---------|----------------|----------------|
-| **Supabase** (DB + auth + realtime) | free | free |
-| **Fly,io** (server hosting) | -8.76$ | -6.16$ |
-| **Cloudflare R2** (storage) | free | -1$ |
-| **Pro / Sponsors** | 0 | +1.68$ |
+| Service | 07/2026 | 08/2026 | 09/2026 |
+|---------|----------------|----------------|----------------|
+| **Fly,io** (server hosting) | -8.76$ | -6.16$ | -4.56$ |
+| **Cloudflare R2** (storage) | free | -0.15c | -0.81c |
+| **Pro** | 0 | +1.68$ | +1.68$ | +6.74$ |
 
 
-In total "ignoring developing costs": **-13.56$** 
+In total "ignoring developing costs and including yearly subscriptions": **+7.98$** 
 
 ## Developing
 
@@ -28,13 +27,16 @@ This really dont are a monthly lost, is a yearly payments like domain.
 
 **Total fixed: -5 / -30 $ monthly**
 
+Im gonna calculate this in 6-12 months.
+
 ## Pro (Hoard Pro Users)
 
-At the moment we have **1** Pro user.
+At the moment we have **4** Pro users.
 Here is what happend when you buy 1 month.
-- Price is 1.99€ but payment is like 2.15€ because taxs
-- Stripe want to take money, like 62c
-- Remaining 1.68$ and you pay 2.48$
+- Price is 1.99€ in some countryes "USA" payment is like 2.15€ because taxs
+- Now polar change € in $ and the 1.99€ now are ~2.27$
+- Stripe want to take money, like ~62c
+- Remaining ~1.68$ and you pay ~2.48$
 
 | Where money go? | Money | Remaining |
 |---------|----------------|----------------|
@@ -43,14 +45,4 @@ Here is what happend when you buy 1 month.
 | Stripe | -62c | 1.68$ |
 
 They takes the 32.26% of the payment and we haven't moved the money yet.
-
-## Why Sponsors?
-- Server infrastructure (sync, auth, storage)
-- Development time (features, fixes, support)
-- Keeping the free tier alive with 2GB at the moment.
-
----
-
-# [❤️ Support Hoard ❤️](https://github.com/sponsors/rleeon)
-
-Hoard is free and open-source. Your [support](https://github.com/sponsors/rleeon) helps cover server costs and funds development.
+Anual plan gives me more money beause Stripe only takes ~1$ not 6$.
