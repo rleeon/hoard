@@ -28,8 +28,6 @@ Everything is stored in the two appdata folders below. Back up data/ and you hav
   <Icon>https://raw.githubusercontent.com/rleeon/hoard/main/web/static/icon-512.png</Icon>
   <ExtraParams/>
   <PostArgs/>
-  <DonateText>Sponsor development</DonateText>
-  <DonateLink>https://github.com/sponsors/rleeon</DonateLink>
   <Requires>The Hoard desktop app or CLI on each PC you play on: hoard.services/download</Requires>
   <Config Name="WebUI / API Port" Target="12421" Default="12421" Mode="tcp" Description="The port the server listens on. Both the desktop app and the web panel use it." Type="Port" Display="always" Required="true" Mask="false">12421</Config>
   <Config Name="Saves and database" Target="/var/lib/hoard" Default="/mnt/user/appdata/hoard/data" Mode="rw" Description="Everything the server stores: the database and every version of every save. This is the folder to back up." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/hoard/data</Config>
