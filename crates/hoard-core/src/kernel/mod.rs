@@ -57,6 +57,13 @@ pub struct RestoreFailures {
     /// `None` means unknown: self-hosted, or before the first poll.
     pub version: Option<i64>,
     pub stuck_notified: bool,
+    /// The restore of [`Self::version`] ran the whole ladder without writing a
+    /// byte into a folder that stays empty, so asking again is pointless until
+    /// the cloud publishes something else. The case that made it necessary: a
+    /// snapshot holding nothing an automatic restore may write (only config),
+    /// downloaded once an hour, for ever. Cleared with the rest of the
+    /// escalation by a new cloud version.
+    pub parked: bool,
 }
 
 /// Escalation for a backup that runs into an **unresolvable** conflict: the
@@ -123,6 +130,12 @@ pub enum OpResult {
     /// 401, expired session, not the save's fault. Neither escalates nor resets
     /// the counter; short cooldown so it retries as soon as the token refreshes.
     Unauthorized,
+    /// The network was not there (no route, connection refused, DNS, timeout):
+    /// a machine just out of suspend, before the Wi-Fi is back. Not the save's
+    /// fault either, so the same treatment as a 401. How long the outage may
+    /// last before it counts as a real failure is the shell's call, since it is
+    /// the one that sees every save hit it.
+    Offline,
     /// 429, bandwidth limit. Like 401 it leaves the failure counter alone
     /// (counting a throttle as "stuck" was exactly the notification spam bug).
     /// Symmetric between backup and restore.
@@ -267,6 +280,13 @@ pub struct Observation {
     pub folder_size: Option<u64>,
     /// The local folder is empty or missing, which triggers restore-into-empty.
     pub local_empty: bool,
+    /// The folder is missing because the drive it lives on is not connected (a
+    /// microSD or external disk unplugged or in another machine), not because
+    /// the save was deleted. Nothing to back up and nowhere to restore to: the
+    /// slot waits for the drive. Without it the missing folder read as "the
+    /// user wiped the save" and every hour a restore downloaded the whole
+    /// snapshot to then fail creating the mount point.
+    pub volume_offline: bool,
 
     // ---- L1, only on a signal
     /// Hash of the local content, computed only when L0 moved or a hint pointed

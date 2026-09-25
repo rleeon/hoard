@@ -300,6 +300,10 @@ enum AutoRestoreDisposition {
     /// the server's `retry_after_secs` so the slot re-arms on the exact window
     /// slide instead of the generic 60s cooldown. Swallowed (no failure toast).
     Throttled { retry_after_secs: u32 },
+    /// No network, inside [`OFFLINE_GRACE`]. Quiet like a 401: the handheld that
+    /// wakes up before its Wi-Fi used to raise one "could not restore" per game
+    /// (41 at once on one Deck).
+    Offline,
     /// Any other error (network, sha mismatch, permission denied, timeout).
     /// Carries the formatted error chain for the event. Escalates the
     /// consecutive-failure counter and the backoff.
@@ -787,6 +791,9 @@ struct SaveSlot {
     /// `AutoRestoreFailures`, with methods in the shell; now it is the kernel's pure
     /// [`kernel::RestoreFailures`] and the logic lives in the reducer.
     restore_failures: kernel::RestoreFailures,
+    /// Last tick's [`kernel::Observation::volume_offline`], only so the change
+    /// is logged once instead of every two seconds.
+    drive_offline: bool,
     /// The escalation for the 409 reconciliation cannot resolve (the server says
     /// "you are behind" and there is nothing to pull). The reducer escalates it,
     /// resets it and decides when the budget runs out; the shell reads
@@ -1342,6 +1349,24 @@ async fn observe_cloud_heads(api: ApiClient, cmd_tx: mpsc::Sender<AgentCommand>)
 fn observe_slot(slot: &mut SaveSlot, cloud: &CloudHeads) -> kernel::Observation {
     let folder_mtime = folder_own_mtime(&slot.save.local_path);
     let local_empty = is_path_empty_or_missing(&slot.save.local_path);
+    let volume_offline = local_empty && crate::roots::volume_offline(&slot.save.local_path);
+    if volume_offline != slot.drive_offline {
+        slot.drive_offline = volume_offline;
+        if volume_offline {
+            tracing::info!(
+                save_id = %slot.save.save_id,
+                game_slug = %slot.save.game_slug,
+                path = %slot.save.local_path.display(),
+                "agent: the drive this save lives on is not connected; waiting for it"
+            );
+        } else {
+            tracing::info!(
+                save_id = %slot.save.save_id,
+                game_slug = %slot.save.game_slug,
+                "agent: the save's drive is back"
+            );
+        }
+    }
     let l0_changed = folder_mtime != slot.last_l0_mtime;
     slot.last_l0_mtime = folder_mtime;
     let compute_l1 = !slot.save.track_only && !local_empty && (l0_changed || slot.needs_l1);
@@ -1355,6 +1380,7 @@ fn observe_slot(slot: &mut SaveSlot, cloud: &CloudHeads) -> kernel::Observation 
         folder_mtime,
         folder_size: None,
         local_empty,
+        volume_offline,
         local_fingerprint,
         // The process state belongs to `process_poll` (already with its 6 s sticky);
         // here it is a passthrough for the kernel's stickiness.
@@ -1420,6 +1446,7 @@ fn reconcile_all(
         // A pre-reducer snapshot to derive the observability events (stuck and
         // recovered) from `restore_failures`' delta.
         let was_stuck = slot.restore_failures.stuck_notified;
+        let was_parked = slot.restore_failures.parked;
         let err_for_stuck = slot.last_restore_error.take();
         let was_blocked = slot.backup_conflict.needs_attention;
         let err_for_conflict = slot.last_conflict_error.take();
@@ -1446,6 +1473,14 @@ fn reconcile_all(
         // UI events (ADR 0021 C.5: the veto or failure is first-class and visible).
         // With no gate on the result type, so the reset on a new version, which no
         // longer arrives as an op, also announces the recovery.
+        if !was_parked && slot.restore_failures.parked {
+            tracing::info!(
+                save_id = %id,
+                game_slug = %slot.save.game_slug,
+                version = ?slot.restore_failures.version,
+                "agent: auto-restore parked: the cloud copy has nothing an automatic restore writes into this empty folder; waiting for a new version"
+            );
+        }
         let now_stuck = slot.restore_failures.stuck_notified;
         if !was_stuck && now_stuck {
             let _ = events_tx.try_send(AgentEvent::SaveAutoRestoreStuck {
@@ -1905,6 +1940,7 @@ async fn run_agent(
                             },
                             AutoRestoreDisposition::NotOnServer => kernel::OpResult::NotFound,
                             AutoRestoreDisposition::Unauthorized => kernel::OpResult::Unauthorized,
+                            AutoRestoreDisposition::Offline => kernel::OpResult::Offline,
                             AutoRestoreDisposition::Throttled { retry_after_secs } => {
                                 kernel::OpResult::Throttled { retry_after_secs }
                             }
@@ -2534,6 +2570,7 @@ fn handle_add(
         next_backup_at: None,
         next_restore_at: None,
         restore_failures: kernel::RestoreFailures::default(),
+        drive_offline: false,
         backup_conflict: kernel::ConflictStall::default(),
         last_set_hash,
         synced_fingerprint,
@@ -2651,6 +2688,93 @@ fn is_path_empty_or_missing(path: &Path) -> bool {
     }
 }
 
+/// How long a network outage stays quiet before restores that hit it count as
+/// real failures again (backoff, "could not restore"). Long enough to cover a
+/// handheld waking up before its Wi-Fi; short enough that a machine that cannot
+/// reach the storage at all (an ISP with no route to it) still hears about it.
+const OFFLINE_GRACE: Duration = Duration::from_secs(60 * 60);
+
+/// A gap between two network errors this long means the earlier outage ended
+/// and this is a new one, with its own grace. Restores retry about once a
+/// minute while the network is down, so a real outage never leaves this gap.
+const OUTAGE_GAP: Duration = Duration::from_secs(10 * 60);
+
+#[derive(Clone, Copy)]
+struct Outage {
+    since: std::time::Instant,
+    last: std::time::Instant,
+}
+
+/// Process-wide on purpose: an outage hits every save at the same time.
+static NETWORK_OUTAGE: std::sync::Mutex<Option<Outage>> = std::sync::Mutex::new(None);
+
+/// The request never reached a server: no route, refused, DNS, timed out.
+fn is_network_unreachable(e: &anyhow::Error) -> bool {
+    e.chain().any(|cause| {
+        cause
+            .downcast_ref::<reqwest::Error>()
+            .is_some_and(|r| r.is_connect() || r.is_timeout())
+    })
+}
+
+/// Records a network error and says whether it is still inside the grace.
+fn network_outage_within_grace() -> bool {
+    let now = std::time::Instant::now();
+    let Ok(mut outage) = NETWORK_OUTAGE.lock() else {
+        return false;
+    };
+    match outage.as_mut() {
+        Some(o) if now.duration_since(o.last) < OUTAGE_GAP => {
+            o.last = now;
+            now.duration_since(o.since) < OFFLINE_GRACE
+        }
+        _ => {
+            tracing::info!(
+                "agent: network unreachable; restores wait quietly for up to {} min before reporting it",
+                OFFLINE_GRACE.as_secs() / 60
+            );
+            *outage = Some(Outage { since: now, last: now });
+            true
+        }
+    }
+}
+
+fn network_is_back() {
+    if let Ok(mut outage) = NETWORK_OUTAGE.lock() {
+        if outage.take().is_some() {
+            tracing::info!("agent: network back");
+        }
+    }
+}
+
+/// Fails before any download when nothing could be written where `path` lives:
+/// the folder itself, or its nearest ancestor that exists when it is missing.
+#[cfg(unix)]
+fn ensure_restore_target_writable(path: &Path) -> Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let Some(existing) = path.ancestors().find(|a| a.exists()) else {
+        return Ok(());
+    };
+    let Ok(c_path) = std::ffi::CString::new(existing.as_os_str().as_bytes()) else {
+        return Ok(());
+    };
+    // SAFETY: `c_path` is a valid NUL-terminated string that outlives the call.
+    if unsafe { libc::access(c_path.as_ptr(), libc::W_OK) } == 0 {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "no write access to {} (restoring into {})",
+        existing.display(),
+        path.display()
+    )
+}
+
+#[cfg(not(unix))]
+fn ensure_restore_target_writable(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
 /// Background task: resolve the latest snapshot for `save`, download it
 /// into the local path, emit `SaveAutoRestored` on success or
 /// `SaveAutoRestoreFailed` otherwise, and ping the agent loop to re-arm
@@ -2706,6 +2830,7 @@ fn spawn_auto_restore(
         .await
         {
             Ok(AutoRestorePull::Merged(outcome)) => {
+                network_is_back();
                 // We downloaded and diffed against this version; remember it so
                 // the next sweep can short-circuit.
                 synced_version = Some(outcome.version_num);
@@ -2803,6 +2928,7 @@ fn spawn_auto_restore(
                     }) => Some(*retry_after_seconds),
                     _ => None,
                 };
+                let offline = is_network_unreachable(&e) && network_outage_within_grace();
                 if not_on_server {
                     disposition = AutoRestoreDisposition::NotOnServer;
                     tracing::debug!(
@@ -2815,6 +2941,13 @@ fn spawn_auto_restore(
                         save_id = %save.save_id,
                         retry_after_secs,
                         "agent: auto-restore throttled (429); waiting the server window"
+                    );
+                } else if offline {
+                    disposition = AutoRestoreDisposition::Offline;
+                    tracing::debug!(
+                        save_id = %save.save_id,
+                        error = %format!("{e:#}"),
+                        "agent: auto-restore deferred, no network"
                     );
                 } else if unauthorized {
                     disposition = AutoRestoreDisposition::Unauthorized;
@@ -3125,6 +3258,11 @@ async fn run_auto_restore(
         }
         return Ok(AutoRestorePull::NothingRemote);
     };
+    // The download is the expensive half, so find out first whether the result
+    // could land anywhere. A folder on a drive that is not mounted used to be
+    // found out after pulling the whole snapshot: Galak-Z, 1 GB, eight times in
+    // 27 minutes on one Steam Deck.
+    ensure_restore_target_writable(&save.local_path)?;
     // Stage the snapshot in a unique temp dir so we never overwrite the
     // user's local files during extraction. The staging dir is empty by
     // construction, so `download_snapshot` extracts into it cleanly even
@@ -5848,6 +5986,7 @@ mod tests {
             next_backup_at: None,
             next_restore_at: None,
             restore_failures: kernel::RestoreFailures::default(),
+            drive_offline: false,
             backup_conflict: kernel::ConflictStall::default(),
             last_set_hash: None,
             synced_fingerprint: None,

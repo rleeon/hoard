@@ -51,6 +51,18 @@ pub const FAILURE_BACKOFF_SECS: [i64; 4] = [60, 5 * 60, 15 * 60, 60 * 60];
 /// Consecutive failures on one version before a save is called stuck.
 pub const STUCK_AFTER: u32 = 3;
 
+/// Restores of the same cloud version that came back without writing a byte
+/// into a folder that stays empty, after which the slot stops asking until the
+/// cloud moves. The length of the ladder: every rung gets one try (about 20
+/// minutes and four downloads), then [`RestoreFailures::parked`].
+pub const RESTORE_STALL_PARK_AFTER: u32 = FAILURE_BACKOFF_SECS.len() as u32;
+
+/// The `Hold` reason while the save's drive is not connected.
+pub const HOLD_VOLUME_OFFLINE: &str = "save's drive not connected";
+
+/// The `Hold` reason for a restore parked on [`RESTORE_STALL_PARK_AFTER`].
+pub const HOLD_RESTORE_PARKED: &str = "cloud copy has nothing to restore; waiting for a new version";
+
 /// Long backoff after an *upload* burns its internal retry budget. Ten minutes,
 /// deliberately far slower than that budget (seconds): what survives the retries
 /// is not a lost packet but a real fault, a downed server, no network, an
@@ -212,6 +224,13 @@ pub fn reconcile(state: &State, obs: &Observation, world: World) -> (State, Vec<
         return (next, decisions);
     }
 
+    // The folder is gone because its drive is: nothing to upload, and a restore
+    // would try to create the mount point itself. Wait for the drive.
+    if obs.volume_offline {
+        decisions.push(hold(HOLD_VOLUME_OFFLINE));
+        return (next, decisions);
+    }
+
     // ---- restore decision (cloud to local)
     // We restore when the local folder is empty (uninstalled, or fresh), when the
     // cloud is ahead (another device uploaded a higher version), or when a
@@ -219,7 +238,9 @@ pub fn reconcile(state: &State, obs: &Observation, world: World) -> (State, Vec<
     // stopped being provable from the cache, but `pull_pending` remembers the
     // intent: the pull survives the veto and lands when the game closes.
     let ahead = cloud_ahead(&next, obs);
-    let want_restore = next.restore_enabled && (obs.local_empty || ahead || next.pull_pending);
+    let want_restore = next.restore_enabled
+        && !next.restore_failures.parked
+        && (obs.local_empty || ahead || next.pull_pending);
     if want_restore {
         // Restore cooldown or backoff still active. The 429 after a throttle
         // lands here, and `now` crossing the deadline is the delta that frees it.
@@ -283,6 +304,8 @@ pub fn reconcile(state: &State, obs: &Observation, world: World) -> (State, Vec<
     // backups would trade an invisible failure for data loss.
     let idle = if cloud_state_stale(obs, now) {
         hold(CLOUD_STALE_REASON)
+    } else if next.restore_failures.parked && obs.local_empty {
+        hold(HOLD_RESTORE_PARKED)
     } else {
         hold("converged")
     };
@@ -626,16 +649,23 @@ fn ingest_op_result(
                     }
                     next.pull_pending = false;
                     next.deferred_notified = false;
-                    // A download that made no progress escalates up the same
-                    // ladder as a failure (60 s, 5 min, 15 min, 60 min). It is not
-                    // an error, since the server answered, but repeating it every
-                    // tick is not syncing either, and the empty folder will ask
-                    // for it again anyway. A new cloud version resets the
-                    // escalation through `clear_restore_backoff_on_new_version`,
-                    // so a legitimate later pull is not punished.
+                    // A download that made no progress climbs the same ladder as
+                    // a failure (60 s, 5 min, 15 min, 60 min) and, once it has
+                    // used every rung, parks until the cloud moves. It is not an
+                    // error, since the server answered, so it never calls the
+                    // save stuck; but the empty folder asks for it again every
+                    // tick, and on the last rung alone that was a full download an
+                    // hour, for ever, of a snapshot holding nothing an automatic
+                    // restore may write. A new cloud version resets the escalation
+                    // through `clear_restore_backoff_on_new_version`, so a
+                    // legitimate later pull is not punished.
                     if restore_stalled {
-                        let delay = record_failure(&mut next.restore_failures, obs.cloud_version);
-                        next.next_restore_at = Some(now + Duration::seconds(delay));
+                        match record_stall(&mut next.restore_failures, obs.cloud_version) {
+                            Some(delay) => {
+                                next.next_restore_at = Some(now + Duration::seconds(delay));
+                            }
+                            None => next.next_restore_at = None,
+                        }
                     }
                 }
                 None => {}
@@ -649,6 +679,16 @@ fn ingest_op_result(
         OpResult::Unauthorized => {
             next.next_restore_at = Some(now + Duration::seconds(RESTORE_COOLDOWN_SECS));
         }
+        // No network: not the save's fault either. The same short cooldown per
+        // op, counter untouched; an upload keeps `has_pending`.
+        OpResult::Offline => match op {
+            Some(Op::Backup) => {
+                next.next_backup_at = Some(now + Duration::seconds(RESTORE_COOLDOWN_SECS));
+            }
+            _ => {
+                next.next_restore_at = Some(now + Duration::seconds(RESTORE_COOLDOWN_SECS));
+            }
+        },
         // 429: symmetric backoff by op; failure counter untouched.
         OpResult::Throttled { retry_after_secs } => {
             let until = throttle_until(now, retry_after_secs, seed);
@@ -714,6 +754,31 @@ fn record_failure(f: &mut RestoreFailures, latest: Option<i64>) -> i64 {
         f.stuck_notified = true;
     }
     backoff_secs(f.consecutive)
+}
+
+/// Records a restore that came back without writing into a folder that stays
+/// empty, and returns the wait before the next try, or `None` once the ladder is
+/// spent and the slot parks ([`RestoreFailures::parked`]). A different version
+/// resets the count, like [`record_failure`]. It never sets `stuck_notified`:
+/// nothing failed, the server answered and the snapshot simply has nothing to
+/// write, so telling the user "keeps failing to restore" would be a lie.
+///
+/// With no cloud version to compare against (self-hosted without a poller)
+/// it never parks: nothing could tell it when to wake up, so it stays on the
+/// hourly rung instead.
+fn record_stall(f: &mut RestoreFailures, latest: Option<i64>) -> Option<i64> {
+    if f.version != latest {
+        *f = RestoreFailures {
+            version: latest,
+            ..RestoreFailures::default()
+        };
+    }
+    f.consecutive = f.consecutive.saturating_add(1);
+    if latest.is_some() && f.consecutive >= RESTORE_STALL_PARK_AFTER {
+        f.parked = true;
+        return None;
+    }
+    Some(backoff_secs(f.consecutive))
 }
 
 /// Records an unresolvable conflict against the observed cloud head and returns
@@ -1182,6 +1247,149 @@ mod tests {
         assert_eq!(
             n3.restore_failures.consecutive, 0,
             "a restore that really wrote is progress"
+        );
+    }
+
+    /// The hourly download of a snapshot with nothing to write (a folder of
+    /// config files, seen on a Steam Deck in Sep 2026: 7 saves, about 32
+    /// downloads each in 32 hours) has to stop. Every rung of the ladder gets one
+    /// try, then the slot parks without ever calling the save stuck, and a new
+    /// cloud version wakes it.
+    #[test]
+    fn stalled_restore_parks_after_the_ladder_and_wakes_on_a_new_version() {
+        let stalled = |version| Observation {
+            local_empty: true,
+            cloud_version: Some(version),
+            op_result: Some(OpResult::Ok {
+                version: Some(version),
+                fingerprint: None,
+                wrote: false,
+            }),
+            ..quiet_obs()
+        };
+        let mut state = State {
+            known_version: Some(2),
+            in_flight: Some(Op::Restore),
+            ..base_state()
+        };
+        for attempt in 1..=RESTORE_STALL_PARK_AFTER {
+            let (next, _) = reconcile(&state, &stalled(2), world(0));
+            state = State {
+                in_flight: Some(Op::Restore),
+                ..next
+            };
+            assert_eq!(state.restore_failures.consecutive, attempt);
+            assert!(!state.restore_failures.stuck_notified, "a stall is not a failure");
+        }
+        assert!(state.restore_failures.parked);
+        assert_eq!(state.next_restore_at, None, "parked, not on a timer");
+
+        let parked = State {
+            in_flight: None,
+            ..state
+        };
+        let same = Observation {
+            local_empty: true,
+            cloud_version: Some(2),
+            ..quiet_obs()
+        };
+        let (_, d) = reconcile(&parked, &same, world(1_000_000));
+        assert!(
+            !acts(&d).contains(&&Action::Restore),
+            "still parked a long time later: {d:?}"
+        );
+        assert!(d.contains(&Decision::Hold {
+            reason: HOLD_RESTORE_PARKED
+        }));
+
+        let newer = Observation {
+            local_empty: true,
+            cloud_version: Some(3),
+            ..quiet_obs()
+        };
+        let (woken, d) = reconcile(&parked, &newer, world(1_000_000));
+        assert!(!woken.restore_failures.parked);
+        assert!(acts(&d).contains(&&Action::Restore), "a new version is worth a try: {d:?}");
+    }
+
+    /// Without a cloud version to wake it up, a stall must not park for good
+    /// (self-hosted without a poller): it stays on the hourly rung.
+    #[test]
+    fn stalled_restore_without_a_cloud_version_never_parks() {
+        let mut state = State {
+            in_flight: Some(Op::Restore),
+            ..base_state()
+        };
+        let obs = Observation {
+            local_empty: true,
+            op_result: Some(OpResult::Ok {
+                version: None,
+                fingerprint: None,
+                wrote: false,
+            }),
+            ..quiet_obs()
+        };
+        for _ in 0..RESTORE_STALL_PARK_AFTER + 2 {
+            let (next, _) = reconcile(&state, &obs, world(0));
+            state = State {
+                in_flight: Some(Op::Restore),
+                ..next
+            };
+        }
+        assert!(!state.restore_failures.parked);
+        assert_eq!(state.next_restore_at, Some(at(60 * 60)));
+    }
+
+    /// A microSD in the other handheld: the folder is missing, but restoring
+    /// would mean creating the mount point. Held, with nothing escalated.
+    #[test]
+    fn offline_volume_holds_restore_and_backup() {
+        let state = State {
+            has_pending: true,
+            known_version: Some(1),
+            ..base_state()
+        };
+        let obs = Observation {
+            local_empty: true,
+            volume_offline: true,
+            cloud_version: Some(9),
+            ..quiet_obs()
+        };
+        let (next, d) = reconcile(&state, &obs, world(0));
+        assert!(acts(&d).is_empty(), "{d:?}");
+        assert_eq!(
+            d,
+            vec![Decision::Hold {
+                reason: HOLD_VOLUME_OFFLINE
+            }]
+        );
+        assert_eq!(next.restore_failures, RestoreFailures::default());
+    }
+
+    /// No network (a machine just out of suspend) is neither a failure nor
+    /// progress: short cooldown, the escalation untouched.
+    #[test]
+    fn offline_result_neither_escalates_nor_resets() {
+        let state = State {
+            in_flight: Some(Op::Restore),
+            restore_failures: RestoreFailures {
+                consecutive: 2,
+                version: Some(4),
+                ..RestoreFailures::default()
+            },
+            ..base_state()
+        };
+        let obs = Observation {
+            cloud_version: Some(4),
+            op_result: Some(OpResult::Offline),
+            ..quiet_obs()
+        };
+        let (next, _) = reconcile(&state, &obs, world(0));
+        assert_eq!(next.restore_failures.consecutive, 2);
+        assert_eq!(
+            next.next_restore_at,
+            Some(at(RESTORE_COOLDOWN_SECS)),
+            "the usual short cooldown"
         );
     }
 
@@ -1905,6 +2113,7 @@ mod tests {
                 consecutive: 3,
                 version: Some(5),
                 stuck_notified: true,
+                parked: false,
             },
             next_restore_at: Some(at(3600)),
             ..base_state()
@@ -2173,8 +2382,9 @@ mod tests {
             consecutive in 0u32..6,
             version in prop::option::of(0i64..20),
             stuck in any::<bool>(),
+            parked in any::<bool>(),
         ) -> RestoreFailures {
-            RestoreFailures { consecutive, version, stuck_notified: stuck }
+            RestoreFailures { consecutive, version, stuck_notified: stuck, parked }
         }
     }
 
@@ -2251,6 +2461,7 @@ mod tests {
             mtime in prop::option::of(-100i64..100),
             size in prop::option::of(0u64..1_000),
             local_empty in any::<bool>(),
+            volume_offline in any::<bool>(),
             local_fp in prop::option::of(0u64..8),
             process_alive in any::<bool>(),
             cloud_version in prop::option::of(0i64..20),
@@ -2263,7 +2474,7 @@ mod tests {
             fs_event in any::<bool>(),
             retry in 0u32..600,
             has_op in any::<bool>(),
-            op_kind in 0u8..5,
+            op_kind in 0u8..6,
             ok_ver in prop::option::of(0i64..20),
             ok_fp in prop::option::of(0u64..8),
             ok_wrote in any::<bool>(),
@@ -2276,6 +2487,7 @@ mod tests {
                     1 => OpResult::NotFound,
                     2 => OpResult::Unauthorized,
                     3 => OpResult::Throttled { retry_after_secs: retry },
+                    4 => OpResult::Offline,
                     _ => OpResult::Failed,
                 })
             };
@@ -2283,6 +2495,7 @@ mod tests {
                 folder_mtime: mtime.map(at),
                 folder_size: size,
                 local_empty,
+                volume_offline,
                 local_fingerprint: local_fp,
                 process_alive,
                 // The proptest does not model the lock probe: it is a shell-side
@@ -2364,7 +2577,8 @@ mod tests {
         /// deferred pull) may swallow it: that was the deadlock the shell unstuck
         /// by hand.
         ///
-        /// The only exception is a save that gave up (`needs_attention`), where
+        /// The exceptions are a save whose drive is not connected (there is no
+        /// folder to read) and a save that gave up (`needs_attention`), where
         /// not emitting the upload is the decision rather than an oversight. That
         /// is the difference between the two ways of being stopped: stalled with
         /// nothing saying so (the bug), and stopped, said out loud, with three
@@ -2378,6 +2592,7 @@ mod tests {
                 && state.in_flight.is_none()
                 && obs.op_result.is_none()
                 && !state.backup_conflict.needs_attention
+                && !obs.volume_offline
                 && (state.has_pending || obs.fs_event)
                 && local_diverged(&state, &obs)
                 && state.next_backup_at.is_none_or(|t| w.now >= t)
@@ -2386,6 +2601,38 @@ mod tests {
                 prop_assert!(
                     acts(&ds).contains(&&Action::Backup),
                     "cambios pendientes sin subida: el slot queda encallado: {ds:?}"
+                );
+            }
+        }
+
+        /// A save whose drive is not connected never acts: no upload of a folder
+        /// that is not there, no restore into a mount point that is not there.
+        #[test]
+        fn inv_offline_volume_never_acts(
+            state in arb_state(), obs in arb_obs(false), w in arb_world()
+        ) {
+            let (_n, ds) = reconcile(&state, &obs, w);
+            // `Throttle` may still come out: it books a 429 that already
+            // happened, it does not touch the folder.
+            if obs.volume_offline {
+                prop_assert!(storage_act_count(&ds) == 0, "acted with the drive gone: {ds:?}");
+                prop_assert!(!acts(&ds).contains(&&Action::DeferPull), "{ds:?}");
+            }
+        }
+
+        /// A parked restore stays parked while the cloud keeps the version it
+        /// parked on: no `Act(Restore)` until something new arrives.
+        #[test]
+        fn inv_parked_restore_waits_for_a_new_version(
+            state in arb_state(), obs in arb_obs(true), w in arb_world()
+        ) {
+            let (_n, ds) = reconcile(&state, &obs, w);
+            if state.restore_failures.parked
+                && state.restore_failures.version == obs.cloud_version
+            {
+                prop_assert!(
+                    !acts(&ds).contains(&&Action::Restore),
+                    "a parked restore ran again on the same version: {ds:?}"
                 );
             }
         }
