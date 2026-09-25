@@ -16,7 +16,7 @@ use time::OffsetDateTime;
 use crate::agent::{dir_size_bytes, WatchedSave};
 use crate::api::ApiClient;
 use crate::config::CliConfig;
-use crate::detection::{Confidence, DetectedGame, DetectionReport};
+use crate::detection::{verdict, Confidence, DetectedGame, DetectionReport};
 use crate::junkdirs;
 use crate::manifest::Os;
 use crate::presets::{self, SavePolicy};
@@ -1764,25 +1764,37 @@ pub fn plan_auto_track(games: Vec<DetectedGame>, tracked: Vec<TrackedSave>) -> A
         }
     }
 
+    // The same folders with links resolved. A folder's identity is its path as
+    // written, so `~/Emulation/saves/retroarch/saves` and the Flatpak folder it
+    // links to are two folders to the rest of Hoard; here they must be one, or
+    // one save ends up tracked twice under two paths.
+    let mut tracked_real: Vec<PathBuf> =
+        tracked_paths.iter().filter_map(|p| p.canonicalize().ok()).collect();
+
     let mut plan = AutoTrackPlan::default();
     for g in games {
         if tracked_slugs.contains(&g.slug) || g.found_paths.is_empty() {
             continue;
         }
+        let real = g.found_paths[0].canonicalize().ok();
         // The SAME folder already tracked under ANOTHER slug is not tracked again.
         // A phase-4 discovery's name comes out of the correlation's attribution, and
         // that attribution changes between scans (ChatGPT, then opencode, then code
         // over Planet S's folder, reported Jul 2026): without this gate, every new
         // name was a new slug and the folder ended up tracked N times. The per-slug
         // guard does not see it because the slug changes.
-        if tracked_paths
-            .iter()
-            .any(|t| crate::detection::paths_overlap(&g.found_paths[0], t))
+        let overlaps = |known: &[PathBuf], path: &Path| {
+            known
+                .iter()
+                .any(|t| crate::detection::paths_overlap(path, t))
+        };
+        if overlaps(&tracked_paths, &g.found_paths[0])
+            || real.as_deref().is_some_and(|r| overlaps(&tracked_real, r))
         {
-            tracing::debug!(
-                slug = %g.slug,
-                path = %g.found_paths[0].display(),
-                "automatic scan: folder already tracked under another slug; skipping"
+            verdict::auto_track(
+                &g.slug,
+                &g.found_paths[0],
+                "skipped: this folder is already tracked under another name",
             );
             continue;
         }
@@ -1795,23 +1807,34 @@ pub fn plan_auto_track(games: Vec<DetectedGame>, tracked: Vec<TrackedSave>) -> A
             if auto_track_decision(&path, orphans_by_slug.contains_key(&g.slug))
                 == AutoTrack::SkipEmpty
             {
-                tracing::debug!(
-                    slug = %g.slug,
-                    path = %path.display(),
-                    "automatic scan: folder is empty and the server has nothing; waiting for the game to write"
+                verdict::auto_track(
+                    &g.slug,
+                    &path,
+                    "waiting: the folder is empty and the server has nothing yet",
                 );
                 continue;
             }
             if let Some(orphan) = orphans_by_slug.remove(&g.slug) {
+                verdict::auto_track(&g.slug, &path, "linked to the save another machine uploaded");
                 plan.adopt.push((orphan, path.clone()));
             } else {
+                verdict::auto_track(&g.slug, &path, "tracked");
                 plan.track.push(g);
             }
             // Reserves the folder within THIS scan: two different finds over the
             // same path (the same attribution churn, only inside a single report)
             // must not track it twice.
+            tracked_real.extend(real);
             tracked_paths.push(path);
         } else {
+            verdict::auto_track(
+                &g.slug,
+                &g.found_paths[0],
+                &format!(
+                    "not tracked on its own: {:?} confidence, only High is; left for the user to add",
+                    g.confidence
+                ),
+            );
             plan.probe.extend(g.found_paths.iter().cloned());
         }
     }
@@ -3204,6 +3227,7 @@ mod tests {
             scanned_at_ms: 0,
             stats: DetectionStats::default(),
             mirror_warnings: Vec::new(),
+            link_warnings: Vec::new(),
         }
     }
 
@@ -3721,6 +3745,7 @@ mod tests {
             scanned_at_ms: 0,
             stats: DetectionStats::default(),
             mirror_warnings: Vec::new(),
+            link_warnings: Vec::new(),
         }
     }
 
@@ -3949,6 +3974,7 @@ mod tests {
             scanned_at_ms: 0,
             stats: Default::default(),
             mirror_warnings: Vec::new(),
+            link_warnings: Vec::new(),
         }
     }
 

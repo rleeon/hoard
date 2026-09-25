@@ -627,6 +627,31 @@ fn join_signature(cheap: &str, content: &str) -> String {
 ///
 /// Symlinks are skipped on purpose: we don't want to follow links out of the save
 /// directory, and tar archives with symlinks make restore ambiguous.
+/// Says, once per link and process, that a symbolic link inside a tracked folder
+/// stays out of the copy. It used to be silent, and EmuDeck's
+/// `Emulation/saves/retroarch` is two links (`saves`, `states`): tracking it
+/// uploaded neither, with nothing anywhere saying why.
+fn note_skipped_link(link: &Path) {
+    static SEEN: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<PathBuf>>> =
+        std::sync::OnceLock::new();
+    let first = SEEN
+        .get_or_init(Default::default)
+        .lock()
+        .map(|mut seen| seen.insert(link.to_path_buf()))
+        .unwrap_or(true);
+    if !first {
+        return;
+    }
+    let target = std::fs::read_link(link)
+        .map(|t| t.display().to_string())
+        .unwrap_or_default();
+    tracing::info!(
+        link = %link.display(),
+        target = %target,
+        "backup: a symbolic link inside a tracked folder is not copied; track its target to include it"
+    );
+}
+
 pub fn walk_source(root: &Path, shields: &[String]) -> Result<Vec<UploadFile>> {
     // A single-file save: the `local_path` IS the file. One `UploadFile` comes out
     // with its base name as the relative path, so the snapshot has exactly the
@@ -713,8 +738,9 @@ pub fn walk_source(root: &Path, shields: &[String]) -> Result<Vec<UploadFile>> {
                     size_bytes: meta.len(),
                     modified: meta.modified().ok(),
                 });
+            } else if ft.is_symlink() {
+                note_skipped_link(&path);
             }
-            // symlinks: ignored on purpose.
         }
     }
     out.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));

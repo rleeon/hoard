@@ -57,6 +57,8 @@ use crate::wine_prefixes::{self, PrefixKind};
 use crate::wrappers;
 use hoard_core::kernel::fileclass;
 
+pub(crate) mod verdict;
+
 /// How sure we are that the game is actually installed locally.
 ///
 /// `High` means we have two independent signals (e.g. filesystem hit + Steam
@@ -169,6 +171,30 @@ pub struct DetectionReport {
     /// keeps older cached reports loading.
     #[serde(default)]
     pub mirror_warnings: Vec<MirrorWarning>,
+    /// Tracked folders with symbolic links inside, whose contents the copy
+    /// leaves out ([`detect_tracked_links`]).
+    #[serde(default)]
+    pub link_warnings: Vec<LinkWarning>,
+}
+
+/// A tracked folder holding links the backup does not follow, so what they point
+/// at never reaches the cloud. The case that made it visible: EmuDeck's
+/// `Emulation/saves/retroarch` is nothing but two links, `saves` and `states`,
+/// and tracking it uploaded neither with nothing saying why.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LinkWarning {
+    pub save_id: String,
+    pub game_slug: String,
+    pub label: String,
+    pub tracked_path: PathBuf,
+    /// The first few links found, each with where it points.
+    pub links: Vec<SkippedLink>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SkippedLink {
+    pub link: PathBuf,
+    pub target: PathBuf,
 }
 
 /// One already-tracked folder that [`detect_tracked_mirrors`] flagged as a
@@ -1061,6 +1087,12 @@ where
         g.needs_folder = g.found_paths.is_empty();
         if g.needs_folder {
             without_folder += 1;
+            verdict::not_offered(&g.slug, Path::new(""), "installed, but no save folder found");
+        }
+        for (i, path) in g.found_paths.iter().enumerate() {
+            let confidence = g.path_confidences.get(i).copied().unwrap_or(g.confidence);
+            let reason = g.path_reasons.get(i).map(String::as_str).unwrap_or("");
+            verdict::offered(&g.slug, path, &format!("{confidence:?} ({:?}): {reason}", g.source));
         }
     }
     if without_folder > 0 {
@@ -1119,6 +1151,8 @@ where
         "Detection complete"
     );
 
+    let link_warnings = detect_tracked_links(state);
+
     Ok(DetectionReport {
         games,
         catalog_size,
@@ -1126,7 +1160,65 @@ where
         scanned_at_ms: started,
         stats,
         mirror_warnings,
+        link_warnings,
     })
+}
+
+/// Links worth listing per folder, and how much of a folder the search reads.
+/// Tracked folders are small as a rule; the ceiling is for the ones that are a
+/// whole install.
+const LINK_WARNING_MAX_LINKS: usize = 5;
+const LINK_WARNING_MAX_ENTRIES: usize = 5_000;
+
+/// Every tracked folder with links inside that lead somewhere real. Read-only,
+/// like the mirror check: the answer is to track what the link points at, and
+/// that is the user's call.
+fn detect_tracked_links(state: &CliState) -> Vec<LinkWarning> {
+    let mut out = Vec::new();
+    let mut saves: Vec<_> = state.saves.iter().collect();
+    saves.sort_by(|(a, _), (b, _)| a.cmp(b));
+    for (save_id, s) in saves {
+        let links = links_inside(&s.local_path);
+        if links.is_empty() {
+            continue;
+        }
+        out.push(LinkWarning {
+            save_id: save_id.clone(),
+            game_slug: s.game_slug.clone(),
+            label: s.label.clone(),
+            tracked_path: s.local_path.clone(),
+            links,
+        });
+    }
+    out
+}
+
+fn links_inside(root: &Path) -> Vec<SkippedLink> {
+    let mut found = Vec::new();
+    let mut read = 0usize;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            read += 1;
+            if read > LINK_WARNING_MAX_ENTRIES || found.len() >= LINK_WARNING_MAX_LINKS {
+                return found;
+            }
+            let Ok(ft) = entry.file_type() else { continue };
+            let path = entry.path();
+            if ft.is_symlink() {
+                // A dangling link has nothing behind it to lose.
+                if let (true, Ok(target)) = (path.exists(), std::fs::read_link(&path)) {
+                    found.push(SkippedLink { link: path, target });
+                }
+            } else if ft.is_dir() {
+                stack.push(path);
+            }
+        }
+    }
+    found
 }
 
 /// Directory names under a Steam library that are Steam's own plumbing, so
@@ -2845,11 +2937,7 @@ fn drop_folders_without_saves(g: &mut DetectedGame) -> HashSet<PathBuf> {
     for path in std::mem::take(&mut g.found_paths) {
         match inspect_folder(&path, &shields) {
             FolderContents::NoSaveData => {
-                tracing::debug!(
-                    slug = %g.slug,
-                    path = %path.display(),
-                    "offer filter: nothing inside is player data; not offering this folder"
-                );
+                verdict::not_offered(&g.slug, &path, "nothing inside is player data");
             }
             FolderContents::Empty => {
                 empty.insert(path.clone());
@@ -3346,7 +3434,50 @@ pub fn discover_unattributed_mode(
         walk_roots.extend(roots::deep_save_roots(os));
     }
 
-    discover_in_roots(walk_roots, store, known_paths, deep)
+    let mut out = discover_in_roots(walk_roots, store, known_paths, deep);
+    add_configured_emulator_saves(&mut out, store, known_paths);
+    out
+}
+
+/// The save folders emulators name in their own configuration
+/// ([`emulators::configured_save_dirs`]), on every scan and not only the deep
+/// one: EmuDeck's RetroArch writes into the Flatpak's folder through a link,
+/// and the periodic walk reaches neither. Compared with links resolved against
+/// what is already offered, so the link and its target never both come out.
+fn add_configured_emulator_saves(
+    out: &mut Vec<AttributedSave>,
+    store: &CorrelationStore,
+    known_paths: &HashSet<PathBuf>,
+) {
+    for (id, dir) in emulators::configured_save_dirs() {
+        let Some(def) = emulators::find(id) else {
+            continue;
+        };
+        let same_folder = |p: &Path| p.canonicalize().is_ok_and(|real| paths_overlap(&real, &dir));
+        if known_paths.iter().any(|k| same_folder(k)) || out.iter().any(|a| same_folder(&a.path)) {
+            continue;
+        }
+        if let Some(found) = emulator_candidates(&dir, store) {
+            extend_without_repeats(out, found);
+            continue;
+        }
+        if !emulators::has_direct_file(&dir) {
+            verdict::not_offered(
+                &format!("emu-{id}"),
+                &dir,
+                &format!("{}'s configured save folder has no files yet", def.display_name),
+            );
+            continue;
+        }
+        out.push(AttributedSave {
+            slug: format!("emu-{id}"),
+            display_name: def.display_name.to_string(),
+            path: dir,
+            confidence: Confidence::Medium,
+            reason: format!("{}'s save folder, from its own configuration", def.display_name),
+            steam_app_id: None,
+        });
+    }
 }
 
 /// Scan ONE user-chosen folder (the Library's "scan folder" / "track another
@@ -3454,14 +3585,20 @@ pub fn discover_in_folder(
         };
         for entry in read.flatten() {
             let Ok(ft) = entry.file_type() else { continue };
-            if !ft.is_dir() || ft.is_symlink() {
-                continue;
-            }
             let name = entry.file_name();
             let Some(name_str) = name.to_str() else {
                 continue;
             };
             if is_skip_dir(name_str) {
+                continue;
+            }
+            if ft.is_symlink() {
+                if follows_link(&entry.path()) {
+                    stack.push((entry.path(), depth + 1));
+                }
+                continue;
+            }
+            if !ft.is_dir() {
                 continue;
             }
             stack.push((entry.path(), depth + 1));
@@ -3827,6 +3964,11 @@ fn discover_in_roots(
             // Precision gate: weak static-only matches don't create games,
             // except in deep mode, where surfacing maybes is the whole point.
             if !deep && !corroborated && hit.confidence == Confidence::Low {
+                verdict::not_offered(
+                    "",
+                    &hit.path,
+                    &format!("weak match and no game process wrote it: {}", hit.reason),
+                );
                 continue;
             }
             if path_already_known(&hit.path, known_paths) {
@@ -3840,10 +3982,7 @@ fn discover_in_roots(
                 continue;
             }
             let Some(display_name) = attribute_game_name(&hit.path, store) else {
-                tracing::debug!(
-                    path = %hit.path.display(),
-                    "detect: no segment of this path names a game, not offering it"
-                );
+                verdict::not_offered("", &hit.path, "no folder on the path names a game");
                 continue;
             };
             let slug = ludusavi::slugify(&display_name);
@@ -4046,6 +4185,53 @@ fn prettify_process_name(name: &str) -> String {
 
 /// Walk one root, appending up to [`AGGRESSIVE_WALK_MAX_CANDIDATES`]
 /// discoveries into `out`. Honours the timeout and the depth cap.
+/// Whether a walk may step through the symbolic link at `path`. Links are not
+/// followed as a rule: they lead out of the tree, and in a Wine prefix
+/// `dosdevices/z:` leads to `/`. The exception is a link that is itself an
+/// emulator's save folder, because EmuDeck builds `~/Emulation/saves/<emu>/`
+/// entirely out of links to where each emulator really writes, and skipping
+/// them is why RetroArch never turned up there. Every other link is logged.
+fn follows_link(path: &Path) -> bool {
+    if !path.is_dir() {
+        return false;
+    }
+    if emulators::save_root_at(path).is_some() {
+        return true;
+    }
+    verdict::not_offered("", path, "symbolic link, not followed");
+    false
+}
+
+/// A folder another save-backup tool wrote: a `mapping.yaml` whose top level
+/// holds `name:`, `drives:` and `backups:`, with the drives keyed `drive-N`.
+/// All four together, so a game that happens to keep a `mapping.yaml` of its
+/// own does not qualify.
+fn is_backup_tool_copy(dir: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(dir.join("mapping.yaml")) else {
+        return false;
+    };
+    let top = |key: &str| text.lines().any(|l| l.starts_with(key));
+    let drive_key = text.lines().any(|l| {
+        l.trim_start()
+            .strip_prefix("drive-")
+            .and_then(|rest| rest.split_once(':'))
+            .is_some_and(|(n, _)| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    });
+    top("name:") && top("drives:") && top("backups:") && drive_key
+}
+
+/// A candidate for an emulator's save folder, found by its path alone.
+fn emulator_root_hit(path: &Path) -> DiscoveredSavePath {
+    let name = emulators::save_root_at(path)
+        .map(|def| def.display_name)
+        .unwrap_or("emulator");
+    DiscoveredSavePath {
+        path: path.to_path_buf(),
+        confidence: Confidence::Medium,
+        reason: format!("{name}'s own save folder"),
+    }
+}
+
 fn walk_root_collecting(
     root: &Path,
     max_depth: usize,
@@ -4079,9 +4265,6 @@ fn walk_root_collecting(
             let Ok(file_type) = entry.file_type() else {
                 continue;
             };
-            if !file_type.is_dir() {
-                continue;
-            }
             let path = entry.path();
             let name = entry.file_name();
             let Some(name_str) = name.to_str() else {
@@ -4090,11 +4273,40 @@ fn walk_root_collecting(
             if is_skip_dir(name_str) {
                 continue;
             }
+            if file_type.is_symlink() {
+                if follows_link(&path) && seen.insert(path.clone()) {
+                    out.push(emulator_root_hit(&path));
+                }
+                continue;
+            }
+            if !file_type.is_dir() {
+                continue;
+            }
             // Never walk Hoard's own bookkeeping (conflict backups,
             // correlation/state json) nor the desktop trash: descending there
             // mints phantom "games" out of our own data (e.g. the timestamped
             // `conflicts/<id>/<ts>/autosave` folders) or out of deleted files.
             if is_internal_or_trash(&path) {
+                continue;
+            }
+            // A copy another backup tool made is not a save a game writes:
+            // restoring it writes nothing useful (its files are config and a
+            // manifest), and on one Steam Deck seven of them were downloaded
+            // about once an hour for a day and a half. Not offered, and not
+            // descended into either, since `drive-0/` below holds the copied
+            // tree with its own save-like folders.
+            if is_backup_tool_copy(&path) {
+                verdict::not_offered("", &path, "a copy made by a backup tool, not a live save");
+                continue;
+            }
+            // An emulator's own save folder is a save by definition: offered
+            // without scoring, which a folder of loose `.srm` files does not
+            // always pass. What exactly gets offered (the folder, or one entry
+            // per title inside it) is `emulator_candidates`' call.
+            if emulators::save_root_at(&path).is_some() {
+                if seen.insert(path.clone()) {
+                    out.push(emulator_root_hit(&path));
+                }
                 continue;
             }
             // A nest (one subfolder per save) is emitted whole and not
@@ -6724,6 +6936,46 @@ mod tests {
     /// A regression: Hoard's own conflict backups are copied verbatim, so they score
     /// save-like and, before the fix, surfaced as phantom games named after the
     /// timestamp. The walk has to skip them even when correlation corroborates them.
+    #[test]
+    #[cfg(unix)]
+    fn tracked_folders_with_links_are_reported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let real_saves = tmp.path().join("flatpak/retroarch/saves");
+        std::fs::create_dir_all(&real_saves).unwrap();
+        std::fs::write(real_saves.join("Chrono Trigger.srm"), b"x").unwrap();
+        let emudeck = tmp.path().join("Emulation/saves/retroarch");
+        std::fs::create_dir_all(&emudeck).unwrap();
+        std::os::unix::fs::symlink(&real_saves, emudeck.join("saves")).unwrap();
+        std::os::unix::fs::symlink(tmp.path().join("gone"), emudeck.join("states")).unwrap();
+
+        let links = links_inside(&emudeck);
+        assert_eq!(links.len(), 1, "the dangling link is not worth a warning: {links:?}");
+        assert_eq!(links[0].link, emudeck.join("saves"));
+        assert_eq!(links[0].target, real_saves);
+        assert!(links_inside(&real_saves).is_empty());
+    }
+
+    #[test]
+    fn backup_tool_copies_are_recognised_strictly() {
+        let tmp = tempfile::tempdir().unwrap();
+        let copy = tmp.path().join("Valheim");
+        std::fs::create_dir_all(copy.join("drive-0")).unwrap();
+        std::fs::write(
+            copy.join("mapping.yaml"),
+            "name: Valheim\ndrives:\n  drive-0: /home/deck\nbackups:\n  - name: .\n    when: \"2026-09-23T00:19:46Z\"\n",
+        )
+        .unwrap();
+        assert!(is_backup_tool_copy(&copy));
+
+        // A game's own mapping.yaml, without that shape, is left alone.
+        let game = tmp.path().join("SomeGame");
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::write(game.join("mapping.yaml"), "name: level1\nsize: 3\n").unwrap();
+        assert!(!is_backup_tool_copy(&game));
+        std::fs::write(game.join("mapping.yaml"), "name: x\ndrives: 2\nbackups: []\n").unwrap();
+        assert!(!is_backup_tool_copy(&game), "no drive-N key");
+    }
+
     #[test]
     fn discover_unattributed_skips_hoard_internal_conflicts() {
         with_isolated_home(|_home| {

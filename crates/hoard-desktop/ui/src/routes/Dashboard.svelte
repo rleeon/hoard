@@ -34,11 +34,13 @@
   import Modal from "../lib/components/Modal.svelte";
   import SaveGameCard from "../lib/components/SaveGameCard.svelte";
   import MirrorWarningBanner from "../lib/components/MirrorWarningBanner.svelte";
+  import LinkWarningBanner from "../lib/components/LinkWarningBanner.svelte";
   import * as api from "../lib/api";
   import type {
     EngineDownReason,
     KeyringFault,
     MirrorWarning,
+    LinkWarning,
     TrackedSave,
   } from "../lib/api";
   import { auth, refreshQuota } from "../lib/stores/auth";
@@ -164,15 +166,18 @@
   // cache rather than triggering a scan: the tick refreshes it every 10 min
   // anyway, and the panel must not pay for a detection pass on mount.
   let mirrorWarnings = $state<MirrorWarning[]>([]);
+  let linkWarnings = $state<LinkWarning[]>([]);
 
   async function loadMirrorWarnings() {
     try {
       const report = await api.cachedDetection();
       mirrorWarnings = report?.mirror_warnings ?? [];
+      linkWarnings = report?.link_warnings ?? [];
     } catch {
       // No cache yet (first run) or unreadable: nothing to warn about that we
       // can prove, so stay quiet rather than guess.
       mirrorWarnings = [];
+      linkWarnings = [];
     }
   }
 
@@ -553,6 +558,9 @@
         void refreshQuota();
       }}
     />
+  {/if}
+  {#if !loading && linkWarnings.length > 0}
+    <LinkWarningBanner warnings={linkWarnings} />
   {/if}
 
   <!-- `known` and not just `!running`: the store starts blank, and a banner

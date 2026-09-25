@@ -504,8 +504,13 @@ fn indexes() -> &'static Indexes {
             }
         }
 
-        // Count owners before inserting, so an ambiguous name is never kept.
-        let mut exe_owners: HashMap<&str, u32> = HashMap::new();
+        // Count owners before inserting, so an ambiguous name is never kept. A
+        // runtime or launcher starts out ambiguous: it names the program that
+        // runs a game, never the game, even when the catalogue lists it for one
+        // title only (`steam` for Stygian: Reign of the Old Ones put that name on
+        // folders written by anything launched from Steam on a Deck).
+        let mut exe_owners: HashMap<&str, u32> =
+            RUNTIME_EXES.iter().map(|x| (*x, 2)).collect();
         for e in cat {
             for x in &e.launch_exes {
                 *exe_owners.entry(x.as_str()).or_default() += 1;
@@ -1092,6 +1097,29 @@ fn finish_conversion(games: BTreeMap<String, Converted>) -> (Vec<LudusaviEntry>,
 /// the leaf identifies the process. Anything that isn't plausibly an
 /// executable leaf is dropped: a launch key can carry a `<base>`-only entry
 /// or a directory, and those would match every process in that folder.
+/// Executables that run games rather than being one. See the exe index.
+const RUNTIME_EXES: &[&str] = &[
+    "steam",
+    "steam.exe",
+    "steam.sh",
+    "java",
+    "java.exe",
+    "javaw",
+    "javaw.exe",
+    "mono",
+    "mono.exe",
+    "electron",
+    "electron.exe",
+    "node",
+    "node.exe",
+    "python",
+    "python3",
+    "python.exe",
+    "wine",
+    "wine64",
+    "cmd.exe",
+];
+
 fn launch_basenames(launch: &BTreeMap<String, serde::de::IgnoredAny>) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for key in launch.keys() {
@@ -1712,7 +1740,15 @@ Nameless:
             "ambiguous exe must be vetoed"
         );
         assert!(title_for_exe("game.exe").is_none());
-        for shared in ["launcher.exe", "nw.exe", "dosbox.exe", "scummvm.exe"] {
+        for shared in [
+            "launcher.exe",
+            "nw.exe",
+            "dosbox.exe",
+            "scummvm.exe",
+            "steam",
+            "java.exe",
+            "mono",
+        ] {
             assert!(
                 find_by_exe(shared).is_none(),
                 "{shared} should be ambiguous"

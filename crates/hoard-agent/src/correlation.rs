@@ -209,8 +209,13 @@ const NON_GAME_PROCESS: &[&str] = &[
 /// with "setup" in the folder); `"achievements"` is the GSE/Goldberg achievement
 /// watcher, which runs alongside the emulated game without being it. `"cursor"`
 /// and `"zed"` are editors: as substrings they would eat `Precursor.exe` or any
-/// game with "zed" inside it (`Fuzed.exe`).
+/// game with "zed" inside it (`Fuzed.exe`). `"steam"` is the Steam client's
+/// process name on Linux, always running on a Deck: the substring list only
+/// knew the Windows `steam.exe`, so every folder written while Steam was up
+/// could be pinned on it (and from there named after the one catalogue game
+/// that lists `steam` as its launcher).
 const NON_GAME_PROCESS_EXACT: &[&str] = &[
+    "steam",
     "code",
     "code.exe",
     "upc",
@@ -639,6 +644,9 @@ mod tests {
     fn is_game_like_rejects_system_and_launchers() {
         assert!(!is_game_like("svchost.exe", None));
         assert!(!is_game_like("steamwebhelper", None));
+        assert!(!is_game_like("steam", None));
+        assert!(!is_game_like("steam", Some(Path::new("/home/deck/.local/share/Steam/ubuntu12_32/steam"))));
+        assert!(is_game_like("SteamWorld Dig 2.exe", None));
         assert!(!is_game_like("hoard-agent", None));
         assert!(!is_game_like("chrome", None));
         assert!(!is_game_like("", None));

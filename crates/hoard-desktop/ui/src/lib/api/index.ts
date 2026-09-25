@@ -153,6 +153,17 @@ export type DetectionReport = {
    * thing syncing. Optional, reports cached by older builds lack it.
    */
   mirror_warnings?: MirrorWarning[];
+  link_warnings?: LinkWarning[];
+};
+
+/** A tracked folder with symbolic links inside: the backup doesn't follow
+ *  them, so what they point at isn't copied. */
+export type LinkWarning = {
+  save_id: string;
+  game_slug: string;
+  label: string;
+  tracked_path: string;
+  links: { link: string; target: string }[];
 };
 
 /** A tracked folder that looks like a backup mirror, plus the sibling that

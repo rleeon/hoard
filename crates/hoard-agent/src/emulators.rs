@@ -19,9 +19,10 @@
 //! onwards this is detection, and detection is shared by both frontends: the "add
 //! emulator" dialog and `hoard scan` ask the same thing.
 //!
-//! The catalogue points at native saves (memory cards, per-title folders), never
-//! at savestates: those depend on the emulator's exact version and do not survive
-//! a trip between machines.
+//! The catalogue points at native saves (memory cards, per-title folders). The
+//! one exception is RetroArch's `states/`, an entry of its own: a state depends
+//! on the emulator's exact version, but for RetroArch players it is half of what
+//! they play with.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -335,6 +336,29 @@ pub const CATALOG: &[EmulatorDef] = &[
             "<xdgConfig>/retroarch/saves",
             "<home>/.config/retroarch/saves",
             "<home>/.var/app/org.libretro.RetroArch/config/retroarch/saves",
+            // EmuDeck: a link to the Flatpak folder above, which is where its
+            // `retroarch.cfg` points the saves.
+            "<home>/Emulation/saves/retroarch/saves",
+        ],
+        title_layout: None,
+    },
+    // RetroArch keeps its states in a folder of their own, next to `saves/`, and
+    // players want them synced as much as the saves (asked for on Discord with
+    // an EmuDeck setup). A separate entry rather than more templates on the one
+    // above: detection offers one folder per game, so a second folder under the
+    // same id would never be tracked. A state only loads on the same core and
+    // RetroArch version, which is the player's to keep in step.
+    EmulatorDef {
+        id: "retroarch-states",
+        display_name: "RetroArch States",
+        system: "Multi-system",
+        processes: &["retroarch.exe", "retroarch"],
+        save_templates: &[
+            "<winAppData>/RetroArch/states",
+            "<xdgConfig>/retroarch/states",
+            "<home>/.config/retroarch/states",
+            "<home>/.var/app/org.libretro.RetroArch/config/retroarch/states",
+            "<home>/Emulation/saves/retroarch/states",
         ],
         title_layout: None,
     },
@@ -377,6 +401,75 @@ pub const CATALOG: &[EmulatorDef] = &[
 /// Looks up a catalogue entry by its id.
 pub fn find(id: &str) -> Option<&'static EmulatorDef> {
     CATALOG.iter().find(|d| d.id == id)
+}
+
+/// Save folders an emulator's own configuration names, with the emulator's id.
+///
+/// Only RetroArch so far: its `savefile_directory` and `savestate_directory`
+/// can point anywhere, and the templates only know the defaults. EmuDeck is the common case: it points the
+/// Flatpak's config at `~/Emulation/saves/retroarch/saves`. Only the folders
+/// that exist come back, resolved through links.
+pub fn configured_save_dirs() -> Vec<(&'static str, PathBuf)> {
+    let os = Os::current();
+    let mut out: Vec<(&'static str, PathBuf)> = Vec::new();
+    for tmpl in RETROARCH_CONFIGS {
+        for cfg in expand_path(tmpl, os) {
+            let Ok(text) = std::fs::read_to_string(&cfg) else {
+                continue;
+            };
+            let Some(cfg_dir) = cfg.parent() else {
+                continue;
+            };
+            for (id, key) in [
+                ("retroarch", "savefile_directory"),
+                ("retroarch-states", "savestate_directory"),
+            ] {
+                let Some(dir) = retroarch_dir(&text, key, cfg_dir) else {
+                    continue;
+                };
+                let Ok(real) = dir.canonicalize() else {
+                    continue;
+                };
+                if real.is_dir() && !out.iter().any(|(_, p)| p == &real) {
+                    out.push((id, real));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Where RetroArch's config file lives on each platform: the native build, the
+/// Flatpak, and the Windows and macOS installers.
+const RETROARCH_CONFIGS: &[&str] = &[
+    "<xdgConfig>/retroarch/retroarch.cfg",
+    "<home>/.var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg",
+    "<winAppData>/RetroArch/retroarch.cfg",
+    "<home>/Library/Application Support/RetroArch/config/retroarch.cfg",
+];
+
+/// A folder setting (`savefile_directory`, `savestate_directory`) out of a
+/// `retroarch.cfg`. `default` (or nothing) means RetroArch's own folder, which
+/// the templates already cover. A leading `~` is the home folder and a leading
+/// `:` the application folder, which for the portable builds that use it is
+/// where the config sits.
+fn retroarch_dir(cfg: &str, wanted: &str, cfg_dir: &Path) -> Option<PathBuf> {
+    let value = cfg.lines().find_map(|line| {
+        let (key, value) = line.split_once('=')?;
+        (key.trim() == wanted).then(|| value.trim().trim_matches('"').to_string())
+    })?;
+    if value.is_empty() || value == "default" {
+        return None;
+    }
+    if let Some(rest) = value.strip_prefix('~') {
+        let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
+        return Some(PathBuf::from(home).join(rest.trim_start_matches(['/', '\\'])));
+    }
+    if let Some(rest) = value.strip_prefix(':') {
+        return Some(cfg_dir.join(rest.trim_start_matches(['/', '\\'])));
+    }
+    let path = PathBuf::from(value);
+    path.is_absolute().then_some(path)
 }
 
 /// Expands an entry's templates against this OS and keeps the folders that exist,
@@ -797,6 +890,38 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn retroarch_dir_reads_the_configured_folders() {
+        let retroarch_save_dir = |cfg: &str, dir: &Path| retroarch_dir(cfg, "savefile_directory", dir);
+        let cfg_dir = Path::new("/opt/RetroArch");
+        // What EmuDeck writes into the Flatpak's config.
+        let emudeck = "video_driver = \"vulkan\"\nsavefile_directory = \"/home/deck/Emulation/saves/retroarch/saves\"\n";
+        assert_eq!(
+            retroarch_save_dir(emudeck, cfg_dir),
+            Some(PathBuf::from("/home/deck/Emulation/saves/retroarch/saves"))
+        );
+        assert_eq!(retroarch_save_dir("savefile_directory = \"default\"", cfg_dir), None);
+        assert_eq!(retroarch_save_dir("savestate_directory = \"/x\"", cfg_dir), None);
+        assert_eq!(
+            retroarch_dir(emudeck.replace("savefile", "savestate").replace("/saves\"", "/states\"").as_str(), "savestate_directory", cfg_dir),
+            Some(PathBuf::from("/home/deck/Emulation/saves/retroarch/states"))
+        );
+        assert_eq!(
+            retroarch_save_dir("savefile_directory = \":/saves\"", cfg_dir),
+            Some(PathBuf::from("/opt/RetroArch/saves"))
+        );
+        assert_eq!(retroarch_save_dir("savefile_directory = \"relative\"", cfg_dir), None);
+    }
+
+    #[test]
+    fn emudeck_link_is_recognised_as_retroarch_saves() {
+        let def = save_root_at(Path::new("/home/deck/Emulation/saves/retroarch/saves"));
+        assert_eq!(def.map(|d| d.id), Some("retroarch"));
+        // The states next to it are their own entry, so both get tracked.
+        let states = save_root_at(Path::new("/home/deck/Emulation/saves/retroarch/states"));
+        assert_eq!(states.map(|d| d.id), Some("retroarch-states"));
+    }
 
     /// The roots production tracked as if they were a save, each with the
     /// emulator that should have claimed them. The paths are the ones actually
