@@ -11,7 +11,7 @@ I salvataggi degli emulatori si perdono facilmente: file di salvataggio e save s
 
 Hoard gestisce i file di salvataggio standard degli emulatori (`.srm`, `.sav`, memory card) e i save state degli emulatori popolari, tra cui:
 
-- **RetroArch** — salvataggi e stati per core
+- **RetroArch** — salvataggi e stati, ognuno come voce a sé
 - **Dolphin** (GameCube / Wii) — memory card e file GCI
 - **PCSX2** (PS2) — memory card
 - **DuckStation** (PS1), **PPSSPP** (PSP), **mGBA** e altri

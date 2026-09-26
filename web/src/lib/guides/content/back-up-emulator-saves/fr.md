@@ -11,7 +11,7 @@ Les sauvegardes d'émulateur se perdent facilement : fichiers de sauvegarde et s
 
 Hoard gère les fichiers de sauvegarde d'émulateur courants (`.srm`, `.sav`, cartes mémoire) et les save states des émulateurs populaires, dont :
 
-- **RetroArch** — sauvegardes et états par cœur
+- **RetroArch** — sauvegardes et états, chacun comme une entrée à part
 - **Dolphin** (GameCube / Wii) — cartes mémoire et fichiers GCI
 - **PCSX2** (PS2) — cartes mémoire
 - **DuckStation** (PS1), **PPSSPP** (PSP), **mGBA**, et plus

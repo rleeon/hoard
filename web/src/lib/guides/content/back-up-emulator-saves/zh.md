@@ -11,7 +11,7 @@ updated: 2026-09-01
 
 Hoard 可处理常见的模拟器存档文件（`.srm`、`.sav`、记忆卡）以及主流模拟器的即时存档，包括：
 
-- **RetroArch** —— 按核心区分的存档和即时存档
+- **RetroArch** —— 存档和即时存档，各自作为独立条目
 - **Dolphin**（GameCube / Wii）—— 记忆卡和 GCI 文件
 - **PCSX2**（PS2）—— 记忆卡
 - **DuckStation**（PS1）、**PPSSPP**（PSP）、**mGBA** 等

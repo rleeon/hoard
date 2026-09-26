@@ -11,7 +11,7 @@ Os saves de emulador perdem-se com facilidade: ficheiros de save e save states v
 
 O Hoard trata os ficheiros de save padrão de emulador (`.srm`, `.sav`, memory cards) e os save states dos emuladores populares, incluindo:
 
-- **RetroArch** — saves e estados por core
+- **RetroArch** — saves e estados, cada um como uma entrada própria
 - **Dolphin** (GameCube / Wii) — memory cards e ficheiros GCI
 - **PCSX2** (PS2) — memory cards
 - **DuckStation** (PS1), **PPSSPP** (PSP), **mGBA** e mais

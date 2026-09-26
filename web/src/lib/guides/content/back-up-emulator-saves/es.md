@@ -11,7 +11,7 @@ Las partidas de emulador se pierden con facilidad: los archivos de guardado y lo
 
 Hoard gestiona los archivos de guardado estándar de emulador (`.srm`, `.sav`, memory cards) y los estados guardados de los emuladores populares, entre ellos:
 
-- **RetroArch** — guardados y estados por núcleo
+- **RetroArch** — guardados y estados, cada uno como su propia entrada
 - **Dolphin** (GameCube / Wii) — memory cards y archivos GCI
 - **PCSX2** (PS2) — memory cards
 - **DuckStation** (PS1), **PPSSPP** (PSP), **mGBA** y más

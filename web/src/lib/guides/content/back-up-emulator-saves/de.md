@@ -11,7 +11,7 @@ Emulator-Stände gehen leicht verloren: Speicherdateien und Savestates liegen in
 
 Hoard verarbeitet gängige Emulator-Speicherdateien (`.srm`, `.sav`, Memory Cards) und Savestates der beliebten Emulatoren, darunter:
 
-- **RetroArch** — Stände und Savestates pro Core
+- **RetroArch** — Spielstände und Savestates, jeweils als eigener Eintrag
 - **Dolphin** (GameCube / Wii) — Memory Cards und GCI-Dateien
 - **PCSX2** (PS2) — Memory Cards
 - **DuckStation** (PS1), **PPSSPP** (PSP), **mGBA** und mehr

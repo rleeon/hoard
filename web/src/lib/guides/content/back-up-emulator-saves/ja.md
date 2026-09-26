@@ -11,7 +11,7 @@ updated: 2026-09-01
 
 Hoard は一般的なエミュレーターのセーブファイル（`.srm`、`.sav`、メモリーカード）と、人気エミュレーターのセーブステートを扱います。たとえば：
 
-- **RetroArch** — コアごとのセーブとステート
+- **RetroArch** — セーブとステート（それぞれ別の項目として）
 - **Dolphin**（GameCube / Wii）— メモリーカードと GCI ファイル
 - **PCSX2**（PS2）— メモリーカード
 - **DuckStation**（PS1）、**PPSSPP**（PSP）、**mGBA** など
