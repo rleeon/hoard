@@ -1,0 +1,2 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./BAO-rL4_.js","./C4BeUwog.js","./Cb601xEI.js"])))=>i.map(i=>d[i]);
+import{_ as o}from"./Dp1pzeXC.js";import{br as i}from"./R9X0KGVz.js";const r=i(void 0);let s=!1;function _(){s||(s=!0,o(async()=>{const{auth:e}=await import("./BAO-rL4_.js").then(t=>t.i);return{auth:e}},__vite__mapDeps([0,1,2]),import.meta.url).then(({auth:e})=>{e.getSession().then(t=>r.set(t)),e.onAuthChange(t=>r.set(t))}))}export{_ as a,r as s};
