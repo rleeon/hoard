@@ -917,6 +917,7 @@
                        actually become. -->
                   <span
                     class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0a0a0a] ring-1 ring-inset ring-white/[0.08]"
+                    data-anim="pop"
                   >
                     <span
                       class="h-4 w-4 rounded-[3px]"

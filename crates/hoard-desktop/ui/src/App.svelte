@@ -994,7 +994,7 @@
                   />
                 {:else}
                   <span
-                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-500/30"
+                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black text-xs font-semibold text-emerald-300 ring-1 ring-emerald-400"
                   >
                     {accountInitial}
                   </span>

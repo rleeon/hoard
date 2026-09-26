@@ -36,7 +36,8 @@ export type CardData = {
   initials: string;
   /** Foto local ya cargada, o el avatar de la cuenta. `null` → iniciales. */
   avatar: HTMLImageElement | null;
-  quote: string;
+  /** `null` when the user took the phrase off the card. */
+  quote: string | null;
   /** "Last 7 days", "Last month" and so on, already translated. */
   rangeLabel: string;
   cubes: Cube[];
@@ -46,8 +47,7 @@ export type CardData = {
   topGameLabel: string;
   /** The tile block's label. */
   cubesLabel: string;
-  /** The strapline under the brand. */
-  tagline: string;
+  palette: CardPalette;
 };
 
 export const CARD_W = 1200;
@@ -55,8 +55,136 @@ export const CARD_H = 675;
 
 const FONT = '"Geist Sans", ui-sans-serif, system-ui, sans-serif';
 
-/** Escala de intensidad, la misma familia esmeralda que el calendario. */
-const LEVELS = ["#1b2320", "#064e3b", "#047857", "#10b981", "#34d399"];
+// ---- colour
+// The card follows an accent like the rest of the app. The canvas gets plain
+// sRGB rather than `oklch()` strings: older WebKitGTK builds ignore a
+// fillStyle they cannot parse and silently keep the previous colour.
+
+export type CardPalette = {
+  bg: string;
+  /** Boxes on the card: a step above the background, same hue. */
+  surface: string;
+  /** Empty activity tile. */
+  empty: string;
+  a300: string;
+  a400: string;
+  /** What `--color-accent` would be with this hue, for controls that show it
+   *  (the slider's thumb). Same maths as `applyAccentHue`. */
+  accent: string;
+  /** Translucent accent for the initials and cover placeholders. */
+  tint: string;
+  nowStroke: string;
+  /** Activity tiles, from none to the busiest. */
+  levels: string[];
+};
+
+type Oklch = [number, number, number];
+
+function toLinear(c: number): number {
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+function fromLinear(c: number): number {
+  const v = c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055;
+  return Math.min(1, Math.max(0, v));
+}
+
+function hexToOklch(hex: string): Oklch {
+  const n = parseInt(hex.slice(1), 16);
+  const r = toLinear(((n >> 16) & 255) / 255);
+  const g = toLinear(((n >> 8) & 255) / 255);
+  const b = toLinear((n & 255) / 255);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  const L = 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s;
+  const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
+  const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+  return [L, Math.hypot(A, B), ((Math.atan2(B, A) * 180) / Math.PI + 360) % 360];
+}
+
+function oklchToRgb([L, C, H]: Oklch): [number, number, number] {
+  const h = (H * Math.PI) / 180;
+  const A = C * Math.cos(h);
+  const B = C * Math.sin(h);
+  const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
+  const m = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
+  const s = (L - 0.0894841775 * A - 1.291485548 * B) ** 3;
+  return [
+    fromLinear(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+    fromLinear(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+    fromLinear(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
+  ].map((v) => Math.round(v * 255)) as [number, number, number];
+}
+
+const rgb = ([r, g, b]: [number, number, number], a = 1) =>
+  a === 1 ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${a})`;
+
+// The stock look: Tailwind's emerald, the ramp the app shows while Settings is
+// on its first gem. The neutrals are the card's own near-blacks.
+const STOCK = {
+  bg: "#050807",
+  surface: "#0f1211",
+  empty: "#1b2320",
+  a300: "#6ee7b7",
+  a400: "#34d399",
+  a500: "#10b981",
+  a700: "#047857",
+  a900: "#064e3b",
+};
+
+function hexRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/**
+ * The colours for a hue, with the same lightness and chroma per step the app
+ * repaints its emerald ramp with (`ACCENT_STOPS`). `null` is the stock emerald.
+ */
+export function cardPalette(
+  hue: number | null,
+  stops: [string, number, number][],
+): CardPalette {
+  let c: Record<keyof typeof STOCK, [number, number, number]>;
+  if (hue == null) {
+    c = Object.fromEntries(
+      Object.entries(STOCK).map(([k, v]) => [k, hexRgb(v)]),
+    ) as typeof c;
+  } else {
+    const stop = (name: string): Oklch => {
+      const [, l, ch] = stops.find(([k]) => k === `--color-emerald-${name}`)!;
+      return [l, ch, hue];
+    };
+    // The neutrals keep their lightness and chroma and only lean to the hue,
+    // the way the app's greys follow `--tint-hue`.
+    const lean = (hex: string): [number, number, number] => {
+      const [l, ch] = hexToOklch(hex);
+      return oklchToRgb([l, ch, hue]);
+    };
+    c = {
+      bg: lean(STOCK.bg),
+      surface: lean(STOCK.surface),
+      empty: lean(STOCK.empty),
+      a300: oklchToRgb(stop("300")),
+      a400: oklchToRgb(stop("400")),
+      a500: oklchToRgb(stop("500")),
+      a700: oklchToRgb(stop("700")),
+      a900: oklchToRgb(stop("900")),
+    };
+  }
+  return {
+    bg: rgb(c.bg),
+    surface: rgb(c.surface),
+    empty: rgb(c.empty),
+    a300: rgb(c.a300),
+    a400: rgb(c.a400),
+    accent: rgb(oklchToRgb([0.62, 0.15, hue ?? 158])),
+    tint: rgb(c.a500, 0.16),
+    nowStroke: rgb(c.a400, 0.9),
+    levels: [rgb(c.empty), rgb(c.a900), rgb(c.a700), rgb(c.a500), rgb(c.a400)],
+  };
+}
 
 function level(secs: number, max: number): number {
   if (secs <= 0 || max <= 0) return 0;
@@ -150,33 +278,6 @@ function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxWidth: number
   return `${s}…`;
 }
 
-/** La marca: el mismo tile oscuro con la "H" en degradado del icono de la app. */
-function drawLogo(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
-  const s = size / 48;
-  ctx.save();
-  ctx.translate(x, y);
-  roundRect(ctx, 0, 0, size, size, 12 * s);
-  ctx.fillStyle = "#0a0a0a";
-  ctx.fill();
-  ctx.strokeStyle = "rgba(16,185,129,0.28)";
-  ctx.lineWidth = Math.max(1, s);
-  ctx.stroke();
-
-  const grad = ctx.createLinearGradient(14 * s, 10 * s, 34 * s, 38 * s);
-  grad.addColorStop(0, "#5eead4");
-  grad.addColorStop(1, "#059669");
-  ctx.fillStyle = grad;
-  for (const [rx, ry, rw, rh] of [
-    [13, 11, 6.5, 26],
-    [28.5, 11, 6.5, 26],
-    [13, 21, 22, 6],
-  ]) {
-    roundRect(ctx, rx * s, ry * s, rw * s, rh * s, 1.5 * s);
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
 function drawAvatar(
   ctx: CanvasRenderingContext2D,
   data: CardData,
@@ -197,9 +298,11 @@ function drawAvatar(
     const h = img.height * scale;
     ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
   } else {
-    ctx.fillStyle = "rgba(16,185,129,0.16)";
+    // Black inside, the accent only in the ring and the letters, as everywhere
+    // else in the app a picture is missing.
+    ctx.fillStyle = "#000";
     ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-    ctx.fillStyle = "#6ee7b7";
+    ctx.fillStyle = data.palette.a300;
     ctx.font = `700 ${Math.round(r * 0.82)}px ${FONT}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -208,7 +311,7 @@ function drawAvatar(
   ctx.restore();
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.strokeStyle = "rgba(52,211,153,0.45)";
+  ctx.strokeStyle = data.palette.a400;
   ctx.lineWidth = 3;
   ctx.stroke();
 }
@@ -221,18 +324,9 @@ export function drawCard(ctx: CanvasRenderingContext2D, data: CardData): void {
   ctx.save();
   ctx.textBaseline = "alphabetic";
 
-  // --- fondo ------------------------------------------------------------
-  ctx.fillStyle = "#050807";
-  ctx.fillRect(0, 0, CARD_W, CARD_H);
-  const glow = ctx.createRadialGradient(180, 60, 0, 180, 60, 720);
-  glow.addColorStop(0, "rgba(16,185,129,0.20)");
-  glow.addColorStop(1, "rgba(16,185,129,0)");
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, CARD_W, CARD_H);
-  const glow2 = ctx.createRadialGradient(1140, 660, 0, 1140, 660, 560);
-  glow2.addColorStop(0, "rgba(45,212,191,0.12)");
-  glow2.addColorStop(1, "rgba(45,212,191,0)");
-  ctx.fillStyle = glow2;
+  const pal = data.palette;
+
+  ctx.fillStyle = pal.bg;
   ctx.fillRect(0, 0, CARD_W, CARD_H);
 
   // marco interior
@@ -241,21 +335,17 @@ export function drawCard(ctx: CanvasRenderingContext2D, data: CardData): void {
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // --- cabecera: marca a la izquierda, dominio a la derecha (el "SEO") ---
-  drawLogo(ctx, 56, 48, 44);
+  // ---- brand: just the words, with Hoard's H in the accent
   ctx.textAlign = "left";
-  ctx.fillStyle = "#fafafa";
   ctx.font = `700 26px ${FONT}`;
-  ctx.fillText("Hoard", 114, 70);
+  ctx.fillStyle = pal.a400;
+  ctx.fillText("H", 56, 72);
+  ctx.fillStyle = "#fafafa";
+  ctx.fillText("oard", 56 + ctx.measureText("H").width, 72);
   const brandW = ctx.measureText("Hoard").width;
-  ctx.fillStyle = "#34d399";
+  ctx.fillStyle = pal.a400;
   ctx.font = `600 26px ${FONT}`;
-  ctx.fillText("Wrapped", 114 + brandW + 10, 70);
-
-  ctx.textAlign = "right";
-  ctx.fillStyle = "#a1a1aa";
-  ctx.font = `500 20px ${FONT}`;
-  ctx.fillText("hoard.services", CARD_W - 56, 70);
+  ctx.fillText("Wrapped", 56 + brandW + 10, 72);
 
   // --- identidad --------------------------------------------------------
   drawAvatar(ctx, data, 112, 196, 52);
@@ -279,7 +369,7 @@ export function drawCard(ctx: CanvasRenderingContext2D, data: CardData): void {
     // Justo encima de la caja de la frase, sin llegar a tocarla.
     const y = 142;
     roundRect(ctx, x, y, boxW, 94, 18);
-    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.fillStyle = pal.surface;
     ctx.fill();
     ctx.strokeStyle = "rgba(255,255,255,0.07)";
     ctx.lineWidth = 1.5;
@@ -297,9 +387,9 @@ export function drawCard(ctx: CanvasRenderingContext2D, data: CardData): void {
       const h = cover.height * scale;
       ctx.drawImage(cover, x + 14 + (cw - w) / 2, y + 11 + (ch - h) / 2, w, h);
     } else {
-      ctx.fillStyle = "rgba(16,185,129,0.16)";
+      ctx.fillStyle = pal.tint;
       ctx.fillRect(x + 14, y + 11, cw, ch);
-      ctx.fillStyle = "#6ee7b7";
+      ctx.fillStyle = pal.a300;
       ctx.font = `700 26px ${FONT}`;
       ctx.textAlign = "center";
       ctx.fillText(
@@ -324,44 +414,42 @@ export function drawCard(ctx: CanvasRenderingContext2D, data: CardData): void {
     lines.forEach((l, i) => ctx.fillText(l, x + 80, y + 62 + i * 24));
   }
 
-  // --- frase ------------------------------------------------------------
-  const quoteTop = 292;
-  roundRect(ctx, 56, quoteTop - 44, CARD_W - 112, 100, 20);
-  const qgrad = ctx.createLinearGradient(56, 0, CARD_W - 56, 0);
-  qgrad.addColorStop(0, "rgba(16,185,129,0.12)");
-  qgrad.addColorStop(1, "rgba(16,185,129,0)");
-  ctx.fillStyle = qgrad;
-  ctx.fill();
-  ctx.strokeStyle = "rgba(52,211,153,0.18)";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  // ---- phrase
+  // Without it the block below would leave a 116 px hole under the identity,
+  // so the rest moves up by half of it and the other half goes to the bottom.
+  const lift = data.quote == null ? 58 : 0;
+  if (data.quote != null) {
+    const quoteTop = 292;
+    roundRect(ctx, 56, quoteTop - 44, CARD_W - 112, 100, 20);
+    ctx.fillStyle = pal.surface;
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.07)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
 
-  ctx.fillStyle = "rgba(52,211,153,0.55)";
-  ctx.font = `700 56px ${FONT}`;
-  ctx.fillText("“", 78, quoteTop + 12);
-
-  ctx.fillStyle = "#e4e4e7";
-  ctx.font = `italic 600 30px ${FONT}`;
-  const qLines = wrap(ctx, data.quote, CARD_W - 112 - 80, 2);
-  const qStart = qLines.length === 1 ? quoteTop + 17 : quoteTop - 10;
-  qLines.forEach((l, i) => ctx.fillText(l, 120, qStart + i * 38));
+    ctx.fillStyle = "#e4e4e7";
+    ctx.font = `italic 600 30px ${FONT}`;
+    const qLines = wrap(ctx, data.quote, CARD_W - 112 - 48, 2);
+    const qStart = qLines.length === 1 ? quoteTop + 17 : quoteTop - 10;
+    qLines.forEach((l, i) => ctx.fillText(l, 80, qStart + i * 38));
+  }
 
   // --- datos curiosos ---------------------------------------------------
-  const statsY = 384;
+  const statsY = 384 - lift;
   const count = Math.max(1, data.stats.length);
   const gap = 18;
   const statW = (CARD_W - 112 - gap * (count - 1)) / count;
   data.stats.forEach((s, i) => {
     const x = 56 + i * (statW + gap);
     roundRect(ctx, x, statsY, statW, 92, 18);
-    ctx.fillStyle = "rgba(255,255,255,0.035)";
+    ctx.fillStyle = pal.surface;
     ctx.fill();
     ctx.strokeStyle = "rgba(255,255,255,0.06)";
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
     ctx.textAlign = "center";
-    ctx.fillStyle = "#34d399";
+    ctx.fillStyle = pal.a400;
     ctx.font = `700 34px ${FONT}`;
     ctx.fillText(ellipsize(ctx, s.value, statW - 24), x + statW / 2, statsY + 46);
     ctx.fillStyle = "#71717a";
@@ -376,7 +464,7 @@ export function drawCard(ctx: CanvasRenderingContext2D, data: CardData): void {
   // ends where the rest of the card does. The height is bounded so it does not eat
   // the footer, so with few tiles they stop being squares and become wide landscape
   // tiles, large, which is what was asked for.
-  const BAND_TOP = 500;
+  const BAND_TOP = 500 - lift;
   const BAND_H = 92;
   ctx.fillStyle = "#71717a";
   ctx.font = `600 13px ${FONT}`;
@@ -386,20 +474,22 @@ export function drawCard(ctx: CanvasRenderingContext2D, data: CardData): void {
   if (cubes.length > 0) {
     const maxSecs = cubes.reduce((m, c) => Math.max(m, c.secs), 0);
     const avail = CARD_W - 112;
-    const gapC = cubes.length <= 12 ? 14 : 6;
+    // A month has 30 tiles; a year 12 or 13, which still fit with room.
+    const dense = cubes.length > 13;
+    const gapC = dense ? 6 : 14;
     const w = (avail - gapC * (cubes.length - 1)) / cubes.length;
     const h = Math.min(w, BAND_H);
     const top = BAND_TOP + (BAND_H - h) / 2;
     // With many tiles the numbers pile up, so one in five is labelled (and always
     // the last, which is today).
-    const step = cubes.length > 12 ? 5 : 1;
+    const step = dense ? 5 : 1;
 
     cubes.forEach((c, i) => {
       const x = 56 + i * (w + gapC);
       roundRect(ctx, x, top, w, h, Math.max(4, Math.min(w, h) * 0.2));
-      ctx.fillStyle = LEVELS[level(c.secs, maxSecs)];
+      ctx.fillStyle = pal.levels[level(c.secs, maxSecs)];
       ctx.fill();
-      ctx.strokeStyle = c.now ? "rgba(52,211,153,0.9)" : "rgba(255,255,255,0.06)";
+      ctx.strokeStyle = c.now ? pal.nowStroke : "rgba(255,255,255,0.06)";
       ctx.lineWidth = c.now ? 2.5 : 1;
       ctx.stroke();
 
@@ -414,12 +504,9 @@ export function drawCard(ctx: CanvasRenderingContext2D, data: CardData): void {
     });
   }
 
-  // --- pie: la marca otra vez, que la imagen viaja sola ------------------
-  ctx.fillStyle = "#3f3f46";
-  ctx.font = `500 16px ${FONT}`;
-  ctx.fillText(data.tagline, 56, CARD_H - 28);
+  // ---- footer: the address, since the picture travels on its own
   ctx.textAlign = "right";
-  ctx.fillStyle = "#34d399";
+  ctx.fillStyle = pal.a400;
   ctx.font = `600 17px ${FONT}`;
   ctx.fillText("hoard.services", CARD_W - 56, CARD_H - 28);
   ctx.textAlign = "left";

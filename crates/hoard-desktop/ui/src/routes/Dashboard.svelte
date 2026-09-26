@@ -502,29 +502,6 @@
       >
         {$_("dashboard.title")}
       </h1>
-      <p class="mt-2 flex items-center gap-2.5 text-sm text-zinc-400">
-        <span class="relative inline-flex h-3 w-3 shrink-0">
-          {#if $status.running}
-            <span
-              class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/70"
-            ></span>
-          {/if}
-          <span
-            class="relative inline-flex h-3 w-3 rounded-full {$status.running
-              ? 'bg-emerald-400 shadow-[0_0_8px_2px_color-mix(in_oklch,var(--color-emerald-500)_50%,transparent)]'
-              : 'bg-zinc-600'}"
-          ></span>
-        </span>
-        <span>
-          {$status.running
-            ? $_("dashboard.agent_watching")
-            : $_("dashboard.agent_offline")}
-          {#if $status.running}
-            <span class="text-zinc-600">·</span>
-            {$_("dashboard.tracked_count", { values: { count: saves.length } })}
-          {/if}
-        </span>
-      </p>
     </div>
     <!-- mr-20 clears the shell's fixed bell/eye overlay (top-right corner). -->
     <div class="mr-20 flex shrink-0 items-center gap-2">

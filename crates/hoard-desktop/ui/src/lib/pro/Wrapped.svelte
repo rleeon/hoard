@@ -42,7 +42,8 @@
     Camera,
     X,
   } from "@lucide/svelte";
-  import { tr, fmtBytes } from "./lib";
+  import { fmtBytes } from "./lib";
+  import { _ } from "svelte-i18n";
   import { fmtDate } from "../utils/format";
   import { prefs } from "../stores/prefs";
 
@@ -75,7 +76,7 @@
       };
     }
     return {
-      name: $tr({ es: "Sin sesión", en: "Signed out", de: "Nicht angemeldet", fr: "Déconnecté", it: "Non connesso", ja: "未ログイン", pt: "Sem sessão", zh: "未登录" }),
+      name: $_("wrapped.signed_out"),
       sub: "—",
       avatar: null as string | null,
       cloud: false,
@@ -104,12 +105,16 @@
   let weeks = $state<Day[][]>([]);
   let totalGames = $state(0);
   let totalBytes = $state(0);
-  let mostPlayed = $state<string | null>(null);
-  let mostPlayedSlug = $state<string | null>(null);
+  // All-time totals per game, only for servers too old to send the per-day
+  // breakdown (`daily_by_game`).
+  let byGameAll = $state<Record<string, number>>({});
 
   // slug → Steam app id, read from the cached detection report (no scan). Used
   // only to show cover art; a miss just falls back to the initial-letter tile.
   let appIdBySlug = $state<Record<string, number>>({});
+  // slug → the game's name from the same report. The slug made into words
+  // loses what it dropped: "baldurs-gate-3" read "Baldurs Gate 3".
+  let nameBySlug = $state<Record<string, string>>({});
 
   // "Atesorado" = everything ever stored, including deleted saves. Prefer the
   // server's monotonic lifetime counter; fall back to the current footprint
@@ -133,7 +138,34 @@
   let yearsAvailable = $state<number[]>([]);
   let selectedYear = $state<number>(new Date().getFullYear());
 
-  const DAY_MS = 86_400_000;
+  // The most-played game of the year on screen, like every other number on the
+  // page. It used to be the all-time one, so a 2025 recap could crown a game
+  // that was only played in 2026.
+  const mostPlayedSlug = $derived.by(() => {
+    const totals: Record<string, number> = {};
+    if (Object.keys(dailyByGame).length === 0) {
+      Object.assign(totals, byGameAll);
+    } else {
+      const prefix = `${selectedYear}-`;
+      for (const [day, games] of Object.entries(dailyByGame)) {
+        if (!day.startsWith(prefix)) continue;
+        for (const [slug, secs] of Object.entries(games)) {
+          totals[slug] = (totals[slug] ?? 0) + secs;
+        }
+      }
+    }
+    let top: string | null = null;
+    let topSecs = 0;
+    for (const [slug, secs] of Object.entries(totals)) {
+      if (slug === "__other__") continue;
+      if (secs > topSecs) {
+        topSecs = secs;
+        top = slug;
+      }
+    }
+    return top;
+  });
+  const mostPlayed = $derived(mostPlayedSlug ? gameName(mostPlayedSlug) : null);
 
   // Games are tracked by `game_slug`; the per-save `label` is the save *slot*
   // name (usually the default "main"), NOT the game. For a per-game recap we
@@ -147,6 +179,10 @@
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
         .join(" ") || slug
     );
+  }
+
+  function gameName(slug: string): string {
+    return nameBySlug[slug] ?? prettySlug(slug);
   }
 
   function keyToDate(key: string): Date {
@@ -168,7 +204,7 @@
       .filter(([, secs]) => secs > 0)
       .map(([slug, secs]) => ({
         slug,
-        label: prettySlug(slug),
+        label: gameName(slug),
         appId: appIdBySlug[slug] ?? null,
         secs,
       }))
@@ -209,22 +245,18 @@
     "bg-emerald-400",
   ];
 
-  // Weekday rows in fully-reversed order, top→bottom:
-  //   Sat, Fri, Thu, Wed, Tue, Mon, Sun.
-  // Sunday (the week's first day) sits at the BOTTOM, not the top.
-  // `ROW_ORDER` indexes each week (built Sun..Sat, so index == JS getDay) in
-  // that display order; `WEEKDAYS` is the matching label column, like GitHub
-  // we only label Mon / Wed / Fri and leave the rest blank.
-  const ROW_ORDER = [6, 5, 4, 3, 2, 1, 0];
-  const WEEKDAYS = [
+  // Weekday rows top to bottom, Sunday first. Each week is built Sun..Sat, so
+  // the index is JS `getDay()`. Like GitHub, only Mon / Wed / Fri are labelled.
+  const ROW_ORDER = [0, 1, 2, 3, 4, 5, 6];
+  const WEEKDAYS = $derived([
     "",
-    $tr({ es: "vie", en: "Fri", de: "Fr", fr: "ven", it: "ven", ja: "金", pt: "sex", zh: "周五" }),
+    $_("wrapped.mon"),
     "",
-    $tr({ es: "mié", en: "Wed", de: "Mi", fr: "mer", it: "mer", ja: "水", pt: "qua", zh: "周三" }),
+    $_("wrapped.wed"),
     "",
-    $tr({ es: "lun", en: "Mon", de: "Mo", fr: "lun", it: "lun", ja: "月", pt: "seg", zh: "周一" }),
+    $_("wrapped.fri"),
     "",
-  ];
+  ]);
 
   function fmtDur(secs: number): string {
     if (secs <= 0) return "—";
@@ -338,18 +370,7 @@
       dailyByGame = {};
     }
     daysByKey = days;
-
-    // Most-played game (all-time), resolved to its library label.
-    let topSlug: string | null = null;
-    let topSecs = 0;
-    for (const [slug, secs] of Object.entries(byGame)) {
-      if (secs > topSecs) {
-        topSecs = secs;
-        topSlug = slug;
-      }
-    }
-    mostPlayed = topSlug ? prettySlug(topSlug) : null;
-    mostPlayedSlug = topSlug;
+    byGameAll = byGame;
 
     // Cover art: map each tracked slug to its Steam app id from the cached
     // detection report (already on disk, no scan). Covers pop in reactively;
@@ -357,12 +378,16 @@
     try {
       const rep = await cachedDetection();
       const m: Record<string, number> = {};
+      const n: Record<string, string> = {};
       for (const g of rep?.games ?? []) {
         if (g.steam_app_id != null) m[g.slug] = g.steam_app_id;
+        if (g.display_name) n[g.slug] = g.display_name;
       }
       appIdBySlug = m;
+      nameBySlug = n;
     } catch {
       appIdBySlug = {};
+      nameBySlug = {};
     }
 
     // Years with any playtime, plus the current year (so a fresh account
@@ -395,9 +420,8 @@
     // Rolling 365-day window for the current year; Jan 1 → Dec 31 for past
     // years. Both back up to the Sunday on/before the start so columns align
     // to ISO weeks.
-    const start = isCurrentYear
-      ? new Date(today.getTime() - 364 * DAY_MS)
-      : new Date(selectedYear, 0, 1);
+    const start = isCurrentYear ? new Date(today) : new Date(selectedYear, 0, 1);
+    if (isCurrentYear) start.setDate(start.getDate() - 364);
     start.setDate(start.getDate() - start.getDay());
 
     const grid: Day[][] = [];
@@ -418,7 +442,13 @@
           secs: daysByKey[key] || 0,
           inRange: inWindow,
         });
-        cursor = new Date(cursor.getTime() + DAY_MS);
+        // Calendar days, never 24 h of milliseconds: the October DST change is
+        // a 25 h day, and stepping by 24 h showed 26-10-2025 twice and put every
+        // later day one weekday late until the March change (a 23 h day) ate
+        // 29-03-2026 whole. 01-01-2026 sat on Friday and 29-03 dropped out of
+        // the totals.
+        cursor = new Date(cursor);
+        cursor.setDate(cursor.getDate() + 1);
       }
       grid.push(week);
     }
@@ -434,26 +464,13 @@
 <div class="mx-auto max-w-5xl px-6 py-8">
   <!-- header -->
   <div class="mb-6 flex items-center gap-3">
-    <div
-      class="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/10 ring-1 ring-emerald-400/30"
-    >
-      <MarioStar size={22} class="text-emerald-300" data-anim="hop" />
-    </div>
+    <MarioStar size={40} class="shrink-0 text-emerald-300" data-anim="hop" />
     <div>
       <h1 class="font-display text-2xl font-semibold tracking-tight text-zinc-50">
-        {$tr({ es: "Tu año jugando", en: "Your year in play", de: "Dein Spielejahr", fr: "Ton année de jeu", it: "Il tuo anno di gioco", ja: "あなたのゲームの一年", pt: "Seu ano jogando", zh: "你的游戏年度" })}
+        {$_("wrapped.your_year_in_play")}
       </h1>
       <p class="text-sm text-zinc-400">
-        {$tr({
-          es: "Tu resumen personal, con tus horas de todos tus equipos.",
-          en: "Your personal recap, with your hours from every device.",
-          de: "Deine persönliche Zusammenfassung, mit deinen Stunden von allen Geräten.",
-          fr: "Ton récap personnel, avec tes heures sur tous tes appareils.",
-          it: "Il tuo riepilogo personale, con le tue ore da tutti i tuoi dispositivi.",
-          ja: "すべてのデバイスでのプレイ時間をまとめた、あなただけのまとめです。",
-          pt: "Seu resumo pessoal, com suas horas de todos os seus dispositivos.",
-          zh: "你的个人总结，汇总了你所有设备上的游戏时长。",
-        })}
+        {$_("wrapped.subtitle")}
       </p>
     </div>
   </div>
@@ -464,7 +481,7 @@
   >
     <div class="flex items-center gap-4">
       <div
-        class="h-14 w-14 shrink-0 overflow-hidden rounded-2xl ring-1 ring-emerald-400/30"
+        class="h-14 w-14 shrink-0 overflow-hidden rounded-2xl ring-1 ring-emerald-400"
       >
         {#if identity.avatar}
           <img
@@ -475,7 +492,7 @@
           />
         {:else}
           <div
-            class="grid h-full w-full place-items-center bg-emerald-500/15 font-display text-lg font-bold text-emerald-300"
+            class="grid h-full w-full place-items-center bg-black font-display text-lg font-bold text-emerald-300"
           >
             {initials}
           </div>
@@ -500,11 +517,11 @@
             onclick={() => (revealed = !revealed)}
             class="grid h-4 w-4 shrink-0 place-items-center rounded text-zinc-500 transition hover:text-zinc-200"
             aria-label={revealed
-              ? $tr({ es: "Ocultar correo", en: "Hide email", de: "E-Mail ausblenden", fr: "Masquer l'e-mail", it: "Nascondi email", ja: "メールアドレスを隠す", pt: "Ocultar e-mail", zh: "隐藏邮箱" })
-              : $tr({ es: "Mostrar correo", en: "Show email", de: "E-Mail anzeigen", fr: "Afficher l'e-mail", it: "Mostra email", ja: "メールアドレスを表示", pt: "Mostrar e-mail", zh: "显示邮箱" })}
+              ? $_("wrapped.hide_email")
+              : $_("wrapped.show_email")}
             title={revealed
-              ? $tr({ es: "Ocultar correo", en: "Hide email", de: "E-Mail ausblenden", fr: "Masquer l'e-mail", it: "Nascondi email", ja: "メールアドレスを隠す", pt: "Ocultar e-mail", zh: "隐藏邮箱" })
-              : $tr({ es: "Mostrar correo", en: "Show email", de: "E-Mail anzeigen", fr: "Afficher l'e-mail", it: "Mostra email", ja: "メールアドレスを表示", pt: "Mostrar e-mail", zh: "显示邮箱" })}
+              ? $_("wrapped.hide_email")
+              : $_("wrapped.show_email")}
           >
             {#if revealed}<EyeOff size={11} />{:else}<Eye size={11} />{/if}
           </button>
@@ -514,21 +531,21 @@
 
     <!-- small facts, not sensitive -->
     <div class="mt-4 grid grid-cols-3 gap-2 text-center">
-      <div class="rounded-2xl bg-white/[0.03] px-2 py-2.5">
+      <div class="rounded-2xl border border-white/[0.08] bg-layer-2 px-2 py-2.5">
         <div class="flex items-center justify-center gap-1 text-[11px] uppercase tracking-wide text-zinc-500">
-          <Gamepad2 size={12} />{$tr({ es: "Juegos", en: "Games", de: "Spiele", fr: "Jeux", it: "Giochi", ja: "ゲーム", pt: "Jogos", zh: "游戏" })}
+          <Gamepad2 size={12} />{$_("wrapped.games")}
         </div>
         <div class="mt-0.5 text-xl font-semibold text-zinc-100">{totalGames}</div>
       </div>
-      <div class="rounded-2xl bg-white/[0.03] px-2 py-2.5">
+      <div class="rounded-2xl border border-white/[0.08] bg-layer-2 px-2 py-2.5">
         <div class="text-[11px] uppercase tracking-wide text-zinc-500">
-          {$tr({ es: "Atesorado", en: "Hoarded", de: "Gehortet", fr: "Amassé", it: "Accumulato", ja: "保管済み", pt: "Guardado", zh: "已囤积" })}
+          {$_("wrapped.hoarded")}
         </div>
         <div class="mt-0.5 text-xl font-semibold text-zinc-100">{fmtBytes(hoardedBytes)}</div>
       </div>
-      <div class="rounded-2xl bg-white/[0.03] px-2 py-2.5">
+      <div class="rounded-2xl border border-white/[0.08] bg-layer-2 px-2 py-2.5">
         <div class="flex items-center justify-center gap-1 text-[11px] uppercase tracking-wide text-zinc-500">
-          <Crown size={12} />{$tr({ es: "Más jugado", en: "Most played", de: "Meistgespielt", fr: "Le plus joué", it: "Più giocato", ja: "最もプレイ", pt: "Mais jogado", zh: "最常玩" })}
+          <Crown size={12} />{$_("wrapped.most_played")}
         </div>
         <div
           class="mt-0.5 flex items-center justify-center gap-1.5"
@@ -539,9 +556,8 @@
               appId={appIdBySlug[mostPlayedSlug] ?? null}
               slug={mostPlayedSlug}
               name={mostPlayed ?? ""}
-              class="h-5 w-8 rounded"
+              class="h-6 w-6 shrink-0 rounded-md"
               initialClass="text-[10px]"
-              fit="smart"
             />
           {/if}
           <span class="truncate text-sm font-semibold text-zinc-100">{mostPlayed ?? "—"}</span>
@@ -557,19 +573,10 @@
     <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h2 class="text-sm font-semibold text-zinc-100">
-          {$tr({ es: "Horas jugadas", en: "Hours played", de: "Gespielte Stunden", fr: "Heures jouées", it: "Ore giocate", ja: "プレイ時間", pt: "Horas jogadas", zh: "游戏时长" })}
+          {$_("wrapped.hours_played")}
         </h2>
         <p class="text-xs text-zinc-500">
-          {$tr({
-            es: "Cada cuadro es un día; el color, las horas. Haz clic en uno para ver a qué jugaste.",
-            en: "Each square is a day; the shade is how long. Click one to see what you played.",
-            de: "Jedes Kästchen ist ein Tag, die Farbe zeigt die Stunden. Klick auf eines, um zu sehen, was du gespielt hast.",
-            fr: "Chaque case est un jour ; la couleur, les heures. Clique sur une case pour voir à quoi tu as joué.",
-            it: "Ogni quadrato è un giorno; il colore indica le ore. Clicca su uno per vedere a cosa hai giocato.",
-            ja: "1マスが1日で、色の濃さがプレイ時間です。クリックするとその日に遊んだゲームが見られます。",
-            pt: "Cada quadrado é um dia; a cor, as horas. Clique em um para ver o que você jogou.",
-            zh: "每个方格代表一天，颜色深浅代表时长。点击一个方格查看当天玩了什么。",
-          })}
+          {$_("wrapped.calendar_hint")}
         </p>
       </div>
       <div class="flex items-center gap-3">
@@ -600,7 +607,7 @@
             {Math.round(stats.totalSecs / 3600)}
           </div>
           <div class="text-[11px] uppercase tracking-wide text-zinc-500">
-            {$tr({ es: "horas", en: "hours", de: "Stunden", fr: "heures", it: "ore", ja: "時間", pt: "horas", zh: "小时" })}
+            {$_("wrapped.hours")}
           </div>
         </div>
       </div>
@@ -662,22 +669,22 @@
       <!-- legend + streaks -->
       <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-1.5 text-[11px] text-zinc-500">
-          {$tr({ es: "Menos", en: "Less", de: "Weniger", fr: "Moins", it: "Meno", ja: "少", pt: "Menos", zh: "少" })}
+          {$_("wrapped.less")}
           {#each LEVEL_BG as bg}
             <span class="h-3 w-3 rounded-[3px] {bg} ring-1 ring-inset ring-white/[0.04]"></span>
           {/each}
-          {$tr({ es: "Más", en: "More", de: "Mehr", fr: "Plus", it: "Più", ja: "多", pt: "Mais", zh: "多" })}
+          {$_("wrapped.more")}
         </div>
         <div class="flex items-center gap-4 text-xs">
           <span class="inline-flex items-center gap-1.5 text-zinc-300">
             <CalendarCheck size={13} class="text-emerald-400" />
             {stats.active}
-            {$tr({ es: "días activos", en: "active days", de: "aktive Tage", fr: "jours actifs", it: "giorni attivi", ja: "アクティブ日数", pt: "dias ativos", zh: "活跃天数" })}
+            {$_("wrapped.active_days")}
           </span>
           <span class="inline-flex items-center gap-1.5 text-zinc-300">
             <Flame size={13} class="text-amber-400" />
             {stats.longest}
-            {$tr({ es: "días racha", en: "day streak", de: "Tage in Folge", fr: "jours d'affilée", it: "giorni di fila", ja: "連続日数", pt: "dias seguidos", zh: "连续天数" })}
+            {$_("wrapped.day_streak")}
           </span>
         </div>
       </div>
@@ -688,42 +695,24 @@
              convincing zero: the hours ARE still being counted locally, and
              they come back the moment it is turned on again. -->
         <div
-          class="mt-3 flex items-center gap-2 rounded-2xl bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 ring-1 ring-white/[0.05]"
+          class="mt-3 flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-layer-2 px-3 py-2 text-xs text-zinc-400"
         >
           <Clock size={14} class="text-amber-300" />
-          {$tr({
-            es: "Wrapple está desactivado en Ajustes › Privacidad. Tus horas se siguen contando en este equipo, pero no salen de él, así que aquí no hay nada que enseñar.",
-            en: "Wrapple is turned off in Settings › Privacy. Your hours are still counted on this machine, but they never leave it, so there's nothing to show here.",
-            de: "Wrapple ist unter Einstellungen › Datenschutz deaktiviert. Deine Stunden werden auf diesem Gerät weiter gezählt, verlassen es aber nie, daher gibt es hier nichts zu zeigen.",
-            fr: "Wrapple est désactivé dans Paramètres › Confidentialité. Tes heures sont toujours comptées sur cet appareil, mais elles ne le quittent jamais, donc il n'y a rien à afficher ici.",
-            it: "Wrapple è disattivato in Impostazioni › Privacy. Le tue ore vengono ancora contate su questo dispositivo, ma non lo lasciano mai, quindi qui non c'è niente da mostrare.",
-            ja: "Wrapple は「設定 › プライバシー」でオフになっています。プレイ時間はこのデバイスで引き続き記録されますが、外には出ないため、ここに表示するものはありません。",
-            pt: "O Wrapple está desativado em Definições › Privacidade. Suas horas continuam sendo contadas neste dispositivo, mas nunca saem dele, então não há nada para mostrar aqui.",
-            zh: "Wrapple 已在“设置 › 隐私”中关闭。你的游戏时长仍会在这台设备上记录，但从不离开这台设备，所以这里没有可显示的内容。",
-          })}
+          {$_("wrapped.telemetry_off")}
         </div>
       {:else if stats.totalSecs <= 0}
         <div
-          class="mt-3 flex items-center gap-2 rounded-2xl bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 ring-1 ring-white/[0.05]"
+          class="mt-3 flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-layer-2 px-3 py-2 text-xs text-zinc-400"
         >
           <Clock size={14} class="text-emerald-300" />
-          {$tr({
-            es: "Aún no hay horas registradas. Juega con Hoard abierto y se irán contando solas.",
-            en: "No hours logged yet. Play with Hoard open and they'll start counting.",
-            de: "Noch keine Stunden erfasst. Spiel mit geöffnetem Hoard, dann werden sie automatisch gezählt.",
-            fr: "Aucune heure enregistrée pour l'instant. Joue avec Hoard ouvert et elles se compteront toutes seules.",
-            it: "Nessuna ora registrata finora. Gioca con Hoard aperto e verranno contate da sole.",
-            ja: "まだプレイ時間の記録がありません。Hoard を開いたままプレイすると自動で記録されます。",
-            pt: "Ainda não há horas registradas. Jogue com o Hoard aberto e elas serão contadas sozinhas.",
-            zh: "还没有记录到游戏时长。开着 Hoard 玩游戏，时长会自动开始记录。",
-          })}
+          {$_("wrapped.no_hours_yet")}
         </div>
       {:else if stats.busiest && stats.busiest.secs > 0}
         <div
-          class="mt-3 flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-transparent px-3 py-2 text-xs text-zinc-300 ring-1 ring-emerald-400/15"
+          class="mt-3 flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-layer-2 px-3 py-2 text-xs text-zinc-300"
         >
           <Trophy size={14} class="text-amber-300" />
-          {$tr({ es: "Tu día más intenso:", en: "Your busiest day:", de: "Dein intensivster Tag:", fr: "Ta journée la plus intense :", it: "Il tuo giorno più intenso:", ja: "いちばん遊んだ日：", pt: "Seu dia mais intenso:", zh: "你玩得最多的一天：" })}
+          {$_("wrapped.your_busiest_day")}
           <span class="font-semibold text-zinc-100">{fmtDay(stats.busiest.date)}</span>
           <span class="text-zinc-500">({fmtDur(stats.busiest.secs)})</span>
         </div>
@@ -734,24 +723,26 @@
   <!-- day detail — opens when a calendar square is clicked -->
   {#if dayDetail}
     <div
-      class="relative mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-layer-1 shadow-[0_8px_30px_-12px_color-mix(in_oklch,var(--color-emerald-500)_25%,transparent)]"
+      class="mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-layer-1"
     >
-      <!-- header band -->
       <div
-        class="relative flex items-center justify-between gap-3 border-b border-white/[0.08] bg-gradient-to-r from-emerald-500/15 via-emerald-500/[0.04] to-transparent px-4 py-3"
+        class="flex items-center justify-between gap-3 border-b border-white/[0.08] px-4 py-3"
       >
-        <div
-          class="pointer-events-none absolute -left-10 -top-10 h-28 w-28 [background:radial-gradient(closest-side,color-mix(in_oklch,var(--color-emerald-500)_12%,transparent),transparent)]"
-        ></div>
         <div class="flex min-w-0 items-center gap-2.5">
-          <div
-            class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-500/15 ring-1 ring-emerald-400/30"
-          >
-            <CalendarCheck size={17} class="text-emerald-300" />
-          </div>
+          <!-- Remounted on every day picked, so the icon jumps each time the
+               content under it changes, not only when the panel opens.
+               `data-anim` is what keeps it moving under reduced motion
+               (Windows with "animation effects" off). -->
+          {#key selectedKey}
+            <CalendarCheck
+              size={24}
+              class="icon-anim-pop shrink-0 text-emerald-300"
+              data-anim="pop"
+            />
+          {/key}
           <div class="min-w-0">
             <div class="text-[10px] font-medium uppercase tracking-wider text-emerald-300/80">
-              {$tr({ es: "Ese día jugaste a", en: "That day you played", de: "An diesem Tag hast du gespielt", fr: "Ce jour-là, tu as joué", it: "Quel giorno hai giocato", ja: "この日のプレイ", pt: "Nesse dia você jogou", zh: "当天你玩了" })}
+              {$_("wrapped.that_day_you_played")}
             </div>
             <h3 class="truncate text-sm font-semibold text-zinc-50">
               {fmtDay(dayDetail.date)}
@@ -764,14 +755,14 @@
               {fmtDur(dayDetail.dayTotal)}
             </div>
             <div class="mt-0.5 text-[10px] uppercase tracking-wide text-zinc-500">
-              {$tr({ es: "en total", en: "total", de: "insgesamt", fr: "au total", it: "in totale", ja: "合計", pt: "no total", zh: "总计" })}
+              {$_("wrapped.total")}
             </div>
           </div>
           <button
             type="button"
             onclick={() => (selectedKey = null)}
-            class="grid h-7 w-7 place-items-center rounded-lg border border-white/[0.08] text-zinc-400 transition hover:bg-white/5 hover:text-white"
-            aria-label={$tr({ es: "Cerrar", en: "Close", de: "Schließen", fr: "Fermer", it: "Chiudi", ja: "閉じる", pt: "Fechar", zh: "关闭" })}
+            class="grid h-7 w-7 place-items-center rounded-lg border border-white/[0.08] text-zinc-400 transition hover:border-white/25"
+            aria-label={$_("wrapped.close")}
           >
             <X size={15} />
           </button>
@@ -786,15 +777,14 @@
                 ? Math.round((g.secs / dayDetail.dayTotal) * 100)
                 : 0}
             <li
-              class="flex items-center gap-3 rounded-2xl bg-white/[0.03] p-2 ring-1 ring-white/[0.05] transition hover:bg-white/[0.05] hover:ring-emerald-400/25"
+              class="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-layer-2 p-2 transition hover:border-emerald-400/25"
             >
               <Cover
                 appId={g.appId}
                 slug={g.slug}
                 name={g.label}
-                class="h-11 w-[74px] rounded-lg"
+                class="h-11 w-11 shrink-0 rounded-xl"
                 initialClass="text-lg"
-                fit="smart"
               />
               <div class="min-w-0 flex-1">
                 <div class="flex items-center justify-between gap-2">
@@ -804,7 +794,7 @@
                   </span>
                 </div>
                 <div class="mt-2 flex items-center gap-2">
-                  <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+                  <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800">
                     <div
                       class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300"
                       style="width:{Math.max(4, pct)}%"
@@ -820,57 +810,31 @@
         </ul>
       {:else if dayDetail.dayTotal > 0}
         <p class="px-4 py-3 text-xs text-zinc-400">
-          {$tr({
-            es: "Jugaste este día, pero sin desglose por juego (horas previas a esta función).",
-            en: "You played this day, but with no per-game breakdown (hours predate this feature).",
-            de: "An diesem Tag hast du gespielt, aber ohne Aufschlüsselung nach Spiel (die Stunden stammen aus der Zeit vor dieser Funktion).",
-            fr: "Tu as joué ce jour-là, mais sans détail par jeu (ces heures datent d'avant cette fonction).",
-            it: "Hai giocato questo giorno, ma senza dettaglio per gioco (ore precedenti a questa funzione).",
-            ja: "この日はプレイしましたが、ゲームごとの内訳はありません（この機能より前の記録です）。",
-            pt: "Você jogou neste dia, mas sem detalhe por jogo (horas anteriores a este recurso).",
-            zh: "这天你玩过游戏，但没有按游戏的明细（这些时长早于此功能）。",
-          })}
+          {$_("wrapped.day_no_breakdown")}
         </p>
       {:else}
         <p class="px-4 py-3 text-xs text-zinc-500">
-          {$tr({ es: "No jugaste este día.", en: "You didn't play this day.", de: "An diesem Tag hast du nicht gespielt.", fr: "Tu n'as pas joué ce jour-là.", it: "Non hai giocato questo giorno.", ja: "この日はプレイしていません。", pt: "Você não jogou neste dia.", zh: "这天你没有玩游戏。" })}
+          {$_("wrapped.day_not_played")}
         </p>
       {/if}
     </div>
   {/if}
 
-  <!-- Cierre de la página: la barra de la cámara. Abre la tarjeta
-       compartible — el mismo resumen, en una imagen que se puede enseñar. -->
-  <!-- Es el tercer bloque a ancho completo de la página, así que responde como
-       los otros dos aunque sea un botón: sin esto, pasar el ratón por el recap
-       inclinaba las dos tarjetas de arriba y aquí no ocurría nada. -->
+  <!-- Opens the shareable card: the same recap, as an image to show around. -->
   <button
     type="button"
     onclick={() => (showCard = !showCard)}
-    class="relative group mt-4 flex w-full items-center justify-center gap-2.5 rounded-2xl border px-4 py-3.5 transition {showCard
-      ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200'
-      : 'border-white/[0.08] bg-layer-2 text-zinc-300 hover:border-emerald-400/30 hover:bg-emerald-500/[0.06] hover:text-emerald-200'}"
+    class="mt-4 flex w-full items-center justify-center gap-2.5 rounded-2xl border px-4 py-3.5 transition {showCard
+      ? 'border-emerald-400/40 bg-layer-2 text-zinc-300'
+      : 'border-white/[0.08] bg-layer-2 text-zinc-300 hover:border-emerald-400/30'}"
     aria-expanded={showCard}
-    title={$tr({
-      es: "Crea una imagen de tu resumen para compartir",
-      en: "Turn your recap into a shareable image",
-      de: "Mach aus deiner Zusammenfassung ein Bild zum Teilen",
-      fr: "Transforme ton récap en image à partager",
-      it: "Trasforma il tuo riepilogo in un'immagine da condividere",
-      ja: "まとめをシェア用の画像にする",
-      pt: "Transforme seu resumo em uma imagem para compartilhar",
-      zh: "把你的总结做成可分享的图片",
-    })}
+    title={$_("wrapped.card_toggle_hint")}
   >
-    <span
-      class="grid h-8 w-8 place-items-center rounded-xl bg-emerald-500/15 ring-1 ring-emerald-400/30 transition group-hover:bg-emerald-500/25"
-    >
-      <Camera size={17} class="text-emerald-300" />
-    </span>
+    <Camera size={17} class="text-emerald-300" data-anim="pop" />
     <span class="text-sm font-medium">
       {showCard
-        ? $tr({ es: "Cerrar la tarjeta", en: "Close the card", de: "Karte schließen", fr: "Fermer la carte", it: "Chiudi la card", ja: "カードを閉じる", pt: "Fechar o card", zh: "关闭卡片" })
-        : $tr({ es: "Tu tarjeta para compartir", en: "Your shareable card", de: "Deine Karte zum Teilen", fr: "Ta carte à partager", it: "La tua card da condividere", ja: "共有用カード", pt: "Seu card para compartilhar", zh: "可分享的卡片" })}
+        ? $_("wrapped.close_the_card")
+        : $_("wrapped.your_shareable_card")}
     </span>
   </button>
 
@@ -879,6 +843,7 @@
       daysByKey={daysByKey}
       dailyByGame={dailyByGame}
       appIdBySlug={appIdBySlug}
+      nameBySlug={nameBySlug}
       sessionName={identity.name}
       sessionAvatar={identity.avatar}
       totalGames={totalGames}

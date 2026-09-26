@@ -368,35 +368,32 @@ html.is-overlay ::-webkit-scrollbar-thumb {
    hover target is the icon's own parent, not the icon: a 16px square is too
    small to aim at, and a button or a row is the right size. Where the icon
    sits inside a smaller box of its own (a settings row's 32px tile), the row
-   carries `anim-host` and is the target instead. */
+   carries `anim-host` and is the target instead. `actions/hoverAnim.ts` sets
+   `data-anim-play` on the way in and clears it when the move is over, so the
+   pointer leaving early no longer cuts it short. */
 [data-anim="ring"] {
   transform-origin: 50% 15%;
 }
 [data-anim="unfurl"] {
   transform-origin: 50% 0%;
 }
-*:hover > [data-anim="spin"],
-.anim-host:hover [data-anim="spin"] {
+[data-anim="spin"][data-anim-play] {
   --icon-anim-dur: 560ms;
   animation: icon-spin var(--icon-anim-dur) cubic-bezier(0.4, 0, 0.2, 1);
 }
-*:hover > [data-anim="pop"],
-.anim-host:hover [data-anim="pop"] {
+[data-anim="pop"][data-anim-play] {
   --icon-anim-dur: 360ms;
   animation: icon-pop var(--icon-anim-dur) cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-*:hover > [data-anim="ring"],
-.anim-host:hover [data-anim="ring"] {
+[data-anim="ring"][data-anim-play] {
   --icon-anim-dur: 640ms;
   animation: icon-ring var(--icon-anim-dur) ease-out;
 }
-*:hover > [data-anim="hop"],
-.anim-host:hover [data-anim="hop"] {
+[data-anim="hop"][data-anim-play] {
   --icon-anim-dur: 900ms;
   animation: icon-hop var(--icon-anim-dur) cubic-bezier(0.3, 0.7, 0.4, 1);
 }
-*:hover > [data-anim="unfurl"],
-.anim-host:hover [data-anim="unfurl"] {
+[data-anim="unfurl"][data-anim-play] {
   --icon-anim-dur: 420ms;
   animation: icon-unfurl var(--icon-anim-dur) cubic-bezier(0.34, 1.4, 0.64, 1);
 }
@@ -788,28 +785,15 @@ html.is-linux {
 
 /* Shimmer, skeleton sweep for loading placeholders. */
 .shimmer {
-  position: relative;
-  overflow: hidden;
-}
-.shimmer::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    100deg,
-    transparent 20%,
-    oklch(1 0 0 / 0.06) 45%,
-    transparent 70%
-  );
-  background-size: 220% 100%;
-  animation: hoard-shimmer 1.5s linear infinite;
+  animation: hoard-shimmer 1.5s ease-in-out infinite;
 }
 @keyframes hoard-shimmer {
-  from {
-    background-position: 220% 0;
+  0%,
+  100% {
+    opacity: 1;
   }
-  to {
-    background-position: -220% 0;
+  50% {
+    opacity: 0.45;
   }
 }
 

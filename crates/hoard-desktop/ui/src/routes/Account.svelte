@@ -699,7 +699,7 @@
             />
           {:else}
             <span
-              class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-lg font-semibold uppercase text-emerald-300 ring-1 ring-emerald-500/30"
+              class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-black text-lg font-semibold uppercase text-emerald-300 ring-1 ring-emerald-400"
             >
               {(account.display_name ?? account.email).trim().charAt(0)}
             </span>

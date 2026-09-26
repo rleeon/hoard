@@ -19,18 +19,19 @@
    * Rust writes: if somebody uploads it anywhere, it goes signed.
    */
   import { onMount } from "svelte";
-  import { locale } from "svelte-i18n";
+  import { _, locale } from "svelte-i18n";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import {
     Camera,
     ImagePlus,
     Trash2,
     Dices,
+    Eye,
     X,
     Lock,
     Loader2,
   } from "@lucide/svelte";
-  import { tr, fmtBytes } from "./lib";
+  import { fmtBytes } from "./lib";
   import { pickQuote } from "./phrases";
   import {
     cardPrefs,
@@ -39,6 +40,8 @@
     setCardName,
     setCardQuote,
     setCardRange,
+    setCardAccent,
+    setCardQuoteVisible,
     rerollQuote,
     setCardPhotoFromPath,
     clearCardPhoto,
@@ -52,10 +55,12 @@
     waitForFonts,
     CARD_W,
     CARD_H,
+    cardPalette,
     type CardData,
     type Cube,
   } from "./cardCanvas";
   import { coverKey, coverSize, coverUrl } from "../stores/covers";
+  import { ACCENT_STOPS, accentHue, gems } from "../stores/theme";
   import { toastError, toastSuccess } from "../stores/toasts";
 
   let {
@@ -65,6 +70,8 @@
     dailyByGame = {},
     /** Slug to Steam app id, for the cover art only. */
     appIdBySlug = {},
+    /** Slug to the game's real name, from detection. */
+    nameBySlug = {},
     /** The session's name: the one used until you type another. */
     sessionName = "",
     /** Avatar de la cuenta Cloud, si hay. La foto local manda sobre este. */
@@ -77,14 +84,13 @@
     daysByKey?: Record<string, number>;
     dailyByGame?: Record<string, Record<string, number>>;
     appIdBySlug?: Record<string, number>;
+    nameBySlug?: Record<string, string>;
     sessionName?: string;
     sessionAvatar?: string | null;
     totalGames?: number;
     hoardedBytes?: number;
     onClose: () => void;
   } = $props();
-
-  const DAY_MS = 86_400_000;
 
   let canvas = $state<HTMLCanvasElement | null>(null);
   let photoImg = $state<HTMLImageElement | null>(null);
@@ -113,8 +119,10 @@
   const rangeDays = $derived.by(() => {
     const today = startOfToday();
     const span = range === "week" ? 7 : range === "month" ? 30 : 365;
+    // By calendar date: 24 h steps land on 23:00 the day before once a DST
+    // change is in between, and every winter tile showed the wrong day.
     return Array.from({ length: span }, (_, i) => {
-      const d = new Date(today.getTime() - (span - 1 - i) * DAY_MS);
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (span - 1 - i));
       return { date: d, key: dayKey(d), secs: daysByKey[dayKey(d)] || 0 };
     });
   });
@@ -123,24 +131,24 @@
 
   /** The tiles. How many depends on the range: 7 days, 30 days or 12 months. */
   const cubes = $derived.by<Cube[]>(() => {
-    const today = startOfToday();
     if (range === "year") {
-      // Doce meses: el actual y los once anteriores.
-      const out: Cube[] = [];
-      for (let i = 11; i >= 0; i--) {
-        const m = new Date(today.getFullYear(), today.getMonth() - i, 1);
-        const prefix = `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, "0")}-`;
-        let secs = 0;
-        for (const [k, v] of Object.entries(daysByKey)) {
-          if (k.startsWith(prefix)) secs += v;
-        }
-        out.push({
-          secs,
-          label: m.toLocaleDateString(loc, { month: "narrow" }),
-          now: i === 0,
-        });
+      // One tile per calendar month the 365 days touch, adding only the days
+      // inside the window: 12 or 13 tiles, and they sum to the same hours as the
+      // numbers above them. Whole months used to reach past the window at one
+      // end and fall short of it at the other.
+      const months: { y: number; m: number; secs: number }[] = [];
+      for (const d of rangeDays) {
+        const y = d.date.getFullYear();
+        const m = d.date.getMonth();
+        const cur = months[months.length - 1];
+        if (cur && cur.y === y && cur.m === m) cur.secs += d.secs;
+        else months.push({ y, m, secs: d.secs });
       }
-      return out;
+      return months.map((mo, i) => ({
+        secs: mo.secs,
+        label: new Date(mo.y, mo.m, 1).toLocaleDateString(loc, { month: "narrow" }),
+        now: i === months.length - 1,
+      }));
     }
     return rangeDays.map((d, i) => ({
       secs: d.secs,
@@ -200,14 +208,28 @@
     );
   }
 
-  const topGameName = $derived(facts.topSlug ? prettySlug(facts.topSlug) : null);
+  const topGameName = $derived(
+    facts.topSlug ? (nameBySlug[facts.topSlug] ?? prettySlug(facts.topSlug)) : null,
+  );
+
+  // ---- accent
+  // "app" follows Settings, live; otherwise the hue picked here, where `null`
+  // is the stock emerald like Settings' first gem.
+  const cardHue = $derived(prefs.accentMode === "app" ? $accentHue : prefs.accentHue);
+  const palette = $derived(cardPalette(cardHue, ACCENT_STOPS));
+  const swatch = (hue: number | null) => cardPalette(hue, ACCENT_STOPS).a400;
+
+  function onCardHue(e: Event): void {
+    const v = Number((e.currentTarget as HTMLInputElement).value);
+    if (Number.isFinite(v)) setCardAccent(v);
+  }
 
   const rangeLabel = $derived(
     range === "week"
-      ? $tr({ es: "Últimos 7 días", en: "Last 7 days", de: "Letzte 7 Tage", fr: "7 derniers jours", it: "Ultimi 7 giorni", ja: "直近7日間", pt: "Últimos 7 dias", zh: "最近 7 天" })
+      ? $_("wrapped.card_last_7_days")
       : range === "month"
-        ? $tr({ es: "Últimos 30 días", en: "Last 30 days", de: "Letzte 30 Tage", fr: "30 derniers jours", it: "Ultimi 30 giorni", ja: "直近30日間", pt: "Últimos 30 dias", zh: "最近 30 天" })
-        : $tr({ es: "Último año", en: "Last year", de: "Letztes Jahr", fr: "Cette année", it: "Ultimo anno", ja: "この1年", pt: "Último ano", zh: "最近一年" }),
+        ? $_("wrapped.card_last_30_days")
+        : $_("wrapped.card_last_365_days"),
   );
 
   /** The phrase: the one the user wrote, or the dice's, based on the game. */
@@ -215,7 +237,7 @@
     void loc; // el idioma activo forma parte del resultado
     const own = prefs.quote.trim();
     if (own) return own;
-    return $tr(pickQuote(facts.topSlug, prefs.seed + (facts.topSlug?.length ?? 0)));
+    return $_(pickQuote(facts.topSlug, prefs.seed + (facts.topSlug?.length ?? 0)));
   });
 
   /** The card is made to be shown, so the default name is never the full email
@@ -226,7 +248,7 @@
   const displayName = $derived(
     prefs.name.trim() ||
       suggestedName ||
-      $tr({ es: "Jugador", en: "Player", de: "Spieler", fr: "Joueur", it: "Giocatore", ja: "プレイヤー", pt: "Jogador", zh: "玩家" }),
+      $_("wrapped.card_player"),
   );
 
   const initials = $derived(
@@ -249,44 +271,35 @@
     name: displayName,
     initials,
     avatar: photoImg,
-    quote,
+    quote: prefs.showQuote ? quote : null,
     rangeLabel,
     cubes,
     stats: [
       {
-        label: $tr({ es: "Horas", en: "Hours", de: "Stunden", fr: "Heures", it: "Ore", ja: "時間", pt: "Horas", zh: "小时" }),
+        label: $_("wrapped.card_hours"),
         value: fmtHours(facts.totalSecs),
       },
       {
-        label: $tr({ es: "Días activos", en: "Active days", de: "Aktive Tage", fr: "Jours actifs", it: "Giorni attivi", ja: "プレイ日数", pt: "Dias ativos", zh: "活跃天数" }),
+        label: $_("wrapped.card_active_days"),
         value: String(facts.active),
       },
       {
-        label: $tr({ es: "Racha", en: "Streak", de: "Serie", fr: "Série", it: "Serie", ja: "連続記録", pt: "Sequência", zh: "连续天数" }),
+        label: $_("wrapped.card_streak"),
         value: String(facts.longest),
       },
       {
-        label: $tr({ es: "Juegos", en: "Games", de: "Spiele", fr: "Jeux", it: "Giochi", ja: "ゲーム数", pt: "Jogos", zh: "游戏数" }),
+        label: $_("wrapped.card_games"),
         value: String(facts.played || totalGames),
       },
       {
-        label: $tr({ es: "Atesorado", en: "Hoarded", de: "Gehortet", fr: "Amassé", it: "Accumulato", ja: "保管量", pt: "Guardado", zh: "已收藏" }),
+        label: $_("wrapped.card_hoarded"),
         value: fmtBytes(hoardedBytes),
       },
     ],
     topGame: topGameName ? { label: topGameName, cover: coverImg } : null,
-    topGameLabel: $tr({ es: "Más jugado", en: "Most played", de: "Meistgespielt", fr: "Le plus joué", it: "Più giocato", ja: "最多プレイ", pt: "Mais jogado", zh: "玩得最多" }),
-    cubesLabel: $tr({ es: "Actividad", en: "Activity", de: "Aktivität", fr: "Activité", it: "Attività", ja: "アクティビティ", pt: "Atividade", zh: "活跃度" }),
-    tagline: $tr({
-      es: "Copias automáticas de tus partidas",
-      en: "Automatic backups for your game saves",
-      de: "Automatische Backups für deine Spielstände",
-      fr: "Sauvegardes automatiques de tes parties",
-      it: "Backup automatici dei tuoi salvataggi",
-      ja: "セーブデータの自動バックアップ",
-      pt: "Backups automáticos dos seus saves",
-      zh: "游戏存档自动备份",
-    }),
+    topGameLabel: $_("wrapped.card_most_played"),
+    cubesLabel: $_("wrapped.card_activity"),
+    palette,
   });
 
   // ---- images
@@ -349,7 +362,7 @@
         directory: false,
         filters: [
           {
-            name: $tr({ es: "Imágenes", en: "Images", de: "Bilder", fr: "Images", it: "Immagini", ja: "画像", pt: "Imagens", zh: "图片" }),
+            name: $_("wrapped.card_images"),
             extensions: ["jpg", "jpeg", "png", "webp", "gif", "bmp"],
           },
         ],
@@ -378,16 +391,7 @@
       const png = renderToPng(cardData, 2);
       const path = await saveCardToGallery(png, topGameName);
       toastSuccess(
-        $tr({
-          es: `Guardada en ${path}`,
-          en: `Saved to ${path}`,
-          de: `Gespeichert unter ${path}`,
-          fr: `Enregistrée dans ${path}`,
-          it: `Salvata in ${path}`,
-          ja: `${path} に保存しました`,
-          pt: `Salva em ${path}`,
-          zh: `已保存至 ${path}`,
-        }),
+        $_("wrapped.card_saved_to", { values: { path } }),
       );
     } catch (e) {
       toastError(String(e));
@@ -397,51 +401,35 @@
   }
 
   const RANGES: { key: CardRange; label: string }[] = $derived([
-    { key: "week", label: $tr({ es: "Semana", en: "Week", de: "Woche", fr: "Semaine", it: "Settimana", ja: "1週間", pt: "Semana", zh: "一周" }) },
-    { key: "month", label: $tr({ es: "Mes", en: "Month", de: "Monat", fr: "Mois", it: "Mese", ja: "1か月", pt: "Mês", zh: "一个月" }) },
-    { key: "year", label: $tr({ es: "Año", en: "Year", de: "Jahr", fr: "Année", it: "Anno", ja: "1年", pt: "Ano", zh: "一年" }) },
+    { key: "week", label: $_("wrapped.card_week") },
+    { key: "month", label: $_("wrapped.card_month") },
+    { key: "year", label: $_("wrapped.card_year") },
   ]);
 </script>
 
-<section
-  class="mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-layer-1 shadow-[0_8px_30px_-12px_color-mix(in_oklch,var(--color-emerald-500)_25%,transparent)]"
->
-  <!-- cabecera -->
+<section class="mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-layer-1">
   <div
-    class="relative flex items-center justify-between gap-3 border-b border-white/[0.08] bg-gradient-to-r from-emerald-500/15 via-emerald-500/[0.04] to-transparent px-4 py-3"
+    class="flex items-center justify-between gap-3 border-b border-white/[0.08] px-4 py-3"
   >
     <div class="flex min-w-0 items-center gap-2.5">
-      <div
-        class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-500/15 ring-1 ring-emerald-400/30"
-      >
-        <Camera size={17} class="text-emerald-300" />
-      </div>
+      <Camera size={17} class="shrink-0 text-emerald-300" data-anim="pop" />
       <div class="min-w-0">
         <h3 class="truncate text-sm font-semibold text-zinc-50">
-          {$tr({ es: "Tu tarjeta", en: "Your card", de: "Deine Karte", fr: "Ta carte", it: "La tua card", ja: "あなたのカード", pt: "Seu card", zh: "你的卡片" })}
+          {$_("wrapped.card_your_card")}
         </h3>
         <p class="flex items-center gap-1 text-[11px] text-zinc-500">
           <Lock size={10} />
-          {$tr({
-            es: "Foto y nombre solo en este equipo",
-            en: "Photo and name stay on this device",
-            de: "Foto und Name bleiben auf diesem Gerät",
-            fr: "Photo et nom restent sur cet appareil",
-            it: "Foto e nome restano su questo dispositivo",
-            ja: "写真と名前はこの端末だけに保存されます",
-            pt: "Foto e nome ficam só neste dispositivo",
-            zh: "照片和名称仅保存在本机",
-          })}
+          {$_("wrapped.card_local_only")}
         </p>
       </div>
     </div>
     <button
       type="button"
       onclick={onClose}
-      class="grid h-7 w-7 place-items-center rounded-lg border border-white/[0.08] text-zinc-400 transition hover:bg-white/5 hover:text-white"
-      aria-label={$tr({ es: "Cerrar", en: "Close", de: "Schließen", fr: "Fermer", it: "Chiudi", ja: "閉じる", pt: "Fechar", zh: "关闭" })}
+      class="grid h-7 w-7 place-items-center rounded-lg border border-white/[0.08] text-zinc-400 transition hover:border-white/25"
+      aria-label={$_("wrapped.close")}
     >
-      <X size={15} />
+      <X size={15} data-anim="pop" />
     </button>
   </div>
 
@@ -458,40 +446,38 @@
       ></canvas>
     </div>
 
-    <!-- controles -->
+    <!-- Every button here moves its icon on hover. -->
     <div class="mt-4 grid gap-3 sm:grid-cols-2">
-      <!-- foto -->
-      <div class="rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
+      <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3">
         <div class="mb-2 text-[11px] uppercase tracking-wide text-zinc-500">
-          {$tr({ es: "Foto", en: "Photo", de: "Foto", fr: "Photo", it: "Foto", ja: "写真", pt: "Foto", zh: "照片" })}
+          {$_("wrapped.card_photo")}
         </div>
         <div class="flex items-center gap-2">
           <button
             type="button"
             onclick={choosePhoto}
             disabled={busyPhoto}
-            class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+            class="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs font-medium text-zinc-200 transition hover:border-white/25 disabled:opacity-50"
           >
-            {#if busyPhoto}<Loader2 size={13} class="animate-spin" />{:else}<ImagePlus size={13} />{/if}
-            {$tr({ es: "Elegir foto", en: "Choose photo", de: "Foto wählen", fr: "Choisir une photo", it: "Scegli foto", ja: "写真を選ぶ", pt: "Escolher foto", zh: "选择照片" })}
+            {#if busyPhoto}<Loader2 size={13} class="animate-spin" />{:else}<ImagePlus size={13} data-anim="pop" />{/if}
+            {$_("wrapped.card_choose_photo")}
           </button>
           {#if cardPhotoUrl()}
             <button
               type="button"
               onclick={dropPhoto}
-              class="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-white/5"
+              class="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs text-zinc-300 transition hover:border-white/25"
             >
-              <Trash2 size={13} />
-              {$tr({ es: "Quitar", en: "Remove", de: "Entfernen", fr: "Retirer", it: "Rimuovi", ja: "削除", pt: "Remover", zh: "移除" })}
+              <Trash2 size={13} data-anim="pop" />
+              {$_("wrapped.card_remove")}
             </button>
           {/if}
         </div>
       </div>
 
-      <!-- nombre -->
-      <div class="rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
+      <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3">
         <div class="mb-2 text-[11px] uppercase tracking-wide text-zinc-500">
-          {$tr({ es: "Nombre", en: "Name", de: "Name", fr: "Nom", it: "Nome", ja: "名前", pt: "Nome", zh: "名称" })}
+          {$_("wrapped.card_name")}
         </div>
         <input
           type="text"
@@ -503,71 +489,137 @@
         />
       </div>
 
-      <!-- frase -->
-      <div class="rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
+      <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3">
         <div class="mb-2 text-[11px] uppercase tracking-wide text-zinc-500">
-          {$tr({ es: "Frase", en: "Line", de: "Spruch", fr: "Phrase", it: "Frase", ja: "ひとこと", pt: "Frase", zh: "标语" })}
+          {$_("wrapped.card_line")}
         </div>
         <div class="flex items-center gap-2">
           <input
             type="text"
             value={prefs.quote}
             maxlength="140"
+            disabled={!prefs.showQuote}
             oninput={(e) => setCardQuote(e.currentTarget.value)}
             placeholder={quote}
-            class="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-layer-2 px-3 py-1.5 text-sm text-zinc-100 outline-none transition focus:border-emerald-500/50"
+            class="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-layer-2 px-3 py-1.5 text-sm text-zinc-100 outline-none transition focus:border-emerald-500/50 disabled:opacity-40"
           />
           <button
             type="button"
             onclick={rerollQuote}
-            class="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/[0.08] text-zinc-300 transition hover:bg-white/5 hover:text-emerald-300"
-            title={$tr({ es: "Otra frase", en: "Another line", de: "Anderer Spruch", fr: "Autre phrase", it: "Un'altra frase", ja: "別のひとこと", pt: "Outra frase", zh: "换一句" })}
-            aria-label={$tr({ es: "Otra frase", en: "Another line", de: "Anderer Spruch", fr: "Autre phrase", it: "Un'altra frase", ja: "別のひとこと", pt: "Outra frase", zh: "换一句" })}
+            disabled={!prefs.showQuote}
+            class="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/[0.08] text-zinc-300 transition hover:border-white/25 disabled:opacity-40"
+            title={$_("wrapped.card_another_line")}
+            aria-label={$_("wrapped.card_another_line")}
           >
-            <Dices size={15} />
+            <Dices size={15} data-anim="spin" />
           </button>
+          {#if prefs.showQuote}
+            <button
+              type="button"
+              onclick={() => setCardQuoteVisible(false)}
+              class="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/[0.08] text-zinc-300 transition hover:border-white/25"
+              title={$_("wrapped.card_hide_line")}
+              aria-label={$_("wrapped.card_hide_line")}
+            >
+              <Trash2 size={15} data-anim="pop" />
+            </button>
+          {:else}
+            <button
+              type="button"
+              onclick={() => setCardQuoteVisible(true)}
+              class="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/[0.08] text-zinc-300 transition hover:border-white/25"
+              title={$_("wrapped.card_show_line")}
+              aria-label={$_("wrapped.card_show_line")}
+            >
+              <Eye size={15} data-anim="pop" />
+            </button>
+          {/if}
         </div>
       </div>
 
-      <!-- rango -->
-      <div class="rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/[0.05]">
+      <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3">
         <div class="mb-2 text-[11px] uppercase tracking-wide text-zinc-500">
-          {$tr({ es: "Qué se muestra", en: "What to show", de: "Was gezeigt wird", fr: "Ce qui s'affiche", it: "Cosa mostrare", ja: "表示する期間", pt: "O que mostrar", zh: "显示范围" })}
+          {$_("wrapped.card_what_to_show")}
         </div>
         <div class="flex gap-1 rounded-lg border border-white/[0.08] bg-layer-2 p-1">
           {#each RANGES as r (r.key)}
             <button
               type="button"
               onclick={() => setCardRange(r.key)}
-              class="flex-1 rounded-md px-2.5 py-1 text-xs font-medium transition {range === r.key
-                ? 'bg-emerald-600/20 text-emerald-300 ring-1 ring-inset ring-emerald-600/40'
-                : 'text-zinc-400 hover:text-zinc-200'}"
+              class="flex-1 rounded-md border px-2.5 py-1 text-xs font-medium transition {range === r.key
+                ? 'border-transparent bg-emerald-600/20 text-emerald-300 ring-1 ring-inset ring-emerald-600/40'
+                : 'border-transparent text-zinc-400 hover:border-white/20'}"
             >
-              {r.label}
+              <span class="inline-block" data-anim="pop">{r.label}</span>
             </button>
           {/each}
         </div>
       </div>
+
+      <!-- The card's own accent, kept on this machine: Settings' by default,
+           or a gem (or any hue on the slider) just for the card. -->
+      <div class="rounded-2xl border border-white/[0.08] bg-layer-2 p-3 sm:col-span-2">
+        <div class="mb-2 text-[11px] uppercase tracking-wide text-zinc-500">
+          {$_("settings.accent_label")}
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onclick={() => setCardAccent("app")}
+            aria-pressed={prefs.accentMode === "app"}
+            class="inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs transition {prefs.accentMode === 'app'
+              ? 'border-[var(--color-accent)]/60 text-zinc-100'
+              : 'border-white/[0.08] text-zinc-400 hover:border-white/25'}"
+          >
+            <span
+              class="h-3.5 w-3.5 rounded-[3px]"
+              style="background: {swatch($accentHue)}"
+              data-anim="pop"
+            ></span>
+            {$_("wrapped.card_same_as_the_app")}
+          </button>
+          {#each gems as g (g.id)}
+            {@const active = prefs.accentMode === "custom" && prefs.accentHue === g.hue}
+            <button
+              type="button"
+              onclick={() => setCardAccent(g.hue)}
+              aria-pressed={active}
+              title={$_(g.labelKey)}
+              aria-label={$_(g.labelKey)}
+              class="grid h-8 w-8 place-items-center rounded-lg border transition {active
+                ? 'border-[var(--color-accent)]/60'
+                : 'border-white/[0.08] hover:border-white/25'}"
+            >
+              <span
+                class="h-4 w-4 rounded-[3px]"
+                style="background: {swatch(g.hue)}"
+                data-anim="pop"
+              ></span>
+            </button>
+          {/each}
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="359"
+          step="1"
+          value={cardHue ?? 160}
+          oninput={onCardHue}
+          class="hue-slider mt-3 w-full"
+          style="--color-accent: {palette.accent}"
+          aria-label={$_("settings.accent_label")}
+        />
+      </div>
     </div>
 
-    <!-- sacar la foto -->
     <button
       type="button"
       onclick={shoot}
       disabled={saving}
-      class="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-60"
+      class="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/[0.08] bg-layer-2 px-4 py-3 text-sm font-semibold text-zinc-100 transition hover:border-emerald-400/30 disabled:opacity-60"
     >
-      {#if saving}<Loader2 size={16} class="animate-spin" />{:else}<Camera size={16} />{/if}
-      {$tr({
-        es: "Sacar la foto y guardarla en la galería",
-        en: "Take the photo and save it to your gallery",
-        de: "Foto machen und in der Galerie speichern",
-        fr: "Prendre la photo et l'enregistrer dans la galerie",
-        it: "Scatta la foto e salvala nella galleria",
-        ja: "写真を撮ってギャラリーに保存",
-        pt: "Tirar a foto e salvar na galeria",
-        zh: "拍照并保存到图库",
-      })}
+      {#if saving}<Loader2 size={16} class="animate-spin" />{:else}<Camera size={16} class="text-emerald-300" data-anim="pop" />{/if}
+      {$_("wrapped.card_save")}
     </button>
   </div>
 </section>

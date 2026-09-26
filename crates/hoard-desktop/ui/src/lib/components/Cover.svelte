@@ -221,7 +221,7 @@
     />
   {:else}
     <div
-      class={`flex h-full w-full items-center justify-center bg-gradient-to-br from-emerald-600/40 to-emerald-900/40 font-semibold text-emerald-100 ${initialClass}`}
+      class={`flex h-full w-full items-center justify-center bg-emerald-700/40 font-semibold text-emerald-100 ${initialClass}`}
     >
       {initial}
     </div>

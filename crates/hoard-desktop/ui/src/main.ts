@@ -4,6 +4,7 @@ import { i18nReady } from "./lib/i18n";
 import { initAccent } from "./lib/stores/theme";
 import { initUiScale, initUiScaleShortcuts } from "./lib/stores/uiScale";
 import { tagOs } from "./lib/os";
+import { installHoverAnim } from "./lib/actions/hoverAnim";
 import { mount } from "svelte";
 import "./app.css";
 import App from "./App.svelte";
@@ -13,6 +14,7 @@ import Overlay from "./lib/overlay/Overlay.svelte";
 // chosen gem instead of flashing emerald first. Pure DOM, no i18n, so it is
 // safe to run synchronously here.
 initAccent();
+installHoverAnim();
 if (!isOverlayWindow()) {
   // Ctrl+wheel and Ctrl +/-/0. Wiring two listeners costs nothing and belongs
   // here rather than in the awaited scale below, where the shortcuts would sit

@@ -45,7 +45,7 @@ function readAccent(): number | null {
  * are black with a whisper of hue in them (chroma under 0.01), and with a ruby or
  * a sapphire gem that whisper kept saying emerald.
  */
-const ACCENT_STOPS: [string, number, number][] = [
+export const ACCENT_STOPS: [string, number, number][] = [
   ["--color-emerald-50", 0.95, 0.04],
   ["--color-emerald-100", 0.89, 0.09],
   ["--color-emerald-200", 0.82, 0.13],

@@ -24,12 +24,26 @@ type Saved = {
   range: CardRange;
   /** Semilla del dado: subirla es "otra frase". */
   seed: number;
+  /** Whether the card draws the phrase at all. */
+  showQuote: boolean;
+  /** "app" follows the accent picked in Settings; "custom" uses `accentHue`,
+   *  where `null` is the stock emerald, same as Settings' first gem. */
+  accentMode: "app" | "custom";
+  accentHue: number | null;
 };
 
 const STORE = new LazyStore("wrapple_card.json");
 const STORE_KEY = "card";
 
-const DEFAULTS: Saved = { name: "", quote: "", range: "year", seed: 1 };
+const DEFAULTS: Saved = {
+  name: "",
+  quote: "",
+  range: "year",
+  seed: 1,
+  showQuote: true,
+  accentMode: "app",
+  accentHue: null,
+};
 
 /** The stored avatar's side. 512 is enough for the card at 2x (112 logical px). */
 const AVATAR_SIDE = 512;
@@ -77,6 +91,22 @@ export function setCardQuote(quote: string): void {
 
 export function setCardRange(range: CardRange): void {
   saved.range = range;
+  schedulePersist();
+}
+
+export function setCardQuoteVisible(show: boolean): void {
+  saved.showQuote = show;
+  schedulePersist();
+}
+
+/** `"app"` to follow Settings again, or a hue (`null` = emerald) of its own. */
+export function setCardAccent(hue: number | null | "app"): void {
+  if (hue === "app") {
+    saved.accentMode = "app";
+  } else {
+    saved.accentMode = "custom";
+    saved.accentHue = hue;
+  }
   schedulePersist();
 }
 
