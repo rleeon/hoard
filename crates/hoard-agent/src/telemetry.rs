@@ -86,6 +86,21 @@ pub fn manual_path(slug: &str, to: &Path) {
     );
 }
 
+/// The user tracked a folder detection had not put forward for the game on
+/// this machine. `suggested` is what it had offered instead, if anything: the
+/// pair says both where the save really is and what detection got wrong.
+/// Kept by the server for good, unlike the rest of the channel.
+pub fn manual_added(slug: &str, to: &Path, suggested: Option<&Path>) {
+    tracing::info!(
+        target: TELEMETRY_TARGET,
+        verdict = "manual_added",
+        slug = %slug,
+        to = %to.display(),
+        path = %suggested.map(|p| p.display().to_string()).unwrap_or_default(),
+        "telemetry: the user tracked a folder by hand"
+    );
+}
+
 /// A tracked save that has never produced a snapshot and is still empty: almost
 /// always the folder is not where the game saves. Once per run and save (see
 /// [`first_time`]), since the engine retries it on every sweep.

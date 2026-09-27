@@ -421,6 +421,11 @@ fn spawn_background_tasks(state: &CloudState) {
     //     to be wrong: no error, no gap, and the trend erased. Volume is not the
     //     problem, at a couple of rows per session against the
     //     ~15.000 de log corriente.
+    //
+    //     The folders people pick by hand (`PERMANENT_VERDICTS`) are never
+    //     pruned: each one is a game's real save location, told to us by the
+    //     person who knows, and the raw material for filling the catalogue's
+    //     gaps. A row or two per user, ever.
     {
         let pool = pool.clone();
         tokio::spawn(async move {
@@ -431,9 +436,12 @@ fn spawn_background_tasks(state: &CloudState) {
                 let res = sqlx::query(
                     "DELETE FROM client_logs
                       WHERE received_at < now() - interval '14 days'
-                        AND NOT (target = ANY($1) AND received_at > now() - interval '180 days')",
+                        AND NOT (target = ANY($1) AND received_at > now() - interval '180 days')
+                        AND NOT (target = $2 AND fields->>'verdict' = ANY($3))",
                 )
                 .bind(hoard_core::wire::EXEMPT_TARGETS)
+                .bind(hoard_core::wire::TELEMETRY_TARGET)
+                .bind(PERMANENT_VERDICTS)
                 .execute(&pool)
                 .await;
                 match res {
@@ -544,6 +552,10 @@ async fn cloud_health(State(state): State<CloudState>) -> axum::Json<HealthBody>
         log_min_level: "warn",
     })
 }
+
+/// Telemetry verdicts kept for good: the save folders users chose by hand
+/// (`hoard_agent::telemetry::{manual_added, manual_path, repointed}`).
+const PERMANENT_VERDICTS: &[&str] = &["manual_added", "manual_path", "repointed"];
 
 #[derive(serde::Serialize)]
 struct HealthBody {

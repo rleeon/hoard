@@ -1120,7 +1120,37 @@ fn reject_degenerate_slug(slug: &str) -> Result<()> {
     }
 }
 
+/// Tracks a folder somebody chose: [`add_to_tracking_detected`] plus a note of
+/// the folder when detection had not put it forward, which is a save location
+/// straight from the person who knows it (see [`note_hand_picked`]).
 pub async fn add_to_tracking(client: &ApiClient, args: AddGameArgs) -> Result<TrackOutcome> {
+    let slug = args.game_slug.clone();
+    let path = PathBuf::from(&args.local_path);
+    let outcome = add_to_tracking_detected(client, args).await?;
+    note_hand_picked(&slug, &path);
+    Ok(outcome)
+}
+
+/// If detection did not offer `path` for `slug` on this machine, the user found
+/// it on their own: telemetry keeps that pair for good, next to what detection
+/// offered instead, as material for the catalogue.
+fn note_hand_picked(slug: &str, path: &Path) {
+    let found: Vec<PathBuf> = load_detection_from_disk()
+        .and_then(|c| c.report.games.into_iter().find(|g| g.slug == slug))
+        .map(|g| g.found_paths)
+        .unwrap_or_default();
+    if found.iter().any(|p| folder_key(p) == folder_key(path)) {
+        return;
+    }
+    crate::telemetry::manual_added(slug, path, found.first().map(PathBuf::as_path));
+}
+
+/// The add itself, for folders detection put forward. The automatic scan comes
+/// through here directly: its folders are detection's by definition.
+pub async fn add_to_tracking_detected(
+    client: &ApiClient,
+    args: AddGameArgs,
+) -> Result<TrackOutcome> {
     reject_degenerate_slug(&args.game_slug)?;
     // The slot outranks the label: `label` only survives for the older
     // free-form labels (and for the CLI, which still accepts them).
@@ -1916,7 +1946,7 @@ pub async fn run_auto_track(
             // anything else tracked.
             shared_processes: false,
         };
-        match add_to_tracking(client, args).await {
+        match add_to_tracking_detected(client, args).await {
             Ok(_) => run.tracked += 1,
             Err(e) => {
                 tracing::warn!(slug = %game.slug, error = %e, "automatic scan: couldn't track game")
