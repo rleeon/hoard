@@ -61,7 +61,8 @@ pub const RESTORE_STALL_PARK_AFTER: u32 = FAILURE_BACKOFF_SECS.len() as u32;
 pub const HOLD_VOLUME_OFFLINE: &str = "save's drive not connected";
 
 /// The `Hold` reason for a restore parked on [`RESTORE_STALL_PARK_AFTER`].
-pub const HOLD_RESTORE_PARKED: &str = "cloud copy has nothing to restore; waiting for a new version";
+pub const HOLD_RESTORE_PARKED: &str =
+    "cloud copy has nothing to restore; waiting for a new version";
 
 /// Long backoff after an *upload* burns its internal retry budget. Ten minutes,
 /// deliberately far slower than that budget (seconds): what survives the retries
@@ -1279,7 +1280,10 @@ mod tests {
                 ..next
             };
             assert_eq!(state.restore_failures.consecutive, attempt);
-            assert!(!state.restore_failures.stuck_notified, "a stall is not a failure");
+            assert!(
+                !state.restore_failures.stuck_notified,
+                "a stall is not a failure"
+            );
         }
         assert!(state.restore_failures.parked);
         assert_eq!(state.next_restore_at, None, "parked, not on a timer");
@@ -1309,7 +1313,10 @@ mod tests {
         };
         let (woken, d) = reconcile(&parked, &newer, world(1_000_000));
         assert!(!woken.restore_failures.parked);
-        assert!(acts(&d).contains(&&Action::Restore), "a new version is worth a try: {d:?}");
+        assert!(
+            acts(&d).contains(&&Action::Restore),
+            "a new version is worth a try: {d:?}"
+        );
     }
 
     /// Without a cloud version to wake it up, a stall must not park for good

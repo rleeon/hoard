@@ -808,10 +808,11 @@ where
     // Sanitize every path before moving any bytes: a hostile manifest aborts
     // up front, not after some files have already landed in dest.
     let mut jobs = Vec::with_capacity(kept.len());
+    let in_prefix = in_wine_prefix(&root);
     for file in &kept {
         let safe_rel = sanitize(Path::new(&file.relative_path))
             .ok_or_else(|| anyhow!("unsafe path in manifest: {}", file.relative_path))?;
-        jobs.push((*file, root.join(safe_rel)));
+        jobs.push((*file, dest_in(&root, &safe_rel, in_prefix)));
     }
 
     // Dedup against the disk before touching the network. Hashing the folder
@@ -1291,9 +1292,75 @@ pub fn sanitize(p: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Whether `root` lives inside a Wine/Proton prefix, or is one.
+pub(crate) fn in_wine_prefix(root: &Path) -> bool {
+    root.components().any(|c| {
+        c.as_os_str()
+            .to_string_lossy()
+            .eq_ignore_ascii_case("drive_c")
+    }) || crate::junkdirs::folder_kind(root) == Some(crate::junkdirs::FolderKind::WinePrefix)
+}
+
+/// Where `rel` lands under `root`. Inside a Wine/Proton prefix a component that
+/// already exists with other capitals is reused: the game running under Wine
+/// sees `Savegame.sav` and `SaveGame.sav` as one file, Linux sees two, and
+/// restoring next to the one the game uses left it loading its own save while
+/// the synced one sat beside it (reported with Silent Hill: Townfall on two
+/// Bazzite machines, each with its own spelling). Outside a prefix, a plain join.
+/// `in_prefix` is [`in_wine_prefix`] of `root`, worked out once per restore by
+/// the caller rather than once per file.
+pub(crate) fn dest_in(root: &Path, rel: &Path, in_prefix: bool) -> PathBuf {
+    if !in_prefix {
+        return root.join(rel);
+    }
+    let mut cur = root.to_path_buf();
+    for comp in rel.components() {
+        let exact = cur.join(comp.as_os_str());
+        if exact.exists() {
+            cur = exact;
+            continue;
+        }
+        let want = comp.as_os_str().to_string_lossy().to_lowercase();
+        let found = std::fs::read_dir(&cur).ok().and_then(|read| {
+            read.flatten()
+                .find(|e| e.file_name().to_string_lossy().to_lowercase() == want)
+                .map(|e| e.path())
+        });
+        cur = found.unwrap_or(exact);
+    }
+    cur
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dest_in_reuses_the_spelling_on_disk_inside_a_prefix() {
+        let tmp = tempfile::tempdir().unwrap();
+        let saves = tmp
+            .path()
+            .join("pfx/drive_c/users/steamuser/AppData/Local/Townfall/Saved/SaveGames");
+        std::fs::create_dir_all(&saves).unwrap();
+        std::fs::write(saves.join("SaveGame.sav"), b"machine 2").unwrap();
+        assert_eq!(
+            dest_in(&saves, Path::new("Savegame.sav"), in_wine_prefix(&saves)),
+            saves.join("SaveGame.sav")
+        );
+        // A file that does not exist in any spelling keeps its own.
+        assert_eq!(
+            dest_in(&saves, Path::new("Other.sav"), in_wine_prefix(&saves)),
+            saves.join("Other.sav")
+        );
+        // Outside a prefix Linux's rules stand.
+        let native = tmp.path().join("native");
+        std::fs::create_dir_all(&native).unwrap();
+        std::fs::write(native.join("SaveGame.sav"), b"x").unwrap();
+        assert_eq!(
+            dest_in(&native, Path::new("Savegame.sav"), in_wine_prefix(&native)),
+            native.join("Savegame.sav")
+        );
+    }
 
     /// La cuenta que importa: `root.join(nombre)` tiene que devolver la ruta
     /// original del fichero, no `…/save.dat/save.dat`.

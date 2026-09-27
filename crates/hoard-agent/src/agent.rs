@@ -3524,6 +3524,7 @@ pub(crate) async fn restore_files_into(
 ) -> Result<RestoreStats> {
     let shields: &[String] = &filter.shields;
     let narrowing = crate::backup::Narrowing::of(target, filter);
+    let in_prefix = crate::restore::in_wine_prefix(target);
     let mut stats = RestoreStats::default();
     let mut stack: Vec<PathBuf> = vec![source.to_path_buf()];
     // Relative paths seen in the remote snapshot. Used after the merge to spot
@@ -3549,8 +3550,10 @@ pub(crate) async fn restore_files_into(
             let rel = path
                 .strip_prefix(source)
                 .with_context(|| format!("path {} not under source", path.display()))?;
-            source_rels.insert(rel.to_path_buf());
-            let dest = target.join(rel);
+            let dest = crate::restore::dest_in(target, rel, in_prefix);
+            // By the name it has on disk, so a file matched under other capitals
+            // does not count as local-only below.
+            source_rels.insert(dest.strip_prefix(target).unwrap_or(rel).to_path_buf());
             if dest.exists() {
                 if files_have_equal_bytes(&path, &dest).await? {
                     stats.skipped += 1;
