@@ -509,8 +509,7 @@ fn indexes() -> &'static Indexes {
         // runs a game, never the game, even when the catalogue lists it for one
         // title only (`steam` for Stygian: Reign of the Old Ones put that name on
         // folders written by anything launched from Steam on a Deck).
-        let mut exe_owners: HashMap<&str, u32> =
-            RUNTIME_EXES.iter().map(|x| (*x, 2)).collect();
+        let mut exe_owners: HashMap<&str, u32> = RUNTIME_EXES.iter().map(|x| (*x, 2)).collect();
         for e in cat {
             for x in &e.launch_exes {
                 *exe_owners.entry(x.as_str()).or_default() += 1;

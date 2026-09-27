@@ -558,9 +558,389 @@ fn dangerous_unix_root(segs: &[&str]) -> Option<String> {
     }
 }
 
+// ---- what a folder is, when it is not a save folder
+
+/// A folder that holds something other than saves, whole. What detection and the
+/// manual add look for before offering or accepting one, and what the backup
+/// narrows down when a tracked folder turns out to be one.
+///
+/// It exists because of what Hoard Cloud held on 2026-09-26: of 391 GB in the
+/// latest versions, 312 GB belonged to 90 saves that were really a game's
+/// installation (Unity `_Data` trees, Unreal `.pak`s, executables), a repack's
+/// installer or a whole Wine prefix, and in most of them the real save was not
+/// even there: the 1 GB cap of the free plan had filled up with game files first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FolderKind {
+    /// A game's installation: the executable and its data.
+    Install,
+    /// An installer or repack waiting to be run (`setup.exe` next to its parts).
+    Installer,
+    /// A whole Wine/Proton prefix, `drive_c` and all.
+    WinePrefix,
+}
+
+/// Names that only turn up in a game's installation. Any of them on its own is
+/// enough.
+const INSTALL_MARKER_FILES: &[&str] = &[
+    "unityplayer.dll",
+    "unityplayer.so",
+    "unitycrashhandler64.exe",
+    "unitycrashhandler32.exe",
+    "steam_api.dll",
+    "steam_api64.dll",
+    "libsteam_api.so",
+    "unins000.exe",
+    "unins000.dat",
+];
+
+/// Reads what sits directly in `dir` (one listing, a couple of stats) and says
+/// whether it is an installation, an installer or a Wine prefix. `None` for
+/// everything else, save folders included.
+///
+/// Only the folder's own children count. A save folder that keeps a tool in a
+/// subfolder, PunkBuster's `pb/*.dll` next to Ghost Recon's saves or Final
+/// Fantasy X's `MemorySumChecker/`, is still a save folder.
+pub fn folder_kind(dir: &Path) -> Option<FolderKind> {
+    let entries: Vec<std::fs::DirEntry> = std::fs::read_dir(dir).ok()?.flatten().collect();
+    if let Some(kind) = kind_here(dir, &entries, true) {
+        return Some(kind);
+    }
+    // A wrapper around one, tracked a level too high: a repack's folder with the
+    // game inside next to its readme, links and redistributables
+    // (`AnkerGames ... .url`, `Run Me!.bat`, `Teardown/`, or IGG's `game/`). 34 of
+    // the cloud's installs looked like that on 2026-09-27 and none had a
+    // program of its own at the top. A handful of subfolders at most: this runs
+    // on every walk of the folder. Only the unmistakable signs count down there:
+    // two DLLs in a subfolder are PunkBuster next to Ghost Recon's saves as
+    // often as they are a game.
+    entries
+        .iter()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .take(16)
+        .filter_map(|e| {
+            let inner: Vec<std::fs::DirEntry> =
+                std::fs::read_dir(e.path()).ok()?.flatten().collect();
+            kind_here(&e.path(), &inner, false)
+        })
+        .find(|k| matches!(k, FolderKind::Install | FolderKind::Installer))
+}
+
+/// [`folder_kind`] for `dir` alone. `loose` also accepts the weakest sign, two
+/// programs side by side.
+fn kind_here(dir: &Path, entries: &[std::fs::DirEntry], loose: bool) -> Option<FolderKind> {
+    let names: Vec<(String, bool)> = entries
+        .iter()
+        .map(|e| {
+            let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            (e.file_name().to_string_lossy().to_lowercase(), is_dir)
+        })
+        .collect();
+    let has_dir = |n: &str| names.iter().any(|(name, d)| *d && name == n);
+    let has_file = |n: &str| names.iter().any(|(name, d)| !*d && name == n);
+
+    if has_dir("drive_c")
+        && (has_dir("dosdevices") || has_file("system.reg") || has_file("user.reg"))
+    {
+        return Some(FolderKind::WinePrefix);
+    }
+
+    let ext = |name: &str| {
+        name.rsplit_once('.')
+            .map(|(_, e)| e.to_string())
+            .unwrap_or_default()
+    };
+    let is_setup = |name: &str| matches!(name, "setup.exe" | "install.exe" | "installer.exe");
+    if names.iter().any(|(n, d)| !*d && is_setup(n))
+        && names
+            .iter()
+            .any(|(n, d)| !*d && matches!(ext(n).as_str(), "bin" | "7z" | "rar" | "msi" | "cab"))
+    {
+        return Some(FolderKind::Installer);
+    }
+
+    // An uninstaller alone is weak: Need for Speed: The Run keeps one in
+    // `Documents/NFSTR/Uninstall`, next to its settings.
+    if names.iter().any(|(n, d)| {
+        !*d && INSTALL_MARKER_FILES.contains(&n.as_str()) && (loose || !n.starts_with("unins"))
+    }) {
+        return Some(FolderKind::Install);
+    }
+    // Unity: `<Game>_Data/` with its managed code or its asset index.
+    let unity = entries.iter().any(|e| {
+        let name = e.file_name().to_string_lossy().to_lowercase();
+        name.ends_with("_data")
+            && e.path().is_dir()
+            && std::fs::read_dir(e.path()).is_ok_and(|inner| {
+                inner.flatten().any(|c| {
+                    matches!(
+                        c.file_name().to_string_lossy().to_lowercase().as_str(),
+                        "managed" | "globalgamemanagers" | "resources.assets" | "data.unity3d"
+                    )
+                })
+            })
+    });
+    // Unreal: `Engine/Binaries`, or a `Content/Paks` of its own.
+    let unreal = dir.join("Engine").join("Binaries").is_dir()
+        || dir.join("engine").join("binaries").is_dir()
+        || dir.join("Content").join("Paks").is_dir();
+    if unity || unreal {
+        return Some(FolderKind::Install);
+    }
+    // Two programs or libraries side by side: no save folder looks like that.
+    let programs = names
+        .iter()
+        .filter(|(n, d)| {
+            !*d && (matches!(ext(n).as_str(), "exe" | "dll" | "so" | "dylib")
+                || n.ends_with(".x86_64")
+                || n.ends_with(".x86"))
+        })
+        .count();
+    (loose && programs >= 2).then_some(FolderKind::Install)
+}
+
+/// Extensions of a game's own payload: code, packed assets, video, music, fonts.
+/// Nothing a game writes as a save, as long as the folder is an installation;
+/// in an ordinary save folder some of them are saves (Telltale keeps its slots
+/// as `.bundle`), which is why this is only ever applied to [`FolderKind`]
+/// folders.
+const PAYLOAD_EXTS: &[&str] = &[
+    "exe",
+    "dll",
+    "so",
+    "dylib",
+    "x86_64",
+    "x86",
+    "pdb",
+    "msi",
+    "cab",
+    "pak",
+    "pak2",
+    "ucas",
+    "utoc",
+    "ress",
+    "resource",
+    "assets",
+    "bundle",
+    "unity3d",
+    "forge",
+    "rpf",
+    "vpk",
+    "scs",
+    "paz",
+    "bk2",
+    "bik",
+    "usm",
+    "bank",
+    "wem",
+    "pck",
+    "arc",
+    "big",
+    "bsa",
+    "ba2",
+    "cpk",
+    "uasset",
+    "umap",
+    "ushaderprecache",
+    "upk",
+    "xnb",
+    "fsb",
+    "gpk",
+    "tfc",
+    "ttf",
+    "otf",
+    "mp4",
+    "wmv",
+    "webm",
+    "avi",
+    "mkv",
+    "mov",
+    "mp3",
+    "ogg",
+    "flac",
+    "wav",
+    "m4a",
+    "iso",
+    "mdf",
+    "mds",
+    "cache",
+    "cache2",
+    "tga",
+    "dds",
+    "fbx",
+    "ttc",
+    "pdf",
+    "psarc",
+    "psarc_s",
+];
+
+/// Inside an installation, a file this large outside a save folder is the game's
+/// data, whatever its extension says: MGSV's `master/*.dat` (3.5 GB each),
+/// Enshrouded's `*.dat`, Dragon's Dogma 2's `shader.cache`, a 545 MB art book.
+/// Saves that big live in a save folder, which this never touches.
+pub const PAYLOAD_MIN_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Folders inside an installation that hold nothing but the game itself.
+const PAYLOAD_DIR_SUFFIXES: &[&str] = &["_data"];
+const PAYLOAD_DIRS: &[&str] = &[
+    "engine",
+    "binaries",
+    "content",
+    "_commonredist",
+    "commonredist",
+    "redist",
+    "_redist",
+    "directx",
+    "monobleedingedge",
+    "__installer",
+];
+
+/// Inside a Wine prefix, the parts that are Windows rather than anybody's data.
+const PREFIX_SYSTEM_DIRS: &[&[&str]] = &[
+    &["dosdevices"],
+    &["drive_c", "windows"],
+    &["drive_c", "program files"],
+    &["drive_c", "program files (x86)"],
+    &["drive_c", "programdata", "microsoft"],
+];
+
+/// Whether `rel`, a path inside a folder of `kind`, is part of what the folder
+/// holds besides saves: the game's payload in an installation or an installer,
+/// Windows itself in a prefix (and any game installed inside it).
+pub fn is_payload(kind: FolderKind, rel: &str, size: u64) -> bool {
+    let lower = rel.replace('\\', "/").to_lowercase();
+    let parts: Vec<&str> = lower.split('/').filter(|p| !p.is_empty()).collect();
+    let Some((file, dirs)) = parts.split_last() else {
+        return false;
+    };
+    if kind == FolderKind::WinePrefix
+        && PREFIX_SYSTEM_DIRS
+            .iter()
+            .any(|sys| dirs.len() >= sys.len() && dirs[..sys.len()] == **sys)
+    {
+        return true;
+    }
+    let ext = file.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
+    if PAYLOAD_EXTS.contains(&ext) {
+        return true;
+    }
+    // Some games do save inside their install, under a folder named for it
+    // (`<install>/Binaries/Saves`, `<install>/savegames/<id>`): that folder is
+    // theirs, whatever it hangs off.
+    if dirs.iter().any(|d| looks_like_save_dir_name(d)) {
+        return false;
+    }
+    // Split archives (`data.041`, `game.000`): three digits and nothing else.
+    if ext.len() >= 3 && ext.bytes().all(|b| b.is_ascii_digit()) {
+        return true;
+    }
+    if size >= PAYLOAD_MIN_BYTES {
+        return true;
+    }
+    dirs.iter()
+        .any(|d| PAYLOAD_DIRS.contains(d) || PAYLOAD_DIR_SUFFIXES.iter().any(|s| d.ends_with(s)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folder_kind_tells_installs_installers_and_prefixes_from_saves() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mk = |rel: &str| {
+            let p = tmp.path().join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, b"x").unwrap();
+        };
+        // Galak-Z as it reached the cloud: a Unity install with the save beside it.
+        mk("galak/Galak-Z.x86_64");
+        mk("galak/Galak-Z_Data/Managed/Assembly-CSharp.dll");
+        mk("galak/SaveData.dat");
+        assert_eq!(
+            folder_kind(&tmp.path().join("galak")),
+            Some(FolderKind::Install)
+        );
+        // Unreal.
+        mk("sifu/Engine/Binaries/ThirdParty/x.dll");
+        mk("sifu/Sifu.exe");
+        assert_eq!(
+            folder_kind(&tmp.path().join("sifu")),
+            Some(FolderKind::Install)
+        );
+        // A repack waiting to be installed.
+        mk("repack/setup.exe");
+        mk("repack/fg-01.bin");
+        assert_eq!(
+            folder_kind(&tmp.path().join("repack")),
+            Some(FolderKind::Installer)
+        );
+        // A Heroic prefix.
+        mk("prefix/drive_c/users/steamuser/Saved Games/x.sav");
+        mk("prefix/system.reg");
+        assert_eq!(
+            folder_kind(&tmp.path().join("prefix")),
+            Some(FolderKind::WinePrefix)
+        );
+        // Saves stay saves, even with a tool in a subfolder (Ghost Recon's PunkBuster).
+        mk("grfs/pb/pbcl.dll");
+        mk("grfs/pb/pbags.dll");
+        mk("grfs/savegame1.sav");
+        assert_eq!(folder_kind(&tmp.path().join("grfs")), None);
+        // Telltale saves are `.bundle`, and their folder is not an install.
+        mk("wolf/_saveslot1_autosave.bundle");
+        assert_eq!(folder_kind(&tmp.path().join("wolf")), None);
+        // A repack's wrapper: the install is one level down.
+        mk("anker/Read Me.txt");
+        mk("anker/Run Me!.bat");
+        mk("anker/Teardown/teardown.exe");
+        mk("anker/Teardown/steam_api64.dll");
+        assert_eq!(
+            folder_kind(&tmp.path().join("anker")),
+            Some(FolderKind::Install)
+        );
+        // An uninstaller in a subfolder is not a game.
+        mk("nfstr/settings/profile.dat");
+        mk("nfstr/Uninstall/unins000.exe");
+        assert_eq!(folder_kind(&tmp.path().join("nfstr")), None);
+    }
+
+    #[test]
+    fn payload_is_the_game_not_the_save() {
+        use FolderKind::*;
+        assert!(is_payload(
+            Install,
+            "Galak-Z_Data/StreamingAssets/Bundles/x.unity3d",
+            1
+        ));
+        assert!(is_payload(Install, "Sifu/Binaries/Win64/x.dll", 1));
+        assert!(is_payload(
+            Install,
+            "Hollow Knight - Official Soundtrack/01.mp3",
+            1
+        ));
+        assert!(!is_payload(Install, "SaveData.dat", 1));
+        assert!(!is_payload(Install, "SaveFile.gwsave", 1));
+        assert!(!is_payload(Install, "savegames/1234567/1.save", 1));
+        assert!(!is_payload(Install, "Binaries/Saves/slot1.dat", 1));
+        assert!(is_payload(Install, "Binaries/Win64/config.json", 1));
+        // Huge files and split archives, but never inside a save folder.
+        assert!(is_payload(Install, "master/texture0.dat", 3_500_000_000));
+        assert!(is_payload(Install, "Data/data/data.041", 1));
+        assert!(!is_payload(Install, "SaveData.dat", 1));
+        assert!(!is_payload(Install, "Saves/world.dat", 3_500_000_000));
+        assert!(is_payload(
+            WinePrefix,
+            "drive_c/windows/system32/d3d9.dll",
+            1
+        ));
+        assert!(is_payload(WinePrefix, "dosdevices/c:", 1));
+        assert!(!is_payload(
+            WinePrefix,
+            "drive_c/users/steamuser/Saved Games/Beyond Good & Evil/global.sav",
+            1
+        ));
+    }
 
     #[test]
     fn dangerous_roots_are_refused_on_both_platforms() {

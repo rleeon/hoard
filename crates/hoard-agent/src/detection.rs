@@ -175,6 +175,25 @@ pub struct DetectionReport {
     /// leaves out ([`detect_tracked_links`]).
     #[serde(default)]
     pub link_warnings: Vec<LinkWarning>,
+    /// Tracked folders that are an installation, an installer or a whole Wine
+    /// prefix ([`detect_tracked_non_save_folders`]).
+    #[serde(default)]
+    pub folder_warnings: Vec<FolderWarning>,
+}
+
+/// A tracked folder that is not a save folder: the backup already narrows it to
+/// its saves, and this tells the user, with a better folder when detection
+/// knows one. Nothing is repointed on its own.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FolderWarning {
+    pub save_id: String,
+    pub game_slug: String,
+    pub label: String,
+    pub tracked_path: PathBuf,
+    pub kind: junkdirs::FolderKind,
+    /// The catalogue says the game saves inside this installation.
+    pub keeps_catalog_saves: bool,
+    pub suggested_path: Option<PathBuf>,
 }
 
 /// A tracked folder holding links the backup does not follow, so what they point
@@ -1087,12 +1106,20 @@ where
         g.needs_folder = g.found_paths.is_empty();
         if g.needs_folder {
             without_folder += 1;
-            verdict::not_offered(&g.slug, Path::new(""), "installed, but no save folder found");
+            verdict::not_offered(
+                &g.slug,
+                Path::new(""),
+                "installed, but no save folder found",
+            );
         }
         for (i, path) in g.found_paths.iter().enumerate() {
             let confidence = g.path_confidences.get(i).copied().unwrap_or(g.confidence);
             let reason = g.path_reasons.get(i).map(String::as_str).unwrap_or("");
-            verdict::offered(&g.slug, path, &format!("{confidence:?} ({:?}): {reason}", g.source));
+            verdict::offered(
+                &g.slug,
+                path,
+                &format!("{confidence:?} ({:?}): {reason}", g.source),
+            );
         }
     }
     if without_folder > 0 {
@@ -1152,6 +1179,7 @@ where
     );
 
     let link_warnings = detect_tracked_links(state);
+    let folder_warnings = detect_tracked_non_save_folders(state, &games);
 
     Ok(DetectionReport {
         games,
@@ -1161,7 +1189,54 @@ where
         stats,
         mirror_warnings,
         link_warnings,
+        folder_warnings,
     })
+}
+
+/// Every tracked folder that [`junkdirs::folder_kind`] says is not a save folder.
+/// 90 of them were in the cloud on 2026-09-26, holding 312 of its 391 GB.
+fn detect_tracked_non_save_folders(state: &CliState, games: &[DetectedGame]) -> Vec<FolderWarning> {
+    let mut out = Vec::new();
+    let mut saves: Vec<_> = state.saves.iter().collect();
+    saves.sort_by_key(|(a, _)| *a);
+    for (save_id, s) in saves {
+        let Some(kind) = junkdirs::folder_kind(&s.local_path) else {
+            continue;
+        };
+        let suggested_path = games.iter().find(|g| g.slug == s.game_slug).and_then(|g| {
+            g.found_paths
+                .iter()
+                .find(|p| !paths_overlap(p, &s.local_path))
+                .cloned()
+        });
+        let what = match kind {
+            junkdirs::FolderKind::Install => "the game's installation",
+            junkdirs::FolderKind::Installer => "an installer",
+            junkdirs::FolderKind::WinePrefix => "a whole Wine prefix",
+        };
+        verdict::auto_track(
+            &s.game_slug,
+            &s.local_path,
+            &format!("tracked, but it is {what}; only its saves are backed up"),
+        );
+        let keeps_catalog_saves = kind == junkdirs::FolderKind::Install
+            && !crate::savefilter::install_save_patterns(&s.game_slug).is_empty();
+        // A game that does save in its installation, with nowhere better to
+        // point it, gives the user nothing to do: no banner for it.
+        if keeps_catalog_saves && suggested_path.is_none() {
+            continue;
+        }
+        out.push(FolderWarning {
+            save_id: save_id.clone(),
+            game_slug: s.game_slug.clone(),
+            label: s.label.clone(),
+            tracked_path: s.local_path.clone(),
+            kind,
+            keeps_catalog_saves,
+            suggested_path,
+        });
+    }
+    out
 }
 
 /// Links worth listing per folder, and how much of a folder the search reads.
@@ -1176,7 +1251,7 @@ const LINK_WARNING_MAX_ENTRIES: usize = 5_000;
 fn detect_tracked_links(state: &CliState) -> Vec<LinkWarning> {
     let mut out = Vec::new();
     let mut saves: Vec<_> = state.saves.iter().collect();
-    saves.sort_by(|(a, _), (b, _)| a.cmp(b));
+    saves.sort_by_key(|(a, _)| *a);
     for (save_id, s) in saves {
         let links = links_inside(&s.local_path);
         if links.is_empty() {
@@ -1723,8 +1798,11 @@ fn refine_save_dir(slug: &str, hits: Vec<PathBuf>) -> Vec<PathBuf> {
         //
         // The folder containing it is preferred, since that is what the user expects
         // to back up and it groups the sibling saves. Only when that folder is too
-        // broad to offer (the profile, Documents, the game's install root) is the
-        // lone file tracked.
+        // broad to offer (the profile, Documents) is the lone file tracked. When it
+        // is the game's installation (Galak-Z's `<base>/SaveData.dat`) the folder
+        // still wins, and the backup leaves the game's own files out while keeping
+        // whatever the catalogue names (`backup::Narrowing`). `is_too_broad` never
+        // knew what an installation was, so the whole game went up with it.
         //
         // …or when the folder keeps mods, Workshop or a heavy cache, with
         // something in it, next to the save (`junkdirs::holds_foreign_subdir`).
@@ -2935,6 +3013,10 @@ fn drop_folders_without_saves(g: &mut DetectedGame) -> HashSet<PathBuf> {
     let mut empty: HashSet<PathBuf> = HashSet::new();
     let mut kept: Vec<PathBuf> = Vec::with_capacity(g.found_paths.len());
     for path in std::mem::take(&mut g.found_paths) {
+        if let Some(why) = not_a_save_folder(&g.slug, &path) {
+            verdict::not_offered(&g.slug, &path, why);
+            continue;
+        }
         match inspect_folder(&path, &shields) {
             FolderContents::NoSaveData => {
                 verdict::not_offered(&g.slug, &path, "nothing inside is player data");
@@ -2948,6 +3030,23 @@ fn drop_folders_without_saves(g: &mut DetectedGame) -> HashSet<PathBuf> {
     }
     g.found_paths = kept;
     empty
+}
+
+/// Why a folder must not be offered whole, whatever pointed at it: an installer,
+/// a Wine prefix, or a game's installation when the catalogue does not place the
+/// game's saves inside it. An installation that does hold them (Galak-Z's
+/// `<base>/SaveData.dat`) stays: the backup leaves the game's own files out.
+fn not_a_save_folder(slug: &str, path: &Path) -> Option<&'static str> {
+    match junkdirs::folder_kind(path)? {
+        junkdirs::FolderKind::Installer => Some("an installer or repack, not a save folder"),
+        junkdirs::FolderKind::WinePrefix => Some("a whole Wine prefix, not a save folder"),
+        junkdirs::FolderKind::Install
+            if crate::savefilter::install_save_patterns(slug).is_empty() =>
+        {
+            Some("the game's installation, and the catalogue does not say it saves there")
+        }
+        junkdirs::FolderKind::Install => None,
+    }
 }
 
 /// What an empty candidate folder gets told about itself.
@@ -3453,7 +3552,10 @@ fn add_configured_emulator_saves(
         let Some(def) = emulators::find(id) else {
             continue;
         };
-        let same_folder = |p: &Path| p.canonicalize().is_ok_and(|real| paths_overlap(&real, &dir));
+        let same_folder = |p: &Path| {
+            p.canonicalize()
+                .is_ok_and(|real| paths_overlap(&real, &dir))
+        };
         if known_paths.iter().any(|k| same_folder(k)) || out.iter().any(|a| same_folder(&a.path)) {
             continue;
         }
@@ -3465,7 +3567,10 @@ fn add_configured_emulator_saves(
             verdict::not_offered(
                 &format!("emu-{id}"),
                 &dir,
-                &format!("{}'s configured save folder has no files yet", def.display_name),
+                &format!(
+                    "{}'s configured save folder has no files yet",
+                    def.display_name
+                ),
             );
             continue;
         }
@@ -3474,7 +3579,10 @@ fn add_configured_emulator_saves(
             display_name: def.display_name.to_string(),
             path: dir,
             confidence: Confidence::Medium,
-            reason: format!("{}'s save folder, from its own configuration", def.display_name),
+            reason: format!(
+                "{}'s save folder, from its own configuration",
+                def.display_name
+            ),
             steam_app_id: None,
         });
     }
@@ -3909,7 +4017,7 @@ fn push_attributed(out: &mut Vec<AttributedSave>, dir: &Path, store: &Correlatio
         );
         return;
     };
-    let slug = ludusavi::slugify(&display_name);
+    let slug = crate::library::catalog_slug(&ludusavi::slugify(&display_name), Some(&display_name));
     if slug.is_empty() {
         return;
     }
@@ -3985,7 +4093,10 @@ fn discover_in_roots(
                 verdict::not_offered("", &hit.path, "no folder on the path names a game");
                 continue;
             };
-            let slug = ludusavi::slugify(&display_name);
+            let slug = crate::library::catalog_slug(
+                &ludusavi::slugify(&display_name),
+                Some(&display_name),
+            );
             if slug.is_empty() {
                 continue;
             }
@@ -6949,7 +7060,11 @@ mod tests {
         std::os::unix::fs::symlink(tmp.path().join("gone"), emudeck.join("states")).unwrap();
 
         let links = links_inside(&emudeck);
-        assert_eq!(links.len(), 1, "the dangling link is not worth a warning: {links:?}");
+        assert_eq!(
+            links.len(),
+            1,
+            "the dangling link is not worth a warning: {links:?}"
+        );
         assert_eq!(links[0].link, emudeck.join("saves"));
         assert_eq!(links[0].target, real_saves);
         assert!(links_inside(&real_saves).is_empty());
@@ -6972,7 +7087,11 @@ mod tests {
         std::fs::create_dir_all(&game).unwrap();
         std::fs::write(game.join("mapping.yaml"), "name: level1\nsize: 3\n").unwrap();
         assert!(!is_backup_tool_copy(&game));
-        std::fs::write(game.join("mapping.yaml"), "name: x\ndrives: 2\nbackups: []\n").unwrap();
+        std::fs::write(
+            game.join("mapping.yaml"),
+            "name: x\ndrives: 2\nbackups: []\n",
+        )
+        .unwrap();
         assert!(!is_backup_tool_copy(&game), "no drive-N key");
     }
 

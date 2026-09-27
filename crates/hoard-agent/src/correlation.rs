@@ -645,7 +645,10 @@ mod tests {
         assert!(!is_game_like("svchost.exe", None));
         assert!(!is_game_like("steamwebhelper", None));
         assert!(!is_game_like("steam", None));
-        assert!(!is_game_like("steam", Some(Path::new("/home/deck/.local/share/Steam/ubuntu12_32/steam"))));
+        assert!(!is_game_like(
+            "steam",
+            Some(Path::new("/home/deck/.local/share/Steam/ubuntu12_32/steam"))
+        ));
         assert!(is_game_like("SteamWorld Dig 2.exe", None));
         assert!(!is_game_like("hoard-agent", None));
         assert!(!is_game_like("chrome", None));

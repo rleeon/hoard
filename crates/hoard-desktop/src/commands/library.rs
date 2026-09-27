@@ -289,6 +289,21 @@ pub async fn adopt_save(
     Ok(outcome.tracked)
 }
 
+/// What a folder picked by hand really is, before it is tracked: an install, an
+/// installer or a Wine prefix, and better folders when there are any. Logic in
+/// `hoard_agent::library::advise_folder`.
+#[tauri::command]
+pub async fn advise_track_folder(
+    path: String,
+    game_slug: Option<String>,
+) -> Result<library::FolderAdvice, String> {
+    tokio::task::spawn_blocking(move || {
+        library::advise_folder(std::path::Path::new(&path), game_slug.as_deref())
+    })
+    .await
+    .map_err(|e| format!("Couldn't look at the folder: {e}"))
+}
+
 /// List the saves Hoard is tracking for the logged-in user. Server-side data is
 /// the source of truth for `latest_version_num`; the local path comes from
 /// `CliState`. Logic (dedup self-heal, orphan detection, local sizes) lives in

@@ -28,7 +28,9 @@
     listEmulatorTitles,
     listRunningProcesses,
     addGameToTracking,
+    adviseTrackFolder,
     type EmulatorPreset,
+    type FolderAdvice,
     type EmulatorTitle,
     type RunningProcess,
     type TrackedSave,
@@ -228,6 +230,30 @@
   function removeProc(name: string) {
     procs = procs.filter((p) => p !== name);
   }
+
+  // What the chosen folder really is (an install, an installer, a whole Wine
+  // prefix) and better folders when Hoard knows them. Advice only: the add
+  // goes ahead either way, since some games do save inside their install.
+  let advice = $state<FolderAdvice | null>(null);
+  $effect(() => {
+    const path = folder.trim();
+    const slug = isEmulator
+      ? isCustom
+        ? `emu-${slugify(customName)}`
+        : `emu-${selectedId}`
+      : slugify(gameName);
+    advice = null;
+    if (!path) return;
+    const timer = setTimeout(async () => {
+      try {
+        const got = await adviseTrackFolder(path, slug || undefined);
+        if (folder.trim() === path) advice = got;
+      } catch {
+        // A folder that can't be read yet (still being typed) says nothing.
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  });
 
   function slugify(s: string): string {
     return s
@@ -444,6 +470,37 @@
             ? $_("emulators.folder_hint")
             : $_("manual.game_folder_hint")}
         </p>
+        {#if advice && (advice.kind || advice.suggestions.length > 0)}
+          <div
+            class="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"
+          >
+            {#if advice.kind}
+              <p>
+                {$_(
+                  advice.kind === "install" && advice.keeps_catalog_saves
+                    ? "folderkind.install_catalog"
+                    : `folderkind.${advice.kind}`,
+                )}
+              </p>
+            {/if}
+            {#if advice.suggestions.length > 0}
+              <p class="mt-1.5 text-amber-200/80">{$_("folderkind.suggestions")}</p>
+              <ul class="mt-1 space-y-1">
+                {#each advice.suggestions as s (s)}
+                  <li>
+                    <button
+                      type="button"
+                      class="break-all text-left font-mono text-[11px] text-amber-100 underline decoration-amber-500/50 hover:decoration-amber-300"
+                      onclick={() => (folder = s)}
+                    >
+                      {s}
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
+        {/if}
       </div>
 
       <!-- Juegos dentro del árbol de la consola. Sólo para los emuladores

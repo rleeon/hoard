@@ -35,12 +35,14 @@
   import SaveGameCard from "../lib/components/SaveGameCard.svelte";
   import MirrorWarningBanner from "../lib/components/MirrorWarningBanner.svelte";
   import LinkWarningBanner from "../lib/components/LinkWarningBanner.svelte";
+  import FolderWarningBanner from "../lib/components/FolderWarningBanner.svelte";
   import * as api from "../lib/api";
   import type {
     EngineDownReason,
     KeyringFault,
     MirrorWarning,
     LinkWarning,
+    FolderWarning,
     TrackedSave,
   } from "../lib/api";
   import { auth, refreshQuota } from "../lib/stores/auth";
@@ -167,17 +169,20 @@
   // anyway, and the panel must not pay for a detection pass on mount.
   let mirrorWarnings = $state<MirrorWarning[]>([]);
   let linkWarnings = $state<LinkWarning[]>([]);
+  let folderWarnings = $state<FolderWarning[]>([]);
 
   async function loadMirrorWarnings() {
     try {
       const report = await api.cachedDetection();
       mirrorWarnings = report?.mirror_warnings ?? [];
       linkWarnings = report?.link_warnings ?? [];
+      folderWarnings = report?.folder_warnings ?? [];
     } catch {
       // No cache yet (first run) or unreadable: nothing to warn about that we
       // can prove, so stay quiet rather than guess.
       mirrorWarnings = [];
       linkWarnings = [];
+      folderWarnings = [];
     }
   }
 
@@ -538,6 +543,15 @@
   {/if}
   {#if !loading && linkWarnings.length > 0}
     <LinkWarningBanner warnings={linkWarnings} />
+  {/if}
+  {#if !loading && folderWarnings.length > 0}
+    <FolderWarningBanner
+      warnings={folderWarnings}
+      onFixed={async () => {
+        saves = await api.listTrackedSaves();
+        await loadMirrorWarnings();
+      }}
+    />
   {/if}
 
   <!-- `known` and not just `!running`: the store starts blank, and a banner

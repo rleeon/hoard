@@ -154,7 +154,37 @@ export type DetectionReport = {
    */
   mirror_warnings?: MirrorWarning[];
   link_warnings?: LinkWarning[];
+  folder_warnings?: FolderWarning[];
 };
+
+/** What a folder is when it isn't a save folder. */
+export type FolderKind = "install" | "installer" | "wine_prefix";
+
+/** A tracked folder that is an install, an installer or a whole Wine prefix.
+ *  The backup already keeps only its saves; this is for telling the user. */
+export type FolderWarning = {
+  save_id: string;
+  game_slug: string;
+  label: string;
+  tracked_path: string;
+  kind: FolderKind;
+  keeps_catalog_saves: boolean;
+  suggested_path: string | null;
+};
+
+/** What a folder picked by hand really is, and better folders when known. */
+export type FolderAdvice = {
+  kind: FolderKind | null;
+  keeps_catalog_saves: boolean;
+  suggestions: string[];
+};
+
+export function adviseTrackFolder(
+  path: string,
+  gameSlug?: string,
+): Promise<FolderAdvice> {
+  return invoke<FolderAdvice>("advise_track_folder", { path, gameSlug });
+}
 
 /** A tracked folder with symbolic links inside: the backup doesn't follow
  *  them, so what they point at isn't copied. */

@@ -584,8 +584,10 @@ async fn build_reuse_index(
     }
     // `walk_source` is the same walk the backup side uses: sorted by relative
     // path, symlinks and transient game locks already filtered out.
-    let candidates: Vec<crate::backup::UploadFile> = match crate::backup::walk_source(dir, shields)
-    {
+    let candidates: Vec<crate::backup::UploadFile> = match crate::backup::walk_source(
+        dir,
+        &crate::backup::SourceFilter::shields_only(shields),
+    ) {
         Ok(files) => files
             .into_iter()
             .filter(|f| wanted_sizes.contains(&f.size_bytes))

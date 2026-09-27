@@ -1123,12 +1123,32 @@ fn reject_degenerate_slug(slug: &str) -> Result<()> {
 /// Tracks a folder somebody chose: [`add_to_tracking_detected`] plus a note of
 /// the folder when detection had not put it forward, which is a save location
 /// straight from the person who knows it (see [`note_hand_picked`]).
-pub async fn add_to_tracking(client: &ApiClient, args: AddGameArgs) -> Result<TrackOutcome> {
+pub async fn add_to_tracking(client: &ApiClient, mut args: AddGameArgs) -> Result<TrackOutcome> {
+    args.game_slug = catalog_slug(&args.game_slug, args.display_name.as_deref());
     let slug = args.game_slug.clone();
     let path = PathBuf::from(&args.local_path);
     let outcome = add_to_tracking_detected(client, args).await?;
     note_hand_picked(&slug, &path);
     Ok(outcome)
+}
+
+/// The catalogue's slug for a game named in somebody's own words, so that two
+/// machines calling one game `crimsondesert` and `Crimson Desert` end up with the
+/// same name. The server holds one save per (game, label) and a second machine
+/// joins it on its own, but only when the names agree; otherwise each machine
+/// gets its own save of the same game, twins that never sync (seen in the cloud
+/// as `cd` / `crimsondesert` and `dispatch` / `dispatch-2025`). A slug the
+/// catalogue already knows, an emulator's `emu-*`, and anything that matches no
+/// title stay as they are.
+pub fn catalog_slug(slug: &str, display_name: Option<&str>) -> String {
+    if slug.starts_with("emu-") || ludusavi::find_by_slug(slug).is_some() {
+        return slug.to_string();
+    }
+    display_name
+        .and_then(ludusavi::find_by_canon_name)
+        .or_else(|| ludusavi::find_by_canon_name(slug))
+        .map(|e| e.slug.clone())
+        .unwrap_or_else(|| slug.to_string())
 }
 
 /// If detection did not offer `path` for `slug` on this machine, the user found
@@ -1143,6 +1163,59 @@ fn note_hand_picked(slug: &str, path: &Path) {
         return;
     }
     crate::telemetry::manual_added(slug, path, found.first().map(PathBuf::as_path));
+}
+
+/// What a folder about to be tracked by hand really is, and better folders when
+/// there are any. Advisory: the dialog shows it and the add goes ahead anyway.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct FolderAdvice {
+    /// An installation, an installer or a whole Wine prefix.
+    pub kind: Option<junkdirs::FolderKind>,
+    /// The catalogue says this game saves inside the installation: the backup
+    /// keeps those files and leaves the game's own out.
+    pub keeps_catalog_saves: bool,
+    /// Folders that look like the real saves: what detection found for the game
+    /// here, the game's folders inside a prefix, an emulator's save folders.
+    pub suggestions: Vec<String>,
+}
+
+pub fn advise_folder(path: &Path, slug: Option<&str>) -> FolderAdvice {
+    let kind = junkdirs::folder_kind(path);
+    let mut suggestions: Vec<PathBuf> = crate::emulators::save_roots_below(path);
+    if let (Some(kind), Some(slug)) = (kind, slug) {
+        if kind == junkdirs::FolderKind::WinePrefix {
+            if let Some(entry) = ludusavi::find_by_slug(slug) {
+                for user in crate::roots::prefix_windows_users(path) {
+                    for tmpl in entry.paths.windows.iter().map(|p| &p.path) {
+                        suggestions.extend(
+                            crate::pathexpand::expand_path_in_prefix_as_user(tmpl, path, &user)
+                                .into_iter()
+                                .filter(|p| p.exists()),
+                        );
+                    }
+                }
+            }
+        }
+        if let Some(g) = load_detection_from_disk()
+            .and_then(|c| c.report.games.into_iter().find(|g| g.slug == slug))
+        {
+            suggestions.extend(g.found_paths);
+        }
+    }
+    let mut seen = HashSet::new();
+    let suggestions = suggestions
+        .into_iter()
+        .filter(|p| folder_key(p) != folder_key(path))
+        .map(|p| p.to_string_lossy().into_owned())
+        .filter(|p| seen.insert(p.clone()))
+        .take(6)
+        .collect();
+    FolderAdvice {
+        kind,
+        keeps_catalog_saves: matches!(kind, Some(junkdirs::FolderKind::Install))
+            && slug.is_some_and(|s| !crate::savefilter::install_save_patterns(s).is_empty()),
+        suggestions,
+    }
 }
 
 /// The add itself, for folders detection put forward. The automatic scan comes
@@ -1776,7 +1849,10 @@ pub fn plan_auto_track(games: Vec<DetectedGame>, tracked: Vec<TrackedSave>) -> A
     let mut tracked_paths: Vec<PathBuf> = Vec::new();
     let mut orphans_by_slug: std::collections::HashMap<String, TrackedSave> =
         std::collections::HashMap::new();
-    for t in tracked {
+    let (locals, orphans): (Vec<&TrackedSave>, Vec<&TrackedSave>) =
+        tracked.iter().partition(|t| !t.orphan);
+    let twins = twin_merges(&locals, &orphans);
+    for t in tracked.iter().cloned() {
         if t.orphan {
             // Prefer the "main" label when a slug has several cloud branches;
             // otherwise keep the first seen.
@@ -1798,10 +1874,16 @@ pub fn plan_auto_track(games: Vec<DetectedGame>, tracked: Vec<TrackedSave>) -> A
     // written, so `~/Emulation/saves/retroarch/saves` and the Flatpak folder it
     // links to are two folders to the rest of Hoard; here they must be one, or
     // one save ends up tracked twice under two paths.
-    let mut tracked_real: Vec<PathBuf> =
-        tracked_paths.iter().filter_map(|p| p.canonicalize().ok()).collect();
+    let mut tracked_real: Vec<PathBuf> = tracked_paths
+        .iter()
+        .filter_map(|p| p.canonicalize().ok())
+        .collect();
 
     let mut plan = AutoTrackPlan::default();
+    for (orphan, path) in twins {
+        orphans_by_slug.retain(|_, o| o.save_id != orphan.save_id);
+        plan.adopt.push((orphan, path));
+    }
     for g in games {
         if tracked_slugs.contains(&g.slug) || g.found_paths.is_empty() {
             continue;
@@ -1845,7 +1927,11 @@ pub fn plan_auto_track(games: Vec<DetectedGame>, tracked: Vec<TrackedSave>) -> A
                 continue;
             }
             if let Some(orphan) = orphans_by_slug.remove(&g.slug) {
-                verdict::auto_track(&g.slug, &path, "linked to the save another machine uploaded");
+                verdict::auto_track(
+                    &g.slug,
+                    &path,
+                    "linked to the save another machine uploaded",
+                );
                 plan.adopt.push((orphan, path.clone()));
             } else {
                 verdict::auto_track(&g.slug, &path, "tracked");
@@ -1869,6 +1955,47 @@ pub fn plan_auto_track(games: Vec<DetectedGame>, tracked: Vec<TrackedSave>) -> A
         }
     }
     plan
+}
+
+/// This machine's saves that have a twin elsewhere: the same game and slot
+/// tracked by another machine under another name. Each pair is merged by the
+/// machine holding the save with the higher id, which switches its folder to
+/// the other one; both machines apply the same rule to the same rows, so they
+/// converge without talking to each other. Nothing is deleted: the save left
+/// behind keeps its history in the cloud, and the merge goes through the same
+/// restore as any adoption, with conflict copies for anything the two disagree
+/// on.
+fn twin_merges(locals: &[&TrackedSave], orphans: &[&TrackedSave]) -> Vec<(TrackedSave, PathBuf)> {
+    let mut out = Vec::new();
+    for local in locals {
+        if local.local_path.is_empty() {
+            continue;
+        }
+        let identity = catalog_slug(&local.game_slug, None);
+        let twin = orphans
+            .iter()
+            .filter(|o| {
+                o.game_slug != local.game_slug
+                    && o.label == local.label
+                    && catalog_slug(&o.game_slug, None) == identity
+            })
+            .min_by(|a, b| a.save_id.cmp(&b.save_id));
+        let Some(twin) = twin else { continue };
+        if twin.save_id >= local.save_id {
+            continue;
+        }
+        let path = PathBuf::from(&local.local_path);
+        verdict::auto_track(
+            &local.game_slug,
+            &path,
+            &format!(
+                "joining {} (same game, tracked by another machine), the save with the lower id",
+                twin.game_slug
+            ),
+        );
+        out.push(((*twin).clone(), path));
+    }
+    out
 }
 
 /// How an automatic pass went.
@@ -3258,6 +3385,7 @@ mod tests {
             stats: DetectionStats::default(),
             mirror_warnings: Vec::new(),
             link_warnings: Vec::new(),
+            folder_warnings: Vec::new(),
         }
     }
 
@@ -3776,6 +3904,7 @@ mod tests {
             stats: DetectionStats::default(),
             mirror_warnings: Vec::new(),
             link_warnings: Vec::new(),
+            folder_warnings: Vec::new(),
         }
     }
 
@@ -4005,6 +4134,7 @@ mod tests {
             stats: Default::default(),
             mirror_warnings: Vec::new(),
             link_warnings: Vec::new(),
+            folder_warnings: Vec::new(),
         }
     }
 
@@ -4091,5 +4221,66 @@ mod slug_gate_tests {
         let msg = err.to_string();
         assert!(msg.contains("user"), "names the offending slug: {msg}");
         assert!(msg.contains("folder"), "points at the folder flow: {msg}");
+    }
+}
+
+#[cfg(test)]
+mod twin_tests {
+    use super::*;
+
+    fn tracked_save(id: &str, slug: &str, path: &str, orphan: bool) -> TrackedSave {
+        TrackedSave {
+            save_id: id.into(),
+            game_slug: slug.into(),
+            name: None,
+            slot: None,
+            label: "main".into(),
+            local_path: path.into(),
+            cloud_version_num: Some(3),
+            local_version_num: None,
+            last_backup_at: None,
+            paused: false,
+            total_size_bytes: 0,
+            orphan,
+            local_size_bytes: None,
+            preset: None,
+            allow_device_local: None,
+        }
+    }
+
+    #[test]
+    fn catalog_slug_names_a_game_the_way_the_catalogue_does() {
+        assert_eq!(catalog_slug("crimsondesert", None), "crimson-desert");
+        assert_eq!(
+            catalog_slug("my-game", Some("Crimson Desert")),
+            "crimson-desert"
+        );
+        assert_eq!(catalog_slug("crimson-desert", None), "crimson-desert");
+        assert_eq!(
+            catalog_slug("emu-retroarch", Some("RetroArch")),
+            "emu-retroarch"
+        );
+        assert_eq!(
+            catalog_slug("zz-nothing-like-it", None),
+            "zz-nothing-like-it"
+        );
+    }
+
+    #[test]
+    fn twins_merge_into_the_lower_id_on_both_machines() {
+        let mine = tracked_save("b-222", "crimsondesert", "/home/u/CD/save", false);
+        let theirs = tracked_save("a-111", "crimson-desert", "", true);
+        // Here the other machine's save has the lower id: switch to it.
+        let merges = twin_merges(&[&mine], &[&theirs]);
+        assert_eq!(merges.len(), 1);
+        assert_eq!(merges[0].0.save_id, "a-111");
+        assert_eq!(merges[0].1, PathBuf::from("/home/u/CD/save"));
+        // On the other machine the roles swap, and it stays put.
+        let mine_there = tracked_save("a-111", "crimson-desert", "/home/v/CD/save", false);
+        let theirs_there = tracked_save("b-222", "crimsondesert", "", true);
+        assert!(twin_merges(&[&mine_there], &[&theirs_there]).is_empty());
+        // Different games never merge.
+        let other = tracked_save("a-000", "elden-ring", "", true);
+        assert!(twin_merges(&[&mine], &[&other]).is_empty());
     }
 }

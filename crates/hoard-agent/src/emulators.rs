@@ -403,6 +403,77 @@ pub fn find(id: &str) -> Option<&'static EmulatorDef> {
     CATALOG.iter().find(|d| d.id == id)
 }
 
+/// Where saves sit under an emulator's (or a launcher's) own folder when it runs
+/// portable, which no template spells out: RPCS3's `dev_hdd0`, shadPS4's
+/// `user/`, PrismLauncher and MultiMC instances.
+const PORTABLE_SAVE_LAYOUTS: &[&str] = &[
+    "dev_hdd0/home/*/savedata",
+    "user/savedata",
+    "instances/*/minecraft/saves",
+    "instances/*/.minecraft/saves",
+];
+
+/// The save folders of any known emulator found under `dir`, for someone about
+/// to track the emulator's whole folder (binaries, shader caches and all, as
+/// RPCS3 and shadPS4 reached the cloud). Each template's tail is tried from
+/// every depth it could start at inside `dir`, plus [`PORTABLE_SAVE_LAYOUTS`].
+pub fn save_roots_below(dir: &Path) -> Vec<PathBuf> {
+    let mut tails: Vec<String> = PORTABLE_SAVE_LAYOUTS
+        .iter()
+        .map(|t| t.to_string())
+        .collect();
+    for def in CATALOG {
+        for tail in def.save_templates.iter().filter_map(|t| template_tail(t)) {
+            let parts: Vec<&str> = tail.split('/').filter(|p| !p.is_empty()).collect();
+            // Two segments at least: `saves` alone would match half the disk.
+            for start in 0..parts.len().saturating_sub(1) {
+                tails.push(parts[start..].join("/"));
+            }
+        }
+    }
+    let mut out: Vec<PathBuf> = Vec::new();
+    for tail in tails {
+        for hit in expand_under(dir, &tail) {
+            if hit != dir && !out.contains(&hit) {
+                out.push(hit);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// `tail`'s folders under `dir`, where a `*` segment is any subfolder. Bounded
+/// fan-out: this runs while the user waits on a dialog.
+fn expand_under(dir: &Path, tail: &str) -> Vec<PathBuf> {
+    let mut current = vec![dir.to_path_buf()];
+    for seg in tail.split('/').filter(|s| !s.is_empty()) {
+        let mut next = Vec::new();
+        for base in &current {
+            if seg.contains('*') {
+                let Ok(read) = std::fs::read_dir(base) else {
+                    continue;
+                };
+                for entry in read.flatten().take(64) {
+                    let name = entry.file_name().to_string_lossy().to_lowercase();
+                    if entry.path().is_dir()
+                        && hoard_core::kernel::fileclass::glob_match(&seg.to_lowercase(), &name)
+                    {
+                        next.push(entry.path());
+                    }
+                }
+            } else if base.join(seg).is_dir() {
+                next.push(base.join(seg));
+            }
+        }
+        current = next;
+        if current.is_empty() {
+            break;
+        }
+    }
+    current
+}
+
 /// Save folders an emulator's own configuration names, with the emulator's id.
 ///
 /// Only RetroArch so far: its `savefile_directory` and `savestate_directory`
@@ -892,8 +963,28 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
+    fn save_roots_below_finds_saves_inside_a_whole_emulator_folder() {
+        let tmp = tempdir().unwrap();
+        let rpcs3 = tmp.path().join("rpcs3");
+        fs::create_dir_all(rpcs3.join("dev_hdd0/home/00000001/savedata/BLUS30443")).unwrap();
+        fs::create_dir_all(rpcs3.join("cache/BCUS98125")).unwrap();
+        let prism = tmp.path().join("PrismLauncher");
+        fs::create_dir_all(prism.join("instances/Minecraft 2/minecraft/saves/New World")).unwrap();
+        assert_eq!(
+            save_roots_below(&rpcs3),
+            vec![rpcs3.join("dev_hdd0/home/00000001/savedata")]
+        );
+        assert_eq!(
+            save_roots_below(&prism),
+            vec![prism.join("instances/Minecraft 2/minecraft/saves")]
+        );
+        assert!(save_roots_below(&tmp.path().join("nothing")).is_empty());
+    }
+
+    #[test]
     fn retroarch_dir_reads_the_configured_folders() {
-        let retroarch_save_dir = |cfg: &str, dir: &Path| retroarch_dir(cfg, "savefile_directory", dir);
+        let retroarch_save_dir =
+            |cfg: &str, dir: &Path| retroarch_dir(cfg, "savefile_directory", dir);
         let cfg_dir = Path::new("/opt/RetroArch");
         // What EmuDeck writes into the Flatpak's config.
         let emudeck = "video_driver = \"vulkan\"\nsavefile_directory = \"/home/deck/Emulation/saves/retroarch/saves\"\n";
@@ -901,17 +992,33 @@ mod tests {
             retroarch_save_dir(emudeck, cfg_dir),
             Some(PathBuf::from("/home/deck/Emulation/saves/retroarch/saves"))
         );
-        assert_eq!(retroarch_save_dir("savefile_directory = \"default\"", cfg_dir), None);
-        assert_eq!(retroarch_save_dir("savestate_directory = \"/x\"", cfg_dir), None);
         assert_eq!(
-            retroarch_dir(emudeck.replace("savefile", "savestate").replace("/saves\"", "/states\"").as_str(), "savestate_directory", cfg_dir),
+            retroarch_save_dir("savefile_directory = \"default\"", cfg_dir),
+            None
+        );
+        assert_eq!(
+            retroarch_save_dir("savestate_directory = \"/x\"", cfg_dir),
+            None
+        );
+        assert_eq!(
+            retroarch_dir(
+                emudeck
+                    .replace("savefile", "savestate")
+                    .replace("/saves\"", "/states\"")
+                    .as_str(),
+                "savestate_directory",
+                cfg_dir
+            ),
             Some(PathBuf::from("/home/deck/Emulation/saves/retroarch/states"))
         );
         assert_eq!(
             retroarch_save_dir("savefile_directory = \":/saves\"", cfg_dir),
             Some(PathBuf::from("/opt/RetroArch/saves"))
         );
-        assert_eq!(retroarch_save_dir("savefile_directory = \"relative\"", cfg_dir), None);
+        assert_eq!(
+            retroarch_save_dir("savefile_directory = \"relative\"", cfg_dir),
+            None
+        );
     }
 
     #[test]

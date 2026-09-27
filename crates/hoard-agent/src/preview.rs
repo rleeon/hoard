@@ -185,7 +185,10 @@ pub async fn against_disk(
             .collect();
         &filtered[..]
     };
-    let local: Vec<LocalFile> = match crate::backup::walk_source(dest, &gate.shields) {
+    let local: Vec<LocalFile> = match crate::backup::walk_source(
+        dest,
+        &crate::backup::SourceFilter::shields_only(&gate.shields),
+    ) {
         Ok(files) => files
             .into_iter()
             .map(|f| LocalFile {

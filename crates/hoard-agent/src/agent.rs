@@ -918,8 +918,8 @@ fn fingerprint_from_set_hash(composite: &str) -> u64 {
 fn observe_local_fingerprint(path: &Path, game_slug: &str) -> Option<u64> {
     // The same shields the backup uses, or the two signatures diverge forever and
     // the reducer sees a pending change that never resolves.
-    let shields = crate::savefilter::shields_for_slug(game_slug);
-    let files = crate::backup::walk_source(path, &shields).ok()?;
+    let files =
+        crate::backup::walk_source(path, &crate::backup::SourceFilter::for_slug(game_slug)).ok()?;
     Some(fingerprint_of(&crate::backup::compute_set_signature(
         &files,
     )))
@@ -2733,7 +2733,10 @@ fn network_outage_within_grace() -> bool {
                 "agent: network unreachable; restores wait quietly for up to {} min before reporting it",
                 OFFLINE_GRACE.as_secs() / 60
             );
-            *outage = Some(Outage { since: now, last: now });
+            *outage = Some(Outage {
+                since: now,
+                last: now,
+            });
             true
         }
     }
@@ -3329,7 +3332,7 @@ async fn run_auto_restore(
         &save.local_path,
         &staging,
         conflict_backup_dir.as_deref(),
-        &crate::savefilter::shields_for_slug(&save.game_slug),
+        &crate::backup::SourceFilter::for_slug(&save.game_slug),
     )
     .await;
     cleanup_staging(&staging).await;
@@ -3360,7 +3363,7 @@ async fn run_auto_restore(
     // optimisation, never blocks the restore.
     let disk_set_hash = crate::backup::walk_source(
         &save.local_path,
-        &crate::savefilter::shields_for_slug(&save.game_slug),
+        &crate::backup::SourceFilter::for_slug(&save.game_slug),
     )
     .ok()
     .map(|files| format!("{}:", crate::backup::compute_set_signature(&files)));
@@ -3517,8 +3520,10 @@ pub(crate) async fn restore_files_into(
     target: &Path,
     source: &Path,
     conflict_backup_dir: Option<&Path>,
-    shields: &[String],
+    filter: &crate::backup::SourceFilter,
 ) -> Result<RestoreStats> {
+    let shields: &[String] = &filter.shields;
+    let narrowing = crate::backup::Narrowing::of(target, filter);
     let mut stats = RestoreStats::default();
     let mut stack: Vec<PathBuf> = vec![source.to_path_buf()];
     // Relative paths seen in the remote snapshot. Used after the merge to spot
@@ -3672,6 +3677,11 @@ pub(crate) async fn restore_files_into(
             // without ever having uploaded it.
             let rel_str = rel.to_string_lossy().replace('\\', "/");
             if !kernel::fileclass::classify(&rel_str, shields).is_backed_up() {
+                continue;
+            }
+            // Nor is the game itself, in a tracked folder that is its install.
+            let size = entry.metadata().await.map(|m| m.len()).unwrap_or(0);
+            if !narrowing.keeps(&rel_str, size) {
                 continue;
             }
             if !source_rels.contains(rel) {
@@ -6450,7 +6460,14 @@ mod tests {
         write_file(&source.join("nested/c.dat"), b"gamma");
         write_file(&target.join("a.dat"), b"alpha");
 
-        let stats = restore_files_into(target, source, None, &[]).await.unwrap();
+        let stats = restore_files_into(
+            target,
+            source,
+            None,
+            &crate::backup::SourceFilter::default(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(stats.restored, 2, "B and C should be copied");
         assert_eq!(stats.skipped, 1, "A is identical, skipped silently");
@@ -6489,12 +6506,26 @@ mod tests {
         std::fs::write(target.join("Player.log"), b"log").unwrap();
         std::fs::write(target.join(".DS_Store"), b"junk").unwrap();
 
-        let stats = restore_files_into(target, source, None, &[]).await.unwrap();
+        let stats = restore_files_into(
+            target,
+            source,
+            None,
+            &crate::backup::SourceFilter::default(),
+        )
+        .await
+        .unwrap();
         assert_eq!(stats.target_only, 0, "la basura no es divergencia");
 
         // But config does count: it exists only locally until it is uploaded.
         std::fs::write(target.join("graphics.ini"), b"res=1080").unwrap();
-        let stats = restore_files_into(target, source, None, &[]).await.unwrap();
+        let stats = restore_files_into(
+            target,
+            source,
+            None,
+            &crate::backup::SourceFilter::default(),
+        )
+        .await
+        .unwrap();
         assert_eq!(stats.target_only, 1, "the config does have to count");
     }
 
@@ -6517,7 +6548,14 @@ mod tests {
         write_file(&target.join("local-only.sav"), b"unsynced");
         write_file(&target.join("nested/also-local.sav"), b"more");
 
-        let stats = restore_files_into(target, source, None, &[]).await.unwrap();
+        let stats = restore_files_into(
+            target,
+            source,
+            None,
+            &crate::backup::SourceFilter::default(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(stats.restored, 0, "a.dat is identical, nothing copied");
         assert_eq!(stats.skipped, 1, "a.dat skipped");
@@ -6553,7 +6591,14 @@ mod tests {
         // Target only has a.dat (subset); b.dat will be copied in.
         write_file(&target.join("a.dat"), b"alpha");
 
-        let stats = restore_files_into(target, source, None, &[]).await.unwrap();
+        let stats = restore_files_into(
+            target,
+            source,
+            None,
+            &crate::backup::SourceFilter::default(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(stats.restored, 1, "b.dat copied");
         assert_eq!(stats.skipped, 1, "a.dat identical");
@@ -6573,7 +6618,14 @@ mod tests {
         write_file(&source.join("a.dat"), b"remote-version");
         write_file(&target.join("a.dat"), b"LOCAL-WORK");
 
-        let stats = restore_files_into(target, source, None, &[]).await.unwrap();
+        let stats = restore_files_into(
+            target,
+            source,
+            None,
+            &crate::backup::SourceFilter::default(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(stats.restored, 0, "nothing copied: A is a conflict");
         assert_eq!(stats.skipped, 0);
@@ -6602,7 +6654,14 @@ mod tests {
         write_file(&target.join("a.dat"), b"alpha");
         write_file(&target.join("sub/b.dat"), b"beta");
 
-        let stats = restore_files_into(target, source, None, &[]).await.unwrap();
+        let stats = restore_files_into(
+            target,
+            source,
+            None,
+            &crate::backup::SourceFilter::default(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(stats.restored, 0);
         assert_eq!(stats.skipped, 2);
@@ -6625,7 +6684,14 @@ mod tests {
         write_file(&source.join("b.dat"), b"beta-bytes");
         write_file(&source.join("deep/nested/c.dat"), b"gamma!");
 
-        let stats = restore_files_into(target, source, None, &[]).await.unwrap();
+        let stats = restore_files_into(
+            target,
+            source,
+            None,
+            &crate::backup::SourceFilter::default(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(stats.restored, 3);
         assert_eq!(stats.skipped, 0);
@@ -6669,9 +6735,14 @@ mod tests {
         set_mtime(&target.join("a.dat"), now - Duration::from_secs(10));
         set_mtime(&source.join("a.dat"), now + Duration::from_secs(10));
 
-        let stats = restore_files_into(target, source, Some(backup), &[])
-            .await
-            .unwrap();
+        let stats = restore_files_into(
+            target,
+            source,
+            Some(backup),
+            &crate::backup::SourceFilter::default(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(stats.conflicts_resolved_remote, 1);
         assert_eq!(stats.conflicts_backed_up, 1);
@@ -6701,9 +6772,14 @@ mod tests {
         set_mtime(&source.join("a.dat"), now - Duration::from_secs(60));
         set_mtime(&target.join("a.dat"), now);
 
-        let stats = restore_files_into(target, source, Some(backup), &[])
-            .await
-            .unwrap();
+        let stats = restore_files_into(
+            target,
+            source,
+            Some(backup),
+            &crate::backup::SourceFilter::default(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(stats.conflicts_resolved_local, 1);
         assert_eq!(stats.conflicts_resolved_remote, 0);
@@ -6738,9 +6814,14 @@ mod tests {
         set_mtime(&source.join("clash.dat"), old + Duration::from_secs(20));
         set_mtime(&target.join("clash.dat"), old);
 
-        let stats = restore_files_into(target, source, Some(backup), &[])
-            .await
-            .unwrap();
+        let stats = restore_files_into(
+            target,
+            source,
+            Some(backup),
+            &crate::backup::SourceFilter::default(),
+        )
+        .await
+        .unwrap();
         assert_eq!(stats.restored, 1);
         assert_eq!(stats.conflicts_resolved_remote, 1);
 
@@ -6779,7 +6860,14 @@ mod tests {
         set_mtime(&target.join("a.dat"), now - Duration::from_secs(10));
         set_mtime(&source.join("a.dat"), now + Duration::from_secs(10));
 
-        let stats = restore_files_into(target, source, None, &[]).await.unwrap();
+        let stats = restore_files_into(
+            target,
+            source,
+            None,
+            &crate::backup::SourceFilter::default(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(stats.conflicts_resolved_local, 1);
         assert_eq!(stats.conflicts_resolved_remote, 0);

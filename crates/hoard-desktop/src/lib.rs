@@ -256,6 +256,7 @@ pub fn run() {
             commands::library::cached_detection,
             commands::library::add_game_to_tracking,
             commands::library::adopt_save,
+            commands::library::advise_track_folder,
             commands::library::list_tracked_saves,
             commands::library::untrack_save,
             commands::library::delete_save_completely,

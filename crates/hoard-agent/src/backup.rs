@@ -25,6 +25,7 @@ use crate::api::{
     ApiClient, ApiError, CasCommit, CasFile, CasInit, CloudCasFileEntry, CloudCasInit,
     CloudCasMissingBlob, RateLimitKind, Snapshot,
 };
+use crate::junkdirs;
 use crate::state::{CliState, SaveState};
 use hoard_core::ids::SaveId;
 use hoard_core::kernel::fileclass;
@@ -652,7 +653,120 @@ fn note_skipped_link(link: &Path) {
     );
 }
 
-pub fn walk_source(root: &Path, shields: &[String]) -> Result<Vec<UploadFile>> {
+/// What a walk keeps for one game. The same value has to reach every walk whose
+/// signature is compared with another (backup, the engine's L1 sampling, the
+/// post-restore hash), or they disagree about a quiet folder and loop.
+#[derive(Debug, Clone, Default)]
+pub struct SourceFilter {
+    /// The manifest's file patterns ([`crate::savefilter::shields_for_slug`]).
+    pub shields: Vec<String>,
+    /// Where the game saves inside its own install
+    /// ([`crate::savefilter::install_save_patterns`]).
+    pub install_saves: Vec<String>,
+    /// Narrow a folder that is an install, an installer or a Wine prefix down to
+    /// its saves ([`junkdirs::folder_kind`]). Off for walks that index what is
+    /// on disk rather than decide what to upload (the restore's reuse index, the
+    /// history preview), where the game's own files do no harm.
+    pub narrow_non_saves: bool,
+}
+
+impl SourceFilter {
+    /// The filter every upload-side walk of `slug` uses.
+    pub fn for_slug(slug: &str) -> Self {
+        Self {
+            shields: crate::savefilter::shields_for_slug(slug),
+            install_saves: crate::savefilter::install_save_patterns(slug),
+            narrow_non_saves: true,
+        }
+    }
+
+    pub fn shields_only(shields: &[String]) -> Self {
+        Self {
+            shields: shields.to_vec(),
+            ..Self::default()
+        }
+    }
+}
+
+/// What [`walk_source`] leaves out of a folder that is not a save folder. Split
+/// out so the restore's count of local-only files uses the very same rule: if
+/// the two disagreed, every restore into an install would count the whole game
+/// as local changes and ask for an upload that has nothing new in it.
+pub(crate) struct Narrowing<'a> {
+    kind: Option<junkdirs::FolderKind>,
+    by_pattern: bool,
+    patterns: &'a [String],
+}
+
+impl<'a> Narrowing<'a> {
+    pub(crate) fn of(root: &Path, filter: &'a SourceFilter) -> Self {
+        let kind = if filter.narrow_non_saves {
+            junkdirs::folder_kind(root)
+        } else {
+            None
+        };
+        // An install keeps what the catalogue says it saves inside it, or
+        // failing that everything but the game's own payload; an installer and
+        // a prefix keep everything but theirs.
+        let by_pattern = matches!(
+            kind,
+            Some(junkdirs::FolderKind::Install | junkdirs::FolderKind::Installer)
+        ) && !filter.install_saves.is_empty();
+        Self {
+            kind,
+            by_pattern,
+            patterns: &filter.install_saves,
+        }
+    }
+
+    /// Whether the file at `rel` (relative to the root, `/`-separated), `size`
+    /// bytes long, stays. What the catalogue names always does; otherwise
+    /// anything that is not the game's payload. Never the catalogue alone: its
+    /// `<base>` entry can be wrong for the game at hand (`the-thing`'s `bin/`
+    /// against a UE game whose saves were in `Saved/SaveGames`) or leave a
+    /// sibling out (Inscryption's `SaveFile-Backup.gwsave`).
+    pub(crate) fn keeps(&self, rel: &str, size: u64) -> bool {
+        match self.kind {
+            None => true,
+            Some(kind) => {
+                (self.by_pattern && crate::savefilter::matches_install_pattern(rel, self.patterns))
+                    || !junkdirs::is_payload(kind, rel, size)
+            }
+        }
+    }
+
+    /// Whether the folder at `rel` can be skipped without reading it. Only a
+    /// prefix's own system folders: `drive_c/windows` is thousands of files that
+    /// could only ever be left out.
+    fn prunes(&self, rel: &str) -> bool {
+        self.kind == Some(junkdirs::FolderKind::WinePrefix)
+            && junkdirs::is_payload(junkdirs::FolderKind::WinePrefix, &format!("{rel}/-"), 0)
+    }
+}
+
+/// Says once per folder and process that a tracked folder was narrowed, and how
+/// much it left out.
+fn note_narrowed(root: &Path, kind: junkdirs::FolderKind, by_pattern: bool, skipped: usize) {
+    static SEEN: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<PathBuf>>> =
+        std::sync::OnceLock::new();
+    let first = SEEN
+        .get_or_init(Default::default)
+        .lock()
+        .map(|mut seen| seen.insert(root.to_path_buf()))
+        .unwrap_or(true);
+    if first {
+        tracing::info!(
+            path = %root.display(),
+            kind = ?kind,
+            by_catalog_pattern = by_pattern,
+            skipped,
+            "backup: the tracked folder is not a save folder; only its saves are copied"
+        );
+    }
+}
+
+pub fn walk_source(root: &Path, filter: &SourceFilter) -> Result<Vec<UploadFile>> {
+    let shields: &[String] = &filter.shields;
     // A single-file save: the `local_path` IS the file. One `UploadFile` comes out
     // with its base name as the relative path, so the snapshot has exactly the
     // same shape as one from a folder with one file in it, and everything
@@ -677,6 +791,9 @@ pub fn walk_source(root: &Path, shields: &[String]) -> Result<Vec<UploadFile>> {
             modified: meta.modified().ok(),
         }]);
     }
+
+    let narrowing = Narrowing::of(root, filter);
+    let mut narrowed = 0usize;
 
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
@@ -709,6 +826,12 @@ pub fn walk_source(root: &Path, shields: &[String]) -> Result<Vec<UploadFile>> {
                 continue;
             };
             if ft.is_dir() {
+                if let Ok(rel) = path.strip_prefix(root) {
+                    if narrowing.prunes(&rel.to_string_lossy().replace('\\', "/")) {
+                        narrowed += 1;
+                        continue;
+                    }
+                }
                 stack.push(path);
             } else if ft.is_file() {
                 let rel = path
@@ -732,6 +855,10 @@ pub fn walk_source(root: &Path, shields: &[String]) -> Result<Vec<UploadFile>> {
                         continue;
                     }
                 };
+                if !narrowing.keeps(&rel, meta.len()) {
+                    narrowed += 1;
+                    continue;
+                }
                 out.push(UploadFile {
                     relative_path: rel,
                     absolute_path: path,
@@ -742,6 +869,9 @@ pub fn walk_source(root: &Path, shields: &[String]) -> Result<Vec<UploadFile>> {
                 note_skipped_link(&path);
             }
         }
+    }
+    if let (Some(k), true) = (narrowing.kind, narrowed > 0) {
+        note_narrowed(root, k, narrowing.by_pattern, narrowed);
     }
     out.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
     Ok(out)
@@ -800,7 +930,7 @@ where
         bail!("source must be a folder or a file: {}", source.display());
     }
 
-    let files = walk_source(&source, &crate::savefilter::shields_for_slug(game_slug))?;
+    let files = walk_source(&source, &SourceFilter::for_slug(game_slug))?;
     if files.is_empty() {
         return Err(EmptySource { path: source }.into());
     }
@@ -2054,7 +2184,7 @@ where
         }
         .into());
     }
-    let files = walk_source(&canonical, &crate::savefilter::shields_for_slug(game_slug))?;
+    let files = walk_source(&canonical, &SourceFilter::for_slug(game_slug))?;
     if files.is_empty() {
         return Err(EmptySource { path: canonical }.into());
     }
@@ -2227,6 +2357,87 @@ mod trim_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn rels(files: &[UploadFile]) -> Vec<String> {
+        files.iter().map(|f| f.relative_path.clone()).collect()
+    }
+
+    #[test]
+    fn an_install_keeps_only_its_saves() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        for (rel, body) in [
+            ("Galak-Z.x86_64", "x"),
+            ("Galak-Z_Data/Managed/Assembly-CSharp.dll", "x"),
+            (
+                "Galak-Z_Data/StreamingAssets/Bundles/RequiredPrefabs.unity3d",
+                "x",
+            ),
+            ("SaveData.dat", "progress"),
+            ("launcher.log", "x"),
+            ("profile.bank", "x"),
+        ] {
+            let p = root.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, body).unwrap();
+        }
+        // Everything but the game itself.
+        let without = SourceFilter {
+            narrow_non_saves: true,
+            ..SourceFilter::default()
+        };
+        assert_eq!(
+            rels(&walk_source(root, &without).unwrap()),
+            ["SaveData.dat", "launcher.log"]
+        );
+        // What the catalogue names goes up even when it looks like the game.
+        let with_pattern = SourceFilter {
+            install_saves: vec!["profile.bank".into()],
+            narrow_non_saves: true,
+            ..SourceFilter::default()
+        };
+        assert_eq!(
+            rels(&walk_source(root, &with_pattern).unwrap()),
+            ["SaveData.dat", "launcher.log", "profile.bank"]
+        );
+        // Indexing walks leave the folder whole.
+        assert_eq!(
+            walk_source(root, &SourceFilter::default()).unwrap().len(),
+            6
+        );
+    }
+
+    #[test]
+    fn a_wine_prefix_keeps_the_users_data_not_windows() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        for rel in [
+            "system.reg",
+            "drive_c/windows/system32/d3d9.dll",
+            "drive_c/windows/win.ini",
+            "drive_c/users/steamuser/Saved Games/Hell Is Us/slot0.sav",
+        ] {
+            let p = root.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, "x").unwrap();
+        }
+        std::fs::create_dir_all(root.join("dosdevices")).unwrap();
+        let files = walk_source(
+            root,
+            &SourceFilter {
+                narrow_non_saves: true,
+                ..SourceFilter::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            rels(&files),
+            [
+                "drive_c/users/steamuser/Saved Games/Hell Is Us/slot0.sav",
+                "system.reg"
+            ]
+        );
+    }
 
     fn uf(rel: &str, size: u64, mtime_secs: u64) -> UploadFile {
         UploadFile {
@@ -2491,7 +2702,7 @@ mod tests {
         std::fs::write(&bad, b"placeholder").unwrap();
         std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o000)).unwrap();
 
-        let files = walk_source(root, &[]).unwrap();
+        let files = walk_source(root, &SourceFilter::default()).unwrap();
         assert_eq!(files.len(), 2, "the walk does see the file: it can stat it");
         let sig = compute_content_signature(&files).await;
         // And it is stable while it stays unreadable: if it were not, every pass
@@ -2500,7 +2711,7 @@ mod tests {
 
         // The readable one's bytes do count.
         std::fs::write(root.join("good.sav"), b"moved on").unwrap();
-        let moved = walk_source(root, &[]).unwrap();
+        let moved = walk_source(root, &SourceFilter::default()).unwrap();
         assert_ne!(sig, compute_content_signature(&moved).await);
 
         std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o644)).unwrap();
@@ -2518,9 +2729,11 @@ mod tests {
         let root = tmp.path();
         let f = root.join("a.sav");
         std::fs::write(&f, b"").unwrap();
-        let as_empty = compute_content_signature(&walk_source(root, &[]).unwrap()).await;
+        let as_empty =
+            compute_content_signature(&walk_source(root, &SourceFilter::default()).unwrap()).await;
         std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o000)).unwrap();
-        let as_unreadable = compute_content_signature(&walk_source(root, &[]).unwrap()).await;
+        let as_unreadable =
+            compute_content_signature(&walk_source(root, &SourceFilter::default()).unwrap()).await;
         std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).unwrap();
         assert_ne!(as_empty, as_unreadable);
     }
@@ -2540,7 +2753,8 @@ mod tests {
         std::fs::write(&bad, b"two").unwrap();
         std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o000)).unwrap();
 
-        let (ok, skipped) = split_unreadable(walk_source(root, &[]).unwrap()).await;
+        let (ok, skipped) =
+            split_unreadable(walk_source(root, &SourceFilter::default()).unwrap()).await;
         std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o644)).unwrap();
 
         assert_eq!(
@@ -2574,7 +2788,8 @@ mod tests {
         std::fs::write(locked.join("inner.dat"), b"x").unwrap();
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
 
-        let files = walk_source(root, &[]).expect("un subdir ilegible no debe abortar el walk");
+        let files = walk_source(root, &SourceFilter::default())
+            .expect("un subdir ilegible no debe abortar el walk");
         // Restore the permissions so the tempdir can be cleaned up.
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
 
@@ -2593,7 +2808,7 @@ mod tests {
     #[test]
     fn an_unreadable_root_is_still_an_error() {
         let missing = std::path::Path::new("/definitely/not/here/hoard-test");
-        assert!(walk_source(missing, &[]).is_err());
+        assert!(walk_source(missing, &SourceFilter::default()).is_err());
     }
 
     /// A single-file save: 4,900 games in the catalogue have only templates
@@ -2694,7 +2909,7 @@ mod tests {
         std::fs::create_dir_all(&analytics).unwrap();
         std::fs::write(analytics.join("values"), "telemetry").unwrap();
 
-        let files = walk_source(root, &[]).unwrap();
+        let files = walk_source(root, &SourceFilter::default()).unwrap();
         let names: Vec<&str> = files.iter().map(|f| f.relative_path.as_str()).collect();
         assert_eq!(names, vec!["savedGames.gd", "savedGames2.gd"], "{names:?}");
     }
@@ -2708,7 +2923,7 @@ mod tests {
         std::fs::write(root.join("slot1.sav"), "partida").unwrap();
         std::fs::write(root.join("graphics.ini"), "res=1920x1080").unwrap();
 
-        let files = walk_source(root, &[]).unwrap();
+        let files = walk_source(root, &SourceFilter::default()).unwrap();
         let names: Vec<&str> = files.iter().map(|f| f.relative_path.as_str()).collect();
         assert_eq!(names, vec!["graphics.ini", "slot1.sav"], "{names:?}");
     }
@@ -2721,17 +2936,17 @@ mod tests {
         let root = dir.path();
         std::fs::write(root.join("slot1.sav"), "partida").unwrap();
         std::fs::write(root.join("Player.log"), "arranque 1").unwrap();
-        let before = compute_set_signature(&walk_source(root, &[]).unwrap());
+        let before = compute_set_signature(&walk_source(root, &SourceFilter::default()).unwrap());
 
         std::fs::write(root.join("Player.log"), "launch 2, longer").unwrap();
-        let after = compute_set_signature(&walk_source(root, &[]).unwrap());
+        let after = compute_set_signature(&walk_source(root, &SourceFilter::default()).unwrap());
         assert_eq!(before, after, "the log must not move the signature");
 
         // And the save does move it, which is what has to keep happening.
         std::fs::write(root.join("slot1.sav"), "partida avanzada").unwrap();
         assert_ne!(
             before,
-            compute_set_signature(&walk_source(root, &[]).unwrap())
+            compute_set_signature(&walk_source(root, &SourceFilter::default()).unwrap())
         );
     }
 
@@ -2743,8 +2958,11 @@ mod tests {
         let root = dir.path();
         std::fs::write(root.join("player.log"), "this one really is the save").unwrap();
 
-        assert!(walk_source(root, &[]).unwrap().is_empty());
-        let shielded = walk_source(root, &["*.log".to_string()]).unwrap();
+        assert!(walk_source(root, &SourceFilter::default())
+            .unwrap()
+            .is_empty());
+        let shielded =
+            walk_source(root, &SourceFilter::shields_only(&["*.log".to_string()])).unwrap();
         assert_eq!(shielded.len(), 1);
     }
 
@@ -2764,7 +2982,7 @@ mod tests {
             std::fs::write(dir.join("metadata.9.json"), b"{}").unwrap();
         }
 
-        let files = walk_source(&game, &[]).unwrap();
+        let files = walk_source(&game, &SourceFilter::default()).unwrap();
         let paths: Vec<&str> = files.iter().map(|f| f.relative_path.as_str()).collect();
         assert_eq!(
             paths,
@@ -2786,7 +3004,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("settings.ini");
         std::fs::write(&file, "en realidad es la partida").unwrap();
-        let files = walk_source(&file, &[]).unwrap();
+        let files = walk_source(&file, &SourceFilter::default()).unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].relative_path, "settings.ini");
     }
@@ -2797,7 +3015,7 @@ mod tests {
         let file = tmp.path().join("ssr_save.bin");
         std::fs::write(&file, b"0123456789").unwrap();
 
-        let files = walk_source(&file, &[]).unwrap();
+        let files = walk_source(&file, &SourceFilter::default()).unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].relative_path, "ssr_save.bin");
         assert_eq!(files[0].absolute_path, file);
@@ -2812,11 +3030,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let file = tmp.path().join("save.dat");
         std::fs::write(&file, b"a").unwrap();
-        let before = compute_set_signature(&walk_source(&file, &[]).unwrap());
+        let before = compute_set_signature(&walk_source(&file, &SourceFilter::default()).unwrap());
         // A different size moves the signature even when the mtime has little
         // resolution on this filesystem.
         std::fs::write(&file, b"bbbb").unwrap();
-        let after = compute_set_signature(&walk_source(&file, &[]).unwrap());
+        let after = compute_set_signature(&walk_source(&file, &SourceFilter::default()).unwrap());
         assert_ne!(before, after);
     }
 }

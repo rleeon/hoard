@@ -330,7 +330,7 @@ fn shielded(lower: &str, shields: &[String]) -> bool {
 ///
 /// Written here rather than reused from `pathexpand` because the kernel does not
 /// depend on `hoard-agent` (ADR 0021's hard rule: the kernel imports no shells).
-fn glob_match(pattern: &str, name: &str) -> bool {
+pub fn glob_match(pattern: &str, name: &str) -> bool {
     let p: Vec<char> = pattern.chars().collect();
     let n: Vec<char> = name.chars().collect();
     let (mut pi, mut ni) = (0usize, 0usize);
