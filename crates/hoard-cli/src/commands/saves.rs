@@ -2,8 +2,7 @@ use anyhow::Result;
 use clap::Subcommand;
 use serde::Serialize;
 
-use hoard_agent::api::ApiClient;
-use hoard_agent::config::CliConfig;
+use hoard_agent::api::{ApiError, CloudManifestEntry};
 use hoard_agent::library;
 use hoard_agent::state::CliState;
 
@@ -31,6 +30,10 @@ pub struct SaveInfo {
     pub latest_version_num: Option<i64>,
     pub snapshot_count: Option<i64>,
     pub total_size_bytes: Option<i64>,
+    /// Cloud's manifest carries the newest version's size, not the sum over all
+    /// versions that `total_size_bytes` means on self-hosted, so `save list` on
+    /// Cloud fills this one instead.
+    pub latest_size_bytes: Option<i64>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -165,30 +168,52 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
         _ => {}
     }
 
-    let (cfg, _) = CliConfig::load_default()?;
-    let token = output::require_token(&cfg)?;
-    let client = ApiClient::new(cfg.server.url.clone(), token)?;
+    // Cloud has no `/v1/saves`: its saves live under `/v1/cloud/*`, and a
+    // self-hosted token in `config.toml` is not the only session there is.
+    let active = link::resolve_session().await?;
+    let is_cloud = active.is_cloud;
+    let client = active.client;
 
     match cmd {
         SaveCommand::Create { game, label } => {
+            if is_cloud {
+                return Err(output::err(
+                    "unsupported",
+                    "Hoard Cloud creates a save with its first backup: track the folder \
+                     with `hoard track` instead",
+                ));
+            }
             let s = client.create_save(&game, &label).await?;
             println!("created save {} ({}/{})", s.id, s.game_slug, s.label);
         }
         SaveCommand::List { game } => {
-            let saves = client.list_saves(game.as_deref()).await?;
-            let rows: Vec<SaveInfo> = saves
-                .into_iter()
-                .map(|s| SaveInfo {
-                    save_id: s.id.to_string(),
-                    game_slug: s.game_slug.to_string(),
-                    label: s.label,
-                    latest_version_num: s.latest_version_num,
-                    snapshot_count: None,
-                    total_size_bytes: s.total_size_bytes,
-                    created_at: None,
-                    updated_at: None,
-                })
-                .collect();
+            let rows: Vec<SaveInfo> = if is_cloud {
+                client
+                    .cloud_sync()
+                    .await?
+                    .saves
+                    .into_iter()
+                    .filter(|s| game.as_deref().is_none_or(|g| s.game_slug == g))
+                    .map(cloud_row)
+                    .collect()
+            } else {
+                client
+                    .list_saves(game.as_deref())
+                    .await?
+                    .into_iter()
+                    .map(|s| SaveInfo {
+                        save_id: s.id.to_string(),
+                        game_slug: s.game_slug.to_string(),
+                        label: s.label,
+                        latest_version_num: s.latest_version_num,
+                        snapshot_count: None,
+                        total_size_bytes: s.total_size_bytes,
+                        latest_size_bytes: None,
+                        created_at: None,
+                        updated_at: None,
+                    })
+                    .collect()
+            };
             output::emit(&rows, |rows| {
                 if rows.is_empty() {
                     println!("(no saves)");
@@ -205,22 +230,44 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
                         s.game_slug,
                         s.label,
                         s.latest_version_num.unwrap_or(0),
-                        fmt_size(s.total_size_bytes.unwrap_or(0))
+                        fmt_size(s.total_size_bytes.or(s.latest_size_bytes).unwrap_or(0))
                     );
                 }
             })?;
         }
         SaveCommand::Show { id } => {
-            let s = client.get_save(&id).await?;
-            let info = SaveInfo {
-                save_id: s.id.to_string(),
-                game_slug: s.game_slug.to_string(),
-                label: s.label,
-                latest_version_num: s.latest_version_num,
-                snapshot_count: s.snapshot_count,
-                total_size_bytes: s.total_size_bytes,
-                created_at: Some(s.created_at.to_string()),
-                updated_at: Some(s.updated_at.to_string()),
+            let info = if is_cloud {
+                // The manifest leaves out backup-only and archived saves, so
+                // those read as not found here.
+                let entry = client
+                    .cloud_sync()
+                    .await?
+                    .saves
+                    .into_iter()
+                    .find(|s| s.save_id == id)
+                    .ok_or_else(|| {
+                        anyhow::Error::new(ApiError::NotFound)
+                            .context(format!("no save {id} on Hoard Cloud"))
+                    })?;
+                let versions = client.cloud_list_versions(&id, false).await?;
+                SaveInfo {
+                    snapshot_count: Some(versions.len() as i64),
+                    total_size_bytes: Some(versions.iter().map(|v| v.total_size_bytes).sum()),
+                    ..cloud_row(entry)
+                }
+            } else {
+                let s = client.get_save(&id).await?;
+                SaveInfo {
+                    save_id: s.id.to_string(),
+                    game_slug: s.game_slug.to_string(),
+                    label: s.label,
+                    latest_version_num: s.latest_version_num,
+                    snapshot_count: s.snapshot_count,
+                    total_size_bytes: s.total_size_bytes,
+                    latest_size_bytes: None,
+                    created_at: Some(s.created_at.to_string()),
+                    updated_at: Some(s.updated_at.to_string()),
+                }
             };
             output::emit(&info, |s| {
                 println!("id:        {}", s.save_id);
@@ -267,6 +314,20 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
         | SaveCommand::Path { .. } => unreachable!("handled before the client is built"),
     }
     Ok(())
+}
+
+fn cloud_row(s: CloudManifestEntry) -> SaveInfo {
+    SaveInfo {
+        save_id: s.save_id,
+        game_slug: s.game_slug,
+        label: s.label,
+        latest_version_num: Some(s.latest_version_num),
+        snapshot_count: None,
+        total_size_bytes: None,
+        latest_size_bytes: Some(s.latest_size_bytes),
+        created_at: None,
+        updated_at: (!s.updated_at.is_empty()).then_some(s.updated_at),
+    }
 }
 
 fn fmt_size(b: i64) -> String {

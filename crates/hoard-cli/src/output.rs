@@ -145,6 +145,11 @@ pub fn classify(e: &anyhow::Error) -> Classified {
         };
         return plain(c.code, exit);
     }
+    // What `link::resolve_session` raises with neither a Cloud session nor a
+    // self-hosted one.
+    if e.downcast_ref::<hoard_agent::session::NoSession>().is_some() {
+        return plain("no_session", 2);
+    }
 
     match e.downcast_ref::<ApiError>() {
         Some(ApiError::Unauthorized) => plain("unauthorized", 2),
@@ -225,6 +230,17 @@ mod tests {
         // Without this an agent retries a wait it can't see, which is the loop
         // the server's brake exists to stop.
         assert_eq!(c.retry_after_seconds, Some(3600));
+    }
+
+    #[test]
+    fn no_session_from_the_resolver_is_still_no_session() {
+        use anyhow::Context;
+        let e = Err::<(), _>(anyhow::Error::new(hoard_agent::session::NoSession))
+            .context("resolving the session")
+            .unwrap_err();
+        let c = classify(&e);
+        assert_eq!(c.code, "no_session");
+        assert_eq!(c.exit, 2);
     }
 
     #[test]
