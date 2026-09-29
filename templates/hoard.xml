@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Hoard</Name>
-  <Repository>ghcr.io/rleeon/hoard:latest</Repository>
+  <Repository>rleeon/hoard:latest</Repository>
   <Registry>https://hoard.services</Registry>
   <Network>bridge</Network>
   <MyIP/>
