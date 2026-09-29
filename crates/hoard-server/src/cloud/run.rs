@@ -4,8 +4,8 @@
 use crate::cloud::{
     abandoned, account_purge, archive,
     auth::{require_active_account, require_cloud_auth, JwksCache},
-    auth_mirror, bandwidth, compress, db, device_prune, discord, export, incidents, maintenance,
-    memwatch, notify, polar, pollguard, r2,
+    auth_mirror, bandwidth, compress, db, device_prune, discord, export, incidents, integrity,
+    maintenance, memwatch, notify, polar, pollguard, r2, reconcile,
     routes::{
         admin as admin_routes, blob_proxy, checkout, device as device_routes,
         entitlements as ent_routes, events as event_routes, logs as log_routes, me,
@@ -464,6 +464,12 @@ fn spawn_background_tasks(state: &CloudState) {
     // Picks up after uploads that started and never committed: their manifest
     // rows, and the blobs they left in the bucket with nothing referencing them.
     abandoned::spawn(state.clone());
+    // Read-only audit of blob refcounts and quota against the manifest. Never
+    // repairs: it raises an incident and names the accounts.
+    integrity::spawn(state.clone());
+    // Bucket against `cloud_blobs`: counts objects nothing owns and live rows
+    // whose object is gone. Deletes only with `cloud.reconcile_delete`.
+    reconcile::spawn(state.clone());
 
     // Fulfils `export_jobs` rows: builds the ZIP, uploads to R2, emails the
     // link, and expires old exports.

@@ -389,6 +389,11 @@ pub struct CloudConfig {
     /// happen on different days. The count is kept truthful either way.
     #[serde(default)]
     pub devices_enforce: bool,
+    /// Let the daily bucket reconciliation delete what it finds: objects with
+    /// no row, older than two days, that no pending upload names. Off by
+    /// default, in which case it only counts. `HOARD__CLOUD__RECONCILE_DELETE`.
+    #[serde(default)]
+    pub reconcile_delete: bool,
     /// At-rest zstd compression of content-addressed blobs (cost saver:
     /// R2 bills physical bytes, quota keeps charging raw bytes). Off by
     /// default; enable in dev first. Fields from `HOARD__CLOUD__COMPRESSION__*`.

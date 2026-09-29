@@ -107,6 +107,40 @@ impl R2Store {
             .collect())
     }
 
+    /// Every account that has a blob prefix in the bucket, whether or not the
+    /// database still knows it.
+    pub async fn blob_owners(&self) -> Result<Vec<uuid::Uuid>> {
+        Ok(self
+            .inner
+            .list_prefixes("blobs/")
+            .await?
+            .iter()
+            .filter_map(|p| {
+                p.trim_start_matches("blobs/")
+                    .trim_end_matches('/')
+                    .parse()
+                    .ok()
+            })
+            .collect())
+    }
+
+    /// This user's blobs as `(sha, size, last_modified_unix)`. Same key filter
+    /// as [`Self::blob_sizes`], so compression staging (`<key>.ztmp`) never
+    /// shows up as a blob.
+    pub async fn blobs_with_age(&self, user_id: uuid::Uuid) -> Result<Vec<(String, i64, i64)>> {
+        let listed = self
+            .inner
+            .list_with_age(&format!("blobs/{user_id}/"))
+            .await?;
+        Ok(listed
+            .into_iter()
+            .filter_map(|(k, size, at)| {
+                let sha = k.rsplit('/').next()?;
+                is_valid_sha256(sha).then(|| (sha.to_string(), size, at))
+            })
+            .collect())
+    }
+
     pub async fn presign_put(&self, key: &str, ttl: Option<Duration>) -> Result<PresignedUrl> {
         let cfg = PresigningConfig::expires_in(ttl.unwrap_or(self.default_presign_ttl))?;
         let req = self

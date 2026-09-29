@@ -2,6 +2,7 @@
 
 use crate::cloud::auth::CloudUser;
 use crate::cloud::bandwidth;
+use crate::cloud::blob_refs;
 use crate::cloud::errors::CloudError;
 use crate::cloud::loopguard;
 use crate::cloud::plans::Plan;
@@ -17,7 +18,7 @@ use axum::{
 use futures::{StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use uuid::Uuid;
 
 /// Body for `POST /v1/cloud/saves`. The client states *intent*: how big the
@@ -417,15 +418,7 @@ pub async fn commit_upload(
         if real > limits.max_save_size_bytes {
             // No game_slug on this path, same as the quota reject below: the
             // commit body carries the save id only.
-            log_sync_block(
-                &state,
-                user.user_id,
-                "save_too_large",
-                &save_id,
-                None,
-                real,
-            )
-            .await;
+            log_sync_block(&state, user.user_id, "save_too_large", &save_id, None, real).await;
             return Ok(SaveTooLargeResponse {
                 error: "save exceeds per-save size limit",
                 code: "save_too_large",
@@ -999,6 +992,75 @@ fn charge_for_blob(
     Ok((declared, Some(stored)))
 }
 
+/// Which of the blobs a commit reuses (`existing` when it was checked, before
+/// the transaction) are no longer safe to reference. Locks their rows for the
+/// rest of the caller's transaction, so from here the GC can't touch them.
+///
+/// Two ways to lose one, both from the GC running between the check and now:
+/// the row is gone (the GC deletes the object first, so the bytes are gone
+/// too), or the row is at 0 and its object isn't in the bucket. A row at 0 is
+/// what a delete leaves for a day, and re-adding the same game revives it
+/// without uploading a byte; the listing taken for this commit says whether
+/// the bytes are still there, and only what it misses costs a HEAD.
+async fn reused_blobs_gone(
+    tx: &mut sqlx::PgConnection,
+    state: &CloudState,
+    user_id: Uuid,
+    unique: &BTreeMap<String, i64>,
+    existing: &std::collections::HashSet<String>,
+    landed: &HashMap<String, i64>,
+) -> Result<Vec<String>, CloudError> {
+    let reused: Vec<String> = unique
+        .keys()
+        .filter(|sha| existing.contains(*sha))
+        .cloned()
+        .collect();
+    if reused.is_empty() {
+        return Ok(Vec::new());
+    }
+    let held: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT encode(sha256, 'hex'), refcount FROM cloud_blobs
+          WHERE user_id = $1
+            AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))
+          ORDER BY sha256
+            FOR UPDATE",
+    )
+    .bind(user_id)
+    .bind(&reused)
+    .fetch_all(&mut *tx)
+    .await?;
+    let held: HashMap<String, i64> = held.into_iter().collect();
+
+    let mut gone = Vec::new();
+    let mut ask = Vec::new();
+    for sha in reused {
+        match held.get(&sha) {
+            None => gone.push(sha),
+            Some(0) if !landed.contains_key(&sha) => ask.push(sha),
+            Some(_) => {}
+        }
+    }
+    let asked: Vec<(String, Option<i64>)> = futures::stream::iter(ask.into_iter().map(|sha| {
+        let r2 = state.r2.clone();
+        async move {
+            let size = r2.head(&r2::key_for_blob(user_id, &sha)).await?;
+            Ok::<_, anyhow::Error>((sha, size))
+        }
+    }))
+    .buffer_unordered(BLOB_CONCURRENCY)
+    .try_collect()
+    .await
+    .map_err(CloudError::Internal)?;
+    gone.extend(
+        asked
+            .into_iter()
+            .filter(|(_, size)| size.is_none())
+            .map(|(sha, _)| sha),
+    );
+    gone.sort();
+    Ok(gone)
+}
+
 /// Optional body for `cas_commit`.
 ///
 /// The client decides what to compress only *after* init tells it which blobs
@@ -1240,6 +1302,31 @@ pub async fn cas_commit(
             committed: true,
         })
         .into_response());
+    }
+
+    // The blobs this version reuses instead of uploading were checked before
+    // the transaction, and the GC may have come for them since. Lock them first,
+    // in the same sha order as the upsert, and see what is really there.
+    let gone =
+        reused_blobs_gone(&mut tx, &state, user.user_id, &unique, &existing, &landed).await?;
+    if !gone.is_empty() {
+        tx.rollback().await.ok();
+        // A row at 0 whose object is gone would tell the retry's init "already
+        // have it" forever. Without it, the retry uploads the bytes.
+        let _ = sqlx::query(
+            "DELETE FROM cloud_blobs
+              WHERE user_id = $1 AND refcount = 0
+                AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))",
+        )
+        .bind(user.user_id)
+        .bind(&gone)
+        .execute(&state.pool)
+        .await;
+        tracing::warn!(save_id = %save_id, version, blobs = gone.len(), "cas_commit: reused blobs were collected meanwhile");
+        return Err(CloudError::BadRequest(format!(
+            "blob {} was not uploaded",
+            gone[0]
+        )));
     }
 
     // Bump refcounts: +1 per distinct blob this version references. New blobs
@@ -1873,168 +1960,207 @@ pub async fn list_versions(
     Ok(Json(out))
 }
 
+/// How long a blob released by a delete keeps its object before the GC takes
+/// it. The quota drops at once either way. The day is for the user who deletes
+/// a game and adds it straight back: the upload finds the rows still there,
+/// takes them back without sending a byte, and never races the GC.
+pub(crate) const RELEASE_GRACE_SECS: i64 = 24 * 60 * 60;
+
+/// Run a delete to its end even if the client hangs up. Hyper drops the
+/// handler when the connection closes, and a dropped transaction rolls back:
+/// the save would survive, and the client's retry would start from scratch
+/// and be cut the same way. The largest save in production names 24,791 blobs,
+/// and handing that many back holds the transaction for about a minute, because
+/// the storage trigger updates `profiles` once per row. Spawned, it commits
+/// whether anyone is still waiting or not.
+async fn detached<F>(work: F) -> Result<Response, CloudError>
+where
+    F: std::future::Future<Output = Result<Response, CloudError>> + Send + 'static,
+{
+    tokio::spawn(work)
+        .await
+        .map_err(|e| CloudError::Internal(anyhow::anyhow!("delete task: {e}")))?
+}
+
 /// `DELETE /v1/cloud/saves/:save_id/versions/:version`: drop a single
-/// committed version. We delete the R2 blob (best-effort) then the row (the
-/// storage_bytes trigger credits the freed space). If the deleted version was
-/// the save's head, `latest_version_num` is repointed at the highest
-/// remaining committed version; if none remain the whole save row goes so it
-/// stops showing up empty in the manifest.
+/// committed version. If it was the save's head, `latest_version_num` is
+/// repointed at the highest remaining committed version; if none remain the
+/// whole save row goes so it stops showing up empty in the manifest.
+///
+/// Everything happens in one transaction: the version goes, its blob
+/// references go with it (see [`blob_refs`]) and the quota drops on commit.
+/// The bucket is left to the GC.
 pub async fn delete_version(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
     Path((save_id, version)): Path<(String, i64)>,
 ) -> Result<Response, CloudError> {
-    let owner: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
-        .bind(&save_id)
-        .fetch_optional(&state.pool)
-        .await?;
-    let Some(owner) = owner else {
+    detached(delete_version_now(state, user, save_id, version)).await
+}
+
+async fn delete_version_now(
+    state: CloudState,
+    user: CloudUser,
+    save_id: String,
+    version: i64,
+) -> Result<Response, CloudError> {
+    let mut tx = state.pool.begin().await?;
+    // Locking the save row serialises this with another delete of the same
+    // save, so two of them can't both release the same references.
+    let save: Option<(Uuid, Option<time::OffsetDateTime>)> =
+        sqlx::query_as("SELECT user_id, archived_at FROM saves WHERE id = $1 FOR UPDATE")
+            .bind(&save_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some((owner, archived_at)) = save else {
         return Err(CloudError::NotFound("save not found"));
     };
     if owner != user.user_id {
         return Err(CloudError::Forbidden("save belongs to a different user"));
     }
 
-    let row: Option<(String, bool)> = sqlx::query_as(
-        "SELECT r2_key, content_addressed FROM save_versions WHERE save_id = $1 AND version_num = $2",
+    let row: Option<(String, bool, bool)> = sqlx::query_as(
+        "SELECT r2_key, content_addressed, sha256 <> '' FROM save_versions
+          WHERE save_id = $1 AND version_num = $2",
     )
     .bind(&save_id)
     .bind(version)
-    .fetch_optional(&state.pool)
+    .fetch_optional(&mut *tx)
     .await?;
-    let Some((r2_key, content_addressed)) = row else {
+    let Some((r2_key, content_addressed, committed)) = row else {
         return Err(CloudError::NotFound("version not found"));
     };
 
-    if content_addressed {
-        // Gather this version's distinct blobs before the manifest cascades
-        // away, then drop the version row (its `version_files` references
-        // cascade with it) and
-        // release one reference per blob.
-        // The manifest serves the sha as bytea and `release_blobs` wants hex.
-        let shas: Vec<(String,)> = sqlx::query_as(
-            "SELECT DISTINCT encode(sha256, 'hex') FROM manifest_files
-              WHERE save_id = $1 AND version_num = $2",
-        )
+    // Only a committed version took references, and an archived save already
+    // handed its back.
+    let refs = if content_addressed && committed && archived_at.is_none() {
+        blob_refs::committed_refs(&mut tx, &save_id, Some(version)).await?
+    } else {
+        Vec::new()
+    };
+    sqlx::query("DELETE FROM save_versions WHERE save_id = $1 AND version_num = $2")
         .bind(&save_id)
         .bind(version)
-        .fetch_all(&state.pool)
+        .execute(&mut *tx)
         .await?;
+    blob_refs::release(&mut tx, user.user_id, &refs, RELEASE_GRACE_SECS).await?;
 
-        sqlx::query("DELETE FROM save_versions WHERE save_id = $1 AND version_num = $2")
-            .bind(&save_id)
-            .bind(version)
-            .execute(&state.pool)
-            .await?;
-
-        release_blobs(&state, user.user_id, shas.into_iter().map(|(s,)| (s, 1))).await;
-    } else {
-        if let Err(e) = state.r2.delete_object(&r2_key).await {
-            tracing::warn!(error = %e, r2_key = %r2_key, "cloud delete version: R2 object delete failed");
-        }
-        sqlx::query("DELETE FROM save_versions WHERE save_id = $1 AND version_num = $2")
-            .bind(&save_id)
-            .bind(version)
-            .execute(&state.pool)
-            .await?;
-    }
-
-    // Repoint head / drop the save if it's now empty.
-    let new_head: Option<(i64,)> = sqlx::query_as(
+    // Repoint head / drop the save if it's now empty. `MAX` over no rows is one
+    // NULL row, not zero rows: decoded as a bare `i64` it failed, and deleting
+    // a save's last version answered 500 after the version was already gone.
+    let new_head: Option<i64> = sqlx::query_scalar(
         "SELECT MAX(version_num) FROM save_versions WHERE save_id = $1 AND sha256 <> ''",
     )
     .bind(&save_id)
-    .fetch_optional(&state.pool)
+    .fetch_one(&mut *tx)
     .await?;
-    match new_head.and_then(|(v,)| (v > 0).then_some(v)) {
+    match new_head.filter(|v| *v > 0) {
         Some(head) => {
             sqlx::query(
                 "UPDATE saves SET latest_version_num = $1, updated_at = now() WHERE id = $2",
             )
             .bind(head)
             .bind(&save_id)
-            .execute(&state.pool)
+            .execute(&mut *tx)
             .await?;
         }
         None => {
+            // Only pending versions can be left, and they hold no references.
             sqlx::query("DELETE FROM saves WHERE id = $1 AND user_id = $2")
                 .bind(&save_id)
                 .bind(user.user_id)
-                .execute(&state.pool)
+                .execute(&mut *tx)
                 .await?;
+        }
+    }
+    tx.commit().await?;
+
+    if !content_addressed && !r2_key.is_empty() {
+        if let Err(e) = state.r2.delete_object(&r2_key).await {
+            tracing::warn!(error = %e, r2_key = %r2_key, "cloud delete version: R2 object delete failed");
         }
     }
 
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-/// `DELETE /v1/cloud/saves/:save_id`: wipe a cloud save and every version
-/// it holds so the user can reclaim storage. We drop the R2 blobs first
-/// (best-effort) then cascade-delete the DB rows; the storage_bytes trigger
-/// credits the freed space back as each `save_versions` row goes.
+/// `DELETE /v1/cloud/saves/:save_id`: wipe a cloud save and every version it
+/// holds so the user can reclaim storage.
+///
+/// One transaction: the save's committed versions hand back their blob
+/// references, the rows cascade away, and the quota drops on commit. Before,
+/// the references were released after the save was already gone, one blob per
+/// round trip, tied to the request. A save of 8,900 files took minutes, the
+/// client gave up at 60 s, and whatever was left stayed charged with nothing to
+/// delete it from: ten Free accounts, up to 976 MB each, found 2026-09-27.
 pub async fn delete_save(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
     Path(save_id): Path<String>,
 ) -> Result<Response, CloudError> {
-    // Owner check: never trust a save_id from the request.
-    let owner: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
-        .bind(&save_id)
-        .fetch_optional(&state.pool)
-        .await?;
-    let Some(owner) = owner else {
+    detached(delete_save_now(state, user, save_id)).await
+}
+
+async fn delete_save_now(
+    state: CloudState,
+    user: CloudUser,
+    save_id: String,
+) -> Result<Response, CloudError> {
+    let mut tx = state.pool.begin().await?;
+    let save: Option<(Uuid, Option<time::OffsetDateTime>)> =
+        sqlx::query_as("SELECT user_id, archived_at FROM saves WHERE id = $1 FOR UPDATE")
+            .bind(&save_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some((owner, archived_at)) = save else {
         return Err(CloudError::NotFound("save not found"));
     };
     if owner != user.user_id {
         return Err(CloudError::Forbidden("save belongs to a different user"));
     }
 
-    // Legacy archive versions: one opaque R2 object each. Purge before the
-    // rows (and their keys) cascade away.
+    // Legacy archive versions: one opaque R2 object each, dropped after the
+    // commit so a rollback can't leave rows pointing at deleted bytes.
     let keys: Vec<(String,)> = sqlx::query_as(
         "SELECT r2_key FROM save_versions
             WHERE save_id = $1 AND content_addressed = FALSE AND r2_key <> ''",
     )
     .bind(&save_id)
-    .fetch_all(&state.pool)
+    .fetch_all(&mut *tx)
     .await?;
-    for (key,) in &keys {
-        if let Err(e) = state.r2.delete_object(key).await {
-            // A leaked blob is recoverable by a later sweep; a 500 here would
-            // strand the row pointing at a key we already tried to drop.
-            tracing::warn!(error = %e, r2_key = %key, "cloud delete: R2 object delete failed");
-        }
-    }
 
-    // Content-addressed versions: release one reference per distinct version of
-    // this save that pointed at each blob. Read the counts before the manifest
-    // cascades away with the save.
-    let blob_refs: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT encode(sha256, 'hex'), COUNT(DISTINCT version_num) FROM manifest_files
-            WHERE save_id = $1 GROUP BY sha256",
-    )
-    .bind(&save_id)
-    .fetch_all(&state.pool)
-    .await?;
+    // An archived save handed its references back when it was archived; taking
+    // them again would take other saves' references to shared files.
+    let refs = if archived_at.is_none() {
+        blob_refs::committed_refs(&mut tx, &save_id, None).await?
+    } else {
+        Vec::new()
+    };
 
     // Cascade: deleting the save removes its save_versions, and with them the
     // `version_files` references and the save's `file_entries` catalogue (FK ON
     // DELETE CASCADE). The two roads meet at `version_files`, and which one
     // Postgres runs first is an accident of trigger OIDs; the reference FK is
     // deferred to commit so it doesn't matter (0058). Every save delete in
-    // production failed until it was. The save_versions storage trigger skips
-    // content-addressed rows; blob storage is credited as refcounts hit 0 below.
+    // production failed until it was.
     sqlx::query("DELETE FROM saves WHERE id = $1 AND user_id = $2")
         .bind(&save_id)
         .bind(user.user_id)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await?;
+    blob_refs::release(&mut tx, user.user_id, &refs, RELEASE_GRACE_SECS).await?;
+    tx.commit().await?;
+
     // Per-save notices key on the save id and have no foreign key to ride, so
     // a game re-added under the same id would inherit warnings about a folder
     // that no longer exists.
     let _ = crate::cloud::notices::clear_scope(&state.pool, &save_id).await;
 
-    release_blobs(&state, user.user_id, blob_refs).await;
+    for (key,) in &keys {
+        if let Err(e) = state.r2.delete_object(key).await {
+            tracing::warn!(error = %e, r2_key = %key, "cloud delete: R2 object delete failed");
+        }
+    }
 
     Ok(StatusCode::NO_CONTENT.into_response())
 }
@@ -2409,88 +2535,6 @@ pub async fn abandoned_blobs_to_drop(
         .into_iter()
         .filter(|s| !referenced.contains(s))
         .collect())
-}
-
-/// Drop a blob's row once its object is gone. Split out so a test can run the
-/// real statement: `sha` is hex text and the column is bytea, and the missing
-/// `decode` here went unnoticed in production, deleting objects while their
-/// rows piled up.
-pub async fn delete_blob_row(
-    pool: &sqlx::PgPool,
-    user_id: Uuid,
-    sha: &str,
-) -> Result<u64, sqlx::Error> {
-    let res =
-        sqlx::query("DELETE FROM cloud_blobs WHERE user_id = $1 AND sha256 = decode($2, 'hex')")
-            .bind(user_id)
-            .bind(sha)
-            .execute(pool)
-            .await?;
-    Ok(res.rows_affected())
-}
-
-/// Leave a blob whose object would not delete on the queue `archive` drains, so
-/// tomorrow's pass retries instead of the row being dropped and the bytes
-/// stranded.
-pub async fn defer_blob_row(
-    pool: &sqlx::PgPool,
-    user_id: Uuid,
-    sha: &str,
-) -> Result<u64, sqlx::Error> {
-    let res = sqlx::query(
-        "UPDATE cloud_blobs SET purge_after = now() + interval '1 day'
-          WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
-    )
-    .bind(user_id)
-    .bind(sha)
-    .execute(pool)
-    .await?;
-    Ok(res.rows_affected())
-}
-
-/// Release `n` references from each blob, deleting the R2 object + row when a
-/// blob's refcount reaches zero (the cloud_blobs trigger credits the freed
-/// storage on the 0-transition). Best-effort: a failure here only leaks a blob,
-/// recoverable by a later sweep, so errors are logged not propagated.
-pub(crate) async fn release_blobs<I>(state: &CloudState, user_id: Uuid, blobs: I)
-where
-    I: IntoIterator<Item = (String, i64)>,
-{
-    for (sha, dec) in blobs {
-        let row: Result<Option<(i64,)>, _> = sqlx::query_as(
-            "UPDATE cloud_blobs SET refcount = GREATEST(0, refcount - $3)
-                WHERE user_id = $1 AND sha256 = decode($2, 'hex')
-             RETURNING refcount",
-        )
-        .bind(user_id)
-        .bind(&sha)
-        .bind(dec)
-        .fetch_optional(&state.pool)
-        .await;
-        match row {
-            Ok(Some((refcount,))) if refcount <= 0 => {
-                let key = r2::key_for_blob(user_id, &sha);
-                if let Err(e) = state.r2.delete_object(&key).await {
-                    // Dropping the row here would strand the object: nothing
-                    // else in the tree looks for bytes the database no longer
-                    // mentions. Defer instead, so tomorrow's archive pass
-                    // retries the delete.
-                    tracing::warn!(error = %e, r2_key = %key, "cloud blob GC: R2 delete failed, deferring the row for retry");
-                    if let Err(e) = defer_blob_row(&state.pool, user_id, &sha).await {
-                        tracing::warn!(error = %e, sha = %sha, "cloud blob GC: deferring failed");
-                    }
-                    continue;
-                }
-                if let Err(e) = delete_blob_row(&state.pool, user_id, &sha).await {
-                    tracing::warn!(error = %e, sha = %sha, "cloud blob GC: row delete failed");
-                }
-            }
-            Ok(_) => {}
-            Err(e) => {
-                tracing::warn!(error = %e, sha = %sha, "cloud blob GC: refcount decrement failed");
-            }
-        }
-    }
 }
 
 /// Record a rejected sync in `sync_log` so failed syncs land in the same

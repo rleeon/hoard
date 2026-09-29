@@ -612,7 +612,10 @@ mod tests {
 
         // And none of them grants anything: only subscription.* maps to a plan
         // status, so recording a checkout can never upgrade an account.
-        assert_eq!(status_for_event("checkout.updated", Some("succeeded")), None);
+        assert_eq!(
+            status_for_event("checkout.updated", Some("succeeded")),
+            None
+        );
         assert_eq!(status_for_event("checkout.created", Some("open")), None);
     }
 

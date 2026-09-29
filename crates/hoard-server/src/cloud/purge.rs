@@ -17,9 +17,9 @@
 //! reclaimable size is only the bytes of blobs nothing else references).
 
 use super::incidents::{self, Kind};
+use crate::cloud::blob_refs;
 use crate::cloud::errors::CloudError;
 use crate::cloud::plans::{resolved_storage_limit, Plan};
-use crate::cloud::routes::saves::release_blobs;
 use crate::cloud::state::CloudState;
 use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
@@ -441,39 +441,54 @@ pub async fn prune_version_caps(state: &CloudState, user_id: Uuid) -> Result<usi
     Ok(deleted)
 }
 
-/// Delete one content-addressed version (same path as the manual
-/// `delete_version` handler's CA branch), releasing its blob references. We
-/// never purge a head, so there's no head to repoint.
+/// Delete one content-addressed version and hand back its blob references,
+/// in one transaction (same path as the manual `delete_version`). We never
+/// purge a head, so there's no head to repoint.
 async fn purge_one(
     state: &CloudState,
     user_id: Uuid,
     save_id: &str,
     version: i64,
 ) -> Result<(), CloudError> {
-    let shas: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT encode(sha256, 'hex') FROM manifest_files
-          WHERE save_id = $1 AND version_num = $2",
+    let mut tx = state.pool.begin().await?;
+    let archived_at: Option<Option<time::OffsetDateTime>> =
+        sqlx::query_scalar("SELECT archived_at FROM saves WHERE id = $1 FOR UPDATE")
+            .bind(save_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some(archived_at) = archived_at else {
+        return Ok(());
+    };
+    let committed: Option<bool> = sqlx::query_scalar(
+        "SELECT sha256 <> '' FROM save_versions WHERE save_id = $1 AND version_num = $2",
     )
     .bind(save_id)
     .bind(version)
-    .fetch_all(&state.pool)
+    .fetch_optional(&mut *tx)
     .await?;
-
-    let res = sqlx::query("DELETE FROM save_versions WHERE save_id = $1 AND version_num = $2")
+    // Another purge or a manual delete got here first, and released what this
+    // version held. Releasing again would evict blobs a live version needs.
+    let Some(committed) = committed else {
+        return Ok(());
+    };
+    let refs = if committed && archived_at.is_none() {
+        blob_refs::committed_refs(&mut tx, save_id, Some(version)).await?
+    } else {
+        Vec::new()
+    };
+    sqlx::query("DELETE FROM save_versions WHERE save_id = $1 AND version_num = $2")
         .bind(save_id)
         .bind(version)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await?;
-
-    // Concurrency guard: if another purge/delete path already removed this
-    // version, our DELETE affects 0 rows and that other path already released
-    // these blob references. Releasing them again would double-decrement the
-    // refcount and could evict blobs a live version still points at. Bail.
-    if res.rows_affected() == 0 {
-        return Ok(());
-    }
-
-    release_blobs(state, user_id, shas.into_iter().map(|(s,)| (s, 1))).await;
+    blob_refs::release(
+        &mut tx,
+        user_id,
+        &refs,
+        crate::cloud::routes::saves::RELEASE_GRACE_SECS,
+    )
+    .await?;
+    tx.commit().await?;
     Ok(())
 }
 

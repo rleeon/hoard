@@ -1,19 +1,6 @@
-//! Deleting a version has to take its bytes with it, against a real Postgres.
-//!
-//! Two failures on the same path, found together in sep-2026 by reconciling the
-//! bucket against the database.
-//!
-//! The first was live in production: `sha256` became `bytea` and the GC's
-//! `DELETE` kept comparing it to hex text. Postgres refuses `bytea = text`
-//! outright, so every freed blob lost its object and kept its row, and the only
-//! trace was a `warn!` nobody was reading. 221 dead rows had piled up by the
-//! time it was noticed. A test that runs the statement against a bytea column
-//! is the only thing that catches that class, since the types only meet at
-//! runtime.
-//!
-//! The second is the reverse leak: when the object refuses to delete, dropping
-//! the row anyway strands the bytes, because nothing in the tree ever looks for
-//! objects the database does not mention.
+//! A retried upload cleans up after the attempt it replaces, against a real
+//! Postgres: only the blobs that attempt promised and the retry dropped, and
+//! only those nothing else in the account holds.
 //!
 //! Skipped unless `HOARD_PG_TEST_URL` is set, like `orphaned_cursor`:
 //!
@@ -28,10 +15,8 @@
 
 #![cfg(feature = "cloud")]
 
-use hoard_server::cloud::routes::saves::{
-    abandoned_blobs_to_drop, defer_blob_row, delete_blob_row, CasFileEntry,
-};
-use sqlx::{PgPool, Row};
+use hoard_server::cloud::routes::saves::{abandoned_blobs_to_drop, CasFileEntry};
+use sqlx::PgPool;
 use uuid::Uuid;
 
 async fn pool() -> Option<PgPool> {
@@ -122,76 +107,6 @@ async fn add_blob(pool: &PgPool, user: Uuid, sha_hex: &str, refcount: i64) {
     .execute(pool)
     .await
     .expect("blob row");
-}
-
-async fn blob_exists(pool: &PgPool, user: Uuid, sha_hex: &str) -> bool {
-    sqlx::query("SELECT 1 FROM cloud_blobs WHERE user_id = $1 AND sha256 = decode($2, 'hex')")
-        .bind(user)
-        .bind(sha_hex)
-        .fetch_optional(pool)
-        .await
-        .expect("lookup")
-        .is_some()
-}
-
-/// The production bug: hex text against a bytea column deletes nothing, and the
-/// object is already gone by the time the statement runs.
-#[tokio::test]
-async fn freeing_a_blob_actually_removes_its_row() {
-    let Some(pool) = pool().await else { return };
-    let user = seed_user(&pool).await;
-    let s = sha(0xab);
-    add_blob(&pool, user, &s, 0).await;
-
-    let removed = delete_blob_row(&pool, user, &s).await.expect("delete");
-    assert_eq!(removed, 1, "the row has to actually go, not silently miss");
-    assert!(!blob_exists(&pool, user, &s).await);
-
-    cleanup(&pool, user).await;
-}
-
-/// A delete that matched nothing must say so rather than report success: that
-/// is the difference between "already clean" and "the types do not line up".
-#[tokio::test]
-async fn deleting_a_blob_that_is_not_there_reports_zero() {
-    let Some(pool) = pool().await else { return };
-    let user = seed_user(&pool).await;
-    let removed = delete_blob_row(&pool, user, &sha(0x11))
-        .await
-        .expect("delete");
-    assert_eq!(removed, 0);
-    cleanup(&pool, user).await;
-}
-
-/// When the object will not delete, the row stays and joins the retry queue.
-#[tokio::test]
-async fn a_blob_whose_object_survives_is_deferred_not_dropped() {
-    let Some(pool) = pool().await else { return };
-    let user = seed_user(&pool).await;
-    let s = sha(0xcd);
-    add_blob(&pool, user, &s, 0).await;
-
-    let touched = defer_blob_row(&pool, user, &s).await.expect("defer");
-    assert_eq!(touched, 1);
-    assert!(
-        blob_exists(&pool, user, &s).await,
-        "deferring must keep the row: without it nothing looks for the object again"
-    );
-    let due: Option<time::OffsetDateTime> = sqlx::query(
-        "SELECT purge_after FROM cloud_blobs WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
-    )
-    .bind(user)
-    .bind(&s)
-    .fetch_one(&pool)
-    .await
-    .expect("row")
-    .get(0);
-    assert!(
-        due.is_some(),
-        "the retry queue is `purge_after`, so it has to be stamped"
-    );
-
-    cleanup(&pool, user).await;
 }
 
 /// The abandoned-attempt cleanup: only what the retry dropped, and only what

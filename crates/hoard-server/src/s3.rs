@@ -485,6 +485,72 @@ impl S3 {
         Ok(out)
     }
 
+    /// Every key under `prefix` with its size and last-modified time (unix
+    /// seconds). The age is what lets a sweep tell litter from an upload that
+    /// is still landing.
+    pub async fn list_with_age(&self, prefix: &str) -> Result<Vec<(String, i64, i64)>> {
+        let mut out = Vec::new();
+        let mut token: Option<String> = None;
+        loop {
+            let mut req = self
+                .client
+                .list_objects_v2()
+                .bucket(&self.bucket)
+                .prefix(prefix);
+            if let Some(t) = token.take() {
+                req = req.continuation_token(t);
+            }
+            let page = req.send().await.context("s3 list_objects_v2")?;
+            for obj in page.contents() {
+                if let (Some(k), Some(sz), Some(at)) = (obj.key(), obj.size(), obj.last_modified())
+                {
+                    out.push((k.to_string(), sz, at.secs()));
+                }
+            }
+            if page.is_truncated() == Some(true) {
+                token = page.next_continuation_token().map(|t| t.to_string());
+                if token.is_none() {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        Ok(out)
+    }
+
+    /// The "directories" one level below `prefix` (`delimiter = "/"`).
+    pub async fn list_prefixes(&self, prefix: &str) -> Result<Vec<String>> {
+        let mut out = Vec::new();
+        let mut token: Option<String> = None;
+        loop {
+            let mut req = self
+                .client
+                .list_objects_v2()
+                .bucket(&self.bucket)
+                .prefix(prefix)
+                .delimiter("/");
+            if let Some(t) = token.take() {
+                req = req.continuation_token(t);
+            }
+            let page = req.send().await.context("s3 list_objects_v2 (prefixes)")?;
+            out.extend(
+                page.common_prefixes()
+                    .iter()
+                    .filter_map(|p| p.prefix().map(str::to_string)),
+            );
+            if page.is_truncated() == Some(true) {
+                token = page.next_continuation_token().map(|t| t.to_string());
+                if token.is_none() {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        Ok(out)
+    }
+
     /// Delete an object. Missing is success: S3 itself answers 204 for a key
     /// that was never there, but several compatibles (gofakes3 behind `rclone
     /// serve s3`, some gateways) answer 404 instead. GC and upload rollback

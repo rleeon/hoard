@@ -27,6 +27,7 @@
 
 use super::incidents::{self, Kind};
 use crate::cloud::auth::CloudUser;
+use crate::cloud::blob_refs;
 use crate::cloud::errors::CloudError;
 use crate::cloud::quota;
 use crate::cloud::state::CloudState;
@@ -35,6 +36,7 @@ use axum::{
     response::{IntoResponse, Json, Response},
     Extension,
 };
+use futures::StreamExt;
 use serde::Serialize;
 use sqlx::PgPool;
 use std::time::Duration;
@@ -45,45 +47,7 @@ use uuid::Uuid;
 /// stamping `purge_after` on archive and when selecting due rows in the cron.
 pub const ARCHIVE_GRACE_DAYS: i64 = 7;
 
-// ---------------------------------------------------------------------------
-// Blob freezing
-// ---------------------------------------------------------------------------
-
-/// Release `n` references from each blob like `saves::release_blobs`, but when a
-/// blob's refcount reaches 0 **keep the R2 object** and stamp `purge_after`
-/// instead of deleting it. The `sync_blob_storage` trigger still credits the
-/// freed storage on the 0-transition, so the quota drops immediately; the bytes
-/// just linger in R2 (out of quota) until the grace window elapses. Best-effort:
-/// a failure only leaks a blob, recoverable by a later sweep.
-async fn freeze_blobs<I>(state: &CloudState, user_id: Uuid, blobs: I)
-where
-    I: IntoIterator<Item = (String, i64)>,
-{
-    for (sha, dec) in blobs {
-        if let Err(e) = sqlx::query(
-            "UPDATE cloud_blobs
-                SET refcount = GREATEST(0, refcount - $3),
-                    purge_after = CASE WHEN refcount - $3 <= 0
-                                       THEN now() + make_interval(days => $4)
-                                       ELSE purge_after END
-              WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
-        )
-        .bind(user_id)
-        .bind(&sha)
-        .bind(dec)
-        .bind(ARCHIVE_GRACE_DAYS as i32)
-        .execute(&state.pool)
-        .await
-        {
-            tracing::warn!(error = %e, sha = %sha, "archive: blob freeze failed");
-            incidents::record(Kind::Other, "archive: blob freeze failed");
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Archive / reactivate
-// ---------------------------------------------------------------------------
+// ---- archive / reactivate
 
 async fn owned_save(state: &CloudState, user_id: Uuid, save_id: &str) -> Result<(), CloudError> {
     let owner: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
@@ -124,31 +88,27 @@ pub(crate) async fn ensure_not_archived(
     Ok(())
 }
 
-/// Bytes that archiving this save would free: blobs it references whose refs all
-/// come from this save (`refcount <= refs_here`), so de-referencing drops them
-/// to 0. Shared blobs free nothing. Cast to bigint, because the SUM is NUMERIC and
-/// mapping it to i64 without the cast is a runtime decode error.
+/// Bytes that archiving this save would free: blobs whose every reference
+/// comes from this save (`refcount <= n`), so de-referencing drops them to 0.
+/// Shared blobs free nothing.
 async fn exclusive_bytes(
-    state: &CloudState,
+    conn: &mut sqlx::PgConnection,
     user_id: Uuid,
-    save_id: &str,
+    refs: &[(Vec<u8>, i64)],
 ) -> Result<i64, CloudError> {
-    let bytes: Option<i64> = sqlx::query_scalar(
-        r#"
-        WITH refs AS (
-            SELECT sha256, COUNT(DISTINCT version_num) AS refs_here
-            FROM manifest_files WHERE save_id = $1 GROUP BY sha256
-        )
-        SELECT COALESCE(SUM(CASE WHEN b.refcount <= r.refs_here THEN b.size_bytes ELSE 0 END), 0)::bigint
-        FROM refs r
-        JOIN cloud_blobs b ON b.user_id = $2 AND b.sha256 = r.sha256
-        "#,
+    let (shas, counts): (Vec<Vec<u8>>, Vec<i64>) = refs.iter().cloned().unzip();
+    let bytes: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(b.size_bytes), 0)::bigint
+           FROM cloud_blobs b
+           JOIN unnest($2::bytea[], $3::bigint[]) AS t(sha, n) ON b.sha256 = t.sha
+          WHERE b.user_id = $1 AND b.refcount > 0 AND b.refcount <= t.n",
     )
-    .bind(save_id)
     .bind(user_id)
-    .fetch_one(&state.pool)
+    .bind(&shas)
+    .bind(&counts)
+    .fetch_one(conn)
     .await?;
-    Ok(bytes.unwrap_or(0))
+    Ok(bytes)
 }
 
 #[derive(Debug, Serialize)]
@@ -172,13 +132,18 @@ pub async fn archive_save(
 ) -> Result<ArchiveOut, CloudError> {
     owned_save(state, user_id, save_id).await?;
 
-    // Already archived → idempotent no-op, report the existing window.
+    // One transaction with the save row locked: two archive calls in flight
+    // used to both pass the "already archived?" check and freeze the blobs
+    // twice, and a request cut short left the save archived with its blobs
+    // still charged.
+    let mut tx = state.pool.begin().await?;
     let existing: Option<Option<time::OffsetDateTime>> =
-        sqlx::query_scalar("SELECT archived_at FROM saves WHERE id = $1")
+        sqlx::query_scalar("SELECT archived_at FROM saves WHERE id = $1 FOR UPDATE")
             .bind(save_id)
-            .fetch_optional(&state.pool)
+            .fetch_optional(&mut *tx)
             .await?;
     if let Some(Some(archived_at)) = existing {
+        tx.rollback().await.ok();
         return Ok(ArchiveOut {
             save_id: save_id.to_string(),
             archived: true,
@@ -187,26 +152,17 @@ pub async fn archive_save(
         });
     }
 
-    let freed = exclusive_bytes(state, user_id, save_id).await?;
+    let refs = blob_refs::committed_refs(&mut tx, save_id, None).await?;
+    let freed = exclusive_bytes(&mut tx, user_id, &refs).await?;
 
-    // Reference counts this save contributes per blob, same shape as
-    // delete_save. Read before we change anything.
-    let blob_refs: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT encode(sha256, 'hex'), COUNT(DISTINCT version_num) FROM manifest_files
-            WHERE save_id = $1 GROUP BY sha256",
-    )
-    .bind(save_id)
-    .fetch_all(&state.pool)
-    .await?;
-
-    // Mark archived FIRST: from this instant the client and the sync manifest
-    // treat the save as frozen, so nothing can misread the blob de-referencing
-    // below as "the save vanished" and touch local files.
+    // Marked archived in the same transaction as the release, so the client
+    // and the sync manifest never see the blobs gone while the save still
+    // looks live, and never read that as "the save vanished".
     let archived_at: time::OffsetDateTime = sqlx::query_scalar(
         "UPDATE saves SET archived_at = now(), updated_at = now() WHERE id = $1 RETURNING archived_at",
     )
     .bind(save_id)
-    .fetch_one(&state.pool)
+    .fetch_one(&mut *tx)
     .await?;
 
     // Legacy (non content-addressed) versions charge storage via save_versions,
@@ -217,10 +173,11 @@ pub async fn archive_save(
             WHERE save_id = $1 AND content_addressed = FALSE AND deleted_at IS NULL",
     )
     .bind(save_id)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await?;
 
-    freeze_blobs(state, user_id, blob_refs).await;
+    blob_refs::release(&mut tx, user_id, &refs, ARCHIVE_GRACE_DAYS * 24 * 60 * 60).await?;
+    tx.commit().await?;
 
     tracing::info!(user_id = %user_id, save_id, freed_bytes = freed, "archive: game archived");
     Ok(ArchiveOut {
@@ -242,10 +199,11 @@ pub async fn reactivate_save(
 ) -> Result<(), CloudError> {
     owned_save(state, user_id, save_id).await?;
 
+    let mut tx = state.pool.begin().await?;
     let archived_at: Option<time::OffsetDateTime> =
-        sqlx::query_scalar("SELECT archived_at FROM saves WHERE id = $1")
+        sqlx::query_scalar("SELECT archived_at FROM saves WHERE id = $1 FOR UPDATE")
             .bind(save_id)
-            .fetch_optional(&state.pool)
+            .fetch_optional(&mut *tx)
             .await?
             .flatten();
     let Some(archived_at) = archived_at else {
@@ -258,19 +216,16 @@ pub async fn reactivate_save(
     // Bytes that will re-count once reactivated: currently-frozen blobs
     // (refcount 0) this save references. Gate them against the quota so a Free
     // user can't reactivate straight back over the limit.
-    let reclaim: Option<i64> = sqlx::query_scalar(
-        r#"
-        SELECT COALESCE(SUM(b.size_bytes), 0)::bigint
-        FROM (SELECT DISTINCT sha256 FROM manifest_files WHERE save_id = $1) r
-        JOIN cloud_blobs b ON b.user_id = $2 AND b.sha256 = r.sha256
-        WHERE b.refcount = 0
-        "#,
+    let refs = blob_refs::committed_refs(&mut tx, save_id, None).await?;
+    let (shas, _): (Vec<Vec<u8>>, Vec<i64>) = refs.iter().cloned().unzip();
+    let reclaim: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(size_bytes), 0)::bigint FROM cloud_blobs
+          WHERE user_id = $1 AND sha256 = ANY($2) AND refcount = 0",
     )
-    .bind(save_id)
     .bind(user_id)
-    .fetch_one(&state.pool)
+    .bind(&shas)
+    .fetch_one(&mut *tx)
     .await?;
-    let reclaim = reclaim.unwrap_or(0);
     let (limits, info) = quota::load(&state.pool, user_id)
         .await?
         .ok_or(CloudError::NotFound("no profile"))?;
@@ -281,27 +236,7 @@ pub async fn reactivate_save(
         });
     }
 
-    // Re-reference: +n per blob this save contributes, and clear purge_after so
-    // the cron won't sweep them. The trigger re-charges storage on the 0→>0
-    // transition.
-    let blob_refs: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT encode(sha256, 'hex'), COUNT(DISTINCT version_num) FROM manifest_files
-            WHERE save_id = $1 GROUP BY sha256",
-    )
-    .bind(save_id)
-    .fetch_all(&state.pool)
-    .await?;
-    for (sha, inc) in blob_refs {
-        sqlx::query(
-            "UPDATE cloud_blobs SET refcount = refcount + $3, purge_after = NULL
-                WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
-        )
-        .bind(user_id)
-        .bind(&sha)
-        .bind(inc)
-        .execute(&state.pool)
-        .await?;
-    }
+    blob_refs::retake(&mut tx, user_id, &refs).await?;
 
     // Restore soft-deleted legacy versions and unarchive.
     sqlx::query(
@@ -309,12 +244,13 @@ pub async fn reactivate_save(
             WHERE save_id = $1 AND content_addressed = FALSE AND deleted_at IS NOT NULL",
     )
     .bind(save_id)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await?;
     sqlx::query("UPDATE saves SET archived_at = NULL, updated_at = now() WHERE id = $1")
         .bind(save_id)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     // The countdown is off, so the warning about it should be able to fire
     // again if the game is archived a second time.
     let _ = crate::cloud::notices::clear(
@@ -329,9 +265,7 @@ pub async fn reactivate_save(
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// HTTP handlers
-// ---------------------------------------------------------------------------
+// ---- http handlers
 
 /// `POST /v1/cloud/saves/:save_id/archive`
 pub async fn archive_handler(
@@ -510,9 +444,7 @@ pub async fn storage_games(
     .into_response())
 }
 
-// ---------------------------------------------------------------------------
-// Expiry cron
-// ---------------------------------------------------------------------------
+// ---- expiry cron
 
 /// Spawn the daily expiry sweep. Detached like the other sweepers: a failure
 /// `warn!`s and the next tick retries.
@@ -582,37 +514,112 @@ pub async fn purge_expired(state: &CloudState) -> Result<(usize, usize), sqlx::E
         saves_deleted += 1;
     }
 
-    // 2. Frozen blobs whose window elapsed and are still unreferenced. A blob
-    //    revived in the meantime (re-upload / reactivate) has refcount > 0 and
-    //    a NULL purge_after, so it's skipped.
-    let due_blobs: Vec<(Uuid, String)> = sqlx::query_as(
-        "SELECT user_id, encode(sha256, 'hex') FROM cloud_blobs
-          WHERE refcount = 0 AND purge_after IS NOT NULL AND purge_after < now()",
-    )
-    .fetch_all(&state.pool)
-    .await?;
-
-    let mut blobs_deleted = 0usize;
-    for (user_id, sha) in due_blobs {
-        let key = super::r2::key_for_blob(user_id, &sha);
-        if let Err(e) = state.r2.delete_object(&key).await {
-            tracing::warn!(error = %e, r2_key = %key, "archive purge: blob R2 delete failed");
-            incidents::record(Kind::Delete, "archive purge: blob R2 delete failed");
-        }
-        sqlx::query("DELETE FROM cloud_blobs WHERE user_id = $1 AND sha256 = decode($2, 'hex')")
-            .bind(user_id)
-            .bind(&sha)
-            .execute(&state.pool)
-            .await?;
-        blobs_deleted += 1;
-    }
+    // 2. Blobs whose window elapsed and are still unreferenced: frozen by an
+    //    archive, or released by a delete.
+    let blobs_deleted = purge_due_blobs(state, None).await?;
 
     Ok((saves_deleted, blobs_deleted))
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+/// Rows locked and objects deleted per transaction.
+const GC_BATCH: i64 = 100;
+
+const GC_CONCURRENCY: usize = 16;
+
+/// Delete the object and then the row of every blob at `refcount = 0` whose
+/// `purge_after` has passed. `only` narrows it to some accounts (tests share a
+/// database); `None` is everyone. Returns how many went.
+///
+/// The rows are locked (`FOR UPDATE SKIP LOCKED`) for as long as their objects
+/// are being deleted, and only rows still at 0 are dropped. Before, the rows
+/// were read, the objects deleted and the rows then dropped unconditionally,
+/// so a re-upload of the same file in between lost its bytes, and its row went
+/// with a refcount above zero, handing back quota the version still used. An
+/// upload that wants one of these rows now waits for the batch to finish.
+///
+/// An object that fails to delete keeps its row and comes back tomorrow. It
+/// used to lose the row anyway, leaving bytes in the bucket nothing pointed at.
+pub async fn purge_due_blobs(
+    state: &CloudState,
+    only: Option<&[Uuid]>,
+) -> Result<usize, sqlx::Error> {
+    let only: Option<Vec<Uuid>> = only.map(<[Uuid]>::to_vec);
+    let mut deleted = 0usize;
+    loop {
+        let mut tx = state.pool.begin().await?;
+        let batch: Vec<(Uuid, String)> = sqlx::query_as(
+            "SELECT user_id, encode(sha256, 'hex') FROM cloud_blobs
+              WHERE refcount = 0 AND purge_after IS NOT NULL AND purge_after < now()
+                AND ($2::uuid[] IS NULL OR user_id = ANY($2))
+              ORDER BY purge_after
+              LIMIT $1
+                FOR UPDATE SKIP LOCKED",
+        )
+        .bind(GC_BATCH)
+        .bind(&only)
+        .fetch_all(&mut *tx)
+        .await?;
+        if batch.is_empty() {
+            tx.rollback().await.ok();
+            return Ok(deleted);
+        }
+
+        let outcomes: Vec<((Uuid, String), bool)> =
+            futures::stream::iter(batch.into_iter().map(|(user_id, sha)| {
+                let r2 = state.r2.clone();
+                async move {
+                    let key = super::r2::key_for_blob(user_id, &sha);
+                    let ok = match r2.delete_object(&key).await {
+                        Ok(()) => true,
+                        Err(e) => {
+                            tracing::warn!(error = %e, r2_key = %key, "blob GC: R2 delete failed, retrying tomorrow");
+                            incidents::record(Kind::Delete, "archive purge: blob R2 delete failed");
+                            false
+                        }
+                    };
+                    ((user_id, sha), ok)
+                }
+            }))
+            .buffer_unordered(GC_CONCURRENCY)
+            .collect()
+            .await;
+
+        let (gone, kept): (Vec<_>, Vec<_>) = outcomes.into_iter().partition(|(_, ok)| *ok);
+        let (gone_users, gone_shas): (Vec<Uuid>, Vec<String>) =
+            gone.into_iter().map(|(k, _)| k).unzip();
+        let (kept_users, kept_shas): (Vec<Uuid>, Vec<String>) =
+            kept.into_iter().map(|(k, _)| k).unzip();
+
+        let res = sqlx::query(
+            "DELETE FROM cloud_blobs b
+              USING unnest($1::uuid[], $2::text[]) AS t(u, s)
+              WHERE b.user_id = t.u AND b.sha256 = decode(t.s, 'hex') AND b.refcount = 0",
+        )
+        .bind(&gone_users)
+        .bind(&gone_shas)
+        .execute(&mut *tx)
+        .await?;
+        // Pushed a day out so the rest of this round doesn't pick them again.
+        sqlx::query(
+            "UPDATE cloud_blobs b SET purge_after = now() + interval '1 day'
+               FROM unnest($1::uuid[], $2::text[]) AS t(u, s)
+              WHERE b.user_id = t.u AND b.sha256 = decode(t.s, 'hex') AND b.refcount = 0",
+        )
+        .bind(&kept_users)
+        .bind(&kept_shas)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        deleted += res.rows_affected() as usize;
+        // A whole batch refused is the bucket, not the blobs: stop the round
+        // rather than walk every due row failing one at a time.
+        if gone_users.is_empty() {
+            return Ok(deleted);
+        }
+    }
+}
+
+// ---- helpers
 
 fn fmt_ts(t: time::OffsetDateTime) -> String {
     t.format(&time::format_description::well_known::Rfc3339)
