@@ -381,12 +381,12 @@ pub async fn whoami() -> Result<()> {
             storage_limit_bytes: me.storage_limit_bytes,
         }
     } else {
-        let (cfg, _) = CliConfig::load_default()?;
-        let token = crate::output::require_token(&cfg)?;
-        let client = ApiClient::new(cfg.server.url.clone(), token)?;
-        let me = client.whoami().await?;
+        // A sign-in from the app keeps its self-hosted session with the service,
+        // not in `config.toml`; the resolver asks there first.
+        let active = link::resolve_session().await?;
+        let me = active.client.whoami().await?;
         WhoamiOut::SelfHost {
-            server: cfg.server.url.clone(),
+            server: active.server,
             username: me.username.to_string(),
             user_id: me.user_id.to_string(),
             is_admin: me.is_admin,

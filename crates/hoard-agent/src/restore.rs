@@ -238,13 +238,19 @@ pub async fn resolve_version(
     }
     if client.is_cloud().await {
         // Cloud has no `get_save`; the manifest carries each save's latest
-        // version. A missing entry means nothing has been uploaded yet.
+        // version.
         let manifest = client.cloud_sync().await?;
-        return manifest
-            .saves
-            .into_iter()
-            .find(|e| e.save_id == save_id)
-            .map(|e| e.latest_version_num)
+        if let Some(e) = manifest.saves.into_iter().find(|e| e.save_id == save_id) {
+            return Ok(e.latest_version_num);
+        }
+        // Backup-only and archived saves are left out of the manifest on purpose
+        // but keep their versions.
+        return client
+            .cloud_list_versions(save_id, false)
+            .await?
+            .iter()
+            .map(|v| v.version_num)
+            .max()
             .ok_or_else(|| anyhow!("save has no snapshots yet"));
     }
     let save = client.get_save(save_id).await?;

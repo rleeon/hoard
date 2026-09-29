@@ -168,7 +168,9 @@ pub async fn run(
     }
 
     let os = Os::current();
-    // Load overrides so the bench mirrors what the app actually scans.
+    // Load overrides so the bench mirrors what the app actually scans. The
+    // tracked-save warnings read the account's saves, hence the context first.
+    hoard_agent::session::set_context_offline();
     let (cli_state, _) = CliState::load_default()?;
 
     let start = Instant::now();

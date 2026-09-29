@@ -5,6 +5,7 @@ use hoard_agent::api::ApiClient;
 use hoard_agent::cloud_auth;
 use hoard_agent::config::CliConfig;
 
+use crate::commands::link;
 use crate::output;
 
 #[derive(Serialize)]
@@ -16,16 +17,20 @@ pub struct StatusOut {
 }
 
 pub async fn run() -> Result<()> {
-    let (cfg, _) = CliConfig::load_default()?;
-    // With a Cloud session the server is Cloud. The self-hosted URL defaults to
-    // localhost:12421, where nothing listens on a Cloud-only machine: asking it
-    // reads "connection refused" while sync is fine. /v1/health is
-    // unauthenticated, and the self-hosted token has no business going to Cloud.
-    let (server, token) = match cloud_auth::load_session()? {
-        Some(sess) => (sess.server_url, String::new()),
-        None => (cfg.server.url.clone(), cfg.auth.token.clone().unwrap_or_default()),
+    // The server in use, which is not always the one in `config.toml`: with a
+    // Cloud session it is Cloud, and a self-hosted sign-in from the app lives
+    // with the service. The config's URL defaults to localhost:12421, where
+    // nothing listens on a Cloud-only machine, so asking it read "connection
+    // refused" while sync was fine.
+    let server = match cloud_auth::load_session()? {
+        Some(sess) => sess.server_url,
+        None => match link::borrow_server_session().await {
+            Some(s) => s.server_url,
+            None => CliConfig::load_default()?.0.server.url,
+        },
     };
-    let client = ApiClient::new(server.clone(), token)?;
+    // /v1/health is unauthenticated.
+    let client = ApiClient::new(server.clone(), "")?;
     let h = client.health().await?;
     let out = StatusOut {
         server,

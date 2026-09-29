@@ -1502,6 +1502,9 @@ impl ApiClient {
         save_id: &str,
         include_deleted: bool,
     ) -> Result<Vec<Snapshot>> {
+        if self.is_cloud().await {
+            return self.cloud_list_versions(save_id, include_deleted).await;
+        }
         let mut req = self
             .http
             .get(self.url(&format!("/v1/saves/{}/snapshots", save_id)))
@@ -1544,7 +1547,12 @@ impl ApiClient {
             .context("download request failed")
     }
 
+    /// Self-hosted moves the version to the trash. Cloud has no trash: the
+    /// version goes for good, and the whole save with it if it was the last one.
     pub async fn snapshot_delete(&self, save_id: &str, version: i64) -> Result<()> {
+        if self.is_cloud().await {
+            return self.cloud_delete_version(save_id, version).await;
+        }
         let resp = self
             .http
             .delete(self.url(&format!("/v1/saves/{}/snapshots/{}", save_id, version)))
@@ -1556,6 +1564,9 @@ impl ApiClient {
     }
 
     pub async fn snapshot_restore(&self, save_id: &str, version: i64) -> Result<()> {
+        if self.is_cloud().await {
+            bail!("Hoard Cloud has no trash to bring a version back from: deleting one there is permanent");
+        }
         let resp = self
             .http
             .post(self.url(&format!(

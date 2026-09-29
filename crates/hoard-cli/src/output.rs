@@ -105,16 +105,6 @@ pub fn interactive() -> bool {
     !json() && std::io::stdin().is_terminal()
 }
 
-/// `CliConfig::require_token`, coded. "You are not signed in" is the most
-/// common thing a caller has to be told, and as a generic error it is
-/// guesswork: every command that needs a session goes through here so the
-/// answer is always `no_session` with exit 2.
-pub fn require_token(cfg: &hoard_agent::config::CliConfig) -> Result<String> {
-    cfg.require_token()
-        .map(|t| t.to_string())
-        .map_err(|e| err("no_session", format!("{e:#}")))
-}
-
 /// A failure, sorted into something a caller can act on.
 pub struct Classified {
     /// Stable vocabulary. New codes may appear; existing ones don't change
@@ -147,7 +137,9 @@ pub fn classify(e: &anyhow::Error) -> Classified {
     }
     // What `link::resolve_session` raises with neither a Cloud session nor a
     // self-hosted one.
-    if e.downcast_ref::<hoard_agent::session::NoSession>().is_some() {
+    if e.downcast_ref::<hoard_agent::session::NoSession>()
+        .is_some()
+    {
         return plain("no_session", 2);
     }
 

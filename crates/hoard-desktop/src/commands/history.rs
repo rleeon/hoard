@@ -88,15 +88,6 @@ pub async fn list_save_snapshots(
     state: State<'_, AppState>,
 ) -> Result<Vec<SnapshotWire>, String> {
     let client = current_client(&app, &state).await?;
-    // Cloud now exposes the full version history via a dedicated endpoint
-    // (the sync manifest still only carries the latest). One row per version.
-    if client.is_cloud().await {
-        let snaps = client
-            .cloud_list_versions(&save_id, include_deleted)
-            .await
-            .map_err(pretty_error)?;
-        return Ok(snaps.into_iter().map(snapshot_to_wire).collect());
-    }
     let snaps = client
         .list_snapshots(&save_id, include_deleted)
         .await
@@ -235,15 +226,6 @@ pub async fn delete_snapshot(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let client = current_client(&app, &state).await?;
-    // Cloud now deletes a single version (blob + row) and repoints the latest
-    // pointer; the whole save is removed only when no versions remain. The
-    // server handles that fallback, so this stays per-version.
-    if client.is_cloud().await {
-        return client
-            .cloud_delete_version(&save_id, version)
-            .await
-            .map_err(pretty_error);
-    }
     client
         .snapshot_delete(&save_id, version)
         .await
@@ -308,9 +290,6 @@ pub async fn undelete_snapshot(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let client = current_client(&app, &state).await?;
-    if client.is_cloud().await {
-        return Err("Restoring snapshots from trash isn't supported on Hoard Cloud.".to_string());
-    }
     client
         .snapshot_restore(&save_id, version)
         .await

@@ -8,9 +8,9 @@
 use anyhow::Result;
 use serde::Serialize;
 
-use hoard_agent::api::{ApiClient, ApiError};
-use hoard_agent::config::CliConfig;
+use hoard_agent::api::ApiError;
 
+use crate::commands::link;
 use crate::output;
 
 #[derive(Serialize)]
@@ -36,9 +36,7 @@ pub struct DevicesOut {
 }
 
 pub async fn run() -> Result<()> {
-    let (cfg, _) = CliConfig::load_default()?;
-    let token = output::require_token(&cfg)?;
-    let client = ApiClient::new(cfg.server.url.clone(), token)?;
+    let client = link::resolve_session().await?.client;
 
     let out = match client.list_devices().await {
         Ok(l) => DevicesOut {

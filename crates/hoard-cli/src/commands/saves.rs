@@ -1,9 +1,11 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::Subcommand;
 use serde::Serialize;
 
-use hoard_agent::api::{ApiError, CloudManifestEntry};
+use hoard_agent::api::{ApiClient, ApiError, CloudManifestEntry};
+use hoard_agent::cloud_account;
 use hoard_agent::library;
+use hoard_agent::session::{self, CloudEndpoint};
 use hoard_agent::state::CliState;
 
 use crate::commands::link;
@@ -36,6 +38,10 @@ pub struct SaveInfo {
     pub latest_size_bytes: Option<i64>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    /// Cloud only: `synced`, or why the save is not in the sync manifest
+    /// (`backup_only`, `archived`). Those two carry no version or size in
+    /// `save list`; `save show` fetches them.
+    pub state: Option<&'static str>,
 }
 
 #[derive(Subcommand)]
@@ -108,6 +114,11 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
     // service (`Request::Reload`) instead of asking the user to restart `hoard
     // sync`, which would no longer restart any engine anyway, because the engine
     // stopped living in this process.
+    //
+    // They read `state.json`, so the account's context is pinned first: left
+    // unset it falls back to the self-hosted URL in `config.toml`, and a Cloud
+    // user would be editing a file nobody syncs.
+    session::set_context_offline();
     match &cmd {
         SaveCommand::Pause { id } => {
             library::set_paused(id, true)?;
@@ -171,12 +182,12 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
     // Cloud has no `/v1/saves`: its saves live under `/v1/cloud/*`, and a
     // self-hosted token in `config.toml` is not the only session there is.
     let active = link::resolve_session().await?;
-    let is_cloud = active.is_cloud;
+    let cloud = active.cloud;
     let client = active.client;
 
     match cmd {
         SaveCommand::Create { game, label } => {
-            if is_cloud {
+            if cloud.is_some() {
                 return Err(output::err(
                     "unsupported",
                     "Hoard Cloud creates a save with its first backup: track the folder \
@@ -187,14 +198,11 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
             println!("created save {} ({}/{})", s.id, s.game_slug, s.label);
         }
         SaveCommand::List { game } => {
-            let rows: Vec<SaveInfo> = if is_cloud {
-                client
-                    .cloud_sync()
+            let rows: Vec<SaveInfo> = if let Some(cloud) = &cloud {
+                cloud_saves(&client, cloud)
                     .await?
-                    .saves
                     .into_iter()
                     .filter(|s| game.as_deref().is_none_or(|g| s.game_slug == g))
-                    .map(cloud_row)
                     .collect()
             } else {
                 client
@@ -211,6 +219,7 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
                         latest_size_bytes: None,
                         created_at: None,
                         updated_at: None,
+                        state: None,
                     })
                     .collect()
             };
@@ -219,30 +228,43 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
                     println!("(no saves)");
                     return;
                 }
+                let with_state = rows.iter().any(|s| s.state.is_some());
+                let state_col = |state: &str| {
+                    if with_state {
+                        format!(" {state}")
+                    } else {
+                        String::new()
+                    }
+                };
                 println!(
-                    "{:<38} {:<24} {:<16} {:>5} {:>10}",
-                    "ID", "GAME", "LABEL", "VERS", "SIZE"
+                    "{:<38} {:<24} {:<16} {:>5} {:>10}{}",
+                    "ID",
+                    "GAME",
+                    "LABEL",
+                    "VERS",
+                    "SIZE",
+                    state_col("STATE")
                 );
                 for s in rows {
                     println!(
-                        "{:<38} {:<24} {:<16} {:>5} {:>10}",
+                        "{:<38} {:<24} {:<16} {:>5} {:>10}{}",
                         s.save_id,
                         s.game_slug,
                         s.label,
-                        s.latest_version_num.unwrap_or(0),
-                        fmt_size(s.total_size_bytes.or(s.latest_size_bytes).unwrap_or(0))
+                        s.latest_version_num
+                            .map_or_else(|| "—".to_string(), |v| v.to_string()),
+                        s.total_size_bytes
+                            .or(s.latest_size_bytes)
+                            .map_or_else(|| "—".to_string(), fmt_size),
+                        state_col(s.state.unwrap_or(""))
                     );
                 }
             })?;
         }
         SaveCommand::Show { id } => {
-            let info = if is_cloud {
-                // The manifest leaves out backup-only and archived saves, so
-                // those read as not found here.
-                let entry = client
-                    .cloud_sync()
+            let info = if let Some(cloud) = &cloud {
+                let row = cloud_saves(&client, cloud)
                     .await?
-                    .saves
                     .into_iter()
                     .find(|s| s.save_id == id)
                     .ok_or_else(|| {
@@ -251,9 +273,12 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
                     })?;
                 let versions = client.cloud_list_versions(&id, false).await?;
                 SaveInfo {
+                    latest_version_num: row
+                        .latest_version_num
+                        .or(versions.iter().map(|v| v.version_num).max()),
                     snapshot_count: Some(versions.len() as i64),
                     total_size_bytes: Some(versions.iter().map(|v| v.total_size_bytes).sum()),
-                    ..cloud_row(entry)
+                    ..row
                 }
             } else {
                 let s = client.get_save(&id).await?;
@@ -267,14 +292,21 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
                     latest_size_bytes: None,
                     created_at: Some(s.created_at.to_string()),
                     updated_at: Some(s.updated_at.to_string()),
+                    state: None,
                 }
             };
             output::emit(&info, |s| {
                 println!("id:        {}", s.save_id);
                 println!("game:      {}", s.game_slug);
                 println!("label:     {}", s.label);
+                if let Some(state) = s.state {
+                    println!("state:     {state}");
+                }
                 println!("snapshots: {}", s.snapshot_count.unwrap_or(0));
-                println!("latest:    v{}", s.latest_version_num.unwrap_or(0));
+                match s.latest_version_num {
+                    Some(v) => println!("latest:    v{v}"),
+                    None => println!("latest:    —"),
+                }
                 println!("size:      {}", fmt_size(s.total_size_bytes.unwrap_or(0)));
                 println!("created:   {}", s.created_at.as_deref().unwrap_or("—"));
                 println!("updated:   {}", s.updated_at.as_deref().unwrap_or("—"));
@@ -327,7 +359,47 @@ fn cloud_row(s: CloudManifestEntry) -> SaveInfo {
         latest_size_bytes: Some(s.latest_size_bytes),
         created_at: None,
         updated_at: (!s.updated_at.is_empty()).then_some(s.updated_at),
+        state: Some("synced"),
     }
+}
+
+/// Every save on the Cloud account. The sync manifest has the versions and
+/// sizes but leaves backup-only and archived saves out on purpose (no other
+/// device should pull them), so those come from the storage view, which lists
+/// them all.
+async fn cloud_saves(client: &ApiClient, cloud: &CloudEndpoint) -> Result<Vec<SaveInfo>> {
+    let mut rows: Vec<SaveInfo> = client
+        .cloud_sync()
+        .await?
+        .saves
+        .into_iter()
+        .map(cloud_row)
+        .collect();
+    let storage = cloud_account::storage_games(&cloud.server_url, &cloud.access)
+        .await
+        .map_err(|e| anyhow!(e.message()))?;
+    for g in storage.games {
+        if rows.iter().any(|r| r.save_id == g.save_id) {
+            continue;
+        }
+        rows.push(SaveInfo {
+            save_id: g.save_id,
+            game_slug: g.game_slug,
+            label: g.label,
+            latest_version_num: None,
+            snapshot_count: None,
+            total_size_bytes: None,
+            latest_size_bytes: None,
+            created_at: None,
+            updated_at: None,
+            state: Some(if g.archived {
+                "archived"
+            } else {
+                "backup_only"
+            }),
+        });
+    }
+    Ok(rows)
 }
 
 fn fmt_size(b: i64) -> String {

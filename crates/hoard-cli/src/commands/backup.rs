@@ -8,18 +8,16 @@ use anyhow::{anyhow, Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 
-use hoard_agent::api::ApiClient;
 use hoard_agent::backup::{remember_save, upload_directory_checked, BackupResult};
-use hoard_agent::config::CliConfig;
 use hoard_agent::state::CliState;
 use hoard_core::wire::VersionOrigin;
 
 use crate::commands::link;
 
 pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Result<()> {
-    let (cfg, _) = CliConfig::load_default()?;
-    let token = cfg.require_token()?;
-    let client = ApiClient::new(cfg.server.url.clone(), token)?;
+    // Before the state: resolving the session is also what picks which
+    // account's `state.json` gets loaded.
+    let client = link::resolve_session().await?.client;
 
     let (mut state, state_path) = CliState::load_default()?;
     let source = match source {

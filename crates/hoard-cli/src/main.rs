@@ -3,7 +3,7 @@ mod output;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use hoard_agent::{api, config};
+use hoard_agent::api;
 use std::path::PathBuf;
 use tracing_appender::non_blocking::WorkerGuard;
 
@@ -221,14 +221,16 @@ enum SnapshotCommand {
         #[arg(long)]
         all: bool,
     },
-    /// Soft-delete a snapshot (moves it to trash; recover with `undelete`)
+    /// Soft-delete a snapshot (moves it to trash; recover with `undelete`).
+    /// Hoard Cloud has no trash: there the version is deleted for good, and the
+    /// whole save with it if it was the last one.
     Delete {
         save_id: String,
         version: i64,
         #[arg(long)]
         yes: bool,
     },
-    /// Restore a soft-deleted snapshot back to active state
+    /// Restore a soft-deleted snapshot back to active state (self-hosted only)
     Undelete { save_id: String, version: i64 },
     /// Show or set your cap on stored versions per save. No value shows it, a
     /// number sets it, `off` means unlimited. The server prunes immediately.
@@ -429,9 +431,9 @@ async fn dispatch(cli: Cli) -> Result<()> {
 }
 
 async fn snapshots_dispatch(cmd: SnapshotCommand) -> Result<()> {
-    let (cfg, _) = config::CliConfig::load_default()?;
-    let token = output::require_token(&cfg)?;
-    let client = api::ApiClient::new(cfg.server.url.clone(), token)?;
+    let active = commands::link::resolve_session().await?;
+    let is_cloud = active.is_cloud;
+    let client = active.client;
     match cmd {
         SnapshotCommand::List { save_id, all } => list_snapshots(&client, save_id, all).await,
         SnapshotCommand::Delete {
@@ -439,18 +441,34 @@ async fn snapshots_dispatch(cmd: SnapshotCommand) -> Result<()> {
             version,
             yes,
         } => {
+            // Self-hosted keeps a trash and Cloud does not, so the question has
+            // to say which of the two this is.
+            let (question, done) = if is_cloud {
+                (
+                    format!(
+                        "permanently delete v{version} of save {save_id}? Hoard Cloud has no \
+                         trash, and if it is the last version the save goes with it."
+                    ),
+                    format!("deleted v{version} of save {save_id} (permanent)"),
+                )
+            } else {
+                (
+                    format!("soft-delete v{version} of save {save_id}?"),
+                    format!("soft-deleted v{version} of save {save_id}"),
+                )
+            };
             if !yes && !output::interactive() {
                 return Err(output::err(
                     "needs_confirmation",
                     format!(
-                        "deleting v{version} of save {save_id} needs a confirmation \
-                         and there is no terminal to ask. Pass --yes if you mean it."
+                        "{question} That needs a confirmation and there is no terminal \
+                         to ask. Pass --yes if you mean it."
                     ),
                 ));
             }
             if !yes {
                 use std::io::Write;
-                print!("soft-delete v{} of save {}? [y/N] ", version, save_id);
+                print!("{question} [y/N] ");
                 std::io::stdout().flush()?;
                 let mut buf = String::new();
                 std::io::stdin().read_line(&mut buf)?;
@@ -460,7 +478,7 @@ async fn snapshots_dispatch(cmd: SnapshotCommand) -> Result<()> {
                 }
             }
             client.snapshot_delete(&save_id, version).await?;
-            println!("soft-deleted v{} of save {}", version, save_id);
+            println!("{done}");
             Ok(())
         }
         SnapshotCommand::Undelete { save_id, version } => {

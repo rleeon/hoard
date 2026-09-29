@@ -145,6 +145,40 @@ pub fn steam_app_id(slug: &str) -> Option<u64> {
     hoard_manifest::ludusavi::find_by_slug(slug).and_then(|e| e.steam_app_id)
 }
 
+/// The catalogue as a search, for Cloud, which serves none: it is the same
+/// Ludusavi data a self-hosted server loads into `/v1/games`, and this answers
+/// the way that route does (substring of slug or name ignoring case, by slug,
+/// at most `limit`).
+pub fn search(query: Option<&str>, limit: usize) -> Vec<hoard_core::wire::Game> {
+    let needle = query
+        .map(|q| q.trim().to_lowercase())
+        .filter(|q| !q.is_empty());
+    let mut hits: Vec<_> = hoard_manifest::ludusavi::catalog()
+        .iter()
+        .filter(|e| {
+            needle.as_deref().is_none_or(|n| {
+                e.slug.to_lowercase().contains(n) || e.display_name.to_lowercase().contains(n)
+            })
+        })
+        .collect();
+    hits.sort_by(|a, b| a.slug.cmp(&b.slug));
+    hits.into_iter().filter_map(as_game).take(limit).collect()
+}
+
+/// One catalogue entry by slug, shaped like `/v1/games/{slug}`.
+pub fn game(slug: &str) -> Option<hoard_core::wire::Game> {
+    hoard_manifest::ludusavi::find_by_slug(slug).and_then(as_game)
+}
+
+fn as_game(e: &hoard_manifest::ludusavi::LudusaviEntry) -> Option<hoard_core::wire::Game> {
+    Some(hoard_core::wire::Game {
+        slug: hoard_core::ids::GameSlug::parse(&e.slug).ok()?,
+        display_name: e.display_name.clone(),
+        engine: None,
+        save_paths_json: serde_json::to_string(&e.paths).ok(),
+    })
+}
+
 /// What a window asks the service about one game instead of loading the catalogue.
 pub fn facts(slug: &str) -> hoard_core::ipc::GameFacts {
     hoard_core::ipc::GameFacts {

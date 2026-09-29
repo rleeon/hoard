@@ -10,8 +10,6 @@ use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use hoard_agent::api::ApiClient;
-use hoard_agent::config::CliConfig;
 use hoard_agent::library;
 use hoard_agent::restore::{download_snapshot, resolve_version, RestoreOptions};
 use hoard_agent::state::CliState;
@@ -85,9 +83,9 @@ pub async fn apply(
     allow_ini: bool,
     remember: bool,
 ) -> Result<()> {
-    let (cfg, _) = CliConfig::load_default()?;
-    let token = output::require_token(&cfg)?;
-    let client = ApiClient::new(cfg.server.url.clone(), token)?;
+    // Before the state: resolving the session is also what picks which
+    // account's `state.json` gets loaded.
+    let client = link::resolve_session().await?.client;
 
     let version = resolve_version(&client, &save_id, version).await?;
 

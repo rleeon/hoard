@@ -211,14 +211,6 @@ impl CliConfig {
         }
         Ok(())
     }
-
-    pub fn require_token(&self) -> Result<&str> {
-        self.auth
-            .token
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .context("not logged in: run `hoard login --token <TOKEN>` first")
-    }
 }
 
 #[cfg(test)]
