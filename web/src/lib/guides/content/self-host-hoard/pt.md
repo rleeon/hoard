@@ -3,7 +3,7 @@ title: "Como auto-hospedar o Hoard com Docker (self-hosted)"
 description: "Coloque seu próprio servidor Hoard no ar em minutos com o Docker Compose. Código aberto, gratuito e no seu hardware: uma nuvem totalmente self-hosted para seus saves de jogos, sem conta nem limite de espaço."
 order: 0
 featured: true
-updated: 2026-09-03
+updated: 2026-09-29
 ---
 
 O Hoard é de código aberto e pode ser auto-hospedado. Em vez de usar o Hoard Cloud, você pode rodar o mesmo `hoard-server` na sua própria máquina e apontar todos os dispositivos para ele — sem conta e sem limite de espaço além do disco que você der a ele. Este guia coloca um servidor no ar com Docker em poucos minutos.
@@ -30,29 +30,46 @@ E, para ser exato numa coisa: o teu servidor tem sim os seus próprios acessos �
 ## O que você precisa
 
 - Uma máquina que fique ligada (um servidor doméstico, um NAS que rode Docker ou um VPS pequeno).
-- Docker e Docker Compose instalados.
+- Docker e Docker Compose instalados (em um NAS Synology, o pacote Container Manager).
 - Opcionalmente um domínio e um proxy reverso para HTTPS (recomendado para qualquer coisa fora da sua rede local).
 
 ## Instalação com Docker Compose
 
-Clone o repositório, crie uma configuração a partir do exemplo e suba o stack:
+Não é preciso clonar o repositório. O servidor é uma imagem pronta (`ghcr.io/rleeon/hoard`, amd64 e arm64), e o único arquivo que você baixa é o `docker-compose.yml` dela:
 
 ```sh
-git clone https://github.com/rleeon/hoard.git && cd hoard
-mkdir -p deploy/docker/config
-cp deploy/config.toml.example deploy/docker/config/config.toml
-$EDITOR deploy/docker/config/config.toml      # Use nano or vim or something lol
+mkdir hoard && cd hoard
+curl -O https://raw.githubusercontent.com/rleeon/hoard/main/deploy/docker/docker-compose.yml
 
-cd deploy/docker
-docker compose up -d
-docker compose logs -f                         # wait for "listening"
+# Used only on the first start: they create that admin and print a device token in the log, once
+HOARD_ADMIN_USERNAME=alice HOARD_ADMIN_PASSWORD='CHANGE_ME' docker compose up -d
+docker compose logs -f server                  # wait for "listening", then copy the token
 ```
 
-Aguarde até os logs mostrarem que o servidor está escutando. Os dados ficam em um volume nomeado do Docker (`hoard-data`) — faça backup como em qualquer outro volume. O contêiner escuta internamente na porta `12421`; use outra porta do host com `HOARD_PORT=9000 docker compose up -d`.
+Na primeira inicialização, o contêiner grava um `config.toml` funcional em `./config/`, ao lado do arquivo compose; com o `docker compose` puro, não há nada a preparar. Os dados ficam em um volume nomeado do Docker (`hoard-data`) — faça backup como em qualquer outro volume. O contêiner escuta internamente na porta `12421`; use outra porta do host com `HOARD_PORT=9000 docker compose up -d`.
+
+Prefere ler a configuração antes de iniciar qualquer coisa, ou compilar a imagem você mesmo? O [guia de self-hosting do repositório](https://github.com/rleeon/hoard/blob/main/SELF-HOST_GUIDE.md) explica como cloná-lo.
+
+### Em um NAS Synology (Container Manager)
+
+O Container Manager não tem linha de comando para passar essas duas variáveis, e se recusa a iniciar um projeto enquanto faltar uma pasta montada: é o erro `Bind mount failed: '…/config' does not exist`. Quatro passos resolvem as duas coisas:
+
+1. No File Station, crie uma pasta para o Hoard (por exemplo `docker/hoard`) e, dentro dela, uma pasta `config` vazia.
+2. No Container Manager, abra **Project** → **Create**, defina essa pasta como caminho, escolha criar um `docker-compose.yml` e cole o conteúdo do arquivo (para obtê-lo, abra no navegador a URL da linha `curl` acima).
+3. No arquivo colado, substitua `${HOARD_ADMIN_USERNAME:-}` e `${HOARD_ADMIN_PASSWORD:-}` pelo usuário e pela senha do seu administrador, sem mexer no resto de cada linha, para que fiquem assim:
+
+   ```yaml
+   HOARD_ADMIN_USERNAME: alice
+   HOARD_ADMIN_PASSWORD: 'CHANGE_ME'
+   ```
+
+4. Conclua o assistente para iniciá-lo e abra o log de `hoard-server` em **Container**: o token do dispositivo aparece ali, uma única vez.
+
+Com o arquivo como está, os saves ficam no armazenamento do próprio Docker, fora das suas pastas compartilhadas. Para mantê-los em uma pasta compartilhada da qual você já faz backup, crie também uma pasta `data` ao lado de `config` e troque a linha `hoard-data:/var/lib/hoard` por `./data:/var/lib/hoard`.
 
 ## Crie seu usuário e um token de dispositivo
 
-O servidor não tem tela de cadastro — os usuários são criados pela linha de comando:
+Se você o iniciou com `HOARD_ADMIN_USERNAME` e `HOARD_ADMIN_PASSWORD`, isso já está feito: o usuário existe e o token dele está no log. Caso contrário, crie-os pela linha de comando, já que o servidor não tem tela de cadastro:
 
 ```sh
 docker compose exec server hoard-admin --config /etc/hoard/config.toml \
@@ -61,7 +78,7 @@ docker compose exec server hoard-admin --config /etc/hoard/config.toml \
     token create alice --device 'desktop'
 ```
 
-O token é exibido uma única vez e **não pode ser recuperado depois**, então copie-o agora.
+O token é exibido uma única vez e **não pode ser recuperado depois**, então copie-o agora. Para cada dispositivo que você adicionar depois, não é preciso terminal: abra o endereço do servidor no navegador, entre no painel web com esse usuário e essa senha e use **Utilizadores** → **Novo token**.
 
 ## Conecte o app de desktop
 
@@ -112,7 +129,7 @@ Por omissão, no volume Docker que deres ao contentor, no teu próprio disco. Se
 
 ### Posso pô-lo a correr num NAS?
 
-Sim, em qualquer NAS que corra Docker. O repositório inclui um template de Unraid, e a imagem desce para os `PUID`/`PGID` que indicares, para que as pastas montadas fiquem do utilizador certo em vez de root.
+Sim, em qualquer NAS que corra Docker. No Synology, segue os passos do Container Manager acima; para o Unraid, o repositório inclui um template. Em ambos os casos a imagem desce para os `PUID`/`PGID` que indicares, para que as pastas montadas fiquem do utilizador certo em vez de root.
 
 ### Preciso de domínio e HTTPS?
 

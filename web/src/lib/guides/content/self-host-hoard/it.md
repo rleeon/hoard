@@ -3,7 +3,7 @@ title: "Come self-hostare Hoard con Docker"
 description: "Avvia il tuo server Hoard in pochi minuti con Docker Compose. Open source, gratuito, sul tuo hardware: un cloud completamente self-hosted per i salvataggi dei giochi, senza account né limiti di spazio."
 order: 0
 featured: true
-updated: 2026-09-03
+updated: 2026-09-29
 ---
 
 Hoard è open source e self-hostabile. Invece di usare Hoard Cloud, puoi eseguire lo stesso `hoard-server` sulla tua macchina e puntarci ogni dispositivo — senza account e senza limiti di spazio oltre al disco che gli dai. Questa guida mette in piedi un server con Docker in pochi minuti.
@@ -30,29 +30,46 @@ Una precisazione, per essere esatti: il tuo server ha eccome i suoi accessi — 
 ## Cosa ti serve
 
 - Una macchina sempre accesa (un server domestico, un NAS che esegue Docker o un piccolo VPS).
-- Docker e Docker Compose installati.
+- Docker e Docker Compose installati (su un NAS Synology, il pacchetto Container Manager).
 - Facoltativamente un dominio e un reverse proxy per l'HTTPS (consigliato per tutto ciò che esce dalla rete locale).
 
 ## Installazione con Docker Compose
 
-Clona il repository, crea una configurazione dall'esempio e avvia lo stack:
+Non serve clonare il repository. Il server è un'immagine già pronta (`ghcr.io/rleeon/hoard`, amd64 e arm64), e l'unico file da scaricare è il suo `docker-compose.yml`:
 
 ```sh
-git clone https://github.com/rleeon/hoard.git && cd hoard
-mkdir -p deploy/docker/config
-cp deploy/config.toml.example deploy/docker/config/config.toml
-$EDITOR deploy/docker/config/config.toml      # Use nano or vim or something lol
+mkdir hoard && cd hoard
+curl -O https://raw.githubusercontent.com/rleeon/hoard/main/deploy/docker/docker-compose.yml
 
-cd deploy/docker
-docker compose up -d
-docker compose logs -f                         # wait for "listening"
+# Used only on the first start: they create that admin and print a device token in the log, once
+HOARD_ADMIN_USERNAME=alice HOARD_ADMIN_PASSWORD='CHANGE_ME' docker compose up -d
+docker compose logs -f server                  # wait for "listening", then copy the token
 ```
 
-Attendi che i log mostrino che il server è in ascolto. I dati vivono in un volume Docker (`hoard-data`): eseguine il backup come per qualsiasi volume. Il container ascolta internamente sulla porta `12421`; usa un'altra porta host con `HOARD_PORT=9000 docker compose up -d`.
+Al primo avvio il container scrive un `config.toml` funzionante in `./config/`, accanto al file compose, quindi con un semplice `docker compose` non c'è niente da preparare. I dati vivono in un volume Docker (`hoard-data`): eseguine il backup come per qualsiasi volume. Il container ascolta internamente sulla porta `12421`; usa un'altra porta host con `HOARD_PORT=9000 docker compose up -d`.
+
+Preferisci leggere la configurazione prima che parta qualcosa, o compilare l'immagine da te? La [guida al self-hosting nel repository](https://github.com/rleeon/hoard/blob/main/SELF-HOST_GUIDE.md) spiega come clonarlo.
+
+### Su un NAS Synology (Container Manager)
+
+Container Manager non ha una riga di comando da cui passare quelle due variabili, e si rifiuta di avviare un progetto finché manca una cartella montata: è l'errore `Bind mount failed: '…/config' does not exist`. Quattro passaggi risolvono entrambe le cose:
+
+1. In File Station, crea una cartella per Hoard (per esempio `docker/hoard`) e, al suo interno, una cartella `config` vuota.
+2. In Container Manager, apri **Project** → **Create**, imposta quella cartella come percorso, scegli di creare un `docker-compose.yml` e incolla il contenuto del file (per ottenerlo, apri nel browser l'URL della riga `curl` qui sopra).
+3. Nel file incollato, sostituisci `${HOARD_ADMIN_USERNAME:-}` e `${HOARD_ADMIN_PASSWORD:-}` con nome utente e password del tuo amministratore, lasciando il resto di ogni riga com'è, in modo che le due righe diventino:
+
+   ```yaml
+   HOARD_ADMIN_USERNAME: alice
+   HOARD_ADMIN_PASSWORD: 'CHANGE_ME'
+   ```
+
+4. Completa la procedura guidata per avviarlo, poi apri il log di `hoard-server` in **Container**: il token del dispositivo è stampato lì, una sola volta.
+
+Con il file così com'è, i salvataggi vivono nello spazio di archiviazione di Docker, fuori dalle tue cartelle condivise. Per tenerli in una cartella condivisa di cui fai già il backup, crea anche una cartella `data` accanto a `config` e cambia la riga `hoard-data:/var/lib/hoard` in `./data:/var/lib/hoard`.
 
 ## Crea il tuo utente e un token dispositivo
 
-Il server non ha una schermata di registrazione: gli utenti si creano da riga di comando:
+Se l'hai avviato con `HOARD_ADMIN_USERNAME` e `HOARD_ADMIN_PASSWORD`, è già fatto: l'utente esiste e il suo token è nel log. Altrimenti creali da riga di comando, perché il server non ha una schermata di registrazione:
 
 ```sh
 docker compose exec server hoard-admin --config /etc/hoard/config.toml \
@@ -61,7 +78,7 @@ docker compose exec server hoard-admin --config /etc/hoard/config.toml \
     token create alice --device 'desktop'
 ```
 
-Il token viene mostrato una sola volta e **non può essere recuperato in seguito**, quindi copialo ora.
+Il token viene mostrato una sola volta e **non può essere recuperato in seguito**, quindi copialo ora. Per ogni dispositivo che aggiungi in seguito non serve un terminale: apri l'indirizzo del server nel browser, accedi al pannello web con quel nome utente e quella password e usa **Utenti** → **Nuovo token**.
 
 ## Collega l'app desktop
 
@@ -112,7 +129,7 @@ Per impostazione predefinita nel volume Docker che assegni al container, sul tuo
 
 ### Posso farlo girare su un NAS?
 
-Sì, su qualsiasi NAS che esegua Docker. Il repository include un template per Unraid, e l'immagine scende ai `PUID`/`PGID` che indichi, così le cartelle montate risultano dell'utente giusto e non di root.
+Sì, su qualsiasi NAS che esegua Docker. Su Synology segui i passaggi per Container Manager qui sopra; per Unraid il repository include un template. In entrambi i casi l'immagine scende ai `PUID`/`PGID` che indichi, così le cartelle montate risultano dell'utente giusto e non di root.
 
 ### Servono un dominio e HTTPS?
 

@@ -3,7 +3,7 @@ title: "如何用 Docker 自托管 Hoard"
 description: "用 Docker Compose 几分钟搭建你自己的 Hoard 服务器。开源、免费、运行在你自己的硬件上——一个完全自托管的游戏存档云，无需账号、没有容量限制。"
 order: 0
 featured: true
-updated: 2026-09-03
+updated: 2026-09-29
 ---
 
 Hoard 是开源且可自托管的。你可以不使用 Hoard Cloud，而是在自己的机器上运行同一个 `hoard-server`，让每台设备都连接到它——无需账号，容量只受你分配的磁盘大小限制。本指南用 Docker 在几分钟内把服务器跑起来。
@@ -30,29 +30,46 @@ Hoard 是开源且可自托管的。你可以不使用 Hoard Cloud，而是在�
 ## 你需要准备
 
 - 一台保持开机的机器（家庭服务器、运行 Docker 的 NAS，或一台小型 VPS）。
-- 已安装 Docker 和 Docker Compose。
+- 已安装 Docker 和 Docker Compose（群晖 NAS 上即 Container Manager 套件）。
 - 可选：一个域名和用于 HTTPS 的反向代理（超出本地局域网的场景推荐）。
 
 ## 用 Docker Compose 安装
 
-克隆仓库，从示例创建配置，然后启动整套服务：
+不需要克隆仓库。服务器是预先构建好的镜像（`ghcr.io/rleeon/hoard`，支持 amd64 和 arm64），你只需下载它的 `docker-compose.yml`：
 
 ```sh
-git clone https://github.com/rleeon/hoard.git && cd hoard
-mkdir -p deploy/docker/config
-cp deploy/config.toml.example deploy/docker/config/config.toml
-$EDITOR deploy/docker/config/config.toml      # Use nano or vim or something lol
+mkdir hoard && cd hoard
+curl -O https://raw.githubusercontent.com/rleeon/hoard/main/deploy/docker/docker-compose.yml
 
-cd deploy/docker
-docker compose up -d
-docker compose logs -f                         # wait for "listening"
+# Used only on the first start: they create that admin and print a device token in the log, once
+HOARD_ADMIN_USERNAME=alice HOARD_ADMIN_PASSWORD='CHANGE_ME' docker compose up -d
+docker compose logs -f server                  # wait for "listening", then copy the token
 ```
 
-等待日志显示服务器正在监听。数据保存在一个命名的 Docker 卷（`hoard-data`）中——像备份其他卷一样备份它。容器内部监听 `12421` 端口；用 `HOARD_PORT=9000 docker compose up -d` 可映射到其他主机端口。
+首次启动时，容器会在 compose 文件旁边的 `./config/` 里写入一份可用的 `config.toml`，所以直接用 `docker compose` 时无需任何准备。数据保存在一个命名的 Docker 卷（`hoard-data`）中——像备份其他卷一样备份它。容器内部监听 `12421` 端口；用 `HOARD_PORT=9000 docker compose up -d` 可映射到其他主机端口。
+
+如果你想在启动前先阅读配置，或自己构建镜像，[仓库里的自托管指南](https://github.com/rleeon/hoard/blob/main/SELF-HOST_GUIDE.md)介绍了克隆仓库的做法。
+
+### 在群晖（Synology）NAS 上（Container Manager）
+
+Container Manager 没有命令行可以传入这两个变量；而且只要有一个绑定挂载的文件夹不存在，它就拒绝启动项目——这就是 `Bind mount failed: '…/config' does not exist` 错误。以下四步可以同时解决这两个问题：
+
+1. 在 File Station 中为 Hoard 新建一个文件夹（例如 `docker/hoard`），并在其中新建一个空的 `config` 文件夹。
+2. 在 Container Manager 中打开 **Project** → **Create**，把路径设为该文件夹，选择创建 `docker-compose.yml`，然后粘贴文件内容（在浏览器中打开上面 `curl` 那一行里的 URL 即可获取）。
+3. 在粘贴的文件中，把 `${HOARD_ADMIN_USERNAME:-}` 和 `${HOARD_ADMIN_PASSWORD:-}` 换成你的管理员用户名和密码，每行其余部分保持不变，使这两行变成：
+
+   ```yaml
+   HOARD_ADMIN_USERNAME: alice
+   HOARD_ADMIN_PASSWORD: 'CHANGE_ME'
+   ```
+
+4. 完成向导以启动它，然后在 **Container** 中打开 `hoard-server` 的日志：设备令牌会在那里显示，仅此一次。
+
+按文件原样使用时，存档保存在 Docker 自己的存储中，不在你的共享文件夹里。若想把它们放进你已经在备份的共享文件夹，请在 `config` 旁再新建一个 `data` 文件夹，并把 `hoard-data:/var/lib/hoard` 这一行改为 `./data:/var/lib/hoard`。
 
 ## 创建用户和设备令牌
 
-服务器没有注册页面——用户通过命令行创建：
+如果你启动时设置了 `HOARD_ADMIN_USERNAME` 和 `HOARD_ADMIN_PASSWORD`，这一步已经完成：用户已存在，令牌就在日志里。否则，请通过命令行创建（服务器没有注册页面）：
 
 ```sh
 docker compose exec server hoard-admin --config /etc/hoard/config.toml \
@@ -61,7 +78,7 @@ docker compose exec server hoard-admin --config /etc/hoard/config.toml \
     token create alice --device 'desktop'
 ```
 
-令牌只显示一次，**之后无法找回**，请立即复制。
+令牌只显示一次，**之后无法找回**，请立即复制。之后再添加设备时无需终端：在浏览器中打开服务器地址，用该用户名和密码登录网页面板，然后使用 **用户** → **新建令牌**。
 
 ## 连接桌面应用
 
@@ -112,7 +129,7 @@ docker compose up -d
 
 ### 可以跑在 NAS 上吗？
 
-可以，任何能运行 Docker 的 NAS 都行。仓库里附带了 Unraid 模板，镜像会降权到你指定的 `PUID`/`PGID`，这样绑定挂载的文件夹归属正确的用户，而不是 root。
+可以，任何能运行 Docker 的 NAS 都行。群晖请按照上文 Container Manager 的步骤操作；Unraid 可使用仓库里附带的模板。无论哪种方式，镜像都会降权到你指定的 `PUID`/`PGID`，这样绑定挂载的文件夹归属正确的用户，而不是 root。
 
 ### 需要域名和 HTTPS 吗？
 

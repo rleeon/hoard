@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rleeon/hoard/actions/workflows/ci.yml/badge.svg)](https://github.com/rleeon/hoard/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/rleeon/hoard?label=release)](https://github.com/rleeon/hoard/releases/latest) [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-> Steam Cloud is not a backup strategy. Your server is.
+> To see this md in another languaje see [hoard web](https://hoard.services/guides/self-host-hoard).
 
 Run `hoard-server` on your own hardware — a NAS, a VPS, or the machine
 under your desk — and point every device at it. No account, no quota
@@ -25,9 +25,10 @@ HOARD_ADMIN_USERNAME=myuser HOARD_ADMIN_PASSWORD='mypassword' docker compose up 
 docker compose logs -f server     # wait for "listening", then copy the token
 ```
 
-The container writes itself a working `config.toml` into `./config/`, so there
-is nothing to prepare beforehand. In the app's onboarding pick **Self-Host**
-and give it `http://IP:12421` plus that token.
+The container writes itself a working `config.toml` into `./config/`, so with
+plain `docker compose` there is nothing to prepare beforehand. A NAS dashboard
+is different, see [Synology](#synology-container-manager) below. In the app's
+onboarding pick **Self-Host** and give it `http://IP:12421` plus that token.
 
 Clone the repo instead if you'd rather read the config before anything starts,
 or build the image yourself:
@@ -71,9 +72,42 @@ swaps the binary in place, and the next `up -d` would discard it. It knows that
 about itself, so `docker compose exec server hoard-server upgrade` refuses and
 prints the two commands above rather than downloading anything.
 
+### Synology (Container Manager)
+
+Container Manager differs from the terminal install above in two ways. It
+refuses to start a project while a bind-mounted folder is missing, where
+`docker compose` would create it (that is the `Bind mount failed:
+'…/config' does not exist` error), and it has no command line to pass
+`HOARD_ADMIN_USERNAME`/`HOARD_ADMIN_PASSWORD`. Neither git nor SSH is needed:
+
+1. **File Station**: create a folder for Hoard (e.g. `docker/hoard`) and an
+   empty `config` folder inside it.
+2. **Container Manager** → **Project** → **Create**: set the path to that
+   folder, choose to create a `docker-compose.yml`, and paste in
+   [this file](https://raw.githubusercontent.com/rleeon/hoard/main/deploy/docker/docker-compose.yml).
+3. In the pasted file, replace `${HOARD_ADMIN_USERNAME:-}` and
+   `${HOARD_ADMIN_PASSWORD:-}` with your admin's username and password,
+   leaving the rest of each line as it is, so they read:
+
+   ```yaml
+   HOARD_ADMIN_USERNAME: myuser
+   HOARD_ADMIN_PASSWORD: 'mypassword'
+   ```
+
+4. Finish the wizard to start it, then open the log of `hoard-server` under
+   **Container**: the device token is printed there, once.
+
+With the file as it is, the saves live in a named volume inside Docker's own
+storage, outside your shared folders. To keep them in a shared folder you
+already back up, create a `data` folder next to `config` too and change
+`hoard-data:/var/lib/hoard` to `./data:/var/lib/hoard`.
+
+More devices later need no shell either: open `http://IP:12421` in a browser,
+sign in with that username and password, and use **Users** → *New token*.
+
 ### Unraid
 
-Hoard ships an Unraid template, so on a NAS none of the above is needed:
+Hoard ships an Unraid template, so on Unraid none of the above is needed:
 
 **Apps** → search **Hoard** → *Install*. Fill in the two boxes it asks for — an
 admin username and a password — and press *Apply*. The container writes its own

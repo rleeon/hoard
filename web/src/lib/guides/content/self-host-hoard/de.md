@@ -3,7 +3,7 @@ title: "Hoard mit Docker selbst hosten (Self-Hosting)"
 description: "Betreibe deinen eigenen Hoard-Server in Minuten mit Docker Compose. Open Source, kostenlos, auf deiner Hardware – eine voll selbst gehostete Cloud für deine Spielstände, ohne Konto und ohne Speicherlimit."
 order: 0
 featured: true
-updated: 2026-09-03
+updated: 2026-09-29
 ---
 
 Hoard ist Open Source und selbst hostbar. Statt Hoard Cloud zu nutzen, kannst du denselben `hoard-server` auf deiner eigenen Maschine betreiben und jedes Gerät darauf verweisen – ohne Konto und ohne Speicherlimit außer der Festplatte, die du ihm gibst. Diese Anleitung bringt einen Server in wenigen Minuten mit Docker zum Laufen.
@@ -30,29 +30,46 @@ Eine Sache der Genauigkeit halber: dein Server hat sehr wohl eigene Zugänge —
 ## Was du brauchst
 
 - Eine Maschine, die durchläuft (Heimserver, NAS mit Docker oder ein kleiner VPS).
-- Docker und Docker Compose installiert.
+- Docker und Docker Compose installiert (auf einem Synology-NAS das Paket Container Manager).
 - Optional eine Domain und ein Reverse-Proxy für HTTPS (empfohlen für alles außerhalb deines LAN).
 
 ## Installation mit Docker Compose
 
-Klone das Repo, erstelle eine Konfiguration aus dem Beispiel und starte den Stack:
+Du musst das Repository nicht klonen. Der Server ist ein fertiges Image (`ghcr.io/rleeon/hoard`, amd64 und arm64), und herunterladen musst du nur seine `docker-compose.yml`:
 
 ```sh
-git clone https://github.com/rleeon/hoard.git && cd hoard
-mkdir -p deploy/docker/config
-cp deploy/config.toml.example deploy/docker/config/config.toml
-$EDITOR deploy/docker/config/config.toml      # Use nano or vim or something lol
+mkdir hoard && cd hoard
+curl -O https://raw.githubusercontent.com/rleeon/hoard/main/deploy/docker/docker-compose.yml
 
-cd deploy/docker
-docker compose up -d
-docker compose logs -f                         # wait for "listening"
+# Used only on the first start: they create that admin and print a device token in the log, once
+HOARD_ADMIN_USERNAME=alice HOARD_ADMIN_PASSWORD='CHANGE_ME' docker compose up -d
+docker compose logs -f server                  # wait for "listening", then copy the token
 ```
 
-Warte, bis die Logs zeigen, dass der Server lauscht. Die Daten liegen in einem benannten Docker-Volume (`hoard-data`) – sichere es wie jedes andere Volume. Der Container lauscht intern auf Port `12421`; einen anderen Host-Port setzt du mit `HOARD_PORT=9000 docker compose up -d`.
+Beim ersten Start schreibt der Container eine funktionierende `config.toml` nach `./config/`, neben die Compose-Datei; mit einfachem `docker compose` gibt es also nichts vorzubereiten. Die Daten liegen in einem benannten Docker-Volume (`hoard-data`) – sichere es wie jedes andere Volume. Der Container lauscht intern auf Port `12421`; einen anderen Host-Port setzt du mit `HOARD_PORT=9000 docker compose up -d`.
+
+Willst du die Konfiguration lesen, bevor irgendetwas startet, oder das Image selbst bauen, erklärt die [Self-Hosting-Anleitung im Repository](https://github.com/rleeon/hoard/blob/main/SELF-HOST_GUIDE.md), wie du es klonst.
+
+### Auf einem Synology-NAS (Container Manager)
+
+Container Manager hat keine Kommandozeile, über die du diese beiden Variablen übergeben könntest, und startet kein Projekt, solange ein eingebundener Ordner fehlt: Das ist der Fehler `Bind mount failed: '…/config' does not exist`. Vier Schritte lösen beides:
+
+1. Lege in der File Station einen Ordner für Hoard an (zum Beispiel `docker/hoard`) und darin einen leeren Ordner `config`.
+2. Öffne im Container Manager **Project** → **Create**, wähle diesen Ordner als Pfad, lass eine `docker-compose.yml` anlegen und füge dort den Inhalt der Datei ein (öffne dazu die URL aus der `curl`-Zeile oben im Browser).
+3. Ersetze in der eingefügten Datei `${HOARD_ADMIN_USERNAME:-}` und `${HOARD_ADMIN_PASSWORD:-}` durch Benutzernamen und Passwort deines Admins und lass den Rest jeder Zeile stehen, sodass die beiden Zeilen so aussehen:
+
+   ```yaml
+   HOARD_ADMIN_USERNAME: alice
+   HOARD_ADMIN_PASSWORD: 'CHANGE_ME'
+   ```
+
+4. Schließe den Assistenten ab, um ihn zu starten, und öffne unter **Container** das Protokoll von `hoard-server`: Dort steht das Geräte-Token, ein einziges Mal.
+
+Mit der Datei, wie sie ist, liegen die Spielstände im eigenen Speicher von Docker, außerhalb deiner freigegebenen Ordner. Sollen sie in einem freigegebenen Ordner liegen, den du ohnehin sicherst, lege neben `config` auch einen Ordner `data` an und ändere die Zeile `hoard-data:/var/lib/hoard` in `./data:/var/lib/hoard`.
 
 ## Benutzer und Geräte-Token anlegen
 
-Der Server hat keine Registrierungsseite – Benutzer legst du auf der Kommandozeile an:
+Hast du ihn mit `HOARD_ADMIN_USERNAME` und `HOARD_ADMIN_PASSWORD` gestartet, ist das schon erledigt: Der Benutzer existiert und sein Token steht im Log. Andernfalls legst du beides auf der Kommandozeile an, denn der Server hat keine Registrierungsseite:
 
 ```sh
 docker compose exec server hoard-admin --config /etc/hoard/config.toml \
@@ -61,7 +78,7 @@ docker compose exec server hoard-admin --config /etc/hoard/config.toml \
     token create alice --device 'desktop'
 ```
 
-Das Token wird nur einmal angezeigt und **kann später nicht wiederhergestellt werden**, also kopiere es jetzt.
+Das Token wird nur einmal angezeigt und **kann später nicht wiederhergestellt werden**, also kopiere es jetzt. Für jedes weitere Gerät brauchst du kein Terminal: Öffne die Adresse deines Servers im Browser, melde dich mit diesem Benutzernamen und Passwort im Web-Panel an und nutze **Benutzer** → **Neues Token**.
 
 ## Die Desktop-App verbinden
 
@@ -112,7 +129,7 @@ Standardmäßig in dem Docker-Volume, das du dem Container gibst, auf deiner eig
 
 ### Läuft das auf einem NAS?
 
-Ja, auf jedem NAS mit Docker. Das Repository enthält eine Unraid-Vorlage, und das Image wechselt auf die `PUID`/`PGID`, die du angibst, damit eingebundene Ordner dem richtigen Benutzer gehören statt root.
+Ja, auf jedem NAS mit Docker. Auf einem Synology folgst du den Schritten für Container Manager oben; für Unraid enthält das Repository eine Vorlage. In beiden Fällen wechselt das Image auf die `PUID`/`PGID`, die du angibst, damit eingebundene Ordner dem richtigen Benutzer gehören statt root.
 
 ### Brauche ich Domain und HTTPS?
 

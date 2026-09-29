@@ -3,7 +3,7 @@ title: "DockerでHoardをセルフホストする方法"
 description: "Docker Compose を使って数分で自分専用の Hoard サーバーを構築。オープンソースで無料、自分のハードウェア上に完全セルフホストのセーブデータ用クラウドを。アカウントも容量制限も不要。"
 order: 0
 featured: true
-updated: 2026-09-03
+updated: 2026-09-29
 ---
 
 Hoard はオープンソースでセルフホスト可能です。Hoard Cloud を使う代わりに、同じ `hoard-server` を自分のマシンで動かし、すべての端末をそこへ接続できます。アカウントは不要で、容量制限は与えたディスク容量だけです。このガイドでは Docker を使って数分でサーバーを立ち上げます。
@@ -30,29 +30,46 @@ Hoard はオープンソースでセルフホスト可能です。Hoard Cloud �
 ## 必要なもの
 
 - 常時稼働するマシン（自宅サーバー、Docker が動く NAS、または小さな VPS）。
-- Docker と Docker Compose がインストール済みであること。
+- Docker と Docker Compose がインストール済みであること（Synology NAS なら Container Manager パッケージ）。
 - 任意で、HTTPS 用のドメインとリバースプロキシ（LAN を越える用途では推奨）。
 
 ## Docker Compose でインストール
 
-リポジトリをクローンし、サンプルから設定を作成して、スタックを起動します。
+リポジトリをクローンする必要はありません。サーバーはビルド済みのイメージ（`ghcr.io/rleeon/hoard`、amd64 と arm64）なので、ダウンロードするのは `docker-compose.yml` だけです。
 
 ```sh
-git clone https://github.com/rleeon/hoard.git && cd hoard
-mkdir -p deploy/docker/config
-cp deploy/config.toml.example deploy/docker/config/config.toml
-$EDITOR deploy/docker/config/config.toml      # Use nano or vim or something lol
+mkdir hoard && cd hoard
+curl -O https://raw.githubusercontent.com/rleeon/hoard/main/deploy/docker/docker-compose.yml
 
-cd deploy/docker
-docker compose up -d
-docker compose logs -f                         # wait for "listening"
+# Used only on the first start: they create that admin and print a device token in the log, once
+HOARD_ADMIN_USERNAME=alice HOARD_ADMIN_PASSWORD='CHANGE_ME' docker compose up -d
+docker compose logs -f server                  # wait for "listening", then copy the token
 ```
 
-サーバーが待ち受け状態になったとログに表示されるまで待ちます。データは名前付き Docker ボリューム（`hoard-data`）に保存されるので、他のボリュームと同様にバックアップしてください。コンテナは内部でポート `12421` を待ち受けます。別のホストポートを使うには `HOARD_PORT=9000 docker compose up -d` とします。
+初回起動時に、コンテナは動作する `config.toml` を compose ファイルの隣の `./config/` に書き出します。素の `docker compose` なら事前の準備は何もいりません。データは名前付き Docker ボリューム（`hoard-data`）に保存されるので、他のボリュームと同様にバックアップしてください。コンテナは内部でポート `12421` を待ち受けます。別のホストポートを使うには `HOARD_PORT=9000 docker compose up -d` とします。
+
+起動前に設定を読んでおきたい場合や、イメージを自分でビルドしたい場合は、[リポジトリのセルフホストガイド](https://github.com/rleeon/hoard/blob/main/SELF-HOST_GUIDE.md)にクローンする手順があります。
+
+### Synology NAS の場合（Container Manager）
+
+Container Manager には、この 2 つの変数を渡すコマンドラインがありません。また、バインドマウントするフォルダーが存在しないとプロジェクトを起動しません。これが `Bind mount failed: '…/config' does not exist` エラーの原因です。次の 4 ステップで両方とも解決します。
+
+1. File Station で Hoard 用のフォルダー（例：`docker/hoard`）を作り、その中に空の `config` フォルダーを作ります。
+2. Container Manager で **Project** → **Create** を開き、パスにそのフォルダーを指定して `docker-compose.yml` の作成を選び、ファイルの内容を貼り付けます（内容は、上の `curl` 行の URL をブラウザーで開くと確認できます）。
+3. 貼り付けたファイルで `${HOARD_ADMIN_USERNAME:-}` と `${HOARD_ADMIN_PASSWORD:-}` を管理者のユーザー名とパスワードに置き換えます。各行のそれ以外の部分はそのままにして、次のようにします。
+
+   ```yaml
+   HOARD_ADMIN_USERNAME: alice
+   HOARD_ADMIN_PASSWORD: 'CHANGE_ME'
+   ```
+
+4. ウィザードを完了して起動したら、**Container** で `hoard-server` のログを開きます。端末トークンはそこに一度だけ表示されます。
+
+ファイルをそのまま使うと、セーブは共有フォルダーの外にある Docker 自身のストレージに保存されます。すでにバックアップしている共有フォルダーに置きたい場合は、`config` の隣に `data` フォルダーも作り、`hoard-data:/var/lib/hoard` の行を `./data:/var/lib/hoard` に変更してください。
 
 ## ユーザーと端末トークンを作成
 
-サーバーにサインアップ画面はありません。ユーザーはコマンドラインで作成します。
+`HOARD_ADMIN_USERNAME` と `HOARD_ADMIN_PASSWORD` を付けて起動した場合、これはもう済んでいます。ユーザーは作成済みで、トークンはログにあります。そうでない場合は、コマンドラインで作成します（サーバーにサインアップ画面はありません）。
 
 ```sh
 docker compose exec server hoard-admin --config /etc/hoard/config.toml \
@@ -61,7 +78,7 @@ docker compose exec server hoard-admin --config /etc/hoard/config.toml \
     token create alice --device 'desktop'
 ```
 
-トークンは一度だけ表示され、**後から取得することはできません**。今すぐコピーしてください。
+トークンは一度だけ表示され、**後から取得することはできません**。今すぐコピーしてください。あとから端末を追加するときはターミナル不要です。ブラウザーでサーバーのアドレスを開き、そのユーザー名とパスワードで Web パネルにログインして、**ユーザー** → **トークンを発行** を使います。
 
 ## デスクトップアプリを接続
 
@@ -112,7 +129,7 @@ docker compose up -d
 
 ### NAS で動かせますか？
 
-はい、Docker が動く NAS なら動きます。リポジトリには Unraid 用のテンプレートが同梱されており、イメージは指定した `PUID`/`PGID` に降格するので、バインドマウントしたフォルダーの所有者が root ではなく適切なユーザーになります。
+はい、Docker が動く NAS なら動きます。Synology では上の Container Manager の手順に従ってください。Unraid 用にはリポジトリにテンプレートが同梱されています。いずれの場合も、イメージは指定した `PUID`/`PGID` に降格するので、バインドマウントしたフォルダーの所有者が root ではなく適切なユーザーになります。
 
 ### ドメインと HTTPS は必要ですか？
 

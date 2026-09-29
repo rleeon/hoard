@@ -3,7 +3,7 @@ title: "Comment auto-héberger Hoard avec Docker (self-hosted)"
 description: "Lancez votre propre serveur Hoard en quelques minutes avec Docker Compose. Open source, gratuit, sur votre matériel : un cloud entièrement auto-hébergé pour vos sauvegardes de jeux, sans compte ni quota."
 order: 0
 featured: true
-updated: 2026-09-03
+updated: 2026-09-29
 ---
 
 Hoard est open source et auto-hébergeable. Au lieu d'utiliser Hoard Cloud, vous pouvez exécuter le même `hoard-server` sur votre propre machine et y connecter chaque appareil — sans compte, sans quota au-delà du disque que vous lui donnez. Ce guide met un serveur en route avec Docker en quelques minutes.
@@ -30,29 +30,46 @@ Une précision, pour être exact : votre serveur a bel et bien ses propres accè
 ## Ce qu'il vous faut
 
 - Une machine qui reste allumée (serveur maison, NAS exécutant Docker ou petit VPS).
-- Docker et Docker Compose installés.
+- Docker et Docker Compose installés (sur un NAS Synology, le paquet Container Manager).
 - Éventuellement un nom de domaine et un reverse proxy pour le HTTPS (recommandé au-delà de votre réseau local).
 
 ## Installation avec Docker Compose
 
-Clonez le dépôt, créez une configuration depuis l'exemple et démarrez la pile :
+Inutile de cloner le dépôt. Le serveur est une image prête à l'emploi (`ghcr.io/rleeon/hoard`, amd64 et arm64), et le seul fichier à télécharger est son `docker-compose.yml` :
 
 ```sh
-git clone https://github.com/rleeon/hoard.git && cd hoard
-mkdir -p deploy/docker/config
-cp deploy/config.toml.example deploy/docker/config/config.toml
-$EDITOR deploy/docker/config/config.toml      # Use nano or vim or something lol
+mkdir hoard && cd hoard
+curl -O https://raw.githubusercontent.com/rleeon/hoard/main/deploy/docker/docker-compose.yml
 
-cd deploy/docker
-docker compose up -d
-docker compose logs -f                         # wait for "listening"
+# Used only on the first start: they create that admin and print a device token in the log, once
+HOARD_ADMIN_USERNAME=alice HOARD_ADMIN_PASSWORD='CHANGE_ME' docker compose up -d
+docker compose logs -f server                  # wait for "listening", then copy the token
 ```
 
-Attendez que les logs indiquent que le serveur écoute. Les données vivent dans un volume Docker nommé (`hoard-data`) — sauvegardez-le comme n'importe quel volume. Le conteneur écoute en interne sur le port `12421` ; choisissez un autre port hôte avec `HOARD_PORT=9000 docker compose up -d`.
+Au premier démarrage, le conteneur écrit un `config.toml` fonctionnel dans `./config/`, à côté du fichier compose : avec un simple `docker compose`, il n'y a donc rien à préparer. Les données vivent dans un volume Docker nommé (`hoard-data`) — sauvegardez-le comme n'importe quel volume. Le conteneur écoute en interne sur le port `12421` ; choisissez un autre port hôte avec `HOARD_PORT=9000 docker compose up -d`.
+
+Vous préférez lire la configuration avant tout démarrage, ou construire l'image vous-même ? Le [guide d'auto-hébergement du dépôt](https://github.com/rleeon/hoard/blob/main/SELF-HOST_GUIDE.md) explique comment le cloner.
+
+### Sur un NAS Synology (Container Manager)
+
+Container Manager n'a pas de ligne de commande pour passer ces deux variables, et refuse de démarrer un projet tant qu'un dossier monté manque : c'est l'erreur `Bind mount failed: '…/config' does not exist`. Quatre étapes règlent les deux :
+
+1. Dans File Station, créez un dossier pour Hoard (par exemple `docker/hoard`) et, dedans, un dossier `config` vide.
+2. Dans Container Manager, ouvrez **Project** → **Create**, choisissez ce dossier comme chemin, optez pour la création d'un `docker-compose.yml` et collez-y le contenu du fichier (ouvrez l'URL de la ligne `curl` ci-dessus dans un navigateur pour l'obtenir).
+3. Dans le fichier collé, remplacez `${HOARD_ADMIN_USERNAME:-}` et `${HOARD_ADMIN_PASSWORD:-}` par le nom d'utilisateur et le mot de passe de votre administrateur, sans toucher au reste de chaque ligne, pour obtenir :
+
+   ```yaml
+   HOARD_ADMIN_USERNAME: alice
+   HOARD_ADMIN_PASSWORD: 'CHANGE_ME'
+   ```
+
+4. Terminez l'assistant pour le démarrer, puis ouvrez le journal de `hoard-server` dans **Container** : le jeton d'appareil y est affiché, une seule fois.
+
+Avec le fichier tel quel, les sauvegardes vivent dans le stockage propre de Docker, hors de vos dossiers partagés. Pour les garder dans un dossier partagé que vous sauvegardez déjà, créez aussi un dossier `data` à côté de `config` et remplacez la ligne `hoard-data:/var/lib/hoard` par `./data:/var/lib/hoard`.
 
 ## Créez votre utilisateur et un jeton d'appareil
 
-Le serveur n'a pas d'écran d'inscription — vous créez les utilisateurs en ligne de commande :
+Si vous l'avez démarré avec `HOARD_ADMIN_USERNAME` et `HOARD_ADMIN_PASSWORD`, c'est déjà fait : l'utilisateur existe et son jeton est dans les logs. Sinon, créez-les en ligne de commande, car le serveur n'a pas d'écran d'inscription :
 
 ```sh
 docker compose exec server hoard-admin --config /etc/hoard/config.toml \
@@ -61,7 +78,7 @@ docker compose exec server hoard-admin --config /etc/hoard/config.toml \
     token create alice --device 'desktop'
 ```
 
-Le jeton n'est affiché qu'une fois et **ne peut pas être récupéré ensuite**, copiez-le maintenant.
+Le jeton n'est affiché qu'une fois et **ne peut pas être récupéré ensuite**, copiez-le maintenant. Pour chaque appareil ajouté plus tard, pas besoin de terminal : ouvrez l'adresse de votre serveur dans un navigateur, connectez-vous au panneau web avec ce nom d'utilisateur et ce mot de passe, puis utilisez **Utilisateurs** → **Nouveau jeton**.
 
 ## Connectez l'application de bureau
 
@@ -112,7 +129,7 @@ Par défaut dans le volume Docker que vous donnez au conteneur, sur votre propre
 
 ### Puis-je le faire tourner sur un NAS ?
 
-Oui, sur n'importe quel NAS qui exécute Docker. Le dépôt fournit un modèle Unraid, et l'image bascule sur les `PUID`/`PGID` que vous indiquez, pour que les dossiers montés appartiennent au bon utilisateur plutôt qu'à root.
+Oui, sur n'importe quel NAS qui exécute Docker. Sur Synology, suivez les étapes Container Manager ci-dessus ; pour Unraid, le dépôt fournit un modèle. Dans les deux cas, l'image bascule sur les `PUID`/`PGID` que vous indiquez, pour que les dossiers montés appartiennent au bon utilisateur plutôt qu'à root.
 
 ### Ai-je besoin d'un domaine et de HTTPS ?
 

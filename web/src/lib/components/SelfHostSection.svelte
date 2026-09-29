@@ -13,6 +13,9 @@
   // it the auto column takes the terminal's max-content width (~390px), which
   // dragged the heading and the body out of the card on any phone (they were
   // clipped, not wrapped, below a ~466px viewport).
+  //
+  // The curl URL is split with a backslash-newline so the terminal keeps its
+  // width; the shell joins it back into one word, so pasting it still works.
 
   const github = 'https://github.com/rleeon/hoard#self-host';
 </script>
@@ -42,8 +45,9 @@
         <div class="min-w-0">
           <pre
             class="overflow-x-auto rounded-xl border border-pine-line bg-black/30 p-5 font-mono text-[13px] leading-relaxed text-white/80"><code
-              >git clone https://github.com/rleeon/hoard.git
-cd hoard/deploy/docker
+              >mkdir hoard && cd hoard
+curl -O https://raw.githubusercontent.com/\
+rleeon/hoard/main/deploy/docker/docker-compose.yml
 docker compose up -d</code
             ></pre>
         </div>
