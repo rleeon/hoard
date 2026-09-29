@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use hoard_agent::library;
-use hoard_agent::restore::{download_snapshot, resolve_version, RestoreOptions};
+use hoard_agent::restore::{download_snapshot_gated, resolve_version, RestoreOptions};
 use hoard_agent::state::CliState;
 
 use crate::commands::link;
@@ -49,6 +49,10 @@ pub struct RestoredOut {
     pub files_reused: u64,
     pub bytes_reused: u64,
     pub destination: String,
+    /// Where the files the restore replaced were copied first. Absent when it
+    /// replaced nothing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kept_in: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -89,18 +93,14 @@ pub async fn apply(
 
     let version = resolve_version(&client, &save_id, version).await?;
 
+    let remembered_path = CliState::load_default()
+        .ok()
+        .and_then(|(state, _)| state.saves.get(&save_id).map(|s| s.local_path.clone()));
     let dest = match to {
         Some(p) => p,
-        None => {
-            let (state, _) = CliState::load_default()?;
-            state
-                .saves
-                .get(&save_id)
-                .map(|s| s.local_path.clone())
-                .ok_or_else(|| {
-                    anyhow!("no remembered local path for save {save_id}; pass --to <PATH>")
-                })?
-        }
+        None => remembered_path.clone().ok_or_else(|| {
+            anyhow!("no remembered local path for save {save_id}; pass --to <PATH>")
+        })?,
     };
 
     // `--remember` makes `dest` this save's folder here, through the same door as
@@ -236,30 +236,83 @@ pub async fn apply(
         // deduping against: identical bytes already there aren't downloaded again.
         reuse_from: Some(dest.clone()),
         gate,
+        backup_root: None,
+        staging_root: None,
     };
-    let outcome = download_snapshot(&client, &save_id, version, &dest, options, on_progress)
-        .await
-        .context("restore failed")?;
-
-    {
-        let bar = pb.lock().unwrap();
-        bar.finish_with_message("done");
-    }
-
-    // Recorded only now that the files are in. Then the service is told, because
-    // it rereads the watched set only when told.
-    let remembered = match home {
-        Some(home) => {
-            home.commit(&client).await.with_context(|| {
-                format!(
-                    "restored to {}, but couldn't keep it as this save's folder",
-                    dest.display()
-                )
-            })?;
-            Some(link::notify_reload().await.to_string())
+    // The service watches this folder and backs it up five seconds after it
+    // goes quiet. Mid-restore that would publish a half-written folder as a
+    // version, and every other device would pull it with a sha that checks out.
+    // Only when the restore goes into that folder: a hold, and above all the
+    // head handed over when letting go, would otherwise speak for a folder
+    // this restore never touched.
+    let watched_here = remembered_path.as_deref() == Some(dest.as_path());
+    let mut hold = None;
+    if watched_here || home.is_some() {
+        // A folder `--remember` is about to adopt is not watched until the
+        // reload after the restore: finding no save there is expected.
+        let (taken, warning) = link::hold_for_restore(&save_id, watched_here).await;
+        if let Some(warning) = warning {
+            eprintln!("warning: {warning}");
         }
-        None => None,
-    };
+        hold = taken;
+    }
+    let interrupt = PlacementGuard::install();
+    let restored = async {
+        let before_place = async {
+            if let Some(hold) = hold.as_mut() {
+                hold.until_held().await;
+            }
+            interrupt.placing(true);
+        };
+        let outcome = download_snapshot_gated(
+            &client,
+            &save_id,
+            version,
+            &dest,
+            options,
+            on_progress,
+            before_place,
+        )
+        .await
+        .context("restore failed");
+        interrupt.placing(false);
+        let outcome = outcome?;
+
+        {
+            let bar = pb.lock().unwrap();
+            bar.finish_with_message("done");
+        }
+
+        // Recorded only now that the files are in. Then the service is told,
+        // because it rereads the watched set only when told.
+        let remembered = match home {
+            Some(home) => {
+                home.commit(&client).await.with_context(|| {
+                    format!(
+                        "restored to {}, but couldn't keep it as this save's folder",
+                        dest.display()
+                    )
+                })?;
+                Some(link::notify_reload().await.to_string())
+            }
+            None => None,
+        };
+        Ok::<_, anyhow::Error>((outcome, remembered))
+    }
+    .await;
+    // On every way out, so a failed restore does not leave the save held until
+    // the lease runs out. After one that went through, the service is handed
+    // the newest version the server holds, so the restored folder goes up as
+    // the next one instead of losing a merge against it.
+    if let Some(hold) = hold {
+        let adopt_head = match &restored {
+            Ok(_) => resolve_version(&client, &save_id, None).await.ok(),
+            Err(_) => None,
+        };
+        hold.release(adopt_head).await;
+    }
+    interrupt.exit_if_interrupted();
+    let (outcome, remembered) = restored?;
 
     let out = RestoreOut {
         save_id,
@@ -274,6 +327,7 @@ pub async fn apply(
             files_reused: outcome.files_reused as u64,
             bytes_reused: outcome.bytes_reused,
             destination: outcome.destination.display().to_string(),
+            kept_in: outcome.kept_in.as_ref().map(|p| p.display().to_string()),
         }),
         remembered,
     };
@@ -292,6 +346,9 @@ pub async fn apply(
                 r.files_reused,
                 fmt_bytes(r.bytes_reused)
             );
+        }
+        if let Some(kept) = &r.kept_in {
+            println!("  the files it replaced were copied to {kept} first");
         }
         if let Some(applied) = &out.remembered {
             println!(
@@ -391,5 +448,57 @@ fn fmt_bytes(b: u64) -> String {
         format!("{:.2} KiB", b / KB)
     } else {
         format!("{} B", b as u64)
+    }
+}
+
+/// Ctrl+C while the restored files are being swapped in would leave the folder
+/// half old, half new, with the originals parked where nobody looks. That
+/// phase is short, so the interrupt waits for it; outside it Ctrl+C stops the
+/// command at once, as it always did.
+struct PlacementGuard {
+    placing: Arc<std::sync::atomic::AtomicBool>,
+    interrupted: Arc<std::sync::atomic::AtomicBool>,
+    listener: tokio::task::JoinHandle<()>,
+}
+
+impl PlacementGuard {
+    fn install() -> Self {
+        use std::sync::atomic::Ordering;
+        let placing = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let interrupted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (p, i) = (placing.clone(), interrupted.clone());
+        let listener = tokio::spawn(async move {
+            while tokio::signal::ctrl_c().await.is_ok() {
+                if p.load(Ordering::SeqCst) {
+                    i.store(true, Ordering::SeqCst);
+                    eprintln!("\nfinishing putting the files in place; stopping right after");
+                } else {
+                    std::process::exit(130);
+                }
+            }
+        });
+        Self {
+            placing,
+            interrupted,
+            listener,
+        }
+    }
+
+    fn placing(&self, on: bool) {
+        self.placing.store(on, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Honour a Ctrl+C that arrived during the placement, now that it is over
+    /// and the service has been told.
+    fn exit_if_interrupted(&self) {
+        if self.interrupted.load(std::sync::atomic::Ordering::SeqCst) {
+            std::process::exit(130);
+        }
+    }
+}
+
+impl Drop for PlacementGuard {
+    fn drop(&mut self) {
+        self.listener.abort();
     }
 }

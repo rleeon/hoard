@@ -28,6 +28,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use hoard_core::ipc::HoldState;
 use hoard_core::kernel;
 use hoard_core::kernel::correlation::accept_correlation_signals;
 use hoard_core::wire::VersionOrigin;
@@ -368,6 +369,15 @@ enum AgentCommand {
     /// sweep so any tracked save with an empty local folder gets restored
     /// right away.
     SetAutoRestore(bool),
+    /// A restore is writing into this save's folder: decide nothing for it (no
+    /// backup, no pull) for `secs`, or let go with `0`. See
+    /// [`hoard_core::ipc::Request::HoldSave`].
+    HoldSave {
+        id: String,
+        secs: u32,
+        adopt_head: Option<i64>,
+        reply: oneshot::Sender<HoldState>,
+    },
     /// Live-toggle `config.global_sync` (sync global). Distinct from
     /// `SetAutoRestore`: when flipped `false → true` the agent kicks an
     /// immediate sweep so every outdated-but-idle save catches up right away.
@@ -562,6 +572,28 @@ impl AgentHandle {
     pub async fn set_auto_restore(&self, enabled: bool) -> Result<()> {
         self.tx.send(AgentCommand::SetAutoRestore(enabled)).await?;
         Ok(())
+    }
+
+    /// Hold `save_id` for `secs` while a restore writes into its folder, or let
+    /// go of it with `0` (and `adopt_head`, after a restore that went through).
+    /// Renewing before it runs out extends it. See [`apply_hold`] for the
+    /// answer.
+    pub async fn hold_save(
+        &self,
+        save_id: impl Into<String>,
+        secs: u32,
+        adopt_head: Option<i64>,
+    ) -> Result<HoldState> {
+        let (reply, answer) = oneshot::channel();
+        self.tx
+            .send(AgentCommand::HoldSave {
+                id: save_id.into(),
+                secs,
+                adopt_head,
+                reply,
+            })
+            .await?;
+        Ok(answer.await?)
     }
 
     /// Push a new `global_sync` preference into the running agent. On a
@@ -880,6 +912,14 @@ struct SaveSlot {
     /// the deferred pull finally fires. Mapea a
     /// [`kernel::State::deferred_notified`].
     deferred_notified: bool,
+    /// A manual restore is writing into the folder until then (see
+    /// [`AgentCommand::HoldSave`]). The reconcile skips the slot while it
+    /// stands: an upload now would publish a half-restored folder as a version,
+    /// and every other device would pull it with a sha that checks out.
+    held_until: Option<TokioInstant>,
+    /// The head a restore that just let go vouched for, queued for the next
+    /// observation. Maps to [`kernel::Observation::adopted_head`].
+    adopted_head: Option<i64>,
 }
 
 /// The kernel's deterministic RNG seed for this save (ADR 0021 C.2): the throttle
@@ -1415,6 +1455,7 @@ fn observe_slot(slot: &mut SaveSlot, cloud: &CloudHeads) -> kernel::Observation 
         // re-upload and the reducer only has to record the version. `None` means it
         // was not checked (nobody uploaded anything this tick).
         upload_landed: slot.pending_upload_landed.take(),
+        adopted_head: slot.adopted_head.take(),
     }
 }
 
@@ -1443,6 +1484,14 @@ fn reconcile_all(
         let Some(slot) = slots.get_mut(&id) else {
             continue;
         };
+        if let Some(until) = slot.held_until {
+            if TokioInstant::now() < until {
+                tracing::debug!(save_id = %id, "agent: reconcile skipped, a restore holds this save");
+                continue;
+            }
+            slot.held_until = None;
+            tracing::info!(save_id = %id, "agent: the restore's hold lapsed without being released");
+        }
         // A pre-reducer snapshot to derive the observability events (stuck and
         // recovered) from `restore_failures`' delta.
         let was_stuck = slot.restore_failures.stuck_notified;
@@ -1964,6 +2013,20 @@ async fn run_agent(
                             &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx,
                             &cloud_heads,
                         );
+                    }
+                    Some(AgentCommand::HoldSave { id, secs, adopt_head, reply }) => {
+                        let state = apply_hold(
+                            &mut slots, &cloud_heads, &id, secs, adopt_head, TokioInstant::now(),
+                        );
+                        let _ = reply.send(state);
+                        // Released: what the restore wrote is judged now, not on
+                        // the next tick.
+                        if secs == 0 {
+                            reconcile_all(
+                                &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx,
+                                &cloud_heads,
+                            );
+                        }
                     }
                     Some(AgentCommand::SetAutoRestore(enabled)) => {
                         let was = config.auto_restore;
@@ -2550,6 +2613,9 @@ fn handle_add(
     // "converged means zero actions" holds from the first tick: without it a save
     // already uploaded would re-upload its baseline on start.
     let synced_fingerprint = last_set_hash.as_deref().map(fingerprint_from_set_hash);
+    // A reload rebuilds the slot; a restore's hold on it survives that. The
+    // restore that ends with `--remember` reloads before it lets go.
+    let held_until = slots.get(&save_id).and_then(|s| s.held_until);
     let mut slot = SaveSlot {
         save,
         watcher: None,
@@ -2583,6 +2649,8 @@ fn handle_add(
         known_version,
         pull_pending: false,
         deferred_notified: false,
+        held_until,
+        adopted_head: None,
     };
     // Playtime-only entries exist purely to be matched by the process poll
     // so their hours accrue for the recap. They own no save folder, so we
@@ -2599,6 +2667,70 @@ fn handle_add(
     mark_pending_if_diverged(&mut slot);
     slots.insert(save_id, slot);
 }
+
+/// What a [`AgentCommand::HoldSave`] does to the slots, and the answer for
+/// the client.
+///
+/// A hold that finds an upload or an automatic restore of the save already
+/// running says [`HoldState::Busy`]: nothing new starts from here on, but that
+/// one is still reading (or writing) the folder, and the client waits for
+/// [`HoldState::Held`] before it moves files in. "Running" is the op's task, not
+/// `in_flight`: once the task reports back its result waits in
+/// `pending_op_result` for a reconcile the hold is holding off.
+///
+/// Letting go queues `adopt_head` for the next observation (see
+/// [`kernel::Observation::adopted_head`]) and asks for a fresh fingerprint, so
+/// what the restore wrote is judged on the tick the caller runs next.
+fn apply_hold(
+    slots: &mut HashMap<String, SaveSlot>,
+    cloud: &CloudHeads,
+    id: &str,
+    secs: u32,
+    adopt_head: Option<i64>,
+    now: TokioInstant,
+) -> HoldState {
+    let Some(slot) = held_slot_id(slots, cloud, id).and_then(|local| slots.get_mut(&local)) else {
+        tracing::debug!(save_id = %id, "agent: hold for a save this machine doesn't watch");
+        return HoldState::NotWatched;
+    };
+    if secs == 0 {
+        if slot.held_until.take().is_some() {
+            tracing::info!(save_id = %id, ?adopt_head, "agent: restore finished, releasing the save");
+        }
+        slot.adopted_head = adopt_head;
+        slot.needs_l1 = true;
+        return HoldState::Released;
+    }
+    let secs = secs.min(MAX_HOLD_SECS);
+    if slot.held_until.is_none() {
+        tracing::info!(save_id = %id, secs, "agent: holding the save while a restore writes into it");
+    }
+    slot.held_until = Some(now + Duration::from_secs(u64::from(secs)));
+    if slot.in_flight.is_some() && slot.pending_op_result.is_none() {
+        tracing::info!(save_id = %id, op = ?slot.in_flight, "agent: the restore waits for the save's running op");
+        HoldState::Busy
+    } else {
+        HoldState::Held
+    }
+}
+
+/// The slot a hold is for. The command line restores by the id the server
+/// knows, which is not always the one this machine gave the folder (a rebuilt
+/// `state.json`, a re-detected folder), so the cloud's id is tried too.
+fn held_slot_id(slots: &HashMap<String, SaveSlot>, cloud: &CloudHeads, id: &str) -> Option<String> {
+    if slots.contains_key(id) {
+        return Some(id.to_string());
+    }
+    slots
+        .iter()
+        .find(|(_, slot)| cloud.cloud_id_for(&slot.save) == id)
+        .map(|(local, _)| local.clone())
+}
+
+/// Ceiling on one [`AgentCommand::HoldSave`]. The client renews well inside it;
+/// the cap is there so a client that sends nonsense cannot freeze a save for a
+/// day.
+const MAX_HOLD_SECS: u32 = 600;
 
 /// Idle process-poll slowdown factor. When no tracked game is running the agent
 /// polls the process table every `poll_secs * IDLE_POLL_MULT` instead of every
@@ -3266,16 +3398,15 @@ async fn run_auto_restore(
     // found out after pulling the whole snapshot: Galak-Z, 1 GB, eight times in
     // 27 minutes on one Steam Deck.
     ensure_restore_target_writable(&save.local_path)?;
-    // Stage the snapshot in a unique temp dir so we never overwrite the
+    // Stage the snapshot in a private temp dir so we never overwrite the
     // user's local files during extraction. The staging dir is empty by
-    // construction, so `download_snapshot` extracts into it cleanly even
-    // with `force=false`. Cleanup happens in `cleanup_staging` at the end.
-    let staging = staging_dir_for(&save.save_id);
-    tokio::fs::create_dir_all(&staging)
-        .await
-        .with_context(|| format!("creating staging dir {}", staging.display()))?;
+    // construction, so the download lands in it cleanly even with
+    // `force=false`. Cleanup happens in `cleanup_staging` at the end (and on
+    // drop, for the early returns).
+    let staging_dir = crate::restore::new_staging_dir()?;
+    let staging = staging_dir.path().to_path_buf();
 
-    let download_result = crate::restore::download_snapshot(
+    let download_result = crate::restore::download_into_staging(
         api,
         // The cloud's id for this row, which is what the manifest and blob
         // endpoints answer to. Passing the local one 404s whenever the two
@@ -3301,6 +3432,10 @@ async fn run_auto_restore(
                 shields: crate::savefilter::shields_for_slug(&save.game_slug),
                 allow_device_local: save.allow_device_local.unwrap_or(false),
             },
+            // Nothing is placed from here: `restore_files_into` below does the
+            // merge and parks its own losers under `conflict_root`.
+            backup_root: None,
+            staging_root: None,
         },
         |_, _| {},
     )
@@ -3395,32 +3530,9 @@ enum AutoRestorePull {
     NothingRemote,
 }
 
-/// Build a unique staging directory under the system temp dir. We embed
-/// the save_id (sanitised to alphanumeric+dash) and a monotonic nanosecond
-/// counter so concurrent restores for the same save never collide.
-fn staging_dir_for(save_id: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let safe_id: String = save_id
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    std::env::temp_dir().join(format!(
-        "hoard-restore-{safe_id}-{n}-{}",
-        std::process::id()
-    ))
-}
-
 /// Best-effort tempdir cleanup. We log but never propagate the error: a
-/// leaked staging dir is annoying but not user-visible, and the OS will
-/// reap `/tmp` on reboot anyway.
+/// leaked staging dir is annoying but not user-visible, and the next restore
+/// sweeps it once it is a week old (`restore::new_staging_dir`).
 async fn cleanup_staging(staging: &Path) {
     if let Err(e) = tokio::fs::remove_dir_all(staging).await {
         tracing::debug!(
@@ -6013,6 +6125,8 @@ mod tests {
             known_version: None,
             pull_pending: false,
             deferred_notified: false,
+            held_until: None,
+            adopted_head: None,
         }
     }
 
@@ -6065,6 +6179,92 @@ mod tests {
         let save = tracked("local-only", "factorio", "main");
         assert_eq!(heads.cloud_id_for(&save), "cloud-side");
         assert_eq!(heads.version_for(&save), Some(284));
+    }
+
+    /// `hoard restore` names the save by the id the server knows. A hold sent
+    /// with it has to land on this machine's slot even when the two ids
+    /// drifted apart, or the restore would run unheld without anybody knowing.
+    #[test]
+    fn a_hold_finds_the_slot_by_either_id() {
+        let heads = heads_with(&[("cloud-side", "factorio", "main", 3)]);
+        let mut slots = HashMap::new();
+        slots.insert(
+            "local-only".to_string(),
+            test_slot(tracked("local-only", "factorio", "main")),
+        );
+        assert_eq!(
+            held_slot_id(&slots, &heads, "local-only").as_deref(),
+            Some("local-only")
+        );
+        assert_eq!(
+            held_slot_id(&slots, &heads, "cloud-side").as_deref(),
+            Some("local-only")
+        );
+        assert_eq!(held_slot_id(&slots, &heads, "someone-else"), None);
+    }
+
+    /// The History dialog's restore, end to end through the shell and the
+    /// reducer: the hold finds the daemon's upload still running and says so,
+    /// the upload finishes during the hold (at v5, while the dialog's own safety
+    /// copy took the head to v6), and letting go with that head makes the
+    /// restored folder the next version on top of v6 instead of a local change
+    /// that a pull of v6 then merges away.
+    #[test]
+    fn a_restore_letting_go_hands_its_head_to_the_next_tick() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("slot1.sav"), b"the restored version").unwrap();
+        let mut save = tracked("s1", "fake-game", "main");
+        save.local_path = dir.path().to_path_buf();
+        let heads = heads_with(&[("s1", "fake-game", "main", 6)]);
+        let mut slot = test_slot(save);
+        slot.known_version = Some(4);
+        slot.synced_fingerprint = Some(1);
+        slot.in_flight = Some(kernel::Op::Backup);
+        let mut slots = HashMap::new();
+        slots.insert("s1".to_string(), slot);
+        let now = TokioInstant::now();
+
+        assert_eq!(
+            apply_hold(&mut slots, &heads, "s1", 120, None, now),
+            HoldState::Busy
+        );
+        slots.get_mut("s1").unwrap().pending_op_result = Some(kernel::OpResult::Ok {
+            version: Some(5),
+            fingerprint: Some(1),
+            wrote: true,
+        });
+        assert_eq!(
+            apply_hold(&mut slots, &heads, "s1", 120, None, now),
+            HoldState::Held
+        );
+        assert_eq!(
+            apply_hold(&mut slots, &heads, "someone-else", 120, None, now),
+            HoldState::NotWatched
+        );
+        assert_eq!(
+            apply_hold(&mut slots, &heads, "s1", 0, Some(6), now),
+            HoldState::Released
+        );
+
+        let slot = slots.get_mut("s1").unwrap();
+        assert!(slot.held_until.is_none());
+        let obs = observe_slot(slot, &heads);
+        assert_eq!(obs.adopted_head, Some(6));
+        let config = AgentConfig {
+            min_snapshot_interval_secs: 0,
+            ..AgentConfig::default()
+        };
+        let wall = OffsetDateTime::now_utc();
+        let state = state_from_slot(slot, &config, wall);
+        let (next, decisions) =
+            kernel::reconcile::reconcile(&state, &obs, kernel::World { now: wall, seed: 0 });
+        assert_eq!(next.known_version, Some(6));
+        assert!(
+            decisions
+                .iter()
+                .any(|d| d.action() == Some(&kernel::Action::Backup)),
+            "the restored folder goes up on v6: {decisions:?}"
+        );
     }
 
     /// The id still wins when the cloud knows it, alias or no alias.

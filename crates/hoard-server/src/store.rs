@@ -68,6 +68,18 @@ pub trait BlobStore: Send + Sync {
     /// copy fallback on EXDEV; the S3 backend streams it to the bucket.
     async fn put_from_file(&self, key: &str, local_path: &Path) -> Result<()>;
 
+    /// [`Self::put_from_file`] for every `(key, staged file)` of a commit. The
+    /// local backend makes them durable together (see
+    /// [`LocalFs::put_many_from_files`]); anywhere else they go one by one. On
+    /// an error some may have been placed and some not: the caller's rollback
+    /// takes back whatever nothing references.
+    async fn put_many_from_files(&self, items: &[(String, PathBuf)]) -> Result<()> {
+        for (key, path) in items {
+            self.put_from_file(key, path).await?;
+        }
+        Ok(())
+    }
+
     /// Whether an object exists. Used as a HEAD fallback only; the snapshot
     /// path prefers the `blobs`/`chunks` tables as the source of truth.
     async fn exists(&self, key: &str) -> Result<bool>;
@@ -118,24 +130,23 @@ impl LocalFs {
 #[async_trait]
 impl BlobStore for LocalFs {
     async fn put_from_file(&self, key: &str, local_path: &Path) -> Result<()> {
-        let dst = self.resolve(key);
-        if let Some(parent) = dst.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .with_context(|| format!("mkdir {}", parent.display()))?;
-        }
-        // Same filesystem (tmp + blobs share data_dir) → rename; fall back to
-        // copy on the off chance of EXDEV, then drop the staged source.
-        match tokio::fs::rename(local_path, &dst).await {
-            Ok(()) => Ok(()),
-            Err(_) => {
-                tokio::fs::copy(local_path, &dst)
-                    .await
-                    .with_context(|| format!("copy blob into {}", dst.display()))?;
-                let _ = tokio::fs::remove_file(local_path).await;
-                Ok(())
-            }
-        }
+        self.put_many_from_files(&[(key.to_string(), local_path.to_path_buf())])
+            .await
+    }
+
+    /// One flush per file, several at once, and one per folder after the
+    /// renames. Done one after another, file then folder, a first upload of a
+    /// few thousand blobs on an SD card took minutes, all of it inside the
+    /// request and under the user's lock: the proxy cut it, the client retried
+    /// into the lock, and the user's other saves queued behind it.
+    async fn put_many_from_files(&self, items: &[(String, PathBuf)]) -> Result<()> {
+        let moves: Vec<(PathBuf, PathBuf)> = items
+            .iter()
+            .map(|(key, src)| (src.clone(), self.resolve(key)))
+            .collect();
+        tokio::task::spawn_blocking(move || place_durably(&moves))
+            .await
+            .context("placing blobs")?
     }
 
     async fn exists(&self, key: &str) -> Result<bool> {
@@ -167,6 +178,107 @@ impl BlobStore for LocalFs {
 
     fn local_root(&self) -> Option<&Path> {
         Some(&self.data_dir)
+    }
+}
+
+/// Move each staged file to its destination so that, once this returns, a
+/// power cut cannot take any of them back.
+///
+/// The rows that reference the objects are committed right after, and SQLite
+/// flushes its own writes. The objects' bytes used to sit in the page cache
+/// until the kernel got round to them, so a Raspberry Pi or a NAS losing power
+/// at the wrong moment could come back with the row and an empty file under
+/// it: a version that says it is there and restores as garbage.
+///
+/// Same filesystem (`tmp/` and the store share `data_dir`) is one rename; on
+/// the off chance of EXDEV the copy goes to a temp name beside the destination
+/// first, so it is never seen half written either.
+fn place_durably(moves: &[(PathBuf, PathBuf)]) -> Result<()> {
+    const WORKERS: usize = 8;
+    if moves.is_empty() {
+        return Ok(());
+    }
+    // 1. Every file's bytes, a few at a time.
+    let per = moves.len().div_ceil(WORKERS);
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = moves
+            .chunks(per)
+            .map(|chunk| {
+                scope.spawn(move || -> Result<()> {
+                    for (src, _) in chunk {
+                        // Write access because Windows will not flush a handle
+                        // opened read-only.
+                        std::fs::OpenOptions::new()
+                            .read(true)
+                            .write(true)
+                            .open(src)
+                            .and_then(|f| flushed(f.sync_all()))
+                            .with_context(|| format!("flushing {}", src.display()))?;
+                    }
+                    Ok(())
+                })
+            })
+            .collect();
+        workers.into_iter().try_for_each(|w| {
+            w.join()
+                .unwrap_or_else(|_| Err(anyhow::anyhow!("a flush worker panicked")))
+        })
+    })?;
+    // 2. The renames.
+    let mut dirs: std::collections::HashSet<&Path> = std::collections::HashSet::new();
+    for (src, dst) in moves {
+        if let Some(parent) = dst.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("mkdir {}", parent.display()))?;
+            dirs.insert(parent);
+        }
+        if std::fs::rename(src, dst).is_err() {
+            let name = dst
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let tmp = dst.with_file_name(format!(".{name}.{}.part", uuid::Uuid::new_v4()));
+            let copied = (|| -> std::io::Result<()> {
+                let mut from = std::fs::File::open(src)?;
+                let mut to = std::fs::File::create(&tmp)?;
+                std::io::copy(&mut from, &mut to)?;
+                flushed(to.sync_all())?;
+                std::fs::rename(&tmp, dst)
+            })();
+            if let Err(e) = copied {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(e).with_context(|| format!("copy blob into {}", dst.display()));
+            }
+            let _ = std::fs::remove_file(src);
+        }
+    }
+    // 3. Each folder once. The rename is a change to the directory, and it is
+    // the directory that has to reach the disk for the name to survive.
+    // Best-effort: Windows has no such call and some network filesystems
+    // refuse it on a directory.
+    #[cfg(unix)]
+    for dir in dirs {
+        let _ = std::fs::File::open(dir).and_then(|d| d.sync_all());
+    }
+    #[cfg(not(unix))]
+    let _ = dirs;
+    Ok(())
+}
+
+/// A flush the filesystem does not implement is not a failed write: some FUSE
+/// and SMB mounts answer EINVAL or ENOTSUP, and refusing every upload there
+/// would be worse than the risk it guards against. EIO and the rest still fail.
+fn flushed(r: std::io::Result<()>) -> std::io::Result<()> {
+    match r {
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::Unsupported | std::io::ErrorKind::InvalidInput
+            ) =>
+        {
+            Ok(())
+        }
+        other => other,
     }
 }
 

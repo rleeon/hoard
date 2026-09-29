@@ -17,8 +17,9 @@ use hoard_agent::config::CliConfig;
 use hoard_agent::presets;
 use hoard_agent::restore::{self, RestoreOptions};
 use hoard_agent::state::CliState;
+use hoard_core::ipc::{HoldState, IpcError, Payload, Request};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use time::format_description::well_known::Rfc3339;
 
 use super::agent::apply_reseat;
@@ -398,6 +399,13 @@ pub async fn restore_snapshot(
             .unwrap_or_default(),
     };
 
+    // The service watches this folder and backs it up five seconds after it goes
+    // quiet. Mid-restore that would publish a half-written folder as a version,
+    // and every other device would pull it with a sha that checks out. Held from
+    // here to the end, the safety copy included, and let go when `_hold` drops,
+    // on any way out.
+    let mut hold = SaveHold::take(&app, &state, &save_id).await;
+
     // 1) Optional pre-restore backup. Done synchronously so the user can be
     //    sure the safety net exists before we start overwriting files.
     let mut safety_version = None;
@@ -466,7 +474,14 @@ pub async fn restore_snapshot(
     let app_for_dl = app.clone();
     let save_id_for_dl = save_id.clone();
     emit_phase(&app, &save_id, version, RestorePhase::Downloading, 0, 0);
-    let outcome = restore::download_snapshot(
+    // The service may still be finishing an upload or an automatic restore of
+    // this save that started before the hold; the files go in once it has.
+    let before_place = async {
+        if let Some(hold) = hold.as_mut() {
+            hold.until_held().await;
+        }
+    };
+    let outcome = restore::download_snapshot_gated(
         &client,
         &save_id,
         version,
@@ -474,11 +489,13 @@ pub async fn restore_snapshot(
         RestoreOptions {
             skip_verify: false,
             force: true,
-            // Files land straight into the save folder here, so the folder we
-            // dedup against is the destination itself: anything already there
-            // with the right bytes is copied (or left) instead of re-downloaded.
+            // Dedup against the save folder itself: anything already there with
+            // the right bytes is copied into the staging folder instead of
+            // re-downloaded.
             reuse_from: Some(local_path.clone()),
             gate,
+            backup_root: None,
+            staging_root: None,
         },
         move |downloaded, total| {
             let _ = app_for_dl.emit(
@@ -492,6 +509,7 @@ pub async fn restore_snapshot(
                 },
             );
         },
+        before_place,
     )
     .await
     .map_err(pretty_error)?;
@@ -512,12 +530,181 @@ pub async fn restore_snapshot(
         apply_reseat(&state, reseat).await;
     }
 
+    // Let go with the newest version the server holds, the safety copy above
+    // included: the restored folder goes up as the next one on top of it. Let
+    // go without one, the service would read the folder as a local change
+    // behind a head that moved, and the pull of that head would merge the
+    // restore away.
+    if let Some(hold) = hold {
+        let head = restore::resolve_version(&client, &save_id, None)
+            .await
+            .ok()
+            .or(safety_version);
+        hold.release(head).await;
+    }
+
     Ok(RestoreOutcome {
         files_extracted: outcome.files_extracted,
         bytes_extracted: outcome.bytes_extracted,
         destination: outcome.destination.to_string_lossy().into_owned(),
         safety_version,
     })
+}
+
+/// How long one hold on a save lasts in the service, and how often it is
+/// renewed. See `hoard_core::ipc::Request::HoldSave`.
+const HOLD_SECS: u32 = 120;
+const HOLD_RENEW: std::time::Duration = std::time::Duration::from_secs(30);
+/// How often to ask again while the service is still finishing its own op on
+/// the save, and how long to wait for that before restoring anyway (one mixed
+/// version in the history, with the restored folder going up on top of it,
+/// beats waiting for ever).
+const HOLD_POLL: std::time::Duration = std::time::Duration::from_secs(1);
+const HOLD_WAIT_CAP: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// A restore's hold on its save: the service backs nothing up and pulls nothing
+/// for it until the hold is released, or until the renewals stop and the lease
+/// runs out.
+struct SaveHold {
+    app: AppHandle,
+    /// Emptied once the release has been sent, so `Drop` does not send another.
+    save_id: String,
+    /// The service's last answer; `None` while it has given none.
+    state: tokio::sync::watch::Receiver<Option<HoldState>>,
+    renew: tauri::async_runtime::JoinHandle<()>,
+}
+
+impl SaveHold {
+    /// `None` when the service is too old to hold a save. The restore goes
+    /// ahead either way, as it always did. An engine that is down, or a save
+    /// the service does not know yet, is renewed all the same: either may come
+    /// up mid-restore.
+    async fn take(app: &AppHandle, state: &AppState, save_id: &str) -> Option<Self> {
+        let request = Request::HoldSave {
+            save_id: save_id.to_string(),
+            secs: HOLD_SECS,
+            adopt_head: None,
+        };
+        let first = match state.daemon.request(request.clone()).await {
+            Ok(Payload::Hold { state }) => {
+                if state == HoldState::NotWatched {
+                    tracing::warn!(
+                        save_id,
+                        "restore: the service isn't syncing this save yet, so it can't hold it"
+                    );
+                }
+                Some(state)
+            }
+            Ok(_) => Some(HoldState::Held),
+            Err(err) => {
+                if matches!(
+                    err.downcast_ref::<IpcError>(),
+                    Some(IpcError::Unsupported { .. })
+                ) {
+                    tracing::warn!(
+                        save_id,
+                        "restore: the service is too old to hold the save; restoring anyway"
+                    );
+                    return None;
+                }
+                tracing::warn!(
+                    save_id,
+                    error = %format!("{err:#}"),
+                    "restore: the service couldn't hold the save yet; restoring, and asking again"
+                );
+                None
+            }
+        };
+        let (tx, rx) = tokio::sync::watch::channel(first);
+        let renewer = app.clone();
+        let renew = tauri::async_runtime::spawn(async move {
+            loop {
+                let busy = *tx.borrow() == Some(HoldState::Busy);
+                tokio::time::sleep(if busy { HOLD_POLL } else { HOLD_RENEW }).await;
+                let state = renewer.state::<AppState>();
+                // `request` opens a fresh connection when the old one died,
+                // which is what a service restarting under an update looks like.
+                match state.daemon.request(request.clone()).await {
+                    Ok(Payload::Hold { state }) => {
+                        let _ = tx.send(Some(state));
+                    }
+                    Ok(_) => {
+                        let _ = tx.send(Some(HoldState::Held));
+                    }
+                    Err(err) => {
+                        tracing::warn!(error = %format!("{err:#}"), "restore: couldn't renew the hold");
+                    }
+                }
+            }
+        });
+        Some(Self {
+            app: app.clone(),
+            save_id: save_id.to_string(),
+            state: rx,
+            renew,
+        })
+    }
+
+    /// Returns once the service has nothing of its own touching the folder: at
+    /// once unless it answered [`HoldState::Busy`], and never later than
+    /// [`HOLD_WAIT_CAP`].
+    async fn until_held(&mut self) {
+        if *self.state.borrow() != Some(HoldState::Busy) {
+            return;
+        }
+        tracing::info!(save_id = %self.save_id, "restore: waiting for the service to finish syncing the save");
+        let settled = self.state.wait_for(|s| *s != Some(HoldState::Busy));
+        if tokio::time::timeout(HOLD_WAIT_CAP, settled).await.is_err() {
+            tracing::warn!(save_id = %self.save_id, "restore: the service is still syncing the save; restoring anyway");
+        }
+    }
+
+    /// Let go after a restore that went through, handing over the newest
+    /// version the server holds (see `Request::HoldSave::adopt_head`).
+    async fn release(mut self, adopt_head: Option<i64>) {
+        self.renew.abort();
+        let save_id = std::mem::take(&mut self.save_id);
+        let state = self.app.state::<AppState>();
+        state
+            .daemon
+            .tell(
+                "release the save after restoring",
+                Request::HoldSave {
+                    save_id,
+                    secs: 0,
+                    adopt_head,
+                },
+            )
+            .await;
+    }
+}
+
+impl Drop for SaveHold {
+    /// An error or a panic on the way: the renewals stop and the service is
+    /// told to judge the folder now. The app outlives the command, so the
+    /// release still gets sent.
+    fn drop(&mut self) {
+        self.renew.abort();
+        if self.save_id.is_empty() {
+            return;
+        }
+        let app = self.app.clone();
+        let save_id = std::mem::take(&mut self.save_id);
+        tauri::async_runtime::spawn(async move {
+            let state = app.state::<AppState>();
+            state
+                .daemon
+                .tell(
+                    "release the save after restoring",
+                    Request::HoldSave {
+                        save_id,
+                        secs: 0,
+                        adopt_head: None,
+                    },
+                )
+                .await;
+        });
+    }
 }
 
 fn emit_phase(

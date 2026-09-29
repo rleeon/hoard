@@ -353,6 +353,12 @@ pub struct Observation {
     /// exists in `blobs`/`chunks`), so there is nothing to re-upload. `None`
     /// means it was not checked.
     pub upload_landed: Option<bool>,
+    /// A manual restore just let go of this save and vouches for its folder as
+    /// the user's next version on top of this head (IPC `HoldSave` with
+    /// `adopt_head`). Applied after `op_result`: an upload or an automatic
+    /// restore that finished during the hold must not pull `known_version`
+    /// back under it.
+    pub adopted_head: Option<i64>,
 }
 
 /// Something the kernel asks the IO shell to do.

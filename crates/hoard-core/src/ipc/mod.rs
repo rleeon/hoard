@@ -249,6 +249,30 @@ pub enum Request {
     SetAutoRestore {
         enabled: bool,
     },
+    /// Keep your hands off this save for `secs`: a client is restoring a version
+    /// into its folder. Nothing is backed up or pulled for it until the hold runs
+    /// out or is renewed; the writes it sees in the meantime are not lost, they
+    /// go up once it lapses. `secs: 0` lets go.
+    ///
+    /// A lease rather than the paused flag in `state.json` on purpose: a client
+    /// that dies halfway would leave a persisted pause behind for ever, and the
+    /// save would stop syncing without anybody having asked for it. The client
+    /// renews while it works; if it stops, the hold ends on its own.
+    ///
+    /// Answered with [`Payload::Hold`]. An older daemon answers
+    /// [`IpcError::Unsupported`] and the restore goes ahead without it, as it
+    /// always did.
+    HoldSave {
+        save_id: String,
+        secs: u32,
+        /// Only when letting go after a restore that went through: the newest
+        /// version the client knows the server holds for this save, its own
+        /// safety copy included. The daemon takes the restored folder as the
+        /// user's next version on top of it, instead of a local change that
+        /// raced a newer cloud one and lost the merge.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        adopt_head: Option<i64>,
+    },
     SetGlobalSync {
         enabled: bool,
     },
@@ -446,6 +470,23 @@ pub enum Reply {
     Error(IpcError),
 }
 
+/// What a [`Request::HoldSave`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HoldState {
+    /// Held: nothing touches the folder until the hold is released or lapses.
+    Held,
+    /// Held, but an upload or an automatic restore of this save was already
+    /// running and has not finished. Nothing new starts; the client asks again
+    /// until it reads [`HoldState::Held`] before it writes into the folder.
+    Busy,
+    /// The daemon watches no save by that id (yet): nothing of it would be
+    /// uploaded, and nothing is held.
+    NotWatched,
+    /// Let go.
+    Released,
+}
+
 /// The payload of a successful reply.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "payload", rename_all = "snake_case")]
@@ -473,6 +514,10 @@ pub enum Payload {
     /// The games found in one folder (answer to [`Request::ScanFolder`]).
     Detected {
         games: serde_json::Value,
+    },
+    /// Where a [`Request::HoldSave`] left the save.
+    Hold {
+        state: HoldState,
     },
     /// One slug's trace through detection (answer to
     /// [`Request::DiagnoseDetection`]).
@@ -1015,6 +1060,53 @@ mod tests {
         }
     }
 
+    /// A restore's hold reaches older daemons as a request they don't know, which
+    /// they answer instead of dropping the connection. That is what lets the
+    /// client carry on without it.
+    #[test]
+    fn a_hold_is_unknown_to_an_older_daemon() {
+        let json = serde_json::to_value(Request::HoldSave {
+            save_id: "abc".into(),
+            secs: 0,
+            adopt_head: Some(7),
+        })
+        .unwrap();
+        #[derive(Deserialize)]
+        #[serde(tag = "op", rename_all = "snake_case")]
+        enum BeforeHold {
+            #[allow(dead_code)]
+            Ping,
+            #[serde(other)]
+            Unknown,
+        }
+        let old: BeforeHold = serde_json::from_value(json.clone()).unwrap();
+        assert!(matches!(old, BeforeHold::Unknown), "{json}");
+        let _: Request = serde_json::from_value(json).unwrap();
+    }
+
+    /// The hold's answer, and a release without a head, as they travel.
+    #[test]
+    fn a_hold_answers_where_it_left_the_save() {
+        let json = serde_json::to_value(Payload::Hold {
+            state: HoldState::Busy,
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"payload": "hold", "state": "busy"})
+        );
+        let release = serde_json::to_value(Request::HoldSave {
+            save_id: "abc".into(),
+            secs: 0,
+            adopt_head: None,
+        })
+        .unwrap();
+        assert_eq!(
+            release,
+            serde_json::json!({"op": "hold_save", "save_id": "abc", "secs": 0})
+        );
+    }
+
     /// The JSON shape of the events is the contract Slice 4a moved out of
     /// `hoard_agent::agent` into [`events`]. If anyone renames a variant or a
     /// field, this fails: the desktop keys the UI off that `type` name and the
@@ -1148,6 +1240,14 @@ mod tests {
             (Request::ForgetServerSession, "forget_server_session"),
             (Request::ServerToken, "server_token"),
             (Request::Shutdown, "shutdown"),
+            (
+                Request::HoldSave {
+                    save_id: "s".into(),
+                    secs: 120,
+                    adopt_head: None,
+                },
+                "hold_save",
+            ),
         ];
         for (request, op) in cases {
             let json = serde_json::to_value(&request).unwrap();

@@ -42,6 +42,9 @@ notify-debouncer-mini = { workspace = true }
 # gets mtime=now and would always beat the local copy in the conflict-aware
 # diff (`agent::local_mtime_wins`), so cloud pulls looked "newer" forever.
 filetime = "0.2"
+# The restore's staging folder and the legacy download's temp archive: names
+# nobody can guess, created exclusively, 0700 on Unix.
+tempfile = { workspace = true }
 
 # Lectura del ÍNDICE de comprimidos (sin descomprimir) para puntuar saves
 # that live inside a .zip (Factorio and several indies). `default-features = false`:

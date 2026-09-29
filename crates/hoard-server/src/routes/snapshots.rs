@@ -221,8 +221,8 @@ pub async fn create(
         .map_err(|e| internal_logged("ownership lookup", e))?
         .ok_or_else(|| err(StatusCode::NOT_FOUND, "save not found"))?;
 
-    // Quota check setup
-    let (quota, used): (i64, i64) = sqlx::query!(
+    // Quota check setup. The usage is read again under the user's lock, below.
+    let (quota, _): (i64, i64) = sqlx::query!(
         "SELECT storage_quota_bytes, storage_used_bytes FROM users WHERE id=?",
         user_id
     )
@@ -495,6 +495,21 @@ pub async fn create(
         }
     }
 
+    // From here to the commit nothing else may create or remove this user's
+    // objects (see `blobs::lock_user`), so what the lookups below find is still
+    // true when the rows go in. The usage is read again under it: the figure
+    // from before the upload streamed in may be stale by now, and it is written
+    // back as an absolute.
+    let _objects = crate::blobs::lock_user(&user_id).await;
+    let used: i64 = sqlx::query_scalar("SELECT storage_used_bytes FROM users WHERE id=?")
+        .bind(&user_id)
+        .fetch_one(&state.pool)
+        .await
+        .map_err(|e| {
+            cleanup_tmp();
+            internal_logged("quota lookup", e)
+        })?;
+
     // New bytes = distinct content (whole-file blobs for small files, per-chunk
     // for chunked ones) not already stored for this user. `new_blobs`/`new_chunks`
     // collect exactly the shas needing a physical upload, so the placement pass
@@ -574,6 +589,7 @@ pub async fn create(
                 .collect();
             let (store, pool, user_id) = (store.clone(), pool.clone(), user_id.clone());
             tokio::spawn(async move {
+                let _objects = crate::blobs::lock_user(&user_id).await;
                 for (key, sha, is_chunk) in keys {
                     // Only drop bytes nothing references. Between our placement
                     // and this rollback another request may have committed a
@@ -594,6 +610,9 @@ pub async fn create(
         }
     };
 
+    // Gathered first and placed in one go, so the store can make the whole lot
+    // durable together rather than a flush at a time.
+    let mut batch: Vec<(String, std::path::PathBuf)> = Vec::new();
     for (i, (rel_path, _size, sha)) in files.iter().enumerate() {
         if let Some(plan) = chunk_plans.get(&i) {
             let src = tmp_root.join(rel_path);
@@ -609,13 +628,13 @@ pub async fn create(
                 if crate::chunking::place_chunk(&src, c.offset, c.len, &stage)
                     .await
                     .is_err()
-                    || store.put_from_file(&key, &stage).await.is_err()
                 {
-                    warn!(sha = %c.sha256, "chunk placement failed");
+                    warn!(sha = %c.sha256, "chunk extraction failed");
                     rollback_blobs(&created_blobs);
                     cleanup_tmp();
                     return Err(internal());
                 }
+                batch.push((key.clone(), stage));
                 created_blobs.push(Placed {
                     key,
                     sha: c.sha256.clone(),
@@ -630,18 +649,20 @@ pub async fn create(
             continue;
         }
         let key = crate::store::blob_key(&user_id, sha);
-        let src = tmp_root.join(rel_path);
-        if store.put_from_file(&key, &src).await.is_err() {
-            warn!(sha = %sha, "blob placement failed");
-            rollback_blobs(&created_blobs);
-            cleanup_tmp();
-            return Err(internal());
-        }
+        batch.push((key.clone(), tmp_root.join(rel_path)));
         created_blobs.push(Placed {
             key,
             sha: sha.clone(),
             chunk: false,
         });
+    }
+    if let Err(e) = store.put_many_from_files(&batch).await {
+        warn!(error = %format!("{e:#}"), "blob placement failed");
+        // Some may be in and some not: the rollback takes back whatever of the
+        // batch nothing references, and a key never placed is a no-op delete.
+        rollback_blobs(&created_blobs);
+        cleanup_tmp();
+        return Err(internal());
     }
 
     let snapshot_id = Uuid::new_v4().to_string();
@@ -759,43 +780,78 @@ pub async fn create(
                     cleanup_tmp();
                     return Err(internal());
                 }
-                if sqlx::query(
-                    "INSERT INTO chunks (user_id, sha256, size_bytes, refcount)
-                     VALUES (?,?,?,1)
-                     ON CONFLICT(user_id, sha256) DO UPDATE SET refcount = refcount + 1",
-                )
-                .bind(&user_id)
-                .bind(&c.sha256)
-                .bind(csize)
-                .execute(&mut *tx)
-                .await
-                .is_err()
-                {
-                    rollback_blobs(&created_blobs);
-                    cleanup_tmp();
-                    return Err(internal());
+                // Only what this request placed may create its row; anything else
+                // has to be there already, or the row would point at nothing.
+                let counted = if new_chunks.contains(&c.sha256) {
+                    sqlx::query(
+                        "INSERT INTO chunks (user_id, sha256, size_bytes, refcount)
+                         VALUES (?,?,?,1)
+                         ON CONFLICT(user_id, sha256) DO UPDATE SET refcount = refcount + 1",
+                    )
+                    .bind(&user_id)
+                    .bind(&c.sha256)
+                    .bind(csize)
+                    .execute(&mut *tx)
+                    .await
+                } else {
+                    sqlx::query(
+                        "UPDATE chunks SET refcount = refcount + 1 WHERE user_id = ? AND sha256 = ?",
+                    )
+                    .bind(&user_id)
+                    .bind(&c.sha256)
+                    .execute(&mut *tx)
+                    .await
+                };
+                match counted {
+                    Ok(r) if r.rows_affected() == 1 => {}
+                    Ok(_) => {
+                        rollback_blobs(&created_blobs);
+                        cleanup_tmp();
+                        return Err(crate::routes::cas::blob_gone(&c.sha256));
+                    }
+                    Err(_) => {
+                        rollback_blobs(&created_blobs);
+                        cleanup_tmp();
+                        return Err(internal());
+                    }
                 }
             }
             // tmp source is left for cleanup_tmp; chunks were copied out.
             continue;
         }
 
-        // Reference-count the blob (insert at 1, or bump an existing one).
-        if sqlx::query(
-            "INSERT INTO blobs (user_id, sha256, size_bytes, refcount)
-             VALUES (?,?,?,1)
-             ON CONFLICT(user_id, sha256) DO UPDATE SET refcount = refcount + 1",
-        )
-        .bind(&user_id)
-        .bind(sha)
-        .bind(size)
-        .execute(&mut *tx)
-        .await
-        .is_err()
-        {
-            rollback_blobs(&created_blobs);
-            cleanup_tmp();
-            return Err(internal());
+        // Reference-count the blob: insert at 1 what this request placed, bump
+        // what was already stored.
+        let counted = if new_blobs.contains(sha) {
+            sqlx::query(
+                "INSERT INTO blobs (user_id, sha256, size_bytes, refcount)
+                 VALUES (?,?,?,1)
+                 ON CONFLICT(user_id, sha256) DO UPDATE SET refcount = refcount + 1",
+            )
+            .bind(&user_id)
+            .bind(sha)
+            .bind(size)
+            .execute(&mut *tx)
+            .await
+        } else {
+            sqlx::query("UPDATE blobs SET refcount = refcount + 1 WHERE user_id = ? AND sha256 = ?")
+                .bind(&user_id)
+                .bind(sha)
+                .execute(&mut *tx)
+                .await
+        };
+        match counted {
+            Ok(r) if r.rows_affected() == 1 => {}
+            Ok(_) => {
+                rollback_blobs(&created_blobs);
+                cleanup_tmp();
+                return Err(crate::routes::cas::blob_gone(sha));
+            }
+            Err(_) => {
+                rollback_blobs(&created_blobs);
+                cleanup_tmp();
+                return Err(internal());
+            }
         }
     }
 
@@ -1103,15 +1159,23 @@ pub async fn download(
         .map_err(|e| internal_logged("ownership lookup", e))?
         .ok_or_else(|| err(StatusCode::NOT_FOUND, "save not found"))?;
 
-    let snap_id: Option<String> = sqlx::query_scalar(
-        "SELECT id FROM snapshots WHERE save_id=? AND version_num=? AND deleted_at IS NULL",
+    let snap: Option<(String, String)> = sqlx::query_as(
+        "SELECT id, created_at FROM snapshots
+          WHERE save_id=? AND version_num=? AND deleted_at IS NULL",
     )
     .bind(&save_id)
     .bind(version)
     .fetch_optional(&state.pool)
     .await
     .map_err(|e| internal_logged("reading a snapshot row", e))?;
-    let snap_id = snap_id.ok_or_else(|| err(StatusCode::NOT_FOUND, "snapshot not found"))?;
+    let (snap_id, created_at) =
+        snap.ok_or_else(|| err(StatusCode::NOT_FOUND, "snapshot not found"))?;
+    // The mtime of a file whose client never sent one (every version from
+    // before 0021): it was at least this old when it went up.
+    let uploaded_at =
+        time::OffsetDateTime::parse(&created_at, &time::format_description::well_known::Rfc3339)
+            .map(|t| t.unix_timestamp().max(0) as u64)
+            .unwrap_or(0);
 
     // A version is just its list of files; reconstruct the tarball from the
     // referenced blobs and/or chunks (ADR 0018 eje C + ADR 0019 Fase 4). No
@@ -1119,7 +1183,7 @@ pub async fn download(
     // chunks when it has snapshot_file_chunks rows, otherwise from its single
     // whole-file blob, transparent to the client, which gets the same tar.zst.
     let file_rows = sqlx::query(
-        "SELECT id, relative_path, size_bytes, sha256 FROM snapshot_files
+        "SELECT id, relative_path, size_bytes, sha256, modified_at FROM snapshot_files
          WHERE snapshot_id=? ORDER BY relative_path",
     )
     .bind(&snap_id)
@@ -1133,15 +1197,31 @@ pub async fn download(
     // keys (resolved to readable local paths inside the tar-builder task).
     enum DlSource {
         Blob(String),
-        Chunks { keys: Vec<String>, size: u64 },
+        Chunks(Vec<String>),
+    }
+    struct DlEntry {
+        rel: String,
+        sha: String,
+        size: u64,
+        mtime: u64,
+        source: DlSource,
     }
 
-    let mut entries: Vec<(String, DlSource)> = Vec::with_capacity(file_rows.len());
+    let mut entries: Vec<DlEntry> = Vec::with_capacity(file_rows.len());
     for r in &file_rows {
         let file_id: String = r.get("id");
         let rel: String = r.get("relative_path");
         let size: i64 = r.get("size_bytes");
         let sha: String = r.get("sha256");
+        // The file's own mtime, as the client saw it. The header used to carry
+        // the blob's (when that content was first uploaded, by whichever
+        // version) or 0 for a chunked file, and the client's conflict rule
+        // compares mtimes.
+        let mtime = r
+            .get::<Option<i64>, _>("modified_at")
+            .filter(|t| *t > 0)
+            .map(|t| t as u64)
+            .unwrap_or(uploaded_at);
 
         let chunk_rows = sqlx::query(
             "SELECT chunk_sha256 FROM snapshot_file_chunks
@@ -1152,24 +1232,26 @@ pub async fn download(
         .await
         .map_err(|e| internal_logged("listing snapshot rows", e))?;
 
-        if chunk_rows.is_empty() {
-            entries.push((rel, DlSource::Blob(crate::store::blob_key(&uid, &sha))));
+        let source = if chunk_rows.is_empty() {
+            DlSource::Blob(crate::store::blob_key(&uid, &sha))
         } else {
-            let keys = chunk_rows
-                .iter()
-                .map(|c| {
-                    let csha: String = c.get("chunk_sha256");
-                    crate::store::chunk_key(&uid, &csha)
-                })
-                .collect();
-            entries.push((
-                rel,
-                DlSource::Chunks {
-                    keys,
-                    size: size as u64,
-                },
-            ));
-        }
+            DlSource::Chunks(
+                chunk_rows
+                    .iter()
+                    .map(|c| {
+                        let csha: String = c.get("chunk_sha256");
+                        crate::store::chunk_key(&uid, &csha)
+                    })
+                    .collect(),
+            )
+        };
+        entries.push(DlEntry {
+            rel,
+            sha,
+            size: size.max(0) as u64,
+            mtime,
+            source,
+        });
     }
 
     // A remote backend streams each needed blob/chunk into this per-download
@@ -1191,29 +1273,26 @@ pub async fn download(
     tokio::spawn(async move {
         use async_compression::tokio::write::ZstdEncoder;
 
+        // Waits for room in the channel the way a socket would. It used to wake
+        // itself straight back up whenever the channel was full, which kept a
+        // core spinning for as long as a slow client took to download.
         struct ChannelWriter {
-            tx: tokio::sync::mpsc::Sender<Result<bytes::Bytes, std::io::Error>>,
+            tx: tokio_util::sync::PollSender<Result<bytes::Bytes, std::io::Error>>,
         }
         impl tokio::io::AsyncWrite for ChannelWriter {
             fn poll_write(
-                self: std::pin::Pin<&mut Self>,
-                _cx: &mut std::task::Context<'_>,
+                mut self: std::pin::Pin<&mut Self>,
+                cx: &mut std::task::Context<'_>,
                 buf: &[u8],
             ) -> std::task::Poll<std::io::Result<usize>> {
-                let bytes = bytes::Bytes::copy_from_slice(buf);
-                // try_send is fine; if channel is full we briefly back-pressure via Ok(0)?
-                // Use blocking_send is not possible in async; use try_send + return Pending if full.
-                match self.tx.try_send(Ok(bytes)) {
-                    Ok(_) => std::task::Poll::Ready(Ok(buf.len())),
-                    Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                        // Wake immediately and request retry
-                        _cx.waker().wake_by_ref();
-                        std::task::Poll::Pending
-                    }
-                    Err(_) => std::task::Poll::Ready(Err(std::io::Error::new(
-                        std::io::ErrorKind::BrokenPipe,
-                        "receiver dropped",
-                    ))),
+                let gone =
+                    || std::io::Error::new(std::io::ErrorKind::BrokenPipe, "receiver dropped");
+                if std::task::ready!(self.tx.poll_reserve(cx)).is_err() {
+                    return std::task::Poll::Ready(Err(gone()));
+                }
+                match self.tx.send_item(Ok(bytes::Bytes::copy_from_slice(buf))) {
+                    Ok(()) => std::task::Poll::Ready(Ok(buf.len())),
+                    Err(_) => std::task::Poll::Ready(Err(gone())),
                 }
             }
             fn poll_flush(
@@ -1231,7 +1310,7 @@ pub async fn download(
         }
 
         let writer = ChannelWriter {
-            tx: tx_bytes.clone(),
+            tx: tokio_util::sync::PollSender::new(tx_bytes.clone()),
         };
         let zstd = ZstdEncoder::new(writer);
         let mut tar = tokio_tar::Builder::new(zstd);
@@ -1267,13 +1346,31 @@ pub async fn download(
             };
         }
 
-        for (rel, source) in &entries {
+        for DlEntry {
+            rel,
+            sha,
+            size,
+            mtime,
+            source,
+        } in &entries
+        {
+            let mut header = tokio_tar::Header::new_gnu();
+            header.set_size(*size);
+            header.set_mode(0o644);
+            header.set_mtime(*mtime);
+            header.set_entry_type(tokio_tar::EntryType::Regular);
             let res = match source {
                 DlSource::Blob(key) => {
                     let path = resolve!(key);
-                    tar.append_path_with_name(&path, rel).await
+                    match tokio::fs::File::open(&path).await {
+                        Ok(file) => {
+                            tar.append_data(&mut header, rel, Verified::new(file, sha, *size))
+                                .await
+                        }
+                        Err(e) => Err(e),
+                    }
                 }
-                DlSource::Chunks { keys, size } => {
+                DlSource::Chunks(keys) => {
                     // Concatenate the chunk files into one tar entry. Each chunk
                     // is ≤ MAX_CHUNK (a few MiB), so streaming them one at a time
                     // never buffers the whole file in RAM.
@@ -1305,12 +1402,8 @@ pub async fn download(
                         })
                         .boxed();
                     let reader = tokio_util::io::StreamReader::new(stream);
-                    let mut header = tokio_tar::Header::new_gnu();
-                    header.set_size(*size);
-                    header.set_mode(0o644);
-                    header.set_mtime(0);
-                    header.set_entry_type(tokio_tar::EntryType::Regular);
-                    tar.append_data(&mut header, rel, reader).await
+                    tar.append_data(&mut header, rel, Verified::new(reader, sha, *size))
+                        .await
                 }
             };
             if let Err(e) = res {
@@ -1459,6 +1552,11 @@ pub async fn restore(
         return Err(err(StatusCode::NOT_FOUND, "save not found"));
     }
 
+    // The trash purge holds this while it frees a snapshot's objects: taken
+    // here, a restore either finds the row still whole or finds it gone, never
+    // half purged and brought back.
+    let _objects = crate::blobs::lock_user(&user_id).await;
+
     // A purged snapshot has had its row deleted entirely (its blobs GC'd), so a
     // missing row is the "has been purged / never existed" case. A still-present
     // but soft-deleted row is recoverable: its blobs were never removed, so
@@ -1485,10 +1583,13 @@ pub async fn restore(
         .begin()
         .await
         .map_err(|e| internal_logged("writing to the database", e))?;
-    sqlx::query!("UPDATE snapshots SET deleted_at=NULL WHERE id=?", snap_id)
+    let restored = sqlx::query!("UPDATE snapshots SET deleted_at=NULL WHERE id=?", snap_id)
         .execute(&mut *tx)
         .await
         .map_err(|e| internal_logged("writing to the database", e))?;
+    if restored.rows_affected() != 1 {
+        return Err(err(StatusCode::NOT_FOUND, "snapshot not found"));
+    }
     let audit_id = Uuid::new_v4().to_string();
     sqlx::query!(
         "INSERT INTO audit_log (id, user_id, event_type, entity_id)
@@ -1638,6 +1739,82 @@ pub(crate) async fn prune_over_version_cap(
         info!(user = %user_id, pruned, "version cap: trashed snapshots over max_versions");
     }
     Ok(pruned)
+}
+
+/// One file on its way into a download's tar, hashed as it goes.
+///
+/// Nothing else ever checks a stored object against its name: the upload
+/// verifies it once on the way in, and dedup reuses it for every later version
+/// without looking. An object that rotted on disk, or that a crash left empty,
+/// was served to every restore of every version sharing it. Now the read fails
+/// at the end of the file, the tar with it, and the client gets a broken
+/// download instead of a save with the wrong bytes in it. The log line names
+/// the object, which is what the next backup from a machine still holding the
+/// file can repair.
+struct Verified<R> {
+    inner: R,
+    hasher: Sha256,
+    sha: String,
+    size: u64,
+    seen: u64,
+    done: bool,
+}
+
+impl<R> Verified<R> {
+    fn new(inner: R, sha: &str, size: u64) -> Self {
+        Self {
+            inner,
+            hasher: Sha256::new(),
+            sha: sha.to_string(),
+            size,
+            seen: 0,
+            done: false,
+        }
+    }
+
+    fn corrupt(&self, what: String) -> std::io::Error {
+        tracing::error!(sha = %self.sha, "download: a stored object is corrupt: {what}");
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("stored object {} is corrupt: {what}", self.sha),
+        )
+    }
+}
+
+impl<R: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for Verified<R> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let this = &mut *self;
+        let before = buf.filled().len();
+        std::task::ready!(std::pin::Pin::new(&mut this.inner).poll_read(cx, buf))?;
+        let fresh = &buf.filled()[before..];
+        if fresh.is_empty() {
+            if !this.done {
+                this.done = true;
+                let got = hex::encode(std::mem::take(&mut this.hasher).finalize());
+                if this.seen != this.size {
+                    let what = format!("{} bytes where the version lists {}", this.seen, this.size);
+                    return std::task::Poll::Ready(Err(this.corrupt(what)));
+                }
+                if got != this.sha {
+                    return std::task::Poll::Ready(
+                        Err(this.corrupt(format!("it hashes to {got}"))),
+                    );
+                }
+            }
+            return std::task::Poll::Ready(Ok(()));
+        }
+        this.seen += fresh.len() as u64;
+        this.hasher.update(fresh);
+        if this.seen > this.size {
+            let what = format!("more than the {} bytes the version lists", this.size);
+            return std::task::Poll::Ready(Err(this.corrupt(what)));
+        }
+        std::task::Poll::Ready(Ok(()))
+    }
 }
 
 /// Reduce an arbitrary download filename to a header-safe form. HTTP header

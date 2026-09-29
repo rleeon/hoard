@@ -781,3 +781,258 @@ async fn zstd_bytes(raw: &[u8]) -> Vec<u8> {
     enc.shutdown().await.expect("finish");
     enc.into_inner()
 }
+
+/// Download a version and read the whole body, the way a client would. `Err` is
+/// a download that broke off.
+async fn download_body(h: &Harness, version: i64) -> Result<axum::body::Bytes, axum::Error> {
+    let resp = hoard_server::routes::snapshots::download(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path((SAVE.to_string(), version)),
+    )
+    .await
+    .expect("descarga");
+    axum::body::to_bytes(resp.into_body(), 64 * 1024 * 1024).await
+}
+
+fn blob_on_disk(h: &Harness, bytes: &[u8]) -> std::path::PathBuf {
+    hoard_server::blobs::blob_path(&h.state.config.storage.data_dir, USER, &sha_of(bytes))
+}
+
+/// A stored object that no longer hashes to its name (bit rot, a crash that
+/// left it empty) is served to every version that shares it, and nothing on the
+/// normal path looked again. Now the download breaks off instead: the client
+/// fails, and its save stays as it was.
+#[tokio::test]
+async fn a_rotten_blob_breaks_the_download_instead_of_being_served() {
+    let h = harness().await;
+    let good = b"the good bytes of the save".to_vec();
+    let other = b"a second file, left intact".to_vec();
+    backup(&h, &[("save.dat", &good), ("other.dat", &other)], Some(0)).await;
+    assert!(
+        download_body(&h, 1).await.is_ok(),
+        "an intact version downloads"
+    );
+
+    // Same length, other bytes.
+    std::fs::write(blob_on_disk(&h, &good), vec![b'X'; good.len()]).unwrap();
+    assert!(
+        download_body(&h, 1).await.is_err(),
+        "rotten bytes were served"
+    );
+
+    // Shorter than the version says: what a power cut can leave.
+    std::fs::write(blob_on_disk(&h, &good), &good[..5]).unwrap();
+    assert!(
+        download_body(&h, 1).await.is_err(),
+        "a truncated blob was served"
+    );
+}
+
+/// The tar carries each file's own mtime, which the client's conflict rule
+/// compares. It used to carry the blob's, the moment that content was first
+/// uploaded by whichever version, and 0 for a chunked file.
+#[tokio::test]
+async fn the_download_carries_each_files_own_mtime() {
+    let h = harness().await;
+    let a = b"slot one".to_vec();
+    let b = b"slot two, no mtime sent".to_vec();
+    backup_at(
+        &h,
+        &[("a.sav", &a), ("b.sav", &b)],
+        &[1_700_000_123],
+        Some(0),
+    )
+    .await;
+
+    let body = download_body(&h, 1).await.expect("cuerpo");
+    let reader = async_compression::tokio::bufread::ZstdDecoder::new(std::io::Cursor::new(body));
+    let mut archive = tokio_tar::Archive::new(reader);
+    let mut entries = archive.entries().unwrap();
+    let mut mtimes = Vec::new();
+    while let Some(entry) = futures::StreamExt::next(&mut entries).await {
+        let entry = entry.unwrap();
+        let path = entry.path().unwrap().to_string_lossy().into_owned();
+        mtimes.push((path, entry.header().mtime().unwrap()));
+    }
+    assert_eq!(mtimes[0], ("a.sav".to_string(), 1_700_000_123));
+    // Without one, the upload time: never 0, which the client reads as "now".
+    assert_eq!(mtimes[1].0, "b.sav");
+    assert!(mtimes[1].1 > 1_700_000_000, "{mtimes:?}");
+}
+
+/// The trash purge took the last reference to a blob between a client's init
+/// (which found it stored, so the client did not send it) and its commit. The
+/// commit used to upsert the row back, with no object behind it: a version that
+/// committed fine and could never be restored. Now it is refused in a way the
+/// client retries, and the retry uploads the blob. Here the row is already gone
+/// when the commit first looks; the next test takes it while the commit waits.
+#[tokio::test]
+async fn a_reused_blob_the_purge_took_is_not_committed_over() {
+    let h = harness().await;
+    let shared = b"content both versions share".to_vec();
+    let v1_only = b"only in version one".to_vec();
+    let v2_only = b"new in version two".to_vec();
+    backup(
+        &h,
+        &[("shared.dat", &shared), ("one.dat", &v1_only)],
+        Some(0),
+    )
+    .await;
+
+    let files: Vec<(&str, &[u8])> = vec![("shared.dat", &shared), ("two.dat", &v2_only)];
+    let m = manifest(&files);
+    let init = cas::init(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasInit {
+            base_version: Some(1),
+            files: m.clone(),
+        }),
+    )
+    .await
+    .expect("init")
+    .0;
+    assert_eq!(init.missing.len(), 1, "the shared blob is reused, not sent");
+    cas::upload_blob(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path((init.upload_id.clone(), sha_of(&v2_only))),
+        axum::http::HeaderMap::new(),
+        Body::from(v2_only.clone()),
+    )
+    .await
+    .expect("subida");
+
+    // What the purge does to a blob whose last reference it frees.
+    sqlx::query("DELETE FROM blobs WHERE user_id=? AND sha256=?")
+        .bind(USER)
+        .bind(sha_of(&shared))
+        .execute(&h.state.pool)
+        .await
+        .unwrap();
+    std::fs::remove_file(blob_on_disk(&h, &shared)).unwrap();
+
+    let err = cas::commit(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasCommit {
+            upload_id: init.upload_id,
+            base_version: Some(1),
+            device_name: None,
+            notes: None,
+            files: m,
+        }),
+    )
+    .await
+    .expect_err("a version over a missing blob");
+    assert_eq!(
+        err.0,
+        StatusCode::BAD_REQUEST,
+        "not a 409: it is no conflict"
+    );
+    assert_eq!(err.1 .0["code"], "blob_gone");
+    let row: Option<i64> =
+        sqlx::query_scalar("SELECT refcount FROM blobs WHERE user_id=? AND sha256=?")
+            .bind(USER)
+            .bind(sha_of(&shared))
+            .fetch_optional(&h.state.pool)
+            .await
+            .unwrap();
+    assert_eq!(row, None, "no row brought back without its object");
+
+    // The retry: a fresh init asks for it again, and the version restores.
+    let (v2, asked, _) = backup(&h, &files, Some(1)).await;
+    assert_eq!((v2, asked), (2, 2));
+    assert!(download_body(&h, 2).await.is_ok());
+}
+
+/// The same race, one step later: the commit had already found the blob stored
+/// and was waiting for the user's lock, which the purge held while it took the
+/// blob's last reference. After the lock the reuse finds no row to count, and
+/// a count that touches no row is refused rather than committed over nothing.
+#[tokio::test]
+async fn a_blob_the_purge_takes_while_the_commit_waits_is_not_committed_over() {
+    let h = harness().await;
+    let shared = b"content both versions share".to_vec();
+    let v1_only = b"only in version one".to_vec();
+    let v2_only = b"new in version two".to_vec();
+    backup(
+        &h,
+        &[("shared.dat", &shared), ("one.dat", &v1_only)],
+        Some(0),
+    )
+    .await;
+
+    let files: Vec<(&str, &[u8])> = vec![("shared.dat", &shared), ("two.dat", &v2_only)];
+    let m = manifest(&files);
+    let init = cas::init(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasInit {
+            base_version: Some(1),
+            files: m.clone(),
+        }),
+    )
+    .await
+    .expect("init")
+    .0;
+    cas::upload_blob(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path((init.upload_id.clone(), sha_of(&v2_only))),
+        axum::http::HeaderMap::new(),
+        Body::from(v2_only.clone()),
+    )
+    .await
+    .expect("upload");
+
+    let purge = hoard_server::blobs::lock_user(USER).await;
+    let commit = tokio::spawn(cas::commit(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasCommit {
+            upload_id: init.upload_id,
+            base_version: Some(1),
+            device_name: None,
+            notes: None,
+            files: m,
+        }),
+    ));
+    // Past its dedup lookup, which found the row, and queued on the lock.
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(
+        !commit.is_finished(),
+        "the commit did not wait for the lock"
+    );
+    sqlx::query("DELETE FROM blobs WHERE user_id=? AND sha256=?")
+        .bind(USER)
+        .bind(sha_of(&shared))
+        .execute(&h.state.pool)
+        .await
+        .unwrap();
+    std::fs::remove_file(blob_on_disk(&h, &shared)).unwrap();
+    drop(purge);
+
+    let err = commit
+        .await
+        .unwrap()
+        .expect_err("a version over a blob taken under it");
+    assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    assert_eq!(err.1 .0["code"], "blob_gone");
+    let row: Option<i64> =
+        sqlx::query_scalar("SELECT refcount FROM blobs WHERE user_id=? AND sha256=?")
+            .bind(USER)
+            .bind(sha_of(&shared))
+            .fetch_optional(&h.state.pool)
+            .await
+            .unwrap();
+    assert_eq!(row, None, "no row brought back without its object");
+    let (v2, asked, _) = backup(&h, &files, Some(1)).await;
+    assert_eq!((v2, asked), (2, 2));
+    assert!(download_body(&h, 2).await.is_ok());
+}

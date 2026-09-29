@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use hoard_agent::session::{self, Active};
-use hoard_core::ipc::{CloudToken, DaemonStatus, IpcError, Payload, Request};
+use hoard_core::ipc::{CloudToken, DaemonStatus, HoldState, IpcError, Payload, Request};
 use hoardd::client::Client;
 use hoardd::endpoint::Endpoint;
 
@@ -158,6 +158,172 @@ pub async fn notify_reload() -> &'static str {
     } else {
         "it applies when the sync service starts"
     }
+}
+
+/// How long one hold on a save lasts in the service, and how often it is
+/// renewed. A renewal that arrives late costs nothing; a client that dies stops
+/// renewing and the service lets go on its own two minutes later.
+const HOLD_SECS: u32 = 120;
+const HOLD_RENEW: Duration = Duration::from_secs(30);
+/// How often to ask again while the service is still finishing an upload or
+/// an automatic restore of the save.
+const HOLD_POLL: Duration = Duration::from_secs(1);
+/// How long a restore waits for that before it goes ahead anyway. An upload
+/// reading the folder while files are swapped in makes one mixed version in
+/// the history, which the restored folder then goes up on top of; waiting for
+/// ever would be worse.
+const HOLD_WAIT_CAP: Duration = Duration::from_secs(600);
+
+/// A restore's hold on its save (see [`Request::HoldSave`]). Taken before the
+/// first byte, renewed in the background over a connection it re-opens when
+/// the service restarts (an update hands over to a new one mid-restore),
+/// released with [`Self::release`].
+pub struct RestoreHold {
+    save_id: String,
+    /// The service's last answer; `None` while it has given none.
+    state: tokio::sync::watch::Receiver<Option<HoldState>>,
+    renew: tokio::task::JoinHandle<()>,
+}
+
+impl RestoreHold {
+    /// Returns once the service has nothing of its own touching the folder: at
+    /// once unless it answered [`HoldState::Busy`], and never later than
+    /// [`HOLD_WAIT_CAP`].
+    pub async fn until_held(&mut self) {
+        if *self.state.borrow() != Some(HoldState::Busy) {
+            return;
+        }
+        eprintln!(
+            "waiting for the Hoard service to finish syncing this save before writing into it"
+        );
+        let settled = self.state.wait_for(|s| *s != Some(HoldState::Busy));
+        if tokio::time::timeout(HOLD_WAIT_CAP, settled).await.is_err() {
+            eprintln!(
+                "warning: the Hoard service is still syncing this save after {} minutes; restoring anyway",
+                HOLD_WAIT_CAP.as_secs() / 60
+            );
+        }
+    }
+
+    /// Let go: the service judges what the restore wrote right away. After a
+    /// restore that went through, `adopt_head` is the newest version the server
+    /// holds, and the restored folder goes up as the next one on top of it.
+    pub async fn release(self, adopt_head: Option<i64>) {
+        self.renew.abort();
+        notify(
+            "release the save after restoring",
+            Request::HoldSave {
+                save_id: self.save_id.clone(),
+                secs: 0,
+                adopt_head,
+            },
+        )
+        .await;
+    }
+}
+
+impl Drop for RestoreHold {
+    fn drop(&mut self) {
+        // Out through a panic or an early return: no more renewals, and the
+        // service lets go by itself within `HOLD_SECS`.
+        self.renew.abort();
+    }
+}
+
+/// Ask the service not to back up or pull `save_id` while a restore writes into
+/// its folder. `watched_here` says the restore goes into the folder the service
+/// syncs for this save, where a hold that finds no save is worth a warning.
+///
+/// Returns the hold (`None` with no service at all, which means nobody would
+/// upload anything anyway, or with one too old to hold) and what to tell the
+/// user about it, if anything.
+pub async fn hold_for_restore(
+    save_id: &str,
+    watched_here: bool,
+) -> (Option<RestoreHold>, Option<String>) {
+    let Some(mut client) = attached("restore").await else {
+        return (None, None);
+    };
+    let request = Request::HoldSave {
+        save_id: save_id.to_string(),
+        secs: HOLD_SECS,
+        adopt_head: None,
+    };
+    let (first, warning) = match ask(&mut client, request.clone()).await {
+        Ok(Payload::Hold { state }) => {
+            let warning = (state == HoldState::NotWatched && watched_here).then(|| {
+                "the Hoard service isn't syncing this save yet, so it can't hold it; \
+                 if it picks it up mid-restore it may back up a half-restored folder"
+                    .to_string()
+            });
+            (Some(state), warning)
+        }
+        Ok(_) => (Some(HoldState::Held), None),
+        Err(err) => match err.downcast_ref::<IpcError>() {
+            Some(IpcError::Unsupported { .. }) => {
+                return (
+                    None,
+                    Some(
+                        "the running Hoard service is older than this command and can't pause \
+                         the save, so it may back up the folder while it is being restored"
+                            .to_string(),
+                    ),
+                )
+            }
+            // Renewed below all the same: an engine that comes up mid-restore
+            // takes the hold from the next renewal.
+            Some(IpcError::EngineDown { .. }) => (
+                None,
+                Some(
+                    "the Hoard service's sync engine isn't running; if it starts during the \
+                     restore it may back up a half-restored folder"
+                        .to_string(),
+                ),
+            ),
+            _ => (
+                None,
+                Some(format!(
+                    "couldn't pause the save in the Hoard service ({err:#})"
+                )),
+            ),
+        },
+    };
+    let (tx, state) = tokio::sync::watch::channel(first);
+    let renew = tokio::spawn(async move {
+        let mut client = Some(client);
+        loop {
+            let busy = *tx.borrow() == Some(HoldState::Busy);
+            tokio::time::sleep(if busy { HOLD_POLL } else { HOLD_RENEW }).await;
+            if client.is_none() {
+                client = attached("restore").await;
+            }
+            let Some(conn) = client.as_mut() else {
+                continue;
+            };
+            match ask(conn, request.clone()).await {
+                Ok(Payload::Hold { state }) => {
+                    let _ = tx.send(Some(state));
+                }
+                Ok(_) => {
+                    let _ = tx.send(Some(HoldState::Held));
+                }
+                Err(err) => {
+                    tracing::warn!(error = %format!("{err:#}"), "cli: couldn't renew the restore's hold");
+                    // A service that restarted is a new socket: reconnect next
+                    // time instead of asking a dead one for ever.
+                    client = None;
+                }
+            }
+        }
+    });
+    (
+        Some(RestoreHold {
+            save_id: save_id.to_string(),
+            state,
+            renew,
+        }),
+        warning,
+    )
 }
 
 /// The on-disk session changed (login or logout), so have the service resolve

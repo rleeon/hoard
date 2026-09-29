@@ -365,6 +365,21 @@ impl Daemon {
                 self.with_engine(|h| async move { h.set_auto_restore(enabled).await })
                     .await
             }
+            Request::HoldSave {
+                save_id,
+                secs,
+                adopt_head,
+            } => {
+                let Some(handle) = self.engine.handle() else {
+                    return Reply::Error(IpcError::EngineDown {
+                        reason: self.engine.down_reason(),
+                    });
+                };
+                match handle.hold_save(save_id, secs, adopt_head).await {
+                    Ok(state) => Reply::Ok(Payload::Hold { state }),
+                    Err(err) => self.engine_error(err),
+                }
+            }
             Request::SetGlobalSync { enabled } => {
                 self.with_engine(|h| async move { h.set_global_sync(enabled).await })
                     .await

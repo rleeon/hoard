@@ -6,10 +6,35 @@
 //! `blobs.refcount` counts every referencing row (live or trashed); GC of the
 //! file happens only when it reaches 0 during the trash purge.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use sqlx::{Row, SqlitePool};
 use tracing::{info, warn};
+
+/// Held around everything that decides whether one user's stored objects live
+/// or die: the dedup decision, placing the new bytes and the transaction that
+/// references them; the trash purge, from its transaction to the last unlink;
+/// the rollback of an upload that failed.
+///
+/// Without it each of them looked at the database and acted a moment later.
+/// A commit could reuse a blob the purge was about to unlink, or place one that
+/// a concurrent upload's rollback, seeing no row yet, removed again; the
+/// version committed fine and could never be restored. SQLite already
+/// serialises the transactions, but not the store writes on either side of
+/// them, and the server is a single process, so a lock in memory closes it.
+pub async fn lock_user(user_id: &str) -> tokio::sync::OwnedMutexGuard<()> {
+    static LOCKS: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> =
+        LazyLock::new(Default::default);
+    let lock = LOCKS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .entry(user_id.to_string())
+        .or_default()
+        .clone();
+    lock.lock_owned().await
+}
 
 /// Absolute on-disk path of a blob. Sharded by the first two hex chars of the
 /// sha to avoid one giant directory.
@@ -160,4 +185,27 @@ pub async fn backfill_from_folders(pool: &SqlitePool, data_dir: &Path) -> anyhow
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod lock_tests {
+    use super::lock_user;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn a_users_lock_is_one_holder_at_a_time() {
+        let held = lock_user("user-a").await;
+        let waiter = tokio::spawn(async {
+            let _g = lock_user("user-a").await;
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(!waiter.is_finished(), "a second holder got in");
+        // Another user is not held up.
+        drop(lock_user("user-b").await);
+        drop(held);
+        tokio::time::timeout(Duration::from_secs(5), waiter)
+            .await
+            .expect("released")
+            .unwrap();
+    }
 }

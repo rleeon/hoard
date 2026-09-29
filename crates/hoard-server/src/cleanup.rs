@@ -303,6 +303,29 @@ async fn purge_trash(
         let snap_id: String = row.get("id");
         let user_id: String = row.get("user_id");
 
+        // Held from before the transaction to the last unlink below, so no
+        // commit can reuse one of these objects, or place it again, in between,
+        // and no restore from the trash can bring the snapshot back midway.
+        let _objects = crate::blobs::lock_user(&user_id).await;
+        // IMMEDIATE because it reads first: a deferred transaction that reads
+        // and then writes fails outright in WAL mode if another user's commit
+        // landed in between, instead of waiting on the busy timeout.
+        let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+        // Read again under the lock: the user may have restored it from the
+        // trash while the purge waited behind a commit.
+        let still_due = sqlx::query(
+            "SELECT 1 FROM snapshots WHERE id = ? AND deleted_at IS NOT NULL AND deleted_at < ?",
+        )
+        .bind(&snap_id)
+        .bind(&cutoff_str)
+        .fetch_optional(&mut *tx)
+        .await?
+        .is_some();
+        if !still_due {
+            info!(snapshot = %snap_id, "trash purge: snapshot restored meanwhile, kept");
+            continue;
+        }
+
         // The whole-file shas this snapshot referenced (one row per file, dups
         // included so the refcount decrement matches the increment from
         // `create`). Chunked files have no blob row, so their decrement below
@@ -310,7 +333,7 @@ async fn purge_trash(
         let shas: Vec<String> =
             sqlx::query("SELECT sha256 FROM snapshot_files WHERE snapshot_id = ?")
                 .bind(&snap_id)
-                .fetch_all(pool)
+                .fetch_all(&mut *tx)
                 .await?
                 .iter()
                 .map(|r| r.get::<String, _>("sha256"))
@@ -325,13 +348,12 @@ async fn purge_trash(
              WHERE sf.snapshot_id = ?",
         )
         .bind(&snap_id)
-        .fetch_all(pool)
+        .fetch_all(&mut *tx)
         .await?
         .iter()
         .map(|r| r.get::<String, _>("sha"))
         .collect();
 
-        let mut tx = pool.begin().await?;
         let mut freed_bytes: i64 = 0;
         let mut gc_paths: Vec<GcTarget> = Vec::new();
 
@@ -410,11 +432,20 @@ async fn purge_trash(
             }
         }
 
-        // Deletes snapshot_files too via ON DELETE CASCADE.
-        sqlx::query("DELETE FROM snapshots WHERE id = ?")
-            .bind(&snap_id)
-            .execute(&mut *tx)
-            .await?;
+        // Deletes snapshot_files too via ON DELETE CASCADE. Under the same
+        // condition as the check above: if it no longer holds, the decrements
+        // go back with the transaction.
+        let purged = sqlx::query(
+            "DELETE FROM snapshots WHERE id = ? AND deleted_at IS NOT NULL AND deleted_at < ?",
+        )
+        .bind(&snap_id)
+        .bind(&cutoff_str)
+        .execute(&mut *tx)
+        .await?;
+        if purged.rows_affected() != 1 {
+            warn!(snapshot = %snap_id, "trash purge: snapshot changed under the purge, left alone");
+            continue;
+        }
 
         if freed_bytes > 0 {
             sqlx::query(
@@ -586,6 +617,66 @@ mod tests {
             .unwrap();
         assert_eq!(used, 170);
 
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// The user restores a snapshot from the trash while the purge, having
+    /// listed it as due, waits for the user's lock behind a commit. Once the
+    /// purge gets in, the snapshot is no longer trashed and nothing of it goes.
+    #[tokio::test]
+    async fn purge_leaves_a_snapshot_restored_while_it_waited() {
+        let pool = mem_pool().await;
+        let tmp = std::env::temp_dir().join(format!("hoard-test-{}", uuid::Uuid::new_v4()));
+        let data_dir = tmp.clone();
+        let sha = "dd".to_string() + &"0".repeat(62);
+        sqlx::query("INSERT INTO users (id, username, password_hash, storage_used_bytes) VALUES ('u-restore','user','x',10)")
+            .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO games (slug, display_name) VALUES ('g','G')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO saves (id, user_id, game_slug, label, latest_version_num) VALUES ('sv','u-restore','g','default',1)")
+            .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO snapshots (id, save_id, version_num, total_size_bytes, file_count, deleted_at) VALUES ('s1','sv',1,10,1,'2000-01-01T00:00:00Z')")
+            .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO snapshot_files (id, snapshot_id, relative_path, size_bytes, sha256) VALUES ('f1','s1','a.sav',10,?)")
+            .bind(&sha)
+            .execute(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO blobs (user_id, sha256, size_bytes, refcount) VALUES ('u-restore',?,10,1)",
+        )
+        .bind(&sha)
+        .execute(&pool)
+        .await
+        .unwrap();
+        write_blob(&data_dir, "u-restore", &sha, b"data").await;
+
+        let held = crate::blobs::lock_user("u-restore").await;
+        let purge = {
+            let (pool, data_dir) = (pool.clone(), data_dir.clone());
+            let store: Arc<dyn BlobStore> = Arc::new(crate::store::LocalFs::new(data_dir.clone()));
+            tokio::spawn(async move { purge_trash(&pool, &data_dir, &store, 0).await })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        sqlx::query("UPDATE snapshots SET deleted_at=NULL WHERE id='s1'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        drop(held);
+        purge.await.unwrap().unwrap();
+
+        let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM snapshots WHERE id='s1'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(left, 1, "the restored snapshot was purged");
+        let rc: i64 = sqlx::query_scalar("SELECT refcount FROM blobs WHERE sha256=?")
+            .bind(&sha)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(rc, 1);
+        assert!(crate::blobs::blob_path(&data_dir, "u-restore", &sha).exists());
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

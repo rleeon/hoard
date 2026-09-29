@@ -1,9 +1,11 @@
 //! Library half of the snapshot download/extract flow.
 //!
 //! Streams the tar.zst from the server, decodes it, sanitises paths, verifies
-//! each file's SHA-256 against the manifest, and writes them under a target
-//! directory. The CLI and GUI share this code; presentation (progress bars,
-//! confirmation dialogs) lives in their respective layers.
+//! each file's SHA-256 against the manifest, and writes them into a private
+//! staging folder. Only once the whole version is there and verified are the
+//! files moved into the destination (see [`download_snapshot`]). The CLI and GUI
+//! share this code; presentation (progress bars, confirmation dialogs) lives in
+//! their respective layers.
 
 use anyhow::{anyhow, bail, Context, Result};
 use async_compression::tokio::bufread::ZstdDecoder;
@@ -93,10 +95,9 @@ pub struct RestoreOptions {
     /// instead of fetched over the network (cloud content-addressed path only).
     /// `None` disables the shortcut and downloads everything.
     ///
-    /// It's a separate path rather than just `dest` because the two callers
-    /// differ: a staged auto-restore extracts into an empty temp dir, so the
-    /// bytes worth reusing live in the *live save folder*, not in `dest`. A
-    /// direct restore writes straight into the save folder and passes `dest`.
+    /// Every caller points it at the live save folder: the bytes are written to
+    /// a staging folder first, so the files worth reusing are never where the
+    /// download lands.
     pub reuse_from: Option<PathBuf>,
     /// Which of the snapshot's files may touch the disk.
     ///
@@ -109,6 +110,15 @@ pub struct RestoreOptions {
     ///
     /// [`RestoreGate::permissive`] restores everything, as before this existed.
     pub gate: RestoreGate,
+    /// Where a file is copied before the restore replaces it, as
+    /// `<backup_root>/<save_id>/<timestamp>/<path>`. `None` is the conflicts
+    /// folder the automatic restore already parks its losers in, so the same
+    /// retention sweep clears both.
+    pub backup_root: Option<PathBuf>,
+    /// Where the version is staged before it is placed. `None` is
+    /// `restore-staging` under Hoard's state folder; tests point it at their own
+    /// temp folder so they never touch the real one.
+    pub staging_root: Option<PathBuf>,
 }
 
 /// Result summary after a successful restore.
@@ -125,6 +135,9 @@ pub struct RestoreOutcome {
     pub bytes_reused: u64,
     /// What each half of the restore cost. See [`RestoreTimings`].
     pub timings: RestoreTimings,
+    /// Where the files this restore replaced were copied first: the way back.
+    /// `None` when it replaced nothing.
+    pub kept_in: Option<PathBuf>,
 }
 
 /// How a restore's time is split between its phases.
@@ -258,7 +271,15 @@ pub async fn resolve_version(
         .ok_or_else(|| anyhow!("save has no snapshots yet"))
 }
 
-/// Stream-download snapshot `version` of `save_id` into `dest`.
+/// Restore snapshot `version` of `save_id` into `dest`.
+///
+/// Nothing under `dest` is touched until the whole version is down and verified.
+/// The files land in a private staging folder first; only when every one of them
+/// is there, with the SHA-256 and size the manifest records, are they moved into
+/// place, each replaced file copied aside first so a failure halfway puts the
+/// folder back as it was (see [`place_staged`]). Writing straight into the save
+/// and checking the hash afterwards is how a download R2 cut short left a
+/// truncated file where a good save had been, and every retry emptied it again.
 ///
 /// `progress(downloaded, total_or_zero)` is called as bytes flow from the
 /// server. `total_or_zero` is 0 if the server didn't send Content-Length.
@@ -267,7 +288,7 @@ pub async fn resolve_version(
 /// cloud content-addressed path. Self-hosted ships **one monolithic
 /// `tar.zst`** per snapshot: the server streams the whole archive and there's
 /// no per-file GET to skip, so knowing a file is already on disk saves
-/// nothing. That path is left exactly as it was.
+/// nothing.
 pub async fn download_snapshot<F>(
     client: &ApiClient,
     save_id: &str,
@@ -279,6 +300,35 @@ pub async fn download_snapshot<F>(
 where
     F: Fn(u64, u64) + Send + Sync + 'static,
 {
+    download_snapshot_gated(
+        client,
+        save_id,
+        version,
+        dest,
+        options,
+        progress,
+        std::future::ready(()),
+    )
+    .await
+}
+
+/// [`download_snapshot`], awaiting `before_place` between the verified download
+/// and the first write into `dest`. The CLI and the History dialog wait there
+/// for the service to finish whatever it was doing with the folder (an upload
+/// reading it, an automatic restore merging into it) before they move files in.
+pub async fn download_snapshot_gated<F, G>(
+    client: &ApiClient,
+    save_id: &str,
+    version: i64,
+    dest: &Path,
+    options: RestoreOptions,
+    progress: F,
+    before_place: G,
+) -> Result<RestoreOutcome>
+where
+    F: Fn(u64, u64) + Send + Sync + 'static,
+    G: std::future::Future<Output = ()> + Send,
+{
     // The same shape rule as adding, and for the same reason: a restore over
     // `C:\Users\<x>` or over `~` would dump a snapshot on top of the user's
     // profile. It matters even more here, because this WRITES, and the path can
@@ -286,37 +336,150 @@ where
     // machine. The folder may not exist yet (a new machine), so only the shape is
     // checked.
     crate::library::validate_path_shape(dest)?;
-    if client.is_cloud().await {
-        return download_snapshot_cloud(client, save_id, version, dest, options, progress).await;
+    let staging = new_staging_dir_in(options.staging_root.as_deref())?;
+    ensure_outside(staging.path(), dest)?;
+    // Resolved before a byte is fetched: finding out there is nowhere to keep
+    // the originals after a 2 GB download would waste the download.
+    let kept_in = match &options.backup_root {
+        Some(root) => root.clone(),
+        None => default_backup_root()?,
     }
+    .join(path_safe(save_id))
+    .join(backup_stamp());
+
+    let fetched = fetch_into(
+        client,
+        save_id,
+        version,
+        dest,
+        staging.path(),
+        options,
+        progress,
+    )
+    .await?;
+
+    before_place.await;
+    let dest_owned = dest.to_path_buf();
+    let staging_path = staging.path().to_path_buf();
+    let single_file = fetched.single_file;
+    let kept = kept_in.clone();
+    let placed = tokio::task::spawn_blocking(move || {
+        place_staged(&staging_path, &dest_owned, single_file, &kept)
+    })
+    .await
+    .context("placing the restored files")??;
+    tracing::info!(
+        save_id,
+        version,
+        replaced = placed.replaced,
+        created = placed.created,
+        unchanged = placed.unchanged,
+        kept_in = %kept_in.display(),
+        "restore: version placed"
+    );
+
+    let mut outcome = fetched.outcome;
+    outcome.destination = dest.to_path_buf();
+    outcome.kept_in = (placed.replaced > 0).then_some(kept_in);
+    Ok(outcome)
+}
+
+/// Download and verify `version` into `staging`, an empty folder the caller
+/// owns, and stop there. The automatic restore merges from it on its own terms
+/// (`agent::restore_files_into`, mtime and conflict copies), so it takes the
+/// bytes without the placement.
+pub(crate) async fn download_into_staging<F>(
+    client: &ApiClient,
+    save_id: &str,
+    version: i64,
+    staging: &Path,
+    options: RestoreOptions,
+    progress: F,
+) -> Result<RestoreOutcome>
+where
+    F: Fn(u64, u64) + Send + Sync + 'static,
+{
+    Ok(fetch_into(
+        client, save_id, version, staging, staging, options, progress,
+    )
+    .await?
+    .outcome)
+}
+
+/// A version downloaded and verified into a staging folder.
+struct Fetched {
+    outcome: RestoreOutcome,
+    /// Decided against the real destination, not the staging folder: the
+    /// placement has to agree with the gate the download applied.
+    single_file: bool,
+}
+
+/// Fetch `version` into `out`, deciding shape, gate and the "not empty" refusal
+/// against `dest`. The two are the same folder only for the automatic restore,
+/// whose `dest` is already its own staging folder.
+async fn fetch_into<F>(
+    client: &ApiClient,
+    save_id: &str,
+    version: i64,
+    dest: &Path,
+    out: &Path,
+    options: RestoreOptions,
+    progress: F,
+) -> Result<Fetched>
+where
+    F: Fn(u64, u64) + Send + Sync + 'static,
+{
+    if client.is_cloud().await {
+        return download_snapshot_cloud(client, save_id, version, dest, out, options, progress)
+            .await;
+    }
+    fetch_self_hosted(client, save_id, version, dest, out, options, progress).await
+}
+
+async fn fetch_self_hosted<F>(
+    client: &ApiClient,
+    save_id: &str,
+    version: i64,
+    dest: &Path,
+    out: &Path,
+    options: RestoreOptions,
+    progress: F,
+) -> Result<Fetched>
+where
+    F: Fn(u64, u64) + Send + Sync + 'static,
+{
     let started = std::time::Instant::now();
     let detail: SnapshotDetail = client.snapshot_detail(save_id, version).await?;
-    let expected: HashMap<String, &SnapshotFile> = detail
-        .files
-        .iter()
-        .map(|f| (f.relative_path.clone(), f))
-        .collect();
+    let mut expected: HashMap<String, &SnapshotFile> = HashMap::with_capacity(detail.files.len());
+    for f in &detail.files {
+        let key = manifest_key(&f.relative_path)
+            .ok_or_else(|| anyhow!("unsafe path in manifest: {}", f.relative_path))?;
+        expected.insert(key, f);
+    }
 
     let names: Vec<&str> = detail
         .files
         .iter()
         .map(|f| f.relative_path.as_str())
         .collect();
-    let root = extraction_root(dest, &names);
-    let single_file = root != dest;
+    ensure_single_file_shape(dest, &names)?;
+    let single_file = extraction_root(dest, &names) != dest;
+    ensure_may_write(dest, single_file, options.force)?;
 
-    if dest.exists() {
-        // "Not empty" only makes sense for a folder; a single-file save that
-        // already exists is exactly what we came to replace.
-        let empty = !single_file && std::fs::read_dir(dest)?.next().is_none();
-        if !empty && !options.force {
-            bail!(
-                "destination is not empty: {} (set force = true to extract anyway)",
-                dest.display()
-            );
-        }
-    } else {
-        std::fs::create_dir_all(&root).with_context(|| format!("creating {}", root.display()))?;
+    // What has to arrive: every file of the version, minus the ones the gate
+    // keeps off this machine. The server builds the tar from the same rows it
+    // listed, so an archive that ends early, repeats a path or brings one of its
+    // own is not this version.
+    let mut awaited: HashSet<String> = expected
+        .keys()
+        .filter(|k| single_file || options.gate.allows(k))
+        .cloned()
+        .collect();
+    let mut clash = CaseClash::new(dest);
+    let mut listed: Vec<&String> = awaited.iter().collect();
+    listed.sort();
+    for key in listed {
+        clash.check(key)?;
     }
 
     let resp = client.snapshot_download(save_id, version).await?;
@@ -358,41 +521,46 @@ where
     while let Some(entry) = entries.next().await {
         let mut entry = entry.context("reading tar entry")?;
         let path_in_tar = entry.path()?.into_owned();
+        let kind = entry.header().entry_type();
 
-        // Sanitize: reject anything that escapes the destination. For directory
-        // entries an empty result (`./`, say) just means the archive root, so there
-        // is nothing to do.
-        let safe_rel = match sanitize(&path_in_tar) {
-            Some(p) => p,
-            None if entry.header().entry_type().is_dir() => continue,
-            None => bail!("unsafe path in archive: {}", path_in_tar.display()),
-        };
-        let dest_path = root.join(&safe_rel);
-
-        if entry.header().entry_type().is_dir() {
-            tokio::fs::create_dir_all(&dest_path).await.ok();
+        // A directory entry needs nothing: files create their own parents.
+        if kind.is_dir() {
             continue;
         }
-        if let Some(parent) = dest_path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .with_context(|| format!("creating parent {}", parent.display()))?;
-        }
-
+        // Sanitize: reject anything that escapes the destination.
+        let safe_rel = sanitize(&path_in_tar)
+            .ok_or_else(|| anyhow!("unsafe path in archive: {}", path_in_tar.display()))?;
         let key = safe_rel.to_string_lossy().replace('\\', "/");
+        // The server only ever writes regular files. A link or a device here
+        // used to land as an empty file in place of whatever had that name.
+        if !kind.is_file() {
+            bail!("archive entry {key} is not a regular file ({kind:?})");
+        }
+        let Some(meta) = expected.get(&key).copied() else {
+            bail!("archive entry {key} is not in v{version}'s file list");
+        };
         // Config and litter from the machine that uploaded the snapshot are not
         // written over this one's unless the user asked for it.
         if !single_file && !options.gate.allows(&key) {
             tracing::debug!(path = %key, "restore: skipping device-local file");
             continue;
         }
-        let expected_file = expected.get(&key);
+        if !awaited.remove(&key) {
+            bail!("archive carries {key} twice");
+        }
+
+        let dest_path = out.join(&safe_rel);
+        if let Some(parent) = dest_path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .with_context(|| format!("creating parent {}", parent.display()))?;
+        }
 
         // Stream the entry to disk in fixed-size chunks while hashing, instead
         // of buffering the whole file in a Vec. A 2 GB file no longer means
         // 2 GB of RAM. The SHA-256 is computed incrementally over the same
         // bytes we write.
-        let mut out = tokio::fs::File::create(&dest_path)
+        let mut outf = tokio::fs::File::create(&dest_path)
             .await
             .with_context(|| format!("writing {}", dest_path.display()))?;
         let mut hasher = Sha256::new();
@@ -406,10 +574,10 @@ where
             if n == 0 {
                 break;
             }
-            if !options.skip_verify && expected_file.is_some() {
+            if !options.skip_verify {
                 hasher.update(&buf[..n]);
             }
-            out.write_all(&buf[..n])
+            outf.write_all(&buf[..n])
                 .await
                 .with_context(|| format!("writing {}", dest_path.display()))?;
             written += n as u64;
@@ -420,50 +588,106 @@ where
                 );
             }
         }
-        out.flush()
+        outf.flush()
             .await
             .with_context(|| format!("writing {}", dest_path.display()))?;
-        drop(out);
+        drop(outf);
         apply_entry_mtime(&entry, &dest_path);
 
         if !options.skip_verify {
-            if let Some(meta) = expected_file {
-                let got = hex::encode(hasher.finalize());
-                // `None` (an unknown digest) is compared against "" just as it was
-                // before the newtype: it fails closed, never skipping verification.
-                let expected = meta.sha256.as_ref().map(Sha256Hex::as_str).unwrap_or("");
-                if got != expected {
-                    bail!("sha256 mismatch for {key}: expected {expected}, got {got}");
-                }
-                if (written as i64) != meta.size_bytes {
-                    bail!(
-                        "size mismatch for {key}: expected {}, got {}",
-                        meta.size_bytes,
-                        written
-                    );
-                }
+            let got = hex::encode(hasher.finalize());
+            // `None` (an unknown digest) is compared against "" just as it was
+            // before the newtype: it fails closed, never skipping verification.
+            let expected = meta.sha256.as_ref().map(Sha256Hex::as_str).unwrap_or("");
+            if got != expected {
+                bail!("sha256 mismatch for {key}: expected {expected}, got {got}");
             }
-            // Files outside the manifest still get extracted but not verified.
+            if (written as i64) != meta.size_bytes {
+                bail!(
+                    "size mismatch for {key}: expected {}, got {}",
+                    meta.size_bytes,
+                    written
+                );
+            }
         }
 
         bytes_extracted += written;
         files_extracted += 1;
     }
 
-    Ok(RestoreOutcome {
-        files_extracted,
-        bytes_extracted,
-        destination: dest.to_path_buf(),
-        // A whole tar has no separable phases: download, decompression and writing
-        // all happen in the same loop. There is only a total.
-        timings: RestoreTimings {
-            total_ms: started.elapsed().as_millis() as u64,
-            ..Default::default()
+    if !awaited.is_empty() {
+        let mut missing: Vec<&String> = awaited.iter().collect();
+        missing.sort();
+        bail!(
+            "the archive for v{version} ended without {} of its files (first: {})",
+            missing.len(),
+            missing[0]
+        );
+    }
+
+    Ok(Fetched {
+        outcome: RestoreOutcome {
+            files_extracted,
+            bytes_extracted,
+            destination: dest.to_path_buf(),
+            // A whole tar has no separable phases: download, decompression and
+            // writing all happen in the same loop. There is only a total.
+            timings: RestoreTimings {
+                total_ms: started.elapsed().as_millis() as u64,
+                ..Default::default()
+            },
+            // Whole-archive path: nothing to skip per file.
+            files_reused: 0,
+            bytes_reused: 0,
+            kept_in: None,
         },
-        // Whole-archive path: nothing to skip per file.
-        files_reused: 0,
-        bytes_reused: 0,
+        single_file,
     })
+}
+
+/// A manifest path as the extractors key it: sanitised, `/`-separated. `None`
+/// for a path that would escape the destination.
+fn manifest_key(relative_path: &str) -> Option<String> {
+    sanitize(Path::new(relative_path)).map(|p| p.to_string_lossy().replace('\\', "/"))
+}
+
+/// A single-file save only takes a version whose one entry carries its name.
+/// Anything else used to spill into the folder the file sits in, over whatever
+/// lived next to it under those names, and without the config gate either,
+/// because a single-file save is never gated.
+fn ensure_single_file_shape<S: AsRef<str>>(dest: &Path, names: &[S]) -> Result<()> {
+    if !dest.is_file() {
+        return Ok(());
+    }
+    let own = dest.file_name().and_then(|s| s.to_str());
+    match names {
+        [only] if Some(only.as_ref()) == own => Ok(()),
+        _ => bail!(
+            "{} is a single file, but this version holds {} file(s){}; restore it into a folder instead",
+            dest.display(),
+            names.len(),
+            names
+                .first()
+                .map(|n| format!(" ({}{})", n.as_ref(), if names.len() > 1 { ", ..." } else { "" }))
+                .unwrap_or_default()
+        ),
+    }
+}
+
+/// The refusal to restore over a folder that already has something in it,
+/// unless the caller said so. A single-file save that exists needs the same
+/// permission: it is exactly what gets replaced.
+fn ensure_may_write(dest: &Path, single_file: bool, force: bool) -> Result<()> {
+    if force || !dest.exists() {
+        return Ok(());
+    }
+    if !single_file && std::fs::read_dir(dest)?.next().is_none() {
+        return Ok(());
+    }
+    bail!(
+        "destination is not empty: {} (set force = true to extract anyway)",
+        dest.display()
+    );
 }
 
 /// Whether a blob download error is worth re-fetching the same blob for:
@@ -490,15 +714,16 @@ fn is_retryable_blob_error(e: &anyhow::Error) -> bool {
 /// per-file manifest (`snapshot_detail` does not exist there), so verification is
 /// over the whole archive's sha256, recorded at commit time and returned in
 /// `DownloadOut`, rather than per file. We download to a temp file first so the
-/// hash check happens before we touch the destination.
+/// hash check happens before anything is extracted.
 async fn download_snapshot_cloud<F>(
     client: &ApiClient,
     save_id: &str,
     version: i64,
     dest: &Path,
+    out: &Path,
     options: RestoreOptions,
     progress: F,
-) -> Result<RestoreOutcome>
+) -> Result<Fetched>
 where
     F: Fn(u64, u64) + Send + Sync + 'static,
 {
@@ -511,46 +736,50 @@ where
         .await?;
     let manifest_ms = started.elapsed().as_millis() as u64;
     if manifest.content_addressed {
-        let mut outcome = restore_cloud_cas(client, dest, options, manifest, progress).await?;
-        outcome.timings.manifest_ms = manifest_ms;
-        outcome.timings.total_ms = started.elapsed().as_millis() as u64;
-        return Ok(outcome);
+        let mut fetched = restore_cloud_cas(client, dest, out, options, manifest, progress).await?;
+        fetched.outcome.timings.manifest_ms = manifest_ms;
+        fetched.outcome.timings.total_ms = started.elapsed().as_millis() as u64;
+        return Ok(fetched);
     }
 
     let meta = client.cloud_download(save_id, version).await?;
 
-    // As on the legacy path: an existing single-file save is not a "non-empty
-    // destination", it is exactly what we came to replace.
-    let root = extraction_root(dest, &[]);
-    if dest.exists() {
-        let empty = root != dest || std::fs::read_dir(dest)?.next().is_none();
-        if !empty && !options.force {
-            bail!(
-                "destination is not empty: {} (set force = true to extract anyway)",
-                dest.display()
-            );
-        }
-    } else {
-        std::fs::create_dir_all(&root).with_context(|| format!("creating {}", root.display()))?;
-    }
+    // The legacy path (a whole archive, with no per-file manifest): the
+    // snapshot's shape is not known in advance, so a single-file save can only be
+    // recognised because the file is already on disk. That is enough: only
+    // versions uploaded long ago take this path.
+    let single_file = extraction_root(dest, &[]) != dest;
+    ensure_may_write(dest, single_file, options.force)?;
 
-    // 1. Stream the archive to a temp file, hashing as we go.
-    let suffix = format!(
-        "{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    );
-    let tmp = std::env::temp_dir().join(format!("hoard-download-{suffix}.tar.zst"));
+    // 1. Stream the archive to a temp file, hashing as we go. A name of its own
+    // making, created exclusively: a name somebody else can guess is a name
+    // somebody else can plant a link on.
+    let tmp = tempfile::Builder::new()
+        .prefix("hoard-download-")
+        .suffix(".tar.zst")
+        .tempfile_in(prepared_staging_root(options.staging_root.as_deref())?)
+        .context("creating the temp file for the download")?
+        .into_temp_path();
 
-    let result = download_and_extract_cloud(client, &meta, dest, &tmp, &options, progress).await;
-    let _ = tokio::fs::remove_file(&tmp).await;
-    result.map(|mut outcome| {
+    let outcome = download_and_extract_cloud(
+        client,
+        &meta,
+        dest,
+        out,
+        &tmp,
+        single_file,
+        &options,
+        progress,
+    )
+    .await;
+    drop(tmp);
+    outcome.map(|mut outcome| {
         outcome.timings.manifest_ms = manifest_ms;
         outcome.timings.total_ms = started.elapsed().as_millis() as u64;
-        outcome
+        Fetched {
+            outcome,
+            single_file,
+        }
     })
 }
 
@@ -669,26 +898,6 @@ async fn copy_local_blob(
     file: &crate::api::CloudManifestFile,
     options: &RestoreOptions,
 ) -> Result<()> {
-    // On a direct restore the folder we indexed *is* `dest`, so the right bytes
-    // can already be at the right path. Nothing to copy, so re-verify in place and
-    // "everything under dest was hash-checked this pass" still holds.
-    if src == dest_path {
-        if options.skip_verify {
-            return Ok(());
-        }
-        let got = crate::backup::hash_file(dest_path).await?;
-        if got != file.sha256 {
-            bail!(
-                "sha256 mismatch reusing {} for {}: expected {}, got {}",
-                src.display(),
-                file.relative_path,
-                file.sha256,
-                got
-            );
-        }
-        return Ok(());
-    }
-
     let mut input = tokio::fs::File::open(src)
         .await
         .with_context(|| format!("opening local {} for reuse", src.display()))?;
@@ -744,9 +953,8 @@ fn as_mib(bytes: u64) -> f64 {
 }
 
 /// Content-addressed restore: each file in the manifest is its own R2 blob.
-/// Stream each to its destination path, verifying the whole-file sha256 and
-/// preserving the recorded mtime (so a cloud pull doesn't always win the
-/// conflict-aware diff). No temp archive: files land directly.
+/// Stream each into `out`, verifying the whole-file sha256 and preserving the
+/// recorded mtime (so a cloud pull doesn't always win the conflict-aware diff).
 ///
 /// Before any blob is fetched, the folder named by `options.reuse_from` is
 /// indexed by content hash and every manifest entry whose SHA is already on
@@ -757,10 +965,11 @@ fn as_mib(bytes: u64) -> f64 {
 async fn restore_cloud_cas<F>(
     client: &ApiClient,
     dest: &Path,
+    out: &Path,
     options: RestoreOptions,
     manifest: crate::api::CloudVersionManifestOut,
     progress: F,
-) -> Result<RestoreOutcome>
+) -> Result<Fetched>
 where
     F: Fn(u64, u64) + Send + Sync + 'static,
 {
@@ -769,20 +978,9 @@ where
         .iter()
         .map(|f| f.relative_path.as_str())
         .collect();
-    let root = extraction_root(dest, &names);
-    let single_file = root != dest;
-
-    if dest.exists() {
-        let empty = !single_file && std::fs::read_dir(dest)?.next().is_none();
-        if !empty && !options.force {
-            bail!(
-                "destination is not empty: {} (set force = true to extract anyway)",
-                dest.display()
-            );
-        }
-    } else {
-        std::fs::create_dir_all(&root).with_context(|| format!("creating {}", root.display()))?;
-    }
+    ensure_single_file_shape(dest, &names)?;
+    let single_file = extraction_root(dest, &names) != dest;
+    ensure_may_write(dest, single_file, options.force)?;
 
     // The gate is applied once, and here, and everything below (the progress
     // total, the jobs, the byte plan) comes off THIS list. Filtering only the jobs
@@ -812,13 +1010,19 @@ where
     let total: u64 = kept.iter().map(|f| f.size_bytes.max(0) as u64).sum();
 
     // Sanitize every path before moving any bytes: a hostile manifest aborts
-    // up front, not after some files have already landed in dest.
+    // up front. Two entries that land on the same path would race each other
+    // into one file, so that aborts too.
     let mut jobs = Vec::with_capacity(kept.len());
-    let in_prefix = in_wine_prefix(&root);
+    let mut seen: HashSet<PathBuf> = HashSet::with_capacity(kept.len());
+    let mut clash = CaseClash::new(dest);
     for file in &kept {
         let safe_rel = sanitize(Path::new(&file.relative_path))
             .ok_or_else(|| anyhow!("unsafe path in manifest: {}", file.relative_path))?;
-        jobs.push((*file, dest_in(&root, &safe_rel, in_prefix)));
+        if !seen.insert(safe_rel.clone()) {
+            bail!("the manifest lists {} twice", file.relative_path);
+        }
+        clash.check(&file.relative_path)?;
+        jobs.push((*file, out.join(&safe_rel)));
     }
 
     // Dedup against the disk before touching the network. Hashing the folder
@@ -869,10 +1073,7 @@ where
                 // Local shortcut first. On failure, including a sha that doesn't
                 // match (which is the whole point of keeping the check), we fall
                 // through to the network, so a bad reuse costs a wasted read, never
-                // a corrupt file or a failed restore. (That fallback is also what
-                // makes a direct restore safe when a source we indexed is itself
-                // some other entry's destination, as with rotating autosave names:
-                // whoever loses the race fails verification and downloads.)
+                // a corrupt file or a failed restore.
                 if let ByteSource::Reuse(src) = planned {
                     match copy_local_blob(src, dest_path, file, options).await {
                         Ok(()) => {
@@ -1015,18 +1216,22 @@ where
         "cloud restore: content-addressed restore finished"
     );
 
-    Ok(RestoreOutcome {
-        files_extracted: restored.len(),
-        bytes_extracted: bytes_reused + bytes_downloaded,
-        destination: dest.to_path_buf(),
-        files_reused,
-        bytes_reused,
-        timings: RestoreTimings {
-            manifest_ms: 0, // filled in by `download_snapshot_cloud`, which asked for it
-            index_ms,
-            transfer_ms,
-            total_ms: 0,
+    Ok(Fetched {
+        outcome: RestoreOutcome {
+            files_extracted: restored.len(),
+            bytes_extracted: bytes_reused + bytes_downloaded,
+            destination: dest.to_path_buf(),
+            files_reused,
+            bytes_reused,
+            timings: RestoreTimings {
+                manifest_ms: 0, // filled in by `download_snapshot_cloud`, which asked for it
+                index_ms,
+                transfer_ms,
+                total_ms: 0,
+            },
+            kept_in: None,
         },
+        single_file,
     })
 }
 
@@ -1046,29 +1251,26 @@ fn apply_manifest_mtime(file: &crate::api::CloudManifestFile, dest_path: &Path) 
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn download_and_extract_cloud<F>(
     client: &ApiClient,
     meta: &crate::api::CloudDownloadOut,
     dest: &Path,
+    out: &Path,
     tmp: &Path,
+    single_file: bool,
     options: &RestoreOptions,
     progress: F,
 ) -> Result<RestoreOutcome>
 where
     F: Fn(u64, u64) + Send + Sync + 'static,
 {
-    // The legacy path (a whole archive, with no per-file manifest): the snapshot's
-    // shape is not known in advance, so a single-file save can only be recognised
-    // because the file is already on disk. That is enough: only versions uploaded
-    // long ago take this path.
-    let root = extraction_root(dest, &[]);
-    let single_file = root != dest;
     let resp = client.get_presigned(&meta.download).await?;
     let total = resp
         .content_length()
         .unwrap_or_else(|| meta.size_bytes.max(0) as u64);
 
-    let mut out = tokio::fs::File::create(tmp)
+    let mut archive_file = tokio::fs::File::create(tmp)
         .await
         .with_context(|| format!("creating temp archive {}", tmp.display()))?;
     let mut hasher = Sha256::new();
@@ -1079,14 +1281,18 @@ where
         if !options.skip_verify {
             hasher.update(&chunk);
         }
-        out.write_all(&chunk)
+        archive_file
+            .write_all(&chunk)
             .await
             .with_context(|| format!("writing {}", tmp.display()))?;
         downloaded += chunk.len() as u64;
         progress(downloaded, total);
     }
-    out.flush().await.context("flushing temp archive")?;
-    drop(out);
+    archive_file
+        .flush()
+        .await
+        .context("flushing temp archive")?;
+    drop(archive_file);
 
     if !options.skip_verify {
         let got = hex::encode(hasher.finalize());
@@ -1116,22 +1322,31 @@ where
     let mut entries = archive.entries().context("opening tar archive")?;
     let mut files_extracted = 0usize;
     let mut bytes_extracted = 0u64;
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+    let mut clash = CaseClash::new(dest);
 
     while let Some(entry) = entries.next().await {
         let mut entry = entry.context("reading tar entry")?;
         let path_in_tar = entry.path()?.into_owned();
+        let kind = entry.header().entry_type();
 
-        let safe_rel = match sanitize(&path_in_tar) {
-            Some(p) => p,
-            None if entry.header().entry_type().is_dir() => continue,
-            None => bail!("unsafe path in archive: {}", path_in_tar.display()),
-        };
-        let dest_path = root.join(&safe_rel);
-
-        if entry.header().entry_type().is_dir() {
-            tokio::fs::create_dir_all(&dest_path).await.ok();
+        if kind.is_dir() {
             continue;
         }
+        let safe_rel = sanitize(&path_in_tar)
+            .ok_or_else(|| anyhow!("unsafe path in archive: {}", path_in_tar.display()))?;
+        // The client that built these archives only ever added regular files.
+        if !kind.is_file() {
+            bail!(
+                "archive entry {} is not a regular file ({kind:?})",
+                safe_rel.display()
+            );
+        }
+        if !seen.insert(safe_rel.clone()) {
+            bail!("archive carries {} twice", safe_rel.display());
+        }
+        let dest_path = out.join(&safe_rel);
+
         if let Some(parent) = dest_path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
@@ -1146,6 +1361,7 @@ where
             tracing::debug!(path = %safe_rel.display(), "restore: skipping device-local file");
             continue;
         }
+        clash.check(&safe_rel.to_string_lossy())?;
 
         let mut writer = tokio::fs::File::create(&dest_path)
             .await
@@ -1183,6 +1399,7 @@ where
         // The total is stamped by `download_snapshot_cloud`, which started the
         // stopwatch (asking for the manifest included).
         timings: RestoreTimings::default(),
+        kept_in: None,
     })
 }
 
@@ -1279,6 +1496,583 @@ where
     }
 }
 
+// ---- staging and placement
+
+/// Staging left behind longer than this is from a restore that died without
+/// cleaning up (a crash, a power cut). No restore runs for a week.
+const STALE_STAGING: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
+
+/// Where restores stage their bytes: under Hoard's own state folder, not the
+/// system temp. `/tmp` is RAM on Fedora and Arch, among others, so a save bigger
+/// than what it can hold could not be restored at all; the state folder is on
+/// disk, and usually on the same one as the saves, so placing a file is a rename.
+fn staging_root() -> PathBuf {
+    crate::config::CliConfig::state_dir()
+        .map(|d| d.join("restore-staging"))
+        .unwrap_or_else(|_| std::env::temp_dir())
+}
+
+/// Best-effort sweep of staging a dead restore left behind. The system temp
+/// was cleaned by the OS; this folder is ours to clean.
+fn sweep_stale_staging(root: &Path) {
+    let Ok(read) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in read.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with("hoard-restore-") && !name.starts_with("hoard-download-") {
+            continue;
+        }
+        let stale = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > STALE_STAGING);
+        if stale {
+            let path = entry.path();
+            let gone = if path.is_dir() {
+                std::fs::remove_dir_all(&path)
+            } else {
+                std::fs::remove_file(&path)
+            };
+            match gone {
+                Ok(()) => tracing::info!(path = %path.display(), "restore: removed stale staging"),
+                Err(e) => {
+                    tracing::warn!(path = %path.display(), error = %e, "restore: could not remove stale staging")
+                }
+            }
+        }
+    }
+}
+
+/// The staging root (`custom`, or [`staging_root`]), created and swept, ready
+/// for a new entry.
+fn prepared_staging_root(custom: Option<&Path>) -> Result<PathBuf> {
+    let root = custom.map(Path::to_path_buf).unwrap_or_else(staging_root);
+    std::fs::create_dir_all(&root)
+        .with_context(|| format!("creating the restore staging folder {}", root.display()))?;
+    sweep_stale_staging(&root);
+    Ok(root)
+}
+
+/// A private folder for one restore's bytes: a name nobody can guess, created
+/// exclusively and, on Unix, readable by this user only, so nobody can plant a
+/// file or a link in it first.
+pub(crate) fn new_staging_dir() -> Result<tempfile::TempDir> {
+    new_staging_dir_in(None)
+}
+
+/// [`new_staging_dir`] under `root` instead of the default staging root.
+fn new_staging_dir_in(root: Option<&Path>) -> Result<tempfile::TempDir> {
+    let root = prepared_staging_root(root)?;
+    let mut builder = tempfile::Builder::new();
+    builder.prefix("hoard-restore-");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(std::fs::Permissions::from_mode(0o700));
+    }
+    builder
+        .tempdir_in(&root)
+        .context("creating a private staging folder for the restore")
+}
+
+/// The staging folder must not sit inside the folder being restored: the
+/// watcher would see the download as the user's own writes.
+fn ensure_outside(staging: &Path, dest: &Path) -> Result<()> {
+    let dest = std::fs::canonicalize(dest).unwrap_or_else(|_| dest.to_path_buf());
+    let staging = std::fs::canonicalize(staging).unwrap_or_else(|_| staging.to_path_buf());
+    if staging.starts_with(&dest) {
+        bail!(
+            "Hoard's staging folder {} is inside {}; restoring over Hoard's own data is not supported",
+            staging.display(),
+            dest.display()
+        );
+    }
+    Ok(())
+}
+
+fn default_backup_root() -> Result<PathBuf> {
+    crate::config::CliConfig::state_dir()
+        .map(|d| d.join("conflicts"))
+        .context("finding where to keep the files the restore replaces")
+}
+
+/// `save_id` as one path component. It reaches here from the command line
+/// too, and `..` in it must not walk out of the backup root.
+fn path_safe(id: &str) -> String {
+    id.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// The timestamp folder under `<save_id>/`, in the shape the automatic restore
+/// uses, so `agent::cleanup_old_conflicts` expires both alike.
+fn backup_stamp() -> String {
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| "unknown-ts".to_string())
+        .replace(':', "-")
+}
+
+/// What placing a staged version did to the destination.
+#[derive(Debug, Default)]
+struct Placed {
+    replaced: usize,
+    created: usize,
+    unchanged: usize,
+}
+
+/// One file moved into the destination, remembered so it can be taken back.
+enum Undo {
+    Created(PathBuf),
+    Replaced { target: PathBuf, kept: PathBuf },
+}
+
+/// Move a verified version from `staging` into `dest`, all or nothing.
+///
+/// Every file the version would change is first put aside in `kept_in` (see
+/// [`keep_original`]), and only once all of them are, and on disk, is each one
+/// replaced in a single rename, so at any instant each path holds either the
+/// old file or the new one, whole. If any file cannot be placed (a game
+/// holding it open on Windows, a full disk, a folder where the version has a
+/// file) the ones already placed are put back and the error says so. Files the
+/// folder has and the version does not are left alone, as they always were.
+///
+/// Blocking IO throughout: it runs on `spawn_blocking`.
+fn place_staged(staging: &Path, dest: &Path, single_file: bool, kept_in: &Path) -> Result<Placed> {
+    let staged = list_staged(staging)?;
+    let names: Vec<String> = staged
+        .iter()
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .collect();
+    let root = if single_file {
+        ensure_single_file_shape(dest, &names)?;
+        match dest.parent() {
+            Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+            _ => PathBuf::from("."),
+        }
+    } else {
+        dest.to_path_buf()
+    };
+
+    // Planned in full before anything moves, so the cheap refusals cost nothing.
+    let in_prefix = in_wine_prefix(&root);
+    let mut plan = Vec::with_capacity(staged.len());
+    for rel in &staged {
+        let from = staging.join(rel);
+        let target = through_link(dest_in(&root, rel, in_prefix))?;
+        if target.is_dir() {
+            bail!(
+                "{} is a folder here, but a file in this version",
+                target.display()
+            );
+        }
+        let same = target.is_file()
+            && same_bytes(&from, &target)
+                .with_context(|| format!("comparing {} with the version", target.display()))?;
+        plan.push((rel, from, target, same));
+    }
+
+    let mut made_dirs: Vec<PathBuf> = Vec::new();
+    // An empty version still leaves its folder, as extracting into it did.
+    if !single_file {
+        create_dirs_tracked(&root, &mut made_dirs)?;
+    }
+    let mut placed = Placed::default();
+    let mut restamp: Vec<(PathBuf, PathBuf)> = Vec::new();
+
+    // 1. The way back, before anything changes: every file about to be replaced
+    // is put aside, and it is on disk before the first rename.
+    let mut steps: Vec<Step> = Vec::new();
+    let mut kept_files: Vec<PathBuf> = Vec::new();
+    for (rel, from, target, same) in plan {
+        if same {
+            placed.unchanged += 1;
+            restamp.push((from, target));
+            continue;
+        }
+        let original = match std::fs::metadata(&target) {
+            Ok(meta) => Some(meta),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => {
+                discard_kept(&kept_files);
+                roll_back(Vec::new(), made_dirs);
+                return Err(e).with_context(|| format!("reading {}", target.display()));
+            }
+        };
+        let kept = match &original {
+            Some(meta) => {
+                let kept = kept_in.join(rel);
+                if let Err(e) = keep_original(&target, &kept, meta) {
+                    discard_kept(&kept_files);
+                    roll_back(Vec::new(), made_dirs);
+                    return Err(e.context("restore stopped before changing anything"));
+                }
+                kept_files.push(kept.clone());
+                Some(kept)
+            }
+            None => None,
+        };
+        steps.push(Step {
+            from,
+            target,
+            kept,
+            perms: original.map(|m| m.permissions()),
+        });
+    }
+    // The staged bytes reach the disk before a rename can point the save at
+    // them: a power cut right after a rename must not leave an empty file where
+    // the save was.
+    let staged: Vec<&Path> = steps.iter().map(|s| s.from.as_path()).collect();
+    if let Err(e) = sync_files(&staged) {
+        discard_kept(&kept_files);
+        roll_back(Vec::new(), made_dirs);
+        return Err(anyhow::Error::new(e).context("writing the restored files to disk"));
+    }
+    sync_dirs(kept_files.iter().filter_map(|k| k.parent()));
+
+    // 2. The swap.
+    let mut done: Vec<Undo> = Vec::new();
+    for step in steps {
+        match place_one(&step, &mut made_dirs) {
+            Ok(undo) => {
+                match undo {
+                    Undo::Created(_) => placed.created += 1,
+                    Undo::Replaced { .. } => placed.replaced += 1,
+                }
+                done.push(undo);
+            }
+            Err(e) => {
+                let left = roll_back(done, made_dirs);
+                if left.is_empty() {
+                    return Err(e.context("restore undone, the folder is as it was"));
+                }
+                tracing::error!(
+                    kept_in = %kept_in.display(),
+                    failures = ?left,
+                    "restore: could not put every file back"
+                );
+                return Err(e.context(format!(
+                    "restore failed and {} file(s) could not be put back; the originals are in {}",
+                    left.len(),
+                    kept_in.display()
+                )));
+            }
+        }
+    }
+
+    // Unchanged files only take the version's mtime once nothing can be undone,
+    // so a rollback never leaves one of them touched.
+    for (from, target) in restamp {
+        copy_mtime(&from, &target);
+    }
+    // The renames themselves survive a power cut, not just the bytes they
+    // point at.
+    sync_dirs(done.iter().filter_map(|undo| {
+        let (Undo::Created(t) | Undo::Replaced { target: t, .. }) = undo;
+        t.parent()
+    }));
+    Ok(placed)
+}
+
+/// One file of the version on its way into the destination.
+struct Step {
+    from: PathBuf,
+    target: PathBuf,
+    /// Where the file it replaces was put aside; `None` when there was none.
+    kept: Option<PathBuf>,
+    perms: Option<std::fs::Permissions>,
+}
+
+/// Every regular file under `staging`, relative to it, sorted.
+fn list_staged(staging: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    let mut stack = vec![staging.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in
+            std::fs::read_dir(&dir).with_context(|| format!("reading {}", dir.display()))?
+        {
+            let entry = entry?;
+            let kind = entry.file_type()?;
+            if kind.is_dir() {
+                stack.push(entry.path());
+            } else if kind.is_file() {
+                let path = entry.path();
+                files.push(path.strip_prefix(staging)?.to_path_buf());
+            } else {
+                bail!(
+                    "unexpected entry in the staging folder: {}",
+                    entry.path().display()
+                );
+            }
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
+/// A save that is a link (to an SD card, to a synced folder) keeps being a
+/// link: the new bytes go where it points. Only the last component is followed;
+/// linked folders on the way are followed by the OS anyway.
+fn through_link(path: PathBuf) -> Result<PathBuf> {
+    match std::fs::symlink_metadata(&path) {
+        Ok(meta) if meta.file_type().is_symlink() => std::fs::canonicalize(&path)
+            .with_context(|| format!("{} is a link to something that isn't there", path.display())),
+        _ => Ok(path),
+    }
+}
+
+/// Swap the staged file in over `target`; the original is already in `kept`.
+fn place_one(step: &Step, made_dirs: &mut Vec<PathBuf>) -> Result<Undo> {
+    if let Some(parent) = step.target.parent() {
+        create_dirs_tracked(parent, made_dirs)?;
+    }
+    replace_with(&step.from, &step.target, step.perms.clone()).with_context(|| {
+        format!(
+            "replacing {} (if the game is running, close it and try again)",
+            step.target.display()
+        )
+    })?;
+    Ok(match &step.kept {
+        Some(kept) => Undo::Replaced {
+            target: step.target.clone(),
+            kept: kept.clone(),
+        },
+        None => Undo::Created(step.target.clone()),
+    })
+}
+
+/// Put the file at `target` aside as `kept` before the restore replaces it. A
+/// hard link when the two share a disk: instant, and no second copy of a
+/// multi-GB file where space may already be short. A copy otherwise, written
+/// to disk before this returns. The original keeps its mtime either way, so
+/// putting it back puts back what the next merge compares against.
+fn keep_original(target: &Path, kept: &Path, meta: &std::fs::Metadata) -> Result<()> {
+    if let Some(parent) = kept.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+    }
+    if std::fs::hard_link(target, kept).is_ok() {
+        return Ok(());
+    }
+    let copied = (|| -> std::io::Result<()> {
+        // By hand rather than `fs::copy`, which would carry a read-only mode
+        // over before the file could be flushed through a handle that writes.
+        let mut src = std::fs::File::open(target)?;
+        let mut dst = std::fs::File::create(kept)?;
+        std::io::copy(&mut src, &mut dst)?;
+        sync_handle(&dst)?;
+        drop(dst);
+        if let Ok(mtime) = meta.modified() {
+            filetime::set_file_mtime(kept, filetime::FileTime::from_system_time(mtime))?;
+        }
+        std::fs::set_permissions(kept, meta.permissions())
+    })();
+    if let Err(e) = copied {
+        let _ = std::fs::remove_file(kept);
+        return Err(e).with_context(|| {
+            format!("keeping a copy of {} before replacing it", target.display())
+        });
+    }
+    Ok(())
+}
+
+/// Take back the copies a placement that never started had put aside.
+fn discard_kept(kept: &[PathBuf]) {
+    for k in kept {
+        let _ = std::fs::remove_file(k);
+    }
+}
+
+/// `fsync` through `file`. A filesystem that cannot (some FUSE and network
+/// mounts answer "not supported") is let through: it never could, and
+/// refusing would make restoring there impossible.
+fn sync_handle(file: &std::fs::File) -> std::io::Result<()> {
+    match file.sync_all() {
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::Unsupported | std::io::ErrorKind::InvalidInput
+            ) =>
+        {
+            Ok(())
+        }
+        other => other,
+    }
+}
+
+/// `fsync` the files we wrote, a few at a time: one after another, a save of
+/// thousands of small files spent seconds on it on an SD card. Opened for
+/// writing because Windows only flushes through a handle that may write.
+fn sync_files(paths: &[&Path]) -> std::io::Result<()> {
+    const WORKERS: usize = 8;
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let per = paths.len().div_ceil(WORKERS);
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = paths
+            .chunks(per)
+            .map(|chunk| {
+                scope.spawn(move || -> std::io::Result<()> {
+                    for path in chunk {
+                        let file = std::fs::OpenOptions::new().write(true).open(path)?;
+                        sync_handle(&file)?;
+                    }
+                    Ok(())
+                })
+            })
+            .collect();
+        workers.into_iter().try_for_each(|w| {
+            w.join()
+                .unwrap_or_else(|_| Err(std::io::Error::other("sync worker panicked")))
+        })
+    })
+}
+
+/// Best-effort `fsync` of each distinct folder, so the names created or
+/// renamed in it survive a power cut too. Unix only: Windows has no handle on
+/// a folder to flush, and NTFS journals its renames.
+fn sync_dirs<'a>(dirs: impl Iterator<Item = &'a Path>) {
+    #[cfg(unix)]
+    {
+        let unique: HashSet<&Path> = dirs.collect();
+        for dir in unique {
+            let _ = std::fs::File::open(dir).and_then(|d| d.sync_all());
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dirs;
+    }
+}
+
+/// Put `from` at `target` in one step. A plain rename when both share a
+/// filesystem; otherwise a copy into a temp file beside the target, flushed,
+/// then renamed over it. Either way `target` is never seen half written, and on
+/// failure it is left as it was. `from`'s mtime travels with it.
+fn replace_with(from: &Path, target: &Path, perms: Option<std::fs::Permissions>) -> Result<()> {
+    if std::fs::rename(from, target).is_ok() {
+        if let Some(p) = perms {
+            let _ = std::fs::set_permissions(target, p);
+        }
+        return Ok(());
+    }
+    let tmp = temp_beside(target);
+    let copied = (|| -> std::io::Result<()> {
+        // By hand rather than `fs::copy`, which would carry a read-only mode
+        // over before the flush below could open the file for writing.
+        let mut src = std::fs::File::open(from)?;
+        let mut dst = std::fs::File::create(&tmp)?;
+        std::io::copy(&mut src, &mut dst)?;
+        sync_handle(&dst)?;
+        drop(dst);
+        let meta = std::fs::metadata(from)?;
+        filetime::set_file_mtime(&tmp, filetime::FileTime::from_system_time(meta.modified()?))?;
+        std::fs::set_permissions(&tmp, perms.unwrap_or_else(|| meta.permissions()))?;
+        std::fs::rename(&tmp, target)
+    })();
+    if let Err(e) = copied {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+    Ok(())
+}
+
+/// `.<name>.<pid>-<seq>.hoard.tmp` next to `target`. The `.tmp` extension is
+/// junk to the backup walk, so one left behind by a crash is never uploaded.
+fn temp_beside(target: &Path) -> PathBuf {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let name = target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".to_string());
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    target.with_file_name(format!(".{name}.{}-{seq}.hoard.tmp", std::process::id()))
+}
+
+/// `create_dir_all`, remembering which folders it made so a rollback can take
+/// them away again.
+fn create_dirs_tracked(dir: &Path, made: &mut Vec<PathBuf>) -> Result<()> {
+    if dir.is_dir() {
+        return Ok(());
+    }
+    let mut missing = Vec::new();
+    let mut cur = Some(dir);
+    while let Some(d) = cur {
+        if d.as_os_str().is_empty() || d.exists() {
+            break;
+        }
+        missing.push(d.to_path_buf());
+        cur = d.parent();
+    }
+    for d in missing.into_iter().rev() {
+        std::fs::create_dir(&d).with_context(|| format!("creating {}", d.display()))?;
+        made.push(d);
+    }
+    Ok(())
+}
+
+/// Undo a partial placement, newest first. Returns what could not be undone.
+fn roll_back(done: Vec<Undo>, made_dirs: Vec<PathBuf>) -> Vec<String> {
+    let mut left = Vec::new();
+    for undo in done.into_iter().rev() {
+        match undo {
+            Undo::Created(target) => {
+                if let Err(e) = std::fs::remove_file(&target) {
+                    left.push(format!("{}: {e}", target.display()));
+                }
+            }
+            Undo::Replaced { target, kept } => {
+                if let Err(e) = replace_with(&kept, &target, None) {
+                    left.push(format!("{}: {e:#}", target.display()));
+                }
+            }
+        }
+    }
+    // Only empty ones go: `remove_dir` refuses anything else.
+    for dir in made_dirs.into_iter().rev() {
+        let _ = std::fs::remove_dir(&dir);
+    }
+    left
+}
+
+fn same_bytes(a: &Path, b: &Path) -> std::io::Result<bool> {
+    use std::io::Read;
+    if std::fs::metadata(a)?.len() != std::fs::metadata(b)?.len() {
+        return Ok(false);
+    }
+    let mut fa = std::io::BufReader::new(std::fs::File::open(a)?);
+    let mut fb = std::io::BufReader::new(std::fs::File::open(b)?);
+    let mut ba = vec![0u8; 64 * 1024];
+    let mut bb = vec![0u8; 64 * 1024];
+    loop {
+        let n = fa.read(&mut ba)?;
+        if n == 0 {
+            return Ok(true);
+        }
+        fb.read_exact(&mut bb[..n])?;
+        if ba[..n] != bb[..n] {
+            return Ok(false);
+        }
+    }
+}
+
+fn copy_mtime(from: &Path, to: &Path) {
+    if let Ok(mtime) = std::fs::metadata(from).and_then(|m| m.modified()) {
+        let _ = filetime::set_file_mtime(to, filetime::FileTime::from_system_time(mtime));
+    }
+}
+
 /// Reject absolute paths, `..`, drive prefixes. Returns a relative `PathBuf`
 /// composed of only `Normal` components. Returns `None` if the path is empty
 /// or the input was unsafe.
@@ -1295,6 +2089,52 @@ pub fn sanitize(p: &Path) -> Option<PathBuf> {
         None
     } else {
         Some(out)
+    }
+}
+
+/// Whether two of a version's paths that differ only in case name one file
+/// where this restore writes. Windows and macOS fold case by default (and the
+/// staging folder is on the same kind of disk), and so does a Wine prefix
+/// through [`dest_in`].
+fn folds_case(dest: &Path) -> bool {
+    cfg!(any(windows, target_os = "macos")) || in_wine_prefix(dest)
+}
+
+/// Refuses a path that names the same file as an earlier one once case is
+/// folded. A version uploaded from Linux can hold `Save.sav` and `save.sav`;
+/// restored where case folds, both would be written into one staged file, the
+/// bytes of one over the other's, while each download checked its own stream
+/// and not what ended up on disk. Exact repeats are refused by the callers,
+/// with their own words.
+struct CaseClash {
+    fold: bool,
+    seen: HashMap<String, String>,
+}
+
+impl CaseClash {
+    fn new(dest: &Path) -> Self {
+        Self {
+            fold: folds_case(dest),
+            seen: HashMap::new(),
+        }
+    }
+
+    fn check(&mut self, rel: &str) -> Result<()> {
+        if !self.fold {
+            return Ok(());
+        }
+        let rel = rel.replace('\\', "/");
+        match self.seen.get(&rel.to_lowercase()) {
+            Some(first) if *first != rel => bail!(
+                "this version holds both {first} and {rel}, which are the same file here; \
+                 restore it somewhere that tells capitals apart"
+            ),
+            Some(_) => Ok(()),
+            None => {
+                self.seen.insert(rel.to_lowercase(), rel);
+                Ok(())
+            }
+        }
     }
 }
 
@@ -1342,6 +2182,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_sweep_takes_only_week_old_staging_of_ours() {
+        let root = tempfile::tempdir().unwrap();
+        let week_ago = filetime::FileTime::from_system_time(
+            std::time::SystemTime::now() - STALE_STAGING - std::time::Duration::from_secs(60),
+        );
+        let old_dir = root.path().join("hoard-restore-old");
+        let old_file = root.path().join("hoard-download-old.tar.zst");
+        let fresh = root.path().join("hoard-restore-fresh");
+        let foreign = root.path().join("something-else");
+        std::fs::create_dir_all(old_dir.join("sub")).unwrap();
+        std::fs::write(old_dir.join("sub/f"), b"x").unwrap();
+        std::fs::write(&old_file, b"x").unwrap();
+        std::fs::create_dir_all(&fresh).unwrap();
+        std::fs::create_dir_all(&foreign).unwrap();
+        for p in [&old_dir, &old_file, &foreign] {
+            filetime::set_file_mtime(p, week_ago).unwrap();
+        }
+
+        sweep_stale_staging(root.path());
+
+        assert!(!old_dir.exists() && !old_file.exists());
+        assert!(fresh.exists(), "a restore running now keeps its folder");
+        assert!(foreign.exists(), "only our own names are touched");
+    }
+
+    #[test]
     fn dest_in_reuses_the_spelling_on_disk_inside_a_prefix() {
         let tmp = tempfile::tempdir().unwrap();
         let saves = tmp
@@ -1366,6 +2232,126 @@ mod tests {
             dest_in(&native, Path::new("Savegame.sav"), in_wine_prefix(&native)),
             native.join("Savegame.sav")
         );
+    }
+
+    // ---- placement
+
+    fn read(path: &Path) -> Vec<u8> {
+        std::fs::read(path).unwrap()
+    }
+
+    #[test]
+    fn placement_keeps_what_it_replaces_and_leaves_the_rest_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let staging = tmp.path().join("staging");
+        let dest = tmp.path().join("Saves");
+        let kept = tmp.path().join("kept");
+        seed(&staging, "slot1.sav", b"slot 1, from the version");
+        seed(&staging, "sub/slot2.sav", b"slot 2, new here");
+        seed(&staging, "same.sav", b"identical");
+        seed(&dest, "slot1.sav", b"slot 1, local");
+        seed(&dest, "same.sav", b"identical");
+        seed(&dest, "local-only.sav", b"not in the version");
+
+        let placed = place_staged(&staging, &dest, false, &kept).unwrap();
+
+        assert_eq!(
+            (placed.replaced, placed.created, placed.unchanged),
+            (1, 1, 1)
+        );
+        assert_eq!(read(&dest.join("slot1.sav")), b"slot 1, from the version");
+        assert_eq!(read(&dest.join("sub/slot2.sav")), b"slot 2, new here");
+        assert_eq!(read(&dest.join("local-only.sav")), b"not in the version");
+        // The way back: only what was replaced, byte for byte.
+        assert_eq!(read(&kept.join("slot1.sav")), b"slot 1, local");
+        assert!(!kept.join("same.sav").exists());
+    }
+
+    /// A file that cannot be placed halfway through puts back the ones already
+    /// placed, their mtime included: the folder ends as it began.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_placement_puts_the_folder_back() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let staging = tmp.path().join("staging");
+        let dest = tmp.path().join("Saves");
+        let kept = tmp.path().join("kept");
+        seed(&staging, "a.sav", b"a from the version");
+        seed(&staging, "b.sav", b"b, created by the version");
+        seed(&staging, "z/locked.sav", b"never lands");
+        seed(&dest, "a.sav", b"a, the good local save");
+        seed(&dest, "z/locked.sav", b"the locked one");
+        let old = filetime::FileTime::from_unix_time(1_700_000_000, 0);
+        filetime::set_file_mtime(dest.join("a.sav"), old).unwrap();
+        // A folder nobody may write in stands for a file the game holds open.
+        let locked = dest.join("z");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+        if std::fs::write(locked.join("probe"), b"").is_ok() {
+            // Root ignores the mode; there is nothing to prove here.
+            std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+            return;
+        }
+
+        let err = place_staged(&staging, &dest, false, &kept).unwrap_err();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert!(
+            format!("{err:#}").contains("the folder is as it was"),
+            "{err:#}"
+        );
+        assert_eq!(read(&dest.join("a.sav")), b"a, the good local save");
+        let mtime = filetime::FileTime::from_last_modification_time(
+            &std::fs::metadata(dest.join("a.sav")).unwrap(),
+        );
+        assert_eq!(mtime, old);
+        assert!(!dest.join("b.sav").exists());
+        assert_eq!(read(&dest.join("z/locked.sav")), b"the locked one");
+    }
+
+    /// A save that is a link keeps being one; the bytes go where it points.
+    #[cfg(unix)]
+    #[test]
+    fn placement_writes_through_a_linked_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let staging = tmp.path().join("staging");
+        let dest = tmp.path().join("Saves");
+        let card = tmp.path().join("sdcard");
+        seed(&staging, "slot.sav", b"new");
+        seed(&card, "slot.sav", b"old");
+        std::fs::create_dir_all(&dest).unwrap();
+        std::os::unix::fs::symlink(card.join("slot.sav"), dest.join("slot.sav")).unwrap();
+
+        place_staged(&staging, &dest, false, &tmp.path().join("kept")).unwrap();
+
+        assert!(std::fs::symlink_metadata(dest.join("slot.sav"))
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(read(&card.join("slot.sav")), b"new");
+    }
+
+    /// Point a single-file save at a version of a folder and nothing lands next
+    /// to it: it used to spill every entry into the file's parent.
+    #[test]
+    fn a_single_file_save_refuses_a_version_of_several_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("save.dat");
+        std::fs::write(&file, b"x").unwrap();
+        assert!(ensure_single_file_shape(&file, &["save.dat"]).is_ok());
+        assert!(ensure_single_file_shape(&file, &["save.dat", "other.dat"]).is_err());
+        assert!(ensure_single_file_shape(&file, &["other.dat"]).is_err());
+        // Not a file: nothing to check.
+        assert!(ensure_single_file_shape(tmp.path(), &["a", "b"]).is_ok());
+    }
+
+    #[test]
+    fn a_staging_folder_inside_the_destination_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inside = tmp.path().join("staging");
+        std::fs::create_dir(&inside).unwrap();
+        assert!(ensure_outside(&inside, tmp.path()).is_err());
+        assert!(ensure_outside(tmp.path(), &inside).is_ok());
     }
 
     /// La cuenta que importa: `root.join(nombre)` tiene que devolver la ruta

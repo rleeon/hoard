@@ -402,6 +402,26 @@ fn non_fast_forward(save_id: &str, head: i64, base: i64) -> ApiError {
     )
 }
 
+/// Content this version meant to reuse is no longer stored: the trash purge
+/// took its last reference between the client's init and this commit. The
+/// client's next attempt starts with a fresh init, which lists it as missing,
+/// and uploads it.
+///
+/// A 400 rather than a 409: the client reads any 409 on commit as another
+/// device having moved the head, and would go and reconcile a conflict that
+/// is not there.
+pub(crate) fn blob_gone(sha: &str) -> ApiError {
+    warn!(sha = %sha, "cas commit: a reused object is gone; the client will upload it again");
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({
+            "error": "content this version reuses is no longer on the server; upload again",
+            "code": "blob_gone",
+            "sha256": sha,
+        })),
+    )
+}
+
 // ---- PUT /v1/cas/blobs/:upload_id/:sha256
 
 /// How much body we swallow as a courtesy before answering an error, while the
@@ -509,9 +529,14 @@ pub async fn upload_blob(
     }
 
     let dest = dir.join(&sha);
+    // Written under a name of its own and renamed once verified: a client that
+    // retries a PUT it thinks timed out would otherwise have two requests
+    // truncating and writing the same file, and the commit could pick up either
+    // half.
+    let part = dir.join(format!("{sha}.{}.part", Uuid::new_v4()));
     let max_per_blob = (state.config.storage.max_snapshot_size_mb as i64) * 1024 * 1024;
 
-    let mut file = match tokio::fs::File::create(&dest).await {
+    let mut file = match tokio::fs::File::create(&part).await {
         Ok(f) => f,
         Err(e) => {
             let e = internal_logged("creating the uploaded file", e);
@@ -542,7 +567,7 @@ pub async fn upload_blob(
                 Ok(n) => n,
                 Err(e) => {
                     warn!(error = %e, "cas blob decode error");
-                    let _ = tokio::fs::remove_file(&dest).await;
+                    let _ = tokio::fs::remove_file(&part).await;
                     return Err(err(
                         StatusCode::BAD_REQUEST,
                         "the compressed body could not be decoded",
@@ -551,13 +576,13 @@ pub async fn upload_blob(
             };
             size += n as i64;
             if size > max_per_blob {
-                let _ = tokio::fs::remove_file(&dest).await;
+                let _ = tokio::fs::remove_file(&part).await;
                 return Err(snapshot_too_large(max_per_blob, size));
             }
             hasher.update(&buf[..n]);
             if let Err(e) = file.write_all(&buf[..n]).await {
                 warn!(error = %e, "cas blob write error");
-                let _ = tokio::fs::remove_file(&dest).await;
+                let _ = tokio::fs::remove_file(&part).await;
                 return Err(internal_logged("writing the uploaded blob", e));
             }
         }
@@ -567,13 +592,13 @@ pub async fn upload_blob(
                 Ok(c) => c,
                 Err(e) => {
                     warn!(error = %e, "cas blob stream error");
-                    let _ = tokio::fs::remove_file(&dest).await;
+                    let _ = tokio::fs::remove_file(&part).await;
                     return Err(err(StatusCode::BAD_REQUEST, "stream error"));
                 }
             };
             size += chunk.len() as i64;
             if size > max_per_blob {
-                let _ = tokio::fs::remove_file(&dest).await;
+                let _ = tokio::fs::remove_file(&part).await;
                 // What we already read counts against the drain cap: a blob over
                 // the server's limit is precisely the one not worth swallowing
                 // whole just to reject it politely.
@@ -583,14 +608,14 @@ pub async fn upload_blob(
             hasher.update(&chunk);
             if let Err(e) = file.write_all(&chunk).await {
                 warn!(error = %e, "cas blob write error");
-                let _ = tokio::fs::remove_file(&dest).await;
+                let _ = tokio::fs::remove_file(&part).await;
                 let e = internal_logged("writing the uploaded blob", e);
                 return Err(drain_then(&mut stream, e, size.max(0) as u64).await);
             }
         }
     }
     if let Err(e) = file.flush().await {
-        let _ = tokio::fs::remove_file(&dest).await;
+        let _ = tokio::fs::remove_file(&part).await;
         return Err(internal_logged("writing the uploaded blob", e));
     }
     drop(file);
@@ -603,11 +628,15 @@ pub async fn upload_blob(
             bytes = size,
             "cas: uploaded blob does not hash to the sha it was announced under — rejected"
         );
-        let _ = tokio::fs::remove_file(&dest).await;
+        let _ = tokio::fs::remove_file(&part).await;
         return Err(err(
             StatusCode::BAD_REQUEST,
             "uploaded bytes do not match the declared sha256",
         ));
+    }
+    if let Err(e) = tokio::fs::rename(&part, &dest).await {
+        let _ = tokio::fs::remove_file(&part).await;
+        return Err(internal_logged("keeping the uploaded blob", e));
     }
 
     Ok(StatusCode::NO_CONTENT)
@@ -681,12 +710,12 @@ pub async fn commit(
                         internal_logged("blob dedup lookup", e)
                     })?
                 else {
+                    // Neither sent nor stored. Either the client skipped it, or
+                    // the purge took it after init said it was stored; both are
+                    // mended by a fresh init that asks for it.
                     cleanup_staging();
-                    warn!(sha = %sha, save_id = %save_id, "cas commit: manifest references a blob that was never uploaded");
-                    return Err(err(
-                        StatusCode::BAD_REQUEST,
-                        "manifest references a blob that was not uploaded",
-                    ));
+                    warn!(sha = %sha, save_id = %save_id, "cas commit: manifest references a blob that is neither uploaded nor stored");
+                    return Err(blob_gone(&sha));
                 };
                 reused.insert(sha, stored);
             }
@@ -710,6 +739,11 @@ pub async fn commit(
             }
         }
     }
+
+    // From here to the commit nothing else may create or remove this user's
+    // objects (see `blobs::lock_user`). Taken after the chunk planning, which
+    // only hashes the upload's own files and can take a while on a big save.
+    let _objects = crate::blobs::lock_user(&user_id).await;
 
     // ---- genuinely new bytes
     // A chunked file only costs the chunks the user did not already have, so two
@@ -792,6 +826,9 @@ pub async fn commit(
                 .collect();
             let (store, pool, user_id) = (store.clone(), pool.clone(), user_id.clone());
             tokio::spawn(async move {
+                // Waits for this request's own lock to drop, then keeps a
+                // concurrent commit from placing the same key while we look.
+                let _objects = crate::blobs::lock_user(&user_id).await;
                 for (key, sha, is_chunk) in keys {
                     // Only what nothing references gets deleted: between the
                     // placement and this rollback another request may have
@@ -811,6 +848,9 @@ pub async fn commit(
         }
     };
 
+    // Everything to place is gathered first and placed in one go, so the store
+    // can make it durable together rather than a flush at a time.
+    let mut batch: Vec<(String, PathBuf)> = Vec::new();
     for (sha, (path, _size)) in &staged {
         if let Some(plan) = chunk_plans.get(sha) {
             for c in plan.iter() {
@@ -825,13 +865,13 @@ pub async fn commit(
                 if crate::chunking::place_chunk(path, c.offset, c.len, &stage)
                     .await
                     .is_err()
-                    || store.put_from_file(&key, &stage).await.is_err()
                 {
-                    warn!(sha = %c.sha256, "cas: chunk placement failed");
+                    warn!(sha = %c.sha256, "cas: chunk extraction failed");
                     rollback(&placed);
                     cleanup_staging();
                     return Err(internal());
                 }
+                batch.push((key.clone(), stage));
                 placed.push(Placed {
                     key,
                     sha: c.sha256.clone(),
@@ -841,17 +881,20 @@ pub async fn commit(
             continue;
         }
         let key = crate::store::blob_key(&user_id, sha);
-        if store.put_from_file(&key, path).await.is_err() {
-            warn!(sha = %sha, "cas: blob placement failed");
-            rollback(&placed);
-            cleanup_staging();
-            return Err(internal());
-        }
+        batch.push((key.clone(), path.clone()));
         placed.push(Placed {
             key,
             sha: sha.clone(),
             chunk: false,
         });
+    }
+    if let Err(e) = store.put_many_from_files(&batch).await {
+        warn!(error = %format!("{e:#}"), "cas: blob placement failed");
+        // Some may be in and some not: the rollback takes back whatever of the
+        // batch nothing references, and a key never placed is a no-op delete.
+        rollback(&placed);
+        cleanup_staging();
+        return Err(internal());
     }
 
     // ---- transaction: rows only
@@ -961,21 +1004,44 @@ pub async fn commit(
         };
 
         if chunks.is_empty() {
-            sqlx::query(
-                "INSERT INTO blobs (user_id, sha256, size_bytes, refcount)
-                 VALUES (?,?,?,1)
-                 ON CONFLICT(user_id, sha256) DO UPDATE SET refcount = refcount + 1",
-            )
-            .bind(&user_id)
-            .bind(sha)
-            .bind(size)
-            .execute(&mut *tx)
-            .await
+            // Reused chunked content whose source version went in the meantime.
+            if matches!(reused.get(sha), Some(Stored::Chunks { .. })) {
+                rollback(&placed);
+                cleanup_staging();
+                return Err(blob_gone(sha));
+            }
+            let counted = if staged.contains_key(sha) {
+                sqlx::query(
+                    "INSERT INTO blobs (user_id, sha256, size_bytes, refcount)
+                     VALUES (?,?,?,1)
+                     ON CONFLICT(user_id, sha256) DO UPDATE SET refcount = refcount + 1",
+                )
+                .bind(&user_id)
+                .bind(sha)
+                .bind(size)
+                .execute(&mut *tx)
+                .await
+            } else {
+                // Not placed by this request: the row has to still be there. An
+                // upsert would bring it back with no object behind it.
+                sqlx::query(
+                    "UPDATE blobs SET refcount = refcount + 1 WHERE user_id = ? AND sha256 = ?",
+                )
+                .bind(&user_id)
+                .bind(sha)
+                .execute(&mut *tx)
+                .await
+            }
             .map_err(|e| {
                 rollback(&placed);
                 cleanup_staging();
                 fail(e, "reference-counting a blob")
             })?;
+            if counted.rows_affected() != 1 {
+                rollback(&placed);
+                cleanup_staging();
+                return Err(blob_gone(sha));
+            }
             continue;
         }
 
@@ -994,21 +1060,36 @@ pub async fn commit(
                 cleanup_staging();
                 fail(e, "recording a file's chunks")
             })?;
-            sqlx::query(
-                "INSERT INTO chunks (user_id, sha256, size_bytes, refcount)
-                 VALUES (?,?,?,1)
-                 ON CONFLICT(user_id, sha256) DO UPDATE SET refcount = refcount + 1",
-            )
-            .bind(&user_id)
-            .bind(csha)
-            .bind(csize)
-            .execute(&mut *tx)
-            .await
+            let counted = if new_chunks.contains(csha) {
+                sqlx::query(
+                    "INSERT INTO chunks (user_id, sha256, size_bytes, refcount)
+                     VALUES (?,?,?,1)
+                     ON CONFLICT(user_id, sha256) DO UPDATE SET refcount = refcount + 1",
+                )
+                .bind(&user_id)
+                .bind(csha)
+                .bind(csize)
+                .execute(&mut *tx)
+                .await
+            } else {
+                sqlx::query(
+                    "UPDATE chunks SET refcount = refcount + 1 WHERE user_id = ? AND sha256 = ?",
+                )
+                .bind(&user_id)
+                .bind(csha)
+                .execute(&mut *tx)
+                .await
+            }
             .map_err(|e| {
                 rollback(&placed);
                 cleanup_staging();
                 fail(e, "reference-counting a chunk")
             })?;
+            if counted.rows_affected() != 1 {
+                rollback(&placed);
+                cleanup_staging();
+                return Err(blob_gone(csha));
+            }
         }
     }
 

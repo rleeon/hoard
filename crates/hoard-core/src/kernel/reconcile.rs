@@ -218,6 +218,16 @@ pub fn reconcile(state: &State, obs: &Observation, world: World) -> (State, Vec<
         ingest_op_result(&mut next, result, obs, now, world.seed, &mut decisions);
     }
 
+    // A manual restore let go of the save (see `Observation::adopted_head`).
+    // Without this the folder it wrote read as a local change behind a head
+    // that had moved (the History dialog's own safety copy moves it), the pull
+    // was vetoed by that very change, and the urgent upload went out on the old
+    // base: 409, merge, and the newer cloud copy won by mtime, silently undoing
+    // the restore.
+    if let Some(head) = obs.adopted_head {
+        adopt_head(&mut next, head);
+    }
+
     // Anti-relaunch: if there is still an op in flight (no result this tick), do
     // NOT relaunch. Moving GBs takes minutes. Hold, with a reason.
     if next.in_flight.is_some() {
@@ -487,6 +497,23 @@ fn start_restore(next: &mut State, now: OffsetDateTime) {
     next.next_restore_at = Some(now + Duration::seconds(RESTORE_COOLDOWN_SECS));
     next.pull_pending = false;
     next.deferred_notified = false;
+}
+
+/// The folder is the user's next version on top of `head`: the device counts
+/// as synced to it, so nothing up to it is waiting to be pulled, and whatever
+/// the folder now holds goes up as a fast-forward. `known_version` never moves
+/// backwards.
+fn adopt_head(next: &mut State, head: i64) {
+    if next.known_version.is_none_or(|known| known < head) {
+        next.known_version = Some(head);
+        // Whatever was waiting to come down is this head or older.
+        next.pull_pending = false;
+        next.deferred_notified = false;
+    }
+    // The restore changed the folder. An upload that finished during the hold
+    // cleared `has_pending` for content it read before that; the fingerprint
+    // still decides whether anything differs.
+    next.has_pending = true;
 }
 
 /// Does the poller's cache say the save moved past what this device holds? A
@@ -1518,6 +1545,76 @@ mod tests {
         assert!(s4.pull_pending, "the intent to pull is still alive");
     }
 
+    /// A manual restore lets go (review of the restore fix, sep-2026). The
+    /// History dialog's safety copy moved the head to v6 behind the daemon's
+    /// back, an upload the daemon had running finished during the hold at v5,
+    /// and the restore rewrote the folder. Read plainly that is a local change
+    /// behind a newer cloud copy, and the pull merges v6 over it, the cloud
+    /// winning by mtime: the restore silently undone. With the head the client
+    /// vouches for, it is the next version on top of v6.
+    #[test]
+    fn a_restore_that_lets_go_goes_up_on_top_of_the_head_it_vouches_for() {
+        let state = State {
+            has_pending: true,
+            known_version: Some(4),
+            synced_fingerprint: Some(1),
+            in_flight: Some(Op::Backup),
+            ..base_state()
+        };
+        let obs = Observation {
+            cloud_version: Some(6),
+            local_fingerprint: Some(2),
+            op_result: Some(OpResult::Ok {
+                version: Some(5),
+                fingerprint: Some(1),
+                wrote: true,
+            }),
+            ..quiet_obs()
+        };
+
+        let (plain, d_plain) = reconcile(&state, &obs, world(0));
+        assert_eq!(plain.known_version, Some(5));
+        assert!(
+            acts(&d_plain).contains(&&Action::Restore),
+            "without the head, v6 comes down over the restore: {d_plain:?}"
+        );
+
+        let adopted = Observation {
+            adopted_head: Some(6),
+            ..obs
+        };
+        let (next, ds) = reconcile(&state, &adopted, world(0));
+        assert_eq!(next.known_version, Some(6));
+        assert!(!next.pull_pending);
+        assert_eq!(
+            acts(&ds),
+            vec![&Action::Backup],
+            "the restored folder goes up on v6: {ds:?}"
+        );
+    }
+
+    /// A head older than what the device already knows moves nothing back.
+    #[test]
+    fn an_adopted_head_never_moves_known_version_back() {
+        let state = State {
+            known_version: Some(9),
+            synced_fingerprint: Some(1),
+            ..base_state()
+        };
+        let obs = Observation {
+            cloud_version: Some(9),
+            local_fingerprint: Some(1),
+            adopted_head: Some(7),
+            ..quiet_obs()
+        };
+        let (next, ds) = reconcile(&state, &obs, world(0));
+        assert_eq!(next.known_version, Some(9));
+        assert!(
+            acts(&ds).is_empty(),
+            "nothing differs, nothing to do: {ds:?}"
+        );
+    }
+
     /// The other half: between two advances, with the pull already deferred and
     /// the cloud no longer ahead, the mid-session autobackup keeps working. The
     /// `pull_pending` branch used to return before the backup too, killing the
@@ -2515,6 +2612,8 @@ mod tests {
                 fs_event: if quiescent { false } else { fs_event },
                 op_result,
                 upload_landed: None,
+                // A restore letting go is a one-off with its own tests above.
+                adopted_head: None,
             }
         }
     }
