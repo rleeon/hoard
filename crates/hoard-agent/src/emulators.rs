@@ -986,11 +986,21 @@ mod tests {
         let retroarch_save_dir =
             |cfg: &str, dir: &Path| retroarch_dir(cfg, "savefile_directory", dir);
         let cfg_dir = Path::new("/opt/RetroArch");
+        // An absolute path on the OS running the test: `/home/...` is not one
+        // on Windows, where the configured folders carry a drive.
+        let root = if cfg!(windows) {
+            "C:/Emulation"
+        } else {
+            "/home/deck/Emulation"
+        };
         // What EmuDeck writes into the Flatpak's config.
-        let emudeck = "video_driver = \"vulkan\"\nsavefile_directory = \"/home/deck/Emulation/saves/retroarch/saves\"\n";
+        let emudeck = format!(
+            "video_driver = \"vulkan\"\nsavefile_directory = \"{root}/saves/retroarch/saves\"\n"
+        );
+        let emudeck = emudeck.as_str();
         assert_eq!(
             retroarch_save_dir(emudeck, cfg_dir),
-            Some(PathBuf::from("/home/deck/Emulation/saves/retroarch/saves"))
+            Some(PathBuf::from(format!("{root}/saves/retroarch/saves")))
         );
         assert_eq!(
             retroarch_save_dir("savefile_directory = \"default\"", cfg_dir),
@@ -1009,7 +1019,7 @@ mod tests {
                 "savestate_directory",
                 cfg_dir
             ),
-            Some(PathBuf::from("/home/deck/Emulation/saves/retroarch/states"))
+            Some(PathBuf::from(format!("{root}/saves/retroarch/states")))
         );
         assert_eq!(
             retroarch_save_dir("savefile_directory = \":/saves\"", cfg_dir),

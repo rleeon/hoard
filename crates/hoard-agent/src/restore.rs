@@ -1634,7 +1634,13 @@ struct Placed {
 /// One file moved into the destination, remembered so it can be taken back.
 enum Undo {
     Created(PathBuf),
-    Replaced { target: PathBuf, kept: PathBuf },
+    Replaced {
+        target: PathBuf,
+        kept: PathBuf,
+        /// The original's mode: on Windows lifting a read-only mark to swap the
+        /// file lifts it on the kept link too, which shares the file.
+        perms: Option<std::fs::Permissions>,
+    },
 }
 
 /// Move a verified version from `staging` into `dest`, all or nothing.
@@ -1846,6 +1852,7 @@ fn place_one(step: &Step, made_dirs: &mut Vec<PathBuf>) -> Result<Undo> {
         Some(kept) => Undo::Replaced {
             target: step.target.clone(),
             kept: kept.clone(),
+            perms: step.perms.clone(),
         },
         None => Undo::Created(step.target.clone()),
     })
@@ -1961,7 +1968,7 @@ fn sync_dirs<'a>(dirs: impl Iterator<Item = &'a Path>) {
 /// then renamed over it. Either way `target` is never seen half written, and on
 /// failure it is left as it was. `from`'s mtime travels with it.
 fn replace_with(from: &Path, target: &Path, perms: Option<std::fs::Permissions>) -> Result<()> {
-    if std::fs::rename(from, target).is_ok() {
+    if rename_over(from, target).is_ok() {
         if let Some(p) = perms {
             let _ = std::fs::set_permissions(target, p);
         }
@@ -1979,13 +1986,43 @@ fn replace_with(from: &Path, target: &Path, perms: Option<std::fs::Permissions>)
         let meta = std::fs::metadata(from)?;
         filetime::set_file_mtime(&tmp, filetime::FileTime::from_system_time(meta.modified()?))?;
         std::fs::set_permissions(&tmp, perms.unwrap_or_else(|| meta.permissions()))?;
-        std::fs::rename(&tmp, target)
+        rename_over(&tmp, target)
     })();
     if let Err(e) = copied {
         let _ = std::fs::remove_file(&tmp);
         return Err(e.into());
     }
     Ok(())
+}
+
+/// `rename` over `target`. Windows will not replace a read-only file, and some
+/// saves are marked read-only, by their owner or by a launcher guarding them:
+/// every restore of one failed with "access denied". The mark is lifted for the
+/// swap and, if the swap still fails, put back. The new file's mode is the
+/// caller's to set, as for any other.
+fn rename_over(from: &Path, target: &Path) -> std::io::Result<()> {
+    let first = std::fs::rename(from, target);
+    #[cfg(windows)]
+    if let Err(e) = &first {
+        if e.kind() == std::io::ErrorKind::PermissionDenied {
+            let Ok(meta) = std::fs::metadata(target) else {
+                return first;
+            };
+            if !meta.permissions().readonly() {
+                return first;
+            }
+            let mut writable = meta.permissions();
+            // On Windows this clears the read-only attribute and nothing else;
+            // the lint is about the mode bits it would open up on Unix.
+            #[allow(clippy::permissions_set_readonly_false)]
+            writable.set_readonly(false);
+            std::fs::set_permissions(target, writable)?;
+            return std::fs::rename(from, target).inspect_err(|_| {
+                let _ = std::fs::set_permissions(target, meta.permissions());
+            });
+        }
+    }
+    first
 }
 
 /// `.<name>.<pid>-<seq>.hoard.tmp` next to `target`. The `.tmp` extension is
@@ -2032,8 +2069,12 @@ fn roll_back(done: Vec<Undo>, made_dirs: Vec<PathBuf>) -> Vec<String> {
                     left.push(format!("{}: {e}", target.display()));
                 }
             }
-            Undo::Replaced { target, kept } => {
-                if let Err(e) = replace_with(&kept, &target, None) {
+            Undo::Replaced {
+                target,
+                kept,
+                perms,
+            } => {
+                if let Err(e) = replace_with(&kept, &target, perms) {
                     left.push(format!("{}: {e:#}", target.display()));
                 }
             }
@@ -2181,6 +2222,97 @@ pub(crate) fn dest_in(root: &Path, rel: &Path, in_prefix: bool) -> PathBuf {
 mod tests {
     use super::*;
 
+    /// `dest` with `old` in it and `staging` with `new`, file by file.
+    fn folder_and_version(
+        root: &Path,
+        files: &[(&str, &[u8], &[u8])],
+    ) -> (PathBuf, PathBuf, PathBuf) {
+        let (dest, staging) = (root.join("Saves"), root.join("staging"));
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::create_dir_all(&staging).unwrap();
+        for (name, old, new) in files {
+            std::fs::write(dest.join(name), old).unwrap();
+            std::fs::write(staging.join(name), new).unwrap();
+        }
+        (dest, staging, root.join("kept"))
+    }
+
+    #[allow(clippy::permissions_set_readonly_false)]
+    fn set_read_only(path: &Path, on: bool) {
+        let mut perms = std::fs::metadata(path).unwrap().permissions();
+        perms.set_readonly(on);
+        std::fs::set_permissions(path, perms).unwrap();
+    }
+
+    /// A read-only save is replaced and stays read-only. Windows refused the
+    /// swap outright ("access denied") until the mark was lifted for it.
+    #[test]
+    fn a_read_only_save_is_replaced_and_stays_read_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (dest, staging, kept) = folder_and_version(tmp.path(), &[("save.dat", b"old", b"new")]);
+        set_read_only(&dest.join("save.dat"), true);
+
+        let placed = place_staged(&staging, &dest, false, &kept).unwrap();
+
+        assert_eq!(placed.replaced, 1);
+        assert_eq!(std::fs::read(dest.join("save.dat")).unwrap(), b"new");
+        assert!(std::fs::metadata(dest.join("save.dat"))
+            .unwrap()
+            .permissions()
+            .readonly());
+        assert_eq!(std::fs::read(kept.join("save.dat")).unwrap(), b"old");
+        // Or the temp folder cannot be removed on Windows.
+        set_read_only(&dest.join("save.dat"), false);
+        set_read_only(&kept.join("save.dat"), false);
+    }
+
+    /// A game holding its save open the usual way (others may read, nobody may
+    /// replace it): the restore stops and says why, and the file it had already
+    /// swapped goes back as it was, read-only mark included.
+    #[cfg(windows)]
+    #[test]
+    fn a_save_the_game_holds_open_leaves_the_folder_as_it_was() {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_SHARE_READ: u32 = 0x1;
+        let tmp = tempfile::tempdir().unwrap();
+        let (dest, staging, kept) = folder_and_version(
+            tmp.path(),
+            &[
+                ("a.dat", b"old a", b"new a"),
+                ("save.dat", b"old save", b"new save"),
+            ],
+        );
+        set_read_only(&dest.join("a.dat"), true);
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(dest.join("save.dat"))
+            .unwrap();
+
+        let err = format!(
+            "{:#}",
+            place_staged(&staging, &dest, false, &kept).unwrap_err()
+        );
+        drop(held);
+
+        assert!(err.contains("close it and try again"), "{err}");
+        assert!(err.contains("the folder is as it was"), "{err}");
+        assert_eq!(std::fs::read(dest.join("a.dat")).unwrap(), b"old a");
+        assert!(std::fs::metadata(dest.join("a.dat"))
+            .unwrap()
+            .permissions()
+            .readonly());
+        assert_eq!(std::fs::read(dest.join("save.dat")).unwrap(), b"old save");
+        let temps: Vec<_> = std::fs::read_dir(&dest)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".hoard.tmp"))
+            .collect();
+        assert!(temps.is_empty(), "{temps:?}");
+        set_read_only(&dest.join("a.dat"), false);
+    }
+
     #[test]
     fn the_sweep_takes_only_week_old_staging_of_ours() {
         let root = tempfile::tempdir().unwrap();
@@ -2209,6 +2341,15 @@ mod tests {
 
     #[test]
     fn dest_in_reuses_the_spelling_on_disk_inside_a_prefix() {
+        // Where the disk itself folds case, either spelling is the file there.
+        let spelled = |p: PathBuf| {
+            let s = p.to_string_lossy().into_owned();
+            if cfg!(any(windows, target_os = "macos")) {
+                s.to_lowercase()
+            } else {
+                s
+            }
+        };
         let tmp = tempfile::tempdir().unwrap();
         let saves = tmp
             .path()
@@ -2216,8 +2357,12 @@ mod tests {
         std::fs::create_dir_all(&saves).unwrap();
         std::fs::write(saves.join("SaveGame.sav"), b"machine 2").unwrap();
         assert_eq!(
-            dest_in(&saves, Path::new("Savegame.sav"), in_wine_prefix(&saves)),
-            saves.join("SaveGame.sav")
+            spelled(dest_in(
+                &saves,
+                Path::new("Savegame.sav"),
+                in_wine_prefix(&saves)
+            )),
+            spelled(saves.join("SaveGame.sav"))
         );
         // A file that does not exist in any spelling keeps its own.
         assert_eq!(
