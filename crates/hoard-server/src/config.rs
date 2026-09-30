@@ -305,6 +305,15 @@ pub struct RetentionConfig {
     /// `RetentionPolicy::from_data_saving`. Default 0.3.
     #[serde(default = "default_data_saving")]
     pub data_saving: f64,
+    /// The daily pass that sets every blob's refcount back to the references
+    /// that exist and, a week after finding them, deletes the ones no version
+    /// uses (`cleanup::repair_refcounts`). On unless turned off here.
+    #[serde(default = "default_repair_refcounts")]
+    pub repair_refcounts: bool,
+}
+
+fn default_repair_refcounts() -> bool {
+    true
 }
 
 fn default_snapshot_pruning() -> bool {

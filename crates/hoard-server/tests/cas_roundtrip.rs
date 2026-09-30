@@ -795,10 +795,18 @@ async fn zstd_bytes(raw: &[u8]) -> Vec<u8> {
 /// Download a version and read the whole body, the way a client would. `Err` is
 /// a download that broke off.
 async fn download_body(h: &Harness, version: i64) -> Result<axum::body::Bytes, axum::Error> {
+    download_of(h, SAVE, version).await
+}
+
+async fn download_of(
+    h: &Harness,
+    save: &str,
+    version: i64,
+) -> Result<axum::body::Bytes, axum::Error> {
     let resp = hoard_server::routes::snapshots::download(
         State(h.state.clone()),
         Extension(h.user.clone()),
-        Path((SAVE.to_string(), version)),
+        Path((save.to_string(), version)),
     )
     .await
     .expect("descarga");
@@ -1157,8 +1165,177 @@ async fn the_audit_counts_what_an_old_delete_left_behind() {
             username: "jacka".into(),
             unreferenced_objects: 2,
             unreferenced_bytes: (v1.len() + v2.len()) as i64,
+            marked_objects: 0,
             overcounted_objects: 1,
             undercounted_objects: 0,
         }]
     );
+}
+
+/// A server that deleted a save the old way: the cascade on its own.
+async fn a_server_with_an_old_leak(h: &Harness) -> [Vec<u8>; 4] {
+    let contents = two_saves_sharing_a_file(h).await;
+    sqlx::query("DELETE FROM saves WHERE id = ?")
+        .bind(SAVE)
+        .execute(&h.state.pool)
+        .await
+        .unwrap();
+    contents
+}
+
+async fn repair_in(h: &Harness, days: i64) -> hoard_server::cleanup::RepairReport {
+    hoard_server::cleanup::repair_refcounts(
+        &h.state.pool,
+        &h.state.store,
+        time::OffsetDateTime::now_utc() + time::Duration::days(days),
+    )
+    .await
+    .expect("repair")
+}
+
+/// The repair on a server with an old leak, pass by pass. Counters are put
+/// right at once; what nothing uses is first left alone (too young), then
+/// dated, then waited for, and only a week after being dated does it go, rows,
+/// files and quota. What the surviving save needs is never touched.
+#[tokio::test]
+async fn the_repair_dates_what_is_unused_and_deletes_it_a_week_later() {
+    let h = harness().await;
+    let [shared, v1, v2, theirs] = a_server_with_an_old_leak(&h).await;
+    let all = (shared.len() + v1.len() + v2.len() + theirs.len()) as i64;
+    assert_eq!(used_bytes(&h.state.pool).await, all);
+
+    // Written a moment ago: too young to be dated. The shared blob's counter
+    // (3, of which one reference is left) is set right all the same.
+    let r = repair_in(&h, 0).await;
+    assert_eq!(
+        (r.counts_fixed, r.marked_objects, r.freed_objects),
+        (1, 0, 0)
+    );
+    assert_eq!(refcount(&h, &shared).await, Some(1));
+
+    let r = repair_in(&h, 2).await;
+    assert_eq!(
+        (r.counts_fixed, r.marked_objects, r.freed_objects),
+        (0, 2, 0)
+    );
+    assert_eq!(r.marked_bytes, (v1.len() + v2.len()) as i64);
+
+    // Inside the grace: nothing moves, however many passes run.
+    let r = repair_in(&h, 8).await;
+    assert_eq!(r, hoard_server::cleanup::RepairReport::default());
+    assert!(blob_on_disk(&h, &v1).exists() && blob_on_disk(&h, &v2).exists());
+    assert_eq!(used_bytes(&h.state.pool).await, all);
+
+    let r = repair_in(&h, 10).await;
+    assert_eq!((r.freed_objects, r.marked_objects), (2, 0));
+    assert_eq!(r.freed_bytes, (v1.len() + v2.len()) as i64);
+    assert_eq!(refcount(&h, &v1).await, None);
+    assert_eq!(refcount(&h, &v2).await, None);
+    assert!(!blob_on_disk(&h, &v1).exists() && !blob_on_disk(&h, &v2).exists());
+    assert!(blob_on_disk(&h, &shared).exists() && blob_on_disk(&h, &theirs).exists());
+    assert_eq!(
+        used_bytes(&h.state.pool).await,
+        (shared.len() + theirs.len()) as i64
+    );
+    assert!(download_of(&h, OTHER_SAVE, 1).await.is_ok());
+    assert!(hoard_server::cleanup::audit_refcounts(&h.state.pool)
+        .await
+        .unwrap()
+        .is_empty());
+
+    // And a server with nothing wrong is left exactly as it is.
+    let r = repair_in(&h, 30).await;
+    assert_eq!(r, hoard_server::cleanup::RepairReport::default());
+}
+
+/// An unused object that an upload reuses during the grace is a used object:
+/// its date is cleared, its counter set right, and it outlives the week.
+#[tokio::test]
+async fn what_a_version_uses_again_during_the_grace_is_kept() {
+    let h = harness().await;
+    let [shared, v1, v2, theirs] = a_server_with_an_old_leak(&h).await;
+    repair_in(&h, 0).await;
+    assert_eq!(repair_in(&h, 2).await.marked_objects, 2);
+
+    // The surviving save gains a file with the very bytes of `v1`. The server
+    // holds them, so the client is not asked to send them.
+    let ((version, asked, _), _) = backup_into(
+        &h,
+        OTHER_SAVE,
+        &[("shared.dat", &shared), ("b.dat", &theirs), ("a.dat", &v1)],
+        &[],
+        Some(1),
+    )
+    .await;
+    assert_eq!((version, asked), (2, 0));
+
+    let r = repair_in(&h, 10).await;
+    assert_eq!((r.marks_cleared, r.freed_objects), (1, 1));
+    assert_eq!(refcount(&h, &v1).await, Some(1));
+    assert!(blob_on_disk(&h, &v1).exists());
+    assert!(!blob_on_disk(&h, &v2).exists());
+    assert!(download_of(&h, OTHER_SAVE, 2).await.is_ok());
+}
+
+/// A counter that is too low is raised, and one that runs out while versions
+/// still use the object does not take the object with it: neither the trash
+/// purge nor deleting a save deletes on a counter alone.
+#[tokio::test]
+async fn a_counter_that_runs_out_never_takes_a_used_object() {
+    let h = harness().await;
+    let [shared, _, _, _] = two_saves_sharing_a_file(&h).await;
+    let set_count = |n: i64| {
+        let (pool, sha) = (h.state.pool.clone(), sha_of(&shared));
+        async move {
+            sqlx::query("UPDATE blobs SET refcount = ? WHERE user_id = ? AND sha256 = ?")
+                .bind(n)
+                .bind(USER)
+                .bind(sha)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+    };
+
+    // Three versions use it; the counter says one. The repair raises it.
+    set_count(1).await;
+    assert_eq!(repair_in(&h, 0).await.counts_fixed, 1);
+    assert_eq!(refcount(&h, &shared).await, Some(3));
+
+    // Wrong again, and version 1 of the first save is purged from the trash:
+    // 1 - 1 = 0, with two versions still using it.
+    set_count(1).await;
+    sqlx::query(
+        "UPDATE snapshots SET deleted_at = '2020-01-01T00:00:00Z'
+          WHERE save_id = ? AND version_num = 1",
+    )
+    .bind(SAVE)
+    .execute(&h.state.pool)
+    .await
+    .unwrap();
+    hoard_server::cleanup::run_once(
+        &h.state.pool,
+        &h.state.config.storage.data_dir,
+        &h.state.store,
+        24,
+        30,
+        None,
+    )
+    .await
+    .expect("cleanup");
+    assert_eq!(refcount(&h, &shared).await, Some(2), "kept, and recounted");
+    assert!(blob_on_disk(&h, &shared).exists());
+
+    // Wrong a third time, and the whole first save is deleted.
+    set_count(1).await;
+    hoard_server::routes::saves::delete(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+    )
+    .await
+    .expect("delete");
+    assert_eq!(refcount(&h, &shared).await, Some(1), "the other save's");
+    assert!(blob_on_disk(&h, &shared).exists());
+    assert!(download_of(&h, OTHER_SAVE, 1).await.is_ok());
 }

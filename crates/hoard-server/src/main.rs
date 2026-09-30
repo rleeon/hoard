@@ -410,6 +410,7 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
     let cleanup_store = store.clone();
     let cleanup_tmp_h = cfg.retention.tmp_cleanup_hours;
     let cleanup_trash_d = cfg.retention.trash_retention_days;
+    let cleanup_repair = cfg.retention.repair_refcounts;
     // Age-weighted snapshot pruning policy (ADR 0018). `None` disables it.
     let prune_policy = if cfg.retention.snapshot_pruning {
         Some(hoard_server::retention::RetentionPolicy::from_data_saving(
@@ -426,6 +427,7 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
             cleanup_tmp_h,
             cleanup_trash_d,
             prune_policy,
+            cleanup_repair,
         )
         .await;
     });

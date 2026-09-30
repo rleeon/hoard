@@ -653,20 +653,23 @@ async fn status(cfg: &Config) -> Result<()> {
             drift.len()
         );
         println!(
-            "{:<24} {:>12} {:>12} {:>8} {:>8}",
-            "User", "Unreferenced", "Size", "Over", "Under"
+            "{:<24} {:>12} {:>12} {:>8} {:>8} {:>8}",
+            "User", "Unreferenced", "Size", "Dated", "Over", "Under"
         );
         for d in &drift {
             println!(
-                "{:<24} {:>12} {:>12} {:>8} {:>8}",
+                "{:<24} {:>12} {:>12} {:>8} {:>8} {:>8}",
                 d.username,
                 d.unreferenced_objects,
                 human_bytes(d.unreferenced_bytes),
+                d.marked_objects,
                 d.overcounted_objects,
                 d.undercounted_objects
             );
         }
         println!("  Unreferenced: stored and counted in the quota, used by no version.");
+        println!("  Dated: of those, the ones the server's daily repair has already found;");
+        println!("         it deletes them a week later unless a version uses them again.");
         println!("  Over / Under: counted above / below the versions that use them.");
     }
 

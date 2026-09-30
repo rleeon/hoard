@@ -1545,9 +1545,9 @@ mod tests {
         assert!(s4.pull_pending, "the intent to pull is still alive");
     }
 
-    /// A manual restore lets go (review of the restore fix, sep-2026). The
-    /// History dialog's safety copy moved the head to v6 behind the daemon's
-    /// back, an upload the daemon had running finished during the hold at v5,
+    /// A manual restore lets go. The History dialog's safety copy moved the
+    /// head to v6 behind the daemon's back, an upload the daemon had running
+    /// finished during the hold at v5,
     /// and the restore rewrote the folder. Read plainly that is a local change
     /// behind a newer cloud copy, and the pull merges v6 over it, the cloud
     /// winning by mtime: the restore silently undone. With the head the client

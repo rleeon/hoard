@@ -18,13 +18,33 @@ pub async fn run_periodic(
     tmp_cleanup_hours: u64,
     trash_retention_days: u64,
     prune_policy: Option<RetentionPolicy>,
+    repair: bool,
 ) {
     // Run every hour
     let mut interval = tokio::time::interval(Duration::from_secs(3600));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut last_repair: Option<tokio::time::Instant> = None;
 
     loop {
         interval.tick().await;
+        // Once at startup and once a day after that. Ahead of the purges, so a
+        // count the repair has just put right is the one they work with.
+        if repair && last_repair.is_none_or(|at| at.elapsed() >= REPAIR_EVERY) {
+            last_repair = Some(tokio::time::Instant::now());
+            match repair_refcounts(&pool, &store, time::OffsetDateTime::now_utc()).await {
+                Ok(report) => {
+                    if report.users_skipped > 0 {
+                        warn!(?report, "refcount repair left some users alone");
+                    }
+                    // More was due than one pass takes: back on the next tick
+                    // instead of tomorrow.
+                    if report.users_capped > 0 {
+                        last_repair = None;
+                    }
+                }
+                Err(e) => warn!(error = %e, "refcount repair error"),
+            }
+        }
         if let Err(e) = run_once(
             &pool,
             &data_dir,
@@ -306,6 +326,89 @@ pub(crate) async fn unlink_released(
     Ok(())
 }
 
+/// What is being deleted, and so does not count as a reason to keep an object.
+#[derive(Clone, Copy)]
+enum Besides<'a> {
+    Snapshot(&'a str),
+    Save(&'a str),
+    Nothing,
+}
+
+/// How many of the user's file rows use this object, not counting what is being
+/// deleted. The refcount says what should be true; this asks the rows.
+///
+/// A whole-file sha counts for a blob only in a file stored whole: a chunked
+/// file carries its sha too, and its bytes are in its chunks.
+async fn references_left(
+    conn: &mut sqlx::SqliteConnection,
+    is_chunk: bool,
+    user_id: &str,
+    sha: &str,
+    besides: Besides<'_>,
+) -> sqlx::Result<i64> {
+    let (extra, excluded) = match besides {
+        Besides::Snapshot(id) => (" AND s.id != ?", Some(id)),
+        Besides::Save(id) => (" AND s.save_id != ?", Some(id)),
+        Besides::Nothing => ("", None),
+    };
+    let sql = if is_chunk {
+        format!(
+            "SELECT COUNT(*) FROM snapshot_file_chunks c
+               JOIN snapshot_files sf ON sf.id = c.snapshot_file_id
+               JOIN snapshots s ON s.id = sf.snapshot_id
+               JOIN saves sv ON sv.id = s.save_id
+              WHERE c.chunk_sha256 = ? AND sv.user_id = ?{extra}"
+        )
+    } else {
+        format!(
+            "SELECT COUNT(*) FROM snapshot_files sf
+               JOIN snapshots s ON s.id = sf.snapshot_id
+               JOIN saves sv ON sv.id = s.save_id
+              WHERE sf.sha256 = ? AND sv.user_id = ?
+                AND NOT EXISTS (SELECT 1 FROM snapshot_file_chunks c
+                                 WHERE c.snapshot_file_id = sf.id){extra}"
+        )
+    };
+    let mut q = sqlx::query_scalar::<_, i64>(&sql).bind(sha).bind(user_id);
+    if let Some(id) = excluded {
+        q = q.bind(id);
+    }
+    q.fetch_one(conn).await
+}
+
+/// The last line of defence before an object's row goes: a counter that has
+/// run out is not proof that nothing uses it. If a version still does, the row
+/// stays, with the count that is true, and the caller leaves the object alone.
+/// A counter that was wrong then costs a warning instead of a save.
+async fn keep_if_referenced(
+    conn: &mut sqlx::SqliteConnection,
+    is_chunk: bool,
+    user_id: &str,
+    sha: &str,
+    besides: Besides<'_>,
+) -> sqlx::Result<bool> {
+    let left = references_left(conn, is_chunk, user_id, sha, besides).await?;
+    if left == 0 {
+        return Ok(false);
+    }
+    let table = if is_chunk { "chunks" } else { "blobs" };
+    sqlx::query(&format!(
+        "UPDATE {table} SET refcount = ? WHERE user_id = ? AND sha256 = ?"
+    ))
+    .bind(left)
+    .bind(user_id)
+    .bind(sha)
+    .execute(conn)
+    .await?;
+    warn!(
+        table,
+        sha = %sha,
+        references = left,
+        "refcount ran out on an object versions still use; kept, and recounted"
+    );
+    Ok(true)
+}
+
 /// What deleting a save gave back: the bytes to refund, the objects to unlink
 /// once the transaction is in, and the snapshots that went with it.
 pub(crate) struct ReleasedSave {
@@ -349,6 +452,8 @@ pub(crate) async fn release_save_refs(
                FROM snapshot_files sf
                JOIN snapshots s ON s.id = sf.snapshot_id
               WHERE s.save_id = ?
+                AND NOT EXISTS (SELECT 1 FROM snapshot_file_chunks c
+                                 WHERE c.snapshot_file_id = sf.id)
               GROUP BY sf.sha256",
         ),
         (
@@ -370,8 +475,6 @@ pub(crate) async fn release_save_refs(
             .map(|r| (r.get("sha"), r.get("n")))
             .collect();
         for (sha, n) in refs {
-            // A chunked file has a `snapshot_files` sha and no blob row: the
-            // update finds nothing and its bytes go in the chunk pass.
             sqlx::query(&format!(
                 "UPDATE {table} SET refcount = refcount - ? WHERE user_id = ? AND sha256 = ?"
             ))
@@ -389,6 +492,10 @@ pub(crate) async fn release_save_refs(
             .await?;
             let Some(left) = left else { continue };
             if left.get::<i64, _>("refcount") > 0 {
+                continue;
+            }
+            let besides = Besides::Save(save_id);
+            if keep_if_referenced(tx, is_chunk, user_id, &sha, besides).await? {
                 continue;
             }
             sqlx::query(&format!(
@@ -425,6 +532,9 @@ pub struct RefcountDrift {
     /// references back.
     pub unreferenced_objects: i64,
     pub unreferenced_bytes: i64,
+    /// How many of those the repair has already seen and dated: they go a week
+    /// after that, unless a version uses them again first.
+    pub marked_objects: i64,
     /// Referenced, but counted higher than the references there are: they
     /// outlive their last snapshot.
     pub overcounted_objects: i64,
@@ -444,6 +554,8 @@ pub async fn audit_refcounts(pool: &SqlitePool) -> sqlx::Result<Vec<RefcountDrif
                FROM snapshot_files sf
                JOIN snapshots s ON s.id = sf.snapshot_id
                JOIN saves sv ON sv.id = s.save_id
+              WHERE NOT EXISTS (SELECT 1 FROM snapshot_file_chunks c
+                                 WHERE c.snapshot_file_id = sf.id)
               GROUP BY sv.user_id, sf.sha256",
         ),
         (
@@ -461,6 +573,7 @@ pub async fn audit_refcounts(pool: &SqlitePool) -> sqlx::Result<Vec<RefcountDrif
              SELECT u.username AS username,
                     SUM(r.n IS NULL) AS unreferenced,
                     SUM(CASE WHEN r.n IS NULL THEN o.size_bytes ELSE 0 END) AS unreferenced_bytes,
+                    SUM(r.n IS NULL AND o.unreferenced_since IS NOT NULL) AS marked,
                     SUM(r.n IS NOT NULL AND o.refcount > r.n) AS overcounted,
                     SUM(r.n IS NOT NULL AND o.refcount < r.n) AS undercounted
                FROM {table} o
@@ -478,11 +591,13 @@ pub async fn audit_refcounts(pool: &SqlitePool) -> sqlx::Result<Vec<RefcountDrif
                     username,
                     unreferenced_objects: 0,
                     unreferenced_bytes: 0,
+                    marked_objects: 0,
                     overcounted_objects: 0,
                     undercounted_objects: 0,
                 });
             entry.unreferenced_objects += r.get::<i64, _>("unreferenced");
             entry.unreferenced_bytes += r.get::<i64, _>("unreferenced_bytes");
+            entry.marked_objects += r.get::<i64, _>("marked");
             entry.overcounted_objects += r.get::<i64, _>("overcounted");
             entry.undercounted_objects += r.get::<i64, _>("undercounted");
         }
@@ -493,6 +608,390 @@ pub async fn audit_refcounts(pool: &SqlitePool) -> sqlx::Result<Vec<RefcountDrif
             d.unreferenced_objects > 0 || d.overcounted_objects > 0 || d.undercounted_objects > 0
         })
         .collect())
+}
+
+const REPAIR_EVERY: Duration = Duration::from_secs(24 * 3600);
+/// An unused object younger than this is not even dated: whatever wrote it may
+/// not be done with it, and the leaks this is after are months old.
+const REPAIR_MIN_AGE: time::Duration = time::Duration::hours(24);
+/// From the day the repair dates an unused object to the day it deletes it.
+const REPAIR_GRACE: time::Duration = time::Duration::days(7);
+/// The most objects one pass deletes for one user. The user's lock is held
+/// while they are unlinked, and on an S3 backend that is a request each: a
+/// leak of 50,000 objects taken in one go would hold that user's uploads for
+/// the better part of an hour. It also bounds what a kill between the commit
+/// and the last unlink can strand.
+const REPAIR_BATCH: i64 = 2000;
+
+/// What one pass of [`repair_refcounts`] did.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct RepairReport {
+    /// Counters set to the number of references that exist.
+    pub counts_fixed: u64,
+    /// Dated as unused on an earlier pass, used again since.
+    pub marks_cleared: u64,
+    /// Unused objects dated on this pass. Nothing is deleted yet.
+    pub marked_objects: u64,
+    pub marked_bytes: i64,
+    /// Dated at least [`REPAIR_GRACE`] ago and still unused: deleted.
+    pub freed_objects: u64,
+    pub freed_bytes: i64,
+    /// Shas a version references that have no row at all. Nothing here can
+    /// mend that; it is reported.
+    pub dangling: u64,
+    /// Users whose pass was abandoned, with nothing of theirs changed.
+    pub users_skipped: u64,
+    /// Users with more due than [`REPAIR_BATCH`]: the rest goes on the next pass.
+    pub users_capped: u64,
+}
+
+struct RepairKind {
+    table: &'static str,
+    is_chunk: bool,
+    refs: &'static str,
+    /// sha and how many of the user's file rows use it.
+    refs_sql: &'static str,
+    /// The same rows counted another way, with no join to fan them out.
+    rows_sql: &'static str,
+}
+
+const REPAIR_KINDS: [RepairKind; 2] = [
+    RepairKind {
+        table: "blobs",
+        is_chunk: false,
+        refs: "repair_refs_blobs",
+        refs_sql: "SELECT sf.sha256, COUNT(*)
+                     FROM snapshot_files sf
+                     JOIN snapshots s ON s.id = sf.snapshot_id
+                     JOIN saves sv ON sv.id = s.save_id
+                    WHERE sv.user_id = ?
+                      AND NOT EXISTS (SELECT 1 FROM snapshot_file_chunks c
+                                       WHERE c.snapshot_file_id = sf.id)
+                    GROUP BY sf.sha256",
+        rows_sql: "SELECT COUNT(*) FROM snapshot_files
+                    WHERE snapshot_id IN (SELECT id FROM snapshots WHERE save_id IN
+                                           (SELECT id FROM saves WHERE user_id = ?))
+                      AND id NOT IN (SELECT snapshot_file_id FROM snapshot_file_chunks)",
+    },
+    RepairKind {
+        table: "chunks",
+        is_chunk: true,
+        refs: "repair_refs_chunks",
+        refs_sql: "SELECT c.chunk_sha256, COUNT(*)
+                     FROM snapshot_file_chunks c
+                     JOIN snapshot_files sf ON sf.id = c.snapshot_file_id
+                     JOIN snapshots s ON s.id = sf.snapshot_id
+                     JOIN saves sv ON sv.id = s.save_id
+                    WHERE sv.user_id = ?
+                    GROUP BY c.chunk_sha256",
+        rows_sql: "SELECT COUNT(*) FROM snapshot_file_chunks
+                    WHERE snapshot_file_id IN (SELECT id FROM snapshot_files WHERE snapshot_id IN
+                                                (SELECT id FROM snapshots WHERE save_id IN
+                                                  (SELECT id FROM saves WHERE user_id = ?)))",
+    },
+];
+
+/// A timestamp in the shape SQLite's `strftime` default writes `created_at`
+/// in, so the two compare as text.
+fn stamp(t: time::OffsetDateTime) -> anyhow::Result<String> {
+    Ok(t.replace_nanosecond(0)?.format(&Rfc3339)?)
+}
+
+/// Put every refcount back to the number of references that exist, and free
+/// what nothing uses, slowly.
+///
+/// For servers that deleted saves before that gave their references back (see
+/// [`release_save_refs`]): their `blobs` and `chunks` carry counters that are
+/// too high, some on objects no version uses at all, and nothing else would
+/// ever bring them down. It needs no command and no operator: it runs with the
+/// cleanup, and on a server with nothing wrong it changes nothing.
+///
+/// It deletes stored bytes on somebody else's server, unasked, so it is built
+/// to be hard to get wrong:
+///
+/// - What is in use is read from the file rows of every version, live or in
+///   the trash, under the user's lock, so no upload or purge moves under it.
+/// - The references are counted twice, by two differently shaped queries. If
+///   they disagree the user is left untouched.
+/// - An unused object is not deleted when found. It is dated, and deleted by
+///   the first pass that finds it still unused [`REPAIR_GRACE`] later. One
+///   younger than [`REPAIR_MIN_AGE`] is not even dated.
+/// - Before each row goes it is asked for once more, on its own, through the
+///   index. A single reference found there abandons the user's pass.
+/// - An object a version uses again meanwhile (an upload that reuses it) has
+///   its date cleared and its counter set right.
+/// - A counter that is lowered is covered by [`keep_if_referenced`]: no purge
+///   deletes on a counter alone.
+/// - The file goes only after the transaction is in, and only if the row is
+///   still gone ([`unlink_released`]).
+/// - `[retention] repair_refcounts = false` turns it off.
+pub async fn repair_refcounts(
+    pool: &SqlitePool,
+    store: &Arc<dyn BlobStore>,
+    now: time::OffsetDateTime,
+) -> anyhow::Result<RepairReport> {
+    let users = sqlx::query("SELECT id, username FROM users")
+        .fetch_all(pool)
+        .await?;
+    let mut total = RepairReport::default();
+    for u in &users {
+        let user_id: String = u.get("id");
+        let username: String = u.get("username");
+        let r = match repair_user(pool, store, &user_id, now, REPAIR_BATCH).await {
+            Ok(r) => r,
+            Err(e) => {
+                warn!(user = %username, error = %e, "refcount repair: left this user untouched");
+                total.users_skipped += 1;
+                continue;
+            }
+        };
+        if r.counts_fixed > 0 || r.marks_cleared > 0 {
+            info!(
+                user = %username,
+                counts_fixed = r.counts_fixed,
+                back_in_use = r.marks_cleared,
+                "refcount repair: counters set to the references that exist"
+            );
+        }
+        if r.marked_objects > 0 {
+            info!(
+                user = %username,
+                objects = r.marked_objects,
+                bytes = r.marked_bytes,
+                grace_days = REPAIR_GRACE.whole_days(),
+                "refcount repair: found stored objects no version uses; they are deleted after the grace period unless something uses them again"
+            );
+        }
+        if r.freed_objects > 0 {
+            info!(
+                user = %username,
+                objects = r.freed_objects,
+                bytes = r.freed_bytes,
+                "refcount repair: deleted objects no version has used since they were found"
+            );
+        }
+        if r.dangling > 0 {
+            warn!(
+                user = %username,
+                objects = r.dangling,
+                "refcount repair: versions reference objects the server has no record of"
+            );
+        }
+        total.counts_fixed += r.counts_fixed;
+        total.marks_cleared += r.marks_cleared;
+        total.marked_objects += r.marked_objects;
+        total.marked_bytes += r.marked_bytes;
+        total.freed_objects += r.freed_objects;
+        total.freed_bytes += r.freed_bytes;
+        total.dangling += r.dangling;
+        total.users_capped += r.users_capped;
+    }
+    Ok(total)
+}
+
+async fn repair_user(
+    pool: &SqlitePool,
+    store: &Arc<dyn BlobStore>,
+    user_id: &str,
+    now: time::OffsetDateTime,
+    batch: i64,
+) -> anyhow::Result<RepairReport> {
+    let _objects = crate::blobs::lock_user(user_id).await;
+    // One connection for the whole pass: the reference tables are temporary,
+    // and a temporary table belongs to the connection that made it.
+    let mut conn = pool.acquire().await?;
+    let outcome = repair_user_on(&mut conn, user_id, now, batch).await;
+    for kind in &REPAIR_KINDS {
+        let _ = sqlx::query(&format!("DROP TABLE IF EXISTS temp.{}", kind.refs))
+            .execute(&mut *conn)
+            .await;
+    }
+    // Back to the pool before the unlinks ask it for one.
+    drop(conn);
+    let (report, targets) = outcome?;
+    unlink_released(pool, store, user_id, targets).await?;
+    Ok(report)
+}
+
+async fn repair_user_on(
+    conn: &mut sqlx::SqliteConnection,
+    user_id: &str,
+    now: time::OffsetDateTime,
+    batch: i64,
+) -> anyhow::Result<(RepairReport, Vec<GcTarget>)> {
+    use sqlx::Connection as _;
+
+    let now_s = stamp(now)?;
+    let old_enough = stamp(now - REPAIR_MIN_AGE)?;
+    let grace_over = stamp(now - REPAIR_GRACE)?;
+
+    // The counting is the slow part and it only reads, so it is done before
+    // the write lock is taken: the user's lock already keeps their rows still,
+    // and the other users' uploads are not made to wait behind a table scan.
+    for kind in &REPAIR_KINDS {
+        let refs = kind.refs;
+        sqlx::query(&format!("DROP TABLE IF EXISTS temp.{refs}"))
+            .execute(&mut *conn)
+            .await?;
+        sqlx::query(&format!(
+            "CREATE TEMP TABLE {refs} (sha TEXT PRIMARY KEY, n INTEGER NOT NULL) WITHOUT ROWID"
+        ))
+        .execute(&mut *conn)
+        .await?;
+        sqlx::query(&format!(
+            "INSERT INTO temp.{refs} (sha, n) {}",
+            kind.refs_sql
+        ))
+        .bind(user_id)
+        .execute(&mut *conn)
+        .await?;
+
+        let by_sha: i64 =
+            sqlx::query_scalar(&format!("SELECT COALESCE(SUM(n), 0) FROM temp.{refs}"))
+                .fetch_one(&mut *conn)
+                .await?;
+        let by_row: i64 = sqlx::query_scalar(kind.rows_sql)
+            .bind(user_id)
+            .fetch_one(&mut *conn)
+            .await?;
+        if by_sha != by_row {
+            anyhow::bail!(
+                "{}: {by_sha} references counted by sha, {by_row} counted by row",
+                kind.table
+            );
+        }
+    }
+
+    let mut out = RepairReport::default();
+    let mut targets: Vec<GcTarget> = Vec::new();
+    let mut tx = conn.begin_with("BEGIN IMMEDIATE").await?;
+
+    for kind in &REPAIR_KINDS {
+        let (table, refs) = (kind.table, kind.refs);
+
+        let fixed = sqlx::query(&format!(
+            "UPDATE {table}
+                SET refcount = (SELECT n FROM temp.{refs} r WHERE r.sha = {table}.sha256)
+              WHERE user_id = ?
+                AND sha256 IN (SELECT sha FROM temp.{refs})
+                AND refcount != (SELECT n FROM temp.{refs} r WHERE r.sha = {table}.sha256)"
+        ))
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+        out.counts_fixed += fixed.rows_affected();
+
+        let cleared = sqlx::query(&format!(
+            "UPDATE {table} SET unreferenced_since = NULL
+              WHERE user_id = ? AND unreferenced_since IS NOT NULL
+                AND sha256 IN (SELECT sha FROM temp.{refs})"
+        ))
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+        out.marks_cleared += cleared.rows_affected();
+
+        // Dated on an earlier pass, the grace over, and still in nobody's list.
+        let due = sqlx::query(&format!(
+            "SELECT sha256, size_bytes FROM {table}
+              WHERE user_id = ? AND unreferenced_since IS NOT NULL
+                AND unreferenced_since <= ? AND created_at <= ?
+                AND sha256 NOT IN (SELECT sha FROM temp.{refs})
+              LIMIT ?"
+        ))
+        .bind(user_id)
+        .bind(&grace_over)
+        .bind(&old_enough)
+        .bind(batch - out.freed_objects as i64 + 1)
+        .fetch_all(&mut *tx)
+        .await?;
+        for row in &due {
+            if out.freed_objects as i64 >= batch {
+                out.users_capped = 1;
+                break;
+            }
+            let sha: String = row.get("sha256");
+            let left =
+                references_left(&mut tx, kind.is_chunk, user_id, &sha, Besides::Nothing).await?;
+            if left != 0 {
+                anyhow::bail!(
+                    "{table} {sha}: unused by one count, {left} reference(s) by the other"
+                );
+            }
+            let gone = sqlx::query(&format!(
+                "DELETE FROM {table}
+                  WHERE user_id = ? AND sha256 = ? AND unreferenced_since IS NOT NULL"
+            ))
+            .bind(user_id)
+            .bind(&sha)
+            .execute(&mut *tx)
+            .await?;
+            if gone.rows_affected() != 1 {
+                continue;
+            }
+            out.freed_objects += 1;
+            out.freed_bytes += row.get::<i64, _>("size_bytes");
+            let key = if kind.is_chunk {
+                crate::store::chunk_key(user_id, &sha)
+            } else {
+                crate::store::blob_key(user_id, &sha)
+            };
+            targets.push(GcTarget {
+                is_chunk: kind.is_chunk,
+                sha,
+                key,
+            });
+        }
+
+        let unused = format!(
+            "FROM {table}
+              WHERE user_id = ? AND unreferenced_since IS NULL AND created_at <= ?
+                AND sha256 NOT IN (SELECT sha FROM temp.{refs})"
+        );
+        let (objects, bytes): (i64, i64) = sqlx::query_as(&format!(
+            "SELECT COUNT(*), COALESCE(SUM(size_bytes), 0) {unused}"
+        ))
+        .bind(user_id)
+        .bind(&old_enough)
+        .fetch_one(&mut *tx)
+        .await?;
+        if objects > 0 {
+            sqlx::query(&format!(
+                "UPDATE {table} SET unreferenced_since = ?
+                  WHERE user_id = ? AND unreferenced_since IS NULL AND created_at <= ?
+                    AND sha256 NOT IN (SELECT sha FROM temp.{refs})"
+            ))
+            .bind(&now_s)
+            .bind(user_id)
+            .bind(&old_enough)
+            .execute(&mut *tx)
+            .await?;
+            out.marked_objects += objects as u64;
+            out.marked_bytes += bytes;
+        }
+
+        let dangling: i64 = sqlx::query_scalar(&format!(
+            "SELECT COUNT(*) FROM temp.{refs} r
+              WHERE NOT EXISTS (SELECT 1 FROM {table} o
+                                 WHERE o.user_id = ? AND o.sha256 = r.sha)"
+        ))
+        .bind(user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        out.dangling += dangling as u64;
+    }
+
+    if out.freed_bytes > 0 {
+        sqlx::query(
+            "UPDATE users SET storage_used_bytes = MAX(0, storage_used_bytes - ?) WHERE id = ?",
+        )
+        .bind(out.freed_bytes)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok((out, targets))
 }
 
 /// Permanently delete snapshots that have outlived the trash window. With the
@@ -576,8 +1075,15 @@ async fn purge_trash(
 
         let mut freed_bytes: i64 = 0;
         let mut gc_paths: Vec<GcTarget> = Vec::new();
+        // Objects whose counter ran out while other versions still use them:
+        // set to the count that is true, and not to be decremented again for
+        // this snapshot's remaining rows.
+        let mut recounted: std::collections::HashSet<&str> = Default::default();
 
         for sha in &shas {
+            if recounted.contains(sha.as_str()) {
+                continue;
+            }
             sqlx::query(
                 "UPDATE blobs SET refcount = refcount - 1 WHERE user_id = ? AND sha256 = ?",
             )
@@ -597,6 +1103,11 @@ async fn purge_trash(
             if let Some(r) = remaining {
                 let rc: i64 = r.get("refcount");
                 if rc <= 0 {
+                    let besides = Besides::Snapshot(&snap_id);
+                    if keep_if_referenced(&mut tx, false, &user_id, sha, besides).await? {
+                        recounted.insert(sha);
+                        continue;
+                    }
                     let size: i64 = r.get("size_bytes");
                     sqlx::query("DELETE FROM blobs WHERE user_id = ? AND sha256 = ?")
                         .bind(&user_id)
@@ -617,6 +1128,9 @@ async fn purge_trash(
         // refund the freed bytes. Done in the same tx as the blob pass so a
         // crash can't leave a chunk refcounted but unreferenced.
         for sha in &chunk_shas {
+            if recounted.contains(sha.as_str()) {
+                continue;
+            }
             sqlx::query(
                 "UPDATE chunks SET refcount = refcount - 1 WHERE user_id = ? AND sha256 = ?",
             )
@@ -636,6 +1150,11 @@ async fn purge_trash(
             if let Some(r) = remaining {
                 let rc: i64 = r.get("refcount");
                 if rc <= 0 {
+                    let besides = Besides::Snapshot(&snap_id);
+                    if keep_if_referenced(&mut tx, true, &user_id, sha, besides).await? {
+                        recounted.insert(sha);
+                        continue;
+                    }
                     let size: i64 = r.get("size_bytes");
                     sqlx::query("DELETE FROM chunks WHERE user_id = ? AND sha256 = ?")
                         .bind(&user_id)
@@ -716,6 +1235,156 @@ mod tests {
             .await
             .unwrap();
         tokio::fs::write(&p, bytes).await.unwrap();
+    }
+
+    /// The repair over chunks as well as blobs: a counter that is too high on a
+    /// chunk a version uses is set right, and a chunk and a blob nothing uses
+    /// are dated on one pass and deleted by the pass a week later, with the
+    /// quota they held. The chunks of the live version are not touched.
+    #[tokio::test]
+    async fn repair_covers_chunks_and_blobs_alike() {
+        let pool = mem_pool().await;
+        let tmp = std::env::temp_dir().join(format!("hoard-test-{}", uuid::Uuid::new_v4()));
+        let data_dir = tmp.as_path();
+
+        let c_shared = "aa".to_string() + &"2".repeat(62);
+        let c_own = "bb".to_string() + &"2".repeat(62);
+        let c_leak = "cc".to_string() + &"2".repeat(62);
+        let b_leak = "dd".to_string() + &"2".repeat(62);
+        let whole = "ee".to_string() + &"2".repeat(62);
+
+        sqlx::query("INSERT INTO users (id, username, password_hash, storage_used_bytes) VALUES ('u1','user','x',250)")
+            .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO games (slug, display_name) VALUES ('g','G')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO saves (id, user_id, game_slug, label, latest_version_num) VALUES ('sv','u1','g','default',1)")
+            .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO snapshots (id, save_id, version_num, total_size_bytes, file_count) VALUES ('s1','sv',1,170,1)")
+            .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO snapshot_files (id, snapshot_id, relative_path, size_bytes, sha256) VALUES ('f1','s1','save.dat',170,?)")
+            .bind(&whole).execute(&pool).await.unwrap();
+        for (ord, sha) in [(0, &c_shared), (1, &c_own)] {
+            sqlx::query("INSERT INTO snapshot_file_chunks (snapshot_file_id, ordinal, chunk_sha256) VALUES ('f1',?,?)")
+                .bind(ord as i64).bind(sha)
+                .execute(&pool).await.unwrap();
+        }
+        // The shared chunk still carries the references of a save deleted long
+        // ago; the leaked chunk and blob were only ever that save's.
+        for (sha, size, rc) in [(&c_shared, 100, 5), (&c_own, 70, 1), (&c_leak, 50, 3)] {
+            sqlx::query(
+                "INSERT INTO chunks (user_id, sha256, size_bytes, refcount, created_at) VALUES ('u1',?,?,?,'2020-01-01T00:00:00Z')",
+            )
+            .bind(sha)
+            .bind(size as i64)
+            .bind(rc as i64)
+            .execute(&pool)
+            .await
+            .unwrap();
+            write_chunk(data_dir, "u1", sha, b"data").await;
+        }
+        sqlx::query(
+            "INSERT INTO blobs (user_id, sha256, size_bytes, refcount, created_at) VALUES ('u1',?,30,2,'2020-01-01T00:00:00Z')",
+        )
+        .bind(&b_leak)
+        .execute(&pool)
+        .await
+        .unwrap();
+        write_blob(data_dir, "u1", &b_leak, b"data").await;
+
+        let store: Arc<dyn BlobStore> =
+            Arc::new(crate::store::LocalFs::new(data_dir.to_path_buf()));
+        let now = time::OffsetDateTime::now_utc();
+
+        let first = repair_refcounts(&pool, &store, now).await.unwrap();
+        assert_eq!(
+            first,
+            RepairReport {
+                counts_fixed: 1,
+                marked_objects: 2,
+                marked_bytes: 80,
+                ..Default::default()
+            }
+        );
+        assert!(crate::chunking::chunk_path(data_dir, "u1", &c_leak).exists());
+
+        let later = repair_refcounts(&pool, &store, now + time::Duration::days(8))
+            .await
+            .unwrap();
+        assert_eq!(
+            later,
+            RepairReport {
+                freed_objects: 2,
+                freed_bytes: 80,
+                ..Default::default()
+            }
+        );
+        let left: Vec<(String, i64)> =
+            sqlx::query_as("SELECT sha256, refcount FROM chunks ORDER BY sha256")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(left, vec![(c_shared.clone(), 1), (c_own.clone(), 1)]);
+        let blobs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM blobs")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(blobs, 0);
+        assert!(!crate::chunking::chunk_path(data_dir, "u1", &c_leak).exists());
+        assert!(!crate::blobs::blob_path(data_dir, "u1", &b_leak).exists());
+        assert!(crate::chunking::chunk_path(data_dir, "u1", &c_shared).exists());
+        assert!(crate::chunking::chunk_path(data_dir, "u1", &c_own).exists());
+        let used: i64 = sqlx::query_scalar("SELECT storage_used_bytes FROM users WHERE id='u1'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(used, 170);
+        let _ = tokio::fs::remove_dir_all(&tmp).await;
+    }
+
+    /// More due than one pass takes: it deletes its batch, says so, and the
+    /// next pass takes the rest.
+    #[tokio::test]
+    async fn a_pass_stops_at_its_batch_and_the_next_one_goes_on() {
+        let pool = mem_pool().await;
+        let tmp = std::env::temp_dir().join(format!("hoard-test-{}", uuid::Uuid::new_v4()));
+        let data_dir = tmp.as_path();
+        sqlx::query("INSERT INTO users (id, username, password_hash, storage_used_bytes) VALUES ('u1','user','x',30)")
+            .execute(&pool).await.unwrap();
+        let shas: Vec<String> = ["aa", "bb", "cc"]
+            .iter()
+            .map(|p| p.to_string() + &"3".repeat(62))
+            .collect();
+        for sha in &shas {
+            sqlx::query(
+                "INSERT INTO blobs (user_id, sha256, size_bytes, refcount, created_at, unreferenced_since)
+                 VALUES ('u1',?,10,1,'2020-01-01T00:00:00Z','2020-02-01T00:00:00Z')",
+            )
+            .bind(sha)
+            .execute(&pool)
+            .await
+            .unwrap();
+            write_blob(data_dir, "u1", sha, b"data").await;
+        }
+        let store: Arc<dyn BlobStore> =
+            Arc::new(crate::store::LocalFs::new(data_dir.to_path_buf()));
+        let now = time::OffsetDateTime::now_utc();
+
+        let first = repair_user(&pool, &store, "u1", now, 2).await.unwrap();
+        assert_eq!((first.freed_objects, first.users_capped), (2, 1));
+        let second = repair_user(&pool, &store, "u1", now, 2).await.unwrap();
+        assert_eq!((second.freed_objects, second.users_capped), (1, 0));
+
+        let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM blobs")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(left, 0);
+        assert!(shas
+            .iter()
+            .all(|sha| !crate::blobs::blob_path(data_dir, "u1", sha).exists()));
+        let _ = tokio::fs::remove_dir_all(&tmp).await;
     }
 
     /// Purging a trashed snapshot decrements blob refcounts, GCs only the blobs

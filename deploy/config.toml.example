@@ -145,6 +145,11 @@ snapshot_pruning = true
 # "Ahorro de datos" knob, 0.0..1.0. Higher keeps fewer snapshots. 0.3 is a
 # light default; 1.0 keeps only the essentials, 0.0 keeps almost everything.
 data_saving = 0.3
+# Daily self-repair of the blob store. Sets each stored file's reference count
+# back to the versions that really use it, and deletes files no version uses.
+# Nothing is deleted when it is found: it is dated, and removed a week later
+# only if it is still unused. Leave it on unless you are debugging storage.
+repair_refcounts = true
 
 [logging]
 # Log level: trace, debug, info, warn, error

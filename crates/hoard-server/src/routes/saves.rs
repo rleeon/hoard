@@ -23,7 +23,7 @@ pub struct ListQuery {
     pub game_slug: Option<String>,
 }
 
-// ─── Handlers ───────────────────────────────────────────────────────────────
+// ---- handlers
 
 pub async fn create(
     State(state): State<Arc<ServerState>>,
@@ -407,33 +407,37 @@ pub async fn delete(
         .await
         .map_err(|e| internal_logged_status("writing to the database", e))?;
 
-    // The save is gone whatever happens next: an object that fails to unlink
-    // is an orphan on disk, not a reason to tell the client it failed.
-    let data_dir = &state.config.storage.data_dir;
-    for snap_id in &released.snapshot_ids {
-        let _ = tokio::fs::remove_dir_all(data_dir.join("trash").join(snap_id)).await;
-    }
-    if let Err(e) =
-        crate::cleanup::unlink_released(&state.pool, &state.store, &user_id, released.targets).await
-    {
-        tracing::warn!(error = %e, save_id = %save_id, "save delete: could not unlink its objects");
-    }
-
-    // Remove physical directory
-    let dir = state
-        .config
-        .storage
-        .data_dir
-        .join("data")
-        .join(&user_id)
-        .join(&row.game_slug)
-        .join(&row.label);
-    tokio::fs::remove_dir_all(&dir).await.ok();
+    // The rows are gone, so from here the files have to follow whatever the
+    // client does. On its own task, with the lock: a client that gives up on a
+    // slow delete drops this handler, and an unlink loop dropped halfway leaves
+    // files no row remembers, which nothing would ever collect. A file that
+    // fails to unlink is an orphan on disk, not a reason to answer an error.
+    let unlink = tokio::spawn(async move {
+        let _held = _objects;
+        let data_dir = &state.config.storage.data_dir;
+        for snap_id in &released.snapshot_ids {
+            let _ = tokio::fs::remove_dir_all(data_dir.join("trash").join(snap_id)).await;
+        }
+        if let Err(e) =
+            crate::cleanup::unlink_released(&state.pool, &state.store, &user_id, released.targets)
+                .await
+        {
+            tracing::warn!(error = %e, save_id = %save_id, "save delete: could not unlink its objects");
+        }
+        // Where versions lived before the content-addressed store.
+        let dir = data_dir
+            .join("data")
+            .join(&user_id)
+            .join(&row.game_slug)
+            .join(&row.label);
+        tokio::fs::remove_dir_all(&dir).await.ok();
+    });
+    let _ = unlink.await;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ---- helpers
 
 async fn fetch_save(
     pool: &sqlx::SqlitePool,
