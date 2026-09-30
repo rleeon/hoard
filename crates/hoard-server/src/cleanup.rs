@@ -269,10 +269,230 @@ async fn purge_tmp(data_dir: &Path, max_age_hours: u64) -> anyhow::Result<()> {
 /// row in the gap between commit and the store delete, in which case removing
 /// the object would corrupt a live blob/chunk. `key` is the storage-backend
 /// key (same for local disk and S3, ADR 0020).
-struct GcTarget {
+pub(crate) struct GcTarget {
     is_chunk: bool,
     sha: String,
     key: String,
+}
+
+/// GC blob/chunk objects only after the DB committed their removal, and only if
+/// the row is still gone. A concurrent upload can re-reference an object in the
+/// window between commit and delete, re-creating its row (refcount > 0) and
+/// re-writing the object; deleting it here would corrupt that live object.
+/// Re-check per target and skip any revived.
+pub(crate) async fn unlink_released(
+    pool: &SqlitePool,
+    store: &Arc<dyn BlobStore>,
+    user_id: &str,
+    targets: Vec<GcTarget>,
+) -> sqlx::Result<()> {
+    for t in targets {
+        let table = if t.is_chunk { "chunks" } else { "blobs" };
+        let q = format!("SELECT refcount FROM {table} WHERE user_id = ? AND sha256 = ?");
+        let revived = sqlx::query(&q)
+            .bind(user_id)
+            .bind(&t.sha)
+            .fetch_optional(pool)
+            .await?
+            .map(|r| r.get::<i64, _>("refcount") > 0)
+            .unwrap_or(false);
+        if revived {
+            continue;
+        }
+        if let Err(e) = store.delete(&t.key).await {
+            warn!(key = %t.key, error = %e, "blob GC delete failed");
+        }
+    }
+    Ok(())
+}
+
+/// What deleting a save gave back: the bytes to refund, the objects to unlink
+/// once the transaction is in, and the snapshots that went with it.
+pub(crate) struct ReleasedSave {
+    pub freed_bytes: i64,
+    pub targets: Vec<GcTarget>,
+    pub snapshot_ids: Vec<String>,
+}
+
+/// Give back every reference a save holds, live versions and trashed ones
+/// alike, ahead of the `DELETE FROM saves` whose cascade takes the rows that
+/// say what they were.
+///
+/// `DELETE /v1/saves/:id` used to go straight to that cascade. The snapshots
+/// went, their `snapshot_files` went, and the `blobs` and `chunks` rows stayed
+/// at the refcount they had: bytes nothing pointed at any more, that no purge
+/// would ever reach, still counted against the user's quota.
+///
+/// One decrement per distinct sha, by as many references as the save held,
+/// rather than one per reference as the trash purge does: a save is every
+/// version of a game, and that is the same few thousand files a hundred times.
+pub(crate) async fn release_save_refs(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    user_id: &str,
+    save_id: &str,
+) -> sqlx::Result<ReleasedSave> {
+    let snapshot_ids: Vec<String> = sqlx::query("SELECT id FROM snapshots WHERE save_id = ?")
+        .bind(save_id)
+        .fetch_all(&mut **tx)
+        .await?
+        .iter()
+        .map(|r| r.get::<String, _>("id"))
+        .collect();
+
+    let mut freed_bytes: i64 = 0;
+    let mut targets: Vec<GcTarget> = Vec::new();
+    for (table, is_chunk, refs_sql) in [
+        (
+            "blobs",
+            false,
+            "SELECT sf.sha256 AS sha, COUNT(*) AS n
+               FROM snapshot_files sf
+               JOIN snapshots s ON s.id = sf.snapshot_id
+              WHERE s.save_id = ?
+              GROUP BY sf.sha256",
+        ),
+        (
+            "chunks",
+            true,
+            "SELECT sfc.chunk_sha256 AS sha, COUNT(*) AS n
+               FROM snapshot_file_chunks sfc
+               JOIN snapshot_files sf ON sf.id = sfc.snapshot_file_id
+               JOIN snapshots s ON s.id = sf.snapshot_id
+              WHERE s.save_id = ?
+              GROUP BY sfc.chunk_sha256",
+        ),
+    ] {
+        let refs: Vec<(String, i64)> = sqlx::query(refs_sql)
+            .bind(save_id)
+            .fetch_all(&mut **tx)
+            .await?
+            .iter()
+            .map(|r| (r.get("sha"), r.get("n")))
+            .collect();
+        for (sha, n) in refs {
+            // A chunked file has a `snapshot_files` sha and no blob row: the
+            // update finds nothing and its bytes go in the chunk pass.
+            sqlx::query(&format!(
+                "UPDATE {table} SET refcount = refcount - ? WHERE user_id = ? AND sha256 = ?"
+            ))
+            .bind(n)
+            .bind(user_id)
+            .bind(&sha)
+            .execute(&mut **tx)
+            .await?;
+            let left = sqlx::query(&format!(
+                "SELECT refcount, size_bytes FROM {table} WHERE user_id = ? AND sha256 = ?"
+            ))
+            .bind(user_id)
+            .bind(&sha)
+            .fetch_optional(&mut **tx)
+            .await?;
+            let Some(left) = left else { continue };
+            if left.get::<i64, _>("refcount") > 0 {
+                continue;
+            }
+            sqlx::query(&format!(
+                "DELETE FROM {table} WHERE user_id = ? AND sha256 = ?"
+            ))
+            .bind(user_id)
+            .bind(&sha)
+            .execute(&mut **tx)
+            .await?;
+            freed_bytes += left.get::<i64, _>("size_bytes");
+            let key = if is_chunk {
+                crate::store::chunk_key(user_id, &sha)
+            } else {
+                crate::store::blob_key(user_id, &sha)
+            };
+            targets.push(GcTarget { is_chunk, sha, key });
+        }
+    }
+
+    Ok(ReleasedSave {
+        freed_bytes,
+        targets,
+        snapshot_ids,
+    })
+}
+
+/// One user's stored objects whose refcount does not match what their
+/// snapshots reference.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefcountDrift {
+    pub username: String,
+    /// Rows nothing references: bytes on disk and in the quota that no purge
+    /// will reach. What deleting a save left behind before it gave its
+    /// references back.
+    pub unreferenced_objects: i64,
+    pub unreferenced_bytes: i64,
+    /// Referenced, but counted higher than the references there are: they
+    /// outlive their last snapshot.
+    pub overcounted_objects: i64,
+    /// Counted lower than the references there are. The dangerous direction:
+    /// the purge would free one while a snapshot still needs it.
+    pub undercounted_objects: i64,
+}
+
+/// Compare every `blobs` and `chunks` refcount with the references that exist.
+/// Read-only; users with nothing to report are left out.
+pub async fn audit_refcounts(pool: &SqlitePool) -> sqlx::Result<Vec<RefcountDrift>> {
+    let mut by_user: std::collections::BTreeMap<String, RefcountDrift> = Default::default();
+    for (table, refs_sql) in [
+        (
+            "blobs",
+            "SELECT sv.user_id AS user_id, sf.sha256 AS sha, COUNT(*) AS n
+               FROM snapshot_files sf
+               JOIN snapshots s ON s.id = sf.snapshot_id
+               JOIN saves sv ON sv.id = s.save_id
+              GROUP BY sv.user_id, sf.sha256",
+        ),
+        (
+            "chunks",
+            "SELECT sv.user_id AS user_id, sfc.chunk_sha256 AS sha, COUNT(*) AS n
+               FROM snapshot_file_chunks sfc
+               JOIN snapshot_files sf ON sf.id = sfc.snapshot_file_id
+               JOIN snapshots s ON s.id = sf.snapshot_id
+               JOIN saves sv ON sv.id = s.save_id
+              GROUP BY sv.user_id, sfc.chunk_sha256",
+        ),
+    ] {
+        let rows = sqlx::query(&format!(
+            "WITH refs AS ({refs_sql})
+             SELECT u.username AS username,
+                    SUM(r.n IS NULL) AS unreferenced,
+                    SUM(CASE WHEN r.n IS NULL THEN o.size_bytes ELSE 0 END) AS unreferenced_bytes,
+                    SUM(r.n IS NOT NULL AND o.refcount > r.n) AS overcounted,
+                    SUM(r.n IS NOT NULL AND o.refcount < r.n) AS undercounted
+               FROM {table} o
+               JOIN users u ON u.id = o.user_id
+               LEFT JOIN refs r ON r.user_id = o.user_id AND r.sha = o.sha256
+              GROUP BY u.username"
+        ))
+        .fetch_all(pool)
+        .await?;
+        for r in &rows {
+            let username: String = r.get("username");
+            let entry = by_user
+                .entry(username.clone())
+                .or_insert_with(|| RefcountDrift {
+                    username,
+                    unreferenced_objects: 0,
+                    unreferenced_bytes: 0,
+                    overcounted_objects: 0,
+                    undercounted_objects: 0,
+                });
+            entry.unreferenced_objects += r.get::<i64, _>("unreferenced");
+            entry.unreferenced_bytes += r.get::<i64, _>("unreferenced_bytes");
+            entry.overcounted_objects += r.get::<i64, _>("overcounted");
+            entry.undercounted_objects += r.get::<i64, _>("undercounted");
+        }
+    }
+    Ok(by_user
+        .into_values()
+        .filter(|d| {
+            d.unreferenced_objects > 0 || d.overcounted_objects > 0 || d.undercounted_objects > 0
+        })
+        .collect())
 }
 
 /// Permanently delete snapshots that have outlived the trash window. With the
@@ -459,28 +679,7 @@ async fn purge_trash(
 
         tx.commit().await?;
 
-        // GC blob/chunk objects only after the DB committed their removal, and
-        // only if the row is still gone. A concurrent upload can re-reference an
-        // object in the window between commit and delete, re-creating its row
-        // (refcount > 0) and re-writing the object; deleting it here would
-        // corrupt that live object. Re-check per target and skip any revived.
-        for t in gc_paths {
-            let table = if t.is_chunk { "chunks" } else { "blobs" };
-            let q = format!("SELECT refcount FROM {table} WHERE user_id = ? AND sha256 = ?");
-            let revived = sqlx::query(&q)
-                .bind(&user_id)
-                .bind(&t.sha)
-                .fetch_optional(pool)
-                .await?
-                .map(|r| r.get::<i64, _>("refcount") > 0)
-                .unwrap_or(false);
-            if revived {
-                continue;
-            }
-            if let Err(e) = store.delete(&t.key).await {
-                warn!(key = %t.key, error = %e, "blob GC delete failed");
-            }
-        }
+        unlink_released(pool, store, &user_id, gc_paths).await?;
         // Legacy: drop any pre-migration trash folder if it still exists.
         let _ = tokio::fs::remove_dir_all(data_dir.join("trash").join(&snap_id)).await;
         removed += 1;

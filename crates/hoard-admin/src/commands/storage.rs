@@ -641,6 +641,35 @@ async fn status(cfg: &Config) -> Result<()> {
         human_bytes(total_bytes)
     );
 
+    // Refcounts against the references that exist. Read-only: a server that
+    // deleted saves before that gave their blobs back still carries them, and
+    // this is where it shows.
+    let drift = hoard_server::cleanup::audit_refcounts(&pool).await?;
+    if drift.is_empty() {
+        println!("\nReference counts: consistent");
+    } else {
+        println!(
+            "\nReference counts: {} user(s) with objects whose count is off",
+            drift.len()
+        );
+        println!(
+            "{:<24} {:>12} {:>12} {:>8} {:>8}",
+            "User", "Unreferenced", "Size", "Over", "Under"
+        );
+        for d in &drift {
+            println!(
+                "{:<24} {:>12} {:>12} {:>8} {:>8}",
+                d.username,
+                d.unreferenced_objects,
+                human_bytes(d.unreferenced_bytes),
+                d.overcounted_objects,
+                d.undercounted_objects
+            );
+        }
+        println!("  Unreferenced: stored and counted in the quota, used by no version.");
+        println!("  Over / Under: counted above / below the versions that use them.");
+    }
+
     // Reachability of the active backend.
     print!("\nReachability   : ");
     match store::build_store(cfg).await {

@@ -176,11 +176,21 @@ async fn backup_at(
     mtimes: &[i64],
     base: Option<i64>,
 ) -> ((i64, usize, i64), hoard_core::wire::Snapshot) {
+    backup_into(h, SAVE, files, mtimes, base).await
+}
+
+async fn backup_into(
+    h: &Harness,
+    save: &str,
+    files: &[(&str, &[u8])],
+    mtimes: &[i64],
+    base: Option<i64>,
+) -> ((i64, usize, i64), hoard_core::wire::Snapshot) {
     let m = manifest_at(files, mtimes);
     let init = cas::init(
         State(h.state.clone()),
         Extension(h.user.clone()),
-        Path(SAVE.to_string()),
+        Path(save.to_string()),
         Json(CasInit {
             base_version: base,
             files: m.clone(),
@@ -213,7 +223,7 @@ async fn backup_at(
     let snap = cas::commit(
         State(h.state.clone()),
         Extension(h.user.clone()),
-        Path(SAVE.to_string()),
+        Path(save.to_string()),
         Json(CasCommit {
             upload_id: init.upload_id,
             base_version: base,
@@ -1035,4 +1045,120 @@ async fn a_blob_the_purge_takes_while_the_commit_waits_is_not_committed_over() {
     let (v2, asked, _) = backup(&h, &files, Some(1)).await;
     assert_eq!((v2, asked), (2, 2));
     assert!(download_body(&h, 2).await.is_ok());
+}
+
+const OTHER_SAVE: &str = "77777777-8888-4999-8aaa-bbbbbbbbbbbb";
+
+/// Two saves of one user that share a file, the first with two versions.
+/// Returns the contents: shared, the first save's v1 and v2, the second's own.
+async fn two_saves_sharing_a_file(h: &Harness) -> [Vec<u8>; 4] {
+    sqlx::query(
+        "INSERT INTO saves (id, user_id, game_slug, label, latest_version_num)
+         VALUES (?,?,'factorio','second',0)",
+    )
+    .bind(OTHER_SAVE)
+    .bind(USER)
+    .execute(&h.state.pool)
+    .await
+    .unwrap();
+    let shared = b"content both saves share".to_vec();
+    let v1 = b"the first save, version one".to_vec();
+    let v2 = b"the first save, version two, a little longer".to_vec();
+    let theirs = b"only the second save has this".to_vec();
+    backup(h, &[("shared.dat", &shared), ("a.dat", &v1)], Some(0)).await;
+    backup(h, &[("shared.dat", &shared), ("a.dat", &v2)], Some(1)).await;
+    backup_into(
+        h,
+        OTHER_SAVE,
+        &[("shared.dat", &shared), ("b.dat", &theirs)],
+        &[],
+        Some(0),
+    )
+    .await;
+    [shared, v1, v2, theirs]
+}
+
+async fn refcount(h: &Harness, bytes: &[u8]) -> Option<i64> {
+    sqlx::query_scalar("SELECT refcount FROM blobs WHERE user_id=? AND sha256=?")
+        .bind(USER)
+        .bind(sha_of(bytes))
+        .fetch_optional(&h.state.pool)
+        .await
+        .unwrap()
+}
+
+/// Deleting a save gives back what only it referenced: rows, files and quota.
+/// It used to delete the save and let the cascade take its snapshots, and the
+/// blobs stayed for ever at the refcount they had, on disk and in the quota.
+/// A version already in the trash goes the same way as a live one.
+#[tokio::test]
+async fn deleting_a_save_frees_what_only_it_referenced() {
+    let h = harness().await;
+    let [shared, v1, v2, theirs] = two_saves_sharing_a_file(&h).await;
+    assert_eq!(refcount(&h, &shared).await, Some(3));
+    sqlx::query(
+        "UPDATE snapshots SET deleted_at = '2026-01-01T00:00:00Z'
+          WHERE save_id = ? AND version_num = 1",
+    )
+    .bind(SAVE)
+    .execute(&h.state.pool)
+    .await
+    .unwrap();
+
+    let code = hoard_server::routes::saves::delete(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+    )
+    .await
+    .expect("delete");
+    assert_eq!(code, StatusCode::NO_CONTENT);
+
+    assert_eq!(refcount(&h, &shared).await, Some(1), "the other save's");
+    assert_eq!(refcount(&h, &theirs).await, Some(1));
+    assert_eq!(refcount(&h, &v1).await, None);
+    assert_eq!(refcount(&h, &v2).await, None);
+    assert!(!blob_on_disk(&h, &v1).exists() && !blob_on_disk(&h, &v2).exists());
+    assert!(blob_on_disk(&h, &shared).exists() && blob_on_disk(&h, &theirs).exists());
+    assert_eq!(
+        used_bytes(&h.state.pool).await,
+        (shared.len() + theirs.len()) as i64,
+        "the quota holds what is still stored"
+    );
+    let drift = hoard_server::cleanup::audit_refcounts(&h.state.pool)
+        .await
+        .unwrap();
+    assert!(drift.is_empty(), "{drift:?}");
+}
+
+/// What the audit says about a server that deleted saves the old way: the
+/// cascade on its own, no reference given back.
+#[tokio::test]
+async fn the_audit_counts_what_an_old_delete_left_behind() {
+    let h = harness().await;
+    let [_, v1, v2, _] = two_saves_sharing_a_file(&h).await;
+    assert!(hoard_server::cleanup::audit_refcounts(&h.state.pool)
+        .await
+        .unwrap()
+        .is_empty());
+
+    sqlx::query("DELETE FROM saves WHERE id = ?")
+        .bind(SAVE)
+        .execute(&h.state.pool)
+        .await
+        .unwrap();
+
+    let drift = hoard_server::cleanup::audit_refcounts(&h.state.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        drift,
+        vec![hoard_server::cleanup::RefcountDrift {
+            username: "jacka".into(),
+            unreferenced_objects: 2,
+            unreferenced_bytes: (v1.len() + v2.len()) as i64,
+            overcounted_objects: 1,
+            undercounted_objects: 0,
+        }]
+    );
 }

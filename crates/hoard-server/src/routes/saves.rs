@@ -361,20 +361,63 @@ pub async fn delete(
 ) -> Result<StatusCode, StatusCode> {
     let user_id = user.user_id.to_string();
 
+    // Held from before the transaction to the last unlink, as the trash purge
+    // does and for the same reason: no commit may reuse, or place again, an
+    // object this is about to free.
+    let _objects = crate::blobs::lock_user(&user_id).await;
+    let mut tx = state
+        .pool
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(|e| internal_logged_status("opening a transaction", e))?;
+
     let row = sqlx::query!(
         "SELECT game_slug, label FROM saves WHERE id=? AND user_id=?",
         save_id,
         user_id
     )
-    .fetch_optional(&state.pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|e| internal_logged_status("reading a row", e))?
     .ok_or(StatusCode::NOT_FOUND)?;
 
+    // Before the cascade below takes the rows that say what this save
+    // referenced: afterwards nothing could tell which blobs were only its own.
+    let released = crate::cleanup::release_save_refs(&mut tx, &user_id, &save_id)
+        .await
+        .map_err(|e| internal_logged_status("releasing the save's blobs", e))?;
+
     sqlx::query!("DELETE FROM saves WHERE id=?", save_id)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| internal_logged_status("writing to the database", e))?;
+
+    if released.freed_bytes > 0 {
+        sqlx::query(
+            "UPDATE users SET storage_used_bytes = MAX(0, storage_used_bytes - ?) WHERE id = ?",
+        )
+        .bind(released.freed_bytes)
+        .bind(&user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| internal_logged_status("refunding the quota", e))?;
+    }
+
+    tx.commit()
+        .await
+        .map_err(|e| internal_logged_status("writing to the database", e))?;
+
+    // The save is gone whatever happens next: an object that fails to unlink
+    // is an orphan on disk, not a reason to tell the client it failed.
+    let data_dir = &state.config.storage.data_dir;
+    for snap_id in &released.snapshot_ids {
+        let _ = tokio::fs::remove_dir_all(data_dir.join("trash").join(snap_id)).await;
+    }
+    if let Err(e) =
+        crate::cleanup::unlink_released(&state.pool, &state.store, &user_id, released.targets).await
+    {
+        tracing::warn!(error = %e, save_id = %save_id, "save delete: could not unlink its objects");
+    }
 
     // Remove physical directory
     let dir = state
