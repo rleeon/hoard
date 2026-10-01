@@ -592,9 +592,29 @@ fn place_appimage(downloaded: &Path) -> Result<PathBuf> {
     Ok(dest)
 }
 
+/// The name the menu entry asks the icon theme for. The `.deb` and the `.rpm`
+/// install theirs under this one, and it is what `hoardd` hands the notification
+/// server, so an AppImage install answers to the same name as a packaged one.
+const MENU_ICON_NAME: &str = "hoard-desktop";
+
+const MENU_ICON: &[u8] = include_bytes!("../../../hoard-desktop/icons/128x128@2x.png");
+
+/// Where the menu icon goes: the user's own `hicolor` tree, the one place a
+/// launcher searches that needs no privileges to write.
+pub(super) fn menu_icon_path(home: &Path) -> PathBuf {
+    home.join(".local")
+        .join("share")
+        .join("icons")
+        .join("hicolor")
+        .join("256x256")
+        .join("apps")
+        .join(format!("{MENU_ICON_NAME}.png"))
+}
+
 /// The menu entry. Without it the AppImage exists but cannot be launched from
 /// anywhere but a terminal, and in gaming mode that is not existing.
 fn write_desktop_entry(home: &Path, exe: &Path) -> Result<()> {
+    write_menu_icon(home)?;
     let dir = home.join(".local").join("share").join("applications");
     std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
     let entry = format!(
@@ -603,13 +623,36 @@ fn write_desktop_entry(home: &Path, exe: &Path) -> Result<()> {
          Name=Hoard\n\
          Comment=Game save sync\n\
          Exec=\"{}\"\n\
-         Icon=hoard\n\
+         Icon={MENU_ICON_NAME}\n\
          Terminal=false\n\
          Categories=Utility;Game;\n",
         exe.display()
     );
     let path = dir.join("dev.hoard.desktop.desktop");
     std::fs::write(&path, entry).with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
+/// Puts the icon where the entry above can find it.
+///
+/// The AppImage carries its icons inside itself, where no launcher looks, and
+/// the entry used to name one that nothing had installed: the menu drew a blank
+/// page beside "Hoard" on every AppImage install (Arch, CachyOS, SteamOS).
+fn write_menu_icon(home: &Path) -> Result<()> {
+    let path = menu_icon_path(home);
+    let dir = path.parent().context("the icon path has no parent")?;
+    std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    std::fs::write(&path, MENU_ICON).with_context(|| format!("writing {}", path.display()))?;
+
+    // Toolkits decide whether to rescan a theme by the mtime of its top
+    // directory, and a file added three levels down does not move it. Without
+    // this a launcher that is already running keeps the blank icon until the
+    // next login.
+    if let Some(theme) = dir.parent().and_then(Path::parent) {
+        if let Ok(handle) = std::fs::File::open(theme) {
+            let _ = handle.set_modified(std::time::SystemTime::now());
+        }
+    }
     Ok(())
 }
 
@@ -1068,6 +1111,37 @@ mod tests {
         assert!(!dir.join(".hoard.new").exists());
         assert!(!dir.join(".hoardd.new").exists());
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The entry and the icon it names have to agree, and the icon has to exist:
+    /// `Icon=hoard` with no such file anywhere is how AppImage installs got a
+    /// blank page in the menu.
+    #[test]
+    fn the_menu_entry_names_an_icon_that_was_installed() {
+        let home = tempdir();
+        let exe = home.join(".local").join("bin").join("hoard-desktop");
+        write_desktop_entry(&home, &exe).unwrap();
+
+        let entry = std::fs::read_to_string(
+            home.join(".local/share/applications/dev.hoard.desktop.desktop"),
+        )
+        .unwrap();
+        let named = entry
+            .lines()
+            .find_map(|l| l.strip_prefix("Icon="))
+            .expect("the entry has an Icon line");
+
+        let icon = menu_icon_path(&home);
+        assert_eq!(icon.file_stem().unwrap(), named);
+        assert!(icon.starts_with(home.join(".local/share/icons/hicolor")));
+        let bytes = std::fs::read(&icon).unwrap();
+        assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+        // The directory name is a promise to the theme about the size inside.
+        assert_eq!(&bytes[16..24], [0, 0, 1, 0, 0, 0, 1, 0]);
+
+        // Updating rewrites both over what is already there.
+        write_desktop_entry(&home, &exe).unwrap();
+        std::fs::remove_dir_all(&home).ok();
     }
 
     fn tempdir() -> PathBuf {

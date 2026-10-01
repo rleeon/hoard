@@ -163,8 +163,11 @@ async fn owning_package(program: &str, args: &[&str], path: &Path) -> Option<Str
     (!name.is_empty()).then(|| name.to_string())
 }
 
-/// The menu entry the AppImage route writes. Its counterpart is
+/// The menu entry the AppImage route writes, and its icon. Its counterpart is
 /// `fetch::write_desktop_entry`.
+///
+/// Only the two files: the `hicolor` directories around the icon are the
+/// user's, and other apps keep theirs in them.
 fn remove_desktop_entry() {
     let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
         return;
@@ -175,6 +178,7 @@ fn remove_desktop_entry() {
         .join("applications")
         .join("dev.hoard.desktop.desktop");
     let _ = std::fs::remove_file(entry);
+    let _ = std::fs::remove_file(fetch::menu_icon_path(&home));
 }
 
 /// Deletes `hoard` and `hoardd` from `dir`, and returns what actually went.

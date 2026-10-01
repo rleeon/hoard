@@ -59,6 +59,15 @@ pushd "$WORK" >/dev/null
 chmod +x "$ABS_APPIMAGE"
 "$ABS_APPIMAGE" --appimage-extract >/dev/null
 
+# The tray library is loaded with dlopen, so nothing at build time notices when
+# it is missing: the app starts, logs a warning and has no tray icon. 1.2.0 and
+# everything before it shipped that way. `release-desktop.yml` hands the
+# library to the bundler; this is what says so when that stops working.
+if [ -z "$(find squashfs-root/usr/lib -name 'libayatana-appindicator3.so.1' 2>/dev/null)" ]; then
+  echo "fix-appimage-libs: the AppImage has no libayatana-appindicator3.so.1, it would ship without a tray icon" >&2
+  exit 1
+fi
+
 removed=0
 for pat in "${PATTERNS[@]}"; do
   while IFS= read -r -d '' lib; do

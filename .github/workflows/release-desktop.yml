@@ -138,6 +138,26 @@ jobs:
             clang \
             xdg-utils
 
+      # Tauri only puts the tray library in the AppImage when the tray is
+      # declared in `tauri.conf.json`. Ours is built in code, and declaring it
+      # there as well would make Tauri build a second one, so up to 1.2.0 the
+      # AppImage shipped without it: no tray icon on any distro that does not
+      # carry the library itself (Arch, CachyOS), and nothing said why.
+      #
+      # The path is asked of pkg-config because it is the one thing that
+      # differs between the two Linux entries (`x86_64-linux-gnu` against
+      # `aarch64-linux-gnu`). linuxdeploy then pulls in whatever the library
+      # links against.
+      - name: Tray library for the AppImage (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          lib="$(pkg-config --variable=libdir ayatana-appindicator3-0.1)/libayatana-appindicator3.so.1"
+          test -f "$lib"
+          printf '{"bundle":{"linux":{"appimage":{"files":{"/usr/lib/libayatana-appindicator3.so.1":"%s"}}}}}\n' \
+            "$lib" > "$RUNNER_TEMP/appimage-tray.json"
+          echo "TAURI_LINUX_ARGS=--config $RUNNER_TEMP/appimage-tray.json" >> "$GITHUB_ENV"
+
       # The two sidecars the bundle ships: the sync service (hoardd) and the
       # terminal face (hoard). Without the first one the app installs without an
       # engine, it's a thin client of the daemon since ADR 0021's Slice 4. The
@@ -167,7 +187,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: crates/hoard-desktop
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} ${{ env.TAURI_LINUX_ARGS }}
           # We don't let tauri-action create the GitHub release itself,
           # `release.yml` is the source of truth for the release object.
           # We only want it to build, then we upload bundles below.

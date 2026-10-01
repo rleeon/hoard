@@ -56,7 +56,11 @@
     "linux": {
       "deb": {
         "section": "utils",
-        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"],
+        "recommends": ["libayatana-appindicator3-1 | libappindicator3-1"]
+      },
+      "rpm": {
+        "recommends": ["libayatana-appindicator3.so.1()(64bit)"]
       },
       "appimage": {
         "bundleMediaFramework": false
