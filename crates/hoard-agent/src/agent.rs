@@ -732,6 +732,11 @@ struct SaveSlot {
     /// (most non-Steam installs and most manifest entries without a
     /// `processes` field). See ADR / version1-5 §P1.4.0-0.
     watcher: Option<Debouncer<notify::RecommendedWatcher>>,
+    /// When the watcher is next armed again, if it has to be: after a failure, so
+    /// a folder that cannot be watched is not walked again on every tick, and for
+    /// a per-directory watch, which only sees folders created since if it is
+    /// rebuilt ([`build_watcher`]).
+    watcher_rearm_at: Option<TokioInstant>,
     /// Tokio task that fires the debounced backup. Cancelled and recreated
     /// on every fs event so the timer effectively resets.
     pending: Option<tokio::task::JoinHandle<()>>,
@@ -2473,12 +2478,20 @@ async fn run_agent(
                     if slot.save.track_only {
                         continue;
                     }
+                    let due = slot
+                        .watcher_rearm_at
+                        .is_none_or(|at| TokioInstant::now() >= at);
+                    if !due {
+                        continue;
+                    }
                     if slot.watcher.is_none() && slot.save.local_path.is_dir() {
                         tracing::info!(
                             save_id = %slot.save.save_id,
                             path = %slot.save.local_path.display(),
                             "agent: save folder now present; rearming fs watcher"
                         );
+                        arm_watcher(slot, &fs_tx);
+                    } else if slot.watcher.is_some() && slot.watcher_rearm_at.is_some() {
                         arm_watcher(slot, &fs_tx);
                     }
                 }
@@ -2619,6 +2632,7 @@ fn handle_add(
     let mut slot = SaveSlot {
         save,
         watcher: None,
+        watcher_rearm_at: None,
         pending: None,
         burst_since: None,
         burst_backups: 0,
@@ -3886,33 +3900,84 @@ fn arm_watcher(slot: &mut SaveSlot, fs_tx: &mpsc::Sender<PathBuf>) {
             "agent: save path missing on add; fs watcher not armed"
         );
         slot.watcher = None;
+        slot.watcher_rearm_at = None;
         return;
     }
     match build_watcher(&path, fs_tx.clone()) {
-        Ok(w) => {
-            tracing::info!(
-                save_id = %slot.save.save_id,
-                path = %path.display(),
-                "agent: fs watcher armed"
-            );
+        Ok((w, per_dir)) => {
+            // A per-directory watch is rebuilt every few minutes, so it is only
+            // announced the first time.
+            if per_dir && slot.watcher.is_some() {
+                tracing::debug!(save_id = %slot.save.save_id, "agent: per-directory fs watcher rebuilt");
+            } else {
+                tracing::info!(
+                    save_id = %slot.save.save_id,
+                    path = %path.display(),
+                    per_dir,
+                    "agent: fs watcher armed"
+                );
+            }
             slot.watcher = Some(w);
+            slot.watcher_rearm_at = per_dir.then(|| TokioInstant::now() + WATCHER_REARM);
         }
         Err(e) => {
             tracing::warn!(
                 save_id = %slot.save.save_id,
                 path = %path.display(),
                 error = %e,
+                retry_in_secs = WATCHER_REARM.as_secs(),
                 "agent: couldn't arm fs watcher"
             );
             slot.watcher = None;
+            slot.watcher_rearm_at = Some(TokioInstant::now() + WATCHER_REARM);
         }
     }
 }
 
+/// How long a watcher that failed waits before it is tried again, and how often a
+/// per-directory one is rebuilt to take in new folders. A failed watcher used to
+/// be retried on every tick: a tracked Wine prefix walked the whole disk through
+/// `dosdevices/z:` every eight seconds, and logged two lines each time.
+const WATCHER_REARM: Duration = Duration::from_secs(10 * 60);
+
+/// Past this many folders a tree is not walked for a per-directory watch: no save
+/// has that many, and the watches are a per-user resource the kernel caps.
+const PER_DIR_WATCH_CAP: usize = 4096;
+
+/// The real directories under `root`, `root` included, when the tree has links to
+/// directories; `None` when it has none, which is nearly every save folder.
+/// Nothing is followed through a link, and a folder that cannot be read is left
+/// out instead of failing the lot.
+fn dirs_without_links(root: &Path) -> Option<Vec<PathBuf>> {
+    let mut dirs = vec![root.to_path_buf()];
+    let mut linked = false;
+    let mut next = 0;
+    while next < dirs.len() && dirs.len() < PER_DIR_WATCH_CAP {
+        let Ok(entries) = std::fs::read_dir(&dirs[next]) else {
+            next += 1;
+            continue;
+        };
+        next += 1;
+        for entry in entries.flatten() {
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_dir() {
+                dirs.push(entry.path());
+            } else if kind.is_symlink() && entry.path().is_dir() {
+                linked = true;
+            }
+        }
+    }
+    linked.then_some(dirs)
+}
+
+/// The watcher for a save, and whether it watches each directory on its own (see
+/// [`dirs_without_links`]) rather than the tree in one go.
 fn build_watcher(
     path: &Path,
     fs_tx: mpsc::Sender<PathBuf>,
-) -> Result<Debouncer<notify::RecommendedWatcher>> {
+) -> Result<(Debouncer<notify::RecommendedWatcher>, bool)> {
     // A single-file save: the PARENT DIRECTORY is watched and filtered by name.
     // Watching the inode directly is no use with games that save the safe way, writing
     // a temporary, deleting the original and renaming the temporary over it, because
@@ -3950,13 +4015,30 @@ fn build_watcher(
             }
         },
     )?;
-    let mode = if single_file {
-        notify::RecursiveMode::NonRecursive
-    } else {
-        notify::RecursiveMode::Recursive
-    };
-    debouncer.watcher().watch(&watch_target, mode)?;
-    Ok(debouncer)
+    if single_file {
+        debouncer
+            .watcher()
+            .watch(&watch_target, notify::RecursiveMode::NonRecursive)?;
+        return Ok((debouncer, false));
+    }
+    // notify follows links when it watches a tree, and the backup never does.
+    // Inside a Wine or Proton prefix that is the whole disk: `dosdevices/z:` leads
+    // to `/`, and the first folder there it could not read (`/var/log/private`)
+    // failed the watch altogether. A tree with links to directories is watched one
+    // real directory at a time, none of them reached through a link.
+    if let Some(dirs) = dirs_without_links(&watch_target) {
+        let watcher = debouncer.watcher();
+        for dir in &dirs {
+            if let Err(e) = watcher.watch(dir, notify::RecursiveMode::NonRecursive) {
+                tracing::debug!(dir = %dir.display(), error = %e, "agent: folder left unwatched");
+            }
+        }
+        return Ok((debouncer, true));
+    }
+    debouncer
+        .watcher()
+        .watch(&watch_target, notify::RecursiveMode::Recursive)?;
+    Ok((debouncer, false))
 }
 
 /// Find which save a path event belongs to. The fs watcher emits the root
@@ -6095,6 +6177,7 @@ mod tests {
         SaveSlot {
             save,
             watcher: None,
+            watcher_rearm_at: None,
             pending: None,
             burst_since: None,
             burst_backups: 0,
@@ -7121,5 +7204,40 @@ mod tests {
         cleanup_old_conflicts(&missing, Duration::from_secs(14 * 86_400))
             .await
             .expect("missing root must be no-op");
+    }
+
+    /// A tracked Wine prefix on 2026-10-01: the recursive watch followed
+    /// `dosdevices/z:` to `/` and failed on the first folder there it could not
+    /// read. A tree with a link to a directory is watched one real directory at a
+    /// time, and nothing past the link is.
+    #[cfg(unix)]
+    #[test]
+    fn a_tree_with_links_is_watched_per_directory_and_not_through_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        let outside = tmp.path().join("outside");
+        std::fs::create_dir_all(outside.join("deep")).unwrap();
+        let prefix = tmp.path().join("prefix");
+        std::fs::create_dir_all(prefix.join("drive_c/users")).unwrap();
+        std::fs::create_dir_all(prefix.join("dosdevices")).unwrap();
+        std::os::unix::fs::symlink(&outside, prefix.join("dosdevices/z:")).unwrap();
+
+        let dirs = dirs_without_links(&prefix).expect("the link is noticed");
+        assert!(dirs.contains(&prefix.join("drive_c/users")));
+        assert!(!dirs
+            .iter()
+            .any(|d| d.starts_with(prefix.join("dosdevices/z:")) || d.starts_with(&outside)));
+        let (tx, _rx) = mpsc::channel(4);
+        let (_watcher, per_dir) = build_watcher(&prefix, tx).unwrap();
+        assert!(per_dir);
+    }
+
+    #[test]
+    fn a_tree_without_links_is_watched_whole() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("saves/slot1")).unwrap();
+        assert_eq!(dirs_without_links(tmp.path()), None);
+        let (tx, _rx) = mpsc::channel(4);
+        let (_watcher, per_dir) = build_watcher(tmp.path(), tx).unwrap();
+        assert!(!per_dir);
     }
 }

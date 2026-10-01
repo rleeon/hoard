@@ -172,9 +172,13 @@ export type FolderWarning = {
   suggested_path: string | null;
 };
 
+/** What the dialog says a folder picked by hand is: one of the kinds the backup
+ *  narrows down, or a shape that only earns a sentence. */
+export type FolderNote = FolderKind | "install_media" | "code_project" | "empty";
+
 /** What a folder picked by hand really is, and better folders when known. */
 export type FolderAdvice = {
-  kind: FolderKind | null;
+  kind: FolderNote | null;
   keeps_catalog_saves: boolean;
   suggestions: string[];
 };

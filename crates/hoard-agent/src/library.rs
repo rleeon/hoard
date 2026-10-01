@@ -1165,12 +1165,148 @@ fn note_hand_picked(slug: &str, path: &Path) {
     crate::telemetry::manual_added(slug, path, found.first().map(PathBuf::as_path));
 }
 
+/// What the dialog says a folder picked by hand is. The first three are the kinds
+/// the backup narrows down itself ([`junkdirs::FolderKind`]); the rest only earn a
+/// sentence, since nothing about how the folder is copied changes for them.
+///
+/// The rest exist because of a round of adds on 2026-10-01 that the dialog let
+/// through without a word: a folder holding one `Factorio.iso`, a Rust project
+/// with its `.git` and `target/`, and two empty folders.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FolderNote {
+    Install,
+    Installer,
+    WinePrefix,
+    /// Disc images, installers or archives and nothing else: the game as it was
+    /// shipped, not anything it wrote. Uploaded as they are if tracked.
+    InstallMedia,
+    /// A Git repository or a build tree.
+    CodeProject,
+    /// Nothing in it. Right for a game that has not saved yet, a slip otherwise.
+    Empty,
+}
+
+impl From<junkdirs::FolderKind> for FolderNote {
+    fn from(kind: junkdirs::FolderKind) -> Self {
+        match kind {
+            junkdirs::FolderKind::Install => FolderNote::Install,
+            junkdirs::FolderKind::Installer => FolderNote::Installer,
+            junkdirs::FolderKind::WinePrefix => FolderNote::WinePrefix,
+        }
+    }
+}
+
+/// Files the OS leaves in any folder it has shown; a folder holding only these
+/// is empty.
+const FOLDER_CLUTTER: &[&str] = &["desktop.ini", "thumbs.db", ".ds_store", ".directory"];
+
+/// What ships a game rather than what it saves. `.bin` is not here: plenty of
+/// games save to `.bin`, so it only counts next to a `.cue` or an installer.
+const INSTALL_MEDIA_EXTS: &[&str] = &[
+    "iso", "img", "nrg", "mdf", "mds", "ccd", "cue", "chd", "cso", "rvz", "wbfs", "gcz", "nsp",
+    "xci", "cia", "3ds", "pbp", "vpk", "zip", "rar", "7z", "tar", "gz", "tgz", "xz", "zst", "bz2",
+    "dmg", "deb", "rpm", "msi", "appimage",
+];
+
+/// Readmes, checksums and covers that come along with a download and say nothing
+/// about what the folder is.
+const DOWNLOAD_SIDECAR_EXTS: &[&str] = &[
+    "txt", "nfo", "md", "url", "pdf", "htm", "html", "jpg", "jpeg", "png", "ico", "sfv", "md5",
+    "sha1", "sha256",
+];
+
+/// A build manifest at the top of a folder: it is a code project.
+const CODE_MANIFESTS: &[&str] = &[
+    "cargo.toml",
+    "go.mod",
+    "pyproject.toml",
+    "setup.py",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "cmakelists.txt",
+    "meson.build",
+];
+
+/// The shapes [`advise_folder`] warns about beyond the backup's own kinds. Only
+/// what sits directly in `dir` is read, and a folder that cannot be listed (still
+/// being typed, or gone) says nothing.
+fn shape_note(dir: &Path) -> Option<FolderNote> {
+    let mut files: Vec<String> = Vec::new();
+    let mut dirs: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let name = entry.file_name().to_string_lossy().to_lowercase();
+        if FOLDER_CLUTTER.contains(&name.as_str()) {
+            continue;
+        }
+        if entry.path().is_dir() {
+            dirs.push(name);
+        } else {
+            files.push(name);
+        }
+    }
+    if files.is_empty() && dirs.is_empty() {
+        return Some(FolderNote::Empty);
+    }
+
+    let ext = |name: &str| name.rsplit_once('.').map(|(_, e)| e.to_string());
+    // `.git` is a file in a worktree and a folder everywhere else.
+    let git = dirs.iter().chain(&files).any(|n| n == ".git");
+    // A `package.json` alone is also an HTML5 game (RPG Maker MV ships one), so
+    // it takes a lockfile or `node_modules` beside it.
+    let node = files.iter().any(|n| n == "package.json")
+        && (dirs.iter().any(|n| n == "node_modules")
+            || files.iter().any(|n| {
+                matches!(
+                    n.as_str(),
+                    "package-lock.json" | "pnpm-lock.yaml" | "yarn.lock"
+                )
+            }));
+    let manifest = files.iter().any(|n| {
+        CODE_MANIFESTS.contains(&n.as_str()) || matches!(ext(n).as_deref(), Some("sln" | "csproj"))
+    });
+    if git || node || manifest {
+        return Some(FolderNote::CodeProject);
+    }
+
+    // Install media only when that is all there is: one folder inside could hold
+    // the saves.
+    if dirs.iter().any(|n| !n.starts_with('.')) {
+        return None;
+    }
+    let is_setup = |n: &str| {
+        ext(n).as_deref() == Some("exe")
+            && (n.starts_with("setup") || n.starts_with("install") || n.contains("installer"))
+    };
+    let bin_counts = files
+        .iter()
+        .any(|n| ext(n).as_deref() == Some("cue") || is_setup(n));
+    let mut media = 0;
+    for name in files.iter().filter(|n| !n.starts_with('.')) {
+        let e = ext(name);
+        if is_setup(name)
+            || e.as_deref()
+                .is_some_and(|e| INSTALL_MEDIA_EXTS.contains(&e))
+            || (bin_counts && e.as_deref() == Some("bin"))
+        {
+            media += 1;
+        } else if !e
+            .as_deref()
+            .is_some_and(|e| DOWNLOAD_SIDECAR_EXTS.contains(&e))
+        {
+            return None;
+        }
+    }
+    (media > 0).then_some(FolderNote::InstallMedia)
+}
+
 /// What a folder about to be tracked by hand really is, and better folders when
 /// there are any. Advisory: the dialog shows it and the add goes ahead anyway.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct FolderAdvice {
-    /// An installation, an installer or a whole Wine prefix.
-    pub kind: Option<junkdirs::FolderKind>,
+    /// What the folder is when it is not plainly a save folder.
+    pub kind: Option<FolderNote>,
     /// The catalogue says this game saves inside the installation: the backup
     /// keeps those files and leaves the game's own out.
     pub keeps_catalog_saves: bool,
@@ -1180,9 +1316,9 @@ pub struct FolderAdvice {
 }
 
 pub fn advise_folder(path: &Path, slug: Option<&str>) -> FolderAdvice {
-    let kind = junkdirs::folder_kind(path);
+    let backup_kind = junkdirs::folder_kind(path);
     let mut suggestions: Vec<PathBuf> = crate::emulators::save_roots_below(path);
-    if let (Some(kind), Some(slug)) = (kind, slug) {
+    if let (Some(kind), Some(slug)) = (backup_kind, slug) {
         if kind == junkdirs::FolderKind::WinePrefix {
             if let Some(entry) = ludusavi::find_by_slug(slug) {
                 for user in crate::roots::prefix_windows_users(path) {
@@ -1211,8 +1347,10 @@ pub fn advise_folder(path: &Path, slug: Option<&str>) -> FolderAdvice {
         .take(6)
         .collect();
     FolderAdvice {
-        kind,
-        keeps_catalog_saves: matches!(kind, Some(junkdirs::FolderKind::Install))
+        kind: backup_kind
+            .map(FolderNote::from)
+            .or_else(|| shape_note(path)),
+        keeps_catalog_saves: matches!(backup_kind, Some(junkdirs::FolderKind::Install))
             && slug.is_some_and(|s| !crate::savefilter::install_save_patterns(s).is_empty()),
         suggestions,
     }
@@ -4282,5 +4420,85 @@ mod twin_tests {
         // Different games never merge.
         let other = tracked_save("a-000", "elden-ring", "", true);
         assert!(twin_merges(&[&mine], &[&other]).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod folder_note_tests {
+    use super::*;
+
+    fn folder(files: &[&str], dirs: &[&str]) -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        for f in files {
+            std::fs::write(tmp.path().join(f), b"x").unwrap();
+        }
+        for d in dirs {
+            std::fs::create_dir_all(tmp.path().join(d)).unwrap();
+        }
+        tmp
+    }
+
+    /// Three of the adds of 2026-10-01 that the dialog let through without a word.
+    #[test]
+    fn what_went_through_unnamed_has_a_name() {
+        let iso = folder(&["Factorio.iso"], &[]);
+        assert_eq!(shape_note(iso.path()), Some(FolderNote::InstallMedia));
+        let rust = folder(&["Cargo.toml", "Cargo.lock"], &[".git", "src", "target"]);
+        assert_eq!(shape_note(rust.path()), Some(FolderNote::CodeProject));
+        let empty = folder(&[], &[]);
+        assert_eq!(shape_note(empty.path()), Some(FolderNote::Empty));
+    }
+
+    #[test]
+    fn what_the_os_leaves_behind_does_not_fill_a_folder() {
+        let tmp = folder(&["desktop.ini", "Thumbs.db"], &[]);
+        assert_eq!(shape_note(tmp.path()), Some(FolderNote::Empty));
+    }
+
+    #[test]
+    fn a_bin_is_a_save_unless_a_cue_or_an_installer_sits_beside_it() {
+        let save = folder(&["savegame.bin"], &[]);
+        assert_eq!(shape_note(save.path()), None);
+        let disc = folder(&["game.cue", "game.bin"], &[]);
+        assert_eq!(shape_note(disc.path()), Some(FolderNote::InstallMedia));
+        let gog = folder(&["setup_factorio_2.0.exe", "setup_factorio_2.0-1.bin"], &[]);
+        assert_eq!(shape_note(gog.path()), Some(FolderNote::InstallMedia));
+    }
+
+    #[test]
+    fn anything_else_beside_the_media_could_be_the_save() {
+        let with_save = folder(&["game.iso", "slot1.sav"], &[]);
+        assert_eq!(shape_note(with_save.path()), None);
+        let with_folder = folder(&["game.iso"], &["saves"]);
+        assert_eq!(shape_note(with_folder.path()), None);
+        let with_readme = folder(&["game.iso", "readme.txt"], &[]);
+        assert_eq!(
+            shape_note(with_readme.path()),
+            Some(FolderNote::InstallMedia)
+        );
+    }
+
+    /// RPG Maker MV and other HTML5 games ship a `package.json` of their own.
+    #[test]
+    fn a_package_json_alone_is_not_a_code_project() {
+        let game = folder(&["package.json", "Game.exe"], &["www"]);
+        assert_eq!(shape_note(game.path()), None);
+        let node = folder(&["package.json", "pnpm-lock.yaml"], &[]);
+        assert_eq!(shape_note(node.path()), Some(FolderNote::CodeProject));
+    }
+
+    #[test]
+    fn a_save_folder_says_nothing() {
+        let tmp = folder(&["slot1.sav", "settings.ini"], &[]);
+        assert_eq!(shape_note(tmp.path()), None);
+    }
+
+    #[test]
+    fn the_backup_kinds_come_first() {
+        let prefix = folder(&["system.reg", "user.reg"], &["drive_c", "dosdevices"]);
+        assert_eq!(
+            advise_folder(prefix.path(), None).kind,
+            Some(FolderNote::WinePrefix)
+        );
     }
 }
