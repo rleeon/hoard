@@ -572,6 +572,39 @@ async fn the_snapshot_cap_is_answered_before_any_byte_moves() {
     );
 }
 
+/// A quota of 0 is no limit, the way the desktop app and the panel already showed
+/// it. Any other figure is still a ceiling.
+#[tokio::test]
+async fn a_zero_quota_is_no_limit() {
+    let h = harness().await;
+    let save = vec![3u8; 50_000];
+    let set_quota = |bytes: i64| {
+        sqlx::query("UPDATE users SET storage_quota_bytes = ? WHERE id = ?")
+            .bind(bytes)
+            .bind(USER)
+            .execute(&h.state.pool)
+    };
+
+    set_quota(1).await.unwrap();
+    let err = cas::init(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasInit {
+            base_version: Some(0),
+            files: manifest(&[("save.dat", &save)]),
+        }),
+    )
+    .await
+    .expect_err("one byte of quota");
+    assert_eq!(err.0, StatusCode::PAYLOAD_TOO_LARGE);
+
+    set_quota(0).await.unwrap();
+    let (v1, _, _) = backup(&h, &[("save.dat", &save)], Some(0)).await;
+    assert_eq!(v1, 1);
+    assert_eq!(used_bytes(&h.state.pool).await, 50_000);
+}
+
 /// The staging area belongs to whoever opened it. Somebody else's id allows neither
 /// upload nor commit, and answers the same as an invented one.
 #[tokio::test]

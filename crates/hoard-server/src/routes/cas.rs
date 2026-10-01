@@ -302,14 +302,15 @@ pub async fn init(
 
     // Early quota warning, using the declared sizes. It is not the gate (that is
     // in the commit, against the real bytes) but it stops somebody uploading 8 GB
-    // only to have them refused at the end.
+    // only to have them refused at the end. A quota of 0 is no limit, the way the
+    // desktop app and the panel already read it.
     let (quota, used): (i64, i64) =
         sqlx::query_as("SELECT storage_quota_bytes, storage_used_bytes FROM users WHERE id=?")
             .bind(&user_id)
             .fetch_one(&state.pool)
             .await
             .map_err(|e| internal_logged("quota lookup", e))?;
-    if used + missing_bytes > quota {
+    if quota > 0 && used + missing_bytes > quota {
         return Err(err(StatusCode::PAYLOAD_TOO_LARGE, "storage quota exceeded"));
     }
 
@@ -782,7 +783,7 @@ pub async fn commit(
                 cleanup_staging();
                 internal_logged("quota lookup", e)
             })?;
-    if used + new_bytes > quota {
+    if quota > 0 && used + new_bytes > quota {
         cleanup_staging();
         return Err(err(StatusCode::PAYLOAD_TOO_LARGE, "storage quota exceeded"));
     }

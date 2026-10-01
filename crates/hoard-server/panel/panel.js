@@ -134,6 +134,11 @@ function bytes(n) {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(v) + " " + UNITS[i];
 }
 
+// A quota of 0 is no limit, here as on the server.
+function quotaText(n) {
+  return n > 0 ? bytes(n) : t("common.unlimited");
+}
+
 /** Split so the caller can render the unit smaller than the figure. */
 function bytesParts(n) {
   const s = bytes(n);
@@ -356,9 +361,11 @@ function renderSummary() {
   const saved = o.storage.logical_bytes - o.storage.stored_bytes;
 
   clear($("summary-stats"),
-    stat(t("stat.stored"), storedV, storedU,
-      t("stat.of_quota", { quota: bytes(o.storage.quota_bytes), pct: Math.round(quotaUsed) }),
-      quotaUsed),
+    o.storage.quota_bytes > 0
+      ? stat(t("stat.stored"), storedV, storedU,
+          t("stat.of_quota", { quota: bytes(o.storage.quota_bytes), pct: Math.round(quotaUsed) }),
+          quotaUsed)
+      : stat(t("stat.stored"), storedV, storedU, t("common.unlimited")),
     stat(t("stat.versions"), num(o.counts.versions), "",
       o.counts.trashed_versions > 0
         ? t("stat.across_saves", { saves: num(o.counts.saves), games: num(o.counts.games) })
@@ -760,7 +767,7 @@ function userRow(u) {
       bytes(u.used_bytes),
       h("div", { class: "meter" + (used > 90 ? " over" : "") },
         h("i", { css: { "--pct": used.toFixed(1) + "%" } }))),
-    h("td", { class: "num", text: bytes(u.quota_bytes) }),
+    h("td", { class: "num", text: quotaText(u.quota_bytes) }),
     h("td", { class: "num", text: num(u.saves) }),
     h("td", { class: "num", text: num(u.versions) }),
     h("td", { class: "num", text: num(u.devices) }),
@@ -935,7 +942,8 @@ async function editQuota(user) {
   });
   $("confirm-title").textContent = t("users.quota_title", { user: user.username });
   clear($("confirm-body"),
-    h("label", { class: "field" }, h("span", { text: t("users.quota_label") }), input));
+    h("label", { class: "field" }, h("span", { text: t("users.quota_label") }), input),
+    h("p", { class: "sub", text: t("users.quota_hint") }));
   $("confirm-ok").textContent = t("common.save");
   const ok = await new Promise((resolve) => {
     dlg.addEventListener("close", () => resolve(dlg.returnValue === "ok"), { once: true });
@@ -949,7 +957,7 @@ async function editQuota(user) {
       method: "PATCH",
       body: JSON.stringify({ storage_quota_bytes: Math.round(gib * 1024 ** 3) }),
     });
-    toast(t("users.quota_done", { user: user.username, quota: bytes(gib * 1024 ** 3) }));
+    toast(t("users.quota_done", { user: user.username, quota: quotaText(gib * 1024 ** 3) }));
     await renderUsers();
   } catch (e) {
     toast(errorText(e), true);

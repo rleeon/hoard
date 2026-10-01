@@ -545,7 +545,8 @@ pub async fn create(
             newly_stored_bytes += size;
         }
     }
-    if used + newly_stored_bytes > quota {
+    // 0 is no limit.
+    if quota > 0 && used + newly_stored_bytes > quota {
         cleanup_tmp();
         return Err(err(StatusCode::PAYLOAD_TOO_LARGE, "storage quota exceeded"));
     }
