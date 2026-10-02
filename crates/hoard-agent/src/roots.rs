@@ -251,40 +251,62 @@ fn mount_containers(os: Os) -> &'static [&'static str] {
 /// Deck's `/run/media/deck/<card>` sent a restore every hour that downloaded
 /// the whole snapshot and then failed creating the mount point.
 ///
-/// The rule looks at the nearest ancestor that does exist. The drive is gone
-/// when that ancestor is a mount container itself (`/run/media`), or a folder
-/// right under one (`/run/media/deck`, `/mnt/games`) that is not a mounted
-/// filesystem. A drive that is mounted and simply lacks the folder answers
-/// `false`, and so does anything outside the containers.
+/// The rule looks at the nearest ancestor that does exist, `existing`, against
+/// the mount container the path lives under:
+///
+/// - the container itself, or above it: nothing is mounted anywhere on the path.
+///   Above it is the container missing outright, which is how `/run/media`
+///   looks until the first drive of the boot is mounted (no SD card since boot).
+/// - right under it (`/run/media/deck`, `/mnt/games`) and not a mounted
+///   filesystem: the drive is gone.
+/// - two levels under it, empty, and nothing mounted on the way: the mount point
+///   an unmounted drive left behind (`/run/media/deck/<card>`).
+///
+/// A drive that is mounted and simply lacks the folder answers `false`, and so
+/// does anything outside the containers or deeper in them.
 #[cfg(not(windows))]
 pub fn volume_offline(path: &Path) -> bool {
-    volume_offline_under(path, mount_containers(Os::current()))
+    volume_offline_under(path, mount_containers(Os::current()), is_mount_point)
+}
+
+/// A mounted drive has its own device; an empty folder left where one was
+/// mounted shares its parent's. A folder that cannot be read counts as mounted,
+/// so a doubt restores as it always did instead of waiting for ever.
+#[cfg(not(windows))]
+fn is_mount_point(dir: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    match (dir.metadata(), dir.parent().map(Path::metadata)) {
+        (Ok(here), Some(Ok(up))) => here.dev() != up.dev(),
+        _ => true,
+    }
 }
 
 #[cfg(not(windows))]
-fn volume_offline_under(path: &Path, containers: &[&str]) -> bool {
-    use std::os::unix::fs::MetadataExt;
-
+fn volume_offline_under(path: &Path, containers: &[&str], mounted: impl Fn(&Path) -> bool) -> bool {
     if path.symlink_metadata().is_ok() {
         return false;
     }
+    let Some(container) = containers
+        .iter()
+        .map(Path::new)
+        .find(|c| path.starts_with(c))
+    else {
+        return false;
+    };
     let Some(existing) = path.ancestors().skip(1).find(|a| a.exists()) else {
         return false;
     };
-    let is_container = |p: &Path| containers.iter().any(|c| p == Path::new(c));
-    if is_container(existing) {
+    let Ok(below) = existing.strip_prefix(container) else {
         return true;
-    }
-    let Some(parent) = existing.parent() else {
-        return false;
     };
-    if !is_container(parent) {
-        return false;
-    }
-    // Right under a container: a mounted drive has its own device, an empty
-    // mount point left behind by an unmounted one shares its parent's.
-    match (existing.metadata(), parent.metadata()) {
-        (Ok(here), Ok(up)) => here.dev() == up.dev(),
+    match below.components().count() {
+        0 => true,
+        1 => !mounted(existing),
+        2 => {
+            let empty = std::fs::read_dir(existing).is_ok_and(|mut d| d.next().is_none());
+            empty && !existing.ancestors().take(2).any(&mounted)
+        }
         _ => false,
     }
 }
@@ -419,32 +441,37 @@ mod tests {
         let user = media.join("deck");
         std::fs::create_dir_all(&user).unwrap();
         let containers = [media.to_str().unwrap()];
+        let card = user.join("41b8a2a9");
+        // A temp dir has no mounts of its own: the card's folder plays one.
+        let mounted = |p: &Path| p == card;
+        let offline = |p: &Path| volume_offline_under(p, &containers, mounted);
 
         // The card is not mounted: nothing under the user's folder.
-        let on_card = user.join("41b8a2a9/steamapps/common/Oceanhorn/SaveFiles");
-        assert!(volume_offline_under(&on_card, &containers));
+        let on_card = card.join("steamapps/common/Oceanhorn/SaveFiles");
+        assert!(offline(&on_card));
 
-        // The container itself is gone (no drive ever mounted this boot).
-        std::fs::remove_dir(&user).unwrap();
-        assert!(volume_offline_under(&on_card, &containers));
+        // Nothing mounted this boot: not even the container is there.
+        std::fs::remove_dir_all(&media).unwrap();
+        assert!(offline(&on_card));
         std::fs::create_dir_all(&user).unwrap();
 
+        // The card went to the other handheld and left its empty mount point.
+        std::fs::create_dir(&card).unwrap();
+        let unmounted = |p: &Path| volume_offline_under(p, &containers, |_| false);
+        assert!(unmounted(&on_card));
+        // Mounted, but empty: the folder was deleted, restore it.
+        assert!(!offline(&on_card));
+
         // Mounted drive, deleted game folder: restore it, don't wait.
-        let steamapps = user.join("41b8a2a9/steamapps");
+        let steamapps = card.join("steamapps");
         std::fs::create_dir_all(&steamapps).unwrap();
-        assert!(!volume_offline_under(
-            &steamapps.join("common/Oceanhorn/SaveFiles"),
-            &containers
-        ));
+        assert!(!offline(&steamapps.join("common/Oceanhorn/SaveFiles")));
 
         // Outside every container a missing folder is just missing.
-        assert!(!volume_offline_under(
-            &tmp.path().join("home/deck/.config/Game/saves"),
-            &containers
-        ));
+        assert!(!offline(&tmp.path().join("home/deck/.config/Game/saves")));
 
         // A folder that exists is never offline.
-        assert!(!volume_offline_under(&steamapps, &containers));
+        assert!(!offline(&steamapps));
     }
 
     #[test]
