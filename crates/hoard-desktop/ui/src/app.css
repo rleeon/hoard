@@ -722,6 +722,14 @@ html.is-linux {
   [data-anim] {
     animation-duration: var(--icon-anim-dur, 360ms) !important;
   }
+  /* Same reasoning: the warnings tray opening in one frame reads as a jump. */
+  .warnings-tray,
+  .warnings-chevron {
+    transition-duration: var(--tray-dur, 650ms) !important;
+  }
+  .tray-card {
+    transition-duration: 320ms, 520ms, 200ms, 200ms, 200ms, 200ms !important;
+  }
   .vault-door,
   .vault-hole,
   .vault-floor,

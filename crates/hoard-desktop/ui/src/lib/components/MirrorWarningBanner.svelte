@@ -19,6 +19,7 @@
   import { _ } from "svelte-i18n";
 
   import Button from "./Button.svelte";
+  import { glow } from "../actions/glow";
   import * as api from "../api";
   import type { MirrorWarning } from "../api";
   import { archiveSaveCloud } from "../stores/cloud";
@@ -33,9 +34,11 @@
     footprints?: Record<string, number>;
     /** Re-read the library after a repoint so the card shows the new folder. */
     onFixed?: () => void;
+    /** How many are on screen, for the tray's count. */
+    shown?: number;
   };
 
-  let { warnings, footprints = {}, onFixed }: Props = $props();
+  let { warnings, footprints = {}, onFixed, shown = $bindable(0) }: Props = $props();
 
   // Dismissals are per-session and per-save: the warning is worth repeating
   // on the next launch if nothing was done about it, but nagging inside one
@@ -44,6 +47,9 @@
   let busy = $state<string | null>(null);
 
   const visible = $derived(warnings.filter((w) => !dismissed.has(w.save_id)));
+  $effect(() => {
+    shown = visible.length;
+  });
   const isCloud = $derived($auth.user?.is_local_server === false);
 
   /** Last path segment, the whole path is in the tooltip. Windows and POSIX
@@ -94,9 +100,10 @@
 
 {#each visible as w (w.save_id)}
   <div
-    class="mb-5 flex items-start gap-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+    use:glow
+    class="glow tray-card mb-2 flex items-start gap-2.5 rounded-md border border-amber-500/25 bg-amber-500/[0.08] px-3.5 py-2.5 text-[13px] text-amber-200 last:mb-0 hover:-translate-y-0.5 hover:border-amber-500/55 hover:bg-amber-500/[0.15] hover:shadow-[0_10px_26px_-14px_rgb(245_158_11/0.55)]"
   >
-    <AlertTriangle size={15} class="mt-0.5 shrink-0 text-amber-400" />
+    <AlertTriangle size={15} class="mt-0.5 shrink-0 text-amber-400" data-anim="ring" />
     <div class="min-w-0 flex-1">
       <p class="font-medium">
         {$_("mirror.title", { values: { game: w.game_slug } })}
@@ -122,13 +129,13 @@
       <p class="mt-2 break-all font-mono text-[11px] text-amber-200/50">
         {w.tracked_path} → {w.suggested_path}
       </p>
-      <div class="mt-2.5 flex flex-wrap items-center gap-2">
+      <div class="mt-1.5 flex flex-wrap items-center gap-2">
         <Button
           variant="ghost"
           onclick={() => repoint(w)}
           loading={busy === w.save_id}
         >
-          <ArrowRight size={13} />
+          <ArrowRight size={13} data-anim="pop" />
           {$_("mirror.repoint")}
         </Button>
         {#if isCloud}
@@ -138,7 +145,7 @@
             loading={busy === w.save_id}
             title={$_("mirror.archive_title")}
           >
-            <Archive size={13} />
+            <Archive size={13} data-anim="pop" />
             {$_("mirror.archive")}
           </Button>
         {/if}

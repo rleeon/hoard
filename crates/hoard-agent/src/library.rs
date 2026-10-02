@@ -1201,12 +1201,21 @@ impl From<junkdirs::FolderKind> for FolderNote {
 /// is empty.
 const FOLDER_CLUTTER: &[&str] = &["desktop.ini", "thumbs.db", ".ds_store", ".directory"];
 
-/// What ships a game rather than what it saves. `.bin` is not here: plenty of
-/// games save to `.bin`, so it only counts next to a `.cue` or an installer.
+/// What ships a game rather than what it saves: disc images, console dumps and
+/// installer packages.
 const INSTALL_MEDIA_EXTS: &[&str] = &[
-    "iso", "img", "nrg", "mdf", "mds", "ccd", "cue", "chd", "cso", "rvz", "wbfs", "gcz", "nsp",
-    "xci", "cia", "3ds", "pbp", "vpk", "zip", "rar", "7z", "tar", "gz", "tgz", "xz", "zst", "bz2",
-    "dmg", "deb", "rpm", "msi", "appimage",
+    "iso", "nrg", "mdf", "mds", "ccd", "cue", "chd", "cso", "rvz", "wbfs", "gcz", "nsp", "xci",
+    "cia", "3ds", "pbp", "vpk", "dmg", "deb", "rpm", "msi", "appimage",
+];
+
+/// Shapes that are just as often a game's own saves, so they only count next to
+/// a disc image or an installer. On the latest version of every save in Hoard
+/// Cloud (2026-10-02), counting them on their own flagged 24 folders and 17 were
+/// saves: Factorio's `.zip` (11), Disco Elysium's `.ntwtf.zip`, Wesnoth's and
+/// N++'s `.gz`, Nova Roma, PC Building Simulator 2. `.bin` is a save in plenty
+/// of games too, and so is an `.img` in a few old ones.
+const ARCHIVE_EXTS: &[&str] = &[
+    "zip", "rar", "7z", "tar", "gz", "tgz", "xz", "zst", "bz2", "img", "bin",
 ];
 
 /// Readmes, checksums and covers that come along with a download and say nothing
@@ -1279,16 +1288,14 @@ fn shape_note(dir: &Path) -> Option<FolderNote> {
         ext(n).as_deref() == Some("exe")
             && (n.starts_with("setup") || n.starts_with("install") || n.contains("installer"))
     };
-    let bin_counts = files
-        .iter()
-        .any(|n| ext(n).as_deref() == Some("cue") || is_setup(n));
+    let is_media =
+        |n: &str| is_setup(n) || ext(n).is_some_and(|e| INSTALL_MEDIA_EXTS.contains(&e.as_str()));
+    let archives_count = files.iter().any(|n| is_media(n));
     let mut media = 0;
     for name in files.iter().filter(|n| !n.starts_with('.')) {
         let e = ext(name);
-        if is_setup(name)
-            || e.as_deref()
-                .is_some_and(|e| INSTALL_MEDIA_EXTS.contains(&e))
-            || (bin_counts && e.as_deref() == Some("bin"))
+        if is_media(name)
+            || (archives_count && e.as_deref().is_some_and(|e| ARCHIVE_EXTS.contains(&e)))
         {
             media += 1;
         } else if !e
@@ -4463,6 +4470,21 @@ mod folder_note_tests {
         assert_eq!(shape_note(disc.path()), Some(FolderNote::InstallMedia));
         let gog = folder(&["setup_factorio_2.0.exe", "setup_factorio_2.0-1.bin"], &[]);
         assert_eq!(shape_note(gog.path()), Some(FolderNote::InstallMedia));
+    }
+
+    /// Factorio's saves are `.zip`, Wesnoth's `.gz`, Disco Elysium's a `.zip`
+    /// with a `.jpg` beside it: an archive is a save until a disc image or an
+    /// installer sits next to it.
+    #[test]
+    fn archives_alone_are_saves() {
+        let factorio = folder(&["_autosave1.zip", "my base.zip"], &[]);
+        assert_eq!(shape_note(factorio.path()), None);
+        let disco = folder(&["autosave.ntwtf.zip", "autosave.jpg"], &[]);
+        assert_eq!(shape_note(disco.path()), None);
+        let wesnoth = folder(&["tutorial-auto-save1.gz"], &[]);
+        assert_eq!(shape_note(wesnoth.path()), None);
+        let download = folder(&["game.iso", "extras.zip", "readme.txt"], &[]);
+        assert_eq!(shape_note(download.path()), Some(FolderNote::InstallMedia));
     }
 
     #[test]

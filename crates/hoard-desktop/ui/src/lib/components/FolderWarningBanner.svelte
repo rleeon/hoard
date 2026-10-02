@@ -12,18 +12,27 @@
   import { _ } from "svelte-i18n";
 
   import Button from "./Button.svelte";
+  import { glow } from "../actions/glow";
   import * as api from "../api";
   import type { FolderWarning } from "../api";
   import { toastError, toastSuccess } from "../stores/toasts";
 
-  type Props = { warnings: FolderWarning[]; onFixed?: () => void };
+  type Props = {
+    warnings: FolderWarning[];
+    onFixed?: () => void;
+    /** How many are on screen, for the tray's count. */
+    shown?: number;
+  };
 
-  let { warnings, onFixed }: Props = $props();
+  let { warnings, onFixed, shown = $bindable(0) }: Props = $props();
 
   let dismissed = $state<Set<string>>(new Set());
   let busy = $state<string | null>(null);
 
   const visible = $derived(warnings.filter((w) => !dismissed.has(w.save_id)));
+  $effect(() => {
+    shown = visible.length;
+  });
 
   function leaf(p: string): string {
     const parts = p.split(/[\\/]+/).filter(Boolean);
@@ -52,9 +61,10 @@
 
 {#each visible as w (w.save_id)}
   <div
-    class="mb-5 flex items-start gap-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+    use:glow
+    class="glow tray-card mb-2 flex items-start gap-2.5 rounded-md border border-amber-500/25 bg-amber-500/[0.08] px-3.5 py-2.5 text-[13px] text-amber-200 last:mb-0 hover:-translate-y-0.5 hover:border-amber-500/55 hover:bg-amber-500/[0.15] hover:shadow-[0_10px_26px_-14px_rgb(245_158_11/0.55)]"
   >
-    <FolderX size={15} class="mt-0.5 shrink-0 text-amber-400" />
+    <FolderX size={15} class="mt-0.5 shrink-0 text-amber-400" data-anim="pop" />
     <div class="min-w-0 flex-1">
       <p class="font-medium">
         {$_("folderkind.title", { values: { game: w.game_slug } })}
@@ -69,14 +79,14 @@
       <p class="mt-2 break-all font-mono text-[11px] text-amber-200/50">
         {w.tracked_path}{#if w.suggested_path}&nbsp;→ {w.suggested_path}{/if}
       </p>
-      <div class="mt-2.5 flex flex-wrap items-center gap-2">
+      <div class="mt-1.5 flex flex-wrap items-center gap-2">
         {#if w.suggested_path}
           <Button
             variant="ghost"
             onclick={() => repoint(w)}
             loading={busy === w.save_id}
           >
-            <ArrowRight size={13} />
+            <ArrowRight size={13} data-anim="pop" />
             {$_("folderkind.use", { values: { folder: leaf(w.suggested_path) } })}
           </Button>
         {/if}

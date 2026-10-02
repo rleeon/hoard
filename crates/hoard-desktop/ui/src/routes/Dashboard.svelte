@@ -33,9 +33,7 @@
   import Input from "../lib/components/Input.svelte";
   import Modal from "../lib/components/Modal.svelte";
   import SaveGameCard from "../lib/components/SaveGameCard.svelte";
-  import MirrorWarningBanner from "../lib/components/MirrorWarningBanner.svelte";
-  import LinkWarningBanner from "../lib/components/LinkWarningBanner.svelte";
-  import FolderWarningBanner from "../lib/components/FolderWarningBanner.svelte";
+  import WarningsTray from "../lib/components/WarningsTray.svelte";
   import * as api from "../lib/api";
   import type {
     EngineDownReason,
@@ -529,25 +527,19 @@
   <!-- Above the offline banner on purpose: the service being down is a
        transient the user already knows about, while syncing the wrong folder
        has been quietly costing them quota for weeks. -->
-  {#if !loading && mirrorWarnings.length > 0}
-    <MirrorWarningBanner
-      warnings={mirrorWarnings}
+  {#if !loading && mirrorWarnings.length + linkWarnings.length + folderWarnings.length > 0}
+    <WarningsTray
+      mirror={mirrorWarnings}
+      links={linkWarnings}
+      folders={folderWarnings}
       {footprints}
-      onFixed={async () => {
+      onMirrorFixed={async () => {
         saves = await api.listTrackedSaves();
         await loadMirrorWarnings();
         void fetchFootprints();
         void refreshQuota();
       }}
-    />
-  {/if}
-  {#if !loading && linkWarnings.length > 0}
-    <LinkWarningBanner warnings={linkWarnings} />
-  {/if}
-  {#if !loading && folderWarnings.length > 0}
-    <FolderWarningBanner
-      warnings={folderWarnings}
-      onFixed={async () => {
+      onFolderFixed={async () => {
         saves = await api.listTrackedSaves();
         await loadMirrorWarnings();
       }}
