@@ -3949,27 +3949,85 @@ const PER_DIR_WATCH_CAP: usize = 4096;
 /// Nothing is followed through a link, and a folder that cannot be read is left
 /// out instead of failing the lot.
 fn dirs_without_links(root: &Path) -> Option<Vec<PathBuf>> {
-    let mut dirs = vec![root.to_path_buf()];
+    dirs_without_links_capped(root, PER_DIR_WATCH_CAP)
+}
+
+fn dirs_without_links_capped(root: &Path, cap: usize) -> Option<Vec<PathBuf>> {
+    let mut walk = FairWalk::new(root.to_path_buf());
     let mut linked = false;
-    let mut next = 0;
-    while next < dirs.len() && dirs.len() < PER_DIR_WATCH_CAP {
-        let Ok(entries) = std::fs::read_dir(&dirs[next]) else {
-            next += 1;
-            continue;
+    let mut dirs = Vec::new();
+    while dirs.len() < cap {
+        let Some(dir) = walk.next(&mut linked) else {
+            break;
         };
-        next += 1;
-        for entry in entries.flatten() {
-            let Ok(kind) = entry.file_type() else {
-                continue;
-            };
-            if kind.is_dir() {
-                dirs.push(entry.path());
-            } else if kind.is_symlink() && entry.path().is_dir() {
-                linked = true;
-            }
-        }
+        dirs.push(dir);
     }
     linked.then_some(dirs)
+}
+
+/// A walk that takes turns between the subfolders of every folder instead of
+/// going level by level, so a cap cuts each branch short rather than the last
+/// ones to be reached. Level by level, a prefix's `drive_c/windows` (thousands
+/// of folders) used up the whole cap before the walk got to `drive_c/users`,
+/// where the saves are, and the save went unwatched with nothing saying so.
+/// A branch that runs out hands its turns to the others.
+struct FairWalk {
+    path: PathBuf,
+    yielded: bool,
+    /// Listed on the first turn after the folder itself went out, so a folder
+    /// is only read when the cap still has room below it.
+    children: Option<Vec<FairWalk>>,
+    turn: usize,
+}
+
+impl FairWalk {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            yielded: false,
+            children: None,
+            turn: 0,
+        }
+    }
+
+    fn next(&mut self, linked: &mut bool) -> Option<PathBuf> {
+        if !self.yielded {
+            self.yielded = true;
+            return Some(self.path.clone());
+        }
+        let path = &self.path;
+        let children = self.children.get_or_insert_with(|| {
+            let mut subdirs = Vec::new();
+            if let Ok(entries) = std::fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    let Ok(kind) = entry.file_type() else {
+                        continue;
+                    };
+                    if kind.is_dir() {
+                        subdirs.push(entry.path());
+                    } else if kind.is_symlink() && entry.path().is_dir() {
+                        *linked = true;
+                    }
+                }
+            }
+            subdirs.sort();
+            subdirs.into_iter().map(FairWalk::new).collect()
+        });
+        while !children.is_empty() {
+            let i = self.turn % children.len();
+            match children[i].next(linked) {
+                Some(dir) => {
+                    self.turn = i + 1;
+                    return Some(dir);
+                }
+                None => {
+                    children.remove(i);
+                    self.turn = i;
+                }
+            }
+        }
+        None
+    }
 }
 
 /// The watcher for a save, and whether it watches each directory on its own (see
@@ -7229,6 +7287,28 @@ mod tests {
         let (tx, _rx) = mpsc::channel(4);
         let (_watcher, per_dir) = build_watcher(&prefix, tx).unwrap();
         assert!(per_dir);
+    }
+
+    /// Level by level, 60 system folders filled a cap of 40 before the walk
+    /// reached the save five levels under `drive_c/users`.
+    #[cfg(unix)]
+    #[test]
+    fn a_big_folder_does_not_take_the_cap_from_its_siblings() {
+        let tmp = tempfile::tempdir().unwrap();
+        let prefix = tmp.path();
+        for i in 0..60 {
+            std::fs::create_dir_all(prefix.join(format!("drive_c/windows/sys{i:02}/sub"))).unwrap();
+        }
+        let saves = prefix.join("drive_c/users/steamuser/AppData/Local/Game/Saved/SaveGames");
+        std::fs::create_dir_all(&saves).unwrap();
+        std::fs::create_dir_all(prefix.join("dosdevices")).unwrap();
+        std::os::unix::fs::symlink(prefix.join("drive_c"), prefix.join("dosdevices/c:")).unwrap();
+
+        let dirs = dirs_without_links_capped(prefix, 40).expect("the link is noticed");
+        assert_eq!(dirs.len(), 40);
+        assert!(dirs.contains(&saves), "{dirs:?}");
+        let unique: HashSet<&PathBuf> = dirs.iter().collect();
+        assert_eq!(unique.len(), dirs.len(), "a folder watched twice");
     }
 
     #[test]
