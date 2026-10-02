@@ -739,8 +739,7 @@ impl<'a> Narrowing<'a> {
     /// prefix's own system folders: `drive_c/windows` is thousands of files that
     /// could only ever be left out.
     fn prunes(&self, rel: &str) -> bool {
-        self.kind == Some(junkdirs::FolderKind::WinePrefix)
-            && junkdirs::is_payload(junkdirs::FolderKind::WinePrefix, &format!("{rel}/-"), 0)
+        self.kind == Some(junkdirs::FolderKind::WinePrefix) && junkdirs::is_prefix_system_dir(rel)
     }
 }
 
@@ -2416,6 +2415,9 @@ mod tests {
             "drive_c/windows/system32/d3d9.dll",
             "drive_c/windows/win.ini",
             "drive_c/users/steamuser/Saved Games/Hell Is Us/slot0.sav",
+            "drive_c/users/steamuser/AppData/Local/Game/Content/Saves/slot1.sav",
+            "drive_c/Program Files/Old Game/oldgame.exe",
+            "drive_c/Program Files/Old Game/SAVE/slot1.sav",
         ] {
             let p = root.join(rel);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -2433,6 +2435,8 @@ mod tests {
         assert_eq!(
             rels(&files),
             [
+                "drive_c/Program Files/Old Game/SAVE/slot1.sav",
+                "drive_c/users/steamuser/AppData/Local/Game/Content/Saves/slot1.sav",
                 "drive_c/users/steamuser/Saved Games/Hell Is Us/slot0.sav",
                 "system.reg"
             ]

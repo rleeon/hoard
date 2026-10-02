@@ -796,28 +796,39 @@ const PAYLOAD_DIRS: &[&str] = &[
 ];
 
 /// Inside a Wine prefix, the parts that are Windows rather than anybody's data.
+/// `Program Files` is not one of them: old games keep their saves beside the
+/// executable (`<install>/save/`), so a game installed into the prefix is
+/// narrowed file by file like any other install instead of skipped whole.
 const PREFIX_SYSTEM_DIRS: &[&[&str]] = &[
     &["dosdevices"],
     &["drive_c", "windows"],
-    &["drive_c", "program files"],
-    &["drive_c", "program files (x86)"],
     &["drive_c", "programdata", "microsoft"],
 ];
 
+/// Whether `rel_dir`, a folder inside a Wine prefix, is Windows itself: the one
+/// kind of folder a walk may skip without looking inside.
+pub fn is_prefix_system_dir(rel_dir: &str) -> bool {
+    let lower = rel_dir.replace('\\', "/").to_lowercase();
+    let dirs: Vec<&str> = lower.split('/').filter(|p| !p.is_empty()).collect();
+    in_prefix_system_dir(&dirs)
+}
+
+fn in_prefix_system_dir(dirs: &[&str]) -> bool {
+    PREFIX_SYSTEM_DIRS
+        .iter()
+        .any(|sys| dirs.len() >= sys.len() && dirs[..sys.len()] == **sys)
+}
+
 /// Whether `rel`, a path inside a folder of `kind`, is part of what the folder
 /// holds besides saves: the game's payload in an installation or an installer,
-/// Windows itself in a prefix (and any game installed inside it).
+/// Windows itself in a prefix and the payload of any game installed inside it.
 pub fn is_payload(kind: FolderKind, rel: &str, size: u64) -> bool {
     let lower = rel.replace('\\', "/").to_lowercase();
     let parts: Vec<&str> = lower.split('/').filter(|p| !p.is_empty()).collect();
     let Some((file, dirs)) = parts.split_last() else {
         return false;
     };
-    if kind == FolderKind::WinePrefix
-        && PREFIX_SYSTEM_DIRS
-            .iter()
-            .any(|sys| dirs.len() >= sys.len() && dirs[..sys.len()] == **sys)
-    {
+    if kind == FolderKind::WinePrefix && in_prefix_system_dir(dirs) {
         return true;
     }
     let ext = file.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
@@ -939,6 +950,22 @@ mod tests {
             WinePrefix,
             "drive_c/users/steamuser/Saved Games/Beyond Good & Evil/global.sav",
             1
+        ));
+        // A game installed into the prefix is an install like any other.
+        assert!(!is_payload(
+            WinePrefix,
+            "drive_c/Program Files (x86)/Old Game/SAVE/slot1.sav",
+            1
+        ));
+        assert!(is_payload(
+            WinePrefix,
+            "drive_c/Program Files (x86)/Old Game/oldgame.exe",
+            1
+        ));
+        assert!(is_prefix_system_dir("drive_c/windows/system32"));
+        assert!(!is_prefix_system_dir("drive_c/Program Files"));
+        assert!(!is_prefix_system_dir(
+            "drive_c/users/steamuser/AppData/Local/Game/Content"
         ));
     }
 
