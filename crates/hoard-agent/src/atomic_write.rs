@@ -18,7 +18,6 @@
 //! one, whole.
 
 use anyhow::{Context, Result};
-use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -36,6 +35,17 @@ static SEQ: AtomicU64 = AtomicU64::new(0);
 /// atomic within a single filesystem, and the system temp dir routinely isn't
 /// the same one as the user's state dir.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    write(path, bytes, false)
+}
+
+/// [`write_atomic`] for a file only this user may read, such as a session with
+/// its tokens: on Unix the temp file is born 0600, so the secret is never
+/// readable by anyone else, not even between the write and the rename.
+pub fn write_atomic_private(path: &Path, bytes: &[u8]) -> Result<()> {
+    write(path, bytes, true)
+}
+
+fn write(path: &Path, bytes: &[u8], private: bool) -> Result<()> {
     let dir = parent_dir(path);
     std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
 
@@ -43,7 +53,16 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     // Scoped so the handle is closed before the rename: Windows refuses to
     // replace a file that still has an open handle.
     let written = (|| -> std::io::Result<()> {
-        let mut f = File::create(&tmp)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        if private {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        #[cfg(not(unix))]
+        let _ = private;
+        let mut f = options.open(&tmp)?;
         f.write_all(bytes)?;
         // Without this the rename can land while the contents are still only in
         // the page cache: the same 0-byte file, with extra steps.
@@ -64,7 +83,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     // here still leaves us strictly ahead of the truncate-in-place we replaced.
     #[cfg(unix)]
     {
-        let _ = File::open(&dir).and_then(|d| d.sync_all());
+        let _ = std::fs::File::open(&dir).and_then(|d| d.sync_all());
     }
 
     Ok(())
@@ -124,6 +143,20 @@ mod tests {
     /// The regression this module exists for: the destination is never left
     /// shorter than what we asked for, and a second write replaces the first
     /// one whole instead of overwriting it in place.
+    #[cfg(unix)]
+    #[test]
+    fn a_private_file_is_only_ever_the_users() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.toml");
+
+        write_atomic_private(&path, b"token = \"x\"").unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600, "mode {:o}", mode & 0o777);
+        assert_eq!(siblings(dir.path()), vec!["session.toml".to_string()]);
+    }
+
     #[test]
     fn replacing_a_longer_file_leaves_no_tail_of_the_old_one() {
         let dir = tempfile::tempdir().unwrap();

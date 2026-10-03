@@ -530,33 +530,15 @@ fn read_session() -> Result<Option<Session>> {
 
 fn write_session(s: &Session) -> Result<()> {
     let path = session_path()?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("creating {}", parent.display()))?;
-    }
     let text = toml::to_string_pretty(s).context("serializing session")?;
 
     // Atomic write: a plain truncate+write leaves the session file half-written
     // if the process dies mid-write, and a truncated TOML fails to parse on next
-    // launch → spurious sign-out. Write to a sibling temp file then rename over the
-    // target (atomic on the same filesystem), so a reader only ever sees the old or
-    // the new file. Solves Windows issues with inherited ACLs on partially-written
-    // files and sync-folder interference (OneDrive, Dropbox).
-    let tmp = path.with_extension("toml.tmp");
-    std::fs::write(&tmp, &text).with_context(|| format!("writing {}", tmp.display()))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&tmp)?.permissions();
-        perms.set_mode(0o600);
-        std::fs::set_permissions(&tmp, perms)?;
-    }
-
-    std::fs::rename(&tmp, &path)
-        .with_context(|| format!("renaming {} -> {}", tmp.display(), path.display()))?;
-
-    Ok(())
+    // launch → spurious sign-out. Temp file, flushed, then renamed over the target,
+    // so a reader only ever sees the old or the new file, even after a power cut.
+    // Solves Windows issues with inherited ACLs on partially-written files and
+    // sync-folder interference (OneDrive, Dropbox).
+    crate::atomic_write::write_atomic_private(&path, text.as_bytes())
 }
 
 /// Repair a session file a previous build's ACL-hardening left unreadable.

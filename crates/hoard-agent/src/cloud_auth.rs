@@ -113,7 +113,7 @@ fn http_client() -> Result<Client> {
         .context("construyendo cliente HTTP")
 }
 
-// ---- login sin navegador ----------------------------------------------
+// ---- browserless login
 
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
@@ -129,7 +129,7 @@ async fn parse_token_response(resp: reqwest::Response) -> Result<Tokens> {
     if status.is_success() {
         let parsed: TokenResponse = serde_json::from_str(&body).with_context(|| {
             format!(
-                "parseando respuesta de login (status {status}, {} bytes)",
+                "parsing the login response (status {status}, {} bytes)",
                 body.len()
             )
         })?;
@@ -273,7 +273,7 @@ pub async fn device_start(hostname: Option<&str>) -> Result<Option<DeviceStart>>
             supabase_error_message(status, &body)
         );
     }
-    let start = serde_json::from_str(&body).context("parseando respuesta de device/start")?;
+    let start = serde_json::from_str(&body).context("parsing the device/start response")?;
     Ok(Some(start))
 }
 
@@ -301,7 +301,7 @@ pub async fn device_poll(device_code: &str) -> Result<DeviceStatus> {
             supabase_error_message(status, &body)
         );
     }
-    let p: PollBody = serde_json::from_str(&body).context("parseando respuesta de device/poll")?;
+    let p: PollBody = serde_json::from_str(&body).context("parsing the device/poll response")?;
     Ok(match p.status.as_str() {
         "approved" => match (p.access_token, p.refresh_token) {
             (Some(access), Some(refresh)) if !access.is_empty() && !refresh.is_empty() => {
@@ -358,7 +358,10 @@ pub async fn refresh(refresh_token: &str) -> Result<Tokens> {
         let body = resp.text().await.unwrap_or_default();
         if status.is_success() {
             let parsed: TokenResponse = serde_json::from_str(&body).with_context(|| {
-                format!("parseando refresh (status {status}, {} bytes)", body.len())
+                format!(
+                    "parsing the refresh response (status {status}, {} bytes)",
+                    body.len()
+                )
             })?;
             return Ok(Tokens {
                 access: parsed.access_token,
@@ -417,7 +420,7 @@ pub async fn fetch_me(base: &str, access: &str) -> Result<Me> {
     serde_json::from_str::<Me>(&body).with_context(|| format!("parsing /v1/me: {body}"))
 }
 
-// ---- persistencia (interoperable con el desktop) ----------------------
+// ---- persistence (shared with the desktop)
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct SessionFile {
@@ -449,33 +452,40 @@ fn read_session_file() -> Result<Option<SessionFile>> {
         return Ok(None);
     }
     let text =
-        std::fs::read_to_string(&path).with_context(|| format!("leyendo {}", path.display()))?;
-    let s: SessionFile =
-        toml::from_str(&text).with_context(|| format!("parseando {}", path.display()))?;
-    Ok(Some(s))
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    match toml::from_str(&text) {
+        Ok(s) => Ok(Some(s)),
+        // Moved aside and read as no file, as `state.json` does. Left in place it
+        // stopped the engine on every start, self-hosted sessions included: a
+        // Windows machine that hung on 2026-09-29 came back with a `cloud.toml`
+        // that failed at line 1, column 1, and synced nothing for four days. The
+        // tokens are in the keyring too, and the next sign-in writes a new file.
+        Err(e) => {
+            let aside = path.with_extension(format!(
+                "toml.corrupt-{}",
+                time::OffsetDateTime::now_utc().unix_timestamp()
+            ));
+            match std::fs::rename(&path, &aside) {
+                Ok(()) => tracing::warn!(
+                    error = %e, aside = %aside.display(),
+                    "cloud session file was unreadable; moved it aside"
+                ),
+                Err(re) => tracing::warn!(
+                    error = %re, path = %path.display(),
+                    "cloud session file is unreadable and couldn't be moved aside; ignoring it"
+                ),
+            }
+            Ok(None)
+        }
+    }
 }
 
 fn write_session_file(s: &SessionFile) -> Result<()> {
     let path = session_path()?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("creating {}", parent.display()))?;
-    }
     let text = toml::to_string_pretty(s).context("serialising the Cloud session")?;
-    // An atomic write, temp plus rename, so a cut halfway through does not leave a
-    // truncated TOML that looks like a broken session on start.
-    let tmp = path.with_extension("toml.tmp");
-    std::fs::write(&tmp, &text).with_context(|| format!("writing {}", tmp.display()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&tmp)?.permissions();
-        perms.set_mode(0o600);
-        std::fs::set_permissions(&tmp, perms)?;
-    }
-    std::fs::rename(&tmp, &path)
-        .with_context(|| format!("renombrando {} -> {}", tmp.display(), path.display()))?;
-    Ok(())
+    // Temp, flushed, then renamed: without the flush a power cut can keep the
+    // rename and lose the bytes, the empty file that read as a broken session.
+    crate::atomic_write::write_atomic_private(&path, text.as_bytes())
 }
 
 // ---- the keyring, always bounded
@@ -763,7 +773,7 @@ pub fn clear_session() -> Result<()> {
     crate::credentials::set_lent_cloud(None);
     let path = session_path()?;
     if path.exists() {
-        std::fs::remove_file(&path).with_context(|| format!("borrando {}", path.display()))?;
+        std::fs::remove_file(&path).with_context(|| format!("deleting {}", path.display()))?;
     }
     Ok(())
 }
@@ -783,7 +793,7 @@ pub fn forget_tokens_unlocked() -> Result<()> {
     crate::credentials::set_lent_cloud(None);
     let path = session_path()?;
     if path.exists() {
-        std::fs::remove_file(&path).with_context(|| format!("borrando {}", path.display()))?;
+        std::fs::remove_file(&path).with_context(|| format!("deleting {}", path.display()))?;
     }
     Ok(())
 }
@@ -1118,6 +1128,31 @@ mod tests {
             Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
             None => std::env::remove_var("XDG_CONFIG_HOME"),
         }
+    }
+
+    /// What a hang left on disk (an empty file, zeros) reads as no file and is
+    /// moved aside, instead of failing every start of the engine.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_unreadable_session_file_is_set_aside() {
+        with_isolated_config(|| {
+            let path = session_path().unwrap();
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, [0u8; 64]).unwrap();
+
+            assert!(read_session_file().expect("no error").is_none());
+            assert!(!path.exists());
+            let aside: Vec<_> = std::fs::read_dir(path.parent().unwrap())
+                .unwrap()
+                .flatten()
+                .filter(|e| {
+                    e.file_name()
+                        .to_string_lossy()
+                        .starts_with("cloud.toml.corrupt-")
+                })
+                .collect();
+            assert_eq!(aside.len(), 1);
+        });
     }
 
     /// The degraded path from D.20: a client that mints a session and has no
