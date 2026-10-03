@@ -1835,14 +1835,50 @@ impl HomeForRestore {
     /// Records the folder, after the restore went through. The caller then owes the
     /// sync service a reload: the watched set changed, and the service only rereads
     /// it when told.
-    pub async fn commit(self, client: &ApiClient) -> Result<LiveReseat> {
+    ///
+    /// `version` is what the restore wrote and `filter` the game's upload filter.
+    /// A folder adopted with the server's head in it is recorded as holding that
+    /// head: left blank, the service found a folder it had never synced and
+    /// uploaded it straight back, an identical version under the next number. An
+    /// older version is left to go up as the next one, which is the point of
+    /// restoring it.
+    pub async fn commit(
+        self,
+        client: &ApiClient,
+        version: i64,
+        filter: Option<&crate::backup::SourceFilter>,
+    ) -> Result<LiveReseat> {
         match self.adopt {
             None => set_local_path(&self.save_id, &self.local_path.to_string_lossy()),
-            Some(args) => Ok(LiveReseat::Attach(Box::new(
-                adopt(client, args).await?.watched,
-            ))),
+            Some(args) => {
+                let mut watched = adopt(client, args).await?.watched;
+                let head = crate::restore::resolve_version(client, &self.save_id, None)
+                    .await
+                    .ok();
+                if let (Some(filter), true) = (filter, head == Some(version)) {
+                    if let Ok(files) = crate::backup::walk_source(&self.local_path, filter) {
+                        let set_hash = format!("{}:", crate::backup::compute_set_signature(&files));
+                        record_synced(&self.save_id, version, &set_hash)?;
+                        watched.known_version = Some(version);
+                        watched.set_hash = Some(set_hash);
+                    }
+                }
+                Ok(LiveReseat::Attach(Box::new(watched)))
+            }
         }
     }
+}
+
+/// `save_id`'s row says it holds `version`, with `set_hash` as the folder's
+/// signature, as an upload or an automatic restore would have left it.
+fn record_synced(save_id: &str, version: i64, set_hash: &str) -> Result<()> {
+    let (mut state, path) = CliState::load_default()?;
+    if let Some(row) = state.saves.get_mut(save_id) {
+        row.last_version_num = Some(version);
+        row.set_hash = Some(set_hash.to_string());
+        state.save(&path)?;
+    }
+    Ok(())
 }
 
 /// The `(game_slug, label)` the server files a save under. Cloud mounts no

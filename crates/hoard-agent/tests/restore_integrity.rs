@@ -204,6 +204,7 @@ fn options(backup_root: &Path) -> RestoreOptions {
         // Beside it, in the test's own temp folder: never the real state folder
         // a running service stages in.
         staging_root: Some(backup_root.with_file_name("staging")),
+        narrow: None,
     }
 }
 

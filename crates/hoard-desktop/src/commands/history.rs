@@ -109,18 +109,49 @@ async fn restore_gate(
     state: &AppState,
     save_id: &str,
     allow_config: bool,
-) -> hoard_core::kernel::fileclass::RestoreGate {
+) -> (
+    hoard_core::kernel::fileclass::RestoreGate,
+    Option<hoard_agent::backup::SourceFilter>,
+) {
     let slug = CliState::load_default()
         .ok()
         .and_then(|(st, _)| st.saves.get(save_id).map(|s| s.game_slug.clone()));
-    let shields = match slug {
-        Some(slug) => super::catalog::game_facts(state, &slug).await.shields,
-        None => Vec::new(),
+    restore_filters(state, slug.as_deref(), allow_config).await
+}
+
+/// The gate for a restore of `slug`, and the narrowing for when the folder turns
+/// out to be the game's install (`RestoreOptions::narrow`). With no game known
+/// there is nothing to narrow by.
+async fn restore_filters(
+    state: &AppState,
+    slug: Option<&str>,
+    allow_config: bool,
+) -> (
+    hoard_core::kernel::fileclass::RestoreGate,
+    Option<hoard_agent::backup::SourceFilter>,
+) {
+    let Some(slug) = slug else {
+        return (
+            hoard_core::kernel::fileclass::RestoreGate {
+                shields: Vec::new(),
+                allow_device_local: allow_config,
+            },
+            None,
+        );
     };
-    hoard_core::kernel::fileclass::RestoreGate {
-        shields,
-        allow_device_local: allow_config,
-    }
+    let facts = super::catalog::game_facts(state, slug).await;
+    let narrow = hoard_agent::backup::SourceFilter {
+        shields: facts.shields.clone(),
+        install_saves: facts.install_saves,
+        narrow_non_saves: true,
+    };
+    (
+        hoard_core::kernel::fileclass::RestoreGate {
+            shields: facts.shields,
+            allow_device_local: allow_config,
+        },
+        Some(narrow),
+    )
 }
 
 #[tauri::command]
@@ -147,8 +178,8 @@ pub async fn preview_restore(
                 .ok_or_else(|| "NEEDS_DESTINATION".to_string())?
         }
     };
-    let gate = restore_gate(&state, &save_id, allow_config).await;
-    hoard_agent::preview::restore_preview(&client, &save_id, version, &dest, &gate)
+    let (gate, narrow) = restore_gate(&state, &save_id, allow_config).await;
+    hoard_agent::preview::restore_preview(&client, &save_id, version, &dest, &gate, narrow.as_ref())
         .await
         .map_err(pretty_error)
 }
@@ -458,13 +489,8 @@ pub async fn restore_snapshot(
 
     // The shields go by game, and `restore_gate` reads the game from the row,
     // which a save new to this machine does not have yet.
-    let gate = match &home {
-        Some(home) => hoard_core::kernel::fileclass::RestoreGate {
-            shields: super::catalog::game_facts(&state, &home.game_slug)
-                .await
-                .shields,
-            allow_device_local: allow_config,
-        },
+    let (gate, narrow) = match &home {
+        Some(home) => restore_filters(&state, Some(&home.game_slug), allow_config).await,
         None => restore_gate(&state, &save_id, allow_config).await,
     };
 
@@ -496,6 +522,7 @@ pub async fn restore_snapshot(
             gate,
             backup_root: None,
             staging_root: None,
+            narrow: narrow.clone(),
         },
         move |downloaded, total| {
             let _ = app_for_dl.emit(
@@ -520,13 +547,16 @@ pub async fn restore_snapshot(
     // is told: it rereads the watched set only when told, so without this the save
     // showed as linked and synced nothing until the service next restarted.
     if let Some(home) = home {
-        let reseat = home.commit(&client).await.map_err(|e| {
-            format!(
-                "Restored to {}, but couldn't keep it as this save's folder: {}",
-                local_path.display(),
-                pretty_error(e)
-            )
-        })?;
+        let reseat = home
+            .commit(&client, version, narrow.as_ref())
+            .await
+            .map_err(|e| {
+                format!(
+                    "Restored to {}, but couldn't keep it as this save's folder: {}",
+                    local_path.display(),
+                    pretty_error(e)
+                )
+            })?;
         apply_reseat(&state, reseat).await;
     }
 

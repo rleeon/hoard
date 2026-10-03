@@ -119,6 +119,12 @@ pub struct RestoreOptions {
     /// `restore-staging` under Hoard's state folder; tests point it at their own
     /// temp folder so they never touch the real one.
     pub staging_root: Option<PathBuf>,
+    /// The game's upload filter ([`crate::backup::SourceFilter::for_slug`]). When
+    /// the destination is an install, an installer or a Wine prefix, what the
+    /// upload would leave out is not written either: versions uploaded before
+    /// that filter existed carry whole installs, and restoring one put an old
+    /// executable over the game. `None` writes the whole version, as before.
+    pub narrow: Option<crate::backup::SourceFilter>,
 }
 
 /// Result summary after a successful restore.
@@ -346,6 +352,7 @@ where
     }
     .join(path_safe(save_id))
     .join(backup_stamp());
+    let narrow = options.narrow.clone();
 
     let fetched = fetch_into(
         client,
@@ -364,7 +371,13 @@ where
     let single_file = fetched.single_file;
     let kept = kept_in.clone();
     let placed = tokio::task::spawn_blocking(move || {
-        place_staged(&staging_path, &dest_owned, single_file, &kept)
+        place_staged(
+            &staging_path,
+            &dest_owned,
+            single_file,
+            &kept,
+            narrow.as_ref(),
+        )
     })
     .await
     .context("placing the restored files")??;
@@ -1654,8 +1667,29 @@ enum Undo {
 /// folder has and the version does not are left alone, as they always were.
 ///
 /// Blocking IO throughout: it runs on `spawn_blocking`.
-fn place_staged(staging: &Path, dest: &Path, single_file: bool, kept_in: &Path) -> Result<Placed> {
-    let staged = list_staged(staging)?;
+fn place_staged(
+    staging: &Path,
+    dest: &Path,
+    single_file: bool,
+    kept_in: &Path,
+    narrow: Option<&crate::backup::SourceFilter>,
+) -> Result<Placed> {
+    let mut staged = list_staged(staging)?;
+    if let (false, Some(filter)) = (single_file, narrow) {
+        let narrowing = crate::backup::Narrowing::of(dest, filter);
+        let before = staged.len();
+        staged.retain(|rel| {
+            let size = std::fs::metadata(staging.join(rel)).map_or(0, |m| m.len());
+            narrowing.keeps(&rel.to_string_lossy().replace('\\', "/"), size)
+        });
+        if staged.len() < before {
+            tracing::info!(
+                dest = %dest.display(),
+                skipped = before - staged.len(),
+                "restore: left the game's own files in this version out of its install folder"
+            );
+        }
+    }
     let names: Vec<String> = staged
         .iter()
         .map(|p| p.to_string_lossy().replace('\\', "/"))
@@ -1683,8 +1717,10 @@ fn place_staged(staging: &Path, dest: &Path, single_file: bool, kept_in: &Path) 
             );
         }
         let same = target.is_file()
-            && same_bytes(&from, &target)
-                .with_context(|| format!("comparing {} with the version", target.display()))?;
+            && same_bytes(&from, &target).map_err(|e| {
+                in_use(e, &target)
+                    .context(format!("comparing {} with the version", target.display()))
+            })?;
         plan.push((rel, from, target, same));
     }
 
@@ -1886,11 +1922,27 @@ fn keep_original(target: &Path, kept: &Path, meta: &std::fs::Metadata) -> Result
     })();
     if let Err(e) = copied {
         let _ = std::fs::remove_file(kept);
-        return Err(e).with_context(|| {
-            format!("keeping a copy of {} before replacing it", target.display())
-        });
+        return Err(in_use(e, target).context(format!(
+            "keeping a copy of {} before replacing it",
+            target.display()
+        )));
     }
     Ok(())
+}
+
+/// An IO error, said in words when it is Windows refusing because another
+/// program holds the file open with nobody else allowed in (a sharing or lock
+/// violation). A game that opens its save that way stopped the restore with
+/// "os error 32" and nothing about closing the game.
+fn in_use(e: std::io::Error, path: &Path) -> anyhow::Error {
+    if cfg!(windows) && matches!(e.raw_os_error(), Some(32 | 33)) {
+        anyhow::Error::new(e).context(format!(
+            "{} is open in another program (if the game is running, close it and try again)",
+            path.display()
+        ))
+    } else {
+        anyhow::Error::new(e)
+    }
 }
 
 /// Take back the copies a placement that never started had put aside.
@@ -2252,7 +2304,7 @@ mod tests {
         let (dest, staging, kept) = folder_and_version(tmp.path(), &[("save.dat", b"old", b"new")]);
         set_read_only(&dest.join("save.dat"), true);
 
-        let placed = place_staged(&staging, &dest, false, &kept).unwrap();
+        let placed = place_staged(&staging, &dest, false, &kept, None).unwrap();
 
         assert_eq!(placed.replaced, 1);
         assert_eq!(std::fs::read(dest.join("save.dat")).unwrap(), b"new");
@@ -2292,7 +2344,7 @@ mod tests {
 
         let err = format!(
             "{:#}",
-            place_staged(&staging, &dest, false, &kept).unwrap_err()
+            place_staged(&staging, &dest, false, &kept, None).unwrap_err()
         );
         drop(held);
 
@@ -2311,6 +2363,73 @@ mod tests {
             .collect();
         assert!(temps.is_empty(), "{temps:?}");
         set_read_only(&dest.join("a.dat"), false);
+    }
+
+    /// A game holding its save with nobody else allowed in, not even to read it:
+    /// the restore stops before touching anything, and says to close the game.
+    #[cfg(windows)]
+    #[test]
+    fn a_save_held_exclusively_asks_to_close_the_game() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let (dest, staging, kept) = folder_and_version(
+            tmp.path(),
+            &[
+                ("same.dat", b"old same", b"new same"),
+                ("longer.dat", b"old", b"new and longer"),
+            ],
+        );
+        for name in ["same.dat", "longer.dat"] {
+            let held = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .share_mode(0)
+                .open(dest.join(name))
+                .unwrap();
+            let err = format!(
+                "{:#}",
+                place_staged(&staging, &dest, false, &kept, None).unwrap_err()
+            );
+            drop(held);
+            assert!(err.contains("close it and try again"), "{name}: {err}");
+        }
+        assert_eq!(std::fs::read(dest.join("same.dat")).unwrap(), b"old same");
+        assert_eq!(std::fs::read(dest.join("longer.dat")).unwrap(), b"old");
+    }
+
+    /// A version uploaded when the whole install went up carries the game's
+    /// executable; restoring it into the install writes the saves and leaves the
+    /// game alone. Without the filter it writes everything, as before.
+    #[test]
+    fn an_install_gets_its_saves_back_and_keeps_its_game() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (dest, staging, kept) = folder_and_version(
+            tmp.path(),
+            &[
+                ("Game.exe", b"new build", b"old build"),
+                ("engine.dll", b"x", b"x"),
+            ],
+        );
+        std::fs::create_dir_all(dest.join("saves")).unwrap();
+        std::fs::create_dir_all(staging.join("saves")).unwrap();
+        std::fs::write(dest.join("saves/slot1.sav"), b"today").unwrap();
+        std::fs::write(staging.join("saves/slot1.sav"), b"last week").unwrap();
+        let filter = crate::backup::SourceFilter {
+            narrow_non_saves: true,
+            ..Default::default()
+        };
+
+        let placed = place_staged(&staging, &dest, false, &kept, Some(&filter)).unwrap();
+
+        assert_eq!(placed.replaced, 1);
+        assert_eq!(
+            std::fs::read(dest.join("saves/slot1.sav")).unwrap(),
+            b"last week"
+        );
+        assert_eq!(std::fs::read(dest.join("Game.exe")).unwrap(), b"new build");
+
+        place_staged(&staging, &dest, false, &tmp.path().join("kept2"), None).unwrap();
+        assert_eq!(std::fs::read(dest.join("Game.exe")).unwrap(), b"old build");
     }
 
     #[test]
@@ -2398,7 +2517,7 @@ mod tests {
         seed(&dest, "same.sav", b"identical");
         seed(&dest, "local-only.sav", b"not in the version");
 
-        let placed = place_staged(&staging, &dest, false, &kept).unwrap();
+        let placed = place_staged(&staging, &dest, false, &kept, None).unwrap();
 
         assert_eq!(
             (placed.replaced, placed.created, placed.unchanged),
@@ -2438,7 +2557,7 @@ mod tests {
             return;
         }
 
-        let err = place_staged(&staging, &dest, false, &kept).unwrap_err();
+        let err = place_staged(&staging, &dest, false, &kept, None).unwrap_err();
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         assert!(
@@ -2467,7 +2586,7 @@ mod tests {
         std::fs::create_dir_all(&dest).unwrap();
         std::os::unix::fs::symlink(card.join("slot.sav"), dest.join("slot.sav")).unwrap();
 
-        place_staged(&staging, &dest, false, &tmp.path().join("kept")).unwrap();
+        place_staged(&staging, &dest, false, &tmp.path().join("kept"), None).unwrap();
 
         assert!(std::fs::symlink_metadata(dest.join("slot.sav"))
             .unwrap()

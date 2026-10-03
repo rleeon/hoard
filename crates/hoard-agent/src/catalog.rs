@@ -184,5 +184,6 @@ pub fn facts(slug: &str) -> hoard_core::ipc::GameFacts {
     hoard_core::ipc::GameFacts {
         steam_app_id: steam_app_id(slug),
         shields: crate::savefilter::shields_for_slug(slug),
+        install_saves: crate::savefilter::install_save_patterns(slug),
     }
 }

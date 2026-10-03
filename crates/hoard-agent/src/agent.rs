@@ -3447,9 +3447,11 @@ async fn run_auto_restore(
                 allow_device_local: save.allow_device_local.unwrap_or(false),
             },
             // Nothing is placed from here: `restore_files_into` below does the
-            // merge and parks its own losers under `conflict_root`.
+            // merge, narrowing included, and parks its own losers under
+            // `conflict_root`.
             backup_root: None,
             staging_root: None,
+            narrow: None,
         },
         |_, _| {},
     )
@@ -3680,6 +3682,13 @@ pub(crate) async fn restore_files_into(
             // By the name it has on disk, so a file matched under other capitals
             // does not count as local-only below.
             source_rels.insert(dest.strip_prefix(target).unwrap_or(rel).to_path_buf());
+            // Nor is the game itself written into a folder that is its install:
+            // heads uploaded before the upload filter carry it, and another
+            // machine's build of the game is not this one's to replace.
+            let size = entry.metadata().await.map(|m| m.len()).unwrap_or(0);
+            if !narrowing.keeps(&rel.to_string_lossy().replace('\\', "/"), size) {
+                continue;
+            }
             if dest.exists() {
                 if files_have_equal_bytes(&path, &dest).await? {
                     stats.skipped += 1;

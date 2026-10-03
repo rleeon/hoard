@@ -565,6 +565,11 @@ pub struct GameFacts {
     /// which the restore gate needs.
     #[serde(default)]
     pub shields: Vec<String>,
+    /// Where the game saves inside its own install
+    /// (`savefilter::install_save_patterns`), so a restore into the install
+    /// writes those and not the game. Empty from a service that predates it.
+    #[serde(default)]
+    pub install_saves: Vec<String>,
 }
 
 /// The catalogue in use.

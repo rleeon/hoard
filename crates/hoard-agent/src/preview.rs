@@ -164,10 +164,14 @@ fn push_capped(list: &mut Vec<String>, path: &str) {
 /// is settled without opening the file. In the worst case it reads as much as the
 /// save occupies, which is the same budget a real restore's dedup against disk
 /// already spends.
+///
+/// `narrow` is the restore's own ([`crate::restore::RestoreOptions::narrow`]): the
+/// game's files in an install neither count as overwritten nor as only here.
 pub async fn against_disk(
     remote: &[RemoteFile],
     dest: &Path,
     gate: &RestoreGate,
+    narrow: Option<&crate::backup::SourceFilter>,
 ) -> Result<RestorePreview> {
     // What the gate does not let through is not going to be written, so it cannot
     // appear in the preview as though it were. The same decision the restore
@@ -178,17 +182,23 @@ pub async fn against_disk(
     let remote = if crate::restore::is_single_file_snapshot(dest, &names) {
         remote
     } else {
+        let narrowing = narrow.map(|f| crate::backup::Narrowing::of(dest, f));
         filtered = remote
             .iter()
             .filter(|f| gate.allows(&f.relative_path))
+            .filter(|f| {
+                narrowing
+                    .as_ref()
+                    .is_none_or(|n| n.keeps(&f.relative_path, f.size_bytes))
+            })
             .cloned()
             .collect();
         &filtered[..]
     };
-    let local: Vec<LocalFile> = match crate::backup::walk_source(
-        dest,
-        &crate::backup::SourceFilter::shields_only(&gate.shields),
-    ) {
+    let local_filter = narrow
+        .cloned()
+        .unwrap_or_else(|| crate::backup::SourceFilter::shields_only(&gate.shields));
+    let local: Vec<LocalFile> = match crate::backup::walk_source(dest, &local_filter) {
         Ok(files) => files
             .into_iter()
             .map(|f| LocalFile {
@@ -280,6 +290,7 @@ pub async fn restore_preview(
     version: i64,
     dest: &Path,
     gate: &RestoreGate,
+    narrow: Option<&crate::backup::SourceFilter>,
 ) -> Result<RestorePreview> {
     let remote = remote_files(client, save_id, version).await?;
     if remote.is_empty() {
@@ -288,7 +299,7 @@ pub async fn restore_preview(
             ..Default::default()
         });
     }
-    against_disk(&remote, dest, gate).await
+    against_disk(&remote, dest, gate, narrow).await
 }
 
 #[cfg(test)]
@@ -399,7 +410,7 @@ mod tests {
             r("nuevo.sav", 7, Some("cc")),
         ];
 
-        let out = against_disk(&remote, dir.path(), &RestoreGate::permissive())
+        let out = against_disk(&remote, dir.path(), &RestoreGate::permissive(), None)
             .await
             .unwrap();
         assert_eq!(out.unchanged, 1);

@@ -121,18 +121,22 @@ pub async fn apply(
     // consulted when we know which game the folder belongs to; a bare `--to` over
     // a save that is not in the local state gets no shields and the kernel
     // decides on its own.
-    let shields = {
-        // A save new to this machine has no row until the restore is done, so with
-        // `--remember` its game comes from the plan.
-        let slug = match &home {
-            Some(home) => Some(home.game_slug.clone()),
-            None => CliState::load_default()
-                .ok()
-                .and_then(|(st, _)| st.saves.get(&save_id).map(|s| s.game_slug.clone())),
-        };
-        slug.map(|s| hoard_agent::savefilter::shields_for_slug(&s))
-            .unwrap_or_default()
+    // A save new to this machine has no row until the restore is done, so with
+    // `--remember` its game comes from the plan.
+    let slug = match &home {
+        Some(home) => Some(home.game_slug.clone()),
+        None => CliState::load_default()
+            .ok()
+            .and_then(|(st, _)| st.saves.get(&save_id).map(|s| s.game_slug.clone())),
     };
+    let shields = slug
+        .as_deref()
+        .map(hoard_agent::savefilter::shields_for_slug)
+        .unwrap_or_default();
+    // And what of the version is the game itself, should `dest` be its install.
+    let narrow = slug
+        .as_deref()
+        .map(hoard_agent::backup::SourceFilter::for_slug);
     let gate = hoard_core::kernel::fileclass::RestoreGate {
         shields,
         allow_device_local: allow_ini,
@@ -142,27 +146,34 @@ pub async fn apply(
     // the version's manifest with what is on disk. Always shown, because
     // restoring overwrites and that deserves saying beforehand; with `--dry-run`
     // it is all the command does.
-    let (preview, preview_error) =
-        match hoard_agent::preview::restore_preview(&client, &save_id, version, &dest, &gate).await
-        {
-            Ok(p) => (
-                Some(PreviewOut {
-                    modified: p.modified,
-                    added: p.added,
-                    local_only: p.local_only,
-                    modified_count: p.modified_count,
-                    added_count: p.added_count,
-                    local_only_count: p.local_only_count,
-                    unchanged: p.unchanged,
-                    bytes_to_write: p.bytes_to_write,
-                    comparable: p.comparable,
-                }),
-                None,
-            ),
-            // Not being able to look at what changes is no reason to block a
-            // restore.
-            Err(e) => (None, Some(format!("{e:#}"))),
-        };
+    let (preview, preview_error) = match hoard_agent::preview::restore_preview(
+        &client,
+        &save_id,
+        version,
+        &dest,
+        &gate,
+        narrow.as_ref(),
+    )
+    .await
+    {
+        Ok(p) => (
+            Some(PreviewOut {
+                modified: p.modified,
+                added: p.added,
+                local_only: p.local_only,
+                modified_count: p.modified_count,
+                added_count: p.added_count,
+                local_only_count: p.local_only_count,
+                unchanged: p.unchanged,
+                bytes_to_write: p.bytes_to_write,
+                comparable: p.comparable,
+            }),
+            None,
+        ),
+        // Not being able to look at what changes is no reason to block a
+        // restore.
+        Err(e) => (None, Some(format!("{e:#}"))),
+    };
 
     if dry_run {
         let out = RestoreOut {
@@ -238,6 +249,7 @@ pub async fn apply(
         gate,
         backup_root: None,
         staging_root: None,
+        narrow: narrow.clone(),
     };
     // The service watches this folder and backs it up five seconds after it
     // goes quiet. Mid-restore that would publish a half-written folder as a
@@ -287,19 +299,28 @@ pub async fn apply(
         // because it rereads the watched set only when told.
         let remembered = match home {
             Some(home) => {
-                home.commit(&client).await.with_context(|| {
-                    format!(
-                        "restored to {}, but couldn't keep it as this save's folder",
-                        dest.display()
-                    )
-                })?;
+                home.commit(&client, version, narrow.as_ref())
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "restored to {}, but couldn't keep it as this save's folder",
+                            dest.display()
+                        )
+                    })?;
                 Some(link::notify_reload().await.to_string())
             }
             None => None,
         };
         Ok::<_, anyhow::Error>((outcome, remembered))
-    }
-    .await;
+    };
+    // Ctrl+C outside the placement drops the restore rather than ending the
+    // process on the spot, so its staging folder goes away with it and the hold
+    // is let go below. Exiting at once left a whole download in the staging
+    // folder until the weekly sweep.
+    let restored = tokio::select! {
+        r = restored => r,
+        () = interrupt.cancelled() => Err(anyhow!("interrupted")),
+    };
     // On every way out, so a failed restore does not leave the save held until
     // the lease runs out. After one that went through, the service is handed
     // the newest version the server holds, so the restored folder goes up as
@@ -453,11 +474,12 @@ fn fmt_bytes(b: u64) -> String {
 
 /// Ctrl+C while the restored files are being swapped in would leave the folder
 /// half old, half new, with the originals parked where nobody looks. That
-/// phase is short, so the interrupt waits for it; outside it Ctrl+C stops the
-/// command at once, as it always did.
+/// phase is short, so the interrupt waits for it; outside it Ctrl+C cancels the
+/// restore, which cleans up its staging folder, and the command stops.
 struct PlacementGuard {
     placing: Arc<std::sync::atomic::AtomicBool>,
     interrupted: Arc<std::sync::atomic::AtomicBool>,
+    cancel: Arc<tokio::sync::Notify>,
     listener: tokio::task::JoinHandle<()>,
 }
 
@@ -466,26 +488,33 @@ impl PlacementGuard {
         use std::sync::atomic::Ordering;
         let placing = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let interrupted = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let (p, i) = (placing.clone(), interrupted.clone());
+        let cancel = Arc::new(tokio::sync::Notify::new());
+        let (p, i, c) = (placing.clone(), interrupted.clone(), cancel.clone());
         let listener = tokio::spawn(async move {
             while tokio::signal::ctrl_c().await.is_ok() {
+                i.store(true, Ordering::SeqCst);
                 if p.load(Ordering::SeqCst) {
-                    i.store(true, Ordering::SeqCst);
                     eprintln!("\nfinishing putting the files in place; stopping right after");
                 } else {
-                    std::process::exit(130);
+                    c.notify_one();
                 }
             }
         });
         Self {
             placing,
             interrupted,
+            cancel,
             listener,
         }
     }
 
     fn placing(&self, on: bool) {
         self.placing.store(on, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Resolves on a Ctrl+C outside the placement.
+    async fn cancelled(&self) {
+        self.cancel.notified().await;
     }
 
     /// Honour a Ctrl+C that arrived during the placement, now that it is over
