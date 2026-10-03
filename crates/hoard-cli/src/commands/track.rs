@@ -91,7 +91,46 @@ pub async fn run(args: Args) -> Result<()> {
         local_path.display(),
         outcome.tracked.save_id
     );
+    // A folder picked by hand gets the advice the desktop's dialog gives. The add
+    // has gone ahead all the same: it is a warning, never a refusal.
+    if args.path.is_some() {
+        let advice = library::advise_folder(&local_path, Some(&target.slug));
+        if let Some(note) = &advice.kind {
+            eprintln!(
+                "warning: {}",
+                folder_note_text(note, advice.keeps_catalog_saves)
+            );
+            for better in &advice.suggestions {
+                eprintln!("  a better folder may be: {better}");
+            }
+        }
+    }
     Ok(())
+}
+
+fn folder_note_text(note: &library::FolderNote, keeps_catalog_saves: bool) -> &'static str {
+    use library::FolderNote;
+    match note {
+        FolderNote::Install if keeps_catalog_saves => {
+            "this is the game's installation; only the saves it keeps inside it are backed up"
+        }
+        FolderNote::Install => {
+            "this is the game's installation, not its save folder; the game's own files are left out of the backup"
+        }
+        FolderNote::Installer => {
+            "this looks like a game installer, not a save folder; the installer's files are left out of the backup"
+        }
+        FolderNote::WinePrefix => {
+            "this is a whole Wine prefix; Windows' own files are left out, but the game's save folder inside it is the better choice"
+        }
+        FolderNote::InstallMedia => {
+            "this folder only holds disc images, installers or archives: the game as it shipped, not anything it wrote"
+        }
+        FolderNote::CodeProject => "this looks like a code project, not a save folder",
+        FolderNote::Empty => {
+            "this folder is empty: right for a game that hasn't saved yet, a slip otherwise"
+        }
+    }
 }
 
 struct Target {

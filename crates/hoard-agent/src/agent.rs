@@ -5649,7 +5649,10 @@ fn process_poll(
         // 10-min timer. Cheap: `cpu_usage` and `name` come from the same
         // `/proc/<pid>/stat` already parsed above. Tracked games are skipped
         // via `name_index` (their launch is already handled by the barrier).
+        // Not a thread either: Linux lists every thread as a task, and a busy
+        // `tokio-rt-worker` in some server passed for a game.
         if proc.cpu_usage() >= HEAVY_PROCESS_CPU_PCT
+            && proc.thread_kind().is_none()
             && !name_index.contains_key(&name)
             && !shared_name_index.contains_key(&name)
             && !corr_index.contains_key(&name)

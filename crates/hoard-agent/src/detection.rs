@@ -1269,10 +1269,20 @@ fn detect_tracked_links(state: &CliState) -> Vec<LinkWarning> {
 }
 
 fn links_inside(root: &Path) -> Vec<SkippedLink> {
+    let real_root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     let mut found = Vec::new();
     let mut read = 0usize;
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
+        // A Wine prefix's drive letters: `z:` is the whole disk and `c:` is the
+        // prefix's own `drive_c`. Telling someone to track what they point at
+        // told them to track `/`.
+        if dir
+            .file_name()
+            .is_some_and(|n| n.eq_ignore_ascii_case("dosdevices"))
+        {
+            continue;
+        }
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
         };
@@ -1284,8 +1294,15 @@ fn links_inside(root: &Path) -> Vec<SkippedLink> {
             let Ok(ft) = entry.file_type() else { continue };
             let path = entry.path();
             if ft.is_symlink() {
-                // A dangling link has nothing behind it to lose.
-                if let (true, Ok(target)) = (path.exists(), std::fs::read_link(&path)) {
+                // A dangling link has nothing behind it to lose; nor does one that
+                // leads back into the folder, or out to something that holds it.
+                let Ok(real) = std::fs::canonicalize(&path) else {
+                    continue;
+                };
+                if real.starts_with(&real_root) || real_root.starts_with(&real) {
+                    continue;
+                }
+                if let Ok(target) = std::fs::read_link(&path) {
                     found.push(SkippedLink { link: path, target });
                 }
             } else if ft.is_dir() {
@@ -7068,6 +7085,31 @@ mod tests {
         assert_eq!(links[0].link, emudeck.join("saves"));
         assert_eq!(links[0].target, real_saves);
         assert!(links_inside(&real_saves).is_empty());
+    }
+
+    /// A tracked Wine prefix listed `dosdevices/z: → /` and `c: → ../drive_c`
+    /// and said to track what they point at. What Wine links out to the home
+    /// (`Documents`, where a game's "My Documents" saves really land) stays.
+    #[test]
+    #[cfg(unix)]
+    fn a_prefix_reports_only_links_that_leave_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home_docs = tmp.path().join("home/Documents");
+        std::fs::create_dir_all(&home_docs).unwrap();
+        let prefix = tmp.path().join("home/.wine");
+        let user = prefix.join("drive_c/users/me");
+        std::fs::create_dir_all(&user).unwrap();
+        std::fs::create_dir_all(prefix.join("dosdevices")).unwrap();
+        std::os::unix::fs::symlink("/", prefix.join("dosdevices/z:")).unwrap();
+        std::os::unix::fs::symlink("../drive_c", prefix.join("dosdevices/c:")).unwrap();
+        std::os::unix::fs::symlink(&home_docs, user.join("Documents")).unwrap();
+        // Inside the folder, and out to the folder that holds it.
+        std::os::unix::fs::symlink(prefix.join("drive_c"), user.join("C")).unwrap();
+        std::os::unix::fs::symlink(tmp.path().join("home"), user.join("Home")).unwrap();
+
+        let links = links_inside(&prefix);
+        assert_eq!(links.len(), 1, "{links:?}");
+        assert_eq!(links[0].link, user.join("Documents"));
     }
 
     #[test]

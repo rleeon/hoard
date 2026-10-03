@@ -841,6 +841,10 @@ pub fn is_payload(kind: FolderKind, rel: &str, size: u64) -> bool {
     if dirs.iter().any(|d| looks_like_save_dir_name(d)) {
         return false;
     }
+    // Inno Setup's uninstaller keeps its log next to it: `unins000.dat`.
+    if file.starts_with("unins") && matches!(ext, "dat" | "msg") {
+        return true;
+    }
     // Split archives (`data.041`, `game.000`): three digits and nothing else.
     if ext.len() >= 3 && ext.bytes().all(|b| b.is_ascii_digit()) {
         return true;
@@ -940,6 +944,8 @@ mod tests {
         assert!(is_payload(Install, "Data/data/data.041", 1));
         assert!(!is_payload(Install, "SaveData.dat", 1));
         assert!(!is_payload(Install, "Saves/world.dat", 3_500_000_000));
+        assert!(is_payload(Install, "unins000.dat", 100));
+        assert!(!is_payload(Install, "Saves/unins000.dat", 100));
         assert!(is_payload(
             WinePrefix,
             "drive_c/windows/system32/d3d9.dll",

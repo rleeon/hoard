@@ -228,6 +228,18 @@ const NON_GAME_PROCESS_EXACT: &[&str] = &[
     "cursor.exe",
     "zed",
     "zed.exe",
+    // Compilers and build tools burn a core for minutes and asked for a
+    // detection scan on every build.
+    "rustc",
+    "rustc.exe",
+    "cargo",
+    "cargo.exe",
+    "cc1",
+    "cc1plus",
+    "cl.exe",
+    "link.exe",
+    "ld",
+    "ld.lld",
 ];
 
 /// A process born inside this window after the SYSTEM booted is autostart
@@ -431,7 +443,7 @@ pub struct WriteObservation {
     phantom_strikes: u32,
 }
 
-/// Store persistido de correlaciones, indexado por dir observado.
+/// The persisted correlations, keyed by the folder observed.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CorrelationStore {
     #[serde(default)]
@@ -446,7 +458,7 @@ fn now_ms() -> u64 {
 }
 
 impl CorrelationStore {
-    /// Ruta por defecto en disco, junto a `state.json`.
+    /// Default path on disk, next to `state.json`.
     pub fn default_path() -> Result<PathBuf> {
         Ok(crate::config::CliConfig::state_dir()?.join("correlation.json"))
     }
@@ -645,6 +657,8 @@ mod tests {
         assert!(!is_game_like("svchost.exe", None));
         assert!(!is_game_like("steamwebhelper", None));
         assert!(!is_game_like("steam", None));
+        assert!(!is_game_like("rustc", None));
+        assert!(!is_game_like("cc1plus", None));
         assert!(!is_game_like(
             "steam",
             Some(Path::new("/home/deck/.local/share/Steam/ubuntu12_32/steam"))
