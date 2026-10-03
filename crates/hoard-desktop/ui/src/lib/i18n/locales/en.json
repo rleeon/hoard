@@ -1172,5 +1172,6 @@
   "help.err_unreadable": "One of the files couldn't be read.",
   "help.err_throttled": "You've sent several in a row. Try again in a while.",
   "help.err_network": "Couldn't reach Hoard. Check your connection and try again.",
+  "help.err_server": "Hoard couldn't take it right now. Try again in a while.",
   "help.file_too_big": "{name} is over {max} and can't be sent."
 }

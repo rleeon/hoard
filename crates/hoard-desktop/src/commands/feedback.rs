@@ -95,7 +95,12 @@ fn to_i18n(e: FeedbackError) -> String {
         FeedbackError::Unreadable(_) => "i18n:help.err_unreadable".into(),
         FeedbackError::Throttled(_) => "i18n:help.err_throttled".into(),
         FeedbackError::Network(_) => "i18n:help.err_network".into(),
-        e @ FeedbackError::Http { .. } => e.to_string(),
+        // The person gets a sentence in their language; the status and the
+        // server's words go to the log, which the next report can carry.
+        e @ FeedbackError::Http { .. } => {
+            tracing::warn!(error = %e, "hoard-help: send refused");
+            "i18n:help.err_server".into()
+        }
     }
 }
 
@@ -127,10 +132,17 @@ pub async fn feedback_stash_image(
     name: String,
     png_base64: String,
 ) -> Result<PickedFile, String> {
+    stash_image(&app, &name, &png_base64).await.map_err(|e| {
+        tracing::warn!(error = %e, "hoard-help: could not keep a pasted image");
+        "i18n:help.err_unreadable".to_string()
+    })
+}
+
+async fn stash_image(app: &AppHandle, name: &str, png_base64: &str) -> Result<PickedFile, String> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(png_base64.trim())
         .map_err(|e| e.to_string())?;
-    let dir = pasted_dir(&app)?;
+    let dir = pasted_dir(app)?;
     tokio::fs::create_dir_all(&dir)
         .await
         .map_err(|e| e.to_string())?;

@@ -1172,5 +1172,6 @@
   "help.err_unreadable": "有一个文件无法读取。",
   "help.err_throttled": "你连续发送了好几条。请稍后再试。",
   "help.err_network": "无法连接到 Hoard。请检查网络后重试。",
+  "help.err_server": "Hoard 暂时无法接收。请稍后再试。",
   "help.file_too_big": "{name} 超过了 {max}，无法发送。"
 }

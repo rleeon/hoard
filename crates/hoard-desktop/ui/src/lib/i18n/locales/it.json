@@ -1172,5 +1172,6 @@
   "help.err_unreadable": "Non è stato possibile leggere uno dei file.",
   "help.err_throttled": "Ne hai inviati diversi di fila. Riprova tra un po'.",
   "help.err_network": "Impossibile raggiungere Hoard. Controlla la connessione e riprova.",
+  "help.err_server": "Hoard non è riuscito a riceverlo in questo momento. Riprova tra un po'.",
   "help.file_too_big": "{name} supera {max} e non può essere inviato."
 }

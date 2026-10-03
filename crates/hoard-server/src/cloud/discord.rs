@@ -10,7 +10,7 @@
 //!
 //!   * There is no red. A process that has stopped cannot post "I stopped",
 //!     so the states are `ok` and `degraded` (up, but Postgres is failing).
-//!     A hard outage shows as an embed that stops refreshing; the timestamp
+//!     A hard outage shows as an embed that stops refreshing; the time
 //!     in the footer is what gives it away, which is why every tick rewrites
 //!     it even when nothing else changed.
 //!   * The health probe is a local `SELECT 1`, not an HTTP round trip to
@@ -32,7 +32,7 @@ use crate::config::DiscordConfig;
 use anyhow::{Context, Result};
 use reqwest::{Method, RequestBuilder, StatusCode};
 use std::time::{Duration, Instant};
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::OffsetDateTime;
 
 const API: &str = "https://discord.com/api/v10";
 
@@ -97,22 +97,26 @@ fn embed(status: &str, errors: &Errors) -> serde_json::Value {
             "The server is up, but the database is failing.",
         ),
     };
+    // Written out in English rather than sent as the embed's `timestamp`:
+    // Discord renders that one in each reader's own language ("hoy a las
+    // 17:19"), and this channel speaks English only.
     let now = OffsetDateTime::now_utc()
-        .format(&Rfc3339)
+        .format(time::macros::format_description!(
+            "[year]-[month]-[day] [hour]:[minute]"
+        ))
         .unwrap_or_default();
 
     serde_json::json!({
         "title": format!("{emoji} Hoard Server — {label}"),
         "description": description,
         "color": colour,
-        "timestamp": now,
         "fields": [
             { "name": "Status", "value": format!("`{status}`"), "inline": true },
             { "name": "Version", "value": format!("`{}`", env!("CARGO_PKG_VERSION")), "inline": true },
             { "name": "Errors (24h) · server", "value": server_errors_text(&errors.server, errors.since_boot), "inline": false },
             { "name": "Errors (24h) · apps", "value": app_errors_text(errors.apps.as_ref()), "inline": false },
         ],
-        "footer": { "text": "Hoard Cloud Status" },
+        "footer": { "text": format!("Hoard Cloud Status · updated {now} UTC") },
     })
 }
 
@@ -616,8 +620,12 @@ mod tests {
             format!("`{}`", env!("CARGO_PKG_VERSION"))
         );
         // Rewritten every tick: it is the only thing that tells a reader the
-        // embed is still live rather than frozen by an outage.
-        assert!(e["timestamp"].as_str().unwrap().contains('T'));
+        // embed is still live rather than frozen by an outage. Plain text, so
+        // no reader's Discord translates it.
+        assert!(e.get("timestamp").is_none());
+        let footer = e["footer"]["text"].as_str().unwrap();
+        assert!(footer.starts_with("Hoard Cloud Status · updated 20"));
+        assert!(footer.ends_with(" UTC"));
     }
 
     /// The shape production actually uses: every setting arrives as an
