@@ -13,9 +13,10 @@
 //! the verdict inside despite being below the minimum, and with no operational
 //! INFO.
 //!
-//! It gets its own test binary because it touches two process-global things,
-//! `XDG_DATA_HOME` (so it does not read the user's real prefs) and the `tracing`
-//! subscriber, and neither can be shared with other tests.
+//! It gets its own test binary because it touches process-global things, the
+//! folders (`XDG_DATA_HOME` and `HOARD_PROFILE`, so it does not read or write the
+//! user's real prefs and session) and the `tracing` subscriber, and none of them
+//! can be shared with other tests.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -154,11 +155,39 @@ fn collect_entries(rx: &Receiver<Seen>, wanted: usize) -> (Vec<Seen>, Vec<LogEnt
 /// and leaves the rest of the string alone. Deriving the separator from the
 /// host here would put a `\` in the middle of a path the fixture never wrote
 /// that way, and fail on Windows.
+/// Takes the test profile's folders away when the test ends. Linux keeps them in
+/// the tempdir; elsewhere they sit next to the real ones.
+struct ProfileDirs;
+
+impl Drop for ProfileDirs {
+    fn drop(&mut self) {
+        if cfg!(target_os = "linux") || hoard_agent::config::profile_suffix().is_none() {
+            return;
+        }
+        if let Ok(dirs) = hoard_agent::config::CliConfig::project_dirs() {
+            let profile = hoard_agent::config::profile_name("hoard");
+            for dir in [
+                dirs.config_dir(),
+                dirs.data_dir(),
+                dirs.data_local_dir(),
+                dirs.cache_dir(),
+            ] {
+                let _ = std::fs::remove_dir_all(dir);
+                // Windows nests them in a folder named after the profile: that
+                // one goes too, and only once it is empty.
+                if let Some(parent) = dir.parent().filter(|p| p.ends_with(&profile)) {
+                    let _ = std::fs::remove_dir(parent);
+                }
+            }
+        }
+    }
+}
+
 fn under_home(tail: &str) -> String {
     format!("/home/<user>/{tail}")
 }
 
-/// Los campos de una desmentida, por veredicto.
+/// A contradiction's fields, by verdict.
 fn verdict<'a>(entries: &'a [LogEntry], name: &str) -> &'a serde_json::Value {
     entries
         .iter()
@@ -180,6 +209,12 @@ fn a_batch_actually_reaches_the_server_redacted() {
     // (and the shipper would obey) the real prefs of whoever runs it.
     std::env::set_var("XDG_DATA_HOME", home.path());
     std::env::set_var("XDG_CONFIG_HOME", home.path());
+    // The XDG variables only move the folders on Linux. On Windows and macOS the
+    // paths come from the system, and this test wrote the default prefs over the
+    // real ones and deleted the real `cloud.toml` of whoever ran it (2026-10-03).
+    // A profile of its own moves them everywhere.
+    std::env::set_var("HOARD_PROFILE", format!("logship-{}", std::process::id()));
+    let _profile = ProfileDirs;
 
     let prefs = Prefs::default();
     assert!(

@@ -56,6 +56,14 @@ const FLUSH_INTERVAL: Duration = Duration::from_secs(5);
 /// minutes or so; asking once a minute is cheap and does not hammer the server with
 /// a token we already know is dead.
 const REJECTED_BACKOFF: Duration = Duration::from_secs(60);
+/// The wait after the server says it is busy (429, 5xx) without saying for how
+/// long, and the ceiling on how long a `Retry-After` can make us wait. Sending
+/// the next batch at once was what a throttled shipper did: a self-hosted
+/// server's limiter answered 429 and the thread asked again, at 86% of a core.
+const BUSY_BACKOFF: Duration = Duration::from_secs(30);
+const BUSY_BACKOFF_MAX: Duration = Duration::from_secs(300);
+/// The shipper thread's name. [`LogShipLayer`] drops whatever is logged on it.
+const SHIPPER_THREAD: &str = "hoard-logship";
 
 // The batch body (`LogEntry`, `DeviceMeta`, `LogBatch`) lives in
 // `hoard_core::wire`, shared with `hoard_server::routes::logs` (ADR 0021 C.6). This
@@ -74,7 +82,7 @@ pub struct LogShipLayer {
 pub fn start() -> LogShipLayer {
     let (tx, rx) = sync_channel::<LogEntry>(CHANNEL_CAPACITY);
     let _ = std::thread::Builder::new()
-        .name("hoard-logship".into())
+        .name(SHIPPER_THREAD.into())
         .spawn(move || drain_loop(rx));
     LogShipLayer { tx }
 }
@@ -89,6 +97,13 @@ where
         // Never ship our own shipper logs: that would feed back into the channel
         // and, worse, loop network errors into more events.
         if target.starts_with("hoard_agent::logship") {
+            return;
+        }
+        // Nor anything logged on the shipper's own thread, whatever module it
+        // comes from. Reading the session for a batch logged a line, and that line
+        // was the next batch: with a self-hosted server asking for DEBUG and a
+        // keyring that kept failing, 772 requests a second.
+        if std::thread::current().name() == Some(SHIPPER_THREAD) {
             return;
         }
 
@@ -381,13 +396,15 @@ fn drain_loop(rx: Receiver<LogEntry>) {
                     // shipper retrying against nothing until a restart. It goes
                     // back to the outer loop, which re-resolves with whatever
                     // token the service has rotated to meanwhile.
-                    if let Err(PostError::Rejected) =
-                        rt.block_on(post_batch(client, &policy, &body))
-                    {
-                        drop_rejected_lease(&policy);
-                        discard_available(&rx);
-                        std::thread::sleep(REJECTED_BACKOFF);
-                        break;
+                    match rt.block_on(post_batch(client, &policy, &body)) {
+                        Err(PostError::Rejected) => {
+                            drop_rejected_lease(&policy);
+                            discard_available(&rx);
+                            std::thread::sleep(REJECTED_BACKOFF);
+                            break;
+                        }
+                        Err(PostError::Busy(wait)) => std::thread::sleep(wait),
+                        Ok(()) | Err(PostError::Transient) => {}
                     }
                 }
             }
@@ -533,13 +550,17 @@ fn session_matches(policy: &Policy) -> bool {
     matches!(current_session(), Some((_, token)) if token == policy.token)
 }
 
-/// Why a batch did not get in. Only the actionable case is distinguished: the
-/// server rejecting the credential. A network failure is not actionable, since the
-/// next batch goes out anyway, and gets swallowed as always.
+/// Why a batch did not get in. Only the actionable cases are distinguished: the
+/// server rejecting the credential, and the server asking us to slow down. A
+/// network failure is not actionable, since the next batch goes out anyway, and
+/// gets swallowed as always.
 enum PostError {
     /// 401 or 403: the token is no good. It has to be re-resolved.
     Rejected,
-    /// Network down, timeout, 5xx: it retries on its own with the next batch.
+    /// 429 or 5xx: the server is there and busy. The batch is lost; the next one
+    /// waits this long.
+    Busy(Duration),
+    /// Network down or timed out: it retries on its own with the next batch.
     Transient,
 }
 
@@ -561,8 +582,24 @@ async fn post_batch(
         reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
             Err(PostError::Rejected)
         }
+        s if s == reqwest::StatusCode::TOO_MANY_REQUESTS || s.is_server_error() => {
+            let asked = res
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok());
+            Err(PostError::Busy(busy_wait(asked)))
+        }
         _ => Err(PostError::Transient),
     }
+}
+
+/// How long to wait after a busy answer: the server's `Retry-After` in seconds
+/// when it sent one, within reason, and [`BUSY_BACKOFF`] otherwise.
+fn busy_wait(retry_after: Option<&str>) -> Duration {
+    retry_after
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(|secs| Duration::from_secs(secs).clamp(Duration::from_secs(1), BUSY_BACKOFF_MAX))
+        .unwrap_or(BUSY_BACKOFF)
 }
 
 fn device_meta() -> DeviceMeta {
@@ -641,6 +678,46 @@ mod tests {
             fields: None,
             ts: None,
         }
+    }
+
+    /// Reading the session for a batch logs a line when the keyring refuses; on
+    /// the shipper's thread that line must not become the next batch.
+    #[test]
+    fn nothing_logged_on_the_shipper_thread_is_queued() {
+        use tracing_subscriber::layer::SubscriberExt;
+
+        let (tx, rx) = sync_channel::<LogEntry>(8);
+        let dispatch =
+            tracing::Dispatch::new(tracing_subscriber::registry().with(LogShipLayer { tx }));
+        let on_shipper = dispatch.clone();
+        std::thread::Builder::new()
+            .name(SHIPPER_THREAD.into())
+            .spawn(move || {
+                tracing::dispatcher::with_default(&on_shipper, || {
+                    tracing::debug!(target: "hoard_agent::credentials", "from the shipper");
+                })
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        assert!(rx.try_recv().is_err(), "the shipper's own line was queued");
+
+        tracing::dispatcher::with_default(&dispatch, || {
+            tracing::debug!(target: "hoard_agent::credentials", "from elsewhere");
+        });
+        assert_eq!(rx.try_recv().expect("queued").message, "from elsewhere");
+    }
+
+    #[test]
+    fn a_busy_server_gets_time_within_reason() {
+        assert_eq!(busy_wait(None), BUSY_BACKOFF);
+        assert_eq!(busy_wait(Some("120")), Duration::from_secs(120));
+        assert_eq!(busy_wait(Some("0")), Duration::from_secs(1));
+        assert_eq!(busy_wait(Some("86400")), BUSY_BACKOFF_MAX);
+        assert_eq!(
+            busy_wait(Some("Wed, 21 Oct 2026 07:28:00 GMT")),
+            BUSY_BACKOFF
+        );
     }
 
     #[test]
