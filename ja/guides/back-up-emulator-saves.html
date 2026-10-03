@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../../favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png" />
+    <link rel="mask-icon" href="../../favicon.svg" color="#047857" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0f0c" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Per-page title/description/canonical/OG/hreflang come from <Seo>; see $lib/components/Seo.svelte. -->
+    <link href="../../_app/immutable/entry/start.00LYHuPC.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B7ji6ajS.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ClLX-Rag.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/R9X0KGVz.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/OA8UcISh.js" rel="modulepreload">
+		<link href="../../_app/immutable/entry/app.BR1y---j.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Dp1pzeXC.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3cuW3tw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Bzak7iHL.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BGm3o2nB.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Bjz-1iGz.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DHX6DgwL.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/6w4bZfJ6.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BxgiTDe6.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/0.DrlT6f36.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DGu5OY79.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/C4BeUwog.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/tAVqoJEt.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DgZMx88v.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DFXWib6p.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DYpJ3QNg.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DDQvHvP4.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ekElgN0c.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BAHKdjDo.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Cq3UCiMq.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CwYcE6VZ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/C0ba4Sys.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B8-iNRqw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/TiSfKgeK.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/2.BhvtQj7H.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/8.CuCRB-wP.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/GzlLhF5P.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Cm6i5l4-.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B7zdsHEr.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/58PR3EdY.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B1iM7bja.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DTMqVQcA.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/-0B91wyq.js" rel="modulepreload">
+		<link href="../../_app/env.js" rel="modulepreload">
+		<!--6rcv4m--><!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"エミュレーターのセーブをバックアップ・同期する方法（RetroArch、Dolphin、PCSX2）","description":"RetroArch、Dolphin、PCSX2、DuckStationなどのエミュレーターのセーブをPCとSteam Deck間でバックアップ・同期。履歴付き、保存場所の一覧も。","inLanguage":"ja","datePublished":"2026-10-01","dateModified":"2026-10-01","mainEntityOfPage":"https://hoard.services/ja/guides/back-up-emulator-saves","author":{"@type":"Organization","name":"Hoard","url":"https://hoard.services"},"publisher":{"@type":"Organization","name":"Hoard","logo":{"@type":"ImageObject","url":"https://hoard.services/icon.png"}}}</script><!----> <!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","inLanguage":"ja","mainEntity":[{"@type":"Question","name":"Hoard は ROM もバックアップしますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>いいえ。追跡するのはセーブフォルダーで、ゲームファイルではありません。ROM は大きく、変化せず、すでに手元にあるので、バージョン管理するものがありません。\u003c/p>\n"}},{"@type":"Question","name":"PCSX2、Dolphin、DuckStation にクラウドセーブは組み込まれていますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>いいえ。セーブをローカルのフォルダーに書き込み、同期はユーザーに任せています。上に挙げたフォルダーに同期ツールを向ければ、セーブはマシン間でついてきます。\u003c/p>\n"}},{"@type":"Question","name":"RetroArch にクラウド同期はありますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>はい。自分で運用またはレンタルする WebDAV サーバーが必要な Cloud Sync が組み込まれています。WebDAV を設定したくない、巻き戻せるバージョン履歴がほしい、単体エミュレーターも使う、という場合は Hoard が代わりになります。\u003c/p>\n"}},{"@type":"Question","name":"ゲームモードの Steam Deck でも動きますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>はい。エンジンがバックグラウンドサービスとして動くので、ゲームを終了したときにウィンドウなしでセーブがバックアップされます。Flatpak や EmuDeck のフォルダーも他と同じように使えます。\u003c/p>\n"}},{"@type":"Question","name":"エミュレーターがポータブル版です。使えますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>はい。実行ファイルの隣にあるフォルダーを手動で追加すれば、Hoard は他のセーブ場所と同じように追跡します。携帯機ではこれが一般的な構成です。\u003c/p>\n"}},{"@type":"Question","name":"2 台の PC 間でセーブステートを同期できますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>できますし、Hoard はそうします。ステートが読み込めるかどうかは両方のマシンのエミュレーターが同じバージョンかどうかにかかっており、これは同期ではなくエミュレーター側の制約です。セーブファイルにはこの問題がありません。\u003c/p>\n"}},{"@type":"Question","name":"リストにないエミュレーターでも使えますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>ほぼ確実に使えます。一般的なものは自動で検出され、それ以外はセーブフォルダーを Hoard に指定すれば追加できます。\u003c/p>\n"}},{"@type":"Question","name":"セルフホストするとエミュレーターで何か変わりますか？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>いいえ。検出も、バージョンも、同期も同じです。ストレージがあなたのものになるだけです。\u003c/p>\n"}}]}</script><!----><!----><!--gsrl61--><meta name="description" content="RetroArch、Dolphin、PCSX2、DuckStationなどのエミュレーターのセーブをPCとSteam Deck間でバックアップ・同期。履歴付き、保存場所の一覧も。"/> <link rel="canonical" href="https://hoard.services/ja/guides/back-up-emulator-saves"/> <!--[--><link rel="alternate" hreflang="en" href="https://hoard.services/guides/back-up-emulator-saves"/><link rel="alternate" hreflang="es" href="https://hoard.services/es/guides/back-up-emulator-saves"/><link rel="alternate" hreflang="de" href="https://hoard.services/de/guides/back-up-emulator-saves"/><link rel="alternate" hreflang="fr" href="https://hoard.services/fr/guides/back-up-emulator-saves"/><link rel="alternate" hreflang="it" href="https://hoard.services/it/guides/back-up-emulator-saves"/><link rel="alternate" hreflang="ja" href="https://hoard.services/ja/guides/back-up-emulator-saves"/><link rel="alternate" hreflang="pt" href="https://hoard.services/pt/guides/back-up-emulator-saves"/><link rel="alternate" hreflang="zh" href="https://hoard.services/zh/guides/back-up-emulator-saves"/><!--]--> <link rel="alternate" hreflang="x-default" href="https://hoard.services/guides/back-up-emulator-saves"/> <meta property="og:type" content="article"/> <meta property="og:site_name" content="Hoard"/> <meta property="og:title" content="エミュレーターのセーブをバックアップ・同期する方法（RetroArch、Dolphin、PCSX2） — Hoard"/> <meta property="og:description" content="RetroArch、Dolphin、PCSX2、DuckStationなどのエミュレーターのセーブをPCとSteam Deck間でバックアップ・同期。履歴付き、保存場所の一覧も。"/> <meta property="og:url" content="https://hoard.services/ja/guides/back-up-emulator-saves"/> <meta property="og:image" content="https://hoard.services/app.webp"/> <meta property="og:locale" content="ja_JP"/> <!--[--><meta property="og:locale:alternate" content="en_US"/><meta property="og:locale:alternate" content="es_ES"/><meta property="og:locale:alternate" content="de_DE"/><meta property="og:locale:alternate" content="fr_FR"/><meta property="og:locale:alternate" content="it_IT"/><meta property="og:locale:alternate" content="pt_PT"/><meta property="og:locale:alternate" content="zh_CN"/><!--]--> <meta name="twitter:card" content="summary_large_image"/> <meta name="twitter:title" content="エミュレーターのセーブをバックアップ・同期する方法（RetroArch、Dolphin、PCSX2） — Hoard"/> <meta name="twitter:description" content="RetroArch、Dolphin、PCSX2、DuckStationなどのエミュレーターのセーブをPCとSteam Deck間でバックアップ・同期。履歴付き、保存場所の一覧も。"/> <meta name="twitter:image" content="https://hoard.services/app.webp"/><!----><title>エミュレーターのセーブをバックアップ・同期する方法（RetroArch、Dolphin、PCSX2） — Hoard</title>
+		<link href="../../_app/immutable/assets/0.DPjmFztL.css" rel="stylesheet">
+		<link href="../../_app/immutable/assets/8.9SD7pss8.css" rel="stylesheet">
+  </head>
+  <body class="antialiased">
+    <div style="display: contents"><!--[--><!--[0--><!--[--><div class="lang-fade relative isolate flex min-h-full flex-col text-ink " data-sveltekit-preload-data="hover"><a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent-deep focus:px-3 focus:py-2 focus:text-sm focus:text-white">Skip to content</a> <header class="sticky top-0 z-40 w-full transition-colors duration-300 bg-bg/80 backdrop-blur-md"><nav class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]"><a href="/ja" class="nav-pill glow pop-self group flex items-center ring-focus md:justify-self-start" aria-label="Hoard home"><span class="flex items-baseline text-[23px] font-semibold tracking-[-0.02em] text-ink"><svg viewBox="0 0 33 44" height="18" width="13.5" fill="var(--color-accent)" aria-hidden="true" class="mr-[3px] h-[0.78em] w-auto"><rect x="0" y="0" width="9" height="44"></rect><rect x="24" y="0" width="9" height="44"></rect><rect x="0" y="17" width="33" height="9"></rect></svg><!---->oard</span></a> <div class="hidden items-center gap-1 md:flex md:justify-self-center"><a href="/ja/download" class="nav-pill glow pop-self ring-focus text-sm text-ink-soft hover:text-ink">ダウンロード</a> <a href="/ja/pricing" class="nav-pill glow pop-self ring-focus text-sm text-ink-soft hover:text-ink">料金</a> <a href="/ja/cli" class="nav-pill glow pop-self ring-focus text-sm text-ink-soft hover:text-ink">CLI</a> <a href="/ja/guides" class="nav-pill glow pop-self ring-focus text-sm nav-pill-active">ガイド</a> <a href="/ja/help" class="nav-pill glow pop-self ring-focus text-sm text-ink-soft hover:text-ink">ヘルプ</a></div> <div class="hidden items-center gap-3 md:flex md:justify-self-end"><details class="group relative svelte-1h32yp1"><summary class="nav-pill glow pop-self flex cursor-pointer list-none items-center gap-1.5 text-sm text-ink-soft ring-focus [&amp;::-webkit-details-marker]:hidden" aria-label="Language"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-anim="pop" class="lucide-icon lucide lucide-globe lang-globe h-4 w-4 transition-transform duration-300 ease-out rotate-0"><!--[--><!----><circle cx="12" cy="12" r="10"><!----></circle><!----><!----><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"><!----></path><!----><!----><path d="M2 12h20"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <span class="font-medium transition-colors duration-300 ">日本語</span></summary> <div data-sveltekit-preload-data="tap" class="lang-menu absolute right-0 z-50 mt-2 min-w-40 overflow-hidden rounded-lg border border-line bg-bg/95 py-1 shadow-lg backdrop-blur-md svelte-1h32yp1"><!--[--><a href="/guides/back-up-emulator-saves" hreflang="en" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">English <!--[-1--><!--]--></a><a href="/es/guides/back-up-emulator-saves" hreflang="es" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Español <!--[-1--><!--]--></a><a href="/de/guides/back-up-emulator-saves" hreflang="de" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Deutsch <!--[-1--><!--]--></a><a href="/fr/guides/back-up-emulator-saves" hreflang="fr" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Français <!--[-1--><!--]--></a><a href="/it/guides/back-up-emulator-saves" hreflang="it" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Italiano <!--[-1--><!--]--></a><a href="/ja/guides/back-up-emulator-saves" hreflang="ja" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink">日本語 <!--[0--><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-check h-3.5 w-3.5 text-accent"><!--[--><!----><path d="M20 6 9 17l-5-5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!--]--></a><a href="/pt/guides/back-up-emulator-saves" hreflang="pt" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Português <!--[-1--><!--]--></a><a href="/zh/guides/back-up-emulator-saves" hreflang="zh" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">中文 <!--[-1--><!--]--></a><!--]--></div></details> <!--[0--><span class="h-9 w-24 animate-pulse rounded-md bg-ink/5"></span><!--]--> <a href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer" aria-label="Discord" title="Discord" class="glow pop-self grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#5865F2] text-white ring-focus transition-colors hover:bg-[#4752C4]"><svg class="h-[18px] w-[18px]" data-anim="pop" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.515.0699.0699 0 0 0-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 0 1 .0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 0 1-.0066.1276 12.2986 12.2986 0 0 1-1.873.8914.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 0 0 .0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 0 0 .0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"></path></svg><!----></a></div> <div class="flex items-center gap-1 md:hidden"><button class="glow anim-host pop-self grid h-10 w-auto min-w-10 place-items-center gap-1 rounded-lg px-2 text-ink-soft ring-focus hover:bg-ink/5" aria-label="Language" aria-expanded="false"><span class="flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-anim="pop" class="lucide-icon lucide lucide-globe lang-globe h-5 w-5 transition-transform duration-300 ease-out rotate-0"><!--[--><!----><circle cx="12" cy="12" r="10"><!----></circle><!----><!----><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"><!----></path><!----><!----><path d="M2 12h20"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <span class="font-mono text-[11px] uppercase transition-colors duration-300 ">ja</span></span></button> <button class="glow pop-self grid h-10 w-10 place-items-center rounded-lg text-ink-soft ring-focus hover:bg-ink/5" aria-label="Toggle menu" aria-expanded="false"><span class="relative h-5 w-5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-menu absolute inset-0 h-5 w-5 transition-all duration-300 opacity-100 rotate-0"><!--[--><!----><line x1="4" x2="20" y1="12" y2="12"><!----></line><!----><!----><line x1="4" x2="20" y1="6" y2="6"><!----></line><!----><!----><line x1="4" x2="20" y1="18" y2="18"><!----></line><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-x absolute inset-0 h-5 w-5 transition-all duration-300 opacity-0 -rotate-90"><!--[--><!----><path d="M18 6 6 18"><!----></path><!----><!----><path d="m6 6 12 12"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></span></button></div></nav> <!--[-1--><!--]--> <!--[-1--><!--]--> <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-line transition-opacity duration-500 ease-out" style="opacity: 0;" aria-hidden="true"></div></header><!----> <main id="main" class="relative z-10 flex-1"><!--[0--><!--[--><!--[--><!----> <article class="mx-auto max-w-2xl px-4 pb-16 pt-16 sm:px-6 sm:pb-24 sm:pt-24 2xl:pt-12"><a href="/ja/guides" class="anim-host inline-flex items-center gap-1.5 rounded-md text-sm text-ink-soft ring-focus transition-colors hover:text-ink"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-anim="pop" class="lucide-icon lucide lucide-arrow-left h-4 w-4"><!--[--><!----><path d="m12 19-7-7 7-7"><!----></path><!----><!----><path d="M19 12H5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> すべてのガイド</a> <h1 class="mt-6 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">エミュレーターのセーブをバックアップ・同期する方法（RetroArch、Dolphin、PCSX2）</h1> <!--[0--><p class="mt-3 font-mono text-xs uppercase tracking-[0.14em] text-ink-faint">更新日
+      2026-10-01</p><!--]--> <div class="prose mt-8 svelte-6rcv4m"><!----><p>エミュレーターのセーブは失われやすいものです。セーブファイルとセーブステートはあちこちのフォルダーに散らばり、再インストールや新しい PC で何年分もの進行が消えることがあります。Hoard はそれらを自動でバックアップし、Steam Deck を含むすべてのマシン間で同期し続けます。</p>
+<h2>Hoard が対応するエミュレーター</h2>
+<p>Hoard は標準的なエミュレーターのセーブファイル（<code>.srm</code>、<code>.sav</code>、メモリーカード、ゲームごとのセーブフォルダー）とセーブステートを扱います。次のエミュレーターについては、セーブの場所を最初から把握しています。</p>
+<ul>
+<li><strong>ソニー系:</strong> PCSX2（PS2）、DuckStation（PS1）、PPSSPP（PSP）、RPCS3（PS3）、shadPS4（PS4）、Vita3K（PS Vita）</li>
+<li><strong>任天堂系:</strong> Dolphin（ゲームキューブ / Wii）、Cemu（Wii U）、Ryujinx・yuzu・Eden・Suyu・Citron・Sudachi（Switch）、Citra / Azahar（3DS）、melonDS（DS）、mGBA（GBA）、Project64（N64）</li>
+<li><strong>その他:</strong> RetroArch（マルチシステム）、xemu（Xbox）、Flycast（ドリームキャスト）</li>
+</ul>
+<p>Hoard は Ludusavi と同じコミュニティデータベースを使ってセーブフォルダーを探すため、多くのパスは自動で検出されます。独自の場所は、フォルダーを手動で指定できます。</p>
+<h2>エミュレーターのセーブバックアップを設定する</h2>
+<ol>
+<li>Windows、macOS、Linux 用の <strong>Hoard をインストール</strong>してサインインします。</li>
+<li><strong>ライブラリ</strong> を開いてエミュレーターを追加します。既定の場所を変更している場合は、セーブ／ステートのフォルダーを手動で追加します。</li>
+<li><strong>自動モード</strong> をオンのままにします。Hoard は各セッション後にバックアップし、世代履歴を保持します。</li>
+<li>他の PC にも同じアカウントで Hoard をインストールすれば、それらのセーブがどこでも同期されます。<a href="/ja/guides/sync-game-saves-across-pcs">複数の PC 間でセーブを同期する方法</a>も参照してください。</li>
+</ol>
+<h2>エミュレーターに Ludusavi？</h2>
+<p>Ludusavi もエミュレーターのセーブをローカルにバックアップでき、その用途なら優れた無料の選択肢です。さらにそのセーブをマシン間で自動同期し、Rclone を設定せずにクラウドでバージョン履歴を残したいなら、そこで Hoard が役立ちます。<a href="/ja/guides/ludusavi-alternative">Ludusavi と Hoard の詳しい比較</a>をどうぞ。</p>
+<h2>エミュレーターごとのクラウドセーブ</h2>
+<p>以下の単体エミュレーターは、どれもマシン間でセーブを自分で同期しません。セーブはディスク上のただのファイルです。これは良い知らせで、正しいフォルダーを監視するツールなら何でも運べるということです。それぞれの保存場所は次のとおりです。「Steam Deck」は Discover ストアからインストールする Flatpak 版を指します。</p>
+<h3>PCSX2 のクラウドセーブ（PS2）</h3>
+<p>PCSX2 はメモリーカード（<code>.ps2</code> ファイル）を <code>memcards/</code> に書き込みます。</p>
+<ul>
+<li>Windows: <code>Documents\PCSX2\memcards</code></li>
+<li>Linux: <code>~/.config/PCSX2/memcards</code></li>
+<li>Steam Deck: <code>~/.var/app/net.pcsx2.PCSX2/config/PCSX2/memcards</code></li>
+</ul>
+<p>1 枚のメモリーカードには、そのカードで遊んだ全ゲームのセーブが入っているため、1 つの単位として移動します。古いバージョンに戻すと、1 本のゲームではなくカード全体が巻き戻ります。</p>
+<h3>Dolphin のクラウドセーブ（ゲームキューブと Wii）</h3>
+<p>ゲームキューブのセーブは <code>GC/</code>（メモリーカードのイメージ、またはカードごとのフォルダー）に、Wii のセーブはエミュレートされた NAND の <code>Wii/</code> にあります。</p>
+<ul>
+<li>Windows: <code>Documents\Dolphin Emulator\GC</code> と <code>\Wii</code></li>
+<li>Linux: <code>~/.local/share/dolphin-emu/GC</code> と <code>/Wii</code></li>
+<li>Steam Deck: <code>~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/</code></li>
+</ul>
+<h3>DuckStation のクラウドセーブ（PS1）</h3>
+<p>DuckStation はメモリーカードを <code>memcards/</code> に置き、既定ではゲームごとに別のカードを作ります。これは同期と相性抜群です。</p>
+<ul>
+<li>Windows: <code>Documents\DuckStation\memcards</code>（新しいバージョンは <code>%LOCALAPPDATA%\DuckStation\memcards</code>）</li>
+<li>Linux: <code>~/.local/share/duckstation/memcards</code></li>
+<li>Steam Deck: <code>~/.var/app/org.duckstation.DuckStation/</code> の <code>data/</code> または <code>config/</code> 内</li>
+</ul>
+<h3>RetroArch のセーブ同期</h3>
+<p>RetroArch は <code>saves/</code>（ゲーム内セーブ）と <code>states/</code>（セーブステート）を分けています。Hoard はセーブフォルダーを追跡します。ステートも使うなら <code>states/</code> を別のエントリーとして追加してください。</p>
+<ul>
+<li>Windows: <code>%APPDATA%\RetroArch</code>、ポータブル版なら <code>retroarch.exe</code> の隣</li>
+<li>Linux: <code>~/.config/retroarch</code></li>
+<li>Steam Deck: <code>~/.var/app/org.libretro.RetroArch/config/retroarch</code>、EmuDeck で導入した場合は <code>~/Emulation/saves/retroarch</code></li>
+</ul>
+<p>RetroArch には、自分で用意した WebDAV サーバーとやり取りする Cloud Sync も組み込まれています。RetroArch だけを使い、すでに WebDAV があるなら妥当な選択です。Hoard は WebDAV が不要で、巻き戻せるバージョン履歴を保持し、単体エミュレーターもカバーします。</p>
+<h3>PPSSPP（PSP）</h3>
+<p>セーブは <code>PSP/SAVEDATA</code>、ステートは <code>PSP/PPSSPP_STATE</code> に入ります。</p>
+<ul>
+<li>Windows: <code>Documents\PPSSPP\PSP\SAVEDATA</code>、ポータブル版なら実行ファイルの隣の <code>memstick\PSP\SAVEDATA</code></li>
+<li>Linux: <code>~/.config/ppsspp/PSP/SAVEDATA</code></li>
+<li>Steam Deck: <code>~/.var/app/org.ppsspp.PPSSPP/config/ppsspp/PSP/SAVEDATA</code></li>
+</ul>
+<h3>RPCS3（PS3）</h3>
+<p>セーブは <code>dev_hdd0/home/00000001/savedata</code> にあります。Windows では RPCS3 のフォルダー内、Linux と Steam Deck では <code>~/.config/rpcs3/</code> の下です。</p>
+<h3>Switch エミュレーター: Ryujinx、yuzu、Eden、Suyu、Citron、Sudachi</h3>
+<p>Ryujinx はセーブを <code>bis/user/save</code>（<code>%APPDATA%\Ryujinx</code> または <code>~/.config/Ryujinx</code> の下）に置きます。yuzu 系は <code>%APPDATA%</code> または <code>~/.local/share</code> にある各自のフォルダー内の <code>nand/user/save</code> を使います。</p>
+<p>ここには落とし穴があります。yuzu 系のツリーは <code>save/&lt;アカウント&gt;/&lt;プロファイル&gt;/&lt;タイトルID&gt;/</code> という構造で、プロファイル ID はエミュレーターの初回起動時に生成されるため、インストールごとに異なります。<code>save/</code> フォルダー全体を 2 台のマシンで同期すると、それぞれに相手のプロファイルが自分のものと並んで置かれ、どちらのゲームも相手の進行を認識しません。Hoard は代わりに各ゲーム自身のフォルダーまで降りていくので、プロファイル名が何であっても同じタイトルがマシン間で一致します。</p>
+<h3>Citra と Azahar（3DS）</h3>
+<p>セーブは <code>sdmc/Nintendo 3DS/&lt;id0&gt;/&lt;id1&gt;/title/…</code> の深い場所にあり、<code>id0</code>/<code>id1</code> はエミュレートされた本体の鍵から作られるため、これもインストールごとに異なります。Hoard は Switch のツリーと同じように扱い、ゲームごとに 1 つのエントリーとしてマシン間で対応付けます。</p>
+<h3>その他</h3>
+<ul>
+<li><strong>Cemu（Wii U）:</strong> <code>mlc01/usr/save</code>。<code>%APPDATA%\Cemu</code> または <code>~/.local/share/Cemu</code> の下。</li>
+<li><strong>shadPS4（PS4）:</strong> <code>savedata</code>。<code>%APPDATA%\shadPS4</code> または <code>~/.local/share/shadPS4</code> の下。</li>
+<li><strong>Vita3K（PS Vita）:</strong> データフォルダー内の <code>ux0/user/00/savedata</code>。</li>
+<li><strong>mGBA、melonDS など、カートリッジ時代のほとんどのエミュレーター:</strong> 設定を変えていなければ ROM の隣に <code>.sav</code> が作られます。ROM フォルダーのセーブを手動で追加してください。</li>
+</ul>
+<h2>Steam Deck でのエミュレーターのセーブ</h2>
+<p>Steam Deck ではエミュレーターは通常 Flatpak で入るため、フォルダーはいつもの <code>~/.config</code> や <code>~/.local/share</code> ではなく <code>~/.var/app/&lt;id&gt;/</code> の下にあります。EmuDeck はすべてを <code>~/Emulation/saves/</code> にエミュレーターごとのフォルダーでまとめます。いずれの場合も、フォルダーを一度追加すれば Hoard が監視します。</p>
+<p>携帯機で大事なのは次の点です。Hoard のエンジンはバックグラウンドサービスとして動くため、ゲームモードでゲームを終了すると、ウィンドウを開かなくてもバックアップされます。デスクトップで遊んだ後に Deck を手に取れば、セーブはもう届いています。</p>
+<h2>セーブデータとセーブステートは別物</h2>
+<p>移動するときの振る舞いが違うので、分けて考える価値があります。</p>
+<ul>
+<li><strong>セーブファイル</strong>（<code>.srm</code>、メモリーカード、<code>SAVEDATA</code> フォルダー）は、エミュレートされたゲーム機が書き込むゲーム自身のセーブです。マシン間やエミュレーターのバージョン間を問題なく移動できます。</li>
+<li><strong>セーブステート</strong>はエミュレーターのメモリのダンプです。エミュレーターのビルド、多くの場合は特定のコアに縛られるため、あるバージョンで作ったステートが別のバージョンでは読み込めないことがあります。</li>
+</ul>
+<p>Hoard は両方をバックアップします。ただ、更新済みのマシンのステートが古いマシンで開けなくても驚かないでください。エミュレーターのバージョンを揃え、大事なものはセーブファイルに頼りましょう。</p>
+<h2>エミュレーターは 1 つ、ゲームは多数</h2>
+<p>エミュレーターは数十本のタイトルを抱える 1 つのプロセスで、「実行中のゲーム」という単位で考えるツールにとって、これがエミュレーターのセーブを扱いにくくしています。Hoard はエミュレーター全体を 1 つの塊として扱わずにタイトルを分けるので、何かを起動するたびに変わる共通の山ではなく、ゲームごとに独自の履歴が残ります。セーブが壊れても、<a href="/ja/guides/restore-a-game-save">以前のバージョンに戻す</a>ことができます。</p>
+<h2>当方のサーバーを介さないエミュレーターのバックアップ</h2>
+<p>ここで説明したことはすべて、自分のサーバーでも同じように動きます。<code>hoard-server</code> を起動してアプリをそこに向ければ、セーブはあなたのマシンからあなたのディスクへ届きます。当社のアカウントも、当社へのテレメトリーも不要で、当社のサーバーを何も通りません。<a href="/ja/guides/self-host-hoard">Hoard をセルフホストする方法</a>を参照してください。</p>
+<h2>ヒント</h2>
+<p>セーブステートは特定のエミュレーターのバージョンに依存します。同期したステートがどこでも正しく読み込めるよう、各 PC のエミュレーターを揃えて更新しましょう。</p>
+<h2>よくある質問</h2>
+<h3>Hoard は ROM もバックアップしますか？</h3>
+<p>いいえ。追跡するのはセーブフォルダーで、ゲームファイルではありません。ROM は大きく、変化せず、すでに手元にあるので、バージョン管理するものがありません。</p>
+<h3>PCSX2、Dolphin、DuckStation にクラウドセーブは組み込まれていますか？</h3>
+<p>いいえ。セーブをローカルのフォルダーに書き込み、同期はユーザーに任せています。上に挙げたフォルダーに同期ツールを向ければ、セーブはマシン間でついてきます。</p>
+<h3>RetroArch にクラウド同期はありますか？</h3>
+<p>はい。自分で運用またはレンタルする WebDAV サーバーが必要な Cloud Sync が組み込まれています。WebDAV を設定したくない、巻き戻せるバージョン履歴がほしい、単体エミュレーターも使う、という場合は Hoard が代わりになります。</p>
+<h3>ゲームモードの Steam Deck でも動きますか？</h3>
+<p>はい。エンジンがバックグラウンドサービスとして動くので、ゲームを終了したときにウィンドウなしでセーブがバックアップされます。Flatpak や EmuDeck のフォルダーも他と同じように使えます。</p>
+<h3>エミュレーターがポータブル版です。使えますか？</h3>
+<p>はい。実行ファイルの隣にあるフォルダーを手動で追加すれば、Hoard は他のセーブ場所と同じように追跡します。携帯機ではこれが一般的な構成です。</p>
+<h3>2 台の PC 間でセーブステートを同期できますか？</h3>
+<p>できますし、Hoard はそうします。ステートが読み込めるかどうかは両方のマシンのエミュレーターが同じバージョンかどうかにかかっており、これは同期ではなくエミュレーター側の制約です。セーブファイルにはこの問題がありません。</p>
+<h3>リストにないエミュレーターでも使えますか？</h3>
+<p>ほぼ確実に使えます。一般的なものは自動で検出され、それ以外はセーブフォルダーを Hoard に指定すれば追加できます。</p>
+<h3>セルフホストするとエミュレーターで何か変わりますか？</h3>
+<p>いいえ。検出も、バージョンも、同期も同じです。ストレージがあなたのものになるだけです。</p>
+<!----></div> <!--[0--><nav class="mt-14" aria-labelledby="related-guides"><h2 id="related-guides" class="font-display text-lg font-semibold text-ink">関連ガイド</h2> <ul class="mt-4 space-y-3"><!--[--><li><a href="/ja/guides/sync-game-saves-across-pcs" class="group flex items-start justify-between gap-4 rounded-xl border border-line bg-surface p-4 ring-focus transition-colors hover:border-line-strong"><div><p class="font-display font-semibold text-ink">複数の PC 間でセーブデータを同期する方法</p> <p class="mt-1 text-sm leading-relaxed text-ink-soft">デスクトップ、ノートPC、Steam Deckで進行を失わずにプレイ。セーブをPC間で自動同期し、バージョン履歴も残す方法を手順で解説。</p></div> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-right mt-1 h-4 w-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent"><!--[--><!----><path d="M5 12h14"><!----></path><!----><!----><path d="m12 5 7 7-7 7"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></a></li><li><a href="/ja/guides/back-up-game-saves" class="group flex items-start justify-between gap-4 rounded-xl border border-line bg-surface p-4 ring-focus transition-colors hover:border-line-strong"><div><p class="font-display font-semibold text-ink">ゲームのセーブデータを自動でバックアップする方法</p> <p class="mt-1 text-sm leading-relaxed text-ink-soft">プレイ終了ごとにPCのセーブを自動バックアップ。バージョン履歴付きなので、クラッシュや再インストール、壊れたModでも進行を失いません。</p></div> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-right mt-1 h-4 w-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent"><!--[--><!----><path d="M5 12h14"><!----></path><!----><!----><path d="m12 5 7 7-7 7"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></a></li><li><a href="/ja/guides/ludusavi-alternative" class="group flex items-start justify-between gap-4 rounded-xl border border-line bg-surface p-4 ring-focus transition-colors hover:border-line-strong"><div><p class="font-display font-semibold text-ink">Ludusavi の代替：セーブデータの自動クラウド同期</p> <p class="mt-1 text-sm leading-relaxed text-ink-soft">Ludusaviはローカルバックアップに最適。HoardはPCとSteam Deck間の自動同期とバージョン履歴を、同じセーブ場所データベースの上に追加します。</p></div> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-right mt-1 h-4 w-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent"><!--[--><!----><path d="M5 12h14"><!----></path><!----><!----><path d="m12 5 7 7-7 7"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></a></li><!--]--></ul></nav><!--]--> <div class="mt-14 rounded-xl border border-line bg-surface p-6"><h2 class="font-display text-lg font-semibold text-ink">セーブデータを守る準備はできましたか？</h2> <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">Hoard をダウンロードして、数分で自動・バージョン管理付きバックアップを設定しましょう。</p> <a href="/ja/download" class="glow pop-self mt-4 inline-flex h-10 items-center rounded-lg bg-accent px-4 text-sm font-medium text-pine ring-focus transition-colors hover:bg-emerald-300">ダウンロード</a></div></article><!--]--><!----><!--]--><!--]--><!----></main> <footer class="mt-auto border-t border-line" data-sveltekit-preload-code="viewport"><div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 grid-cols-2 md:grid-cols-4"><div class="col-span-2 md:col-span-1"><div class="flex items-center gap-2.5"><span class="flex items-baseline text-[23px] font-semibold tracking-[-0.02em] text-ink"><svg viewBox="0 0 33 44" height="18" width="13.5" fill="var(--color-accent)" aria-hidden="true" class="mr-[3px] h-[0.78em] w-auto"><rect x="0" y="0" width="9" height="44"></rect><rect x="24" y="0" width="9" height="44"></rect><rect x="0" y="17" width="33" height="9"></rect></svg><!---->oard</span> <span class="ml-1 rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[10px] tracking-wider text-ink-soft">v1.2.1</span></div> <p class="mt-3 max-w-xs text-sm leading-relaxed text-ink-soft">ゲームセーブの同期とバージョン管理されたバックアップ。Rust製、オープンソース。</p> <div class="mt-5 max-w-[13rem]"><!--[0--><a href="/ja/download" class="group anim-host inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors duration-200 ring-focus disabled:cursor-not-allowed disabled:opacity-50 active:brightness-95 bg-accent text-pine hover:bg-emerald-300 h-10 px-4 text-sm w-full glow pop-self" role="button" aria-disabled="false" tabindex="0"><!--[-1--><!--]--> <span class="inline-flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-download h-4 w-4" aria-hidden="true"><!--[--><!----><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"><!----></path><!----><!----><polyline points="7 10 12 15 17 10"><!----></polyline><!----><!----><line x1="12" x2="12" y1="15" y2="3"><!----></line><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> 無料でダウンロード<!----></span><!----></a><!--]--><!----></div></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">製品</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/ja/pricing">料金</a></li> <li><a class="link-underline hover:text-ink" href="/ja/download">ダウンロード</a></li> <li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard/blob/main/CHANGELOG.md" rel="noreferrer">変更履歴</a></li> <li><a class="link-underline hover:text-ink" href="/ja/guides">ガイド</a></li> <li><a class="link-underline hover:text-ink" href="/ja/help">稼働状況</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">会社</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard" rel="noreferrer">GitHub</a></li> <li><a class="link-underline hover:text-ink" href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer">Discord</a></li> <li><a class="link-underline hover:text-ink" href="/ja/help">お問い合わせ</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">法的事項</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/ja/legal/terms">規約</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/privacy">プライバシー</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/subprocessors">再委託先</a></li> <li><a class="link-underline hover:text-ink" href="/ja/legal/notice">法的表示</a></li></ul></div></div> <div class="border-t border-line"><p class="mx-auto max-w-6xl px-4 py-4 text-xs text-ink-faint sm:px-6">© 2026 Hoard · Raimundo León Oliva · AGPL-3.0</p></div></footer><!----></div><!--]--><!--]--> <!--[-1--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_1d5h63g = {
+						base: new URL("../..", location).pathname.slice(0, -1),
+						env: null
+					};
+
+					const element = document.currentScript.parentElement;
+
+					import("../../_app/env.js").then(({ env }) => {
+						__sveltekit_1d5h63g.env = env;
+
+						Promise.all([
+							import("../../_app/immutable/entry/start.00LYHuPC.js"),
+							import("../../_app/immutable/entry/app.BR1y---j.js")
+						]).then(([kit, app]) => {
+							kit.start(app, element, {
+									node_ids: [0, 2, 8],
+									data: [null,null,null],
+									form: null,
+									error: null
+								});
+						});
+					});
+				}
+			</script>
+		</div>
+  </body>
+</html>
