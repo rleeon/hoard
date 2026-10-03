@@ -8,7 +8,7 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
 
 ## [Unreleased]
 
-## [1.2.1] - Working in it
+## [1.2.1] - 2026-10-03
 
    Hoard now can send you emails, a new detection upgrade, removed hoard-screen,
    the new titlebar in windows now is in linux in this new version.
