@@ -401,6 +401,21 @@
     void loadMirrorWarnings();
   });
 
+  // A deliberate restart (a session handed over at sign-in, an update) reports
+  // the engine stopped for a few milliseconds, and the banner said "the sync
+  // service is stopped" over a service that was already back. It waits for the
+  // stop to last.
+  const engineDown = $derived(!loading && $status.known && !$status.running);
+  let engineDownSettled = $state(false);
+  $effect(() => {
+    if (!engineDown) {
+      engineDownSettled = false;
+      return;
+    }
+    const t = setTimeout(() => (engineDownSettled = true), 3000);
+    return () => clearTimeout(t);
+  });
+
   /** Which sentence explains an engine that isn't up. An older service (or a
    *  failure we don't classify) reports nothing, and then the generic line is
    *  the honest answer, inventing a cause would be worse than "it's down". */
@@ -550,7 +565,7 @@
        that reads the blank paints "the service is stopped" over an app that is
        still opening — which is how a service with thirteen hours of uptime got
        reported as down. -->
-  {#if !loading && $status.known && !$status.running}
+  {#if engineDownSettled}
     <div
       class="mb-5 flex items-start gap-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-200"
     >

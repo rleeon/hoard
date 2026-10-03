@@ -17,6 +17,11 @@
    */
   import { AlertTriangle, ArrowRight, Archive } from "@lucide/svelte";
   import { _ } from "svelte-i18n";
+  import { customNames } from "../stores/gameNames";
+  import {
+    dismiss as dismissWarning,
+    isDismissed,
+  } from "../stores/dismissedWarnings.svelte";
 
   import Button from "./Button.svelte";
   import { glow } from "../actions/glow";
@@ -25,7 +30,7 @@
   import { archiveSaveCloud } from "../stores/cloud";
   import { auth } from "../stores/auth";
   import { toastError, toastSuccess } from "../stores/toasts";
-  import { formatBytes } from "../utils/format";
+  import { formatBytes, prettifySlug } from "../utils/format";
 
   type Props = {
     warnings: MirrorWarning[];
@@ -43,10 +48,11 @@
   // Dismissals are per-session and per-save: the warning is worth repeating
   // on the next launch if nothing was done about it, but nagging inside one
   // session after the user has said "not now" is just noise.
-  let dismissed = $state<Set<string>>(new Set());
   let busy = $state<string | null>(null);
 
-  const visible = $derived(warnings.filter((w) => !dismissed.has(w.save_id)));
+  const visible = $derived(
+    warnings.filter((w) => !isDismissed("mirror", w.save_id)),
+  );
   $effect(() => {
     shown = visible.length;
   });
@@ -60,7 +66,7 @@
   }
 
   function dismiss(saveId: string) {
-    dismissed = new Set([...dismissed, saveId]);
+    dismissWarning("mirror", saveId);
   }
 
   async function repoint(w: MirrorWarning) {
@@ -106,7 +112,11 @@
     <AlertTriangle size={15} class="mt-0.5 shrink-0 text-amber-400" data-anim="ring" />
     <div class="min-w-0 flex-1">
       <p class="font-medium">
-        {$_("mirror.title", { values: { game: w.game_slug } })}
+        {$_("mirror.title", {
+          values: {
+            game: $customNames[w.game_slug] ?? prettifySlug(w.game_slug),
+          },
+        })}
       </p>
       <p class="mt-1 text-amber-200/80">
         {$_("mirror.body", {

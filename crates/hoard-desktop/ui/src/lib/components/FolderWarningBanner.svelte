@@ -10,6 +10,9 @@
    */
   import { FolderX, ArrowRight } from "@lucide/svelte";
   import { _ } from "svelte-i18n";
+  import { customNames } from "../stores/gameNames";
+  import { prettifySlug } from "../utils/format";
+  import { dismiss, isDismissed } from "../stores/dismissedWarnings.svelte";
 
   import Button from "./Button.svelte";
   import { glow } from "../actions/glow";
@@ -26,10 +29,11 @@
 
   let { warnings, onFixed, shown = $bindable(0) }: Props = $props();
 
-  let dismissed = $state<Set<string>>(new Set());
   let busy = $state<string | null>(null);
 
-  const visible = $derived(warnings.filter((w) => !dismissed.has(w.save_id)));
+  const visible = $derived(
+    warnings.filter((w) => !isDismissed("folders", w.save_id)),
+  );
   $effect(() => {
     shown = visible.length;
   });
@@ -39,9 +43,6 @@
     return parts[parts.length - 1] ?? p;
   }
 
-  function dismiss(id: string) {
-    dismissed = new Set([...dismissed, id]);
-  }
 
   async function repoint(w: FolderWarning) {
     if (!w.suggested_path) return;
@@ -49,7 +50,7 @@
     try {
       await api.setSaveLocalPath(w.save_id, w.suggested_path);
       toastSuccess($_("folderkind.used", { values: { folder: leaf(w.suggested_path) } }));
-      dismiss(w.save_id);
+      dismiss("folders", w.save_id);
       onFixed?.();
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
@@ -67,7 +68,11 @@
     <FolderX size={15} class="mt-0.5 shrink-0 text-amber-400" data-anim="pop" />
     <div class="min-w-0 flex-1">
       <p class="font-medium">
-        {$_("folderkind.title", { values: { game: w.game_slug } })}
+        {$_("folderkind.title", {
+          values: {
+            game: $customNames[w.game_slug] ?? prettifySlug(w.game_slug),
+          },
+        })}
       </p>
       <p class="mt-1 text-amber-200/80">
         {$_(
@@ -90,7 +95,10 @@
             {$_("folderkind.use", { values: { folder: leaf(w.suggested_path) } })}
           </Button>
         {/if}
-        <Button variant="ghost" onclick={() => dismiss(w.save_id)}>
+        <Button
+          variant="ghost"
+          onclick={() => dismiss("folders", w.save_id)}
+        >
           {$_("folderkind.dismiss")}
         </Button>
       </div>

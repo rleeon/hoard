@@ -489,9 +489,7 @@ pub struct PromptDismissed;
 
 impl std::fmt::Display for PromptDismissed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(
-            "the password prompt closed before it was answered, so nothing was changed; try again",
-        )
+        f.write_str("the password prompt closed before it was answered; try again")
     }
 }
 

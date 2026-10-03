@@ -10,6 +10,9 @@
    */
   import { Link2 } from "@lucide/svelte";
   import { _ } from "svelte-i18n";
+  import { customNames } from "../stores/gameNames";
+  import { prettifySlug } from "../utils/format";
+  import { dismiss, isDismissed } from "../stores/dismissedWarnings.svelte";
 
   import Button from "./Button.svelte";
   import { glow } from "../actions/glow";
@@ -25,9 +28,10 @@
 
   // Per session, like the mirror banner: back on the next launch if nothing
   // changed, quiet after "not now" within this one.
-  let dismissed = $state<Set<string>>(new Set());
 
-  const visible = $derived(warnings.filter((w) => !dismissed.has(w.save_id)));
+  const visible = $derived(
+    warnings.filter((w) => !isDismissed("links", w.save_id)),
+  );
   $effect(() => {
     shown = visible.length;
   });
@@ -41,7 +45,11 @@
     <Link2 size={15} class="mt-0.5 shrink-0 text-amber-400" data-anim="pop" />
     <div class="min-w-0 flex-1">
       <p class="font-medium">
-        {$_("links.title", { values: { game: w.game_slug } })}
+        {$_("links.title", {
+          values: {
+            game: $customNames[w.game_slug] ?? prettifySlug(w.game_slug),
+          },
+        })}
       </p>
       <p class="mt-1 text-amber-200/80">{$_("links.body")}</p>
       <ul class="mt-2 space-y-0.5 break-all font-mono text-[11px] text-amber-200/50">
@@ -52,7 +60,7 @@
       <div class="mt-1.5">
         <Button
           variant="ghost"
-          onclick={() => (dismissed = new Set([...dismissed, w.save_id]))}
+          onclick={() => dismiss("links", w.save_id)}
         >
           {$_("links.dismiss")}
         </Button>

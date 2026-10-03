@@ -382,8 +382,10 @@
     // If we don't have a cached update report yet (user opened Settings
     // before the boot-time probe finished, or before the 30-min poller
     // ran), fire one now so the Server panel can show the version + any
-    // pending upgrade without forcing a manual click.
-    if ($lastReport == null) {
+    // pending upgrade without forcing a manual click. Also when the cached one
+    // has no server half while there is a server: the boot probe ran before the
+    // onboarding signed in, and the version line said "Loading…" for good.
+    if ($lastReport == null || ($lastReport.server == null && $auth.user)) {
       checkForUpdates().catch((e) =>
         console.warn("Settings update probe failed:", e),
       );
