@@ -4,13 +4,13 @@
 use crate::cloud::{
     abandoned, account_purge, archive,
     auth::{require_active_account, require_cloud_auth, JwksCache},
-    auth_mirror, bandwidth, compress, db, device_prune, discord, export, incidents, integrity,
-    maintenance, memwatch, notify, polar, pollguard, r2, reconcile,
+    auth_mirror, bandwidth, compress, db, device_prune, discord, export, feedback, incidents,
+    integrity, maintenance, memwatch, notify, polar, pollguard, r2, reconcile,
     routes::{
         admin as admin_routes, blob_proxy, checkout, device as device_routes,
-        entitlements as ent_routes, events as event_routes, logs as log_routes, me,
-        notifications as notification_routes, playtime as playtime_routes, saves,
-        sync as sync_routes,
+        entitlements as ent_routes, events as event_routes, feedback as feedback_routes,
+        logs as log_routes, me, notifications as notification_routes, playtime as playtime_routes,
+        saves, sync as sync_routes,
     },
     state::CloudState,
 };
@@ -217,6 +217,7 @@ pub async fn run(cfg: Config) -> Result<()> {
         // The admin panel's metrics functions. Whether the caller may read
         // them is decided inside each function.
         .route("/v1/admin/rpc/:name", post(admin_routes::rpc))
+        .route("/v1/admin/feedback/file", post(feedback_routes::admin_file))
         .route(
             "/v1/cloud/playtime",
             get(playtime_routes::aggregate).post(playtime_routes::upload),
@@ -262,6 +263,14 @@ pub async fn run(cfg: Config) -> Result<()> {
             "/v1/notices/no-offers",
             post(notification_routes::no_offers),
         )
+        // Hoard-help. Open on purpose: self-hosted installs have no account
+        // here. The token, when there is one, is read inside `create`.
+        .route("/v1/feedback", post(feedback_routes::create))
+        .route(
+            "/v1/feedback/:id/files/:idx",
+            axum::routing::put(feedback_routes::upload).layer(DefaultBodyLimit::disable()),
+        )
+        .route("/v1/feedback/:id/complete", post(feedback_routes::complete))
         // Health is *also* available unauthed in cloud mode so Fly can probe it.
         .route("/v1/health", get(cloud_health));
 
@@ -498,6 +507,10 @@ fn spawn_background_tasks(state: &CloudState) {
     // run before the device allowance is ever enforced, or a dead laptop holds
     // a slot nobody can free.
     device_prune::spawn(state.clone());
+
+    // Hoard-help: drops reports past 90 days, uploads that never finished, and
+    // the address hashes once the throttle is done with them.
+    feedback::spawn(state.clone());
 
     // Device-pairing sweep. Approved/expired rows are deleted inline on
     //     poll, but a pairing that's started and never polled (or approved and

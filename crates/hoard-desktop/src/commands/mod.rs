@@ -14,6 +14,7 @@ pub mod cloud_pull;
 pub mod covers;
 pub mod devices;
 pub mod emulators;
+pub mod feedback;
 pub mod error;
 pub mod history;
 pub mod library;

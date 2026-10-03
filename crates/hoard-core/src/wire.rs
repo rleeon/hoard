@@ -677,6 +677,71 @@ pub fn ships_at(entry: &LogEntry, min_rank: u8) -> bool {
         || level_rank(&entry.level) >= min_rank
 }
 
+// ---- /v1/feedback, Hoard-help (cloud only, open to self-hosted clients too)
+
+/// The limits are here so the app can refuse a file before it starts uploading
+/// it, instead of finding out from a 413 halfway through a video.
+///
+/// One file per PUT, and every PUT crosses Cloudflare, which turns away request
+/// bodies over 100 MB. 90 MiB leaves room under that.
+pub const FEEDBACK_MAX_FILE_BYTES: u64 = 90 * 1024 * 1024;
+pub const FEEDBACK_MAX_REPORT_BYTES: u64 = 250 * 1024 * 1024;
+pub const FEEDBACK_MAX_FILES: usize = 10;
+pub const FEEDBACK_MAX_MESSAGE_CHARS: usize = 20_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FeedbackKind {
+    Bug,
+    Idea,
+}
+
+impl FeedbackKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FeedbackKind::Bug => "bug",
+            FeedbackKind::Idea => "idea",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeedbackFileDecl {
+    pub name: String,
+    pub size: u64,
+}
+
+/// `POST /v1/feedback`. The bearer token is optional.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeedbackCreate {
+    pub kind: FeedbackKind,
+    pub message: String,
+    #[serde(default)]
+    pub contact: Option<String>,
+    #[serde(default)]
+    pub app_version: Option<String>,
+    #[serde(default)]
+    pub os: Option<String>,
+    #[serde(default)]
+    pub arch: Option<String>,
+    /// `cloud`, `selfhosted` or `none`: which kind of install is writing.
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub files: Vec<FeedbackFileDecl>,
+}
+
+/// Each declared file then goes up as `PUT /v1/feedback/{id}/files/{idx}` with
+/// `upload_token` in the [`FEEDBACK_TOKEN_HEADER`] header, and
+/// `POST /v1/feedback/{id}/complete` closes the report.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeedbackCreated {
+    pub id: String,
+    pub upload_token: String,
+}
+
+pub const FEEDBACK_TOKEN_HEADER: &str = "x-feedback-token";
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -446,6 +446,10 @@ pub struct DiscordConfig {
     /// would refuse to boot over a status-channel setting.
     #[serde(default)]
     pub channel_id: u64,
+    /// Where Hoard-help arrivals are announced. 0 = not announced; the
+    /// reports still land and the admin panel still shows them.
+    #[serde(default)]
+    pub feedback_channel_id: u64,
     /// Seconds between health updates. Floored at 15s by the task.
     #[serde(default = "default_discord_poll_secs")]
     pub poll_interval_secs: u64,
@@ -461,6 +465,7 @@ impl Default for DiscordConfig {
         Self {
             bot_token: String::new(),
             channel_id: 0,
+            feedback_channel_id: 0,
             poll_interval_secs: default_discord_poll_secs(),
         }
     }

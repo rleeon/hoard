@@ -1553,3 +1553,43 @@ export function catalogStatus(): Promise<CatalogStatus> {
 export function updateCatalog(): Promise<CatalogUpdateResult> {
   return invoke<CatalogUpdateResult>("update_catalog");
 }
+
+// ---- Hoard-help
+
+export type FeedbackKind = "bug" | "idea";
+
+/** A file in the Hoard-help form: picked, dropped or pasted. */
+export type PickedFile = { path: string; name: string; size: number };
+
+/** Same caps as the server (`hoard_core::wire`), checked here first so a
+ *  110 MB video is refused when it is added, not halfway through sending. */
+export const FEEDBACK_MAX_FILE_BYTES = 90 * 1024 * 1024;
+export const FEEDBACK_MAX_REPORT_BYTES = 250 * 1024 * 1024;
+export const FEEDBACK_MAX_FILES = 10;
+
+/** Sends the report to Hoard Cloud, from a Cloud install or a self-hosted one.
+ *  Progress arrives as `feedback://progress` (`{ sent, total }`). Resolves to
+ *  the report id. */
+export function feedbackSend(input: {
+  kind: FeedbackKind;
+  message: string;
+  contact: string | null;
+  mode: "cloud" | "selfhosted" | "none";
+  files: string[];
+  attach_logs: boolean;
+}): Promise<string> {
+  return invoke<string>("feedback_send", { input });
+}
+
+export function feedbackDescribeFiles(paths: string[]): Promise<PickedFile[]> {
+  return invoke<PickedFile[]>("feedback_describe_files", { paths });
+}
+
+export function feedbackStashImage(name: string, pngBase64: string): Promise<PickedFile> {
+  return invoke<PickedFile>("feedback_stash_image", { name, pngBase64 });
+}
+
+/** The logs exactly as "include logs" would attach them. */
+export function feedbackLogsPreview(): Promise<string> {
+  return invoke<string>("feedback_logs_preview");
+}

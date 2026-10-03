@@ -275,6 +275,10 @@ struct Discord {
 
 impl Discord {
     fn new(cfg: &DiscordConfig) -> Self {
+        Self::for_channel(cfg, cfg.channel_id)
+    }
+
+    fn for_channel(cfg: &DiscordConfig, channel: u64) -> Self {
         // Built once and kept, rather than per tick: the machine has 256 MB
         // and memwatch bounces it at 94%, so a fresh TLS config and root
         // store every minute is allocator churn with nothing to show for it.
@@ -288,7 +292,7 @@ impl Discord {
         Self {
             http,
             token: cfg.bot_token.clone(),
-            channel: cfg.channel_id,
+            channel,
         }
     }
 
@@ -438,6 +442,16 @@ impl Discord {
         }
         Ok(true)
     }
+}
+
+/// One-off post to another channel with the same bot, for the Hoard-help
+/// arrivals (`cloud::feedback`). The client is built per call: reports are
+/// rare, and keeping one alive for them would cost more than it saves.
+pub async fn post_to(cfg: &DiscordConfig, channel: u64, embed: &serde_json::Value) -> Result<()> {
+    Discord::for_channel(cfg, channel)
+        .post(embed)
+        .await
+        .map(|_| ())
 }
 
 // ---------------------------------------------------------------------------

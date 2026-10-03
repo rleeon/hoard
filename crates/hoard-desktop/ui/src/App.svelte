@@ -46,6 +46,7 @@
   const loadDiagnostics = () => import("./routes/Diagnostics.svelte");
   const loadAccount = () => import("./routes/Account.svelte");
   const loadHoardWrapped = () => import("./routes/HoardWrapped.svelte");
+  const loadHoardHelp = () => import("./routes/HoardHelp.svelte");
 
   /** Sugar so `loadingComponent` is not repeated on every route. */
   const lazy = (asyncComponent: () => Promise<unknown>) =>
@@ -96,6 +97,7 @@
   import DeviceLimitModal from "./lib/components/DeviceLimitModal.svelte";
   import HylianUser from "./lib/components/HylianUser.svelte";
   import MarioStar from "./lib/components/MarioStar.svelte";
+  import QuestionBlock from "./lib/components/QuestionBlock.svelte";
   import Triforce from "./lib/components/Triforce.svelte";
   import VaultDoor from "./lib/components/VaultDoor.svelte";
   import MaskedEmail from "./lib/components/MaskedEmail.svelte";
@@ -170,6 +172,7 @@
     "/diagnostics": lazy(loadDiagnostics),
     "/account": lazy(loadAccount),
     "/hoard-wrapped": lazy(loadHoardWrapped),
+    "/hoard-help": lazy(loadHoardHelp),
   };
 
   let booted = $state(false);
@@ -749,6 +752,8 @@
         { kind: "link", labelKey: "nav.dashboard", icon: Triforce, route: "/dashboard" },
       ],
     },
+    // Hoard-help reaches us from any install, so it is always there.
+    { kind: "link", labelKey: "nav.hoard_help", icon: QuestionBlock, route: "/hoard-help" },
     // Hoard-Wrapped is free for everyone (Cloud and self-hosted): a plain link,
     // no entitlement gate.
     { kind: "link", labelKey: "nav.hoard_wrapped", icon: MarioStar, route: "/hoard-wrapped" },
@@ -767,6 +772,7 @@
     "/diagnostics",
     "/account",
     "/hoard-wrapped",
+    "/hoard-help",
   ];
   const isAppRoute = $derived(
     APP_ROUTE_PREFIXES.some((p) => router.location.startsWith(p)),
@@ -917,7 +923,9 @@
                 ? "vault"
                 : item.route === "/hoard-wrapped"
                   ? "hop"
-                  : "pop"}
+                  : item.route === "/hoard-help"
+                    ? "bump"
+                    : "pop"}
             />
             <span class="hide-narrow">{$_(item.labelKey)}</span>
           </button>

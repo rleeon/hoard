@@ -232,7 +232,7 @@ fn is_profile_dir(segment: &str) -> bool {
 ///
 /// It returns `Cow::Borrowed` when there is nothing to redact, which is the normal
 /// case: this runs in `on_event`, meaning on every log line in the process.
-fn redact(input: &str) -> Cow<'_, str> {
+pub(crate) fn redact(input: &str) -> Cow<'_, str> {
     let shaped = redact_markers(input);
     match home_override() {
         Some((home, replacement)) if shaped.contains(home.as_str()) => {

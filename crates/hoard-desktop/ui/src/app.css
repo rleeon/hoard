@@ -336,6 +336,25 @@ html.is-overlay ::-webkit-scrollbar-thumb {
     transform: translateY(0) rotateY(540deg) scale(1);
   }
 }
+/* The question block's move: knocked up from below, it drops back and
+   squashes a little on landing. */
+@keyframes icon-bump {
+  0% {
+    transform: translateY(0) scale(1, 1);
+  }
+  28% {
+    transform: translateY(-5px) scale(1, 1);
+  }
+  55% {
+    transform: translateY(0) scale(1.1, 0.9);
+  }
+  75% {
+    transform: translateY(-1px) scale(0.97, 1.03);
+  }
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+}
 /* A scroll opening: it unrolls downwards and settles. */
 @keyframes icon-unfurl {
   0% {
@@ -392,6 +411,13 @@ html.is-overlay ::-webkit-scrollbar-thumb {
 [data-anim="hop"][data-anim-play] {
   --icon-anim-dur: 900ms;
   animation: icon-hop var(--icon-anim-dur) cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+[data-anim="bump"] {
+  transform-origin: 50% 100%;
+}
+[data-anim="bump"][data-anim-play] {
+  --icon-anim-dur: 520ms;
+  animation: icon-bump var(--icon-anim-dur) cubic-bezier(0.3, 0.7, 0.4, 1);
 }
 [data-anim="unfurl"][data-anim-play] {
   --icon-anim-dur: 420ms;

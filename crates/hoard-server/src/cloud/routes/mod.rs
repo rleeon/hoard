@@ -4,6 +4,7 @@ pub mod checkout;
 pub mod device;
 pub mod entitlements;
 pub mod events;
+pub mod feedback;
 pub mod logs;
 pub mod me;
 pub mod notifications;

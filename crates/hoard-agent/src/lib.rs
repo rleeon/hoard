@@ -22,6 +22,7 @@ pub mod detection;
 pub mod device_slot;
 pub mod doctor;
 pub mod emulators;
+pub mod feedback;
 pub mod install;
 pub mod junkdirs;
 pub mod keychain;

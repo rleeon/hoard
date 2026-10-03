@@ -33,6 +33,7 @@ pub mod email;
 pub mod entitlements;
 pub mod errors;
 pub mod export;
+pub mod feedback;
 pub mod incidents;
 pub mod integrity;
 pub mod loopguard;
