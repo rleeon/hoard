@@ -56,6 +56,52 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
   the foot of every message. Refusing silences the pitch only — the notices
   keep coming — and the refusal is stored as a date, when it was given, along
   with the token the footer carried.
+- **The panel says when a folder is not a save folder.** A tracked folder that
+  turns out to be a game's installation, an installer or repack, or a whole
+  Wine prefix gets a banner saying which, with the save folders Hoard found
+  instead and a button to switch to one. Picking a folder by hand gets the
+  same advice before it is added, and an emulator's folder suggests the save
+  folders inside it. The dialog also says when a folder holds only disc
+  images, installers or archives (which would go up as they are), when it is
+  a code project, and when it is empty. It advises and never refuses: a game
+  that has not saved yet has an empty folder too. `hoard track --path` prints
+  the same advice.
+- **A warning when part of a folder is a link.** Hoard does not follow
+  symbolic links inside a save folder (a Proton prefix links `z:` to `/`), and
+  it used to skip them without a word, so whatever a link pointed to was left
+  out of the backup with nobody told. The panel says so now, per game, and
+  names the way out: track the folder the link points to. The links Wine lays
+  in every prefix to its own drives (`z:` to `/`, `c:` to `drive_c`) are left
+  out of the warning, since following that advice would mean tracking the
+  whole disk; the ones out to your home, such as `Documents`, are not.
+- **RetroArch states, and RetroArch the way EmuDeck sets it up.** Save states
+  get an entry of their own, RetroArch States, apart from the in-game saves.
+  Both are looked for where `retroarch.cfg` says (`savefile_directory`,
+  `savestate_directory`) and not only in the default folders, which is where
+  EmuDeck moves them, and the links EmuDeck lays from `~/Emulation/saves` into
+  the emulator's own folders are followed, since they are its save roots.
+- **Hoard-help: tell us from inside the app.** A page in the sidebar sends a
+  bug report or an idea straight to the people who make Hoard, with
+  screenshots, videos or any other files (dropped in, pasted with Ctrl+V or
+  picked; up to 10, 90 MB each and 250 MB in all) and, if you tick it, the
+  latest lines of the app's and the service's logs with your user name taken
+  out of every path, which the page shows before anything leaves. A way to
+  reply is optional; on Hoard Cloud an empty one means the account's email.
+  It always goes to Hoard Cloud, whatever server the install syncs with, and
+  it is the only thing a self-hosted install ever sends to us, only when you
+  press Send. Reports are read by us alone and deleted with their files after
+  90 days.
+- **Delete a game from the panel.** Each card has a bin now, opposite the
+  history button. For a game both here and on the server it asks where: *This
+  machine* stops tracking it here and leaves the server's copies alone; *The
+  server* deletes every version stored there, after a second confirmation,
+  and stops tracking it here too. A game only on the server goes straight to
+  that confirmation, and one only on this machine is offered *This machine*
+  alone. The files on disk are never touched. The card says "Removing…" while
+  it goes, and stopping tracking no longer waits on the service, which kept
+  the button spinning for 10 seconds after the change was already written
+  (in the Library too). The bell that promised per-game notifications in a
+  future release is gone from the card.
 
 ### Changed
 - **Your own title bar, on Linux too.** The bar the app paints for itself was
@@ -76,6 +122,38 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
   are not included, and the check-out page says what the money is for, who
   handles the card (Polar, not Hoard) and that cancelling is one click away in
   the account.
+- **A game's installation no longer goes up as its save.** On 26 September
+  2026, 90 of the 3,125 saves on Hoard Cloud had a whole game installed inside
+  them, and they made up 312 of its 391 GB. When the catalogue names a single
+  save file, Hoard tracks the folder that holds it, and that folder was
+  sometimes the installation. A folder that is an installation now backs up
+  the catalogue's save files plus whatever does not look like the game itself;
+  an installer or repack is skipped; a Wine prefix leaves Windows' own folders
+  out. Detection stops offering installers, prefixes, and installations it
+  knows no save pattern for. Run over 3,354 real saves before shipping, the
+  filter took out nothing a save needed. A version uploaded before the filter,
+  with the installation in it, restores the same way: the saves are written
+  and the game is left alone, so a restore can no longer put an old
+  executable over the one installed.
+- **One game tracked under two names on two machines now syncs.** A name
+  typed by hand stayed as typed, so one machine's `cd` and another's
+  `crimsondesert` (or `dispatch` and `dispatch-2025`) were two saves of the
+  same game that never synced with each other. Names are matched to the
+  catalogue's now, and in automatic mode the twins join: by a rule both
+  machines apply the same way, one of them switches to the other's save
+  through an ordinary restore, with conflict copies for anything the two
+  disagree on. The save left behind keeps its history.
+- **Wrapped, redrawn.** The recap and its shareable card drop the gradient
+  headers, the halos and the coloured shadows, and hovering changes a border
+  and nothing else. The dashboard loses its pulsing "Live agent watching"
+  line, which said nothing the sidebar does not.
+- **Detection telemetry keeps the folders you pick by hand.** When you track a
+  folder that detection had not offered for that game, the detection report
+  says so, along with what detection had offered instead, and the server keeps
+  that pair for good instead of dropping it after 180 days with the rest of the
+  report: it is a game's real save location, told by the person who knows it.
+  It travels on the same diagnostics switch as before, with your user folder
+  replaced by `<user>` before it leaves the machine.
 
 ### Removed
 - **Hoard Screen is gone.** The in-game overlay is no longer built or shipped:
@@ -107,8 +185,8 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
 - **The Linux installer said nothing when you closed its password prompt.**
   pkexec exits with 126 when the prompt is dismissed, which read like any
   other failure. It has its own sentence now — the prompt closed before you
-  could answer, nothing was changed, try again — and the installer no longer
-  panics before its first frame when the session needs D-Bus.
+  could answer, try again — and the installer no longer panics before its
+  first frame when the session needs D-Bus.
 - **The web had accepted terms from the app alone.** Web sign-in sent the
   terms acceptance without a JSON content type, the server answered 415, and
   the failure was only logged: the 105 acceptances on file by 19-sep-2026
@@ -118,6 +196,162 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
   markers could close an offer section early, or splice the reader's own
   opt-out token into a message. The cuts happen on the template before the
   values land.
+- **A restore could leave a good save half overwritten.** Restoring by hand,
+  with `hoard restore` or from the History page, wrote each file into the
+  save folder and checked its SHA-256 afterwards. A download cut short, which
+  Hoard Cloud's storage does now and then, left the folder part new and part
+  old, and the files still downloading were cancelled. The version is now
+  downloaded whole into a staging folder under Hoard's state folder (not
+  `/tmp`, which is memory on Fedora and Arch), every file is verified, and only
+  then is it placed. The files it replaces are kept first in the conflicts
+  folder, and put back if placing fails halfway. While a restore runs, the
+  sync service holds that save, so it cannot upload a half-written folder as a
+  new version, and when it is done the restored folder becomes the next
+  version instead of losing a merge against the cloud. A version uploaded from
+  Linux with both `Save.sav` and `save.sav` is refused where case folds
+  (Windows, macOS, a Wine prefix) rather than one written over the other. On a
+  self-hosted server, an upload is written under a name of its own and renamed
+  once verified, and a commit can no longer reuse a file the trash purge is
+  removing, which used to leave a version that committed fine and could never
+  be restored. Ctrl+C during `hoard restore` cancels it and clears its
+  staging folder; only the brief moment of placing files waits for it to
+  finish. Reported privately by ProveCore.
+- **Deleting a save on Hoard Cloud could leave its space counted.** The space
+  was released file by file inside the request, the app gives up on a request
+  after 60 seconds, and whatever was not released by then never was. Ten Free
+  accounts carried about 3.8 GB that no longer existed, one of them 945 MB of
+  its 1 GB from a single save it had deleted. The accounts were corrected on
+  27 September 2026, and the release now happens in one transaction, apart
+  from the request. Deleting the last version of a save, which answered 500,
+  works too.
+- **Deleting a save on a self-hosted server never gave its storage back.** The
+  rows went, the stored files stayed on disk and in the quota. Deleting a save
+  releases them now, and a pass at start-up and once a day recounts every
+  file's references and removes what nothing uses, a week after first finding
+  it unused and never anything less than a day old. Installs already carrying
+  leftovers mend on their own. `[retention] repair_refcounts = false` turns the
+  pass off, and `hoard-admin storage status` shows what it found.
+- **A disk that moved to another machine read as a deleted save.** On a Steam
+  Deck and an Ally X, both on Linux, sharing a microSD card and an external
+  drive, the machine without the disk took each missing folder for a deleted
+  one and tried to restore it under `/run/media`: 72 failures across 8 games,
+  each with its own notification, and every attempt downloaded the save before
+  failing (a 1 GB one, 8 times in 27 minutes). When the disk a folder lives on
+  is not mounted, or its Windows drive letter is missing, the restore now
+  waits without a word, and the destination is checked for writing before
+  anything is downloaded. A restore that leaves a folder empty no longer
+  retries every hour for ever; it stops until a new version arrives. And a
+  network that is down, as it is for a moment after waking up, no longer
+  raises a failed restore for every save during its first hour.
+- **Steam on Linux passed for a game.** The `steam` process was missing from
+  the list of programs that are not games, and the catalogue names `steam` as
+  a launcher of one game, so on Steam Deck and Bazzite folders of Splasher,
+  Valheim and others were put down to "Stygian: Reign of the Old Ones".
+  Launcher names shared by many games no longer point at any one of them.
+- **Another tool's backup folders were offered as saves.** A folder of copies
+  made by Ludusavi (a `mapping.yaml` beside `drive-N` folders) holds a game's
+  files in that tool's layout, and restoring it anywhere writes nothing a game
+  reads. One account downloaded seven of them about once an hour: 999
+  downloads and 11 GB in 32 hours. The automatic scan leaves them out now;
+  picking one by hand still works.
+- **Restoring into a Wine prefix could miss the file the game loads.** Under
+  Wine `Savegame.sav` and `SaveGame.sav` are one file, and on Linux they are
+  two, so a restore wrote the synced save next to the one the game used and
+  the game kept loading its own (Silent Hill: Townfall on two Bazzite
+  machines). Inside a prefix, a restore now reuses whatever spelling is already
+  there.
+- **The command line ignored a Hoard Cloud sign-in (#40).** After `hoard login`
+  with Hoard Cloud, `hoard save list` answered "not logged in" and `hoard
+  status` went looking for a server on `localhost:12421`: the one-shot commands
+  had been written for a self-hosted server and only knew its token. They
+  follow the same session as `hoard track` now. `save list` and `save show`
+  read the account's saves, each with a `state` (`synced`, `backup_only` or
+  `archived`) and the size of its latest version; `backup`, `restore`,
+  `snapshots`, `devices` and `whoami` work against either kind of server;
+  `games` searches the local catalogue; `status` checks the server you are
+  signed in to; and `save pause`, `resume`, `preset`, `path`, `untrack` and
+  `scan` stop editing the self-hosted context, which is why they answered
+  "isn't tracked". Hoard Cloud keeps no trash, so deleting a version there is
+  final, and the command says so before it asks. Under `--json`, having no
+  session at all is `no_session` with exit code 2.
+- **Emails could name a game by its id.** The first run of the notice for a
+  save over its cap put four ids in subject lines where the game's name should
+  have been. The name now comes from what the app declared, then from the
+  save's row, and failing both the email says "one of your games".
+- **Dates followed the system's language instead of the app's.** An English
+  interface on a Spanish desktop printed "domingo, 21 de septiembre" between
+  English sentences, and relative times kept the language the screen was first
+  drawn in. Dates and times now follow the language picked in the app, with
+  English written day first, as the rest of the app does.
+- **Windows: a read-only save could not be restored.** Some saves are marked
+  read-only, by their owner or by a launcher guarding them, and Windows will
+  not replace a read-only file: every restore of one failed with "access
+  denied". The mark is lifted for the swap and put back afterwards, so the
+  save stays read-only. A game holding its save open stops the restore with a
+  sentence saying why, and whatever had already been swapped goes back as it
+  was.
+- **Linux, installed from Hoard Setup: no menu icon, and no tray on a bare
+  system.** The menu entry asked for an icon called `hoard` that nothing
+  installed, so it showed blank; the entry now installs its own icon, and
+  removing Hoard takes it away again. The AppImage carries the tray library
+  and what it needs, so a system without it (a stock CachyOS, reported on
+  Discord) gets a tray anyway, and the `.deb` and `.rpm` recommend the
+  distribution's package.
+- **A tracked Wine prefix walked the whole disk every few seconds.** Watching
+  a folder for changes followed its links, which the backup never does, and
+  inside a prefix `dosdevices/z:` leads to `/`. On Linux the watch ran into
+  the first folder it could not read and failed, and it was tried again on
+  every tick, walking the disk and logging two lines each time. A folder with
+  links to directories is now watched one real directory at a time, none of
+  them reached through a link, and a watch that fails waits ten minutes
+  before the next try.
+- **The self-hosting guide had no way through on Synology.** It fetched the
+  files with `git`, which DSM does not ship, and Container Manager stopped on
+  `Bind mount failed: '/hoard/config' does not exist`, because it does not
+  create a mounted folder by itself. A Synology section now walks through it
+  without `git`, starting with the empty `config` folder, both in the guide on
+  GitHub and on hoard.services.
+- **A self-hosted quota of 0 refused every upload.** The panel and the desktop
+  app read 0 as no limit, and the server read it as zero bytes. It is no limit
+  on the server too now, and the panel shows "unlimited" and says what 0
+  means where the quota is set.
+- **Log shipping could hammer a self-hosted server.** A self-hosted server
+  asks its apps for their debug lines, and on a machine whose keyring kept
+  refusing (as it can after the desktop hands its session to the service),
+  reading the session for each batch logged a line, and that line was the
+  next batch: 772 requests a second, cut to 20 by the server's limiter, for as
+  long as the service ran. A batch turned away with a 429 was followed by the
+  next one at once, at 86% of a core. Nothing logged on the shipper's own
+  thread is shipped now, and a 429 or a 5xx makes it wait, as long as
+  `Retry-After` says when the server sends one. Hoard Cloud asks for warnings
+  and above, and was not affected.
+- **A crash could leave the session file empty and stop syncing for days.** A
+  Windows machine that hung on 29 September 2026 came back with an empty
+  `cloud.toml`, and the engine stopped on it at every start, self-hosted
+  session or not: nothing synced for four days. An unreadable session file is
+  moved aside now and read as no file (the tokens are in the keyring too, and
+  the next sign-in writes a new one), and session files are written whole,
+  flushed to disk and only then put in place, so a power cut leaves the old
+  file or the new one. On Linux and macOS they are created readable by you
+  alone from the first byte.
+- **`hoard restore --remember` uploaded what it had just restored.** A save
+  new to the machine had no record of the version its folder held, so the
+  service found a folder it had never synced and sent it straight back: an
+  identical version under the next number. The restored folder is recorded as
+  holding the server's latest version now. Restoring an older one still goes
+  up as the next version, which is the point of restoring it.
+- **A busy thread or a compiler could pass for a game.** Linux lists every
+  thread as a task, so a busy `tokio-rt-worker` in some server was taken for
+  a game, and compilers and build tools (`rustc`, `cargo`, `cc1`, `cl.exe`,
+  `link.exe`, `ld`) burn a core for minutes and set off a detection scan on
+  every build. Neither counts as a game now.
+- **"The sync service is stopped" over a service that was running.** A
+  deliberate restart, when the desktop hands its session to the service at
+  sign-in or an update swaps it, reports the service stopped for a moment,
+  and the panel put up the banner over a service that was already back. It
+  waits for a stop to last three seconds now. And Settings, opened after
+  signing in during onboarding, said "Loading…" for good where the server's
+  version goes; it asks again.
 
 ## [1.2.0] - 2026-09-17
 
