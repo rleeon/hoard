@@ -123,7 +123,7 @@ pub fn game_stopped(app: &AppHandle) {
     let life = app.state::<WindowLife>();
     let _ = life
         .games
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
+        .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
             Some(n.saturating_sub(1))
         });
     if life.games.load(Ordering::SeqCst) > 0 {
