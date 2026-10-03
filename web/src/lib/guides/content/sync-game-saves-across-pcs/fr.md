@@ -1,8 +1,8 @@
 ---
 title: "Comment synchroniser vos parties entre plusieurs PC"
-description: "Jouez au même jeu sur votre fixe et votre portable sans perdre votre progression. Synchronisez vos parties entre PC automatiquement avec Hoard — une synchro cloud gérée, sans configurer Ludusavi et Rclone à la main."
+description: "Jouez sur votre fixe, votre portable et votre Steam Deck sans perdre votre progression : synchro automatique des parties entre PC, avec historique."
 order: 2
-updated: 2026-09-01
+updated: 2026-10-01
 ---
 
 Si vous jouez sur plus d'un ordinateur — un fixe à la maison et un portable en déplacement — Hoard garde vos sauvegardes synchronisées pour que vous repreniez toujours là où vous en étiez.
@@ -55,6 +55,18 @@ Hoard n'écrase jamais à l'aveugle. Il compare les dates de modification, conse
 
 La limite honnête : **Hoard ne fusionne pas deux sauvegardes divergentes.** Aucun outil ne le peut — un fichier de sauvegarde est opaque, et il n'existe aucune façon correcte de mélanger deux après-midi de jeu différents. Ce que vous obtenez à la place, c'est toutes les versions, sur toutes les machines, et le choix.
 
+## Les réglages se synchronisent-ils entre PC ?
+
+Les sauvegardes, oui. Les réglages, par défaut, non, et c'est voulu. Le Steam Deck montre pourquoi : il tourne en 1280×800 avec un GPU de console portable, alors que votre PC fixe tourne peut-être en 4K sur une machine bien plus puissante. Copiez le `graphics.ini` du PC fixe sur le Deck et le jeu démarre dans une résolution que l'écran ne peut pas afficher, avec des réglages que le matériel ne tient pas.
+
+Hoard trie donc ce qu'il trouve dans un dossier de sauvegarde :
+
+- **Les sauvegardes** se synchronisent entre machines, à chaque session.
+- **Les fichiers de réglages** (`graphics.ini`, `settings.cfg` et autres) sont conservés dans chaque sauvegarde, donc jamais perdus, mais une restauration ne les écrit pas par-dessus ceux d'une autre machine. Si l'entrée du jeu dans la base de données des sauvegardes indique qu'un `.ini` *est* la sauvegarde, il est traité comme tel.
+- **Le superflu**, comme les rapports de plantage, les fichiers temporaires, les journaux du moteur type `Player.log` et la comptabilité propre à Steam, n'est pas sauvegardé du tout, pour qu'ouvrir un jeu ne crée pas à lui seul une nouvelle version.
+
+Si vous voulez que les réglages voyagent, cochez **Restaurer aussi les fichiers de réglages** en restaurant une version depuis l'historique, ou réglez le jeu sur **Restaurer aussi les réglages** pour qu'ils suivent à chaque restauration, automatiques comprises. Pratique quand les deux PC ont le même écran et que vous avez déjà peaufiné le jeu.
+
 ## Synchroniser sans passer par nos serveurs
 
 Autant le dire franchement, car c'est le point sur lequel presque toutes les comparaisons se trompent. Il y a deux façons de l'utiliser :
@@ -91,3 +103,7 @@ Les sauvegardes, oui. Les fichiers propres à une machine — configuration, jou
 ### L'auto-hébergement envoie-t-il quoi que ce soit à Hoard ?
 
 Non. En mode auto-hébergé il n'y a aucun compte chez nous ni aucune télémétrie vers nous : vos sauvegardes, vos utilisateurs et vos journaux vivent sur votre propre serveur et ne touchent jamais le nôtre.
+
+### Puis-je quand même copier mes réglages sur l'autre PC ?
+
+Oui. Cochez **Restaurer aussi les fichiers de réglages** en restaurant une version, ou réglez le jeu sur **Restaurer aussi les réglages** pour les ramener à chaque restauration. En ligne de commande, `hoard restore --allow-ini` fait la même chose.

@@ -1,8 +1,8 @@
 ---
 title: "Sincronização de saves comparada: Hoard frente a Ludusavi, Syncthing, OpenSave e as outras"
-description: "Comparação honesta das ferramentas que fazem backup e sincronizam saves de PC — Ludusavi, Syncthing, OpenSave, OpenCloudSaves, Game Backup Monitor, Aletheia, SaveSync e Hoard — com tabela e uma secção sobre onde o Hoard perde."
+description: "Hoard, Ludusavi, Syncthing, OpenSave, GameSave Manager e mais, comparados: onde cada um brilha, onde fica aquém e uma tabela lado a lado."
 order: 4
-updated: 2026-09-01
+updated: 2026-10-01
 ---
 
 A Steam Cloud só cobre jogos comprados na Steam, e apenas quando o programador se deu ao trabalho de a ligar. Emuladores, GOG, Epic, itch.io, jogos fora da Steam, qualquer coisa com mods: nada disso entra. Se jogas em mais do que uma máquina, um desktop e uma Steam Deck por exemplo, acabas a copiar pastas à mão na esperança de teres apanhado a mais recente.
@@ -49,6 +49,14 @@ Windows primeiro, e o original de todo este género. O GBM vigia o processo do j
 
 **Onde para:** é uma ferramenta de backup, não de sincronização. Levar o arquivo para uma segunda máquina é problema teu, e a Steam Deck / SteamOS não é o seu terreno.
 
+## GameSave Manager
+
+Uma ferramenta gratuita e veterana para Windows, de código fechado, com a sua própria base de dados de jogos. Faz backup e restauro, e a sua função mais conhecida, **Sync & Link**, move a pasta de saves para uma pasta na nuvem como o Dropbox ou o OneDrive e deixa um link no lugar, para que o cliente da nuvem a mantenha sincronizada.
+
+**Melhor se:** estás no Windows, já vives no Dropbox ou no OneDrive e queres simplesmente que o save esteja lá.
+
+**Onde para:** só Windows, e o Sync & Link significa que um cliente de nuvem genérico sincroniza a pasta ativa enquanto o jogo escreve nela, o mesmo padrão que torna [o Syncthing arriscado para saves](/guides/syncthing-game-saves). O histórico de versões é o que a tua nuvem guardar.
+
 ## Aletheia
 
 O mais recente do grupo, AGPL, e vai exatamente à parte que os outros cobrem pela metade: os launchers. Heroic, itch.io, Lutris, Steam, GOG Galaxy e Xbox, em Windows, Linux e macOS.
@@ -64,6 +72,14 @@ O comercial, vendido na Steam como compra única, virado para Windows. O truque 
 **Melhor se:** o problema que resolves é «o meu amigo aloja e preciso do save dele», não «que os meus saves me sigam».
 
 **Onde para:** código fechado, Windows, preso à Steam como meio de transporte, e uma lista de jogos cooperativos suportados em vez de tudo o que tens.
+
+## Tachyon
+
+O nome mais recente da lista, em beta gratuita para Windows. O Tachyon deteta os saves de mais de 5 000 jogos de PC, sincroniza-os através da sua própria nuvem e guarda um histórico de versões com várias «linhas temporais».
+
+**Melhor se:** estás no Windows, queres algo que funcione logo à primeira e não te importas que seja uma beta.
+
+**Onde para:** por agora só Windows (Linux e macOS aparecem como «em breve»), por isso ainda sem Steam Deck; sem código-fonte publicado; sem forma de usar o teu próprio servidor. O preço depois da beta não foi anunciado.
 
 ## Uma nota sobre o EmuDeck
 
@@ -113,8 +129,10 @@ O mesmo binário, a mesma deteção, o mesmo histórico. A única coisa que muda
 | **OpenSave** | Sim, peer-to-peer | Os teus dispositivos, espelho opcional na nuvem | Snapshots e branches | Win · Linux · Deck | MIT |
 | **OpenCloudSaves** | Sim, através da tua nuvem | OneDrive / Drive / Dropbox / Nextcloud | O que a nuvem guardar | Win · Linux · macOS | Grátis, open source |
 | **Game Backup Monitor** | Não | Arquivos 7-Zip locais | Cópias numeradas | Windows | Grátis, open source |
+| **GameSave Manager** | Através da tua nuvem (Sync & Link) | Local, mais Dropbox / OneDrive | O que a nuvem guardar | Windows | Grátis, código fechado |
 | **Aletheia** | Cópia e restauro por launcher | O teu armazenamento | Cópias | Win · Linux · macOS | AGPL-3.0 |
 | **SaveSync** | Sim, e com amigos | Entradas privadas da Steam Workshop | Conforme a app | Windows | Pago, código fechado |
+| **Tachyon** | Sim, através da sua nuvem | A nuvem do Tachyon | Versões e linhas temporais | Windows (beta) | Beta gratuita, sem código publicado |
 
 ## Então qual
 

@@ -1,6 +1,6 @@
 ---
 title: "Alternativa ao OpenSave: direto entre máquinas ou com um servidor teu"
-description: "O OpenSave sincroniza saves diretamente entre os teus PCs, sem nada pelo meio. O Hoard sincroniza através de um servidor — o nosso ou um teu — e guarda histórico versionado. Um olhar honesto sobre quando cada desenho ganha."
+description: "O OpenSave sincroniza ponto a ponto; o Hoard passa por um servidor, o nosso ou o teu, e guarda cada versão. Quando ganha cada abordagem."
 order: 8
 updated: 2026-09-01
 ---

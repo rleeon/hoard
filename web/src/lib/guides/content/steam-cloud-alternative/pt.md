@@ -1,6 +1,6 @@
 ---
 title: "Alternativa à Steam Cloud: guarda os saves que a Steam não guarda"
-description: "A Steam Cloud só cobre jogos da Steam cujo programador a ativou, e não guarda histórico. O Hoard copia todos os jogos a que jogas, venham de onde vierem, com um histórico versionado a que podes voltar — na nuvem ou no teu próprio servidor."
+description: "O Steam Cloud deixa muitos jogos de fora e não guarda histórico. Faz backup de todos, de qualquer launcher, com versões para recuperar. Nuvem ou self-host."
 order: 7
 updated: 2026-09-01
 ---

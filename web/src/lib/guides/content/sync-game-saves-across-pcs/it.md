@@ -1,8 +1,8 @@
 ---
 title: "Come sincronizzare i salvataggi tra più PC"
-description: "Gioca allo stesso gioco su fisso e portatile senza perdere progressi. Sincronizza i tuoi salvataggi tra PC automaticamente con Hoard — sincronizzazione cloud gestita, senza configurare Ludusavi e Rclone a mano."
+description: "Gioca su fisso, portatile e Steam Deck senza perdere progressi: sincronizza i salvataggi tra PC in automatico, con cronologia. Passo dopo passo."
 order: 2
-updated: 2026-09-01
+updated: 2026-10-01
 ---
 
 Se giochi su più di un computer — un fisso a casa e un portatile in giro — Hoard mantiene i salvataggi sincronizzati così riprendi sempre da dove avevi lasciato.
@@ -55,6 +55,18 @@ Hoard non sovrascrive mai alla cieca. Confronta le date di modifica, conserva un
 
 Il limite onesto: **Hoard non fonde due salvataggi divergenti.** Nessuno strumento può farlo — un file di salvataggio è opaco e non esiste un modo corretto di mescolare due pomeriggi di gioco diversi. Quello che ottieni invece è ogni versione, su ogni macchina, e la possibilità di scegliere.
 
+## Le impostazioni si sincronizzano tra PC?
+
+I salvataggi sì. Le impostazioni, di default, no, ed è voluto. La Steam Deck mostra perché: gira a 1280×800 con una GPU da portatile, mentre il tuo fisso magari va in 4K su qualcosa di molto più grosso. Copia il `graphics.ini` del fisso sulla Deck e il gioco parte a una risoluzione che lo schermo non può mostrare, con impostazioni che l'hardware non regge.
+
+Per questo Hoard classifica ciò che trova in una cartella di salvataggio:
+
+- **I salvataggi** si sincronizzano tra le macchine, a ogni sessione.
+- **I file di impostazioni** (`graphics.ini`, `settings.cfg` e simili) restano in ogni backup, quindi non si perdono mai, ma un ripristino non li scrive sopra quelli di un'altra macchina. Se la voce del gioco nel database dei salvataggi dice che un `.ini` *è* il salvataggio, viene trattato come salvataggio.
+- **Il superfluo**, come crash dump, file temporanei, log del motore tipo `Player.log` e la contabilità di Steam, non viene salvato affatto, così aprire un gioco non crea da solo una nuova versione.
+
+Se invece vuoi che le impostazioni viaggino, spunta **Ripristina anche i file di impostazioni** quando ripristini una versione dalla cronologia, oppure imposta il gioco su **Ripristina anche le impostazioni** perché ogni ripristino le porti, compresi quelli automatici. Utile quando i due PC hanno lo stesso schermo e hai già messo a punto il gioco una volta.
+
 ## Sincronizzare senza passare dai nostri server
 
 Vale la pena dirlo chiaramente, perché è il punto su cui quasi tutti i confronti sbagliano. Ci sono due modi di usarlo:
@@ -91,3 +103,7 @@ I salvataggi sì. I file che appartengono a una macchina specifica — configura
 ### Il self-hosting manda qualcosa a Hoard?
 
 No. In modalità self-hosted non c'è alcun account con noi né telemetria verso di noi: i tuoi salvataggi, i tuoi utenti e i tuoi log stanno sul tuo server e non toccano mai il nostro.
+
+### Posso comunque copiare le mie impostazioni sull'altro PC?
+
+Sì. Spunta **Ripristina anche i file di impostazioni** quando ripristini una versione, oppure imposta il gioco su **Ripristina anche le impostazioni** per portarle a ogni ripristino. Da riga di comando, `hoard restore --allow-ini` fa lo stesso.

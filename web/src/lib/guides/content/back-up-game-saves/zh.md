@@ -1,8 +1,8 @@
 ---
 title: "如何自动备份游戏存档"
-description: "用 Hoard 为你的 PC 游戏存档设置自动、带版本的云端备份——这样崩溃、重装或有问题的 MOD 都永远不会清除你的进度。"
+description: "每次游戏结束后自动备份 PC 游戏存档并保留版本历史，崩溃、重装或坏掉的 Mod 都不会再抹掉你的进度。"
 order: 1
-updated: 2026-09-01
+updated: 2026-10-02
 ---
 
 丢失一个存档就意味着丢失数小时的进度。Hoard 会自动备份你的 PC 游戏存档，并保留完整的版本历史，让你随时都能回退。
@@ -36,6 +36,8 @@ Hoard 会检测你所玩游戏的存档文件夹，并把它们复制到你自�
 - **在 macOS 上**，`~/Library/Application Support`。
 
 游戏从哪儿买的几乎无关紧要：GOG、Epic 和 itch 的游戏同样落在这几个位置，因为决定权在引擎和开发者手里，不在商店。
+
+对于几款热门游戏，另有专门页面介绍确切路径、文件夹内容以及要避开的坑：[Cyberpunk 2077](/guides/cyberpunk-2077-save-location), [红色沙漠](/guides/crimson-desert-save-location), [漫威蜘蛛侠 2](/guides/spider-man-2-save-location), [博德之门 3](/guides/baldurs-gate-3-save-location) 和 [幻兽帕鲁](/guides/palworld-save-location)。
 
 ## 什么会被备份，什么不会
 

@@ -1,6 +1,6 @@
 ---
 title: "Alternativa a Steam Cloud: salva i salvataggi che Steam non copre"
-description: "Steam Cloud copre solo i giochi Steam il cui sviluppatore l'ha attivato, e non tiene una cronologia. Hoard salva ogni gioco a cui giochi, da qualsiasi store, con una cronologia versionata a cui tornare — nel cloud o sul tuo server."
+description: "Steam Cloud salta molti giochi e non tiene la cronologia. Fai il backup di ogni gioco, da qualsiasi launcher, con versioni da ripristinare. Cloud o self-host."
 order: 7
 updated: 2026-09-01
 ---

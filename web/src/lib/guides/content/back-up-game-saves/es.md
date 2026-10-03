@@ -1,8 +1,8 @@
 ---
 title: "Cómo hacer copias de seguridad de tus partidas automáticamente"
-description: "Configura copias de seguridad automáticas y versionadas en la nube de tus partidas de PC con Hoard, para que un fallo, una reinstalación o un mod problemático nunca borren tu progreso."
+description: "Haz copia de tus partidas de PC automáticamente tras cada sesión, con historial de versiones, para que un fallo, una reinstalación o un mod no te borren nada."
 order: 1
-updated: 2026-09-01
+updated: 2026-10-02
 ---
 
 Perder una partida guardada significa perder horas de progreso. Hoard hace copias de seguridad de tus partidas de PC automáticamente y guarda un historial completo de versiones, para que siempre puedas volver atrás.
@@ -36,6 +36,8 @@ No hay un único sitio, y ése es justo el motivo de que exista una herramienta 
 - **En macOS**, `~/Library/Application Support`.
 
 De dónde venga el juego importa poco: los de GOG, Epic e itch caen en el mismo puñado de sitios, porque lo deciden el motor y el desarrollador, no la tienda.
+
+Para algunos juegos populares hay una página con las rutas exactas, qué hay en la carpeta y las trampas que evitar: [Cyberpunk 2077](/guides/cyberpunk-2077-save-location), [Crimson Desert](/guides/crimson-desert-save-location), [Marvel's Spider-Man 2](/guides/spider-man-2-save-location), [Baldur's Gate 3](/guides/baldurs-gate-3-save-location) y [Palworld](/guides/palworld-save-location).
 
 ## Qué se copia y qué no
 

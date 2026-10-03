@@ -1,8 +1,8 @@
 ---
 title: "Comparatif de synchronisation des sauvegardes : Hoard face à Ludusavi, Syncthing, OpenSave et les autres"
-description: "Comparatif honnête des outils qui sauvegardent et synchronisent les parties PC — Ludusavi, Syncthing, OpenSave, OpenCloudSaves, Game Backup Monitor, Aletheia, SaveSync et Hoard — avec un tableau et une section sur les points faibles de Hoard."
+description: "Hoard, Ludusavi, Syncthing, OpenSave, GameSave Manager et d'autres comparés : points forts, limites de chacun et un tableau côte à côte."
 order: 4
-updated: 2026-09-01
+updated: 2026-10-01
 ---
 
 Steam Cloud ne couvre que les jeux achetés sur Steam, et seulement quand le développeur a pris la peine de l'activer. Émulateurs, GOG, Epic, itch.io, jeux hors Steam, tout ce qui est moddé : rien de tout ça n'est couvert. Si vous jouez sur plusieurs machines, un fixe et un Steam Deck par exemple, vous finissez par copier des dossiers à la main en espérant avoir pris le plus récent.
@@ -49,6 +49,14 @@ D'abord Windows, et l'ancêtre de tout ce genre. GBM guette le processus du jeu 
 
 **Là où il s'arrête :** c'est un outil de sauvegarde, pas de synchronisation. Amener l'archive sur une deuxième machine, c'est votre affaire, et Steam Deck / SteamOS n'est pas son terrain.
 
+## GameSave Manager
+
+Un outil Windows gratuit de longue date, propriétaire, avec sa propre base de jeux. Il sauvegarde et restaure, et sa fonction la plus connue, **Sync & Link**, déplace un dossier de sauvegarde dans un dossier cloud comme Dropbox ou OneDrive et laisse un lien à sa place, pour que le client cloud le garde synchronisé.
+
+**Idéal si :** vous êtes sous Windows, vivez déjà dans Dropbox ou OneDrive et voulez simplement que la sauvegarde y soit.
+
+**Où il s'arrête :** Windows uniquement, et Sync & Link signifie qu'un client cloud généraliste synchronise le dossier actif pendant que le jeu écrit dedans, le même schéma qui rend [Syncthing risqué pour les sauvegardes](/guides/syncthing-game-saves). L'historique est celui que garde votre cloud.
+
 ## Aletheia
 
 Le plus récent du lot, sous AGPL, et il attaque précisément ce que les autres couvrent à moitié : les lanceurs. Heroic, itch.io, Lutris, Steam, GOG Galaxy et Xbox, sous Windows, Linux et macOS.
@@ -64,6 +72,14 @@ Le commercial, vendu sur Steam en achat unique, orienté Windows. Sa particulari
 **Le meilleur si :** votre problème est « mon ami héberge et il me faut sa sauvegarde », pas « que mes sauvegardes me suivent ».
 
 **Là où il s'arrête :** code fermé, Windows, dépendant de Steam comme transport, et une liste de jeux coop pris en charge plutôt que tout ce que vous possédez.
+
+## Tachyon
+
+Le nom le plus récent de la liste, en bêta gratuite sous Windows. Tachyon détecte les sauvegardes de plus de 5 000 jeux PC, les synchronise via son propre cloud et conserve un historique de versions avec plusieurs « timelines ».
+
+**Idéal si :** vous êtes sous Windows, voulez quelque chose qui marche tout de suite et qu'une bêta ne vous gêne pas.
+
+**Où il s'arrête :** Windows uniquement pour l'instant (Linux et macOS sont annoncés), donc pas encore de Steam Deck ; pas de code source publié ; impossible d'utiliser son propre serveur. Les tarifs après la bêta ne sont pas annoncés.
 
 ## Une note sur EmuDeck
 
@@ -113,8 +129,10 @@ Le même binaire, la même détection, le même historique. La seule chose qui c
 | **OpenSave** | Oui, pair-à-pair | Vos appareils, réplication cloud optionnelle | Instantanés et branches | Win · Linux · Deck | MIT |
 | **OpenCloudSaves** | Oui, via votre cloud | OneDrive / Drive / Dropbox / Nextcloud | Ce que garde le cloud | Win · Linux · macOS | Gratuit, open source |
 | **Game Backup Monitor** | Non | Archives 7-Zip locales | Sauvegardes numérotées | Windows | Gratuit, open source |
+| **GameSave Manager** | Via votre cloud (Sync & Link) | Local, plus Dropbox / OneDrive | Ce que garde le cloud | Windows | Gratuit, propriétaire |
 | **Aletheia** | Sauvegarde et restauration par lanceur | Votre stockage | Sauvegardes | Win · Linux · macOS | AGPL-3.0 |
 | **SaveSync** | Oui, et avec des amis | Entrées privées du Steam Workshop | Selon l'application | Windows | Payant, code fermé |
+| **Tachyon** | Oui, via son propre cloud | Le cloud de Tachyon | Versions et timelines | Windows (bêta) | Bêta gratuite, code non publié |
 
 ## Alors lequel
 

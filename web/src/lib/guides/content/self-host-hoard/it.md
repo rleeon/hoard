@@ -1,6 +1,6 @@
 ---
 title: "Come self-hostare Hoard con Docker"
-description: "Avvia il tuo server Hoard in pochi minuti con Docker Compose. Open source, gratuito, sul tuo hardware: un cloud completamente self-hosted per i salvataggi dei giochi, senza account né limiti di spazio."
+description: "Avvia il tuo server Hoard con Docker Compose: gratis, open source, sul tuo hardware, senza account presso di noi e senza quota. I salvataggi restano tuoi."
 order: 0
 featured: true
 updated: 2026-09-29

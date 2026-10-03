@@ -1,6 +1,6 @@
 ---
 title: "Syncthing für Spielstände: was klappt und was bricht"
-description: "Syncthing ist ein hervorragender universeller Datei-Sync, aber Spielstände brechen drei seiner Annahmen. Was schiefgeht, wie man es umgeht, und wann ein Werkzeug besser ist, das weiß, was ein Spielstand ist."
+description: "Syncthing ist ein toller Datei-Sync, aber Spielstände brechen drei seiner Annahmen. Was schiefgeht, die Workarounds und wann ein Save-Tool besser passt."
 order: 9
 updated: 2026-09-01
 ---

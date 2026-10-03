@@ -1,6 +1,6 @@
 ---
 title: "Como restaurar um save antigo"
-description: "Tomaste uma má decisão, corrompeste um ficheiro ou queres recomeçar? Volta a qualquer versão anterior do teu save com o histórico na nuvem do Hoard — incluindo saves feitos com ferramentas como o Ludusavi."
+description: "Save corrompido, mod estragado ou uma escolha de que te arrependes? Volta a uma versão anterior, passo a passo, sem perder o que tens agora."
 order: 3
 updated: 2026-09-01
 ---

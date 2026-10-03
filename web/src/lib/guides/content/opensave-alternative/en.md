@@ -1,8 +1,9 @@
 ---
 title: "OpenSave alternative: peer-to-peer or a server you own"
-description: "OpenSave syncs game saves directly between your PCs, with no server in the middle. Hoard syncs through a server — ours or one you host — and keeps a versioned history. An honest look at when each design wins."
+description: "OpenSave syncs saves peer-to-peer; Hoard syncs through a server, ours or yours, and keeps every version. An honest look at when each design wins."
 order: 8
 updated: 2026-09-01
+related: game-save-sync-comparison, self-host-hoard, syncthing-game-saves
 ---
 
 Both tools solve the same problem and disagree about the architecture, which is the only thing worth comparing. This page lays the two designs side by side, including the cases where the other one is the better answer.

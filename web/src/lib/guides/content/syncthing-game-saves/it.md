@@ -1,6 +1,6 @@
 ---
 title: "Syncthing per i salvataggi: cosa funziona e cosa si rompe"
-description: "Syncthing è un ottimo strumento di sincronizzazione generico, ma i salvataggi ne infrangono tre presupposti. Cosa va storto, come ci si arrangia, e quando conviene uno strumento che sa cos'è un salvataggio."
+description: "Syncthing è un ottimo sincronizzatore, ma i salvataggi rompono tre sue ipotesi. Cosa va storto, come aggirarlo e quando serve uno strumento dedicato."
 order: 9
 updated: 2026-09-01
 ---

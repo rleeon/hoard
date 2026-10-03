@@ -1,6 +1,6 @@
 ---
 title: "Syncthing pour les sauvegardes de jeux : ce qui marche et ce qui casse"
-description: "Syncthing est un excellent outil de synchronisation généraliste, mais les sauvegardes de jeux brisent trois de ses hypothèses. Ce qui déraille, comment les gens contournent, et quand un outil qui connaît les sauvegardes vaut mieux."
+description: "Syncthing est un excellent outil de synchro, mais les sauvegardes de jeu cassent trois de ses hypothèses. Ce qui casse, les parades, et quand changer d'outil."
 order: 9
 updated: 2026-09-01
 ---

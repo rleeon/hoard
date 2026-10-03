@@ -1,8 +1,8 @@
 ---
 title: "ゲームのセーブデータを自動でバックアップする方法"
-description: "Hoard で PC ゲームのセーブデータを自動かつ世代管理付きでクラウドにバックアップ。クラッシュ・再インストール・不具合のある MOD でも進行データが消える心配はありません。"
+description: "プレイ終了ごとにPCのセーブを自動バックアップ。バージョン履歴付きなので、クラッシュや再インストール、壊れたModでも進行を失いません。"
 order: 1
-updated: 2026-09-01
+updated: 2026-10-02
 ---
 
 セーブデータを失うことは、何時間もの進行を失うことです。Hoard は PC ゲームのセーブデータを自動でバックアップし、完全なバージョン履歴を保持するので、いつでも巻き戻せます。
@@ -36,6 +36,8 @@ Hoard はプレイしているゲームのセーブフォルダーを検出し�
 - **macOS** では `~/Library/Application Support`。
 
 ゲームの入手元はほとんど関係ありません。GOG、Epic、itch のタイトルも同じ数か所に落ち着きます。決めているのはストアではなく、エンジンと開発者だからです。
+
+人気のあるいくつかのゲームについては、正確なパス、フォルダーの中身、避けるべき落とし穴をまとめたページがあります: [Cyberpunk 2077](/guides/cyberpunk-2077-save-location), [紅の砂漠](/guides/crimson-desert-save-location), [Marvel's Spider-Man 2](/guides/spider-man-2-save-location), [バルダーズ・ゲート3](/guides/baldurs-gate-3-save-location)、[パルワールド](/guides/palworld-save-location)。
 
 ## 何がバックアップされ、何がされないか
 

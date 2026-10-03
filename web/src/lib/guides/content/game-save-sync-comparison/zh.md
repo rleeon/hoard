@@ -1,8 +1,8 @@
 ---
 title: "游戏存档同步工具对比：Hoard 与 Ludusavi、Syncthing、OpenSave 等"
-description: "对备份与同步 PC 游戏存档的各款工具做一次诚实对比——Ludusavi、Syncthing、OpenSave、OpenCloudSaves、Game Backup Monitor、Aletheia、SaveSync 和 Hoard——附对比表，以及 Hoard 输在哪里的一节。"
+description: "Hoard、Ludusavi、Syncthing、OpenSave、GameSave Manager 等工具对比：各自的长处与短板，附并排对比表。"
 order: 4
-updated: 2026-09-01
+updated: 2026-10-01
 ---
 
 Steam 云存档只覆盖你在 Steam 上买的游戏，而且还得开发者愿意打开这个开关。模拟器、GOG、Epic、itch.io、非 Steam 的游戏、任何装了 MOD 的东西，统统不在其中。如果你在不止一台机器上玩——比如一台台式机加一台 Steam Deck——最后就是手动复制文件夹，然后祈祷自己拿的是最新的那一份。
@@ -49,6 +49,14 @@ Steam 云存档只覆盖你在 Steam 上买的游戏，而且还得开发者愿�
 
 **止步之处：** 它是备份工具，不是同步工具。把归档弄到第二台机器上是你自己的事，而 Steam Deck / SteamOS 也不是它的主场。
 
+## GameSave Manager
+
+一款历史悠久的免费 Windows 工具，闭源，自带游戏数据库。它能备份和恢复，最知名的功能 **Sync & Link** 会把存档文件夹移进 Dropbox 或 OneDrive 等云盘文件夹，并在原处留下链接，由云盘客户端保持同步。
+
+**最适合：**你用 Windows，本来就离不开 Dropbox 或 OneDrive，只想让存档放在那里。
+
+**局限：**仅限 Windows；而且 Sync & Link 意味着通用云盘客户端会在游戏写入时同步正在使用的文件夹，这正是[用 Syncthing 同步存档有风险](/guides/syncthing-game-saves)的同一种模式。版本历史取决于你的云盘保留多少。
+
 ## Aletheia
 
 这一组里最新的一款，AGPL 许可，而且专攻别人都只覆盖了一半的那块：启动器。Heroic、itch.io、Lutris、Steam、GOG Galaxy 和 Xbox，覆盖 Windows、Linux 和 macOS。
@@ -64,6 +72,14 @@ Steam 云存档只覆盖你在 Steam 上买的游戏，而且还得开发者愿�
 **适合：** 你要解决的问题是"朋友开房，我需要他那份存档"，而不是"让我的存档跟着我走"。
 
 **止步之处：** 闭源、限 Windows、把 Steam 当作传输通道，而且支持的是一份联机游戏清单，不是你拥有的一切。
+
+## Tachyon
+
+这份名单里最新的名字，目前在 Windows 上免费公测。Tachyon 能识别 5,000 多款 PC 游戏的存档，通过自家的云同步，并保留带有多条“时间线”的版本历史。
+
+**最适合：**你用 Windows，想要开箱即用，也不介意它还是测试版。
+
+**局限：**目前仅限 Windows（Linux 和 macOS 标注为即将推出），所以还不支持 Steam Deck；没有公开源代码；也无法使用自己的服务器。测试结束后的定价尚未公布。
 
 ## 关于 EmuDeck 的一点说明
 
@@ -113,8 +129,10 @@ Hoard 以一次游戏会话作为单位。引擎作为后台服务运行——`h
 | **OpenSave** | 是，点对点 | 你的设备，可选云端镜像 | 快照与分支 | Win · Linux · Deck | MIT |
 | **OpenCloudSaves** | 是，经由你的网盘 | OneDrive / Drive / Dropbox / Nextcloud | 取决于网盘保留什么 | Win · Linux · macOS | 免费开源 |
 | **Game Backup Monitor** | 否 | 本地 7-Zip 归档 | 编号备份 | Windows | 免费开源 |
+| **GameSave Manager** | 通过你的云盘（Sync & Link） | 本地，外加 Dropbox / OneDrive | 取决于云盘保留多少 | Windows | 免费，闭源 |
 | **Aletheia** | 按启动器备份与还原 | 你自己的存储 | 备份 | Win · Linux · macOS | AGPL-3.0 |
 | **SaveSync** | 是，还能和朋友同步 | 私有的 Steam 创意工坊条目 | 视应用而定 | Windows | 付费闭源 |
+| **Tachyon** | 有，通过自家云 | Tachyon 的云 | 版本和时间线 | Windows（测试版） | 免费测试版，未公开源代码 |
 
 ## 那么选哪个
 

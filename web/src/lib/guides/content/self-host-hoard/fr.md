@@ -1,6 +1,6 @@
 ---
 title: "Comment auto-héberger Hoard avec Docker (self-hosted)"
-description: "Lancez votre propre serveur Hoard en quelques minutes avec Docker Compose. Open source, gratuit, sur votre matériel : un cloud entièrement auto-hébergé pour vos sauvegardes de jeux, sans compte ni quota."
+description: "Hébergez votre propre serveur Hoard avec Docker Compose : gratuit, open source, sur votre matériel, sans compte chez nous ni quota."
 order: 0
 featured: true
 updated: 2026-09-29

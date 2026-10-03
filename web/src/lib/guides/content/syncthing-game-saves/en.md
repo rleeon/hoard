@@ -1,8 +1,9 @@
 ---
 title: "Syncthing for game saves: what works and what breaks"
-description: "Syncthing is an excellent general-purpose file syncer, but game saves break three of its assumptions. What goes wrong, how people work around it, and when a save-aware tool is the better answer."
+description: "Syncthing is a great file syncer, but game saves break three of its assumptions. What goes wrong, the workarounds, and when a save-aware tool fits better."
 order: 9
 updated: 2026-09-01
+related: game-save-sync-comparison, sync-game-saves-across-pcs, opensave-alternative
 ---
 
 Syncthing is the answer a lot of people reach for first, and for good reason: it's free, open source, peer-to-peer, and it works. But game saves break three of the assumptions a general-purpose file syncer is built on, and the failures are quiet ones. This guide is about what actually goes wrong, and when it's worth using something that knows what a save is.

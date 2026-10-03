@@ -1,6 +1,6 @@
 ---
 title: "如何用 Docker 自托管 Hoard"
-description: "用 Docker Compose 几分钟搭建你自己的 Hoard 服务器。开源、免费、运行在你自己的硬件上——一个完全自托管的游戏存档云，无需账号、没有容量限制。"
+description: "用 Docker Compose 运行你自己的 Hoard 服务端：免费开源，跑在你的硬件上，无需我们的账号，也没有配额限制。"
 order: 0
 featured: true
 updated: 2026-09-29

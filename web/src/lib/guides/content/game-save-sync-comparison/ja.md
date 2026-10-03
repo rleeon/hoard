@@ -1,8 +1,8 @@
 ---
 title: "セーブデータ同期ツール比較：Hoard と Ludusavi・Syncthing・OpenSave ほか"
-description: "PC のセーブデータをバックアップ・同期するツールの正直な比較。Ludusavi、Syncthing、OpenSave、OpenCloudSaves、Game Backup Monitor、Aletheia、SaveSync、Hoard を一覧表つきで比較し、Hoard が負けている点も書いています。"
+description: "Hoard、Ludusavi、Syncthing、OpenSave、GameSave Managerなどを比較。それぞれの強みと弱点、並べて見られる比較表付き。"
 order: 4
-updated: 2026-09-01
+updated: 2026-10-01
 ---
 
 Steam クラウドが守ってくれるのは Steam で買ったゲームだけ、しかも開発者が対応をオンにした場合に限られます。エミュレーター、GOG、Epic、itch.io、Steam 以外のゲーム、MOD を入れたもの——どれも対象外です。デスクトップと Steam Deck のように複数の環境で遊んでいると、結局フォルダーを手でコピーして、新しいほうを掴んだと信じるしかなくなります。
@@ -49,6 +49,14 @@ Windows 中心で、このジャンルの元祖です。GBM はゲームのプ�
 
 **足りないところ：** バックアップのツールであって同期のツールではありません。アーカイブを二台目に持っていくのは自分の仕事ですし、Steam Deck / SteamOS は得意分野ではありません。
 
+## GameSave Manager
+
+長く使われてきた無料の Windows 用ツールで、クローズドソース、独自のゲームデータベースを持っています。バックアップと復元ができ、最もよく知られた機能 **Sync & Link** は、セーブフォルダーを Dropbox や OneDrive などのクラウドフォルダーに移し、元の場所にリンクを残して、クラウドクライアントに同期させます。
+
+**向いている人:** Windows を使っていて、すでに Dropbox や OneDrive 中心で暮らしており、セーブがそこにあればいい人。
+
+**限界:** Windows のみ。また Sync & Link では、ゲームが書き込んでいる最中の使用中フォルダーを汎用クラウドクライアントが同期します。これは [Syncthing がセーブに危険な理由](/guides/syncthing-game-saves)と同じパターンです。バージョン履歴はクラウドドライブが保持する分だけです。
+
 ## Aletheia
 
 この中では最も新しく、AGPL。ほかが中途半端にしか押さえていない部分、つまりランチャーを正面から狙っています。Heroic、itch.io、Lutris、Steam、GOG Galaxy、Xbox に、Windows・Linux・macOS 対応。
@@ -64,6 +72,14 @@ Windows 中心で、このジャンルの元祖です。GBM はゲームのプ�
 **向いているのは：** 解決したい問題が「自分のセーブについてきてほしい」ではなく「友達がホストで、その人のセーブが要る」である人。
 
 **足りないところ：** クローズドソース、Windows、転送路として Steam に依存、そして対応するのは所有物すべてではなく協力プレイ向けの対応ゲーム一覧です。
+
+## Tachyon
+
+このリストで最も新しい名前で、Windows 向けの無料ベータ版です。5,000 本以上の PC ゲームのセーブを検出し、自社のクラウド経由で同期し、複数の「タイムライン」を持つバージョン履歴を保持します。
+
+**向いている人:** Windows を使っていて、すぐに動くものがほしく、ベータ版でも気にならない人。
+
+**限界:** 現時点では Windows のみ（Linux と macOS は「近日対応」とされています）なので Steam Deck はまだ使えません。ソースコードは公開されておらず、自分のサーバーで運用する方法もありません。ベータ終了後の価格は発表されていません。
 
 ## EmuDeck についての注記
 
@@ -113,8 +129,10 @@ Hoard についての比較は、ほぼ必ずこの 2 つを一緒くたにし�
 | **OpenSave** | あり（P2P） | 自分の端末、任意でクラウドミラー | スナップショットとブランチ | Win · Linux · Deck | MIT |
 | **OpenCloudSaves** | あり（自分のクラウド経由） | OneDrive / Drive / Dropbox / Nextcloud | クラウド側が保持する範囲 | Win · Linux · macOS | 無料・オープンソース |
 | **Game Backup Monitor** | なし | ローカルの 7-Zip アーカイブ | 連番バックアップ | Windows | 無料・オープンソース |
+| **GameSave Manager** | クラウドドライブ経由（Sync & Link） | ローカル＋Dropbox / OneDrive | ドライブが保持する分 | Windows | 無料・クローズドソース |
 | **Aletheia** | ランチャーごとのバックアップと復元 | 自分のストレージ | バックアップ | Win · Linux · macOS | AGPL-3.0 |
 | **SaveSync** | あり（友達とも） | 非公開の Steam ワークショップ項目 | アプリの仕様による | Windows | 有料・クローズドソース |
+| **Tachyon** | あり（自社クラウド経由） | Tachyon のクラウド | バージョンとタイムライン | Windows（ベータ） | 無料ベータ・ソース非公開 |
 
 ## で、どれを選ぶか
 

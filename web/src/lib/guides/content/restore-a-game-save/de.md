@@ -1,6 +1,6 @@
 ---
 title: "So stellst du einen alten Spielstand wieder her"
-description: "Falsche Entscheidung getroffen, Datei beschädigt oder Neustart gewünscht? Springe mit Hoards Cloud-Historie zu jeder früheren Version deines Spielstands zurück — auch zu Ständen, die mit Tools wie Ludusavi gesichert wurden."
+description: "Kaputter Spielstand, fehlerhafte Mod oder eine bereute Entscheidung? Setz deinen Spielstand Schritt für Schritt zurück, ohne den aktuellen zu verlieren."
 order: 3
 updated: 2026-09-01
 ---

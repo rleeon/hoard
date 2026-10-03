@@ -1,6 +1,6 @@
 ---
 title: "Alternative à Steam Cloud : sauvegardez les parties que Steam ignore"
-description: "Steam Cloud ne couvre que les jeux Steam dont le développeur l'a activé, et ne garde aucun historique. Hoard sauvegarde tous vos jeux, quelle que soit la boutique, avec un historique versionné où revenir — dans le cloud ou sur votre propre serveur."
+description: "Steam Cloud ignore beaucoup de jeux et ne garde aucun historique. Sauvegardez tous vos jeux, de tout launcher, avec des versions à restaurer."
 order: 7
 updated: 2026-09-01
 ---

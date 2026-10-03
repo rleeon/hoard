@@ -1,8 +1,8 @@
 ---
 title: "Como sincronizar saves entre vários PCs"
-description: "Joga o mesmo jogo no fixo e no portátil sem perder progresso. Sincroniza os teus saves entre PCs automaticamente com o Hoard — sincronização na nuvem gerida, sem configurar o Ludusavi e o Rclone à mão."
+description: "Joga no fixo, no portátil e na Steam Deck sem perder progresso: sincroniza os saves entre PCs automaticamente, com histórico. Passo a passo."
 order: 2
-updated: 2026-09-01
+updated: 2026-10-01
 ---
 
 Se jogas em mais de um computador — um fixo em casa e um portátil em viagem — o Hoard mantém os teus saves sincronizados para que retomes sempre onde paraste.
@@ -55,6 +55,18 @@ O Hoard nunca escreve por cima às cegas. Compara datas de modificação, guarda
 
 O limite honesto: **o Hoard não funde dois saves divergentes.** Nenhuma ferramenta o consegue — um ficheiro de save é opaco, e não há forma correta de misturar duas tardes de jogo diferentes. O que tens em troca é todas as versões, em todas as máquinas, e a possibilidade de escolher.
 
+## As definições sincronizam entre PCs?
+
+Os saves sim. As definições, por predefinição, não, e é de propósito. A Steam Deck mostra porquê: corre a 1280×800 com uma GPU de portátil, enquanto o teu PC talvez corra a 4K em algo muito maior. Copia o `graphics.ini` do PC para a Deck e o jogo arranca numa resolução que o ecrã não consegue mostrar, com definições que o hardware não aguenta.
+
+Por isso o Hoard classifica o que encontra numa pasta de saves:
+
+- **Os saves** sincronizam entre máquinas, em cada sessão.
+- **Os ficheiros de definições** (`graphics.ini`, `settings.cfg` e afins) ficam em cada backup, por isso nunca se perdem, mas um restauro não os escreve por cima dos de outra máquina. Se a entrada do jogo na base de dados de saves disser que um `.ini` *é* o save, é tratado como save.
+- **O lixo**, como crash dumps, ficheiros temporários, logs do motor tipo `Player.log` e a contabilidade própria do Steam, nem sequer entra no backup, para que abrir um jogo não crie por si só uma versão nova.
+
+Quando quiseres mesmo que as definições viajem, marca **Restaurar também os ficheiros de definições** ao restaurar uma versão a partir do histórico, ou configura o jogo com **Restaurar também as definições** para que cada restauro as traga, incluindo os automáticos. Útil quando os dois PCs têm o mesmo ecrã e já afinaste o jogo uma vez.
+
 ## Sincronizar sem passar pelos nossos servidores
 
 Vale a pena dizê-lo de forma explícita, porque é o ponto em que quase todas as comparações se enganam. Há duas formas de o usar:
@@ -91,3 +103,7 @@ Os saves, sim. Os ficheiros que pertencem a uma máquina em concreto — configu
 ### O self-hosting envia alguma coisa para o Hoard?
 
 Não. Em modo self-hosted não há conta connosco nem telemetria para nós: os teus saves, os teus utilizadores e os teus registos vivem no teu próprio servidor e nunca tocam no nosso.
+
+### Posso copiar as minhas definições para o outro PC mesmo assim?
+
+Sim. Marca **Restaurar também os ficheiros de definições** ao restaurar uma versão, ou configura o jogo com **Restaurar também as definições** para as trazer em cada restauro. Na linha de comandos, `hoard restore --allow-ini` faz o mesmo.

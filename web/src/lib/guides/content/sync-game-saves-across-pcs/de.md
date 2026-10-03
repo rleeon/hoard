@@ -1,8 +1,8 @@
 ---
 title: "So synchronisierst du Spielstände über mehrere PCs"
-description: "Spiele dasselbe Spiel auf Desktop und Laptop, ohne Fortschritt zu verlieren. Synchronisiere deine Spielstände automatisch über mehrere PCs mit Hoard — verwaltete Cloud-Synchronisierung, ohne Ludusavi und Rclone von Hand einzurichten."
+description: "Spiele auf Desktop, Laptop und Steam Deck ohne Fortschrittsverlust: Spielstände automatisch zwischen PCs synchronisieren, mit Versionsverlauf."
 order: 2
-updated: 2026-09-01
+updated: 2026-10-01
 ---
 
 Wenn du an mehr als einem Computer spielst — ein Desktop zu Hause und ein Laptop unterwegs — hält Hoard deine Stände synchron, damit du immer dort weitermachst, wo du aufgehört hast.
@@ -55,6 +55,18 @@ Hoard überschreibt nie blind. Es vergleicht Änderungszeiten, behält eine loka
 
 Die ehrliche Grenze: **Hoard führt zwei auseinandergelaufene Stände nicht zusammen.** Das kann kein Werkzeug — eine Speicherdatei ist undurchsichtig, und es gibt keinen richtigen Weg, zwei verschiedene Spielnachmittage zu vermischen. Was du stattdessen bekommst: jede Version, auf jedem Gerät, und die Wahl.
 
+## Werden Einstellungen zwischen PCs synchronisiert?
+
+Spielstände ja. Einstellungen standardmäßig nicht, und das ist Absicht. Das Steam Deck zeigt, warum: Es läuft mit 1280×800 auf einer Handheld-GPU, dein Desktop vielleicht mit 4K auf etwas viel Größerem. Kopierst du die `graphics.ini` des Desktops auf das Deck, startet das Spiel in einer Auflösung, die der Bildschirm nicht darstellen kann, mit Einstellungen, die die Hardware nicht schafft.
+
+Deshalb sortiert Hoard, was es in einem Spielstand-Ordner findet:
+
+- **Spielstände** werden in jeder Session zwischen den Rechnern synchronisiert.
+- **Einstellungsdateien** (`graphics.ini`, `settings.cfg` und Ähnliches) landen in jedem Backup und gehen nie verloren, aber eine Wiederherstellung schreibt sie nicht über die Dateien eines anderen Rechners. Sagt der Eintrag des Spiels in der Spielstand-Datenbank, dass eine `.ini` *der* Spielstand ist, wird sie als Spielstand behandelt.
+- **Ballast** wie Absturzberichte, temporäre Dateien, Engine-Logs wie `Player.log` und Steams eigene Buchhaltung wird gar nicht gesichert, damit das bloße Öffnen eines Spiels keine neue Version erzeugt.
+
+Wenn die Einstellungen doch mitreisen sollen, setz beim Wiederherstellen einer Version aus dem Verlauf den Haken bei **Auch Einstellungsdateien wiederherstellen**, oder stell das Spiel auf **Einstellungen mitwiederherstellen**, damit jede Wiederherstellung sie mitbringt, automatische eingeschlossen. Praktisch, wenn beide PCs denselben Bildschirm haben und du das Spiel einmal eingestellt hast.
+
 ## Synchronisieren ohne unsere Server
 
 Das gehört ausdrücklich gesagt, weil die meisten Vergleiche genau hier danebenliegen. Es gibt zwei Betriebsarten:
@@ -91,3 +103,7 @@ Spielstände ja. Dateien, die zu einem bestimmten Rechner gehören — Konfigura
 ### Sendet Selbsthosten irgendetwas an Hoard?
 
 Nein. Im selbst gehosteten Betrieb gibt es kein Konto bei uns und keine Telemetrie zu uns: deine Stände, deine Nutzer und deine Logs liegen auf deinem eigenen Server und berühren unseren nie.
+
+### Kann ich meine Einstellungen trotzdem auf den anderen PC übernehmen?
+
+Ja. Setz beim Wiederherstellen einer Version den Haken bei **Auch Einstellungsdateien wiederherstellen**, oder stell das Spiel auf **Einstellungen mitwiederherstellen**, damit sie bei jeder Wiederherstellung mitkommen. Auf der Kommandozeile macht `hoard restore --allow-ini` dasselbe.

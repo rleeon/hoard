@@ -1,8 +1,8 @@
 ---
 title: "Cómo sincronizar partidas guardadas entre varios PC"
-description: "Juega al mismo juego en tu sobremesa y tu portátil sin perder progreso. Sincroniza tus partidas entre PC automáticamente con Hoard: sincronización en la nube gestionada, sin montar Ludusavi y Rclone a mano."
+description: "Juega en tu sobremesa, tu portátil y tu Steam Deck sin perder progreso: sincroniza tus partidas entre PC automáticamente, con historial. Paso a paso."
 order: 2
-updated: 2026-09-01
+updated: 2026-10-01
 ---
 
 Si juegas en más de un ordenador —un sobremesa en casa y un portátil de viaje— Hoard mantiene tus partidas sincronizadas para que siempre retomes donde lo dejaste.
@@ -55,6 +55,18 @@ Hoard nunca sobrescribe a ciegas. Compara fechas de modificación, guarda una co
 
 El límite honesto: **Hoard no fusiona dos partidas divergentes.** Ninguna herramienta puede — un fichero de partida es opaco, y no existe una forma correcta de mezclar dos tardes distintas de juego. Lo que te da a cambio es todas las versiones, en todas las máquinas, y la posibilidad de elegir.
 
+## ¿Se sincronizan los ajustes entre PC?
+
+Las partidas sí. Los ajustes, por defecto, no, y es a propósito. La Steam Deck lo deja claro: funciona a 1280×800 con una GPU de portátil, mientras que tu sobremesa quizá vaya a 4K con algo mucho más grande. Copia el `graphics.ini` del sobremesa a la Deck y el juego arranca con una resolución que la pantalla no puede mostrar y unos ajustes que el hardware no aguanta.
+
+Por eso Hoard clasifica lo que encuentra en una carpeta de partidas:
+
+- **Las partidas** se sincronizan entre máquinas, en cada sesión.
+- **Los ficheros de ajustes** (`graphics.ini`, `settings.cfg` y similares) se guardan en cada copia, así que nunca se pierden, pero una restauración no los escribe encima de los de otra máquina. Si la entrada del juego en la base de datos de partidas dice que un `.ini` *es* la partida, se trata como partida.
+- **La basura**, como volcados de errores, ficheros temporales, registros del motor tipo `Player.log` y la contabilidad propia de Steam, no se copia, para que abrir un juego sin más no cree una versión nueva.
+
+Cuando sí quieras que los ajustes viajen, marca **Restaurar también los ficheros de ajustes** al restaurar una versión desde el historial, o configura el juego con **Restaurar también los ajustes** para que cada restauración los traiga, también las automáticas. Útil cuando los dos PC tienen la misma pantalla y ya dejaste el juego afinado una vez.
+
 ## Sincronizar sin pasar por nuestros servidores
 
 Conviene decirlo explícitamente, porque es la parte que casi todas las comparativas se equivocan. Hay dos formas de usar esto:
@@ -91,3 +103,7 @@ Las partidas, sí. Los ficheros que son de una máquina concreta — configuraci
 ### ¿Autoalojarse envía algo a Hoard?
 
 No. En modo autoalojado no hay cuenta con nosotros ni telemetría hacia nosotros: tus partidas, tus usuarios y tus registros viven en tu propio servidor y nunca tocan el nuestro.
+
+### ¿Puedo copiar mis ajustes al otro PC de todas formas?
+
+Sí. Marca **Restaurar también los ficheros de ajustes** al restaurar una versión, o configura el juego con **Restaurar también los ajustes** para traerlos en cada restauración. Desde la línea de comandos, `hoard restore --allow-ini` hace lo mismo.

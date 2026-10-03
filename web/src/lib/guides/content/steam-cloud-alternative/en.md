@@ -1,8 +1,9 @@
 ---
 title: "Steam Cloud alternative: back up the saves Steam doesn't"
-description: "Steam Cloud only covers Steam games whose developer switched it on, and it keeps no version history. Hoard backs up every game you play, from any launcher, with a versioned history you can roll back — in the cloud or on your own server."
+description: "Steam Cloud skips many games and keeps no history. Back up every game from any launcher, with versions you can roll back. In the cloud or self-hosted."
 order: 7
 updated: 2026-09-01
+related: sync-game-saves-across-pcs, restore-a-game-save, game-save-sync-comparison
 ---
 
 Steam Cloud is genuinely good at the narrow job it does, and most people only find its edges the day they lose something. This guide explains exactly where those edges are, and what to do about the games that fall outside them.

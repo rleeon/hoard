@@ -1,8 +1,8 @@
 ---
 title: "Ludusavi 替代方案：游戏存档的自动云同步"
-description: "对 Ludusavi 与 Hoard 的公平对比。Ludusavi 是出色的开源本地备份工具；Hoard 在使用相同位置数据的同时，为你的所有 PC 增加托管式云同步与版本历史。"
+description: "Ludusavi 擅长本地备份。Hoard 基于同一份存档位置数据库，增加了 PC 与 Steam Deck 之间的自动同步和版本历史。"
 order: 5
-updated: 2026-09-01
+updated: 2026-10-01
 ---
 
 如果你在寻找备份和同步游戏存档的方法，那你很可能已经找到了 **Ludusavi**——它非常出色。本指南是一份诚实的对比，帮助你选对工具，并说明当你需要跨机器自动云同步时，Hoard 的定位在哪里。
@@ -47,6 +47,17 @@ Hoard 把它变成**托管式云同步**：
 - **你想在 Steam Deck 的游戏模式里用。** Ludusavi 有 Decky 插件，不必离开主机界面就能触发备份。
 - **你需要宽松的许可证。** Ludusavi 是 MIT，Hoard 是 AGPL-3.0。如果你打算在其之上做东西且不公开成果，这个差别很关键。
 - **你不想有东西常驻运行。** 自托管 Hoard 意味着要让一个小服务器一直开着，哪怕就在同一台 PC 上。Ludusavi 是你需要时才打开的应用。
+
+## Ludusavi 与 GameSave Manager 对比
+
+和 Ludusavi 一起常被提到的另一个名字是 **GameSave Manager**，一款历史悠久的 Windows 工具。两者用不同的方式解决同一个问题：
+
+- **平台：**Ludusavi 支持 Windows、macOS 和 Linux（包括 Steam Deck）。GameSave Manager 只支持 Windows。
+- **许可证：**Ludusavi 是开源的（MIT）。GameSave Manager 免费但闭源。
+- **查找存档：**Ludusavi 读取基于 PCGamingWiki 的社区清单，约 2 万款游戏。GameSave Manager 自带数据库。
+- **把存档送上云端：**Ludusavi 通过 Rclone 把备份复制到远程存储。GameSave Manager 的“Sync & Link”会把存档文件夹移进 Dropbox 或 OneDrive 等云盘文件夹，并在原位置留下链接，于是云盘客户端同步的是正在使用的文件夹。
+
+最后这一点值得掂量。由通用云盘客户端同步正在使用的文件夹，正是会把一个写到一半的存档变成所有 PC 上都损坏的存档的那种配置，原因见 [Syncthing 指南](/guides/syncthing-game-saves)。Hoard 站在这条线的另一边：它等游戏关闭后才上传一个版本，并保留旧版本。
 
 ## 从 Ludusavi 迁到 Hoard
 
@@ -108,3 +119,23 @@ Hoard Cloud 提供 2 GB 存储和 3 台设备的免费额度，足够覆盖大�
 ### 自托管会向 Hoard 发送任何东西吗？
 
 不会。在自托管模式下，没有我们这边的账号，也没有发往我们的遥测：你的存档、你的用户和你的日志都留在你自己的服务器上，从不接触我们的服务器。这正是这一模式的意义，也是服务器用的是我们自己在跑的同一个开源二进制、而不是删减版的原因。
+
+### Ludusavi 安全吗？
+
+安全。它是开源的，用户众多，所做的只是把存档文件复制到备份文件夹再复制回来，不会动游戏文件。唯一需要注意的一点对任何备份工具都成立：把旧备份恢复到较新的存档上会将其替换，所以恢复前先看一下日期。
+
+### Ludusavi 能在 Steam Deck 上用吗？
+
+能。有可以在桌面模式下安装的 Linux 版本，还有一个 Decky 插件可以在游戏模式下触发备份。它自己做不到的是让 Deck 和台式机保持同步：你得在一台上备份，再到另一台上恢复。Hoard 通过后台服务自动完成这一步，无需手动触发。
+
+### Ludusavi 能备份到 Google Drive 或其他云盘吗？
+
+能，通过 Rclone：为 Google Drive、Dropbox、OneDrive 或其他 Rclone 支持的服务配置一个远程，Ludusavi 就会把备份复制过去。用 Hoard 则不需要配置远程；如果你想自己掌握存储，就把它指向你自己的服务器。
+
+### Ludusavi 会自动备份吗？
+
+它本身不会：你运行它时才备份。你可以用它的命令行加计划任务实现自动化，或者包装游戏的启动命令，让它在游戏退出时备份。Hoard 无需任何包装就能察觉游戏关闭，并在那时备份。
+
+### Ludusavi 支持非 Steam 游戏吗？
+
+支持。清单涵盖 GOG、Epic、Xbox 等启动器的游戏，以及许多不通过商店销售的游戏，缺少的还可以自行添加条目。Hoard 读取同一份清单，并为清单里没有的游戏额外进行文件系统扫描。

@@ -1,6 +1,6 @@
 ---
 title: "Syncthing para partidas guardadas: qué funciona y qué se rompe"
-description: "Syncthing es un sincronizador de ficheros excelente, pero las partidas guardadas rompen tres de sus supuestos. Qué falla, cómo lo apaña la gente, y cuándo conviene una herramienta que sepa lo que es un save."
+description: "Syncthing es un gran sincronizador, pero las partidas rompen tres de sus supuestos. Qué falla, cómo se esquiva y cuándo encaja mejor una herramienta de saves."
 order: 9
 updated: 2026-09-01
 ---

@@ -1,6 +1,6 @@
 ---
 title: "Alternative à OpenSave : direct entre machines ou serveur qui vous appartient"
-description: "OpenSave synchronise les parties directement entre vos PC, sans rien au milieu. Hoard passe par un serveur — le nôtre ou le vôtre — et garde un historique versionné. Un regard honnête sur les cas où chaque approche l'emporte."
+description: "OpenSave synchronise en pair-à-pair ; Hoard passe par un serveur, le nôtre ou le vôtre, et garde chaque version. Quand chaque approche l'emporte."
 order: 8
 updated: 2026-09-01
 ---

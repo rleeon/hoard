@@ -1,8 +1,9 @@
 ---
 title: "How to sync game saves across multiple PCs"
-description: "Play the same game on your desktop and laptop without losing progress. Sync your game saves across PCs automatically with Hoard — managed cloud sync without wiring up Ludusavi and Rclone by hand."
+description: "Play on your desktop, laptop and Steam Deck without losing progress: sync game saves between PCs automatically, with version history. Step by step."
 order: 2
-updated: 2026-09-01
+updated: 2026-10-01
+related: steam-cloud-alternative, back-up-emulator-saves, self-host-hoard
 ---
 
 If you play on more than one computer — a desktop at home and a laptop on the go — Hoard keeps your saves in sync so you always pick up where you left off.
@@ -55,6 +56,18 @@ Hoard never overwrites blind. It compares modification times, keeps a local copy
 
 The honest limit: **Hoard does not merge two divergent saves.** No tool can — a save file is opaque, and there is no correct way to blend two different afternoons of play. What you get instead is every version, on every machine, and the ability to choose.
 
+## Do settings sync across PCs?
+
+Saves do. Settings, by default, don't, and that's on purpose. The Steam Deck shows why: it runs at 1280×800 on a handheld GPU, while your desktop may run at 4K on something far bigger. Copy the desktop's `graphics.ini` onto the Deck and the game starts at a resolution the screen can't show, with settings the hardware can't hold.
+
+So Hoard sorts what it finds in a save folder:
+
+- **Saves** sync between machines, every session.
+- **Settings files** (`graphics.ini`, `settings.cfg` and the like) are kept in every backup, so they're never lost, but a restore doesn't write them over another machine's copy. If the game's entry in the save database says a `.ini` *is* the save, it's treated as a save.
+- **Clutter** such as crash dumps, temporary files, engine logs like `Player.log` and Steam's own bookkeeping isn't backed up at all, so simply opening a game doesn't create a new version.
+
+When you do want the settings to travel, tick **Also restore settings files** when you restore a version from the history, or set the game to **Also restore settings** so every restore brings them, automatic ones included. Useful when both PCs share the same screen and you've tuned the game once.
+
 ## Syncing without our servers
 
 Worth being explicit, because it's the part most comparisons get wrong. There are two ways to run this:
@@ -91,3 +104,7 @@ Saves, yes. Files that belong to one machine — configuration, logs, and simila
 ### Does self-hosting send anything to Hoard?
 
 No. In self-hosted mode there is no account with us and no telemetry to us: your saves, your users and your logs live on your own server and never touch ours.
+
+### Can I copy my settings to the other PC anyway?
+
+Yes. Tick **Also restore settings files** when restoring a version, or set the game to **Also restore settings** to bring them on every restore. On the command line, `hoard restore --allow-ini` does the same.

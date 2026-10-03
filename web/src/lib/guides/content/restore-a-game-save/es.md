@@ -1,6 +1,6 @@
 ---
 title: "Cómo restaurar una partida guardada anterior"
-description: "¿Tomaste una mala decisión, se corrompió un archivo o quieres empezar de cero? Vuelve a cualquier versión anterior de tu partida con el historial en la nube de Hoard, incluidas copias hechas con herramientas como Ludusavi."
+description: "¿Partida corrupta, un mod roto o una decisión que lamentas? Vuelve a una versión anterior de tu partida, paso a paso, sin perder lo que tienes ahora."
 order: 3
 updated: 2026-09-01
 ---

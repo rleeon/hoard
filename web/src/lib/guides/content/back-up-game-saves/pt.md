@@ -1,8 +1,8 @@
 ---
 title: "Como fazer backup dos teus saves automaticamente"
-description: "Configura backups na nuvem automáticos e versionados dos teus saves de PC com o Hoard — para que uma falha, uma reinstalação ou um mod com problemas nunca apaguem o teu progresso."
+description: "Faz backup dos saves do PC automaticamente após cada sessão, com histórico de versões, para que um crash, reinstalação ou mod não apague o teu progresso."
 order: 1
-updated: 2026-09-01
+updated: 2026-10-02
 ---
 
 Perder um save significa perder horas de progresso. O Hoard faz backup dos teus saves de PC automaticamente e guarda um histórico completo de versões, para que possas sempre voltar atrás.
@@ -36,6 +36,8 @@ Não há um sítio único, e é exatamente por isso que uma ferramenta destas ex
 - **No macOS**, `~/Library/Application Support`.
 
 De onde veio o jogo pouco importa: os títulos de GOG, Epic e itch caem no mesmo punhado de sítios, porque quem decide é o motor e o programador, não a loja.
+
+Para alguns jogos populares há uma página com os caminhos exatos, o que há na pasta e as armadilhas a evitar: [Cyberpunk 2077](/guides/cyberpunk-2077-save-location), [Crimson Desert](/guides/crimson-desert-save-location), [Marvel's Spider-Man 2](/guides/spider-man-2-save-location), [Baldur's Gate 3](/guides/baldurs-gate-3-save-location) e [Palworld](/guides/palworld-save-location).
 
 ## O que é copiado e o que não é
 

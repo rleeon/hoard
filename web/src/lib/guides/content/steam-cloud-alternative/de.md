@@ -1,6 +1,6 @@
 ---
 title: "Steam-Cloud-Alternative: sichere die Spielstände, die Steam nicht sichert"
-description: "Steam Cloud deckt nur Steam-Spiele ab, deren Entwickler sie aktiviert hat, und führt keine Versionshistorie. Hoard sichert jedes Spiel, das du spielst, aus jedem Store, mit einer Historie zum Zurückrollen — in der Cloud oder auf deinem eigenen Server."
+description: "Steam Cloud lässt viele Spiele aus und hat keinen Verlauf. Sichere jedes Spiel aus jedem Launcher, mit Versionen zum Zurücksetzen. Cloud oder selbst gehostet."
 order: 7
 updated: 2026-09-01
 ---

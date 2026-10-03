@@ -1,8 +1,9 @@
 ---
 title: "How to restore an old game save"
-description: "Made a wrong move, corrupted a file or want a fresh start? Roll back to any previous version of your game save with Hoard's cloud history — including saves backed up by tools like Ludusavi."
+description: "Corrupted save, bad mod or a choice you regret? Roll a game save back to an earlier version, step by step, without losing what's on your PC now."
 order: 3
 updated: 2026-09-01
+related: back-up-game-saves, steam-cloud-alternative, sync-game-saves-across-pcs
 ---
 
 A bad decision in-game, a corrupted file, or a botched mod — sometimes you just need to go back. Because Hoard keeps a full version history of every save, restoring an earlier one takes seconds.

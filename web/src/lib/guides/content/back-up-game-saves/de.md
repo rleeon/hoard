@@ -1,8 +1,8 @@
 ---
 title: "So sicherst du deine Spielstände automatisch"
-description: "Richte automatische, versionierte Cloud-Backups für deine PC-Spielstände mit Hoard ein — damit ein Absturz, eine Neuinstallation oder ein fehlerhafter Mod deinen Fortschritt nie löschen kann."
+description: "Sichere deine PC-Spielstände nach jeder Session automatisch, mit Versionsverlauf, damit Absturz, Neuinstallation oder Mod nie deinen Fortschritt löschen."
 order: 1
-updated: 2026-09-01
+updated: 2026-10-02
 ---
 
 Ein verlorener Spielstand bedeutet verlorene Stunden an Fortschritt. Hoard sichert deine PC-Spielstände automatisch und führt eine vollständige Versionshistorie, sodass du immer zurückgehen kannst.
@@ -36,6 +36,8 @@ Es gibt keinen einzigen Ort, und genau deshalb existiert so ein Werkzeug. In der
 - **Unter macOS** `~/Library/Application Support`.
 
 Woher das Spiel stammt, spielt kaum eine Rolle: Titel von GOG, Epic und itch landen an derselben Handvoll Orte, denn das entscheiden Engine und Entwickler, nicht der Store.
+
+Für einige beliebte Spiele gibt es eine eigene Seite mit den genauen Pfaden, dem Ordnerinhalt und den Fallen, die man meiden sollte: [Cyberpunk 2077](/guides/cyberpunk-2077-save-location), [Crimson Desert](/guides/crimson-desert-save-location), [Marvel's Spider-Man 2](/guides/spider-man-2-save-location), [Baldur's Gate 3](/guides/baldurs-gate-3-save-location) und [Palworld](/guides/palworld-save-location).
 
 ## Was gesichert wird und was nicht
 

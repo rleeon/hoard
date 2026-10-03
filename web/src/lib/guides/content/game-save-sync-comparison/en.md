@@ -1,8 +1,9 @@
 ---
 title: "Game save sync compared: Hoard vs Ludusavi, Syncthing, OpenSave and the rest"
-description: "An honest comparison of the tools that back up and sync PC game saves — Ludusavi, Syncthing, OpenSave, OpenCloudSaves, Game Backup Monitor, Aletheia, SaveSync and Hoard — with a table, and a section on where Hoard loses."
+description: "Hoard, Ludusavi, Syncthing, OpenSave, GameSave Manager and more compared: what each does best, where each falls short, and a side-by-side table."
 order: 4
-updated: 2026-09-01
+updated: 2026-10-01
+related: ludusavi-alternative, steam-cloud-alternative, syncthing-game-saves
 ---
 
 Steam Cloud only covers games you bought on Steam, and only when the developer bothered to switch it on. Emulators, GOG, Epic, itch.io, non-Steam games, anything modded — none of that is covered. If you play on more than one machine, a desktop and a Steam Deck say, you end up copying folders by hand and hoping you grabbed the newest one.
@@ -49,6 +50,14 @@ Windows-first, and the original of this whole genre. GBM watches for a game proc
 
 **Where it stops:** it's a backup tool, not a sync tool. Getting the archive onto a second machine is your problem, and Steam Deck / SteamOS is not its home turf.
 
+## GameSave Manager
+
+A long-standing free Windows tool, closed source, with its own database of games. It backs up and restores, and its best-known feature, **Sync & Link**, moves a save folder into a cloud folder such as Dropbox or OneDrive and leaves a link behind, so the cloud client keeps it in sync.
+
+**Best if:** you're on Windows, you already live in Dropbox or OneDrive, and you want the save simply to be in there.
+
+**Where it stops:** Windows only, and Sync & Link means a general-purpose cloud client syncs the live folder while the game writes to it, the same pattern that makes [Syncthing risky for saves](/guides/syncthing-game-saves). Version history is whatever your cloud drive keeps.
+
 ## Aletheia
 
 The newest of the bunch, AGPL, and it goes after the part everyone else half-covers: launchers. Heroic, itch.io, Lutris, Steam, GOG Galaxy and Xbox, across Windows, Linux and macOS.
@@ -64,6 +73,14 @@ The commercial one, sold on Steam as a one-time purchase, Windows-focused. Its t
 **Best if:** the problem you're solving is "my friend hosts and I need their save", not "my saves follow me".
 
 **Where it stops:** closed source, Windows, tied to Steam as the transport, and a set of supported co-op games rather than everything you own.
+
+## Tachyon
+
+The newest name here, in free beta on Windows. Tachyon detects saves for 5,000+ PC games, syncs them through its own cloud and keeps a version history with multiple "timelines".
+
+**Best if:** you're on Windows, want something that works out of the box, and don't mind that it's a beta.
+
+**Where it stops:** Windows only for now (Linux and macOS are listed as coming), so no Steam Deck yet; no published source code; no way to run your own server. Pricing after the beta hasn't been announced.
 
 ## A note on EmuDeck
 
@@ -113,8 +130,10 @@ Same binary, same detection, same version history. The only thing that changes i
 | **OpenSave** | Yes, peer-to-peer | Your devices, optional cloud mirror | Snapshots and branches | Win · Linux · Deck | MIT |
 | **OpenCloudSaves** | Yes, via your cloud drive | OneDrive / Drive / Dropbox / Nextcloud | Whatever the drive keeps | Win · Linux · macOS | Free, open source |
 | **Game Backup Monitor** | No | Local 7-Zip archives | Numbered backups | Windows | Free, open source |
+| **GameSave Manager** | Via your cloud drive (Sync & Link) | Local, plus Dropbox / OneDrive | Whatever the drive keeps | Windows | Free, closed source |
 | **Aletheia** | Backup and restore per launcher | Your storage | Backups | Win · Linux · macOS | AGPL-3.0 |
 | **SaveSync** | Yes, and with friends | Private Steam Workshop entries | Per the app | Windows | Paid, closed source |
+| **Tachyon** | Yes, through its own cloud | Tachyon's cloud | Versions and timelines | Windows (beta) | Free beta, no published source |
 
 ## So which one
 

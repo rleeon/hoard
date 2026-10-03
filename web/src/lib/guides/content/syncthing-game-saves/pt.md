@@ -1,6 +1,6 @@
 ---
 title: "Syncthing para saves de jogos: o que funciona e o que parte"
-description: "O Syncthing é um excelente sincronizador de ficheiros genérico, mas os saves de jogos partem três dos seus pressupostos. O que corre mal, como as pessoas contornam, e quando compensa uma ferramenta que sabe o que é um save."
+description: "O Syncthing é um ótimo sincronizador, mas os saves quebram três das suas premissas. O que corre mal, como contornar e quando usar uma ferramenta de saves."
 order: 9
 updated: 2026-09-01
 ---

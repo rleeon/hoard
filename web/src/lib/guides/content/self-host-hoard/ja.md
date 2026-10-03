@@ -1,6 +1,6 @@
 ---
 title: "DockerでHoardをセルフホストする方法"
-description: "Docker Compose を使って数分で自分専用の Hoard サーバーを構築。オープンソースで無料、自分のハードウェア上に完全セルフホストのセーブデータ用クラウドを。アカウントも容量制限も不要。"
+description: "Docker ComposeでHoardサーバーを自前で運用。無料・オープンソースで自分のハードウェア上に。当社のアカウントも容量制限も不要です。"
 order: 0
 featured: true
 updated: 2026-09-29

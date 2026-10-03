@@ -1,8 +1,8 @@
 ---
 title: "Comment sauvegarder vos parties automatiquement"
-description: "Configurez des sauvegardes cloud automatiques et versionnées de vos parties PC avec Hoard — pour qu'un plantage, une réinstallation ou un mod défectueux n'efface jamais votre progression."
+description: "Sauvegardez vos parties PC automatiquement après chaque session, avec historique, pour qu'un crash, une réinstallation ou un mod n'efface rien."
 order: 1
-updated: 2026-09-01
+updated: 2026-10-02
 ---
 
 Perdre une sauvegarde, c'est perdre des heures de progression. Hoard sauvegarde vos parties PC automatiquement et conserve un historique complet des versions, pour que vous puissiez toujours revenir en arrière.
@@ -36,6 +36,8 @@ Il n'y a pas d'endroit unique, et c'est précisément pour ça qu'un outil comme
 - **Sous macOS**, `~/Library/Application Support`.
 
 La provenance du jeu ne change presque rien : les titres GOG, Epic et itch atterrissent dans la même poignée d'endroits, car ce sont le moteur et le développeur qui décident, pas la boutique.
+
+Pour quelques jeux populaires, une page détaille les chemins exacts, le contenu du dossier et les pièges à éviter : [Cyberpunk 2077](/guides/cyberpunk-2077-save-location), [Crimson Desert](/guides/crimson-desert-save-location), [Marvel's Spider-Man 2](/guides/spider-man-2-save-location), [Baldur's Gate 3](/guides/baldurs-gate-3-save-location) et [Palworld](/guides/palworld-save-location).
 
 ## Ce qui est sauvegardé, et ce qui ne l'est pas
 

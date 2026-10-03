@@ -1,8 +1,9 @@
 ---
 title: "How to back up your game saves automatically"
-description: "Set up automatic, versioned cloud backups for your PC game saves with Hoard — so a crash, reinstall or bad mod can never wipe your progress."
+description: "Back up PC game saves automatically after every session, with version history, so a crash, reinstall or bad mod never wipes your progress."
 order: 1
-updated: 2026-09-01
+updated: 2026-10-02
+related: restore-a-game-save, sync-game-saves-across-pcs, steam-cloud-alternative
 ---
 
 Losing a save file means losing hours of progress. Hoard backs up your PC game saves automatically and keeps a full version history, so you can always go back.
@@ -36,6 +37,8 @@ There is no single place, which is the whole reason a tool like this exists. In 
 - **On macOS**, `~/Library/Application Support`.
 
 Where the game came from barely matters: GOG, Epic and itch titles land in the same handful of places, because it's the engine and the developer that decide, not the launcher.
+
+For a few popular games there's a page with the exact paths, what's in the folder and the traps to avoid: [Cyberpunk 2077](/guides/cyberpunk-2077-save-location), [Crimson Desert](/guides/crimson-desert-save-location), [Marvel's Spider-Man 2](/guides/spider-man-2-save-location), [Baldur's Gate 3](/guides/baldurs-gate-3-save-location) and [Palworld](/guides/palworld-save-location).
 
 ## What gets backed up, and what doesn't
 

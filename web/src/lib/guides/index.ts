@@ -20,6 +20,8 @@ export type GuideMeta = {
   featured: boolean;
   /** ISO date of the last meaningful edit; feeds JSON-LD + sitemap. */
   updated: string;
+  /** Hand-picked slugs shown under "Related guides" (read from `en.md`). */
+  related: string[];
 };
 
 /** One question/answer pair lifted out of a guide body, for FAQPage JSON-LD. */
@@ -128,6 +130,10 @@ for (const [path, src] of Object.entries(raw)) {
     order: Number(meta.order ?? 999),
     featured: meta.featured === 'true',
     updated: meta.updated ?? '',
+    related: (meta.related ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
     // Hardened by the `walkTokens` hook above (raw HTML dropped, unsafe URL
     // schemes neutralized) before it reaches `{@html}`.
     html: marked.parse(body.trim()) as string,
@@ -148,6 +154,19 @@ export function listGuides(locale: Locale): GuideMeta[] {
     .map((slug) => getGuide(slug, locale))
     .filter((g): g is Guide => g !== null)
     .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
+}
+
+/**
+ * The guides listed under "Related guides", localized. The pick lives only in
+ * the English file so eight copies of the same list can't drift apart; an
+ * unknown slug is skipped rather than rendered as a dead link.
+ */
+export function relatedGuides(slug: string, locale: Locale): GuideMeta[] {
+  const picks = registry[slug]?.[DEFAULT_LOCALE]?.related ?? [];
+  return picks
+    .filter((s) => s !== slug)
+    .map((s) => getGuide(s, locale))
+    .filter((g): g is Guide => g !== null);
 }
 
 /** Every guide slug (for prerender entries). */

@@ -1,6 +1,6 @@
 ---
 title: "OpenSave-Alternative: direkt zwischen Geräten oder über einen eigenen Server"
-description: "OpenSave synchronisiert Spielstände direkt zwischen deinen PCs, ohne etwas dazwischen. Hoard synchronisiert über einen Server — unseren oder deinen — und führt eine Versionshistorie. Ein ehrlicher Blick darauf, wann welches Design gewinnt."
+description: "OpenSave synct Peer-to-Peer, Hoard über einen Server, unseren oder deinen, und behält jede Version. Ein ehrlicher Blick, wann welches Design gewinnt."
 order: 8
 updated: 2026-09-01
 ---

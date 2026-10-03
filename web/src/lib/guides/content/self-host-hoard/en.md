@@ -1,9 +1,10 @@
 ---
 title: "How to self-host Hoard with Docker"
-description: "Run your own Hoard server with Docker Compose in minutes. Open source, free, on your hardware — a fully self-hosted cloud for your game saves, no account or quota."
+description: "Run your own Hoard server with Docker Compose: free, open source, on your hardware, with no account with us and no quota. Your saves stay with you."
 order: 0
 featured: true
 updated: 2026-09-29
+related: sync-game-saves-across-pcs, opensave-alternative, back-up-game-saves
 ---
 
 Hoard is open source and self-hostable. Instead of using Hoard Cloud, you can run the same `hoard-server` on your own machine and point every device at it — no account, no storage quota beyond the disk you give it. This guide gets a server running with Docker in a few minutes.

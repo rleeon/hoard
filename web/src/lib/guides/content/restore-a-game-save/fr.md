@@ -1,6 +1,6 @@
 ---
 title: "Comment restaurer une ancienne sauvegarde"
-description: "Mauvais choix, fichier corrompu ou envie de repartir de zéro ? Revenez à n'importe quelle version précédente de votre sauvegarde grâce à l'historique cloud de Hoard — y compris des sauvegardes faites avec des outils comme Ludusavi."
+description: "Sauvegarde corrompue, mod cassé ou choix regretté ? Revenez à une version antérieure de votre partie, pas à pas, sans perdre l'état actuel."
 order: 3
 updated: 2026-09-01
 ---

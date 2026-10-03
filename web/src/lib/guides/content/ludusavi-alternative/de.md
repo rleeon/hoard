@@ -1,8 +1,8 @@
 ---
 title: "Ludusavi-Alternative: automatische Cloud-Synchronisierung für deine Spielstände"
-description: "Ein fairer Vergleich von Ludusavi und Hoard. Ludusavi ist ein großartiges Open-Source-Tool für lokale Backups; Hoard ergänzt verwaltete Cloud-Synchronisierung und versionierte Historie über alle deine PCs — mit denselben Speicherort-Daten."
+description: "Ludusavi ist top für lokale Backups. Hoard ergänzt automatischen Sync zwischen PCs und Steam Deck mit Versionsverlauf, auf derselben Spielstand-Datenbank."
 order: 5
-updated: 2026-09-01
+updated: 2026-10-01
 ---
 
 Wenn du nach einer Möglichkeit suchst, deine Spielstände zu sichern und zu synchronisieren, bist du wahrscheinlich auf **Ludusavi** gestoßen — und es ist hervorragend. Diese Anleitung ist ein ehrlicher Vergleich, damit du das richtige Tool wählst, und erklärt, wo Hoard passt, wenn du automatische Cloud-Synchronisierung über mehrere Geräte willst.
@@ -47,6 +47,17 @@ Das ist der Teil, den die meisten Vergleichsseiten weglassen. Ludusavi ist das b
 - **Du es im Spielmodus des Steam Deck nutzen willst.** Für Ludusavi gibt es ein Decky-Plugin, du kannst ein Backup also anstoßen, ohne die Konsolenoberfläche zu verlassen.
 - **Du eine permissive Lizenz brauchst.** Ludusavi ist MIT, Hoard ist AGPL-3.0. Wenn du etwas darauf aufbauen und das Ergebnis nicht veröffentlichen willst, macht dieser Unterschied viel aus.
 - **Du willst nichts laufen haben.** Hoard selbst zu hosten heißt, irgendwo einen kleinen Server am Laufen zu halten, und sei es derselbe PC. Ludusavi ist eine App, die du öffnest, wenn du sie brauchst.
+
+## Ludusavi vs. GameSave Manager
+
+Der andere Name, der neben Ludusavi fällt, ist **GameSave Manager**, ein altgedientes Windows-Werkzeug. Beide lösen dasselbe Problem auf unterschiedliche Weise:
+
+- **Plattform.** Ludusavi läuft unter Windows, macOS und Linux, Steam Deck eingeschlossen. GameSave Manager nur unter Windows.
+- **Lizenz.** Ludusavi ist quelloffen (MIT). GameSave Manager ist kostenlos, aber Closed Source.
+- **Spielstände finden.** Ludusavi liest das Community-Manifest, das aus PCGamingWiki entsteht, rund 20.000 Spiele. GameSave Manager bringt eine eigene Datenbank mit.
+- **Spielstände in die Cloud bringen.** Ludusavi kopiert seine Backups per Rclone auf ein Remote. „Sync & Link“ von GameSave Manager verschiebt einen Spielstand-Ordner in einen Cloud-Ordner wie Dropbox oder OneDrive und hinterlässt an seiner Stelle einen Link, sodass der Cloud-Client den aktiven Ordner synchronisiert.
+
+Dieser letzte Punkt ist der, den man abwägen sollte. Ein aktiver Ordner, den ein allgemeiner Cloud-Client synchronisiert, ist genau das Setup, das einen halb geschriebenen Spielstand auf jedem PC zu einem kaputten macht; die [Syncthing-Anleitung](/guides/syncthing-game-saves) erklärt, warum. Hoard steht auf der anderen Seite dieser Linie: Es wartet, bis das Spiel geschlossen ist, lädt eine Version hoch und behält die alten.
 
 ## Von Ludusavi zu Hoard wechseln
 
@@ -108,3 +119,23 @@ Nein. Das ist der wesentliche praktische Unterschied: Bei Hoard Cloud ist der Sp
 ### Sendet Selbsthosten irgendetwas an Hoard?
 
 Nein. Im selbst gehosteten Betrieb gibt es kein Konto bei uns und keine Telemetrie zu uns: deine Spielstände, deine Nutzer und deine Logs liegen auf deinem eigenen Server und berühren unseren nie. Das ist der ganze Sinn dieses Modus, und deshalb ist der Server dasselbe quelloffene Binary, das wir selbst betreiben, und keine abgespeckte Fassung.
+
+### Ist Ludusavi sicher?
+
+Ja. Es ist quelloffen, weit verbreitet und kopiert lediglich Spielstand-Dateien in einen Backup-Ordner und zurück; Spieldateien rührt es nicht an. Worauf du achten solltest, gilt für jedes Backup-Werkzeug: Ein altes Backup über einen neueren Spielstand wiederherzustellen ersetzt ihn, also prüfe vorher das Datum.
+
+### Funktioniert Ludusavi auf dem Steam Deck?
+
+Ja. Es gibt eine Linux-Version, die du im Desktop-Modus installierst, und ein Decky-Plugin, um Backups aus dem Spielmodus auszulösen. Was es allein nicht leistet, ist, Deck und Desktop auf demselben Stand zu halten: Du sicherst auf dem einen und stellst auf dem anderen wieder her. Hoard erledigt diesen Teil automatisch über einen Hintergrunddienst, ohne dass du etwas auslösen musst.
+
+### Kann Ludusavi in Google Drive oder eine andere Cloud sichern?
+
+Ja, über Rclone: Du richtest ein Remote für Google Drive, Dropbox, OneDrive oder einen anderen von Rclone unterstützten Anbieter ein, und Ludusavi kopiert seine Backups dorthin. Bei Hoard gibt es kein Remote einzurichten, und wenn dir der Speicher gehören soll, zeigst du es auf deinen eigenen Server.
+
+### Sichert Ludusavi automatisch?
+
+Nicht von selbst: Es sichert, wenn du es ausführst. Du kannst es mit der Kommandozeile und einer geplanten Aufgabe automatisieren oder den Startbefehl eines Spiels umhüllen, damit beim Beenden gesichert wird. Hoard bemerkt ohne jede Umhüllung, wenn ein Spiel geschlossen wird, und sichert dann.
+
+### Unterstützt Ludusavi Spiele außerhalb von Steam?
+
+Ja. Das Manifest deckt Spiele von GOG, Epic, Xbox und anderen Launchern ab, dazu viele ohne Store, und du kannst eigene Einträge für Fehlendes anlegen. Hoard liest dasselbe Manifest und ergänzt einen Dateisystem-Scan für Spiele, die dort nicht stehen.

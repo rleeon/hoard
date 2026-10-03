@@ -1,22 +1,22 @@
 ---
 title: "How to back up and sync emulator saves (RetroArch, Dolphin, PCSX2)"
-description: "Back up and sync your emulator save files and save states across PCs — RetroArch, Dolphin, PCSX2, DuckStation and more — automatically with Hoard."
+description: "Back up and sync emulator saves between PCs and Steam Deck: RetroArch, Dolphin, PCSX2, DuckStation and more, with version history and where each one saves."
 order: 6
-updated: 2026-09-01
+updated: 2026-10-01
+related: sync-game-saves-across-pcs, back-up-game-saves, ludusavi-alternative
 ---
 
-Emulator saves are easy to lose: save files and save states live in scattered folders, and a reinstall or a new PC can wipe years of progress. Hoard backs them up automatically and keeps them in sync across machines.
+Emulator saves are easy to lose: save files and save states live in scattered folders, and a reinstall or a new PC can wipe years of progress. Hoard backs them up automatically and keeps them in sync across machines, including a Steam Deck.
 
 ## Emulators Hoard works with
 
-Hoard handles standard emulator save files (`.srm`, `.sav`, memory cards) and save states for the popular emulators, including:
+Hoard handles standard emulator save files (`.srm`, `.sav`, memory cards, per-title save folders) and save states. It knows where these keep their saves out of the box:
 
-- **RetroArch** — saves and states, each as its own entry
-- **Dolphin** (GameCube / Wii) — memory cards and GCI files
-- **PCSX2** (PS2) — memory cards
-- **DuckStation** (PS1), **PPSSPP** (PSP), **mGBA**, and more
+- **Sony:** PCSX2 (PS2), DuckStation (PS1), PPSSPP (PSP), RPCS3 (PS3), shadPS4 (PS4), Vita3K (PS Vita)
+- **Nintendo:** Dolphin (GameCube / Wii), Cemu (Wii U), Ryujinx, yuzu, Eden, Suyu, Citron and Sudachi (Switch), Citra / Azahar (3DS), melonDS (DS), mGBA (GBA), Project64 (N64)
+- **Others:** RetroArch (multi-system), xemu (Xbox), Flycast (Dreamcast)
 
-Because Hoard locates save folders using the same community database that powers Ludusavi, many emulator paths are detected automatically. For anything custom, you can point Hoard at a folder by hand.
+Because Hoard locates save folders using the same community database that powers Ludusavi, many paths are detected automatically. For anything custom, you can point Hoard at a folder by hand.
 
 ## Set up emulator save backups
 
@@ -29,20 +29,80 @@ Because Hoard locates save folders using the same community database that powers
 
 Ludusavi can back up emulator saves locally too, and it's a great free option for that. If you also want those emulator saves to sync automatically between machines and keep a cloud version history without configuring Rclone, that's where Hoard helps — read the full [Ludusavi vs Hoard comparison](/guides/ludusavi-alternative).
 
-## Where each emulator keeps its saves
+## Cloud saves for each emulator
 
-Useful to know, because a portable install puts all of this somewhere else entirely:
+None of the standalone emulators below syncs saves between machines on its own: the saves are plain files on your disk. That's good news, because any tool that watches the right folder can carry them. Here is where each one keeps them. "Steam Deck" means the Flatpak build you get from the Discover store.
 
-- **RetroArch** — `saves/` and `states/` under the config folder: `%APPDATA%\RetroArch` on Windows, `~/.config/retroarch` on Linux.
-- **Dolphin** — memory cards under `GC/`, Wii saves in the emulated NAND, inside `Documents\Dolphin Emulator` or `~/.local/share/dolphin-emu`.
-- **PCSX2** — `memcards/`, under `Documents\PCSX2` or `~/.config/PCSX2`.
-- **DuckStation** — `memcards/` and `savestates/` in its own data folder.
-- **PPSSPP** — `PSP/SAVEDATA` for saves and `PSP/PPSSPP_STATE` for states.
-- **RPCS3** — `dev_hdd0/home/00000001/savedata`.
-- **Cemu** — `mlc01/usr/save`.
-- **mGBA and most standalone cores** — a `.sav` next to the ROM, unless you told them otherwise.
+### PCSX2 cloud saves (PS2)
 
-A **portable install** — the norm on handhelds and USB sticks — keeps every one of those next to the executable instead. If that's your setup, point Hoard at that folder and it tracks it like any other save.
+PCSX2 writes memory cards (`.ps2` files) to `memcards/`:
+
+- Windows: `Documents\PCSX2\memcards`
+- Linux: `~/.config/PCSX2/memcards`
+- Steam Deck: `~/.var/app/net.pcsx2.PCSX2/config/PCSX2/memcards`
+
+One memory card holds the saves of every game you've played on it, so it travels as one item: restoring an older version rolls back the whole card, not a single game.
+
+### Dolphin cloud saves (GameCube and Wii)
+
+GameCube saves live under `GC/` (memory card images or one folder per card), Wii saves in the emulated NAND under `Wii/`:
+
+- Windows: `Documents\Dolphin Emulator\GC` and `\Wii`
+- Linux: `~/.local/share/dolphin-emu/GC` and `/Wii`
+- Steam Deck: `~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/`
+
+### DuckStation cloud saves (PS1)
+
+DuckStation keeps memory cards in `memcards/`, and by default it makes a separate card for each game, which suits syncing well:
+
+- Windows: `Documents\DuckStation\memcards` (newer builds use `%LOCALAPPDATA%\DuckStation\memcards`)
+- Linux: `~/.local/share/duckstation/memcards`
+- Steam Deck: `~/.var/app/org.duckstation.DuckStation/` under `data/` or `config/`
+
+### RetroArch save sync
+
+RetroArch splits `saves/` (the in-game saves) from `states/` (save states). Hoard tracks the saves folder; add `states/` as its own entry if you play with states:
+
+- Windows: `%APPDATA%\RetroArch`, or next to `retroarch.exe` on a portable install
+- Linux: `~/.config/retroarch`
+- Steam Deck: `~/.var/app/org.libretro.RetroArch/config/retroarch`, or `~/Emulation/saves/retroarch` if you set it up with EmuDeck
+
+RetroArch also has a built-in Cloud Sync that talks to a WebDAV server you provide. It's a reasonable choice if you only use RetroArch and already run WebDAV. Hoard needs no WebDAV, keeps a version history you can roll back, and covers the standalone emulators too.
+
+### PPSSPP (PSP)
+
+Saves go to `PSP/SAVEDATA`, states to `PSP/PPSSPP_STATE`:
+
+- Windows: `Documents\PPSSPP\PSP\SAVEDATA`, or `memstick\PSP\SAVEDATA` next to the executable on a portable install
+- Linux: `~/.config/ppsspp/PSP/SAVEDATA`
+- Steam Deck: `~/.var/app/org.ppsspp.PPSSPP/config/ppsspp/PSP/SAVEDATA`
+
+### RPCS3 (PS3)
+
+Saves live in `dev_hdd0/home/00000001/savedata`, inside the RPCS3 folder on Windows and under `~/.config/rpcs3/` on Linux and Steam Deck.
+
+### Switch emulators: Ryujinx, yuzu, Eden, Suyu, Citron, Sudachi
+
+Ryujinx keeps saves in `bis/user/save` (under `%APPDATA%\Ryujinx` or `~/.config/Ryujinx`). The yuzu family uses `nand/user/save` under its own folder in `%APPDATA%` or `~/.local/share`.
+
+There's a trap here. The yuzu-style tree goes `save/<account>/<profile>/<title-id>/`, and the profile ID is generated the first time the emulator runs, so it's different on every install. Sync the whole `save/` folder between two machines and each one ends up with the other's profile next to its own, and neither game sees the other's progress. Hoard steps down to each game's own folder instead, so the same title matches across machines no matter what the profile is called.
+
+### Citra and Azahar (3DS)
+
+Saves sit deep under `sdmc/Nintendo 3DS/<id0>/<id1>/title/…`, and `id0`/`id1` come from the emulated console's keys, so they also differ per install. Hoard handles it the same way as the Switch tree: one entry per game, matched across machines.
+
+### The rest
+
+- **Cemu (Wii U):** `mlc01/usr/save`, under `%APPDATA%\Cemu` or `~/.local/share/Cemu`.
+- **shadPS4 (PS4):** `savedata`, under `%APPDATA%\shadPS4` or `~/.local/share/shadPS4`.
+- **Vita3K (PS Vita):** `ux0/user/00/savedata` inside its data folder.
+- **mGBA, melonDS and most cartridge-era emulators:** a `.sav` next to the ROM, unless you told them otherwise. Add the ROM folder's saves by hand.
+
+## Emulator saves on a Steam Deck
+
+On a Steam Deck the emulators usually come from Flatpak, so their folders sit under `~/.var/app/<id>/` rather than the usual `~/.config` or `~/.local/share`. EmuDeck gathers everything under `~/Emulation/saves/`, one folder per emulator. Either way, add the folder once and Hoard watches it.
+
+The part that matters on a handheld: Hoard's engine runs as a background service, so it backs up after you quit a game in Game Mode without any window open. Pick the Deck up after a session on the desktop and the save is already there.
 
 ## Save files and save states are not the same thing
 
@@ -55,7 +115,7 @@ Hoard backs up both. Just don't be surprised when a state from an updated machin
 
 ## One emulator, many games
 
-An emulator is a single process hosting dozens of titles, which is what makes emulator saves awkward for a tool that thinks in terms of "the running game". Hoard keeps the titles apart rather than treating the whole emulator as one blob, so each game gets its own history instead of a single pile that changes every time you launch anything.
+An emulator is a single process hosting dozens of titles, which is what makes emulator saves awkward for a tool that thinks in terms of "the running game". Hoard keeps the titles apart rather than treating the whole emulator as one blob, so each game gets its own history instead of a single pile that changes every time you launch anything. If a save does go wrong, you can [roll it back to an earlier version](/guides/restore-a-game-save).
 
 ## Emulator saves without our servers
 
@@ -72,6 +132,18 @@ Save states are tied to a specific emulator version. Keep your emulators updated
 ### Does Hoard back up my ROMs too?
 
 No. It tracks save folders, not game files. ROMs are large, they don't change, and you already have them — there's nothing to version.
+
+### Do PCSX2, Dolphin or DuckStation have cloud saves built in?
+
+No. They write saves to local folders and leave syncing to you. Point a sync tool at the folders listed above and the saves follow you between machines.
+
+### Does RetroArch have cloud sync?
+
+Yes, a built-in Cloud Sync that needs a WebDAV server you run or rent. Hoard is the alternative if you'd rather not set up WebDAV, want a version history to roll back to, or also play on standalone emulators.
+
+### Does it work on a Steam Deck in Game Mode?
+
+Yes. The engine runs as a background service, so saves are backed up when you quit a game, with no window open. Flatpak and EmuDeck folders work the same as any other.
 
 ### My emulator is a portable install. Does that work?
 

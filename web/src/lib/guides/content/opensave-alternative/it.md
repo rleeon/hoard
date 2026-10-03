@@ -1,6 +1,6 @@
 ---
 title: "Alternativa a OpenSave: diretto tra macchine o con un server tuo"
-description: "OpenSave sincronizza i salvataggi direttamente tra i tuoi PC, senza nulla in mezzo. Hoard sincronizza attraverso un server — il nostro o uno tuo — e tiene una cronologia versionata. Uno sguardo onesto su quando vince ciascun approccio."
+description: "OpenSave sincronizza peer-to-peer; Hoard passa da un server, il nostro o il tuo, e tiene ogni versione. Uno sguardo onesto su quando vince ciascuno."
 order: 8
 updated: 2026-09-01
 ---

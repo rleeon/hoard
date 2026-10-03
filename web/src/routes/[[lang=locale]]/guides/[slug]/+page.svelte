@@ -3,11 +3,13 @@
   import Seo from '$lib/components/Seo.svelte';
   import { localeHref } from '$lib/i18n/href';
   import { DEFAULT_LOCALE, isLocale, SITE_URL, withLocale, localePrefix, HREFLANG, type Locale } from '$lib/i18n/locales';
-  import { ArrowLeft } from 'lucide-svelte';
+  import { relatedGuides } from '$lib/guides';
+  import { ArrowLeft, ArrowRight } from 'lucide-svelte';
 
   let { data } = $props();
   const guide = $derived(data.guide);
   const active = $derived<Locale>(isLocale($locale) ? ($locale as Locale) : DEFAULT_LOCALE);
+  const related = $derived(relatedGuides(guide.slug, active));
   const url = $derived(SITE_URL + withLocale(`/guides/${guide.slug}`, active));
 
   // Guide bodies use root-relative links (e.g. /guides/ludusavi-alternative).
@@ -96,6 +98,32 @@
   <div class="prose mt-8">
     {@html localizedHtml}
   </div>
+
+  {#if related.length}
+    <nav class="mt-14" aria-labelledby="related-guides">
+      <h2 id="related-guides" class="font-display text-lg font-semibold text-ink">
+        {$_('guides.related')}
+      </h2>
+      <ul class="mt-4 space-y-3">
+        {#each related as g (g.slug)}
+          <li>
+            <a
+              href={$localeHref(`/guides/${g.slug}`)}
+              class="group flex items-start justify-between gap-4 rounded-xl border border-line bg-surface p-4 ring-focus transition-colors hover:border-line-strong"
+            >
+              <div>
+                <p class="font-display font-semibold text-ink">{g.title}</p>
+                <p class="mt-1 text-sm leading-relaxed text-ink-soft">{g.description}</p>
+              </div>
+              <ArrowRight
+                class="mt-1 h-4 w-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent"
+              />
+            </a>
+          </li>
+        {/each}
+      </ul>
+    </nav>
+  {/if}
 
   <div class="mt-14 rounded-xl border border-line bg-surface p-6">
     <h2 class="font-display text-lg font-semibold text-ink">{$_('guides.cta_title')}</h2>

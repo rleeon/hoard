@@ -1,6 +1,6 @@
 ---
 title: "Come ripristinare un vecchio salvataggio"
-description: "Scelta sbagliata, file corrotto o voglia di ricominciare? Torna a qualsiasi versione precedente del tuo salvataggio con la cronologia cloud di Hoard — inclusi salvataggi fatti con strumenti come Ludusavi."
+description: "Salvataggio corrotto, mod difettosa o una scelta di cui ti penti? Torna a una versione precedente, passo dopo passo, senza perdere quella attuale."
 order: 3
 updated: 2026-09-01
 ---
