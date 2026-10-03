@@ -22,7 +22,6 @@
     Send,
     Check,
   } from "@lucide/svelte";
-  import QuestionBlock from "../lib/components/QuestionBlock.svelte";
   import {
     feedbackSend,
     feedbackDescribeFiles,
@@ -234,16 +233,13 @@
 
 <div class="mx-auto max-w-5xl px-6 py-8">
   <!-- header -->
-  <div class="mb-6 flex items-start gap-3">
-    <QuestionBlock size={40} class="shrink-0 text-emerald-300" data-anim="bump" />
-    <div>
-      <h1 class="font-display text-2xl font-semibold tracking-tight text-zinc-50">
-        {$_("help.title")}
-      </h1>
-      <p class="mt-0.5 max-w-3xl text-sm text-zinc-400">
-        {$_("help.subtitle")}
-      </p>
-    </div>
+  <div class="mb-6">
+    <h1 class="font-display text-2xl font-semibold tracking-tight text-zinc-50">
+      {$_("help.title")}
+    </h1>
+    <p class="mt-0.5 max-w-3xl text-sm text-zinc-400">
+      {$_("help.subtitle")}
+    </p>
   </div>
 
   {#if sentId}

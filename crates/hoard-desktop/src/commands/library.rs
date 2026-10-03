@@ -26,7 +26,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use time::OffsetDateTime;
 
-use super::agent::{attach_save_if_running, detach_save_if_running};
+use super::agent::{attach_save_if_running, detach_save_if_running, detach_save_in_background};
 use super::auth::pretty_error;
 use super::error::AppError;
 use crate::state::AppState;
@@ -583,9 +583,9 @@ pub async fn detection_diagnostics(
 /// Stop tracking a save. Removes the local-state row but leaves server data
 /// intact (delete from the History view if you want that gone too).
 #[tauri::command]
-pub async fn untrack_save(save_id: String, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn untrack_save(app: AppHandle, save_id: String) -> Result<(), String> {
     library::untrack(&save_id).map_err(|e| e.to_string())?;
-    detach_save_if_running(&state, save_id).await;
+    detach_save_in_background(&app);
     Ok(())
 }
 
@@ -606,7 +606,7 @@ pub async fn delete_save_completely(
     library::delete_completely(&client, &save_id)
         .await
         .map_err(pretty_error)?;
-    detach_save_if_running(&state, save_id).await;
+    detach_save_in_background(&app);
     Ok(())
 }
 

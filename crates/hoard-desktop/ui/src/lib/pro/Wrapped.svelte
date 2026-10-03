@@ -1,5 +1,4 @@
 <script lang="ts">
-  import MarioStar from "../components/MarioStar.svelte";
   // hoard-wrapple, a personal "year in play" recap.
   //
   // Two pieces:
@@ -463,16 +462,13 @@
 
 <div class="mx-auto max-w-5xl px-6 py-8">
   <!-- header -->
-  <div class="mb-6 flex items-center gap-3">
-    <MarioStar size={40} class="shrink-0 text-emerald-300" data-anim="hop" />
-    <div>
-      <h1 class="font-display text-2xl font-semibold tracking-tight text-zinc-50">
-        {$_("wrapped.your_year_in_play")}
-      </h1>
-      <p class="text-sm text-zinc-400">
-        {$_("wrapped.subtitle")}
-      </p>
-    </div>
+  <div class="mb-6">
+    <h1 class="font-display text-2xl font-semibold tracking-tight text-zinc-50">
+      {$_("wrapped.your_year_in_play")}
+    </h1>
+    <p class="text-sm text-zinc-400">
+      {$_("wrapped.subtitle")}
+    </p>
   </div>
 
   <!-- identity card — masked by default, reveal like a password -->

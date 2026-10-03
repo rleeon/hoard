@@ -247,6 +247,18 @@ pub(crate) async fn detach_save_if_running(state: &State<'_, AppState>, _save_id
     state.daemon.notify_reload().await;
 }
 
+/// The same notice without waiting for the answer. The reload asks the cloud which
+/// saves are archived and then waits on the engine, and on 2026-10-03 that kept the
+/// delete button in the panel spinning for 10 s after `state.json` was already
+/// written. Nothing that follows an untrack or a delete reads what the engine
+/// watches, so the button has no reason to wait.
+pub(crate) fn detach_save_in_background(app: &AppHandle) {
+    let app = app.clone();
+    tokio::spawn(async move {
+        app.state::<AppState>().daemon.notify_reload().await;
+    });
+}
+
 /// Applies the live effect of a change to a save's settings
 /// (`hoard_agent::library::set_paused`/`set_preset`/`set_local_path`). Attach,
 /// detach and reseat are the same thing from here: the disk changed.

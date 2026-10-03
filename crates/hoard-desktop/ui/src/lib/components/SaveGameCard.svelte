@@ -16,16 +16,17 @@
    */
   import {
     AlertTriangle,
-    Bell,
     Check,
     CircleDot,
     Cloud,
     Clock,
     History,
+    Loader2,
     MoreHorizontal,
     PauseCircle,
     Pencil,
     PlayCircle,
+    Trash2,
     UploadCloud,
   } from "@lucide/svelte";
   import { _ } from "svelte-i18n";
@@ -58,10 +59,12 @@
     agentRunning,
     showLabel,
     aspect,
+    removing,
     onRename,
     onBackup,
     onTogglePause,
     onHistory,
+    onDelete,
   }: {
     save: TrackedSave;
     /** Ticking clock (epoch ms) from the parent, drives the scheduled
@@ -86,14 +89,33 @@
     /** Cover height ÷ width (1.5 = the 2:3 poster, 1 = square). The user drags
      *  it from the corner handle; the parent holds it so the grid agrees. */
     aspect: number;
+    /** A delete or untrack for this row is waiting on its answer. */
+    removing: boolean;
     onRename: (save: TrackedSave) => void;
     onBackup: (save: TrackedSave) => void;
     onTogglePause: (save: TrackedSave) => void;
     onHistory: (save: TrackedSave) => void;
+    onDelete: (save: TrackedSave) => void;
   } = $props();
 
   /** Flipped on every press so the upload icon has something to react to. */
   let backupPressed = $state(false);
+
+  // The backup button is just the cloud until the pointer is on it; then its
+  // label types itself in, and erases itself on the way out. Counted in code
+  // points, not UTF-16 units, so Japanese and Chinese don't split a character.
+  let backupHover = $state(false);
+  let typed = $state(0);
+  const backupLabel = $derived([...$_("dashboard.back_up")]);
+  $effect(() => {
+    const target = backupHover ? backupLabel.length : 0;
+    if (typed === target) return;
+    const id = setTimeout(
+      () => (typed += typed < target ? 1 : -1),
+      backupHover ? 35 : 15,
+    );
+    return () => clearTimeout(id);
+  });
 
   /** The visible name: the user's per-device override when set, otherwise a
    *  prettified slug. The slug itself never changes, it's the sync key. */
@@ -294,6 +316,16 @@
   <!-- Esquina de arrastre, la misma de la biblioteca: a lo ancho manda el
        tamaño de la tarjeta, a lo alto la forma de la carátula. Sustituye al
        botón 2:3 / cuadrada, que solo daba dos puntos de todo ese recorrido. -->
+  {#if removing}
+    <div
+      class="absolute inset-0 z-30 flex items-center justify-center gap-2 bg-black/60 text-sm text-zinc-200 backdrop-blur-[2px]"
+      aria-live="polite"
+    >
+      <Loader2 size={15} class="animate-spin" />
+      {$_("dashboard.removing")}
+    </div>
+  {/if}
+
   <CardResizeHandle
     section="dashboard"
     onVerticalDrag={reshapeCover}
@@ -436,19 +468,6 @@
       >
         <Pencil size={13} />
       </button>
-      <!-- TODO(1.1.0): per-game notification mute. The engine only exposes
-           GLOBAL notify prefs (`notify_on_success` / `notify_on_failure`);
-           there is no per-save flag to wire this bell to. Left disabled on
-           purpose — see UI-1.1.0.md "Pendiente de cablear". -->
-      <button
-        type="button"
-        class="{iconBtnClass} cursor-not-allowed opacity-40 hover:bg-transparent hover:text-zinc-500"
-        disabled
-        title={$_("dashboard.notify_soon")}
-        aria-label={$_("dashboard.notify_soon")}
-      >
-        <Bell size={13} />
-      </button>
       <button
         type="button"
         class={iconBtnClass}
@@ -457,6 +476,15 @@
         aria-label={$_("dashboard.history")}
       >
         <History size={13} />
+      </button>
+      <button
+        type="button"
+        class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
+        onclick={() => onDelete(save)}
+        title={$_("dashboard.delete_title")}
+        aria-label={$_("dashboard.delete_title")}
+      >
+        <Trash2 size={13} />
       </button>
     </div>
 
@@ -482,7 +510,12 @@
       <Button
         variant="secondary"
         size="md"
-        class="shrink-0 !px-3 !py-1.5 !text-xs"
+        class="shrink-0 !px-2 !py-1.5 !text-xs"
+        aria-label={$_("dashboard.back_up")}
+        onmouseenter={() => (backupHover = true)}
+        onmouseleave={() => (backupHover = false)}
+        onfocus={() => (backupHover = true)}
+        onblur={() => (backupHover = false)}
         onclick={() => {
           // A fire-and-forget button has no state to animate from, so it flips a
           // bit of its own: with the animation playing both ways, every press
@@ -499,8 +532,12 @@
               ? $_("dashboard.tooltip_force_paused")
               : $_("dashboard.tooltip_force")}
       >
-        <AnimIcon icon={UploadCloud} on={backupPressed} kind="pop" size={13} />
-        {$_("dashboard.back_up")}
+        <AnimIcon icon={UploadCloud} on={backupPressed} kind="pop" size={15} />
+        {#if typed > 0}
+          <span class="whitespace-nowrap" aria-hidden="true">
+            {backupLabel.slice(0, typed).join("")}
+          </span>
+        {/if}
       </Button>
     </div>
 

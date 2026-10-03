@@ -18,6 +18,7 @@
   import {
     AlertTriangle,
     Clock,
+    Cloud,
     Gamepad2,
     HardDrive,
     Layers,
@@ -25,6 +26,7 @@
     Pin,
     Plus,
     RefreshCw,
+    Trash2,
   } from "@lucide/svelte";
   import { _ } from "svelte-i18n";
 
@@ -105,12 +107,11 @@
     );
   });
 
-  // ---------------------------------------------------------------------
+  // ---- version counts
   // Stored-version counts (per-card "Total versions" + summary bar).
   // Fetched lazily after the list lands, one read-only call per save, never
   // blocking the grid. Refetched when the live session confirms a new
   // version for that save (upload committed / auto-restore landed).
-  // ---------------------------------------------------------------------
   let versionCounts = $state<Record<string, number | null>>({});
   const countsRequested = new Set<string>();
   const seenLiveVersion = new Map<string, number>();
@@ -142,7 +143,7 @@
     if (anyChanged) void fetchFootprints();
   });
 
-  // ---------------------------------------------------------------------
+  // ---- cloud footprint
   // Real cloud footprint, per save and account-wide.
   //
   // The manifest only carries each save's HEAD version (`total_size_bytes`),
@@ -157,7 +158,6 @@
   // the "free up space" dialog): per save, its exclusive deduplicated blobs.
   // Cloud-only, self-hosted has no quota and no black box, so there we keep
   // falling back to the head sum.
-  // ---------------------------------------------------------------------
   let footprints = $state<Record<string, number>>({});
   let cloudUsed = $state<number | null>(null);
   let footprintsLoaded = $state(false);
@@ -321,10 +321,9 @@
     for (const s of saves) void fetchVersions(s.save_id);
   }
 
-  // ---------------------------------------------------------------------
+  // ---- rename
   // Rename (display name). Purely presentational, per-device: it writes the
   // `gameNames` override store. The slug, the sync key, never changes.
-  // ---------------------------------------------------------------------
   let renameTarget = $state<TrackedSave | null>(null);
   let renameDraft = $state("");
   let renaming = $state(false);
@@ -508,6 +507,117 @@
       );
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
+    }
+  }
+
+  // ---- delete
+  // Delete from the card. The other way to wipe a game from the server is
+  // the bottom of the Library, which has to scan before it shows anything.
+  //
+  // "choose" asks where (this machine or the server) and only shows up when
+  // there is something on both sides; a cloud-only row goes straight to
+  // "confirm". Removing it from this machine is untrack: nothing is lost, so
+  // it needs no second click. The server one does.
+  //
+  // Both close the dialog on the click and leave the card saying it's being
+  // removed: the server delete takes ~5 s, and a dialog spinning that long
+  // read as a hang. The row changes once the answer is in.
+  let deleteTarget = $state<TrackedSave | null>(null);
+  let deleteStep = $state<"choose" | "confirm">("choose");
+  let removing = $state<Record<string, true>>({});
+
+  // Ids already gone from the server. A list fetched before the delete landed
+  // still carries them, and must not bring the card back.
+  const deletedFromServer = new Set<string>();
+  let reloadSeq = 0;
+
+  const isCloudOnly = (s: TrackedSave) => s.orphan || !s.local_path;
+  const isOnServer = (s: TrackedSave) =>
+    s.cloud_version_num != null || s.total_size_bytes > 0;
+
+  function nameOf(s: TrackedSave): string {
+    return $customNames[s.game_slug] ?? prettifySlug(s.game_slug);
+  }
+
+  function askDelete(save: TrackedSave) {
+    deleteTarget = save;
+    deleteStep = isCloudOnly(save) ? "confirm" : "choose";
+  }
+
+  function setRemoving(saveId: string, on: boolean) {
+    const next = { ...removing };
+    if (on) next[saveId] = true;
+    else delete next[saveId];
+    removing = next;
+  }
+
+  /** Only the newest list wins: two deletes in a row fire two reloads, and the
+   *  older one answering last would undo the newer. */
+  async function reloadSaves() {
+    const seq = ++reloadSeq;
+    try {
+      const fresh = await api.listTrackedSaves();
+      if (seq !== reloadSeq) return;
+      saves = fresh.filter((s) => !deletedFromServer.has(s.save_id));
+    } catch {
+      // The card already changed locally; the next visit corrects the rest.
+    }
+  }
+
+  async function deleteFromMachine() {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    deleteTarget = null;
+    setRemoving(target.save_id, true);
+    try {
+      await api.untrackSave(target.save_id);
+      // What the server holds stays, and the list shows it as a cloud-only
+      // row from now on. Turned into one here so the card doesn't vanish and
+      // come back when the reload lands.
+      saves = isOnServer(target)
+        ? saves.map((s) =>
+            s.save_id === target.save_id
+              ? {
+                  ...s,
+                  orphan: true,
+                  local_path: "",
+                  local_version_num: null,
+                  local_size_bytes: null,
+                  paused: false,
+                }
+              : s,
+          )
+        : saves.filter((s) => s.save_id !== target.save_id);
+      toastSuccess(
+        $_("library.untracked_toast", { values: { name: nameOf(target) } }),
+      );
+      void reloadSaves();
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    } finally {
+      setRemoving(target.save_id, false);
+    }
+  }
+
+  async function deleteFromServer() {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    deleteTarget = null;
+    setRemoving(target.save_id, true);
+    try {
+      await api.deleteSaveCompletely(target.save_id);
+      deletedFromServer.add(target.save_id);
+      saves = saves.filter((s) => s.save_id !== target.save_id);
+      toastSuccess(
+        $_("library.deleted_toast", { values: { name: nameOf(target) } }),
+      );
+      void reloadSaves();
+      void fetchFootprints();
+      refreshQuota().catch(() => {});
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    } finally {
+      setRemoving(target.save_id, false);
     }
   }
 </script>
@@ -732,11 +842,6 @@
           </Button>
         {/if}
       </label>
-
-      <Button onclick={() => push("/library")}>
-        <Plus size={15} data-anim="pop" />
-        {$_("dashboard.add_game")}
-      </Button>
     </div>
   {/if}
 
@@ -792,6 +897,8 @@
           onBackup={backupNow}
           onTogglePause={togglePause}
           onHistory={(s) => push(`/history/${s.save_id}`)}
+          removing={!!removing[save.save_id]}
+          onDelete={askDelete}
         />
       {/each}
     </div>
@@ -874,6 +981,92 @@
     </Button>
     <Button onclick={confirmRename} loading={renaming}>
       {$_("common.save")}
+    </Button>
+  {/snippet}
+</Modal>
+
+<!-- Where to delete a game that lives both here and on the server. -->
+<Modal
+  open={deleteTarget !== null && deleteStep === "choose"}
+  title={$_("dashboard.delete_choose_title")}
+  description={deleteTarget ? nameOf(deleteTarget) : undefined}
+  onClose={() => (deleteTarget = null)}
+>
+  {#if deleteTarget}
+    <div class="space-y-2">
+      <button
+        type="button"
+        onclick={deleteFromMachine}
+        class="flex w-full items-start gap-3 rounded-lg border border-white/[0.08] bg-layer-2 p-3 text-left transition-colors hover:border-white/[0.16] hover:bg-layer-hover"
+      >
+        <HardDrive size={16} class="mt-0.5 shrink-0 text-zinc-400" />
+        <span class="min-w-0">
+          <span class="block text-sm font-medium text-zinc-100">
+            {$_("dashboard.delete_machine")}
+          </span>
+          <span class="mt-0.5 block text-xs text-zinc-400">
+            {$_("dashboard.delete_machine_body")}
+          </span>
+        </span>
+      </button>
+      {#if isOnServer(deleteTarget)}
+        <button
+          type="button"
+          onclick={() => (deleteStep = "confirm")}
+          class="flex w-full items-start gap-3 rounded-lg border border-white/[0.08] bg-layer-2 p-3 text-left transition-colors hover:border-red-500/40 hover:bg-red-500/5"
+        >
+          <Cloud size={16} class="mt-0.5 shrink-0 text-red-400" />
+          <span class="min-w-0">
+            <span class="block text-sm font-medium text-zinc-100">
+              {$_("dashboard.delete_server")}
+            </span>
+            <span class="mt-0.5 block text-xs text-zinc-400">
+              {$_("dashboard.delete_server_choice_body")}
+            </span>
+          </span>
+        </button>
+      {/if}
+    </div>
+  {/if}
+  {#snippet footer()}
+    <Button variant="ghost" onclick={() => (deleteTarget = null)}>
+      {$_("common.cancel")}
+    </Button>
+  {/snippet}
+</Modal>
+
+<!-- Deleting from the server has no way back, so it always takes a second,
+     explicit click. -->
+<Modal
+  open={deleteTarget !== null && deleteStep === "confirm"}
+  title={$_("dashboard.delete_server_title", {
+    values: { name: deleteTarget ? nameOf(deleteTarget) : "" },
+  })}
+  onClose={() => (deleteTarget = null)}
+>
+  {#if deleteTarget}
+    <div class="space-y-3 text-sm text-zinc-300">
+      <p>
+        {$_("dashboard.delete_server_body", {
+          values: { name: nameOf(deleteTarget) },
+        })}
+      </p>
+      {#if !isCloudOnly(deleteTarget)}
+        <!-- `delete_save_completely` also drops the local row, so this
+             machine stops tracking it as well. -->
+        <p class="text-xs text-zinc-400">
+          {$_("dashboard.delete_server_note_tracked")}
+        </p>
+      {/if}
+    </div>
+  {/if}
+  {#snippet footer()}
+    <Button variant="ghost" onclick={() => (deleteTarget = null)}>
+      {$_("common.cancel")}
+    </Button>
+    <Button variant="danger" onclick={deleteFromServer}>
+      <Trash2 size={14} />
+      {$_("dashboard.delete_server_action")}
     </Button>
   {/snippet}
 </Modal>
