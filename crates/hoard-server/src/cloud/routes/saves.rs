@@ -525,6 +525,48 @@ pub struct CasFileEntry {
     pub modified_at: Option<i64>,
 }
 
+/// Under both of these a blocked save's push goes through. An install is
+/// thousands of files or gigabytes and a save folder is neither, so the same
+/// save syncs again on its own once it is pointed at its real folder.
+const BLOCKED_INSTALL_MIN_FILES: usize = 1_000;
+const BLOCKED_INSTALL_MIN_BYTES: i64 = 1 << 30;
+
+/// Whether `cloud.blocked_saves` turns this push away.
+///
+/// The list is for installs someone tracked by hand and keeps pushing. An
+/// attempt that never commits leaves its blobs without a `cloud_blobs` row,
+/// so the next `cas_init` mints every PUT again. In oct-2026 one account had
+/// nine of them in flight, 50,375 blobs and 59 GB a pass, and 34,193 objects
+/// in its prefix against 8,321 rows.
+pub fn blocked_install(blocked_saves: &str, save_id: &str, files: &[CasFileEntry]) -> bool {
+    let listed = blocked_saves.split(',').any(|id| {
+        let id = id.trim();
+        !id.is_empty() && id == save_id
+    });
+    if !listed {
+        return false;
+    }
+    let bytes: i64 = files.iter().map(|f| f.size_bytes.max(0)).sum();
+    files.len() >= BLOCKED_INSTALL_MIN_FILES || bytes >= BLOCKED_INSTALL_MIN_BYTES
+}
+
+/// Answered as an archived game on purpose: it is the refusal every shipped
+/// client settles quietly, with no retry and no red row, until the folder
+/// changes. A new code would land in their generic failure path instead.
+fn refuse_blocked_install(user_id: Uuid, body: &CasInit) -> CloudError {
+    tracing::info!(
+        %user_id,
+        save_id = %body.save_id,
+        game_slug = %body.game_slug,
+        files = body.files.len(),
+        "cas_init: refused, the folder is a blocked install"
+    );
+    CloudError::ForbiddenCode {
+        code: "save_archived",
+        message: "this folder is the game's install, not its saves",
+    }
+}
+
 /// Body for `POST /v1/cloud/saves/cas`. Same intent as [`UploadInit`] but
 /// carries the per-file manifest instead of a single archive size.
 #[derive(Debug, Deserialize)]
@@ -586,6 +628,15 @@ pub async fn cas_init(
     // Don't accept uploads for a game the user archived: it would revive the
     // frozen blobs and re-inflate the quota. The client stops retrying on this.
     crate::cloud::archive::ensure_not_archived(&state, user.user_id, &body.save_id).await?;
+
+    let blocked_saves = state
+        .config
+        .cloud
+        .as_ref()
+        .map_or("", |c| c.blocked_saves.as_str());
+    if blocked_install(blocked_saves, &body.save_id, &body.files) {
+        return Err(refuse_blocked_install(user.user_id, &body));
+    }
 
     let (plan, max_save_size_bytes) = match save_limits_for_user(&state, user.user_id).await? {
         Some(p) => p,
@@ -722,6 +773,11 @@ pub async fn cas_init(
     )
     .await?;
     let head = save_row.1;
+    // The same list again under the canonical id, for a device whose local id
+    // never matched the row. Dropping `tx` rolls back what the resolve touched.
+    if save_row.0 != body.save_id && blocked_install(blocked_saves, &save_row.0, &body.files) {
+        return Err(refuse_blocked_install(user.user_id, &body));
+    }
 
     // The client keys saves by its own device-local id; the server keys by
     // (user, game_slug, label). When two devices track the same game with
@@ -2791,5 +2847,68 @@ mod charge_tests {
         let (charged, stored) = charge_for_blob("dd", 4096, 4096, true).expect("accepted");
         assert_eq!(charged, 4096);
         assert_eq!(stored, Some(4096));
+    }
+}
+
+#[cfg(test)]
+mod blocked_install_tests {
+    use super::*;
+
+    fn files(n: usize, each: i64) -> Vec<CasFileEntry> {
+        (0..n)
+            .map(|i| CasFileEntry {
+                relative_path: format!("Data/{i}.xml"),
+                sha256: format!("{i:064x}"),
+                size_bytes: each,
+                modified_at: None,
+            })
+            .collect()
+    }
+
+    const LIST: &str = "aaa, bbb ,ccc";
+
+    #[test]
+    fn a_listed_install_is_refused_by_file_count_or_by_size() {
+        assert!(blocked_install(LIST, "bbb", &files(15_626, 100)));
+        // 59 files and 10 GB: an install made of a few huge archives.
+        assert!(blocked_install(LIST, "aaa", &files(59, 180 << 20)));
+    }
+
+    #[test]
+    fn the_same_save_pointed_at_its_saves_syncs_again() {
+        assert!(!blocked_install(LIST, "bbb", &files(12, 2 << 20)));
+    }
+
+    /// Production sets the list as a secret, so it arrives through figment's
+    /// environment provider, which turns values it can read as numbers or
+    /// arrays into those. A list it reshaped would not parse into the `String`,
+    /// and a config that does not parse is a server that does not boot.
+    #[test]
+    fn the_list_parses_from_the_environment() {
+        use figment::{providers::Env, Figment};
+
+        let ids = "0b9a3c1e-5d2f-4e7a-9c11-2f6d8e4a7b30,f1e2d3c4-b5a6-4978-8a1b-c2d3e4f50617";
+        std::env::set_var("HOARDTESTBLOCKED__CLOUD__BLOCKED_SAVES", ids);
+        #[derive(serde::Deserialize)]
+        struct Root {
+            cloud: crate::config::CloudConfig,
+        }
+        let root: Root = Figment::new()
+            .merge(Env::prefixed("HOARDTESTBLOCKED__").split("__"))
+            .extract()
+            .expect("config parses");
+        assert_eq!(root.cloud.blocked_saves, ids);
+        assert!(blocked_install(
+            &root.cloud.blocked_saves,
+            "f1e2d3c4-b5a6-4978-8a1b-c2d3e4f50617",
+            &files(15_626, 100)
+        ));
+    }
+
+    #[test]
+    fn nothing_outside_the_list_is_touched() {
+        assert!(!blocked_install(LIST, "ddd", &files(15_626, 1 << 20)));
+        assert!(!blocked_install("", "", &files(15_626, 1 << 20)));
+        assert!(!blocked_install("aaa,,", "", &files(15_626, 1 << 20)));
     }
 }

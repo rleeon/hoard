@@ -403,6 +403,14 @@ pub struct CloudConfig {
     /// default, in which case it only counts. `HOARD__CLOUD__RECONCILE_DELETE`.
     #[serde(default)]
     pub reconcile_delete: bool,
+    /// Saves whose tracked folder is a game's install rather than its saves,
+    /// as comma-separated save ids. A big push for one of them is turned away
+    /// at `cas_init` before a single URL is minted; see `blocked_install` in
+    /// `cloud/routes/saves.rs`. Empty by default. Kept out of `fly.toml`
+    /// because the ids are users': set it with `fly secrets set
+    /// HOARD__CLOUD__BLOCKED_SAVES=...`.
+    #[serde(default)]
+    pub blocked_saves: String,
     /// At-rest zstd compression of content-addressed blobs (cost saver:
     /// R2 bills physical bytes, quota keeps charging raw bytes). Off by
     /// default; enable in dev first. Fields from `HOARD__CLOUD__COMPRESSION__*`.

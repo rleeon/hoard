@@ -717,3 +717,94 @@ async fn the_repeat_download_brake_can_fire() {
 
     cleanup(&pool, user).await;
 }
+
+/// A save on `cloud.blocked_saves` is refused at `cas_init` before anything is
+/// written or minted, with the code the shipped clients settle quietly on, and
+/// the same save pushing a folder of save size goes through untouched.
+#[tokio::test]
+async fn a_blocked_install_is_refused_before_anything_is_minted() {
+    use axum::response::IntoResponse;
+    use hoard_server::cloud::errors::CloudError;
+    use hoard_server::cloud::routes::saves::{cas_init, CasFileEntry, CasInit};
+
+    let Some(pool) = pool().await else { return };
+    let (user, save_id) = seed(&pool, 0, 0).await;
+    let mut state = state_for(pool.clone()).await;
+    state
+        .config
+        .cloud
+        .as_mut()
+        .expect("cloud section")
+        .blocked_saves = format!("{}, {save_id}", Uuid::new_v4());
+
+    let push = |n: u32| CasInit {
+        save_id: save_id.clone(),
+        game_slug: "test-game".into(),
+        label: Some("default".into()),
+        device_name: None,
+        notes: None,
+        backup_only: false,
+        base_version: None,
+        files: (0..n)
+            .map(|i| CasFileEntry {
+                relative_path: format!("Data/{i}.xml"),
+                sha256: format!("{:064x}", u64::from(i) + 1),
+                size_bytes: 10,
+                modified_at: None,
+            })
+            .collect(),
+    };
+    let ctx = || hoard_server::cloud::auth::CloudUser {
+        user_id: user,
+        email: format!("{user}@test.invalid"),
+        role: "authenticated".into(),
+        avatar_url: None,
+        display_name: None,
+    };
+    let pending = || async {
+        let n: i64 = sqlx::query_scalar("SELECT count(*) FROM save_versions WHERE save_id = $1")
+            .bind(&save_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count versions");
+        n
+    };
+
+    let refused = cas_init(
+        axum::extract::State(state.clone()),
+        axum::Extension(ctx()),
+        axum::Json(push(1_000)),
+    )
+    .await
+    .expect_err("an install on the list is refused");
+    assert!(
+        matches!(
+            refused,
+            CloudError::ForbiddenCode {
+                code: "save_archived",
+                ..
+            }
+        ),
+        "the refusal clients settle quietly on: {refused:?}"
+    );
+    assert_eq!(
+        refused.into_response().status(),
+        axum::http::StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        pending().await,
+        0,
+        "nothing was written for the refused push"
+    );
+
+    cas_init(
+        axum::extract::State(state.clone()),
+        axum::Extension(ctx()),
+        axum::Json(push(3)),
+    )
+    .await
+    .expect("a folder of save size on the same save goes through");
+    assert_eq!(pending().await, 1, "and opens its pending version");
+
+    cleanup(&pool, user).await;
+}
