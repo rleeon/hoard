@@ -52,7 +52,12 @@
   ; exe behind in the install dir.
   Delete "$INSTDIR\hoard-screen.exe"
   ; Service first, same as everywhere else: the app expects it to be there.
+  ; The uninstall marker asks for it too: an installer run by hand over an
+  ; older copy uninstalls that copy first, login start goes with it, and the
+  ; service is what puts it back (`autostart::reclaim_after_reinstall`).
+  IfFileExists "$APPDATA\hoard\hoard\config\login-start-removed" hoard_post_start_service
   IfFileExists "$TEMP\hoard-restart-service.flag" 0 hoard_post_no_service
+  hoard_post_start_service:
     Delete "$TEMP\hoard-restart-service.flag"
     Exec '"$INSTDIR\hoardd.exe"'
   hoard_post_no_service:
@@ -67,4 +72,55 @@
   ExecWait 'taskkill /F /IM hoard-desktop.exe'
   ExecWait 'taskkill /F /IM hoardd.exe'
   Sleep 1500
+!macroend
+
+; Tauri's uninstaller only removes what it put in $INSTDIR. HoardSetup puts the
+; core in $LOCALAPPDATA\hoard\bin, a subfolder of $INSTDIR on a
+; case-insensitive disk that its non-recursive RMDir leaves standing, so after
+; "uninstall" from Settings > Apps the HoardSync task still started that
+; `hoardd` at every logon, the
+; install manifest still listed the app, and the updater reinstalled it,
+; desktop shortcut included, with the next release.
+;
+; Not in update mode, which is Tauri's own line for its shortcuts. Our updater
+; runs the installer with /S, and a silent install never runs the old
+; uninstaller at all. The one uninstall that is really half a reinstall is the
+; installer run by hand over an older copy: its reinstall page uninstalls
+; first, without /UPDATE. Login start is written down before it goes so the
+; POSTINSTALL above can have the new service put it back.
+;
+; Saves, settings and the local database stay, same as `install::remove`.
+!macro NSIS_HOOK_POSTUNINSTALL
+  StrCmp $UpdateMode "1" hoard_postun_done
+  Push $0
+  Push $1
+  StrCpy $1 "0"
+  ClearErrors
+  ExecWait 'schtasks /Query /TN HoardSync' $0
+  IfErrors hoard_postun_no_task
+  StrCmp $0 "0" 0 hoard_postun_no_task
+    StrCpy $1 "1"
+  hoard_postun_no_task:
+  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "HoardSync"
+  StrCmp $0 "" hoard_postun_no_run
+    StrCpy $1 "1"
+  hoard_postun_no_run:
+  StrCmp $1 "1" 0 hoard_postun_unmarked
+    CreateDirectory "$APPDATA\hoard\hoard\config"
+    FileOpen $0 "$APPDATA\hoard\hoard\config\login-start-removed" w
+    FileClose $0
+  hoard_postun_unmarked:
+  ExecWait 'schtasks /Delete /TN HoardSync /F'
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "HoardSync"
+  Delete "$APPDATA\hoard\hoard\config\service-exec.txt"
+  Delete "$APPDATA\hoard\hoard\config\install.json"
+  Delete "$LOCALAPPDATA\hoard\bin\hoard.exe"
+  Delete "$LOCALAPPDATA\hoard\bin\hoardd.exe"
+  RMDir "$LOCALAPPDATA\hoard\bin"
+  ; Only if it emptied: an install that predates the state move still keeps
+  ; its local data under here.
+  RMDir "$LOCALAPPDATA\hoard"
+  Pop $1
+  Pop $0
+  hoard_postun_done:
 !macroend

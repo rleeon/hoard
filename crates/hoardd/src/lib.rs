@@ -141,6 +141,9 @@ pub async fn run(options: Options) -> Result<Outcome> {
     // Windows the installer kills the daemon that set the marker, so the guard's
     // `Drop` never runs and only a fresh service can say it's over.
     hoard_agent::install::Swap::forget();
+    // Spawned: it shells out to the Task Scheduler, and the engine has no reason
+    // to wait for that.
+    tokio::spawn(autostart::reclaim_after_reinstall());
 
     let log = Arc::new(EventLog::new());
     let engine = Engine::new();

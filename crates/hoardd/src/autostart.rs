@@ -276,6 +276,52 @@ pub async fn ensure_installed() -> Result<Installed> {
     Ok(installed)
 }
 
+// ---- after an uninstall that was half a reinstall
+
+/// Left in the config directory by `NSIS_HOOK_POSTUNINSTALL` when it removed a
+/// login start that was there. See `installer-hooks.nsh`.
+const RECLAIM_MARKER: &str = "login-start-removed";
+
+/// A reinstall by hand runs its install minutes after the uninstall. A marker
+/// older than this is a real uninstall followed, much later, by a fresh
+/// install, and a fresh install starts with login start off like any other.
+const RECLAIM_WINDOW: Duration = Duration::from_secs(60 * 60);
+
+/// Puts login start back when the uninstall that removed it was the first half
+/// of a reinstall. The marker goes either way, before acting, so a failure here
+/// is one warning and not one per start.
+pub async fn reclaim_after_reinstall() {
+    let Some(path) = hoard_agent::config::CliConfig::project_dirs()
+        .ok()
+        .map(|dirs| dirs.config_dir().join(RECLAIM_MARKER))
+    else {
+        return;
+    };
+    let Ok(meta) = std::fs::metadata(&path) else {
+        return;
+    };
+    let age = meta.modified().ok().and_then(|at| at.elapsed().ok());
+    let _ = std::fs::remove_file(&path);
+    if !within_reclaim_window(age) {
+        tracing::info!("autostart: stale uninstall marker, login start stays off");
+        return;
+    }
+    match ensure_installed().await {
+        Ok(installed) => tracing::info!(
+            manager = installed.manager,
+            "autostart: login start restored after a reinstall"
+        ),
+        Err(err) => tracing::warn!(
+            error = %format!("{err:#}"),
+            "autostart: couldn't restore login start after a reinstall"
+        ),
+    }
+}
+
+fn within_reclaim_window(age: Option<Duration>) -> bool {
+    age.is_some_and(|age| age < RECLAIM_WINDOW)
+}
+
 /// The binary going into the `ExecStart` has to exist *before* the unit is written.
 /// It accepts an absolute path that is a file, or a bare name the `PATH` resolves,
 /// which is the same test the service manager will apply when it starts it. Anything
@@ -454,6 +500,10 @@ async fn wait_until_serving() -> Result<()> {
 // ---- helpers de proceso compartidos -----------------------------------
 
 /// Runs a command, swallowing its output; returns whether it succeeded.
+#[cfg_attr(
+    not(any(target_os = "linux", target_os = "macos", target_os = "windows")),
+    allow(dead_code)
+)]
 async fn run_quiet(program: &str, args: &[&str]) -> Result<bool> {
     let out = tokio::process::Command::new(program)
         .args(args)
@@ -1403,6 +1453,14 @@ fn to_utf16le_with_bom(s: &str) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_fresh_uninstall_marker_brings_login_start_back() {
+        assert!(within_reclaim_window(Some(Duration::from_secs(90))));
+        assert!(!within_reclaim_window(Some(Duration::from_secs(3 * 3600))));
+        // A marker we can't date (no mtime, or one from the future) is not acted on.
+        assert!(!within_reclaim_window(None));
+    }
 
     /// La unidad tiene que ejecutar **el daemon**, no un cliente: desde el 4b/4c
     /// `hoard sync run` es un espectador, y supervisar a un espectador significa
