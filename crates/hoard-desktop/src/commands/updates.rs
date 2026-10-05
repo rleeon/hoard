@@ -690,7 +690,11 @@ async fn launch_installer(path: &std::path::Path) -> Result<(), String> {
             .spawn()
             .map_err(|e| format!("spawning msiexec: {e}"))?;
     } else {
+        // `/UPDATE` because the app running this is installed. Without it the
+        // installer's reinstall page uninstalls the old copy first and puts
+        // back any shortcut the user had deleted.
         tokio::process::Command::new(&p)
+            .arg("/UPDATE")
             .spawn()
             .map_err(|e| format!("spawning installer: {e}"))?;
     }

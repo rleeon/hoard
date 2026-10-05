@@ -292,7 +292,7 @@ pub async fn apply_desktop(
             // The installer takes care of it (and carries the hook that stops the
             // service before touching `hoardd.exe`). `/S` means silent.
             let status = tokio::process::Command::new(path)
-                .arg("/S")
+                .args(nsis_args(super::installed_desktop().is_some()))
                 .status()
                 .await
                 .with_context(|| format!("running {}", path.display()))?;
@@ -318,6 +318,19 @@ pub async fn apply_desktop(
         Delivery::Managed => {
             bail!("this install is managed by your package manager; nothing to do")
         }
+    }
+}
+
+/// What the NSIS installer runs with. `/UPDATE` whenever an app is already
+/// there: run silent without it, Tauri's installer treats every update as a
+/// first install and puts the desktop and Start menu shortcuts back, so a
+/// shortcut the user deleted came back with every release. It also skips the
+/// WebView2 bootstrapper, which an installed app already has.
+fn nsis_args(updating: bool) -> &'static [&'static str] {
+    if updating {
+        &["/S", "/UPDATE"]
+    } else {
+        &["/S"]
     }
 }
 
@@ -844,6 +857,12 @@ fn replace_binary(src: &Path, dest: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_first_install_gets_the_shortcuts() {
+        assert_eq!(nsis_args(false), ["/S"]);
+        assert_eq!(nsis_args(true), ["/S", "/UPDATE"]);
+    }
 
     /// How the bundlers spell *this* machine's architecture, so the fixture
     /// below describes a release that actually has a file for the runner. A
