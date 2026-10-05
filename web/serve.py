@@ -24,8 +24,14 @@ handler.extensions_map.update({
 class SPAHandler(handler):
     def do_GET(self):
         path = self.translate_path(self.path)
+        # GitHub Pages answers /download with download.html, the prerendered
+        # page; only an unknown route gets the SPA shell.
         if not os.path.exists(path) and not os.path.splitext(self.path)[1]:
-            self.path = "/200.html"
+            route, _, query = self.path.partition("?")
+            if os.path.isfile(self.translate_path(route) + ".html"):
+                self.path = route + ".html" + ("?" + query if query else "")
+            else:
+                self.path = "/200.html"
         super().do_GET()
 
 def get_ips():
