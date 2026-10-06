@@ -31,7 +31,7 @@
     title: titleProp,
     description: descProp,
     type = 'website',
-    image = '/app.webp'
+    image = '/icon.png'
   }: Props = $props();
 
   const active = $derived<Locale>(isLocale($locale) ? ($locale as Locale) : DEFAULT_LOCALE);
@@ -57,12 +57,15 @@
   <meta property="og:description" content={desc} />
   <meta property="og:url" content={canonical} />
   <meta property="og:image" content={imageUrl} />
+  <meta property="og:image:alt" content="Hoard" />
   <meta property="og:locale" content={OG_LOCALE[active]} />
   {#each LOCALES.filter((l) => l !== active) as l (l)}
     <meta property="og:locale:alternate" content={OG_LOCALE[l]} />
   {/each}
 
-  <meta name="twitter:card" content="summary_large_image" />
+  <!-- The preview is the square logo: the large card crops it to 2:1 and cuts
+       the H in half, the small one shows it whole. -->
+  <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content={title} />
   <meta name="twitter:description" content={desc} />
   <meta name="twitter:image" content={imageUrl} />

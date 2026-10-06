@@ -78,6 +78,7 @@
           applicationCategory: 'UtilitiesApplication',
           operatingSystem: 'Windows, macOS, Linux',
           url: SITE_URL,
+          image: `${SITE_URL}/icon.png`,
           // The long form, not the meta description: nothing truncates this one,
           // and it is where "Hoard the software" and "Hoard Cloud the service"
           // get told apart in so many words.
