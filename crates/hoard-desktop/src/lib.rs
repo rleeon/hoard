@@ -292,6 +292,7 @@ pub fn run() {
             commands::prefs::save_prefs,
             commands::prefs::set_autostart,
             commands::prefs::is_autostart_enabled,
+            commands::prefs::app_autostart_available,
             commands::prefs::service_autostart_state,
             commands::prefs::set_service_autostart,
             commands::prefs::set_automatic_mode,
@@ -427,7 +428,9 @@ pub fn run() {
                 // current binary path and (on Windows) resets the StartupApproved
                 // override to enabled. Disabling in-app clears `autostart`, so
                 // we never fight a user who deliberately turned it off.
-                if prefs.autostart {
+                // Inside a Flatpak there is no entry of ours to re-assert; see
+                // `app_autostart_supported`.
+                if prefs.autostart && commands::prefs::app_autostart_supported() {
                     use tauri_plugin_autostart::ManagerExt;
                     #[cfg(target_os = "linux")]
                     commands::prefs::ensure_autostart_dir();

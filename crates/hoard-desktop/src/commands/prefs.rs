@@ -148,6 +148,14 @@ pub async fn set_sync_mode(state: State<'_, AppState>, mode: SyncMode) -> Result
 /// [`set_service_autostart`].
 #[tauri::command]
 pub async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    if !app_autostart_supported() {
+        return Err(
+            "Inside the Flatpak the window can't open at login; the sync service's \
+             switch is what starts Hoard there."
+                .into(),
+        );
+    }
+
     // On Linux the autostart plugin writes `~/.config/autostart/<app>.desktop`
     // but does *not* create the directory itself, and on a fresh XDG profile that
     // folder often doesn't exist yet, so `enable()` fails and autostart never
@@ -412,9 +420,29 @@ pub(crate) fn ensure_autostart_dir() {
 /// load so we don't trust a stale value in prefs.json.
 #[tauri::command]
 pub fn is_autostart_enabled(app: AppHandle) -> Result<bool, String> {
+    if !app_autostart_supported() {
+        return Ok(false);
+    }
     app.autolaunch()
         .is_enabled()
         .map_err(|e| format!("Couldn't read autostart status: {e}"))
+}
+
+/// Whether the window can open itself at login. Not from inside a Flatpak: the
+/// plugin writes `$HOME/.config/autostart/Hoard.desktop` (it ignores
+/// `$XDG_CONFIG_HOME`), which under `--filesystem=host` is the **host's** file,
+/// and points it at `/app/bin/hoard-desktop`, a path that only exists in the
+/// sandbox. On a machine with the .deb too, every Flatpak start overwrote the
+/// .deb's own entry with it (06-10-2026). The portal that would do this
+/// properly keeps one entry per app, and the sync service already owns it.
+pub(crate) fn app_autostart_supported() -> bool {
+    !hoard_agent::install::running_under_flatpak()
+}
+
+/// Settings hides the app's two login rows when this says no.
+#[tauri::command]
+pub fn app_autostart_available() -> bool {
+    app_autostart_supported()
 }
 
 /// Flips the sidebar's automatic-mode toggle. Persists the new value to

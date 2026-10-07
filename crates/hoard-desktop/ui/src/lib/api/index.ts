@@ -1095,6 +1095,11 @@ export function isAutostartEnabled(): Promise<boolean> {
   return invoke<boolean>("is_autostart_enabled");
 }
 
+/** False inside the Flatpak, where only the sync service can start at login. */
+export function appAutostartAvailable(): Promise<boolean> {
+  return invoke<boolean>("app_autostart_available");
+}
+
 /** Why the sync *service* can't start at login, when it can't. The app's own
  *  launcher entry and the service are two separate registrations since the
  *  engine moved out of the window (ADR 0021, Slice 4), and only the first one

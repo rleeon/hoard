@@ -86,6 +86,9 @@
    *  there is no bar of ours to turn off, and under gamescope or with
    *  `HOARD_SYSTEM_TITLEBAR` set the answer is already decided (`titlebar.rs`). */
   let titlebarToggleable = $state(false);
+  /** The window's own login entry (and the minimised start that only it can
+   *  trigger). Not offered inside the Flatpak (`app_autostart_supported`). */
+  let appAutostart = $state(false);
   let signingOut = $state(false);
   // Gate the "forget server" action behind a confirm modal. Forgetting wipes
   // the saved address + token (session.toml + keyring), which is what stops
@@ -360,6 +363,11 @@
     } catch (e) {
       // Nothing to offer is the right answer when we can't ask.
       console.warn("windowTitlebar failed:", e);
+    }
+    try {
+      appAutostart = await api.appAutostartAvailable();
+    } catch (e) {
+      console.warn("appAutostartAvailable failed:", e);
     }
     try {
       catalog = await api.catalogStatus();
@@ -641,22 +649,26 @@
       : []),
   ]);
 
-  const startupRows: Row[] = $derived([
-    {
-      field: "autostart",
-      label: $_("settings.autostart_label"),
-      description: $_("settings.autostart_desc"),
-      icon: LogIn,
-      anim: "pop",
-    },
-    {
-      field: "start_minimised",
-      label: $_("settings.start_minimised_label"),
-      description: $_("settings.start_minimised_desc"),
-      icon: Power,
-      anim: "pop",
-    },
-  ]);
+  const startupRows: Row[] = $derived(
+    appAutostart
+      ? [
+          {
+            field: "autostart",
+            label: $_("settings.autostart_label"),
+            description: $_("settings.autostart_desc"),
+            icon: LogIn,
+            anim: "pop",
+          },
+          {
+            field: "start_minimised",
+            label: $_("settings.start_minimised_label"),
+            description: $_("settings.start_minimised_desc"),
+            icon: Power,
+            anim: "pop",
+          },
+        ]
+      : [],
+  );
 
   // Two switches, not one: the diagnostics telemetry promises in its own text that
   // it never sends game names, and playtime is game names by construction. Turning
