@@ -679,21 +679,19 @@ select option {
   background-color: #15171a;
 }
 
-/* WebKitGTK (Linux) paints a black rectangle where a `backdrop-filter`
-   element repaints on hover, the sidebar's blur, sitting over the Wrapped
-   surface's translucent layers, triggers it every time a nav button lights up.
-   Drop the backdrop blur on Linux only; the semi-opaque gradient already reads
-   as a panel there. WebView2 (Windows) / WKWebView (macOS) keep the glass. */
-html.is-linux .sidebar-glass {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-/* Same webkit2gtk black-rect bug as the sidebar: a `backdrop-filter` element
-   repainting over translucent layers (here the card surface over the Wrapped
-   surface) paints a black rectangle on hover. The cards use `backdrop-blur-xl`
-   via the `.card-glass` class, so drop it on Linux only, the semi-opaque
-   surface already reads as a panel there. WebView2 / WKWebView keep the frost. */
+/* No backdrop blur on Linux at all: WebKitGTK has broken it twice, and the
+   semi-opaque surfaces already read as panels without it. WebView2 (Windows) /
+   WKWebView (macOS) keep the glass.
+   - A blurred element repainting over translucent layers paints a black
+     rectangle: the sidebar over the Wrapped surface every time a nav button
+     lit up, and the cards (`.card-glass`) on hover.
+   - On 2.54 with the GPU (DMA-BUF) renderer, the `backdrop-blur-md` elements on
+     the Panel made the web process grow ~280 MB/s until it had eaten 16 GB
+     plus swap and froze the whole desktop (Flatpak on GNOME 50, 05-10-2026).
+     Turning that renderer off stopped it too, but painted every frame on the
+     CPU and the app crawled. */
+html.is-linux [class*="backdrop-blur"],
+html.is-linux .sidebar-glass,
 html.is-linux .card-glass {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
