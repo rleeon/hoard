@@ -85,6 +85,7 @@
             Discord
           </a>
         </li>
+        <li><a class="link-underline hover:text-ink" href={$localeHref('/press')}>{$_('footer.press')}</a></li>
         <li><a class="link-underline hover:text-ink" href={$localeHref('/help')}>{$_('footer.contact')}</a></li>
       </ul>
     </div>

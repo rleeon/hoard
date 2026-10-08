@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { pressBuild } from './src/lib/press/build';
 
 // Single source of truth for the public version: the workspace Cargo.toml.
 // The gh-pages deploy checks out the whole repo, so `../Cargo.toml` is
@@ -41,7 +42,8 @@ export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
   define: {
     __HOARD_VERSION__: JSON.stringify(workspaceVersion()),
-    __HOARD_RELEASE_DATE__: JSON.stringify(releaseDate())
+    __HOARD_RELEASE_DATE__: JSON.stringify(releaseDate()),
+    __HOARD_PRESS__: JSON.stringify(pressBuild(fileURLToPath(new URL('.', import.meta.url))))
   },
   server: {
     host: '0.0.0.0',

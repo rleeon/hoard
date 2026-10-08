@@ -49,6 +49,7 @@ export function GET() {
       ['Help', '/help', 'Setup, troubleshooting and how detection works.']
     ]),
     section('About', [
+      ['Press kit', '/press', 'Ready-to-use descriptions, facts, screenshots and icons, and what changed in the latest release.'],
       ['Privacy', '/legal/privacy', 'What the service stores, for how long, and who runs it.'],
       ['Terms', '/legal/terms', 'Terms of service.']
     ]),
