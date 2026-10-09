@@ -96,3 +96,90 @@ pub fn ui_log(window: tauri::Window, topic: String, message: String) {
     let message: String = message.chars().take(400).collect();
     tracing::info!(window = window.label(), topic = %topic, "ui: {message}");
 }
+
+/// How the running app got onto this machine, shown under About. With the .deb
+/// and the Flatpak installed side by side nothing in the window told them apart:
+/// same version, same look, and the one difference was a path nobody sees.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallKind {
+    Flatpak,
+    // The spelling `install::Delivery` uses; `snake_case` would say `app_image`.
+    #[serde(rename = "appimage")]
+    AppImage,
+    Deb,
+    Rpm,
+    /// Under `/usr` and not ours: a distro's own package.
+    System,
+    Msi,
+    Nsis,
+    MacApp,
+    /// Straight out of a cargo `target/` directory.
+    Dev,
+    Unknown,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct InstallChannel {
+    kind: InstallKind,
+    /// What tells two installs apart: the Flatpak's app id, the AppImage file
+    /// (its binary lives on a mount that changes every start), or the path.
+    detail: String,
+}
+
+#[tauri::command]
+pub fn app_install_channel() -> InstallChannel {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let kind = install_kind(&exe);
+    let detail = match kind {
+        InstallKind::Flatpak => std::env::var("FLATPAK_ID").ok(),
+        InstallKind::AppImage => std::env::var("APPIMAGE").ok(),
+        _ => None,
+    }
+    .unwrap_or_else(|| exe.display().to_string());
+    InstallChannel { kind, detail }
+}
+
+// `cfg!` rather than `#[cfg]` so every variant is built on every platform and
+// none trips `dead_code` on the CI's Windows and macOS runs.
+fn install_kind(exe: &std::path::Path) -> InstallKind {
+    if exe.components().any(|c| c.as_os_str() == "target") {
+        return InstallKind::Dev;
+    }
+    if cfg!(target_os = "windows") {
+        // The NSIS installer leaves its uninstaller next to the binary; an MSI
+        // is removed through Windows Installer and leaves nothing there.
+        return if exe.with_file_name("uninstall.exe").is_file() {
+            InstallKind::Nsis
+        } else {
+            InstallKind::Msi
+        };
+    }
+    if cfg!(target_os = "macos") {
+        return InstallKind::MacApp;
+    }
+    if hoard_agent::install::running_under_flatpak() {
+        return InstallKind::Flatpak;
+    }
+    if std::env::var_os("APPIMAGE").is_some() {
+        return InstallKind::AppImage;
+    }
+    if !exe.starts_with("/usr") {
+        return InstallKind::Unknown;
+    }
+    // dpkg keeps a plain list of the paths each package installed, so asking it
+    // is one file read and no subprocess. rpm's database is binary, and its
+    // presence is the best cheap signal there.
+    let exe_str = exe.to_string_lossy();
+    if std::fs::read_to_string("/var/lib/dpkg/info/hoard.list")
+        .is_ok_and(|list| list.lines().any(|l| l == exe_str))
+    {
+        return InstallKind::Deb;
+    }
+    if std::path::Path::new("/var/lib/rpm").is_dir()
+        || std::path::Path::new("/usr/lib/sysimage/rpm").is_dir()
+    {
+        return InstallKind::Rpm;
+    }
+    InstallKind::System
+}

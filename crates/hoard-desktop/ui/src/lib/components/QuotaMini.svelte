@@ -18,6 +18,7 @@
    */
   import { onMount } from "svelte";
   import { get } from "svelte/store";
+  import { Cloud, Server } from "@lucide/svelte";
   import { _ } from "svelte-i18n";
   import { auth, refreshQuota } from "../stores/auth";
   import { cloud, refreshCloud } from "../stores/cloud";
@@ -52,6 +53,7 @@
         used: u.storage_used_bytes,
         limit: u.storage_quota_bytes,
         capped: !u.is_local_server && u.storage_quota_bytes > 0,
+        cloud: u.is_cloud_server,
         // Self-hosted UserInfo carries no pressure signal → always "ok".
         status: "ok" as "ok" | "purging" | "full" | "grace",
       };
@@ -63,6 +65,7 @@
         used: acc.storage_used_bytes,
         limit: acc.storage_limit_bytes,
         capped: acc.storage_limit_bytes > 0,
+        cloud: true,
         status: acc.storage_status ?? "ok",
       };
     }
@@ -71,6 +74,7 @@
       used: 0,
       limit: 0,
       capped: false,
+      cloud: false,
       status: "ok" as "ok" | "purging" | "full" | "grace",
     };
   });
@@ -99,11 +103,11 @@
   });
   const barClass = $derived(
     {
-      full: "bg-red-600 shadow-[0_0_8px_1px_oklch(0.58_0.22_27/0.7)]",
-      purging: "bg-red-500",
-      warn: "bg-amber-400",
+      full: "bg-red-800 shadow-[0_0_8px_1px_oklch(0.44_0.16_27/0.7)]",
+      purging: "bg-red-700",
+      warn: "bg-amber-600",
       grace: "bg-sky-500",
-      ok: "bg-emerald-500",
+      ok: "bg-emerald-700",
     }[level],
   );
   const pctClass = $derived(
@@ -128,7 +132,15 @@
     use:glow
   >
     <div class="flex items-center justify-between gap-2 text-[11px] text-zinc-400">
-      <span class="truncate">
+      <!-- Without the mark nothing said where these bytes live, and a number
+           in an app that also lists folders on your disk reads as local. -->
+      <span class="flex min-w-0 items-center gap-1.5">
+        {#if src.cloud}
+          <Cloud size={12} class="shrink-0 text-zinc-500" />
+        {:else}
+          <Server size={12} class="shrink-0 text-zinc-500" />
+        {/if}
+        <span class="truncate">
         {#if capped}
           {$_("quota.used_of", {
             values: { used: fmtBytes(used), quota: fmtBytes(quota) },
@@ -136,6 +148,7 @@
         {:else}
           {$_("quota.used", { values: { size: fmtBytes(used) } })}
         {/if}
+        </span>
       </span>
       {#if capped}
         <span class="shrink-0 font-semibold tabular-nums {pctClass}">

@@ -346,6 +346,7 @@
       initialClass="text-4xl"
       fit="smart"
       editor="corner"
+      fallback="standby"
     />
     <div
       class="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-zinc-950/70 to-transparent"
@@ -357,13 +358,19 @@
     <div class="absolute left-2.5 top-2.5 flex flex-col items-start gap-1.5">
       {#if save.cloud_version_num != null}
         <!-- Amber when the cloud is ahead: "there's something newer waiting",
-             same semantics as the update-available badge. -->
+             same semantics as the update-available badge. The amber chips sit
+             on solid black: a tinted fill lets the cover through, and on Linux,
+             where the blur is off, that read as a smudge.
+             A real border, not a `ring`: the ring is a 1 px inset shadow, which
+             the engine does not snap to whole pixels the way it snaps borders,
+             so at the fractional offsets a resized card lands on it showed only
+             its top edge, or only the bottom, or nothing. -->
         <span
-          class="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] tabular-nums ring-1 ring-inset backdrop-blur-md {cloudAhead(
+          class="inline-flex items-center gap-1 rounded-md border px-[5px] py-px text-[11px] tabular-nums {cloudAhead(
             save,
           )
-            ? 'bg-amber-500/15 text-amber-300 ring-amber-500/40'
-            : 'bg-layer-2 text-zinc-300 ring-white/[0.12]'}"
+            ? 'border-amber-500/80 bg-black text-amber-300'
+            : 'border-white/[0.12] bg-layer-2 text-zinc-300'}"
           title={cloudTitle(save)}
         >
           <Cloud size={11} class={cloudAhead(save) ? "" : "text-zinc-500"} />
@@ -374,7 +381,7 @@
       {/if}
       {#if save.paused}
         <span
-          class="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[11px] text-amber-300 ring-1 ring-inset ring-amber-500/40 backdrop-blur-md"
+          class="inline-flex items-center gap-1 rounded-md border border-amber-500/80 bg-black px-[5px] py-px text-[11px] text-amber-300"
         >
           <PauseCircle size={11} /> {$_("dashboard.paused")}
         </span>

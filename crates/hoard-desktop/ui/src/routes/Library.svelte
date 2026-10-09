@@ -69,6 +69,7 @@
     wrongPathSuspected,
   } from "../lib/stores/agent";
   import CardResizeHandle from "../lib/components/CardResizeHandle.svelte";
+  import Select from "../lib/components/Select.svelte";
   import { fmtDate, fmtNumber } from "../lib/utils/format";
 
   let report = $state<DetectionReport | null>(null);
@@ -1207,31 +1208,33 @@
       </div>
 
       {#if report}
-        <label class="flex items-center gap-2 text-xs text-zinc-400">
+        <div class="flex items-center gap-2 text-xs text-zinc-400">
           <Filter size={14} />
           {$_("library.confidence")}
-          <select
+          <Select
+            aria-label={$_("library.confidence")}
             bind:value={confidenceFilter}
-            class="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
-          >
-            <option value="all">{$_("library.any")}</option>
-            <option value="high">{$_("library.high")}</option>
-            <option value="medium">{$_("library.medium")}</option>
-            <option value="low">{$_("library.low")}</option>
-          </select>
-        </label>
-        <label class="flex items-center gap-2 text-xs text-zinc-400">
+            options={[
+              { value: "all", label: $_("library.any") },
+              { value: "high", label: $_("library.high") },
+              { value: "medium", label: $_("library.medium") },
+              { value: "low", label: $_("library.low") },
+            ]}
+          />
+        </div>
+        <div class="flex items-center gap-2 text-xs text-zinc-400">
           {$_("library.source")}
-          <select
+          <Select
+            aria-label={$_("library.source")}
             bind:value={sourceFilter}
-            class="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
-          >
-            <option value="all">{$_("library.any")}</option>
-            <option value="both">{$_("library.both_sources")}</option>
-            <option value="steam_library">{$_("library.steam_only")}</option>
-            <option value="filesystem_heuristic">{$_("library.filesystem_only")}</option>
-          </select>
-        </label>
+            options={[
+              { value: "all", label: $_("library.any") },
+              { value: "both", label: $_("library.both_sources") },
+              { value: "steam_library", label: $_("library.steam_only") },
+              { value: "filesystem_heuristic", label: $_("library.filesystem_only") },
+            ]}
+          />
+        </div>
       {/if}
 
       {#if localSaves.length > 0}
@@ -1291,6 +1294,7 @@
                   slug={entry.slug}
                   name={entry.name}
                   class="h-12 w-12 shrink-0 rounded-xl"
+                  fallback="outline"
                   initialClass="text-lg"
                 />
                 <div class="min-w-0">
@@ -1711,6 +1715,7 @@
                 slug={save.game_slug}
                 name={save.game_slug}
                 class="h-9 w-9 shrink-0 rounded-lg"
+                fallback="outline"
                 initialClass="text-xs"
               />
               <div class="min-w-0 flex-1 flex flex-col gap-0.5">
@@ -1800,6 +1805,7 @@
               slug={game.slug}
               name={game.display_name}
               class="h-9 w-9 shrink-0 rounded-md"
+              fallback="outline"
               initialClass="text-sm"
             />
             <div class="min-w-0 flex-1">
@@ -2161,28 +2167,27 @@
          actually has instead of typed into the name — writing "2 - Mods" as one
          string is what used to drop a folder out of slot 2 without a word. -->
     {#if renameTarget !== null && renameTarget.slot !== null}
-      <label class="mt-3 flex items-center gap-2 text-xs text-zinc-400">
+      <div class="mt-3 flex items-center gap-2 text-xs text-zinc-400">
         <span class="text-zinc-500">{$_("library.slot_number_label")}</span>
-        <select
-          class="rounded-md border border-white/[0.08] bg-zinc-900 px-2 py-1.5 text-xs text-zinc-200 focus:border-emerald-500/40 focus:outline-none disabled:opacity-50"
+        <Select
+          size="sm"
+          aria-label={$_("library.slot_number_label")}
           disabled={renaming}
           value={String(renumberDraft ?? renameTarget.slot)}
-          onchange={(e) =>
-            (renumberDraft = Number(
-              (e.currentTarget as HTMLSelectElement).value,
-            ))}
-        >
-          {#each renumberChoices(renameTarget) as opt (opt.n)}
-            <option value={String(opt.n)} disabled={opt.kind === "here"}>
-              {opt.n}{opt.kind === "here"
-                ? ` — ${$_("library.slot_number_taken")}`
+          onchange={(v) => (renumberDraft = Number(v))}
+          options={renumberChoices(renameTarget).map((opt) => ({
+            value: String(opt.n),
+            label: String(opt.n),
+            hint:
+              opt.kind === "here"
+                ? $_("library.slot_number_taken")
                 : opt.kind === "cloud"
-                  ? ` — ${$_("library.slot_number_join")}`
-                  : ""}
-            </option>
-          {/each}
-        </select>
-      </label>
+                  ? $_("library.slot_number_join")
+                  : undefined,
+            disabled: opt.kind === "here",
+          }))}
+        />
+      </div>
       <p class="mt-1.5 text-xs text-zinc-500">
         {$_("library.rename_keeps_number")}
       </p>

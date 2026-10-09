@@ -23,6 +23,7 @@
   import Modal from "./Modal.svelte";
   import Button from "./Button.svelte";
   import Input from "./Input.svelte";
+  import Select from "./Select.svelte";
   import {
     listEmulatorPresets,
     listEmulatorTitles,
@@ -396,20 +397,19 @@
         >
           {$_("emulators.choose")}
         </label>
-        <select
+        <Select
           id="emu-select"
+          size="lg"
+          class="w-full"
           bind:value={selectedId}
           onchange={onSelect}
           disabled={loadingPresets}
-          class="w-full rounded-md border border-zinc-800 bg-layer-2 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600 disabled:opacity-50"
-        >
-          <option value="" disabled>{$_("emulators.choose_placeholder")}</option
-          >
-          {#each presets as p (p.id)}
-            <option value={p.id}>{p.display_name} — {p.system}</option>
-          {/each}
-          <option value="custom">{$_("emulators.custom")}</option>
-        </select>
+          placeholder={$_("emulators.choose_placeholder")}
+          options={[
+            ...presets.map((p) => ({ value: p.id, label: p.display_name, hint: p.system })),
+            { value: "custom", label: $_("emulators.custom") },
+          ]}
+        />
       </div>
 
       {#if isCustom}

@@ -25,6 +25,7 @@
    */
   import { _ } from "svelte-i18n";
   import { Pencil, RotateCcw } from "@lucide/svelte";
+  import StandBy from "./StandBy.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import {
     FULL,
@@ -53,6 +54,12 @@
      *  puts a small button in the bottom-right instead, so a big poster stays
      *  visible while you reach for the pencil. */
     editor = "overlay",
+    /** What stands in for missing art. `initial` is the tinted box with the
+     *  first letter; `outline` keeps the letter on black inside a thick accent
+     *  border (Library); `standby` is the test card (the dashboard). The last
+     *  two wait for the lookup on plain black, so a game whose art is on its
+     *  way never flashes the stand-in first. */
+    fallback = "initial",
   }: {
     appId?: number | null;
     slug?: string | null;
@@ -61,6 +68,7 @@
     initialClass?: string;
     fit?: "cover" | "smart";
     editor?: "overlay" | "corner";
+    fallback?: "initial" | "outline" | "standby";
   } = $props();
 
   const initial = $derived((name.trim().charAt(0) || "?").toUpperCase());
@@ -68,6 +76,10 @@
   let hovered = $state(false);
   let isCustom = $state(false);
   let resolvedKey = $state<string | null>(null);
+  // Whether the lookup has answered. Until it does, `url === null` means
+  // "still loading", not "no art": the outline only appears for the second,
+  // so a cover that is about to arrive doesn't flash a letter first.
+  let settled = $state(false);
 
   // Natural size of the loaded image + measured size of the frame. Both are
   // needed to tell "portrait art in a portrait frame" (fill it) from "landscape
@@ -126,6 +138,7 @@
       url = null;
       imgRatio = null;
       isCustom = false;
+      settled = key == null;
       if (key != null) {
         hasCustomCover(key).then((custom) => {
           if (shownKey === key) isCustom = custom;
@@ -141,6 +154,7 @@
       if (alive && shownKey === key) {
         url = u;
         shownSize = size;
+        settled = true;
       }
     });
     return () => {
@@ -192,7 +206,15 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class={`group relative shrink-0 overflow-hidden border border-white/[0.08] bg-zinc-800 ${klass}`}
+  class={`group relative shrink-0 overflow-hidden ${
+    url
+      ? "border border-white/[0.08] bg-zinc-800"
+      : fallback === "outline" && settled
+        ? "border-2 border-emerald-800 bg-black"
+        : fallback === "initial"
+          ? "border border-white/[0.08] bg-zinc-800"
+          : "border border-white/[0.08] bg-black"
+  } ${klass}`}
   bind:clientWidth={boxW}
   bind:clientHeight={boxH}
   onmouseenter={() => (hovered = true)}
@@ -219,6 +241,18 @@
       class={`relative h-full w-full ${letterbox ? "object-contain" : "object-cover"}`}
       draggable="false"
     />
+  {:else if fallback === "standby"}
+    {#if settled}
+      <StandBy />
+    {/if}
+  {:else if fallback === "outline"}
+    {#if settled}
+      <div
+        class={`flex h-full w-full items-center justify-center font-semibold text-emerald-100 ${initialClass}`}
+      >
+        {initial}
+      </div>
+    {/if}
   {:else}
     <div
       class={`flex h-full w-full items-center justify-center bg-emerald-700/40 font-semibold text-emerald-100 ${initialClass}`}

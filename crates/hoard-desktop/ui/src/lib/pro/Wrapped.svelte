@@ -477,7 +477,9 @@
   >
     <div class="flex items-center gap-4">
       <div
-        class="h-14 w-14 shrink-0 overflow-hidden rounded-2xl ring-1 ring-emerald-400"
+        class="h-14 w-14 shrink-0 overflow-hidden rounded-2xl {identity.avatar
+          ? ''
+          : 'ring-1 ring-emerald-400'}"
       >
         {#if identity.avatar}
           <img

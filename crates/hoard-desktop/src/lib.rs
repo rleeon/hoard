@@ -233,6 +233,7 @@ pub fn run() {
             commands::overlay::overlay_bind,
             commands::misc::open_external,
             commands::misc::ui_log,
+            commands::misc::app_install_channel,
             commands::covers::cover_bytes,
             commands::covers::steam_app_id_for_slug,
             commands::covers::has_custom_cover,

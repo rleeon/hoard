@@ -16,6 +16,7 @@
   import Button from "../lib/components/Button.svelte";
   import Card from "../lib/components/Card.svelte";
   import Input from "../lib/components/Input.svelte";
+  import Select from "../lib/components/Select.svelte";
   import * as api from "../lib/api";
   import type { LogLine } from "../lib/api";
   import { toastError, toastSuccess } from "../lib/stores/toasts";
@@ -134,16 +135,18 @@
         icon={Search}
       />
     </div>
-    <select
+    <Select
+      size="lg"
+      aria-label={$_("logs.level_all")}
       bind:value={levelFilter}
-      class="rounded-md border border-zinc-700 bg-layer-2 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-emerald-500"
-    >
-      <option value="all">{$_("logs.level_all")}</option>
-      <option value="ERROR">{$_("logs.level_error")}</option>
-      <option value="WARN">{$_("logs.level_warn")}</option>
-      <option value="INFO">{$_("logs.level_info")}</option>
-      <option value="DEBUG">{$_("logs.level_debug")}</option>
-    </select>
+      options={[
+        { value: "all", label: $_("logs.level_all") },
+        { value: "ERROR", label: $_("logs.level_error") },
+        { value: "WARN", label: $_("logs.level_warn") },
+        { value: "INFO", label: $_("logs.level_info") },
+        { value: "DEBUG", label: $_("logs.level_debug") },
+      ]}
+    />
   </div>
 
   {#if loading && lines.length === 0}

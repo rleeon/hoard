@@ -48,6 +48,7 @@
   import Modal from "../lib/components/Modal.svelte";
   import Input from "../lib/components/Input.svelte";
   import Cover from "../lib/components/Cover.svelte";
+  import Select from "../lib/components/Select.svelte";
   import * as api from "../lib/api";
   import { NEEDS_DESTINATION } from "../lib/api";
   import type {
@@ -779,23 +780,20 @@
           <Edit3 size={14} /> {$_("history.edit_folder")}
         </Button>
         {#if presets.length > 0}
-          <label class="flex items-center gap-2 text-xs text-zinc-400">
+          <div class="flex items-center gap-2 text-xs text-zinc-400">
             <span class="text-zinc-500">{$_("presets.label")}</span>
-            <select
-              class="rounded-md border border-white/[0.08] bg-zinc-900 px-2 py-1.5 text-xs text-zinc-200 focus:border-emerald-500/40 focus:outline-none disabled:opacity-50"
+            <Select
+              size="sm"
+              aria-label={$_("presets.label")}
               disabled={savingPreset || save.orphan || !save.local_path}
               title={save.orphan || !save.local_path
                 ? $_("common.cloud_only_no_local")
                 : undefined}
               value={save.preset ?? "standard"}
-              onchange={(e) =>
-                changePreset((e.currentTarget as HTMLSelectElement).value)}
-            >
-              {#each presets as p (p)}
-                <option value={p}>{$_(`presets.${p}.label`)}</option>
-              {/each}
-            </select>
-          </label>
+              onchange={(v) => changePreset(v)}
+              options={presets.map((p) => ({ value: p, label: $_(`presets.${p}.label`) }))}
+            />
+          </div>
         {/if}
         <!-- A cloud-only row (`orphan`) has no `state.json` entry on this
              machine, so there is nowhere to store the decision: the backend

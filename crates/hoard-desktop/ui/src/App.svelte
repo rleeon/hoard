@@ -835,15 +835,22 @@
            toggle and the update alert, so this row would only repeat it. -->
       {#if !hasTitlebar}
       <div class="flex items-center gap-2 px-4 py-4">
-        <Logo size={36} class="shrink-0 rounded-lg" />
-        <div class="hide-narrow min-w-0 flex-1">
-          <div class="font-display text-xl font-semibold leading-none text-zinc-50">
-            Hoard
-          </div>
+        <!-- The logo's H stands as the first letter of the word. Its height is
+             Geist's cap height (0.71 em, 17 px at text-2xl) and a baseline row
+             puts its foot on the text's baseline, so it reads as a letter and
+             not as an icon next to a word. In the narrow rail only the H stays. -->
+        <div class="flex min-w-0 items-baseline">
+          <Logo size={17} bare class="shrink-0" />
+          <span
+            class="hide-narrow ml-0.5 font-display text-2xl font-semibold leading-none text-zinc-50"
+            aria-hidden="true"
+          >
+            oard
+          </span>
           <button
             type="button"
             onclick={handleVersionClick}
-            class="cursor-default select-none text-left text-xs text-zinc-500 outline-none"
+            class="hide-narrow ml-2 cursor-default select-none text-xs text-zinc-500 outline-none"
             tabindex="-1"
             aria-hidden="true"
           >
@@ -855,7 +862,7 @@
           onclick={openRepoPage}
           aria-label={$_("github.star_label")}
           title={$_("github.star_label")}
-          class="hide-narrow flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-yellow-400/40 bg-yellow-400/10 text-yellow-400 transition-colors hover:bg-yellow-400/20"
+          class="hide-narrow ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-yellow-400/40 bg-yellow-400/10 text-yellow-400 transition-colors hover:bg-yellow-400/20"
         >
           <AnimIcon icon={MarioStar} on={false} kind="hop" size={14} />
         </button>

@@ -1095,6 +1095,27 @@ export function isAutostartEnabled(): Promise<boolean> {
   return invoke<boolean>("is_autostart_enabled");
 }
 
+/** How this copy of the app was installed (`commands/misc.rs`). */
+export type InstallChannel = {
+  kind:
+    | "flatpak"
+    | "appimage"
+    | "deb"
+    | "rpm"
+    | "system"
+    | "msi"
+    | "nsis"
+    | "mac_app"
+    | "dev"
+    | "unknown";
+  /** The Flatpak's app id, the AppImage file, or the binary's path. */
+  detail: string;
+};
+
+export function appInstallChannel(): Promise<InstallChannel> {
+  return invoke<InstallChannel>("app_install_channel");
+}
+
 /** False inside the Flatpak, where only the sync service can start at login. */
 export function appAutostartAvailable(): Promise<boolean> {
   return invoke<boolean>("app_autostart_available");

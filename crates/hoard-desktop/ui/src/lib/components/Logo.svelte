@@ -14,8 +14,16 @@
    *  `currentColor`. It is for the places where the mark is a piece of
    *  furniture and not the brand: the title bar, where a green tile next to the
    *  window buttons would be the loudest thing on screen. */
-  type Props = { size?: number; class?: string; mono?: boolean };
-  let { size = 36, class: klass = "", mono = false }: Props = $props();
+  /** `bare` drops only the tile: the green H on its own, cut to the letter so
+   *  it can stand as the first letter of the word (the sidebar's "H" + "oard").
+   *  `size` is then its height, which the caller matches to the font's cap
+   *  height. */
+  type Props = { size?: number; class?: string; mono?: boolean; bare?: boolean };
+  let { size = 36, class: klass = "", mono = false, bare = false }: Props = $props();
+
+  // The H spans 22 x 26 units of the 48-unit box.
+  const viewBox = $derived(bare ? "13 11 22 26" : mono ? "10 10 28 28" : "0 0 48 48");
+  const width = $derived(bare ? (size * 22) / 26 : size);
 
   // Unique gradient id per instance so multiple logos on a page don't clash.
   const gid = `hoard-h-${Math.random().toString(36).slice(2, 8)}`;
@@ -26,9 +34,9 @@
      reads as a small letter floating high. Cropping the box to the H itself
      makes the glyph fill its space and sit on the same line as the words. -->
 <svg
-  width={size}
+  {width}
   height={size}
-  viewBox={mono ? "10 10 28 28" : "0 0 48 48"}
+  {viewBox}
   fill="none"
   xmlns="http://www.w3.org/2000/svg"
   class={klass}
@@ -48,7 +56,7 @@
       <stop offset="1" stop-color="var(--logo-gem-to)" />
     </linearGradient>
   </defs>
-  {#if !mono}
+  {#if !mono && !bare}
     <!-- Dark rounded tile -->
     <rect x="1" y="1" width="46" height="46" rx="12" fill="#0a0a0a" />
     <rect

@@ -299,7 +299,7 @@ function drawAvatar(
     ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
   } else {
     // Black inside, the accent only in the ring and the letters, as everywhere
-    // else in the app a picture is missing.
+    // else in the app a picture is missing. A photo goes without the ring.
     ctx.fillStyle = "#000";
     ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
     ctx.fillStyle = data.palette.a300;
@@ -309,6 +309,7 @@ function drawAvatar(
     ctx.fillText(data.initials, cx, cy + 2);
   }
   ctx.restore();
+  if (data.avatar) return;
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.strokeStyle = data.palette.a400;

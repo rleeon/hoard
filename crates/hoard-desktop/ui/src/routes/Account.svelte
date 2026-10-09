@@ -14,7 +14,7 @@
   import { onMount, onDestroy } from "svelte";
   import { push } from "svelte-spa-router";
   import { _ } from "svelte-i18n";
-  import { LogOut, ArrowUpRight, Mail, Download, Trash2, RefreshCw, ShieldCheck, AlertTriangle, CreditCard, HardDrive, Layers, Clock, FileArchive, Gauge, Server, Pencil, Eye } from "@lucide/svelte";
+  import { LogOut, ArrowUpRight, Mail, Download, Trash2, RefreshCw, ShieldCheck, AlertTriangle, CreditCard, Cloud, HardDrive, Layers, Clock, FileArchive, Gauge, Server, Pencil, Eye } from "@lucide/svelte";
 
   import Card from "../lib/components/Card.svelte";
   import Button from "../lib/components/Button.svelte";
@@ -281,7 +281,7 @@
       capLabel: formatBytes(server.storage_quota_bytes),
       pct,
       color:
-        pct >= 90 ? "bg-red-500" : pct >= 60 ? "bg-amber-500" : "bg-emerald-500",
+        pct >= 90 ? "bg-red-700" : pct >= 60 ? "bg-amber-600" : "bg-emerald-700",
     };
   });
 
@@ -354,7 +354,7 @@
         usedLabel: formatBytes(a.storage_used_bytes),
         capLabel: "∞",
         pct: 0,
-        color: "bg-emerald-500",
+        color: "bg-emerald-700",
         unlimited: true,
         status: "ok" as const,
       };
@@ -378,12 +378,12 @@
       status === "grace"
         ? "bg-sky-500"
         : status === "full" || pct >= 100
-          ? "bg-red-600 shadow-[0_0_10px_1px_oklch(0.58_0.22_27/0.75)]"
+          ? "bg-red-800 shadow-[0_0_10px_1px_oklch(0.44_0.16_27/0.75)]"
           : status === "purging"
-            ? "bg-red-500"
+            ? "bg-red-700"
             : pct >= 60
-              ? "bg-amber-500"
-              : "bg-emerald-500";
+              ? "bg-amber-600"
+              : "bg-emerald-700";
     return {
       usedLabel: formatBytes(a.storage_used_bytes),
       capLabel: formatBytes(a.storage_limit_bytes),
@@ -510,7 +510,7 @@
         <div class="mb-4">
           <div class="mb-1 flex items-center justify-between text-sm">
             <span class="flex items-center gap-2 text-zinc-300">
-              <HardDrive size={14} />
+              <Server size={14} />
               {$_("account.storage")}
             </span>
             <span class="font-mono text-xs text-zinc-400">
@@ -780,7 +780,7 @@
         <div class="mb-4">
           <div class="mb-1 flex items-center justify-between text-sm">
             <span class="flex items-center gap-2 text-zinc-300">
-              <HardDrive size={14} />
+              <Cloud size={14} />
               {$_("account.storage")}
             </span>
             <span class="font-mono text-xs text-zinc-400">

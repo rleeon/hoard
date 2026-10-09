@@ -45,6 +45,7 @@
   import { titleFromSlug, fmtNumber } from "../lib/utils/format";
   import MaskedEmail from "../lib/components/MaskedEmail.svelte";
   import SettingsRow from "../lib/components/SettingsRow.svelte";
+  import Select from "../lib/components/Select.svelte";
   import { prefs, hydratePrefs, updatePrefs } from "../lib/stores/prefs";
   import {
     accentHue,
@@ -89,6 +90,7 @@
   /** The window's own login entry (and the minimised start that only it can
    *  trigger). Not offered inside the Flatpak (`app_autostart_supported`). */
   let appAutostart = $state(false);
+  let installChannel = $state<api.InstallChannel | null>(null);
   let signingOut = $state(false);
   // Gate the "forget server" action behind a confirm modal. Forgetting wipes
   // the saved address + token (session.toml + keyring), which is what stops
@@ -96,6 +98,33 @@
   let forgetModalOpen = $state(false);
 
   // Accent picker: repoints the "gem" hue live via CSS variables on <html>.
+  // Formats are names and stay as they are; only the three that describe
+  // something go through the locale.
+  function installKindLabel(kind: api.InstallChannel["kind"]): string {
+    switch (kind) {
+      case "flatpak":
+        return "Flatpak";
+      case "appimage":
+        return "AppImage";
+      case "deb":
+        return ".deb";
+      case "rpm":
+        return ".rpm";
+      case "msi":
+        return ".msi";
+      case "nsis":
+        return "setup.exe";
+      case "mac_app":
+        return "macOS";
+      case "system":
+        return $_("settings.install_kind_system");
+      case "dev":
+        return $_("settings.install_kind_dev");
+      case "unknown":
+        return $_("settings.install_kind_unknown");
+    }
+  }
+
   function onAccentInput(e: Event): void {
     const v = Number((e.currentTarget as HTMLInputElement).value);
     setAccentHue(Number.isFinite(v) ? v : null);
@@ -368,6 +397,11 @@
       appAutostart = await api.appAutostartAvailable();
     } catch (e) {
       console.warn("appAutostartAvailable failed:", e);
+    }
+    try {
+      installChannel = await api.appInstallChannel();
+    } catch (e) {
+      console.warn("appInstallChannel failed:", e);
     }
     try {
       catalog = await api.catalogStatus();
@@ -725,8 +759,7 @@
     },
   ]);
 
-  async function handleLanguageChange(e: Event) {
-    const next = (e.currentTarget as HTMLSelectElement).value;
+  async function handleLanguageChange(next: string) {
     try {
       await setLocale(next, "Settings");
       // `setLocale` already persists to prefs; refresh the local store so the
@@ -878,16 +911,13 @@
                 </p>
               </div>
             </div>
-            <select
+            <Select
+              class="shrink-0"
               value={$locale ?? "en"}
               onchange={handleLanguageChange}
-              class="shrink-0 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-600 focus:border-emerald-500"
               aria-label={$_("settings.language_label")}
-            >
-              {#each supportedLocales as loc (loc.code)}
-                <option value={loc.code}>{loc.label}</option>
-              {/each}
-            </select>
+              options={supportedLocales.map((loc) => ({ value: loc.code, label: loc.label }))}
+            />
           </div>
         </Card>
       </section>
@@ -1638,6 +1668,14 @@
               <p class="mt-2 text-xs text-zinc-600">
                 {$_("settings.about_catalog_credit")}
               </p>
+              {#if installChannel}
+                <p class="mt-2 text-xs text-zinc-500">
+                  {$_("settings.about_install", {
+                    values: { kind: installKindLabel(installChannel.kind) },
+                  })}
+                  <span class="break-all font-mono text-zinc-600">{installChannel.detail}</span>
+                </p>
+              {/if}
             </div>
           </div>
         </Card>

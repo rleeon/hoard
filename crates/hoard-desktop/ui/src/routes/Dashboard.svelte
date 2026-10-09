@@ -48,6 +48,7 @@
   import { auth, refreshQuota } from "../lib/stores/auth";
   import { signOutEverything } from "../lib/stores/session";
   import { storageGamesCloud } from "../lib/stores/cloud";
+  import Select from "../lib/components/Select.svelte";
   import { activity, status } from "../lib/stores/agent";
   import {
     customNames,
@@ -152,14 +153,14 @@
   // rewritten wholesale each save can hold many times its head size. Showing
   // the head sum next to the sidebar's quota bar put two contradictory
   // totals on the same screen; a user with 34.9 MB of heads and 79 MB of
-  // quota reasonably read it as a billing bug.
+  // quota reasonably read it as a billing bug. The cards show this per save;
+  // the summary moved to this machine's disk (see `localSize`).
   //
   // `/v1/cloud/storage/games` already computes the honest number (it drives
   // the "free up space" dialog): per save, its exclusive deduplicated blobs.
   // Cloud-only, self-hosted has no quota and no black box, so there we keep
   // falling back to the head sum.
   let footprints = $state<Record<string, number>>({});
-  let cloudUsed = $state<number | null>(null);
   let footprintsLoaded = $state(false);
 
   // Backup-mirror warnings for saves already tracked (P9). Read from the scan
@@ -198,26 +199,25 @@
       for (const g of s.games) next[g.save_id] = g.freeable_bytes;
       // Blobs two live saves share belong to neither's exclusive footprint,
       // so the per-card figures fall short of the account total by exactly
-      // this much. Kept aside rather than smeared across the cards: the
-      // account total has to keep matching the quota bar to the byte.
+      // this much. Kept aside rather than smeared across the cards.
       footprints = next;
-      cloudUsed = s.used_bytes;
       footprintsLoaded = true;
     } catch {
-      // Offline / signed out: the cards fall back to their head size and the
-      // summary keeps summing those. No error surfaced, this is a nicety on
-      // a view that must still render.
+      // Offline / signed out: the cards fall back to their head size. No
+      // error surfaced, this is a nicety on a view that must still render.
       footprintsLoaded = true;
     }
   }
 
-  // Summary-bar aggregates. Prefer the account's real deduped footprint (the
-  // same number the quota bar shows) and only fall back to the head sum when
-  // it isn't available.
-  const headSize = $derived(
-    saves.reduce((sum, s) => sum + (s.total_size_bytes ?? 0), 0),
+  // The summary's size is this machine's disk, not the cloud. Any cloud
+  // figure here sat next to the sidebar's and one of the two read as wrong:
+  // after the 79 MB quota against 34.9 MB of heads, another user saw 70 MB in
+  // the panel and nearly 2 GB in the cloud. The cloud total lives in the
+  // sidebar under its cloud mark; what the save folders take on this disk
+  // shows nowhere else. Orphan rows have no folder here and add nothing.
+  const localSize = $derived(
+    saves.reduce((sum, s) => sum + (s.local_size_bytes ?? 0), 0),
   );
-  const totalSize = $derived(cloudUsed ?? headSize);
   const totalVersions = $derived.by(() => {
     let sum = 0;
     let seen = false;
@@ -724,26 +724,14 @@
         </p>
       </div>
       <div>
-        <p class="text-xs text-zinc-500">
-          {$_(cloudUsed != null ? "dashboard.cloud_total" : "dashboard.total_size")}
-        </p>
+        <p class="text-xs text-zinc-500">{$_("dashboard.local_total")}</p>
         <p
           class="mt-1.5 flex items-center gap-2 text-xl font-semibold text-zinc-100"
-          title={cloudUsed != null ? $_("dashboard.cloud_total_title") : undefined}
+          title={$_("library.size_local_title")}
         >
           <HardDrive size={18} class="text-zinc-500" />
-          <span class="tabular-nums">{formatBytes(totalSize)}</span>
+          <span class="tabular-nums">{formatBytes(localSize)}</span>
         </p>
-        <!-- The head sum is still worth showing — it's what a fresh restore
-             would pull — but only once it's clear it isn't the total, and
-             only when history actually makes the two differ. -->
-        {#if cloudUsed != null && headSize > 0 && cloudUsed > headSize * 1.1}
-          <p class="mt-0.5 pl-[26px] text-[11px] tabular-nums text-zinc-500">
-            {$_("dashboard.current_versions_sub", {
-              values: { size: formatBytes(headSize) },
-            })}
-          </p>
-        {/if}
       </div>
       <div>
         <p class="text-xs text-zinc-500">{$_("dashboard.last_backup")}</p>
@@ -774,16 +762,18 @@
     <div
       class="mb-5 flex flex-wrap items-center justify-end gap-x-5 gap-y-3"
     >
-      <label class="flex items-center gap-2 text-xs text-zinc-400">
+      <div class="flex items-center gap-2 text-xs text-zinc-400">
         <span class="text-zinc-500">{$_("dashboard.sort_label")}</span>
-        <select
-          class="rounded-md border border-white/[0.08] bg-zinc-900 px-2 py-1.5 text-xs text-zinc-200 focus:border-emerald-500/40 focus:outline-none"
+        <Select
+          size="sm"
+          aria-label={$_("dashboard.sort_label")}
           bind:value={sortBy}
-        >
-          <option value="recent">{$_("dashboard.sort_recent")}</option>
-          <option value="size">{$_("dashboard.sort_size")}</option>
-        </select>
-      </label>
+          options={[
+            { value: "recent", label: $_("dashboard.sort_recent") },
+            { value: "size", label: $_("dashboard.sort_size") },
+          ]}
+        />
+      </div>
 
       <!-- Max stored versions per game. Server-side, per-user; lowering it
            prunes the oldest versions immediately. -->
