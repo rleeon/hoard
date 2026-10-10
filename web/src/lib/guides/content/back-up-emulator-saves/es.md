@@ -2,7 +2,7 @@
 title: "Cómo hacer copia y sincronizar partidas de emuladores (RetroArch, Dolphin, PCSX2)"
 description: "Copia y sincroniza partidas de emuladores entre PC y Steam Deck: RetroArch, Dolphin, PCSX2, DuckStation y más, con historial y dónde guarda cada uno."
 order: 6
-updated: 2026-10-01
+updated: 2026-10-09
 ---
 
 Las partidas de emulador se pierden con facilidad: los archivos de guardado y los estados guardados viven en carpetas dispersas, y una reinstalación o un PC nuevo pueden borrar años de progreso. Hoard hace la copia automáticamente y los mantiene sincronizados entre equipos, Steam Deck incluida.
@@ -42,6 +42,8 @@ PCSX2 escribe las memory cards (ficheros `.ps2`) en `memcards/`:
 
 Una memory card guarda las partidas de todos los juegos que hayas jugado en ella, así que viaja como una sola pieza: restaurar una versión anterior devuelve atrás la tarjeta entera, no un juego suelto.
 
+La guía completa, con tarjetas de fichero y de carpeta: [partidas de PCSX2 en la nube](/guides/pcsx2-cloud-saves).
+
 ### Partidas de Dolphin en la nube (GameCube y Wii)
 
 Las partidas de GameCube viven en `GC/` (imágenes de memory card o una carpeta por tarjeta) y las de Wii en la NAND emulada, en `Wii/`:
@@ -49,6 +51,8 @@ Las partidas de GameCube viven en `GC/` (imágenes de memory card o una carpeta 
 - Windows: `Documentos\Dolphin Emulator\GC` y `\Wii`
 - Linux: `~/.local/share/dolphin-emu/GC` y `/Wii`
 - Steam Deck: `~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/`
+
+La guía completa, con carpetas GCI y la memoria de la Wii: [partidas de Dolphin en la nube](/guides/dolphin-cloud-saves).
 
 ### Partidas de DuckStation en la nube (PS1)
 

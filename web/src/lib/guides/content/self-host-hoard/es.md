@@ -1,9 +1,9 @@
 ---
 title: "Cómo autoalojar Hoard con Docker (self-hosted)"
-description: "Monta tu propio servidor de Hoard con Docker Compose: gratis, de código abierto, en tu hardware, sin cuenta con nosotros y sin cupo. Tus partidas, contigo."
+description: "Monta tu servidor de Hoard con Docker Compose y sincroniza tus partidas entre todos tus equipos: gratis, abierto, sin cuenta con nosotros y sin cupo."
 order: 0
 featured: true
-updated: 2026-09-29
+updated: 2026-10-09
 ---
 
 Hoard es de código abierto y se puede autoalojar. En lugar de usar Hoard Cloud, puedes ejecutar el mismo `hoard-server` en tu propia máquina y apuntar todos tus dispositivos a él: sin cuenta y sin más límite de espacio que el disco que le des. Esta guía deja un servidor funcionando con Docker en pocos minutos.

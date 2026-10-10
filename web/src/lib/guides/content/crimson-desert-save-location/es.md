@@ -1,11 +1,11 @@
 ---
 title: "Dónde están las partidas de Crimson Desert (PC y Steam Deck)"
-description: "Dónde guarda Crimson Desert sus partidas en Windows, Steam Deck y Mac, qué carpeta las contiene de verdad y cómo copiarlas o llevarlas de un PC a otro."
+description: "Dónde guarda Crimson Desert sus partidas en Windows, Steam Deck y Mac, qué carpeta las contiene de verdad y cómo copiarlas y sincronizarlas entre tus PC."
 order: 21
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-En Windows, Crimson Desert guarda sus partidas en `%LOCALAPPDATA%\Pearl Abyss\CD\save`. Es la carpeta que indica Pearl Abyss en su propio FAQ. Debajo tienes las rutas de Steam Deck y Mac, qué hay dentro y cómo tenerla siempre copiada.
+En Windows, Crimson Desert guarda sus partidas en `%LOCALAPPDATA%\Pearl Abyss\CD\save`. Es la carpeta que indica Pearl Abyss en su propio FAQ. Debajo tienes las rutas de Steam Deck y Mac, qué hay dentro y cómo tenerla siempre copiada y sincronizada entre tu PC y tu Steam Deck.
 
 ## Dónde guarda Crimson Desert las partidas
 

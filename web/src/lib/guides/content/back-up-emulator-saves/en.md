@@ -2,8 +2,8 @@
 title: "How to back up and sync emulator saves (RetroArch, Dolphin, PCSX2)"
 description: "Back up and sync emulator saves between PCs and Steam Deck: RetroArch, Dolphin, PCSX2, DuckStation and more, with version history and where each one saves."
 order: 6
-updated: 2026-10-01
-related: sync-game-saves-across-pcs, back-up-game-saves, ludusavi-alternative
+updated: 2026-10-09
+related: sync-game-saves-across-pcs, back-up-game-saves, ludusavi-alternative, retroarch-save-sync, pcsx2-cloud-saves, dolphin-cloud-saves
 ---
 
 Emulator saves are easy to lose: save files and save states live in scattered folders, and a reinstall or a new PC can wipe years of progress. Hoard backs them up automatically and keeps them in sync across machines, including a Steam Deck.
@@ -43,6 +43,8 @@ PCSX2 writes memory cards (`.ps2` files) to `memcards/`:
 
 One memory card holds the saves of every game you've played on it, so it travels as one item: restoring an older version rolls back the whole card, not a single game.
 
+Full walkthrough, including file and folder memory cards: [PCSX2 cloud saves](/guides/pcsx2-cloud-saves).
+
 ### Dolphin cloud saves (GameCube and Wii)
 
 GameCube saves live under `GC/` (memory card images or one folder per card), Wii saves in the emulated NAND under `Wii/`:
@@ -50,6 +52,8 @@ GameCube saves live under `GC/` (memory card images or one folder per card), Wii
 - Windows: `Documents\Dolphin Emulator\GC` and `\Wii`
 - Linux: `~/.local/share/dolphin-emu/GC` and `/Wii`
 - Steam Deck: `~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/`
+
+Full walkthrough, including GCI folders and the Wii's memory: [Dolphin cloud saves](/guides/dolphin-cloud-saves).
 
 ### DuckStation cloud saves (PS1)
 

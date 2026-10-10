@@ -2,10 +2,10 @@
 title: "So stellst du einen alten Spielstand wieder her"
 description: "Kaputter Spielstand, fehlerhafte Mod oder eine bereute Entscheidung? Setz deinen Spielstand Schritt für Schritt zurück, ohne den aktuellen zu verlieren."
 order: 3
-updated: 2026-09-01
+updated: 2026-10-09
 ---
 
-Eine schlechte Entscheidung im Spiel, eine beschädigte Datei oder ein verpfuschter Mod — manchmal musst du einfach zurück. Da Hoard eine vollständige Versionshistorie jedes Stands führt, dauert die Wiederherstellung eines früheren nur Sekunden.
+Eine schlechte Entscheidung im Spiel, eine beschädigte Datei oder ein verpfuschter Mod — manchmal musst du einfach zurück. Da Hoard eine vollständige Versionshistorie jedes Stands führt, dauert die Wiederherstellung eines früheren nur Sekunden. Und weil diese Historie auf dem Server liegt und alle deine Geräte sie teilen, kannst du von jedem PC oder Steam Deck aus zurückgehen, nicht nur von dem, auf dem es schiefging.
 
 ## Eine frühere Version wiederherstellen
 

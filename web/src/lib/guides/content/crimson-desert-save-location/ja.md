@@ -1,11 +1,11 @@
 ---
 title: "紅の砂漠（Crimson Desert）のセーブデータの場所（PC・Steam Deck）"
-description: "Crimson DesertのセーブデータがWindows、Steam Deck、Macのどこにあるか、実際にセーブが入っているフォルダー、バックアップやPC間での移し方を解説。"
+description: "Crimson DesertのセーブデータがWindows、Steam Deck、Macのどこにあるか、実際にセーブが入っているフォルダー、バックアップとPC間での同期のしかたを解説。"
 order: 21
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Windows では、Crimson Desert のセーブデータは `%LOCALAPPDATA%\Pearl Abyss\CD\save` にあります。Pearl Abyss が自社の FAQ で案内しているフォルダーです。以下では Steam Deck と Mac のパス、中身、そしてバックアップを保ち続ける方法を説明します。
+Windows では、Crimson Desert のセーブデータは `%LOCALAPPDATA%\Pearl Abyss\CD\save` にあります。Pearl Abyss が自社の FAQ で案内しているフォルダーです。以下では Steam Deck と Mac のパス、中身、そしてバックアップを保ちながら PC と Steam Deck で同期する方法を説明します。
 
 ## Crimson Desert のセーブデータの場所
 

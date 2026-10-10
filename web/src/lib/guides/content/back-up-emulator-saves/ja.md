@@ -2,7 +2,7 @@
 title: "エミュレーターのセーブをバックアップ・同期する方法（RetroArch、Dolphin、PCSX2）"
 description: "RetroArch、Dolphin、PCSX2、DuckStationなどのエミュレーターのセーブをPCとSteam Deck間でバックアップ・同期。履歴付き、保存場所の一覧も。"
 order: 6
-updated: 2026-10-01
+updated: 2026-10-09
 ---
 
 エミュレーターのセーブは失われやすいものです。セーブファイルとセーブステートはあちこちのフォルダーに散らばり、再インストールや新しい PC で何年分もの進行が消えることがあります。Hoard はそれらを自動でバックアップし、Steam Deck を含むすべてのマシン間で同期し続けます。
@@ -42,6 +42,8 @@ PCSX2 はメモリーカード（`.ps2` ファイル）を `memcards/` に書き
 
 1 枚のメモリーカードには、そのカードで遊んだ全ゲームのセーブが入っているため、1 つの単位として移動します。古いバージョンに戻すと、1 本のゲームではなくカード全体が巻き戻ります。
 
+ファイル型とフォルダー型のカードを含む詳しい手順は [PCSX2 のクラウドセーブ](/guides/pcsx2-cloud-saves) を参照してください。
+
 ### Dolphin のクラウドセーブ（ゲームキューブと Wii）
 
 ゲームキューブのセーブは `GC/`（メモリーカードのイメージ、またはカードごとのフォルダー）に、Wii のセーブはエミュレートされた NAND の `Wii/` にあります。
@@ -49,6 +51,8 @@ PCSX2 はメモリーカード（`.ps2` ファイル）を `memcards/` に書き
 - Windows: `Documents\Dolphin Emulator\GC` と `\Wii`
 - Linux: `~/.local/share/dolphin-emu/GC` と `/Wii`
 - Steam Deck: `~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/`
+
+GCI フォルダーと Wii のメモリーを含む詳しい手順は [Dolphin のクラウドセーブ](/guides/dolphin-cloud-saves) を参照してください。
 
 ### DuckStation のクラウドセーブ（PS1）
 

@@ -1,12 +1,12 @@
 ---
 title: "How to back up your game saves automatically"
-description: "Back up PC game saves automatically after every session, with version history, so a crash, reinstall or bad mod never wipes your progress."
+description: "Back up PC game saves automatically after every session and sync them to your other PCs and Steam Deck, with version history, so nothing wipes your progress."
 order: 1
-updated: 2026-10-02
-related: restore-a-game-save, sync-game-saves-across-pcs, steam-cloud-alternative
+updated: 2026-10-09
+related: restore-a-game-save, sync-game-saves-across-pcs, steam-cloud-alternative, where-are-pc-game-saves-stored, recover-corrupted-game-save
 ---
 
-Losing a save file means losing hours of progress. Hoard backs up your PC game saves automatically and keeps a full version history, so you can always go back.
+Losing a save file means losing hours of progress. Hoard backs up your PC game saves automatically, keeps a full version history so you can always go back, and keeps every save in sync across your PCs and Steam Deck, so you pick up wherever you left off.
 
 ## What Hoard backs up
 
@@ -53,6 +53,10 @@ A save folder is rarely just saves, so Hoard sorts what it finds into three pile
 Hoard watches the folder and captures it **after you stop playing**, not while a game is holding files open. If the save was written to seconds ago, it waits until things go quiet: a file being written is not a file worth capturing halfway.
 
 Each capture is a version. Snapshots are stored by content hash, so unchanged files are stored once — ten versions of a 2 GB save cost about 2 GB, not 20.
+
+## And in sync on every machine
+
+A backup already saves you from a corrupted file. If you play on more than one machine, the same backups also give you sync: install Hoard on your other PCs or a Steam Deck with the same account, and Hoard matches each game across them. When you stop playing on one, the newest save is waiting on the next. More in [syncing saves across PCs](/guides/sync-game-saves-across-pcs) and [between Steam Deck and PC](/guides/sync-saves-steam-deck-pc).
 
 ## Backing up without our servers
 

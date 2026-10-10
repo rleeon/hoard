@@ -1,11 +1,11 @@
 ---
 title: "Dónde están las partidas de Cyberpunk 2077 (PC y Steam Deck)"
-description: "Dónde guarda Cyberpunk 2077 sus partidas en Windows, Steam Deck y Mac, qué hay en cada carpeta y cómo copiarlas o llevarlas de un PC a otro."
+description: "Dónde guarda Cyberpunk 2077 sus partidas en Windows, Steam Deck y Mac, qué hay en cada carpeta y cómo copiarlas y sincronizarlas entre tus PC."
 order: 20
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-En Windows, Cyberpunk 2077 guarda sus partidas en `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077`, una carpeta por partida. Ésa es la respuesta corta. El resto de la página cubre las rutas de Steam Deck y Mac, qué hay de verdad en la carpeta y cómo tenerla siempre copiada.
+En Windows, Cyberpunk 2077 guarda sus partidas en `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077`, una carpeta por partida. Ésa es la respuesta corta. El resto de la página cubre las rutas de Steam Deck y Mac, qué hay de verdad en la carpeta y cómo tenerla siempre copiada y sincronizada entre tu PC y tu Steam Deck.
 
 ## Dónde guarda Cyberpunk 2077 las partidas
 

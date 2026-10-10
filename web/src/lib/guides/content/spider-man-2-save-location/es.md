@@ -1,11 +1,11 @@
 ---
 title: "Dónde están las partidas de Marvel's Spider-Man 2 (PC y Steam Deck)"
-description: "Dónde guarda Marvel's Spider-Man 2 sus partidas en PC, qué es la carpeta del número largo, la trampa de OneDrive, la ruta en Steam Deck y cómo copiarlas."
+description: "Dónde guarda Marvel's Spider-Man 2 sus partidas en PC, la carpeta del número largo, la trampa de OneDrive, la ruta en Steam Deck, copia y sincronización."
 order: 22
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-En PC, Marvel's Spider-Man 2 guarda sus partidas en `Documentos\Marvel's Spider-Man 2\`, dentro de una subcarpeta con un número largo. En Steam, ese número es tu ID de Steam. Debajo tienes qué significa eso en la práctica, la trampa de OneDrive, la ruta en Steam Deck y cómo tener las partidas siempre copiadas.
+En PC, Marvel's Spider-Man 2 guarda sus partidas en `Documentos\Marvel's Spider-Man 2\`, dentro de una subcarpeta con un número largo. En Steam, ese número es tu ID de Steam. Debajo tienes qué significa eso en la práctica, la trampa de OneDrive, la ruta en Steam Deck y cómo tener las partidas siempre copiadas y sincronizadas entre tu PC y tu Steam Deck.
 
 ## Dónde guarda Marvel's Spider-Man 2 las partidas
 

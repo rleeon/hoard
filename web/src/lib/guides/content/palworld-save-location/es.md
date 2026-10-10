@@ -1,11 +1,11 @@
 ---
 title: "Dónde están las partidas de Palworld (PC y Steam Deck)"
-description: "Dónde guarda Palworld sus mundos en PC y Steam Deck, qué es cada fichero, cómo funcionan los mundos cooperativos y cómo copiar tus partidas o moverlas de PC."
+description: "Dónde guarda Palworld sus mundos en PC y Steam Deck, qué es cada fichero, cómo funcionan los mundos cooperativos y cómo copiar y sincronizar tus partidas."
 order: 24
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-En PC (Steam), Palworld guarda sus partidas en `%LOCALAPPDATA%\Pal\Saved\SaveGames\<tu ID de Steam>`, con una carpeta por mundo dentro. Es la ruta que da Pocketpair en su FAQ oficial. Debajo tienes la ruta de Steam Deck, qué hace cada fichero, cómo cambia el cooperativo y cómo tener tus mundos siempre copiados.
+En PC (Steam), Palworld guarda sus partidas en `%LOCALAPPDATA%\Pal\Saved\SaveGames\<tu ID de Steam>`, con una carpeta por mundo dentro. Es la ruta que da Pocketpair en su FAQ oficial. Debajo tienes la ruta de Steam Deck, qué hace cada fichero, cómo cambia el cooperativo y cómo tener tus mundos siempre copiados y sincronizados entre tu PC y tu Steam Deck.
 
 ## Dónde guarda Palworld las partidas
 

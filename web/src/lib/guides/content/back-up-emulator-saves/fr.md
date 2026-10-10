@@ -2,7 +2,7 @@
 title: "Comment sauvegarder et synchroniser les sauvegardes d'émulateur (RetroArch, Dolphin, PCSX2)"
 description: "Sauvegardez et synchronisez vos sauvegardes d'émulateur entre PC et Steam Deck : RetroArch, Dolphin, PCSX2, DuckStation, avec historique et emplacements."
 order: 6
-updated: 2026-10-01
+updated: 2026-10-09
 ---
 
 Les sauvegardes d'émulateur se perdent facilement : fichiers de sauvegarde et save states vivent dans des dossiers éparpillés, et une réinstallation ou un nouveau PC peut effacer des années de progression. Hoard les sauvegarde automatiquement et les garde synchronisés entre vos machines, Steam Deck compris.
@@ -42,6 +42,8 @@ PCSX2 écrit les cartes mémoire (fichiers `.ps2`) dans `memcards/` :
 
 Une carte mémoire contient les sauvegardes de tous les jeux joués dessus, elle voyage donc d'un bloc : restaurer une version antérieure remet toute la carte en arrière, pas un seul jeu.
 
+Le guide complet, avec cartes fichier et cartes dossier : [sauvegardes cloud pour PCSX2](/guides/pcsx2-cloud-saves).
+
 ### Sauvegardes cloud Dolphin (GameCube et Wii)
 
 Les sauvegardes GameCube vivent sous `GC/` (images de carte mémoire ou un dossier par carte), celles de Wii dans la NAND émulée sous `Wii/` :
@@ -49,6 +51,8 @@ Les sauvegardes GameCube vivent sous `GC/` (images de carte mémoire ou un dossi
 - Windows : `Documents\Dolphin Emulator\GC` et `\Wii`
 - Linux : `~/.local/share/dolphin-emu/GC` et `/Wii`
 - Steam Deck : `~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/`
+
+Le guide complet, avec les dossiers GCI et la mémoire de la Wii : [sauvegardes cloud pour Dolphin](/guides/dolphin-cloud-saves).
 
 ### Sauvegardes cloud DuckStation (PS1)
 

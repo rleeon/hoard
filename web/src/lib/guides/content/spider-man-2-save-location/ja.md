@@ -1,11 +1,11 @@
 ---
 title: "Marvel's Spider-Man 2 のセーブデータの場所（PC・Steam Deck）"
-description: "Marvel's Spider-Man 2のPC版セーブデータの場所、長い数字のフォルダーの正体、OneDriveの落とし穴、Steam Deckでのパス、バックアップ方法を解説。"
+description: "Marvel's Spider-Man 2のPC版セーブデータの場所、長い数字のフォルダーの正体、OneDriveの落とし穴、Steam Deckでのパス、バックアップと同期の方法を解説。"
 order: 22
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-PC 版の Marvel's Spider-Man 2 は、セーブデータを `ドキュメント\Marvel's Spider-Man 2\` の中の、長い数字の名前のサブフォルダーに保存します。Steam では、その数字はあなたの Steam ID です。以下では、それが実際に意味すること、OneDrive の落とし穴、Steam Deck でのパス、そしてセーブのバックアップを保つ方法を説明します。
+PC 版の Marvel's Spider-Man 2 は、セーブデータを `ドキュメント\Marvel's Spider-Man 2\` の中の、長い数字の名前のサブフォルダーに保存します。Steam では、その数字はあなたの Steam ID です。以下では、それが実際に意味すること、OneDrive の落とし穴、Steam Deck でのパス、そしてセーブをバックアップしながら PC と Steam Deck で同期する方法を説明します。
 
 ## Marvel's Spider-Man 2 のセーブデータの場所
 

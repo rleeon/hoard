@@ -2,11 +2,11 @@
 title: "How to restore an old game save"
 description: "Corrupted save, bad mod or a choice you regret? Roll a game save back to an earlier version, step by step, without losing what's on your PC now."
 order: 3
-updated: 2026-09-01
-related: back-up-game-saves, steam-cloud-alternative, sync-game-saves-across-pcs
+updated: 2026-10-09
+related: back-up-game-saves, steam-cloud-alternative, sync-game-saves-across-pcs, recover-corrupted-game-save
 ---
 
-A bad decision in-game, a corrupted file, or a botched mod — sometimes you just need to go back. Because Hoard keeps a full version history of every save, restoring an earlier one takes seconds.
+A bad decision in-game, a corrupted file, or a botched mod — sometimes you just need to go back. Because Hoard keeps a full version history of every save, restoring an earlier one takes seconds. And because that history lives on the server and is shared by all your machines, you can go back from any PC or Steam Deck, not only the one where things went wrong.
 
 ## Restore a previous version
 

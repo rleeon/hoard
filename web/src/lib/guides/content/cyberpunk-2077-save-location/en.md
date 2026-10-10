@@ -1,12 +1,12 @@
 ---
 title: "Cyberpunk 2077 save location (PC & Steam Deck)"
-description: "Where Cyberpunk 2077 keeps its saves on Windows, Steam Deck and Mac, what each folder holds, and how to back them up or move them between PCs."
+description: "Where Cyberpunk 2077 keeps its saves on Windows, Steam Deck and Mac, what each folder holds, and how to back them up and sync them between PCs."
 order: 20
-updated: 2026-10-02
+updated: 2026-10-09
 related: sync-game-saves-across-pcs, restore-a-game-save, steam-cloud-alternative
 ---
 
-On Windows, Cyberpunk 2077 keeps its saves in `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077`, one folder per save. That's the short answer. The rest of this page covers the Steam Deck and Mac paths, what's actually in the folder, and how to keep it backed up.
+On Windows, Cyberpunk 2077 keeps its saves in `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077`, one folder per save. That's the short answer. The rest of this page covers the Steam Deck and Mac paths, what's actually in the folder, and how to keep it backed up and in sync between your PC and Steam Deck.
 
 ## Where Cyberpunk 2077 keeps its saves
 

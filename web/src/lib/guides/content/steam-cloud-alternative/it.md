@@ -1,8 +1,8 @@
 ---
-title: "Alternativa a Steam Cloud: salva i salvataggi che Steam non copre"
-description: "Steam Cloud salta molti giochi e non tiene la cronologia. Fai il backup di ogni gioco, da qualsiasi launcher, con versioni da ripristinare. Cloud o self-host."
+title: "Alternativa a Steam Cloud: sincronizza e salva i salvataggi che Steam non copre"
+description: "Steam Cloud salta molti giochi e non tiene la cronologia. Sincronizza e fai il backup di ogni gioco, da qualsiasi launcher, tra PC e Steam Deck, con versioni."
 order: 7
-updated: 2026-09-01
+updated: 2026-10-09
 ---
 
 Steam Cloud fa molto bene il compito ristretto che ha, e quasi tutti ne scoprono i limiti proprio il giorno in cui perdono qualcosa. Questa guida spiega dove sono quei limiti e cosa fare con i giochi che restano fuori.

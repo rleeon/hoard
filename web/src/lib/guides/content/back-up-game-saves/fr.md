@@ -1,11 +1,11 @@
 ---
 title: "Comment sauvegarder vos parties automatiquement"
-description: "Sauvegardez vos parties PC automatiquement après chaque session, avec historique, pour qu'un crash, une réinstallation ou un mod n'efface rien."
+description: "Sauvegardez vos parties PC automatiquement après chaque session et synchronisez-les avec vos autres PC et votre Steam Deck, avec historique des versions."
 order: 1
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Perdre une sauvegarde, c'est perdre des heures de progression. Hoard sauvegarde vos parties PC automatiquement et conserve un historique complet des versions, pour que vous puissiez toujours revenir en arrière.
+Perdre une sauvegarde, c'est perdre des heures de progression. Hoard sauvegarde vos parties PC automatiquement, conserve un historique complet des versions pour que vous puissiez toujours revenir en arrière, et garde chaque sauvegarde synchronisée entre vos PC et votre Steam Deck, pour reprendre là où vous vous êtes arrêté.
 
 ## Ce que Hoard sauvegarde
 
@@ -52,6 +52,10 @@ Un dossier de sauvegarde ne contient presque jamais que des sauvegardes, alors H
 Hoard surveille le dossier et le capture **après que vous avez arrêté de jouer**, pas pendant qu'un jeu garde des fichiers ouverts. Si la sauvegarde a été écrite il y a quelques secondes, il attend que le calme revienne : un fichier en cours d'écriture ne mérite pas d'être capturé à moitié.
 
 Chaque capture est une version. Les instantanés sont stockés par empreinte de contenu : un fichier inchangé n'est stocké qu'une fois — dix versions d'une sauvegarde de 2 Go coûtent environ 2 Go, pas 20.
+
+## Et synchronisées sur toutes vos machines
+
+Une sauvegarde vous protège déjà d'un fichier corrompu. Si vous jouez sur plusieurs machines, ces mêmes sauvegardes vous donnent aussi la synchronisation : installez Hoard sur vos autres PC ou un Steam Deck avec le même compte, et Hoard associe chaque jeu d'une machine à l'autre. Quand vous arrêtez de jouer sur l'une, la sauvegarde la plus récente vous attend sur la suivante. Plus d'infos dans [synchroniser ses sauvegardes entre plusieurs PC](/guides/sync-game-saves-across-pcs) et [entre Steam Deck et PC](/guides/sync-saves-steam-deck-pc).
 
 ## Sauvegarder sans passer par nos serveurs
 

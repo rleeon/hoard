@@ -1,11 +1,11 @@
 ---
 title: "Come fare il backup dei salvataggi automaticamente"
-description: "Backup automatico dei salvataggi PC dopo ogni sessione, con cronologia delle versioni: un crash, una reinstallazione o una mod non cancellano più nulla."
+description: "Backup automatico dei salvataggi PC dopo ogni sessione e sincronizzazione con gli altri PC e lo Steam Deck, con cronologia: non perdi più nulla."
 order: 1
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Perdere un salvataggio significa perdere ore di progressi. Hoard fa il backup dei tuoi salvataggi PC automaticamente e conserva una cronologia completa delle versioni, così puoi sempre tornare indietro.
+Perdere un salvataggio significa perdere ore di progressi. Hoard fa il backup dei tuoi salvataggi PC automaticamente, conserva una cronologia completa delle versioni così puoi sempre tornare indietro, e tiene ogni salvataggio sincronizzato tra i tuoi PC e lo Steam Deck, così riprendi da dove avevi lasciato.
 
 ## Cosa salva Hoard
 
@@ -52,6 +52,10 @@ Una cartella di salvataggi contiene raramente solo salvataggi, quindi Hoard divi
 Hoard sorveglia la cartella e la cattura **dopo che smetti di giocare**, non mentre il gioco tiene i file aperti. Se il salvataggio è stato scritto pochi secondi fa, aspetta che tutto si calmi: un file in scrittura non è un file da catturare a metà.
 
 Ogni cattura è una versione. Gli snapshot sono archiviati per hash del contenuto, quindi un file invariato viene salvato una volta sola: dieci versioni di un salvataggio da 2 GB occupano circa 2 GB, non 20.
+
+## E sincronizzati su ogni macchina
+
+Un backup ti salva già da un file corrotto. Se giochi su più di una macchina, gli stessi backup diventano anche sincronizzazione: installa Hoard sugli altri PC o su uno Steam Deck con lo stesso account e Hoard abbina ogni gioco tra le macchine. Quando smetti di giocare su una, il salvataggio più recente ti aspetta sulla successiva. Altro in [sincronizzare i salvataggi tra più PC](/guides/sync-game-saves-across-pcs) e [tra Steam Deck e PC](/guides/sync-saves-steam-deck-pc).
 
 ## Backup senza passare dai nostri server
 

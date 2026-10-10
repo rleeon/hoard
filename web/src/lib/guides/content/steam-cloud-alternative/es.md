@@ -1,8 +1,8 @@
 ---
-title: "Alternativa a Steam Cloud: copia las partidas que Steam no guarda"
-description: "Steam Cloud se salta muchos juegos y no guarda historial. Copia todos, de cualquier launcher, con versiones a las que volver. En la nube o en tu servidor."
+title: "Alternativa a Steam Cloud: sincroniza y copia las partidas que Steam no guarda"
+description: "Steam Cloud se salta muchos juegos y no guarda historial. Sincroniza y copia todos, de cualquier launcher, entre PC y Steam Deck, con versiones para volver."
 order: 7
-updated: 2026-09-01
+updated: 2026-10-09
 ---
 
 Steam Cloud hace muy bien el trabajo concreto que hace, y la mayoría de la gente descubre sus límites justo el día que pierde algo. Esta guía explica dónde están esos límites y qué hacer con los juegos que se quedan fuera.

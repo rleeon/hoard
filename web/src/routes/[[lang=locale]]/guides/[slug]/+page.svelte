@@ -1,6 +1,9 @@
 <script lang="ts">
   import { _, locale } from 'svelte-i18n';
   import Seo from '$lib/components/Seo.svelte';
+  import SyncDiagram from '$lib/components/SyncDiagram.svelte';
+  import { reveal } from '$lib/actions/reveal';
+  import { tilt } from '$lib/actions/tilt';
   import { localeHref } from '$lib/i18n/href';
   import { DEFAULT_LOCALE, isLocale, SITE_URL, withLocale, localePrefix, HREFLANG, type Locale } from '$lib/i18n/locales';
   import { relatedGuides } from '$lib/guides';
@@ -134,6 +137,14 @@
     >
       {$_('nav.download')}
     </a>
+  </div>
+
+  <!-- The same card and diagram as section 1 of the home page, so every guide
+       ends on what sync looks like and not only on backups. -->
+  <div class="reveal mt-6" use:reveal={{ delay: 100 }}>
+    <div class="tilt rounded-2xl border border-line bg-surface p-6 sm:p-8" use:tilt>
+      <SyncDiagram />
+    </div>
   </div>
 </article>
 

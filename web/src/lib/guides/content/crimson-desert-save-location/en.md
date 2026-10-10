@@ -1,12 +1,12 @@
 ---
 title: "Crimson Desert save location (PC & Steam Deck)"
-description: "Where Crimson Desert keeps its saves on Windows, Steam Deck and Mac, which folder actually holds them, and how to back them up or move them between PCs."
+description: "Where Crimson Desert keeps its saves on Windows, Steam Deck and Mac, which folder actually holds them, and how to back them up and sync them between PCs."
 order: 21
-updated: 2026-10-02
+updated: 2026-10-09
 related: sync-game-saves-across-pcs, restore-a-game-save, steam-cloud-alternative
 ---
 
-On Windows, Crimson Desert keeps its saves in `%LOCALAPPDATA%\Pearl Abyss\CD\save`. That's the folder Pearl Abyss points to in its own FAQ. Below are the Steam Deck and Mac paths, what's inside, and how to keep it backed up.
+On Windows, Crimson Desert keeps its saves in `%LOCALAPPDATA%\Pearl Abyss\CD\save`. That's the folder Pearl Abyss points to in its own FAQ. Below are the Steam Deck and Mac paths, what's inside, and how to keep it backed up and in sync between your PC and Steam Deck.
 
 ## Where Crimson Desert keeps its saves
 

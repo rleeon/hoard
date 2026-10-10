@@ -1,9 +1,9 @@
 ---
 title: "如何用 Docker 自托管 Hoard"
-description: "用 Docker Compose 运行你自己的 Hoard 服务端：免费开源，跑在你的硬件上，无需我们的账号，也没有配额限制。"
+description: "用 Docker Compose 运行你自己的 Hoard 服务端，让所有设备通过它同步存档：免费开源，无需我们的账号，也没有配额限制。"
 order: 0
 featured: true
-updated: 2026-09-29
+updated: 2026-10-09
 ---
 
 Hoard 是开源且可自托管的。你可以不使用 Hoard Cloud，而是在自己的机器上运行同一个 `hoard-server`，让每台设备都连接到它——无需账号，容量只受你分配的磁盘大小限制。本指南用 Docker 在几分钟内把服务器跑起来。

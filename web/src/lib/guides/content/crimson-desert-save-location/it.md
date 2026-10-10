@@ -1,11 +1,11 @@
 ---
 title: "Dove sono i salvataggi di Crimson Desert (PC e Steam Deck)"
-description: "Dove Crimson Desert tiene i salvataggi su Windows, Steam Deck e Mac, quale cartella li contiene davvero e come farne il backup o spostarli tra PC."
+description: "Dove Crimson Desert tiene i salvataggi su Windows, Steam Deck e Mac, quale cartella li contiene davvero e come farne il backup e sincronizzarli tra PC."
 order: 21
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Su Windows, Crimson Desert tiene i salvataggi in `%LOCALAPPDATA%\Pearl Abyss\CD\save`. È la cartella che Pearl Abyss indica nella propria FAQ. Qui sotto trovi i percorsi su Steam Deck e Mac, cosa c'è dentro e come tenerla al sicuro.
+Su Windows, Crimson Desert tiene i salvataggi in `%LOCALAPPDATA%\Pearl Abyss\CD\save`. È la cartella che Pearl Abyss indica nella propria FAQ. Qui sotto trovi i percorsi su Steam Deck e Mac, cosa c'è dentro e come tenerla al sicuro e sincronizzata tra PC e Steam Deck.
 
 ## Dove Crimson Desert tiene i salvataggi
 

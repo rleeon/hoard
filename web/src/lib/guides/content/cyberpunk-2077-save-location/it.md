@@ -1,11 +1,11 @@
 ---
 title: "Dove sono i salvataggi di Cyberpunk 2077 (PC e Steam Deck)"
-description: "Dove Cyberpunk 2077 tiene i salvataggi su Windows, Steam Deck e Mac, cosa contiene ogni cartella e come farne il backup o spostarli da un PC all'altro."
+description: "Dove Cyberpunk 2077 tiene i salvataggi su Windows, Steam Deck e Mac, cosa contiene ogni cartella e come farne il backup e sincronizzarli tra PC."
 order: 20
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Su Windows, Cyberpunk 2077 tiene i salvataggi in `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077`, una cartella per salvataggio. Questa è la risposta breve. Il resto della pagina copre i percorsi su Steam Deck e Mac, cosa c'è davvero nella cartella e come tenerla sempre al sicuro.
+Su Windows, Cyberpunk 2077 tiene i salvataggi in `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077`, una cartella per salvataggio. Questa è la risposta breve. Il resto della pagina copre i percorsi su Steam Deck e Mac, cosa c'è davvero nella cartella e come tenerla al sicuro e sincronizzata tra PC e Steam Deck.
 
 ## Dove Cyberpunk 2077 tiene i salvataggi
 

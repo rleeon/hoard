@@ -1,11 +1,11 @@
 ---
 title: "Cómo hacer copias de seguridad de tus partidas automáticamente"
-description: "Haz copia de tus partidas de PC automáticamente tras cada sesión, con historial de versiones, para que un fallo, una reinstalación o un mod no te borren nada."
+description: "Copia tus partidas de PC automáticamente tras cada sesión y sincronízalas con tus otros PC y tu Steam Deck, con historial de versiones, para no perder nada."
 order: 1
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Perder una partida guardada significa perder horas de progreso. Hoard hace copias de seguridad de tus partidas de PC automáticamente y guarda un historial completo de versiones, para que siempre puedas volver atrás.
+Perder una partida guardada significa perder horas de progreso. Hoard hace copias de tus partidas de PC automáticamente, guarda un historial completo de versiones para que siempre puedas volver atrás, y mantiene cada partida sincronizada entre tus PC y tu Steam Deck, para que sigas donde lo dejaste.
 
 ## Qué guarda Hoard
 
@@ -52,6 +52,10 @@ Una carpeta de partidas rara vez contiene sólo partidas, así que Hoard reparte
 Hoard vigila la carpeta y la captura **cuando dejas de jugar**, no mientras el juego tiene los ficheros abiertos. Si la partida se escribió hace unos segundos, espera a que la cosa se calme: un fichero que se está escribiendo no es un fichero que merezca capturarse a medias.
 
 Cada captura es una versión. Las instantáneas se guardan por hash de contenido, así que un fichero que no cambia se almacena una sola vez: diez versiones de una partida de 2 GB ocupan unos 2 GB, no 20.
+
+## Y sincronizadas en todas tus máquinas
+
+Una copia ya te salva de un fichero corrupto. Si juegas en más de una máquina, esas mismas copias te dan también la sincronización: instala Hoard en tus otros PC o en una Steam Deck con la misma cuenta y Hoard empareja cada juego entre ellos. Cuando dejas de jugar en uno, la partida más reciente te espera en el siguiente. Más en [sincronizar partidas entre varios PC](/guides/sync-game-saves-across-pcs) y [entre Steam Deck y PC](/guides/sync-saves-steam-deck-pc).
 
 ## Copias sin pasar por nuestros servidores
 

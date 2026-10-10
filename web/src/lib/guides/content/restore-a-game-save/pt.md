@@ -2,10 +2,10 @@
 title: "Como restaurar um save antigo"
 description: "Save corrompido, mod estragado ou uma escolha de que te arrependes? Volta a uma versão anterior, passo a passo, sem perder o que tens agora."
 order: 3
-updated: 2026-09-01
+updated: 2026-10-09
 ---
 
-Uma má decisão no jogo, um ficheiro corrompido ou um mod que parte tudo — às vezes só precisas de voltar atrás. Como o Hoard guarda um histórico completo de versões de cada save, restaurar um anterior leva segundos.
+Uma má decisão no jogo, um ficheiro corrompido ou um mod que parte tudo — às vezes só precisas de voltar atrás. Como o Hoard guarda um histórico completo de versões de cada save, restaurar um anterior leva segundos. E como esse histórico está no servidor e é partilhado por todas as tuas máquinas, podes voltar atrás a partir de qualquer PC ou Steam Deck, não só daquele onde correu mal.
 
 ## Restaurar uma versão anterior
 

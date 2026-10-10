@@ -1,9 +1,9 @@
 ---
 title: "DockerでHoardをセルフホストする方法"
-description: "Docker ComposeでHoardサーバーを自前で運用。無料・オープンソースで自分のハードウェア上に。当社のアカウントも容量制限も不要です。"
+description: "Docker ComposeでHoardサーバーを自前で運用し、すべてのデバイスのセーブをそこで同期。無料・オープンソースで、当社のアカウントも容量制限も不要です。"
 order: 0
 featured: true
-updated: 2026-09-29
+updated: 2026-10-09
 ---
 
 Hoard はオープンソースでセルフホスト可能です。Hoard Cloud を使う代わりに、同じ `hoard-server` を自分のマシンで動かし、すべての端末をそこへ接続できます。アカウントは不要で、容量制限は与えたディスク容量だけです。このガイドでは Docker を使って数分でサーバーを立ち上げます。

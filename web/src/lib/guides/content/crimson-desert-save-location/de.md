@@ -1,11 +1,11 @@
 ---
 title: "Crimson Desert: Speicherort der Spielstände (PC & Steam Deck)"
-description: "Wo Crimson Desert seine Spielstände unter Windows, auf dem Steam Deck und dem Mac ablegt, welcher Ordner sie wirklich enthält und wie du sie sicherst."
+description: "Wo Crimson Desert seine Spielstände unter Windows, Steam Deck und Mac ablegt, welcher Ordner sie enthält und wie du sie sicherst und synchronisierst."
 order: 21
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Unter Windows legt Crimson Desert seine Spielstände in `%LOCALAPPDATA%\Pearl Abyss\CD\save` ab. Diesen Ordner nennt Pearl Abyss in seiner eigenen FAQ. Darunter findest du die Pfade für Steam Deck und Mac, was drinsteckt und wie du ihn gesichert hältst.
+Unter Windows legt Crimson Desert seine Spielstände in `%LOCALAPPDATA%\Pearl Abyss\CD\save` ab. Diesen Ordner nennt Pearl Abyss in seiner eigenen FAQ. Darunter findest du die Pfade für Steam Deck und Mac, was drinsteckt und wie du ihn gesichert und zwischen PC und Steam Deck synchron hältst.
 
 ## Wo Crimson Desert seine Spielstände ablegt
 

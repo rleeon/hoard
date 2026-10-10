@@ -1,12 +1,12 @@
 ---
 title: "Baldur's Gate 3 save location (PC & Steam Deck)"
-description: "Where Baldur's Gate 3 keeps its saves on Windows, Steam Deck and Mac, what's a save and what's mods or settings, Honour Mode, and how to back saves up."
+description: "Where Baldur's Gate 3 keeps its saves on Windows, Steam Deck and Mac, what's a save and what's mods or settings, Honour Mode, and how to back up and sync."
 order: 23
-updated: 2026-10-02
+updated: 2026-10-09
 related: sync-game-saves-across-pcs, restore-a-game-save, steam-cloud-alternative
 ---
 
-On Windows, Baldur's Gate 3 keeps its saves in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`, one folder per save. That's the path Larian gives in its own support FAQ. Below are the Steam Deck and Mac paths, what sits next to the saves, Honour Mode, and how to keep it all backed up.
+On Windows, Baldur's Gate 3 keeps its saves in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`, one folder per save. That's the path Larian gives in its own support FAQ. Below are the Steam Deck and Mac paths, what sits next to the saves, Honour Mode, and how to keep it all backed up and in sync between your PC and Steam Deck.
 
 ## Where Baldur's Gate 3 keeps its saves
 

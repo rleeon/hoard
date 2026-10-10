@@ -2,10 +2,10 @@
 title: "Come ripristinare un vecchio salvataggio"
 description: "Salvataggio corrotto, mod difettosa o una scelta di cui ti penti? Torna a una versione precedente, passo dopo passo, senza perdere quella attuale."
 order: 3
-updated: 2026-09-01
+updated: 2026-10-09
 ---
 
-Una brutta decisione nel gioco, un file corrotto o una mod che rompe tutto — a volte devi solo tornare indietro. Poiché Hoard conserva una cronologia completa delle versioni di ogni salvataggio, ripristinarne uno precedente richiede pochi secondi.
+Una brutta decisione nel gioco, un file corrotto o una mod che rompe tutto — a volte devi solo tornare indietro. Poiché Hoard conserva una cronologia completa delle versioni di ogni salvataggio, ripristinarne uno precedente richiede pochi secondi. E poiché quella cronologia sta sul server ed è condivisa da tutte le tue macchine, puoi tornare indietro da qualsiasi PC o Steam Deck, non solo da quello dove è nato il problema.
 
 ## Ripristinare una versione precedente
 

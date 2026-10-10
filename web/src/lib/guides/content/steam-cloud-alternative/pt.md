@@ -1,8 +1,8 @@
 ---
-title: "Alternativa à Steam Cloud: guarda os saves que a Steam não guarda"
-description: "O Steam Cloud deixa muitos jogos de fora e não guarda histórico. Faz backup de todos, de qualquer launcher, com versões para recuperar. Nuvem ou self-host."
+title: "Alternativa à Steam Cloud: sincroniza e guarda os saves que a Steam não guarda"
+description: "O Steam Cloud deixa muitos jogos de fora e não guarda histórico. Sincroniza e faz backup de todos, de qualquer launcher, entre PCs e a Steam Deck, com versões."
 order: 7
-updated: 2026-09-01
+updated: 2026-10-09
 ---
 
 A Steam Cloud faz muito bem o trabalho estreito que faz, e a maioria das pessoas só lhe descobre os limites no dia em que perde alguma coisa. Este guia explica onde estão esses limites e o que fazer com os jogos que ficam de fora.

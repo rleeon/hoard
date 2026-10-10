@@ -1,8 +1,8 @@
 ---
-title: "Alternative à Steam Cloud : sauvegardez les parties que Steam ignore"
-description: "Steam Cloud ignore beaucoup de jeux et ne garde aucun historique. Sauvegardez tous vos jeux, de tout launcher, avec des versions à restaurer."
+title: "Alternative à Steam Cloud : synchronisez et sauvegardez les parties que Steam ignore"
+description: "Steam Cloud ignore beaucoup de jeux et ne garde aucun historique. Synchronisez et sauvegardez tous vos jeux, de tout launcher, entre PC et Steam Deck."
 order: 7
-updated: 2026-09-01
+updated: 2026-10-09
 ---
 
 Steam Cloud fait très bien le travail précis qu'il fait, et la plupart des gens en découvrent les limites le jour où ils perdent quelque chose. Ce guide explique où sont ces limites, et quoi faire des jeux qui restent en dehors.

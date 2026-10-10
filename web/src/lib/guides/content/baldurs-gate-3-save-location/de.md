@@ -1,11 +1,11 @@
 ---
 title: "Baldur's Gate 3: Speicherort der Spielstände (PC & Steam Deck)"
-description: "Wo Baldur's Gate 3 seine Spielstände unter Windows, auf dem Steam Deck und dem Mac ablegt, was Spielstand und was Mods sind, der Ehrenmodus und Backups."
+description: "Wo Baldur's Gate 3 seine Spielstände unter Windows, Steam Deck und Mac ablegt, was Spielstand und was Mods sind, der Ehrenmodus, Backup und Sync."
 order: 23
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Unter Windows legt Baldur's Gate 3 seine Spielstände in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story` ab, ein Ordner pro Spielstand. Diesen Pfad nennt Larian in der eigenen Support-FAQ. Darunter findest du die Pfade für Steam Deck und Mac, was neben den Spielständen liegt, den Ehrenmodus und wie du alles gesichert hältst.
+Unter Windows legt Baldur's Gate 3 seine Spielstände in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story` ab, ein Ordner pro Spielstand. Diesen Pfad nennt Larian in der eigenen Support-FAQ. Darunter findest du die Pfade für Steam Deck und Mac, was neben den Spielständen liegt, den Ehrenmodus und wie du alles gesichert und zwischen PC und Steam Deck synchron hältst.
 
 ## Wo Baldur's Gate 3 seine Spielstände ablegt
 

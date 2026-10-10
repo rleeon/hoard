@@ -1,11 +1,11 @@
 ---
 title: "So sicherst du deine Spielstände automatisch"
-description: "Sichere deine PC-Spielstände nach jeder Session automatisch, mit Versionsverlauf, damit Absturz, Neuinstallation oder Mod nie deinen Fortschritt löschen."
+description: "Sichere PC-Spielstände nach jeder Session automatisch und synchronisiere sie mit deinen anderen PCs und dem Steam Deck, mit Versionsverlauf."
 order: 1
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Ein verlorener Spielstand bedeutet verlorene Stunden an Fortschritt. Hoard sichert deine PC-Spielstände automatisch und führt eine vollständige Versionshistorie, sodass du immer zurückgehen kannst.
+Ein verlorener Spielstand bedeutet verlorene Stunden an Fortschritt. Hoard sichert deine PC-Spielstände automatisch, führt eine vollständige Versionshistorie, sodass du immer zurückgehen kannst, und hält jeden Spielstand zwischen deinen PCs und dem Steam Deck synchron, damit du überall dort weitermachst, wo du aufgehört hast.
 
 ## Was Hoard sichert
 
@@ -52,6 +52,10 @@ Ein Speicherordner enthält selten nur Spielstände, deshalb sortiert Hoard, was
 Hoard beobachtet den Ordner und sichert ihn, **nachdem du aufgehört hast zu spielen**, nicht während ein Spiel Dateien offen hält. Wurde der Stand vor Sekunden geschrieben, wartet es, bis Ruhe einkehrt: eine Datei im Schreibvorgang ist keine Datei, die man halb sichern will.
 
 Jede Sicherung ist eine Version. Snapshots werden per Inhalts-Hash gespeichert, unveränderte Dateien also nur einmal — zehn Versionen eines 2 GB großen Stands kosten etwa 2 GB, nicht 20.
+
+## Und synchron auf jedem Gerät
+
+Ein Backup rettet dich schon vor einer beschädigten Datei. Spielst du auf mehr als einem Gerät, werden dieselben Backups auch zum Sync: Installiere Hoard mit demselben Konto auf deinen anderen PCs oder einem Steam Deck, und Hoard ordnet jedes Spiel geräteübergreifend zu. Hörst du auf einem auf, wartet der neueste Spielstand schon auf dem nächsten. Mehr unter [Spielstände zwischen mehreren PCs synchronisieren](/guides/sync-game-saves-across-pcs) und [zwischen Steam Deck und PC](/guides/sync-saves-steam-deck-pc).
 
 ## Sichern ohne unsere Server
 

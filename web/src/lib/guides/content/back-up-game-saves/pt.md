@@ -1,11 +1,11 @@
 ---
 title: "Como fazer backup dos teus saves automaticamente"
-description: "Faz backup dos saves do PC automaticamente após cada sessão, com histórico de versões, para que um crash, reinstalação ou mod não apague o teu progresso."
+description: "Faz backup dos saves do PC automaticamente após cada sessão e sincroniza-os com os teus outros PCs e a Steam Deck, com histórico de versões."
 order: 1
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Perder um save significa perder horas de progresso. O Hoard faz backup dos teus saves de PC automaticamente e guarda um histórico completo de versões, para que possas sempre voltar atrás.
+Perder um save significa perder horas de progresso. O Hoard faz backup dos teus saves de PC automaticamente, guarda um histórico completo de versões para que possas sempre voltar atrás, e mantém cada save sincronizado entre os teus PCs e a Steam Deck, para continuares onde paraste.
 
 ## O que o Hoard guarda
 
@@ -52,6 +52,10 @@ Uma pasta de saves raramente contém só saves, por isso o Hoard separa o que en
 O Hoard vigia a pasta e captura-a **depois de parares de jogar**, não enquanto o jogo tem ficheiros abertos. Se o save foi escrito há segundos, espera que as coisas acalmem: um ficheiro a ser escrito não é um ficheiro que valha a pena capturar a meio.
 
 Cada captura é uma versão. Os snapshots são guardados por hash de conteúdo, por isso um ficheiro que não muda é guardado uma só vez: dez versões de um save de 2 GB ocupam cerca de 2 GB, não 20.
+
+## E sincronizados em todas as máquinas
+
+Um backup já te salva de um ficheiro corrompido. Se jogas em mais de uma máquina, os mesmos backups dão-te também a sincronização: instala o Hoard nos teus outros PCs ou numa Steam Deck com a mesma conta, e o Hoard associa cada jogo entre eles. Quando deixas de jogar num, o save mais recente espera-te no seguinte. Mais em [sincronizar saves entre PCs](/guides/sync-game-saves-across-pcs) e [entre Steam Deck e PC](/guides/sync-saves-steam-deck-pc).
 
 ## Cópias sem passar pelos nossos servidores
 

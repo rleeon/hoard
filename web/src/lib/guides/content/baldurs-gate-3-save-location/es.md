@@ -1,11 +1,11 @@
 ---
 title: "Dónde están las partidas de Baldur's Gate 3 (PC y Steam Deck)"
-description: "Dónde guarda Baldur's Gate 3 sus partidas en Windows, Steam Deck y Mac, qué es partida y qué son mods o ajustes, el modo Honor y cómo copiarlas."
+description: "Dónde guarda Baldur's Gate 3 sus partidas en Windows, Steam Deck y Mac, qué es partida y qué son mods o ajustes, el modo Honor, copia y sincronización."
 order: 23
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-En Windows, Baldur's Gate 3 guarda sus partidas en `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`, una carpeta por partida. Es la ruta que da Larian en su propio FAQ de soporte. Debajo tienes las rutas de Steam Deck y Mac, lo que hay junto a las partidas, el modo Honor y cómo tenerlo todo copiado.
+En Windows, Baldur's Gate 3 guarda sus partidas en `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`, una carpeta por partida. Es la ruta que da Larian en su propio FAQ de soporte. Debajo tienes las rutas de Steam Deck y Mac, lo que hay junto a las partidas, el modo Honor y cómo tenerlo todo copiado y sincronizado entre tu PC y tu Steam Deck.
 
 ## Dónde guarda Baldur's Gate 3 las partidas
 

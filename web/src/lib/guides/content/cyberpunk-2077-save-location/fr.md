@@ -1,11 +1,11 @@
 ---
 title: "Emplacement des sauvegardes de Cyberpunk 2077 (PC et Steam Deck)"
-description: "Où Cyberpunk 2077 range ses sauvegardes sous Windows, sur Steam Deck et sur Mac, ce que contient chaque dossier et comment les sauvegarder ou les transférer."
+description: "Où Cyberpunk 2077 range ses sauvegardes sous Windows, Steam Deck et Mac, ce que contient chaque dossier et comment les sauvegarder et les synchroniser."
 order: 20
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Sous Windows, Cyberpunk 2077 range ses sauvegardes dans `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077`, un dossier par sauvegarde. Voilà la réponse courte. La suite couvre les chemins sur Steam Deck et Mac, ce que contient vraiment le dossier et comment le garder sauvegardé.
+Sous Windows, Cyberpunk 2077 range ses sauvegardes dans `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077`, un dossier par sauvegarde. Voilà la réponse courte. La suite couvre les chemins sur Steam Deck et Mac, ce que contient vraiment le dossier et comment le garder sauvegardé et synchronisé entre votre PC et votre Steam Deck.
 
 ## Où Cyberpunk 2077 range ses sauvegardes
 

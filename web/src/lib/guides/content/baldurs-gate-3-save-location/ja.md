@@ -1,11 +1,11 @@
 ---
 title: "バルダーズ・ゲート3（Baldur's Gate 3）のセーブデータの場所（PC・Steam Deck）"
-description: "Baldur's Gate 3のセーブデータがWindows、Steam Deck、Macのどこにあるか、セーブとModや設定の違い、オナーモード、バックアップ方法を解説。"
+description: "Baldur's Gate 3のセーブデータがWindows、Steam Deck、Macのどこにあるか、セーブとModや設定の違い、オナーモード、バックアップと同期の方法を解説。"
 order: 23
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Windows では、Baldur's Gate 3 のセーブデータは `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story` にあり、セーブ 1 つにつきフォルダーが 1 つです。Larian が自社のサポート FAQ で案内しているパスです。以下では Steam Deck と Mac のパス、セーブの隣にあるもの、オナーモード、そしてすべてをバックアップしておく方法を説明します。
+Windows では、Baldur's Gate 3 のセーブデータは `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story` にあり、セーブ 1 つにつきフォルダーが 1 つです。Larian が自社のサポート FAQ で案内しているパスです。以下では Steam Deck と Mac のパス、セーブの隣にあるもの、オナーモード、そしてすべてをバックアップしながら PC と Steam Deck で同期する方法を説明します。
 
 ## Baldur's Gate 3 のセーブデータの場所
 

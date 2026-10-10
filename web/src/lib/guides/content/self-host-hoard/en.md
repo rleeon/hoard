@@ -1,9 +1,9 @@
 ---
 title: "How to self-host Hoard with Docker"
-description: "Run your own Hoard server with Docker Compose: free, open source, on your hardware, with no account with us and no quota. Your saves stay with you."
+description: "Run your own Hoard server with Docker Compose and sync saves between all your devices through it: free, open source, no account with us and no quota."
 order: 0
 featured: true
-updated: 2026-09-29
+updated: 2026-10-09
 related: sync-game-saves-across-pcs, opensave-alternative, back-up-game-saves
 ---
 

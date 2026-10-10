@@ -1,11 +1,11 @@
 ---
 title: "Dove sono i salvataggi di Marvel's Spider-Man 2 (PC e Steam Deck)"
-description: "Dove Marvel's Spider-Man 2 tiene i salvataggi su PC, cos'è la cartella col numero lungo, la trappola di OneDrive, il percorso su Steam Deck e come farne il backup."
+description: "Dove Marvel's Spider-Man 2 tiene i salvataggi su PC, cos'è la cartella col numero lungo, la trappola di OneDrive, il percorso su Steam Deck, backup e sync."
 order: 22
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Su PC, Marvel's Spider-Man 2 tiene i salvataggi in `Documenti\Marvel's Spider-Man 2\`, dentro una sottocartella con un numero lungo. Su Steam, quel numero è il tuo ID Steam. Qui sotto trovi cosa significa in pratica, la trappola di OneDrive, il percorso su Steam Deck e come tenere i salvataggi al sicuro.
+Su PC, Marvel's Spider-Man 2 tiene i salvataggi in `Documenti\Marvel's Spider-Man 2\`, dentro una sottocartella con un numero lungo. Su Steam, quel numero è il tuo ID Steam. Qui sotto trovi cosa significa in pratica, la trappola di OneDrive, il percorso su Steam Deck e come tenere i salvataggi al sicuro e sincronizzati tra PC e Steam Deck.
 
 ## Dove Marvel's Spider-Man 2 tiene i salvataggi
 

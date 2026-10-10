@@ -1,9 +1,9 @@
 ---
 title: "Come self-hostare Hoard con Docker"
-description: "Avvia il tuo server Hoard con Docker Compose: gratis, open source, sul tuo hardware, senza account presso di noi e senza quota. I salvataggi restano tuoi."
+description: "Avvia il tuo server Hoard con Docker Compose e sincronizza i salvataggi tra tutti i dispositivi: gratis, open source, senza account presso di noi e senza quota."
 order: 0
 featured: true
-updated: 2026-09-29
+updated: 2026-10-09
 ---
 
 Hoard è open source e self-hostabile. Invece di usare Hoard Cloud, puoi eseguire lo stesso `hoard-server` sulla tua macchina e puntarci ogni dispositivo — senza account e senza limiti di spazio oltre al disco che gli dai. Questa guida mette in piedi un server con Docker in pochi minuti.

@@ -1,11 +1,11 @@
 ---
 title: "Palworld: Speicherort der Spielstände (PC & Steam Deck)"
-description: "Wo Palworld seine Welten auf PC und Steam Deck ablegt, was jede Datei ist, wie Koop-Welten funktionieren und wie du Spielstände sicherst oder umziehst."
+description: "Wo Palworld seine Welten auf PC und Steam Deck ablegt, was jede Datei ist, wie Koop-Welten funktionieren und wie du Spielstände sicherst und synchronisierst."
 order: 24
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Auf dem PC (Steam) legt Palworld seine Spielstände in `%LOCALAPPDATA%\Pal\Saved\SaveGames\<deine Steam-ID>` ab, darin ein Ordner pro Welt. Diesen Pfad nennt Pocketpair in seiner offiziellen FAQ. Darunter findest du den Pfad auf dem Steam Deck, was jede Datei tut, was sich im Koop ändert und wie du deine Welten gesichert hältst.
+Auf dem PC (Steam) legt Palworld seine Spielstände in `%LOCALAPPDATA%\Pal\Saved\SaveGames\<deine Steam-ID>` ab, darin ein Ordner pro Welt. Diesen Pfad nennt Pocketpair in seiner offiziellen FAQ. Darunter findest du den Pfad auf dem Steam Deck, was jede Datei tut, was sich im Koop ändert und wie du deine Welten gesichert und zwischen PC und Steam Deck synchron hältst.
 
 ## Wo Palworld seine Spielstände ablegt
 

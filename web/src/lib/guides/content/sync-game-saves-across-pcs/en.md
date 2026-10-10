@@ -3,7 +3,7 @@ title: "How to sync game saves across multiple PCs"
 description: "Play on your desktop, laptop and Steam Deck without losing progress: sync game saves between PCs automatically, with version history. Step by step."
 order: 2
 updated: 2026-10-01
-related: steam-cloud-alternative, back-up-emulator-saves, self-host-hoard
+related: steam-cloud-alternative, back-up-emulator-saves, self-host-hoard, sync-saves-steam-deck-pc, transfer-game-saves-to-new-pc, dual-boot-game-saves, rog-ally-legion-go-save-sync
 ---
 
 If you play on more than one computer — a desktop at home and a laptop on the go — Hoard keeps your saves in sync so you always pick up where you left off.

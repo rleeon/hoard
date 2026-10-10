@@ -1,11 +1,11 @@
 ---
 title: "サイバーパンク2077（Cyberpunk 2077）のセーブデータの場所（PC・Steam Deck）"
-description: "Cyberpunk 2077のセーブデータがWindows、Steam Deck、Macのどこにあるか、各フォルダーの中身、バックアップやPC間での移し方を解説。"
+description: "Cyberpunk 2077のセーブデータがWindows、Steam Deck、Macのどこにあるか、各フォルダーの中身、バックアップとPC間での同期のしかたを解説。"
 order: 20
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Windows では、Cyberpunk 2077 のセーブデータは `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077` にあり、セーブ 1 つにつきフォルダーが 1 つ作られます。これが短い答えです。以下では Steam Deck と Mac のパス、フォルダーの実際の中身、そしてバックアップを保ち続ける方法を説明します。
+Windows では、Cyberpunk 2077 のセーブデータは `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077` にあり、セーブ 1 つにつきフォルダーが 1 つ作られます。これが短い答えです。以下では Steam Deck と Mac のパス、フォルダーの実際の中身、そしてバックアップを保ちながら PC と Steam Deck で同期する方法を説明します。
 
 ## Cyberpunk 2077 のセーブデータの場所
 

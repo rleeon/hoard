@@ -1,11 +1,11 @@
 ---
 title: "パルワールド（Palworld）のセーブデータの場所（PC・Steam Deck）"
-description: "PalworldのワールドがPCとSteam Deckのどこに保存されるか、各ファイルの役割、協力プレイのワールドのしくみ、バックアップやPC間での移し方を解説。"
+description: "PalworldのワールドがPCとSteam Deckのどこに保存されるか、各ファイルの役割、協力プレイのワールドのしくみ、バックアップとPC間での同期のしかたを解説。"
 order: 24
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-PC（Steam）版の Palworld は、セーブデータを `%LOCALAPPDATA%\Pal\Saved\SaveGames\<あなたの Steam ID>` に保存し、その中にワールドごとのフォルダーがあります。Pocketpair が公式 FAQ で案内しているパスです。以下では Steam Deck でのパス、各ファイルの役割、協力プレイでの違い、そしてワールドのバックアップを保つ方法を説明します。
+PC（Steam）版の Palworld は、セーブデータを `%LOCALAPPDATA%\Pal\Saved\SaveGames\<あなたの Steam ID>` に保存し、その中にワールドごとのフォルダーがあります。Pocketpair が公式 FAQ で案内しているパスです。以下では Steam Deck でのパス、各ファイルの役割、協力プレイでの違い、そしてワールドをバックアップしながら PC と Steam Deck で同期する方法を説明します。
 
 ## Palworld のセーブデータの場所
 

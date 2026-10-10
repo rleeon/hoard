@@ -1,11 +1,11 @@
 ---
 title: "漫威蜘蛛侠 2（Marvel's Spider-Man 2）存档位置（PC 与 Steam Deck）"
-description: "Marvel's Spider-Man 2 的 PC 存档位置、那个长数字文件夹是什么、OneDrive 的陷阱、Steam Deck 上的路径，以及如何备份存档。"
+description: "Marvel's Spider-Man 2 的 PC 存档位置、那个长数字文件夹是什么、OneDrive 的陷阱、Steam Deck 上的路径，以及如何备份和同步存档。"
 order: 22
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-在 PC 上，Marvel's Spider-Man 2 把存档放在 `文档\Marvel's Spider-Man 2\` 里一个以长数字命名的子文件夹中。在 Steam 上，这个数字就是你的 Steam ID。下面介绍这在实际中意味着什么、OneDrive 的陷阱、Steam Deck 上的路径，以及如何让存档一直有备份。
+在 PC 上，Marvel's Spider-Man 2 把存档放在 `文档\Marvel's Spider-Man 2\` 里一个以长数字命名的子文件夹中。在 Steam 上，这个数字就是你的 Steam ID。下面介绍这在实际中意味着什么、OneDrive 的陷阱、Steam Deck 上的路径，以及如何让存档一直有备份，并在 PC 和 Steam Deck 之间保持同步。
 
 ## Marvel's Spider-Man 2 的存档位置
 

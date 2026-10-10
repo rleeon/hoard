@@ -1,11 +1,11 @@
 ---
 title: "Marvel's Spider-Man 2: Speicherort der Spielstände (PC & Steam Deck)"
-description: "Wo Marvel's Spider-Man 2 seine PC-Spielstände ablegt, was der Ordner mit der langen Zahl ist, die OneDrive-Falle, der Pfad auf dem Steam Deck und Backups."
+description: "Wo Marvel's Spider-Man 2 seine PC-Spielstände ablegt, was der Ordner mit der langen Zahl ist, die OneDrive-Falle, der Steam-Deck-Pfad, Backup und Sync."
 order: 22
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Auf dem PC legt Marvel's Spider-Man 2 seine Spielstände in `Dokumente\Marvel's Spider-Man 2\` ab, in einem Unterordner mit einer langen Zahl. Bei Steam ist diese Zahl deine Steam-ID. Darunter erfährst du, was das praktisch bedeutet, die OneDrive-Falle, den Pfad auf dem Steam Deck und wie du die Spielstände gesichert hältst.
+Auf dem PC legt Marvel's Spider-Man 2 seine Spielstände in `Dokumente\Marvel's Spider-Man 2\` ab, in einem Unterordner mit einer langen Zahl. Bei Steam ist diese Zahl deine Steam-ID. Darunter erfährst du, was das praktisch bedeutet, die OneDrive-Falle, den Pfad auf dem Steam Deck und wie du die Spielstände gesichert und zwischen PC und Steam Deck synchron hältst.
 
 ## Wo Marvel's Spider-Man 2 seine Spielstände ablegt
 

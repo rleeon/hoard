@@ -1,11 +1,11 @@
 ---
 title: "博德之门 3（Baldur's Gate 3）存档位置（PC 与 Steam Deck）"
-description: "Baldur's Gate 3 在 Windows、Steam Deck 和 Mac 上的存档位置，哪些是存档、哪些是 Mod 或设置，荣誉模式，以及如何备份存档。"
+description: "Baldur's Gate 3 在 Windows、Steam Deck 和 Mac 上的存档位置，哪些是存档、哪些是 Mod 或设置，荣誉模式，以及如何备份和同步存档。"
 order: 23
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-在 Windows 上，Baldur's Gate 3 把存档放在 `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`，每个存档一个文件夹。这是 Larian 在官方支持 FAQ 中给出的路径。下面是 Steam Deck 和 Mac 上的路径、存档旁边都有什么、荣誉模式，以及如何把一切都备份好。
+在 Windows 上，Baldur's Gate 3 把存档放在 `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`，每个存档一个文件夹。这是 Larian 在官方支持 FAQ 中给出的路径。下面是 Steam Deck 和 Mac 上的路径、存档旁边都有什么、荣誉模式，以及如何把一切都备份好，并在 PC 和 Steam Deck 之间保持同步。
 
 ## Baldur's Gate 3 的存档位置
 

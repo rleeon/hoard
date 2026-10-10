@@ -1,11 +1,11 @@
 ---
 title: "红色沙漠（Crimson Desert）存档位置（PC 与 Steam Deck）"
-description: "Crimson Desert 在 Windows、Steam Deck 和 Mac 上的存档位置，哪个文件夹真正存放存档，以及如何备份存档或在 PC 之间迁移。"
+description: "Crimson Desert 在 Windows、Steam Deck 和 Mac 上的存档位置，哪个文件夹真正存放存档，以及如何备份存档并在 PC 之间同步。"
 order: 21
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-在 Windows 上，Crimson Desert 把存档放在 `%LOCALAPPDATA%\Pearl Abyss\CD\save`。这是 Pearl Abyss 在其官方 FAQ 中给出的文件夹。下面是 Steam Deck 和 Mac 上的路径、里面有什么，以及如何让它一直有备份。
+在 Windows 上，Crimson Desert 把存档放在 `%LOCALAPPDATA%\Pearl Abyss\CD\save`。这是 Pearl Abyss 在其官方 FAQ 中给出的文件夹。下面是 Steam Deck 和 Mac 上的路径、里面有什么，以及如何让它一直有备份，并在 PC 和 Steam Deck 之间保持同步。
 
 ## Crimson Desert 的存档位置
 

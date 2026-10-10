@@ -1,11 +1,11 @@
 ---
 title: "Cyberpunk 2077: Speicherort der Spielstände (PC & Steam Deck)"
-description: "Wo Cyberpunk 2077 seine Spielstände unter Windows, auf dem Steam Deck und dem Mac ablegt, was in den Ordnern steckt und wie du sie sicherst oder umziehst."
+description: "Wo Cyberpunk 2077 seine Spielstände unter Windows, Steam Deck und Mac ablegt, was in den Ordnern steckt und wie du sie sicherst und synchronisierst."
 order: 20
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Unter Windows legt Cyberpunk 2077 seine Spielstände in `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077` ab, ein Ordner pro Spielstand. Das ist die kurze Antwort. Der Rest der Seite behandelt die Pfade auf Steam Deck und Mac, was wirklich im Ordner liegt und wie du ihn gesichert hältst.
+Unter Windows legt Cyberpunk 2077 seine Spielstände in `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077` ab, ein Ordner pro Spielstand. Das ist die kurze Antwort. Der Rest der Seite behandelt die Pfade auf Steam Deck und Mac, was wirklich im Ordner liegt und wie du ihn gesichert und zwischen PC und Steam Deck synchron hältst.
 
 ## Wo Cyberpunk 2077 seine Spielstände ablegt
 

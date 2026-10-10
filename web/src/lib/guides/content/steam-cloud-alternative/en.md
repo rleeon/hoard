@@ -1,9 +1,9 @@
 ---
-title: "Steam Cloud alternative: back up the saves Steam doesn't"
-description: "Steam Cloud skips many games and keeps no history. Back up every game from any launcher, with versions you can roll back. In the cloud or self-hosted."
+title: "Steam Cloud alternative: sync and back up the saves Steam doesn't"
+description: "Steam Cloud skips many games and keeps no history. Sync and back up every game from any launcher between PCs and Steam Deck, with versions to roll back."
 order: 7
-updated: 2026-09-01
-related: sync-game-saves-across-pcs, restore-a-game-save, game-save-sync-comparison
+updated: 2026-10-09
+related: sync-game-saves-across-pcs, restore-a-game-save, game-save-sync-comparison, sync-saves-steam-deck-pc, epic-gog-cloud-saves
 ---
 
 Steam Cloud is genuinely good at the narrow job it does, and most people only find its edges the day they lose something. This guide explains exactly where those edges are, and what to do about the games that fall outside them.

@@ -2,7 +2,7 @@
 title: "如何备份和同步模拟器存档（RetroArch、Dolphin、PCSX2）"
 description: "在 PC 和 Steam Deck 之间备份与同步 RetroArch、Dolphin、PCSX2、DuckStation 等模拟器存档，保留版本历史，并列出各自的存档位置。"
 order: 6
-updated: 2026-10-01
+updated: 2026-10-09
 ---
 
 模拟器存档很容易丢失：存档文件和即时存档散落在各处的文件夹里，一次重装或换一台新电脑就可能抹掉多年的进度。Hoard 会自动备份它们，并在你的所有设备之间保持同步，包括 Steam Deck。
@@ -42,6 +42,8 @@ PCSX2 把记忆卡（`.ps2` 文件）写到 `memcards/`：
 
 一张记忆卡里存着你在上面玩过的所有游戏的存档，因此它作为一个整体迁移：恢复旧版本会回滚整张卡，而不是单个游戏。
 
+完整步骤（包括文件记忆卡和文件夹记忆卡）见 [PCSX2 云存档](/guides/pcsx2-cloud-saves)。
+
 ### Dolphin 云存档（GameCube 和 Wii）
 
 GameCube 存档位于 `GC/`（记忆卡镜像或每张卡一个文件夹），Wii 存档位于模拟 NAND 的 `Wii/` 中：
@@ -49,6 +51,8 @@ GameCube 存档位于 `GC/`（记忆卡镜像或每张卡一个文件夹），Wi
 - Windows：`Documents\Dolphin Emulator\GC` 和 `\Wii`
 - Linux：`~/.local/share/dolphin-emu/GC` 和 `/Wii`
 - Steam Deck：`~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/`
+
+完整步骤（包括 GCI 文件夹和 Wii 的存储）见 [Dolphin 云存档](/guides/dolphin-cloud-saves)。
 
 ### DuckStation 云存档（PS1）
 

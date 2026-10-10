@@ -2,10 +2,10 @@
 title: "Comment restaurer une ancienne sauvegarde"
 description: "Sauvegarde corrompue, mod cassé ou choix regretté ? Revenez à une version antérieure de votre partie, pas à pas, sans perdre l'état actuel."
 order: 3
-updated: 2026-09-01
+updated: 2026-10-09
 ---
 
-Une mauvaise décision en jeu, un fichier corrompu ou un mod qui casse tout — parfois, il faut juste revenir en arrière. Comme Hoard conserve un historique complet des versions de chaque sauvegarde, en restaurer une plus ancienne prend quelques secondes.
+Une mauvaise décision en jeu, un fichier corrompu ou un mod qui casse tout — parfois, il faut juste revenir en arrière. Comme Hoard conserve un historique complet des versions de chaque sauvegarde, en restaurer une plus ancienne prend quelques secondes. Et comme cet historique vit sur le serveur et que toutes vos machines le partagent, vous pouvez revenir en arrière depuis n'importe quel PC ou Steam Deck, pas seulement celui où le problème est survenu.
 
 ## Restaurer une version précédente
 

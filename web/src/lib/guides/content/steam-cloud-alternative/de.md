@@ -1,8 +1,8 @@
 ---
-title: "Steam-Cloud-Alternative: sichere die Spielstände, die Steam nicht sichert"
-description: "Steam Cloud lässt viele Spiele aus und hat keinen Verlauf. Sichere jedes Spiel aus jedem Launcher, mit Versionen zum Zurücksetzen. Cloud oder selbst gehostet."
+title: "Steam-Cloud-Alternative: synchronisiere und sichere die Spielstände, die Steam nicht sichert"
+description: "Steam Cloud lässt viele Spiele aus und hat keinen Verlauf. Synchronisiere und sichere jedes Spiel aus jedem Launcher zwischen PCs und Steam Deck, mit Versionen."
 order: 7
-updated: 2026-09-01
+updated: 2026-10-09
 ---
 
 Steam Cloud macht die eng umrissene Aufgabe, die sie hat, wirklich gut, und die meisten stoßen erst an dem Tag an ihre Grenzen, an dem etwas verloren geht. Diese Anleitung zeigt, wo diese Grenzen liegen und was mit den Spielen zu tun ist, die dahinter liegen.

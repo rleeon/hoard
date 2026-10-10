@@ -1,11 +1,11 @@
 ---
 title: "赛博朋克 2077（Cyberpunk 2077）存档位置（PC 与 Steam Deck）"
-description: "Cyberpunk 2077 在 Windows、Steam Deck 和 Mac 上的存档位置，各文件夹里有什么，以及如何备份存档或在 PC 之间迁移。"
+description: "Cyberpunk 2077 在 Windows、Steam Deck 和 Mac 上的存档位置，各文件夹里有什么，以及如何备份存档并在 PC 之间同步。"
 order: 20
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-在 Windows 上，Cyberpunk 2077 把存档放在 `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077`，每个存档一个文件夹。这是简短的答案。本页其余部分介绍 Steam Deck 和 Mac 上的路径、文件夹里实际有什么，以及如何让它一直有备份。
+在 Windows 上，Cyberpunk 2077 把存档放在 `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077`，每个存档一个文件夹。这是简短的答案。本页其余部分介绍 Steam Deck 和 Mac 上的路径、文件夹里实际有什么，以及如何让它一直有备份，并在 PC 和 Steam Deck 之间保持同步。
 
 ## Cyberpunk 2077 的存档位置
 

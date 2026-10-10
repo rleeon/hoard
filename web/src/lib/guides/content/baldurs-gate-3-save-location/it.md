@@ -1,11 +1,11 @@
 ---
 title: "Dove sono i salvataggi di Baldur's Gate 3 (PC e Steam Deck)"
-description: "Dove Baldur's Gate 3 tiene i salvataggi su Windows, Steam Deck e Mac, cosa è salvataggio e cosa sono mod o impostazioni, la modalità Onore e il backup."
+description: "Dove Baldur's Gate 3 tiene i salvataggi su Windows, Steam Deck e Mac, cosa è salvataggio e cosa sono mod o impostazioni, la modalità Onore, backup e sync."
 order: 23
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Su Windows, Baldur's Gate 3 tiene i salvataggi in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`, una cartella per salvataggio. È il percorso che Larian indica nella propria FAQ di supporto. Qui sotto trovi i percorsi su Steam Deck e Mac, cosa c'è accanto ai salvataggi, la modalità Onore e come tenere tutto al sicuro.
+Su Windows, Baldur's Gate 3 tiene i salvataggi in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`, una cartella per salvataggio. È il percorso che Larian indica nella propria FAQ di supporto. Qui sotto trovi i percorsi su Steam Deck e Mac, cosa c'è accanto ai salvataggi, la modalità Onore e come tenere tutto al sicuro e sincronizzato tra PC e Steam Deck.
 
 ## Dove Baldur's Gate 3 tiene i salvataggi
 

@@ -1,11 +1,11 @@
 ---
 title: "Emplacement des sauvegardes de Marvel's Spider-Man 2 (PC et Steam Deck)"
-description: "Où Marvel's Spider-Man 2 range ses sauvegardes sur PC, ce qu'est le dossier au long numéro, le piège OneDrive, le chemin sur Steam Deck et comment sauvegarder."
+description: "Où Marvel's Spider-Man 2 range ses sauvegardes PC, le dossier au long numéro, le piège OneDrive, le chemin sur Steam Deck, la sauvegarde et la synchro."
 order: 22
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-Sur PC, Marvel's Spider-Man 2 range ses sauvegardes dans `Documents\Marvel's Spider-Man 2\`, dans un sous-dossier au long numéro. Sur Steam, ce numéro est votre identifiant Steam. Voici ce que cela implique, le piège OneDrive, le chemin sur Steam Deck et comment garder vos sauvegardes à l'abri.
+Sur PC, Marvel's Spider-Man 2 range ses sauvegardes dans `Documents\Marvel's Spider-Man 2\`, dans un sous-dossier au long numéro. Sur Steam, ce numéro est votre identifiant Steam. Voici ce que cela implique, le piège OneDrive, le chemin sur Steam Deck et comment garder vos sauvegardes à l'abri et synchronisées entre votre PC et votre Steam Deck.
 
 ## Où Marvel's Spider-Man 2 range ses sauvegardes
 

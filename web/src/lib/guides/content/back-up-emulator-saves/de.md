@@ -2,7 +2,7 @@
 title: "So sicherst und synchronisierst du Emulator-Spielstände (RetroArch, Dolphin, PCSX2)"
 description: "Emulator-Spielstände zwischen PCs und Steam Deck sichern und syncen: RetroArch, Dolphin, PCSX2, DuckStation und mehr, mit Verlauf und allen Speicherorten."
 order: 6
-updated: 2026-10-01
+updated: 2026-10-09
 ---
 
 Emulator-Spielstände gehen leicht verloren: Speicherdateien und Savestates liegen in verstreuten Ordnern, und eine Neuinstallation oder ein neuer PC kann Jahre an Fortschritt löschen. Hoard sichert sie automatisch und hält sie zwischen deinen Rechnern synchron, Steam Deck eingeschlossen.
@@ -42,6 +42,8 @@ PCSX2 schreibt Memory Cards (`.ps2`-Dateien) nach `memcards/`:
 
 Eine Memory Card enthält die Stände aller Spiele, die du darauf gespielt hast, und reist deshalb als ein Stück: Eine ältere Version wiederherzustellen setzt die ganze Karte zurück, nicht ein einzelnes Spiel.
 
+Die ganze Anleitung, mit Datei- und Ordnerkarten: [PCSX2-Cloud-Speicherstände](/guides/pcsx2-cloud-saves).
+
 ### Dolphin Cloud-Saves (GameCube und Wii)
 
 GameCube-Stände liegen unter `GC/` (Memory-Card-Abbilder oder ein Ordner pro Karte), Wii-Stände im emulierten NAND unter `Wii/`:
@@ -49,6 +51,8 @@ GameCube-Stände liegen unter `GC/` (Memory-Card-Abbilder oder ein Ordner pro Ka
 - Windows: `Dokumente\Dolphin Emulator\GC` und `\Wii`
 - Linux: `~/.local/share/dolphin-emu/GC` und `/Wii`
 - Steam Deck: `~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/`
+
+Die ganze Anleitung, mit GCI-Ordnern und dem Speicher der Wii: [Dolphin-Cloud-Speicherstände](/guides/dolphin-cloud-saves).
 
 ### DuckStation Cloud-Saves (PS1)
 

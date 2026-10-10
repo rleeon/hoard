@@ -1,11 +1,11 @@
 ---
 title: "Onde ficam os saves de Marvel's Spider-Man 2 (PC e Steam Deck)"
-description: "Onde o Marvel's Spider-Man 2 guarda os saves no PC, o que é a pasta do número longo, a armadilha do OneDrive, o caminho na Steam Deck e como fazer backup."
+description: "Onde o Marvel's Spider-Man 2 guarda os saves no PC, a pasta do número longo, a armadilha do OneDrive, o caminho na Steam Deck, backup e sincronização."
 order: 22
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 
-No PC, o Marvel's Spider-Man 2 guarda os saves em `Documentos\Marvel's Spider-Man 2\`, dentro de uma subpasta com um número longo. No Steam, esse número é o teu ID do Steam. Abaixo tens o que isso significa na prática, a armadilha do OneDrive, o caminho na Steam Deck e como manter os saves sempre com backup.
+No PC, o Marvel's Spider-Man 2 guarda os saves em `Documentos\Marvel's Spider-Man 2\`, dentro de uma subpasta com um número longo. No Steam, esse número é o teu ID do Steam. Abaixo tens o que isso significa na prática, a armadilha do OneDrive, o caminho na Steam Deck e como manter os saves com backup e sincronizados entre o PC e a Steam Deck.
 
 ## Onde o Marvel's Spider-Man 2 guarda os saves
 

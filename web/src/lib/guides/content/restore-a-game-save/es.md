@@ -2,10 +2,10 @@
 title: "Cómo restaurar una partida guardada anterior"
 description: "¿Partida corrupta, un mod roto o una decisión que lamentas? Vuelve a una versión anterior de tu partida, paso a paso, sin perder lo que tienes ahora."
 order: 3
-updated: 2026-09-01
+updated: 2026-10-09
 ---
 
-Una mala decisión en el juego, un archivo corrupto o un mod que lo rompe todo: a veces solo necesitas volver atrás. Como Hoard guarda un historial completo de versiones de cada partida, restaurar una anterior lleva segundos.
+Una mala decisión en el juego, un archivo corrupto o un mod que lo rompe todo: a veces solo necesitas volver atrás. Como Hoard guarda un historial completo de versiones de cada partida, restaurar una anterior lleva segundos. Y como ese historial vive en el servidor y lo comparten todas tus máquinas, puedes volver atrás desde cualquier PC o Steam Deck, no solo desde el que dio el problema.
 
 ## Restaurar una versión anterior
 

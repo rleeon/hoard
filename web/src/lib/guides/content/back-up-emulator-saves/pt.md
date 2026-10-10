@@ -2,7 +2,7 @@
 title: "Como fazer backup e sincronizar saves de emuladores (RetroArch, Dolphin, PCSX2)"
 description: "Backup e sincronização de saves de emuladores entre PC e Steam Deck: RetroArch, Dolphin, PCSX2, DuckStation e mais, com histórico e onde cada um grava."
 order: 6
-updated: 2026-10-01
+updated: 2026-10-09
 ---
 
 Os saves de emulador perdem-se com facilidade: ficheiros de save e save states vivem em pastas espalhadas, e uma reinstalação ou um PC novo podem apagar anos de progresso. O Hoard faz backup deles automaticamente e mantém-nos sincronizados entre as tuas máquinas, Steam Deck incluída.
@@ -42,6 +42,8 @@ O PCSX2 escreve as memory cards (ficheiros `.ps2`) em `memcards/`:
 
 Uma memory card guarda os saves de todos os jogos que jogaste nela, por isso viaja como uma peça única: restaurar uma versão anterior recua a card inteira, não um jogo só.
 
+O guia completo, com cartões de ficheiro e de pasta: [saves na nuvem para o PCSX2](/guides/pcsx2-cloud-saves).
+
 ### Saves na nuvem do Dolphin (GameCube e Wii)
 
 Os saves de GameCube vivem em `GC/` (imagens de memory card ou uma pasta por card) e os de Wii na NAND emulada, em `Wii/`:
@@ -49,6 +51,8 @@ Os saves de GameCube vivem em `GC/` (imagens de memory card ou uma pasta por car
 - Windows: `Documentos\Dolphin Emulator\GC` e `\Wii`
 - Linux: `~/.local/share/dolphin-emu/GC` e `/Wii`
 - Steam Deck: `~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/`
+
+O guia completo, com pastas GCI e a memória da Wii: [saves na nuvem para o Dolphin](/guides/dolphin-cloud-saves).
 
 ### Saves na nuvem do DuckStation (PS1)
 
