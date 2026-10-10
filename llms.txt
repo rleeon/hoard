@@ -1,0 +1,62 @@
+# Hoard
+
+> Automatic, versioned game save sync across devices. Hoard watches the folders
+> your games save into, snapshots every change, and syncs those snapshots
+> between your machines. Steam, GOG, Epic, itch, emulators and 20,000+ games
+> from the community save-location manifest. Use the hosted Hoard Cloud, or run
+> the same open-source server yourself with no account and no quota.
+
+Free and open source under AGPL-3.0. Windows, Linux, macOS and Steam Deck.
+Every session becomes a new version you can roll back to, deduplicated by
+content hash so ten versions of a 2 GB save cost about 2 GB, not 20.
+
+Where Hoard is not the answer, and which tool to reach for instead, is laid
+out in the comparison guide below.
+
+
+## Guides
+
+- [How to self-host Hoard with Docker](https://hoard.services/guides/self-host-hoard): Run your own Hoard server with Docker Compose and sync saves between all your devices through it: free, open source, no account with us and no quota.
+- [How to back up your game saves automatically](https://hoard.services/guides/back-up-game-saves): Back up PC game saves automatically after every session and sync them to your other PCs and Steam Deck, with version history, so nothing wipes your progress.
+- [How to sync game saves across multiple PCs](https://hoard.services/guides/sync-game-saves-across-pcs): Play on your desktop, laptop and Steam Deck without losing progress: sync game saves between PCs automatically, with version history. Step by step.
+- [How to restore an old game save](https://hoard.services/guides/restore-a-game-save): Corrupted save, bad mod or a choice you regret? Roll a game save back to an earlier version, step by step, without losing what's on your PC now.
+- [Game save sync compared: Hoard vs Ludusavi, Syncthing, OpenSave and the rest](https://hoard.services/guides/game-save-sync-comparison): Hoard, Ludusavi, Syncthing, OpenSave, GameSave Manager and more compared: what each does best, where each falls short, and a side-by-side table.
+- [Ludusavi alternative: automatic cloud sync for your game saves](https://hoard.services/guides/ludusavi-alternative): Ludusavi is great for local backups. Hoard adds automatic sync between PCs and Steam Deck with version history, built on the same save database.
+- [How to back up and sync emulator saves (RetroArch, Dolphin, PCSX2)](https://hoard.services/guides/back-up-emulator-saves): Back up and sync emulator saves between PCs and Steam Deck: RetroArch, Dolphin, PCSX2, DuckStation and more, with version history and where each one saves.
+- [Steam Cloud alternative: sync and back up the saves Steam doesn't](https://hoard.services/guides/steam-cloud-alternative): Steam Cloud skips many games and keeps no history. Sync and back up every game from any launcher between PCs and Steam Deck, with versions to roll back.
+- [OpenSave alternative: peer-to-peer or a server you own](https://hoard.services/guides/opensave-alternative): OpenSave syncs saves peer-to-peer; Hoard syncs through a server, ours or yours, and keeps every version. An honest look at when each design wins.
+- [Syncthing for game saves: what works and what breaks](https://hoard.services/guides/syncthing-game-saves): Syncthing is a great file syncer, but game saves break three of its assumptions. What goes wrong, the workarounds, and when a save-aware tool fits better.
+- [How to sync saves between Steam Deck and PC](https://hoard.services/guides/sync-saves-steam-deck-pc): Keep Steam Deck and PC saves in sync automatically, including non-Steam games, emulators and games without Steam Cloud. Setup, paths and traps.
+- [Where are PC game saves stored? Every common location](https://hoard.services/guides/where-are-pc-game-saves-stored): Where PC games keep their save files on Windows, Steam Deck, Linux and Mac, which launchers add their own folders, and how to find any game's saves fast.
+- [Corrupted game save? How to recover it](https://hoard.services/guides/recover-corrupted-game-save): A save that won't load isn't always gone. Where to find a working copy (game backups, Steam Cloud, Windows, OneDrive) and how never to be stuck again.
+- [How to transfer game saves to a new PC](https://hoard.services/guides/transfer-game-saves-to-new-pc): Moving to a new PC or reinstalling Windows? Bring every game save with you: what Steam Cloud covers, the manual way, the automatic way and the traps.
+- [RetroArch save sync: cloud saves across PC and Steam Deck](https://hoard.services/guides/retroarch-save-sync): Sync RetroArch saves and states between PC, Steam Deck and laptop: where .srm files live, built-in Cloud Sync vs automatic sync, and the traps.
+- [OneDrive and game saves: what breaks and how to fix it](https://hoard.services/guides/onedrive-game-saves): OneDrive moved your Documents and now saves fail, vanish or show up twice. Why it happens, how to fix it, and a better way to sync game saves.
+- [PCSX2 cloud saves: sync PS2 memory cards between PC and Steam Deck](https://hoard.services/guides/pcsx2-cloud-saves): PCSX2 has no cloud saves. Sync your PS2 memory cards automatically between PCs and Steam Deck, with version history: paths, folder cards and traps.
+- [Dolphin cloud saves: sync GameCube and Wii saves between PC and Steam Deck](https://hoard.services/guides/dolphin-cloud-saves): Dolphin has no cloud saves. Sync GameCube and Wii saves automatically between PCs and Steam Deck, with version history: paths, card types and traps.
+- [Sync game saves between Windows and Linux on a dual-boot PC](https://hoard.services/guides/dual-boot-game-saves): Same PC, two systems, two save folders. Keep game saves in sync between Windows and Linux automatically, why a shared NTFS folder breaks, and the traps.
+- [Sync saves between ROG Ally, Legion Go, MSI Claw and your PC](https://hoard.services/guides/rog-ally-legion-go-save-sync): Windows handhelds like the ROG Ally, Legion Go and MSI Claw are just PCs. Sync their game saves with your desktop automatically, with version history.
+- [Epic and GOG cloud saves: what they cover and how to sync the rest](https://hoard.services/guides/epic-gog-cloud-saves): Epic and GOG cloud saves work only for some games, only in their launchers, and keep no history. What they cover, and how to sync the rest automatically.
+- [Cyberpunk 2077 save location (PC & Steam Deck)](https://hoard.services/guides/cyberpunk-2077-save-location): Where Cyberpunk 2077 keeps its saves on Windows, Steam Deck and Mac, what each folder holds, and how to back them up and sync them between PCs.
+- [Crimson Desert save location (PC & Steam Deck)](https://hoard.services/guides/crimson-desert-save-location): Where Crimson Desert keeps its saves on Windows, Steam Deck and Mac, which folder actually holds them, and how to back them up and sync them between PCs.
+- [Marvel's Spider-Man 2 save location (PC & Steam Deck)](https://hoard.services/guides/spider-man-2-save-location): Where Marvel's Spider-Man 2 keeps its PC saves, what the long-number folder is, the OneDrive trap, the Steam Deck path, and how to back up and sync saves.
+- [Baldur's Gate 3 save location (PC & Steam Deck)](https://hoard.services/guides/baldurs-gate-3-save-location): Where Baldur's Gate 3 keeps its saves on Windows, Steam Deck and Mac, what's a save and what's mods or settings, Honour Mode, and how to back up and sync.
+- [Palworld save location (PC & Steam Deck)](https://hoard.services/guides/palworld-save-location): Where Palworld keeps its worlds on PC and Steam Deck, what each file is, how co-op worlds work, and how to back up your saves and sync them between PCs.
+
+## Product
+
+- [Download](https://hoard.services/download): Installers for Windows, Linux, macOS and Steam Deck.
+- [Pricing](https://hoard.services/pricing): Free tier, Pro, and what self-hosting costs instead (nothing).
+- [Command line](https://hoard.services/cli): The `hoard` CLI: track, back up, restore and inspect saves from a terminal.
+- [Help](https://hoard.services/help): Setup, troubleshooting and how detection works.
+
+## About
+
+- [Press kit](https://hoard.services/press): Ready-to-use descriptions, facts, screenshots and icons, and what changed in the latest release.
+- [Privacy](https://hoard.services/legal/privacy): What the service stores, for how long, and who runs it.
+- [Terms](https://hoard.services/legal/terms): Terms of service.
+
+## Source
+
+- [github.com/rleeon/hoard](https://github.com/rleeon/hoard): source, releases and issue tracker (AGPL-3.0).
+

@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../../favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png" />
+    <link rel="mask-icon" href="../../favicon.svg" color="#047857" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0f0c" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Per-page title/description/canonical/OG/hreflang come from <Seo>; see $lib/components/Seo.svelte. -->
+    <link href="../../_app/immutable/entry/start.BMYMWDTR.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DGEIpcTP.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ClLX-Rag.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/R9X0KGVz.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/OA8UcISh.js" rel="modulepreload">
+		<link href="../../_app/immutable/entry/app.BRGoEfj7.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Dp1pzeXC.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B3cuW3tw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Bzak7iHL.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BGm3o2nB.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Bjz-1iGz.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DHX6DgwL.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/6w4bZfJ6.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BxgiTDe6.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/0.Bfz42QVe.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DGu5OY79.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/C4BeUwog.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DUYqzPpD.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DgZMx88v.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DFXWib6p.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DYpJ3QNg.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DDQvHvP4.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ELWwMlEr.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/BAHKdjDo.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DVfNsEYW.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Cq3UCiMq.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/CwYcE6VZ.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/C0ba4Sys.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Dt0Wul04.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/TiSfKgeK.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/2.foMnFi-h.js" rel="modulepreload">
+		<link href="../../_app/immutable/nodes/8.BZkCfvtm.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/GzlLhF5P.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DXoKR6Zw.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B7zdsHEr.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/58PR3EdY.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/D7Znb56Z.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/ByCyWSuy.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/Bk7YKunx.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/B2OcOsSh.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/DTMqVQcA.js" rel="modulepreload">
+		<link href="../../_app/immutable/chunks/-0B91wyq.js" rel="modulepreload">
+		<link href="../../_app/env.js" rel="modulepreload">
+		<!--6rcv4m--><!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"如何备份和同步模拟器存档（RetroArch、Dolphin、PCSX2）","description":"在 PC 和 Steam Deck 之间备份与同步 RetroArch、Dolphin、PCSX2、DuckStation 等模拟器存档，保留版本历史，并列出各自的存档位置。","inLanguage":"zh","datePublished":"2026-10-09","dateModified":"2026-10-09","mainEntityOfPage":"https://hoard.services/zh/guides/back-up-emulator-saves","author":{"@type":"Organization","name":"Hoard","url":"https://hoard.services"},"publisher":{"@type":"Organization","name":"Hoard","logo":{"@type":"ImageObject","url":"https://hoard.services/icon.png"}}}</script><!----> <!----><script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","inLanguage":"zh","mainEntity":[{"@type":"Question","name":"Hoard 也会备份我的 ROM 吗？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>不会。它跟踪的是存档文件夹，而不是游戏文件。ROM 体积大、不会变化，而且你本来就有——没有需要版本管理的东西。\u003c/p>\n"}},{"@type":"Question","name":"PCSX2、Dolphin 或 DuckStation 内置云存档吗？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>没有。它们把存档写到本地文件夹，同步交给你自己。把同步工具指向上面列出的文件夹，存档就会跟着你在设备之间流转。\u003c/p>\n"}},{"@type":"Question","name":"RetroArch 有云同步吗？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>有，内置的 Cloud Sync，但需要一台你自己运行或租用的 WebDAV 服务器。如果你不想配置 WebDAV、想要可回滚的版本历史，或者也在用独立模拟器，Hoard 就是替代方案。\u003c/p>\n"}},{"@type":"Question","name":"在游戏模式下的 Steam Deck 上能用吗？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>能。引擎作为后台服务运行，所以退出游戏时会自动备份存档，无需打开窗口。Flatpak 和 EmuDeck 的文件夹与其他文件夹用法相同。\u003c/p>\n"}},{"@type":"Question","name":"我的模拟器是便携版，能用吗？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>能。手动添加可执行文件旁边的文件夹，Hoard 会像对待其他存档位置一样跟踪它。这在掌机上是常见配置。\u003c/p>\n"}},{"@type":"Question","name":"能在两台 PC 之间同步即时存档吗？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>能，Hoard 会同步。即时存档能否加载取决于两台设备上的模拟器版本是否一致，这是模拟器的限制，而不是同步的问题。存档文件没有这个问题。\u003c/p>\n"}},{"@type":"Question","name":"不在列表里的模拟器也能用吗？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>几乎可以肯定。常见模拟器会自动识别，其他的只要把 Hoard 指向其存档文件夹即可添加。\u003c/p>\n"}},{"@type":"Question","name":"自托管对模拟器有什么影响吗？","acceptedAnswer":{"@type":"Answer","text":"\u003cp>没有。同样的识别、同样的版本、同样的同步。只是存储归你所有。\u003c/p>\n"}}]}</script><!----><!----><!--gsrl61--><meta name="description" content="在 PC 和 Steam Deck 之间备份与同步 RetroArch、Dolphin、PCSX2、DuckStation 等模拟器存档，保留版本历史，并列出各自的存档位置。"/> <link rel="canonical" href="https://hoard.services/zh/guides/back-up-emulator-saves"/> <!--[--><link rel="alternate" hreflang="en" href="https://hoard.services/guides/back-up-emulator-saves"/><link rel="alternate" hreflang="es" href="https://hoard.services/es/guides/back-up-emulator-saves"/><link rel="alternate" hreflang="de" href="https://hoard.services/de/guides/back-up-emulator-saves"/><link rel="alternate" hreflang="fr" href="https://hoard.services/fr/guides/back-up-emulator-saves"/><link rel="alternate" hreflang="it" href="https://hoard.services/it/guides/back-up-emulator-saves"/><link rel="alternate" hreflang="ja" href="https://hoard.services/ja/guides/back-up-emulator-saves"/><link rel="alternate" hreflang="pt" href="https://hoard.services/pt/guides/back-up-emulator-saves"/><link rel="alternate" hreflang="zh" href="https://hoard.services/zh/guides/back-up-emulator-saves"/><!--]--> <link rel="alternate" hreflang="x-default" href="https://hoard.services/guides/back-up-emulator-saves"/> <meta property="og:type" content="article"/> <meta property="og:site_name" content="Hoard"/> <meta property="og:title" content="如何备份和同步模拟器存档（RetroArch、Dolphin、PCSX2） — Hoard"/> <meta property="og:description" content="在 PC 和 Steam Deck 之间备份与同步 RetroArch、Dolphin、PCSX2、DuckStation 等模拟器存档，保留版本历史，并列出各自的存档位置。"/> <meta property="og:url" content="https://hoard.services/zh/guides/back-up-emulator-saves"/> <meta property="og:image" content="https://hoard.services/icon.png"/> <meta property="og:image:alt" content="Hoard"/> <meta property="og:locale" content="zh_CN"/> <!--[--><meta property="og:locale:alternate" content="en_US"/><meta property="og:locale:alternate" content="es_ES"/><meta property="og:locale:alternate" content="de_DE"/><meta property="og:locale:alternate" content="fr_FR"/><meta property="og:locale:alternate" content="it_IT"/><meta property="og:locale:alternate" content="ja_JP"/><meta property="og:locale:alternate" content="pt_PT"/><!--]--> <meta name="twitter:card" content="summary"/> <meta name="twitter:title" content="如何备份和同步模拟器存档（RetroArch、Dolphin、PCSX2） — Hoard"/> <meta name="twitter:description" content="在 PC 和 Steam Deck 之间备份与同步 RetroArch、Dolphin、PCSX2、DuckStation 等模拟器存档，保留版本历史，并列出各自的存档位置。"/> <meta name="twitter:image" content="https://hoard.services/icon.png"/><!----><title>如何备份和同步模拟器存档（RetroArch、Dolphin、PCSX2） — Hoard</title>
+		<link href="../../_app/immutable/assets/0.okvyjsoB.css" rel="stylesheet">
+		<link href="../../_app/immutable/assets/SyncDiagram.De0fJm8n.css" rel="stylesheet">
+		<link href="../../_app/immutable/assets/8.9SD7pss8.css" rel="stylesheet">
+  </head>
+  <body class="antialiased">
+    <div style="display: contents"><!--[--><!--[0--><!--[--><div class="lang-fade relative isolate flex min-h-full flex-col text-ink " data-sveltekit-preload-data="hover"><a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent-deep focus:px-3 focus:py-2 focus:text-sm focus:text-white">Skip to content</a> <header class="sticky top-0 z-40 w-full transition-colors duration-300 bg-bg/80 backdrop-blur-md"><nav class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]"><a href="/zh" class="nav-pill glow pop-self group flex items-center ring-focus md:justify-self-start" aria-label="Hoard home"><span class="flex items-baseline text-[23px] font-semibold tracking-[-0.02em] text-ink"><svg viewBox="0 0 33 44" height="18" width="13.5" fill="var(--color-accent)" aria-hidden="true" class="mr-[3px] h-[0.78em] w-auto"><rect x="0" y="0" width="9" height="44"></rect><rect x="24" y="0" width="9" height="44"></rect><rect x="0" y="17" width="33" height="9"></rect></svg><!---->oard</span></a> <div class="hidden items-center gap-1 md:flex md:justify-self-center"><a href="/zh/download" class="nav-pill glow pop-self ring-focus text-sm text-ink-soft hover:text-ink">下载</a> <a href="/zh/pricing" class="nav-pill glow pop-self ring-focus text-sm text-ink-soft hover:text-ink">价格</a> <a href="/zh/cli" class="nav-pill glow pop-self ring-focus text-sm text-ink-soft hover:text-ink">CLI</a> <a href="/zh/guides" class="nav-pill glow pop-self ring-focus text-sm nav-pill-active">指南</a> <a href="/zh/help" class="nav-pill glow pop-self ring-focus text-sm text-ink-soft hover:text-ink">帮助</a></div> <div class="hidden items-center gap-3 md:flex md:justify-self-end"><details class="group relative svelte-1h32yp1"><summary class="nav-pill glow pop-self flex cursor-pointer list-none items-center gap-1.5 text-sm text-ink-soft ring-focus [&amp;::-webkit-details-marker]:hidden" aria-label="Language"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-anim="pop" class="lucide-icon lucide lucide-globe lang-globe h-4 w-4 transition-transform duration-300 ease-out rotate-0"><!--[--><!----><circle cx="12" cy="12" r="10"><!----></circle><!----><!----><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"><!----></path><!----><!----><path d="M2 12h20"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <span class="font-medium transition-colors duration-300 ">中文</span></summary> <div data-sveltekit-preload-data="tap" class="lang-menu absolute right-0 z-50 mt-2 min-w-40 overflow-hidden rounded-lg border border-line bg-bg/95 py-1 shadow-lg backdrop-blur-md svelte-1h32yp1"><!--[--><a href="/guides/back-up-emulator-saves" hreflang="en" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">English <!--[-1--><!--]--></a><a href="/es/guides/back-up-emulator-saves" hreflang="es" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Español <!--[-1--><!--]--></a><a href="/de/guides/back-up-emulator-saves" hreflang="de" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Deutsch <!--[-1--><!--]--></a><a href="/fr/guides/back-up-emulator-saves" hreflang="fr" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Français <!--[-1--><!--]--></a><a href="/it/guides/back-up-emulator-saves" hreflang="it" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Italiano <!--[-1--><!--]--></a><a href="/ja/guides/back-up-emulator-saves" hreflang="ja" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">日本語 <!--[-1--><!--]--></a><a href="/pt/guides/back-up-emulator-saves" hreflang="pt" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink-soft hover:text-ink">Português <!--[-1--><!--]--></a><a href="/zh/guides/back-up-emulator-saves" hreflang="zh" class="glow flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-ink/5 text-ink">中文 <!--[0--><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-check h-3.5 w-3.5 text-accent"><!--[--><!----><path d="M20 6 9 17l-5-5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!--]--></a><!--]--></div></details> <!--[0--><span class="h-9 w-24 animate-pulse rounded-md bg-ink/5"></span><!--]--> <a href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer" aria-label="Discord" title="Discord" class="glow pop-self grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#5865F2] text-white ring-focus transition-colors hover:bg-[#4752C4]"><svg class="h-[18px] w-[18px]" data-anim="pop" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.515.0699.0699 0 0 0-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 0 1 .0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 0 1-.0066.1276 12.2986 12.2986 0 0 1-1.873.8914.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 0 0 .0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 0 0 .0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"></path></svg><!----></a></div> <div class="flex items-center gap-1 md:hidden"><button class="glow anim-host pop-self grid h-10 w-auto min-w-10 place-items-center gap-1 rounded-lg px-2 text-ink-soft ring-focus hover:bg-ink/5" aria-label="Language" aria-expanded="false"><span class="flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-anim="pop" class="lucide-icon lucide lucide-globe lang-globe h-5 w-5 transition-transform duration-300 ease-out rotate-0"><!--[--><!----><circle cx="12" cy="12" r="10"><!----></circle><!----><!----><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"><!----></path><!----><!----><path d="M2 12h20"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <span class="font-mono text-[11px] uppercase transition-colors duration-300 ">zh</span></span></button> <button class="glow pop-self grid h-10 w-10 place-items-center rounded-lg text-ink-soft ring-focus hover:bg-ink/5" aria-label="Toggle menu" aria-expanded="false"><span class="relative h-5 w-5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-menu absolute inset-0 h-5 w-5 transition-all duration-300 opacity-100 rotate-0"><!--[--><!----><line x1="4" x2="20" y1="12" y2="12"><!----></line><!----><!----><line x1="4" x2="20" y1="6" y2="6"><!----></line><!----><!----><line x1="4" x2="20" y1="18" y2="18"><!----></line><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-x absolute inset-0 h-5 w-5 transition-all duration-300 opacity-0 -rotate-90"><!--[--><!----><path d="M18 6 6 18"><!----></path><!----><!----><path d="m6 6 12 12"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></span></button></div></nav> <!--[-1--><!--]--> <!--[-1--><!--]--> <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-line transition-opacity duration-500 ease-out" style="opacity: 0;" aria-hidden="true"></div></header><!----> <main id="main" class="relative z-10 flex-1"><!--[0--><!--[--><!--[--><!----> <article class="mx-auto max-w-2xl px-4 pb-16 pt-16 sm:px-6 sm:pb-24 sm:pt-24 2xl:pt-12"><a href="/zh/guides" class="anim-host inline-flex items-center gap-1.5 rounded-md text-sm text-ink-soft ring-focus transition-colors hover:text-ink"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-anim="pop" class="lucide-icon lucide lucide-arrow-left h-4 w-4"><!--[--><!----><path d="m12 19-7-7 7-7"><!----></path><!----><!----><path d="M19 12H5"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> 所有指南</a> <h1 class="mt-6 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">如何备份和同步模拟器存档（RetroArch、Dolphin、PCSX2）</h1> <!--[0--><p class="mt-3 font-mono text-xs uppercase tracking-[0.14em] text-ink-faint">更新于
+      2026-10-09</p><!--]--> <div class="prose mt-8 svelte-6rcv4m"><!----><p>模拟器存档很容易丢失：存档文件和即时存档散落在各处的文件夹里，一次重装或换一台新电脑就可能抹掉多年的进度。Hoard 会自动备份它们，并在你的所有设备之间保持同步，包括 Steam Deck。</p>
+<h2>Hoard 支持的模拟器</h2>
+<p>Hoard 处理标准的模拟器存档文件（<code>.srm</code>、<code>.sav</code>、记忆卡、按游戏划分的存档文件夹）以及即时存档。下面这些模拟器的存档位置它都已内置：</p>
+<ul>
+<li><strong>索尼：</strong> PCSX2（PS2）、DuckStation（PS1）、PPSSPP（PSP）、RPCS3（PS3）、shadPS4（PS4）、Vita3K（PS Vita）</li>
+<li><strong>任天堂：</strong> Dolphin（GameCube / Wii）、Cemu（Wii U）、Ryujinx、yuzu、Eden、Suyu、Citron 和 Sudachi（Switch）、Citra / Azahar（3DS）、melonDS（DS）、mGBA（GBA）、Project64（N64）</li>
+<li><strong>其他：</strong> RetroArch（多平台）、xemu（Xbox）、Flycast（Dreamcast）</li>
+</ul>
+<p>由于 Hoard 使用与 Ludusavi 相同的社区数据库来定位存档文件夹，许多路径都能自动识别。对于自定义的位置，你也可以手动指定文件夹。</p>
+<h2>设置模拟器存档备份</h2>
+<ol>
+<li><strong>安装 Hoard</strong>（Windows、macOS 或 Linux）并登录。</li>
+<li>打开<strong>库</strong>并添加你的模拟器；如果你更改了默认位置，请手动添加它的存档／即时存档文件夹。</li>
+<li>保持<strong>自动模式</strong>开启。Hoard 会在每次会话后备份，并保留版本历史。</li>
+<li>在其他 PC 上用同一账号安装 Hoard，这些存档就会在所有设备间同步——参见<a href="/zh/guides/sync-game-saves-across-pcs">如何在多台 PC 之间同步存档</a>。</li>
+</ol>
+<h2>模拟器用 Ludusavi？</h2>
+<p>Ludusavi 也能在本地备份模拟器存档，这方面它是很棒的免费选择。如果你还希望这些存档在设备之间自动同步，并在云端保留版本历史，而不用配置 Rclone，那就是 Hoard 派上用场的地方——请阅读完整的 <a href="/zh/guides/ludusavi-alternative">Ludusavi 与 Hoard 对比</a>。</p>
+<h2>各模拟器的云存档</h2>
+<p>下面这些独立模拟器都不会自己在设备之间同步存档：存档只是你磁盘上的普通文件。这其实是好事，因为任何监视正确文件夹的工具都能把它们带走。下面是各自的存档位置。“Steam Deck”指的是从 Discover 商店安装的 Flatpak 版本。</p>
+<h3>PCSX2 云存档（PS2）</h3>
+<p>PCSX2 把记忆卡（<code>.ps2</code> 文件）写到 <code>memcards/</code>：</p>
+<ul>
+<li>Windows：<code>Documents\PCSX2\memcards</code></li>
+<li>Linux：<code>~/.config/PCSX2/memcards</code></li>
+<li>Steam Deck：<code>~/.var/app/net.pcsx2.PCSX2/config/PCSX2/memcards</code></li>
+</ul>
+<p>一张记忆卡里存着你在上面玩过的所有游戏的存档，因此它作为一个整体迁移：恢复旧版本会回滚整张卡，而不是单个游戏。</p>
+<p>完整步骤（包括文件记忆卡和文件夹记忆卡）见 <a href="/zh/guides/pcsx2-cloud-saves">PCSX2 云存档</a>。</p>
+<h3>Dolphin 云存档（GameCube 和 Wii）</h3>
+<p>GameCube 存档位于 <code>GC/</code>（记忆卡镜像或每张卡一个文件夹），Wii 存档位于模拟 NAND 的 <code>Wii/</code> 中：</p>
+<ul>
+<li>Windows：<code>Documents\Dolphin Emulator\GC</code> 和 <code>\Wii</code></li>
+<li>Linux：<code>~/.local/share/dolphin-emu/GC</code> 和 <code>/Wii</code></li>
+<li>Steam Deck：<code>~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/</code></li>
+</ul>
+<p>完整步骤（包括 GCI 文件夹和 Wii 的存储）见 <a href="/zh/guides/dolphin-cloud-saves">Dolphin 云存档</a>。</p>
+<h3>DuckStation 云存档（PS1）</h3>
+<p>DuckStation 把记忆卡放在 <code>memcards/</code>，并且默认为每个游戏单独建一张卡，这非常适合同步：</p>
+<ul>
+<li>Windows：<code>Documents\DuckStation\memcards</code>（较新的版本使用 <code>%LOCALAPPDATA%\DuckStation\memcards</code>）</li>
+<li>Linux：<code>~/.local/share/duckstation/memcards</code></li>
+<li>Steam Deck：<code>~/.var/app/org.duckstation.DuckStation/</code> 下的 <code>data/</code> 或 <code>config/</code></li>
+</ul>
+<h3>RetroArch 存档同步</h3>
+<p>RetroArch 把 <code>saves/</code>（游戏内存档）和 <code>states/</code>（即时存档）分开。Hoard 跟踪存档文件夹；如果你也用即时存档，把 <code>states/</code> 作为单独的条目添加：</p>
+<ul>
+<li>Windows：<code>%APPDATA%\RetroArch</code>，便携版则在 <code>retroarch.exe</code> 旁边</li>
+<li>Linux：<code>~/.config/retroarch</code></li>
+<li>Steam Deck：<code>~/.var/app/org.libretro.RetroArch/config/retroarch</code>；如果是用 EmuDeck 配置的，则在 <code>~/Emulation/saves/retroarch</code></li>
+</ul>
+<p>RetroArch 还内置了 Cloud Sync，需要连接你自己提供的 WebDAV 服务器。如果你只用 RetroArch 且已有 WebDAV，这是个合理的选择。Hoard 不需要 WebDAV，保留可回滚的版本历史，并且也覆盖各独立模拟器。</p>
+<h3>PPSSPP（PSP）</h3>
+<p>存档放在 <code>PSP/SAVEDATA</code>，即时存档放在 <code>PSP/PPSSPP_STATE</code>：</p>
+<ul>
+<li>Windows：<code>Documents\PPSSPP\PSP\SAVEDATA</code>，便携版则在可执行文件旁的 <code>memstick\PSP\SAVEDATA</code></li>
+<li>Linux：<code>~/.config/ppsspp/PSP/SAVEDATA</code></li>
+<li>Steam Deck：<code>~/.var/app/org.ppsspp.PPSSPP/config/ppsspp/PSP/SAVEDATA</code></li>
+</ul>
+<h3>RPCS3（PS3）</h3>
+<p>存档位于 <code>dev_hdd0/home/00000001/savedata</code>：Windows 上在 RPCS3 文件夹内，Linux 和 Steam Deck 上在 <code>~/.config/rpcs3/</code> 下。</p>
+<h3>Switch 模拟器：Ryujinx、yuzu、Eden、Suyu、Citron、Sudachi</h3>
+<p>Ryujinx 把存档放在 <code>bis/user/save</code>（位于 <code>%APPDATA%\Ryujinx</code> 或 <code>~/.config/Ryujinx</code> 下）。yuzu 系列则使用各自文件夹中的 <code>nand/user/save</code>，位于 <code>%APPDATA%</code> 或 <code>~/.local/share</code> 下。</p>
+<p>这里有个陷阱。yuzu 式的目录结构是 <code>save/&lt;账户&gt;/&lt;用户档案&gt;/&lt;游戏ID&gt;/</code>，而用户档案 ID 是在模拟器首次运行时生成的，所以每次安装都不一样。如果在两台设备之间同步整个 <code>save/</code> 文件夹，每台都会在自己的档案旁边多出对方的档案，两边的游戏都看不到对方的进度。Hoard 则会深入到每个游戏自己的文件夹，因此无论档案叫什么，同一款游戏都能在设备之间对应上。</p>
+<h3>Citra 和 Azahar（3DS）</h3>
+<p>存档藏得很深，位于 <code>sdmc/Nintendo 3DS/&lt;id0&gt;/&lt;id1&gt;/title/…</code>，而 <code>id0</code>/<code>id1</code> 由模拟主机的密钥生成，所以同样因安装而异。Hoard 的处理方式与 Switch 相同：每个游戏一个条目，在设备之间配对。</p>
+<h3>其他</h3>
+<ul>
+<li><strong>Cemu（Wii U）：</strong><code>mlc01/usr/save</code>，位于 <code>%APPDATA%\Cemu</code> 或 <code>~/.local/share/Cemu</code> 下。</li>
+<li><strong>shadPS4（PS4）：</strong><code>savedata</code>，位于 <code>%APPDATA%\shadPS4</code> 或 <code>~/.local/share/shadPS4</code> 下。</li>
+<li>**Vita3K（PS Vita）：**其数据文件夹中的 <code>ux0/user/00/savedata</code>。</li>
+<li>**mGBA、melonDS 以及大多数卡带时代的模拟器：**除非另有设置，存档是 ROM 旁边的一个 <code>.sav</code>。请手动添加 ROM 文件夹中的存档。</li>
+</ul>
+<h2>Steam Deck 上的模拟器存档</h2>
+<p>在 Steam Deck 上，模拟器通常来自 Flatpak，所以它们的文件夹位于 <code>~/.var/app/&lt;id&gt;/</code>，而不是常见的 <code>~/.config</code> 或 <code>~/.local/share</code>。EmuDeck 会把一切集中到 <code>~/Emulation/saves/</code>，每个模拟器一个文件夹。无论哪种方式，添加一次文件夹，Hoard 就会持续监视。</p>
+<p>在掌机上最关键的一点：Hoard 的引擎作为后台服务运行，所以在游戏模式下退出游戏时，无需打开任何窗口就会完成备份。在台式机上玩完一局后拿起 Deck，存档已经在那里了。</p>
+<h2>存档文件和即时存档不是一回事</h2>
+<p>值得把两者分开，因为它们在迁移时表现不同：</p>
+<ul>
+<li><strong>存档文件</strong>（<code>.srm</code>、记忆卡、<code>SAVEDATA</code> 文件夹）是游戏自己的存档，由被模拟的主机写入。它可以在设备之间、模拟器版本之间顺利迁移。</li>
+<li><strong>即时存档</strong>是模拟器内存的快照。它依赖于模拟器的构建版本，往往还依赖于具体的核心，所以某个版本生成的即时存档可能在另一个版本中无法加载。</li>
+</ul>
+<p>Hoard 会备份两者。只是如果更新过的设备上的即时存档在旧版本设备上打不开，不必惊讶——保持各设备上模拟器版本一致，重要的进度依靠存档文件。</p>
+<h2>一个模拟器，许多游戏</h2>
+<p>一个模拟器就是承载几十款游戏的单个进程，这正是模拟器存档让“以正在运行的游戏为单位”思考的工具难以处理的原因。Hoard 会把各个游戏分开，而不是把整个模拟器当成一个整体，因此每款游戏都有自己的历史，而不是一堆每次启动任何游戏都会变化的混合数据。如果某个存档出了问题，你可以<a href="/zh/guides/restore-a-game-save">回滚到更早的版本</a>。</p>
+<h2>不经过我们服务器的模拟器备份</h2>
+<p>以上内容在你自己的服务器上同样适用：运行 <code>hoard-server</code>，把应用指向它，你的存档就会从你的设备直接存到你的磁盘。无需我们的账号，不向我们发送遥测，不经过我们的任何服务器。参见<a href="/zh/guides/self-host-hoard">如何自托管 Hoard</a>。</p>
+<h2>提示</h2>
+<p>即时存档依赖于特定的模拟器版本。请在各台 PC 上一致地更新模拟器，让同步过来的即时存档在任何地方都能正常加载。</p>
+<h2>常见问题</h2>
+<h3>Hoard 也会备份我的 ROM 吗？</h3>
+<p>不会。它跟踪的是存档文件夹，而不是游戏文件。ROM 体积大、不会变化，而且你本来就有——没有需要版本管理的东西。</p>
+<h3>PCSX2、Dolphin 或 DuckStation 内置云存档吗？</h3>
+<p>没有。它们把存档写到本地文件夹，同步交给你自己。把同步工具指向上面列出的文件夹，存档就会跟着你在设备之间流转。</p>
+<h3>RetroArch 有云同步吗？</h3>
+<p>有，内置的 Cloud Sync，但需要一台你自己运行或租用的 WebDAV 服务器。如果你不想配置 WebDAV、想要可回滚的版本历史，或者也在用独立模拟器，Hoard 就是替代方案。</p>
+<h3>在游戏模式下的 Steam Deck 上能用吗？</h3>
+<p>能。引擎作为后台服务运行，所以退出游戏时会自动备份存档，无需打开窗口。Flatpak 和 EmuDeck 的文件夹与其他文件夹用法相同。</p>
+<h3>我的模拟器是便携版，能用吗？</h3>
+<p>能。手动添加可执行文件旁边的文件夹，Hoard 会像对待其他存档位置一样跟踪它。这在掌机上是常见配置。</p>
+<h3>能在两台 PC 之间同步即时存档吗？</h3>
+<p>能，Hoard 会同步。即时存档能否加载取决于两台设备上的模拟器版本是否一致，这是模拟器的限制，而不是同步的问题。存档文件没有这个问题。</p>
+<h3>不在列表里的模拟器也能用吗？</h3>
+<p>几乎可以肯定。常见模拟器会自动识别，其他的只要把 Hoard 指向其存档文件夹即可添加。</p>
+<h3>自托管对模拟器有什么影响吗？</h3>
+<p>没有。同样的识别、同样的版本、同样的同步。只是存储归你所有。</p>
+<!----></div> <!--[0--><nav class="mt-14" aria-labelledby="related-guides"><h2 id="related-guides" class="font-display text-lg font-semibold text-ink">相关指南</h2> <ul class="mt-4 space-y-3"><!--[--><li><a href="/zh/guides/sync-game-saves-across-pcs" class="group flex items-start justify-between gap-4 rounded-xl border border-line bg-surface p-4 ring-focus transition-colors hover:border-line-strong"><div><p class="font-display font-semibold text-ink">如何在多台 PC 之间同步游戏存档</p> <p class="mt-1 text-sm leading-relaxed text-ink-soft">在台式机、笔记本和 Steam Deck 上游玩而不丢进度：在多台 PC 之间自动同步游戏存档并保留版本历史，分步讲解。</p></div> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-right mt-1 h-4 w-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent"><!--[--><!----><path d="M5 12h14"><!----></path><!----><!----><path d="m12 5 7 7-7 7"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></a></li><li><a href="/zh/guides/back-up-game-saves" class="group flex items-start justify-between gap-4 rounded-xl border border-line bg-surface p-4 ring-focus transition-colors hover:border-line-strong"><div><p class="font-display font-semibold text-ink">如何自动备份游戏存档</p> <p class="mt-1 text-sm leading-relaxed text-ink-soft">每次游戏结束后自动备份 PC 游戏存档，并同步到你的其他 PC 和 Steam Deck，附带版本历史，进度再也不会丢。</p></div> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-right mt-1 h-4 w-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent"><!--[--><!----><path d="M5 12h14"><!----></path><!----><!----><path d="m12 5 7 7-7 7"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></a></li><li><a href="/zh/guides/ludusavi-alternative" class="group flex items-start justify-between gap-4 rounded-xl border border-line bg-surface p-4 ring-focus transition-colors hover:border-line-strong"><div><p class="font-display font-semibold text-ink">Ludusavi 替代方案：游戏存档的自动云同步</p> <p class="mt-1 text-sm leading-relaxed text-ink-soft">Ludusavi 擅长本地备份。Hoard 基于同一份存档位置数据库，增加了 PC 与 Steam Deck 之间的自动同步和版本历史。</p></div> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-right mt-1 h-4 w-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent"><!--[--><!----><path d="M5 12h14"><!----></path><!----><!----><path d="m12 5 7 7-7 7"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></a></li><li><a href="/zh/guides/retroarch-save-sync" class="group flex items-start justify-between gap-4 rounded-xl border border-line bg-surface p-4 ring-focus transition-colors hover:border-line-strong"><div><p class="font-display font-semibold text-ink">在 PC 和 Steam Deck 之间同步 RetroArch 存档</p> <p class="mt-1 text-sm leading-relaxed text-ink-soft">在 PC、Steam Deck 和笔记本之间同步 RetroArch 的存档和即时存档：.srm 文件在哪里，内置云同步与自动同步的区别，以及常见陷阱。</p></div> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-right mt-1 h-4 w-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent"><!--[--><!----><path d="M5 12h14"><!----></path><!----><!----><path d="m12 5 7 7-7 7"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></a></li><li><a href="/zh/guides/pcsx2-cloud-saves" class="group flex items-start justify-between gap-4 rounded-xl border border-line bg-surface p-4 ring-focus transition-colors hover:border-line-strong"><div><p class="font-display font-semibold text-ink">PCSX2 云存档：在 PC 和 Steam Deck 之间同步 PS2 记忆卡</p> <p class="mt-1 text-sm leading-relaxed text-ink-soft">PCSX2 没有云存档。在 PC 和 Steam Deck 之间自动同步 PS2 记忆卡，并保留版本历史：存档路径、文件夹记忆卡和常见陷阱。</p></div> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-right mt-1 h-4 w-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent"><!--[--><!----><path d="M5 12h14"><!----></path><!----><!----><path d="m12 5 7 7-7 7"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></a></li><li><a href="/zh/guides/dolphin-cloud-saves" class="group flex items-start justify-between gap-4 rounded-xl border border-line bg-surface p-4 ring-focus transition-colors hover:border-line-strong"><div><p class="font-display font-semibold text-ink">Dolphin 云存档：在 PC 和 Steam Deck 之间同步 GameCube 和 Wii 存档</p> <p class="mt-1 text-sm leading-relaxed text-ink-soft">Dolphin 没有云存档。在 PC 和 Steam Deck 之间自动同步 GameCube 和 Wii 存档，并保留版本历史：存档路径、记忆卡类型和常见陷阱。</p></div> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-arrow-right mt-1 h-4 w-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent"><!--[--><!----><path d="M5 12h14"><!----></path><!----><!----><path d="m12 5 7 7-7 7"><!----></path><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----></a></li><!--]--></ul></nav><!--]--> <div class="mt-14 rounded-xl border border-line bg-surface p-6"><h2 class="font-display text-lg font-semibold text-ink">准备好保护并同步你的存档了吗？</h2> <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">下载 Hoard：自动、带版本的备份，加上在所有 PC 和 Steam Deck 之间同步的存档，几分钟就能设置好。</p> <a href="/zh/download" class="glow pop-self mt-4 inline-flex h-10 items-center rounded-lg bg-accent px-4 text-sm font-medium text-pine ring-focus transition-colors hover:bg-emerald-300">下载</a></div> <div class="reveal mt-6"><div class="tilt rounded-2xl border border-line bg-surface p-6 sm:p-8"><div class="relative mx-auto block w-full  svelte-ugsts4"><svg viewBox="0 0 300 210" role="img" aria-label="一份存档经由云端从一台设备传到另一台设备。" class="block w-full"><g><path d="M 75 52 C 75 96 45 96 45 140" class="conn svelte-ugsts4"></path><path d="M 75 52 C 75 96 150 96 150 140" class="conn svelte-ugsts4"></path><path d="M 75 52 C 75 96 255 96 255 140" class="conn svelte-ugsts4"></path></g><g><path d="M 225 52 C 225 96 45 96 45 140" class="conn svelte-ugsts4"></path><path d="M 225 52 C 225 96 150 96 150 140" class="conn svelte-ugsts4"></path><path d="M 225 52 C 225 96 255 96 255 140" class="conn svelte-ugsts4"></path></g><g aria-hidden="true"><rect class="hub-chip svelte-ugsts4" x="27" y="18" width="96" height="34" rx="8"></rect><text class="l-chip svelte-ugsts4" x="75" y="31">hoard-Cloud</text><text class="l-chip-sub svelte-ugsts4" x="75" y="42">login</text></g><g aria-hidden="true"><rect class="hub-chip svelte-ugsts4" x="177" y="18" width="96" height="34" rx="8"></rect><text class="l-chip svelte-ugsts4" x="225" y="31">hoard-server</text><text class="l-chip-sub svelte-ugsts4" x="225" y="42">self-host</text></g><g aria-hidden="true"><rect class="dev-chip svelte-ugsts4" x="13" y="140" width="64" height="24" rx="6"></rect><rect class="dev-chip svelte-ugsts4" x="118" y="140" width="64" height="24" rx="6"></rect><rect class="dev-chip svelte-ugsts4" x="223" y="140" width="64" height="24" rx="6"></rect><text class="l-chip svelte-ugsts4" x="45" y="157">Desktop</text><text class="l-chip svelte-ugsts4" x="150" y="157">Laptop</text><text class="l-chip svelte-ugsts4" x="255" y="157">Desktop</text></g></svg> <div class="save-dot svelte-ugsts4" aria-hidden="true"></div> <div class="save-dot svelte-ugsts4" aria-hidden="true"></div> <div class="save-dot svelte-ugsts4" aria-hidden="true"></div></div><!----></div></div></article><!--]--><!----><!--]--><!--]--><!----></main> <footer class="mt-auto border-t border-line" data-sveltekit-preload-code="viewport"><div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 grid-cols-2 md:grid-cols-4"><div class="col-span-2 md:col-span-1"><div class="flex items-center gap-2.5"><span class="flex items-baseline text-[23px] font-semibold tracking-[-0.02em] text-ink"><svg viewBox="0 0 33 44" height="18" width="13.5" fill="var(--color-accent)" aria-hidden="true" class="mr-[3px] h-[0.78em] w-auto"><rect x="0" y="0" width="9" height="44"></rect><rect x="24" y="0" width="9" height="44"></rect><rect x="0" y="17" width="33" height="9"></rect></svg><!---->oard</span> <span class="ml-1 rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[10px] tracking-wider text-ink-soft">v1.2.1</span></div> <p class="mt-3 max-w-xs text-sm leading-relaxed text-ink-soft">为你的游戏存档提供同步和带版本的备份。用 Rust 打造，开源。</p> <div class="mt-5 max-w-[13rem]"><!--[0--><a href="/zh/download" class="group anim-host inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors duration-200 ring-focus disabled:cursor-not-allowed disabled:opacity-50 active:brightness-95 bg-accent text-pine hover:bg-emerald-300 h-10 px-4 text-sm w-full glow pop-self" role="button" aria-disabled="false" tabindex="0"><!--[-1--><!--]--> <span class="inline-flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide-icon lucide lucide-download h-4 w-4" aria-hidden="true"><!--[--><!----><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"><!----></path><!----><!----><polyline points="7 10 12 15 17 10"><!----></polyline><!----><!----><line x1="12" x2="12" y1="15" y2="3"><!----></line><!----><!--]--><!--[--><!--[--><!--]--><!--]--></svg><!----> 免费下载<!----></span><!----></a><!--]--><!----></div></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">产品</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/zh/pricing">价格</a></li> <li><a class="link-underline hover:text-ink" href="/zh/download">下载</a></li> <li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard/blob/main/CHANGELOG.md" rel="noreferrer">更新日志</a></li> <li><a class="link-underline hover:text-ink" href="/zh/guides">指南</a></li> <li><a class="link-underline hover:text-ink" href="/zh/help">状态</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">公司</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="https://github.com/rleeon/hoard" rel="noreferrer">GitHub</a></li> <li><a class="link-underline hover:text-ink" href="https://discord.gg/BYpXT8v4rh" target="_blank" rel="noopener noreferrer">Discord</a></li> <li><a class="link-underline hover:text-ink" href="/zh/press">媒体资料</a></li> <li><a class="link-underline hover:text-ink" href="/zh/help">联系</a></li></ul></div> <div><h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">法律</h3> <ul class="mt-3 space-y-2 text-sm text-ink-soft"><li><a class="link-underline hover:text-ink" href="/zh/legal/terms">条款</a></li> <li><a class="link-underline hover:text-ink" href="/zh/legal/privacy">隐私</a></li> <li><a class="link-underline hover:text-ink" href="/zh/legal/subprocessors">次级处理方</a></li> <li><a class="link-underline hover:text-ink" href="/zh/legal/notice">法律声明</a></li></ul></div></div> <div class="border-t border-line"><p class="mx-auto max-w-6xl px-4 py-4 text-xs text-ink-faint sm:px-6">© 2026 Hoard · Raimundo León Oliva · AGPL-3.0</p></div></footer><!----></div><!--]--><!--]--> <!--[-1--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_16morvf = {
+						base: new URL("../..", location).pathname.slice(0, -1),
+						env: null
+					};
+
+					const element = document.currentScript.parentElement;
+
+					import("../../_app/env.js").then(({ env }) => {
+						__sveltekit_16morvf.env = env;
+
+						Promise.all([
+							import("../../_app/immutable/entry/start.BMYMWDTR.js"),
+							import("../../_app/immutable/entry/app.BRGoEfj7.js")
+						]).then(([kit, app]) => {
+							kit.start(app, element, {
+									node_ids: [0, 2, 8],
+									data: [null,null,null],
+									form: null,
+									error: null
+								});
+						});
+					});
+				}
+			</script>
+		</div>
+  </body>
+</html>
