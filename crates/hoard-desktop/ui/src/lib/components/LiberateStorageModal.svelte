@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { openUpgradePage } from "../stores/cloud";
   /**
    * The "free up space" dialog, the black box's escape hatch.
    *
@@ -62,13 +61,12 @@
     }
   }
 
-  // To the pricing page, behind this explicit button. There used to be an in-app
-  // plans screen in between so the browser would not open in the middle of
-  // something; its prices and limits had drifted from the real ones, and a wrong
-  // number is worse than a browser tab.
+  // To the app's pricing page, whose Continue opens the payment. An earlier
+  // in-app plans screen was dropped because its prices and limits drifted from
+  // the real ones; this one reads `lib/plans.ts`, which has to follow the server.
   function goPro() {
     onClose();
-    void openUpgradePage("pro");
+    push("/pricing");
   }
 </script>
 

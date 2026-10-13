@@ -10,11 +10,12 @@
    * the devices of an account it is not signed into).
    */
   import { _ } from "svelte-i18n";
+  import { push } from "svelte-spa-router";
   import { MonitorSmartphone } from "@lucide/svelte";
 
   import Modal from "./Modal.svelte";
   import Button from "./Button.svelte";
-  import { openUpgradePage, openWebAccount } from "../stores/cloud";
+  import { openWebAccount } from "../stores/cloud";
 
   type Props = {
     open: boolean;
@@ -70,7 +71,7 @@
     <Button
       onclick={() => {
         onClose();
-        void openUpgradePage("pro");
+        push("/pricing");
       }}
     >
       {$_("devices.limit_upgrade")}

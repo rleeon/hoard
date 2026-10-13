@@ -11,7 +11,7 @@
    */
   import { _ } from "svelte-i18n";
   import { Sparkles } from "@lucide/svelte";
-  import { openUpgradePage } from "../stores/cloud";
+  import { push } from "svelte-spa-router";
 
   type Props = {
     /** Which side the price opens on. The sidebar sits at the bottom of the
@@ -25,7 +25,7 @@
 <div class="group relative shrink-0">
   <button
     type="button"
-    onclick={() => openUpgradePage("pro")}
+    onclick={() => push("/pricing")}
     class="keep-emerald flex shrink-0 items-center gap-1 rounded-md bg-gradient-to-r from-emerald-400 to-teal-400 px-2.5 py-2 text-[11px] font-semibold text-emerald-950 shadow-sm shadow-emerald-500/30 transition-all hover:from-emerald-300 hover:to-teal-300 hover:shadow-emerald-500/50"
   >
     <Sparkles size={12} data-anim="pop" />

@@ -831,28 +831,6 @@
               </Button>
             </div>
           {/if}
-          {#if storageView.status === "purging" || storageView.status === "full"}
-            <div
-              class="mt-2 rounded-lg border p-2.5 {storageView.status === 'full'
-                ? 'border-red-500/70 bg-red-600/20'
-                : 'border-red-500/40 bg-red-500/10'}"
-            >
-              <p class="text-xs {storageView.status === 'full' ? 'text-red-100' : 'text-red-200/90'}">
-                {$_("account.storage_export_warning")}
-              </p>
-              <div class="mt-2">
-                <Button
-                  variant="secondary"
-                  loading={busyAction === "export" || exportBusy}
-                  disabled={busyAction !== null || exportBusy}
-                  onclick={handleExport}
-                >
-                  <Download size={14} data-anim="pop" />
-                  {$_("account.export_all")}
-                </Button>
-              </div>
-            </div>
-          {/if}
         </div>
       {/if}
 

@@ -47,6 +47,7 @@
   const loadAccount = () => import("./routes/Account.svelte");
   const loadHoardWrapped = () => import("./routes/HoardWrapped.svelte");
   const loadHoardHelp = () => import("./routes/HoardHelp.svelte");
+  const loadPricing = () => import("./routes/Pricing.svelte");
 
   /** Sugar so `loadingComponent` is not repeated on every route. */
   const lazy = (asyncComponent: () => Promise<unknown>) =>
@@ -174,6 +175,7 @@
     "/account": lazy(loadAccount),
     "/hoard-wrapped": lazy(loadHoardWrapped),
     "/hoard-help": lazy(loadHoardHelp),
+    "/pricing": lazy(loadPricing),
   };
 
   let booted = $state(false);
@@ -787,6 +789,7 @@
     "/account",
     "/hoard-wrapped",
     "/hoard-help",
+    "/pricing",
   ];
   const isAppRoute = $derived(
     APP_ROUTE_PREFIXES.some((p) => router.location.startsWith(p)),

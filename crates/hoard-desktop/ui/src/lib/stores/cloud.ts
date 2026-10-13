@@ -419,12 +419,13 @@ export async function openWebAccount(): Promise<void> {
 
 /** Open the payment page for this account, skipping the website.
  *
- *  The server turns the session we already have into a Polar checkout, so the
- *  buyer goes from the button to the card in one hop. Going through
- *  `/pricing` meant signing in a second time on the site, and that is where
- *  people gave up. The public page stays as the fallback: a self-hosted
- *  server sells nothing, and neither does an expired session. The optional
- *  `plan` is kept for future deep-linking but `/pricing` ignores it today. */
+ *  The server turns the session we already have into a Polar checkout, so
+ *  nobody signs in a second time on the site, which is where people gave up.
+ *  Only the app's own `/pricing` calls this, from its Continue button; every
+ *  Upgrade button opens that page first. The public page stays as the fallback: a
+ *  self-hosted server sells nothing, and neither does an expired session. The
+ *  optional `plan` is kept for future deep-linking but `/pricing` ignores it
+ *  today. */
 export async function openUpgradePage(
   plan?: "pro",
   interval: "month" | "year" = "month",
