@@ -33,7 +33,7 @@
         name: $_(f.q),
         acceptedAnswer: { '@type': 'Answer', text: $_(f.a) }
       }))
-    })}<\/script>`
+    }).replace(/</g, '\\u003c')}<\/script>`
   );
 
   let query = $state('');

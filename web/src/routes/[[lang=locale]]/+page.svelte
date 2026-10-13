@@ -103,7 +103,7 @@
           ]
         }
       ]
-    })}<\/script>`
+    }).replace(/</g, '\\u003c')}<\/script>`
   );
 </script>
 

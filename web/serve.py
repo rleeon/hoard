@@ -25,14 +25,23 @@ class SPAHandler(handler):
     def do_GET(self):
         path = self.translate_path(self.path)
         # GitHub Pages answers /download with download.html, the prerendered
-        # page; only an unknown route gets the SPA shell.
-        if not os.path.exists(path) and not os.path.splitext(self.path)[1]:
+        # page; only an unknown route gets the SPA shell. /es is both a
+        # directory and es.html, and the page is what wins: falling through
+        # to the directory handed out a listing of build/es/ instead.
+        servable = os.path.isfile(path) or os.path.isfile(os.path.join(path, "index.html"))
+        if not servable and not os.path.splitext(self.path)[1]:
             route, _, query = self.path.partition("?")
             if os.path.isfile(self.translate_path(route) + ".html"):
                 self.path = route + ".html" + ("?" + query if query else "")
             else:
                 self.path = "/200.html"
         super().do_GET()
+
+    # This listens on the LAN and the tailnet on purpose; an index of the
+    # build is not something anyone there needs.
+    def list_directory(self, path):
+        self.send_error(404)
+        return None
 
 def get_ips():
     ips = []

@@ -18,6 +18,9 @@ burst = 60
 # Per-device cap on the polling endpoints (sync/devices/notifications/
 # heartbeat), requests per minute per (user, device, endpoint). 0 disables.
 poll_per_minute = 10
+# A header the proxy overwrites on every request, to key the per-IP limit on
+# instead of X-Forwarded-For, which the client can write. On Fly:
+# client_ip_header = "fly-client-ip"
 
 [storage]
 # Not used in cloud mode (snapshots live in R2), but the field is required

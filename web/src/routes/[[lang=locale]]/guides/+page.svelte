@@ -22,7 +22,7 @@
         url: SITE_URL + withLocale(`/guides/${g.slug}`, active),
         name: g.title
       }))
-    })}<\/script>`
+    }).replace(/</g, '\\u003c')}<\/script>`
   );
 </script>
 

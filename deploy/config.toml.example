@@ -42,8 +42,9 @@ trusted_proxies = ["loopback"]
 # deployment should ALSO rate-limit at the reverse proxy. Note this limiter
 # still keys off X-Forwarded-For / X-Real-Ip / Forwarded regardless of
 # `trusted_proxies` above, falling back to the connection peer, it is a guard
-# against runaway clients, not against someone deliberately evading it. Omit
-# this table to keep the defaults below.
+# against runaway clients, not against someone deliberately evading it, unless
+# `client_ip_header` below names a header your proxy overwrites. Omit this
+# table to keep the defaults below.
 [server.rate_limit]
 # Master switch. Set to false to disable entirely.
 enabled = true
@@ -53,6 +54,11 @@ per_second = 20
 # Burst capacity: requests allowed back-to-back before the sustained rate
 # applies. Over the limit the server replies 429 Too Many Requests.
 burst = 60
+# A header your reverse proxy sets on every request, overwriting what the
+# client sent, and the only way in to the server: with nginx,
+# `proxy_set_header X-Real-IP $remote_addr;` and then "x-real-ip". The limit
+# is keyed on it instead of on X-Forwarded-For.
+# client_ip_header = "x-real-ip"
 
 [storage]
 # Directory where the SQLite DB, temp upload staging and (with the default

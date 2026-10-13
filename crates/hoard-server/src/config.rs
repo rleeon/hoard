@@ -98,6 +98,12 @@ pub struct RateLimitConfig {
     /// after the burst drains it converges to `poll_per_minute`.
     #[serde(default = "default_rate_limit_poll_burst")]
     pub poll_burst: u32,
+    /// A header the proxy in front sets on every request, overwriting
+    /// whatever the client sent, to key the per-IP limit on instead of
+    /// `X-Forwarded-For`. `fly-client-ip` on Fly. Unset keeps the old keying,
+    /// which any client can steer; see [`crate::ratelimit::ClientKey`].
+    #[serde(default)]
+    pub client_ip_header: Option<String>,
 }
 
 impl Default for RateLimitConfig {
@@ -108,6 +114,7 @@ impl Default for RateLimitConfig {
             burst: default_rate_limit_burst(),
             poll_per_minute: default_rate_limit_poll_per_minute(),
             poll_burst: default_rate_limit_poll_burst(),
+            client_ip_header: None,
         }
     }
 }

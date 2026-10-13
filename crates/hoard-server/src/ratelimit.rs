@@ -4,29 +4,93 @@
 //! brute force, not a substitute for a reverse-proxy or WAF limiter, which a
 //! production deployment should still run in front of the server.
 
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::http::{HeaderName, Request};
 use governor::middleware::NoOpMiddleware;
 use tower_governor::governor::{GovernorConfig, GovernorConfigBuilder};
-use tower_governor::key_extractor::SmartIpKeyExtractor;
-use tower_governor::GovernorLayer;
+use tower_governor::key_extractor::{KeyExtractor, PeerIpKeyExtractor, SmartIpKeyExtractor};
+use tower_governor::{GovernorError, GovernorLayer};
 
 use crate::config::RateLimitConfig;
 
 /// Concrete config type for our chosen key extractor + (no-op) middleware.
-type RlConfig = GovernorConfig<SmartIpKeyExtractor, NoOpMiddleware>;
+type RlConfig = GovernorConfig<ClientKey, NoOpMiddleware>;
+
+/// Whose bucket a request drains.
+///
+/// Without `client_ip_header`, [`SmartIpKeyExtractor`]: the leftmost
+/// `X-Forwarded-For` entry, then `X-Real-Ip`, then the peer. Any client writes
+/// those, which is enough for a loop guard and nothing more. Fly's proxy keeps
+/// a client's `X-Forwarded-For: 7.7.7.7` as the leftmost entry and passes
+/// `X-Real-Ip` through untouched, so on Hoard Cloud every anonymous route
+/// (`/v1/feedback`, `device/start`) had no limit at all for anyone who changed
+/// the header per request.
+///
+/// With it, that header alone, which must be one the proxy in front overwrites
+/// on every request: `fly-client-ip` on Fly, which replaced a client-sent
+/// `6.6.6.6` with the real address when checked on 13-10-2026. A request
+/// without it (a health check from inside Fly) counts against its peer.
+#[derive(Clone)]
+pub struct ClientKey {
+    header: Option<HeaderName>,
+}
+
+impl ClientKey {
+    fn from_config(cfg: &RateLimitConfig) -> Self {
+        let header = cfg
+            .client_ip_header
+            .as_deref()
+            .map(str::trim)
+            .filter(|h| !h.is_empty())
+            .and_then(|h| match HeaderName::from_bytes(h.as_bytes()) {
+                Ok(name) => Some(name),
+                Err(_) => {
+                    tracing::error!(
+                        header = h,
+                        "server.rate_limit.client_ip_header is not a valid header name; \
+                         keying on X-Forwarded-For as if it were unset"
+                    );
+                    None
+                }
+            });
+        Self { header }
+    }
+}
+
+impl KeyExtractor for ClientKey {
+    type Key = String;
+
+    fn extract<T>(&self, req: &Request<T>) -> Result<Self::Key, GovernorError> {
+        let Some(name) = &self.header else {
+            return SmartIpKeyExtractor.extract(req).map(|ip| ip.to_string());
+        };
+        let claimed = req
+            .headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.trim().parse::<IpAddr>().ok());
+        let ip = match claimed {
+            Some(ip) => ip,
+            None => PeerIpKeyExtractor.extract(req)?,
+        };
+        // Per /64 for IPv6, as the login throttle does: a household owns the
+        // whole prefix and would otherwise get a fresh bucket per address.
+        Ok(crate::clientip::throttle_bucket(ip))
+    }
+}
 
 /// Build a [`GovernorLayer`] from config, or `None` when rate limiting is
 /// disabled. Also spawns a background task that evicts idle per-IP buckets so a
 /// flood of distinct source IPs can't grow the limiter map without bound.
 ///
-/// Uses [`SmartIpKeyExtractor`], which keys off `X-Forwarded-For` / `X-Real-Ip`
-/// / `Forwarded` (the reverse-proxy case) and falls back to the socket peer IP.
-/// Because of that fallback the router **must** be served with
+/// Keys through [`ClientKey`], which falls back to the socket peer IP. Because
+/// of that fallback the router **must** be served with
 /// `into_make_service_with_connect_info::<SocketAddr>()`, otherwise the peer IP
 /// isn't available and extraction fails closed.
-pub fn layer(cfg: &RateLimitConfig) -> Option<GovernorLayer<SmartIpKeyExtractor, NoOpMiddleware>> {
+pub fn layer(cfg: &RateLimitConfig) -> Option<GovernorLayer<ClientKey, NoOpMiddleware>> {
     if !cfg.enabled {
         return None;
     }
@@ -47,7 +111,7 @@ pub fn layer(cfg: &RateLimitConfig) -> Option<GovernorLayer<SmartIpKeyExtractor,
         GovernorConfigBuilder::default()
             .period(period)
             .burst_size(burst)
-            .key_extractor(SmartIpKeyExtractor)
+            .key_extractor(ClientKey::from_config(cfg))
             .finish()
             .expect("rate-limit config (per_second/burst are clamped > 0)"),
     );
@@ -100,6 +164,94 @@ mod tests {
             burst: 1,
             ..Default::default()
         }
+    }
+
+    fn keyed_on(header: Option<&str>) -> ClientKey {
+        ClientKey::from_config(&RateLimitConfig {
+            client_ip_header: header.map(str::to_string),
+            ..Default::default()
+        })
+    }
+
+    fn request(headers: &[(&str, &str)]) -> Request<Body> {
+        let mut b = Request::builder().uri("/v1/feedback");
+        for (k, v) in headers {
+            b = b.header(*k, *v);
+        }
+        let mut req = b.body(Body::empty()).unwrap();
+        req.extensions_mut()
+            .insert(axum::extract::ConnectInfo(std::net::SocketAddr::from((
+                [172, 16, 0, 9],
+                40000,
+            ))));
+        req
+    }
+
+    /// What Fly delivered for a client that sent `X-Forwarded-For: 7.7.7.7`
+    /// and `X-Real-Ip: 8.8.8.8`: both kept, the real address only in
+    /// `Fly-Client-IP` and second from the right.
+    fn as_fly_delivers_it(real: &str) -> Request<Body> {
+        let xff = format!("7.7.7.7, {real}, 2001:db8:ffff::2");
+        request(&[
+            ("fly-client-ip", real),
+            ("x-forwarded-for", &xff),
+            ("x-real-ip", "8.8.8.8"),
+        ])
+    }
+
+    #[test]
+    fn behind_fly_the_spoofed_headers_are_ignored() {
+        let k = keyed_on(Some("fly-client-ip"));
+        assert_eq!(
+            k.extract(&as_fly_delivers_it("203.0.113.7")).unwrap(),
+            "203.0.113.7"
+        );
+    }
+
+    /// The bypass this closes: without the setting, the client's own header
+    /// is the key.
+    #[test]
+    fn unset_it_keeps_trusting_the_leftmost_entry() {
+        let k = keyed_on(None);
+        assert_eq!(
+            k.extract(&as_fly_delivers_it("203.0.113.7")).unwrap(),
+            "7.7.7.7"
+        );
+    }
+
+    #[test]
+    fn a_v6_client_is_one_bucket_per_64() {
+        let k = keyed_on(Some("fly-client-ip"));
+        let a = k
+            .extract(&as_fly_delivers_it(
+                "2001:db8:f60a:9e00:d0fe:45c5:180e:c0ee",
+            ))
+            .unwrap();
+        let b = k
+            .extract(&as_fly_delivers_it("2001:db8:f60a:9e00::1"))
+            .unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn without_the_header_the_peer_is_the_key() {
+        let k = keyed_on(Some("fly-client-ip"));
+        assert_eq!(
+            k.extract(&request(&[("x-forwarded-for", "7.7.7.7")]))
+                .unwrap(),
+            "172.16.0.9"
+        );
+        assert_eq!(
+            k.extract(&request(&[("fly-client-ip", "not-an-ip")]))
+                .unwrap(),
+            "172.16.0.9"
+        );
+    }
+
+    #[test]
+    fn a_bad_header_name_degrades_to_the_default() {
+        assert!(keyed_on(Some("not a header")).header.is_none());
+        assert!(keyed_on(Some("  ")).header.is_none());
     }
 
     async fn hit(app: &Router, method: &str, uri: &str) -> StatusCode {

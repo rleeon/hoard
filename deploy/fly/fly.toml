@@ -66,6 +66,10 @@ swap_size_mb = 256
   # runaway loops (the real cost control is the storage/bandwidth quota).
   HOARD__SERVER__RATE_LIMIT__PER_SECOND = "50"
   HOARD__SERVER__RATE_LIMIT__BURST = "600"
+  # Key the per-IP limit on the address Fly's proxy saw. X-Forwarded-For keeps
+  # whatever the client wrote as its leftmost entry, and that is what the
+  # limiter read: a client changing it per request was never limited.
+  HOARD__SERVER__RATE_LIMIT__CLIENT_IP_HEADER = "fly-client-ip"
   # On the volume, so it survives the restart that switches databases.
   HOARD__CLOUD__MAINTENANCE_FLAG = "/data/MAINTENANCE"
   # The rest of the machine belongs to Postgres: 93 MiB for the server at

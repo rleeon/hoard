@@ -40,7 +40,9 @@ marked.setOptions({ gfm: true, breaks: false });
 // entirely and rewrite any unsafe link/image URL to a harmless anchor. Pure-JS
 // and isomorphic, it holds at prerender (Node) and on client navigation, with
 // no extra runtime dependency (jsdom-based sanitizers break the SSR build).
-const SAFE_URL = /^(?:https?:|mailto:|tel:|#|\/|\.\/|\.\.\/)/i;
+// A lone leading `/` is a path on this site; `//host` and `/\host` are
+// another site with the scheme left out, so they fail like any other.
+const SAFE_URL = /^(?:https?:|mailto:|tel:|#|\/(?![/\\])|\.\/|\.\.\/)/i;
 
 marked.use({
   walkTokens(token) {
