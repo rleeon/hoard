@@ -248,18 +248,21 @@ pub(crate) async fn active_creds(app: &AppHandle) -> Result<Option<CloudCreds>> 
     let Some(state) = app.try_state::<AppState>() else {
         anyhow::bail!("the Hoard service link isn't up yet");
     };
-    active_creds_via(&state.daemon).await
+    active_creds_via(&state).await
 }
 
-/// [`active_creds`] for whoever has the link but not the `AppHandle` (the commands
+/// [`active_creds`] for whoever has the state but not the `AppHandle` (the commands
 /// that only receive `State<AppState>`).
-pub(crate) async fn active_creds_via(
-    daemon: &crate::daemon::DaemonLink,
-) -> Result<Option<CloudCreds>> {
+///
+/// Every token this process uses passes through here, so this is also where the
+/// sync context follows the account the token belongs to
+/// ([`crate::commands::library::follow_cloud_token`]).
+pub(crate) async fn active_creds_via(state: &AppState) -> Result<Option<CloudCreds>> {
     let Some(info) = session_info()? else {
         return Ok(None);
     };
-    let token = daemon.cloud_token(None).await?;
+    let token = state.daemon.cloud_token(None).await?;
+    crate::commands::library::follow_cloud_token(state, &token.access_token);
     Ok(Some(CloudCreds {
         access_token: token.access_token,
         server_url: token.server_url,

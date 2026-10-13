@@ -44,10 +44,12 @@ use crate::api::Whoami;
 use crate::config::CliConfig;
 use crate::keychain::{keyring_op, KeyringTimeout, KeyringUnreadable, KEYRING_TIMEOUT};
 
+const KEYRING_BASE: &str = "hoard-desktop";
 /// Per profile (`HOARD_PROFILE`), like the directories: a staging build must not
-/// overwrite the entry the installed Hoard reads.
+/// overwrite the entry the installed Hoard reads. And per sandbox, for the same
+/// reason: see [`crate::config::keyring_name`].
 fn keyring_service() -> String {
-    crate::config::profile_name("hoard-desktop")
+    crate::config::keyring_name(KEYRING_BASE)
 }
 const KEYRING_USER: &str = "default";
 
@@ -214,7 +216,7 @@ pub fn load_detailed() -> Result<Option<(Credentials, TokenStorage)>> {
         // token comes from the keychain, falling back to the file copy.
         Ok(Some(session)) if !session.server.url.is_empty() => {
             let from_file = session.auth.as_ref().map(|a| a.token.clone());
-            match pick_token(try_keyring_get(), from_file)? {
+            match pick_token(keyring_get_or_legacy(&session.server.url), from_file)? {
                 Some((token, storage)) => Ok(Some((
                     Credentials {
                         url: session.server.url,
@@ -638,6 +640,44 @@ fn try_keyring_get() -> Result<Option<KeyringBlob>> {
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => Err(e.into()),
         }
+    })
+}
+
+/// [`try_keyring_get`], falling back inside a Flatpak to the item every Hoard on
+/// the machine shared before [`crate::config::keyring_name`] set it apart. Only a
+/// token for the server this install's `session.toml` names is taken, and it is
+/// copied rather than moved: a self-hosted token does not rotate, so a native Hoard
+/// next to it can go on using the same one.
+fn keyring_get_or_legacy(url: &str) -> Result<Option<KeyringBlob>> {
+    let found = try_keyring_get();
+    if !matches!(found, Ok(None)) {
+        return found;
+    }
+    let Some(legacy) = crate::config::legacy_keyring_name(KEYRING_BASE) else {
+        return found;
+    };
+    let url = url.trim_end_matches('/').to_string();
+    let copied = keyring_op(
+        "copying the self-hosted session to this install's keyring item",
+        KEYRING_TIMEOUT,
+        move || {
+            let raw = match keyring::Entry::new(&legacy, KEYRING_USER)?.get_password() {
+                Ok(raw) => raw,
+                Err(keyring::Error::NoEntry) => return Ok(None),
+                Err(e) => return Err(e.into()),
+            };
+            let blob = parse_keyring_blob(&raw);
+            // The bare-token format carries no URL, so it cannot say whose it is.
+            if blob.token.is_empty() || blob.url.trim_end_matches('/') != url {
+                return Ok(None);
+            }
+            keyring::Entry::new(&keyring_service(), KEYRING_USER)?.set_password(&raw)?;
+            Ok(Some(blob))
+        },
+    );
+    copied.or_else(|err| {
+        tracing::warn!(error = %format!("{err:#}"), "keyring: couldn't copy the self-hosted session from the shared item");
+        Ok(None)
     })
 }
 

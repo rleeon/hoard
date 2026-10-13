@@ -641,7 +641,7 @@ pub(crate) async fn current_client(
     // The service lends the JWT (D.20): this process does not read the keyring, so it
     // cannot hold on to a stale token or trigger an authorisation dialog on macOS.
     // And it always comes fresh, which is what the note below asked for.
-    if let Some(cloud) = crate::commands::cloud::active_creds_via(&state.daemon)
+    if let Some(cloud) = crate::commands::cloud::active_creds_via(state)
         .await
         .map_err(|e| format!("Couldn't get cloud credentials: {e}"))?
     {
@@ -665,6 +665,31 @@ pub(crate) fn sync_active_context(state: &AppState) -> Option<String> {
     };
     hoard_agent::state::set_active_context(ctx.clone());
     ctx
+}
+
+/// Points the sync context at the account the service's token belongs to.
+///
+/// [`sync_active_context`] only has `cloud.toml` to go on, and that file names
+/// whoever was signed in when this install last wrote it. The service resolves its
+/// account from the token, and on 2026-10-09 the two disagreed: another Hoard on
+/// the machine had rewritten the keyring item, so the app put a new save in the
+/// Free account's `saves` file while the engine watched the Pro one's. The save
+/// never uploaded and neither log said a word. The server call and the state write
+/// of one command have to land in the same account, and the token decides which.
+///
+/// A self-hosted session still wins, as it does in [`sync_active_context`].
+pub(crate) fn follow_cloud_token(state: &AppState, access_token: &str) {
+    if state.user.lock().unwrap().is_some() {
+        return;
+    }
+    let Some(user_id) = hoard_agent::cloud_auth::jwt_sub(access_token) else {
+        return;
+    };
+    let ctx = hoard_agent::state::cloud_context(&user_id);
+    if hoard_agent::state::current_context_id() != ctx {
+        tracing::info!(context = %ctx, "desktop: the service is signed into another account than cloud.toml says; following it");
+        hoard_agent::state::set_active_context(Some(ctx));
+    }
 }
 
 /// Spawn a long-lived background task that re-scans the catalog whenever the

@@ -38,9 +38,10 @@ use serde::{Deserialize, Serialize};
 use crate::keychain::{keyring_op, KeyringTimeout, KeyringUnreadable, KEYRING_TIMEOUT};
 
 const CLOUD_DEFAULT_URL: &str = "https://api.hoard.services";
-/// Per profile (`HOARD_PROFILE`): see [`crate::config::profile_suffix`].
+const KEYRING_BASE: &str = "hoard-desktop-cloud";
+/// Per profile (`HOARD_PROFILE`) and per sandbox: see [`crate::config::keyring_name`].
 fn keyring_service() -> String {
-    crate::config::profile_name("hoard-desktop-cloud")
+    crate::config::keyring_name(KEYRING_BASE)
 }
 const KEYRING_USER: &str = "default";
 
@@ -548,7 +549,11 @@ pub fn load_session() -> Result<Option<Session>> {
     let Some(file) = read_session_file()? else {
         return Ok(None);
     };
-    let Some(auth) = pick_auth(keyring_get(), file.auth.clone())? else {
+    let from_keyring = match keyring_get() {
+        Ok(None) => take_legacy_item(file.user.as_ref()),
+        other => other,
+    };
+    let Some(auth) = pick_auth(from_keyring, file.auth.clone())? else {
         return Ok(None);
     };
     if auth.access_token.is_empty() {
@@ -563,6 +568,58 @@ pub fn load_session() -> Result<Option<Session>> {
         access: auth.access_token,
         refresh: auth.refresh_token,
     }))
+}
+
+/// A Flatpak that signed in before its keyring item had its own name finds its
+/// session in the item every Hoard on the machine shared, and takes it. Only when
+/// this install's `cloud.toml` is for the same account: the shared item may hold a
+/// native install's session for another one, which is the mix-up the split exists
+/// to end.
+///
+/// Moved, not copied. A refresh token is single use, and two services rotating
+/// copies of one family is what GoTrue's reuse detection revokes for both. A native
+/// Hoard that shared the item has to sign in again; a Flatpak on its own, the usual
+/// case, notices nothing.
+fn take_legacy_item(user: Option<&toml::Value>) -> Result<Option<AuthSection>> {
+    let Some(legacy) = crate::config::legacy_keyring_name(KEYRING_BASE) else {
+        return Ok(None);
+    };
+    let ours = user
+        .and_then(|u| u.get("user_id"))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let moved = keyring_op(
+        "moving the Cloud session to this install's keyring item",
+        KEYRING_TIMEOUT,
+        move || {
+            let old = keyring::Entry::new(&legacy, KEYRING_USER)?;
+            let blob = match old.get_password() {
+                Ok(blob) => blob,
+                Err(keyring::Error::NoEntry) => return Ok(None),
+                Err(e) => return Err(e.into()),
+            };
+            let auth: AuthSection = toml::from_str(&blob)?;
+            if ours.is_none() || jwt_sub(&auth.access_token) != ours {
+                return Ok(None);
+            }
+            keyring::Entry::new(&keyring_service(), KEYRING_USER)?.set_password(&blob)?;
+            let _ = old.delete_credential();
+            Ok(Some(auth))
+        },
+    );
+    match moved {
+        Ok(Some(auth)) => {
+            tracing::info!("cloud: this Flatpak's session moved to its own keyring item");
+            Ok(Some(auth))
+        }
+        Ok(None) => Ok(None),
+        // Our own item answered a moment ago, so the keyring works: whatever is
+        // wrong is the old item, and signing in again is the way past it.
+        Err(err) => {
+            tracing::warn!(error = %format!("{err:#}"), "cloud: couldn't take the session from the shared keyring item");
+            Ok(None)
+        }
+    }
 }
 
 /// [`load_session`] off the runtime's thread.
@@ -812,7 +869,7 @@ pub fn session_user_id() -> Result<Option<String>> {
 /// Decodes a JWT's `sub` claim (the second segment, base64url with no padding).
 /// It does not verify the signature; it only reads the `user_id`, which the server
 /// revalidates on every request.
-fn jwt_sub(jwt: &str) -> Option<String> {
+pub fn jwt_sub(jwt: &str) -> Option<String> {
     jwt_claims(jwt)?.get("sub")?.as_str().map(String::from)
 }
 

@@ -125,6 +125,36 @@ pub fn profile_name(base: &str) -> String {
     }
 }
 
+/// The keyring service for `base`: [`profile_name`], set apart again inside a
+/// Flatpak.
+///
+/// The sandbox gives the app its own config and data directories but not its own
+/// keyring: `org.freedesktop.secrets` belongs to the session, so a Flatpak and a
+/// native Hoard on the same machine read and wrote one item. Signing in on either
+/// switched the account the other's service ran on, while that install's
+/// `cloud.toml` and `contexts/` stayed put. On 2026-10-09 that left a save added in
+/// the Flatpak in the Free account's `saves` file with the engine on the Pro
+/// account; it never uploaded and no log said why. The item follows the directories.
+pub fn keyring_name(base: &str) -> String {
+    keyring_name_for(base, crate::install::running_under_flatpak())
+}
+
+/// The item [`keyring_name`] read before the Flatpak got its own, when that is a
+/// different one. Only a session that already exists in this install's files may
+/// be taken from it; see the callers.
+pub fn legacy_keyring_name(base: &str) -> Option<String> {
+    crate::install::running_under_flatpak().then(|| profile_name(base))
+}
+
+fn keyring_name_for(base: &str, sandboxed: bool) -> String {
+    let name = profile_name(base);
+    if sandboxed {
+        format!("{name}-flatpak")
+    } else {
+        name
+    }
+}
+
 impl CliConfig {
     pub fn project_dirs() -> Result<ProjectDirs> {
         ProjectDirs::from("dev", "hoard", &profile_name("hoard"))
@@ -281,5 +311,14 @@ mod tests {
         // the caller would create an empty folder on top of the history.
         assert_eq!(relocated_state_dir(&old, &new), old);
         assert!(old.join("playtime.json").exists());
+    }
+
+    #[test]
+    fn a_flatpak_keeps_its_own_keyring_item() {
+        let native = keyring_name_for("hoard-desktop-cloud", false);
+        let flatpak = keyring_name_for("hoard-desktop-cloud", true);
+        assert_eq!(native, profile_name("hoard-desktop-cloud"));
+        assert_ne!(native, flatpak);
+        assert!(flatpak.starts_with(&native));
     }
 }

@@ -237,8 +237,28 @@ pub async fn agent_status(state: State<'_, AppState>) -> Result<Vec<AgentSlotSta
 /// It deliberately does not send the `WatchedSave` over the wire: the service owns
 /// the watched set, so the client tells it `state.json` changed and it re-hydrates
 /// (D.15). Sending the save would be the client deciding what the engine watches.
-pub(crate) async fn attach_save_if_running(state: &State<'_, AppState>, _save: WatchedSave) {
+pub(crate) async fn attach_save_if_running(state: &State<'_, AppState>, save: WatchedSave) {
     state.daemon.notify_reload().await;
+    if save.track_only {
+        return;
+    }
+    // The reload answers Ack whether or not it found the save. On 2026-10-09 the
+    // app wrote it into one account's `saves` file, the service re-read another's,
+    // and the save was never watched with nothing in either log. The service's
+    // status says what it actually watches.
+    let Ok(status) = state.daemon.status().await else {
+        return;
+    };
+    if status.engine.running && !status.slots.iter().any(|s| s.save_id == save.save_id) {
+        tracing::warn!(
+            save_id = %save.save_id,
+            game_slug = %save.game_slug,
+            context = %hoard_agent::state::current_context_id(),
+            engine = status.engine.server.as_deref().unwrap_or("?"),
+            "desktop: the service reloaded and isn't watching the save just added; \
+             compare this context with its last 'watch list reloaded' line"
+        );
+    }
 }
 
 /// Un save que deja de rastrearse deja de vigilarse. Mismo aviso: el servicio

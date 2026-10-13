@@ -928,17 +928,31 @@ pub async fn reload(engine: &Engine) -> anyhow::Result<usize> {
     let desired_ids: std::collections::HashSet<String> =
         desired.iter().map(|s| s.save_id.clone()).collect();
 
+    let mut added = 0usize;
     for save in desired
         .into_iter()
         .filter(|s| !current.contains(&s.save_id))
     {
         handle.add_save(save).await?;
+        added += 1;
     }
+    let mut removed = 0usize;
     for gone in current.difference(&desired_ids) {
         handle.remove_save(gone.clone()).await?;
+        removed += 1;
     }
     let watched = desired_ids.len();
     engine.set_watched(watched);
+    // The context goes in the line because a reload that finds nothing new is
+    // also what it looks like when the client wrote into another account's file
+    // (2026-10-09): this is the half of the story the service can tell.
+    tracing::info!(
+        added,
+        removed,
+        watched,
+        context = %hoard_agent::state::current_context_id(),
+        "hoardd: watch list reloaded"
+    );
     Ok(watched)
 }
 

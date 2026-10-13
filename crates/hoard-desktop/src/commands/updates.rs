@@ -190,7 +190,10 @@ async fn probe_client() -> ComponentUpdate {
             // Strip the leading "v" if present so the comparison matches
             // CARGO_PKG_VERSION's bare semver string.
             let latest = tag.trim_start_matches('v').to_string();
-            let available = is_newer(&latest, &current);
+            // A Flatpak is updated by Flatpak. Offered anyway, the button fetched
+            // Hoard Setup into the sandbox, and Setup refused to run there.
+            let available =
+                is_newer(&latest, &current) && !hoard_agent::install::running_under_flatpak();
             ComponentUpdate {
                 current,
                 latest: Some(latest),
@@ -328,6 +331,12 @@ pub enum ApplyOutcome {
 pub async fn apply_desktop_update(
     expected_version: Option<String>,
 ) -> Result<ApplyOutcome, AppError> {
+    if hoard_agent::install::running_under_flatpak() {
+        return Err(
+            AppError::new("updates.error.title", "updates.error.unknown")
+                .with_detail("this Hoard is a Flatpak; Flatpak updates it"),
+        );
+    }
     let version = hoard_agent::install::fetch::latest_version()
         .await
         .map_err(|e| {
