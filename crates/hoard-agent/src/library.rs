@@ -1473,6 +1473,7 @@ pub async fn add_to_tracking_detected(
                 allow_device_local: None,
             },
         );
+        cli_state.forget_auto_declined(&local_path);
         cli_state.save(&path)?;
 
         let watched = watched_save_from(
@@ -1572,6 +1573,7 @@ pub async fn add_to_tracking_detected(
             allow_device_local: None,
         },
     );
+    cli_state.forget_auto_declined(&local_path);
     cli_state.save(&path)?;
 
     let watched = watched_save_from(
@@ -1677,6 +1679,7 @@ pub async fn adopt(client: &ApiClient, args: AdoptArgs) -> Result<TrackOutcome> 
             allow_device_local: None,
         },
     );
+    cli_state.forget_auto_declined(&local_path);
     cli_state.save(&path)?;
 
     let watched = watched_save_from(
@@ -2020,7 +2023,11 @@ pub struct AutoTrackPlan {
 
 /// Splits a sweep's games three ways (see [`AutoTrackPlan`]) against what this
 /// machine already tracks.
-pub fn plan_auto_track(games: Vec<DetectedGame>, tracked: Vec<TrackedSave>) -> AutoTrackPlan {
+pub fn plan_auto_track(
+    games: Vec<DetectedGame>,
+    tracked: Vec<TrackedSave>,
+    state: &CliState,
+) -> AutoTrackPlan {
     // Slugs THIS machine actually tracks (has a local folder for). Orphan rows
     // are cloud saves from *another* machine with no local state here, and they
     // must NOT count as tracked, or the slug looks monitored and auto-track
@@ -2067,6 +2074,14 @@ pub fn plan_auto_track(games: Vec<DetectedGame>, tracked: Vec<TrackedSave>) -> A
     }
     for g in games {
         if tracked_slugs.contains(&g.slug) || g.found_paths.is_empty() {
+            continue;
+        }
+        if state.is_auto_declined(&g.found_paths[0]) {
+            verdict::auto_track(
+                &g.slug,
+                &g.found_paths[0],
+                "skipped: the user took this folder out while automatic mode was on",
+            );
             continue;
         }
         let real = g.found_paths[0].canonicalize().ok();
@@ -2202,7 +2217,8 @@ pub async fn run_auto_track(
     phase: impl Fn(usize, usize),
 ) -> Result<AutoTrackRun> {
     let (tracked, pruned) = list_tracked(client).await?;
-    let plan = plan_auto_track(games, tracked);
+    let (state, _) = CliState::load_default()?;
+    let plan = plan_auto_track(games, tracked, &state);
     let total = plan.adopt.len() + plan.track.len();
     let mut run = AutoTrackRun {
         tracked: 0,
@@ -2854,6 +2870,9 @@ pub async fn rename_label(
 pub fn untrack(save_id: &str) -> Result<()> {
     let (mut cli_state, path) = CliState::load_default()?;
     let dropped = cli_state.saves.remove(save_id);
+    if let Some(save) = &dropped {
+        decline_if_automatic(&mut cli_state, &save.local_path);
+    }
     cli_state.save(&path)?;
     // A contradiction: the pipeline proposed this folder and the user threw it out.
     if let Some(save) = dropped {
@@ -2938,13 +2957,28 @@ pub fn unignore_slug(slug: &str) -> Result<()> {
 pub async fn delete_completely(client: &ApiClient, save_id: &str) -> Result<()> {
     client.delete_save(save_id).await?;
     let (mut cli_state, path) = CliState::load_default()?;
-    let slug = cli_state.saves.get(save_id).map(|s| s.game_slug.clone());
-    cli_state.saves.remove(save_id);
-    if let Some(slug) = slug {
-        cli_state.clear_manual_path(&slug);
+    if let Some(save) = cli_state.saves.remove(save_id) {
+        cli_state.clear_manual_path(&save.game_slug);
+        decline_if_automatic(&mut cli_state, &save.local_path);
     }
     cli_state.save(&path)?;
     Ok(())
+}
+
+/// With automatic mode on, a folder the user takes out stays out: the next pass
+/// would otherwise track it again (see [`CliState::auto_declined`]). With it off
+/// nothing adds games on its own, so there is nothing to hold back.
+fn decline_if_automatic(cli_state: &mut CliState, local_path: &Path) {
+    if local_path.as_os_str().is_empty() {
+        return;
+    }
+    if crate::prefs::Prefs::load_default().is_ok_and(|(prefs, _)| prefs.automatic_mode) {
+        tracing::info!(
+            path = %local_path.display(),
+            "automatic mode will not add this folder again on its own"
+        );
+        cli_state.decline_auto_track(local_path.to_path_buf());
+    }
 }
 
 // ---- ajustes por-save (pausa / preset / ruta) ------------------------------
@@ -4463,6 +4497,82 @@ mod twin_tests {
         // Different games never merge.
         let other = tracked_save("a-000", "elden-ring", "", true);
         assert!(twin_merges(&[&mine], &[&other]).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod auto_declined_tests {
+    use super::*;
+    use crate::detection::DetectionSource;
+
+    fn high(slug: &str, path: &Path) -> DetectedGame {
+        DetectedGame {
+            slug: slug.into(),
+            display_name: slug.into(),
+            found_paths: vec![path.to_path_buf()],
+            confidence: Confidence::High,
+            path_confidences: vec![Confidence::High],
+            path_reasons: vec![String::new()],
+            source: DetectionSource::FilesystemHeuristic,
+            steam_app_id: None,
+            install_dir: None,
+            needs_folder: false,
+            steam_cloud: false,
+        }
+    }
+
+    fn orphan(id: &str, slug: &str) -> TrackedSave {
+        TrackedSave {
+            save_id: id.into(),
+            game_slug: slug.into(),
+            name: None,
+            slot: None,
+            label: "main".into(),
+            local_path: String::new(),
+            cloud_version_num: Some(1),
+            local_version_num: None,
+            last_backup_at: None,
+            paused: false,
+            total_size_bytes: 0,
+            orphan: true,
+            local_size_bytes: None,
+            preset: None,
+            allow_device_local: None,
+        }
+    }
+
+    #[test]
+    fn a_folder_taken_out_is_neither_tracked_nor_linked_again() {
+        let tmp = tempfile::tempdir().unwrap();
+        let folder = |name: &str| {
+            let dir = tmp.path().join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("slot.sav"), b"x").unwrap();
+            dir
+        };
+        let kept = folder("Kept");
+        let removed = folder("Removed/SaveGames");
+        let in_cloud = folder("InCloud");
+
+        let mut state = CliState::default();
+        state.decline_auto_track(tmp.path().join("Removed"));
+        state.decline_auto_track(in_cloud.clone());
+
+        let plan = plan_auto_track(
+            vec![
+                high("kept", &kept),
+                high("removed", &removed),
+                high("in-cloud", &in_cloud),
+            ],
+            // Still on the server after the untrack: without the decline it would
+            // be linked straight back.
+            vec![orphan("a-1", "in-cloud")],
+            &state,
+        );
+        let tracked: Vec<&str> = plan.track.iter().map(|g| g.slug.as_str()).collect();
+        assert_eq!(tracked, vec!["kept"]);
+        assert!(plan.adopt.is_empty());
+        assert!(plan.probe.is_empty());
     }
 }
 

@@ -346,6 +346,43 @@ fn resolve_save_dir(dir: &Path) -> Vec<PathBuf> {
     }
 }
 
+/// What an Unreal `<Project>/Saved` folder holds, as far as saves go.
+#[derive(Debug, PartialEq, Eq)]
+pub enum UnrealSaved {
+    /// Not that folder.
+    No,
+    /// Its `SaveGames`, the only part of it that is saves.
+    SaveGames(PathBuf),
+    /// That folder with no `SaveGames` in it: logs, config and caches, nothing to keep.
+    NoSaves,
+}
+
+/// Unreal writes everything to `<Project>/Saved`: logs, config, crash dumps,
+/// replays, download caches, and the saves in `SaveGames`. Recognised by the name
+/// plus a `Config` or `Logs` beside it, so a game that simply calls its save folder
+/// `Saved` is left alone.
+///
+/// Offering the whole folder is what sent Fortnite's `FortniteGame\Saved` to the
+/// cloud as a 2.9 GB save of 1,328 files (Oct 2026), with no `SaveGames` at all.
+pub fn unreal_saved(dir: &Path) -> UnrealSaved {
+    let named = |p: &Path, want: &str| {
+        p.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.eq_ignore_ascii_case(want))
+    };
+    if !named(dir, "saved") {
+        return UnrealSaved::No;
+    }
+    let subs = subdirs(dir);
+    if !subs.iter().any(|p| named(p, "config") || named(p, "logs")) {
+        return UnrealSaved::No;
+    }
+    match subs.into_iter().find(|p| named(p, "savegames")) {
+        Some(p) if dir_non_empty(&p) => UnrealSaved::SaveGames(p),
+        _ => UnrealSaved::NoSaves,
+    }
+}
+
 fn subdirs(dir: &Path) -> Vec<PathBuf> {
     let Ok(read) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -859,6 +896,35 @@ pub fn is_payload(kind: FolderKind, rel: &str, size: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unreal_saved_folder_counts_only_through_its_savegames() {
+        let tmp = tempfile::tempdir().unwrap();
+        let make = |rel: &str| {
+            let p = tmp.path().join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, b"x").unwrap();
+        };
+        // Fortnite's shape: engine output, no saves.
+        make("FortniteGame/Saved/Logs/FortniteGame.log");
+        make("FortniteGame/Saved/Config/Windows/GameUserSettings.ini");
+        make("FortniteGame/Saved/Demos/replay.replay");
+        assert_eq!(
+            unreal_saved(&tmp.path().join("FortniteGame/Saved")),
+            UnrealSaved::NoSaves
+        );
+        // The usual one.
+        make("Scorn/Saved/Logs/Scorn.log");
+        make("Scorn/Saved/SaveGames/slot0.sav");
+        assert_eq!(
+            unreal_saved(&tmp.path().join("Scorn/Saved")),
+            UnrealSaved::SaveGames(tmp.path().join("Scorn/Saved/SaveGames"))
+        );
+        // A game whose own save folder is called Saved, with no engine output.
+        make("Indie/Saved/slot1.dat");
+        assert_eq!(unreal_saved(&tmp.path().join("Indie/Saved")), UnrealSaved::No);
+        assert_eq!(unreal_saved(&tmp.path().join("Scorn")), UnrealSaved::No);
+    }
 
     #[test]
     fn folder_kind_tells_installs_installers_and_prefixes_from_saves() {

@@ -174,6 +174,15 @@ pub struct CliState {
     /// `default` keeps older `state.json` files loading.
     #[serde(default)]
     pub excluded_paths: Vec<PathBuf>,
+    /// Folders the user stopped tracking while automatic mode was on. Automatic
+    /// mode does not add them again on its own; the Library still shows them and
+    /// adding one by hand takes it off the list.
+    ///
+    /// Without it, automatic mode undid every removal on its next pass: one user
+    /// (Oct 2026) untracked and deleted the same 17 games five times in an evening
+    /// and each pass brought them back under fresh save ids.
+    #[serde(default)]
+    pub auto_declined: Vec<PathBuf>,
     /// Slugs [`cleanse`] flagged on load: well formed but degenerate (plumbing
     /// tokens, or the system account name). Not persisted (`skip`): it is
     /// recomputed on every load from what is on disk, so the state file's shape
@@ -207,6 +216,9 @@ struct DevicePrefs {
     /// one: a folder that is junk here can be legitimate on another machine.
     #[serde(default)]
     excluded_paths: Vec<PathBuf>,
+    /// Per device for the same reason: the folder is this machine's.
+    #[serde(default)]
+    auto_declined: Vec<PathBuf>,
 }
 
 /// On-disk shape of `contexts/<id>.json`: the per-context `saves` map (save_id
@@ -433,6 +445,7 @@ impl CliState {
             ignored_slugs: self.ignored_slugs.clone(),
             excluded_paths: self.excluded_paths.clone(),
             playtime_excluded: self.playtime_excluded.clone(),
+            auto_declined: self.auto_declined.clone(),
         }
     }
 
@@ -452,6 +465,7 @@ impl CliState {
             ignored_slugs: prefs.ignored_slugs,
             playtime_excluded: prefs.playtime_excluded,
             excluded_paths: prefs.excluded_paths,
+            auto_declined: prefs.auto_declined,
             quarantined_slugs: HashSet::new(),
             quarantined_save_ids: HashSet::new(),
         };
@@ -587,6 +601,28 @@ impl CliState {
     /// Stops discarding exactly this folder, not the ones containing it.
     pub fn remove_excluded_path(&mut self, path: &Path) {
         self.excluded_paths.retain(|p| p != path);
+    }
+
+    /// Automatic mode is not to add `path` on its own again. Idempotent.
+    pub fn decline_auto_track(&mut self, path: PathBuf) {
+        if !self.is_auto_declined(&path) {
+            self.auto_declined.push(path);
+        }
+    }
+
+    /// `true` when `path` is a declined folder, or inside or around one: a later
+    /// scan that refines the same game to a subfolder, or widens it to the parent,
+    /// is still the folder the user removed.
+    pub fn is_auto_declined(&self, path: &Path) -> bool {
+        self.auto_declined
+            .iter()
+            .any(|p| crate::detection::paths_overlap(path, p))
+    }
+
+    /// The user tracked `path` themselves: automatic mode may keep it again.
+    pub fn forget_auto_declined(&mut self, path: &Path) {
+        self.auto_declined
+            .retain(|p| !crate::detection::paths_overlap(path, p));
     }
 
     /// Drop the blacklist entry for `slug` so the next detection pass
@@ -939,6 +975,27 @@ mod tests {
         let empty_json = serde_json::to_string(&empty).unwrap();
         let parsed_empty: CliState = serde_json::from_str(&empty_json).unwrap();
         assert!(parsed_empty.ignored_slugs.is_empty());
+    }
+
+    #[test]
+    fn a_declined_folder_holds_its_subfolders_and_persists_per_device() {
+        let tmp = tempfile::tempdir().unwrap();
+        let device = tmp.path().join("device.json");
+        let ctx = tmp.path().join("contexts/a.json");
+        let mut s = CliState::default();
+        s.decline_auto_track(PathBuf::from("/home/u/Game/Saved"));
+        s.decline_auto_track(PathBuf::from("/home/u/Game/Saved"));
+        assert_eq!(s.auto_declined.len(), 1);
+        // A later scan that refines to the subfolder is the same folder.
+        assert!(s.is_auto_declined(Path::new("/home/u/Game/Saved/SaveGames")));
+        assert!(!s.is_auto_declined(Path::new("/home/u/Other")));
+        s.save_split(&device, &ctx).unwrap();
+
+        let mut loaded = CliState::load_split(&device, &ctx).unwrap();
+        assert!(loaded.is_auto_declined(Path::new("/home/u/Game/Saved")));
+        // Added by hand: automatic mode may keep it again.
+        loaded.forget_auto_declined(Path::new("/home/u/Game/Saved/SaveGames"));
+        assert!(loaded.auto_declined.is_empty());
     }
 
     #[test]

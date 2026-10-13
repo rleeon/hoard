@@ -463,6 +463,7 @@ pub async fn set_automatic_mode(
     let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
     let prev_auto_restore = prefs.auto_restore;
 
+    tracing::info!(enabled, "automatic mode: switched from the app");
     prefs.automatic_mode = enabled;
     let mut auto_restore_changed = false;
     if enabled && !prefs.auto_restore {

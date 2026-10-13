@@ -4096,18 +4096,30 @@ fn discover_in_roots(
                 );
                 continue;
             }
-            if path_already_known(&hit.path, known_paths) {
+            let path = match junkdirs::unreal_saved(&hit.path) {
+                junkdirs::UnrealSaved::No => hit.path,
+                junkdirs::UnrealSaved::SaveGames(saves) => saves,
+                junkdirs::UnrealSaved::NoSaves => {
+                    verdict::not_offered(
+                        "",
+                        &hit.path,
+                        "Unreal's Saved folder with no SaveGames: logs, config and caches",
+                    );
+                    continue;
+                }
+            };
+            if path_already_known(&path, known_paths) {
                 continue;
             }
-            if !emitted.insert(hit.path.clone()) {
+            if !emitted.insert(path.clone()) {
                 continue;
             }
-            if let Some(found) = emulator_candidates(&hit.path, store) {
+            if let Some(found) = emulator_candidates(&path, store) {
                 extend_without_repeats(&mut out, found);
                 continue;
             }
-            let Some(display_name) = attribute_game_name(&hit.path, store) else {
-                verdict::not_offered("", &hit.path, "no folder on the path names a game");
+            let Some(display_name) = attribute_game_name(&path, store) else {
+                verdict::not_offered("", &path, "no folder on the path names a game");
                 continue;
             };
             let slug = crate::library::catalog_slug(
@@ -4121,7 +4133,7 @@ fn discover_in_roots(
             out.push(AttributedSave {
                 slug,
                 display_name,
-                path: hit.path,
+                path,
                 confidence: hit.confidence,
                 reason: hit.reason,
                 steam_app_id,

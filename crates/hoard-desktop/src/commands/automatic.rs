@@ -316,8 +316,15 @@ pub async fn run_scan(app: &AppHandle) {
     let mut candidates = Vec::new();
     let mut adopt: Vec<(crate::commands::library::TrackedSave, std::path::PathBuf)> = Vec::new();
     let mut probe_dirs: Vec<std::path::PathBuf> = Vec::new();
+    let state = hoard_agent::state::CliState::load_default()
+        .map(|(s, _)| s)
+        .unwrap_or_default();
     for g in report.games {
         if tracked_slugs.contains(&g.slug) || g.found_paths.is_empty() {
+            continue;
+        }
+        // Taken out by the user while this mode was on (`CliState::auto_declined`).
+        if state.is_auto_declined(&g.found_paths[0]) {
             continue;
         }
         // The SAME folder already tracked under ANOTHER slug is not tracked again.

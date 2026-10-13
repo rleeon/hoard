@@ -133,6 +133,10 @@ const NON_GAME_PROCESS: &[&str] = &[
     // case of a paused game. "NVIDIA Overlay.exe", "nvcontainer.exe".
     "nvidia",
     "nvcontainer",
+    // AMD's service and MSI Afterburner asked for a scan every few minutes of one
+    // evening (Oct 2026), so they do not always idle.
+    "amdrsserv",
+    "msiafterburner",
     // Chat and dev apps that live alongside the game and correlated wrongly with
     // save folders (a chat client alive while Steam Cloud rewrote one game's save,
     // attributed to the chat client). They live in AppData/Local on Windows or
@@ -166,6 +170,8 @@ const NON_GAME_PROCESS: &[&str] = &[
     "crossdeviceservice",
     "logipluginservice",
     "generate_emu_config",
+    // A Switch emulator's mod configurator (Oct 2026).
+    "nx optimizer",
     // AI and desktop apps with their own installer in the user profile
     // (`%LOCALAPPDATA%\Programs\...`, `/opt/...`): neither the system-path rule
     // nor "electron" (the process name is the app's, not the runtime's) reached
@@ -228,6 +234,12 @@ const NON_GAME_PROCESS_EXACT: &[&str] = &[
     "cursor.exe",
     "zed",
     "zed.exe",
+    // A browser (Perplexity's) and AMD's command-line helper: too short to match
+    // by substring without catching some game's executable.
+    "comet",
+    "comet.exe",
+    "cncmd",
+    "cncmd.exe",
     // Compilers and build tools burn a core for minutes and asked for a
     // detection scan on every build.
     "rustc",
@@ -651,6 +663,21 @@ pub fn score_with_correlation(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn desktop_tools_from_the_oct_2026_log_are_not_games() {
+        for name in [
+            "comet.exe",
+            "AMDRSServ.exe",
+            "cncmd.exe",
+            "MSIAfterburner.exe",
+            "NX Optimizer.exe",
+        ] {
+            assert!(!is_game_like(name, None), "{name} passed for a game");
+        }
+        // Exact match only: a game with the word in its executable still counts.
+        assert!(is_game_like("CometStriker.exe", None));
+    }
 
     #[test]
     fn is_game_like_rejects_system_and_launchers() {

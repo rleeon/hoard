@@ -229,12 +229,31 @@ pub async fn scheduler(detect: Arc<Detect>, engine: Engine) -> Finished {
     let mut last_scan: Option<Instant> = None;
     let mut last_sweep: Option<Instant> = None;
     let mut last_stale_check: Option<Instant> = None;
+    // Logged so a support log answers on its own whether automatic mode was on and
+    // what started each pass. Neither the toggle nor the pass's trigger left a line
+    // before, and one report (Oct 2026) took a database dig to tell automatic
+    // passes from the user adding games by hand.
+    let mut seen_mode: Option<bool> = None;
+    let mut why = "the service started";
     loop {
         if detect.rearm.swap(false, Ordering::SeqCst) {
             last_scan = None;
             last_sweep = None;
+            why = "the app changed automatic mode or its intervals";
         }
-        match Prefs::load_default() {
+        let prefs = Prefs::load_default();
+        if let Ok((p, _)) = &prefs {
+            if seen_mode != Some(p.automatic_mode) {
+                seen_mode = Some(p.automatic_mode);
+                tracing::info!(
+                    on = p.automatic_mode,
+                    scan_secs = p.automatic_scan_interval_secs,
+                    "automatic mode: {}",
+                    if p.automatic_mode { "on" } else { "off" }
+                );
+            }
+        }
+        match prefs {
             Err(e) => tracing::warn!(error = %e, "automatic mode: couldn't read prefs"),
             Ok(_) if detect.standing_aside() => {}
             // Tracking goes through the engine's client, so the pass waits for one:
@@ -245,8 +264,15 @@ pub async fn scheduler(detect: Arc<Detect>, engine: Engine) -> Finished {
                     Duration::from_secs(prefs.automatic_scan_interval_secs).max(MIN_SCAN_INTERVAL);
                 let owed = detect.scan_now.swap(false, Ordering::SeqCst);
                 if owed || last_scan.is_none_or(|t| t.elapsed() >= scan_every) {
+                    let reason = if owed {
+                        "a game-like process appeared"
+                    } else {
+                        why
+                    };
+                    tracing::info!(reason, "automatic scan: starting");
                     automatic_pass(&detect, &engine).await;
                     last_scan = Some(Instant::now());
+                    why = "timer";
                 }
                 let sweep_every = Duration::from_secs(prefs.automatic_backup_interval_secs)
                     .max(MIN_SWEEP_INTERVAL);

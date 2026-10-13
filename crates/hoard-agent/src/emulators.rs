@@ -403,6 +403,15 @@ pub fn find(id: &str) -> Option<&'static EmulatorDef> {
     CATALOG.iter().find(|d| d.id == id)
 }
 
+/// The emulator a running executable belongs to, by the exact names in
+/// [`EmulatorDef::processes`], ignoring case.
+pub fn by_process(name: &str) -> Option<&'static EmulatorDef> {
+    let name = name.trim();
+    CATALOG
+        .iter()
+        .find(|d| d.processes.iter().any(|p| p.eq_ignore_ascii_case(name)))
+}
+
 /// Where saves sit under an emulator's (or a launcher's) own folder when it runs
 /// portable, which no template spells out: RPCS3's `dev_hdd0`, shadPS4's
 /// `user/`, PrismLauncher and MultiMC instances.
@@ -959,6 +968,13 @@ fn read_dirs(dir: &Path) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_running_executable_names_its_emulator() {
+        assert_eq!(by_process("EDEN.EXE").map(|d| d.id), Some("eden"));
+        assert_eq!(by_process("eden").map(|d| d.id), Some("eden"));
+        assert!(by_process("edenring.exe").is_none());
+    }
     use std::fs;
     use tempfile::tempdir;
 

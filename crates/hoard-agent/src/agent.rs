@@ -5665,14 +5665,35 @@ fn process_poll(
             // than "hollow_knight.x86_64". The real name is still on the log line next
             // to it for diagnostics.
             let raw = proc.name().to_string_lossy().into_owned();
-            let title = hoard_manifest::ludusavi::title_for_exe(&raw)
-                .or_else(|| {
-                    proc.exe()
-                        .and_then(|e| e.file_name())
-                        .and_then(|e| e.to_str())
-                        .and_then(hoard_manifest::ludusavi::title_for_exe)
-                })
-                .map(str::to_string);
+            let exe_name = proc.exe().and_then(|e| e.file_name()).and_then(|e| e.to_str());
+            // An emulator gets its own name. The manifest knows some of their
+            // executables as other games' (`eden.exe` is PixelJunk Eden's, Oct 2026),
+            // and the saves it writes are `emu-<id>` rows: one of those tracked
+            // already accounts for it.
+            let emulator = crate::emulators::by_process(&raw)
+                .or_else(|| exe_name.and_then(crate::emulators::by_process));
+            if let Some(emu) = emulator {
+                let slug = format!("emu-{}", emu.id);
+                let per_title = format!("{slug}-");
+                if tracked_slugs
+                    .iter()
+                    .any(|s| *s == slug || s.starts_with(&per_title))
+                {
+                    tracing::debug!(
+                        process = %name,
+                        emulator = emu.id,
+                        "agent: heavy process is an emulator we already track; no scan needed"
+                    );
+                    reported_heavy.insert(*pid);
+                    continue;
+                }
+            }
+            let title = match emulator {
+                Some(emu) => Some(emu.display_name.to_string()),
+                None => hoard_manifest::ludusavi::title_for_exe(&raw)
+                    .or_else(|| exe_name.and_then(hoard_manifest::ludusavi::title_for_exe))
+                    .map(str::to_string),
+            };
             // Last check before bothering anyone: if the title the manifest
             // puts on this executable is already one of the tracked slugs, the
             // game is in and all it's missing is a process list. Scanning for
