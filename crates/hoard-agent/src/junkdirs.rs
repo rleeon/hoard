@@ -922,7 +922,10 @@ mod tests {
         );
         // A game whose own save folder is called Saved, with no engine output.
         make("Indie/Saved/slot1.dat");
-        assert_eq!(unreal_saved(&tmp.path().join("Indie/Saved")), UnrealSaved::No);
+        assert_eq!(
+            unreal_saved(&tmp.path().join("Indie/Saved")),
+            UnrealSaved::No
+        );
         assert_eq!(unreal_saved(&tmp.path().join("Scorn")), UnrealSaved::No);
     }
 

@@ -5665,7 +5665,10 @@ fn process_poll(
             // than "hollow_knight.x86_64". The real name is still on the log line next
             // to it for diagnostics.
             let raw = proc.name().to_string_lossy().into_owned();
-            let exe_name = proc.exe().and_then(|e| e.file_name()).and_then(|e| e.to_str());
+            let exe_name = proc
+                .exe()
+                .and_then(|e| e.file_name())
+                .and_then(|e| e.to_str());
             // An emulator gets its own name. The manifest knows some of their
             // executables as other games' (`eden.exe` is PixelJunk Eden's, Oct 2026),
             // and the saves it writes are `emu-<id>` rows: one of those tracked

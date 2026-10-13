@@ -71,7 +71,9 @@ pub async fn export_cap_wait(pool: &sqlx::PgPool, user_id: Uuid) -> sqlx::Result
     }
     // Jobs from before the cap existed can put more than three in the window;
     // a slot opens once enough of them age out to drop below it.
-    Ok(Some(ageing_out[ageing_out.len() - EXPORTS_PER_DAY].0.max(1)))
+    Ok(Some(
+        ageing_out[ageing_out.len() - EXPORTS_PER_DAY].0.max(1),
+    ))
 }
 
 /// Spawn the daemon. Idempotent per process; call once from `cloud::run`.
