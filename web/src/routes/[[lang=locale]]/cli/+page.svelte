@@ -12,11 +12,11 @@
   type Platform = 'windows' | 'macos' | 'linux';
   let detected = $state<Platform | null>(null);
 
-  // One-liners point at the raw repo copies (web/static/install.*) so they
-  // still work when hoard.services itself is unreachable; the "read before
-  // running" links below point at the served copies (/install.sh, /install.ps1).
-  const SH_CMD = 'curl -fsSL https://raw.githubusercontent.com/rleeon/hoard/main/web/static/install.sh | sh';
-  const PS_CMD = 'irm https://raw.githubusercontent.com/rleeon/hoard/main/web/static/install.ps1 | iex';
+  // The served copies, the same files the "read before running" links open.
+  // Not the repo's: that one follows `main`, and a script changed for the next
+  // release reached people while the latest release was still the old one.
+  const SH_CMD = 'curl -fsSL https://hoard.services/install.sh | sh';
+  const PS_CMD = 'irm https://hoard.services/install.ps1 | iex';
 
   // Two install rows; the one matching the visitor's OS gets highlighted.
   let installRows = $derived([

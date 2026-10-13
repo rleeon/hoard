@@ -52,17 +52,13 @@
         ...row($release.assets.setupWindowsArm64, 'Installer · Windows 11 · ARM64', {
           arch: 'arm64',
           setup: true
-        }),
-        ...row($release.assets.windowsSetup, 'Windows 10/11 · x64', { arch: 'x64' }),
-        ...row($release.assets.windowsSetupArm64, 'Windows 11 · ARM64', { arch: 'arm64' }),
-        ...row($release.assets.windowsMsi, 'Windows 10/11 · x64 · MSI', { arch: 'x64' })
+        })
       ]
     },
     macos: {
       name: 'macOS',
       assets: [
-        ...row($release.assets.setupMacos, 'Installer · Apple Silicon', { setup: true }),
-        ...row($release.assets.macosDmg, 'macOS 12+ · Apple Silicon')
+        ...row($release.assets.setupMacos, 'Installer · Apple Silicon', { setup: true })
       ]
     },
     linux: {
@@ -75,20 +71,16 @@
         ...row($release.assets.setupLinuxArm64, 'Installer · ARM64 · chmod +x and run', {
           arch: 'arm64',
           setup: true
-        }),
-        ...row($release.assets.linuxDeb, 'Debian / Ubuntu · x64', { arch: 'x64' }),
-        ...row($release.assets.linuxAppImage, 'Universal · x64', { arch: 'x64' }),
-        ...row($release.assets.linuxRpm, 'Fedora / openSUSE · x64', { arch: 'x64' }),
-        ...row($release.assets.linuxDebArm64, 'Debian / Ubuntu · ARM64', { arch: 'arm64' }),
-        ...row($release.assets.linuxAppImageArm64, 'Universal · ARM64', { arch: 'arm64' }),
-        ...row($release.assets.linuxRpmArm64, 'Fedora / openSUSE · ARM64', { arch: 'arm64' })
+        })
       ]
     }
   });
 
-  // Same one-liner as /cli: the raw repo copy, so it still works when
-  // hoard.services itself is unreachable.
-  const SH_CMD = 'curl -fsSL https://raw.githubusercontent.com/rleeon/hoard/main/web/static/install.sh | sh';
+  // Same one-liners as /cli. The served copy and not the repo's: that one
+  // follows `main`, and a script changed for the next release reached people
+  // while the latest release was still the old one.
+  const SH_CMD = 'curl -fsSL https://hoard.services/install.sh | sh';
+  const PS_CMD = 'irm https://hoard.services/install.ps1 | iex';
 
   type Cmd = {
     id: string;
@@ -133,12 +125,7 @@
         recommended: true,
         code: `curl.exe -fLo "$env:TEMP\\HoardSetup.exe" ${setupWindows}\nStart-Process "$env:TEMP\\HoardSetup.exe" -ArgumentList '--silent' -Wait\nGet-Content "$env:TEMP\\hoard-setup.log"`
       },
-      {
-        id: 'nsis',
-        title: 'NSIS · .exe',
-        note: 'download.m_nsis_note',
-        code: `curl.exe -fLo "$env:TEMP\\Hoard-setup.exe" ${forArch($release.assets.windowsSetup, $release.assets.windowsSetupArm64)}\nStart-Process "$env:TEMP\\Hoard-setup.exe" -ArgumentList '/S' -Wait`
-      }
+      { id: 'ps', title: $_('download.m_script'), note: 'download.m_script_note', code: PS_CMD }
     ],
     macos: [
       {
@@ -148,13 +135,7 @@
         recommended: true,
         code: `curl -fLo /tmp/HoardSetup.zip ${LATEST}/HoardSetup-aarch64.zip\nditto -xk /tmp/HoardSetup.zip /tmp\n"/tmp/Hoard Setup.app/Contents/MacOS/HoardSetup" --silent`
       },
-      {
-        id: 'dmg',
-        title: 'DMG',
-        note: 'download.m_dmg_note',
-        // A fixed mount point, so the commands don't depend on the volume name.
-        code: `curl -fLo /tmp/Hoard.dmg ${$release.assets.macosDmg}\nhdiutil attach -nobrowse -mountpoint /tmp/hoard-dmg /tmp/Hoard.dmg\ncp -R /tmp/hoard-dmg/Hoard.app /Applications/\nhdiutil detach /tmp/hoard-dmg`
-      }
+      { id: 'sh', title: $_('download.m_script'), note: 'download.m_script_note', code: SH_CMD }
     ],
     linux: [
       {
@@ -164,42 +145,17 @@
         recommended: true,
         code: `curl -fLo /tmp/HoardSetup ${SETUP_LINUX}\nchmod +x /tmp/HoardSetup\n/tmp/HoardSetup --silent`
       },
-      {
-        id: 'apt',
-        title: 'Debian / Ubuntu · apt',
-        // apt cannot install from a URL. wget because a stock Ubuntu desktop
-        // ships it and not curl.
-        code: `wget -O /tmp/hoard.deb ${forArch($release.assets.linuxDeb, $release.assets.linuxDebArm64)}\nsudo apt install /tmp/hoard.deb`
-      },
-      {
-        id: 'dnf',
-        title: 'Fedora · dnf',
-        code: `sudo dnf install ${forArch($release.assets.linuxRpm, $release.assets.linuxRpmArm64)}`
-      },
-      {
-        id: 'zypper',
-        title: 'openSUSE · zypper',
-        // The rpm is signed with minisign, not GPG, and zypper stops to ask.
-        code: `sudo zypper install --allow-unsigned-rpm ${forArch($release.assets.linuxRpm, $release.assets.linuxRpmArm64)}`
-      },
       // Built and packaged (flatpak/), not on Flathub yet and no bundle in the
       // releases, so there is nothing a command could point at.
       { id: 'flatpak', title: 'Flatpak · Flathub', note: 'download.m_flatpak_soon' },
-      {
-        id: 'appimage',
-        title: 'AppImage',
-        note: 'download.m_appimage_note',
-        code: `mkdir -p ~/Applications\ncurl -fLo ~/Applications/Hoard.AppImage ${forArch($release.assets.linuxAppImage, $release.assets.linuxAppImageArm64)}\nchmod +x ~/Applications/Hoard.AppImage`
-      },
       // Setup needs libfontconfig, which a bare server or NAS may not have; the
       // script needs nothing but a shell and stops at the engine there.
       { id: 'sh', title: $_('download.m_script'), note: 'download.m_script_note', code: SH_CMD }
     ]
   });
 
-  // Removing only the package leaves `hoardd` running, and on Windows the
-  // updater inside it then installs the app again, hence `sync stop` before
-  // every manual route.
+  // Hoard Setup takes off every piece, older installs included; the Flatpak is
+  // flatpak's to remove.
   let uninstallCmds = $derived<Record<Platform, Cmd[]>>({
     windows: [
       {
@@ -209,12 +165,6 @@
         recommended: true,
         code: `curl.exe -fLo "$env:TEMP\\HoardSetup.exe" ${setupWindows}\nStart-Process "$env:TEMP\\HoardSetup.exe" -ArgumentList '--uninstall' -Wait\nGet-Content "$env:TEMP\\hoard-setup.log"`
       },
-      {
-        id: 'nsis',
-        title: 'NSIS · .exe',
-        note: 'download.u_nsis_note',
-        code: `& "$env:LOCALAPPDATA\\Hoard\\hoard.exe" sync stop\n& "$env:LOCALAPPDATA\\Hoard\\uninstall.exe" /S`
-      }
     ],
     macos: [
       {
@@ -224,12 +174,6 @@
         recommended: true,
         code: `curl -fLo /tmp/HoardSetup.zip ${LATEST}/HoardSetup-aarch64.zip\nditto -xk /tmp/HoardSetup.zip /tmp\n"/tmp/Hoard Setup.app/Contents/MacOS/HoardSetup" --uninstall`
       },
-      {
-        id: 'app',
-        title: 'Hoard.app',
-        note: 'download.u_stop_note',
-        code: '/Applications/Hoard.app/Contents/MacOS/hoard sync stop\nrm -rf /Applications/Hoard.app'
-      }
     ],
     linux: [
       {
@@ -241,16 +185,12 @@
         recommended: true,
         code: `curl -fLo /tmp/HoardSetup ${SETUP_LINUX}\nchmod +x /tmp/HoardSetup\n/tmp/HoardSetup --uninstall`
       },
-      { id: 'apt', title: 'Debian / Ubuntu · apt', note: 'download.u_stop_note', code: 'hoard sync stop\nsudo apt remove hoard' },
-      { id: 'dnf', title: 'Fedora · dnf', note: 'download.u_stop_note', code: 'hoard sync stop\nsudo dnf remove hoard' },
-      { id: 'zypper', title: 'openSUSE · zypper', note: 'download.u_stop_note', code: 'hoard sync stop\nsudo zypper remove hoard' },
       {
         id: 'flatpak',
         title: 'Flatpak',
         note: 'download.u_stop_note',
         code: 'flatpak run --command=hoard services.hoard.saves sync stop\nflatpak uninstall services.hoard.saves'
-      },
-      { id: 'appimage', title: 'AppImage', note: 'download.u_appimage_note', code: 'rm ~/Applications/Hoard.AppImage' }
+      }
     ]
   });
 

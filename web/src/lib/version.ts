@@ -16,25 +16,13 @@ export const CHANGELOG_URL = `https://github.com/${REPO}/blob/main/CHANGELOG.md`
 /** Direct-download URL per installer, so clicking starts the download
  *  instead of landing on the release page. */
 export type ReleaseAssets = {
-  // Hoard Setup: the graphical installer, one per platform. It is the normal
-  // way in, it fetches the right package for the machine it is on, and the
-  // raw bundles below stay published for anyone who would rather not be
-  // helped.
+  // Hoard Setup: the graphical installer, one per platform, and the only way
+  // in the page offers. It fetches the app for the machine it is on.
   setupWindows: string | null;
   setupWindowsArm64: string | null;
   setupMacos: string | null;
   setupLinux: string | null;
   setupLinuxArm64: string | null;
-  windowsSetup: string;
-  windowsSetupArm64: string | null;
-  windowsMsi: string;
-  macosDmg: string;
-  linuxDeb: string;
-  linuxDebArm64: string | null;
-  linuxAppImage: string;
-  linuxAppImageArm64: string | null;
-  linuxRpm: string;
-  linuxRpmArm64: string | null;
   // Headless CLI tarballs (`hoard` binary; Linux tarballs also bundle
   // hoard-server + hoard-admin). See `/cli`.
   cliLinuxX64: string;
@@ -51,29 +39,16 @@ export type ReleaseInfo = { v: string; date: string; assets: ReleaseAssets };
 function assetsFor(v: string): ReleaseAssets {
   const base = `https://github.com/${REPO}/releases/download/v${v}`;
   return {
-    // Hoard Setup and the ARM bundles are younger than the x86 ones, so a
-    // release from before they existed lists none of them, and a URL built
-    // from the convention would be a 404 wearing a plausible filename, which
-    // is worse than not offering the download at all. No guess for these:
-    // either the release names the file or the page does not offer it.
+    // Hoard Setup is younger than the tarballs, so a release from before it
+    // existed lists none of these, and a URL built from the convention would
+    // be a 404 wearing a plausible filename, which is worse than not offering
+    // the download at all. No guess for these: either the release names the
+    // file or the page does not offer it.
     setupWindows: null,
     setupWindowsArm64: null,
     setupMacos: null,
     setupLinux: null,
     setupLinuxArm64: null,
-    windowsSetup: `${base}/Hoard_${v}_x64-setup.exe`,
-    windowsSetupArm64: null,
-    // x64 only: the ARM desktop bundle is NSIS, no MSI. See release-desktop.yml.
-    windowsMsi: `${base}/Hoard_${v}_x64_en-US.msi`,
-    macosDmg: `${base}/Hoard_${v}_aarch64.dmg`,
-    linuxDeb: `${base}/Hoard_${v}_amd64.deb`,
-    linuxDebArm64: null,
-    // Not a typo: the AppImage bundler writes `amd64` for x86_64 and
-    // `aarch64` for ARM, where the .deb writes `amd64`/`arm64`.
-    linuxAppImage: `${base}/Hoard_${v}_amd64.AppImage`,
-    linuxAppImageArm64: null,
-    linuxRpm: `${base}/Hoard-${v}-1.x86_64.rpm`,
-    linuxRpmArm64: null,
     cliLinuxX64: `${base}/hoard-${v}-linux-x86_64.tar.gz`,
     cliLinuxArm64: `${base}/hoard-${v}-linux-aarch64.tar.gz`,
     cliMacosArm64: `${base}/hoard-${v}-macos-aarch64.tar.gz`,
@@ -99,16 +74,6 @@ function pickAssets(urls: string[], v: string): ReleaseAssets {
     setupMacos: find(/HoardSetup-aarch64\.zip$/) ?? null,
     setupLinux: find(/HoardSetup-x86_64$/) ?? null,
     setupLinuxArm64: find(/HoardSetup-aarch64$/) ?? null,
-    windowsSetup: find(/x64-setup\.exe$/) ?? guess.windowsSetup,
-    windowsSetupArm64: find(/arm64-setup\.exe$/) ?? null,
-    windowsMsi: find(/\.msi$/) ?? guess.windowsMsi,
-    macosDmg: find(/\.dmg$/) ?? guess.macosDmg,
-    linuxDeb: find(/_amd64\.deb$/) ?? guess.linuxDeb,
-    linuxDebArm64: find(/_arm64\.deb$/) ?? null,
-    linuxAppImage: find(/_amd64\.appimage$/i) ?? guess.linuxAppImage,
-    linuxAppImageArm64: find(/_aarch64\.appimage$/i) ?? null,
-    linuxRpm: find(/\.x86_64\.rpm$/) ?? guess.linuxRpm,
-    linuxRpmArm64: find(/\.aarch64\.rpm$/) ?? null,
     // Match the CLI tarballs by their exact platform-arch suffix so they never
     // collide with the desktop `Hoard.app.tar.gz` (which also ends in .tar.gz).
     cliLinuxX64: find(/linux-x86_64\.tar\.gz$/) ?? guess.cliLinuxX64,
@@ -125,8 +90,8 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // GitHub allows 60 unauthenticated req/h
 /** A release is published as soon as the CLI tarballs are up, and the desktop
  *  workflow attaches the bundles about half an hour later. Asked in between,
  *  GitHub answers with the new version and no Hoard Setup, which is true and
- *  incomplete, and pinning that for the full hour hands the raw NSIS bundle to
- *  exactly the person the installer was written for. Re-ask sooner instead. */
+ *  incomplete, and pinning that for the full hour leaves the page with no
+ *  installer to hand out. Re-ask sooner instead. */
 const PARTIAL_TTL_MS = 5 * 60 * 1000;
 
 /** Hoard Setup exists for every platform or for none, so any one of them
