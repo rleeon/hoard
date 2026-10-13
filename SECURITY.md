@@ -1,6 +1,6 @@
 # Security policy
 
-Hoard stores other people's game saves. A bug here can lose data that took
+Hoard stores other people's things. A bug here can lose data that took
 someone hundreds of hours to make, or expose files they never meant to share.
 Reports are welcome and taken seriously.
 
@@ -15,6 +15,8 @@ Please include what you need to make the problem reproducible: affected
 component and version, steps, and what an attacker gets out of it. A proof of
 concept helps; a video is fine if that is faster for you.
 
+Just be descriptive, if you use AI, say it.
+
 If you want to encrypt the report, say so in a first plain message and we will
 agree on a channel.
 
@@ -22,10 +24,10 @@ agree on a channel.
 
 | Stage | Target |
 |---|---|
-| Acknowledgement of your report | 72 hours |
-| First assessment (valid / not, severity) | 7 days |
-| Fix released for a critical issue | 30 days |
-| Fix released for other issues | 90 days |
+| Acknowledgement of your report | 1-12 hours |
+| First assessment (valid / not, severity) | 1 days |
+| Fix released for a critical issue | 1-2 days |
+| Fix released for other issues | 15 days |
 | Public advisory | With the fix, or on agreement |
 
 This is a small project run by one person, not a company with an on-call
@@ -67,8 +69,7 @@ software that affects them is in scope and we want to hear about it.
 
 ## Supported versions
 
-Only the latest released version receives security fixes. If you run
-self-hosted, upgrading is the fix path.
+Only the latest released version receives security fixes. Upgrading is the fix path, server or app.
 
 ## Handling of incidents affecting users
 
