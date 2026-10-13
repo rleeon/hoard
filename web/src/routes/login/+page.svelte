@@ -8,6 +8,7 @@
   import { auth } from '$lib/auth';
   import { config } from '$lib/config';
   import { safeNext } from '$lib/safeNext';
+  import { loopbackPort } from '$lib/loopbackPort';
   import { session } from '$lib/stores/session';
   import Button from '$lib/components/Button.svelte';
   import LogoMark from '$lib/components/LogoMark.svelte';
@@ -75,7 +76,8 @@
   // present we bounce the session to http://127.0.0.1:<port> (confined browsers
   // like Ubuntu's snap Firefox can open that) instead of the custom hoard://
   // scheme (which they silently drop). Carried through to /auth/callback.
-  let port = $derived(browser ? $page.url.searchParams.get('port') ?? '' : '');
+  // Only a bare port number is threaded through; see `loopbackPort`.
+  let port = $derived(browser ? (loopbackPort($page.url.searchParams.get('port')) ?? '') : '');
   // CSRF nonce the desktop app generated for this login attempt. The loopback
   // listener only accepts the callback if this exact value comes back, so we
   // must thread it through Supabase's redirect to /auth/callback untouched.

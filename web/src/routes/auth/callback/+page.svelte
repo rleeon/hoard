@@ -6,6 +6,7 @@
   import { page } from '$app/stores';
   import { supabase, dropLocalSession } from '$lib/auth/supabase';
   import { safeNext } from '$lib/safeNext';
+  import { loopbackPort } from '$lib/loopbackPort';
   import { api } from '$lib/api';
   import { CheckCircle2 } from 'lucide-svelte';
   import type { Session } from '@supabase/supabase-js';
@@ -55,7 +56,17 @@
   // scheme handler frequently drops it from argv too. There's no log-leak
   // concern, 127.0.0.1 stays on the box and `hoard://` never hits a server.
   async function bounceToApp(s: Session) {
-    const port = $page.url.searchParams.get('port');
+    const rawPort = $page.url.searchParams.get('port');
+    const port = loopbackPort(rawPort);
+    // A port that isn't a bare number never came from the app: it is a crafted
+    // link trying to point the handoff at another host. Stop here, before the
+    // tokens go anywhere or this tab drops its session.
+    if (rawPort && !port) {
+      error = $_('callback.failed_link');
+      errorDetail = 'invalid loopback port';
+      message = '';
+      return;
+    }
     // CSRF nonce minted by the desktop app. Both handoff paths reject the
     // login unless we echo it back verbatim: the loopback listener checks it
     // at the socket, and `cloud_complete_login` re-checks it for the hoard://

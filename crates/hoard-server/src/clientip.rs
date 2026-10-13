@@ -2,11 +2,16 @@
 //!
 //! `X-Forwarded-For` is a claim, not a fact. Anyone who can open a socket to
 //! the server can write whatever they like in it, and the only thing that makes
-//! it trustworthy is a reverse proxy the operator runs, overwriting it on the
-//! way in. So the header is read **only** when the peer on the other end of the
-//! socket is one of the proxies the operator named
-//! ([`crate::config::ServerConfig::trusted_proxies`]); from anyone else the
-//! connection's own address is the answer.
+//! it trustworthy is a reverse proxy the operator runs. So the header is read
+//! **only** when the peer on the other end of the socket is one of the proxies
+//! the operator named ([`crate::config::ServerConfig::trusted_proxies`]); from
+//! anyone else the connection's own address is the answer.
+//!
+//! Even then only its right end is ours. The stock nginx line,
+//! `$proxy_add_x_forwarded_for`, appends the address it saw to whatever the
+//! client sent, so the leftmost entry is still the caller's to make up: reading
+//! from the left let a client behind the proxy rotate the login throttle the
+//! same way a direct caller once could.
 //!
 //! Reading it unconditionally is what made the panel's login throttle a
 //! decoration: both of its counters are keyed on the client address, so a
@@ -215,9 +220,11 @@ fn parse_cidr(entry: &str) -> Result<Net, &'static str> {
 
 /// The address to attribute this request to.
 ///
-/// From a trusted proxy, the leftmost entry of `X-Forwarded-For` (or
-/// `X-Real-Ip`), which is the client the proxy saw. From anyone else, the peer,
-/// because
+/// From a trusted proxy, the first `X-Forwarded-For` entry counting from the
+/// right that isn't itself a trusted proxy: every hop appends what it saw, so
+/// that is the last address one of ours vouched for. If every entry is ours the
+/// leftmost wins, which is also what `trusted_proxies = ["any"]` reduces to.
+/// With no `X-Forwarded-For`, `X-Real-Ip`. From anyone else, the peer, because
 /// anything they claim about themselves is theirs to make up. An unparseable
 /// claim also falls back to the peer: it would otherwise become a throttle-map
 /// key of arbitrary attacker-chosen text.
@@ -226,22 +233,34 @@ pub fn client_ip(headers: &HeaderMap, peer: SocketAddr, trusted: &TrustedProxies
     if !trusted.contains(peer_ip) {
         return peer_ip;
     }
-    for h in ["x-forwarded-for", "x-real-ip"] {
-        let Some(v) = headers.get(h).and_then(|v| v.to_str().ok()) else {
-            continue;
-        };
-        let Some(first) = v.split(',').next() else {
-            continue;
-        };
-        // `[2001:db8::1]:443` is legal in a `Forwarded`-style header and shows
-        // up in the wild in `X-Forwarded-For` too.
-        let first = first.trim().trim_start_matches('[');
-        let first = first.split(']').next().unwrap_or(first);
-        if let Ok(ip) = first.parse::<IpAddr>() {
-            return ip;
+    if let Some(v) = header(headers, "x-forwarded-for") {
+        let mut leftmost = peer_ip;
+        for entry in v.rsplit(',') {
+            let Some(ip) = parse_claim(entry) else {
+                return peer_ip;
+            };
+            if !trusted.contains(ip) {
+                return ip;
+            }
+            leftmost = ip;
         }
+        return leftmost;
     }
-    peer_ip
+    header(headers, "x-real-ip")
+        .and_then(parse_claim)
+        .unwrap_or(peer_ip)
+}
+
+fn header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+    headers.get(name).and_then(|v| v.to_str().ok())
+}
+
+fn parse_claim(entry: &str) -> Option<IpAddr> {
+    // `[2001:db8::1]:443` is legal in a `Forwarded`-style header and shows up
+    // in the wild in `X-Forwarded-For` too.
+    let entry = entry.trim().trim_start_matches('[');
+    let entry = entry.split(']').next().unwrap_or(entry);
+    entry.parse().ok()
 }
 
 /// The key a per-origin counter should use for this address.
@@ -302,11 +321,56 @@ mod tests {
     }
 
     #[test]
-    fn a_trusted_proxy_is_believed_and_read_from_the_left() {
+    fn a_trusted_proxy_is_believed() {
+        let t = trusted(&["loopback"]);
+        assert_eq!(
+            client_ip(&xff("203.0.113.7"), peer("127.0.0.1"), &t),
+            ip("203.0.113.7")
+        );
+    }
+
+    /// nginx's `$proxy_add_x_forwarded_for` keeps what the client sent and
+    /// appends the real address: the left end is the client's to choose.
+    #[test]
+    fn a_client_behind_the_proxy_cannot_choose_its_own_address() {
+        let t = trusted(&["loopback"]);
+        for spoof in ["1.2.3.4", "9.9.9.9", "not-an-ip"] {
+            assert_eq!(
+                client_ip(
+                    &xff(&format!("{spoof}, 203.0.113.7")),
+                    peer("127.0.0.1"),
+                    &t
+                ),
+                ip("203.0.113.7")
+            );
+        }
+    }
+
+    /// An untrusted hop in the middle vouches for nothing to its left.
+    #[test]
+    fn the_walk_stops_at_the_first_untrusted_hop() {
         let t = trusted(&["loopback"]);
         assert_eq!(
             client_ip(&xff("1.2.3.4, 10.0.0.1"), peer("127.0.0.1"), &t),
-            ip("1.2.3.4")
+            ip("10.0.0.1")
+        );
+        let t = trusted(&["loopback", "10.0.0.0/8"]);
+        assert_eq!(
+            client_ip(
+                &xff("1.2.3.4, 203.0.113.7, 10.0.0.2"),
+                peer("127.0.0.1"),
+                &t
+            ),
+            ip("203.0.113.7")
+        );
+    }
+
+    #[test]
+    fn a_chain_of_only_trusted_hops_resolves_to_its_left_end() {
+        let t = trusted(&["loopback", "10.0.0.0/8"]);
+        assert_eq!(
+            client_ip(&xff("10.0.0.5, 10.0.0.2"), peer("127.0.0.1"), &t),
+            ip("10.0.0.5")
         );
     }
 
