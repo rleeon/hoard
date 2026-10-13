@@ -294,6 +294,7 @@
   "callback.failed_provider": "El proveedor de acceso ha rechazado la petición.",
   "callback.failed_no_session": "Este enlace no traía ninguna sesión que completar.",
   "callback.failed_link": "No hemos podido terminar de iniciar sesión con este enlace.",
+  "callback.failed_timeout": "El inicio de sesión no ha terminado a tiempo.",
   "callback.back_to_signin": "Volver al inicio de sesión",
   "callback.desktop_return": "¡Sesión iniciada! Vuelve a la app de Hoard, ya puedes cerrar esta pestaña.",
   "callback.desktop_reopen": "¿No se abrió? Haz clic aquí para reabrir Hoard.",

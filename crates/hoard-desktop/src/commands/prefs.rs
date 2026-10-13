@@ -202,9 +202,19 @@ pub async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String
 /// The service moves what it can on its own (`hoardd::setup::Health`), but a
 /// `.deb`, an `.rpm` or an MSI only come off with an administrator's password,
 /// and asking for one needs a window. So when the app opens on such a machine it
-/// hands over to Hoard Setup, which asks once, finishes the move and opens the
-/// app again. Once a day at most: a prompt somebody cancelled doesn't come back
-/// every time they open the app.
+/// hands over to Hoard Setup, which asks, finishes the move and opens the app
+/// again.
+///
+/// The same hand-over records an app that was downloaded and opened without
+/// Setup (`Health::unrecorded`). Nothing else will: the service never updates
+/// it, and the bare Windows `.exe` has no service to sync with at all. Setup
+/// gets the app's own file and its version, so the core comes from the same
+/// release and the app isn't downloaded twice.
+///
+/// Once per machine. Somebody who cancels the prompt is keeping their package,
+/// and that is respected: it stays the app, the core goes on updating itself,
+/// and Hoard Setup from the website or the update button asks again only when
+/// they go looking for it.
 ///
 /// In the background and best-effort: it may not delay or bring down the
 /// window's start. Never from a development build, which is not an install.
@@ -214,7 +224,22 @@ pub(crate) fn finish_older_install() {
     }
     tauri::async_runtime::spawn(async move {
         let health = hoardd::setup::health().await;
-        if !health.needs_admin() {
+        let current = hoard_agent::update::current();
+        let mut args = vec!["--repair".to_string()];
+        if health.needs_admin() {
+            tracing::info!(reason = %health.describe(), "an older install needs an administrator; opening Hoard Setup");
+        } else if health.unrecorded() {
+            let Some(app) = hoardd::setup::running_app() else {
+                return;
+            };
+            args.extend(["--version".to_string(), current.to_string()]);
+            if let hoardd::setup::RunningApp::File(file) = &app {
+                if let Some(file) = file.to_str() {
+                    args.extend(["--app".to_string(), file.to_string()]);
+                }
+            }
+            tracing::info!(app = ?app, "nothing records this install; opening Hoard Setup");
+        } else {
             return;
         }
         let Ok(marker) =
@@ -222,21 +247,18 @@ pub(crate) fn finish_older_install() {
         else {
             return;
         };
-        let recent = std::fs::metadata(&marker)
-            .and_then(|m| m.modified())
-            .ok()
-            .and_then(|at| at.elapsed().ok())
-            .is_some_and(|age| age < std::time::Duration::from_secs(24 * 3600));
-        if recent {
+        if marker.exists() {
             return;
         }
         let _ = std::fs::write(&marker, b"");
-        tracing::info!(reason = %health.describe(), "an older install needs an administrator; opening Hoard Setup");
-        let launched = match hoardd::setup::fetch_setup(hoard_agent::update::current()).await {
-            Ok(exe) => hoardd::setup::launch_setup(&exe, &["--repair"]),
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let launched = match hoardd::setup::fetch_setup(current).await {
+            Ok(exe) => hoardd::setup::launch_setup(&exe, &args),
             Err(err) => Err(err),
         };
         if let Err(err) = launched {
+            // Nobody was asked, so the one question is still owed.
+            let _ = std::fs::remove_file(&marker);
             tracing::warn!(error = %format!("{err:#}"), "couldn't open Hoard Setup to finish the move");
         }
     });

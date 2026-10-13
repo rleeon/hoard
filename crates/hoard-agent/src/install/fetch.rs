@@ -438,6 +438,11 @@ fn place_exe(downloaded: &Path) -> Result<PathBuf> {
     let _ = std::fs::remove_file(&staging);
     std::fs::copy(downloaded, &staging)
         .with_context(|| format!("staging the app at {}", staging.display()))?;
+    // A program copied out of Downloads brings its "from the internet" mark
+    // along, and Windows would ask about it on every start from the menu.
+    let mut mark = staging.clone().into_os_string();
+    mark.push(":Zone.Identifier");
+    let _ = std::fs::remove_file(mark);
     replace_binary(&staging, &dest)?;
     Ok(dest)
 }

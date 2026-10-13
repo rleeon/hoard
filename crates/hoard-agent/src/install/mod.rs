@@ -127,6 +127,13 @@ impl Delivery {
             Delivery::Deb | Delivery::Rpm | Delivery::Nsis | Delivery::Msi
         )
     }
+
+    /// A `.deb` or an `.rpm`. Taking one off needs a password, so the person
+    /// is asked once and may keep it: then it stays the app, and only the core
+    /// is updated from here.
+    pub fn is_package(self) -> bool {
+        matches!(self, Delivery::Deb | Delivery::Rpm)
+    }
 }
 
 // ---- what the system tells us
@@ -327,8 +334,12 @@ impl Manifest {
             _ => false,
         };
         let app_ok = !self.has(Component::Desktop)
-            || (self.delivery.is_some_and(|d| !d.is_legacy())
-                && layout::app_path().is_ok_and(|p| p.exists()));
+            || match self.delivery {
+                // A package the person chose to keep is where they put it.
+                Some(d) if d.is_package() => self.desktop_path.as_ref().is_some_and(|p| p.exists()),
+                Some(d) => !d.is_legacy() && layout::app_path().is_ok_and(|p| p.exists()),
+                None => false,
+            };
         core_ok && app_ok
     }
 }

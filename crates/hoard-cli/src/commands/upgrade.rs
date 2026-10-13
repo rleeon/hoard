@@ -39,6 +39,16 @@ pub async fn run(version: Option<String>) -> Result<()> {
         return install(Some(&v)).await;
     }
 
+    // The service holds every update back until an install from an older
+    // release is moved, and what it reports meanwhile ("not downloaded yet",
+    // "hasn't been able to check") would have this run again for nothing.
+    if let Some(why) = repair_pending().await {
+        println!("hoard {current} — this install has to be moved before it can update:");
+        println!("  {why}");
+        println!("Run `hoard install` to do it now; the service also does it on its own.");
+        return Ok(());
+    }
+
     if let Some(state) = crate::commands::link::update_state().await {
         return through_the_service(current, state).await;
     }
@@ -123,6 +133,18 @@ async fn through_the_service(current: &str, state: UpdateState) -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// What keeps the service from updating this install, when it is the same
+/// thing that keeps it in `hoardd::updater`: a record of ours that points
+/// outside the layout, or a service running a `hoardd` other than the core.
+async fn repair_pending() -> Option<String> {
+    let health = hoardd::setup::health().await;
+    let manifest = health.manifest.as_ref()?;
+    if !manifest.delivery.is_none_or(|d| d.is_ours()) {
+        return None;
+    }
+    (!manifest.is_in_layout() || health.unit_elsewhere).then(|| health.describe())
 }
 
 /// How the wait ended.

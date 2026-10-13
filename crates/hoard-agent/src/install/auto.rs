@@ -358,7 +358,13 @@ impl Manifest {
                 return false;
             }
         }
-        if self.has(Component::Desktop) && !self.delivery.is_some_and(|d| d.applies_unattended()) {
+        // A package the person kept is the one exception to "all pieces or none":
+        // an update leaves it alone (`stage::wanted`), so it asks nothing of them.
+        if self.has(Component::Desktop)
+            && !self
+                .delivery
+                .is_some_and(|d| d.applies_unattended() || d.is_package())
+        {
             return false;
         }
         super::layout::core_dir().is_ok_and(|d| dir_is_writable(&d))
@@ -561,8 +567,8 @@ mod tests {
     }
 
     #[test]
-    fn an_old_package_needs_someone_there() {
-        for d in [Delivery::Deb, Delivery::Rpm, Delivery::Nsis, Delivery::Msi] {
+    fn an_old_windows_install_needs_someone_there() {
+        for d in [Delivery::Nsis, Delivery::Msi] {
             let m = Manifest {
                 version: "1.0.0".into(),
                 components: vec![Component::Core, Component::Desktop],
@@ -571,6 +577,34 @@ mod tests {
                 desktop_path: None,
             };
             assert!(!m.applies_unattended(), "{d:?} should need a human");
+        }
+    }
+
+    /// The person said no to giving up their `.deb`: updating the core asks
+    /// them for nothing, exactly as on a machine with no app at all. Compared
+    /// rather than asserted, because the answer also depends on whether this
+    /// machine's core directory is writable.
+    #[test]
+    fn a_kept_package_updates_like_a_core_alone() {
+        let core_only = Manifest {
+            version: "1.0.0".into(),
+            components: vec![Component::Core],
+            delivery: None,
+            core_dir: None,
+            desktop_path: None,
+        };
+        for d in [Delivery::Deb, Delivery::Rpm] {
+            let m = Manifest {
+                components: vec![Component::Core, Component::Desktop],
+                delivery: Some(d),
+                desktop_path: Some("/usr/bin/hoard-desktop".into()),
+                ..core_only.clone()
+            };
+            assert_eq!(
+                m.applies_unattended(),
+                core_only.applies_unattended(),
+                "{d:?}"
+            );
         }
     }
 

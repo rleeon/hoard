@@ -294,6 +294,7 @@
   "callback.failed_provider": "Your sign-in provider turned the request down.",
   "callback.failed_no_session": "This link carried no sign-in to complete.",
   "callback.failed_link": "We couldn't finish signing you in with this link.",
+  "callback.failed_timeout": "The sign-in didn't finish in time.",
   "callback.back_to_signin": "Back to sign in",
   "callback.desktop_return": "Signed in! Head back to the Hoard app and close this tab.",
   "callback.desktop_reopen": "Didn't open? Click here to reopen Hoard.",

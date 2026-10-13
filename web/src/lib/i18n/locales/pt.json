@@ -294,6 +294,7 @@
   "callback.failed_provider": "O teu fornecedor de início de sessão recusou o pedido.",
   "callback.failed_no_session": "Esta ligação não trazia nenhum início de sessão para concluir.",
   "callback.failed_link": "Não foi possível concluir o início de sessão com esta ligação.",
+  "callback.failed_timeout": "O início de sessão não terminou a tempo.",
   "callback.back_to_signin": "Voltar ao início de sessão",
   "callback.desktop_return": "Sessão iniciada! Volta à app Hoard e fecha este separador.",
   "callback.desktop_reopen": "Não abriu? Clica aqui para reabrir o Hoard.",

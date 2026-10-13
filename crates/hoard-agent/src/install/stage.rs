@@ -51,9 +51,10 @@ pub struct Staged {
 
 /// Which app route this install updates, if it has an app.
 ///
-/// An install from before the layout (a `.deb`, the NSIS folder) is not updated
+/// An install from before the layout (the NSIS folder, the MSI) is not updated
 /// in place: it is repaired, by Hoard Setup, which moves it. Staging an update
-/// for it would download files this machine has nowhere to put.
+/// for it would download files this machine has nowhere to put. A `.deb` or
+/// `.rpm` the person kept gets the core and nothing for the app.
 fn wanted(manifest: &Manifest) -> Result<Option<Delivery>> {
     if !manifest.has(Component::Desktop) {
         return Ok(None);
@@ -66,6 +67,10 @@ fn wanted(manifest: &Manifest) -> Result<Option<Delivery>> {
             "this install is managed by your package manager ({})",
             d.as_str()
         );
+    }
+    // A package the person kept: the core moves on, the app is theirs.
+    if d.is_package() {
+        return Ok(None);
     }
     if d.is_legacy() {
         bail!(
@@ -248,13 +253,22 @@ mod tests {
         );
     }
 
-    /// The machine that started this: a `.deb` from 1.2.1. It has nothing to
-    /// stage; it has a repair to run.
+    /// The old Windows installers have nothing to stage; they have a repair to
+    /// run.
     #[test]
-    fn an_old_package_is_repaired_not_updated() {
-        for d in [Delivery::Deb, Delivery::Rpm, Delivery::Nsis, Delivery::Msi] {
+    fn an_old_windows_install_is_repaired_not_updated() {
+        for d in [Delivery::Nsis, Delivery::Msi] {
             let err = wanted(&manifest(Some(d))).unwrap_err();
             assert!(format!("{err:#}").contains("repair"), "{d:?}: {err:#}");
+        }
+    }
+
+    /// A `.deb` or `.rpm` the person kept: the update brings the core and
+    /// leaves their package alone.
+    #[test]
+    fn a_kept_package_stages_the_core_alone() {
+        for d in [Delivery::Deb, Delivery::Rpm] {
+            assert_eq!(wanted(&manifest(Some(d))).unwrap(), None, "{d:?}");
         }
     }
 

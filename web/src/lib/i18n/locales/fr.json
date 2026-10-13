@@ -294,6 +294,7 @@
   "callback.failed_provider": "Ton fournisseur de connexion a refusé la demande.",
   "callback.failed_no_session": "Ce lien ne contenait aucune connexion à finaliser.",
   "callback.failed_link": "Impossible de terminer la connexion avec ce lien.",
+  "callback.failed_timeout": "La connexion n'a pas abouti à temps.",
   "callback.back_to_signin": "Retour à la connexion",
   "callback.desktop_return": "Connecté ! Retourne dans l'app Hoard et ferme cet onglet.",
   "callback.desktop_reopen": "Pas ouvert ? Clique ici pour rouvrir Hoard.",

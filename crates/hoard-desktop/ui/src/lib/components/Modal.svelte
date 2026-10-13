@@ -41,10 +41,18 @@
   }: Props = $props();
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && open && dismissible) {
-      e.stopPropagation();
-      onClose();
+    if (e.key !== "Escape" || !open || !dismissible) return;
+    // A dropdown open inside the modal takes this Escape for itself. Listening
+    // in the capture phase, we hear it first, and its own stopPropagation
+    // came too late: the whole modal closed, and what was typed in it with it.
+    if (
+      e.target instanceof Element &&
+      e.target.closest('[role="combobox"][aria-expanded="true"]')
+    ) {
+      return;
     }
+    e.stopPropagation();
+    onClose();
   }
 
   onMount(() => {

@@ -294,6 +294,7 @@
   "callback.failed_provider": "Dein Anmeldeanbieter hat die Anfrage abgelehnt.",
   "callback.failed_no_session": "Dieser Link enthielt keine Anmeldung zum Abschließen.",
   "callback.failed_link": "Mit diesem Link konnten wir die Anmeldung nicht abschließen.",
+  "callback.failed_timeout": "Die Anmeldung wurde nicht rechtzeitig abgeschlossen.",
   "callback.back_to_signin": "Zurück zur Anmeldung",
   "callback.desktop_return": "Angemeldet! Geh zurück zur Hoard-App, diesen Tab kannst du schließen.",
   "callback.desktop_reopen": "Nicht geöffnet? Hier klicken, um Hoard erneut zu öffnen.",

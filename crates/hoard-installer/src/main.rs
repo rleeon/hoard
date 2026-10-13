@@ -61,6 +61,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // A folder of binaries to install instead of the release's: offline, or a
     // build being tried before it ships.
     let from = value("--from").map(std::path::PathBuf::from);
+    // The app that opened this one, installed from its own file: it was
+    // downloaded and run without Setup, and the same release needn't come down
+    // again. Whoever passes it wants the app, whatever the machine looks like.
+    let app = value("--app").map(std::path::PathBuf::from);
 
     // `/S` is what a Windows installer answers to, and this one should answer to
     // it too: it is how an unattended deployment drives any of them, and it is
@@ -71,12 +75,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(code) = updater_parent::step_aside(&args) {
             std::process::exit(code);
         }
-        let want = if flag("--no-desktop") {
+        let want = if app.is_some() {
+            Want::Desktop
+        } else if flag("--no-desktop") {
             Want::Headless
         } else {
             Want::Keep
         };
-        return silent(flag("--uninstall"), want, version, from);
+        return silent(flag("--uninstall"), want, version, from, app);
     }
     // Opened by the app to finish moving an older install, or by "Installed
     // apps" to remove this one.
@@ -178,13 +184,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let found = found.clone();
         let version = version.clone();
         let from = from.clone();
+        let app = app.clone();
         move || {
             let Some(ui) = weak.upgrade() else {
                 return;
             };
             // On an update, what to install is what is already there, so the
             // toggle was never shown, so its default must not decide.
-            let want = if found.is_some() && ui.get_installed() {
+            let want = if app.is_some() {
+                Want::Desktop
+            } else if found.is_some() && ui.get_installed() {
                 Want::Keep
             } else if ui.get_want_desktop() {
                 Want::Desktop
@@ -199,8 +208,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let weak = weak.clone();
             let version = version.clone();
             let from = from.clone();
+            let app = app.clone();
             rt.spawn(async move {
-                let result = steps::run(want, version, from, true).await;
+                let result = steps::run(want, version, from, app, true).await;
                 if let Ok(outcome) = &result {
                     log_outcome(outcome);
                 }
@@ -388,6 +398,7 @@ fn silent(
     want: Want,
     version: Option<String>,
     from: Option<std::path::PathBuf>,
+    app: Option<std::path::PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let log = std::env::temp_dir().join("hoard-setup.log");
     let rt = tokio::runtime::Runtime::new()?;
@@ -405,7 +416,7 @@ fn silent(
                     .join(", ")
             ))
         } else {
-            let done = steps::run(want, version, from, false)
+            let done = steps::run(want, version, from, app, false)
                 .await
                 .map_err(|e| format!("{e:#}"))?;
             let mut line = match &done.app {

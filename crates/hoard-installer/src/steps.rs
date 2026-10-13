@@ -33,6 +33,7 @@ pub async fn run(
     want: Want,
     version: Option<String>,
     from: Option<PathBuf>,
+    app: Option<PathBuf>,
     interactive: bool,
 ) -> Result<Outcome> {
     let (source, app_file) = match from {
@@ -42,6 +43,7 @@ pub async fn run(
         }
         None => (Source::Download, None),
     };
+    let app_file = app.or(app_file);
     hoardd::setup::run(Plan {
         version,
         want,

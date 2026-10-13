@@ -32,7 +32,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use hoard_agent::install::legacy::{self, Leftover};
-use hoard_agent::install::{self, fetch, layout, remove, Component, Manifest, Probe, Swap};
+use hoard_agent::install::{
+    self, fetch, layout, remove, Component, Delivery, Manifest, Probe, Swap,
+};
 
 use crate::autostart;
 use crate::client::{self, Client};
@@ -111,8 +113,25 @@ pub async fn run(plan: Plan) -> Result<Outcome> {
     let version = resolve_version(&plan).await?;
     let existing = Manifest::load().ok().flatten();
     let leftovers = legacy::scan().await;
-    let mut manifest = plan_manifest(plan.want, &version, &probe, existing.as_ref(), &leftovers);
-    let first_install = existing.is_none() && leftovers.is_empty() && !core_in_place();
+    let on_disk = OnDisk::read();
+    let mut manifest = plan_manifest(
+        plan.want,
+        &version,
+        &probe,
+        existing.as_ref(),
+        &leftovers,
+        on_disk,
+    );
+    let first_install = existing.is_none() && leftovers.is_empty() && !on_disk.core;
+    // The app a package put here is the person's to give up, and giving it up
+    // takes a password. With nobody to ask it stays the app and only the core
+    // and the service move; with somebody there it is offered in
+    // `place_and_start`, and a "no" keeps it the same way.
+    if !plan.interactive && manifest.has(Component::Desktop) {
+        if let Some((delivery, app)) = package_app(&leftovers) {
+            keep_package(&mut manifest, delivery, &app);
+        }
+    }
     let mut warnings = Vec::new();
     tracing::info!(
         version = %version,
@@ -152,11 +171,19 @@ pub async fn run(plan: Plan) -> Result<Outcome> {
         m.version == version
             && m.delivery == manifest.delivery
             && m.desktop_path.as_ref().is_some_and(|p| p.exists())
-    }) && layout::app_path().is_ok_and(|p| p.exists());
+    }) && on_disk.app;
+    // An app opened from where it belongs with nothing recording it hands over
+    // its own file, which is the destination: copied onto itself, a bundle is
+    // deleted before it is read.
+    let given_in_place = plan
+        .app_file
+        .as_deref()
+        .is_some_and(|file| layout::app_path().is_ok_and(|app| same_dir(file, &app)));
     let app_file = match manifest
         .delivery
-        .filter(|_| manifest.has(Component::Desktop))
+        .filter(|d| manifest.has(Component::Desktop) && !d.is_package())
     {
+        Some(_) if given_in_place => None,
         Some(_) if plan.app_file.is_some() => plan.app_file.clone(),
         Some(_) if app_in_place => None,
         Some(delivery) => Some(
@@ -213,6 +240,13 @@ pub async fn run(plan: Plan) -> Result<Outcome> {
     // ---- 6. what is left of older installs
     let mut left = Vec::new();
     for item in leftovers.iter().filter(|l| !l.in_the_way()) {
+        // The app's own package was offered, or kept, when the app was placed.
+        if matches!(item, Leftover::Package { .. }) && manifest.has(Component::Desktop) {
+            if manifest.delivery.is_some_and(|d| d.is_package()) {
+                left.push(item.describe());
+            }
+            continue;
+        }
         if item.needs_admin() && !plan.interactive {
             left.push(item.describe());
             continue;
@@ -267,6 +301,7 @@ fn plan_manifest(
     probe: &Probe,
     existing: Option<&Manifest>,
     leftovers: &[Leftover],
+    on_disk: OnDisk,
 ) -> Manifest {
     // An app the record names but nobody can find was taken off by hand
     // (Settings, `apt remove`): an update that put it back is how "I
@@ -274,10 +309,8 @@ fn plan_manifest(
     let recorded_app = existing.is_some_and(|m| {
         m.has(Component::Desktop) && m.desktop_path.as_ref().is_none_or(|p| p.exists())
     });
-    let app_here = recorded_app
-        || leftovers.iter().any(is_old_app)
-        || layout::app_path().is_ok_and(|p| p.exists());
-    let known = existing.is_some() || !leftovers.is_empty() || core_in_place();
+    let app_here = recorded_app || leftovers.iter().any(is_old_app) || on_disk.app;
+    let known = existing.is_some() || !leftovers.is_empty() || on_disk.core;
 
     let mut m = Manifest::planned(version, probe);
     match want {
@@ -304,8 +337,37 @@ fn is_old_app(l: &Leftover) -> bool {
     )
 }
 
-fn core_in_place() -> bool {
-    layout::core_binary("hoardd").is_ok_and(|p| p.is_file())
+/// What the layout already has on this machine, read once so that
+/// [`plan_manifest`] answers from its arguments and not from the disk of
+/// whoever runs the tests.
+#[derive(Debug, Clone, Copy, Default)]
+struct OnDisk {
+    core: bool,
+    app: bool,
+}
+
+impl OnDisk {
+    fn read() -> Self {
+        Self {
+            core: layout::core_binary("hoardd").is_ok_and(|p| p.is_file()),
+            app: layout::app_path().is_ok_and(|p| p.exists()),
+        }
+    }
+}
+
+/// The app a `.deb` or `.rpm` put in `/usr/bin`, if there is one.
+fn package_app(leftovers: &[Leftover]) -> Option<(Delivery, PathBuf)> {
+    leftovers.iter().find_map(|l| match l {
+        Leftover::Package { delivery, app } => Some((*delivery, app.clone())),
+        _ => None,
+    })
+}
+
+/// The package stays the app: the core and the service still move, and the
+/// app is the person's to update.
+fn keep_package(manifest: &mut Manifest, delivery: Delivery, app: &Path) {
+    manifest.delivery = Some(delivery);
+    manifest.desktop_path = Some(app.to_path_buf());
 }
 
 /// `hoard install` run from an older copy must not put that copy over a newer
@@ -364,7 +426,32 @@ async fn place_and_start(
         warnings.push(format!("{err:#}"));
     }
 
-    if let (Some(file), Some(delivery)) = (app_file, manifest.delivery) {
+    // A package is asked about before anything replaces it. Placed beside a
+    // package the person then keeps, the new app would be a second Hoard in
+    // the menu for good.
+    let mut app_file = app_file;
+    if plan.interactive && manifest.has(Component::Desktop) {
+        if let Some((delivery, app)) = package_app(leftovers) {
+            for item in leftovers
+                .iter()
+                .filter(|l| matches!(l, Leftover::Package { .. }))
+            {
+                match legacy::remove(item, true).await {
+                    Ok(()) => tracing::info!(item = %item.describe(), "setup: removed"),
+                    Err(err) => {
+                        tracing::info!(error = %format!("{err:#}"), "setup: the package stays the app");
+                        warnings.push(format!("{}: {err:#}", item.describe()));
+                        keep_package(manifest, delivery, &app);
+                        app_file = None;
+                    }
+                }
+            }
+        }
+    }
+
+    if manifest.delivery.is_some_and(|d| d.is_package()) {
+        // The person's package, left where it is.
+    } else if let (Some(file), Some(delivery)) = (app_file, manifest.delivery) {
         let path = fetch::apply_desktop(delivery, file)
             .await
             .context("installing the desktop app")?;
@@ -530,10 +617,16 @@ fn kills_by_name() -> bool {
 const OURS: [&str; 3] = ["hoard-desktop", "hoard-screen", "hoardd"];
 
 /// Every process of ours on Linux, read from `/proc`, except the ones inside a
-/// Flatpak: that install is separate, and its engine is not ours to stop.
+/// Flatpak (that install is separate, and its engine is not ours to stop) and
+/// the ones of other accounts: their Hoard is theirs, the signal would only
+/// bounce, and an app open in another session read as ours being open.
 #[cfg(target_os = "linux")]
 fn our_processes() -> Vec<i32> {
+    use std::os::unix::fs::MetadataExt;
     let me = std::process::id() as i32;
+    let Ok(uid) = std::fs::metadata("/proc/self").map(|m| m.uid()) else {
+        return Vec::new();
+    };
     let Ok(entries) = std::fs::read_dir("/proc") else {
         return Vec::new();
     };
@@ -541,6 +634,7 @@ fn our_processes() -> Vec<i32> {
         .flatten()
         .filter_map(|e| e.file_name().to_str()?.parse::<i32>().ok())
         .filter(|pid| *pid != me)
+        .filter(|pid| std::fs::metadata(format!("/proc/{pid}")).is_ok_and(|m| m.uid() == uid))
         .filter(|pid| {
             let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
             OURS.contains(&comm.trim())
@@ -737,6 +831,24 @@ impl Health {
             || self.leftovers.iter().any(|l| !l.needs_admin())
     }
 
+    /// Hoard runs here and nothing records it: the app was downloaded from the
+    /// release page and opened without Hoard Setup. With no manifest the
+    /// service takes the install for a package manager's and never updates it,
+    /// and on Windows the bare `.exe` doesn't even carry the service.
+    ///
+    /// A core in the layout is enough to rule it out, since the service adopts
+    /// that one ([`install::adopt`]). An older install that needs a password or
+    /// has to go first is the repair's business, not this.
+    pub fn unrecorded(&self) -> bool {
+        self.manifest.is_none()
+            && !install::running_under_flatpak()
+            && !layout::core_binary("hoardd").is_ok_and(|p| p.is_file())
+            && !self
+                .leftovers
+                .iter()
+                .any(|l| l.needs_admin() || l.in_the_way())
+    }
+
     pub fn describe(&self) -> String {
         let mut parts: Vec<String> = self.leftovers.iter().map(Leftover::describe).collect();
         if self.unit_elsewhere {
@@ -905,6 +1017,52 @@ fn which(name: &str) -> bool {
 
 // ---- Hoard Setup, for whoever needs a window
 
+/// How the app that is running reaches Hoard Setup to be recorded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunningApp {
+    /// Its own file, installed instead of downloading the same release again.
+    File(PathBuf),
+    /// A bundle outside `/Applications`: Setup installs the app from a disk
+    /// image, so it fetches one.
+    Fetch,
+}
+
+/// The app this process is, as an install. `None` for what isn't one: a build
+/// tree, and on Linux anything but an AppImage (a package is asked about on its
+/// own).
+pub fn running_app() -> Option<RunningApp> {
+    let exe = std::env::current_exe().ok()?;
+    if exe.components().any(|c| c.as_os_str() == "target") {
+        return None;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // The binary itself lives on a mount that goes away with the app.
+        std::env::var_os("APPIMAGE")
+            .map(PathBuf::from)
+            .filter(|p| p.is_file())
+            .map(RunningApp::File)
+    }
+    #[cfg(windows)]
+    {
+        Some(RunningApp::File(exe))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let bundle = exe
+            .ancestors()
+            .find(|p| p.extension().is_some_and(|e| e == "app"))?;
+        Some(match layout::app_path() {
+            Ok(app) if same_dir(bundle, &app) => RunningApp::File(app),
+            _ => RunningApp::Fetch,
+        })
+    }
+    #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
+    {
+        None
+    }
+}
+
 /// Downloads Hoard Setup for `version` and returns the program to run.
 pub async fn fetch_setup(version: &str) -> Result<PathBuf> {
     let name = fetch::setup_asset_name().context("no Hoard Setup for this platform")?;
@@ -992,7 +1150,10 @@ fn can_show_windows() -> bool {
 /// Runs Hoard Setup detached, so it outlives whoever started it: it is about to
 /// close that process.
 pub fn launch_setup(exe: &Path, args: &[&str]) -> Result<()> {
-    let spawned = outside_our_unit(exe, args).spawn();
+    let mut command = outside_our_unit(exe, args);
+    #[cfg(target_os = "linux")]
+    leave_the_appimage(&mut command);
+    let spawned = command.spawn();
     #[cfg(windows)]
     let spawned = match spawned {
         // The job doesn't allow breaking away; the app is not in the login
@@ -1009,10 +1170,38 @@ pub fn launch_setup(exe: &Path, args: &[&str]) -> Result<()> {
     Ok(())
 }
 
+/// Hoard Setup opened from an AppImage would inherit what `AppRun` exports to
+/// point the app at the libraries inside the image: it would load that
+/// Wayland and X11 (which the browser already died on, see the desktop's
+/// `open_external`), from a mount that goes away the moment Setup closes the
+/// app. The values from before the AppImage come back where it kept them.
+#[cfg(target_os = "linux")]
+fn leave_the_appimage(command: &mut std::process::Command) {
+    if std::env::var_os("APPIMAGE").is_none() {
+        return;
+    }
+    for var in [
+        "LD_LIBRARY_PATH",
+        "LD_PRELOAD",
+        "GTK_PATH",
+        "GDK_PIXBUF_MODULE_FILE",
+        "GIO_MODULE_DIR",
+        "GST_PLUGIN_SYSTEM_PATH",
+        "GSETTINGS_SCHEMA_DIR",
+    ] {
+        match std::env::var_os(format!("{var}_ORIG")) {
+            Some(orig) => command.env(var, orig),
+            None => command.env_remove(var),
+        };
+    }
+    for var in ["APPIMAGE", "APPDIR", "ARGV0", "OWD"] {
+        command.env_remove(var);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hoard_agent::install::Delivery;
 
     fn probe(graphical: bool) -> Probe {
         Probe {
@@ -1038,7 +1227,14 @@ mod tests {
             &[Component::Core, Component::Desktop],
             Some(Delivery::AppImage),
         );
-        let m = plan_manifest(Want::Keep, "1.2.2", &probe(false), Some(&existing), &[]);
+        let m = plan_manifest(
+            Want::Keep,
+            "1.2.2",
+            &probe(false),
+            Some(&existing),
+            &[],
+            OnDisk::default(),
+        );
         assert!(m.has(Component::Desktop));
         assert!(!m.delivery.unwrap().is_legacy());
     }
@@ -1051,7 +1247,14 @@ mod tests {
             delivery: Delivery::Deb,
             app: "/usr/bin/hoard-desktop".into(),
         };
-        let m = plan_manifest(Want::Keep, "1.2.2", &probe(true), Some(&existing), &[deb]);
+        let m = plan_manifest(
+            Want::Keep,
+            "1.2.2",
+            &probe(true),
+            Some(&existing),
+            &[deb],
+            OnDisk::default(),
+        );
         assert!(m.has(Component::Desktop));
         assert_eq!(m.delivery, Some(install::resolve_delivery(&probe(true))));
     }
@@ -1060,7 +1263,14 @@ mod tests {
     #[test]
     fn an_update_of_a_headless_box_stays_headless() {
         let existing = manifest(&[Component::Core], None);
-        let m = plan_manifest(Want::Keep, "1.2.2", &probe(true), Some(&existing), &[]);
+        let m = plan_manifest(
+            Want::Keep,
+            "1.2.2",
+            &probe(true),
+            Some(&existing),
+            &[],
+            OnDisk::default(),
+        );
         assert_eq!(m.components, vec![Component::Core]);
         assert_eq!(m.delivery, None);
     }
@@ -1071,15 +1281,36 @@ mod tests {
     fn an_app_removed_by_hand_is_not_put_back() {
         let mut existing = manifest(&[Component::Core, Component::Desktop], Some(Delivery::Nsis));
         existing.desktop_path = Some("/nonexistent/hoard-desktop.exe".into());
-        let m = plan_manifest(Want::Keep, "1.2.2", &probe(true), Some(&existing), &[]);
+        let m = plan_manifest(
+            Want::Keep,
+            "1.2.2",
+            &probe(true),
+            Some(&existing),
+            &[],
+            OnDisk::default(),
+        );
         assert_eq!(m.components, vec![Component::Core]);
     }
 
     #[test]
     fn the_person_outranks_the_probe() {
-        let m = plan_manifest(Want::Desktop, "1.2.2", &probe(false), None, &[]);
+        let m = plan_manifest(
+            Want::Desktop,
+            "1.2.2",
+            &probe(false),
+            None,
+            &[],
+            OnDisk::default(),
+        );
         assert!(m.has(Component::Desktop));
-        let m = plan_manifest(Want::Headless, "1.2.2", &probe(true), None, &[]);
+        let m = plan_manifest(
+            Want::Headless,
+            "1.2.2",
+            &probe(true),
+            None,
+            &[],
+            OnDisk::default(),
+        );
         assert!(!m.has(Component::Desktop));
         assert_eq!(m.delivery, None);
     }

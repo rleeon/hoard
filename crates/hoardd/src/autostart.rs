@@ -1045,11 +1045,16 @@ mod platform {
         Ok(())
     }
 
+    /// `kickstart` only reaches a loaded agent. After [`stop`] it isn't one, and
+    /// an install that failed halfway brought the sync back through here: it
+    /// stayed off until the next login. Loading the plist again covers it.
     pub async fn restart() -> Result<()> {
         let uid = current_uid().await?;
         let target = format!("gui/{uid}/{UNIT}");
         if !run_quiet("launchctl", &["kickstart", "-k", &target]).await? {
-            anyhow::bail!("`launchctl kickstart {target}` failed");
+            start()
+                .await
+                .with_context(|| format!("`launchctl kickstart {target}` failed"))?;
         }
         Ok(())
     }

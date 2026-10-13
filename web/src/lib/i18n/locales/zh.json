@@ -294,6 +294,7 @@
   "callback.failed_provider": "登录服务商拒绝了该请求。",
   "callback.failed_no_session": "此链接中没有可完成的登录。",
   "callback.failed_link": "无法通过此链接完成登录。",
+  "callback.failed_timeout": "登录未能及时完成。",
   "callback.back_to_signin": "返回登录",
   "callback.desktop_return": "已登录！请回到 Hoard 应用，这个标签页可以关闭了。",
   "callback.desktop_reopen": "没有打开？点这里重新打开 Hoard。",

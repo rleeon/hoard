@@ -124,9 +124,17 @@
   // landed a moment later: the browser ended up signed in and the app never heard
   // of it, and the second attempt (this path, already signed in) worked.
   async function finish() {
-    const slow = setTimeout(() => (message = $_('callback.still_working')), 15000);
+    const slow = setTimeout(() => (message = $_('callback.still_working')), 10000);
+    // At 20 s the page says it failed, but it keeps waiting: a session that lands
+    // after that still goes to the app, so the browser can't end up signed in
+    // behind an error the way it did with the old cut.
+    const late = setTimeout(() => {
+      error = $_('callback.failed_timeout');
+      message = '';
+    }, 20000);
     const { error: urlErr } = await supabase.auth.initialize();
     clearTimeout(slow);
+    clearTimeout(late);
     if (urlErr) {
       // Never fall back to the stored session here: when the URL fails,
       // supabase-js keeps the previous one, which may be another account.
@@ -136,8 +144,11 @@
       return;
     }
     const { data, error: sessErr } = await supabase.auth.getSession();
-    if (data.session) done(data.session);
-    else {
+    if (data.session) {
+      error = null;
+      errorDetail = null;
+      done(data.session);
+    } else {
       error = $_('callback.failed_no_session');
       errorDetail = sessErr?.message ?? null;
       message = '';
