@@ -100,6 +100,12 @@ cat "$WORK/desktop-entry" > "$DESKTOP"
 # Repack even with no graphics libraries to remove: the opt-out must reach
 # the shipped image, including runners that already exclude all host libs.
 
+# Up to 1.2.2 every directory came out of this repack at 0700, owned by root.
+# Running the image normally hides it (the runtime mounts it through FUSE,
+# which doesn't check those bits), but firejail mounts it with the kernel and
+# could not reach AppRun, which is how the AppImage catalog tests it.
+chmod -R u+rwX,go+rX,go-w squashfs-root
+
 # Repackage with appimagetool. Fetch it once; ARCH must match the payload.
 ARCH="$(uname -m)"
 TOOL="appimagetool-${ARCH}.AppImage"

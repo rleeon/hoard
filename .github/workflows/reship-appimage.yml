@@ -1,0 +1,111 @@
+name: Reship AppImage
+
+# Repackages the Linux AppImages of a release that already exists, without
+# rebuilding anything, and swaps them in with a new .minisig and .sha256. The
+# binaries inside stay the release's own; only the packaging changes, so no
+# client is asked to update to an identical app.
+#
+# Written for 1.2.2, whose AppImages carried every directory at 0700. Running
+# one was fine (the runtime mounts it through FUSE, which doesn't check those
+# bits), but firejail mounts it with the kernel, could not reach AppRun, and
+# that is how the AppImage catalog tests an app.
+#
+# The repack is `scripts/fix-appimage-libs.sh` from the ref this is dispatched
+# on, the same script `release-desktop.yml` runs on a fresh build.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Release whose AppImages get repackaged, e.g. v1.2.2"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reship-appimage-${{ inputs.release }}
+  cancel-in-progress: false
+
+jobs:
+  repack:
+    name: repack (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            arch: x86_64
+          # appimagetool has to match the payload's architecture.
+          - os: ubuntu-22.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Repackage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE: ${{ inputs.release }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          V="${RELEASE#v}"
+          NAME="hoard-desktop-$V-linux-$ARCH.AppImage"
+          mkdir -p bundle/appimage dist
+          gh release download "$RELEASE" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$NAME" --pattern "$NAME.sha256" --dir bundle/appimage
+          # Start from exactly the file that was published.
+          ( cd bundle/appimage && sha256sum -c "$NAME.sha256" && rm "$NAME.sha256" )
+          bash scripts/fix-appimage-libs.sh bundle
+          mv "bundle/appimage/$NAME" dist/
+          ( cd dist && sha256sum "$NAME" > "$NAME.sha256" )
+          ls -la dist/
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: appimage-${{ matrix.arch }}
+          path: dist/*
+
+  # Both or neither: one architecture left on the old image is a release that
+  # behaves differently depending on the machine.
+  publish:
+    name: Replace in release
+    needs: repack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          merge-multiple: true
+
+      # A missing key fails here: the release already carries a .minisig for
+      # these files, and an image swapped without its signature is refused by
+      # every client.
+      - name: Sign (minisign)
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_KEY_PASSWORD: ${{ secrets.MINISIGN_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MINISIGN_SECRET_KEY:-}" ]; then
+            echo "::error::MINISIGN_SECRET_KEY is not set"
+            exit 1
+          fi
+          sudo apt-get update && sudo apt-get install -y minisign
+          printf '%s' "$MINISIGN_SECRET_KEY" > minisign.key
+          for f in dist/*.AppImage; do
+            printf '%s\n' "${MINISIGN_KEY_PASSWORD:-}" | \
+              minisign -S -s minisign.key -m "$f"
+            test -f "$f.minisig" || { echo "::error::signing produced no .minisig for $f"; exit 1; }
+          done
+          rm -f minisign.key
+          ls -la dist/
+
+      - name: Replace in release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE: ${{ inputs.release }}
+        run: gh release upload "$RELEASE" dist/* --clobber --repo "$GITHUB_REPOSITORY"
