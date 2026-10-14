@@ -7,17 +7,17 @@ Every € goes to keeping it running and improving.
 
 ## Costs (Monthly / Total)
 
-Last change **24/9/2026**.
-- Hoard-Cloud: **302 Users**
+Last change **14/10/2026**.
+- Hoard-Cloud: **427 Users**
 
-| Service | 07/2026 | 08/2026 | 09/2026 |
-|---------|----------------|----------------|----------------|
-| **Fly,io** (server hosting) | -8.76$ | -6.16$ | -4.56$ |
-| **Cloudflare R2** (storage) | free | -0.15c | -0.81c |
-| **Pro** | 0 | +1.68$ | +1.68$ | +6.74$ |
+| Service | 07/2026 | 08/2026 | 09/2026 | 10/2026 |
+|---------|----------------|----------------|----------------|----------------|
+| **Fly,io** (server hosting) | -8.76$ | -6.16$ | -6.02$ | -2.27$ |
+| **Cloudflare R2** (storage) | free | -0.15c | -1.12c | -1.22$ |
+| **Pro** | 0 | +1.68$ | +1.68$ | +8.42$ | +3.37$ |
 
 
-In total "ignoring developing costs and including yearly subscriptions": **+7.98$** 
+In total "ignoring developing costs and including yearly subscriptions": **8-10€** 
 
 ## Developing
 
