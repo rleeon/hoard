@@ -567,12 +567,24 @@ pub const TELEMETRY_TARGET: &str = "hoard::telemetry";
 /// `where target = ...`.
 pub const SCREEN_TARGET: &str = "hoard::screen";
 
+/// The `target` of product events (`crate::product`): which screens of the Pro
+/// flow someone opens, the day the app was opened. Cloud only. The client keeps
+/// them off a self-hosted server, and the cloud ingest moves them out of the
+/// log into `product_events` instead of storing them as lines.
+pub const EVENT_TARGET: &str = "hoard::event";
+
 /// Targets that travel whatever their level.
 ///
-/// Both are INFO and both have to reach Cloud, whose minimum is WARN. They are
-/// listed here, in the contract, so adding a third does not mean editing client
+/// All are INFO and all have to reach Cloud, whose minimum is WARN. They are
+/// listed here, in the contract, so adding one does not mean editing client
 /// and server separately, which is exactly how this broke the first time.
-pub const EXEMPT_TARGETS: [&str; 2] = [TELEMETRY_TARGET, SCREEN_TARGET];
+pub const EXEMPT_TARGETS: [&str; 3] = [TELEMETRY_TARGET, SCREEN_TARGET, EVENT_TARGET];
+
+/// Whether this line may only go to Cloud. A self-hosted server is somebody's
+/// own machine, and nothing about how they use Hoard is its business or ours.
+pub fn cloud_only(entry: &LogEntry) -> bool {
+    entry.target.as_deref() == Some(EVENT_TARGET)
+}
 
 /// The Terms version the client asks people to accept, exactly as the website
 /// shows it: a date, not a semver.
@@ -782,6 +794,10 @@ mod tests {
         for level in ["info", "debug", "trace"] {
             assert!(ships_at(&entry(level, SCREEN_TARGET), CLOUD_MIN_RANK));
         }
+        // Product events too, and they are the only ones kept off self-hosted.
+        assert!(ships_at(&entry("info", EVENT_TARGET), CLOUD_MIN_RANK));
+        assert!(cloud_only(&entry("info", EVENT_TARGET)));
+        assert!(!cloud_only(&entry("info", TELEMETRY_TARGET)));
         // A target that merely looks like ours does not slip through.
         assert!(!ships_at(
             &entry("info", "hoard::screenshot"),

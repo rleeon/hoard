@@ -47,6 +47,7 @@ async fn manifest_files(
         axum::extract::State(state.clone()),
         axum::Extension(user.clone()),
         axum::extract::Path((save_id.to_string(), 1i64)),
+        axum::http::HeaderMap::new(),
         axum::extract::Query(hoard_server::cloud::routes::saves::ManifestQuery {
             presign: true,
             zstd,

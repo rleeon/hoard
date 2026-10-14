@@ -471,7 +471,7 @@
   "settings.start_minimised_label": "Start minimised",
   "settings.start_minimised_desc": "Launch with the window hidden, only the tray icon shows up.",
   "settings.telemetry_label": "Send diagnostics",
-  "settings.telemetry_desc": "Sends Hoard, tied to your account, the app's warnings and errors and, when detection gets a folder wrong or you pick one by hand, the game and the path (with your username hidden). It's how we fix bugs and improve detection. Never your save files, passwords or tokens. With your own server, it goes to your server.",
+  "settings.telemetry_desc": "Sends Hoard, tied to your account, the app's warnings and errors and, when detection gets a folder wrong or you pick one by hand, the game and the path (with your username hidden). With Hoard Cloud it also notes when you open the app, when you restore a copy by hand and your steps through the Pro plan screens. It's how we fix bugs, improve detection and learn which parts of the app get used. Never your save files, passwords or tokens. With your own server, the warnings and paths go to your server and nothing else is sent.",
   "settings.wrapple_telemetry_label": "Share my playtime with Wrapple",
   "settings.wrapple_telemetry_desc": "Sends how long you play each game, per day, so Wrapple can show your real hours across all your devices. This is the only thing that feeds the recap: turn it off and Wrapple stops working, it will have nothing to show. Your hours keep being counted on this machine either way, so turning it back on brings your history with it. Separate from the setting above, and turning it off sends nothing at all.",
   "settings.notify_success_label": "Notify on successful backup",

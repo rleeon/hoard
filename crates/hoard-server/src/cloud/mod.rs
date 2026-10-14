@@ -44,6 +44,7 @@ pub mod notify;
 pub mod plans;
 pub mod polar;
 pub mod pollguard;
+pub mod product_events;
 pub mod purge;
 pub mod quota;
 pub mod r2;

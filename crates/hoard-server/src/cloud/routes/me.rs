@@ -5,6 +5,7 @@ use crate::cloud::auth::CloudUser;
 use crate::cloud::errors::CloudError;
 use crate::cloud::export;
 use crate::cloud::plans::Plan;
+use crate::cloud::product_events::Event;
 use crate::cloud::quota;
 use crate::cloud::state::CloudState;
 use axum::{
@@ -13,6 +14,7 @@ use axum::{
     response::Json,
     Extension,
 };
+use hoard_core::product::ProductEvent;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -149,6 +151,15 @@ pub async fn get_me(
     // the recomputed `devices_count` is the one we return. Best-effort: a
     // client that sends no fingerprint (older builds) leaves the count alone.
     register_device(&state, &user, &headers).await?;
+    // One row per machine and day. The service polls this route whether or not
+    // the window is open, so it says "Hoard was running", not "somebody looked".
+    // `app.opened` is the other half.
+    let header = |k: &str| headers.get(k).and_then(|v| v.to_str().ok()).map(str::trim);
+    let fp = header("x-hoard-device-fp").unwrap_or_default();
+    Event::new(user.user_id, ProductEvent::ActiveDay)
+        .scope(fp)
+        .device(Some(fp), header("x-hoard-app-version"))
+        .spawn(&state.pool);
 
     // Sync any subscriptions that actually expired but status wasn't updated
     // (retroactive fix for webhooks that didn't fire or were delayed).
@@ -584,6 +595,21 @@ async fn upsert_profile_for(
         }
     }
     res?;
+    if !exists {
+        // Which door they came in by: the app sends its fingerprint, the web
+        // does not.
+        let fp = headers
+            .get("x-hoard-device-fp")
+            .and_then(|v| v.to_str().ok())
+            .filter(|s| !s.is_empty());
+        let version = headers
+            .get("x-hoard-app-version")
+            .and_then(|v| v.to_str().ok());
+        Event::new(user.user_id, ProductEvent::AccountCreated)
+            .props(serde_json::json!({ "via": if fp.is_some() { "app" } else { "web" } }))
+            .device(fp, version)
+            .spawn(&state.pool);
+    }
     Ok(())
 }
 
@@ -704,6 +730,14 @@ async fn register_device(
 
     if !known && full {
         if enforce {
+            Event::new(user.user_id, ProductEvent::DeviceLimitHit)
+                .props(serde_json::json!({
+                    "devices": count,
+                    "limit": limit,
+                    "plan": plan.as_str(),
+                }))
+                .device(Some(fingerprint), app_version)
+                .spawn(&state.pool);
             crate::cloud::notify::devices_full(
                 state,
                 user.user_id,
@@ -729,31 +763,42 @@ async fn register_device(
         );
     }
 
-    sqlx::query(
+    // `xmax = 0` is true only for a row this statement inserted, which is how
+    // a new machine is told from the 60-second refresh of a known one.
+    let inserted: bool = sqlx::query_scalar(
         "INSERT INTO devices (user_id, device_name, device_kind, os, fingerprint, app_version)
              VALUES ($1, $2, 'desktop', $3, $4, $5)
          ON CONFLICT (user_id, fingerprint)
          DO UPDATE SET last_seen_at = now(),
                        device_name  = EXCLUDED.device_name,
                        os           = EXCLUDED.os,
-                       app_version  = COALESCE(EXCLUDED.app_version, devices.app_version)",
+                       app_version  = COALESCE(EXCLUDED.app_version, devices.app_version)
+         RETURNING (xmax = 0)",
     )
     .bind(user.user_id)
     .bind(name)
     .bind(os)
     .bind(fingerprint)
     .bind(app_version)
-    .execute(&state.pool)
+    .fetch_one(&state.pool)
     .await?;
 
-    sqlx::query(
+    let devices_now: Option<i32> = sqlx::query_scalar(
         "UPDATE profiles
             SET devices_count = (SELECT count(*) FROM devices WHERE user_id = $1)
-          WHERE user_id = $1",
+          WHERE user_id = $1
+      RETURNING devices_count",
     )
     .bind(user.user_id)
-    .execute(&state.pool)
+    .fetch_optional(&state.pool)
     .await?;
+
+    if inserted {
+        Event::new(user.user_id, ProductEvent::DeviceRegistered)
+            .props(serde_json::json!({ "os": os, "nth": devices_now }))
+            .device(Some(fingerprint), app_version)
+            .spawn(&state.pool);
+    }
 
     // A brand new machine that just took the last slot: same notice, sent from
     // the side of the fence where the registration actually happened.
@@ -975,6 +1020,15 @@ pub async fn heartbeat(
         Some(fp) => fp.to_owned(),
         None => return Ok(StatusCode::NO_CONTENT),
     };
+    // The headless service may never call `/v1/me`, so the day's check-in is
+    // also taken here. Same key, so the two never make two rows.
+    Event::new(user.user_id, ProductEvent::ActiveDay)
+        .scope(fp.as_str())
+        .device(
+            Some(&fp),
+            headers.get("x-hoard-app-version").and_then(|v| v.to_str().ok()),
+        )
+        .spawn(&state.pool);
 
     if body.closing {
         sqlx::query(
@@ -1239,6 +1293,7 @@ pub async fn create_export_job(
     .bind(user.user_id)
     .fetch_one(&state.pool)
     .await?;
+    Event::new(user.user_id, ProductEvent::ExportRequested).spawn(&state.pool);
     Ok(Json(ExportJobOut {
         job_id: row.0,
         status: row.1,
@@ -1364,6 +1419,7 @@ pub async fn delete_me(
     .bind(user.user_id)
     .execute(&state.pool)
     .await?;
+    Event::new(user.user_id, ProductEvent::AccountDeletionRequested).spawn(&state.pool);
     Ok(Json(DeleteAccountOut {
         deleted_at: format_dt(now),
         purges_after: format_dt(purge_at),
@@ -1403,6 +1459,7 @@ pub async fn reactivate_me(
         .bind(user.user_id)
         .execute(&state.pool)
         .await?;
+        Event::new(user.user_id, ProductEvent::AccountReactivated).spawn(&state.pool);
     }
     Ok(Json(ReactivateOut { reactivated }))
 }

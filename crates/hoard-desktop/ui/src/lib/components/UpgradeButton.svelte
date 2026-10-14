@@ -11,21 +11,22 @@
    */
   import { _ } from "svelte-i18n";
   import { Sparkles } from "@lucide/svelte";
-  import { push } from "svelte-spa-router";
+  import { openPricing, type PricingFrom } from "../stores/telemetry";
 
   type Props = {
     /** Which side the price opens on. The sidebar sits at the bottom of the
      *  window, so its tooltip has nowhere to go but up. */
     placement?: "top" | "bottom";
+    from: PricingFrom;
   };
 
-  let { placement = "bottom" }: Props = $props();
+  let { placement = "bottom", from }: Props = $props();
 </script>
 
 <div class="group relative shrink-0">
   <button
     type="button"
-    onclick={() => push("/pricing")}
+    onclick={() => openPricing(from)}
     class="keep-emerald flex shrink-0 items-center gap-1 rounded-md bg-gradient-to-r from-emerald-400 to-teal-400 px-2.5 py-2 text-[11px] font-semibold text-emerald-950 shadow-sm shadow-emerald-500/30 transition-all hover:from-emerald-300 hover:to-teal-300 hover:shadow-emerald-500/50"
   >
     <Sparkles size={12} data-anim="pop" />

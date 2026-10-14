@@ -243,6 +243,19 @@ pub async fn maybe_purge(state: &CloudState, user_id: Uuid) -> Result<usize, Clo
     // History just disappeared. Tell them once, with what it cost, after the
     // work: the send is spawned, so it cannot slow the upload that triggered it.
     crate::cloud::notify::storage_purge_started(state, user_id, left, limit, deleted, games.len());
+    // One of the four paying accounts of sep-2026 paid 11 seconds after this
+    // ran on it, which is why it is worth a line in the funnel.
+    crate::cloud::product_events::Event::new(
+        user_id,
+        hoard_core::product::ProductEvent::StoragePurged,
+    )
+    .props(serde_json::json!({
+        "versions": deleted,
+        "saves": games.len(),
+        "used_bytes": left,
+        "limit_bytes": limit,
+    }))
+    .spawn(&state.pool);
     Ok(deleted)
 }
 

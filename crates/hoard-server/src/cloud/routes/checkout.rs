@@ -149,6 +149,17 @@ pub async fn create_checkout(
     {
         warn!(error = %e, user_id = %user.user_id, "checkout: couldn't record the intent");
     }
+    crate::cloud::product_events::Event::new(
+        user.user_id,
+        hoard_core::product::ProductEvent::CheckoutRequested,
+    )
+    .props(json!({
+        "plan": body.plan,
+        "interval": body.interval,
+        "storage_gb": body.storage_gb,
+        "checkout_id": parsed.id,
+    }))
+    .spawn(&state.pool);
 
     Ok(Json(CheckoutOut { url: parsed.url }))
 }

@@ -471,7 +471,7 @@
   "settings.start_minimised_label": "最小化启动",
   "settings.start_minimised_desc": "启动时窗口隐藏，仅显示托盘图标。",
   "settings.telemetry_label": "发送诊断信息",
-  "settings.telemetry_desc": "将应用的警告和错误，以及检测找错文件夹或你手动选择文件夹时的游戏和路径（隐藏你的用户名），关联到你的账户发送给 Hoard。用于修复问题和改进检测。绝不发送存档内容、密码或令牌。使用自建服务器时，会发送到你的服务器。",
+  "settings.telemetry_desc": "将应用的警告和错误，以及检测找错文件夹或你手动选择文件夹时的游戏和路径（隐藏你的用户名），关联到你的账户发送给 Hoard。使用 Hoard Cloud 时，还会记录你何时打开应用、何时手动恢复副本，以及你在 Pro 方案页面中的操作步骤。用于修复问题、改进检测，并了解应用的哪些部分被使用。绝不发送存档内容、密码或令牌。使用自建服务器时，警告和路径会发送到你的服务器，不会发送其他任何内容。",
   "settings.wrapple_telemetry_label": "与 Wrapple 分享我的游玩时长",
   "settings.wrapple_telemetry_desc": "按天发送你每款游戏的游玩时长，让 Wrapple 能汇总你所有设备、显示真实的时长。这是回顾页面唯一的数据来源：关闭后 Wrapple 将无法工作，因为它没有任何内容可显示。本机仍会继续计时，所以重新打开时历史记录会一并回来。它与上面的设置相互独立，关闭时不会发送任何内容。",
   "settings.notify_success_label": "备份成功时通知",

@@ -11,6 +11,10 @@
 //! are the signal collected on purpose, and filtering them by level would be
 //! collecting everything except what matters.
 //!
+//! Product events ride the same batches on their own target
+//! (`hoard_core::wire::EVENT_TARGET`) and are taken out here, before the loop:
+//! they go to `product_events` and never become log lines.
+//!
 //! The wire shape and batch caps are shared with the self-hosted route
 //! (`crate::routes::logs`). On top of that we resolve `device_id` by matching
 //! `(user_id, fingerprint)` against the `devices` table when possible.
@@ -22,7 +26,7 @@ use crate::cloud::auth::CloudUser;
 use crate::cloud::errors::CloudError;
 use crate::cloud::state::CloudState;
 use crate::routes::logs::MAX_BATCH_ENTRIES;
-use hoard_core::wire::{ships_at, LogBatch, LogIngestResponse, CLOUD_MIN_RANK};
+use hoard_core::wire::{cloud_only, ships_at, LogBatch, LogIngestResponse, CLOUD_MIN_RANK};
 
 pub async fn ingest(
     State(state): State<CloudState>,
@@ -51,8 +55,15 @@ pub async fn ingest(
         None
     };
 
-    let mut accepted = 0usize;
-    for entry in &batch.entries {
+    let mut accepted = crate::cloud::product_events::ingest_app_events(
+        &state.pool,
+        user.user_id,
+        batch.device.fingerprint.as_ref().map(|f| f.as_str()),
+        batch.device.app_version.as_deref(),
+        &batch.entries,
+    )
+    .await;
+    for entry in batch.entries.iter().filter(|e| !cloud_only(e)) {
         let level = entry.level.trim().to_ascii_lowercase();
         if !ships_at(entry, CLOUD_MIN_RANK) {
             continue; // defense in depth: never store below WARN in cloud

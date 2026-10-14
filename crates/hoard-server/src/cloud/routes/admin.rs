@@ -17,11 +17,12 @@ use axum::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
-const FUNCTIONS: [&str; 4] = [
+const FUNCTIONS: [&str; 5] = [
     "admin_metrics",
     "admin_metrics_extra",
     "admin_metrics_screen",
     "admin_feedback",
+    "admin_product_events",
 ];
 
 /// `POST /v1/admin/rpc/:name`. Errors keep the SQLSTATE in `code` the way the

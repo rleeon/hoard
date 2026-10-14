@@ -175,6 +175,13 @@ pub fn ui_log(window: tauri::Window, topic: String, message: String) {
     tracing::info!(window = window.label(), topic = %topic, "ui: {message}");
 }
 
+/// A product event from the interface. Fire-and-forget: an unknown name is
+/// dropped by the agent, and an error would only ever reach a console.
+#[tauri::command]
+pub fn track_event(name: String, props: Option<serde_json::Value>) {
+    hoard_agent::telemetry::app_event(&name, props.unwrap_or_default());
+}
+
 /// How the running app got onto this machine, shown under About. With the .deb
 /// and the Flatpak installed side by side nothing in the window told them apart:
 /// same version, same look, and the one difference was a path nobody sees.

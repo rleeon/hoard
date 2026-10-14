@@ -47,6 +47,11 @@ pub async fn ingest(
     let mut accepted = 0usize;
 
     for entry in &batch.entries {
+        // The client never sends these here; a build that did would be telling
+        // somebody's own server how they use the Pro flow.
+        if hoard_core::wire::cloud_only(entry) {
+            continue;
+        }
         let id = uuid::Uuid::new_v4().to_string();
         let level = entry.level.trim().to_ascii_lowercase();
         let fields_json = entry.fields.as_ref().map(|v| v.to_string());

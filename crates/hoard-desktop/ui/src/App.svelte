@@ -134,6 +134,7 @@
     initAutomaticListener,
   } from "./lib/stores/automatic";
   import { toastInfo, toastSuccess } from "./lib/stores/toasts";
+  import { track } from "./lib/stores/telemetry";
   import { prefs, hydratePrefs } from "./lib/stores/prefs";
   import { initGameOverlay } from "./lib/stores/gameOverlay";
   import { hydrateCardSizes } from "./lib/stores/cardSizes.svelte";
@@ -436,6 +437,11 @@
     const warm = (load: () => Promise<unknown>) => void load().catch(() => {});
     warm(loadDashboard);
     warm(loadLanguage);
+
+    // Somebody opened the window, which the service checking in every day
+    // (`active.day`, written by the server) cannot tell apart from a machine
+    // left on. Kept once a day per machine.
+    track("app.opened");
 
     // `is-<os>` on <html>, which the global stylesheet keys the font stack off.
     tagOs();
@@ -1045,7 +1051,7 @@
                 </span>
               </button>
               {#if $cloud.account.plan === "free"}
-                <UpgradeButton placement="top" />
+                <UpgradeButton placement="top" from="sidebar" />
               {/if}
             </div>
         {/if}

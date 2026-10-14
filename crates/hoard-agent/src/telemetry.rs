@@ -220,9 +220,44 @@ pub fn tracked_mirror(slug: &str, save_id: &str, tracked: &Path, suggested: &Pat
     );
 }
 
+/// A product event (`hoard_core::product`), on its own target so the shipper
+/// can keep it off a self-hosted server and Cloud can take it out of the log.
+/// The properties travel as one JSON string; the server parses and cleans them,
+/// and drops a name the app has no business sending. Nothing here checks the
+/// telemetry switch: the shipper does, for every line.
+pub fn event(event: hoard_core::product::ProductEvent, props: serde_json::Value) {
+    let props = hoard_core::product::clean_props(&props);
+    tracing::info!(
+        target: hoard_core::wire::EVENT_TARGET,
+        event = event.name(),
+        props = %props,
+        "event"
+    );
+}
+
+/// An event named by a frontend. Only the names the app may send get past here
+/// (`ProductEvent::from_app`); the rest is dropped without a word. Returns
+/// whether it went out.
+pub fn app_event(name: &str, props: serde_json::Value) -> bool {
+    match hoard_core::product::ProductEvent::from_name(name).filter(|e| e.from_app()) {
+        Some(e) => {
+            event(e, props);
+            true
+        }
+        None => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::first_time;
+
+    #[test]
+    fn a_frontend_can_only_name_app_events() {
+        assert!(super::app_event("pricing.opened", serde_json::json!({})));
+        assert!(!super::app_event("subscription.started", serde_json::json!({})));
+        assert!(!super::app_event("pricing.Opened", serde_json::json!({})));
+    }
 
     #[test]
     fn a_missing_cover_is_reported_once_per_run() {

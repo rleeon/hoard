@@ -740,4 +740,73 @@ mod tests {
             "Uploads: **3** users (41 failures)\nDownloads: **1** user (1 failure)\nCrashes: **0**"
         );
     }
+
+    /// The app-failure counter matches log lines by their exact text, so a
+    /// reworded message in the client stops being counted without anything
+    /// failing. This is the something: every literal the query matches has to
+    /// still exist, quoted, in a client's source.
+    #[test]
+    fn every_matched_message_still_exists_in_a_client() {
+        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut sources = String::new();
+        for dir in ["hoard-agent/src", "hoardd/src", "hoard-desktop/src"] {
+            collect_rs(&crates.join(dir), &mut sources);
+        }
+        assert!(!sources.is_empty(), "client sources not found");
+
+        let literals = sql_literals(APP_FAILURES_SQL);
+        assert!(literals.len() >= 8, "parsed too few literals: {literals:?}");
+        for lit in literals {
+            // LIKE patterns: what matters is the text before or after the `%`.
+            let needle = lit.trim_matches('%');
+            if needle.is_empty() || lit.starts_with('%') || needle.starts_with("hashing") {
+                continue; // filters on `fields->>'error'`, not on the message
+            }
+            let quoted = format!("\"{needle}");
+            assert!(
+                sources.contains(&quoted),
+                "{lit:?} is matched by APP_FAILURES_SQL but no client logs it any more"
+            );
+        }
+    }
+
+    fn collect_rs(dir: &std::path::Path, out: &mut String) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_rs(&path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push_str(&std::fs::read_to_string(&path).unwrap_or_default());
+            }
+        }
+    }
+
+    /// The single-quoted literals of a SQL string, with `''` unescaped.
+    fn sql_literals(sql: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut chars = sql.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c != '\'' {
+                continue;
+            }
+            let mut lit = String::new();
+            while let Some(c) = chars.next() {
+                if c == '\'' {
+                    if chars.peek() == Some(&'\'') {
+                        chars.next();
+                        lit.push('\'');
+                        continue;
+                    }
+                    break;
+                }
+                lit.push(c);
+            }
+            out.push(lit);
+        }
+        out.retain(|l| !matches!(l.as_str(), "error" | "warn" | "ERROR" | "WARN" | "" | "24 hours"));
+        out
+    }
 }

@@ -485,6 +485,7 @@ pub async fn commit_upload(
     let st = state.clone();
     let uid = user.user_id;
     tokio::spawn(async move {
+        crate::cloud::product_events::after_upload(&st, uid).await;
         if let Err(e) = crate::cloud::purge::maybe_purge(&st, uid).await {
             tracing::warn!(error = ?e, user_id = %uid, "quota purge after commit failed");
         }
@@ -1488,6 +1489,9 @@ pub async fn cas_commit(
         if let Err(e) = crate::insight::record_cloud(&st.pool, &sid, version).await {
             tracing::warn!(error = ?e, save_id = %sid, version, "insight: not recorded");
         }
+        // Before the purge, so a threshold crossed by this very version is
+        // recorded even when the purge brings the account back under it.
+        crate::cloud::product_events::after_upload(&st, uid).await;
         if let Err(e) = crate::cloud::purge::maybe_purge(&st, uid).await {
             tracing::warn!(error = ?e, user_id = %uid, "quota purge after commit failed");
         }
@@ -1557,6 +1561,7 @@ pub async fn version_manifest(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
     Path((save_id, version)): Path<(String, i64)>,
+    headers: axum::http::HeaderMap,
     axum::extract::Query(q): axum::extract::Query<ManifestQuery>,
 ) -> Result<Response, CloudError> {
     let vrow: Option<(Uuid, String, bool)> = sqlx::query_as(
@@ -1741,6 +1746,13 @@ pub async fn version_manifest(
     .execute(&state.pool)
     .await?;
     warn_on_repeat_download(&state, user.user_id, &save_id, &game_slug, version).await;
+    crate::cloud::product_events::after_download(
+        &state,
+        user.user_id,
+        device_fingerprint(&headers),
+        save_id.clone(),
+        version,
+    );
     if let Err(e) = bandwidth::record(&state.pool, user.user_id, download_bytes).await {
         tracing::warn!(error = %e, user_id = %user.user_id, "bandwidth: record failed on cas manifest");
     }
@@ -1778,6 +1790,7 @@ pub async fn download(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
     Path((save_id, version)): Path<(String, i64)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Response, CloudError> {
     let row: Option<(Uuid, String, String, String, i64, bool)> = sqlx::query_as(
         r#"
@@ -1860,6 +1873,13 @@ pub async fn download(
     .execute(&state.pool)
     .await?;
     warn_on_repeat_download(&state, user.user_id, &save_id, &game_slug, version).await;
+    crate::cloud::product_events::after_download(
+        &state,
+        user.user_id,
+        device_fingerprint(&headers),
+        save_id.clone(),
+        version,
+    );
 
     if let Err(e) = bandwidth::record(&state.pool, user.user_id, size.max(0) as u64).await {
         tracing::warn!(error = %e, user_id = %user.user_id, "bandwidth: record failed on download");
@@ -2633,6 +2653,16 @@ async fn log_sync_block(
     {
         tracing::warn!(error = %e, %user_id, %kind, "failed to record sync block in sync_log");
     }
+    crate::cloud::product_events::sync_block(state, user_id, kind, save_id, game_slug, bytes);
+}
+
+fn device_fingerprint(headers: &axum::http::HeaderMap) -> Option<String> {
+    headers
+        .get("x-hoard-device-fp")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
 }
 
 /// A quota refusal, plus a wait once the account has been refused often enough

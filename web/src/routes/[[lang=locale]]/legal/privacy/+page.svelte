@@ -104,10 +104,25 @@
           envía un título de ventana, un nombre de aplicación ni una miniatura: el contenido de
           tu pantalla no sale de tu equipo.
         </li>
+        <li>
+          <strong>Uso de la aplicación</strong> (sólo con Hoard Cloud): el día en que abres la
+          aplicación, cuándo restauras una copia a mano, qué pantallas del plan Pro abres y desde
+          dónde, y si el pago llegó a abrirse. Nunca se envía a un servidor propio.
+        </li>
       </ul>
       <p>
         Si desactivas la opción, no se envía nada de lo anterior y el Servicio sigue funcionando
         igual.
+      </p>
+      <p>
+        Aparte, y sin depender de esa opción porque nacen del propio funcionamiento del Servicio,
+        el servidor de Hoard Cloud anota los <strong>hitos de tu cuenta</strong>: el alta, la
+        primera copia subida y la primera descargada, cada dispositivo nuevo, cuándo el espacio
+        usado cruza el 50, el 80 y el 100 %, los rechazos por falta de espacio o por tamaño, las
+        limpiezas automáticas, las solicitudes de pago y los cambios de tu suscripción, las
+        exportaciones, el borrado o la reactivación de la cuenta y, una vez al día, que tu equipo
+        se conectó. Los usamos, sobre todo en conjunto, para entender cómo se usa el Servicio y
+        qué hace que alguien pase al plan Pro.
       </p>
 
       <h3>1.5. Datos técnicos</h3>
@@ -221,6 +236,7 @@
           <tr><td>Logs técnicos de la API (IP, agente de usuario)</td><td>Hasta 30 días</td></tr>
           <tr><td>Eventos de diagnóstico de la aplicación</td><td>14 días</td></tr>
           <tr><td>Telemetría de producto (detección y uso de Screen)</td><td>180 días</td></tr>
+          <tr><td>Uso de la aplicación e hitos de la cuenta</td><td>2 años, o hasta que borres la cuenta</td></tr>
           <tr><td>Registro de avisos enviados por correo</td><td>Hasta que se resuelve lo que los motivó; el de la limpieza automática, 14 días después del último</td></tr>
           <tr><td>Fecha en que rechazaste las ofertas</td><td>Mientras exista la cuenta</td></tr>
           <tr><td>Registro de aceptación de los términos</td><td>Mientras dure la relación y 5 años más</td></tr>
@@ -375,9 +391,23 @@
           title, application name or thumbnail is ever sent: the content of your screen does not
           leave your machine.
         </li>
+        <li>
+          <strong>App usage</strong> (Hoard Cloud only): the day you open the application, when
+          you restore a copy by hand, which Pro plan screens you open and from where, and whether
+          the payment page was reached. It is never sent to a server of your own.
+        </li>
       </ul>
       <p>
         With the setting off, none of the above is sent and the Service works exactly the same.
+      </p>
+      <p>
+        Separately, and regardless of that setting because they arise from the Service's own
+        operation, the Hoard Cloud server records your <strong>account milestones</strong>:
+        sign-up, the first copy uploaded and the first one downloaded, each new device, when the
+        space used crosses 50, 80 and 100 %, refusals for lack of space or for size, automatic
+        cleanups, payment requests and changes to your subscription, exports, account deletion or
+        reactivation and, once a day, that your device checked in. We use them, mostly in
+        aggregate, to understand how the Service is used and what leads someone to the Pro plan.
       </p>
 
       <h3>1.5. Technical data</h3>
@@ -487,6 +517,7 @@
           <tr><td>API technical logs (IP, user agent)</td><td>Up to 30 days</td></tr>
           <tr><td>Application diagnostic events</td><td>14 days</td></tr>
           <tr><td>Product telemetry (detection and Screen usage)</td><td>180 days</td></tr>
+          <tr><td>App usage and account milestones</td><td>2 years, or until you delete the account</td></tr>
           <tr><td>Record of email notices sent</td><td>Until what caused them is resolved; the cleanup one, 14 days after the last</td></tr>
           <tr><td>Date you refused offers</td><td>For as long as the account exists</td></tr>
           <tr><td>Record of terms acceptance</td><td>For the duration of the relationship plus 5 years</td></tr>

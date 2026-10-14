@@ -64,12 +64,19 @@ const BUSY_BACKOFF: Duration = Duration::from_secs(30);
 const BUSY_BACKOFF_MAX: Duration = Duration::from_secs(300);
 /// The shipper thread's name. [`LogShipLayer`] drops whatever is logged on it.
 const SHIPPER_THREAD: &str = "hoard-logship";
+/// Product events held while there is no session yet, and for how long. The
+/// window says `app.opened` before the session has been borrowed from the
+/// service, and a log line lost then is no loss, but that event is. Bounded in
+/// time because whatever session turns up next is the one they are sent with,
+/// and after a sign-out that could be somebody else's.
+const MAX_HELD: usize = 32;
+const HOLD_FOR: Duration = Duration::from_secs(120);
 
 // The batch body (`LogEntry`, `DeviceMeta`, `LogBatch`) lives in
 // `hoard_core::wire`, shared with `hoard_server::routes::logs` (ADR 0021 C.6). This
 // pair was real drift: here `target` and `ts` were required and on the server they
 // were `Option`, so the "correct" shape depended on which side you looked at.
-use hoard_core::wire::{level_rank, ships_at, DeviceMeta, LogBatch, LogEntry};
+use hoard_core::wire::{cloud_only, level_rank, ships_at, DeviceMeta, LogBatch, LogEntry};
 
 /// `tracing` layer that forwards events onto the ship channel.
 pub struct LogShipLayer {
@@ -342,6 +349,9 @@ struct Policy {
     url: String,
     token: String,
     min_rank: u8,
+    /// Product events ([`hoard_core::wire::cloud_only`]) go to Cloud and
+    /// nowhere else.
+    cloud: bool,
 }
 
 fn drain_loop(rx: Receiver<LogEntry>) {
@@ -366,23 +376,33 @@ fn drain_loop(rx: Receiver<LogEntry>) {
         .build()
         .ok();
 
+    let mut held = Held::default();
     loop {
         // 1. Wait for a usable session + a server that accepts logs.
         let policy = match client.as_ref().and_then(|c| rt.block_on(resolve_policy(c))) {
             Some(p) => p,
             None => {
                 // No session/endpoint yet. Discard whatever queued so we don't
-                // hold stale lines or wedge senders, then back off.
-                discard_available(&rx);
+                // hold stale lines or wedge senders, then back off. Product
+                // events are the exception, for a while.
+                held.drain_from(&rx, telemetry_enabled(), std::time::Instant::now());
                 std::thread::sleep(Duration::from_secs(15));
                 continue;
             }
         };
         let client = client.as_ref().unwrap();
+        let early = held.take(std::time::Instant::now());
+        if policy.cloud && !early.is_empty() {
+            let body = LogBatch {
+                device: device.clone(),
+                entries: early,
+            };
+            let _ = rt.block_on(post_batch(client, &policy, &body));
+        }
 
         // 2. Ship until the session changes or the channel closes.
         loop {
-            let batch = collect_batch(&rx, policy.min_rank);
+            let batch = collect_batch(&rx, &policy);
             match batch {
                 BatchResult::Closed => return,
                 BatchResult::Empty => {}
@@ -426,8 +446,9 @@ enum BatchResult {
 }
 
 /// Block up to `FLUSH_INTERVAL` for the first entry, then greedily drain up to
-/// `MAX_BATCH`, filtering by level.
-fn collect_batch(rx: &Receiver<LogEntry>, min_rank: u8) -> BatchResult {
+/// `MAX_BATCH`, filtering by level and by where the line may go.
+fn collect_batch(rx: &Receiver<LogEntry>, policy: &Policy) -> BatchResult {
+    let keep = |e: &LogEntry| ships_at(e, policy.min_rank) && (policy.cloud || !cloud_only(e));
     let first = match rx.recv_timeout(FLUSH_INTERVAL) {
         Ok(e) => e,
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => return BatchResult::Empty,
@@ -435,13 +456,13 @@ fn collect_batch(rx: &Receiver<LogEntry>, min_rank: u8) -> BatchResult {
     };
 
     let mut out = Vec::new();
-    if ships_at(&first, min_rank) {
+    if keep(&first) {
         out.push(first);
     }
     while out.len() < MAX_BATCH {
         match rx.try_recv() {
             Ok(e) => {
-                if ships_at(&e, min_rank) {
+                if keep(&e) {
                     out.push(e);
                 }
             }
@@ -458,6 +479,41 @@ fn collect_batch(rx: &Receiver<LogEntry>, min_rank: u8) -> BatchResult {
 
 fn discard_available(rx: &Receiver<LogEntry>) {
     while rx.try_recv().is_ok() {}
+}
+
+#[derive(Default)]
+struct Held {
+    entries: Vec<LogEntry>,
+    since: Option<std::time::Instant>,
+}
+
+impl Held {
+    /// Empties the channel, keeping product events while telemetry is on.
+    fn drain_from(&mut self, rx: &Receiver<LogEntry>, keep: bool, now: std::time::Instant) {
+        if !keep {
+            self.entries.clear();
+        }
+        while let Ok(e) = rx.try_recv() {
+            if keep && cloud_only(&e) && self.entries.len() < MAX_HELD {
+                self.since.get_or_insert(now);
+                self.entries.push(e);
+            }
+        }
+    }
+
+    /// What is still worth sending, leaving nothing behind.
+    fn take(&mut self, now: std::time::Instant) -> Vec<LogEntry> {
+        let fresh = self
+            .since
+            .take()
+            .is_some_and(|since| now.saturating_duration_since(since) <= HOLD_FOR);
+        let entries = std::mem::take(&mut self.entries);
+        if fresh {
+            entries
+        } else {
+            Vec::new()
+        }
+    }
 }
 
 /// Read the session, probe `/v1/health`, and decide the ingest endpoint +
@@ -483,16 +539,14 @@ async fn resolve_policy(client: &reqwest::Client) -> Option<Policy> {
     let min_level = health.log_min_level.as_deref()?;
     let min_rank = level_rank(min_level);
 
-    let path = if health.mode.as_deref() == Some("cloud") {
-        "/v1/cloud/logs"
-    } else {
-        "/v1/logs"
-    };
+    let cloud = health.mode.as_deref() == Some("cloud");
+    let path = if cloud { "/v1/cloud/logs" } else { "/v1/logs" };
 
     Some(Policy {
         url: format!("{base}{path}"),
         token,
         min_rank,
+        cloud,
     })
 }
 
@@ -678,6 +732,59 @@ mod tests {
             fields: None,
             ts: None,
         }
+    }
+
+    fn batch_for(cloud: bool) -> Vec<String> {
+        let (tx, rx) = sync_channel::<LogEntry>(8);
+        tx.send(entry("info", hoard_core::wire::EVENT_TARGET)).unwrap();
+        tx.send(entry("warn", "hoard_agent::agent")).unwrap();
+        tx.send(entry("info", "hoard_agent::agent")).unwrap();
+        let policy = Policy {
+            url: String::new(),
+            token: String::new(),
+            min_rank: 3,
+            cloud,
+        };
+        match collect_batch(&rx, &policy) {
+            BatchResult::Entries(e) => e.into_iter().filter_map(|e| e.target).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    #[test]
+    fn events_wait_for_a_session_but_not_forever() {
+        let t0 = std::time::Instant::now();
+        let fill = |held: &mut Held, keep: bool, at| {
+            let (tx, rx) = sync_channel::<LogEntry>(8);
+            tx.send(entry("info", hoard_core::wire::EVENT_TARGET)).unwrap();
+            tx.send(entry("warn", "hoard_agent::agent")).unwrap();
+            held.drain_from(&rx, keep, at);
+            assert!(rx.try_recv().is_err(), "the channel is always emptied");
+        };
+
+        let mut held = Held::default();
+        fill(&mut held, true, t0);
+        assert_eq!(held.take(t0 + Duration::from_secs(30)).len(), 1);
+        assert!(held.take(t0).is_empty(), "taken once");
+
+        fill(&mut held, true, t0);
+        assert!(held.take(t0 + HOLD_FOR + Duration::from_secs(1)).is_empty());
+
+        // Switched off while waiting: nothing is kept for later.
+        fill(&mut held, true, t0);
+        fill(&mut held, false, t0);
+        assert!(held.take(t0).is_empty());
+    }
+
+    /// A self-hosted server is somebody's own machine; how they use the Pro
+    /// screens is not something to send it.
+    #[test]
+    fn product_events_only_go_to_cloud() {
+        assert_eq!(
+            batch_for(true),
+            vec![hoard_core::wire::EVENT_TARGET, "hoard_agent::agent"]
+        );
+        assert_eq!(batch_for(false), vec!["hoard_agent::agent"]);
     }
 
     /// Reading the session for a batch logs a line when the keyring refuses; on

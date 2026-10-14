@@ -764,7 +764,7 @@
         </div>
         <div class="flex flex-col items-end gap-2">
           {#if account.plan === "free"}
-            <UpgradeButton />
+            <UpgradeButton from="account" />
           {/if}
           {#if account.plan !== "free"}
             <Button variant="ghost" onclick={openBillingPortal}>

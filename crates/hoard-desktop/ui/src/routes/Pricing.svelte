@@ -18,6 +18,7 @@
   } from "@lucide/svelte";
   import Button from "../lib/components/Button.svelte";
   import { cloud, openUpgradePage } from "../lib/stores/cloud";
+  import { track } from "../lib/stores/telemetry";
   import {
     PLANS,
     formatSaveSizeRange,
@@ -43,8 +44,10 @@
   async function continueToPayment() {
     if (opening) return;
     opening = true;
+    const interval = cycle === "yearly" ? "year" : "month";
+    track("pricing.continue", { interval });
     try {
-      await openUpgradePage("pro", cycle === "yearly" ? "year" : "month");
+      await openUpgradePage("pro", interval);
     } finally {
       opening = false;
     }

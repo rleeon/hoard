@@ -18,12 +18,12 @@
    * measured against a different limit. What is left here are the ways out.
    */
   import { _ } from "svelte-i18n";
-  import { push } from "svelte-spa-router";
   import Modal from "./Modal.svelte";
   import LiberateStoragePanel from "./LiberateStoragePanel.svelte";
   import { Crown, Download, Archive } from "@lucide/svelte";
   import { archiveSaveCloud } from "../stores/cloud";
   import { toastError, toastSuccess } from "../stores/toasts";
+  import { openPricing, track } from "../stores/telemetry";
 
   type Props = {
     open: boolean;
@@ -36,6 +36,12 @@
   };
 
   let { open, onClose, onDownload, onDone }: Props = $props();
+
+  // It opens on every upload that bounces off a full account; the server keeps
+  // one of these a day.
+  $effect(() => {
+    if (open) track("upsell.shown", { modal: "storage" });
+  });
 
   let busy = $state(false);
   let selected = $state<Set<string>>(new Set());
@@ -66,7 +72,7 @@
   // the real ones; this one reads `lib/plans.ts`, which has to follow the server.
   function goPro() {
     onClose();
-    push("/pricing");
+    openPricing("storage");
   }
 </script>
 

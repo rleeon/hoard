@@ -19,6 +19,7 @@ import { auth } from "./auth";
 import { cloudOverrides } from "./debug";
 import { noteStorageStatus } from "./live";
 import { notePlanSnapshot } from "./planEvents";
+import { track } from "./telemetry";
 
 export type CloudAccount = {
   user_id: string;
@@ -433,9 +434,11 @@ export async function openUpgradePage(
   try {
     const url = await invoke<string>("cloud_create_checkout", { interval });
     await openExternal(url);
+    track("checkout.opened", { interval });
     return;
   } catch (e) {
     console.warn("[cloud] checkout unavailable, falling back to /pricing", e);
+    track("checkout.failed", { interval });
   }
   const base = "https://hoard.services";
   const url = plan ? `${base}/pricing?plan=${plan}` : `${base}/pricing`;

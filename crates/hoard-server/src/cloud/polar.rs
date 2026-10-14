@@ -26,6 +26,7 @@
 //! schema inherited from the Lemon Squeezy era.
 
 use crate::cloud::errors::CloudError;
+use crate::cloud::product_events::Event;
 use crate::cloud::state::CloudState;
 use crate::config::PolarProduct;
 use axum::{
@@ -36,6 +37,7 @@ use axum::{
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
 use hmac::{Hmac, Mac};
+use hoard_core::product::ProductEvent;
 use serde::Deserialize;
 use sha2::Sha256;
 use sqlx::PgPool;
@@ -259,6 +261,42 @@ async fn record_checkout_event(pool: &PgPool, event: &PolarEvent) {
             "polar webhook: couldn't record the checkout event"
         );
     }
+    // Polar retries a delivery it thinks failed; the checkout id and status
+    // make the retry the same row.
+    let status = event.data.status.as_deref().unwrap_or_default();
+    Event::new(user_id, ProductEvent::CheckoutStatus)
+        .scope(format!("{}:{status}", event.data.id))
+        .props(serde_json::json!({
+            "checkout_id": event.data.id,
+            "status": event.data.status,
+        }))
+        .record(pool)
+        .await;
+}
+
+/// The subscription's turn in `product_events`: once per subscription for each
+/// of start, cancellation and end. Renewals come in as `subscription.updated`
+/// with the same id and collapse into the start.
+async fn record_subscription_event(
+    pool: &PgPool,
+    user_id: Uuid,
+    sub_id: &str,
+    event_type: &str,
+    status: &str,
+    plan: &str,
+    interval: &str,
+) {
+    let event = match (event_type, status) {
+        ("subscription.canceled", _) => ProductEvent::SubscriptionCanceled,
+        (_, "active") => ProductEvent::SubscriptionStarted,
+        (_, "expired") => ProductEvent::SubscriptionEnded,
+        _ => return,
+    };
+    Event::new(user_id, event)
+        .scope(sub_id)
+        .props(serde_json::json!({ "plan": plan, "interval": interval }))
+        .record(pool)
+        .await;
 }
 
 pub async fn handle(
@@ -383,6 +421,16 @@ pub async fn handle(
         warn!(error = %e, "polar webhook: db upsert failed");
         return CloudError::Db(e).into_response();
     }
+    record_subscription_event(
+        &state.pool,
+        user_id,
+        &event.data.id,
+        &event.event_type,
+        status,
+        plan,
+        interval,
+    )
+    .await;
 
     // Order matters in both branches: `settle_storage_limit` reads the *old*
     // plan off the profile row to know how much room the user has today, so the

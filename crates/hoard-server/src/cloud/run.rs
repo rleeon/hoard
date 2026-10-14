@@ -5,7 +5,7 @@ use crate::cloud::{
     abandoned, account_purge, archive,
     auth::{require_active_account, require_cloud_auth, JwksCache},
     auth_mirror, bandwidth, compress, db, device_prune, discord, export, feedback, incidents,
-    integrity, maintenance, memwatch, notify, polar, pollguard, r2, reconcile,
+    integrity, maintenance, memwatch, notify, polar, pollguard, product_events, r2, reconcile,
     routes::{
         admin as admin_routes, blob_proxy, checkout, device as device_routes,
         entitlements as ent_routes, events as event_routes, feedback as feedback_routes,
@@ -511,6 +511,9 @@ fn spawn_background_tasks(state: &CloudState) {
     // Hoard-help: drops reports past 90 days, uploads that never finished, and
     // the address hashes once the throttle is done with them.
     feedback::spawn(state.clone());
+
+    // Product events past their two years.
+    product_events::spawn(state.clone());
 
     // Device-pairing sweep. Approved/expired rows are deleted inline on
     //     poll, but a pairing that's started and never polled (or approved and

@@ -58,6 +58,7 @@
     RestoreProgress,
   } from "../lib/api";
   import { toastError, toastSuccess } from "../lib/stores/toasts";
+  import { track } from "../lib/stores/telemetry";
 
   /** Flipped on every restore press, for the icon to react to. */
   let restorePressed = $state(false);
@@ -438,6 +439,7 @@
       );
       restoreTarget = null;
       pickingDestination = null;
+      track("restore.manual", { ok: true, backup_first: backupFirst });
       await hydrate();
     } catch (e) {
       const msg = typeof e === "string" ? e : (e as Error).message;
@@ -449,6 +451,7 @@
         restoreTarget = null;
       } else {
         toastError(msg);
+        track("restore.manual", { ok: false, backup_first: backupFirst });
       }
     } finally {
       restoring = false;
