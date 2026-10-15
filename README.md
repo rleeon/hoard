@@ -88,6 +88,17 @@ here is the [installer](https://hoard.services/cli).
 ![Hoard cli photo](web/static/CLI.png)
 
 
+## Hoard-mobile
+
+Im making huge progress with this, this dont easy, im using Shizuku to 
+authorize hoardd to see system files, and is little hard.
+
+The idea here is have 2 hoardds, is a little complex architecture, and im not
+release a single line of code at the moment, im waiting to have a beta.
+
+Only android support at the moment, and sure you need give privileges to hoard app,
+one or more times, the idea is only 1 time, but im need test Shizuku and apply changes to it.
+
 
 ## Documentation
 
