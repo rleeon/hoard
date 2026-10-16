@@ -22,15 +22,15 @@
   // HTML going live and the assets landing, and it holds that for four hours.
   // A fresh query string sidesteps it; it can go once the cache is purged.
   //
-  // Design (the user's pick out of ten layouts): step 01 as a full-width CTA
-  // banner, accent gradient, centered, download button, and steps 02/03 as
-  // two cards below, both screenshots forced into the same 16:10 box so the
-  // history one no longer reads as small next to the dashboard one.
+  // Design: black and white only, on the user's call ("no greens"); the hero
+  // above is the reference. Step 01 is a full-width row with the download on
+  // its right (the one green allowed: the app's black, green-edged button), steps 02/03 two cards below with both screenshots forced into
+  // the same 16:10 box.
 
   const steps = [
-    { n: '1', title: 'how.s1_title', body: 'how.s1_body' },
-    { n: '2', title: 'how.s2_title', body: 'how.s2_body', img: '/dashboard.webp?v=1', alt: 'slot.how_library', fit: 'cover' },
-    { n: '3', title: 'how.s3_title', body: 'how.s3_body', img: '/history.webp?v=2', alt: 'slot.how_history', fit: 'contain' }
+    { n: '01', title: 'how.s1_title', body: 'how.s1_body' },
+    { n: '02', title: 'how.s2_title', body: 'how.s2_body', img: '/dashboard.webp?v=1', alt: 'slot.how_library', fit: 'cover' },
+    { n: '03', title: 'how.s3_title', body: 'how.s3_body', img: '/history.webp?v=2', alt: 'slot.how_history', fit: 'contain' }
   ];
 </script>
 
@@ -48,28 +48,27 @@
       {#each steps as s, i (s.n)}
         {#if !s.img}
           <article
-            class="reveal relative flex flex-col items-center justify-center gap-6 rounded-2xl border border-accent/30 bg-gradient-to-br from-accent/15 to-transparent p-10 text-center lg:col-span-2"
+            class="reveal flex flex-col gap-8 rounded-3xl border border-white/[0.08] bg-black p-8 sm:p-10 lg:col-span-2 lg:flex-row lg:items-center lg:justify-between"
             use:reveal
           >
-            <h3 class="text-2xl font-semibold text-ink">{$_(s.title)}</h3>
-            <p class="max-w-md text-sm leading-relaxed text-ink-soft">{$_(s.body)}</p>
-            <div class="w-full max-w-sm">
-              <Button href={$localeHref('/download')} variant="primary" size="lg" full>
+            <div class="max-w-xl">
+              <span class="font-mono text-xs tracking-[0.16em] text-ink-faint">{s.n}</span>
+              <h3 class="mt-3 text-2xl font-semibold text-ink sm:text-3xl">{$_(s.title)}</h3>
+              <p class="mt-3 text-pretty leading-relaxed text-ink-soft">{$_(s.body)}</p>
+            </div>
+            <div class="w-full flex-none lg:w-80">
+              <Button href={$localeHref('/download')} variant="primary" size="xl" full>
                 {$_('hero.cta_start')}
                 <Download class="h-4 w-4" aria-hidden="true" />
               </Button>
             </div>
-            <span
-              class="absolute bottom-5 right-6 font-mono text-[11px] font-medium tracking-[0.16em] text-accent"
-              >{s.n}</span
-            >
           </article>
         {:else}
           <article
-            class="reveal relative rounded-2xl border border-line bg-surface p-7"
+            class="reveal flex flex-col rounded-3xl border border-white/[0.08] bg-black p-4 sm:p-5"
             use:reveal={{ delay: i * 80 }}
           >
-            <div class="overflow-hidden rounded-xl border border-line">
+            <div class="overflow-hidden rounded-2xl border border-white/[0.08]">
               <div
                 class="aspect-[16/10] overflow-hidden {s.fit === 'contain' ? 'bg-[#030303]' : ''}"
               >
@@ -84,16 +83,11 @@
                 />
               </div>
             </div>
-            <h3 class="mt-5 text-lg font-semibold text-ink">{$_(s.title)}</h3>
-            <!-- On a phone the last line can end up close to the corner number.
-                 That is fine and deliberate: `pr-7` keeps them from touching,
-                 and padding the text further just to widen a gap nobody reads
-                 as crowded would cost a line of copy. -->
-            <p class="mt-2 pr-7 text-sm leading-relaxed text-ink-soft">{$_(s.body)}</p>
-            <span
-              class="absolute bottom-5 right-6 font-mono text-[11px] font-medium tracking-[0.16em] text-accent"
-              >{s.n}</span
-            >
+            <div class="px-3 pb-3 pt-6 sm:px-4">
+              <span class="font-mono text-xs tracking-[0.16em] text-ink-faint">{s.n}</span>
+              <h3 class="mt-2 text-xl font-semibold text-ink">{$_(s.title)}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-ink-soft">{$_(s.body)}</p>
+            </div>
           </article>
         {/if}
       {/each}

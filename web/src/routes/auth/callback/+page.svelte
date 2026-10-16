@@ -184,7 +184,7 @@
       {$_('callback.desktop_reopen')}
     </a>
   {:else}
-    <div class="h-10 w-10 animate-spin rounded-full border-2 border-accent border-t-transparent"></div>
+    <div class="h-10 w-10 animate-spin rounded-full border-2 border-ink/70 border-t-transparent"></div>
     <p class="mt-6 text-sm text-ink-soft">{message}</p>
   {/if}
 </section>

@@ -83,7 +83,15 @@
         disponible en
         <a href="https://github.com/rleeon/hoard" target="_blank" rel="noopener">GitHub</a>. El
         catálogo de rutas de guardado incluido en la aplicación procede de PCGamingWiki a través
-        del manifiesto de Ludusavi y se distribuye bajo licencia CC BY-NC-SA 3.0.
+        del manifiesto de Ludusavi y se distribuye bajo licencia CC BY-NC-SA 3.0. Los logotipos
+        de agentes de IA que aparecen en el sitio son marcas de sus respectivos titulares y se
+        muestran solo para indicar compatibilidad; los dibujos proceden de
+        <a href="https://github.com/lobehub/lobe-icons" target="_blank" rel="noopener"
+          >lobe-icons</a
+        > (licencia MIT, © LobeHub) y de
+        <a href="https://github.com/simple-icons/simple-icons" target="_blank" rel="noopener"
+          >simple-icons</a
+        > (CC0 1.0).
       </p>
 
       <h2>4. Responsabilidad</h2>
@@ -147,7 +155,15 @@
         source code is distributed under the AGPL-3.0 licence and is available on
         <a href="https://github.com/rleeon/hoard" target="_blank" rel="noopener">GitHub</a>. The
         save-path catalogue bundled with the application comes from PCGamingWiki via the
-        Ludusavi manifest and is distributed under the CC BY-NC-SA 3.0 licence.
+        Ludusavi manifest and is distributed under the CC BY-NC-SA 3.0 licence. The AI agent
+        logos shown on this site are trademarks of their respective owners and appear only to
+        indicate compatibility; the drawings come from
+        <a href="https://github.com/lobehub/lobe-icons" target="_blank" rel="noopener"
+          >lobe-icons</a
+        > (MIT licence, © LobeHub) and
+        <a href="https://github.com/simple-icons/simple-icons" target="_blank" rel="noopener"
+          >simple-icons</a
+        > (CC0 1.0).
       </p>
 
       <h2>4. Liability</h2>

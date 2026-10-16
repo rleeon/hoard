@@ -16,7 +16,7 @@
 
 {#if $session === undefined}
   <div class="grid min-h-[60vh] place-items-center">
-    <div class="h-10 w-10 animate-spin rounded-full border-2 border-accent border-t-transparent"></div>
+    <div class="h-10 w-10 animate-spin rounded-full border-2 border-ink/70 border-t-transparent"></div>
   </div>
 {:else if $session}
   {@render children()}

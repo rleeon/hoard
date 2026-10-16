@@ -244,7 +244,7 @@
 
   {#if showAccountChoice}
     <div class="mt-10 w-full space-y-4">
-      <div class="rounded-xl border border-line bg-surface p-4 text-center">
+      <div class="rounded-2xl border border-white/[0.08] bg-black p-4 text-center">
         <p class="text-xs text-ink-faint">{$_('login.signed_in_as')}</p>
         <p class="mt-1 text-sm font-medium text-ink">{$session?.email}</p>
       </div>
@@ -261,7 +261,7 @@
   {:else}
   <div class="mt-10 w-full space-y-5">
     <label
-      class="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-4 text-left text-xs leading-relaxed text-ink-soft [&_a]:text-accent [&_a]:underline [&_a]:underline-offset-2"
+      class="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/[0.08] bg-black p-4 text-left text-xs leading-relaxed text-ink-soft [&_a]:text-accent [&_a]:underline [&_a]:underline-offset-2"
     >
       <input
         type="checkbox"
@@ -320,7 +320,7 @@
 
     {#if sent}
       <div
-        class="rounded-xl border border-accent bg-accent-tint p-4 text-sm text-accent"
+        class="rounded-2xl border border-emerald-800/80 bg-black p-4 text-sm text-emerald-500"
       >
         {$_('login.email_sent', { values: { email } })}
       </div>
@@ -362,7 +362,7 @@
           required
           bind:value={email}
           placeholder={$_('login.email_placeholder')}
-          class="ring-focus w-full rounded-lg border border-line bg-surface px-4 py-2.5 text-sm text-ink placeholder:text-ink-faint transition-colors focus:border-accent focus:outline-none"
+          class="ring-focus w-full rounded-lg border border-line bg-surface px-4 py-2.5 text-sm text-ink placeholder:text-ink-faint transition-colors focus:border-white/30 focus:outline-none"
         />
         {#if captchaEnabled}
           <Turnstile

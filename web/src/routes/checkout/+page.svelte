@@ -80,7 +80,7 @@
 {#if $session === undefined || $session === null}
   <div class="grid min-h-[60vh] place-items-center">
     <div
-      class="h-10 w-10 animate-spin rounded-full border-2 border-accent border-t-transparent"
+      class="h-10 w-10 animate-spin rounded-full border-2 border-ink/70 border-t-transparent"
     ></div>
   </div>
 {:else}
@@ -91,7 +91,7 @@
     </h1>
     <p class="mt-2 text-center text-sm text-ink-soft">{$_('checkout.subtitle')}</p>
 
-    <div class="mt-8 w-full rounded-2xl border border-line bg-surface p-6">
+    <div class="mt-8 w-full rounded-3xl border border-white/[0.08] bg-black p-6">
       <div class="flex items-center gap-3 border-b border-line pb-4">
         {#if $session.avatarUrl}
           <img
@@ -118,9 +118,9 @@
       <p class="mt-4 text-sm text-ink-soft">{$_('checkout.question')}</p>
 
       <div
-        class="mt-4 flex items-center justify-between rounded-xl border border-accent bg-accent-tint px-4 py-3"
+        class="mt-4 flex items-center justify-between rounded-2xl border border-emerald-800/80 bg-black px-4 py-3"
       >
-        <span class="text-sm font-semibold text-accent">{$_('plan.pro')}</span>
+        <span class="text-sm font-semibold text-emerald-500">{$_('plan.pro')}</span>
         <span class="text-sm text-ink">{priceLabel}</span>
       </div>
 
@@ -160,7 +160,7 @@
     </div>
 
     <p class="mt-5 flex items-center gap-1.5 text-xs text-ink-faint">
-      <ShieldCheck class="h-3.5 w-3.5 text-accent" />
+      <ShieldCheck class="h-3.5 w-3.5 text-ink-soft" />
       {$_('checkout.secured_by')}
     </p>
   </section>

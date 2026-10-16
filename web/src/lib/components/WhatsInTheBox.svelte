@@ -11,7 +11,9 @@
   //
   // Design (the user's pick out of ten layouts): one bordered panel with a
   // 3x2 grid of cells divided by internal borders, the icon inline with the
-  // title, a soft 3D tilt on the cells and a hover background change.
+  // title, a soft 3D tilt on the cells and a hover background change. Black
+  // and white since 15-10, like the rest of the sections: the hover lifts a
+  // cell to the nav capsule's near-black.
 
   const features = [
     { key: 'sync', icon: RefreshCw },
@@ -33,10 +35,10 @@
       <p class="mt-3 text-pretty text-ink-soft">{$_('features.subtitle')}</p>
     </div>
 
-    <div class="mt-12 grid overflow-hidden rounded-2xl border border-line bg-surface sm:grid-cols-2 lg:grid-cols-3">
+    <div class="mt-12 grid overflow-hidden rounded-3xl border border-white/[0.08] bg-black sm:grid-cols-2 lg:grid-cols-3">
       {#each features as f, i (f.key)}
         <article
-          class="reveal tilt group relative border-line p-7 transition-colors hover:bg-bg
+          class="reveal tilt group relative border-white/[0.08] p-7 transition-colors hover:bg-capsule
                  border-t [&:first-child]:border-t-0
                  sm:[&:nth-child(-n+2)]:border-t-0 sm:[&:nth-child(2n+1)]:border-l-0 sm:[&:nth-child(2n)]:border-l
                  lg:[&:nth-child(-n+3)]:border-t-0 lg:[&:nth-child(3n+1)]:border-l-0 lg:[&:nth-child(3n+2)]:border-l lg:[&:nth-child(3n)]:border-l"
@@ -44,7 +46,7 @@
           use:tilt={{ max: 4 }}
         >
           <h3 class="flex items-center gap-2 font-semibold text-ink">
-            <f.icon class="h-4 w-4 text-accent" />
+            <f.icon class="h-4 w-4 text-ink" />
             {$_(`features.${f.key}.title`)}
           </h3>
           <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">

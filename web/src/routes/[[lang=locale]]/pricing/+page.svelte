@@ -97,13 +97,13 @@
       <div
         class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 px-6 py-5 {i > 0
           ? 'border-t border-line'
-          : ''} {b.pro ? 'bg-accent/10' : 'bg-bg'}"
+          : ''} bg-bg"
       >
         <div class="min-w-0">
-          <p class="font-mono text-sm {b.pro ? 'text-accent' : 'text-ink'}">{b.label}</p>
-          <p class="mt-1 text-xs {b.pro ? 'text-accent/70' : 'text-ink-faint'}">{b.note}</p>
+          <p class="font-mono text-sm text-ink">{b.label}</p>
+          <p class="mt-1 text-xs text-ink-faint">{b.note}</p>
         </div>
-        <span class="shrink-0 text-sm {b.pro ? 'font-semibold text-accent' : 'text-ink-soft'}"
+        <span class="shrink-0 text-sm {b.pro ? 'font-semibold text-emerald-500' : 'text-ink-soft'}"
           >{b.verdict}</span
         >
       </div>
@@ -117,22 +117,22 @@
        hangs off the toggle absolutely so it cannot shove it off centre. -->
   <div class="reveal relative mb-6 mt-14 flex flex-col items-center gap-2 sm:block sm:text-center" use:reveal>
     <div class="relative inline-block">
-      <div class="inline-flex rounded-full border border-line bg-surface p-1">
+      <div class="inline-flex rounded-full border border-white/10 bg-black p-1">
         <button
           class="glow pop-self rounded-full px-4 py-1.5 text-sm transition-colors {cycle === 'monthly'
-            ? 'bg-accent text-pine'
+            ? 'bg-white/10 text-ink'
             : 'text-ink-soft hover:text-ink'}"
           onclick={() => (cycle = 'monthly')}>{$_('pricing.toggle_monthly')}</button
         >
         <button
           class="glow pop-self rounded-full px-4 py-1.5 text-sm transition-colors {cycle === 'yearly'
-            ? 'bg-accent text-pine'
+            ? 'bg-white/10 text-ink'
             : 'text-ink-soft hover:text-ink'}"
           onclick={() => (cycle = 'yearly')}>{$_('pricing.toggle_yearly')}</button
         >
       </div>
       <span
-        class="pointer-events-none whitespace-nowrap font-mono text-[11px] text-accent transition-opacity max-sm:mt-2 max-sm:block max-sm:text-center sm:absolute sm:left-full sm:top-1/2 sm:ml-3 sm:-translate-y-1/2"
+        class="pointer-events-none whitespace-nowrap font-mono text-[11px] text-emerald-500 transition-opacity max-sm:mt-2 max-sm:block max-sm:text-center sm:absolute sm:left-full sm:top-1/2 sm:ml-3 sm:-translate-y-1/2"
         style="opacity: {cycle === 'yearly' ? 1 : 0.5}">{$_('pricing.yearly_badge')}</span
       >
     </div>
@@ -150,13 +150,13 @@
       <p class="font-mono text-2xl text-ink">0 €</p>
       <p class="text-xs text-ink-faint">{$_('pricing.free_forever')}</p>
       <div class="mt-auto pt-3">
-        <Button variant="outline" full onclick={() => choose('free')}>
+        <Button variant="primary" full onclick={() => choose('free')}>
           {$_('pricing.cta_download_free')}
         </Button>
       </div>
     </div>
-    <div class="flex flex-col gap-2 border-b border-l border-accent/45 bg-accent-tint p-5 text-center">
-      <h2 class="font-display text-lg font-semibold text-accent">Hoard Pro</h2>
+    <div class="flex flex-col gap-2 border-b border-l border-emerald-800/80 bg-bg p-5 text-center">
+      <h2 class="font-display text-lg font-semibold text-ink">Hoard Pro</h2>
       <p class="font-mono text-2xl text-ink">
         {proPriceLabel}<span class="text-sm text-ink-faint">{proSuffix}</span>
       </p>
@@ -166,7 +166,7 @@
       <p class="relative flex items-center justify-center gap-1 text-xs text-ink-faint">
         {$_('pricing.tax_note')}
         <span class="group inline-flex">
-          <HelpCircle class="h-3.5 w-3.5 cursor-help text-accent/70" />
+          <HelpCircle class="h-3.5 w-3.5 cursor-help text-ink-faint" />
           <span
             class="pointer-events-none absolute left-1/2 top-6 z-20 w-56 -translate-x-1/2 rounded-lg border border-line bg-bg p-3 text-left font-sans text-xs leading-relaxed text-ink-soft opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
             >{$_('pricing.tax_tip')}</span
@@ -188,13 +188,13 @@
         class="grid place-items-center border-l border-t border-line px-5 py-3.5 font-mono text-sm text-ink-soft"
       >
         {#if typeof r.free === 'boolean'}
-          {#if r.free}<Check class="h-4 w-4 text-accent" />{:else}<Minus
+          {#if r.free}<Check class="h-4 w-4 text-ink" />{:else}<Minus
               class="h-4 w-4 text-ink-faint"
             />{/if}
         {:else}{r.free}{/if}
       </div>
       <div
-        class="relative flex items-center justify-center gap-1.5 border-l border-t border-accent/45 bg-accent-tint px-5 py-3.5 font-mono text-sm text-accent"
+        class="relative flex items-center justify-center gap-1.5 border-l border-t border-emerald-800/80 bg-bg px-5 py-3.5 font-mono text-sm text-ink"
       >
         {#if typeof r.pro === 'boolean'}
           {#if r.pro}<Check class="h-4 w-4" />{:else}<Minus class="h-4 w-4 text-ink-faint" />{/if}
@@ -203,7 +203,7 @@
           <!-- Anchored right and opening downwards so the table's rounded clip
                does not cut it off, which is what happened on the label side. -->
           <span class="group inline-flex">
-            <HelpCircle class="h-3.5 w-3.5 cursor-help text-accent/70" />
+            <HelpCircle class="h-3.5 w-3.5 cursor-help text-ink-faint" />
             <span
               class="pointer-events-none absolute right-3 top-10 z-20 w-60 rounded-lg border border-line bg-bg p-3 text-left font-sans text-xs leading-relaxed text-ink-soft opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
               >{r.proTip}</span
@@ -215,12 +215,12 @@
   </div>
 
   <div class="grid gap-5 sm:hidden">
-    <div class="rounded-2xl border border-line bg-surface p-6">
+    <div class="rounded-3xl border border-white/[0.08] bg-black p-6">
       <h2 class="font-display text-lg font-semibold text-ink">Hoard Free</h2>
       <p class="mt-1 font-mono text-2xl text-ink">0 €</p>
       <p class="text-xs text-ink-faint">{$_('pricing.free_forever')}</p>
       <div class="mt-5">
-        <Button variant="outline" full onclick={() => choose('free')}>
+        <Button variant="primary" full onclick={() => choose('free')}>
           {$_('pricing.cta_download_free')}
         </Button>
       </div>
@@ -230,7 +230,7 @@
             <dt class="text-ink-soft">{r.label}</dt>
             <dd class="font-mono text-ink">
               {#if typeof r.free === 'boolean'}
-                {#if r.free}<Check class="h-4 w-4 text-accent" />{:else}<Minus
+                {#if r.free}<Check class="h-4 w-4 text-ink" />{:else}<Minus
                     class="h-4 w-4 text-ink-faint"
                   />{/if}
               {:else}{r.free}{/if}
@@ -240,8 +240,8 @@
       </dl>
     </div>
 
-    <div class="rounded-2xl border border-accent/45 bg-accent-tint p-6">
-      <h2 class="font-display text-lg font-semibold text-accent">Hoard Pro</h2>
+    <div class="rounded-3xl border border-emerald-800/80 bg-black p-6">
+      <h2 class="font-display text-lg font-semibold text-ink">Hoard Pro</h2>
       <p class="mt-1 font-mono text-2xl text-ink">
         {proPriceLabel}<span class="text-sm text-ink-faint">{proSuffix}</span>
       </p>
@@ -251,7 +251,7 @@
       <p class="relative flex items-center justify-center gap-1 text-xs text-ink-faint">
         {$_('pricing.tax_note')}
         <span class="group inline-flex">
-          <HelpCircle class="h-3.5 w-3.5 cursor-help text-accent/70" />
+          <HelpCircle class="h-3.5 w-3.5 cursor-help text-ink-faint" />
           <span
             class="pointer-events-none absolute left-1/2 top-6 z-20 w-56 -translate-x-1/2 rounded-lg border border-line bg-bg p-3 text-left font-sans text-xs leading-relaxed text-ink-soft opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
             >{$_('pricing.tax_tip')}</span
@@ -265,9 +265,9 @@
       </div>
       <dl class="mt-6 space-y-2.5 text-sm">
         {#each rows as r (r.label)}
-          <div class="flex items-center justify-between gap-4 border-t border-accent/20 pt-2.5">
+          <div class="flex items-center justify-between gap-4 border-t border-white/[0.08] pt-2.5">
             <dt class="text-ink-soft">{r.label}</dt>
-            <dd class="text-right font-mono text-accent">
+            <dd class="text-right font-mono text-ink">
               {#if typeof r.pro === 'boolean'}
                 {#if r.pro}<Check class="ml-auto h-4 w-4" />{:else}<Minus
                     class="ml-auto h-4 w-4 text-ink-faint"
@@ -277,7 +277,7 @@
           </div>
         {/each}
       </dl>
-      <p class="mt-4 text-xs leading-relaxed text-accent/70">{$_('pricing.devices_tip')}</p>
+      <p class="mt-4 text-xs leading-relaxed text-ink-faint">{$_('pricing.devices_tip')}</p>
     </div>
   </div>
 
@@ -287,8 +287,8 @@
 
   <div class="mt-14 grid gap-4 sm:grid-cols-3">
     {#each notes as n, i (n.title)}
-      <div class="reveal rounded-2xl border border-line bg-surface p-6" use:reveal={{ delay: i * 80 }}>
-        <n.icon class="h-4 w-4 text-accent" />
+      <div class="reveal rounded-3xl border border-white/[0.08] bg-black p-6" use:reveal={{ delay: i * 80 }}>
+        <n.icon class="h-4 w-4 text-ink" />
         <h3 class="mt-3 font-semibold text-ink">{$_(n.title)}</h3>
         <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">{$_(n.body)}</p>
       </div>

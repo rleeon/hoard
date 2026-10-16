@@ -117,20 +117,20 @@
     <div class="mt-4 space-y-3">
       {#each installRows as row (row.id)}
         <div
-          class="rounded-2xl border bg-surface p-4 transition-colors {row.match
-            ? 'border-accent'
+          class="rounded-3xl border bg-black p-4 transition-colors {row.match
+            ? 'border-emerald-800/80'
             : 'border-line'}"
         >
           <div class="flex items-center justify-between gap-3">
             <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-ink-soft">
-              <Terminal class="h-3.5 w-3.5 text-accent" />
+              <Terminal class="h-3.5 w-3.5 text-ink-soft" />
               {row.os}
             </p>
             <a
               href={row.url}
               target="_blank"
               rel="noopener noreferrer"
-              class="font-mono text-[11px] text-ink-faint underline-offset-2 ring-focus hover:text-accent hover:underline"
+              class="font-mono text-[11px] text-ink-faint underline-offset-2 ring-focus hover:text-ink hover:underline"
             >
               {row.url}
             </a>
@@ -142,11 +142,11 @@
             >
             <button
               onclick={() => copy(row.cmd, row.id)}
-              class="glow pop-self anim-host grid w-11 flex-none place-items-center rounded-lg border border-line bg-bg text-ink-soft ring-focus transition-colors hover:border-accent hover:text-accent"
+              class="glow pop-self anim-host grid w-11 flex-none place-items-center rounded-lg border border-white/10 bg-black text-ink-soft ring-focus transition-colors hover:border-white/30 hover:text-ink"
               aria-label={$_('cli.copy')}
             >
               {#if copied === row.id}
-                <Check data-anim="pop" class="h-4 w-4 text-accent" />
+                <Check data-anim="pop" class="h-4 w-4 text-ink" />
               {:else}
                 <Copy data-anim="pop" class="h-4 w-4" />
               {/if}
@@ -165,9 +165,9 @@
     <h2 class="text-center text-2xl font-semibold text-ink">{$_('cli.does_title')}</h2>
     <ol class="mx-auto mt-8 max-w-2xl space-y-3">
       {#each steps as step, i (step)}
-        <li class="flex items-start gap-4 rounded-2xl border border-line bg-surface p-5">
+        <li class="flex items-start gap-4 rounded-3xl border border-white/[0.08] bg-black p-5">
           <span
-            class="grid h-8 w-8 flex-none place-items-center rounded-full bg-accent-tint font-mono text-sm font-semibold text-accent"
+            class="grid h-8 w-8 flex-none place-items-center rounded-full border border-white/15 font-mono text-sm font-semibold text-ink"
           >
             {i + 1}
           </span>
@@ -182,22 +182,22 @@
   <div class="reveal mt-16" use:reveal>
     <h2 class="text-center text-2xl font-semibold text-ink">{$_('cli.about_title')}</h2>
     <div class="mt-8 grid gap-4 sm:grid-cols-3">
-      <article class="rounded-2xl border border-line bg-surface p-6">
-        <div class="grid h-10 w-10 place-items-center rounded-xl bg-accent-tint text-accent">
+      <article class="rounded-3xl border border-white/[0.08] bg-black p-6">
+        <div class="grid h-10 w-10 place-items-center rounded-xl border border-white/15 text-ink">
           <Terminal class="h-5 w-5" />
         </div>
         <h3 class="mt-4 text-base font-semibold text-ink">{$_('cli.what_title')}</h3>
         <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">{$_('cli.what_body')}</p>
       </article>
-      <article class="rounded-2xl border border-line bg-surface p-6">
-        <div class="grid h-10 w-10 place-items-center rounded-xl bg-accent-tint text-accent">
+      <article class="rounded-3xl border border-white/[0.08] bg-black p-6">
+        <div class="grid h-10 w-10 place-items-center rounded-xl border border-white/15 text-ink">
           <Server class="h-5 w-5" />
         </div>
         <h3 class="mt-4 text-base font-semibold text-ink">{$_('cli.who_title')}</h3>
         <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">{$_('cli.who_body')}</p>
       </article>
-      <article class="rounded-2xl border border-line bg-surface p-6">
-        <div class="grid h-10 w-10 place-items-center rounded-xl bg-accent-tint text-accent">
+      <article class="rounded-3xl border border-white/[0.08] bg-black p-6">
+        <div class="grid h-10 w-10 place-items-center rounded-xl border border-white/15 text-ink">
           <Cpu class="h-5 w-5" />
         </div>
         <h3 class="mt-4 text-base font-semibold text-ink">{$_('cli.engine_title')}</h3>
@@ -210,7 +210,7 @@
   <div class="reveal mt-16" use:reveal>
     <h2 class="text-center text-2xl font-semibold text-ink">{$_('cli.commands_title')}</h2>
     <p class="mx-auto mt-2 max-w-xl text-center text-sm text-ink-soft">{$_('cli.commands_body')}</p>
-    <ul class="mx-auto mt-8 max-w-2xl divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
+    <ul class="mx-auto mt-8 max-w-2xl divide-y divide-white/[0.08] overflow-hidden rounded-3xl border border-white/[0.08] bg-black">
       {#each commands as c (c.cmd)}
         <li class="flex flex-col gap-1.5 p-4 sm:flex-row sm:items-center sm:gap-4">
           <code
@@ -232,13 +232,13 @@
   <div class="mt-8 grid gap-5 sm:grid-cols-3">
     {#each order as p, i (p)}
       <article
-        class="reveal flex flex-col rounded-2xl border bg-surface p-6 transition-colors {detected === p
-          ? 'border-accent'
+        class="reveal flex flex-col rounded-3xl border bg-black p-6 transition-colors {detected === p
+          ? 'border-emerald-800/80'
           : 'border-line hover:border-line-strong'}"
         use:reveal={{ delay: i * 70 }}
       >
         <div class="flex items-center gap-3">
-          <div class="grid h-10 w-10 place-items-center rounded-xl bg-accent-tint text-accent">
+          <div class="grid h-10 w-10 place-items-center rounded-xl border border-white/15 text-ink">
             {#if p === 'macos'}
               <Apple class="h-5 w-5" />
             {:else}
@@ -248,7 +248,7 @@
           <h3 class="text-lg font-semibold text-ink">{downloads[p].name}</h3>
           {#if detected === p}
             <span
-              class="ml-auto rounded-full bg-accent-tint px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent"
+              class="ml-auto rounded-full border border-emerald-800/80 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-500"
             >
               {$_('download.detected')}
             </span>
@@ -260,7 +260,7 @@
             <li>
               <a
                 href={a.href}
-                class="glow block rounded-lg border border-line bg-bg px-4 py-3 ring-focus transition-colors hover:border-accent hover:bg-accent-tint"
+                class="glow block rounded-xl border border-white/10 bg-black px-4 py-3 ring-focus transition-colors hover:border-white/30"
               >
                 <span class="block break-all font-mono text-sm font-medium text-ink">{a.label}</span>
                 <span class="mt-0.5 block text-xs text-ink-faint">{a.sublabel}</span>
@@ -271,7 +271,7 @@
 
         {#if p === 'linux'}
           <p class="mt-4 flex items-start gap-2 text-xs leading-relaxed text-ink-faint">
-            <Server class="mt-0.5 h-3.5 w-3.5 flex-none text-accent" />
+            <Server class="mt-0.5 h-3.5 w-3.5 flex-none text-ink-soft" />
             {$_('cli.linux_note')}
           </p>
         {/if}
@@ -280,18 +280,18 @@
   </div>
 
   <div class="reveal mt-8 grid gap-4 sm:grid-cols-2" use:reveal>
-    <div class="rounded-2xl border border-line bg-surface p-6">
+    <div class="rounded-3xl border border-white/[0.08] bg-black p-6">
       <p class="flex items-center gap-2 text-sm font-semibold text-ink">
-        <Monitor class="h-4 w-4 text-accent" />
+        <Monitor class="h-4 w-4 text-ink-soft" />
         Linux · macOS
       </p>
       <pre class="mt-3 overflow-x-auto rounded-lg bg-pine p-4 font-mono text-[13px] leading-relaxed text-white/90"><code>tar -xzf hoard-*-*.tar.gz
 mv hoard-*/hoard ~/.local/bin/
 hoard login</code></pre>
     </div>
-    <div class="rounded-2xl border border-line bg-surface p-6">
+    <div class="rounded-3xl border border-white/[0.08] bg-black p-6">
       <p class="flex items-center gap-2 text-sm font-semibold text-ink">
-        <Monitor class="h-4 w-4 text-accent" />
+        <Monitor class="h-4 w-4 text-ink-soft" />
         Windows · PowerShell
       </p>
       <pre class="mt-3 overflow-x-auto rounded-lg bg-pine p-4 font-mono text-[13px] leading-relaxed text-white/90"><code>tar -xzf hoard-*-windows-x86_64.tar.gz
@@ -303,7 +303,7 @@ hoard login</code></pre>
 
   <!-- GUI hint -->
   <div
-    class="reveal mt-16 flex flex-col items-center gap-4 rounded-2xl border border-line bg-surface p-7 text-center sm:flex-row sm:justify-between sm:text-left"
+    class="reveal mt-16 flex flex-col items-center gap-4 rounded-3xl border border-white/[0.08] bg-black p-7 text-center sm:flex-row sm:justify-between sm:text-left"
     use:reveal
   >
     <div>
@@ -318,7 +318,7 @@ hoard login</code></pre>
 
   <!-- Self-host -->
   <div
-    class="reveal mt-6 flex flex-col items-center gap-4 rounded-2xl border border-pine-line bg-pine p-7 text-center sm:flex-row sm:justify-between sm:text-left"
+    class="reveal mt-6 flex flex-col items-center gap-4 rounded-3xl border border-white/[0.08] bg-black p-7 text-center sm:flex-row sm:justify-between sm:text-left"
     use:reveal
   >
     <div>
@@ -342,7 +342,7 @@ hoard login</code></pre>
       href={ALL_RELEASES}
       target="_blank"
       rel="noopener noreferrer"
-      class="link-underline text-accent ring-focus hover:text-emerald-300"
+      class="link-underline text-ink ring-focus hover:text-white"
     >
       GitHub Releases
     </a>.

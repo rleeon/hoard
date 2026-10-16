@@ -4,10 +4,10 @@
   import Seo from '$lib/components/Seo.svelte';
   import HowItWorks from '$lib/components/HowItWorks.svelte';
   import WhatsInTheBox from '$lib/components/WhatsInTheBox.svelte';
-  import GamesSection from '$lib/components/GamesSection.svelte';
   import SelfHostSection from '$lib/components/SelfHostSection.svelte';
   import GuidesSection from '$lib/components/GuidesSection.svelte';
   import SyncDiagram from '$lib/components/SyncDiagram.svelte';
+  import AiSection from '$lib/components/AiSection.svelte';
   import { reveal } from '$lib/actions/reveal';
   import { marquee } from '$lib/actions/marquee';
   import { tilt } from '$lib/actions/tilt';
@@ -251,7 +251,7 @@
         <ul class="mt-6 space-y-3 text-sm">
           {#each ['p1', 'p2', 'p3'] as p (p)}
             <li class="flex items-start gap-2.5 text-ink-soft">
-              <Check class="mt-0.5 h-4 w-4 flex-none text-accent" />
+              <Check class="mt-0.5 h-4 w-4 flex-none text-ink" />
               {$_(`sync.${p}`)}
             </li>
           {/each}
@@ -260,7 +260,7 @@
 
       <div class="reveal" use:reveal={{ delay: 100 }}>
         <div
-          class="tilt rounded-2xl border border-line bg-surface p-6 sm:p-8"
+          class="tilt rounded-3xl border border-white/[0.08] bg-black p-6 sm:p-8"
           use:tilt
         >
           <SyncDiagram />
@@ -270,14 +270,14 @@
   </div>
 </section>
 
+<!-- ───────── AI ───────── -->
+<AiSection />
+
 <!-- ───────── HOW IT WORKS ───────── -->
 <HowItWorks />
 
 <!-- ───────── WHAT'S IN THE BOX ───────── -->
 <WhatsInTheBox />
-
-<!-- ───────── SUPPORTED GAMES ───────── -->
-<GamesSection />
 
 <!-- ───────── SELF-HOST ───────── -->
 <SelfHostSection />

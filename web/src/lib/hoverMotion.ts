@@ -23,7 +23,74 @@
 
 /** Controls that take part: the glow, the button's own bounce, or a host whose
  *  icon carries `data-anim`. */
-const CONTROL = '.glow, .pop-self, .anim-host';
+const CONTROL = '.glow, .pop-self, .pop-hold, .anim-host';
+
+// ---- held pop
+// The nav's controls (`.pop-hold`) grow to `--nav-grow` and wait there while
+// the pointer stays, then shrink back when it leaves. A flick across one still
+// plays the whole thing: leaving before the peak only queues the shrink for
+// the moment the peak is reached. Web Animations rather than CSS, because CSS
+// can either finish a pop or hold it, not both. Like the pop above it runs
+// under reduced-motion too, on the owner's call (see app.css).
+type Hold = { phase: 'growing' | 'held' | 'shrinking'; leave: boolean; anim: Animation | null };
+const holds = new WeakMap<Element, Hold>();
+const GROW_MS = 170;
+const SHRINK_MS = 220;
+const SPRING = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
+
+function peakOf(el: Element) {
+  return parseFloat(getComputedStyle(el).getPropertyValue('--nav-grow')) || 1.3;
+}
+
+function scaleNow(el: Element) {
+  return new DOMMatrix(getComputedStyle(el).transform).a || 1;
+}
+
+function grow(el: Element, flick: boolean) {
+  const h = holds.get(el) ?? { phase: 'shrinking', leave: false, anim: null };
+  holds.set(el, h);
+  if (h.phase !== 'shrinking') {
+    // Already on its way up or waiting at the top: just forget a queued exit.
+    h.leave = flick;
+    return;
+  }
+  const from = scaleNow(el);
+  h.anim?.cancel();
+  h.phase = 'growing';
+  h.leave = flick;
+  const anim = el.animate([{ transform: `scale(${from})` }, { transform: `scale(${peakOf(el)})` }], {
+    duration: GROW_MS,
+    easing: SPRING,
+    fill: 'forwards'
+  });
+  h.anim = anim;
+  anim.onfinish = () => {
+    if (h.anim !== anim) return;
+    h.phase = 'held';
+    if (h.leave) shrink(el, h);
+  };
+}
+
+function shrink(el: Element, h: Hold) {
+  const from = scaleNow(el);
+  h.anim?.cancel();
+  h.phase = 'shrinking';
+  const anim = el.animate([{ transform: `scale(${from})` }, { transform: 'scale(1)' }], {
+    duration: SHRINK_MS,
+    easing: SPRING
+  });
+  h.anim = anim;
+  anim.onfinish = () => {
+    if (h.anim === anim) h.anim = null;
+  };
+}
+
+function release(el: Element) {
+  const h = holds.get(el);
+  if (!h) return;
+  if (h.phase === 'growing') h.leave = true;
+  else if (h.phase === 'held') shrink(el, h);
+}
 
 function play(node: Element) {
   // Re-adding a class the element already has does not restart an animation,
@@ -64,6 +131,7 @@ export function initHoverMotion() {
     // The one we just left keeps its glow and fades out on its own: that fade
     // is the trail.
     current?.classList.remove('glow-lit');
+    if (current?.classList.contains('pop-hold')) release(current);
     current = el;
     rect = null;
     if (!el) return;
@@ -77,6 +145,11 @@ export function initHoverMotion() {
     }
 
     if (el.classList.contains('pop-self')) play(el);
+    // A finger never "leaves" until it taps something else, so on touch the
+    // held pop plays through like the ordinary one.
+    if (el.classList.contains('pop-hold')) {
+      grow(el, (e as PointerEvent).pointerType !== 'mouse' && (e as PointerEvent).pointerType !== 'pen');
+    }
     // A `data-anim` icon bounces with its host, whatever the pointer is
     // actually over inside it (the label, the padding, the icon itself).
     el.querySelectorAll('[data-anim]').forEach(play);
@@ -92,6 +165,7 @@ export function initHoverMotion() {
   function onOut(e: PointerEvent | MouseEvent) {
     if (!(e as PointerEvent).relatedTarget && current) {
       current.classList.remove('glow-lit');
+      if (current.classList.contains('pop-hold')) release(current);
       current = null;
       rect = null;
     }

@@ -112,14 +112,14 @@
           <li>
             <a
               href={$localeHref(`/guides/${g.slug}`)}
-              class="group flex items-start justify-between gap-4 rounded-xl border border-line bg-surface p-4 ring-focus transition-colors hover:border-line-strong"
+              class="group flex items-start justify-between gap-4 rounded-2xl border border-white/[0.08] bg-black p-4 ring-focus transition-colors hover:border-white/20"
             >
               <div>
                 <p class="font-display font-semibold text-ink">{g.title}</p>
                 <p class="mt-1 text-sm leading-relaxed text-ink-soft">{g.description}</p>
               </div>
               <ArrowRight
-                class="mt-1 h-4 w-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent"
+                class="mt-1 h-4 w-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-ink"
               />
             </a>
           </li>
@@ -128,12 +128,12 @@
     </nav>
   {/if}
 
-  <div class="mt-14 rounded-xl border border-line bg-surface p-6">
+  <div class="mt-14 rounded-2xl border border-white/[0.08] bg-black p-6">
     <h2 class="font-display text-lg font-semibold text-ink">{$_('guides.cta_title')}</h2>
     <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">{$_('guides.cta_text')}</p>
     <a
       href={$localeHref('/download')}
-      class="glow pop-self mt-4 inline-flex h-10 items-center rounded-lg bg-accent px-4 text-sm font-medium text-pine ring-focus transition-colors hover:bg-emerald-300"
+      class="glow pop-self mt-4 inline-flex h-10 items-center rounded-lg border border-emerald-800/80 bg-black text-emerald-500 hover:border-emerald-600 hover:text-emerald-400 px-4 text-sm font-medium ring-focus transition-colors"
     >
       {$_('nav.download')}
     </a>
@@ -142,7 +142,7 @@
   <!-- The same card and diagram as section 1 of the home page, so every guide
        ends on what sync looks like and not only on backups. -->
   <div class="reveal mt-6" use:reveal={{ delay: 100 }}>
-    <div class="tilt rounded-2xl border border-line bg-surface p-6 sm:p-8" use:tilt>
+    <div class="tilt rounded-3xl border border-white/[0.08] bg-black p-6 sm:p-8" use:tilt>
       <SyncDiagram />
     </div>
   </div>

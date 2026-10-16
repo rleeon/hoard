@@ -2,9 +2,8 @@
   import { _ } from 'svelte-i18n';
   import { onMount } from 'svelte';
 
-  // ===========================================================================
   // SYNC DIAGRAM, the animated diagram of the "Sync" section on the home page.
-  // ---------------------------------------------------------------------------
+  //
   // THE USER EXPLICITLY REQUESTED THIS DESIGN AND ANIMATION. Do not "simplify"
   // or "fix" it without asking them first. What they asked for, in their words:
   //
@@ -16,14 +15,18 @@
   //    self-host este en verde, y siempre el contrario que este como apagado,
   //    es mas que no tenga ni lineas a los dispositivos."
   //
+  //   On 15-10 the green went white with the rest of the site's sections
+  //   ("los nuevos colores, pero sin cambiar el como funciona"): the lit hub,
+  //   the balls and the badge are white now; what lights up when is unchanged.
+  //
   // SCENE (always the same five nodes):
   //   - Two hubs on top: hoard-Cloud (badge "login") and hoard-server (badge
   //     "self-host"), left and right.
   //   - Three devices below: the desktop, the laptop, the second desktop.
   //
   // DESIGN (the "active hub" concept):
-  //   - The two hubs alternate: while one hub is ACTIVE it is fully lit (green
-  //     accent) and ONLY its three lines to the devices are drawn. The other
+  //   - The two hubs alternate: while one hub is ACTIVE it is fully lit (white)
+  //     and ONLY its three lines to the devices are drawn. The other
   //     hub stays "off": dimmed at CHIP_IDLE opacity and with NO lines at all.
   //   - The switch happens with a CROSS-second crossfade that hugs the phase
   //     boundary: the active hub's lines fade out over the last CROSS seconds
@@ -51,7 +54,6 @@
   //     the loop to always run.
   //   - The balls are plain absolutely-positioned <div>s layered over the SVG
   //     (left/top in %), not SVG elements, for the same compatibility reason.
-  // ===========================================================================
 
   type Pt = { x: number; y: number };
   type Curve = { a: Pt; c1: Pt; c2: Pt; b: Pt };
@@ -316,8 +318,8 @@
     height: 10px;
     margin: -5px 0 0 -5px;
     border-radius: 9999px;
-    background: var(--color-accent);
-    box-shadow: 0 0 8px color-mix(in oklab, var(--color-accent) 70%, transparent);
+    background: var(--color-ink);
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.55);
     will-change: transform;
 
     opacity: 0;
@@ -325,19 +327,19 @@
 
   .conn {
     fill: none;
-    stroke: var(--color-line-strong);
+    stroke: rgba(255, 255, 255, 0.22);
     stroke-width: 1.5;
     stroke-linejoin: round;
   }
 
   .hub-chip {
-    fill: var(--color-pine-elev);
-    stroke: var(--color-accent);
-    stroke-opacity: 0.55;
+    fill: var(--color-bg);
+    stroke: #fff;
+    stroke-opacity: 0.6;
   }
   .dev-chip {
-    fill: var(--color-surface);
-    stroke: var(--color-line-strong);
+    fill: var(--color-bg);
+    stroke: rgba(255, 255, 255, 0.18);
   }
   .l-chip {
     font-family: var(--font-mono);
@@ -351,7 +353,7 @@
     font-size: 8px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    fill: var(--color-accent);
+    fill: var(--color-ink-soft);
     text-anchor: middle;
   }
 </style>

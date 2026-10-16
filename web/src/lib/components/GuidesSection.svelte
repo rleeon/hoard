@@ -29,7 +29,7 @@
       </div>
       <a
         href={$localeHref('/guides')}
-        class="link-underline inline-flex items-center gap-1.5 text-sm font-medium text-accent ring-focus"
+        class="link-underline inline-flex items-center gap-1.5 text-sm font-medium text-ink ring-focus hover:text-white"
       >
         {$_('guides.back')}
         <ArrowRight class="h-4 w-4" />
@@ -41,12 +41,12 @@
         <li class="reveal" use:reveal={{ delay: i * 80 }}>
           <a
             href={$localeHref(`/guides/${g.slug}`)}
-            class="group flex h-full flex-col rounded-xl border border-line bg-surface p-5 ring-focus transition-colors hover:border-line-strong"
+            class="group flex h-full flex-col rounded-3xl border border-white/[0.08] bg-black p-6 ring-focus transition-colors hover:border-white/20"
           >
             <p class="font-display text-lg font-semibold text-ink">{g.title}</p>
             <p class="mt-2 flex-1 text-sm leading-relaxed text-ink-soft">{g.description}</p>
             <ArrowRight
-              class="mt-4 h-4 w-4 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent"
+              class="mt-4 h-4 w-4 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-ink"
             />
           </a>
         </li>

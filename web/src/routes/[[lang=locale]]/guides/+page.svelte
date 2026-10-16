@@ -47,8 +47,8 @@
         <a
           href={$localeHref(`/guides/${g.slug}`)}
           class="glow group block rounded-xl border p-5 ring-focus transition-colors {g.featured
-            ? 'border-accent bg-accent-tint hover:border-accent-deep'
-            : 'border-line bg-surface hover:border-line-strong'}"
+            ? 'border-emerald-800/80 bg-black hover:border-emerald-600'
+            : 'border-white/[0.08] bg-black hover:border-white/20'}"
         >
           <div class="flex items-start justify-between gap-4">
             <div>
@@ -56,7 +56,7 @@
               <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">{g.description}</p>
             </div>
             <ArrowRight
-              class="mt-1 h-5 w-5 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent"
+              class="mt-1 h-5 w-5 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-ink"
             />
           </div>
         </a>

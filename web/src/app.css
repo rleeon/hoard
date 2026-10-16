@@ -4,28 +4,32 @@
 @import "@fontsource-variable/jetbrains-mono/index.css";
 
 @theme {
-  /* Dark, green-cast palette with a single emerald accent, the same
-     family the desktop app uses, so site and app read as one product.
-     `accent` is the bright emerald for text/icons on dark; `accent-deep`
-     is the filled-chip emerald that carries white text.
+  /* Black and neutral greys with a single emerald accent. Surfaces and lines
+     were green-cast to match the desktop app until 15-10-2026, when the owner
+     took the green out of everything but the calls to action ("no me gustan
+     los verdes"); the accent now lives on the download/install buttons and
+     little else. `accent` is the bright emerald for text/icons on dark;
+     `accent-deep` is the filled-chip emerald that carries white text.
 
-     WOLED: the page canvas is pure #000, the same off-black the desktop app
-     uses, so the emerald only ever shows on real surfaces (borders, chips,
-     buttons) and the black stays truly off. Surfaces are a hair above black. */
+     WOLED: the page canvas is pure #000, so the black stays truly off.
+     Surfaces are a hair above it. */
   --color-bg: #000000;
-  --color-surface: #0a0f0b;
+  --color-surface: #0b0b0c;
   --color-ink: #ebeeec;
   --color-ink-soft: #a6b0a9;
   --color-ink-faint: #6e7871;
-  --color-line: #18201a;
-  --color-line-strong: #26312a;
+  --color-line: #1c1c1d;
+  --color-line-strong: #2b2b2d;
   --color-accent: #34d399;
   --color-accent-deep: #047857;
   --color-accent-tint: #0d2117;
   /* Raised band, one step above the page, hairline-bordered. */
-  --color-pine: #0c130e;
-  --color-pine-elev: #131c16;
-  --color-pine-line: #212b24;
+  --color-pine: #0f0f10;
+  --color-pine-elev: #121213;
+  --color-pine-line: #232325;
+  /* The nav capsule: neutral, a breath above the page's pure black so the
+     bar reads as an object resting on it. */
+  --color-capsule: #0b0b0c;
 
   --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque",
     ui-sans-serif, system-ui, sans-serif;
@@ -80,6 +84,26 @@ body::before {
   opacity: 0.03;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---- scrollbars
+   The desktop app's, thin and translucent, so the right edge doesn't carry the
+   system's wide grey strip across a black page (Windows draws one even under
+   color-scheme: dark). Only the two standard properties, on purpose: Chrome,
+   Edge and Firefox honour them on every OS, while the ::-webkit-scrollbar parts
+   the app also carries would turn Safari's overlay bar on a Mac into a
+   permanent one that eats width. Safari keeps its native bar, which already
+   suits a dark page. `scrollbar-width` does not inherit, hence `*`. */
+* {
+  scrollbar-width: thin;
+}
+html {
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+@media (forced-colors: active) {
+  html {
+    scrollbar-color: auto;
+  }
 }
 
 ::selection {
@@ -137,7 +161,7 @@ h3 {
   font-weight: 500;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--color-accent);
+  color: var(--color-ink-faint);
 }
 
 /* Gentle link underline */
@@ -157,7 +181,7 @@ h3 {
 .nav-pill {
   height: 36px;
   padding: 0 14px;
-  border-radius: 8px;
+  border-radius: 999px;
   display: inline-flex;
   align-items: center;
   transition: background 0.2s, color 0.2s;
@@ -379,31 +403,4 @@ h3 {
   /* touch-action keeps a horizontal drag from scrolling the page under it. */
   touch-action: pan-y;
   user-select: none;
-}
-
-/* ------------------------------------------------------------------
-   Game pills, the hand-verified marquee. Every pill is a plain span:
-   the Steam links were pulled out of the strip (see GamesSection). The
-   anchor rules stay so the links can come back without a restyle.
------------------------------------------------------------------- */
-.game-chip {
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-  border: 1px solid var(--color-line);
-  border-radius: 999px;
-  padding: 0.45rem 0.9rem;
-  margin: 0 0.5rem;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--color-ink-soft);
-  background: var(--color-surface);
-  transition:
-    border-color 0.2s ease,
-    color 0.2s ease;
-}
-a.game-chip:hover,
-a.game-chip:focus-visible {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
 }

@@ -9,7 +9,7 @@
   let { title, subtitle, children, actions, class: extra = '' }: Props = $props();
 </script>
 
-<section class="rounded-2xl border border-line bg-surface p-6 {extra}">
+<section class="rounded-3xl border border-white/[0.08] bg-black p-6 {extra}">
   {#if title || actions}
     <header class="mb-4 flex items-start justify-between gap-4">
       <div>

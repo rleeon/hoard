@@ -8,7 +8,12 @@ declare global {
   const __HOARD_PRESS__: import('./lib/press/assets').PressBuild;
 
   namespace App {
-    // interface Error {}
+    interface Error {
+      message: string;
+      // Set by `hooks.client.ts` when the failure was a JS chunk that did not
+      // download, not anything the page itself did.
+      chunk?: boolean;
+    }
     // interface Locals {}
     // interface PageData {}
     // interface PageState {}

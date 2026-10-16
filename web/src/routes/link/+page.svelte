@@ -85,7 +85,7 @@
       <Button variant="primary" full href={signInHref}>{$_('nav.signin')}</Button>
     </div>
   {:else if phase === 'approved'}
-    <div class="mt-10 w-full rounded-xl border border-line bg-surface p-6 text-center">
+    <div class="mt-10 w-full rounded-2xl border border-white/[0.08] bg-black p-6 text-center">
       <p class="text-sm font-medium text-ink">{$_('link.approved')}</p>
       {#if hostname}
         <p class="mt-1 font-mono text-xs text-ink-faint">{hostname}</p>
@@ -94,7 +94,7 @@
     </div>
   {:else}
     <div class="mt-10 w-full space-y-4">
-      <div class="rounded-xl border border-line bg-surface p-4 text-center">
+      <div class="rounded-2xl border border-white/[0.08] bg-black p-4 text-center">
         <p class="text-xs text-ink-faint">{$_('link.signed_in_as')}</p>
         <p class="mt-1 text-sm font-medium text-ink">{$session?.email}</p>
       </div>
@@ -107,7 +107,7 @@
           autocomplete="off"
           spellcheck="false"
           placeholder="XXXX-XXXX"
-          class="ring-focus mt-1 w-full rounded-lg border border-line bg-surface px-4 py-2.5 text-center font-mono text-lg tracking-widest text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
+          class="ring-focus mt-1 w-full rounded-lg border border-line bg-surface px-4 py-2.5 text-center font-mono text-lg tracking-widest text-ink placeholder:text-ink-faint focus:border-white/30 focus:outline-none"
         />
       </label>
 

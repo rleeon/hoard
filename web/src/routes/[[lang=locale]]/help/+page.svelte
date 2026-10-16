@@ -84,7 +84,7 @@
       type="search"
       bind:value={query}
       placeholder={$_('help.search_placeholder')}
-      class="ring-focus w-full rounded-xl border border-line bg-surface py-3 pl-11 pr-4 text-sm text-ink placeholder:text-ink-faint transition-colors focus:border-accent focus:outline-none"
+      class="ring-focus w-full rounded-2xl border border-white/[0.08] bg-black py-3 pl-11 pr-4 text-sm text-ink placeholder:text-ink-faint transition-colors focus:border-white/30 focus:outline-none"
       aria-label={$_('help.search_placeholder')}
     />
   </div>
@@ -101,7 +101,7 @@
       <div class="mt-4 space-y-2">
         {#each g.items as f, i (f.q)}
           <div
-            class="reveal overflow-hidden rounded-xl border border-line bg-surface transition-colors hover:border-line-strong"
+            class="reveal overflow-hidden rounded-2xl border border-white/[0.08] bg-black transition-colors hover:border-white/20"
             use:reveal={{ delay: i * 40 }}
           >
             <button
@@ -117,7 +117,7 @@
                 data-anim={openKey === f.q ? undefined : 'pop'}
                 class="h-4 w-4 flex-none text-ink-faint transition-transform duration-300 {openKey ===
                 f.q
-                  ? 'rotate-180 text-accent'
+                  ? 'rotate-180 text-ink'
                   : ''}"
               />
             </button>

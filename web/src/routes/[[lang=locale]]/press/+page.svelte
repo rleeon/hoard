@@ -103,7 +103,7 @@
       <a
         href="/hoard-press-kit.zip"
         download
-        class="glow pop-self anim-host inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-accent px-6 text-base font-medium text-pine ring-focus transition-colors duration-200 hover:bg-emerald-300 active:brightness-95"
+        class="glow pop-self anim-host inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-emerald-800/80 bg-black text-emerald-500 hover:border-emerald-600 hover:text-emerald-400 px-6 text-base font-medium ring-focus transition-colors duration-200 active:brightness-95"
       >
         <Download data-anim="pop" class="h-4 w-4" aria-hidden="true" />
         {$_('press.zip_cta')}
@@ -136,7 +136,7 @@
         <a
           href="/{main.file}"
           download={fileName(main.zipName)}
-          class="link-underline text-accent ring-focus hover:text-emerald-300"
+          class="link-underline text-ink ring-focus hover:text-white"
         >
           {$_('press.download')}
         </a>
@@ -150,17 +150,17 @@
     <p class="mx-auto mt-2 max-w-xl text-center text-sm text-ink-soft">{$_('press.about_body')}</p>
     <div class="mx-auto mt-8 max-w-3xl space-y-4">
       {#each abouts as id (id)}
-        <article class="rounded-2xl border border-line bg-surface p-6">
+        <article class="rounded-3xl border border-white/[0.08] bg-black p-6">
           <div class="flex items-center justify-between gap-3">
             <h3 class="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">
               {$_(`press.about.${id}_label`)}
             </h3>
             <button
               onclick={() => copy($_(`press.about.${id}`), id)}
-              class="glow pop-self anim-host inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-bg px-3 text-xs text-ink-soft ring-focus transition-colors hover:border-accent hover:text-accent"
+              class="glow pop-self anim-host inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-bg px-3 text-xs text-ink-soft ring-focus transition-colors hover:border-white/30 hover:text-ink"
             >
               {#if copied === id}
-                <Check data-anim="pop" class="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+                <Check data-anim="pop" class="h-3.5 w-3.5 text-ink" aria-hidden="true" />
                 {$_('press.copied')}
               {:else}
                 <Copy data-anim="pop" class="h-3.5 w-3.5" aria-hidden="true" />
@@ -177,7 +177,7 @@
   <!-- Fact sheet -->
   <div class="reveal mt-20" use:reveal>
     <h2 class="text-center text-2xl font-semibold text-ink">{$_('press.facts_title')}</h2>
-    <dl class="mx-auto mt-8 max-w-3xl divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
+    <dl class="mx-auto mt-8 max-w-3xl divide-y divide-white/[0.08] overflow-hidden rounded-3xl border border-white/[0.08] bg-black">
       {#each facts as [label, value] (label)}
         <div class="flex flex-col gap-1 p-4 sm:flex-row sm:gap-6">
           <dt class="flex-none text-sm font-medium text-ink sm:w-44">{$_(label)}</dt>
@@ -187,12 +187,12 @@
       <div class="flex flex-col gap-1 p-4 sm:flex-row sm:gap-6">
         <dt class="flex-none text-sm font-medium text-ink sm:w-44">{$_('press.fact.links')}</dt>
         <dd class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-          <a class="link-underline text-accent ring-focus hover:text-emerald-300" href={$localeHref('/')}>hoard.services</a>
-          <a class="link-underline text-accent ring-focus hover:text-emerald-300" href={$localeHref('/download')}>
+          <a class="link-underline text-ink ring-focus hover:text-white" href={$localeHref('/')}>hoard.services</a>
+          <a class="link-underline text-ink ring-focus hover:text-white" href={$localeHref('/download')}>
             {$_('nav.download')}
           </a>
           <a
-            class="link-underline text-accent ring-focus hover:text-emerald-300"
+            class="link-underline text-ink ring-focus hover:text-white"
             href="https://github.com/rleeon/hoard"
             target="_blank"
             rel="noopener noreferrer">GitHub</a
@@ -210,7 +210,7 @@
       <div class="mt-8 grid gap-4 sm:grid-cols-2">
         {#each others as a (a.file)}
           <figure
-            class="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface {a.kind === 'diagram'
+            class="flex flex-col overflow-hidden rounded-3xl border border-white/[0.08] bg-black {a.kind === 'diagram'
               ? 'sm:col-span-2'
               : ''}"
           >
@@ -248,7 +248,7 @@
               <a
                 href="/{a.file}"
                 download={fileName(a.zipName)}
-                class="glow inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-bg px-3 text-xs text-ink-soft ring-focus transition-colors hover:border-accent hover:text-accent"
+                class="glow inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-bg px-3 text-xs text-ink-soft ring-focus transition-colors hover:border-white/30 hover:text-ink"
               >
                 <Download class="h-3.5 w-3.5" aria-hidden="true" />
                 {$_('press.download')}
@@ -268,7 +268,7 @@
       <p class="mt-2 text-center font-mono text-xs text-ink-faint">
         v{latest.version} · {formatDate(latest.date)}
       </p>
-      <div class="mx-auto mt-8 max-w-3xl rounded-2xl border border-line bg-surface p-6">
+      <div class="mx-auto mt-8 max-w-3xl rounded-3xl border border-white/[0.08] bg-black p-6">
         {#if $locale && $locale !== 'en'}
           <p class="mb-4 text-xs text-ink-faint">{$_('press.release_lang_note')}</p>
         {/if}
@@ -284,7 +284,7 @@
               <ul class="mt-3 space-y-1.5 text-sm leading-relaxed text-ink-soft" lang="en">
                 {#each section.items as item, i (i)}
                   <li class="flex gap-2">
-                    <span class="text-accent" aria-hidden="true">·</span>
+                    <span class="text-ink-faint" aria-hidden="true">·</span>
                     <span
                       >{#each segments(item) as s, j (j)}{#if s.code}<code
                             class="rounded bg-pine px-1 font-mono text-[0.85em] text-white/90">{s.part}</code
@@ -299,7 +299,7 @@
             <ul class="mt-3 space-y-1.5 text-sm leading-relaxed text-ink-soft" lang="en">
               {#each section.items as item, i (i)}
                 <li class="flex gap-2">
-                  <span class="text-accent" aria-hidden="true">·</span>
+                  <span class="text-ink-faint" aria-hidden="true">·</span>
                   <span
                     >{#each segments(item) as s, j (j)}{#if s.code}<code
                           class="rounded bg-pine px-1 font-mono text-[0.85em] text-white/90">{s.part}</code
@@ -315,7 +315,7 @@
             href={CHANGELOG_URL}
             target="_blank"
             rel="noopener noreferrer"
-            class="link-underline text-accent ring-focus hover:text-emerald-300"
+            class="link-underline text-ink ring-focus hover:text-white"
           >
             {$_('press.release_full')}
           </a>
@@ -326,11 +326,11 @@
 
   <!-- Terms of use and who to write to -->
   <div class="reveal mt-20 grid gap-4 sm:grid-cols-2" use:reveal>
-    <article class="rounded-2xl border border-line bg-surface p-6">
+    <article class="rounded-3xl border border-white/[0.08] bg-black p-6">
       <h2 class="text-lg font-semibold text-ink">{$_('press.usage_title')}</h2>
       <p class="mt-2 text-sm leading-relaxed text-ink-soft">{$_('press.usage_body')}</p>
     </article>
-    <article class="rounded-2xl border border-line bg-surface p-6">
+    <article class="rounded-3xl border border-white/[0.08] bg-black p-6">
       <h2 class="text-lg font-semibold text-ink">{$_('press.contact_title')}</h2>
       <p class="mt-2 text-sm leading-relaxed text-ink-soft">{$_('press.contact_body')}</p>
       <div class="mt-4 flex flex-wrap gap-3">

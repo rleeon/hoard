@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import type { AccountSession } from '../types';
+import { isChunkError, reloadAfterChunkError } from '../chunkReload';
 
 export const session = writable<AccountSession | null | undefined>(undefined);
 //                                                       ^ undefined = "still loading"
@@ -13,8 +14,15 @@ let started = false;
 export function startSessionTracking() {
   if (started) return;
   started = true;
-  void import('../auth').then(({ auth }) => {
-    auth.getSession().then((s) => session.set(s));
-    auth.onAuthChange((s) => session.set(s));
-  });
+  import('../auth')
+    .then(({ auth }) => {
+      auth.getSession().then((s) => session.set(s));
+      auth.onAuthChange((s) => session.set(s));
+    })
+    .catch((e) => {
+      // Without this the store stays `undefined` for good and the nav keeps
+      // its loading placeholder, a faint empty box where the account chip goes.
+      if (isChunkError(e) && reloadAfterChunkError()) return;
+      session.set(null);
+    });
 }

@@ -11,6 +11,7 @@ const PATHS = [
   '/help',
   '/download',
   '/cli',
+  '/ai',
   '/press',
   '/guides',
   ...guideSlugs().map((slug) => `/guides/${slug}`),

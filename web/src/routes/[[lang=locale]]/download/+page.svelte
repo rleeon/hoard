@@ -275,7 +275,7 @@
     <div class="reveal mt-10 flex flex-col items-center gap-3" use:reveal>
       <a
         href={cta.href}
-        class="glow pop-self rounded-lg border border-accent-deep bg-bg px-8 py-3 font-medium text-ink ring-focus transition-colors hover:border-accent"
+        class="glow pop-self rounded-lg border border-emerald-800/80 bg-black px-8 py-3 font-medium text-emerald-500 ring-focus transition-colors hover:border-emerald-600 hover:text-emerald-400"
       >
         {$_('download.cta_for', { values: { platform: downloads[detected].name } })}
       </a>
@@ -286,12 +286,12 @@
   <div class="mt-14 grid gap-5 sm:grid-cols-3">
     {#each order as p, i (p)}
       <article
-        class="reveal flex flex-col rounded-2xl border border-line bg-surface p-6 transition-colors hover:border-line-strong"
+        class="reveal flex flex-col rounded-3xl border border-white/[0.08] bg-black p-6 transition-colors hover:border-white/20"
         use:reveal={{ delay: i * 70 }}
       >
         <div class="flex items-center gap-3">
           <div
-            class="grid h-10 w-10 place-items-center rounded-xl bg-accent-tint text-accent"
+            class="grid h-10 w-10 place-items-center rounded-xl border border-white/15 text-ink"
           >
             {#if p === 'macos'}
               <Apple class="h-5 w-5" />
@@ -307,7 +307,7 @@
             <li>
               <a
                 href={a.href}
-                class="glow block rounded-lg border border-line bg-bg px-4 py-3 ring-focus transition-colors hover:border-accent hover:bg-accent-tint"
+                class="glow block rounded-xl border border-white/10 bg-black px-4 py-3 ring-focus transition-colors hover:border-white/30"
               >
                 <span class="font-mono text-sm font-medium text-ink">{a.label}</span>
                 <span class="mt-0.5 block text-xs text-ink-faint">{a.sublabel}</span>
@@ -321,7 +321,7 @@
 
   {#snippet osPicker(current: Platform, pick: (p: Platform) => void)}
     <div
-      class="mx-auto mt-6 flex w-fit gap-1 rounded-xl border border-line bg-surface p-1"
+      class="mx-auto mt-6 flex w-fit gap-1 rounded-xl border border-white/10 bg-black p-1"
       role="group"
       aria-label={$_('download.os_pick')}
     >
@@ -331,7 +331,7 @@
           onclick={() => pick(p)}
           aria-pressed={current === p}
           class="rounded-lg px-4 py-1.5 text-sm font-medium ring-focus transition-colors {current === p
-            ? 'bg-accent-tint text-accent'
+            ? 'bg-white/[0.08] text-ink'
             : 'text-ink-soft hover:text-ink'}"
         >
           {downloads[p].name}
@@ -351,13 +351,13 @@
         <ul class="space-y-3">
           {#each cmds[p] as c (c.id)}
             <li
-              class="rounded-2xl border bg-surface p-4 {c.recommended ? 'border-accent' : 'border-line'}"
+              class="rounded-2xl border bg-black p-4 {c.recommended ? 'border-emerald-800/80' : 'border-white/[0.08]'}"
             >
               <div class="flex flex-wrap items-center gap-2">
                 <h3 class="text-sm font-semibold text-ink">{c.title}</h3>
                 {#if c.recommended}
                   <span
-                    class="rounded-full bg-accent-tint px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent"
+                    class="rounded-full border border-emerald-800/80 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-500"
                   >
                     {$_('download.recommended')}
                   </span>
@@ -375,11 +375,11 @@
                   <button
                     type="button"
                     onclick={() => copy(c.code ?? '', `${scope}-${p}-${c.id}`)}
-                    class="glow pop-self anim-host grid w-11 flex-none place-items-center rounded-lg border border-line bg-bg text-ink-soft ring-focus transition-colors hover:border-accent hover:text-accent"
+                    class="glow pop-self anim-host grid w-11 flex-none place-items-center rounded-lg border border-white/10 bg-black text-ink-soft ring-focus transition-colors hover:border-white/30 hover:text-ink"
                     aria-label={$_('cli.copy')}
                   >
                     {#if copied === `${scope}-${p}-${c.id}`}
-                      <Check data-anim="pop" class="h-4 w-4 text-accent" />
+                      <Check data-anim="pop" class="h-4 w-4 text-ink" />
                     {:else}
                       <Copy data-anim="pop" class="h-4 w-4" />
                     {/if}
@@ -415,7 +415,7 @@
 
   <!-- changelog -->
   <div
-    class="reveal mt-14 overflow-hidden rounded-2xl border border-pine-line bg-pine"
+    class="reveal mt-14 overflow-hidden rounded-3xl border border-white/[0.08] bg-black"
     use:reveal
   >
     <div class="grid items-center gap-6 p-8 sm:grid-cols-[1fr_auto]">
@@ -428,7 +428,7 @@
         href={CHANGELOG_URL}
         target="_blank"
         rel="noopener noreferrer"
-        class="glow pop-self anim-host inline-flex items-center justify-center gap-2 rounded-lg border border-pine-line bg-white/5 px-5 py-2.5 text-sm font-medium text-white ring-focus transition-colors hover:bg-white/10"
+        class="glow pop-self anim-host inline-flex items-center justify-center gap-2 rounded-lg border border-white/25 bg-black px-5 py-2.5 text-sm font-medium text-white ring-focus transition-colors hover:border-white/50"
       >
         <Github data-anim="pop" class="h-4 w-4" />
         {$_('download.changelog_cta')}
@@ -437,7 +437,7 @@
   </div>
 
   <div
-    class="reveal mt-6 flex flex-col items-center gap-4 rounded-2xl border border-line bg-surface p-7 text-center sm:flex-row sm:justify-between sm:text-left"
+    class="reveal mt-6 flex flex-col items-center gap-4 rounded-3xl border border-white/[0.08] bg-black p-7 text-center sm:flex-row sm:justify-between sm:text-left"
     use:reveal
   >
     <div>
@@ -456,7 +456,7 @@
       href="https://github.com/rleeon/hoard#self-host"
       target="_blank"
       rel="noopener noreferrer"
-      class="link-underline text-accent ring-focus hover:text-emerald-300"
+      class="link-underline text-ink ring-focus hover:text-white"
     >
       GitHub
     </a>.
