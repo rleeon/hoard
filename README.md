@@ -99,6 +99,8 @@ release a single line of code at the moment, im waiting to have a beta.
 Only android support at the moment, and sure you need give privileges to hoard app,
 one or more times, the idea is only 1 time, but im need test Shizuku and apply changes to it.
 
+To be clearer, until i have the necessary privileges(hoardd), i doubt there will be any updates regarding hoard-mobile.
+
 
 ## Documentation
 
