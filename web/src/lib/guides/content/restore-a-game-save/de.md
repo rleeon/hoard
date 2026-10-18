@@ -2,7 +2,7 @@
 title: "So stellst du einen alten Spielstand wieder her"
 description: "Kaputter Spielstand, fehlerhafte Mod oder eine bereute Entscheidung? Setz deinen Spielstand Schritt für Schritt zurück, ohne den aktuellen zu verlieren."
 order: 3
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Eine schlechte Entscheidung im Spiel, eine beschädigte Datei oder ein verpfuschter Mod — manchmal musst du einfach zurück. Da Hoard eine vollständige Versionshistorie jedes Stands führt, dauert die Wiederherstellung eines früheren nur Sekunden. Und weil diese Historie auf dem Server liegt und alle deine Geräte sie teilen, kannst du von jedem PC oder Steam Deck aus zurückgehen, nicht nur von dem, auf dem es schiefging.
@@ -54,7 +54,7 @@ Erst nachdem dein aktueller Stand als neue Version gesichert wurde. Hast du die 
 
 ### Wie weit reicht die Historie zurück?
 
-So weit, wie das Versionslimit deines Tarifs erlaubt, und eine angeheftete Version wird nie weggeräumt, um Platz zu schaffen. Auf einem selbst gehosteten Server ist die einzige Grenze deine Platte.
+Bei Hoard Cloud bis ganz zum Anfang: Kein Tarif hat ein Versionslimit. Die einzige Grenze ist eine, die du selbst setzt, **Max. Versionen pro Spiel** in der Übersicht, und selbst die entfernt nie angeheftete Versionen oder die neueste eines Spiels. Ein selbst gehosteter Server dünnt alte Versionen standardmäßig aus: Die jüngere Historie bleibt vollständig, die ältere wird lückenhafter. In seiner Konfiguration kannst du das abschalten und alles behalten.
 
 ### Kann ich auf einen PC wiederherstellen, auf dem das Spiel noch nicht installiert ist?
 
@@ -66,4 +66,4 @@ Ja. Dasselbe Spiel legt seinen Stand auf beiden Geräten woanders ab — auf dem
 
 ### Ist die Wiederherstellung auf einem selbst gehosteten Server anders?
 
-Nein. Gleiche App, gleiche Historie, gleiche Wiederherstellung per Klick. Nur der Speicher gehört dir.
+Kaum. Gleiche App, gleiche Wiederherstellung per Klick. Der Unterschied ist, wie weit du zurückgehen kannst: Standardmäßig dünnt ein selbst gehosteter Server alte Versionen mit der Zeit aus, was du in seiner Konfiguration abschalten kannst.

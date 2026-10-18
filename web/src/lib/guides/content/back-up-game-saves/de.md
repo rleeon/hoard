@@ -2,7 +2,7 @@
 title: "So sicherst du deine Spielstände automatisch"
 description: "Sichere PC-Spielstände nach jeder Session automatisch und synchronisiere sie mit deinen anderen PCs und dem Steam Deck, mit Versionsverlauf."
 order: 1
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Ein verlorener Spielstand bedeutet verlorene Stunden an Fortschritt. Hoard sichert deine PC-Spielstände automatisch, führt eine vollständige Versionshistorie, sodass du immer zurückgehen kannst, und hält jeden Spielstand zwischen deinen PCs und dem Steam Deck synchron, damit du überall dort weitermachst, wo du aufgehört hast.
@@ -51,7 +51,7 @@ Ein Speicherordner enthält selten nur Spielstände, deshalb sortiert Hoard, was
 
 Hoard beobachtet den Ordner und sichert ihn, **nachdem du aufgehört hast zu spielen**, nicht während ein Spiel Dateien offen hält. Wurde der Stand vor Sekunden geschrieben, wartet es, bis Ruhe einkehrt: eine Datei im Schreibvorgang ist keine Datei, die man halb sichern will.
 
-Jede Sicherung ist eine Version. Snapshots werden per Inhalts-Hash gespeichert, unveränderte Dateien also nur einmal — zehn Versionen eines 2 GB großen Stands kosten etwa 2 GB, nicht 20.
+Jede Sicherung ist eine Version. Snapshots werden per Inhalts-Hash gespeichert, unveränderte Dateien also nur einmal: Zehn Versionen eines 2 GB großen Stands, an dem sich zwischen den Sitzungen wenig ändert, kosten etwa 2 GB, nicht 20.
 
 ## Und synchron auf jedem Gerät
 
@@ -89,4 +89,4 @@ Hoard verfolgt den Speicherordner, Mods an anderer Stelle sind also nicht Teil d
 
 ### Ändert Selbsthosten etwas an den Backups?
 
-Überhaupt nicht. Gleiche Erkennung, gleiche Versionen, gleiche automatische Sicherung. Nur der Speicher gehört dir.
+Kaum. Gleiche Erkennung, gleiche automatische Sicherung. Der einzige Unterschied ist eine Voreinstellung: Ein selbst gehosteter Server dünnt alte Versionen mit der Zeit aus, was du in seiner Konfiguration abschalten kannst.

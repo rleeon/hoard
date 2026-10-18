@@ -2,7 +2,7 @@
 title: "Syncthing pour les sauvegardes de jeux : ce qui marche et ce qui casse"
 description: "Syncthing est un excellent outil de synchro, mais les sauvegardes de jeu cassent trois de ses hypothèses. Ce qui casse, les parades, et quand changer d'outil."
 order: 9
-updated: 2026-09-01
+updated: 2026-10-18
 ---
 
 Syncthing est la réponse vers laquelle beaucoup se tournent d'abord, et à raison : gratuit, open source, pair-à-pair, et ça marche. Mais les sauvegardes de jeux brisent trois hypothèses sur lesquelles repose un synchroniseur généraliste, et les échecs sont silencieux. Ce guide parle de ce qui déraille vraiment, et du moment où un outil qui sait ce qu'est une sauvegarde devient utile.
@@ -46,7 +46,7 @@ Ils cohabitent sans se battre, et c'est un montage raisonnable : le synchroniseu
 
 Si une partie de l'attrait est que rien ne touche le disque d'une entreprise, Hoard se prête au même usage : `hoard-server` sur votre PC ou votre NAS, et vos sauvegardes vont de votre machine à votre disque. **Aucun compte chez nous, aucune télémétrie vers nous, aucun relais** : rien ne passe par nos serveurs, puisque rien de chez nous n'est sur le chemin. Voir [comment auto-héberger Hoard](/guides/self-host-hoard).
 
-Le même binaire, la même détection, le même historique. La seule chose qui change, c'est à qui appartient le stockage. Il existe aussi une [comparaison complète des outils de synchro](/guides/game-save-sync-comparison).
+Le même programme, la même détection. Ce qui change, c'est à qui appartient le stockage, plus un réglage par défaut : un serveur auto-hébergé élague les anciennes versions avec le temps, sauf si vous le désactivez. Il existe aussi une [comparaison complète des outils de synchro](/guides/game-save-sync-comparison).
 
 <!-- faq -->
 

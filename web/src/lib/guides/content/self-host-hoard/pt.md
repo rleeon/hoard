@@ -3,7 +3,7 @@ title: "Como auto-hospedar o Hoard com Docker (self-hosted)"
 description: "Corre o teu servidor Hoard com Docker Compose e sincroniza os saves entre todos os teus dispositivos: grátis, código aberto, sem conta connosco e sem quota."
 order: 0
 featured: true
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 O Hoard é de código aberto e pode ser auto-hospedado. Em vez de usar o Hoard Cloud, você pode rodar o mesmo `hoard-server` na sua própria máquina e apontar todos os dispositivos para ele — sem conta e sem limite de espaço além do disco que você der a ele. Este guia coloca um servidor no ar com Docker em poucos minutos.
@@ -12,7 +12,7 @@ O Hoard é de código aberto e pode ser auto-hospedado. Em vez de usar o Hoard C
 
 - **Controle total.** Seus saves ficam em hardware que você controla, não na nuvem de outra pessoa.
 - **Sem cota.** O espaço é limitado apenas pelo seu próprio disco.
-- **Mesmo app, mesmos recursos.** Histórico versionado e sincronização em segundo plano funcionam igual ao Hoard Cloud — só muda o backend.
+- **A mesma app, as mesmas funcionalidades.** A sincronização em segundo plano e o histórico versionado funcionam como no Hoard Cloud, com uma predefinição própria: o servidor vai desbastando as versões antigas com o tempo (detalhes mais abaixo).
 - **Código aberto.** Você pode ler, auditar e modificar o servidor.
 
 Essa é a diferença principal em relação a ferramentas como o [Ludusavi](/guides/ludusavi-alternative): o Ludusavi é ótimo para backups locais e para usar sua própria nuvem via Rclone, mas a sincronização você mesmo monta. O Hoard oferece um servidor de sincronização gerenciado que você sobe uma vez e ao qual cada dispositivo se conecta.
@@ -103,6 +103,12 @@ Se parar na primeira, o contêiner antigo continua rodando intacto: `/v1/health`
 
 `hoard-server upgrade` é só para a instalação bare metal. Dentro de um contêiner ele se recusa de propósito — a troca de binário não sobreviveria ao próximo `docker compose up -d` — e imprime os dois comandos acima; rode `docker compose exec server hoard-server upgrade` se quiser vê-lo dizer isso. As migrações do banco de dados são aplicadas pelo servidor ao iniciar, então nunca há um passo separado para elas.
 
+## Quanto histórico guarda
+
+O Hoard Cloud guarda todas as versões. Um servidor self-hosted, tal como vem, vai desbastando as antigas: o histórico recente fica completo e o antigo mais espaçado. Com a predefinição, guarda as 15 versões mais recentes de cada jogo e, depois, a última de cada uma das 19 horas, dos 11 dias e das 6 semanas mais recentes em que jogaste. As versões mais antigas são removidas, exceto as fixadas e a mais recente de cada jogo, e uma versão removida fica 30 dias no lixo do servidor antes de ser apagada de vez.
+
+Para guardar tudo, define `snapshot_pruning = false` na secção `[retention]` do `config.toml` (em `./config/`, ao lado do ficheiro compose) e reinicia o servidor (`docker compose restart` com Docker). Na mesma secção, `data_saving` muda o equilíbrio: `0.0` guarda quase tudo, `1.0` só o essencial.
+
 ## Em produção
 
 Para qualquer coisa exposta além da rede local, termine o TLS em um proxy reverso (Caddy, nginx ou Traefik). Prefere bare metal? O repositório também traz um script de instalação `systemd` e um comando `hoard-server upgrade` que troca o binário de forma atômica sem matar uma sincronização em andamento.
@@ -121,7 +127,7 @@ Não. A aplicação de ambiente de trabalho fala com o endereço de servidor que
 
 ### O servidor self-hosted é o mesmo código do Hoard Cloud?
 
-Sim, o mesmo binário `hoard-server`, sob AGPL-3.0. Não há uma edição comunitária reduzida nem funcionalidades guardadas para a versão alojada.
+Sim, o mesmo código do `hoard-server`, sob AGPL-3.0. A versão alojada acrescenta o que só um serviço público precisa, como o registo, os planos e a faturação; tudo o que encontra, sincroniza e versiona os teus saves é comum. Não há uma edição comunitária reduzida.
 
 ### Onde ficam realmente guardados os saves?
 

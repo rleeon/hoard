@@ -2,7 +2,7 @@
 title: "Syncthing for game saves: what works and what breaks"
 description: "Syncthing is a great file syncer, but game saves break three of its assumptions. What goes wrong, the workarounds, and when a save-aware tool fits better."
 order: 9
-updated: 2026-09-01
+updated: 2026-10-18
 related: game-save-sync-comparison, sync-game-saves-across-pcs, opensave-alternative, onedrive-game-saves
 ---
 
@@ -47,7 +47,7 @@ They coexist without a fight, and it's a reasonable setup: let the general synce
 
 If part of the appeal is that nothing touches a company's disk, Hoard can be run the same way: `hoard-server` on your own PC or NAS, and your saves go from your machine to your disk. There is **no account with us, no telemetry to us and no relay** — nothing passes through our servers, because there is nothing of ours in the path. See [how to self-host Hoard](/guides/self-host-hoard).
 
-Same binary, same detection, same history. The only thing that changes is who owns the storage. There's also a full [comparison of every save sync tool](/guides/game-save-sync-comparison).
+Same program, same detection. What changes is who owns the storage, plus one default: a self-hosted server thins out old versions over time unless you switch that off. There's also a full [comparison of every save sync tool](/guides/game-save-sync-comparison).
 
 <!-- faq -->
 

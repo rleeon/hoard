@@ -2,7 +2,7 @@
 title: "バルダーズ・ゲート3（Baldur's Gate 3）のセーブデータの場所（PC・Steam Deck）"
 description: "Baldur's Gate 3のセーブデータがWindows、Steam Deck、Macのどこにあるか、セーブとModや設定の違い、オナーモード、バックアップと同期の方法を解説。"
 order: 23
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Windows では、Baldur's Gate 3 のセーブデータは `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story` にあり、セーブ 1 つにつきフォルダーが 1 つです。Larian が自社のサポート FAQ で案内しているパスです。以下では Steam Deck と Mac のパス、セーブの隣にあるもの、オナーモード、そしてすべてをバックアップしながら PC と Steam Deck で同期する方法を説明します。
@@ -10,10 +10,11 @@ Windows では、Baldur's Gate 3 のセーブデータは `%LOCALAPPDATA%\Larian
 ## Baldur's Gate 3 のセーブデータの場所
 
 - **Windows:** `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`
-- **Steam Deck と Linux**（Proton）: `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
+- **Steam Deck**（ネイティブ版。2025 年 9 月以降の標準）: `~/.local/share/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
+- **Proton で動かす Steam Deck と、その他の Linux PC:** `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
 - **Mac:** `~/Documents/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
 
-Larian はネイティブの Linux 版を廃止したため、Steam Deck ではゲームは Proton で動き、セーブは Steam が用意する Proton プレフィックスの中にあります。`1086940` はこのゲームの Steam アプリ ID です。microSD カードにインストールしている場合、`compatdata` フォルダーはカード上にあります。
+2025 年 9 月の Hotfix 34 以降、Steam Deck ではゲームのネイティブ版が動き、セーブは Proton の外、上の 1 つ目のフォルダーに保存されます。Larian がこのネイティブ版をサポートしているのは Steam Deck だけで、ほかの Linux PC では引き続き Windows 版を Proton で動かし、セーブは Steam が用意する Proton プレフィックスの中にあります。`1086940` はこのゲームの Steam アプリ ID です。切り替え前のセーブはそのプレフィックスに残ります。Steam Cloud がオンなら最新のセーブは自動で新しいフォルダーに届き、オフならデスクトップモードで `Savegames` フォルダーを一度コピーしてください。microSD カードにインストールしている場合、そのプレフィックスの `compatdata` フォルダーはカード上にあります。
 
 ## セーブとそれ以外
 
@@ -55,7 +56,7 @@ Larian はネイティブの Linux 版を廃止したため、Steam Deck では�
 
 ### Steam Deck での Baldur's Gate 3 のセーブデータはどこですか？
 
-ゲームの Proton プレフィックスの中です: `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`。
+2025 年 9 月以降の標準であるネイティブ版なら `~/.local/share/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story` です。ゲームのプロパティで Proton を強制している場合は、そのプレフィックスの中です: `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`。
 
 ### Mod 入りのセーブを別の PC に移せますか？
 

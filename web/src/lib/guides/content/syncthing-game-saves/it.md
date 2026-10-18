@@ -2,7 +2,7 @@
 title: "Syncthing per i salvataggi: cosa funziona e cosa si rompe"
 description: "Syncthing è un ottimo sincronizzatore, ma i salvataggi rompono tre sue ipotesi. Cosa va storto, come aggirarlo e quando serve uno strumento dedicato."
 order: 9
-updated: 2026-09-01
+updated: 2026-10-18
 ---
 
 Syncthing è la risposta a cui molti arrivano per primi, e per buone ragioni: è gratuito, open source, peer-to-peer e funziona. Ma i salvataggi infrangono tre presupposti su cui si regge un sincronizzatore generico, e i guasti sono silenziosi. Questa guida parla di cosa va storto davvero, e di quando vale la pena usare qualcosa che sappia cos'è un salvataggio.
@@ -46,7 +46,7 @@ Convivono senza litigare, ed è un setup ragionevole: il sincronizzatore generic
 
 Se parte dell'attrattiva è che nulla tocchi il disco di un'azienda, Hoard si può usare allo stesso modo: `hoard-server` sul tuo PC o NAS, e i salvataggi vanno dalla tua macchina al tuo disco. **Nessun account con noi, nessuna telemetria verso di noi e nessun relay**: non passa nulla dai nostri server, perché sul percorso non c'è niente di nostro. Vedi [come ospitare Hoard da solo](/guides/self-host-hoard).
 
-Stesso binario, stesso rilevamento, stessa cronologia. L'unica cosa che cambia è di chi è lo spazio di archiviazione. C'è anche un [confronto completo di tutti gli strumenti di sincronizzazione](/guides/game-save-sync-comparison).
+Stesso programma, stesso rilevamento. Cambia di chi è lo spazio di archiviazione, più un'impostazione predefinita: un server self-hosted sfoltisce le versioni vecchie col tempo, a meno che tu non lo disattivi. C'è anche un [confronto completo di tutti gli strumenti di sincronizzazione](/guides/game-save-sync-comparison).
 
 <!-- faq -->
 

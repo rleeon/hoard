@@ -2,7 +2,7 @@
 title: "Baldur's Gate 3: Speicherort der Spielstände (PC & Steam Deck)"
 description: "Wo Baldur's Gate 3 seine Spielstände unter Windows, Steam Deck und Mac ablegt, was Spielstand und was Mods sind, der Ehrenmodus, Backup und Sync."
 order: 23
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Unter Windows legt Baldur's Gate 3 seine Spielstände in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story` ab, ein Ordner pro Spielstand. Diesen Pfad nennt Larian in der eigenen Support-FAQ. Darunter findest du die Pfade für Steam Deck und Mac, was neben den Spielständen liegt, den Ehrenmodus und wie du alles gesichert und zwischen PC und Steam Deck synchron hältst.
@@ -10,10 +10,11 @@ Unter Windows legt Baldur's Gate 3 seine Spielstände in `%LOCALAPPDATA%\Larian 
 ## Wo Baldur's Gate 3 seine Spielstände ablegt
 
 - **Windows:** `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`
-- **Steam Deck und Linux** (Proton): `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
+- **Steam Deck** (native Version, Standard seit September 2025): `~/.local/share/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
+- **Steam Deck mit Proton und andere Linux-PCs:** `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
 - **Mac:** `~/Documents/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
 
-Larian hat die native Linux-Version eingestellt, also läuft das Spiel auf dem Steam Deck über Proton, und die Spielstände liegen im Proton-Präfix, das Steam dafür anlegt; `1086940` ist die Steam-App-ID des Spiels. Ist es auf der microSD-Karte installiert, liegt der `compatdata`-Ordner auf der Karte.
+Seit Hotfix 34 im September 2025 läuft auf dem Steam Deck eine native Version des Spiels, die außerhalb von Proton speichert, im ersten Ordner oben. Larian unterstützt diese Version nur auf dem Steam Deck: Andere Linux-PCs spielen weiter die Windows-Version über Proton, mit den Spielständen im Proton-Präfix, das Steam dafür anlegt; `1086940` ist die Steam-App-ID des Spiels. Spielstände von vor dem Wechsel bleiben in diesem Präfix. Mit Steam Cloud landen die neuesten von selbst im neuen Ordner; ohne kopierst du den Ordner `Savegames` einmal im Desktop-Modus hinüber. Ist das Spiel auf der microSD-Karte installiert, liegt der `compatdata`-Ordner dieses Präfixes auf der Karte.
 
 ## Was Spielstand ist und was nicht
 
@@ -55,7 +56,7 @@ Jede Session fügt eine Version mit allen Spielständen hinzu. Um zurückzugehen
 
 ### Wo liegen die Spielstände von Baldur's Gate 3 auf dem Steam Deck?
 
-Im Proton-Präfix des Spiels: `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`.
+Mit der nativen Version, Standard seit September 2025: `~/.local/share/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`. Hast du in den Eigenschaften des Spiels Proton erzwungen, liegen sie stattdessen in dessen Präfix: `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`.
 
 ### Kann ich einen gemoddeten Spielstand auf einen anderen PC mitnehmen?
 

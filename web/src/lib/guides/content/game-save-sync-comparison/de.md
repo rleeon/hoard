@@ -2,7 +2,7 @@
 title: "Spielstand-Sync im Vergleich: Hoard gegen Ludusavi, Syncthing, OpenSave und die anderen"
 description: "Hoard, Ludusavi, Syncthing, OpenSave, GameSave Manager und mehr im Vergleich: Stärken, Schwächen und eine Tabelle direkt nebeneinander."
 order: 4
-updated: 2026-10-01
+updated: 2026-10-18
 ---
 
 Steam Cloud deckt nur Spiele ab, die du bei Steam gekauft hast, und auch nur dann, wenn der Entwickler es eingeschaltet hat. Emulatoren, GOG, Epic, itch.io, Nicht-Steam-Spiele, alles Gemoddete: nichts davon ist dabei. Wer auf mehr als einem Rechner spielt, etwa Desktop und Steam Deck, kopiert am Ende Ordner von Hand und hofft, den neuesten erwischt zu haben.
@@ -27,11 +27,11 @@ Das bekannteste, und das zu Recht. Ludusavi (von mtkennerly) ist ein kostenloses
 
 ## OpenSave
 
-Peer-to-peer-Sync, eigens für Spielstände gebaut, in Go, MIT-lizenziert, für Windows, Linux und Steam Deck. Kein Konto, kein Server: Geräte koppeln sich miteinander und synchronisieren über das LAN oder per Raumcode über ein Relay. Jede Änderung wird als Snapshot festgehalten, es gibt Branches für parallele Durchläufe, Konflikte werden über die Sync-Abstammung statt über die Uhrzeit aufgelöst, und übertragen werden nur die geänderten Blöcke. Optional lässt sich zu Drive, Dropbox, OneDrive oder WebDAV spiegeln.
+Peer-to-peer-Sync, eigens für Spielstände gebaut, in Go, MIT-lizenziert, für Windows, Linux, Steam Deck und seit Version 2.4 auch macOS. Kein Konto, kein Server: Geräte koppeln sich miteinander und synchronisieren über das LAN oder per Raumcode über ein Relay. Jede Änderung wird als Snapshot festgehalten, es gibt Branches für parallele Durchläufe, Konflikte werden über die Sync-Abstammung statt über die Uhrzeit aufgelöst, und übertragen werden nur die geänderten Blöcke. Optional lässt sich zu Drive, Dropbox, OneDrive oder WebDAV spiegeln.
 
 **Am besten, wenn:** du partout kein Konto willst und deine Geräte oft genug gleichzeitig laufen.
 
-**Wo es aufhört:** Peer-to-Peer heißt, der Spielstand lebt nur auf deinen Geräten. Stirbt das Deck mit der einzigen aktuellen Kopie und war die Spiegelung nie eingerichtet, war's das. Für einen Sync müssen beide Geräte laufen, und einen macOS-Build gibt es nicht.
+**Wo es aufhört:** Peer-to-Peer heißt, der Spielstand lebt nur auf deinen Geräten. Stirbt das Deck mit der einzigen aktuellen Kopie und war die Spiegelung nie eingerichtet, war's das. Für einen Sync müssen beide Geräte laufen.
 
 ## OpenCloudSaves
 
@@ -39,7 +39,7 @@ Eine plattformübergreifende Oberfläche, die deine Spielstandordner in eine Clo
 
 **Am besten, wenn:** du deine Spielstände in einem Speicherkonto haben willst, das du schon hast, mit Oberfläche statt Rclone-Konfigurationsdateien.
 
-**Wo es aufhört:** es gibt keine inhaltsbasierte Deduplizierung. Zehn Kopien eines 2-GB-Spielstands sind 20 GB deines Drive-Kontingents, und Cloud-Laufwerke synchronisieren Dateien, keine Spielsitzungen — du bekommst also zurück, wie der Ordner damals eben aussah.
+**Wo es aufhört:** Das Projekt wurde im Januar 2025 archiviert und wird nicht mehr gepflegt, Korrekturen für neue Spiele oder Systemupdates kommen also nicht mehr. Dazu gibt es keine inhaltsbasierte Deduplizierung. Zehn Kopien eines 2-GB-Spielstands sind 20 GB deines Drive-Kontingents, und Cloud-Laufwerke synchronisieren Dateien, keine Spielsitzungen — du bekommst also zurück, wie der Ordner damals eben aussah.
 
 ## Game Backup Monitor
 
@@ -59,7 +59,7 @@ Ein altgedientes, kostenloses Windows-Werkzeug, Closed Source, mit eigener Spiel
 
 ## Aletheia
 
-Das jüngste der Runde, AGPL, und es geht genau die Stelle an, die alle anderen halb abdecken: die Launcher. Heroic, itch.io, Lutris, Steam, GOG Galaxy und Xbox, unter Windows, Linux und macOS.
+Eines der jüngeren, AGPL, und es geht genau die Stelle an, die alle anderen halb abdecken: die Launcher. Heroic, itch.io, Lutris, Steam, GOG Galaxy und Xbox, unter Windows, Linux und macOS.
 
 **Am besten, wenn:** deine Bibliothek über Launcher verteilt ist, die andere Tools schlecht erkennen — vor allem Xbox/Game Pass und Heroic.
 
@@ -90,9 +90,9 @@ EmuDeck kommt in diesen Gesprächen auf und ist kein Konkurrent im üblichen Sin
 Hoard nimmt die Spielsitzung als Einheit. Die Engine läuft als Hintergrunddienst — `hoardd`, ohne Fenster, also funktioniert sie im Game Mode von SteamOS —, merkt, dass du aufgehört hast zu spielen, und macht dann den Snapshot, statt mitten im Spiel auf jeden Schreibvorgang zu reagieren.
 
 - **Versionshistorie pro Sitzung.** Jede Sitzung ist eine Version, zu der du zurückkannst, auch nach einem Plattenausfall oder einer Neuinstallation.
-- **Deduplizierung über Inhalts-Hashes.** Zehn Versionen eines 2-GB-Spielstands kosten rund 2 GB, nicht 20 GB. Übertragungen sind zstd-komprimiert.
+- **Deduplizierung über Inhalts-Hashes.** Zehn Versionen eines 2-GB-Spielstands, an dem sich zwischen den Sitzungen wenig ändert, kosten rund 2 GB, nicht 20 GB. Übertragungen sind zstd-komprimiert.
 - **SHA-256 beim Hochladen und beim Herunterladen.** Beschädigungen werden erkannt, bevor sie einen guten Spielstand überschreiben können. Nichts wird stillschweigend überschrieben — darum geht es im Kern.
-- **Cloud oder selbst gehostet, dasselbe Binary.** Hoard Cloud hat einen kostenlosen Tarif (2 GB, 3 Geräte, volle Historie). Oder du betreibst `hoard-server` selbst per Docker Compose gegen beliebigen S3-kompatiblen Speicher — MinIO, Garage, Backblaze B2 — ohne Konto und ohne Kontingent. AGPL-3.0.
+- **Cloud oder selbst gehostet, derselbe Code.** Hoard Cloud hat einen kostenlosen Tarif (2 GB, 3 Geräte, volle Historie). Oder du betreibst `hoard-server` selbst per Docker Compose gegen beliebigen S3-kompatiblen Speicher — MinIO, Garage, Backblaze B2 — ohne Konto und ohne Kontingent. AGPL-3.0.
 - **Windows, Linux, macOS**, dazu eine headless CLI für ein Steam Deck oder einen Server.
 - **Emulatoren in der Beta:** PCSX2, RPCS3, Dolphin, Cemu, Ryujinx, RetroArch, DuckStation, PPSSPP und weitere als Voreinstellungen.
 
@@ -117,7 +117,7 @@ Vergleiche zu Hoard werfen diese beiden fast immer in einen Topf, und das Ergebn
 - **Hoard Cloud** ist die verwaltete Variante: du meldest dich an, und deine Stände liegen auf unseren Servern in der EU.
 - **Ein selbst gehostetes Hoard gehört vollständig dir.** Du betreibst `hoard-server` auf deinem PC oder NAS, und deine Stände gehen von deiner Maschine auf deine Platte. Es gibt **kein Konto bei uns, keine Telemetrie zu uns, kein Limit und kein Relay** — nichts läuft über unsere Server, weil nichts von uns im Weg steht. Wir sehen weder Spielstand noch Spieltitel noch E-Mail-Adresse, weil davon nichts bei uns ankommt. Würde Hoard Cloud morgen abgeschaltet, liefe ein selbst gehostetes Setup unverändert weiter.
 
-Dasselbe Binary, dieselbe Erkennung, dieselbe Versionshistorie. Es ändert sich nur, wem der Speicher gehört. Ein Detail der Genauigkeit halber: dein eigener Server hat sehr wohl eigene Zugänge — einen Benutzer und ein Token je Gerät — aber die liegen in deiner Datenbank, nicht in unserer.
+Derselbe Code, dieselbe Erkennung. Es ändert sich, wem der Speicher gehört, und eine Voreinstellung: Ein selbst gehosteter Server dünnt alte Versionen mit der Zeit aus, solange du das nicht abschaltest. Ein Detail der Genauigkeit halber: dein eigener Server hat sehr wohl eigene Zugänge — einen Benutzer und ein Token je Gerät — aber die liegen in deiner Datenbank, nicht in unserer.
 
 ## Die Tabelle
 
@@ -126,9 +126,9 @@ Dasselbe Binary, dieselbe Erkennung, dieselbe Versionshistorie. Es ändert sich 
 | **Hoard** | Ja, pro Spielsitzung | Hoard Cloud oder eigener Server (S3-kompatibel) | Versioniert pro Sitzung, dedupliziert | Win · Linux · macOS · Deck | AGPL-3.0, kostenloser Tarif |
 | **Ludusavi** | Manuell, oder Rclone, das du einrichtest | Lokal, plus dein Rclone-Remote | Versionierte lokale Backups | Win · Linux · macOS | Kostenlos, Open Source |
 | **Syncthing** | Ja, fortlaufender Spiegel | Nur deine Geräte | Versionierung pro Datei | Alles | Kostenlos, Open Source |
-| **OpenSave** | Ja, peer-to-peer | Deine Geräte, optionale Cloud-Spiegelung | Snapshots und Branches | Win · Linux · Deck | MIT |
-| **OpenCloudSaves** | Ja, über dein Cloud-Laufwerk | OneDrive / Drive / Dropbox / Nextcloud | Was das Laufwerk aufhebt | Win · Linux · macOS | Kostenlos, Open Source |
-| **Game Backup Monitor** | Nein | Lokale 7-Zip-Archive | Nummerierte Backups | Windows | Kostenlos, Open Source |
+| **OpenSave** | Ja, peer-to-peer | Deine Geräte, optionale Cloud-Spiegelung | Snapshots und Branches | Win · Linux · macOS · Deck | MIT |
+| **OpenCloudSaves** | Ja, über dein Cloud-Laufwerk | OneDrive / Drive / Dropbox / Nextcloud | Was das Laufwerk aufhebt | Win · Linux · macOS | Kostenlos, Open Source, archiviert |
+| **Game Backup Monitor** | Nein | Lokale 7-Zip-Archive | Nummerierte Backups | Windows · Linux | Kostenlos, Open Source |
 | **GameSave Manager** | Über deinen Cloud-Speicher (Sync & Link) | Lokal, plus Dropbox / OneDrive | Was der Cloud-Speicher behält | Windows | Kostenlos, Closed Source |
 | **Aletheia** | Sichern und Wiederherstellen pro Launcher | Dein Speicher | Backups | Win · Linux · macOS | AGPL-3.0 |
 | **SaveSync** | Ja, auch mit Freunden | Private Steam-Workshop-Einträge | Laut App | Windows | Kostenpflichtig, Closed Source |
@@ -136,7 +136,7 @@ Dasselbe Binary, dieselbe Erkennung, dieselbe Versionshistorie. Es ändert sich 
 
 ## Also welches
 
-Willst du eine Maschine gesichert haben und sonst nichts, nimm Ludusavi oder Game Backup Monitor. Willst du unter keinen Umständen ein Konto und laufen deine Geräte meist gleichzeitig, OpenSave. Sollen die Spielstände in einem Drive-Ordner landen, für den du schon zahlst, OpenCloudSaves. Teilst du eine Koop-Welt mit Freunden, SaveSync.
+Willst du eine Maschine gesichert haben und sonst nichts, nimm Ludusavi oder Game Backup Monitor. Willst du unter keinen Umständen ein Konto und laufen deine Geräte meist gleichzeitig, OpenSave. Sollen die Spielstände in einem Drive-Ordner landen, für den du schon zahlst, Ludusavi mit einem Rclone-Remote, seit OpenCloudSaves nicht mehr gepflegt wird. Teilst du eine Koop-Welt mit Freunden, SaveSync.
 
 Willst du, dass Backup *und* Sync zwischen PCs und einem Steam Deck einfach passieren, mit einer Version pro Sitzung, zu der du zurückkannst, und der Option, das Ganze selbst zu hosten, dann ist Hoard dafür da. [Lade es herunter](/download) oder lies vorher, [wie man es mit Docker selbst hostet](/guides/self-host-hoard). Es gibt außerdem einen [ausführlichen Ludusavi-Vergleich](/guides/ludusavi-alternative), falls du genau damit abwägst.
 

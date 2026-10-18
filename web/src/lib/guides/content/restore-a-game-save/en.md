@@ -2,7 +2,7 @@
 title: "How to restore an old game save"
 description: "Corrupted save, bad mod or a choice you regret? Roll a game save back to an earlier version, step by step, without losing what's on your PC now."
 order: 3
-updated: 2026-10-09
+updated: 2026-10-18
 related: back-up-game-saves, steam-cloud-alternative, sync-game-saves-across-pcs, recover-corrupted-game-save
 ---
 
@@ -55,7 +55,7 @@ Only after your current save has been captured as a new version. If you restore 
 
 ### How far back does the history go?
 
-As far as the version limit on your plan allows, and a version you pin is never pruned to make room. On a self-hosted server the only limit is your disk.
+On Hoard Cloud, all the way: no plan has a version limit. The only cap is one you set yourself, **Max versions per game** in the Dashboard, and even that never removes pinned versions or a game's newest one. A self-hosted server thins out old versions by default, keeping recent history complete and older history sparser; you can switch that off in its config to keep everything.
 
 ### Can I restore to a PC where the game isn't installed yet?
 
@@ -67,4 +67,4 @@ Yes. The same game keeps its save in different places on each — on the Deck, i
 
 ### Is a restore any different on a self-hosted server?
 
-No. Same app, same history, same one-click restore. Only the storage is yours.
+Barely. Same app, same one-click restore. The difference is how far back you can go: by default a self-hosted server thins out old versions over time, which you can switch off in its config.

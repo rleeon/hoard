@@ -2,7 +2,7 @@
 title: "How to back up and sync emulator saves (RetroArch, Dolphin, PCSX2)"
 description: "Back up and sync emulator saves between PCs and Steam Deck: RetroArch, Dolphin, PCSX2, DuckStation and more, with version history and where each one saves."
 order: 6
-updated: 2026-10-09
+updated: 2026-10-18
 related: sync-game-saves-across-pcs, back-up-game-saves, ludusavi-alternative, retroarch-save-sync, pcsx2-cloud-saves, dolphin-cloud-saves
 ---
 
@@ -13,8 +13,10 @@ Emulator saves are easy to lose: save files and save states live in scattered fo
 Hoard handles standard emulator save files (`.srm`, `.sav`, memory cards, per-title save folders) and save states. It knows where these keep their saves out of the box:
 
 - **Sony:** PCSX2 (PS2), DuckStation (PS1), PPSSPP (PSP), RPCS3 (PS3), shadPS4 (PS4), Vita3K (PS Vita)
-- **Nintendo:** Dolphin (GameCube / Wii), Cemu (Wii U), Ryujinx, yuzu, Eden, Suyu, Citron and Sudachi (Switch), Citra / Azahar (3DS), melonDS (DS), mGBA (GBA), Project64 (N64)
+- **Nintendo:** Dolphin (GameCube / Wii), Cemu (Wii U), Ryujinx, yuzu, Eden, Suyu, Citron and Sudachi (Switch), Citra / Azahar (3DS), Project64 (N64)
 - **Others:** RetroArch (multi-system), xemu (Xbox), Flycast (Dreamcast)
+
+mGBA (GBA) and melonDS (DS) are recognised too, but they keep saves next to the ROM, so you add that folder once.
 
 Because Hoard locates save folders using the same community database that powers Ludusavi, many paths are detected automatically. For anything custom, you can point Hoard at a folder by hand.
 
@@ -163,4 +165,4 @@ Almost certainly. Detection covers the common ones automatically, and anything e
 
 ### Does self-hosting change anything for emulators?
 
-No. Same detection, same versions, same sync. Only the storage is yours.
+No. Same detection and same sync as any other game. The one default that differs, a self-hosted server thinning out old versions over time, applies to every game alike and can be switched off.

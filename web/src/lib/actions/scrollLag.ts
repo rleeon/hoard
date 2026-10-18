@@ -6,9 +6,9 @@
 // dock/drip keyframes own `transform` and end with `fill: both`, which would
 // override an inline transform for good. The two properties compose.
 //
-// Runs on requestAnimationFrame only while there is motion left, and not at
-// all under prefers-reduced-motion (the site-wide CSS rule cannot reach a
-// JavaScript animation, so this checks the preference itself).
+// Runs on requestAnimationFrame only while there is motion left. Like the rest
+// of the nav bar it also runs under prefers-reduced-motion, on the owner's call
+// (see `data-motion="keep"` in app.css).
 
 export type ScrollLagOptions = {
   /** Off while the capsule is docked to the top edge: it must stay flush. */
@@ -31,7 +31,6 @@ export function scrollLag(node: HTMLElement, opts: ScrollLagOptions) {
   if (typeof window === 'undefined') return {};
 
   let active = opts.active;
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
   let y = 0;
   let v = 0;
   let lastScroll = window.scrollY;
@@ -50,7 +49,7 @@ export function scrollLag(node: HTMLElement, opts: ScrollLagOptions) {
     lastScroll = sy;
 
     // Scrolling down moves the content up, and the capsule goes up with it.
-    if (active && !reduce.matches) v -= dy * KICK;
+    if (active) v -= dy * KICK;
     v += (-STIFF * y - DAMP * v) * dt;
     y = Math.max(-3 * MAX, Math.min(3 * MAX, y + v * dt));
 

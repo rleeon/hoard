@@ -3,7 +3,7 @@ title: "How to self-host Hoard with Docker"
 description: "Run your own Hoard server with Docker Compose and sync saves between all your devices through it: free, open source, no account with us and no quota."
 order: 0
 featured: true
-updated: 2026-10-09
+updated: 2026-10-18
 related: sync-game-saves-across-pcs, opensave-alternative, back-up-game-saves
 ---
 
@@ -13,7 +13,7 @@ Hoard is open source and self-hostable. Instead of using Hoard Cloud, you can ru
 
 - **Full ownership.** Your game saves live on hardware you control, not someone else's cloud.
 - **No quota.** Storage is limited only by your own disk.
-- **Same app, same features.** Versioned history and background sync work exactly as they do with Hoard Cloud — only the backend changes.
+- **Same app, same features.** Background sync and versioned history work as they do with Hoard Cloud, with one default of its own: the server thins out old versions over time (more on that below).
 - **Open source.** You can read, audit and modify the server.
 
 This is the key difference from tools like [Ludusavi](/guides/ludusavi-alternative): Ludusavi is great for local backups and bring-your-own-cloud via Rclone, but you wire up the sync yourself. Hoard gives you a managed sync server you run once and every device connects to.
@@ -104,6 +104,12 @@ Stop after the first and the old container keeps running untouched: `/v1/health`
 
 `hoard-server upgrade` is for the bare-metal install only. Inside a container it refuses on purpose — the binary swap would not survive the next `docker compose up -d` — and prints the two commands above instead; run `docker compose exec server hoard-server upgrade` if you want to see it say so. Database migrations are applied by the server when it starts, so there is never a separate step for them.
 
+## How much history it keeps
+
+Hoard Cloud keeps every version. A self-hosted server, out of the box, thins old ones out: recent history stays complete and older history gets sparser. With the default setting it keeps a game's 15 newest versions, then the last one of each of the 19 most recent hours, 11 most recent days and 6 most recent weeks in which you played. Older versions are removed, except pinned versions and each game's newest one, and a removed version sits in the server's trash for 30 days before it's deleted for good.
+
+To keep everything, set `snapshot_pruning = false` under `[retention]` in `config.toml` (in `./config/`, next to the compose file) and restart the server (`docker compose restart` with Docker). In the same section, `data_saving` moves the balance: `0.0` keeps almost everything, `1.0` keeps only the essentials.
+
 ## Run it in production
 
 For anything exposed beyond your local network, terminate TLS at a reverse proxy (Caddy, nginx or Traefik). Prefer bare metal? The repo also ships a `systemd` install script and a `hoard-server upgrade` command that swaps the binary atomically without killing an in-flight sync.
@@ -122,7 +128,7 @@ No. The desktop app talks to the server address you give it. Your saves, your us
 
 ### Is the self-hosted server the same code as Hoard Cloud?
 
-Yes, the same `hoard-server` binary, under AGPL-3.0. There is no cut-down community edition and no feature held back for the hosted version.
+Yes, the same `hoard-server` code, under AGPL-3.0. The hosted build adds the parts only a public service needs, such as sign-up, plans and billing; everything that finds, syncs and versions your saves is shared. There is no cut-down community edition.
 
 ### Where are the saves actually stored?
 

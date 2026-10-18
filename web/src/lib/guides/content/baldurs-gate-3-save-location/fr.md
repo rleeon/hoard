@@ -2,7 +2,7 @@
 title: "Emplacement des sauvegardes de Baldur's Gate 3 (PC et Steam Deck)"
 description: "Où Baldur's Gate 3 range ses sauvegardes sous Windows, Steam Deck et Mac, sauvegarde ou mod, le mode Honneur, et comment sauvegarder et synchroniser."
 order: 23
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Sous Windows, Baldur's Gate 3 range ses sauvegardes dans `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`, un dossier par sauvegarde. C'est le chemin que donne Larian dans sa propre FAQ. Vous trouverez ci-dessous les chemins sur Steam Deck et Mac, ce qui se trouve à côté des sauvegardes, le mode Honneur et comment tout garder sauvegardé et synchronisé entre votre PC et votre Steam Deck.
@@ -10,10 +10,11 @@ Sous Windows, Baldur's Gate 3 range ses sauvegardes dans `%LOCALAPPDATA%\Larian 
 ## Où Baldur's Gate 3 range ses sauvegardes
 
 - **Windows :** `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`
-- **Steam Deck et Linux** (Proton) : `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
+- **Steam Deck** (version native, par défaut depuis septembre 2025) : `~/.local/share/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
+- **Steam Deck avec Proton, et autres PC sous Linux :** `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
 - **Mac :** `~/Documents/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
 
-Larian a retiré la version Linux native : sur Steam Deck, le jeu passe par Proton et les sauvegardes se trouvent dans le préfixe Proton que Steam garde pour lui ; `1086940` est l'identifiant Steam du jeu. S'il est installé sur la carte microSD, le dossier `compatdata` est sur la carte.
+Depuis le Hotfix 34, en septembre 2025, le Steam Deck fait tourner une version native du jeu qui sauvegarde hors de Proton, dans le premier dossier ci-dessus. Larian ne prend en charge cette version que sur Steam Deck : les autres PC sous Linux continuent de lancer la version Windows via Proton, avec les sauvegardes dans le préfixe Proton que Steam garde pour lui ; `1086940` est l'identifiant Steam du jeu. Les sauvegardes d'avant le changement restent dans ce préfixe. Avec Steam Cloud activé, les plus récentes arrivent seules dans le nouveau dossier ; sinon, copiez une fois le dossier `Savegames` depuis le mode Bureau. Si le jeu est installé sur la carte microSD, le dossier `compatdata` de ce préfixe est sur la carte.
 
 ## Ce qui est une sauvegarde et ce qui ne l'est pas
 
@@ -55,7 +56,7 @@ Chaque session ajoute une version contenant toutes les sauvegardes. Pour revenir
 
 ### Où sont les sauvegardes de Baldur's Gate 3 sur Steam Deck ?
 
-Dans le préfixe Proton du jeu : `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`.
+Avec la version native, par défaut depuis septembre 2025 : `~/.local/share/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`. Si vous avez forcé Proton dans les propriétés du jeu, elles sont dans son préfixe : `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`.
 
 ### Puis-je déplacer une sauvegarde moddée sur un autre PC ?
 

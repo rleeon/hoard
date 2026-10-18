@@ -2,7 +2,7 @@
 title: "Alternativa ao Ludusavi: sincronização automática de saves na nuvem"
 description: "O Ludusavi é ótimo para backups locais. O Hoard junta sincronização automática entre PC e Steam Deck com histórico, sobre a mesma base de dados de saves."
 order: 5
-updated: 2026-10-01
+updated: 2026-10-18
 ---
 
 Se procuras uma forma de fazer backup e sincronizar os teus saves, é provável que tenhas encontrado o **Ludusavi** — e é excelente. Este guia é uma comparação honesta para te ajudar a escolher a ferramenta certa, e explica onde o Hoard se encaixa se quiseres sincronização na nuvem automática entre máquinas.
@@ -74,7 +74,7 @@ Não há importador, e é de propósito. Os passos:
 
 **Os saves da Steam vivem uma pasta mais abaixo do que parece.** Nos jogos da Steam, o Hoard segue `<AppID>/remote/` dentro de `userdata`, não a pasta acima. A pasta acima guarda também `remotecache.vdf` e ficheiros de proezas e tempo de jogo, que são legitimamente diferentes em cada máquina. Se sincronizares a pasta acima, cada arranque parece um conflito mesmo sem nenhum save se ter mexido. É o motivo mais comum para uma montagem caseira entre Steam Deck e desktop acabar a lutar contra si própria.
 
-**As versões são baratas.** Os snapshots são guardados por hash de conteúdo, por isso um ficheiro que não muda é guardado uma só vez. Dez versões de um save de 2 GB ocupam cerca de 2 GB, não 20 — e é isso que torna prático manter o histórico inteiro em vez de o ir cortando.
+**As versões são baratas.** Os snapshots são guardados por hash de conteúdo, por isso um ficheiro que não muda é guardado uma só vez. Dez versões de um save de 2 GB que muda pouco entre sessões ocupam cerca de 2 GB, não 20, e é por isso que o Hoard Cloud pode manter o histórico inteiro em vez de o ir cortando.
 
 ## O que self-hosting quer mesmo dizer
 
@@ -83,7 +83,7 @@ Não há importador, e é de propósito. Os passos:
 - **O Hoard Cloud** é a opção gerida: inicias sessão e os teus saves ficam nos nossos servidores, na UE.
 - **O self-hosting é inteiramente teu.** Corres o `hoard-server` no teu PC ou no teu NAS, e os teus saves vão da tua máquina para o teu disco. **Não há conta connosco, nem telemetria para nós, nem quota, nem retransmissão**: não passa nada pelos nossos servidores, porque não há nada nosso no caminho. Não conseguimos ver um save, o nome de um jogo ou um endereço de email, pela simples razão de que nada disso nos chega. Se o Hoard Cloud desaparecesse amanhã, uma instalação self-hosted continuaria igual.
 
-O mesmo programa, a mesma deteção, o mesmo histórico de versões. A única coisa que muda é de quem é o armazenamento.
+O mesmo programa, a mesma deteção. O que muda é de quem é o armazenamento, e uma predefinição: um servidor self-hosted vai desbastando as versões antigas com o tempo, a não ser que o desligues.
 
 ## Qual deves escolher?
 
@@ -118,7 +118,7 @@ Não. É essa a principal diferença prática: com o Hoard Cloud o armazenamento
 
 ### O self-hosting envia alguma coisa para o Hoard?
 
-Não. Em modo self-hosted não há conta connosco nem telemetria para nós: os teus saves, os teus utilizadores e os teus registos vivem no teu próprio servidor e nunca tocam no nosso. É esse o sentido do modo, e é por isso que o servidor é o mesmo binário open source que nós corremos e não uma versão reduzida.
+Não. Em modo self-hosted não há conta connosco nem telemetria para nós: os teus saves, os teus utilizadores e os teus registos vivem no teu próprio servidor e nunca tocam no nosso. É esse o sentido do modo, e é por isso que o servidor é feito a partir do mesmo código open source que nós corremos e não de uma versão reduzida.
 
 ### O Ludusavi é seguro?
 

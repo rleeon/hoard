@@ -2,7 +2,7 @@
 title: "Comment restaurer une ancienne sauvegarde"
 description: "Sauvegarde corrompue, mod cassé ou choix regretté ? Revenez à une version antérieure de votre partie, pas à pas, sans perdre l'état actuel."
 order: 3
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Une mauvaise décision en jeu, un fichier corrompu ou un mod qui casse tout — parfois, il faut juste revenir en arrière. Comme Hoard conserve un historique complet des versions de chaque sauvegarde, en restaurer une plus ancienne prend quelques secondes. Et comme cet historique vit sur le serveur et que toutes vos machines le partagent, vous pouvez revenir en arrière depuis n'importe quel PC ou Steam Deck, pas seulement celui où le problème est survenu.
@@ -54,7 +54,7 @@ Seulement après que votre sauvegarde actuelle a été capturée comme nouvelle 
 
 ### Jusqu'où remonte l'historique ?
 
-Aussi loin que le permet la limite de versions de votre offre, et une version épinglée n'est jamais supprimée pour faire de la place. Sur un serveur auto-hébergé, la seule limite est votre disque.
+Sur Hoard Cloud, jusqu'au début : aucune offre n'a de limite de versions. La seule limite est celle que vous fixez vous-même, **Max. de versions par jeu** dans le Tableau de bord, et même elle ne supprime jamais les versions épinglées ni la plus récente d'un jeu. Un serveur auto-hébergé élague par défaut les anciennes versions : l'historique récent reste complet et l'ancien devient plus clairsemé. Vous pouvez le désactiver dans sa configuration pour tout garder.
 
 ### Puis-je restaurer sur un PC où le jeu n'est pas encore installé ?
 
@@ -66,4 +66,4 @@ Oui. Le même jeu range sa sauvegarde à des endroits différents sur chacun —
 
 ### Une restauration est-elle différente sur un serveur auto-hébergé ?
 
-Non. Même application, même historique, même restauration en un clic. Seul le stockage est à vous.
+À peine. Même application, même restauration en un clic. La différence, c'est jusqu'où vous pouvez remonter : par défaut, un serveur auto-hébergé élague les anciennes versions avec le temps, ce que vous pouvez désactiver dans sa configuration.

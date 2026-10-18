@@ -3,7 +3,7 @@ title: "Hoard mit Docker selbst hosten (Self-Hosting)"
 description: "Betreibe deinen eigenen Hoard-Server mit Docker Compose und synchronisiere darüber alle Geräte: kostenlos, quelloffen, ohne Konto bei uns, ohne Kontingent."
 order: 0
 featured: true
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Hoard ist Open Source und selbst hostbar. Statt Hoard Cloud zu nutzen, kannst du denselben `hoard-server` auf deiner eigenen Maschine betreiben und jedes Gerät darauf verweisen – ohne Konto und ohne Speicherlimit außer der Festplatte, die du ihm gibst. Diese Anleitung bringt einen Server in wenigen Minuten mit Docker zum Laufen.
@@ -12,7 +12,7 @@ Hoard ist Open Source und selbst hostbar. Statt Hoard Cloud zu nutzen, kannst du
 
 - **Volle Kontrolle.** Deine Spielstände liegen auf Hardware, die du kontrollierst, nicht in fremder Cloud.
 - **Kein Limit.** Der Speicher wird nur von deiner eigenen Festplatte begrenzt.
-- **Gleiche App, gleiche Funktionen.** Versionierter Verlauf und Hintergrund-Sync funktionieren genau wie mit Hoard Cloud – nur das Backend ändert sich.
+- **Gleiche App, gleiche Funktionen.** Hintergrund-Sync und versionierter Verlauf funktionieren wie mit Hoard Cloud, mit einer eigenen Voreinstellung: Der Server dünnt alte Versionen mit der Zeit aus (mehr dazu weiter unten).
 - **Open Source.** Du kannst den Server lesen, prüfen und anpassen.
 
 Das ist der entscheidende Unterschied zu Tools wie [Ludusavi](/guides/ludusavi-alternative): Ludusavi ist großartig für lokale Backups und eigene Cloud per Rclone, aber den Sync richtest du selbst ein. Hoard bietet dir einen verwalteten Sync-Server, den du einmal startest und mit dem sich jedes Gerät verbindet.
@@ -103,6 +103,12 @@ Hörst du nach der ersten auf, läuft der alte Container unberührt weiter: `/v1
 
 `hoard-server upgrade` gilt nur für die Bare-Metal-Installation. In einem Container verweigert er sich absichtlich — der Binärtausch würde das nächste `docker compose up -d` nicht überleben — und gibt stattdessen die beiden Befehle von oben aus; führe `docker compose exec server hoard-server upgrade` aus, wenn du es selbst sehen willst. Datenbankmigrationen wendet der Server beim Start an, dafür gibt es also nie einen eigenen Schritt.
 
+## Wie viel Historie er behält
+
+Hoard Cloud behält jede Version. Ein selbst gehosteter Server dünnt alte Versionen ab Werk aus: Die jüngere Historie bleibt vollständig, die ältere wird lückenhafter. Mit der Standardeinstellung behält er die 15 neuesten Versionen eines Spiels und danach jeweils die letzte der 19 jüngsten Stunden, 11 jüngsten Tage und 6 jüngsten Wochen, in denen du gespielt hast. Ältere Versionen werden entfernt, außer angehefteten und der neuesten jedes Spiels, und eine entfernte Version liegt 30 Tage im Papierkorb des Servers, bevor sie endgültig gelöscht wird.
+
+Um alles zu behalten, setze `snapshot_pruning = false` im Abschnitt `[retention]` der `config.toml` (in `./config/` neben der Compose-Datei) und starte den Server neu (`docker compose restart` mit Docker). Im selben Abschnitt verschiebt `data_saving` die Balance: `0.0` behält fast alles, `1.0` nur das Nötigste.
+
 ## Im Produktivbetrieb
 
 Für alles, was über dein lokales Netz hinausgeht, beende TLS an einem Reverse-Proxy (Caddy, nginx oder Traefik). Lieber Bare Metal? Das Repo liefert auch ein `systemd`-Installationsskript und einen Befehl `hoard-server upgrade`, der die Binärdatei atomar austauscht, ohne einen laufenden Sync abzubrechen.
@@ -121,7 +127,7 @@ Nein. Die Desktop-App spricht mit der Serveradresse, die du ihr gibst. Deine St�
 
 ### Ist der selbst gehostete Server derselbe Code wie Hoard Cloud?
 
-Ja, dasselbe `hoard-server`-Binary unter AGPL-3.0. Es gibt keine abgespeckte Community-Edition und keine Funktion, die der gehosteten Version vorbehalten wäre.
+Ja, derselbe `hoard-server`-Code unter AGPL-3.0. Die gehostete Fassung ergänzt, was nur ein öffentlicher Dienst braucht, etwa Registrierung, Tarife und Abrechnung; alles, was deine Spielstände findet, synchronisiert und versioniert, ist gemeinsam. Eine abgespeckte Community-Edition gibt es nicht.
 
 ### Wo liegen die Spielstände tatsächlich?
 

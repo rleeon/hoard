@@ -2,7 +2,7 @@
 title: "博德之门 3（Baldur's Gate 3）存档位置（PC 与 Steam Deck）"
 description: "Baldur's Gate 3 在 Windows、Steam Deck 和 Mac 上的存档位置，哪些是存档、哪些是 Mod 或设置，荣誉模式，以及如何备份和同步存档。"
 order: 23
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 在 Windows 上，Baldur's Gate 3 把存档放在 `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`，每个存档一个文件夹。这是 Larian 在官方支持 FAQ 中给出的路径。下面是 Steam Deck 和 Mac 上的路径、存档旁边都有什么、荣誉模式，以及如何把一切都备份好，并在 PC 和 Steam Deck 之间保持同步。
@@ -10,10 +10,11 @@ updated: 2026-10-09
 ## Baldur's Gate 3 的存档位置
 
 - **Windows：**`%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`
-- **Steam Deck 和 Linux**（Proton）：`~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
+- **Steam Deck**（原生版，自 2025 年 9 月起为默认）：`~/.local/share/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
+- **用 Proton 运行的 Steam Deck，以及其他 Linux 电脑：** `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
 - **Mac：**`~/Documents/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
 
-Larian 已经停止了原生 Linux 版，所以在 Steam Deck 上游戏通过 Proton 运行，存档位于 Steam 为它维护的 Proton 前缀中；`1086940` 是游戏的 Steam 应用 ID。如果装在 microSD 卡上，`compatdata` 文件夹就在卡上。
+自 2025 年 9 月的 Hotfix 34 起，Steam Deck 上运行的是游戏的原生版，存档保存在 Proton 之外，也就是上面第一个文件夹。Larian 只在 Steam Deck 上支持这个原生版：其他 Linux 电脑仍然通过 Proton 运行 Windows 版，存档位于 Steam 为它维护的 Proton 前缀中；`1086940` 是游戏的 Steam 应用 ID。切换之前的存档留在那个前缀里。开着 Steam Cloud 的话，最新的存档会自动同步到新文件夹；没开的话，在桌面模式下把 `Savegames` 文件夹复制过去一次即可。如果游戏装在 microSD 卡上，那个前缀的 `compatdata` 文件夹就在卡上。
 
 ## 哪些是存档，哪些不是
 
@@ -55,7 +56,7 @@ Larian 已经停止了原生 Linux 版，所以在 Steam Deck 上游戏通过 Pr
 
 ### Steam Deck 上的 Baldur's Gate 3 存档在哪里？
 
-在游戏的 Proton 前缀里：`~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`。
+使用原生版（自 2025 年 9 月起为默认）时在：`~/.local/share/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`。如果你在游戏属性里强制使用了 Proton，则在它的前缀里：`~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`。
 
 ### 能把带 Mod 的存档搬到另一台 PC 吗？
 

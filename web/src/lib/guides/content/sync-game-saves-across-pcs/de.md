@@ -2,7 +2,7 @@
 title: "So synchronisierst du Spielstände über mehrere PCs"
 description: "Spiele auf Desktop, Laptop und Steam Deck ohne Fortschrittsverlust: Spielstände automatisch zwischen PCs synchronisieren, mit Versionsverlauf."
 order: 2
-updated: 2026-10-01
+updated: 2026-10-18
 ---
 
 Wenn du an mehr als einem Computer spielst — ein Desktop zu Hause und ein Laptop unterwegs — hält Hoard deine Stände synchron, damit du immer dort weitermachst, wo du aufgehört hast.
@@ -26,7 +26,7 @@ Hoard macht daraus verwaltete Synchronisierung. Es nutzt dieselben Community-Dat
 
 ## Konflikte vermeiden
 
-Hoard ist konfliktbewusst: Es vergleicht Änderungszeiten und behält eine lokale Kopie jedes ersetzten Stands, sodass eine Synchronisierung nie stillschweigend Fortschritt zerstört. Läuft ein Spiel noch oder wurde ein Stand in den letzten Minuten berührt, wartet Hoard.
+Hoard ist konfliktbewusst: Es vergleicht Änderungszeiten und behält eine lokale Kopie jedes ersetzten Stands, sodass eine Synchronisierung nie stillschweigend Fortschritt zerstört. Läuft ein Spiel noch oder wurde ein Stand in den letzten Sekunden berührt, wartet Hoard.
 
 ## Steam Deck und Desktop
 
@@ -51,7 +51,7 @@ Hoard ist egal, wer ein Spiel veröffentlicht hat oder woher es kommt. Es verfol
 
 Du spielst am Laptop, ohne den Desktop zu Ende synchronisieren zu lassen, und hast das klassische Problem: zwei Stände, beide neuer als die letzte gemeinsame Version.
 
-Hoard überschreibt nie blind. Es vergleicht Änderungszeiten, behält eine lokale Kopie von allem, was es ersetzt, und wartet, solange ein Spiel läuft oder der Stand in den letzten Minuten angefasst wurde — eine Datei, die gerade geschrieben wird, will man nicht halb hochladen. Alle früheren Versionen bleiben in der Cloud-Historie, die falsche Wahl kostet dich also zwei Klicks statt eines Wochenendes.
+Hoard überschreibt nie blind. Es vergleicht Änderungszeiten, behält eine lokale Kopie von allem, was es ersetzt, und wartet, solange ein Spiel läuft oder der Stand in den letzten Sekunden angefasst wurde — eine Datei, die gerade geschrieben wird, will man nicht halb hochladen. Alle früheren Versionen bleiben in der Cloud-Historie, die falsche Wahl kostet dich also zwei Klicks statt eines Wochenendes.
 
 Die ehrliche Grenze: **Hoard führt zwei auseinandergelaufene Stände nicht zusammen.** Das kann kein Werkzeug — eine Speicherdatei ist undurchsichtig, und es gibt keinen richtigen Weg, zwei verschiedene Spielnachmittage zu vermischen. Was du stattdessen bekommst: jede Version, auf jedem Gerät, und die Wahl.
 
@@ -74,7 +74,7 @@ Das gehört ausdrücklich gesagt, weil die meisten Vergleiche genau hier daneben
 - **Hoard Cloud** ist die verwaltete Variante: du meldest dich an, und deine Stände liegen auf unseren Servern in der EU.
 - **Selbsthosten gehört vollständig dir.** Du betreibst `hoard-server` auf deinem eigenen PC oder NAS, und deine Geräte synchronisieren darüber. Es gibt **kein Konto bei uns, keine Telemetrie zu uns, kein Limit und kein Relay** — nichts läuft über unsere Server, weil nichts von uns im Weg steht. Siehe [wie du Hoard selbst hostest](/guides/self-host-hoard).
 
-Dasselbe Programm, dieselbe Erkennung, dieselbe Versionshistorie. Es ändert sich nur, wem der Speicher gehört.
+Dasselbe Programm, dieselbe Erkennung. Es ändert sich, wem der Speicher gehört, und eine Voreinstellung: Ein selbst gehosteter Server dünnt alte Versionen mit der Zeit aus, solange du das nicht abschaltest.
 
 ## Tipp
 

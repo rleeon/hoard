@@ -2,7 +2,7 @@
 title: "Syncthing para saves de jogos: o que funciona e o que parte"
 description: "O Syncthing é um ótimo sincronizador, mas os saves quebram três das suas premissas. O que corre mal, como contornar e quando usar uma ferramenta de saves."
 order: 9
-updated: 2026-09-01
+updated: 2026-10-18
 ---
 
 O Syncthing é a resposta a que muita gente chega primeiro, e com razão: é gratuito, open source, ponto a ponto, e funciona. Mas os saves de jogos partem três dos pressupostos em que assenta um sincronizador genérico, e as falhas são silenciosas. Este guia é sobre o que corre mal a sério, e sobre quando vale a pena usar algo que saiba o que é um save.
@@ -46,7 +46,7 @@ Convivem sem se atropelar, e é uma montagem razoável: o sincronizador genéric
 
 Se parte do apelo é que nada toque no disco de uma empresa, o Hoard pode ser usado da mesma forma: `hoard-server` no teu PC ou NAS, e os teus saves vão da tua máquina para o teu disco. **Não há conta connosco, nem telemetria para nós, nem retransmissão**: não passa nada pelos nossos servidores, porque não há nada nosso no caminho. Vê [como alojar o Hoard tu mesmo](/guides/self-host-hoard).
 
-O mesmo binário, a mesma deteção, o mesmo histórico. A única coisa que muda é de quem é o armazenamento. Há também uma [comparação completa de todas as ferramentas de sincronização](/guides/game-save-sync-comparison).
+O mesmo programa, a mesma deteção. O que muda é de quem é o armazenamento, e uma predefinição: um servidor self-hosted vai desbastando as versões antigas com o tempo, a não ser que o desligues. Há também uma [comparação completa de todas as ferramentas de sincronização](/guides/game-save-sync-comparison).
 
 <!-- faq -->
 

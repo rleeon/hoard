@@ -2,7 +2,7 @@
 title: "Come fare il backup e sincronizzare i salvataggi degli emulatori (RetroArch, Dolphin, PCSX2)"
 description: "Backup e sync dei salvataggi degli emulatori tra PC e Steam Deck: RetroArch, Dolphin, PCSX2, DuckStation e altri, con cronologia e percorsi di ognuno."
 order: 6
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 I salvataggi degli emulatori si perdono facilmente: file di salvataggio e save state vivono in cartelle sparse, e una reinstallazione o un PC nuovo possono cancellare anni di progressi. Hoard ne fa il backup in automatico e li tiene sincronizzati tra le tue macchine, Steam Deck compresa.
@@ -12,8 +12,10 @@ I salvataggi degli emulatori si perdono facilmente: file di salvataggio e save s
 Hoard gestisce i file di salvataggio standard degli emulatori (`.srm`, `.sav`, memory card, cartelle di salvataggio per gioco) e i save state. Sa già dove salvano questi emulatori:
 
 - **Sony:** PCSX2 (PS2), DuckStation (PS1), PPSSPP (PSP), RPCS3 (PS3), shadPS4 (PS4), Vita3K (PS Vita)
-- **Nintendo:** Dolphin (GameCube / Wii), Cemu (Wii U), Ryujinx, yuzu, Eden, Suyu, Citron e Sudachi (Switch), Citra / Azahar (3DS), melonDS (DS), mGBA (GBA), Project64 (N64)
+- **Nintendo:** Dolphin (GameCube / Wii), Cemu (Wii U), Ryujinx, yuzu, Eden, Suyu, Citron e Sudachi (Switch), Citra / Azahar (3DS), Project64 (N64)
 - **Altri:** RetroArch (multisistema), xemu (Xbox), Flycast (Dreamcast)
+
+Anche mGBA (GBA) e melonDS (DS) vengono riconosciuti, ma tengono i salvataggi accanto alla ROM, quindi quella cartella la aggiungi tu una volta.
 
 Dato che Hoard trova le cartelle di salvataggio con lo stesso database comunitario usato da Ludusavi, molti percorsi vengono rilevati in automatico. Per qualsiasi percorso personalizzato puoi indicare una cartella a mano.
 
@@ -162,4 +164,4 @@ Quasi certamente. Il rilevamento copre in automatico quelli comuni, e qualsiasi 
 
 ### Il self-host cambia qualcosa per gli emulatori?
 
-No. Stesso rilevamento, stesse versioni, stessa sincronizzazione. Solo lo spazio di archiviazione è tuo.
+No. Stesso rilevamento e stessa sincronizzazione di qualsiasi altro gioco. L'unica impostazione predefinita diversa, cioè che un server self-hosted sfoltisce le versioni vecchie col tempo, vale allo stesso modo per tutti i giochi e si può disattivare.

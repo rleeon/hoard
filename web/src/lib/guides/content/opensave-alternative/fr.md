@@ -2,7 +2,7 @@
 title: "Alternative à OpenSave : direct entre machines ou serveur qui vous appartient"
 description: "OpenSave synchronise en pair-à-pair ; Hoard passe par un serveur, le nôtre ou le vôtre, et garde chaque version. Quand chaque approche l'emporte."
 order: 8
-updated: 2026-09-01
+updated: 2026-10-18
 ---
 
 Les deux outils résolvent le même problème et divergent sur l'architecture, et c'est bien la seule chose qui mérite comparaison. Cette page met les deux approches côte à côte, y compris les cas où l'autre est la meilleure réponse.
@@ -74,4 +74,4 @@ Pas en soi : copier un fichier vers une autre machine vous donne l'état actuel 
 
 ### Hoard est-il open source lui aussi ?
 
-Oui, AGPL-3.0, serveur compris. Le serveur auto-hébergé est le même binaire que celui que nous faisons tourner, pas une édition allégée.
+Oui, AGPL-3.0, serveur compris. Le serveur auto-hébergé est construit à partir du même code que celui que nous faisons tourner, pas d'une édition allégée.

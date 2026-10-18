@@ -2,7 +2,7 @@
 title: "Steam Cloud alternative: sync and back up the saves Steam doesn't"
 description: "Steam Cloud skips many games and keeps no history. Sync and back up every game from any launcher between PCs and Steam Deck, with versions to roll back."
 order: 7
-updated: 2026-10-09
+updated: 2026-10-18
 related: sync-game-saves-across-pcs, restore-a-game-save, game-save-sync-comparison, sync-saves-steam-deck-pc, epic-gog-cloud-saves
 ---
 
@@ -34,7 +34,7 @@ Hoard watches the folder each game actually writes to and captures a **new versi
 - **It syncs between your machines** the same way, including a Steam Deck and a desktop.
 - **Nothing is destroyed silently.** The save being replaced is captured first, so even a wrong restore is reversible.
 
-Snapshots are stored by content hash, so ten versions of a 2 GB save cost about 2 GB, not 20 — which is what makes keeping the whole history practical.
+Snapshots are stored by content hash, so ten versions of a 2 GB save where little changes between sessions cost about 2 GB, not 20, which is what makes keeping the whole history practical.
 
 ## Using both at once
 
@@ -50,7 +50,7 @@ Worth saying plainly: if every game you play is a Steam game with cloud support,
 
 If the appeal is not depending on a platform at all, Hoard can be run entirely on your own hardware: `hoard-server` on a PC or a NAS, and your saves go from your machine to your disk. There is **no account with us, no telemetry to us and no relay** — nothing passes through our servers, because there is nothing of ours in the path. See [how to self-host Hoard](/guides/self-host-hoard).
 
-Same program, same detection, same version history. The only thing that changes is who owns the storage.
+Same program, same detection. What changes is who owns the storage, plus one default: a self-hosted server thins out old versions over time unless you switch that off.
 
 <!-- faq -->
 

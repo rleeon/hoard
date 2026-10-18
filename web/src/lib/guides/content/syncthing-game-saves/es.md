@@ -2,7 +2,7 @@
 title: "Syncthing para partidas guardadas: qué funciona y qué se rompe"
 description: "Syncthing es un gran sincronizador, pero las partidas rompen tres de sus supuestos. Qué falla, cómo se esquiva y cuándo encaja mejor una herramienta de saves."
 order: 9
-updated: 2026-09-01
+updated: 2026-10-18
 ---
 
 Syncthing es la respuesta a la que mucha gente llega primero, y con razón: es gratis, open source, punto a punto, y funciona. Pero las partidas guardadas rompen tres de los supuestos sobre los que se construye un sincronizador de ficheros genérico, y los fallos son silenciosos. Esta guía va de qué se rompe de verdad, y de cuándo merece la pena usar algo que sepa lo que es una partida.
@@ -46,7 +46,7 @@ Conviven sin pelearse, y es un montaje razonable: que el sincronizador genérico
 
 Si parte del atractivo es que nada toque el disco de una empresa, Hoard se puede usar igual: `hoard-server` en tu propio PC o NAS, y tus partidas van de tu máquina a tu disco. **No hay cuenta con nosotros, ni telemetría hacia nosotros, ni relé**: no pasa nada por nuestros servidores, porque no hay nada nuestro en el camino. Mira [cómo autoalojar Hoard](/guides/self-host-hoard).
 
-El mismo binario, la misma detección, el mismo historial. Lo único que cambia es de quién es el almacenamiento. También hay una [comparativa de todas las herramientas de sincronización](/guides/game-save-sync-comparison).
+El mismo programa, la misma detección. Lo que cambia es de quién es el almacenamiento, y un ajuste por defecto: un servidor autoalojado va podando las versiones antiguas con el tiempo, salvo que lo desactives. También hay una [comparativa de todas las herramientas de sincronización](/guides/game-save-sync-comparison).
 
 <!-- faq -->
 

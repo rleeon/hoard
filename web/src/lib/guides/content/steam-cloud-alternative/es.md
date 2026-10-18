@@ -2,7 +2,7 @@
 title: "Alternativa a Steam Cloud: sincroniza y copia las partidas que Steam no guarda"
 description: "Steam Cloud se salta muchos juegos y no guarda historial. Sincroniza y copia todos, de cualquier launcher, entre PC y Steam Deck, con versiones para volver."
 order: 7
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Steam Cloud hace muy bien el trabajo concreto que hace, y la mayoría de la gente descubre sus límites justo el día que pierde algo. Esta guía explica dónde están esos límites y qué hacer con los juegos que se quedan fuera.
@@ -33,7 +33,7 @@ Hoard vigila la carpeta en la que escribe cada juego y captura una **versión nu
 - **Sincroniza entre tus máquinas** igual, incluidas una Steam Deck y un sobremesa.
 - **Nada se destruye en silencio.** La partida que se reemplaza se captura antes, así que hasta una restauración equivocada es reversible.
 
-Las instantáneas se guardan por hash de contenido, así que diez versiones de una partida de 2 GB ocupan unos 2 GB y no 20, que es lo que hace práctico conservar el historial entero.
+Las instantáneas se guardan por hash de contenido, así que diez versiones de una partida de 2 GB en la que cambia poco entre sesiones ocupan unos 2 GB y no 20, que es lo que hace práctico conservar el historial entero.
 
 ## Usar los dos a la vez
 
@@ -49,7 +49,7 @@ Conviene decirlo claro: si todos los juegos a los que juegas son de Steam y con 
 
 Si lo que te atrae es no depender de ninguna plataforma, Hoard se puede usar entero sobre tu propio hardware: `hoard-server` en un PC o en un NAS, y tus partidas van de tu máquina a tu disco. **No hay cuenta con nosotros, ni telemetría hacia nosotros, ni relé**: no pasa nada por nuestros servidores, porque no hay nada nuestro en el camino. Mira [cómo autoalojar Hoard](/guides/self-host-hoard).
 
-El mismo programa, la misma detección, el mismo historial de versiones. Lo único que cambia es de quién es el almacenamiento.
+El mismo programa, la misma detección. Lo que cambia es de quién es el almacenamiento, y un ajuste por defecto: un servidor autoalojado va podando las versiones antiguas con el tiempo, salvo que lo desactives.
 
 <!-- faq -->
 

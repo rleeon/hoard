@@ -2,7 +2,7 @@
 title: "Comment synchroniser vos parties entre plusieurs PC"
 description: "Jouez sur votre fixe, votre portable et votre Steam Deck sans perdre votre progression : synchro automatique des parties entre PC, avec historique."
 order: 2
-updated: 2026-10-01
+updated: 2026-10-18
 ---
 
 Si vous jouez sur plus d'un ordinateur — un fixe à la maison et un portable en déplacement — Hoard garde vos sauvegardes synchronisées pour que vous repreniez toujours là où vous en étiez.
@@ -26,7 +26,7 @@ Hoard transforme cela en synchro gérée. Il utilise les mêmes données communa
 
 ## Éviter les conflits
 
-Hoard gère les conflits : il compare les dates de modification et conserve une copie locale de toute sauvegarde remplacée, donc une synchro ne détruit jamais la progression en silence. Si un jeu tourne encore ou qu'une sauvegarde a été modifiée il y a quelques minutes, Hoard attend.
+Hoard gère les conflits : il compare les dates de modification et conserve une copie locale de toute sauvegarde remplacée, donc une synchro ne détruit jamais la progression en silence. Si un jeu tourne encore ou qu'une sauvegarde a été modifiée il y a quelques secondes, Hoard attend.
 
 ## Steam Deck et PC de bureau
 
@@ -51,7 +51,7 @@ Hoard se moque de qui a publié un jeu et d'où il vient : il suit le dossier qu
 
 Vous jouez sur le portable sans laisser le fixe finir sa synchro, et voilà le problème classique : deux sauvegardes, toutes deux plus récentes que la dernière version commune.
 
-Hoard n'écrase jamais à l'aveugle. Il compare les dates de modification, conserve une copie locale de ce qu'il remplace, et attend tant qu'un jeu tourne ou que la sauvegarde a été touchée dans les dernières minutes : un fichier en cours d'écriture n'est pas un fichier qu'on veut envoyer à moitié. Toutes les versions antérieures restent dans l'historique cloud : se tromper de version coûte deux clics, pas un week-end.
+Hoard n'écrase jamais à l'aveugle. Il compare les dates de modification, conserve une copie locale de ce qu'il remplace, et attend tant qu'un jeu tourne ou que la sauvegarde a été touchée dans les dernières secondes : un fichier en cours d'écriture n'est pas un fichier qu'on veut envoyer à moitié. Toutes les versions antérieures restent dans l'historique cloud : se tromper de version coûte deux clics, pas un week-end.
 
 La limite honnête : **Hoard ne fusionne pas deux sauvegardes divergentes.** Aucun outil ne le peut — un fichier de sauvegarde est opaque, et il n'existe aucune façon correcte de mélanger deux après-midi de jeu différents. Ce que vous obtenez à la place, c'est toutes les versions, sur toutes les machines, et le choix.
 
@@ -74,7 +74,7 @@ Autant le dire franchement, car c'est le point sur lequel presque toutes les com
 - **Hoard Cloud** est l'option gérée : vous vous connectez, et vos sauvegardes sont stockées sur nos serveurs, dans l'UE.
 - **L'auto-hébergement est entièrement le vôtre.** Vous faites tourner `hoard-server` sur votre PC ou votre NAS et vos machines se synchronisent à travers lui. Il n'y a **aucun compte chez nous, aucune télémétrie vers nous, aucun quota et aucun relais** : rien ne passe par nos serveurs, puisque rien de chez nous n'est sur le chemin. Voir [comment auto-héberger Hoard](/guides/self-host-hoard).
 
-Le même programme, la même détection, le même historique de versions. La seule chose qui change, c'est à qui appartient le stockage.
+Le même programme, la même détection. Ce qui change, c'est à qui appartient le stockage, plus un réglage par défaut : un serveur auto-hébergé élague les anciennes versions avec le temps, sauf si vous le désactivez.
 
 ## Astuce
 

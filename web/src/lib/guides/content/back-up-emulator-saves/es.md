@@ -2,7 +2,7 @@
 title: "Cómo hacer copia y sincronizar partidas de emuladores (RetroArch, Dolphin, PCSX2)"
 description: "Copia y sincroniza partidas de emuladores entre PC y Steam Deck: RetroArch, Dolphin, PCSX2, DuckStation y más, con historial y dónde guarda cada uno."
 order: 6
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Las partidas de emulador se pierden con facilidad: los archivos de guardado y los estados guardados viven en carpetas dispersas, y una reinstalación o un PC nuevo pueden borrar años de progreso. Hoard hace la copia automáticamente y los mantiene sincronizados entre equipos, Steam Deck incluida.
@@ -12,8 +12,10 @@ Las partidas de emulador se pierden con facilidad: los archivos de guardado y lo
 Hoard gestiona los archivos de guardado estándar de emulador (`.srm`, `.sav`, memory cards, carpetas de guardado por juego) y los estados guardados. Sabe de serie dónde guardan estos:
 
 - **Sony:** PCSX2 (PS2), DuckStation (PS1), PPSSPP (PSP), RPCS3 (PS3), shadPS4 (PS4), Vita3K (PS Vita)
-- **Nintendo:** Dolphin (GameCube / Wii), Cemu (Wii U), Ryujinx, yuzu, Eden, Suyu, Citron y Sudachi (Switch), Citra / Azahar (3DS), melonDS (DS), mGBA (GBA), Project64 (N64)
+- **Nintendo:** Dolphin (GameCube / Wii), Cemu (Wii U), Ryujinx, yuzu, Eden, Suyu, Citron y Sudachi (Switch), Citra / Azahar (3DS), Project64 (N64)
 - **Otros:** RetroArch (multisistema), xemu (Xbox), Flycast (Dreamcast)
+
+mGBA (GBA) y melonDS (DS) también se reconocen, pero guardan las partidas junto a la ROM, así que esa carpeta la añades tú una vez.
 
 Como Hoard localiza las carpetas de guardado con la misma base de datos comunitaria que utiliza Ludusavi, muchas rutas se detectan automáticamente. Para cualquier ruta personalizada, puedes apuntar Hoard a una carpeta a mano.
 
@@ -162,4 +164,4 @@ Casi seguro que sí. La detección cubre los habituales de forma automática, y 
 
 ### ¿Cambia algo con emuladores si me autoalojo?
 
-No. La misma detección, las mismas versiones, la misma sincronización. Lo único tuyo es el almacenamiento.
+No. La misma detección y la misma sincronización que con cualquier otro juego. El único ajuste por defecto que cambia, que un servidor autoalojado vaya podando las versiones antiguas con el tiempo, se aplica igual a todos los juegos y se puede desactivar.

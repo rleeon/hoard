@@ -94,7 +94,7 @@
      scrolled frame, and an 80% fill without one let the content show straight
      through. At the top of the page it hangs from the top edge like a drop
      (see `.capsule` below); once the page scrolls it lets go and floats. -->
-<header class="sticky top-0 z-40 w-full px-3 pt-3 sm:px-6">
+<header class="sticky top-0 z-40 w-full px-3 pt-3 sm:px-6" data-motion="keep">
   <div
     class="capsule relative mx-auto max-w-5xl border border-white/[0.09] bg-capsule {scrolled
       ? 'is-floating'
@@ -427,9 +427,9 @@
      the edge, the way a drop hangs from a surface. Letting go, it stretches,
      the shoulders shrink back into it, and it falls past its place and bounces
      back; docking, it rises into the edge, squashes and the shoulders grab.
-     The owner asked for it stronger than a plain spring, hence keyframes. Under
-     reduced-motion the site-wide rule jumps every animation to its last frame,
-     which is the resting state. */
+     The owner asked for it stronger than a plain spring, hence keyframes. The
+     whole bar keeps its motion under reduced-motion (`data-motion="keep"`, see
+     app.css), on the owner's call. */
   .capsule {
     --r: 1.75rem;
     --shoulder: 1.5rem;

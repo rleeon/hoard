@@ -2,7 +2,7 @@
 title: "Alternativa a Ludusavi: sincronización automática de partidas en la nube"
 description: "Ludusavi es genial para copias locales. Hoard añade sync automático entre PC y Steam Deck con historial de versiones, sobre la misma base de datos de saves."
 order: 5
-updated: 2026-10-01
+updated: 2026-10-18
 ---
 
 Si buscas una forma de hacer copia y sincronizar tus partidas guardadas, seguramente has encontrado **Ludusavi**, y es excelente. Esta guía es una comparativa honesta para que elijas la herramienta adecuada, y explica dónde encaja Hoard si quieres sincronización automática en la nube entre equipos.
@@ -74,7 +74,7 @@ No hay importador, y es a propósito. Los pasos:
 
 **Las partidas de Steam viven una carpeta más adentro de lo que parece.** En los juegos de Steam, Hoard rastrea `<AppID>/remote/` dentro de `userdata`, no la carpeta de encima. La carpeta padre guarda además `remotecache.vdf` y ficheros de logros y de tiempo jugado, y ésos son legítimamente distintos en cada máquina. Si sincronizas la padre, cada arranque parece un conflicto aunque no se haya movido ninguna partida. Es el motivo más común de que un montaje casero entre Steam Deck y sobremesa acabe peleándose consigo mismo.
 
-**Las versiones salen baratas.** Las instantáneas se guardan por hash de contenido, así que un fichero que no cambia se almacena una sola vez. Diez versiones de una partida de 2 GB ocupan unos 2 GB, no 20, y eso es lo que hace práctico conservar el historial entero en vez de ir podándolo.
+**Las versiones salen baratas.** Las instantáneas se guardan por hash de contenido, así que un fichero que no cambia se almacena una sola vez. Diez versiones de una partida de 2 GB en la que cambia poco entre sesiones ocupan unos 2 GB, no 20, y por eso Hoard Cloud puede conservar el historial entero en vez de ir podándolo.
 
 ## Qué significa realmente autoalojarse
 
@@ -83,7 +83,7 @@ Es el punto donde casi todas las comparativas se equivocan con Hoard, así que c
 - **Hoard Cloud** es la opción gestionada: inicias sesión y tus partidas se guardan en nuestros servidores, en la UE.
 - **Autoalojarse es tuyo por completo.** Levantas `hoard-server` en tu PC o en tu NAS, y tus partidas van de tu máquina a tu disco. **No hay cuenta con nosotros, ni telemetría hacia nosotros, ni cupo, ni relé**: no pasa nada por nuestros servidores, porque no hay nada nuestro en el camino. No podemos ver una partida, ni el nombre de un juego, ni un correo, por la sencilla razón de que nada de eso nos llega. Si Hoard Cloud desapareciera mañana, un montaje autoalojado seguiría funcionando igual.
 
-El mismo programa, la misma detección, el mismo historial de versiones. Lo único que cambia es de quién es el almacenamiento.
+El mismo programa, la misma detección. Lo que cambia es de quién es el almacenamiento, y un ajuste por defecto: un servidor autoalojado va podando las versiones antiguas con el tiempo, salvo que lo desactives.
 
 ## ¿Cuál elegir?
 
@@ -118,7 +118,7 @@ No. Ésa es la diferencia práctica principal: con Hoard Cloud el almacenamiento
 
 ### ¿Autoalojarse envía algo a Hoard?
 
-No. En modo autoalojado no hay cuenta con nosotros ni telemetría hacia nosotros: tus partidas, tus usuarios y tus registros viven en tu propio servidor y nunca tocan el nuestro. Ése es el sentido del modo, y por eso el servidor es el mismo binario open source que usamos nosotros y no una versión recortada.
+No. En modo autoalojado no hay cuenta con nosotros ni telemetría hacia nosotros: tus partidas, tus usuarios y tus registros viven en tu propio servidor y nunca tocan el nuestro. Ése es el sentido del modo, y por eso el servidor sale del mismo código open source que usamos nosotros y no de una versión recortada.
 
 ### ¿Es seguro usar Ludusavi?
 

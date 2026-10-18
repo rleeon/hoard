@@ -2,7 +2,7 @@
 title: "Ludusavi alternative: automatic cloud sync for your game saves"
 description: "Ludusavi is great for local backups. Hoard adds automatic sync between PCs and Steam Deck with version history, built on the same save database."
 order: 5
-updated: 2026-10-01
+updated: 2026-10-18
 related: game-save-sync-comparison, sync-game-saves-across-pcs, back-up-emulator-saves
 ---
 
@@ -75,7 +75,7 @@ There's no importer, and that's on purpose. The steps:
 
 **Steam saves live one folder deeper than you think.** For Steam games, Hoard tracks `<AppID>/remote/` inside `userdata`, not the folder above it. The parent also holds `remotecache.vdf` and achievement and playtime files, and those legitimately differ from machine to machine. Sync the parent and every launch looks like a conflict even though no save actually moved. It's the most common reason a hand-rolled Steam Deck ↔ desktop setup ends up fighting itself.
 
-**Versions are cheap.** Snapshots are stored by content hash, so unchanged files are stored once. Ten versions of a 2 GB save cost about 2 GB, not 20 — which is what makes keeping the full history practical instead of pruning it.
+**Versions are cheap.** Snapshots are stored by content hash, so unchanged files are stored once. Ten versions of a 2 GB save where little changes between sessions cost about 2 GB, not 20, which is why Hoard Cloud can keep the full history instead of pruning it.
 
 ## What self-hosting actually means
 
@@ -84,7 +84,7 @@ This is the point most comparisons get wrong about Hoard, so it's worth being ex
 - **Hoard Cloud** is the managed option: you sign in, and your saves are stored on our servers, in the EU.
 - **Self-hosting is entirely yours.** You run `hoard-server` on your own PC or NAS, and your saves go from your machine to your disk. There is **no account with us, no telemetry to us, no quota and no relay** — nothing passes through our servers, because there is nothing of ours in the path. We can't see a save, a game name or an email address, for the simple reason that none of it ever reaches us. If Hoard Cloud disappeared tomorrow, a self-hosted setup would carry on unchanged.
 
-Same program, same detection, same version history. The only thing that changes is who owns the storage.
+Same program, same detection. What changes is who owns the storage, plus one default: a self-hosted server thins out old versions over time unless you switch that off.
 
 ## Which should you choose?
 
@@ -119,7 +119,7 @@ No. That's the main practical difference: with Hoard Cloud, storage is already s
 
 ### Does self-hosting send anything to Hoard?
 
-No. In self-hosted mode there is no account with us and no telemetry to us: your saves, your users and your logs live on your own server and never touch ours. That's the whole point of the mode, and it's why the server is the same open-source binary we run ourselves rather than a cut-down version.
+No. In self-hosted mode there is no account with us and no telemetry to us: your saves, your users and your logs live on your own server and never touch ours. That's the whole point of the mode, and it's why the server is built from the same open-source code we run ourselves rather than a cut-down version.
 
 ### Is Ludusavi safe to use?
 

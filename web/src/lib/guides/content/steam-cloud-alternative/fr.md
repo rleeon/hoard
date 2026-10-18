@@ -2,7 +2,7 @@
 title: "Alternative à Steam Cloud : synchronisez et sauvegardez les parties que Steam ignore"
 description: "Steam Cloud ignore beaucoup de jeux et ne garde aucun historique. Synchronisez et sauvegardez tous vos jeux, de tout launcher, entre PC et Steam Deck."
 order: 7
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Steam Cloud fait très bien le travail précis qu'il fait, et la plupart des gens en découvrent les limites le jour où ils perdent quelque chose. Ce guide explique où sont ces limites, et quoi faire des jeux qui restent en dehors.
@@ -33,7 +33,7 @@ Hoard surveille le dossier dans lequel le jeu écrit vraiment et capture **une n
 - **Il synchronise entre vos machines**, Steam Deck et PC de bureau compris.
 - **Rien n'est détruit en silence.** La sauvegarde remplacée est capturée d'abord : même une restauration malheureuse est réversible.
 
-Les instantanés sont stockés par empreinte de contenu : dix versions d'une sauvegarde de 2 Go coûtent environ 2 Go, pas 20 — c'est ce qui rend viable de garder tout l'historique.
+Les instantanés sont stockés par empreinte de contenu : dix versions d'une sauvegarde de 2 Go qui change peu d'une session à l'autre coûtent environ 2 Go, pas 20, et c'est ce qui rend viable de garder tout l'historique.
 
 ## Utiliser les deux ensemble
 
@@ -49,7 +49,7 @@ Disons-le franchement : si tous vos jeux sont des jeux Steam avec support cloud,
 
 Si l'attrait est de ne dépendre d'aucune plateforme, Hoard tourne entièrement sur votre matériel : `hoard-server` sur un PC ou un NAS, et vos sauvegardes vont de votre machine à votre disque. **Aucun compte chez nous, aucune télémétrie vers nous, aucun relais** : rien ne passe par nos serveurs, puisque rien de chez nous n'est sur le chemin. Voir [comment auto-héberger Hoard](/guides/self-host-hoard).
 
-Le même programme, la même détection, le même historique. La seule chose qui change, c'est à qui appartient le stockage.
+Le même programme, la même détection. Ce qui change, c'est à qui appartient le stockage, plus un réglage par défaut : un serveur auto-hébergé élague les anciennes versions avec le temps, sauf si vous le désactivez.
 
 <!-- faq -->
 

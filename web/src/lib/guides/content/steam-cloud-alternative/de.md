@@ -2,7 +2,7 @@
 title: "Steam-Cloud-Alternative: synchronisiere und sichere die Spielstände, die Steam nicht sichert"
 description: "Steam Cloud lässt viele Spiele aus und hat keinen Verlauf. Synchronisiere und sichere jedes Spiel aus jedem Launcher zwischen PCs und Steam Deck, mit Versionen."
 order: 7
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Steam Cloud macht die eng umrissene Aufgabe, die sie hat, wirklich gut, und die meisten stoßen erst an dem Tag an ihre Grenzen, an dem etwas verloren geht. Diese Anleitung zeigt, wo diese Grenzen liegen und was mit den Spielen zu tun ist, die dahinter liegen.
@@ -33,7 +33,7 @@ Hoard beobachtet den Ordner, in den ein Spiel wirklich schreibt, und sichert **n
 - **Es synchronisiert zwischen deinen Geräten**, Steam Deck und Desktop eingeschlossen.
 - **Nichts wird stillschweigend zerstört.** Der ersetzte Stand wird zuerst gesichert, selbst eine falsche Wiederherstellung ist also umkehrbar.
 
-Snapshots werden per Inhalts-Hash gespeichert, zehn Versionen eines 2 GB großen Stands kosten also etwa 2 GB, nicht 20 — und das macht die komplette Historie überhaupt praktikabel.
+Snapshots werden per Inhalts-Hash gespeichert, zehn Versionen eines 2 GB großen Stands, an dem sich zwischen den Sitzungen wenig ändert, kosten also etwa 2 GB, nicht 20, und das macht die komplette Historie überhaupt praktikabel.
 
 ## Beides gleichzeitig nutzen
 
@@ -49,7 +49,7 @@ Ehrlich gesagt: wenn alle deine Spiele Steam-Spiele mit Cloud-Unterstützung sin
 
 Wenn der Reiz darin liegt, von keiner Plattform abzuhängen: Hoard läuft komplett auf deiner eigenen Hardware — `hoard-server` auf einem PC oder NAS, und deine Stände gehen von deiner Maschine auf deine Platte. Es gibt **kein Konto bei uns, keine Telemetrie zu uns und kein Relay** — nichts läuft über unsere Server, weil nichts von uns im Weg steht. Siehe [wie du Hoard selbst hostest](/guides/self-host-hoard).
 
-Dasselbe Programm, dieselbe Erkennung, dieselbe Versionshistorie. Es ändert sich nur, wem der Speicher gehört.
+Dasselbe Programm, dieselbe Erkennung. Es ändert sich, wem der Speicher gehört, und eine Voreinstellung: Ein selbst gehosteter Server dünnt alte Versionen mit der Zeit aus, solange du das nicht abschaltest.
 
 <!-- faq -->
 

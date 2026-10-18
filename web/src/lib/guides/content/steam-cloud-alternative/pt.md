@@ -2,7 +2,7 @@
 title: "Alternativa à Steam Cloud: sincroniza e guarda os saves que a Steam não guarda"
 description: "O Steam Cloud deixa muitos jogos de fora e não guarda histórico. Sincroniza e faz backup de todos, de qualquer launcher, entre PCs e a Steam Deck, com versões."
 order: 7
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 A Steam Cloud faz muito bem o trabalho estreito que faz, e a maioria das pessoas só lhe descobre os limites no dia em que perde alguma coisa. Este guia explica onde estão esses limites e o que fazer com os jogos que ficam de fora.
@@ -33,7 +33,7 @@ O Hoard vigia a pasta onde o jogo realmente escreve e captura uma **versão nova
 - **Sincroniza entre as tuas máquinas** da mesma forma, Steam Deck e desktop incluídos.
 - **Nada é destruído em silêncio.** O save substituído é capturado primeiro, por isso até uma restauração errada é reversível.
 
-Os snapshots são guardados por hash de conteúdo, por isso dez versões de um save de 2 GB ocupam cerca de 2 GB e não 20 — é isso que torna prático manter o histórico inteiro.
+Os snapshots são guardados por hash de conteúdo, por isso dez versões de um save de 2 GB que muda pouco entre sessões ocupam cerca de 2 GB e não 20, e é isso que torna prático manter o histórico inteiro.
 
 ## Usar os dois ao mesmo tempo
 
@@ -49,7 +49,7 @@ Convém dizê-lo com clareza: se todos os jogos a que jogas são da Steam e com 
 
 Se o que te atrai é não depender de plataforma nenhuma, o Hoard pode correr inteiramente no teu hardware: `hoard-server` num PC ou num NAS, e os teus saves vão da tua máquina para o teu disco. **Não há conta connosco, nem telemetria para nós, nem retransmissão**: não passa nada pelos nossos servidores, porque não há nada nosso no caminho. Vê [como alojar o Hoard tu mesmo](/guides/self-host-hoard).
 
-O mesmo programa, a mesma deteção, o mesmo histórico. A única coisa que muda é de quem é o armazenamento.
+O mesmo programa, a mesma deteção. O que muda é de quem é o armazenamento, e uma predefinição: um servidor self-hosted vai desbastando as versões antigas com o tempo, a não ser que o desligues.
 
 <!-- faq -->
 

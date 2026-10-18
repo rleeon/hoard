@@ -2,7 +2,7 @@
 title: "Game save sync compared: Hoard vs Ludusavi, Syncthing, OpenSave and the rest"
 description: "Hoard, Ludusavi, Syncthing, OpenSave, GameSave Manager and more compared: what each does best, where each falls short, and a side-by-side table."
 order: 4
-updated: 2026-10-01
+updated: 2026-10-18
 related: ludusavi-alternative, steam-cloud-alternative, syncthing-game-saves
 ---
 
@@ -28,11 +28,11 @@ Not a game tool at all — a general-purpose, peer-to-peer folder mirror, and a 
 
 ## OpenSave
 
-Peer-to-peer sync built specifically for saves, in Go, MIT licensed, for Windows, Linux and Steam Deck. No account, no server: devices pair with each other and sync over the LAN or through a relay room code. It snapshots every change, has branches for parallel playthroughs, resolves conflicts by sync lineage rather than clock timestamps, and transfers only changed blocks. It can optionally mirror to Drive, Dropbox, OneDrive or WebDAV.
+Peer-to-peer sync built specifically for saves, in Go, MIT licensed, for Windows, Linux, Steam Deck and, since version 2.4, macOS. No account, no server: devices pair with each other and sync over the LAN or through a relay room code. It snapshots every change, has branches for parallel playthroughs, resolves conflicts by sync lineage rather than clock timestamps, and transfers only changed blocks. It can optionally mirror to Drive, Dropbox, OneDrive or WebDAV.
 
 **Best if:** you refuse to have an account, and your devices are on together often enough to actually meet.
 
-**Where it stops:** peer-to-peer means the save lives only on your devices. If the Deck holding the only recent copy dies and the mirror was never configured, that's it. Both devices have to be running for a sync to happen, and there's no macOS build.
+**Where it stops:** peer-to-peer means the save lives only on your devices. If the Deck holding the only recent copy dies and the mirror was never configured, that's it. Both devices have to be running for a sync to happen.
 
 ## OpenCloudSaves
 
@@ -40,7 +40,7 @@ A cross-platform GUI that syncs your save folders into a cloud you already pay f
 
 **Best if:** you want your saves in a storage account you already have, with a UI instead of Rclone config files.
 
-**Where it stops:** there's no content-level deduplication. Ten copies of a 2 GB save is 20 GB of your Drive quota, and cloud drives sync files, not play sessions, so what you get back is whatever the folder looked like at the time.
+**Where it stops:** the project was archived in January 2025 and is no longer maintained, so it won't get fixes for new games or system updates. On top of that, there's no content-level deduplication. Ten copies of a 2 GB save is 20 GB of your Drive quota, and cloud drives sync files, not play sessions, so what you get back is whatever the folder looked like at the time.
 
 ## Game Backup Monitor
 
@@ -60,7 +60,7 @@ A long-standing free Windows tool, closed source, with its own database of games
 
 ## Aletheia
 
-The newest of the bunch, AGPL, and it goes after the part everyone else half-covers: launchers. Heroic, itch.io, Lutris, Steam, GOG Galaxy and Xbox, across Windows, Linux and macOS.
+One of the newer ones, AGPL, and it goes after the part everyone else half-covers: launchers. Heroic, itch.io, Lutris, Steam, GOG Galaxy and Xbox, across Windows, Linux and macOS.
 
 **Best if:** your library is spread across launchers that other tools detect badly — especially Xbox/Game Pass and Heroic.
 
@@ -91,9 +91,9 @@ EmuDeck comes up in these conversations, and it isn't a competitor in the normal
 Hoard treats a play session as the unit. The engine runs as a background service — `hoardd`, no window, so it works in SteamOS game mode — notices you stopped playing, and takes a snapshot then, instead of reacting to every file write mid-game.
 
 - **Version history per session.** Every session is a version you can roll back to, including after a disk failure or a fresh install.
-- **Content-hash deduplication.** Ten versions of a 2 GB save cost about 2 GB, not 20 GB. Transfers are zstd-compressed.
+- **Content-hash deduplication.** Ten versions of a 2 GB save where little changes between sessions cost about 2 GB, not 20 GB. Transfers are zstd-compressed.
 - **SHA-256 on the way up and on the way down.** Corruption is caught before it can overwrite a good save. Nothing is ever silently overwritten — that's the whole design.
-- **Cloud or self-hosted, same binary.** Hoard Cloud has a free tier (2 GB, 3 devices, full history). Or run `hoard-server` yourself with Docker Compose against any S3-compatible storage — MinIO, Garage, Backblaze B2 — with no account and no quota. AGPL-3.0.
+- **Cloud or self-hosted, same code.** Hoard Cloud has a free tier (2 GB, 3 devices, full history). Or run `hoard-server` yourself with Docker Compose against any S3-compatible storage — MinIO, Garage, Backblaze B2 — with no account and no quota. AGPL-3.0.
 - **Windows, Linux, macOS**, plus a headless CLI for a Steam Deck or a server.
 - **Emulators in beta:** PCSX2, RPCS3, Dolphin, Cemu, Ryujinx, RetroArch, DuckStation, PPSSPP and others as presets.
 
@@ -118,7 +118,7 @@ Comparisons of Hoard almost always collapse these two into one, and the result i
 - **Hoard Cloud** is the managed option: you sign in, and your saves are stored on our servers, in the EU.
 - **A self-hosted Hoard is entirely yours.** You run `hoard-server` on your own PC or NAS, and your saves go from your machine to your disk. There is **no account with us, no telemetry to us, no quota and no relay** — nothing passes through our servers, because there is nothing of ours in the path. We can't see a save, a game name or an email address, because none of it ever reaches us. If Hoard Cloud shut down tomorrow, a self-hosted setup would carry on unchanged.
 
-Same binary, same detection, same version history. The only thing that changes is who owns the storage. Being exact about one detail: your own server does have logins of its own — a user and a token per device — but they live in your database, not ours.
+Same code, same detection. What changes is who owns the storage, plus one default: a self-hosted server thins out old versions over time unless you switch that off. Being exact about one detail: your own server does have logins of its own — a user and a token per device — but they live in your database, not ours.
 
 ## The table
 
@@ -127,9 +127,9 @@ Same binary, same detection, same version history. The only thing that changes i
 | **Hoard** | Yes, per play session | Hoard Cloud or your own server (S3-compatible) | Versioned per session, deduplicated | Win · Linux · macOS · Deck | AGPL-3.0, free tier |
 | **Ludusavi** | Manual, or Rclone that you wire up | Local, plus your Rclone remote | Versioned local backups | Win · Linux · macOS | Free, open source |
 | **Syncthing** | Yes, continuous mirror | Your devices only | Per-file versioning | Everything | Free, open source |
-| **OpenSave** | Yes, peer-to-peer | Your devices, optional cloud mirror | Snapshots and branches | Win · Linux · Deck | MIT |
-| **OpenCloudSaves** | Yes, via your cloud drive | OneDrive / Drive / Dropbox / Nextcloud | Whatever the drive keeps | Win · Linux · macOS | Free, open source |
-| **Game Backup Monitor** | No | Local 7-Zip archives | Numbered backups | Windows | Free, open source |
+| **OpenSave** | Yes, peer-to-peer | Your devices, optional cloud mirror | Snapshots and branches | Win · Linux · macOS · Deck | MIT |
+| **OpenCloudSaves** | Yes, via your cloud drive | OneDrive / Drive / Dropbox / Nextcloud | Whatever the drive keeps | Win · Linux · macOS | Free, open source, archived |
+| **Game Backup Monitor** | No | Local 7-Zip archives | Numbered backups | Windows · Linux | Free, open source |
 | **GameSave Manager** | Via your cloud drive (Sync & Link) | Local, plus Dropbox / OneDrive | Whatever the drive keeps | Windows | Free, closed source |
 | **Aletheia** | Backup and restore per launcher | Your storage | Backups | Win · Linux · macOS | AGPL-3.0 |
 | **SaveSync** | Yes, and with friends | Private Steam Workshop entries | Per the app | Windows | Paid, closed source |
@@ -137,7 +137,7 @@ Same binary, same detection, same version history. The only thing that changes i
 
 ## So which one
 
-If you want one machine backed up and nothing else, take Ludusavi or Game Backup Monitor. If you want no account under any circumstances and your devices are usually on together, OpenSave. If your saves should be in a Drive folder you already pay for, OpenCloudSaves. If you're sharing a co-op world with friends, SaveSync.
+If you want one machine backed up and nothing else, take Ludusavi or Game Backup Monitor. If you want no account under any circumstances and your devices are usually on together, OpenSave. If your saves should be in a Drive folder you already pay for, Ludusavi with an Rclone remote, now that OpenCloudSaves is no longer maintained. If you're sharing a co-op world with friends, SaveSync.
 
 If you want backups *and* automatic sync across PCs and a Steam Deck to just happen, with a version per session you can roll back to and the option to self-host the whole thing, that's what Hoard is for. [Download it](/download), or read [how to self-host it with Docker](/guides/self-host-hoard) first. There's also a longer [Ludusavi comparison](/guides/ludusavi-alternative) if that's the one you're weighing it against.
 

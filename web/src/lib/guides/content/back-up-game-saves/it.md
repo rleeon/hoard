@@ -2,7 +2,7 @@
 title: "Come fare il backup dei salvataggi automaticamente"
 description: "Backup automatico dei salvataggi PC dopo ogni sessione e sincronizzazione con gli altri PC e lo Steam Deck, con cronologia: non perdi più nulla."
 order: 1
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Perdere un salvataggio significa perdere ore di progressi. Hoard fa il backup dei tuoi salvataggi PC automaticamente, conserva una cronologia completa delle versioni così puoi sempre tornare indietro, e tiene ogni salvataggio sincronizzato tra i tuoi PC e lo Steam Deck, così riprendi da dove avevi lasciato.
@@ -51,7 +51,7 @@ Una cartella di salvataggi contiene raramente solo salvataggi, quindi Hoard divi
 
 Hoard sorveglia la cartella e la cattura **dopo che smetti di giocare**, non mentre il gioco tiene i file aperti. Se il salvataggio è stato scritto pochi secondi fa, aspetta che tutto si calmi: un file in scrittura non è un file da catturare a metà.
 
-Ogni cattura è una versione. Gli snapshot sono archiviati per hash del contenuto, quindi un file invariato viene salvato una volta sola: dieci versioni di un salvataggio da 2 GB occupano circa 2 GB, non 20.
+Ogni cattura è una versione. Gli snapshot sono archiviati per hash del contenuto, quindi un file invariato viene salvato una volta sola: dieci versioni di un salvataggio da 2 GB che cambia poco tra una sessione e l'altra occupano circa 2 GB, non 20.
 
 ## E sincronizzati su ogni macchina
 
@@ -89,4 +89,4 @@ Hoard traccia la cartella dei salvataggi, quindi le mod che stanno altrove non e
 
 ### Il self-hosting cambia il funzionamento dei backup?
 
-Per niente. Stesso rilevamento, stesse versioni, stessa cattura automatica. L'unica cosa tua è lo spazio di archiviazione.
+Quasi per niente. Stesso rilevamento, stessa cattura automatica. L'unica differenza è un'impostazione predefinita: un server self-hosted sfoltisce le versioni vecchie col tempo, e puoi disattivarlo nella sua configurazione.

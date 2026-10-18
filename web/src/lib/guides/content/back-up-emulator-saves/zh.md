@@ -2,7 +2,7 @@
 title: "如何备份和同步模拟器存档（RetroArch、Dolphin、PCSX2）"
 description: "在 PC 和 Steam Deck 之间备份与同步 RetroArch、Dolphin、PCSX2、DuckStation 等模拟器存档，保留版本历史，并列出各自的存档位置。"
 order: 6
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 模拟器存档很容易丢失：存档文件和即时存档散落在各处的文件夹里，一次重装或换一台新电脑就可能抹掉多年的进度。Hoard 会自动备份它们，并在你的所有设备之间保持同步，包括 Steam Deck。
@@ -12,8 +12,10 @@ updated: 2026-10-09
 Hoard 处理标准的模拟器存档文件（`.srm`、`.sav`、记忆卡、按游戏划分的存档文件夹）以及即时存档。下面这些模拟器的存档位置它都已内置：
 
 - **索尼：** PCSX2（PS2）、DuckStation（PS1）、PPSSPP（PSP）、RPCS3（PS3）、shadPS4（PS4）、Vita3K（PS Vita）
-- **任天堂：** Dolphin（GameCube / Wii）、Cemu（Wii U）、Ryujinx、yuzu、Eden、Suyu、Citron 和 Sudachi（Switch）、Citra / Azahar（3DS）、melonDS（DS）、mGBA（GBA）、Project64（N64）
+- **任天堂：** Dolphin（GameCube / Wii）、Cemu（Wii U）、Ryujinx、yuzu、Eden、Suyu、Citron 和 Sudachi（Switch）、Citra / Azahar（3DS）、Project64（N64）
 - **其他：** RetroArch（多平台）、xemu（Xbox）、Flycast（Dreamcast）
+
+mGBA（GBA）和 melonDS（DS）也能识别，但它们把存档放在 ROM 旁边，所以那个文件夹需要你自己添加一次。
 
 由于 Hoard 使用与 Ludusavi 相同的社区数据库来定位存档文件夹，许多路径都能自动识别。对于自定义的位置，你也可以手动指定文件夹。
 
@@ -162,4 +164,4 @@ Hoard 会备份两者。只是如果更新过的设备上的即时存档在旧�
 
 ### 自托管对模拟器有什么影响吗？
 
-没有。同样的识别、同样的版本、同样的同步。只是存储归你所有。
+不会。识别和同步都和其他游戏一样。唯一不同的默认设置，也就是自托管服务器会随着时间推移精简旧版本，对所有游戏一视同仁，也可以关掉。

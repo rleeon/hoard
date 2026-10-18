@@ -2,7 +2,7 @@
 title: "Cómo hacer copias de seguridad de tus partidas automáticamente"
 description: "Copia tus partidas de PC automáticamente tras cada sesión y sincronízalas con tus otros PC y tu Steam Deck, con historial de versiones, para no perder nada."
 order: 1
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Perder una partida guardada significa perder horas de progreso. Hoard hace copias de tus partidas de PC automáticamente, guarda un historial completo de versiones para que siempre puedas volver atrás, y mantiene cada partida sincronizada entre tus PC y tu Steam Deck, para que sigas donde lo dejaste.
@@ -51,7 +51,7 @@ Una carpeta de partidas rara vez contiene sólo partidas, así que Hoard reparte
 
 Hoard vigila la carpeta y la captura **cuando dejas de jugar**, no mientras el juego tiene los ficheros abiertos. Si la partida se escribió hace unos segundos, espera a que la cosa se calme: un fichero que se está escribiendo no es un fichero que merezca capturarse a medias.
 
-Cada captura es una versión. Las instantáneas se guardan por hash de contenido, así que un fichero que no cambia se almacena una sola vez: diez versiones de una partida de 2 GB ocupan unos 2 GB, no 20.
+Cada captura es una versión. Las instantáneas se guardan por hash de contenido, así que un fichero que no cambia se almacena una sola vez: diez versiones de una partida de 2 GB en la que cambia poco entre sesiones ocupan unos 2 GB, no 20.
 
 ## Y sincronizadas en todas tus máquinas
 
@@ -89,4 +89,4 @@ Hoard rastrea la carpeta de partidas, así que los mods que vivan en otro sitio 
 
 ### ¿Cambia algo si me autoalojo?
 
-Nada. La misma detección, las mismas versiones, la misma captura automática. Lo único tuyo es el almacenamiento.
+Apenas. La misma detección, la misma captura automática. La única diferencia es un ajuste por defecto: un servidor autoalojado va podando las versiones antiguas con el tiempo, y puedes desactivarlo en su configuración.

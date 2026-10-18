@@ -2,7 +2,7 @@
 title: "Cómo restaurar una partida guardada anterior"
 description: "¿Partida corrupta, un mod roto o una decisión que lamentas? Vuelve a una versión anterior de tu partida, paso a paso, sin perder lo que tienes ahora."
 order: 3
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Una mala decisión en el juego, un archivo corrupto o un mod que lo rompe todo: a veces solo necesitas volver atrás. Como Hoard guarda un historial completo de versiones de cada partida, restaurar una anterior lleva segundos. Y como ese historial vive en el servidor y lo comparten todas tus máquinas, puedes volver atrás desde cualquier PC o Steam Deck, no solo desde el que dio el problema.
@@ -54,7 +54,7 @@ Sólo después de que tu partida actual se haya capturado como una versión nuev
 
 ### ¿Hasta dónde llega el historial?
 
-Hasta donde permita el tope de versiones de tu plan, y una versión que fijes no se poda nunca para hacer sitio. En un servidor autoalojado el único límite es tu disco.
+En Hoard Cloud, hasta el principio: ningún plan tiene tope de versiones. El único tope es el que pongas tú, **Máx. versiones por juego** en el Panel, y ni ése borra nunca las versiones fijadas ni la más reciente de cada juego. Un servidor autoalojado, por defecto, va podando las versiones antiguas: el historial reciente se queda completo y el antiguo, más espaciado. Puedes desactivarlo en su configuración para conservarlo todo.
 
 ### ¿Puedo restaurar en un PC donde el juego todavía no está instalado?
 
@@ -66,4 +66,4 @@ Sí. El mismo juego guarda en sitios distintos en cada uno — en la Deck, dentr
 
 ### ¿Cambia algo restaurar en un servidor autoalojado?
 
-No. Misma aplicación, mismo historial, misma restauración de un clic. Lo único tuyo es el almacenamiento.
+Apenas. La misma aplicación, la misma restauración de un clic. La diferencia está en hasta dónde puedes volver: por defecto, un servidor autoalojado va podando las versiones antiguas con el tiempo, y puedes desactivarlo en su configuración.

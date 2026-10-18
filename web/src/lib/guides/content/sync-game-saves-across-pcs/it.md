@@ -2,7 +2,7 @@
 title: "Come sincronizzare i salvataggi tra più PC"
 description: "Gioca su fisso, portatile e Steam Deck senza perdere progressi: sincronizza i salvataggi tra PC in automatico, con cronologia. Passo dopo passo."
 order: 2
-updated: 2026-10-01
+updated: 2026-10-18
 ---
 
 Se giochi su più di un computer — un fisso a casa e un portatile in giro — Hoard mantiene i salvataggi sincronizzati così riprendi sempre da dove avevi lasciato.
@@ -26,7 +26,7 @@ Hoard trasforma tutto questo in sincronizzazione gestita. Usa gli stessi dati co
 
 ## Evitare i conflitti
 
-Hoard è consapevole dei conflitti: confronta le date di modifica e conserva una copia locale di ogni salvataggio sostituito, così una sincronizzazione non distrugge mai i progressi in silenzio. Se un gioco è ancora aperto o un salvataggio è stato toccato negli ultimi minuti, Hoard aspetta.
+Hoard è consapevole dei conflitti: confronta le date di modifica e conserva una copia locale di ogni salvataggio sostituito, così una sincronizzazione non distrugge mai i progressi in silenzio. Se un gioco è ancora aperto o un salvataggio è stato toccato negli ultimi secondi, Hoard aspetta.
 
 ## Steam Deck e desktop
 
@@ -51,7 +51,7 @@ A Hoard non importa chi abbia pubblicato un gioco né da dove arrivi: traccia la
 
 Giochi sul portatile senza lasciare che il fisso finisca di sincronizzare ed ecco il problema classico: due salvataggi, entrambi più recenti dell'ultima versione comune.
 
-Hoard non sovrascrive mai alla cieca. Confronta le date di modifica, conserva una copia locale di ciò che sostituisce e aspetta finché un gioco è aperto o il salvataggio è stato toccato negli ultimi minuti: un file in scrittura non è un file da caricare a metà. Tutte le versioni precedenti restano nella cronologia cloud, quindi sbagliare versione costa due clic e non un fine settimana.
+Hoard non sovrascrive mai alla cieca. Confronta le date di modifica, conserva una copia locale di ciò che sostituisce e aspetta finché un gioco è aperto o il salvataggio è stato toccato negli ultimi secondi: un file in scrittura non è un file da caricare a metà. Tutte le versioni precedenti restano nella cronologia cloud, quindi sbagliare versione costa due clic e non un fine settimana.
 
 Il limite onesto: **Hoard non fonde due salvataggi divergenti.** Nessuno strumento può farlo — un file di salvataggio è opaco e non esiste un modo corretto di mescolare due pomeriggi di gioco diversi. Quello che ottieni invece è ogni versione, su ogni macchina, e la possibilità di scegliere.
 
@@ -74,7 +74,7 @@ Vale la pena dirlo chiaramente, perché è il punto su cui quasi tutti i confron
 - **Hoard Cloud** è l'opzione gestita: accedi e i salvataggi stanno sui nostri server, nell'UE.
 - **Il self-hosting è interamente tuo.** Fai girare `hoard-server` sul tuo PC o sul tuo NAS e le tue macchine si sincronizzano attraverso quello. **Nessun account con noi, nessuna telemetria verso di noi, nessuna quota e nessun relay**: non passa nulla dai nostri server, perché sul percorso non c'è niente di nostro. Vedi [come ospitare Hoard da solo](/guides/self-host-hoard).
 
-Stesso programma, stesso rilevamento, stessa cronologia delle versioni. L'unica cosa che cambia è di chi è lo spazio di archiviazione.
+Stesso programma, stesso rilevamento. Cambia di chi è lo spazio di archiviazione, più un'impostazione predefinita: un server self-hosted sfoltisce le versioni vecchie col tempo, a meno che tu non lo disattivi.
 
 ## Suggerimento
 

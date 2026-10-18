@@ -2,7 +2,7 @@
 title: "Como restaurar um save antigo"
 description: "Save corrompido, mod estragado ou uma escolha de que te arrependes? Volta a uma versão anterior, passo a passo, sem perder o que tens agora."
 order: 3
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Uma má decisão no jogo, um ficheiro corrompido ou um mod que parte tudo — às vezes só precisas de voltar atrás. Como o Hoard guarda um histórico completo de versões de cada save, restaurar um anterior leva segundos. E como esse histórico está no servidor e é partilhado por todas as tuas máquinas, podes voltar atrás a partir de qualquer PC ou Steam Deck, não só daquele onde correu mal.
@@ -54,7 +54,7 @@ Só depois de o teu save atual ter sido capturado como uma nova versão. Se rest
 
 ### Até onde vai o histórico?
 
-Até onde permitir o limite de versões do teu plano, e uma versão que fixes nunca é apagada para abrir espaço. Num servidor self-hosted o único limite é o teu disco.
+No Hoard Cloud, até ao início: nenhum plano tem limite de versões. O único limite é o que tu definires, **Máx. de versões por jogo** no Painel, e nem esse apaga alguma vez as versões fixadas ou a mais recente de cada jogo. Um servidor self-hosted, por predefinição, vai desbastando as versões antigas: o histórico recente fica completo e o antigo mais espaçado. Podes desligar isso na configuração dele para guardar tudo.
 
 ### Posso restaurar num PC onde o jogo ainda não está instalado?
 
@@ -66,4 +66,4 @@ Sim. O mesmo jogo guarda em sítios diferentes em cada um — na Deck, dentro do
 
 ### Restaurar é diferente num servidor self-hosted?
 
-Não. Mesma aplicação, mesmo histórico, mesma restauração num clique. Só o armazenamento é teu.
+Quase nada. Mesma aplicação, mesma restauração num clique. A diferença está em até onde podes voltar: por predefinição, um servidor self-hosted vai desbastando as versões antigas com o tempo, e podes desligar isso na configuração dele.

@@ -2,7 +2,7 @@
 title: "Ludusavi-Alternative: automatische Cloud-Synchronisierung für deine Spielstände"
 description: "Ludusavi ist top für lokale Backups. Hoard ergänzt automatischen Sync zwischen PCs und Steam Deck mit Versionsverlauf, auf derselben Spielstand-Datenbank."
 order: 5
-updated: 2026-10-01
+updated: 2026-10-18
 ---
 
 Wenn du nach einer Möglichkeit suchst, deine Spielstände zu sichern und zu synchronisieren, bist du wahrscheinlich auf **Ludusavi** gestoßen — und es ist hervorragend. Diese Anleitung ist ein ehrlicher Vergleich, damit du das richtige Tool wählst, und erklärt, wo Hoard passt, wenn du automatische Cloud-Synchronisierung über mehrere Geräte willst.
@@ -74,7 +74,7 @@ Es gibt keinen Import, und das ist Absicht. Die Schritte:
 
 **Steam-Spielstände liegen einen Ordner tiefer als gedacht.** Bei Steam-Spielen verfolgt Hoard `<AppID>/remote/` innerhalb von `userdata`, nicht den Ordner darüber. Der übergeordnete Ordner enthält auch `remotecache.vdf` sowie Dateien für Erfolge und Spielzeit, und die unterscheiden sich zu Recht von Rechner zu Rechner. Synchronisierst du den übergeordneten Ordner, sieht jeder Start nach einem Konflikt aus, obwohl sich kein einziger Spielstand bewegt hat. Das ist der häufigste Grund, warum ein selbstgebautes Setup zwischen Steam Deck und Desktop gegen sich selbst arbeitet.
 
-**Versionen sind billig.** Snapshots werden per Inhalts-Hash gespeichert, unveränderte Dateien also nur einmal. Zehn Versionen eines 2 GB großen Spielstands kosten etwa 2 GB, nicht 20 — und genau das macht es praktikabel, die komplette Historie zu behalten, statt sie auszudünnen.
+**Versionen sind billig.** Snapshots werden per Inhalts-Hash gespeichert, unveränderte Dateien also nur einmal. Zehn Versionen eines 2 GB großen Spielstands, an dem sich zwischen den Sitzungen wenig ändert, kosten etwa 2 GB, nicht 20, und deshalb kann Hoard Cloud die komplette Historie behalten, statt sie auszudünnen.
 
 ## Was Selbsthosten wirklich bedeutet
 
@@ -83,7 +83,7 @@ Genau hier liegen die meisten Vergleiche bei Hoard falsch, deshalb der Punkt im 
 - **Hoard Cloud** ist die verwaltete Variante: du meldest dich an, und deine Spielstände liegen auf unseren Servern in der EU.
 - **Selbsthosten gehört vollständig dir.** Du betreibst `hoard-server` auf deinem eigenen PC oder NAS, und deine Stände gehen von deiner Maschine auf deine Platte. Es gibt **kein Konto bei uns, keine Telemetrie zu uns, kein Limit und kein Relay** — nichts läuft über unsere Server, weil nichts von uns im Weg steht. Wir können weder einen Spielstand noch einen Spieltitel noch eine E-Mail-Adresse sehen, schlicht weil davon nichts bei uns ankommt. Verschwände Hoard Cloud morgen, liefe ein selbst gehostetes Setup unverändert weiter.
 
-Dasselbe Programm, dieselbe Erkennung, dieselbe Versionshistorie. Es ändert sich nur, wem der Speicher gehört.
+Dasselbe Programm, dieselbe Erkennung. Es ändert sich, wem der Speicher gehört, und eine Voreinstellung: Ein selbst gehosteter Server dünnt alte Versionen mit der Zeit aus, solange du das nicht abschaltest.
 
 ## Was solltest du wählen?
 
@@ -118,7 +118,7 @@ Nein. Das ist der wesentliche praktische Unterschied: Bei Hoard Cloud ist der Sp
 
 ### Sendet Selbsthosten irgendetwas an Hoard?
 
-Nein. Im selbst gehosteten Betrieb gibt es kein Konto bei uns und keine Telemetrie zu uns: deine Spielstände, deine Nutzer und deine Logs liegen auf deinem eigenen Server und berühren unseren nie. Das ist der ganze Sinn dieses Modus, und deshalb ist der Server dasselbe quelloffene Binary, das wir selbst betreiben, und keine abgespeckte Fassung.
+Nein. Im selbst gehosteten Betrieb gibt es kein Konto bei uns und keine Telemetrie zu uns: deine Spielstände, deine Nutzer und deine Logs liegen auf deinem eigenen Server und berühren unseren nie. Das ist der ganze Sinn dieses Modus, und deshalb entsteht der Server aus demselben quelloffenen Code, den wir selbst betreiben, und ist keine abgespeckte Fassung.
 
 ### Ist Ludusavi sicher?
 

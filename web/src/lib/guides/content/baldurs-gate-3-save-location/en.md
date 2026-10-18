@@ -2,7 +2,7 @@
 title: "Baldur's Gate 3 save location (PC & Steam Deck)"
 description: "Where Baldur's Gate 3 keeps its saves on Windows, Steam Deck and Mac, what's a save and what's mods or settings, Honour Mode, and how to back up and sync."
 order: 23
-updated: 2026-10-09
+updated: 2026-10-18
 related: sync-game-saves-across-pcs, restore-a-game-save, steam-cloud-alternative
 ---
 
@@ -11,10 +11,11 @@ On Windows, Baldur's Gate 3 keeps its saves in `%LOCALAPPDATA%\Larian Studios\Ba
 ## Where Baldur's Gate 3 keeps its saves
 
 - **Windows:** `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`
-- **Steam Deck and Linux** (Proton): `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
+- **Steam Deck** (native build, the default since September 2025): `~/.local/share/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
+- **Steam Deck with Proton, and other Linux PCs:** `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
 - **Mac:** `~/Documents/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`
 
-Larian retired the native Linux build, so on a Steam Deck the game runs through Proton and the saves sit inside the Proton prefix Steam keeps for it; `1086940` is the game's Steam app ID. If it's installed on the microSD card, the `compatdata` folder is on the card.
+Since Hotfix 34, in September 2025, the Steam Deck runs a native build of the game that saves outside Proton, in the first folder above. Larian only supports that build on the Steam Deck: other Linux PCs keep running the Windows version through Proton, with the saves inside the Proton prefix Steam keeps for it; `1086940` is the game's Steam app ID. Saves made before the switch stay in that prefix. With Steam Cloud on, the latest ones reach the new folder on their own; without it, copy the `Savegames` folder across once in Desktop Mode. If the game is on the microSD card, that prefix's `compatdata` folder is on the card.
 
 ## What's a save and what isn't
 
@@ -56,7 +57,7 @@ Each session adds a version with every save in it. To go back, open the history 
 
 ### Where are Baldur's Gate 3 saves on Steam Deck?
 
-Inside the game's Proton prefix: `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`.
+With the native build, the default since September 2025: `~/.local/share/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`. If you forced Proton in the game's properties, they're inside its prefix instead: `~/.local/share/Steam/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story`.
 
 ### Can I move a modded save to another PC?
 

@@ -2,7 +2,7 @@
 title: "Syncthing für Spielstände: was klappt und was bricht"
 description: "Syncthing ist ein toller Datei-Sync, aber Spielstände brechen drei seiner Annahmen. Was schiefgeht, die Workarounds und wann ein Save-Tool besser passt."
 order: 9
-updated: 2026-09-01
+updated: 2026-10-18
 ---
 
 Syncthing ist die Antwort, zu der viele zuerst greifen, und das aus gutem Grund: kostenlos, quelloffen, peer-to-peer, und es funktioniert. Doch Spielstände brechen drei Annahmen, auf denen ein universeller Datei-Sync aufbaut, und die Fehler sind leise. Diese Anleitung handelt davon, was wirklich schiefgeht, und wann sich ein Werkzeug lohnt, das weiß, was ein Spielstand ist.
@@ -46,7 +46,7 @@ Sie vertragen sich, und das ist ein vernünftiges Setup: der universelle Sync ü
 
 Wenn ein Teil des Reizes ist, dass nichts die Platte einer Firma berührt: Hoard geht genauso. `hoard-server` auf deinem eigenen PC oder NAS, und deine Stände gehen von deiner Maschine auf deine Platte. Es gibt **kein Konto bei uns, keine Telemetrie zu uns und kein Relay** — nichts läuft über unsere Server, weil nichts von uns im Weg steht. Siehe [wie du Hoard selbst hostest](/guides/self-host-hoard).
 
-Dasselbe Binary, dieselbe Erkennung, dieselbe Historie. Es ändert sich nur, wem der Speicher gehört. Es gibt außerdem einen vollständigen [Vergleich aller Sync-Tools](/guides/game-save-sync-comparison).
+Dasselbe Programm, dieselbe Erkennung. Es ändert sich, wem der Speicher gehört, und eine Voreinstellung: Ein selbst gehosteter Server dünnt alte Versionen mit der Zeit aus, solange du das nicht abschaltest. Es gibt außerdem einen vollständigen [Vergleich aller Sync-Tools](/guides/game-save-sync-comparison).
 
 <!-- faq -->
 

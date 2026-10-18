@@ -2,7 +2,7 @@
 title: "Como fazer backup e sincronizar saves de emuladores (RetroArch, Dolphin, PCSX2)"
 description: "Backup e sincronização de saves de emuladores entre PC e Steam Deck: RetroArch, Dolphin, PCSX2, DuckStation e mais, com histórico e onde cada um grava."
 order: 6
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Os saves de emulador perdem-se com facilidade: ficheiros de save e save states vivem em pastas espalhadas, e uma reinstalação ou um PC novo podem apagar anos de progresso. O Hoard faz backup deles automaticamente e mantém-nos sincronizados entre as tuas máquinas, Steam Deck incluída.
@@ -12,8 +12,10 @@ Os saves de emulador perdem-se com facilidade: ficheiros de save e save states v
 O Hoard trata os ficheiros de save habituais dos emuladores (`.srm`, `.sav`, memory cards, pastas de save por jogo) e os save states. Sabe de origem onde estes emuladores guardam:
 
 - **Sony:** PCSX2 (PS2), DuckStation (PS1), PPSSPP (PSP), RPCS3 (PS3), shadPS4 (PS4), Vita3K (PS Vita)
-- **Nintendo:** Dolphin (GameCube / Wii), Cemu (Wii U), Ryujinx, yuzu, Eden, Suyu, Citron e Sudachi (Switch), Citra / Azahar (3DS), melonDS (DS), mGBA (GBA), Project64 (N64)
+- **Nintendo:** Dolphin (GameCube / Wii), Cemu (Wii U), Ryujinx, yuzu, Eden, Suyu, Citron e Sudachi (Switch), Citra / Azahar (3DS), Project64 (N64)
 - **Outros:** RetroArch (multissistema), xemu (Xbox), Flycast (Dreamcast)
+
+O mGBA (GBA) e o melonDS (DS) também são reconhecidos, mas guardam os saves ao lado da ROM, por isso essa pasta adicionas tu uma vez.
 
 Como o Hoard encontra as pastas de save com a mesma base de dados comunitária que o Ludusavi usa, muitos caminhos são detetados automaticamente. Para qualquer caminho personalizado, podes apontar o Hoard para uma pasta à mão.
 
@@ -162,4 +164,4 @@ Quase de certeza. A deteção cobre os habituais automaticamente, e qualquer out
 
 ### O self-host muda alguma coisa para os emuladores?
 
-Não. A mesma deteção, as mesmas versões, a mesma sincronização. Só o armazenamento é teu.
+Não. A mesma deteção e a mesma sincronização que para qualquer outro jogo. A única predefinição diferente, um servidor self-hosted ir desbastando as versões antigas com o tempo, aplica-se a todos os jogos por igual e pode ser desligada.

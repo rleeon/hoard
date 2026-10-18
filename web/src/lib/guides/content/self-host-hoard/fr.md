@@ -3,7 +3,7 @@ title: "Comment auto-héberger Hoard avec Docker (self-hosted)"
 description: "Hébergez votre serveur Hoard avec Docker Compose et synchronisez vos sauvegardes entre tous vos appareils : gratuit, open source, sans compte ni quota."
 order: 0
 featured: true
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Hoard est open source et auto-hébergeable. Au lieu d'utiliser Hoard Cloud, vous pouvez exécuter le même `hoard-server` sur votre propre machine et y connecter chaque appareil — sans compte, sans quota au-delà du disque que vous lui donnez. Ce guide met un serveur en route avec Docker en quelques minutes.
@@ -12,7 +12,7 @@ Hoard est open source et auto-hébergeable. Au lieu d'utiliser Hoard Cloud, vous
 
 - **Maîtrise totale.** Vos sauvegardes vivent sur du matériel que vous contrôlez, pas sur le cloud d'un autre.
 - **Aucun quota.** L'espace n'est limité que par votre propre disque.
-- **Même app, mêmes fonctions.** L'historique versionné et la synchro en arrière-plan fonctionnent comme avec Hoard Cloud — seul le backend change.
+- **Même app, mêmes fonctions.** La synchro en arrière-plan et l'historique versionné fonctionnent comme avec Hoard Cloud, avec un réglage par défaut propre : le serveur élague les anciennes versions avec le temps (voir plus bas).
 - **Open source.** Vous pouvez lire, auditer et modifier le serveur.
 
 C'est la différence clé avec des outils comme [Ludusavi](/guides/ludusavi-alternative) : Ludusavi est excellent pour les sauvegardes locales et le cloud « apportez le vôtre » via Rclone, mais c'est à vous de câbler la synchro. Hoard vous donne un serveur de synchro géré que vous lancez une fois et auquel chaque appareil se connecte.
@@ -103,6 +103,12 @@ Si vous vous arrêtez à la première, l'ancien conteneur continue de tourner in
 
 `hoard-server upgrade` ne concerne que l'installation bare metal. Dans un conteneur, elle refuse volontairement — le remplacement du binaire ne survivrait pas au prochain `docker compose up -d` — et affiche les deux commandes ci-dessus ; lancez `docker compose exec server hoard-server upgrade` si vous voulez le constater. Les migrations de base de données sont appliquées par le serveur au démarrage : il n'y a jamais d'étape séparée pour elles.
 
+## Combien d'historique il garde
+
+Hoard Cloud garde toutes les versions. Un serveur auto-hébergé, tel quel, élague les anciennes : l'historique récent reste complet et l'ancien devient plus clairsemé. Avec le réglage par défaut, il garde les 15 versions les plus récentes de chaque jeu, puis la dernière de chacune des 19 heures, des 11 jours et des 6 semaines les plus récents où vous avez joué. Les versions plus anciennes sont supprimées, sauf les versions épinglées et la plus récente de chaque jeu, et une version supprimée reste 30 jours dans la corbeille du serveur avant d'être effacée pour de bon.
+
+Pour tout garder, mettez `snapshot_pruning = false` dans la section `[retention]` de `config.toml` (dans `./config/`, à côté du fichier compose) et redémarrez le serveur (`docker compose restart` avec Docker). Dans la même section, `data_saving` déplace le curseur : `0.0` garde presque tout, `1.0` seulement l'essentiel.
+
 ## En production
 
 Pour tout ce qui dépasse votre réseau local, terminez le TLS sur un reverse proxy (Caddy, nginx ou Traefik). Plutôt bare metal ? Le dépôt fournit aussi un script d'installation `systemd` et une commande `hoard-server upgrade` qui remplace le binaire de façon atomique sans interrompre une synchro en cours.
@@ -121,7 +127,7 @@ Non. L'application de bureau parle à l'adresse de serveur que vous lui donnez. 
 
 ### Le serveur auto-hébergé est-il le même code que Hoard Cloud ?
 
-Oui, le même binaire `hoard-server`, sous AGPL-3.0. Il n'y a pas d'édition communautaire allégée ni de fonction réservée à la version hébergée.
+Oui, le même code `hoard-server`, sous AGPL-3.0. La version hébergée ajoute ce dont seul un service public a besoin, comme l'inscription, les offres et la facturation ; tout ce qui trouve, synchronise et versionne vos sauvegardes est commun. Il n'y a pas d'édition communautaire allégée.
 
 ### Où sont réellement stockées les sauvegardes ?
 

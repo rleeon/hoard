@@ -2,7 +2,7 @@
 title: "エミュレーターのセーブをバックアップ・同期する方法（RetroArch、Dolphin、PCSX2）"
 description: "RetroArch、Dolphin、PCSX2、DuckStationなどのエミュレーターのセーブをPCとSteam Deck間でバックアップ・同期。履歴付き、保存場所の一覧も。"
 order: 6
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 エミュレーターのセーブは失われやすいものです。セーブファイルとセーブステートはあちこちのフォルダーに散らばり、再インストールや新しい PC で何年分もの進行が消えることがあります。Hoard はそれらを自動でバックアップし、Steam Deck を含むすべてのマシン間で同期し続けます。
@@ -12,8 +12,10 @@ updated: 2026-10-09
 Hoard は標準的なエミュレーターのセーブファイル（`.srm`、`.sav`、メモリーカード、ゲームごとのセーブフォルダー）とセーブステートを扱います。次のエミュレーターについては、セーブの場所を最初から把握しています。
 
 - **ソニー系:** PCSX2（PS2）、DuckStation（PS1）、PPSSPP（PSP）、RPCS3（PS3）、shadPS4（PS4）、Vita3K（PS Vita）
-- **任天堂系:** Dolphin（ゲームキューブ / Wii）、Cemu（Wii U）、Ryujinx・yuzu・Eden・Suyu・Citron・Sudachi（Switch）、Citra / Azahar（3DS）、melonDS（DS）、mGBA（GBA）、Project64（N64）
+- **任天堂系:** Dolphin（ゲームキューブ / Wii）、Cemu（Wii U）、Ryujinx・yuzu・Eden・Suyu・Citron・Sudachi（Switch）、Citra / Azahar（3DS）、Project64（N64）
 - **その他:** RetroArch（マルチシステム）、xemu（Xbox）、Flycast（ドリームキャスト）
+
+mGBA（GBA）と melonDS（DS）も認識されますが、セーブを ROM の隣に置くため、そのフォルダーは一度だけ自分で追加してください。
 
 Hoard は Ludusavi と同じコミュニティデータベースを使ってセーブフォルダーを探すため、多くのパスは自動で検出されます。独自の場所は、フォルダーを手動で指定できます。
 
@@ -162,4 +164,4 @@ Hoard は両方をバックアップします。ただ、更新済みのマシ�
 
 ### セルフホストするとエミュレーターで何か変わりますか？
 
-いいえ。検出も、バージョンも、同期も同じです。ストレージがあなたのものになるだけです。
+いいえ。検出も同期もほかのゲームと同じです。唯一違う既定の設定、つまりセルフホストのサーバーが古い世代を時間とともに間引くことは、どのゲームにも同じように適用され、オフにもできます。

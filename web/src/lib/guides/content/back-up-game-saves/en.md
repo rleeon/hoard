@@ -2,7 +2,7 @@
 title: "How to back up your game saves automatically"
 description: "Back up PC game saves automatically after every session and sync them to your other PCs and Steam Deck, with version history, so nothing wipes your progress."
 order: 1
-updated: 2026-10-09
+updated: 2026-10-18
 related: restore-a-game-save, sync-game-saves-across-pcs, steam-cloud-alternative, where-are-pc-game-saves-stored, recover-corrupted-game-save
 ---
 
@@ -52,7 +52,7 @@ A save folder is rarely just saves, so Hoard sorts what it finds into three pile
 
 Hoard watches the folder and captures it **after you stop playing**, not while a game is holding files open. If the save was written to seconds ago, it waits until things go quiet: a file being written is not a file worth capturing halfway.
 
-Each capture is a version. Snapshots are stored by content hash, so unchanged files are stored once — ten versions of a 2 GB save cost about 2 GB, not 20.
+Each capture is a version. Snapshots are stored by content hash, so unchanged files are stored once: ten versions of a 2 GB save where little changes between sessions cost about 2 GB, not 20.
 
 ## And in sync on every machine
 
@@ -90,4 +90,4 @@ Hoard tracks the save folder, so mods living elsewhere aren't part of the backup
 
 ### Does self-hosting change how backups work?
 
-Not at all. Same detection, same versions, same automatic capture. Only the storage is yours.
+Barely. Same detection, same automatic capture. The one difference is a default: a self-hosted server thins out old versions over time, which you can switch off in its config.

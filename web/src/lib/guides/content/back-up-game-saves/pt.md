@@ -2,7 +2,7 @@
 title: "Como fazer backup dos teus saves automaticamente"
 description: "Faz backup dos saves do PC automaticamente após cada sessão e sincroniza-os com os teus outros PCs e a Steam Deck, com histórico de versões."
 order: 1
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Perder um save significa perder horas de progresso. O Hoard faz backup dos teus saves de PC automaticamente, guarda um histórico completo de versões para que possas sempre voltar atrás, e mantém cada save sincronizado entre os teus PCs e a Steam Deck, para continuares onde paraste.
@@ -51,7 +51,7 @@ Uma pasta de saves raramente contém só saves, por isso o Hoard separa o que en
 
 O Hoard vigia a pasta e captura-a **depois de parares de jogar**, não enquanto o jogo tem ficheiros abertos. Se o save foi escrito há segundos, espera que as coisas acalmem: um ficheiro a ser escrito não é um ficheiro que valha a pena capturar a meio.
 
-Cada captura é uma versão. Os snapshots são guardados por hash de conteúdo, por isso um ficheiro que não muda é guardado uma só vez: dez versões de um save de 2 GB ocupam cerca de 2 GB, não 20.
+Cada captura é uma versão. Os snapshots são guardados por hash de conteúdo, por isso um ficheiro que não muda é guardado uma só vez: dez versões de um save de 2 GB que muda pouco entre sessões ocupam cerca de 2 GB, não 20.
 
 ## E sincronizados em todas as máquinas
 
@@ -89,4 +89,4 @@ O Hoard segue a pasta de saves, por isso mods que vivam noutro sítio não entra
 
 ### O self-hosting muda a forma como as cópias funcionam?
 
-Nada. A mesma deteção, as mesmas versões, a mesma captura automática. Só o armazenamento é teu.
+Quase nada. A mesma deteção, a mesma captura automática. A única diferença é uma predefinição: um servidor self-hosted vai desbastando as versões antigas com o tempo, e podes desligar isso na configuração dele.

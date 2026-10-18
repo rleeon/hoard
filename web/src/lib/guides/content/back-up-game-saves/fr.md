@@ -2,7 +2,7 @@
 title: "Comment sauvegarder vos parties automatiquement"
 description: "Sauvegardez vos parties PC automatiquement après chaque session et synchronisez-les avec vos autres PC et votre Steam Deck, avec historique des versions."
 order: 1
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Perdre une sauvegarde, c'est perdre des heures de progression. Hoard sauvegarde vos parties PC automatiquement, conserve un historique complet des versions pour que vous puissiez toujours revenir en arrière, et garde chaque sauvegarde synchronisée entre vos PC et votre Steam Deck, pour reprendre là où vous vous êtes arrêté.
@@ -51,7 +51,7 @@ Un dossier de sauvegarde ne contient presque jamais que des sauvegardes, alors H
 
 Hoard surveille le dossier et le capture **après que vous avez arrêté de jouer**, pas pendant qu'un jeu garde des fichiers ouverts. Si la sauvegarde a été écrite il y a quelques secondes, il attend que le calme revienne : un fichier en cours d'écriture ne mérite pas d'être capturé à moitié.
 
-Chaque capture est une version. Les instantanés sont stockés par empreinte de contenu : un fichier inchangé n'est stocké qu'une fois — dix versions d'une sauvegarde de 2 Go coûtent environ 2 Go, pas 20.
+Chaque capture est une version. Les instantanés sont stockés par empreinte de contenu : un fichier inchangé n'est stocké qu'une fois, et dix versions d'une sauvegarde de 2 Go qui change peu d'une session à l'autre coûtent environ 2 Go, pas 20.
 
 ## Et synchronisées sur toutes vos machines
 
@@ -89,4 +89,4 @@ Hoard suit le dossier de sauvegarde : les mods rangés ailleurs ne font pas part
 
 ### L'auto-hébergement change-t-il quelque chose aux sauvegardes ?
 
-Rien du tout. Même détection, mêmes versions, même capture automatique. Seul le stockage est à vous.
+À peine. Même détection, même capture automatique. La seule différence est un réglage par défaut : un serveur auto-hébergé élague les anciennes versions avec le temps, ce que vous pouvez désactiver dans sa configuration.

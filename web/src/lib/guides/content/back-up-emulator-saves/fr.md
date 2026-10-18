@@ -2,7 +2,7 @@
 title: "Comment sauvegarder et synchroniser les sauvegardes d'émulateur (RetroArch, Dolphin, PCSX2)"
 description: "Sauvegardez et synchronisez vos sauvegardes d'émulateur entre PC et Steam Deck : RetroArch, Dolphin, PCSX2, DuckStation, avec historique et emplacements."
 order: 6
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Les sauvegardes d'émulateur se perdent facilement : fichiers de sauvegarde et save states vivent dans des dossiers éparpillés, et une réinstallation ou un nouveau PC peut effacer des années de progression. Hoard les sauvegarde automatiquement et les garde synchronisés entre vos machines, Steam Deck compris.
@@ -12,8 +12,10 @@ Les sauvegardes d'émulateur se perdent facilement : fichiers de sauvegarde et s
 Hoard gère les fichiers de sauvegarde d'émulateur standard (`.srm`, `.sav`, cartes mémoire, dossiers de sauvegarde par jeu) et les save states. Il sait d'office où ces émulateurs rangent leurs sauvegardes :
 
 - **Sony :** PCSX2 (PS2), DuckStation (PS1), PPSSPP (PSP), RPCS3 (PS3), shadPS4 (PS4), Vita3K (PS Vita)
-- **Nintendo :** Dolphin (GameCube / Wii), Cemu (Wii U), Ryujinx, yuzu, Eden, Suyu, Citron et Sudachi (Switch), Citra / Azahar (3DS), melonDS (DS), mGBA (GBA), Project64 (N64)
+- **Nintendo :** Dolphin (GameCube / Wii), Cemu (Wii U), Ryujinx, yuzu, Eden, Suyu, Citron et Sudachi (Switch), Citra / Azahar (3DS), Project64 (N64)
 - **Autres :** RetroArch (multisystème), xemu (Xbox), Flycast (Dreamcast)
+
+mGBA (GBA) et melonDS (DS) sont reconnus aussi, mais ils rangent les sauvegardes à côté de la ROM : ce dossier-là, vous l'ajoutez une fois vous-même.
 
 Comme Hoard localise les dossiers de sauvegarde avec la même base de données communautaire que Ludusavi, beaucoup de chemins sont détectés automatiquement. Pour un emplacement personnalisé, vous pouvez indiquer un dossier à la main.
 
@@ -162,4 +164,4 @@ Très probablement. La détection couvre automatiquement les plus courants, et v
 
 ### L'auto-hébergement change-t-il quelque chose pour les émulateurs ?
 
-Non. Même détection, mêmes versions, même synchronisation. Seul le stockage vous appartient.
+Non. Même détection et même synchronisation que pour n'importe quel autre jeu. Le seul réglage par défaut qui diffère, un serveur auto-hébergé qui élague les anciennes versions avec le temps, s'applique à tous les jeux de la même façon et peut être désactivé.

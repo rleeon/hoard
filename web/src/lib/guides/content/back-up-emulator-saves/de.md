@@ -2,7 +2,7 @@
 title: "So sicherst und synchronisierst du Emulator-Spielstände (RetroArch, Dolphin, PCSX2)"
 description: "Emulator-Spielstände zwischen PCs und Steam Deck sichern und syncen: RetroArch, Dolphin, PCSX2, DuckStation und mehr, mit Verlauf und allen Speicherorten."
 order: 6
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Emulator-Spielstände gehen leicht verloren: Speicherdateien und Savestates liegen in verstreuten Ordnern, und eine Neuinstallation oder ein neuer PC kann Jahre an Fortschritt löschen. Hoard sichert sie automatisch und hält sie zwischen deinen Rechnern synchron, Steam Deck eingeschlossen.
@@ -12,8 +12,10 @@ Emulator-Spielstände gehen leicht verloren: Speicherdateien und Savestates lieg
 Hoard verarbeitet die üblichen Emulator-Speicherdateien (`.srm`, `.sav`, Memory Cards, Speicherordner pro Spiel) und Savestates. Wo diese Emulatoren speichern, weiß es von Haus aus:
 
 - **Sony:** PCSX2 (PS2), DuckStation (PS1), PPSSPP (PSP), RPCS3 (PS3), shadPS4 (PS4), Vita3K (PS Vita)
-- **Nintendo:** Dolphin (GameCube / Wii), Cemu (Wii U), Ryujinx, yuzu, Eden, Suyu, Citron und Sudachi (Switch), Citra / Azahar (3DS), melonDS (DS), mGBA (GBA), Project64 (N64)
+- **Nintendo:** Dolphin (GameCube / Wii), Cemu (Wii U), Ryujinx, yuzu, Eden, Suyu, Citron und Sudachi (Switch), Citra / Azahar (3DS), Project64 (N64)
 - **Weitere:** RetroArch (Multisystem), xemu (Xbox), Flycast (Dreamcast)
+
+mGBA (GBA) und melonDS (DS) werden ebenfalls erkannt, legen ihre Spielstände aber neben dem ROM ab, deshalb fügst du diesen Ordner einmal selbst hinzu.
 
 Weil Hoard Speicherordner mit derselben Community-Datenbank findet, auf der auch Ludusavi aufbaut, werden viele Pfade automatisch erkannt. Für alles Eigene kannst du Hoard von Hand auf einen Ordner zeigen lassen.
 
@@ -162,4 +164,4 @@ Höchstwahrscheinlich. Die Erkennung deckt die gängigen automatisch ab, und all
 
 ### Ändert Selbst-Hosting etwas für Emulatoren?
 
-Nein. Gleiche Erkennung, gleiche Versionen, gleiche Synchronisierung. Nur der Speicher gehört dir.
+Nein. Gleiche Erkennung und gleiche Synchronisierung wie bei jedem anderen Spiel. Die einzige abweichende Voreinstellung, dass ein selbst gehosteter Server alte Versionen mit der Zeit ausdünnt, gilt für alle Spiele gleich und lässt sich abschalten.

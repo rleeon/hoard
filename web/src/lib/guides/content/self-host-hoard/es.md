@@ -3,7 +3,7 @@ title: "Cómo autoalojar Hoard con Docker (self-hosted)"
 description: "Monta tu servidor de Hoard con Docker Compose y sincroniza tus partidas entre todos tus equipos: gratis, abierto, sin cuenta con nosotros y sin cupo."
 order: 0
 featured: true
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Hoard es de código abierto y se puede autoalojar. En lugar de usar Hoard Cloud, puedes ejecutar el mismo `hoard-server` en tu propia máquina y apuntar todos tus dispositivos a él: sin cuenta y sin más límite de espacio que el disco que le des. Esta guía deja un servidor funcionando con Docker en pocos minutos.
@@ -12,7 +12,7 @@ Hoard es de código abierto y se puede autoalojar. En lugar de usar Hoard Cloud,
 
 - **Control total.** Tus partidas viven en hardware que tú controlas, no en la nube de otro.
 - **Sin cuota.** El espacio solo lo limita tu propio disco.
-- **La misma app, las mismas funciones.** El historial versionado y la sincronización en segundo plano funcionan igual que con Hoard Cloud; solo cambia el backend.
+- **La misma app, las mismas funciones.** La sincronización en segundo plano y el historial versionado funcionan igual que con Hoard Cloud, con un ajuste por defecto propio: el servidor va podando las versiones antiguas con el tiempo (lo tienes más abajo).
 - **Código abierto.** Puedes leer, auditar y modificar el servidor.
 
 Esta es la diferencia clave frente a herramientas como [Ludusavi](/guides/ludusavi-alternative): Ludusavi es excelente para copias locales y para usar tu propia nube vía Rclone, pero la sincronización la montas tú. Hoard te da un servidor de sincronización gestionado que arrancas una vez y al que se conectan todos los dispositivos.
@@ -103,6 +103,12 @@ Si te quedas en la primera, el contenedor viejo sigue corriendo intacto: `/v1/he
 
 `hoard-server upgrade` es sólo para la instalación bare metal. Dentro de un contenedor se niega a propósito —el cambio de binario no sobreviviría al siguiente `docker compose up -d`— e imprime los dos comandos de arriba; ejecuta `docker compose exec server hoard-server upgrade` si quieres verlo decirlo. Las migraciones de la base de datos las aplica el servidor al arrancar, así que nunca hay un paso aparte para ellas.
 
+## Cuánto historial guarda
+
+Hoard Cloud guarda todas las versiones. Un servidor autoalojado, tal como viene, va podando las antiguas: el historial reciente se queda completo y el antiguo se vuelve más espaciado. Con el ajuste por defecto conserva las 15 versiones más recientes de cada juego y, después, la última de cada una de las 19 horas, los 11 días y las 6 semanas más recientes en las que jugaste. Las versiones más antiguas se eliminan, salvo las fijadas y la más reciente de cada juego, y una versión eliminada pasa 30 días en la papelera del servidor antes de borrarse del todo.
+
+Para conservarlo todo, pon `snapshot_pruning = false` en la sección `[retention]` de `config.toml` (en `./config/`, junto al fichero de compose) y reinicia el servidor (`docker compose restart` con Docker). En la misma sección, `data_saving` mueve el equilibrio: `0.0` lo conserva casi todo y `1.0` solo lo esencial.
+
 ## Llevarlo a producción
 
 Para cualquier cosa expuesta fuera de tu red local, termina el TLS en un proxy inverso (Caddy, nginx o Traefik). ¿Prefieres bare metal? El repositorio también incluye un script de instalación con `systemd` y un comando `hoard-server upgrade` que cambia el binario de forma atómica sin cortar una sincronización en curso.
@@ -121,7 +127,7 @@ No. La aplicación de escritorio habla con la dirección de servidor que tú le 
 
 ### ¿El servidor autoalojado es el mismo código que Hoard Cloud?
 
-Sí, el mismo binario `hoard-server`, bajo AGPL-3.0. No hay una edición comunitaria recortada ni funciones reservadas para la versión alojada.
+Sí, el mismo código de `hoard-server`, bajo AGPL-3.0. La versión alojada añade lo que solo necesita un servicio público, como el registro, los planes y los pagos; todo lo que encuentra, sincroniza y versiona tus partidas es común. No hay una edición comunitaria recortada.
 
 ### ¿Dónde se guardan realmente las partidas?
 

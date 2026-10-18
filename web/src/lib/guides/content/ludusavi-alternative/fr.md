@@ -2,7 +2,7 @@
 title: "Alternative à Ludusavi : synchronisation cloud automatique de vos parties"
 description: "Ludusavi excelle en sauvegarde locale. Hoard ajoute la synchro automatique entre PC et Steam Deck avec historique, sur la même base de données."
 order: 5
-updated: 2026-10-01
+updated: 2026-10-18
 ---
 
 Si vous cherchez un moyen de sauvegarder et synchroniser vos parties, vous avez sans doute trouvé **Ludusavi** — et il est excellent. Ce guide est une comparaison honnête pour vous aider à choisir le bon outil, et explique où Hoard s'inscrit si vous voulez une synchro cloud automatique entre machines.
@@ -74,7 +74,7 @@ Il n'y a pas d'importateur, et c'est volontaire. Les étapes :
 
 **Les sauvegardes Steam sont un dossier plus bas qu'on ne croit.** Pour les jeux Steam, Hoard suit `<AppID>/remote/` dans `userdata`, pas le dossier au-dessus. Le dossier parent contient aussi `remotecache.vdf` ainsi que des fichiers de succès et de temps de jeu, qui diffèrent légitimement d'une machine à l'autre. Synchronisez le parent et chaque lancement ressemble à un conflit alors qu'aucune sauvegarde n'a bougé. C'est la raison la plus fréquente pour laquelle un montage maison entre Steam Deck et PC de bureau finit par se battre contre lui-même.
 
-**Les versions coûtent peu.** Les instantanés sont stockés par empreinte de contenu : un fichier inchangé n'est stocké qu'une fois. Dix versions d'une sauvegarde de 2 Go coûtent environ 2 Go, pas 20 — c'est ce qui rend viable de garder tout l'historique au lieu de l'élaguer.
+**Les versions coûtent peu.** Les instantanés sont stockés par empreinte de contenu : un fichier inchangé n'est stocké qu'une fois. Dix versions d'une sauvegarde de 2 Go qui change peu d'une session à l'autre coûtent environ 2 Go, pas 20, et c'est pourquoi Hoard Cloud peut garder tout l'historique au lieu de l'élaguer.
 
 ## Ce que l'auto-hébergement veut vraiment dire
 
@@ -83,7 +83,7 @@ C'est le point sur lequel presque toutes les comparaisons se trompent au sujet d
 - **Hoard Cloud** est l'option gérée : vous vous connectez, et vos sauvegardes sont stockées sur nos serveurs, dans l'UE.
 - **L'auto-hébergement est entièrement le vôtre.** Vous faites tourner `hoard-server` sur votre PC ou votre NAS, et vos sauvegardes vont de votre machine à votre disque. Il n'y a **aucun compte chez nous, aucune télémétrie vers nous, aucun quota et aucun relais** : rien ne passe par nos serveurs, puisque rien de chez nous n'est sur le chemin. Nous ne pouvons voir ni une sauvegarde, ni un nom de jeu, ni une adresse e-mail, pour la simple raison que rien de tout cela ne nous parvient. Si Hoard Cloud disparaissait demain, une installation auto-hébergée continuerait à l'identique.
 
-Le même programme, la même détection, le même historique de versions. La seule chose qui change, c'est à qui appartient le stockage.
+Le même programme, la même détection. Ce qui change, c'est à qui appartient le stockage, plus un réglage par défaut : un serveur auto-hébergé élague les anciennes versions avec le temps, sauf si vous le désactivez.
 
 ## Lequel choisir ?
 
@@ -118,7 +118,7 @@ Non. C'est la principale différence pratique : avec Hoard Cloud, le stockage es
 
 ### L'auto-hébergement envoie-t-il quoi que ce soit à Hoard ?
 
-Non. En mode auto-hébergé il n'y a aucun compte chez nous ni aucune télémétrie vers nous : vos sauvegardes, vos utilisateurs et vos journaux vivent sur votre propre serveur et ne touchent jamais le nôtre. C'est tout l'intérêt de ce mode, et c'est pourquoi le serveur est le même binaire open source que celui que nous faisons tourner, pas une version allégée.
+Non. En mode auto-hébergé il n'y a aucun compte chez nous ni aucune télémétrie vers nous : vos sauvegardes, vos utilisateurs et vos journaux vivent sur votre propre serveur et ne touchent jamais le nôtre. C'est tout l'intérêt de ce mode, et c'est pourquoi le serveur est construit à partir du même code open source que celui que nous faisons tourner, pas d'une version allégée.
 
 ### Ludusavi est-il sûr ?
 

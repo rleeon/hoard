@@ -2,7 +2,7 @@
 title: "Come ripristinare un vecchio salvataggio"
 description: "Salvataggio corrotto, mod difettosa o una scelta di cui ti penti? Torna a una versione precedente, passo dopo passo, senza perdere quella attuale."
 order: 3
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Una brutta decisione nel gioco, un file corrotto o una mod che rompe tutto — a volte devi solo tornare indietro. Poiché Hoard conserva una cronologia completa delle versioni di ogni salvataggio, ripristinarne uno precedente richiede pochi secondi. E poiché quella cronologia sta sul server ed è condivisa da tutte le tue macchine, puoi tornare indietro da qualsiasi PC o Steam Deck, non solo da quello dove è nato il problema.
@@ -54,7 +54,7 @@ Solo dopo che il salvataggio attuale è stato catturato come nuova versione. Se 
 
 ### Fin dove arriva la cronologia?
 
-Fin dove lo consente il limite di versioni del tuo piano, e una versione che fissi non viene mai eliminata per fare spazio. Su un server self-hosted l'unico limite è il tuo disco.
+Su Hoard Cloud, fino all'inizio: nessun piano ha un limite di versioni. L'unico tetto è quello che imposti tu, **Max versioni per gioco** nel Riepilogo, e nemmeno quello elimina mai le versioni fissate o la più recente di un gioco. Un server self-hosted, per impostazione predefinita, sfoltisce le versioni vecchie: la cronologia recente resta completa e quella più vecchia si dirada. Puoi disattivarlo nella sua configurazione per tenere tutto.
 
 ### Posso ripristinare su un PC dove il gioco non è ancora installato?
 
@@ -66,4 +66,4 @@ Sì. Lo stesso gioco tiene il salvataggio in posti diversi sui due — sulla Dec
 
 ### Il ripristino cambia su un server self-hosted?
 
-No. Stessa app, stessa cronologia, stesso ripristino in un clic. L'unica cosa tua è lo spazio di archiviazione.
+Quasi per niente. Stessa app, stesso ripristino in un clic. La differenza è quanto indietro puoi andare: per impostazione predefinita un server self-hosted sfoltisce le versioni vecchie col tempo, e puoi disattivarlo nella sua configurazione.

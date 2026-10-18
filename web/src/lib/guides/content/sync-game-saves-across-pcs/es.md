@@ -2,7 +2,7 @@
 title: "Cómo sincronizar partidas guardadas entre varios PC"
 description: "Juega en tu sobremesa, tu portátil y tu Steam Deck sin perder progreso: sincroniza tus partidas entre PC automáticamente, con historial. Paso a paso."
 order: 2
-updated: 2026-10-01
+updated: 2026-10-18
 ---
 
 Si juegas en más de un ordenador —un sobremesa en casa y un portátil de viaje— Hoard mantiene tus partidas sincronizadas para que siempre retomes donde lo dejaste.
@@ -26,7 +26,7 @@ Hoard convierte eso en sincronización gestionada. Usa los mismos datos comunita
 
 ## Evitar conflictos
 
-Hoard tiene en cuenta los conflictos: compara las fechas de modificación y guarda una copia local de cualquier partida que reemplaza, así que una sincronización nunca destruye progreso en silencio. Si un juego sigue abierto o la partida se tocó hace pocos minutos, Hoard espera.
+Hoard tiene en cuenta los conflictos: compara las fechas de modificación y guarda una copia local de cualquier partida que reemplaza, así que una sincronización nunca destruye progreso en silencio. Si un juego sigue abierto o la partida se tocó hace pocos segundos, Hoard espera.
 
 ## Steam Deck y sobremesa
 
@@ -51,7 +51,7 @@ A Hoard le da igual quién publicara el juego o de dónde venga: rastrea la carp
 
 Juegas en el portátil sin dejar que el sobremesa termine de sincronizar y tienes el problema clásico: dos partidas, las dos más nuevas que la última versión común.
 
-Hoard nunca sobrescribe a ciegas. Compara fechas de modificación, guarda una copia local de lo que reemplaza, y espera mientras haya un juego abierto o la partida se haya tocado en los últimos minutos: un fichero que se está escribiendo no es un fichero que quieras subir a medias. Todas las versiones anteriores siguen en el historial de la nube, así que equivocarte de versión cuesta dos clics y no un fin de semana.
+Hoard nunca sobrescribe a ciegas. Compara fechas de modificación, guarda una copia local de lo que reemplaza, y espera mientras haya un juego abierto o la partida se haya tocado en los últimos segundos: un fichero que se está escribiendo no es un fichero que quieras subir a medias. Todas las versiones anteriores siguen en el historial de la nube, así que equivocarte de versión cuesta dos clics y no un fin de semana.
 
 El límite honesto: **Hoard no fusiona dos partidas divergentes.** Ninguna herramienta puede — un fichero de partida es opaco, y no existe una forma correcta de mezclar dos tardes distintas de juego. Lo que te da a cambio es todas las versiones, en todas las máquinas, y la posibilidad de elegir.
 
@@ -74,7 +74,7 @@ Conviene decirlo explícitamente, porque es la parte que casi todas las comparat
 - **Hoard Cloud** es la opción gestionada: inicias sesión y tus partidas se guardan en nuestros servidores, en la UE.
 - **Autoalojarse es tuyo por completo.** Levantas `hoard-server` en tu PC o en tu NAS y tus máquinas sincronizan a través de él. **No hay cuenta con nosotros, ni telemetría hacia nosotros, ni cupo, ni relé**: no pasa nada por nuestros servidores, porque no hay nada nuestro en el camino. Mira [cómo autoalojar Hoard](/guides/self-host-hoard).
 
-El mismo programa, la misma detección, el mismo historial de versiones. Lo único que cambia es de quién es el almacenamiento.
+El mismo programa, la misma detección. Lo que cambia es de quién es el almacenamiento, y un ajuste por defecto: un servidor autoalojado va podando las versiones antiguas con el tiempo, salvo que lo desactives.
 
 ## Consejo
 

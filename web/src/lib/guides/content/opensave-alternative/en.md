@@ -2,7 +2,7 @@
 title: "OpenSave alternative: peer-to-peer or a server you own"
 description: "OpenSave syncs saves peer-to-peer; Hoard syncs through a server, ours or yours, and keeps every version. An honest look at when each design wins."
 order: 8
-updated: 2026-09-01
+updated: 2026-10-18
 related: game-save-sync-comparison, self-host-hoard, syncthing-game-saves
 ---
 
@@ -75,4 +75,4 @@ Not inherently — copying a file to another machine gives you the current state
 
 ### Is Hoard open source too?
 
-Yes, AGPL-3.0, server included. The self-hosted server is the same binary we run, not a cut-down edition.
+Yes, AGPL-3.0, server included. The self-hosted server is built from the same code we run, not a cut-down edition.

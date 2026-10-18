@@ -2,7 +2,7 @@
 title: "Alternativa a Steam Cloud: sincronizza e salva i salvataggi che Steam non copre"
 description: "Steam Cloud salta molti giochi e non tiene la cronologia. Sincronizza e fai il backup di ogni gioco, da qualsiasi launcher, tra PC e Steam Deck, con versioni."
 order: 7
-updated: 2026-10-09
+updated: 2026-10-18
 ---
 
 Steam Cloud fa molto bene il compito ristretto che ha, e quasi tutti ne scoprono i limiti proprio il giorno in cui perdono qualcosa. Questa guida spiega dove sono quei limiti e cosa fare con i giochi che restano fuori.
@@ -33,7 +33,7 @@ Hoard sorveglia la cartella in cui il gioco scrive davvero e cattura una **nuova
 - **Sincronizza tra le tue macchine** allo stesso modo, Steam Deck e desktop inclusi.
 - **Niente viene distrutto in silenzio.** Il salvataggio sostituito viene catturato prima, quindi anche un ripristino sbagliato è reversibile.
 
-Gli snapshot sono archiviati per hash del contenuto, così dieci versioni di un salvataggio da 2 GB occupano circa 2 GB e non 20: è questo a rendere pratico conservare tutta la cronologia.
+Gli snapshot sono archiviati per hash del contenuto, così dieci versioni di un salvataggio da 2 GB che cambia poco tra una sessione e l'altra occupano circa 2 GB e non 20: è questo a rendere pratico conservare tutta la cronologia.
 
 ## Usarli insieme
 
@@ -49,7 +49,7 @@ Vale la pena dirlo chiaramente: se tutti i giochi a cui giochi sono giochi Steam
 
 Se quello che ti attira è non dipendere da nessuna piattaforma, Hoard può girare interamente sul tuo hardware: `hoard-server` su un PC o su un NAS, e i salvataggi vanno dalla tua macchina al tuo disco. **Nessun account con noi, nessuna telemetria verso di noi e nessun relay**: non passa nulla dai nostri server, perché sul percorso non c'è niente di nostro. Vedi [come ospitare Hoard da solo](/guides/self-host-hoard).
 
-Stesso programma, stesso rilevamento, stessa cronologia. L'unica cosa che cambia è di chi è lo spazio di archiviazione.
+Stesso programma, stesso rilevamento. Cambia di chi è lo spazio di archiviazione, più un'impostazione predefinita: un server self-hosted sfoltisce le versioni vecchie col tempo, a meno che tu non lo disattivi.
 
 <!-- faq -->
 

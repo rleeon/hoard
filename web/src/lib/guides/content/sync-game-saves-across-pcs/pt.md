@@ -2,7 +2,7 @@
 title: "Como sincronizar saves entre vários PCs"
 description: "Joga no fixo, no portátil e na Steam Deck sem perder progresso: sincroniza os saves entre PCs automaticamente, com histórico. Passo a passo."
 order: 2
-updated: 2026-10-01
+updated: 2026-10-18
 ---
 
 Se jogas em mais de um computador — um fixo em casa e um portátil em viagem — o Hoard mantém os teus saves sincronizados para que retomes sempre onde paraste.
@@ -26,7 +26,7 @@ O Hoard transforma isso em sincronização gerida. Usa os mesmos dados comunitá
 
 ## Evitar conflitos
 
-O Hoard tem em conta os conflitos: compara as datas de modificação e guarda uma cópia local de qualquer save substituído, por isso uma sincronização nunca destrói progresso em silêncio. Se um jogo ainda estiver aberto ou um save foi tocado nos últimos minutos, o Hoard espera.
+O Hoard tem em conta os conflitos: compara as datas de modificação e guarda uma cópia local de qualquer save substituído, por isso uma sincronização nunca destrói progresso em silêncio. Se um jogo ainda estiver aberto ou um save foi tocado nos últimos segundos, o Hoard espera.
 
 ## Steam Deck e desktop
 
@@ -51,7 +51,7 @@ Ao Hoard tanto lhe faz quem publicou o jogo ou de onde veio: segue a pasta que m
 
 Jogas no portátil sem deixar o fixo acabar de sincronizar e tens o problema clássico: dois saves, ambos mais recentes do que a última versão comum.
 
-O Hoard nunca escreve por cima às cegas. Compara datas de modificação, guarda uma cópia local do que substitui, e espera enquanto houver um jogo aberto ou o save tiver sido tocado nos últimos minutos: um ficheiro a ser escrito não é um ficheiro que queiras enviar a meio. Todas as versões anteriores ficam no histórico da nuvem, por isso enganares-te na versão custa dois cliques e não um fim de semana.
+O Hoard nunca escreve por cima às cegas. Compara datas de modificação, guarda uma cópia local do que substitui, e espera enquanto houver um jogo aberto ou o save tiver sido tocado nos últimos segundos: um ficheiro a ser escrito não é um ficheiro que queiras enviar a meio. Todas as versões anteriores ficam no histórico da nuvem, por isso enganares-te na versão custa dois cliques e não um fim de semana.
 
 O limite honesto: **o Hoard não funde dois saves divergentes.** Nenhuma ferramenta o consegue — um ficheiro de save é opaco, e não há forma correta de misturar duas tardes de jogo diferentes. O que tens em troca é todas as versões, em todas as máquinas, e a possibilidade de escolher.
 
@@ -74,7 +74,7 @@ Vale a pena dizê-lo de forma explícita, porque é o ponto em que quase todas a
 - **O Hoard Cloud** é a opção gerida: inicias sessão e os teus saves ficam nos nossos servidores, na UE.
 - **O self-hosting é inteiramente teu.** Corres o `hoard-server` no teu PC ou no teu NAS e as tuas máquinas sincronizam através dele. **Não há conta connosco, nem telemetria para nós, nem quota, nem retransmissão**: não passa nada pelos nossos servidores, porque não há nada nosso no caminho. Vê [como alojar o Hoard tu mesmo](/guides/self-host-hoard).
 
-O mesmo programa, a mesma deteção, o mesmo histórico de versões. A única coisa que muda é de quem é o armazenamento.
+O mesmo programa, a mesma deteção. O que muda é de quem é o armazenamento, e uma predefinição: um servidor self-hosted vai desbastando as versões antigas com o tempo, a não ser que o desligues.
 
 ## Dica
 

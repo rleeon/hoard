@@ -2,7 +2,7 @@
 title: "How to sync game saves across multiple PCs"
 description: "Play on your desktop, laptop and Steam Deck without losing progress: sync game saves between PCs automatically, with version history. Step by step."
 order: 2
-updated: 2026-10-01
+updated: 2026-10-18
 related: steam-cloud-alternative, back-up-emulator-saves, self-host-hoard, sync-saves-steam-deck-pc, transfer-game-saves-to-new-pc, dual-boot-game-saves, rog-ally-legion-go-save-sync
 ---
 
@@ -27,7 +27,7 @@ Hoard turns that into managed sync. It uses the same community save-location dat
 
 ## Avoiding conflicts
 
-Hoard is conflict-aware: it compares modification times and keeps a local copy of any replaced save, so a sync never silently destroys progress. If a game is still running or a save was touched in the last few minutes, Hoard waits.
+Hoard is conflict-aware: it compares modification times and keeps a local copy of any replaced save, so a sync never silently destroys progress. If a game is still running or a save was touched in the last few seconds, Hoard waits.
 
 ## Steam Deck and desktop
 
@@ -52,7 +52,7 @@ Hoard doesn't care who published a game or where it came from. It tracks the fol
 
 Play on the laptop without letting the desktop finish syncing and you get the classic problem: two saves, both newer than the last common version.
 
-Hoard never overwrites blind. It compares modification times, keeps a local copy of whatever it replaces, and holds off while a game is running or the save was touched in the last few minutes — a save file being written is not a save you want to upload halfway. Every earlier version stays in the cloud history, so picking the wrong one costs you two clicks, not a weekend.
+Hoard never overwrites blind. It compares modification times, keeps a local copy of whatever it replaces, and holds off while a game is running or the save was touched in the last few seconds — a save file being written is not a save you want to upload halfway. Every earlier version stays in the cloud history, so picking the wrong one costs you two clicks, not a weekend.
 
 The honest limit: **Hoard does not merge two divergent saves.** No tool can — a save file is opaque, and there is no correct way to blend two different afternoons of play. What you get instead is every version, on every machine, and the ability to choose.
 
@@ -75,7 +75,7 @@ Worth being explicit, because it's the part most comparisons get wrong. There ar
 - **Hoard Cloud** is the managed option: you sign in, and your saves are stored on our servers, in the EU.
 - **Self-hosting is entirely yours.** You run `hoard-server` on your own PC or NAS and your machines sync through it. There is **no account with us, no telemetry to us, no quota and no relay** — nothing passes through our servers, because there is nothing of ours in the path. See [how to self-host Hoard](/guides/self-host-hoard).
 
-Same program, same detection, same version history. The only thing that changes is who owns the storage.
+Same program, same detection. What changes is who owns the storage, plus one default: a self-hosted server thins out old versions over time unless you switch that off.
 
 ## Tip
 

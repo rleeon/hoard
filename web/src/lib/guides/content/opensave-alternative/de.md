@@ -2,7 +2,7 @@
 title: "OpenSave-Alternative: direkt zwischen Geräten oder über einen eigenen Server"
 description: "OpenSave synct Peer-to-Peer, Hoard über einen Server, unseren oder deinen, und behält jede Version. Ein ehrlicher Blick, wann welches Design gewinnt."
 order: 8
-updated: 2026-09-01
+updated: 2026-10-18
 ---
 
 Beide Werkzeuge lösen dasselbe Problem und sind sich über die Architektur uneinig, und genau das ist das Einzige, was einen Vergleich lohnt. Diese Seite legt die zwei Ansätze nebeneinander, samt der Fälle, in denen der andere die bessere Antwort ist.
@@ -74,4 +74,4 @@ Von sich aus nicht — eine Datei auf eine andere Maschine zu kopieren gibt dir 
 
 ### Ist Hoard ebenfalls Open Source?
 
-Ja, AGPL-3.0, Server inklusive. Der selbst gehostete Server ist dasselbe Binary, das wir betreiben, keine abgespeckte Edition.
+Ja, AGPL-3.0, Server inklusive. Der selbst gehostete Server entsteht aus demselben Code, den wir betreiben, keine abgespeckte Edition.

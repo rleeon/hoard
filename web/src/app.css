@@ -203,10 +203,15 @@ h3 {
     0 0 0 4px rgba(52, 211, 153, 0.55);
 }
 
+/* `data-motion="keep"` takes a subtree out of the blanket rule, on the owner's
+   call: the nav bar. On Windows this query is on for anyone who turned off
+   "animation effects", usually for performance, and the bar's drop, drag and
+   fades jumped straight to their end there. `:where` keeps the rule at zero
+   specificity, so the exceptions further down still win. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :where(*:not([data-motion='keep'], [data-motion='keep'] *)),
+  :where(*:not([data-motion='keep'], [data-motion='keep'] *))::before,
+  :where(*:not([data-motion='keep'], [data-motion='keep'] *))::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
