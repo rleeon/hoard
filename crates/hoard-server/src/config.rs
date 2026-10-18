@@ -418,6 +418,13 @@ pub struct CloudConfig {
     /// HOARD__CLOUD__BLOCKED_SAVES=...`.
     #[serde(default)]
     pub blocked_saves: String,
+    /// Blobs uploaded as zstd patches against an earlier blob of the account.
+    /// Off until the app that decodes them is out; on, only for accounts whose
+    /// devices are all at `patch_min_app_version` or later.
+    #[serde(default)]
+    pub blob_patch: bool,
+    #[serde(default = "default_patch_min_app_version")]
+    pub patch_min_app_version: String,
     /// At-rest zstd compression of content-addressed blobs (cost saver:
     /// R2 bills physical bytes, quota keeps charging raw bytes). Off by
     /// default; enable in dev first. Fields from `HOARD__CLOUD__COMPRESSION__*`.
@@ -443,6 +450,10 @@ pub struct CloudConfig {
 
 fn default_memwatch_trip_fraction() -> f64 {
     0.94
+}
+
+fn default_patch_min_app_version() -> String {
+    "1.3.0".to_string()
 }
 
 /// Discord status-channel settings. Fields usually come from

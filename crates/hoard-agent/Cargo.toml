@@ -13,6 +13,7 @@ path = "src/lib.rs"
 [dependencies]
 hoard-core = { path = "../hoard-core" }
 hoard-manifest = { path = "../hoard-manifest" }
+hoard-deflate = { path = "../hoard-deflate" }
 
 tokio = { workspace = true }
 reqwest = { workspace = true }
@@ -31,6 +32,7 @@ tokio-util = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
 sha2 = { workspace = true }
+zstd = { workspace = true }
 hex = { workspace = true }
 uuid = { workspace = true }
 base64 = { workspace = true }
@@ -110,6 +112,7 @@ windows-sys = { version = "0.59", features = [
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
+hoard-deflate = { path = "../hoard-deflate", features = ["testing"] }
 tempfile = { workspace = true }
 # `start_paused` for the upload retry tests: the pacer backoff climbs to
 # seconds, and a suite that actually sleeps through it is a suite nobody runs.

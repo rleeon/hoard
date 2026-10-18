@@ -7,6 +7,7 @@ pub mod compression;
 pub mod config;
 pub mod db;
 pub mod insight;
+pub mod patch;
 pub mod ratelimit;
 pub mod retention;
 pub mod routes;

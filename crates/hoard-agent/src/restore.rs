@@ -186,11 +186,19 @@ const RESTORE_CONCURRENCY: usize = 4;
 const CONCURRENCY_ENV: &str = "HOARD_RESTORE_CONCURRENCY";
 
 fn restore_concurrency() -> usize {
+    concurrency_override().unwrap_or(RESTORE_CONCURRENCY)
+}
+
+/// Blobs under `SMALL_BLOB_BYTES` are pure round trip, so they get a wider window.
+fn small_restore_concurrency() -> usize {
+    concurrency_override().unwrap_or(crate::backup::SMALL_TRANSFER_CONCURRENCY)
+}
+
+fn concurrency_override() -> Option<usize> {
     std::env::var(CONCURRENCY_ENV)
         .ok()
         .and_then(|v| v.trim().parse::<usize>().ok())
         .filter(|n| (1..=64).contains(n))
-        .unwrap_or(RESTORE_CONCURRENCY)
 }
 
 /// Slack factor over the manifest-declared expanded size: enough room for
@@ -854,11 +862,13 @@ async fn build_reuse_index(
     // rather than `buffer_unordered`: results stay in walk order, so when two
     // files share content the index deterministically keeps the first by
     // relative path.
+    let cache = std::sync::Mutex::new(crate::hashcache::HashCache::open(dir));
+    let cache = &cache;
     let mut hash_futs = Vec::with_capacity(candidates.len());
     for f in candidates {
         hash_futs.push(
             async move {
-                match crate::backup::hash_file(&f.absolute_path).await {
+                match crate::hashcache::sha256(cache, &f.relative_path, &f.absolute_path).await {
                     Ok(sha) => Some((sha, f.absolute_path)),
                     Err(e) => {
                         tracing::debug!(
@@ -877,6 +887,9 @@ async fn build_reuse_index(
         .buffered(restore_concurrency())
         .collect()
         .await;
+    if let Ok(c) = cache.lock() {
+        c.save();
+    }
 
     let mut index = ReuseIndex::new();
     for (sha, path) in hashed.into_iter().flatten() {
@@ -1070,12 +1083,31 @@ where
     progress(0, total);
 
     let transfer_started = std::time::Instant::now();
-    let mut fetch_futs = Vec::with_capacity(jobs.len());
+    // Patches apply against a whole copy kept here; big zstd downloads become
+    // one for the next time. Only against a server that takes patches: for
+    // any other the copies would be disk spent on nothing.
+    let store = if client.accepts_patches().await {
+        crate::bases::BaseStore::open()
+    } else {
+        None
+    };
+    let keyframes = std::sync::Mutex::new(crate::bases::Keyframes::open(dest));
+    let patch_gate = tokio::sync::Semaphore::new(1);
+    let mut small_futs = Vec::new();
+    let mut large_futs = Vec::new();
     for ((file, dest_path), planned) in jobs.iter().zip(plan.iter()) {
         let landed = &landed;
         let progress = &progress;
         let options = &options;
-        fetch_futs.push(
+        let store = store.as_ref();
+        let keyframes = &keyframes;
+        let patch_gate = &patch_gate;
+        let queue = if (file.size_bytes.max(0) as u64) < crate::backup::SMALL_BLOB_BYTES {
+            &mut small_futs
+        } else {
+            &mut large_futs
+        };
+        queue.push(
             async move {
                 if let Some(parent) = dest_path.parent() {
                     tokio::fs::create_dir_all(parent)
@@ -1108,9 +1140,30 @@ where
                     }
                 }
 
+                let patch = file
+                    .encoding
+                    .as_deref()
+                    .filter(|e| [crate::delta::ENCODING, crate::delta::INFLATED].contains(e));
+                if let Some(encoding) = patch {
+                    fetch_patch(client, file, encoding, dest_path, store, patch_gate).await?;
+                    let n = file.size_bytes.max(0) as u64;
+                    let done = landed.fetch_add(n, Ordering::Relaxed) + n;
+                    progress(done, total);
+                    apply_manifest_mtime(file, dest_path);
+                    if let (Some(base), Ok(mut kf)) = (&file.base_sha256, keyframes.lock()) {
+                        kf.set(&file.relative_path, base);
+                    }
+                    return Ok::<(u64, Origin), anyhow::Error>((n, Origin::Downloaded));
+                }
+
                 let presigned = file.download.as_ref().ok_or_else(|| {
                     anyhow!("manifest missing download URL for {}", file.relative_path)
                 })?;
+                let size = file.size_bytes.max(0) as u64;
+                let keep_copy = store.is_some()
+                    && file.encoding.as_deref() == Some("zstd")
+                    && (crate::bases::PATCH_MIN_BYTES..=crate::bases::PATCH_MAX_BYTES)
+                        .contains(&size);
                 // R2/Cloudflare occasionally truncates a blob mid-stream ("end of
                 // file before message length reached"). Failing the whole restore
                 // over one dropped connection is a brutal retry: the next
@@ -1122,11 +1175,20 @@ where
                 let mut attempt = 0u32;
                 loop {
                     attempt += 1;
+                    // The encoded bytes go to the store as they arrive, straight
+                    // to disk: a 500 MB save is never held to keep a copy.
+                    let tee = store
+                        .filter(|_| keep_copy)
+                        .map(|st| st.incoming(&file.sha256));
                     let fetch = async {
                         let resp = client.get_presigned(presigned).await?;
                         let zstd = file.encoding.as_deref() == Some("zstd");
-                        let body =
-                            StreamReader::new(resp.bytes_stream().map_err(std::io::Error::other));
+                        let body = Capture {
+                            inner: StreamReader::new(
+                                resp.bytes_stream().map_err(std::io::Error::other),
+                            ),
+                            into: tee.as_ref().and_then(|p| std::fs::File::create(p).ok()),
+                        };
                         // The cap is only for the compressed path: there a small
                         // body can become a large file, and `size_bytes` says
                         // exactly how large it is allowed to get. Raw bodies are
@@ -1145,8 +1207,8 @@ where
                             },
                         )
                         .await?;
-                        if let Some(got) = got {
-                            if got != file.sha256 {
+                        if let Some(got) = &got {
+                            if *got != file.sha256 {
                                 bail!(
                                     "sha256 mismatch for {}: expected {}, got {}",
                                     file.relative_path,
@@ -1155,9 +1217,35 @@ where
                                 );
                             }
                         }
+                        // Only a verified download is worth keeping as a base.
+                        let copied = tee
+                            .as_ref()
+                            .and_then(|p| std::fs::metadata(p).ok())
+                            .is_some_and(|m| m.len() > 0);
+                        if let (Some(st), Some(p), Some(_), true) = (store, &tee, &got, copied) {
+                            st.adopt(&file.sha256, p);
+                            if let Ok(mut kf) = keyframes.lock() {
+                                kf.set(&file.relative_path, &file.sha256);
+                            }
+                        } else if let (Some(st), Some(_), false) = (store, &got, zstd) {
+                            // A zip comes down raw and is kept the same way.
+                            if (crate::bases::PATCH_MIN_BYTES..=crate::bases::PATCH_MAX_BYTES)
+                                .contains(&size)
+                                && crate::bases::is_zip(dest_path)
+                            {
+                                st.keep_file(&file.sha256, dest_path).await;
+                                if let Ok(mut kf) = keyframes.lock() {
+                                    kf.set(&file.relative_path, &file.sha256);
+                                }
+                            }
+                        }
                         Ok::<(), anyhow::Error>(())
                     }
                     .await;
+                    // Adopted copies have moved away; anything left is a failed one.
+                    if let Some(p) = &tee {
+                        let _ = std::fs::remove_file(p);
+                    }
                     match fetch {
                         Ok(()) => break,
                         Err(e) if attempt < BLOB_FETCH_ATTEMPTS && is_retryable_blob_error(&e) => {
@@ -1186,11 +1274,22 @@ where
             .boxed(),
         );
     }
-    let restored: Vec<(u64, Origin)> = futures::stream::iter(fetch_futs)
-        .buffer_unordered(restore_concurrency())
-        .try_collect()
-        .await?;
+    let (mut restored, large) = futures::try_join!(
+        futures::stream::iter(small_futs)
+            .buffer_unordered(small_restore_concurrency())
+            .try_collect::<Vec<(u64, Origin)>>(),
+        futures::stream::iter(large_futs)
+            .buffer_unordered(restore_concurrency())
+            .try_collect::<Vec<(u64, Origin)>>(),
+    )?;
+    restored.extend(large);
     let transfer_ms = transfer_started.elapsed().as_millis() as u64;
+    if let Ok(kf) = keyframes.lock() {
+        kf.save();
+    }
+    if let Some(st) = &store {
+        st.prune();
+    }
 
     let mut files_reused = 0usize;
     let mut bytes_reused = 0u64;
@@ -1246,6 +1345,160 @@ where
         },
         single_file,
     })
+}
+
+/// Copies what it reads into `into`, when set: the encoded bytes of a download.
+/// Copies what it reads into `into`, when set: the encoded bytes of a
+/// download, for the base store. A write that fails empties the copy, and an
+/// empty copy isn't kept.
+struct Capture<R> {
+    inner: R,
+    into: Option<std::fs::File>,
+}
+
+impl<R: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for Capture<R> {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let this = self.get_mut();
+        let before = buf.filled().len();
+        let polled = std::pin::Pin::new(&mut this.inner).poll_read(cx, buf);
+        if let (std::task::Poll::Ready(Ok(())), Some(into)) = (&polled, this.into.as_mut()) {
+            if std::io::Write::write_all(into, &buf.filled()[before..]).is_err() {
+                if let Some(f) = this.into.take() {
+                    let _ = f.set_len(0);
+                }
+            }
+        }
+        polled
+    }
+}
+
+/// Rebuild a patch blob into `dest_path`. The base comes from this machine's
+/// store when it's there, else from the server; it's checked against its sha
+/// either way, and the result against the file's.
+async fn fetch_patch(
+    client: &ApiClient,
+    file: &crate::api::CloudManifestFile,
+    encoding: &str,
+    dest_path: &Path,
+    store: Option<&crate::bases::BaseStore>,
+    gate: &tokio::sync::Semaphore,
+) -> Result<()> {
+    let rel = &file.relative_path;
+    let base = file
+        .base_sha256
+        .clone()
+        .ok_or_else(|| anyhow!("{rel}: a patch without its base"))?;
+    let size = file.size_bytes.max(0) as usize;
+    let _permit = gate.acquire().await?;
+
+    let local = match store {
+        Some(st) => {
+            let (st, b) = (st.clone(), base.clone());
+            tokio::task::spawn_blocking(move || st.load(&b))
+                .await
+                .ok()
+                .flatten()
+        }
+        None => None,
+    };
+    let base_raw = match local {
+        Some(raw) => raw,
+        None => {
+            let url = file
+                .base_download
+                .as_ref()
+                .ok_or_else(|| anyhow!("{rel}: no way to fetch its base"))?;
+            let packed = download_capped(client, url, crate::bases::PATCH_MAX_BYTES).await?;
+            let zstd = file.base_encoding.as_deref() == Some("zstd");
+            let raw = if zstd {
+                decode_capped(&packed, crate::bases::PATCH_MAX_BYTES)?
+            } else {
+                packed.clone()
+            };
+            anyhow::ensure!(
+                hex::encode(Sha256::digest(&raw)) == base,
+                "{rel}: the downloaded base doesn't match its sha"
+            );
+            match (zstd, store) {
+                (true, Some(st)) => st.keep_bytes(&base, &packed),
+                (false, Some(st)) => st.keep_raw(&base, &raw),
+                _ => {}
+            }
+            raw
+        }
+    };
+
+    let url = file
+        .download
+        .as_ref()
+        .ok_or_else(|| anyhow!("manifest missing download URL for {rel}"))?;
+    let patch = download_capped(client, url, size as u64 + (1 << 20)).await?;
+    let inflated = encoding == crate::delta::INFLATED;
+    let out = tokio::task::spawn_blocking(move || {
+        if inflated {
+            crate::delta::apply_inflated(&base_raw, &patch, size)
+        } else {
+            crate::delta::apply(&base_raw, &patch, size)
+        }
+    })
+    .await??;
+    anyhow::ensure!(
+        hex::encode(Sha256::digest(&out)) == file.sha256,
+        "{rel}: the rebuilt file doesn't match its sha"
+    );
+    tokio::fs::write(dest_path, &out)
+        .await
+        .with_context(|| format!("writing {}", dest_path.display()))?;
+    Ok(())
+}
+
+/// A whole small download into memory, retried like the blobs are, refused
+/// past `cap`.
+async fn download_capped(
+    client: &ApiClient,
+    url: &crate::api::PresignedUrl,
+    cap: u64,
+) -> Result<Vec<u8>> {
+    let mut attempt = 0u32;
+    loop {
+        attempt += 1;
+        let got = async {
+            let resp = client.get_presigned(url).await?;
+            let mut stream = resp.bytes_stream();
+            let mut out = Vec::new();
+            while let Some(chunk) = stream.next().await {
+                out.extend_from_slice(&chunk?);
+                anyhow::ensure!(out.len() as u64 <= cap, "download past its {cap}-byte cap");
+            }
+            Ok::<_, anyhow::Error>(out)
+        }
+        .await;
+        match got {
+            Ok(v) => return Ok(v),
+            Err(e) if attempt < 4 && is_retryable_blob_error(&e) => {
+                tokio::time::sleep(std::time::Duration::from_millis(300 * u64::from(attempt)))
+                    .await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+fn decode_capped(packed: &[u8], cap: u64) -> Result<Vec<u8>> {
+    use std::io::Read;
+    let mut out = Vec::new();
+    zstd::stream::read::Decoder::new(packed)?
+        .take(cap + 1)
+        .read_to_end(&mut out)?;
+    anyhow::ensure!(
+        out.len() as u64 <= cap,
+        "a base that expands past {cap} bytes"
+    );
+    Ok(out)
 }
 
 /// Stamp the manifest's recorded mtime onto a file that just landed in `dest`.
@@ -2908,6 +3161,9 @@ mod tests {
             modified_at: None,
             download: None,
             encoding: None,
+            base_sha256: None,
+            base_download: None,
+            base_encoding: None,
         };
         copy_local_blob(&src, &dest, &good, &options).await.unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), blob);

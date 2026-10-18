@@ -80,7 +80,18 @@ pub async fn purge_due(state: &CloudState) -> Result<usize, sqlx::Error> {
 /// blocking the DB purge: a leaked blob is a storage-cost nuisance, but a
 /// half-purged account that keeps its DB rows is a correctness bug.
 async fn purge_account(state: &CloudState, user_id: Uuid) -> Result<(), sqlx::Error> {
-    for key in r2_keys_for(&state.pool, user_id).await? {
+    let mut keys = r2_keys_for(&state.pool, user_id).await?;
+    // Plus what no row names (an upload that never committed, a patch that
+    // lost a race): it is still this account's data.
+    match state.r2.all_blob_keys(user_id).await {
+        Ok(listed) => keys.extend(listed),
+        Err(e) => {
+            tracing::warn!(error = %e, user_id = %user_id, "account purge: bucket listing failed");
+        }
+    }
+    keys.sort_unstable();
+    keys.dedup();
+    for key in keys {
         if let Err(e) = state.r2.delete_object(&key).await {
             tracing::warn!(error = %e, r2_key = %key, user_id = %user_id, "account purge: R2 delete failed");
             incidents::record(Kind::Delete, "account purge: R2 delete failed");
@@ -102,16 +113,16 @@ async fn purge_account(state: &CloudState, user_id: Uuid) -> Result<(), sqlx::Er
 async fn r2_keys_for(pool: &PgPool, user_id: Uuid) -> Result<Vec<String>, sqlx::Error> {
     let mut keys: Vec<String> = Vec::new();
 
-    let blobs: Vec<(String,)> =
-        sqlx::query_as("SELECT encode(sha256, 'hex') FROM cloud_blobs WHERE user_id = $1")
-            .bind(user_id)
-            .fetch_all(pool)
-            .await?;
-    keys.extend(
-        blobs
-            .into_iter()
-            .map(|(sha,)| crate::cloud::r2::key_for_blob(user_id, &sha)),
-    );
+    let blobs: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT encode(sha256, 'hex'), encode(base_sha256, 'hex'), encoding
+           FROM cloud_blobs WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+    keys.extend(blobs.into_iter().map(|(sha, base, enc)| {
+        crate::cloud::r2::key_for_row(user_id, &sha, base.as_deref(), enc.as_deref())
+    }));
 
     // Legacy (non content-addressed) versions store one opaque archive each.
     let archives: Vec<(Option<String>,)> = sqlx::query_as(

@@ -3783,6 +3783,7 @@ dependencies = [
  "futures",
  "hex",
  "hoard-core",
+ "hoard-deflate",
  "hoard-manifest",
  "keyring",
  "libc",
@@ -3808,6 +3809,7 @@ dependencies = [
  "windows-sys 0.59.0",
  "winreg 0.52.0",
  "zip",
+ "zstd",
 ]
 
 [[package]]
@@ -3947,7 +3949,9 @@ dependencies = [
  "hex",
  "hmac 0.12.1",
  "hoard-core",
+ "hoard-deflate",
  "jsonwebtoken",
+ "memmap2",
  "minisign-verify",
  "rand 0.8.6",
  "reqwest 0.12.28",
@@ -3969,6 +3973,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "zip",
+ "zstd",
 ]
 
 [[package]]
@@ -10290,13 +10295,18 @@ version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4e6559d53cc268e5031cd8429d05415bc4cb4aefc4aa5d6cc35fbf5b924a1f8"
 dependencies = [
+ "async-compression",
  "bitflags 2.11.1",
  "bytes",
+ "futures-core",
  "futures-util",
  "http 1.4.0",
  "http-body 1.0.1",
+ "http-body-util",
  "iri-string",
  "pin-project-lite",
+ "tokio",
+ "tokio-util",
  "tower 0.5.3",
  "tower-layer",
  "tower-service",

@@ -585,6 +585,16 @@ pub struct CasInit {
     #[serde(default)]
     pub base_version: Option<i64>,
     pub files: Vec<CasFileEntry>,
+    /// Files the client could send as a patch: the new content's sha and the
+    /// whole copy it holds to patch against.
+    #[serde(default)]
+    pub patch_from: Vec<PatchFrom>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PatchFrom {
+    pub sha256: String,
+    pub base: String,
 }
 
 /// A blob the server doesn't have yet, so the client must PUT it.
@@ -594,6 +604,18 @@ pub struct CasMissingBlob {
     pub size_bytes: i64,
     pub r2_key: String,
     pub upload: r2::PresignedUrl,
+    /// Where it may go instead as a patch against `base`, a link per encoding
+    /// (see `r2::key_for_patch`). Only for an account allowed to send patches,
+    /// and a base still held whole.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patch: Option<PatchUpload>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PatchUpload {
+    pub base: String,
+    pub upload: r2::PresignedUrl,
+    pub inflated_upload: r2::PresignedUrl,
 }
 
 #[derive(Debug, Serialize)]
@@ -982,8 +1004,10 @@ pub async fn cas_init(
             size_bytes: *size,
             r2_key: key,
             upload,
+            patch: None,
         });
     }
+    offer_patches(&state, user.user_id, &body.patch_from, &mut missing).await?;
 
     tracing::info!(
         save_id = %save_row.0,
@@ -1000,6 +1024,71 @@ pub async fn cas_init(
         quota: info,
     })
     .into_response())
+}
+
+/// Patch links for the missing blobs the client offered a base for, when the
+/// account may send patches and the base is still held whole. A lookup that
+/// fails costs the patches, never the upload.
+async fn offer_patches(
+    state: &CloudState,
+    user_id: Uuid,
+    patch_from: &[PatchFrom],
+    missing: &mut [CasMissingBlob],
+) -> Result<(), CloudError> {
+    let wanted: HashMap<&str, &str> = patch_from
+        .iter()
+        .filter(|p| {
+            r2::is_valid_sha256(&p.sha256)
+                && r2::is_valid_sha256(&p.base)
+                && p.base != p.sha256
+                && missing.iter().any(|m| m.sha256 == p.sha256)
+        })
+        .take(MAX_PATCH_BASES)
+        .map(|p| (p.sha256.as_str(), p.base.as_str()))
+        .collect();
+    if wanted.is_empty() {
+        return Ok(());
+    }
+    let held = async {
+        if !crate::cloud::patches::account_ok(state, user_id).await? {
+            return Ok::<_, sqlx::Error>(std::collections::HashSet::new());
+        }
+        let mut bases: Vec<String> = wanted.values().map(|b| b.to_string()).collect();
+        bases.sort();
+        bases.dedup();
+        let mut conn = state.pool.acquire().await?;
+        crate::cloud::patches::valid_bases(&mut conn, user_id, &bases, false).await
+    }
+    .await;
+    let held: std::collections::HashSet<String> = match held {
+        Ok(h) => h,
+        Err(e) => {
+            tracing::warn!(error = %e, %user_id, "cas_init: patch bases unavailable, uploading whole");
+            return Ok(());
+        }
+    };
+    for m in missing.iter_mut() {
+        let Some(base) = wanted.get(m.sha256.as_str()).filter(|b| held.contains(**b)) else {
+            continue;
+        };
+        let link = |inflated| r2::key_for_patch(user_id, &m.sha256, base, inflated);
+        let upload = state
+            .r2
+            .presign_put(&link(false), None)
+            .await
+            .map_err(CloudError::Internal)?;
+        let inflated_upload = state
+            .r2
+            .presign_put(&link(true), None)
+            .await
+            .map_err(CloudError::Internal)?;
+        m.patch = Some(PatchUpload {
+            base: base.to_string(),
+            upload,
+            inflated_upload,
+        });
+    }
+    Ok(())
 }
 
 /// `POST /v1/cloud/saves/:save_id/versions/:version/cas/commit`: finalize a
@@ -1075,8 +1164,9 @@ async fn reused_blobs_gone(
     if reused.is_empty() {
         return Ok(Vec::new());
     }
-    let held: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT encode(sha256, 'hex'), refcount FROM cloud_blobs
+    let held: Vec<(String, i64, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT encode(sha256, 'hex'), refcount, encode(base_sha256, 'hex'), encoding
+           FROM cloud_blobs
           WHERE user_id = $1
             AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))
           ORDER BY sha256
@@ -1086,28 +1176,41 @@ async fn reused_blobs_gone(
     .bind(&reused)
     .fetch_all(&mut *tx)
     .await?;
-    let held: HashMap<String, i64> = held.into_iter().collect();
+    let held: HashMap<String, (i64, String)> = held
+        .into_iter()
+        .map(|(sha, refs, base, enc)| {
+            let key = r2::key_for_row(user_id, &sha, base.as_deref(), enc.as_deref());
+            (sha, (refs, key))
+        })
+        .collect();
 
+    // The listing only holds whole copies under their plain keys: a patch row
+    // is always asked at its own.
     let mut gone = Vec::new();
     let mut ask = Vec::new();
     for sha in reused {
         match held.get(&sha) {
             None => gone.push(sha),
-            Some(0) if !landed.contains_key(&sha) => ask.push(sha),
+            Some((0, key))
+                if !landed.contains_key(&sha) || *key != r2::key_for_blob(user_id, &sha) =>
+            {
+                ask.push((sha, key.clone()))
+            }
             Some(_) => {}
         }
     }
-    let asked: Vec<(String, Option<i64>)> = futures::stream::iter(ask.into_iter().map(|sha| {
-        let r2 = state.r2.clone();
-        async move {
-            let size = r2.head(&r2::key_for_blob(user_id, &sha)).await?;
-            Ok::<_, anyhow::Error>((sha, size))
-        }
-    }))
-    .buffer_unordered(BLOB_CONCURRENCY)
-    .try_collect()
-    .await
-    .map_err(CloudError::Internal)?;
+    let asked: Vec<(String, Option<i64>)> =
+        futures::stream::iter(ask.into_iter().map(|(sha, key)| {
+            let r2 = state.r2.clone();
+            async move {
+                let size = r2.head(&key).await?;
+                Ok::<_, anyhow::Error>((sha, size))
+            }
+        }))
+        .buffer_unordered(BLOB_CONCURRENCY)
+        .try_collect()
+        .await
+        .map_err(CloudError::Internal)?;
     gone.extend(
         asked
             .into_iter()
@@ -1132,7 +1235,47 @@ pub struct CasCommitIn {
     /// of the raw content: only the bytes in the bucket are compressed.
     #[serde(default)]
     pub zstd: Vec<String>,
+    /// Blobs the client tried and kept raw. Filed as `encoding = 'raw'` so the
+    /// sweep doesn't redo it: 38,601 blobs / 31.9 GB in 27 days of oct-2026.
+    #[serde(default)]
+    pub raw: Vec<String>,
+    /// New blobs stored as patches against `base`, a blob the account already
+    /// holds whole (see `cloud::patches`).
+    #[serde(default)]
+    pub patches: Vec<PatchIn>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct PatchIn {
+    pub sha256: String,
+    pub base: String,
+    /// `zstd-patch` when absent.
+    #[serde(default)]
+    pub encoding: Option<String>,
+}
+
+/// 409 when a patch's base went away between `cas_init` and the commit. The
+/// client drops that base and uploads the file whole on its retry.
+#[derive(Debug, Serialize)]
+struct PatchBaseGoneResponse {
+    error: &'static str,
+    code: &'static str,
+    base: String,
+}
+
+impl IntoResponse for PatchBaseGoneResponse {
+    fn into_response(self) -> Response {
+        (StatusCode::CONFLICT, Json(self)).into_response()
+    }
+}
+
+/// Up to this many new blobs, a commit HEADs each one (Class B) instead of
+/// listing the account's whole prefix (Class A per 1,000 keys): ~219k LISTs a
+/// month in oct-2026, with 88% of commits bringing 5 new blobs or fewer.
+const HEAD_NEW_BLOBS_UP_TO: usize = 100;
+
+/// Patch candidates looked at per `cas_init`; a client offers one per big file.
+const MAX_PATCH_BASES: usize = 2_000;
 
 pub async fn cas_commit(
     State(state): State<CloudState>,
@@ -1140,8 +1283,18 @@ pub async fn cas_commit(
     Path((save_id, version)): Path<(String, i64)>,
     body: Option<Json<CasCommitIn>>,
 ) -> Result<Response, CloudError> {
-    let zstd_shas: std::collections::HashSet<String> = body
-        .map(|Json(b)| b.zstd.into_iter().collect())
+    let (zstd_shas, raw_shas, patch_in): (
+        std::collections::HashSet<String>,
+        std::collections::HashSet<String>,
+        Vec<PatchIn>,
+    ) = body
+        .map(|Json(b)| {
+            (
+                b.zstd.into_iter().collect(),
+                b.raw.into_iter().collect(),
+                b.patches,
+            )
+        })
         .unwrap_or_default();
     let owner: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
         .bind(&save_id)
@@ -1232,6 +1385,39 @@ pub async fn cas_commit(
     .await?;
     let existing: std::collections::HashSet<String> = existing.into_iter().map(|(s,)| s).collect();
 
+    // Patches only count for blobs this commit stores fresh. An encoding we
+    // can't rebuild is refused rather than stored: nothing could restore it.
+    if let Some(p) = patch_in.iter().find(|p| {
+        p.encoding
+            .as_deref()
+            .is_some_and(|e| !crate::patch::is_patch(e))
+    }) {
+        return Err(CloudError::BadRequest(format!(
+            "unknown patch encoding for {}",
+            p.sha256
+        )));
+    }
+    let patch_of: HashMap<String, (String, String)> = patch_in
+        .into_iter()
+        .filter(|p| {
+            unique.contains_key(&p.sha256)
+                && !existing.contains(&p.sha256)
+                && r2::is_valid_sha256(&p.base)
+                && p.base != p.sha256
+        })
+        .map(|p| {
+            let encoding = p
+                .encoding
+                .unwrap_or_else(|| crate::cloud::patches::ENCODING.to_string());
+            (p.sha256, (p.base, encoding))
+        })
+        .collect();
+    if !patch_of.is_empty() && !crate::cloud::patches::enabled(&state) {
+        return Err(CloudError::BadRequest(
+            "patches are not enabled on this server".into(),
+        ));
+    }
+
     // Verify every new blob actually landed in R2 and trust R2's reported
     // size, never the client's declared manifest size, for accounting.
     // A malicious client can understate `size_bytes` at init to slip past the
@@ -1239,32 +1425,41 @@ pub async fn cas_commit(
     // (which carry no content-length limit). The real footprint is whatever
     // bytes actually landed, so that's what we charge and re-check below.
     //
-    // Asked as one listing of the user's blob prefix rather than one HEAD per
-    // blob. The difference is not a micro-optimisation: `cas_commit` has to
-    // answer inside the client's fixed 60 s timeout, and the version that found
-    // this carried 35,143 files over 24,784 distinct blobs because the game
-    // writes one file per map chunk. Per-blob that is 24,784 round trips, tens of
-    // minutes in sequence and still tens of seconds fanned out, and every
-    // timeout sent the client back to re-upload the same 398 MB, hourly, for a
-    // version that could never land. A listing answers all of them in ~26.
+    // Big commits ask with one listing of the user's prefix, not one HEAD per
+    // blob: `cas_commit` has to answer inside the client's fixed 60 s timeout,
+    // and the version that found this carried 35,143 files over 24,784 distinct
+    // blobs because the game writes one file per map chunk. Per-blob that is
+    // tens of seconds even fanned out, and every timeout sent the client back to
+    // re-upload the same 398 MB, hourly. A listing answers all of them in ~26.
+    // Small commits, nearly all of them, HEAD their few new blobs instead.
     let mut new_bytes: u64 = 0;
     let mut actual_size: BTreeMap<String, i64> = BTreeMap::new();
-    let mut landed = state
-        .r2
-        .blob_sizes(user.user_id)
-        .await
-        .map_err(CloudError::Internal)?;
+    let fresh = unique
+        .keys()
+        .filter(|sha| !existing.contains(*sha) && !patch_of.contains_key(*sha))
+        .count();
+    let mut landed = if fresh > HEAD_NEW_BLOBS_UP_TO {
+        state
+            .r2
+            .blob_sizes(user.user_id)
+            .await
+            .map_err(CloudError::Internal)?
+    } else {
+        HashMap::new()
+    };
 
-    // A listing is the bulk answer, not the authority: an object PUT moments
-    // ago may not be in it yet. So anything it doesn't show is asked for
-    // directly before we are willing to call it missing: normally nothing, and
-    // a handful at worst, which is what keeps this off the per-blob path.
+    // A listing is the bulk answer, not the authority: anything it doesn't
+    // show is asked for directly before we are willing to call it missing.
     //
     // The futures are built eagerly into a Vec of owned values rather than
     // mapped straight off the iterator: a closure holding a borrow inside the
     // stream trips rustc's "FnOnce is not general enough" false positive once
     // the handler is wrapped by the router. Same shape, and the same reason, as
     // the upload fan-out in `hoard-agent::backup`.
+    //
+    // A patch is only ever at its own key, so it's always asked there, and a
+    // whole copy the listing found under the plain key doesn't count for it.
+    landed.retain(|sha, _| !patch_of.contains_key(sha));
     let mut probes = Vec::new();
     for sha in unique
         .keys()
@@ -1272,9 +1467,12 @@ pub async fn cas_commit(
         .cloned()
     {
         let r2 = state.r2.clone();
-        let uid = user.user_id;
+        let key = match patch_of.get(&sha) {
+            Some((base, enc)) => r2::key_for_row(user.user_id, &sha, Some(base), Some(enc)),
+            None => r2::key_for_blob(user.user_id, &sha),
+        };
         probes.push(async move {
-            let size = r2.head(&r2::key_for_blob(uid, &sha)).await?;
+            let size = r2.head(&key).await?;
             Ok::<_, anyhow::Error>((sha, size))
         });
     }
@@ -1303,8 +1501,8 @@ pub async fn cas_commit(
             .get(sha)
             .ok_or_else(|| CloudError::BadRequest(format!("blob {sha} was not uploaded")))?;
 
-        let (charged, stored_bytes) =
-            charge_for_blob(sha, *declared, stored, zstd_shas.contains(sha))?;
+        let packed = zstd_shas.contains(sha) || patch_of.contains_key(sha);
+        let (charged, stored_bytes) = charge_for_blob(sha, *declared, stored, packed)?;
         if let Some(stored_bytes) = stored_bytes {
             stored_size.insert(sha.clone(), stored_bytes);
         }
@@ -1322,10 +1520,13 @@ pub async fn cas_commit(
         let mut cleanup = Vec::with_capacity(actual_size.len());
         for sha in actual_size.keys() {
             let r2 = state.r2.clone();
-            let uid = user.user_id;
+            let key = match patch_of.get(sha) {
+                Some((base, enc)) => r2::key_for_row(user.user_id, sha, Some(base), Some(enc)),
+                None => r2::key_for_blob(user.user_id, sha),
+            };
             let sha = sha.clone();
             cleanup.push(async move {
-                if let Err(e) = r2.delete_object(&r2::key_for_blob(uid, &sha)).await {
+                if let Err(e) = r2.delete_object(&key).await {
                     tracing::warn!(error = %e, sha = %sha, "cas_commit: orphan blob cleanup after quota reject failed");
                 }
             });
@@ -1386,6 +1587,24 @@ pub async fn cas_commit(
         )));
     }
 
+    // Locked like the reused ones: from here the GC can't take a base.
+    if !patch_of.is_empty() {
+        let mut bases: Vec<String> = patch_of.values().map(|(b, _)| b.clone()).collect();
+        bases.sort();
+        bases.dedup();
+        let held = crate::cloud::patches::valid_bases(&mut tx, user.user_id, &bases, true).await?;
+        if let Some(base) = bases.into_iter().find(|b| !held.contains(b)) {
+            tx.rollback().await.ok();
+            tracing::warn!(save_id = %save_id, version, base, "cas_commit: patch base is gone");
+            return Ok(PatchBaseGoneResponse {
+                error: "a patch's base is no longer stored whole; upload the file whole",
+                code: "patch_base_gone",
+                base,
+            }
+            .into_response());
+        }
+    }
+
     // Bump refcounts: +1 per distinct blob this version references. New blobs
     // are inserted at refcount 1 (their first reference charges storage via the
     // cloud_blobs trigger) with the size R2 actually reported, never the
@@ -1407,21 +1626,35 @@ pub async fn cas_commit(
         .collect();
     // `encoding` and `stored_bytes` are what the compression sweep would have
     // written had it got there first; the client having done the work just means
-    // they are known already. Both NULL for a raw upload, which is what the
-    // sweep then treats as still eligible.
+    // they are known already. A raw upload the client didn't vouch for stays
+    // NULL, which the sweep treats as still eligible.
     let blob_encodings: Vec<Option<String>> = blob_shas
         .iter()
-        .map(|sha| stored_size.contains_key(sha).then(|| "zstd".to_string()))
+        .map(|sha| {
+            if let Some((_, encoding)) = patch_of.get(sha) {
+                Some(encoding.clone())
+            } else if stored_size.contains_key(sha) {
+                Some("zstd".to_string())
+            } else if raw_shas.contains(sha) {
+                Some("raw".to_string())
+            } else {
+                None
+            }
+        })
         .collect();
     let blob_stored: Vec<Option<i64>> = blob_shas
         .iter()
         .map(|sha| stored_size.get(sha).copied())
         .collect();
+    let blob_bases: Vec<Option<String>> = blob_shas
+        .iter()
+        .map(|sha| patch_of.get(sha).map(|(b, _)| b.clone()))
+        .collect();
     sqlx::query(
         r#"
-        INSERT INTO cloud_blobs (user_id, sha256, size_bytes, refcount, encoding, stored_bytes)
-        SELECT $1, decode(s, 'hex'), z, 1, e, sb
-          FROM UNNEST($2::text[], $3::bigint[], $4::text[], $5::bigint[]) AS t(s, z, e, sb)
+        INSERT INTO cloud_blobs (user_id, sha256, size_bytes, refcount, encoding, stored_bytes, base_sha256)
+        SELECT $1, decode(s, 'hex'), z, 1, e, sb, decode(b, 'hex')
+          FROM UNNEST($2::text[], $3::bigint[], $4::text[], $5::bigint[], $6::text[]) AS t(s, z, e, sb, b)
         ON CONFLICT (user_id, sha256)
         DO UPDATE SET refcount = cloud_blobs.refcount + 1, purge_after = NULL
         "#,
@@ -1431,6 +1664,7 @@ pub async fn cas_commit(
     .bind(&blob_sizes)
     .bind(&blob_encodings)
     .bind(&blob_stored)
+    .bind(&blob_bases)
     .execute(&mut *tx)
     .await?;
 
@@ -1527,6 +1761,14 @@ pub struct ManifestFile {
     /// also what a client that never asked for `zstd=1` always sees.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding: Option<String>,
+    /// For a patch: the blob it was made against, a link to it for a client
+    /// that doesn't hold it locally, and that link's encoding.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_download: Option<r2::PresignedUrl>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_encoding: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1552,6 +1794,10 @@ pub struct ManifestQuery {
     /// That default is the entire compatibility story, so it must not change.
     #[serde(default)]
     pub zstd: bool,
+    /// The client can apply patch blobs. Without it a version holding one is
+    /// refused with 426: nothing here can rebuild it for them.
+    #[serde(default)]
+    pub patch: bool,
 }
 
 /// `GET /v1/cloud/saves/:save_id/versions/:version/manifest`: the per-file
@@ -1612,6 +1858,9 @@ pub async fn version_manifest(
                     // No URL, so nothing to describe the encoding of.
                     download: None,
                     encoding: None,
+                    base_sha256: None,
+                    base_download: None,
+                    base_encoding: None,
                 },
             )
             .collect();
@@ -1690,6 +1939,33 @@ pub async fn version_manifest(
     .map(|(s,)| s)
     .collect();
 
+    // Patches and their bases. `zstd` marks a base whose at-rest rewrite
+    // finished, the same rule as everywhere else.
+    let patched: Vec<(String, String, bool, String)> = sqlx::query_as(
+        "SELECT encode(p.sha256, 'hex'), encode(p.base_sha256, 'hex'),
+                coalesce(b.encoding = 'zstd' AND b.stored_bytes IS NOT NULL, false),
+                p.encoding
+           FROM cloud_blobs p
+           JOIN cloud_blobs b ON b.user_id = p.user_id AND b.sha256 = p.base_sha256
+          WHERE p.user_id = $1
+            AND p.sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))
+            AND p.base_sha256 IS NOT NULL",
+    )
+    .bind(user.user_id)
+    .bind(&shas)
+    .fetch_all(&state.pool)
+    .await?;
+    if !patched.is_empty() && !q.patch {
+        return Ok((
+            StatusCode::UPGRADE_REQUIRED,
+            Json(serde_json::json!({
+                "error": "this version needs a newer Hoard to restore",
+                "code": "update_required",
+            })),
+        )
+            .into_response());
+    }
+
     let ttl_secs = state
         .config
         .cloud
@@ -1698,11 +1974,24 @@ pub async fn version_manifest(
         .unwrap_or(3600);
     let public_base = state.config.server.public_url.trim_end_matches('/');
 
+    let patch_key: HashMap<&str, String> = patched
+        .iter()
+        .map(|(sha, base, _, enc)| {
+            let key = r2::key_for_row(user.user_id, sha, Some(base), Some(enc));
+            (sha.as_str(), key)
+        })
+        .collect();
     let mut url_for: BTreeMap<String, r2::PresignedUrl> = BTreeMap::new();
     let mut encoding_for: BTreeMap<String, String> = BTreeMap::new();
     for sha in unique_size.keys() {
         let is_zstd = compressed.contains(sha);
-        let presigned = if is_zstd && !q.zstd {
+        let presigned = if let Some(key) = patch_key.get(sha.as_str()) {
+            state
+                .r2
+                .presign_get(key, None)
+                .await
+                .map_err(CloudError::Internal)?
+        } else if is_zstd && !q.zstd {
             let token = super::blob_proxy::mint_token(&state, user.user_id, sha, ttl_secs);
             r2::PresignedUrl {
                 method: "GET".to_string(),
@@ -1724,14 +2013,18 @@ pub async fn version_manifest(
     }
 
     // Stamp the download so the sweep won't overwrite an object while a
-    // just-minted direct URL might still be in flight.
+    // just-minted direct URL might still be in flight. Only blobs the sweep
+    // can still pick: the rest never get rewritten.
+    let mut stamped = shas.clone();
+    stamped.extend(patched.iter().map(|(_, base, _, _)| base.clone()));
     sqlx::query(
         "UPDATE cloud_blobs SET last_presigned_at = now()
             WHERE user_id = $1
-              AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))",
+              AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))
+              AND (encoding IS NULL OR (encoding = 'zstd' AND stored_bytes IS NULL))",
     )
     .bind(user.user_id)
-    .bind(&shas)
+    .bind(&stamped)
     .execute(&state.pool)
     .await?;
 
@@ -1757,18 +2050,33 @@ pub async fn version_manifest(
         tracing::warn!(error = %e, user_id = %user.user_id, "bandwidth: record failed on cas manifest");
     }
 
+    let mut base_for: BTreeMap<String, (String, r2::PresignedUrl, bool)> = BTreeMap::new();
+    for (sha, base, base_zstd, encoding) in &patched {
+        let url = state
+            .r2
+            .presign_get(&r2::key_for_blob(user.user_id, base), None)
+            .await
+            .map_err(CloudError::Internal)?;
+        encoding_for.insert(sha.clone(), encoding.clone());
+        base_for.insert(sha.clone(), (base.clone(), url, *base_zstd));
+    }
+
     let files = rows
         .into_iter()
-        .map(
-            |(relative_path, sha256, size_bytes, modified_at)| ManifestFile {
+        .map(|(relative_path, sha256, size_bytes, modified_at)| {
+            let base = base_for.get(&sha256);
+            ManifestFile {
                 download: url_for.get(&sha256).cloned(),
                 encoding: encoding_for.get(&sha256).cloned(),
+                base_sha256: base.map(|b| b.0.clone()),
+                base_download: base.map(|b| b.1.clone()),
+                base_encoding: base.and_then(|b| b.2.then(|| "zstd".to_string())),
                 relative_path,
                 sha256,
                 size_bytes,
                 modified_at,
-            },
-        )
+            }
+        })
         .collect();
     Ok(Json(VersionManifestOut {
         content_addressed: true,

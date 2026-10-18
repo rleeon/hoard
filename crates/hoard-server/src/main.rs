@@ -77,6 +77,20 @@ enum Cmd {
         dry_run: bool,
     },
 
+    /// Rebuild one patch blob from files on disk. Internal: the export runs
+    /// it as a child so the base never counts against the server's memory.
+    #[cfg(feature = "cloud")]
+    #[command(hide = true)]
+    ApplyPatch {
+        base: PathBuf,
+        patch: PathBuf,
+        out: PathBuf,
+        size: u64,
+        /// A `zstd-patch-inflated` blob.
+        #[arg(long)]
+        inflated: bool,
+    },
+
     /// Email the download link of finished exports whose mail never went out.
     ///
     /// For the exports that completed while email was switched off. Not
@@ -100,6 +114,20 @@ async fn main() -> Result<()> {
     // `upgrade` is self-contained: no config load, no DB, no logging init.
     if let Some(Cmd::Upgrade { target }) = args.cmd {
         return upgrade::run(target).await;
+    }
+    #[cfg(feature = "cloud")]
+    if let Some(Cmd::ApplyPatch {
+        base,
+        patch,
+        out,
+        size,
+        inflated,
+    }) = &args.cmd
+    {
+        if *inflated {
+            return hoard_server::patch::apply_inflated_files(base, patch, out, *size);
+        }
+        return hoard_server::cloud::patches::apply_files(base, patch, out, *size);
     }
 
     let cfg = Config::load(&args.config)?;

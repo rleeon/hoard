@@ -87,6 +87,9 @@ pub enum ApiError {
     NonFastForward(NonFastForward),
     #[error("conflict (409): {0}")]
     Conflict(String),
+    /// A patch's base is no longer stored whole: upload that file whole.
+    #[error("patch base {0} is gone from the server")]
+    PatchBaseGone(String),
     #[error("bad request (400): {0}")]
     BadRequest(String),
     #[error("server error ({status}): {body}")]
@@ -431,6 +434,14 @@ impl ApiError {
                     serde_json::from_str::<NonFastForward>(&body).unwrap_or_default(),
                 )
             }
+            StatusCode::CONFLICT if extract_code(&body).as_deref() == Some("patch_base_gone") => {
+                ApiError::PatchBaseGone(
+                    serde_json::from_str::<serde_json::Value>(&body)
+                        .ok()
+                        .and_then(|v| v["base"].as_str().map(str::to_string))
+                        .unwrap_or_default(),
+                )
+            }
             StatusCode::CONFLICT => ApiError::Conflict(extract_message(&body)),
             StatusCode::BAD_REQUEST => ApiError::BadRequest(extract_message(&body)),
             StatusCode::TOO_MANY_REQUESTS => {
@@ -629,6 +640,8 @@ pub struct ApiClient {
     /// would be **permanently unrestorable**: every later download hands back
     /// compressed bytes that fail their own sha check.
     blob_zstd: Arc<OnceCell<bool>>,
+    /// Does this server take patch blobs? Same probe, same doubt rule.
+    blob_patch: Arc<OnceCell<bool>>,
     /// The plan's per-save cap, learned from the last 413.
     ///
     /// It is not a probe like the ones above, which is why it is not a
@@ -644,7 +657,20 @@ pub struct ApiClient {
     /// belongs to the plan, not to the save: discovering it by uploading one
     /// game counts just as well for the next.
     plan_cap: Arc<RwLock<Option<PlanCap>>>,
+    /// The last `/v1/cloud/sync` answer and its ETag; a 304 hands it back.
+    sync_cache: Arc<std::sync::Mutex<Option<SyncCache>>>,
 }
+
+#[derive(Debug, Clone)]
+struct SyncCache {
+    etag: String,
+    manifest: CloudManifest,
+    fetched_at: std::time::Instant,
+}
+
+/// Past this the poll asks without its ETag and gets the full list, the same
+/// backstop the server keeps for its own cache.
+const SYNC_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
 /// The plan's per-save cap and which plan it belongs to. See
 /// [`ApiClient::plan_cap`].
@@ -677,6 +703,8 @@ impl ApiClient {
             .timeout(Duration::from_secs(60))
             // Long-lived stream uploads/downloads handle their own timeouts via streaming
             .build()?;
+        // The two streaming clients move save bytes, which are decoded and
+        // sha-checked by hand: no transparent decompression there.
         let upload_http = Client::builder()
             .user_agent(concat!("hoard-agent/", env!("CARGO_PKG_VERSION")))
             // No total timeout: snapshot bodies are arbitrary size. The TCP
@@ -684,11 +712,15 @@ impl ApiClient {
             // a slow-but-progressing upload is left to finish.
             .tcp_keepalive(Duration::from_secs(30))
             .pool_idle_timeout(None)
+            .no_gzip()
+            .no_zstd()
             .build()?;
         let download_http = Client::builder()
             .user_agent(concat!("hoard-agent/", env!("CARGO_PKG_VERSION")))
             .tcp_keepalive(Duration::from_secs(30))
             .pool_idle_timeout(None)
+            .no_gzip()
+            .no_zstd()
             // Per-read, not total: it resets on every chunk that arrives, so a
             // download stays alive as long as it progresses however long it
             // takes, while one that truly stalls fails instead of hanging.
@@ -708,7 +740,9 @@ impl ApiClient {
             cas: Arc::new(OnceCell::new()),
             devices: Arc::new(OnceCell::new()),
             blob_zstd: Arc::new(OnceCell::new()),
+            blob_patch: Arc::new(OnceCell::new()),
             plan_cap: Arc::new(RwLock::new(None)),
+            sync_cache: Arc::new(std::sync::Mutex::new(None)),
         })
     }
 
@@ -796,6 +830,7 @@ impl ApiClient {
                 let _ = self.cas.set(h.cas);
                 let _ = self.devices.set(h.devices);
                 let _ = self.blob_zstd.set(h.blob_zstd);
+                let _ = self.blob_patch.set(h.blob_patch);
                 Ok::<_, anyhow::Error>(h.mode)
             })
             .await
@@ -832,6 +867,13 @@ impl ApiClient {
     pub async fn accepts_compressed_blobs(&self) -> bool {
         let _ = self.server_mode().await;
         self.blob_zstd.get().copied().unwrap_or(false)
+    }
+
+    /// May this client offer patch bases at all? Whether a given upload may
+    /// use them is still up to `cas_init`.
+    pub async fn accepts_patches(&self) -> bool {
+        let _ = self.server_mode().await;
+        self.blob_patch.get().copied().unwrap_or(false)
     }
 
     /// Is it worth sending this server presence heartbeats? Cloud always;
@@ -986,15 +1028,41 @@ impl ApiClient {
     /// poll guard can rate-limit per machine instead of per account.
     pub async fn cloud_sync(&self) -> Result<CloudManifest> {
         let dev = crate::logship::device_identity();
-        let resp = self
+        let cached = self
+            .sync_cache
+            .lock()
+            .ok()
+            .and_then(|c| c.clone())
+            .filter(|c| c.fetched_at.elapsed() < SYNC_CACHE_TTL);
+        let mut req = self
             .http
             .get(self.url("/v1/cloud/sync"))
             .header("authorization", self.auth_header())
-            .header("x-hoard-device-fp", &dev.fingerprint)
-            .send()
-            .await?;
+            .header("x-hoard-device-fp", &dev.fingerprint);
+        if let Some(c) = &cached {
+            req = req.header(reqwest::header::IF_NONE_MATCH, &c.etag);
+        }
+        let resp = req.send().await?;
+        if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
+            if let Some(c) = cached {
+                return Ok(c.manifest);
+            }
+        }
         let resp = Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
-        Ok(resp.json().await?)
+        let etag = resp
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+        let manifest: CloudManifest = resp.json().await?;
+        if let (Some(etag), Ok(mut slot)) = (etag, self.sync_cache.lock()) {
+            *slot = Some(SyncCache {
+                etag,
+                manifest: manifest.clone(),
+                fetched_at: std::time::Instant::now(),
+            });
+        }
+        Ok(manifest)
     }
 
     /// The save ids parked in the server-side archive ("caja negra").
@@ -1199,20 +1267,29 @@ impl ApiClient {
     /// `zstd` names the blobs this upload stored compressed. Their `sha256` is
     /// still the digest of the raw content; only the bytes in the bucket are
     /// compressed, and the server needs telling because it cannot work it out
-    /// from the object alone. An older server ignores the body.
+    /// from the object alone. `raw` names the ones tried and kept raw, so the
+    /// server's sweep doesn't try again. An older server ignores the body.
     pub async fn cloud_cas_commit(
         &self,
         save_id: &str,
         version: i64,
         zstd: &[String],
+        raw: &[String],
+        patches: &[(String, String, &str)],
     ) -> Result<CloudUploadCommitOut> {
+        let patches: Vec<serde_json::Value> = patches
+            .iter()
+            .map(|(sha, base, encoding)| {
+                serde_json::json!({ "sha256": sha, "base": base, "encoding": encoding })
+            })
+            .collect();
         let resp = self
             .http
             .post(self.url(&format!(
                 "/v1/cloud/saves/{save_id}/versions/{version}/cas/commit"
             )))
             .header("authorization", self.auth_header())
-            .json(&serde_json::json!({ "zstd": zstd }))
+            .json(&serde_json::json!({ "zstd": zstd, "raw": raw, "patches": patches }))
             .send()
             .await?;
         let resp = Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
@@ -1240,7 +1317,7 @@ impl ApiClient {
             .get(self.url(&format!(
                 "/v1/cloud/saves/{save_id}/versions/{version}/manifest"
             )))
-            .query(&[("presign", presign), ("zstd", true)])
+            .query(&[("presign", presign), ("zstd", true), ("patch", true)])
             .header("authorization", self.auth_header())
             // Which machine is restoring, so the server can tell the first time
             // a copy made on one reached another.
@@ -1654,6 +1731,30 @@ impl ApiClient {
         Ok(())
     }
 
+    /// A blob as a patch against `base`, which the server rebuilds on arrival.
+    pub async fn cas_upload_patch(
+        &self,
+        upload_id: &str,
+        sha256: &str,
+        patch: Vec<u8>,
+        base: &str,
+        encoding: &str,
+    ) -> Result<()> {
+        let resp = self
+            .upload_http
+            .put(self.url(&format!("/v1/cas/blobs/{upload_id}/{sha256}")))
+            .header("authorization", self.auth_header())
+            .header(reqwest::header::CONTENT_LENGTH, patch.len() as u64)
+            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+            .header("x-hoard-blob-encoding", encoding)
+            .header("x-hoard-blob-base", base)
+            .body(patch)
+            .send()
+            .await?;
+        Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
+        Ok(())
+    }
+
     /// `POST /v1/saves/{id}/cas/commit`: close the version.
     pub async fn cas_commit(&self, save_id: &str, commit: &CasCommit) -> Result<Snapshot> {
         let resp = self
@@ -1848,6 +1949,16 @@ pub struct CloudCasInit {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base_version: Option<i64>,
     pub files: Vec<CloudCasFileEntry>,
+    /// Files this upload could send as a patch, and the local whole copy each
+    /// would be patched against.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub patch_from: Vec<CloudPatchFrom>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudPatchFrom {
+    pub sha256: String,
+    pub base: String,
 }
 
 /// A blob the server is missing, so the client must PUT it to `upload`.
@@ -1858,6 +1969,16 @@ pub struct CloudCasMissingBlob {
     #[serde(default)]
     pub r2_key: String,
     pub upload: PresignedUrl,
+    /// Where it may go as a patch against `base` instead, by encoding.
+    #[serde(default)]
+    pub patch: Option<CloudPatchUpload>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CloudPatchUpload {
+    pub base: String,
+    pub upload: PresignedUrl,
+    pub inflated_upload: PresignedUrl,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1891,6 +2012,14 @@ pub struct CloudManifestFile {
     /// predates this and every blob that was never worth compressing.
     #[serde(default)]
     pub encoding: Option<String>,
+    /// For a patch: the blob it applies to, a link to fetch it when it isn't
+    /// on this machine, and that link's encoding.
+    #[serde(default)]
+    pub base_sha256: Option<String>,
+    #[serde(default)]
+    pub base_download: Option<PresignedUrl>,
+    #[serde(default)]
+    pub base_encoding: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2290,5 +2419,59 @@ mod non_fast_forward_tests {
         assert_eq!(d.head(), None);
         assert_eq!(d.canonical_id_for("mine"), None);
         assert!(!d.human().contains("head"));
+    }
+}
+
+#[cfg(test)]
+mod sync_cache_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    async fn read_head(sock: &mut tokio::net::TcpStream) -> String {
+        let mut req = Vec::new();
+        let mut byte = [0u8; 1];
+        while !req.ends_with(b"\r\n\r\n") {
+            if sock.read(&mut byte).await.unwrap() == 0 {
+                break;
+            }
+            req.push(byte[0]);
+        }
+        String::from_utf8_lossy(&req).to_lowercase()
+    }
+
+    /// The second poll sends the first one's ETag, gets a 304, and the client
+    /// hands back the list it already had.
+    #[tokio::test]
+    async fn a_304_returns_the_cached_list() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let body = r#"{"generated_at":"t","saves":[{"save_id":"s1","game_slug":"g","label":"main","latest_version_num":3}]}"#;
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let head = read_head(&mut sock).await;
+            assert!(!head.contains("if-none-match"), "{head}");
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\netag: \"fp1\"\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            sock.write_all(resp.as_bytes()).await.unwrap();
+            drop(sock);
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let head = read_head(&mut sock).await;
+            assert!(head.contains("if-none-match: \"fp1\""), "{head}");
+            sock.write_all(
+                b"HTTP/1.1 304 Not Modified\r\netag: \"fp1\"\r\nconnection: close\r\n\r\n",
+            )
+            .await
+            .unwrap();
+        });
+        let client = ApiClient::new(format!("http://{addr}"), "tok").unwrap();
+        let first = client.cloud_sync().await.unwrap();
+        let second = client.cloud_sync().await.unwrap();
+        server.await.unwrap();
+        assert_eq!(first.saves.len(), 1);
+        assert_eq!(second.saves[0].save_id, "s1");
+        assert_eq!(second.saves[0].latest_version_num, 3);
     }
 }

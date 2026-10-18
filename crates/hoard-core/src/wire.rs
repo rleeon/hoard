@@ -96,6 +96,12 @@ pub struct Health {
     /// whenever the person running it decides to.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub blob_zstd: bool,
+    /// This server takes a blob as a zstd patch against an earlier one
+    /// (`zstd-patch`, or `zstd-patch-inflated` for zips): Cloud stores it so,
+    /// self-hosted rebuilds it on arrival. Which bases may be used is up to
+    /// the init.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub blob_patch: bool,
     /// This server keeps a device registry and live presence (`/v1/devices`,
     /// `/v1/presence/heartbeat`). Same discipline as [`Health::cas`]: a property
     /// of the binary, not a setting. Absent means a server older than 1.1.3,
@@ -423,6 +429,9 @@ pub struct CasInit {
     #[serde(default)]
     pub base_version: Option<i64>,
     pub files: Vec<CasFile>,
+    /// Blobs the client could send patches against. See [`CasInitOut::bases_ok`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bases: Vec<Sha256>,
 }
 
 /// A blob the server does not have and the client must upload.
@@ -451,6 +460,10 @@ pub struct CasInitOut {
     /// logical size. The difference is what dedup saves, and the client uses it
     /// so the progress bar measures the actual upload.
     pub missing_bytes: i64,
+    /// The `bases` this server holds whole: a missing blob may go up as a
+    /// `zstd-patch` against one of them, which the server rebuilds on arrival.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bases_ok: Vec<Sha256>,
 }
 
 /// Body of `POST /v1/saves/{id}/cas/commit`. It repeats the manifest, because

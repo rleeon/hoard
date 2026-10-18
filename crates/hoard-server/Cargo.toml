@@ -45,6 +45,7 @@ cloud = [
 
 [dependencies]
 hoard-core = { path = "../hoard-core" }
+hoard-deflate = { path = "../hoard-deflate" }
 
 tokio = { workspace = true }
 axum = { workspace = true }
@@ -101,6 +102,10 @@ zip = { workspace = true, optional = true }
 tempfile = { workspace = true, optional = true }
 # Device-pairing codes (CLI browserless login): random device_code + user_code.
 rand = { workspace = true, optional = true }
+# Rebuilding `zstd-patch` blobs: base and output are mapped files, so the
+# bytes sit in the page cache instead of the process's heap.
+memmap2 = "0.9"
+zstd = { workspace = true }
 
 [package.metadata.cargo-machete]
 # Enabled (under `--features cloud`) to pull the matching aws-smithy
@@ -109,6 +114,7 @@ rand = { workspace = true, optional = true }
 ignored = ["aws-smithy-runtime-api"]
 
 [dev-dependencies]
+hoard-deflate = { path = "../hoard-deflate", features = ["testing"] }
 tokio = { workspace = true }
 tempfile = { workspace = true }
 # `ServiceExt::oneshot`, to exercise the router without opening a port. It is

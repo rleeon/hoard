@@ -166,12 +166,13 @@ pub async fn run(cfg: &Config, opts: Options) -> Result<Report> {
         .await
         .context("verify-blobs: building the R2 client")?;
 
+    // A patch only hashes to its sha once applied to its base: not checked here.
     let mut sql = String::from(
         "SELECT user_id, encode(sha256, 'hex') AS sha256, size_bytes, encoding, stored_bytes
-           FROM cloud_blobs",
+           FROM cloud_blobs WHERE base_sha256 IS NULL",
     );
     if !opts.recheck {
-        sql.push_str(" WHERE verified_at IS NULL");
+        sql.push_str(" AND verified_at IS NULL");
     }
     sql.push_str(" ORDER BY created_at");
     if let Some(n) = opts.limit {

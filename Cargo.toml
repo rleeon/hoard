@@ -60,6 +60,8 @@ reqwest = { version = "0.12", default-features = false, features = [
     "stream",
     "charset",
     "http2",
+    "gzip",
+    "zstd",
     "system-proxy",
     "rustls-tls-native-roots",
     "rustls-tls-webpki-roots",

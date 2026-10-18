@@ -157,6 +157,40 @@ async fn put_blob(state: &CloudState, user: Uuid, seed: u16, size: usize) {
         .expect("put object");
 }
 
+/// A patch of `seed` against `base`, at the key a patch row points to.
+async fn put_patch(
+    state: &CloudState,
+    user: Uuid,
+    seed: u16,
+    base: u16,
+    size: usize,
+    inflated: bool,
+) {
+    state
+        .r2
+        .put_object(
+            &r2::key_for_patch(user, &sha(seed), &sha(base), inflated),
+            vec![9u8; size],
+        )
+        .await
+        .expect("put patch");
+}
+
+async fn patch_in_bucket(
+    state: &CloudState,
+    user: Uuid,
+    seed: u16,
+    base: u16,
+    inflated: bool,
+) -> bool {
+    state
+        .r2
+        .head(&r2::key_for_patch(user, &sha(seed), &sha(base), inflated))
+        .await
+        .expect("head")
+        .is_some()
+}
+
 async fn in_bucket(state: &CloudState, user: Uuid, seed: u16) -> bool {
     state
         .r2
@@ -1214,5 +1248,471 @@ async fn a_twenty_thousand_blob_release_is_quick() {
     assert_eq!(storage(&pool, user).await, 0);
     assert!(took < std::time::Duration::from_secs(10), "took {took:?}");
     eprintln!("20,000-blob delete: {took:?}");
+    cleanup(&pool, &[user]).await;
+}
+
+// ---- level 8: what a commit asks the bucket
+
+async fn commit_with_raw(
+    state: &CloudState,
+    user: Uuid,
+    save_id: &str,
+    v: i64,
+    raw: &[u16],
+) -> u16 {
+    use axum::response::IntoResponse;
+    let body = hoard_server::cloud::routes::saves::CasCommitIn {
+        zstd: Vec::new(),
+        raw: raw.iter().map(|s| sha(*s)).collect(),
+        patches: Vec::new(),
+    };
+    match hoard_server::cloud::routes::saves::cas_commit(
+        axum::extract::State(state.clone()),
+        axum::Extension(ctx(user)),
+        axum::extract::Path((save_id.to_string(), v)),
+        Some(axum::Json(body)),
+    )
+    .await
+    {
+        Ok(r) => r.status().as_u16(),
+        Err(e) => e.into_response().status().as_u16(),
+    }
+}
+
+async fn encoding(pool: &PgPool, user: Uuid, seed: u16) -> Option<String> {
+    sqlx::query_scalar(
+        "SELECT encoding FROM cloud_blobs WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
+    )
+    .bind(user)
+    .bind(sha(seed))
+    .fetch_one(pool)
+    .await
+    .expect("encoding")
+}
+
+/// Every blob already known: the commit lands with the bucket unreachable.
+#[tokio::test]
+async fn a_commit_with_no_new_blobs_never_asks_the_bucket() {
+    let Some(pool) = pool().await else { return };
+    let state = state_for(pool.clone()).await;
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 10)], true).await;
+    add_version(&pool, user, &a, 2, &[(1, 10)], false).await;
+
+    assert_eq!(commit(&state, user, &a, 2).await, 200);
+    assert_eq!(refcount(&pool, user, 1).await, Some((2, false)));
+    cleanup(&pool, &[user]).await;
+}
+
+#[tokio::test]
+async fn a_small_commit_heads_its_new_blobs_and_files_the_raw_verdict() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = bucket_state(pool.clone()).await else {
+        return;
+    };
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 10), (2, 20)], false).await;
+    put_blob(&state, user, 1, 10).await;
+
+    assert_eq!(
+        commit_with_raw(&state, user, &a, 1, &[1]).await,
+        400,
+        "blob 2 never landed"
+    );
+    put_blob(&state, user, 2, 20).await;
+    assert_eq!(commit_with_raw(&state, user, &a, 1, &[1]).await, 200);
+    assert_eq!(encoding(&pool, user, 1).await.as_deref(), Some("raw"));
+    assert_eq!(
+        encoding(&pool, user, 2).await,
+        None,
+        "no verdict, the sweep still may"
+    );
+    assert_eq!(storage(&pool, user).await, 30);
+    assert!(audit(&pool, &[user]).await.is_clean());
+    cleanup(&pool, &[user]).await;
+}
+
+#[tokio::test]
+async fn a_big_commit_still_finds_its_blobs_by_listing() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = bucket_state(pool.clone()).await else {
+        return;
+    };
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    let files: Vec<(u16, i64)> = (1..=101).map(|s| (s, 10)).collect();
+    add_version(&pool, user, &a, 1, &files, false).await;
+    for (seed, size) in &files {
+        put_blob(&state, user, *seed, *size as usize).await;
+    }
+
+    assert_eq!(commit(&state, user, &a, 1).await, 200);
+    assert_eq!(storage(&pool, user).await, 1010);
+    assert!(audit(&pool, &[user]).await.is_clean());
+    cleanup(&pool, &[user]).await;
+}
+
+// ---- level 9: blobs stored as patches
+
+async fn patch_state(pool: PgPool) -> Option<CloudState> {
+    let mut state = bucket_state(pool).await?;
+    state
+        .config
+        .cloud
+        .as_mut()
+        .expect("cloud section")
+        .blob_patch = true;
+    Some(state)
+}
+
+async fn device(pool: &PgPool, user: Uuid, version: &str) {
+    sqlx::query(
+        "INSERT INTO devices (user_id, device_name, fingerprint, last_seen_at, app_version)
+         VALUES ($1, $2, $2, now(), $3)",
+    )
+    .bind(user)
+    .bind(format!("dev-{version}-{}", Uuid::new_v4()))
+    .bind(version)
+    .execute(pool)
+    .await
+    .expect("device");
+}
+
+async fn commit_patch(
+    state: &CloudState,
+    user: Uuid,
+    save_id: &str,
+    v: i64,
+    patch: u16,
+    base: u16,
+) -> u16 {
+    commit_patch_as(state, user, save_id, v, patch, base, None).await
+}
+
+async fn commit_patch_as(
+    state: &CloudState,
+    user: Uuid,
+    save_id: &str,
+    v: i64,
+    patch: u16,
+    base: u16,
+    encoding: Option<&str>,
+) -> u16 {
+    use axum::response::IntoResponse;
+    let body = hoard_server::cloud::routes::saves::CasCommitIn {
+        zstd: Vec::new(),
+        raw: Vec::new(),
+        patches: vec![hoard_server::cloud::routes::saves::PatchIn {
+            sha256: sha(patch),
+            base: sha(base),
+            encoding: encoding.map(str::to_string),
+        }],
+    };
+    match hoard_server::cloud::routes::saves::cas_commit(
+        axum::extract::State(state.clone()),
+        axum::Extension(ctx(user)),
+        axum::extract::Path((save_id.to_string(), v)),
+        Some(axum::Json(body)),
+    )
+    .await
+    {
+        Ok(r) => r.status().as_u16(),
+        Err(e) => e.into_response().status().as_u16(),
+    }
+}
+
+async fn manifest(
+    state: &CloudState,
+    user: Uuid,
+    save_id: &str,
+    v: i64,
+    patch: bool,
+) -> (u16, serde_json::Value) {
+    let resp = hoard_server::cloud::routes::saves::version_manifest(
+        axum::extract::State(state.clone()),
+        axum::Extension(ctx(user)),
+        axum::extract::Path((save_id.to_string(), v)),
+        axum::http::HeaderMap::new(),
+        axum::extract::Query(hoard_server::cloud::routes::saves::ManifestQuery {
+            presign: true,
+            zstd: true,
+            patch,
+        }),
+    )
+    .await
+    .expect("manifest runs");
+    let status = resp.status().as_u16();
+    let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+    )
+}
+
+/// The base outlives the version that brought it for as long as a patch needs
+/// it, and goes once the patch does.
+#[tokio::test]
+async fn a_patch_keeps_its_base_alive() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = patch_state(pool.clone()).await else {
+        return;
+    };
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 1000)], true).await;
+    put_blob(&state, user, 1, 1000).await;
+    add_version(&pool, user, &a, 2, &[(2, 1000)], false).await;
+    put_patch(&state, user, 2, 1, 40, false).await;
+
+    assert_eq!(commit_patch(&state, user, &a, 2, 2, 1).await, 200);
+    let (enc, base, stored): (Option<String>, Option<String>, Option<i64>) = sqlx::query_as(
+        "SELECT encoding, encode(base_sha256, 'hex'), stored_bytes FROM cloud_blobs
+          WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
+    )
+    .bind(user)
+    .bind(sha(2))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(enc.as_deref(), Some("zstd-patch"));
+    assert_eq!(base, Some(sha(1)));
+    assert_eq!(stored, Some(40));
+    assert_eq!(
+        storage(&pool, user).await,
+        2000,
+        "charged raw, both of them"
+    );
+
+    // Version 1 goes: its blob drops to 0 but stays, version 2 needs it.
+    assert_eq!(delete_version(&state, user, &a, 1).await, 204);
+    sqlx::query("UPDATE cloud_blobs SET purge_after = now() - interval '1 minute' WHERE user_id = $1 AND refcount = 0")
+        .bind(user)
+        .execute(&pool)
+        .await
+        .unwrap();
+    hoard_server::cloud::archive::purge_due_blobs(&state, Some(&[user]))
+        .await
+        .unwrap();
+    assert!(
+        refcount(&pool, user, 1).await.is_some(),
+        "the base must survive"
+    );
+    assert!(in_bucket(&state, user, 1).await);
+
+    // The patch goes, and the base right after it.
+    assert_eq!(delete_version(&state, user, &a, 2).await, 204);
+    sqlx::query("UPDATE cloud_blobs SET purge_after = now() - interval '1 minute' WHERE user_id = $1 AND refcount = 0")
+        .bind(user)
+        .execute(&pool)
+        .await
+        .unwrap();
+    hoard_server::cloud::archive::purge_due_blobs(&state, Some(&[user]))
+        .await
+        .unwrap();
+    assert_eq!(refcount(&pool, user, 2).await, None);
+    assert_eq!(refcount(&pool, user, 1).await, None);
+    assert!(!in_bucket(&state, user, 1).await);
+    assert!(!patch_in_bucket(&state, user, 2, 1, false).await);
+    cleanup(&pool, &[user]).await;
+}
+
+#[tokio::test]
+async fn a_patch_against_a_missing_base_is_refused() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = patch_state(pool.clone()).await else {
+        return;
+    };
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(2, 1000)], false).await;
+    put_patch(&state, user, 2, 9, 40, false).await;
+
+    assert_eq!(commit_patch(&state, user, &a, 1, 2, 9).await, 409);
+    let pending: bool =
+        sqlx::query_scalar("SELECT sha256 = '' FROM save_versions WHERE save_id = $1")
+            .bind(&a)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(pending, "nothing committed");
+    cleanup(&pool, &[user]).await;
+}
+
+#[tokio::test]
+async fn patches_are_refused_when_switched_off() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = bucket_state(pool.clone()).await else {
+        return;
+    };
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 1000)], true).await;
+    add_version(&pool, user, &a, 2, &[(2, 1000)], false).await;
+    put_blob(&state, user, 2, 40).await;
+    assert_eq!(commit_patch(&state, user, &a, 2, 2, 1).await, 400);
+    cleanup(&pool, &[user]).await;
+}
+
+/// A client that can't apply patches gets 426; one that can gets the base and
+/// a link to it.
+#[tokio::test]
+async fn the_manifest_hands_out_the_base() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = patch_state(pool.clone()).await else {
+        return;
+    };
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 1000)], true).await;
+    put_blob(&state, user, 1, 1000).await;
+    add_version(&pool, user, &a, 2, &[(2, 1000)], false).await;
+    put_patch(&state, user, 2, 1, 40, false).await;
+    assert_eq!(commit_patch(&state, user, &a, 2, 2, 1).await, 200);
+
+    assert_eq!(manifest(&state, user, &a, 2, false).await.0, 426);
+    let (status, json) = manifest(&state, user, &a, 2, true).await;
+    assert_eq!(status, 200);
+    let file = &json["files"][0];
+    assert_eq!(file["encoding"], "zstd-patch");
+    let url = file["download"]["url"].as_str().unwrap();
+    assert!(url.contains(&format!("{}.zp.{}", sha(2), sha(1))), "{url}");
+    assert_eq!(file["base_sha256"], sha(1));
+    assert!(file["base_download"]["url"].as_str().is_some());
+    assert!(
+        file.get("base_encoding").is_none(),
+        "the base is stored raw"
+    );
+    cleanup(&pool, &[user]).await;
+}
+
+#[tokio::test]
+async fn an_inflated_patch_keeps_its_encoding_and_an_unknown_one_is_refused() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = patch_state(pool.clone()).await else {
+        return;
+    };
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 1000)], true).await;
+    put_blob(&state, user, 1, 1000).await;
+    add_version(&pool, user, &a, 2, &[(2, 1000)], false).await;
+    put_patch(&state, user, 2, 1, 40, true).await;
+
+    let odd = commit_patch_as(&state, user, &a, 2, 2, 1, Some("zstd-patch-v9")).await;
+    assert_eq!(odd, 400, "nothing could restore it");
+    let inflated = Some("zstd-patch-inflated");
+    assert_eq!(
+        commit_patch_as(&state, user, &a, 2, 2, 1, inflated).await,
+        200
+    );
+    assert_eq!(encoding(&pool, user, 2).await.as_deref(), inflated);
+    let (status, json) = manifest(&state, user, &a, 2, true).await;
+    assert_eq!(status, 200);
+    assert_eq!(json["files"][0]["encoding"], "zstd-patch-inflated");
+    assert_eq!(json["files"][0]["base_sha256"], sha(1));
+    cleanup(&pool, &[user]).await;
+}
+
+/// Two devices upload the same new file at once, one whole and one as a
+/// patch. Each lands at its own key, the first commit decides what the row
+/// describes, and the loser's bytes are litter, never the winner's.
+#[tokio::test]
+async fn a_patch_that_loses_the_race_is_litter_and_the_winner_is_untouched() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = patch_state(pool.clone()).await else {
+        return;
+    };
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 1000)], true).await;
+    put_blob(&state, user, 1, 1000).await;
+    add_version(&pool, user, &a, 2, &[(2, 1000)], false).await;
+    put_blob(&state, user, 2, 1000).await;
+    put_patch(&state, user, 2, 1, 40, false).await;
+
+    assert_eq!(
+        commit(&state, user, &a, 2).await,
+        200,
+        "the whole copy wins"
+    );
+    assert_eq!(encoding(&pool, user, 2).await, None);
+    assert!(
+        in_bucket(&state, user, 2).await,
+        "its bytes are where its row says"
+    );
+
+    let f = reconcile::reconcile(&state, Some(&[user]), later(), false)
+        .await
+        .expect("reconcile");
+    assert_eq!(
+        (f.orphan_objects, f.orphan_bytes, f.missing_objects),
+        (1, 40, 0)
+    );
+    let f = reconcile::reconcile(&state, Some(&[user]), later(), true)
+        .await
+        .expect("reconcile");
+    assert_eq!(f.deleted_objects, 1);
+    assert!(!patch_in_bucket(&state, user, 2, 1, false).await);
+    assert!(in_bucket(&state, user, 2).await);
+    cleanup(&pool, &[user]).await;
+}
+
+/// A committed patch is found at its own key: neither missing nor litter.
+#[tokio::test]
+async fn a_live_patch_is_neither_missing_nor_litter() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = patch_state(pool.clone()).await else {
+        return;
+    };
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 1000)], true).await;
+    put_blob(&state, user, 1, 1000).await;
+    add_version(&pool, user, &a, 2, &[(2, 1000)], false).await;
+    put_patch(&state, user, 2, 1, 40, true).await;
+    assert_eq!(
+        commit_patch_as(&state, user, &a, 2, 2, 1, Some("zstd-patch-inflated")).await,
+        200
+    );
+
+    let f = reconcile::reconcile(&state, Some(&[user]), later(), false)
+        .await
+        .expect("reconcile");
+    assert_eq!((f.orphan_objects, f.missing_objects), (0, 0));
+    cleanup(&pool, &[user]).await;
+}
+
+#[tokio::test]
+async fn only_accounts_whose_devices_all_decode_patches_may_send_them() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = patch_state(pool.clone()).await else {
+        return;
+    };
+    let user = new_user(&pool).await;
+    assert!(
+        !hoard_server::cloud::patches::account_ok(&state, user)
+            .await
+            .unwrap(),
+        "no devices"
+    );
+    device(&pool, user, "1.3.0").await;
+    assert!(hoard_server::cloud::patches::account_ok(&state, user)
+        .await
+        .unwrap());
+    device(&pool, user, "1.2.2").await;
+    assert!(
+        !hoard_server::cloud::patches::account_ok(&state, user)
+            .await
+            .unwrap(),
+        "an old one"
+    );
+    let _ = sqlx::query("DELETE FROM devices WHERE user_id = $1")
+        .bind(user)
+        .execute(&pool)
+        .await;
     cleanup(&pool, &[user]).await;
 }

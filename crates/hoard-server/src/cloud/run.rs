@@ -572,6 +572,7 @@ async fn cloud_health(State(state): State<CloudState>) -> axum::Json<HealthBody>
         version: env!("CARGO_PKG_VERSION"),
         mode: "cloud",
         blob_zstd: true,
+        blob_patch: crate::cloud::patches::enabled(&state),
         log_min_level: "warn",
     })
 }
@@ -595,4 +596,7 @@ struct HealthBody {
     /// bytes would be stored compressed under the raw sha with nothing saying
     /// so, and the version would never restore again.
     blob_zstd: bool,
+    /// This server stores patch blobs (see `cloud::patches`); whether an
+    /// account may send them is up to `cas_init`.
+    blob_patch: bool,
 }

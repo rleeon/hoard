@@ -194,6 +194,7 @@ async fn backup_into(
         Json(CasInit {
             base_version: base,
             files: m.clone(),
+            bases: Vec::new(),
         }),
     )
     .await
@@ -368,6 +369,7 @@ async fn bytes_that_dont_match_their_sha_are_refused() {
         Json(CasInit {
             base_version: Some(0),
             files: m.clone(),
+            bases: Vec::new(),
         }),
     )
     .await
@@ -436,6 +438,7 @@ async fn a_diverged_base_passes_when_the_manifest_carries_the_whole_head() {
         Json(CasInit {
             base_version: Some(0),
             files: manifest(&[("save", &old), ("otro", &extra)]),
+            bases: Vec::new(),
         }),
     )
     .await
@@ -454,6 +457,7 @@ async fn a_diverged_base_passes_when_the_manifest_carries_the_whole_head() {
         Json(CasInit {
             base_version: Some(0),
             files: manifest(&[("otro", &extra)]),
+            bases: Vec::new(),
         }),
     )
     .await
@@ -479,6 +483,7 @@ async fn a_diverged_head_is_refused_before_and_after_the_upload() {
         Json(CasInit {
             base_version: Some(0),
             files: m.clone(),
+            bases: Vec::new(),
         }),
     )
     .await
@@ -503,6 +508,7 @@ async fn a_diverged_head_is_refused_before_and_after_the_upload() {
         Json(CasInit {
             base_version: Some(1),
             files: m.clone(),
+            bases: Vec::new(),
         }),
     )
     .await
@@ -552,6 +558,7 @@ async fn the_snapshot_cap_is_answered_before_any_byte_moves() {
         Json(CasInit {
             base_version: Some(0),
             files,
+            bases: Vec::new(),
         }),
     )
     .await
@@ -593,6 +600,7 @@ async fn a_zero_quota_is_no_limit() {
         Json(CasInit {
             base_version: Some(0),
             files: manifest(&[("save.dat", &save)]),
+            bases: Vec::new(),
         }),
     )
     .await
@@ -618,6 +626,7 @@ async fn another_users_upload_area_is_not_reachable() {
         Json(CasInit {
             base_version: Some(0),
             files: manifest(&[("save", &data)]),
+            bases: Vec::new(),
         }),
     )
     .await
@@ -725,6 +734,7 @@ async fn a_compressed_blob_is_decoded_before_it_is_stored() {
                 size_bytes: raw.len() as i64,
                 modified_at: None,
             }],
+            bases: Vec::new(),
         }),
     )
     .await
@@ -798,6 +808,7 @@ async fn compressed_bytes_without_the_header_are_rejected() {
                 size_bytes: raw.len() as i64,
                 modified_at: None,
             }],
+            bases: Vec::new(),
         }),
     )
     .await
@@ -814,6 +825,200 @@ async fn compressed_bytes_without_the_header_are_rejected() {
     .await
     .expect_err("undeclared compressed bytes must be refused");
     assert_eq!(err.0, StatusCode::BAD_REQUEST);
+}
+
+/// A big file that changes a little goes up as a patch against the copy the
+/// server already holds, and what lands is the whole file.
+#[tokio::test]
+async fn a_patch_is_rebuilt_against_its_base_before_it_is_stored() {
+    let h = harness().await;
+    let v1: Vec<u8> = (0..2_000_000u32).map(|i| (i * 7 % 253) as u8).collect();
+    backup(&h, &[("slot.fos", &v1)], Some(0)).await;
+
+    let mut v2 = v1.clone();
+    v2[900_000..900_064].fill(0x42);
+    let sha = sha_of(&v2);
+    let ghost = sha_of(b"never uploaded");
+    let files = vec![CasFile {
+        relative_path: "slot.fos".into(),
+        sha256: Sha256Hex::parse(&sha).unwrap(),
+        size_bytes: v2.len() as i64,
+        modified_at: None,
+    }];
+    let init = cas::init(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasInit {
+            base_version: Some(1),
+            files: files.clone(),
+            bases: vec![
+                Sha256Hex::parse(&sha_of(&v1)).unwrap(),
+                Sha256Hex::parse(&ghost).unwrap(),
+            ],
+        }),
+    )
+    .await
+    .expect("init")
+    .0;
+    let ok: Vec<&str> = init.bases_ok.iter().map(|b| b.as_str()).collect();
+    assert_eq!(ok, vec![sha_of(&v1)], "only a base it holds whole");
+
+    let patch = patch_of(&v1, &v2);
+    assert!(patch.len() * 100 < v2.len(), "{} byte patch", patch.len());
+    let code = cas::upload_blob(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path((init.upload_id.clone(), sha.clone())),
+        patch_headers(&sha_of(&v1)),
+        Body::from(patch),
+    )
+    .await
+    .expect("the patch is accepted");
+    assert_eq!(code, StatusCode::NO_CONTENT);
+
+    let snap = cas::commit(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasCommit {
+            upload_id: init.upload_id,
+            base_version: Some(1),
+            device_name: None,
+            notes: None,
+            files,
+        }),
+    )
+    .await
+    .expect("commit")
+    .1
+     .0;
+    assert_eq!(snap.total_size_bytes, v2.len() as i64);
+    assert_eq!(std::fs::read(blob_on_disk(&h, &v2)).unwrap(), v2);
+}
+
+#[tokio::test]
+async fn a_patch_against_a_base_the_server_lacks_is_refused() {
+    let h = harness().await;
+    let base = b"a base this server never got ".repeat(100);
+    let new = b"a base this server never got, changed ".repeat(100);
+    let sha = sha_of(&new);
+    let init = cas::init(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasInit {
+            base_version: None,
+            files: manifest(&[("slot.fos", &new)]),
+            bases: Vec::new(),
+        }),
+    )
+    .await
+    .expect("init")
+    .0;
+
+    let err = cas::upload_blob(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path((init.upload_id, sha)),
+        patch_headers(&sha_of(&base)),
+        Body::from(patch_of(&base, &new)),
+    )
+    .await
+    .expect_err("no base, no patch");
+    assert_eq!(err.0, StatusCode::CONFLICT);
+    assert_eq!(err.1 .0["code"], "patch_base_gone");
+}
+
+/// A zip with one deflated entry, the way Stellaris writes its saves.
+#[tokio::test]
+async fn an_inflated_patch_is_rebuilt_before_it_is_stored() {
+    use hoard_deflate::testing::{deflated, zip_of};
+    use hoard_deflate::Wrap;
+    let h = harness().await;
+    let text: Vec<u8> = (0..300_000u32)
+        .flat_map(|i| format!("{} ", i % 991).into_bytes())
+        .collect();
+    let v1 = zip_of(&[("gamestate", 8, deflated(&text, 6, 8, Wrap::Raw))]);
+    backup(&h, &[("save.sav", &v1)], Some(0)).await;
+    let mut changed = text.clone();
+    changed[10_000..10_020].fill(b'z');
+    let v2 = zip_of(&[("gamestate", 8, deflated(&changed, 6, 8, Wrap::Raw))]);
+    let sha = sha_of(&v2);
+    let files = manifest(&[("save.sav", &v2)]);
+    let init = cas::init(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasInit {
+            base_version: Some(1),
+            files: files.clone(),
+            bases: vec![Sha256Hex::parse(&sha_of(&v1)).unwrap()],
+        }),
+    )
+    .await
+    .expect("init")
+    .0;
+
+    let streams = hoard_deflate::streams(&v1);
+    let mut reference = Vec::new();
+    hoard_deflate::reference(&v1, &streams, &mut reference).unwrap();
+    let form = hoard_deflate::inflate(&v2).unwrap().unwrap();
+    let blob = hoard_deflate::pack(&streams, &patch_of(&reference, &form));
+    assert!(blob.len() * 20 < v2.len(), "{} byte patch", blob.len());
+    let mut headers = patch_headers(&sha_of(&v1));
+    headers.insert(
+        "x-hoard-blob-encoding",
+        "zstd-patch-inflated".parse().unwrap(),
+    );
+    let code = cas::upload_blob(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path((init.upload_id.clone(), sha.clone())),
+        headers,
+        Body::from(blob),
+    )
+    .await
+    .expect("the patch is accepted");
+    assert_eq!(code, StatusCode::NO_CONTENT);
+
+    let snap = cas::commit(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasCommit {
+            upload_id: init.upload_id,
+            base_version: Some(1),
+            device_name: None,
+            notes: None,
+            files,
+        }),
+    )
+    .await
+    .expect("commit")
+    .1
+     .0;
+    assert_eq!(snap.total_size_bytes, v2.len() as i64);
+    assert_eq!(std::fs::read(blob_on_disk(&h, &v2)).unwrap(), v2);
+}
+
+fn patch_of(base: &[u8], new: &[u8]) -> Vec<u8> {
+    use std::io::Write;
+    let mut out = Vec::new();
+    let mut enc = zstd::stream::write::Encoder::with_ref_prefix(&mut out, 3, base).unwrap();
+    enc.set_parameter(zstd::stream::raw::CParameter::WindowLog(27))
+        .unwrap();
+    enc.set_pledged_src_size(Some(new.len() as u64)).unwrap();
+    enc.write_all(new).unwrap();
+    enc.finish().unwrap();
+    out
+}
+
+fn patch_headers(base: &str) -> axum::http::HeaderMap {
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert("x-hoard-blob-encoding", "zstd-patch".parse().unwrap());
+    headers.insert("x-hoard-blob-base", base.parse().unwrap());
+    headers
 }
 
 /// zstd-compress in memory, the way the client does before it uploads.
@@ -940,6 +1145,7 @@ async fn a_reused_blob_the_purge_took_is_not_committed_over() {
         Json(CasInit {
             base_version: Some(1),
             files: m.clone(),
+            bases: Vec::new(),
         }),
     )
     .await
@@ -1026,6 +1232,7 @@ async fn a_blob_the_purge_takes_while_the_commit_waits_is_not_committed_over() {
         Json(CasInit {
             base_version: Some(1),
             files: m.clone(),
+            bases: Vec::new(),
         }),
     )
     .await

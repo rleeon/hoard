@@ -51,6 +51,7 @@ async fn manifest_files(
         axum::extract::Query(hoard_server::cloud::routes::saves::ManifestQuery {
             presign: true,
             zstd,
+            patch: false,
         }),
     )
     .await
@@ -489,6 +490,7 @@ async fn a_commit_interns_each_distinct_content_once() {
                     modified_at: Some(i64::from(version)),
                 },
             ],
+            patch_from: Vec::new(),
         };
         let user_ctx = hoard_server::cloud::auth::CloudUser {
             user_id: user,
@@ -589,6 +591,92 @@ async fn a_commit_interns_each_distinct_content_once() {
 /// default has to stay on the proxy: every client built before the `zstd`
 /// parameter existed omits it, and handing one of those a compressed body would
 /// write zstd bytes into somebody's save file.
+/// A missing blob the client could patch gets a link per encoding, each at
+/// its own key and never the whole blob's, for a base the account holds whole.
+#[tokio::test]
+async fn the_init_offers_patch_links_only_for_a_base_held_whole() {
+    let Some(pool) = pool().await else { return };
+    let mut state = state_for(pool.clone()).await;
+    state
+        .config
+        .cloud
+        .as_mut()
+        .expect("cloud section")
+        .blob_patch = true;
+    let (user, _) = seed(&pool, 1, 1).await;
+    sqlx::query(
+        "INSERT INTO devices (user_id, device_name, fingerprint, last_seen_at, app_version)
+         VALUES ($1, 'pc', 'pc', now(), '1.3.0')",
+    )
+    .bind(user)
+    .execute(&pool)
+    .await
+    .expect("device");
+    let base = sha(0);
+    let file = |rel: &str, s: String| hoard_server::cloud::routes::saves::CasFileEntry {
+        relative_path: rel.into(),
+        sha256: s,
+        size_bytes: 3 << 20,
+        modified_at: None,
+    };
+    let from = |s: String, b: &str| hoard_server::cloud::routes::saves::PatchFrom {
+        sha256: s,
+        base: b.into(),
+    };
+    let body = hoard_server::cloud::routes::saves::CasInit {
+        save_id: Uuid::new_v4().to_string(),
+        game_slug: "patch-game".into(),
+        label: Some("default".into()),
+        device_name: None,
+        notes: None,
+        backup_only: false,
+        base_version: None,
+        files: vec![file("a.sav", sha(40)), file("b.sav", sha(41))],
+        patch_from: vec![from(sha(40), &base), from(sha(41), &sha(99))],
+    };
+    let ctx = hoard_server::cloud::auth::CloudUser {
+        user_id: user,
+        email: format!("{user}@test.invalid"),
+        role: "authenticated".into(),
+        avatar_url: None,
+        display_name: None,
+    };
+    let resp = hoard_server::cloud::routes::saves::cas_init(
+        axum::extract::State(state.clone()),
+        axum::Extension(ctx),
+        axum::Json(body),
+    )
+    .await
+    .expect("cas_init runs");
+    let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
+    let json: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    let missing = json["missing"].as_array().expect("missing");
+    let by_sha = |s: String| {
+        missing
+            .iter()
+            .find(|m| m["sha256"] == s.as_str())
+            .expect("listed")
+            .clone()
+    };
+    let a = by_sha(sha(40));
+    assert_eq!(a["patch"]["base"], base.as_str());
+    let plain = a["patch"]["upload"]["url"].as_str().unwrap();
+    let inflated = a["patch"]["inflated_upload"]["url"].as_str().unwrap();
+    assert!(plain.contains(&format!("{}.zp.{base}", sha(40))), "{plain}");
+    assert!(
+        inflated.contains(&format!("{}.zpi.{base}", sha(40))),
+        "{inflated}"
+    );
+    assert!(!a["upload"]["url"].as_str().unwrap().contains(".zp"));
+    assert!(
+        by_sha(sha(41)).get("patch").is_none(),
+        "no row for that base"
+    );
+    cleanup(&pool, user).await;
+}
+
 #[tokio::test]
 async fn a_compressed_blob_goes_direct_only_when_the_client_can_decode_it() {
     let Some(pool) = pool().await else { return };
@@ -754,6 +842,7 @@ async fn a_blocked_install_is_refused_before_anything_is_minted() {
                 modified_at: None,
             })
             .collect(),
+        patch_from: Vec::new(),
     };
     let ctx = || hoard_server::cloud::auth::CloudUser {
         user_id: user,

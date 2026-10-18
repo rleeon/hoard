@@ -48,6 +48,7 @@ fn body(status: &str, uptime_secs: u64) -> Health {
         cas: true,
         devices: true,
         blob_zstd: true,
+        blob_patch: true,
     }
 }
 

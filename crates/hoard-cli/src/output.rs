@@ -166,6 +166,7 @@ pub fn classify(e: &anyhow::Error) -> Classified {
         // Same class and exit code as any other 409: `--json` is a contract,
         // and a non-fast-forward is still "conflict" to whoever is scripting us.
         Some(ApiError::NonFastForward(_)) => plain("conflict", 1),
+        Some(ApiError::PatchBaseGone(_)) => plain("conflict", 1),
         Some(ApiError::Conflict(_)) => plain("conflict", 1),
         Some(ApiError::BadRequest(_)) => plain("bad_request", 1),
         Some(ApiError::Server { .. }) => plain("server", 1),

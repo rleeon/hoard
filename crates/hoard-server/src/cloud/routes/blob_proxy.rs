@@ -113,6 +113,10 @@ pub async fn download(
     let Some((encoding, stored_bytes, size_bytes)) = row else {
         return Err(StatusCode::NOT_FOUND);
     };
+    // Only a client that can apply a patch gets one, and those never come here.
+    if encoding.as_deref().is_some_and(crate::patch::is_patch) {
+        return Err(StatusCode::CONFLICT);
+    }
     let r2_key = crate::cloud::r2::key_for_blob(user_id, &sha256);
 
     let reader = state.r2.get_reader(&r2_key).await.map_err(|e| {

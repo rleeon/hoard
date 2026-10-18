@@ -333,11 +333,28 @@ pub async fn init(
         "cas init"
     );
 
+    // Bases a patch may be built on: stored whole (not chunked) for this user.
+    // A client offers one per big file.
+    let mut bases_ok = Vec::new();
+    if !missing.is_empty() {
+        for base in body.bases.iter().take(MAX_PATCH_BASES) {
+            if matches!(
+                stored_representation(&state.pool, &user_id, base.as_str())
+                    .await
+                    .map_err(|e| internal_logged("base lookup", e))?,
+                Some(Stored::Blob { .. })
+            ) {
+                bases_ok.push(base.clone());
+            }
+        }
+    }
+
     Ok(Json(CasInitOut {
         upload_id,
         version_num: head + 1,
         missing,
         missing_bytes,
+        bases_ok,
     }))
 }
 
@@ -494,12 +511,16 @@ pub async fn upload_blob(
     // raw content and stays the identity of the blob everywhere, so the bytes
     // are decoded here and everything downstream (dedup, refcounts, the tar
     // rebuild on download, quota) carries on unchanged and unaware.
-    let body_is_zstd = headers
+    let encoding = headers
         .get(BLOB_ENCODING_HEADER)
         .and_then(|v| v.to_str().ok())
-        .map(|v| v.eq_ignore_ascii_case("zstd"))
-        .unwrap_or(false);
+        .map(str::to_ascii_lowercase);
+    let body_is_zstd = encoding.as_deref() == Some("zstd");
     let user_id = user.user_id.to_string();
+    if let Some(enc) = encoding.as_deref().filter(|e| crate::patch::is_patch(e)) {
+        let inflated = enc == crate::patch::INFLATED;
+        return upload_patch(&state, &user_id, &upload_id, &sha, &headers, inflated, body).await;
+    }
     // The body is taken as a stream before the first validation: every error
     // from here on has to empty it before answering, or the client never gets
     // to read the response. See `drain_then`.
@@ -640,6 +661,178 @@ pub async fn upload_blob(
         return Err(internal_logged("keeping the uploaded blob", e));
     }
 
+    Ok(StatusCode::NO_CONTENT)
+}
+
+const MAX_PATCH_BASES: usize = 2_000;
+
+/// A missing blob sent as a patch (`zstd-patch`, `zstd-patch-inflated`)
+/// against a blob this user already has whole. Rebuilt here and checked
+/// against its sha, it lands in staging as the raw file, so the commit, the
+/// store and every restore never know it was one.
+async fn upload_patch(
+    state: &ServerState,
+    user_id: &str,
+    upload_id: &str,
+    sha: &str,
+    headers: &axum::http::HeaderMap,
+    inflated: bool,
+    body: Body,
+) -> Result<StatusCode, ApiError> {
+    // Same rules as a whole blob: every answer before the body is read in
+    // full drains it first, and the body goes to disk, never to memory.
+    let mut stream = body.into_data_stream();
+    if !valid_upload_id(upload_id) || !valid_sha256(sha) {
+        let e = err(StatusCode::BAD_REQUEST, "invalid upload id or sha256");
+        return Err(drain_then(&mut stream, e, 0).await);
+    }
+    let dir = staging_dir(&state.config.storage.data_dir, upload_id);
+    match tokio::fs::read_to_string(owner_file(&dir)).await {
+        Ok(owner) if owner == user_id => {}
+        _ => {
+            let e = err(StatusCode::NOT_FOUND, "upload not found or expired");
+            return Err(drain_then(&mut stream, e, 0).await);
+        }
+    }
+    let Some(base) = headers
+        .get(crate::patch::BASE_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .filter(|b| valid_sha256(b))
+        .map(str::to_string)
+    else {
+        let e = err(StatusCode::BAD_REQUEST, "a patch needs its base");
+        return Err(drain_then(&mut stream, e, 0).await);
+    };
+    let whole = match stored_representation(&state.pool, user_id, &base).await {
+        Ok(stored) => matches!(stored, Some(Stored::Blob { .. })),
+        Err(e) => return Err(drain_then(&mut stream, internal_logged("base lookup", e), 0).await),
+    };
+    if !whole {
+        let e = (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "error": "a patch's base is no longer stored whole; upload the file whole",
+                "code": "patch_base_gone",
+                "base": base,
+            })),
+        );
+        return Err(drain_then(&mut stream, e, 0).await);
+    }
+
+    let max_per_blob = state.config.storage.max_snapshot_size_mb * 1024 * 1024;
+    let tag = Uuid::new_v4();
+    let patch_path = dir.join(format!("{sha}.{tag}.patch"));
+    let part = dir.join(format!("{sha}.{tag}.part"));
+    let mut file = match tokio::fs::File::create(&patch_path).await {
+        Ok(f) => f,
+        Err(e) => {
+            let e = internal_logged("staging the patch", e);
+            return Err(drain_then(&mut stream, e, 0).await);
+        }
+    };
+    let mut read: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = match chunk {
+            Ok(c) => c,
+            Err(e) => {
+                warn!(error = %e, "cas patch stream error");
+                let _ = tokio::fs::remove_file(&patch_path).await;
+                return Err(err(StatusCode::BAD_REQUEST, "stream error"));
+            }
+        };
+        read += chunk.len() as u64;
+        if read > max_per_blob {
+            let _ = tokio::fs::remove_file(&patch_path).await;
+            let e = snapshot_too_large(max_per_blob as i64, read as i64);
+            return Err(drain_then(&mut stream, e, read).await);
+        }
+        if let Err(e) = file.write_all(&chunk).await {
+            let _ = tokio::fs::remove_file(&patch_path).await;
+            let e = internal_logged("staging the patch", e);
+            return Err(drain_then(&mut stream, e, read).await);
+        }
+    }
+    if let Err(e) = file.flush().await {
+        let _ = tokio::fs::remove_file(&patch_path).await;
+        return Err(internal_logged("staging the patch", e));
+    }
+    drop(file);
+
+    // An inflated patch's frame holds the inflated form, not the file: its cap
+    // is checked while it rebuilds. A plain one names the file's size up front.
+    let size = if inflated {
+        Some(max_per_blob)
+    } else {
+        let mut head = [0u8; 32];
+        let n = match tokio::fs::File::open(&patch_path).await {
+            Ok(mut f) => tokio::io::AsyncReadExt::read(&mut f, &mut head)
+                .await
+                .unwrap_or(0),
+            Err(_) => 0,
+        };
+        crate::patch::content_size(&head[..n]).filter(|n| *n <= max_per_blob)
+    };
+    let Some(size) = size else {
+        let _ = tokio::fs::remove_file(&patch_path).await;
+        return Err(err(StatusCode::BAD_REQUEST, "patch without a usable size"));
+    };
+
+    let base_ref = match state
+        .store
+        .local_ref(&crate::store::blob_key(user_id, &base), &dir)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = tokio::fs::remove_file(&patch_path).await;
+            return Err(internal_logged("reading the patch base", e));
+        }
+    };
+    let (bp, pp, op) = (base_ref.path.clone(), patch_path.clone(), part.clone());
+    let rebuilt = tokio::task::spawn_blocking(move || {
+        if inflated {
+            crate::patch::apply_inflated_files(&bp, &pp, &op, size)
+        } else {
+            crate::patch::apply_files(&bp, &pp, &op, size)
+        }
+    })
+    .await;
+    let _ = tokio::fs::remove_file(&patch_path).await;
+    if base_ref.cleanup {
+        let _ = tokio::fs::remove_file(&base_ref.path).await;
+    }
+    if !matches!(rebuilt, Ok(Ok(()))) {
+        let _ = tokio::fs::remove_file(&part).await;
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "the patch does not apply to its base",
+        ));
+    }
+
+    let mut hasher = Sha256::new();
+    let mut f = tokio::fs::File::open(&part)
+        .await
+        .map_err(|e| internal_logged("reading the rebuilt blob", e))?;
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = tokio::io::AsyncReadExt::read(&mut f, &mut buf)
+            .await
+            .map_err(|e| internal_logged("reading the rebuilt blob", e))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    if hex::encode(hasher.finalize()) != sha {
+        let _ = tokio::fs::remove_file(&part).await;
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "uploaded bytes do not match the declared sha256",
+        ));
+    }
+    tokio::fs::rename(&part, dir.join(sha))
+        .await
+        .map_err(|e| internal_logged("keeping the uploaded blob", e))?;
     Ok(StatusCode::NO_CONTENT)
 }
 

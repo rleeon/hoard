@@ -37,6 +37,11 @@ use hoard_core::wire::VersionOrigin;
 /// window hides that latency without saturating the disk or the uplink.
 const TRANSFER_CONCURRENCY: usize = 4;
 
+/// Cloud blobs under this size get a wider window of their own: for them the
+/// round trip is the whole cost (a 2,706-file save PUT 4 at a time).
+pub(crate) const SMALL_BLOB_BYTES: u64 = 1 << 20;
+pub(crate) const SMALL_TRANSFER_CONCURRENCY: usize = 16;
+
 /// How many times one blob may be turned away by a request pacer before we stop
 /// and let the whole attempt fail.
 ///
@@ -458,14 +463,20 @@ pub fn manifest_digest<'a>(files: impl Iterator<Item = (&'a str, &'a str, i64)>)
 /// "unreadable" and "empty" never give the same digest.
 const UNREADABLE_MARKER: &[u8] = b"\x01hoard:unreadable\x01";
 
-/// A content signature over the sorted `(relative_path, bytes)` set.
+/// Tag of the current content signature. Untagged ones hash the bytes
+/// themselves; they are still checked once, so an upgrade isn't a change.
+const CONTENT_SIG_V2: &str = "v2.";
+
+/// A content signature over the sorted `(relative_path, sha256)` set.
 ///
-/// Unlike [`compute_set_signature`] this *reads every file*, so it is only used as
+/// Unlike [`compute_set_signature`] this looks at the bytes, so it is only used as
 /// a fallback when the cheap signature drifted: many games, and some background
 /// launchers and cloud-sync daemons, rewrite save files on a timer, bumping the
 /// mtime without changing a single byte. The cheap check would treat that as a
 /// change and cut a redundant snapshot every few hours; this confirms whether the
-/// bytes actually moved before we upload.
+/// bytes actually moved before we upload. Only files whose stamp changed are read
+/// ([`crate::hashcache`]); with `legacy` every file is, to also return the old
+/// untagged digest.
 ///
 /// An unreadable file does not bring the pass down: it is skipped with a warning
 /// and enters the digest through [`UNREADABLE_MARKER`] rather than through its
@@ -480,46 +491,99 @@ const UNREADABLE_MARKER: &[u8] = b"\x01hoard:unreadable\x01";
 /// the file stays unreadable, which is what stops it retrying in a loop, and
 /// changes it the moment it can be read again, which is exactly when it has to be
 /// uploaded again.
-async fn compute_content_signature(files: &[UploadFile]) -> String {
+async fn compute_content_signature(
+    files: &[UploadFile],
+    cache: &std::sync::Mutex<crate::hashcache::HashCache>,
+    legacy: bool,
+) -> (String, Option<String>) {
+    use crate::hashcache::Stamp;
     use tokio::io::AsyncReadExt;
     let mut h = Sha256::new();
+    let mut old = legacy.then(Sha256::new);
     let mut buf = vec![0u8; 128 * 1024];
     for f in files {
         h.update(f.relative_path.as_bytes());
         h.update([0u8]);
-        // The bytes are poured into the hash as they arrive, as always: a 2 GB
-        // save is not materialised in RAM to sign it. A failure halfway leaves in
-        // `h` the part that was read plus the marker, and that stalls nothing:
-        // what decides whether to re-read is the *cheap* signature, which only
-        // looks at paths, sizes and mtimes and does not depend on this.
-        let read = async {
-            let mut file = tokio::fs::File::open(&f.absolute_path)
-                .await
-                .with_context(|| format!("opening {}", f.absolute_path.display()))?;
-            loop {
-                let n = file
-                    .read(&mut buf)
-                    .await
-                    .with_context(|| format!("reading {}", f.absolute_path.display()))?;
-                if n == 0 {
-                    break;
-                }
-                h.update(&buf[..n]);
-            }
-            Ok::<(), anyhow::Error>(())
+        if let Some(o) = old.as_mut() {
+            o.update(f.relative_path.as_bytes());
+            o.update([0u8]);
         }
-        .await;
-        if let Err(e) = read {
-            tracing::warn!(
-                path = %f.relative_path,
-                error = %format!("{e:#}"),
-                "hashing: skipping unreadable file"
-            );
-            h.update(UNREADABLE_MARKER);
+        let before = tokio::fs::metadata(&f.absolute_path)
+            .await
+            .ok()
+            .map(|m| Stamp::of(&m));
+        let hit = match (&old, before) {
+            (None, Some(stamp)) => cache
+                .lock()
+                .ok()
+                .and_then(|c| c.get(&f.relative_path, stamp)),
+            _ => None,
+        };
+        let sha = match hit {
+            Some(sha) => Ok(sha),
+            // The bytes are poured into the hashes as they arrive: a 2 GB save
+            // is not materialised in RAM to sign it. A failure halfway leaves
+            // in the legacy hash the part that was read plus the marker, and
+            // that stalls nothing: whether to re-read is the cheap signature's
+            // call, which does not depend on this.
+            None => {
+                let read = async {
+                    let mut file = tokio::fs::File::open(&f.absolute_path)
+                        .await
+                        .with_context(|| format!("opening {}", f.absolute_path.display()))?;
+                    let mut one = Sha256::new();
+                    loop {
+                        let n = file
+                            .read(&mut buf)
+                            .await
+                            .with_context(|| format!("reading {}", f.absolute_path.display()))?;
+                        if n == 0 {
+                            break;
+                        }
+                        one.update(&buf[..n]);
+                        if let Some(o) = old.as_mut() {
+                            o.update(&buf[..n]);
+                        }
+                    }
+                    Ok::<String, anyhow::Error>(hex::encode(one.finalize()))
+                }
+                .await;
+                if let Ok(sha) = &read {
+                    crate::hashcache::remember(
+                        cache,
+                        &f.relative_path,
+                        &f.absolute_path,
+                        before,
+                        sha,
+                    )
+                    .await;
+                }
+                read
+            }
+        };
+        match sha {
+            Ok(sha) => h.update(sha.as_bytes()),
+            Err(e) => {
+                tracing::warn!(
+                    path = %f.relative_path,
+                    error = %format!("{e:#}"),
+                    "hashing: skipping unreadable file"
+                );
+                h.update(UNREADABLE_MARKER);
+                if let Some(o) = old.as_mut() {
+                    o.update(UNREADABLE_MARKER);
+                }
+            }
         }
         h.update([0u8]);
+        if let Some(o) = old.as_mut() {
+            o.update([0u8]);
+        }
     }
-    hex::encode(h.finalize())
+    (
+        format!("{CONTENT_SIG_V2}{}", hex::encode(h.finalize())),
+        old.map(|o| hex::encode(o.finalize())),
+    )
 }
 
 /// Sets aside the files whose bytes cannot be read right now, so the upload can
@@ -920,6 +984,42 @@ where
     // its in-flight uploads.
     F: Fn(u64, u64) + Send + Sync,
 {
+    let cache = std::sync::Mutex::new(crate::hashcache::HashCache::open(source));
+    let outcome = upload_directory_with(
+        client,
+        save_id,
+        game_slug,
+        label,
+        source,
+        base_version,
+        head,
+        origin,
+        progress,
+        &cache,
+    )
+    .await;
+    if let Ok(c) = cache.lock() {
+        c.save();
+    }
+    outcome
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn upload_directory_with<F>(
+    client: &ApiClient,
+    save_id: &str,
+    game_slug: &str,
+    label: &str,
+    source: &Path,
+    base_version: Option<i64>,
+    head: Option<&ServerHead>,
+    origin: VersionOrigin,
+    progress: F,
+    cache: &std::sync::Mutex<crate::hashcache::HashCache>,
+) -> Result<UploadOutcome>
+where
+    F: Fn(u64, u64) + Send + Sync,
+{
     let source = source
         .canonicalize()
         .with_context(|| format!("source path does not exist: {}", source.display()))?;
@@ -990,12 +1090,14 @@ where
             save_id,
             game_slug,
             label,
+            &source,
             &files,
             total_bytes,
             base_version,
             head,
             origin,
             progress,
+            cache,
         )
         .await?;
         outcome.unreadable = unreadable;
@@ -1013,11 +1115,13 @@ where
         let mut outcome = upload_directory_cas(
             client,
             save_id,
+            &source,
             &files,
             total_bytes,
             base_version,
             origin,
             progress,
+            cache,
         )
         .await?;
         outcome.unreadable = unreadable;
@@ -1128,12 +1232,16 @@ where
 /// stream trips rustc's "Send/FnOnce is not general enough" false positive when
 /// the whole upload future crosses a `tokio::spawn`. One small allocation per
 /// file, all of them IO-bound.)
-async fn hash_manifest(files: &[UploadFile]) -> Result<HashMap<&str, String>> {
+async fn hash_manifest<'a>(
+    files: &'a [UploadFile],
+    cache: &std::sync::Mutex<crate::hashcache::HashCache>,
+) -> Result<HashMap<&'a str, String>> {
     let mut hash_futs = Vec::with_capacity(files.len());
     for f in files {
         hash_futs.push(
             async move {
-                let sha = hash_file(&f.absolute_path).await?;
+                let sha =
+                    crate::hashcache::sha256(cache, &f.relative_path, &f.absolute_path).await?;
                 Ok::<_, anyhow::Error>((f.relative_path.as_str(), sha))
             }
             .boxed(),
@@ -1160,14 +1268,17 @@ async fn hash_manifest(files: &[UploadFile]) -> Result<HashMap<&str, String>> {
 /// it deduplicated on store rather than in transit, so a 3 GB save with 10 MB of
 /// changes cost 3 GB of upload and ran into `max_snapshot_size_mb` and any
 /// proxy's body limit along the way.
+#[allow(clippy::too_many_arguments)]
 async fn upload_directory_cas<F>(
     client: &ApiClient,
     save_id: &str,
+    root: &Path,
     files: &[UploadFile],
     total_bytes: u64,
     base_version: Option<i64>,
     origin: VersionOrigin,
     progress: F,
+    cache: &std::sync::Mutex<crate::hashcache::HashCache>,
 ) -> Result<UploadOutcome>
 where
     F: Fn(u64, u64) + Send + Sync,
@@ -1175,7 +1286,7 @@ where
     use hoard_core::ids::Sha256 as Sha256Hex;
 
     progress(0, total_bytes);
-    let sha_by_path = hash_manifest(files).await?;
+    let sha_by_path = hash_manifest(files, cache).await?;
 
     let mut manifest: Vec<CasFile> = Vec::with_capacity(files.len());
     for f in files {
@@ -1192,16 +1303,25 @@ where
         });
     }
 
+    let mut patching = Patching::open(client, root).await;
+    let candidates = patching.candidates(files);
+    let offered = offered_bases(&candidates)
+        .iter()
+        .filter_map(|s| Sha256Hex::parse(s).ok())
+        .collect();
     let init = client
         .cas_init(
             save_id,
             &CasInit {
                 base_version,
                 files: manifest.clone(),
+                bases: offered,
             },
         )
         .await
         .context("cas init")?;
+    let bases_ok: std::collections::HashSet<&str> =
+        init.bases_ok.iter().map(|b| b.as_str()).collect();
 
     // Several files with the same content share a blob: it is uploaded once.
     let mut by_sha: HashMap<&str, &UploadFile> = HashMap::new();
@@ -1269,6 +1389,10 @@ where
         }
     };
 
+    if staging.is_none() {
+        patching.store = None;
+    }
+
     let mut put_futs = Vec::with_capacity(pending.len());
     for (f, sha) in pending {
         let uploaded = &uploaded;
@@ -1276,13 +1400,34 @@ where
         let progress = &progress;
         let upload_id = init.upload_id.as_str();
         let staging = staging.as_deref();
+        let patching = &patching;
+        let base = candidates
+            .get(f.relative_path.as_str())
+            .filter(|b| bases_ok.contains(b.as_str()) && **b != sha);
         put_futs.push(
             async move {
-                let zstd_tmp = match staging {
+                if let Some(base) = base {
+                    if let Some((patch, encoding)) = patching.try_patch(f, &sha, base).await {
+                        put_blob_paced(&f.relative_path, paced_wait_ms, || async {
+                            client
+                                .cas_upload_patch(upload_id, &sha, patch.clone(), base, encoding)
+                                .await
+                                .with_context(|| format!("uploading {}", f.relative_path))?;
+                            Ok(())
+                        })
+                        .await?;
+                        patching.patched(&sha, base, f, encoding);
+                        let done =
+                            uploaded.fetch_add(f.size_bytes, Ordering::Relaxed) + f.size_bytes;
+                        progress(done, denom);
+                        return Ok::<_, anyhow::Error>(());
+                    }
+                }
+                let staged = match staging {
                     Some(dir) => prepare_compressed(dir, &sha, f).await,
-                    None => None,
+                    None => Staged::Unknown,
                 };
-                if let Some((tmp, stored)) = &zstd_tmp {
+                if let Staged::Zstd(tmp, stored) = &staged {
                     put_blob_paced(&f.relative_path, paced_wait_ms, || async {
                         let file = tokio::fs::File::open(tmp)
                             .await
@@ -1301,7 +1446,9 @@ where
                         Ok(())
                     })
                     .await?;
-                    let _ = tokio::fs::remove_file(tmp).await;
+                    if !patching.keep_staged(f, &sha, tmp) {
+                        let _ = tokio::fs::remove_file(tmp).await;
+                    }
                     let done = uploaded.fetch_add(f.size_bytes, Ordering::Relaxed) + f.size_bytes;
                     progress(done, denom);
                     return Ok::<_, anyhow::Error>(());
@@ -1333,6 +1480,7 @@ where
                     Ok(())
                 })
                 .await?;
+                patching.keep_original(f, &sha);
                 let done = uploaded.fetch_add(f.size_bytes, Ordering::Relaxed) + f.size_bytes;
                 progress(done, denom);
                 Ok::<_, anyhow::Error>(())
@@ -1340,10 +1488,14 @@ where
             .boxed(),
         );
     }
-    stream::iter(put_futs)
+    let sent = stream::iter(put_futs)
         .buffer_unordered(TRANSFER_CONCURRENCY)
         .try_collect::<Vec<()>>()
-        .await?;
+        .await;
+    if let Err(e) = sent {
+        patching.failed(&e).await;
+        return Err(e);
+    }
     progress(denom, denom);
 
     let snapshot = client
@@ -1357,8 +1509,15 @@ where
                 files: manifest,
             },
         )
-        .await
-        .context("cas commit")?;
+        .await;
+    let snapshot = match snapshot {
+        Ok(s) => s,
+        Err(e) => {
+            patching.failed(&e).await;
+            return Err(e).context("cas commit");
+        }
+    };
+    patching.landed().await;
 
     Ok(UploadOutcome {
         snapshot,
@@ -1386,12 +1545,14 @@ async fn upload_directory_cloud<F>(
     save_id: &str,
     game_slug: &str,
     label: &str,
+    root: &Path,
     files: &[UploadFile],
     total_bytes: u64,
     base_version: Option<i64>,
     head: Option<&ServerHead>,
     origin: VersionOrigin,
     progress: F,
+    cache: &std::sync::Mutex<crate::hashcache::HashCache>,
 ) -> Result<UploadOutcome>
 where
     F: Fn(u64, u64) + Send + Sync,
@@ -1401,7 +1562,7 @@ where
     // 1. Whole-file SHA-256 of every file, the dedup key. Hashed once up front and
     //    cached by path so a per-save-cap trim-and-retry (below) does not re-read
     //    the files.
-    let sha_by_path = hash_manifest(files).await?;
+    let sha_by_path = hash_manifest(files, cache).await?;
 
     // 1b. Is it already up there? (ADR 0021 D.8.3.) With the hashes already
     // computed, asking the server's truth whether this exact content is its head
@@ -1468,6 +1629,21 @@ where
         }
     }
 
+    let mut patching = Patching::open(client, root).await;
+    let candidates = patching.candidates(files);
+    // One base per new content: files sharing a sha upload once.
+    let mut patch_from: Vec<crate::api::CloudPatchFrom> = Vec::new();
+    for (rel, base) in &candidates {
+        let sha = &sha_by_path[*rel];
+        if sha != base && !patch_from.iter().any(|p| p.sha256 == *sha) {
+            patch_from.push(crate::api::CloudPatchFrom {
+                sha256: sha.clone(),
+                base: base.clone(),
+            });
+        }
+    }
+    patch_from.sort_by(|a, b| a.sha256.cmp(&b.sha256));
+
     // 2/3/4. Declare manifest → upload missing blobs → commit. Wrapped in a
     // loop so a per-save-cap 413 can trim the working set and retry exactly
     // once (the trim can only shrink, so it converges).
@@ -1498,6 +1674,7 @@ where
                 backup_only: false,
                 base_version,
                 files: manifest,
+                patch_from: patch_from.clone(),
             })
             .await
         {
@@ -1619,22 +1796,63 @@ where
         }
     };
     let compressed_shas = std::sync::Mutex::new(Vec::<String>::new());
+    let raw_shas = std::sync::Mutex::new(Vec::<String>::new());
+    if staging.is_none() {
+        patching.store = None;
+    }
 
-    let mut put_futs = Vec::with_capacity(pending.len());
+    let mut small_futs = Vec::new();
+    let mut large_futs = Vec::new();
     for (blob, f) in pending {
         let uploaded = &uploaded;
         let paced_wait_ms = &paced_wait_ms;
         let progress = &progress;
         let staging = staging.as_deref();
         let compressed_shas = &compressed_shas;
-        put_futs.push(
+        let raw_shas = &raw_shas;
+        let patching = &patching;
+        // The server's word on the base, and its own links: a patch never goes
+        // where the whole blob does.
+        let patch_to = blob.patch.as_ref().filter(|p| p.base != blob.sha256);
+        let queue = if f.size_bytes < SMALL_BLOB_BYTES {
+            &mut small_futs
+        } else {
+            &mut large_futs
+        };
+        queue.push(
             async move {
-                let zstd_tmp = match staging {
+                if let Some(to) = patch_to {
+                    if let Some((patch, encoding)) =
+                        patching.try_patch(f, &blob.sha256, &to.base).await
+                    {
+                        let base = &to.base;
+                        let url = if encoding == crate::delta::INFLATED {
+                            &to.inflated_upload
+                        } else {
+                            &to.upload
+                        };
+                        let len = patch.len() as u64;
+                        put_blob_paced(&f.relative_path, paced_wait_ms, || async {
+                            client
+                                .put_presigned(url, reqwest::Body::from(patch.clone()), len)
+                                .await
+                                .with_context(|| format!("uploading {}", f.relative_path))?;
+                            Ok(())
+                        })
+                        .await?;
+                        patching.patched(&blob.sha256, base, f, encoding);
+                        let done =
+                            uploaded.fetch_add(f.size_bytes, Ordering::Relaxed) + f.size_bytes;
+                        progress(done, denom);
+                        return Ok::<_, anyhow::Error>(());
+                    }
+                }
+                let staged = match staging {
                     Some(dir) => prepare_compressed(dir, &blob.sha256, f).await,
-                    None => None,
+                    None => Staged::Unknown,
                 };
 
-                if let Some((tmp, stored)) = &zstd_tmp {
+                if let Staged::Zstd(tmp, stored) = &staged {
                     put_blob_paced(&f.relative_path, paced_wait_ms, || async {
                         let file = tokio::fs::File::open(tmp)
                             .await
@@ -1651,7 +1869,9 @@ where
                         Ok(())
                     })
                     .await?;
-                    let _ = tokio::fs::remove_file(tmp).await;
+                    if !patching.keep_staged(f, &blob.sha256, tmp) {
+                        let _ = tokio::fs::remove_file(tmp).await;
+                    }
                     if let Ok(mut c) = compressed_shas.lock() {
                         c.push(blob.sha256.clone());
                     }
@@ -1685,6 +1905,12 @@ where
                         Ok(())
                     })
                     .await?;
+                    if matches!(staged, Staged::Raw) {
+                        if let Ok(mut r) = raw_shas.lock() {
+                            r.push(blob.sha256.clone());
+                        }
+                    }
+                    patching.keep_original(f, &blob.sha256);
                 }
                 let done = uploaded.fetch_add(f.size_bytes, Ordering::Relaxed) + f.size_bytes;
                 progress(done, denom);
@@ -1693,10 +1919,18 @@ where
             .boxed(),
         );
     }
-    stream::iter(put_futs)
-        .buffer_unordered(TRANSFER_CONCURRENCY)
-        .try_collect::<Vec<()>>()
-        .await?;
+    let sent = futures::try_join!(
+        stream::iter(small_futs)
+            .buffer_unordered(SMALL_TRANSFER_CONCURRENCY)
+            .try_collect::<Vec<()>>(),
+        stream::iter(large_futs)
+            .buffer_unordered(TRANSFER_CONCURRENCY)
+            .try_collect::<Vec<()>>(),
+    );
+    if let Err(e) = sent {
+        patching.failed(&e).await;
+        return Err(e);
+    }
 
     // 4. Commit: the server verifies the new blobs landed and finalizes. The commit
     // must target the *canonical* cloud save id: when another device already
@@ -1715,10 +1949,26 @@ where
     let compressed_shas = compressed_shas
         .into_inner()
         .map_err(|_| anyhow!("compressed blob list poisoned"))?;
+    let raw_shas = raw_shas
+        .into_inner()
+        .map_err(|_| anyhow!("raw blob list poisoned"))?;
     let commit = client
-        .cloud_cas_commit(canonical_id, init.version_num, &compressed_shas)
-        .await
-        .context("cloud cas commit")?;
+        .cloud_cas_commit(
+            canonical_id,
+            init.version_num,
+            &compressed_shas,
+            &raw_shas,
+            &patching.patches(),
+        )
+        .await;
+    let commit = match commit {
+        Ok(c) => c,
+        Err(e) => {
+            patching.failed(&e).await;
+            return Err(e).context("cloud cas commit");
+        }
+    };
+    patching.landed().await;
 
     // Synthesize a Snapshot for the shared `UploadOutcome` shape.
     // `total_size_bytes` is the logical save size (sum of file sizes), matching
@@ -1752,6 +2002,261 @@ where
         trimmed,
         landed: false,
     })
+}
+
+/// Whole copies kept on this machine, which one each file of this save last
+/// was, and what this upload leaves behind for the next one. Empty when the
+/// server doesn't take patches.
+struct Patching {
+    store: Option<crate::bases::BaseStore>,
+    keyframes: Option<crate::bases::Keyframes>,
+    // One patch at a time: base and file are both held in memory.
+    gate: tokio::sync::Semaphore,
+    uploaded: std::sync::Mutex<Vec<Uploaded>>,
+}
+
+enum Uploaded {
+    Patch {
+        sha: String,
+        base: String,
+        rel: String,
+        encoding: &'static str,
+    },
+    /// The compressed copy staged for the upload: ours to move or delete.
+    Staged {
+        sha: String,
+        rel: String,
+        tmp: PathBuf,
+    },
+    /// The user's file, sent raw (a zip): copied, never moved or deleted.
+    Original {
+        sha: String,
+        rel: String,
+        path: PathBuf,
+    },
+}
+
+impl Patching {
+    async fn open(client: &ApiClient, root: &Path) -> Self {
+        let store = if upload_compression_enabled() && client.accepts_patches().await {
+            crate::bases::BaseStore::open()
+        } else {
+            None
+        };
+        let keyframes = store.as_ref().map(|_| crate::bases::Keyframes::open(root));
+        Self {
+            store,
+            keyframes,
+            gate: tokio::sync::Semaphore::new(1),
+            uploaded: Default::default(),
+        }
+    }
+
+    /// Each big file's last whole copy here, or a sibling's.
+    fn candidates<'a>(&self, files: &'a [UploadFile]) -> HashMap<&'a str, String> {
+        let (Some(st), Some(kf)) = (&self.store, &self.keyframes) else {
+            return HashMap::new();
+        };
+        files
+            .iter()
+            .filter(|f| keeps(f))
+            .filter_map(|f| {
+                Some((
+                    f.relative_path.as_str(),
+                    kf.candidate(&f.relative_path, st)?,
+                ))
+            })
+            .collect()
+    }
+
+    async fn try_patch(
+        &self,
+        f: &UploadFile,
+        sha: &str,
+        base: &str,
+    ) -> Option<(Vec<u8>, &'static str)> {
+        make_patch_for(self.store.as_ref()?, base, f, sha, &self.gate).await
+    }
+
+    fn push(&self, s: Uploaded) {
+        if let Ok(mut v) = self.uploaded.lock() {
+            v.push(s);
+        }
+    }
+
+    fn patched(&self, sha: &str, base: &str, f: &UploadFile, encoding: &'static str) {
+        self.push(Uploaded::Patch {
+            sha: sha.to_string(),
+            base: base.to_string(),
+            rel: f.relative_path.clone(),
+            encoding,
+        });
+    }
+
+    /// Whether `tmp` stays as the next base; if not, the caller deletes it.
+    fn keep_staged(&self, f: &UploadFile, sha: &str, tmp: &Path) -> bool {
+        let kept = self.store.is_some() && keeps(f);
+        if kept {
+            self.push(Uploaded::Staged {
+                sha: sha.to_string(),
+                rel: f.relative_path.clone(),
+                tmp: tmp.to_path_buf(),
+            });
+        }
+        kept
+    }
+
+    fn keep_original(&self, f: &UploadFile, sha: &str) {
+        if self.store.is_some() && keeps(f) && crate::bases::is_zip(&f.absolute_path) {
+            self.push(Uploaded::Original {
+                sha: sha.to_string(),
+                rel: f.relative_path.clone(),
+                path: f.absolute_path.clone(),
+            });
+        }
+    }
+
+    /// (sha, base, encoding) of what went up as a patch.
+    fn patches(&self) -> Vec<(String, String, &'static str)> {
+        let Ok(v) = self.uploaded.lock() else {
+            return Vec::new();
+        };
+        v.iter()
+            .filter_map(|s| match s {
+                Uploaded::Patch {
+                    sha,
+                    base,
+                    encoding,
+                    ..
+                } => Some((sha.clone(), base.clone(), *encoding)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn take_uploaded(&mut self) -> Vec<Uploaded> {
+        self.uploaded
+            .get_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
+    }
+
+    /// Drops the staged copies, and a base the server no longer has, so the
+    /// retry sends that file whole.
+    async fn failed(&mut self, e: &anyhow::Error) {
+        for s in self.take_uploaded() {
+            if let Uploaded::Staged { tmp, .. } = s {
+                let _ = tokio::fs::remove_file(tmp).await;
+            }
+        }
+        let gone = e.chain().find_map(|c| match c.downcast_ref() {
+            Some(crate::api::ApiError::PatchBaseGone(base)) => Some(base.clone()),
+            _ => None,
+        });
+        if let (Some(base), Some(st), Some(kf)) = (gone, &self.store, self.keyframes.as_mut()) {
+            st.forget(&base);
+            kf.forget_sha(&base);
+            kf.save();
+        }
+    }
+
+    /// What went up whole is the next base; a patched file keeps its base.
+    async fn landed(&mut self) {
+        let sent = self.take_uploaded();
+        let (Some(st), Some(kf)) = (&self.store, self.keyframes.as_mut()) else {
+            return;
+        };
+        for s in sent {
+            match s {
+                Uploaded::Patch { base, rel, .. } => kf.set(&rel, &base),
+                Uploaded::Staged { sha, rel, tmp } => {
+                    st.adopt(&sha, &tmp);
+                    kf.set(&rel, &sha);
+                }
+                Uploaded::Original { sha, rel, path } => {
+                    st.keep_file(&sha, &path).await;
+                    kf.set(&rel, &sha);
+                }
+            }
+        }
+        kf.save();
+        st.prune();
+    }
+}
+
+/// Files worth a base: big enough for a patch to pay, small enough to hold.
+fn keeps(f: &UploadFile) -> bool {
+    (crate::bases::PATCH_MIN_BYTES..=crate::bases::PATCH_MAX_BYTES).contains(&f.size_bytes)
+}
+
+fn offered_bases(candidates: &HashMap<&str, String>) -> Vec<String> {
+    let mut offered: Vec<String> = candidates.values().cloned().collect();
+    offered.sort();
+    offered.dedup();
+    offered
+}
+
+/// The patch to upload for `f` against `base` and its encoding, when it beats
+/// plain zstd by half and rebuilds `sha` exactly. `None` sends the file the
+/// normal way.
+async fn make_patch_for(
+    store: &crate::bases::BaseStore,
+    base: &str,
+    f: &UploadFile,
+    sha: &str,
+    gate: &tokio::sync::Semaphore,
+) -> Option<(Vec<u8>, &'static str)> {
+    let _permit = gate.acquire().await.ok()?;
+    let (store, base, path, sha, rel) = (
+        store.clone(),
+        base.to_string(),
+        f.absolute_path.clone(),
+        sha.to_string(),
+        f.relative_path.clone(),
+    );
+    let made = tokio::task::spawn_blocking(move || -> Result<Option<(Vec<u8>, &'static str)>> {
+        let Some(base_raw) = store.load(&base) else {
+            return Ok(None);
+        };
+        let new = std::fs::read(&path)?;
+        // Changed since it was hashed: the normal path catches that properly.
+        if hex::encode(Sha256::digest(&new)) != sha {
+            return Ok(None);
+        }
+        let plain = crate::delta::plain_estimate(&new);
+        // A zip's deflated bytes differ all the way after the first change:
+        // only its inflated content patches.
+        match crate::delta::make_inflated(&base_raw, &new, &sha) {
+            Ok(Some(blob)) if blob.len() * 2 < plain => {
+                return Ok(Some((blob, crate::delta::INFLATED)))
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!(path = %rel, error = %format!("{e:#}"), "inflated patch failed");
+            }
+        }
+        let patch = crate::delta::make(&base_raw, &new)?;
+        if patch.len() * 2 >= plain {
+            return Ok(None);
+        }
+        let len = new.len();
+        drop(new);
+        let rebuilt = crate::delta::apply(&base_raw, &patch, len)?;
+        anyhow::ensure!(
+            hex::encode(Sha256::digest(&rebuilt)) == sha,
+            "the patch doesn't rebuild the file"
+        );
+        Ok(Some((patch, crate::delta::ENCODING)))
+    })
+    .await;
+    match made {
+        Ok(Ok(p)) => p,
+        Ok(Err(e)) => {
+            tracing::warn!(path = %f.relative_path, error = %format!("{e:#}"), "patch failed, sending it whole");
+            None
+        }
+        Err(_) => None,
+    }
 }
 
 /// The `Snapshot` describing an upload that had already landed: the version is the
@@ -1864,18 +2369,28 @@ fn upload_compression_enabled() -> bool {
         .unwrap_or(true)
 }
 
-/// Compress one blob into `dir` if it is worth it, returning the staged file
-/// and how many bytes it holds.
+/// What [`prepare_compressed`] made of one blob.
+enum Staged {
+    /// The compressed copy and how many bytes it holds.
+    Zstd(PathBuf, u64),
+    /// Not worth it: send raw and tell the server, so its sweep skips it.
+    Raw,
+    /// Nothing decided (an error, or the file changed under us): send raw.
+    Unknown,
+}
+
+/// Compress one blob into `dir` if it is worth it.
 ///
-/// `None` means send the file as it is, and that is the answer for every case
-/// that goes wrong as well as every case that does not pay. Compression saves
-/// the user bandwidth; it must never be the reason a backup does not happen.
-async fn prepare_compressed(dir: &Path, sha: &str, f: &UploadFile) -> Option<(PathBuf, u64)> {
+/// Anything but [`Staged::Zstd`] means send the file as it is, and that is the
+/// answer for every case that goes wrong as well as every case that does not
+/// pay. Compression saves the user bandwidth; it must never be the reason a
+/// backup does not happen.
+async fn prepare_compressed(dir: &Path, sha: &str, f: &UploadFile) -> Staged {
     if !worth_compressing(&f.relative_path, f.size_bytes) {
-        return None;
+        return Staged::Raw;
     }
     if !sample_compresses(&f.absolute_path, f.size_bytes).await {
-        return None;
+        return Staged::Raw;
     }
     let dest = dir.join(format!("{sha}.zst"));
     match compress_for_upload(&f.absolute_path, &dest).await {
@@ -1889,10 +2404,14 @@ async fn prepare_compressed(dir: &Path, sha: &str, f: &UploadFile) -> Option<(Pa
             // anything is sent rather than after.
             let intact = raw_sha == sha && raw_len == f.size_bytes;
             if pays && intact {
-                return Some((dest, stored));
+                return Staged::Zstd(dest, stored);
             }
             let _ = tokio::fs::remove_file(&dest).await;
-            None
+            if intact {
+                Staged::Raw
+            } else {
+                Staged::Unknown
+            }
         }
         Err(e) => {
             tracing::warn!(
@@ -1901,7 +2420,7 @@ async fn prepare_compressed(dir: &Path, sha: &str, f: &UploadFile) -> Option<(Pa
                 "compressing for upload failed, sending it raw"
             );
             let _ = tokio::fs::remove_file(&dest).await;
-            None
+            Staged::Unknown
         }
     }
 }
@@ -2201,8 +2720,18 @@ where
     // The cheap signature drifted. That's often just an mtime bump (a game or
     // background daemon rewriting save files on a timer), so confirm whether
     // the actual bytes changed before cutting a snapshot.
-    let content = compute_content_signature(&files).await;
-    if !deliberate && prev_content == Some(content.as_str()) {
+    let cache = std::sync::Mutex::new(crate::hashcache::HashCache::open(&canonical));
+    let legacy = prev_content.is_some_and(|c| !c.starts_with(CONTENT_SIG_V2));
+    let (content, legacy_content) = compute_content_signature(&files, &cache, legacy).await;
+    if let Ok(mut c) = cache.lock() {
+        let seen: std::collections::HashSet<&str> =
+            files.iter().map(|f| f.relative_path.as_str()).collect();
+        c.retain(|k| seen.contains(k));
+        c.save();
+    }
+    let unchanged = prev_content.is_some()
+        && (prev_content == Some(content.as_str()) || prev_content == legacy_content.as_deref());
+    if !deliberate && unchanged {
         return Ok(BackupResult::Unchanged {
             signature: join_signature(&cheap, &content),
         });
@@ -2211,7 +2740,7 @@ where
     // it now (after every skip/unchanged check) so callers only surface a
     // "uploading…" notice when something actually uploads.
     on_upload_start();
-    let outcome = upload_directory(
+    let outcome = upload_directory_with(
         client,
         save_id,
         game_slug,
@@ -2221,8 +2750,13 @@ where
         head,
         origin,
         progress,
+        &cache,
     )
-    .await?;
+    .await;
+    if let Ok(c) = cache.lock() {
+        c.save();
+    }
+    let outcome = outcome?;
     // The content was already up there (D.8.3): there was no upload, but there is a
     // version we are now synced to. It is kept apart from `Uploaded` because the
     // caller must NOT count it as a committing backup: moving the min-interval
@@ -2662,6 +3196,69 @@ mod tests {
         assert_ne!(base, renamed);
     }
 
+    async fn content_sig(files: &[UploadFile]) -> String {
+        let cache = std::sync::Mutex::new(crate::hashcache::HashCache::empty());
+        compute_content_signature(files, &cache, false).await.0
+    }
+
+    /// The untagged digest the state files of every earlier version hold: the
+    /// bytes themselves, path by path.
+    async fn old_content_sig(files: &[UploadFile]) -> String {
+        let mut h = Sha256::new();
+        for f in files {
+            h.update(f.relative_path.as_bytes());
+            h.update([0u8]);
+            h.update(std::fs::read(&f.absolute_path).unwrap());
+            h.update([0u8]);
+        }
+        hex::encode(h.finalize())
+    }
+
+    #[tokio::test]
+    async fn the_legacy_digest_is_still_the_old_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a.sav"), b"one").unwrap();
+        std::fs::write(tmp.path().join("b.sav"), b"two two").unwrap();
+        let files = walk_source(tmp.path(), &SourceFilter::default()).unwrap();
+        let cache = std::sync::Mutex::new(crate::hashcache::HashCache::empty());
+        let (v2, legacy) = compute_content_signature(&files, &cache, true).await;
+        assert!(v2.starts_with(CONTENT_SIG_V2));
+        assert_eq!(legacy, Some(old_content_sig(&files).await));
+    }
+
+    /// A state file from before the cache: same bytes must still read as
+    /// unchanged, and the signature handed back is the new one.
+    #[tokio::test]
+    async fn an_old_signature_is_not_a_change() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a.sav"), b"same bytes").unwrap();
+        let files = walk_source(tmp.path(), &SourceFilter::default()).unwrap();
+        let prev = format!("stale-cheap:{}", old_content_sig(&files).await);
+        let client = ApiClient::new("http://127.0.0.1:9", "tok").unwrap();
+        let result = upload_directory_checked(
+            &client,
+            "save",
+            "game",
+            "main",
+            tmp.path(),
+            Some(&prev),
+            None,
+            None,
+            VersionOrigin::Automatic,
+            |_, _| {},
+            || panic!("nothing changed, nothing to upload"),
+        )
+        .await
+        .unwrap();
+        match result {
+            BackupResult::Unchanged { signature } => {
+                let (_, content) = split_signature(Some(&signature));
+                assert!(content.unwrap().starts_with(CONTENT_SIG_V2));
+            }
+            other => panic!("expected Unchanged, got {other:?}"),
+        }
+    }
+
     #[tokio::test]
     async fn content_signature_ignores_mtime_but_tracks_bytes() {
         let dir = std::env::temp_dir().join(format!("hoard-sig-{}", std::process::id()));
@@ -2678,14 +3275,11 @@ mod tests {
         let a = vec![mk(100)];
         let b = vec![mk(999)];
         assert_ne!(compute_set_signature(&a), compute_set_signature(&b));
-        assert_eq!(
-            compute_content_signature(&a).await,
-            compute_content_signature(&b).await
-        );
+        assert_eq!(content_sig(&a).await, content_sig(&b).await);
         // Changing the bytes does move the content signature.
-        let before = compute_content_signature(&a).await;
+        let before = content_sig(&a).await;
         std::fs::write(&path, b"hello WORLD").unwrap();
-        let after = compute_content_signature(&a).await;
+        let after = content_sig(&a).await;
         assert_ne!(before, after);
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -2708,15 +3302,15 @@ mod tests {
 
         let files = walk_source(root, &SourceFilter::default()).unwrap();
         assert_eq!(files.len(), 2, "the walk does see the file: it can stat it");
-        let sig = compute_content_signature(&files).await;
+        let sig = content_sig(&files).await;
         // And it is stable while it stays unreadable: if it were not, every pass
         // would see a change and we would be back to the upload loop.
-        assert_eq!(sig, compute_content_signature(&files).await);
+        assert_eq!(sig, content_sig(&files).await);
 
         // The readable one's bytes do count.
         std::fs::write(root.join("good.sav"), b"moved on").unwrap();
         let moved = walk_source(root, &SourceFilter::default()).unwrap();
-        assert_ne!(sig, compute_content_signature(&moved).await);
+        assert_ne!(sig, content_sig(&moved).await);
 
         std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o644)).unwrap();
     }
@@ -2733,11 +3327,10 @@ mod tests {
         let root = tmp.path();
         let f = root.join("a.sav");
         std::fs::write(&f, b"").unwrap();
-        let as_empty =
-            compute_content_signature(&walk_source(root, &SourceFilter::default()).unwrap()).await;
+        let as_empty = content_sig(&walk_source(root, &SourceFilter::default()).unwrap()).await;
         std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o000)).unwrap();
         let as_unreadable =
-            compute_content_signature(&walk_source(root, &SourceFilter::default()).unwrap()).await;
+            content_sig(&walk_source(root, &SourceFilter::default()).unwrap()).await;
         std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).unwrap();
         assert_ne!(as_empty, as_unreadable);
     }

@@ -124,20 +124,35 @@ impl R2Store {
             .collect())
     }
 
-    /// This user's blobs as `(sha, size, last_modified_unix)`. Same key filter
-    /// as [`Self::blob_sizes`], so compression staging (`<key>.ztmp`) never
-    /// shows up as a blob.
-    pub async fn blobs_with_age(&self, user_id: uuid::Uuid) -> Result<Vec<(String, i64, i64)>> {
+    /// This user's whole blobs and patch objects, each with its size and
+    /// last-modified time, from one listing. Compression staging
+    /// (`<key>.ztmp`) is neither, so it never shows up.
+    pub async fn objects_with_age(&self, user_id: uuid::Uuid) -> Result<Listing> {
         let listed = self
             .inner
             .list_with_age(&format!("blobs/{user_id}/"))
             .await?;
-        Ok(listed
-            .into_iter()
-            .filter_map(|(k, size, at)| {
-                let sha = k.rsplit('/').next()?;
-                is_valid_sha256(sha).then(|| (sha.to_string(), size, at))
-            })
+        let mut out = Listing::default();
+        for (k, size, at) in listed {
+            let Some(name) = k.rsplit('/').next() else {
+                continue;
+            };
+            if is_valid_sha256(name) {
+                out.blobs.push((name.to_string(), size, at));
+            } else if let Some(p) = PatchKey::parse(name) {
+                out.patches.push((p, size, at));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Every key under this user's blob prefix, whatever it holds.
+    pub async fn all_blob_keys(&self, user_id: uuid::Uuid) -> Result<Vec<String>> {
+        Ok(self
+            .inner
+            .list_sizes(&format!("blobs/{user_id}/"))
+            .await?
+            .into_keys()
             .collect())
     }
 
@@ -211,6 +226,70 @@ pub fn key_for_blob(user_id: uuid::Uuid, sha256: &str) -> String {
     format!("blobs/{user_id}/{shard}/{sha256}")
 }
 
+/// Where a patch of `sha256` against `base` lives: a key of its own per base
+/// and encoding. Two devices uploading the same new file at once, one whole
+/// and one as a patch, or against different bases, would otherwise write
+/// different bytes under one key, and the row can only describe one of them.
+pub fn key_for_patch(user_id: uuid::Uuid, sha256: &str, base: &str, inflated: bool) -> String {
+    let shard = sha256.get(0..2).unwrap_or("00");
+    let tag = if inflated { "zpi" } else { "zp" };
+    format!("blobs/{user_id}/{shard}/{sha256}.{tag}.{base}")
+}
+
+/// The key a `cloud_blobs` row's bytes live under.
+pub fn key_for_row(
+    user_id: uuid::Uuid,
+    sha256: &str,
+    base: Option<&str>,
+    encoding: Option<&str>,
+) -> String {
+    match base {
+        Some(base) => key_for_patch(
+            user_id,
+            sha256,
+            base,
+            encoding == Some(crate::patch::INFLATED),
+        ),
+        None => key_for_blob(user_id, sha256),
+    }
+}
+
+/// A patch object, named back from its key (see [`key_for_patch`]).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PatchKey {
+    pub sha: String,
+    pub base: String,
+    pub inflated: bool,
+}
+
+impl PatchKey {
+    pub fn parse(name: &str) -> Option<Self> {
+        let mut parts = name.split('.');
+        let (sha, tag, base) = (parts.next()?, parts.next()?, parts.next()?);
+        let inflated = match tag {
+            "zp" => false,
+            "zpi" => true,
+            _ => return None,
+        };
+        (parts.next().is_none() && is_valid_sha256(sha) && is_valid_sha256(base)).then(|| Self {
+            sha: sha.to_string(),
+            base: base.to_string(),
+            inflated,
+        })
+    }
+
+    pub fn key(&self, user_id: uuid::Uuid) -> String {
+        key_for_patch(user_id, &self.sha, &self.base, self.inflated)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Listing {
+    /// `(sha, size, last_modified_unix)`.
+    pub blobs: Vec<(String, i64, i64)>,
+    pub patches: Vec<(PatchKey, i64, i64)>,
+}
+
 /// A client-supplied content hash must be exactly 64 lowercase hex chars before
 /// it's ever interpolated into an R2 key. R2 treats keys literally (no `..`
 /// traversal) and every key is already scoped under the authenticated user's
@@ -251,6 +330,36 @@ mod tests {
             key_for_blob(u, sha),
             format!("blobs/00000000-0000-0000-0000-000000000000/ae/{sha}")
         );
+    }
+
+    /// Same as above: rows find their patch objects by this alone.
+    #[test]
+    fn patch_key_format_stable() {
+        let u = Uuid::nil();
+        let sha = "ae2bcfee97e4b03b91985c5898168b7466dbd0c4da7e9cd6ca3ab8546ab0fd66";
+        let base = "0f".repeat(32);
+        let key = key_for_patch(u, sha, &base, true);
+        assert_eq!(
+            key,
+            format!("blobs/00000000-0000-0000-0000-000000000000/ae/{sha}.zpi.{base}")
+        );
+        let name = key.rsplit('/').next().unwrap();
+        let parsed = PatchKey::parse(name).unwrap();
+        assert_eq!(
+            (parsed.sha.as_str(), parsed.base.as_str(), parsed.inflated),
+            (sha, base.as_str(), true)
+        );
+        assert_eq!(parsed.key(u), key);
+        assert_eq!(
+            key_for_row(u, sha, Some(&base), Some("zstd-patch")),
+            key_for_patch(u, sha, &base, false)
+        );
+        assert_eq!(
+            key_for_row(u, sha, None, Some("zstd")),
+            key_for_blob(u, sha)
+        );
+        assert!(PatchKey::parse(&format!("{sha}.ztmp")).is_none());
+        assert!(PatchKey::parse(sha).is_none());
     }
 
     /// A sha shorter than its shard can't panic on the slice: the keyspace is

@@ -539,6 +539,8 @@ const GC_CONCURRENCY: usize = 16;
 ///
 /// An object that fails to delete keeps its row and comes back tomorrow. It
 /// used to lose the row anyway, leaving bytes in the bucket nothing pointed at.
+///
+/// A base some patch still needs is skipped: it goes once the patch does.
 pub async fn purge_due_blobs(
     state: &CloudState,
     only: Option<&[Uuid]>,
@@ -547,13 +549,16 @@ pub async fn purge_due_blobs(
     let mut deleted = 0usize;
     loop {
         let mut tx = state.pool.begin().await?;
-        let batch: Vec<(Uuid, String)> = sqlx::query_as(
-            "SELECT user_id, encode(sha256, 'hex') FROM cloud_blobs
-              WHERE refcount = 0 AND purge_after IS NOT NULL AND purge_after < now()
-                AND ($2::uuid[] IS NULL OR user_id = ANY($2))
-              ORDER BY purge_after
+        let batch: Vec<(Uuid, String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT b.user_id, encode(b.sha256, 'hex'), encode(b.base_sha256, 'hex'), b.encoding
+               FROM cloud_blobs b
+              WHERE b.refcount = 0 AND b.purge_after IS NOT NULL AND b.purge_after < now()
+                AND ($2::uuid[] IS NULL OR b.user_id = ANY($2))
+                AND NOT EXISTS (SELECT 1 FROM cloud_blobs p
+                                 WHERE p.user_id = b.user_id AND p.base_sha256 = b.sha256)
+              ORDER BY b.purge_after
               LIMIT $1
-                FOR UPDATE SKIP LOCKED",
+                FOR UPDATE OF b SKIP LOCKED",
         )
         .bind(GC_BATCH)
         .bind(&only)
@@ -565,10 +570,11 @@ pub async fn purge_due_blobs(
         }
 
         let outcomes: Vec<((Uuid, String), bool)> =
-            futures::stream::iter(batch.into_iter().map(|(user_id, sha)| {
+            futures::stream::iter(batch.into_iter().map(|(user_id, sha, base, encoding)| {
                 let r2 = state.r2.clone();
                 async move {
-                    let key = super::r2::key_for_blob(user_id, &sha);
+                    let key =
+                        super::r2::key_for_row(user_id, &sha, base.as_deref(), encoding.as_deref());
                     let ok = match r2.delete_object(&key).await {
                         Ok(()) => true,
                         Err(e) => {

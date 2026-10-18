@@ -19,6 +19,7 @@
 //! upload started in the last [`QUIET`]), as in `abandoned.rs`.
 
 use super::incidents::{self, Kind};
+use crate::cloud::r2::PatchKey;
 use crate::cloud::state::CloudState;
 use futures::StreamExt;
 use std::collections::HashSet;
@@ -116,33 +117,26 @@ async fn account(
     // PUT before its commit, so it is already in the bucket when this runs; a
     // row read after the listing could belong to an upload that landed
     // mid-listing and read as missing when it isn't.
-    let live: HashSet<String> = sqlx::query_scalar(
-        "SELECT encode(sha256, 'hex') FROM cloud_blobs WHERE user_id = $1 AND refcount > 0",
-    )
-    .bind(user)
-    .fetch_all(&state.pool)
-    .await?
-    .into_iter()
-    .collect();
+    let live = rows_of(&state.pool, user, true).await?;
 
-    let listed = state.r2.blobs_with_age(user).await?;
+    let listed = state.r2.objects_with_age(user).await?;
 
     // Every row, any refcount, read *after* the listing: a row at 0 still owns
     // its object until the GC takes both, and an upload that committed during
     // the listing must not read as an orphan.
-    let rows: HashSet<String> =
-        sqlx::query_scalar("SELECT encode(sha256, 'hex') FROM cloud_blobs WHERE user_id = $1")
-            .bind(user)
-            .fetch_all(&state.pool)
-            .await?
-            .into_iter()
-            .collect();
+    let all_rows = rows_of(&state.pool, user, false).await?;
+    let rows: HashSet<&str> = all_rows.iter().map(|(s, _)| s.as_str()).collect();
+    let row_patches: HashSet<&PatchKey> = all_rows.iter().filter_map(|(_, p)| p.as_ref()).collect();
     let named = named_by_any_version(&state.pool, user).await?;
 
-    let in_bucket: HashSet<&str> = listed.iter().map(|(s, _, _)| s.as_str()).collect();
+    let in_bucket: HashSet<&str> = listed.blobs.iter().map(|(s, _, _)| s.as_str()).collect();
+    let patches_in_bucket: HashSet<&PatchKey> = listed.patches.iter().map(|(p, _, _)| p).collect();
     let missing = live
         .iter()
-        .filter(|s| !in_bucket.contains(s.as_str()))
+        .filter(|(sha, patch)| match patch {
+            Some(p) => !patches_in_bucket.contains(p),
+            None => !in_bucket.contains(sha.as_str()),
+        })
         .count() as u64;
     if missing > 0 {
         f.missing_objects += missing;
@@ -153,21 +147,76 @@ async fn account(
 
     let min_age = MIN_AGE.as_secs() as i64;
     let orphans: Vec<(&String, i64)> = listed
+        .blobs
         .iter()
         .filter(|(sha, _, at)| {
-            now_unix - at >= min_age && !rows.contains(sha) && !named.contains(sha)
+            now_unix - at >= min_age && !rows.contains(sha.as_str()) && !named.contains(sha)
         })
         .map(|(sha, size, _)| (sha, *size))
         .collect();
-    f.orphan_objects += orphans.len() as u64;
-    f.orphan_bytes += orphans.iter().map(|(_, s)| s).sum::<i64>();
+    // A patch object belongs to its row only if base and encoding match too:
+    // one that lost a race to another upload of the same file has none. Only
+    // an upload still pending can claim it.
+    let pending = named_by_pending_version(&state.pool, user).await?;
+    let patch_orphans: Vec<(&PatchKey, i64)> = listed
+        .patches
+        .iter()
+        .filter(|(p, _, at)| {
+            now_unix - at >= min_age && !row_patches.contains(p) && !pending.contains(&p.sha)
+        })
+        .map(|(p, size, _)| (p, *size))
+        .collect();
+    f.orphan_objects += (orphans.len() + patch_orphans.len()) as u64;
+    f.orphan_bytes += orphans.iter().map(|(_, s)| s).sum::<i64>()
+        + patch_orphans.iter().map(|(_, s)| s).sum::<i64>();
 
-    if !delete || orphans.is_empty() || !quiet(&state.pool, user).await? {
+    if !delete
+        || (orphans.is_empty() && patch_orphans.is_empty())
+        || !quiet(&state.pool, user).await?
+    {
         return Ok(());
+    }
+    let mut budget = MAX_DELETES_PER_ACCOUNT;
+    let patch_orphans: Vec<(PatchKey, i64)> = patch_orphans
+        .into_iter()
+        .take(budget)
+        .map(|(p, size)| (p.clone(), size))
+        .collect();
+    budget -= patch_orphans.len();
+    for batch in patch_orphans.chunks(BATCH) {
+        let keys: Vec<PatchKey> = batch.iter().map(|(p, _)| p.clone()).collect();
+        let still = still_patch_orphans(&state.pool, user, &keys).await?;
+        let doomed: Vec<(PatchKey, i64)> = batch
+            .iter()
+            .filter(|(p, _)| still.contains(p))
+            .cloned()
+            .collect();
+        let results: Vec<(i64, bool)> = futures::stream::iter(doomed.into_iter().map(|(p, size)| {
+            let r2 = state.r2.clone();
+            async move {
+                let key = p.key(user);
+                match r2.delete_object(&key).await {
+                    Ok(()) => (size, true),
+                    Err(e) => {
+                        tracing::warn!(error = %e, r2_key = %key, "reconcile: R2 delete failed");
+                        (size, false)
+                    }
+                }
+            }
+        }))
+        .buffer_unordered(CONCURRENCY)
+        .collect()
+        .await;
+        for (size, ok) in results {
+            if ok {
+                f.deleted_objects += 1;
+                f.deleted_bytes += size;
+            }
+        }
     }
     let orphans: Vec<(String, i64)> = orphans
         .into_iter()
-        .take(MAX_DELETES_PER_ACCOUNT)
+        .take(budget)
         .map(|(sha, size)| (sha.clone(), size))
         .collect();
     for batch in orphans.chunks(BATCH) {
@@ -205,6 +254,93 @@ async fn account(
         }
     }
     Ok(())
+}
+
+/// Every row's sha, and for a patch the object it lives in. `live` keeps only
+/// the referenced ones.
+async fn rows_of(
+    pool: &sqlx::PgPool,
+    user: Uuid,
+    live: bool,
+) -> Result<Vec<(String, Option<PatchKey>)>, sqlx::Error> {
+    let rows: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT encode(sha256, 'hex'), encode(base_sha256, 'hex'), encoding
+           FROM cloud_blobs WHERE user_id = $1 AND (refcount > 0 OR NOT $2)",
+    )
+    .bind(user)
+    .bind(live)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(sha, base, encoding)| {
+            let patch = base.map(|base| PatchKey {
+                sha: sha.clone(),
+                base,
+                inflated: encoding.as_deref() == Some(crate::patch::INFLATED),
+            });
+            (sha, patch)
+        })
+        .collect())
+}
+
+/// Shas an upload still pending names.
+async fn named_by_pending_version(
+    pool: &sqlx::PgPool,
+    user: Uuid,
+) -> Result<HashSet<String>, sqlx::Error> {
+    Ok(sqlx::query_scalar(
+        "SELECT DISTINCT encode(fe.sha256, 'hex')
+           FROM saves s
+           JOIN save_versions v ON v.save_id = s.id AND v.sha256 = ''
+           JOIN version_files vf ON vf.version_id = v.id
+           JOIN file_entries fe ON fe.id = vf.entry_id
+          WHERE s.user_id = $1",
+    )
+    .bind(user)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .collect())
+}
+
+/// Which of `keys` still have no row of their own and no pending upload
+/// naming their sha.
+async fn still_patch_orphans(
+    pool: &sqlx::PgPool,
+    user: Uuid,
+    keys: &[PatchKey],
+) -> Result<HashSet<PatchKey>, sqlx::Error> {
+    let shas: Vec<&str> = keys.iter().map(|k| k.sha.as_str()).collect();
+    let bases: Vec<&str> = keys.iter().map(|k| k.base.as_str()).collect();
+    let inflated: Vec<bool> = keys.iter().map(|k| k.inflated).collect();
+    let rows: Vec<(String, String, bool)> = sqlx::query_as(
+        "SELECT t.s, t.b, t.i FROM unnest($2::text[], $3::text[], $4::bool[]) AS t(s, b, i)
+          WHERE NOT EXISTS (SELECT 1 FROM cloud_blobs c
+                             WHERE c.user_id = $1 AND c.sha256 = decode(t.s, 'hex')
+                               AND c.base_sha256 = decode(t.b, 'hex')
+                               AND (c.encoding = $5) = t.i)
+            AND NOT EXISTS (SELECT 1 FROM file_entries fe
+                              JOIN saves s ON s.id = fe.save_id
+                              JOIN version_files vf ON vf.entry_id = fe.id
+                              JOIN save_versions v ON v.id = vf.version_id AND v.sha256 = ''
+                             WHERE s.user_id = $1 AND fe.sha256 = decode(t.s, 'hex'))",
+    )
+    .bind(user)
+    .bind(&shas)
+    .bind(&bases)
+    .bind(&inflated)
+    .bind(crate::patch::INFLATED)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(sha, base, inflated)| PatchKey {
+            sha,
+            base,
+            inflated,
+        })
+        .collect())
 }
 
 /// Shas any version of this account names, pending or committed. A pending

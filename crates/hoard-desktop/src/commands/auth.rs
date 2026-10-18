@@ -410,6 +410,10 @@ pub(crate) fn pretty_error(err: anyhow::Error) -> String {
                  a firewall, or the network's route to it."
             ),
             ApiError::NonFastForward(d) => d.human(),
+            // Healed on its own: the retry uploads that file whole.
+            ApiError::PatchBaseGone(_) => {
+                "Part of this save changed on the server meanwhile. The next copy will go through.".into()
+            }
             ApiError::Conflict(msg) | ApiError::BadRequest(msg) => msg.clone(),
         };
     }

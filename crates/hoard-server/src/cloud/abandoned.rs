@@ -42,15 +42,16 @@
 //!
 //! ## What is deliberately out of reach
 //!
-//! The candidate set is whatever `r2::blob_sizes` returns, and that lists the
-//! `blobs/<user>/` prefix and keeps only keys whose last segment is exactly 64
-//! hex characters. Three things fall outside it, all on purpose:
+//! The candidate set is whatever `r2::objects_with_age` returns, and that lists
+//! the `blobs/<user>/` prefix and keeps only whole blobs (a last segment of
+//! exactly 64 hex characters) and patch objects (`<sha>.zp[i].<base>`). Three
+//! things fall outside it, all on purpose:
 //!
 //! * **Export ZIPs** (`exports/…`) and any legacy per-version archive live
 //!   under other prefixes and are never listed.
-//! * **Compression staging** (`compress.rs` writes `<key>.ztmp`) fails the
-//!   64-character test, so a compression job in flight cannot be mistaken for
-//!   litter. Keep that in mind before loosening the filter.
+//! * **Compression staging** (`compress.rs` writes `<key>.ztmp`) is neither,
+//!   so a compression job in flight cannot be mistaken for litter. Keep that in
+//!   mind before loosening the filter.
 //! * **Archived saves.** Archiving keeps the `cloud_blobs` row (it stamps
 //!   `purge_after` and drops the refcount rather than deleting) so a frozen
 //!   game is referenced, and referenced is all this sweep looks at. A future
@@ -255,7 +256,7 @@ async fn sweep_account(
         swept.manifest_rows = manifest_rows as u64;
     }
 
-    let in_bucket = match state.r2.blob_sizes(user_id).await {
+    let listed = match state.r2.objects_with_age(user_id).await {
         Ok(m) => m,
         Err(e) => {
             tracing::warn!(error = %e, %user_id, "abandoned uploads: bucket listing failed");
@@ -263,29 +264,47 @@ async fn sweep_account(
             return Ok(swept);
         }
     };
-    if in_bucket.is_empty() {
+    if listed.blobs.is_empty() && listed.patches.is_empty() {
         return Ok(swept);
     }
 
-    let referenced: Vec<(String,)> =
-        sqlx::query_as("SELECT encode(sha256, 'hex') FROM cloud_blobs WHERE user_id = $1")
-            .bind(user_id)
-            .fetch_all(&state.pool)
-            .await?;
+    let referenced: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT encode(sha256, 'hex'), encode(base_sha256, 'hex'), encoding
+           FROM cloud_blobs WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_all(&state.pool)
+    .await?;
+    // A patch object is someone's only if its row has that base and encoding:
+    // the one that lost a race to another upload of the same file has none.
+    let patch_keys: std::collections::HashSet<String> = referenced
+        .iter()
+        .map(|(sha, base, enc)| {
+            crate::cloud::r2::key_for_row(user_id, sha, base.as_deref(), enc.as_deref())
+        })
+        .collect();
     let referenced: std::collections::HashSet<String> =
-        referenced.into_iter().map(|(s,)| s).collect();
+        referenced.into_iter().map(|(s, _, _)| s).collect();
 
     // Sorted so a capped round is deterministic: the same objects go first
     // every time, instead of whatever order the listing happened to return.
-    let mut orphans: Vec<(&String, &i64)> = in_bucket
+    let mut orphans: Vec<(String, i64)> = listed
+        .blobs
         .iter()
-        .filter(|(sha, _)| !referenced.contains(*sha))
+        .filter(|(sha, _, _)| !referenced.contains(sha))
+        .map(|(sha, size, _)| (crate::cloud::r2::key_for_blob(user_id, sha), *size))
+        .chain(
+            listed
+                .patches
+                .iter()
+                .map(|(p, size, _)| (p.key(user_id), *size))
+                .filter(|(key, _)| !patch_keys.contains(key)),
+        )
         .collect();
-    orphans.sort_unstable_by(|a, b| a.0.cmp(b.0));
+    orphans.sort_unstable();
 
-    for (sha, size) in orphans.into_iter().take(MAX_ORPHAN_DELETES_PER_ACCOUNT) {
-        let key = crate::cloud::r2::key_for_blob(user_id, sha);
-        match state.r2.delete_object(&key).await {
+    for (key, size) in orphans.iter().take(MAX_ORPHAN_DELETES_PER_ACCOUNT) {
+        match state.r2.delete_object(key).await {
             Ok(()) => {
                 swept.orphan_blobs += 1;
                 swept.orphan_bytes += *size;

@@ -41,6 +41,7 @@ pub mod maintenance;
 pub mod memwatch;
 pub mod notices;
 pub mod notify;
+pub mod patches;
 pub mod plans;
 pub mod polar;
 pub mod pollguard;

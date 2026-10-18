@@ -245,6 +245,25 @@ async fn build_export_zip(
             .await?;
 
             for (rel, sha) in files {
+                if let Some(base) = patch_base(state, user_id, &sha).await {
+                    match rebuild_patch(state, user_id, &sha, &base).await {
+                        Ok((_dir, out)) => {
+                            let file = tokio::fs::File::open(&out).await?;
+                            zip.start_file(format!("{dir}/{}", sanitize_rel(&rel)), opts)?;
+                            stream_into_zip(tokio::io::BufReader::new(file), false, &mut zip)
+                                .await?;
+                            file_count += 1;
+                        }
+                        Err(e) => {
+                            tracing::warn!(%save_id, rel, error = %format!("{e:#}"), "export skipped a patch it could not rebuild");
+                            incidents::record(
+                                Kind::Other,
+                                "export skipped a patch it could not rebuild",
+                            );
+                        }
+                    }
+                    continue;
+                }
                 let key = r2::key_for_blob(user_id, &sha);
                 // Opening the stream is what fails for a missing object, and it
                 // fails before `start_file`, so a skip still leaves no entry
@@ -475,6 +494,110 @@ async fn blob_is_compressed(state: &CloudState, user_id: Uuid, sha: &str) -> boo
     .flatten()
     .map(|(enc, stored)| enc.as_deref() == Some("zstd") && stored.is_some())
     .unwrap_or(false)
+}
+
+/// A patch blob's base, whether that base is stored as zstd, and whether the
+/// patch is an inflated one.
+async fn patch_base(state: &CloudState, user_id: Uuid, sha: &str) -> Option<(String, bool, bool)> {
+    sqlx::query_as::<_, (String, bool, bool)>(
+        "SELECT encode(p.base_sha256, 'hex'),
+                coalesce(b.encoding = 'zstd' AND b.stored_bytes IS NOT NULL, false),
+                p.encoding = $3
+           FROM cloud_blobs p
+           JOIN cloud_blobs b ON b.user_id = p.user_id AND b.sha256 = p.base_sha256
+          WHERE p.user_id = $1 AND p.sha256 = decode($2, 'hex') AND p.base_sha256 IS NOT NULL",
+    )
+    .bind(user_id)
+    .bind(sha)
+    .bind(crate::patch::INFLATED)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten()
+}
+
+/// A patch rebuilt into a temp file and checked against its sha. The work runs
+/// in a child process (`apply-patch`), so the base and the output, both mapped
+/// files, never weigh on this process.
+async fn rebuild_patch(
+    state: &CloudState,
+    user_id: Uuid,
+    sha: &str,
+    base: &(String, bool, bool),
+) -> anyhow::Result<(tempfile::TempDir, std::path::PathBuf)> {
+    use sha2::{Digest, Sha256};
+    use tokio::io::AsyncReadExt;
+    let dir = tempfile::tempdir()?;
+    let (base_path, patch_path, out) = (
+        dir.path().join("base"),
+        dir.path().join("patch"),
+        dir.path().join("out"),
+    );
+    fetch_to(
+        state,
+        &r2::key_for_blob(user_id, &base.0),
+        base.1,
+        &base_path,
+    )
+    .await?;
+    fetch_to(
+        state,
+        &r2::key_for_patch(user_id, sha, &base.0, base.2),
+        false,
+        &patch_path,
+    )
+    .await?;
+    let size: i64 = sqlx::query_scalar(
+        "SELECT size_bytes FROM cloud_blobs WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
+    )
+    .bind(user_id)
+    .bind(sha)
+    .fetch_one(&state.pool)
+    .await?;
+    let mut cmd = tokio::process::Command::new(std::env::current_exe()?);
+    cmd.arg("apply-patch")
+        .arg(&base_path)
+        .arg(&patch_path)
+        .arg(&out)
+        .arg(size.max(0).to_string());
+    if base.2 {
+        cmd.arg("--inflated");
+    }
+    let status = cmd.status().await?;
+    anyhow::ensure!(status.success(), "apply-patch exited with {status}");
+    let _ = tokio::fs::remove_file(&base_path).await;
+    let _ = tokio::fs::remove_file(&patch_path).await;
+
+    let mut file = tokio::fs::File::open(&out).await?;
+    let mut h = Sha256::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        h.update(&buf[..n]);
+    }
+    let got = hex::encode(h.finalize());
+    anyhow::ensure!(got == sha, "rebuilt patch hashes to {got}, not {sha}");
+    Ok((dir, out))
+}
+
+async fn fetch_to(
+    state: &CloudState,
+    key: &str,
+    zstd: bool,
+    dest: &std::path::Path,
+) -> anyhow::Result<()> {
+    let reader = state.r2.get_reader(key).await?;
+    let mut src: Box<dyn tokio::io::AsyncRead + Unpin + Send> = if zstd {
+        Box::new(async_compression::tokio::bufread::ZstdDecoder::new(reader))
+    } else {
+        Box::new(reader)
+    };
+    let mut file = tokio::fs::File::create(dest).await?;
+    tokio::io::copy(&mut src, &mut file).await?;
+    Ok(())
 }
 
 /// Copy one R2 object into the open ZIP entry, decoding the at-rest zstd frame
