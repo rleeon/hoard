@@ -18,6 +18,7 @@
 #![cfg(feature = "cloud")]
 
 use hoard_server::cloud::routes::sync::{cached_fingerprint, fingerprint, saves_for};
+use hoard_server::cloud::state::CloudState;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -218,6 +219,91 @@ async fn the_poll_answers_fresh_after_a_change() {
     let after = saves_for(&pool, user).await.expect("poll after the change");
     assert_eq!(after.len(), 1);
     assert_eq!(after[0].latest_sha256, "fresh", "served a stale list");
+
+    cleanup(&pool, user).await;
+}
+
+/// A `CloudState` whose R2 is a dead endpoint: the poll never touches it.
+async fn state_for(pool: PgPool) -> CloudState {
+    let example = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../deploy/config.cloud.toml.example"
+    );
+    let base = std::fs::read_to_string(example).expect("read the cloud config example");
+    let dir = std::env::temp_dir().join(format!("hoard-sync-test-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let path = dir.join("config.toml");
+    std::fs::write(
+        &path,
+        base.replace(r#"endpoint = """#, r#"endpoint = "http://127.0.0.1:9""#)
+            .replace(
+                r#"supabase_jwks_url = """#,
+                r#"supabase_jwks_url = "http://127.0.0.1:9/jwks""#,
+            )
+            .replace(r#"access_key_id = """#, r#"access_key_id = "test""#)
+            .replace(r#"secret_access_key = """#, r#"secret_access_key = "test""#),
+    )
+    .expect("write config");
+    let config = hoard_server::config::Config::load(&path).expect("load config");
+    let r2 = hoard_server::cloud::r2::R2Store::from_config(
+        &config.cloud.as_ref().expect("cloud section").r2,
+    )
+    .await
+    .expect("r2 client");
+    CloudState::for_test(pool, config, std::sync::Arc::new(r2))
+}
+
+async fn poll(
+    state: &CloudState,
+    user: Uuid,
+    if_none_match: Option<&str>,
+) -> (u16, Option<String>) {
+    use axum::http::header;
+    let mut headers = axum::http::HeaderMap::new();
+    if let Some(tag) = if_none_match {
+        headers.insert(header::IF_NONE_MATCH, tag.parse().expect("header value"));
+    }
+    let resp = hoard_server::cloud::routes::sync::manifest(
+        axum::extract::State(state.clone()),
+        axum::Extension(hoard_server::cloud::auth::CloudUser {
+            user_id: user,
+            email: format!("{user}@test.invalid"),
+            role: "authenticated".into(),
+            avatar_url: None,
+            display_name: None,
+        }),
+        headers,
+    )
+    .await
+    .expect("poll");
+    let etag = resp
+        .headers()
+        .get(header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    (resp.status().as_u16(), etag)
+}
+
+#[tokio::test]
+async fn an_unchanged_list_answers_304() {
+    let Some(pool) = pool().await else { return };
+    let state = state_for(pool.clone()).await;
+    let (user, save) = seed(&pool).await;
+
+    let (status, etag) = poll(&state, user, None).await;
+    assert_eq!(status, 200);
+    let etag = etag.expect("the list carries its etag");
+    assert_eq!(poll(&state, user, Some(&etag)).await.0, 304);
+
+    run(
+        &pool,
+        "UPDATE save_versions SET sha256 = 'moved' WHERE save_id = $1",
+        &save,
+    )
+    .await;
+    let (status, fresh) = poll(&state, user, Some(&etag)).await;
+    assert_eq!(status, 200, "a changed list comes in full");
+    assert_ne!(fresh.as_deref(), Some(etag.as_str()));
 
     cleanup(&pool, user).await;
 }

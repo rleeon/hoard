@@ -318,7 +318,7 @@ async fn the_split_sweep_picks_what_the_or_picked() {
         sqlx::raw_sql(&format!(
             "INSERT INTO cloud_blobs (user_id, sha256, size_bytes, refcount, created_at, encoding,
                                       stored_bytes, compress_attempts, purge_after, last_presigned_at)
-             VALUES ('{user}', decode('{sha}', 'hex'), 65536, {refcount},
+             VALUES ('{user}', decode('{sha}', 'hex'), 2097152, {refcount},
                      timestamptz '2000-01-01' + interval '{i} minutes', {encoding}, {stored},
                      {attempts}, {purge_after}, {presigned})"
         ))
@@ -332,7 +332,7 @@ async fn the_split_sweep_picks_what_the_or_picked() {
     // Too small to be worth compressing, in an otherwise eligible state.
     sqlx::query(
         "INSERT INTO cloud_blobs (user_id, sha256, size_bytes, refcount, created_at)
-         VALUES ($1, decode(repeat('ab', 32), 'hex'), 100, 1, timestamptz '2000-01-01')",
+         VALUES ($1, decode(repeat('ab', 32), 'hex'), 524288, 1, timestamptz '2000-01-01')",
     )
     .bind(user)
     .execute(&pool)

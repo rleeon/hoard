@@ -64,9 +64,10 @@ use uuid::Uuid;
 use crate::cloud::state::CloudState;
 use crate::config::CompressionConfig;
 
-/// Don't bother below this raw size: zstd frame overhead and the extra
-/// Class A ops eat the win on tiny blobs.
-const MIN_BLOB_BYTES: i64 = 4096;
+/// Don't bother below this raw size. Rewriting a blob costs at least two
+/// Class A ops, and under ~1 MiB the storage it saves takes months to pay
+/// them back (years for the 4-64 KiB ones).
+const MIN_BLOB_BYTES: i64 = 1 << 20;
 
 /// Give up on a blob after this many failed attempts. The terminal states
 /// above ('raw', 'missing') only cover blobs the sweep *evaluated*; a blob

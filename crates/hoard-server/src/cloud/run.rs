@@ -319,6 +319,7 @@ pub async fn run(cfg: Config) -> Result<()> {
         // `/v1/cloud/logs` keeps its own smaller cap, since a route-level limit is
         // applied inside this one and wins.
         .layer(DefaultBodyLimit::max(32 * 1024 * 1024))
+        .layer(crate::compression::json_only())
         // Counts every 5xx by what it was doing (upload, download, delete),
         // for the Discord status embed. After routing, so it sees the route
         // template rather than a path full of ids.

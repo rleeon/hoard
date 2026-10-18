@@ -4,6 +4,8 @@
 use crate::cloud::auth::CloudUser;
 use crate::cloud::errors::CloudError;
 use crate::cloud::state::CloudState;
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::{extract::State, response::Json, Extension};
 use serde::Serialize;
 use sqlx::PgPool;
@@ -40,14 +42,28 @@ pub struct Manifest {
 pub async fn manifest(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
-) -> Result<Json<Manifest>, CloudError> {
-    let saves = saves_for(&state.pool, user.user_id).await?;
-    Ok(Json(Manifest {
+    headers: HeaderMap,
+) -> Result<Response, CloudError> {
+    let (saves, fingerprint) = saves_and_fingerprint(&state.pool, user.user_id).await?;
+    // The fingerprint stands for the whole list, so it doubles as its ETag:
+    // ~95% of polls change nothing and get a bodyless 304 (~7.8 KB otherwise).
+    let etag = fingerprint.and_then(|fp| HeaderValue::from_str(&format!("\"{fp}\"")).ok());
+    if let Some(tag) = &etag {
+        if headers.get(header::IF_NONE_MATCH) == Some(tag) {
+            return Ok((StatusCode::NOT_MODIFIED, [(header::ETAG, tag.clone())]).into_response());
+        }
+    }
+    let mut resp = Json(Manifest {
         generated_at: OffsetDateTime::now_utc()
             .format(&time::format_description::well_known::Rfc3339)
             .unwrap_or_default(),
         saves,
-    }))
+    })
+    .into_response();
+    if let Some(tag) = etag {
+        resp.headers_mut().insert(header::ETAG, tag);
+    }
+    Ok(resp)
 }
 
 // ---- poll cache
@@ -91,6 +107,15 @@ const SCOPE: &str = "
 
 /// The list this route serves, from the cache when nothing has changed.
 pub async fn saves_for(pool: &PgPool, user_id: Uuid) -> Result<Vec<ManifestEntry>, CloudError> {
+    Ok(saves_and_fingerprint(pool, user_id).await?.0)
+}
+
+/// [`saves_for`] plus the fingerprint it was checked against, `None` when that
+/// query failed.
+pub async fn saves_and_fingerprint(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<(Vec<ManifestEntry>, Option<String>), CloudError> {
     // A fingerprint that fails costs the saving, never the answer.
     let fingerprint = match fingerprint(pool, user_id).await {
         Ok(fp) => Some(fp),
@@ -103,13 +128,13 @@ pub async fn saves_for(pool: &PgPool, user_id: Uuid) -> Result<Vec<ManifestEntry
         let cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(c) = cache.get(&user_id) {
             if c.fingerprint == *fp && c.fetched_at.elapsed() < MAX_CACHE_AGE {
-                return Ok(c.saves.clone());
+                return Ok((c.saves.clone(), fingerprint));
             }
         }
     }
 
     let saves = load(pool, user_id).await?;
-    if let Some(fp) = fingerprint {
+    if let Some(fp) = &fingerprint {
         let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
         // Users who stopped polling fall out, so the map holds who is online
         // rather than everyone ever seen.
@@ -117,13 +142,13 @@ pub async fn saves_for(pool: &PgPool, user_id: Uuid) -> Result<Vec<ManifestEntry
         cache.insert(
             user_id,
             Cached {
-                fingerprint: fp,
+                fingerprint: fp.clone(),
                 fetched_at: Instant::now(),
                 saves: saves.clone(),
             },
         );
     }
-    Ok(saves)
+    Ok((saves, fingerprint))
 }
 
 /// One short row standing for the whole list: every column it carries, row by

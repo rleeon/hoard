@@ -461,7 +461,10 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
             .route("/v1/auth/login", post(session_routes::login));
     }
 
-    let app = public.merge(authed).with_state(state.clone());
+    let app = public
+        .merge(authed)
+        .with_state(state.clone())
+        .layer(hoard_server::compression::json_only());
 
     if cfg.server.rate_limit.enabled {
         info!(

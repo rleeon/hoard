@@ -36,7 +36,7 @@ tokio = { version = "1", features = ["full"] }
 # HTTP server
 axum = { version = "0.7", features = ["multipart"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["trace", "cors"] }
+tower-http = { version = "0.5", features = ["trace", "cors", "compression-gzip", "compression-zstd"] }
 
 # HTTP client.
 #
