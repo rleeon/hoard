@@ -3850,6 +3850,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hoard-deflate"
+version = "1.2.2"
+dependencies = [
+ "anyhow",
+ "libz-sys",
+]
+
+[[package]]
 name = "hoard-desktop"
 version = "1.2.2"
 dependencies = [
@@ -5279,6 +5287,17 @@ checksum = "3c8469b4a23b962c1396b9b451dda50ef5b283e8dd309d69033475fa9b334324"
 dependencies = [
  "libc",
  "pkg-config",
+]
+
+[[package]]
+name = "libz-sys"
+version = "1.1.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f710a23e6dbf193214fd46ca56a9d6864e550abe86202184532ae7275e46de19"
+dependencies = [
+ "cc",
+ "pkg-config",
+ "vcpkg",
 ]
 
 [[package]]

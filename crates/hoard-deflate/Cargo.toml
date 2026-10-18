@@ -1,0 +1,19 @@
+[package]
+name = "hoard-deflate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Inflates the deflate streams inside a save so a patch sees its content, and deflates them back bit for bit"
+
+[features]
+# Builders for zips and deflate streams, for other crates' tests.
+testing = []
+
+[dependencies]
+anyhow = { workspace = true }
+# Pinned to the byte: a patch made today has to deflate back identically on
+# whatever build restores it, so zlib's output can never change under it.
+# `static` builds the bundled source everywhere (macOS ships its own zlib).
+# The golden test in `lib.rs` fails if a bump changes the output.
+libz-sys = { version = "=1.1.30", default-features = false, features = ["static"] }
