@@ -30,6 +30,11 @@ custom-protocol = ["tauri/custom-protocol"]
 webview2-com = "0.38"
 windows-core = "0.61"
 
+# The GLib log writer that catches GDK's Wayland protocol error (`graphics.rs`).
+# The version GTK already pulls in through Tauri.
+[target.'cfg(target_os = "linux")'.dependencies]
+glib = "0.18"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

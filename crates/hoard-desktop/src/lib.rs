@@ -6,6 +6,8 @@
 
 mod commands;
 mod daemon;
+#[cfg(target_os = "linux")]
+mod graphics;
 mod state;
 mod titlebar;
 mod tray;
@@ -99,6 +101,9 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    let render = graphics::prepare();
+
     // Set up tracing with two layers: stdout (for `RUST_LOG=...` development
     // and journald/Console capture in production) and a daily-rotating file
     // under the user's cache dir. The file layer is what the in-app Logs
@@ -168,6 +173,8 @@ pub fn run() {
     }
 
     install_panic_logger();
+    #[cfg(target_os = "linux")]
+    graphics::log(&render);
 
     let app = tauri::Builder::default()
         // Single instance: clicking the launcher again brings the existing
