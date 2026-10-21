@@ -95,6 +95,16 @@ pub struct ConflictStall {
     pub needs_attention: bool,
 }
 
+/// What a "back up now" pressed by hand is still allowed to lift. The button
+/// has to work when an upload is parked on the failure backoff, the user
+/// pressing it is the reason to try again, but a button is also something
+/// that can be pressed in a loop, so it gets its own budget instead of none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ManualLifts {
+    pub window_start: Option<OffsetDateTime>,
+    pub used: u32,
+}
+
 /// How the last IO operation ended, reported by the shell as part of the next
 /// tick's [`Observation`]. With the authority inverted, finishing an op is an
 /// *input* to the reducer rather than an event that mutates state behind its
@@ -237,6 +247,12 @@ pub struct State {
     /// saver pacing (which a cross-device flush may skip) stays distinguishable
     /// from an error backoff (which it never may).
     pub next_backup_at: Option<OffsetDateTime>,
+    /// The deadline the last exhausted upload wrote into `next_backup_at`. While
+    /// the two match, the brake in force is that one and a manual backup may lift
+    /// it. A 429 or a full account overwrites `next_backup_at`, the two stop
+    /// matching, and those brakes are never lifted by hand.
+    pub failure_backoff_until: Option<OffsetDateTime>,
+    pub manual_lifts: ManualLifts,
     /// No restore starts before this instant: cooldown, failure backoff or
     /// download throttle backoff. `None` means no brake.
     pub next_restore_at: Option<OffsetDateTime>,

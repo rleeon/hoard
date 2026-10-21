@@ -837,6 +837,8 @@ struct SaveSlot {
     /// `needs_attention`'s edge to warn the user. It maps to
     /// [`kernel::State::backup_conflict`].
     backup_conflict: kernel::ConflictStall,
+    failure_backoff_until: Option<OffsetDateTime>,
+    manual_lifts: kernel::ManualLifts,
     /// The skip-by-set-hash signature of this session's last successful upload
     /// (ADR 0019). Compared against the freshly walked signature before each backup;
     /// an unchanged signature means the watcher fired on a no-op settle, so the
@@ -1004,6 +1006,8 @@ fn state_from_slot(slot: &SaveSlot, config: &AgentConfig, now: OffsetDateTime) -
         burst_backups: slot.burst_backups,
         in_flight: slot.in_flight,
         next_backup_at: slot.next_backup_at,
+        failure_backoff_until: slot.failure_backoff_until,
+        manual_lifts: slot.manual_lifts,
         next_restore_at: slot.next_restore_at,
         pull_pending: slot.pull_pending,
         deferred_notified: slot.deferred_notified,
@@ -1026,6 +1030,8 @@ fn apply_state_to_slot(slot: &mut SaveSlot, next: kernel::State) {
     slot.burst_backups = next.burst_backups;
     slot.in_flight = next.in_flight;
     slot.next_backup_at = next.next_backup_at;
+    slot.failure_backoff_until = next.failure_backoff_until;
+    slot.manual_lifts = next.manual_lifts;
     slot.next_restore_at = next.next_restore_at;
     slot.pull_pending = next.pull_pending;
     slot.deferred_notified = next.deferred_notified;
@@ -2175,17 +2181,31 @@ async fn run_agent(
                         if let Some(slot) = slots.get_mut(&id) {
                             slot.needs_l1 = true;
                             slot.manual_requested = true;
-                            // Pressing "back up now" IS the intervention the save was
-                            // asking for: it releases the conflict escalation and its
-                            // brake, or the button would do nothing and the user would
-                            // have no way to answer the warning.
-                            if slot.backup_conflict != kernel::ConflictStall::default() {
-                                tracing::info!(
+                            // Pressing "back up now" IS the intervention a parked save
+                            // was waiting for: the failure backoff and the conflict
+                            // escalation are lifted, or the button answers "ok" and does
+                            // nothing for ten minutes. Within the kernel's budget, and
+                            // never over a 429 or a full account.
+                            let now = OffsetDateTime::now_utc();
+                            let mut state = state_from_slot(slot, &config, now);
+                            let outcome = kernel::reconcile::manual_backup(&mut state, now);
+                            apply_state_to_slot(slot, state);
+                            match outcome {
+                                kernel::reconcile::ManualBackup::NotBraked => {}
+                                kernel::reconcile::ManualBackup::Lifted => tracing::info!(
                                     save_id = %id,
-                                    "agent: manual backup, clearing the conflict escalation"
-                                );
-                                slot.backup_conflict = kernel::ConflictStall::default();
-                                slot.next_backup_at = None;
+                                    used = slot.manual_lifts.used,
+                                    budget = kernel::reconcile::MANUAL_LIFT_BUDGET,
+                                    "agent: manual backup, lifting the backoff"
+                                ),
+                                kernel::reconcile::ManualBackup::BudgetSpent => tracing::warn!(
+                                    save_id = %id,
+                                    "agent: manual backup ignored, this save spent its manual retries for the hour"
+                                ),
+                                kernel::reconcile::ManualBackup::ServerBrake => tracing::info!(
+                                    save_id = %id,
+                                    "agent: manual backup waits, the server asked us to (429 or full account)"
+                                ),
                             }
                             mark_pending_if_diverged(slot);
                         }
@@ -2652,6 +2672,8 @@ fn handle_add(
         restore_failures: kernel::RestoreFailures::default(),
         drive_offline: false,
         backup_conflict: kernel::ConflictStall::default(),
+        failure_backoff_until: None,
+        manual_lifts: kernel::ManualLifts::default(),
         last_set_hash,
         synced_fingerprint,
         last_l0_mtime: None,
@@ -6290,6 +6312,8 @@ mod tests {
             restore_failures: kernel::RestoreFailures::default(),
             drive_offline: false,
             backup_conflict: kernel::ConflictStall::default(),
+            failure_backoff_until: None,
+            manual_lifts: kernel::ManualLifts::default(),
             last_set_hash: None,
             synced_fingerprint: None,
             last_l0_mtime: None,

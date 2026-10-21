@@ -29,8 +29,8 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 use time::{Duration, OffsetDateTime};
 
 use super::{
-    session, Action, ConflictStall, Decision, Observation, Op, OpResult, RestoreFailures, State,
-    World,
+    session, Action, ConflictStall, Decision, ManualLifts, Observation, Op, OpResult,
+    RestoreFailures, State, World,
 };
 
 // ---- pacing constants (sans-IO twins of the ones in `agent.rs`)
@@ -72,6 +72,12 @@ pub const HOLD_RESTORE_PARKED: &str =
 /// short enough that recovery is unattended. This was `agent::BACKUP_RETRY_BACKOFF`,
 /// policy living in the shell (ADR 0021 D.8.2).
 pub const BACKUP_FAILURE_BACKOFF_SECS: i64 = 10 * 60;
+
+/// Manual lifts a save gets per [`MANUAL_LIFT_WINDOW_SECS`]. Twenty presses of
+/// "back up now" against a dead server is someone checking; more is a loop, and
+/// from there the button waits like everything else.
+pub const MANUAL_LIFT_BUDGET: u32 = 20;
+pub const MANUAL_LIFT_WINDOW_SECS: i64 = 60 * 60;
 
 /// Escalation for an upload hitting an *unresolvable* conflict (409 "you are
 /// behind" plus a reconcile with nothing to pull): 10, 20, 40, 80 minutes.
@@ -583,6 +589,63 @@ fn apply_running_stickiness(next: &mut State, obs: &Observation, now: OffsetDate
     }
 }
 
+/// What a manual "back up now" did to the brakes on a save.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManualBackup {
+    /// Nothing was holding the upload back.
+    NotBraked,
+    /// The failure backoff, or a stalled 409, was lifted.
+    Lifted,
+    /// The save already used its lifts for this window; the brake stays.
+    BudgetSpent,
+    /// A brake the user cannot lift: a 429 or a full account. They are the
+    /// server's limits, not ours to skip.
+    ServerBrake,
+}
+
+/// Applies a manual backup request to the brakes, before the reducer runs. Only
+/// what Hoard put there on its own account can be lifted, and only
+/// [`MANUAL_LIFT_BUDGET`] times per window.
+pub fn manual_backup(state: &mut State, now: OffsetDateTime) -> ManualBackup {
+    let braked = state.next_backup_at.is_some_and(|t| now < t);
+    let stalled = state.backup_conflict != ConflictStall::default();
+    if !braked && !stalled {
+        return ManualBackup::NotBraked;
+    }
+    let ours = state.failure_backoff_until.is_some() && state.next_backup_at == state.failure_backoff_until;
+    if braked && !ours && !stalled {
+        return ManualBackup::ServerBrake;
+    }
+    if !take_manual_lift(&mut state.manual_lifts, now) {
+        return ManualBackup::BudgetSpent;
+    }
+    if stalled {
+        state.backup_conflict = ConflictStall::default();
+    }
+    if ours || stalled {
+        state.next_backup_at = None;
+        state.failure_backoff_until = None;
+    }
+    ManualBackup::Lifted
+}
+
+fn take_manual_lift(lifts: &mut ManualLifts, now: OffsetDateTime) -> bool {
+    let expired = lifts
+        .window_start
+        .is_none_or(|start| now - start >= Duration::seconds(MANUAL_LIFT_WINDOW_SECS));
+    if expired {
+        *lifts = ManualLifts {
+            window_start: Some(now),
+            used: 0,
+        };
+    }
+    if lifts.used >= MANUAL_LIFT_BUDGET {
+        return false;
+    }
+    lifts.used += 1;
+    true
+}
+
 /// Ingests a finished op's result: clears `in_flight` and applies the
 /// disposition. Maps 1:1 onto `agent`'s `AutoRestoreDisposition` plus
 /// `BackupDone`. The 429 (`Throttled`) is symmetric between backup and restore:
@@ -636,6 +699,8 @@ fn ingest_op_result(
                     // unresolvable 409 resolved. The whole escalation is released,
                     // which is also what turns the warning off in the UI.
                     next.backup_conflict = ConflictStall::default();
+                    next.failure_backoff_until = None;
+                    next.manual_lifts = ManualLifts::default();
                     if wrote {
                         // A real commit moves the min-interval anchor (ADR 0018).
                         // The floor derives from it ([`backup_floor`]); there is
@@ -754,7 +819,9 @@ fn ingest_op_result(
         //   version failure counter and the restore backoff.
         OpResult::Failed => match op {
             Some(Op::Backup) => {
-                next.next_backup_at = Some(now + Duration::seconds(BACKUP_FAILURE_BACKOFF_SECS));
+                let until = now + Duration::seconds(BACKUP_FAILURE_BACKOFF_SECS);
+                next.next_backup_at = Some(until);
+                next.failure_backoff_until = Some(until);
             }
             _ => {
                 let delay = record_failure(&mut next.restore_failures, obs.cloud_version);
@@ -1645,6 +1712,110 @@ mod tests {
         assert!(next.pull_pending, "y el pull sigue esperando al cierre");
     }
 
+    /// A failed upload parked on the long backoff, as the reducer leaves it.
+    fn parked_after_failure() -> State {
+        let state = State {
+            in_flight: Some(Op::Backup),
+            has_pending: true,
+            synced_fingerprint: Some(1),
+            ..base_state()
+        };
+        let obs = Observation {
+            local_fingerprint: Some(2),
+            op_result: Some(OpResult::Failed),
+            ..quiet_obs()
+        };
+        reconcile(&state, &obs, world(0)).0
+    }
+
+    /// The 21-10-2026 VM run: the server came back, the user pressed "back up
+    /// now" and the daemon answered ok and waited out the ten minutes anyway.
+    #[test]
+    fn a_manual_backup_lifts_the_failure_backoff_and_the_next_tick_uploads() {
+        let mut state = parked_after_failure();
+        assert_eq!(state.failure_backoff_until, state.next_backup_at);
+        assert_eq!(manual_backup(&mut state, at(30)), ManualBackup::Lifted);
+        assert_eq!(state.next_backup_at, None);
+        let obs = Observation {
+            local_fingerprint: Some(2),
+            ..quiet_obs()
+        };
+        let (_, ds) = reconcile(&state, &obs, world(31));
+        assert!(acts(&ds).contains(&&Action::Backup), "{ds:?}");
+    }
+
+    #[test]
+    fn a_manual_backup_never_lifts_a_server_brake() {
+        for result in [
+            OpResult::Throttled {
+                retry_after_secs: 600,
+            },
+            OpResult::QuotaFull,
+        ] {
+            let state = State {
+                in_flight: Some(Op::Backup),
+                has_pending: true,
+                ..base_state()
+            };
+            let obs = Observation {
+                op_result: Some(result),
+                ..quiet_obs()
+            };
+            let (mut next, _) = reconcile(&state, &obs, world(0));
+            let until = next.next_backup_at;
+            assert!(until.is_some());
+            assert_eq!(manual_backup(&mut next, at(1)), ManualBackup::ServerBrake);
+            assert_eq!(next.next_backup_at, until, "{result:?}");
+            assert_eq!(next.manual_lifts.used, 0, "a refusal spends nothing");
+        }
+    }
+
+    #[test]
+    fn manual_lifts_run_out_and_come_back_with_the_window() {
+        let mut state = parked_after_failure();
+        for i in 0..MANUAL_LIFT_BUDGET {
+            state.next_backup_at = Some(at(BACKUP_FAILURE_BACKOFF_SECS));
+            state.failure_backoff_until = state.next_backup_at;
+            assert_eq!(manual_backup(&mut state, at(i64::from(i))), ManualBackup::Lifted);
+        }
+        state.next_backup_at = Some(at(BACKUP_FAILURE_BACKOFF_SECS));
+        state.failure_backoff_until = state.next_backup_at;
+        assert_eq!(manual_backup(&mut state, at(100)), ManualBackup::BudgetSpent);
+        assert!(state.next_backup_at.is_some(), "the brake stays");
+
+        let later = MANUAL_LIFT_WINDOW_SECS + 1;
+        state.next_backup_at = Some(at(later + BACKUP_FAILURE_BACKOFF_SECS));
+        state.failure_backoff_until = state.next_backup_at;
+        assert_eq!(manual_backup(&mut state, at(later)), ManualBackup::Lifted);
+        assert_eq!(state.manual_lifts.used, 1);
+    }
+
+    #[test]
+    fn a_successful_upload_resets_the_manual_budget() {
+        let mut state = parked_after_failure();
+        assert_eq!(manual_backup(&mut state, at(1)), ManualBackup::Lifted);
+        state.in_flight = Some(Op::Backup);
+        let obs = Observation {
+            local_fingerprint: Some(2),
+            op_result: Some(OpResult::Ok {
+                version: Some(4),
+                fingerprint: Some(2),
+                wrote: true,
+            }),
+            ..quiet_obs()
+        };
+        let (next, _) = reconcile(&state, &obs, world(5));
+        assert_eq!(next.manual_lifts, ManualLifts::default());
+        assert_eq!(next.failure_backoff_until, None);
+    }
+
+    #[test]
+    fn a_manual_backup_with_nothing_braking_spends_nothing() {
+        let mut state = base_state();
+        assert_eq!(manual_backup(&mut state, at(0)), ManualBackup::NotBraked);
+        assert_eq!(state.manual_lifts.used, 0);
+    }
+
     /// The *backup* failure backoff, now inside the kernel. The shell used to
     /// restore it (`RetryBackupAfterFailure`): clear `in_flight`, arm the long
     /// backoff, keep `has_pending`. An upload failure does not escalate the
@@ -2531,6 +2702,7 @@ mod tests {
             burst_backups in 0u32..8,
             failures in arb_failures(),
             conflicts in arb_conflicts(),
+            failure_lane in any::<bool>(),
         ) -> State {
             State {
                 track_only,
@@ -2545,6 +2717,8 @@ mod tests {
                 last_backup_at: backup_at.map(at),
                 in_flight,
                 next_backup_at: next_backup.map(at),
+                failure_backoff_until: next_backup.filter(|_| failure_lane).map(at),
+                manual_lifts: ManualLifts::default(),
                 next_restore_at: next_restore.map(at),
                 pull_pending,
                 deferred_notified,
