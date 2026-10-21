@@ -1,0 +1,343 @@
+"""Backend of the Hoard Decky plugin.
+
+Game Mode has no desktop notifications: gamescope does not show them, so a
+backup that failed at 3 a.m. on a handheld simply never reaches anyone. This
+backend talks to the user's `hoardd` over its local socket, the same way the
+desktop app and `hoard sync run` do, and forwards what matters to the frontend,
+which turns it into Steam toasts and a panel in the Quick Access Menu.
+
+Protocol (hoard-core `ipc`): every frame is a big-endian u32 length plus JSON.
+The client says `hello`, the daemon answers `welcome` with its journal cursor,
+and a `subscribe` from that cursor streams every new event. Requests that are
+not the subscription go over a short connection of their own.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import pwd
+import struct
+
+import decky
+
+PROTOCOL = 1
+CLIENT = "hoard-decky 0.1.0"
+RECENT = 30
+RETRY_SECS = 5
+MAX_FRAME = 8 * 1024 * 1024
+
+
+def socket_path() -> str:
+    # Decky starts backends without the user's session environment, so
+    # XDG_RUNTIME_DIR is not to be trusted here: hoardd binds under
+    # /run/user/<uid>/hoard when that directory exists.
+    uid = pwd.getpwnam(decky.DECKY_USER).pw_uid
+    return f"/run/user/{uid}/hoard/hoardd.sock"
+
+
+async def write_frame(writer: asyncio.StreamWriter, msg: dict) -> None:
+    body = json.dumps(msg).encode()
+    writer.write(struct.pack(">I", len(body)) + body)
+    await writer.drain()
+
+
+async def read_frame(reader: asyncio.StreamReader) -> dict:
+    (size,) = struct.unpack(">I", await reader.readexactly(4))
+    if size > MAX_FRAME:
+        raise ValueError(f"frame of {size} bytes")
+    return json.loads(await reader.readexactly(size))
+
+
+async def handshake(reader, writer) -> dict:
+    await write_frame(
+        writer, {"frame": "hello", "protocol": PROTOCOL, "client": CLIENT, "caps": []}
+    )
+    frame = await read_frame(reader)
+    if frame.get("frame") == "rejected":
+        raise RuntimeError(
+            f"hoardd {frame.get('daemon_version')} refused protocol {PROTOCOL}: {frame.get('reason')}"
+        )
+    if frame.get("frame") != "welcome":
+        raise RuntimeError(f"unexpected first frame {frame.get('frame')!r}")
+    return frame
+
+
+async def request(op: dict, timeout: float = 10.0) -> dict:
+    """One request over its own connection; returns the reply's payload."""
+    reader, writer = await asyncio.open_unix_connection(socket_path())
+    try:
+        await handshake(reader, writer)
+        await write_frame(writer, {"frame": "request", "id": 1, "request": op})
+        while True:
+            frame = await asyncio.wait_for(read_frame(reader), timeout)
+            if frame.get("frame") == "reply" and frame.get("id") == 1:
+                reply = frame["reply"]
+                if reply.get("result") != "ok":
+                    raise RuntimeError(reply.get("message") or json.dumps(reply))
+                return reply
+    finally:
+        writer.close()
+
+
+def plain_error(error: str) -> str:
+    """The engine's errors are written for logs. A toast gets the gist; the
+    full text stays in hoardd's log."""
+    e = (error or "").lower()
+    if "error sending request" in e or "connection refused" in e or "dns error" in e:
+        return "can't reach the server"
+    if "timed out" in e or "timeout" in e:
+        return "the server took too long to answer"
+    if " 401" in e or "unauthorized" in e:
+        return "signed out, open Hoard to sign in again"
+    if "no space left" in e:
+        return "the disk is full"
+    if "permission denied" in e:
+        return "a file could not be read (permission denied)"
+    return error if len(error) <= 90 else error[:87] + "..."
+
+
+def size(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n} B"
+
+
+class Plugin:
+    def __init__(self):
+        self.connected = False
+        self.error = ""
+        self.daemon_version = ""
+        self.server = ""
+        self.watched = 0
+        self.names: dict[str, str] = {}
+        self.slugs: dict[str, str] = {}
+        self.slots: list[dict] = []
+        self.recent: list[dict] = []
+        self.debug_toasts = False
+
+    # ---- naming
+
+    def name_of(self, ev: dict) -> str:
+        # `label` is the partida's name inside a game ("main" unless the user
+        # renamed it), so the game comes first and the label only when it says
+        # something.
+        sid = ev.get("save_id", "")
+        game = self.names.get(sid) or self.slugs.get(sid) or ev.get("game_slug") or "a save"
+        if game == game.lower() and " " not in game:
+            # hoardd 1.2.2 names a slot by its slug ("hollow-knight"); the
+            # catalogue's real name is not on the socket yet.
+            game = game.replace("-", " ").title()
+        label = ev.get("label") or ""
+        return f"{game} ({label})" if label and label != "main" and label not in game else game
+
+    def describe(self, ev: dict) -> tuple[str, str, str, bool] | None:
+        """(level, title, body, toast) for an AgentEvent, or None to drop it.
+
+        Toasts are for what someone in a game wants to know without asking:
+        a save landed, failed, came back. The rest only goes to the panel,
+        where it helps answer "did Hoard even see my game?".
+        """
+        kind = ev.get("type")
+        name = self.name_of(ev)
+        if kind == "backup_started":
+            # The result follows within seconds; listing both doubles the panel.
+            return None
+        if kind == "backup_success":
+            if ev.get("already_landed"):
+                return ("info", "Already up to date", name, False)
+            body = f"{name} · version {ev.get('version_num')} · {size(ev.get('total_bytes', 0))}"
+            return ("ok", "Save backed up", body, True)
+        if kind == "backup_failed":
+            retry = " Hoard will retry." if ev.get("will_retry") else ""
+            return ("error", "Backup failed", f"{name}: {plain_error(ev.get('error', ''))}.{retry}", True)
+        if kind == "backup_throttled":
+            return ("warn", "Backup delayed", f"{name}, retrying in {ev.get('retry_after_secs')} s", False)
+        if kind == "backup_too_large":
+            body = f"{name} is {size(ev.get('actual_bytes', 0))}, the limit is {size(ev.get('limit_bytes', 0))}"
+            return ("error", "Save too large", body, True)
+        if kind == "backup_quota_full":
+            return ("error", "Storage full", f"{name} was not uploaded", True)
+        if kind == "backup_trimmed":
+            return ("warn", "Partial backup", f"{name}: {ev.get('omitted_files')} files left out", True)
+        if kind == "backup_files_unreadable":
+            return ("warn", "Some files could not be read", f"{name}: {ev.get('count')} files", True)
+        if kind == "backup_needs_attention":
+            return ("error", "Backup needs attention", f"{name}: {plain_error(ev.get('error', ''))}", True)
+        if kind == "backup_attention_cleared":
+            return ("ok", "Backup back to normal", name, False)
+        if kind == "backup_skipped_empty":
+            if ev.get("likely_wrong_path"):
+                return ("warn", "Nothing to back up", f"{name}: the save folder may be the wrong one", True)
+            return ("info", "Nothing to back up", name, False)
+        if kind == "save_auto_restored":
+            body = f"{name} · version {ev.get('version_num')} · {ev.get('files_extracted')} files"
+            return ("ok", "Save restored", body, True)
+        if kind in ("save_auto_restore_failed", "save_auto_restore_stuck"):
+            return ("error", "Restore failed", f"{name}: {plain_error(ev.get('error', ''))}", True)
+        if kind == "save_auto_restore_recovered":
+            return ("ok", "Restore back to normal", name, False)
+        if kind == "restore_deferred":
+            return ("info", "Restore waiting", f"{name}: {ev.get('reason')}", False)
+        if kind == "save_conflicts_backed_up":
+            return ("warn", "Conflicting files kept aside", f"{name}: {ev.get('count')} files", True)
+        if kind == "game_started":
+            return ("info", "Game detected", name, self.debug_toasts)
+        if kind == "game_stopped":
+            return ("info", "Game closed", name, self.debug_toasts)
+        if kind == "heavy_process_detected":
+            return ("info", "Heavy process running", ev.get("name", ""), False)
+        if kind == "backup_scheduled":
+            return None
+        return ("info", kind or "event", name, False)
+
+    # ---- event stream
+
+    async def emit_state(self):
+        await decky.emit("hoard_state", await self.get_state())
+
+    async def handle(self, entry: dict, quiet: bool = False):
+        ev = entry.get("event") or {}
+        sid = ev.get("save_id")
+        if sid and ev.get("game_slug"):
+            self.slugs[sid] = ev["game_slug"]
+        if sid and sid not in self.names:
+            # A save tracked after we connected: its display name is in the
+            # service's status, not in the event.
+            try:
+                await self.refresh_status()
+            except Exception as e:
+                decky.logger.warning(f"status: {e}")
+        described = self.describe(ev)
+        if described is None:
+            return
+        level, title, body, toast = described
+        if any(r["seq"] == entry.get("seq") for r in self.recent):
+            return
+        item = {"seq": entry.get("seq"), "at": entry.get("at"), "level": level,
+                "title": title, "body": body, "toast": toast and not quiet}
+        self.recent.insert(0, item)
+        self.recent.sort(key=lambda r: r["seq"] or 0, reverse=True)
+        del self.recent[RECENT:]
+        decky.logger.info(f"event {ev.get('type')}: {title} / {body}")
+        await decky.emit("hoard_event", item)
+
+    async def refresh_status(self):
+        reply = await request({"op": "status"})
+        engine = reply.get("engine") or {}
+        self.daemon_version = reply.get("daemon_version", "")
+        self.server = engine.get("server") or ""
+        self.watched = engine.get("watched", 0)
+        self.slots = [
+            {"save_id": s.get("save_id"),
+             "name": s.get("display_name") or s.get("save_id"),
+             "path": s.get("path", ""),
+             "running": bool(s.get("process_running")),
+             "armed": bool(s.get("watcher_armed"))}
+            for s in reply.get("slots") or []
+        ]
+        for s in reply.get("slots") or []:
+            if s.get("display_name"):
+                self.names[s["save_id"]] = s["display_name"]
+
+    async def follow(self):
+        epoch, cursor, replay_until = None, None, 0
+        while True:
+            try:
+                reader, writer = await asyncio.open_unix_connection(socket_path())
+                try:
+                    welcome = await handshake(reader, writer)
+                    # Same daemon run: pick up where we left. A new run (or the
+                    # first connection) backs up a little to fill the panel, and
+                    # that backlog is shown but never toasted: a reconnect must
+                    # not replay an hour of notifications.
+                    fresh = welcome.get("epoch") != epoch
+                    since = max(0, welcome.get("cursor", 0) - RECENT) if fresh else cursor
+                    replay_until = welcome.get("cursor", 0) if fresh else 0
+                    epoch = welcome.get("epoch")
+                    await write_frame(writer, {"frame": "request", "id": 1,
+                                               "request": {"op": "subscribe", "since": since}})
+                    self.connected, self.error = True, ""
+                    try:
+                        await self.refresh_status()
+                    except Exception as e:  # status is a nicety, events are the point
+                        decky.logger.warning(f"status: {e}")
+                    await self.emit_state()
+                    while True:
+                        frame = await read_frame(reader)
+                        kind = frame.get("frame")
+                        if kind == "event":
+                            cursor = frame.get("seq", cursor)
+                            await self.handle(frame, quiet=frame.get("seq", 0) <= replay_until)
+                        elif kind == "reply" and frame.get("reply", {}).get("payload") == "backlog":
+                            reply = frame["reply"]
+                            for entry in reply.get("entries") or []:
+                                await self.handle(entry, quiet=entry.get("seq", 0) <= replay_until)
+                            cursor = reply.get("cursor", cursor)
+                        elif kind == "resync":
+                            cursor = frame.get("cursor")
+                            await write_frame(writer, {"frame": "request", "id": 2,
+                                                       "request": {"op": "subscribe", "since": cursor}})
+                        elif kind == "goodbye":
+                            raise ConnectionError(frame.get("reason") or "goodbye")
+                finally:
+                    writer.close()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                message = "Hoard's sync service is not running" if isinstance(
+                    e, (FileNotFoundError, ConnectionRefusedError)) else str(e)
+                if self.connected or self.error != message:
+                    decky.logger.warning(f"hoardd: {message}")
+                    self.connected, self.error = False, message
+                    await self.emit_state()
+            await asyncio.sleep(RETRY_SECS)
+
+    # ---- callables
+
+    async def get_state(self) -> dict:
+        return {
+            "connected": self.connected,
+            "error": self.error,
+            "daemon_version": self.daemon_version,
+            "server": self.server,
+            "watched": self.watched,
+            "slots": self.slots,
+            "recent": self.recent,
+            "debug_toasts": self.debug_toasts,
+        }
+
+    async def refresh(self) -> dict:
+        if self.connected:
+            try:
+                await self.refresh_status()
+            except Exception as e:
+                decky.logger.warning(f"status: {e}")
+        return await self.get_state()
+
+    async def sync_now(self) -> str:
+        # A "back up now" per save, the request that may lift a failure backoff
+        # (hoardd keeps its own budget for that). The results arrive as events.
+        try:
+            await self.refresh_status()
+            for slot in self.slots:
+                await request({"op": "backup_now", "save_id": slot["save_id"]})
+            return ""
+        except Exception as e:
+            return str(e)
+
+    async def set_debug_toasts(self, enabled: bool) -> None:
+        self.debug_toasts = bool(enabled)
+
+    # ---- lifecycle
+
+    async def _main(self):
+        self.task = asyncio.get_event_loop().create_task(self.follow())
+        decky.logger.info(f"following {socket_path()}")
+
+    async def _unload(self):
+        task = getattr(self, "task", None)
+        if task:
+            task.cancel()

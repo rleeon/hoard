@@ -1,0 +1,11 @@
+{
+  "name": "Hoard",
+  "author": "Hoard",
+  "flags": ["debug"],
+  "api_version": 1,
+  "publish": {
+    "tags": ["saves", "sync", "backup"],
+    "description": "Hoard save sync in Game Mode: upload and restore notifications, and what the sync service is doing right now.",
+    "image": "https://hoard.services/og.png"
+  }
+}
