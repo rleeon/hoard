@@ -201,9 +201,46 @@ jobs:
           path: dist/*.minisig
           if-no-files-found: warn
 
+  # The Decky Loader plugin (`decky/`). Not on Decky's store: it goes out with
+  # each release and `decky-install.sh` puts it in place, from the extracted
+  # tarball or by fetching this asset from the latest release. The asset name
+  # carries no version so `releases/latest/download/` keeps working.
+  decky:
+    name: Decky plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 9
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: decky/pnpm-lock.yaml
+      - name: Build and package
+        working-directory: decky
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          out=../dist/hoard-decky
+          mkdir -p "$out/dist"
+          cp plugin.json package.json main.py decky-install.sh ../LICENSE "$out/"
+          cp dist/index.js "$out/dist/"
+          tar -C ../dist -czf ../dist/hoard-decky.tar.gz hoard-decky
+          (cd ../dist && sha256sum hoard-decky.tar.gz > hoard-decky.tar.gz.sha256)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: decky
+          path: |
+            dist/hoard-decky.tar.gz
+            dist/hoard-decky.tar.gz.sha256
+          if-no-files-found: error
+
   release:
     name: GitHub Release
-    needs: [build, sign]
+    needs: [build, sign, decky]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

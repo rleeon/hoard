@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import pwd
 import struct
 
@@ -25,15 +26,24 @@ PROTOCOL = 1
 CLIENT = "hoard-decky 0.1.0"
 RECENT = 30
 RETRY_SECS = 5
+STATUS_POLL_SECS = 10
 MAX_FRAME = 8 * 1024 * 1024
+
+
+FLATPAK_ID = "services.hoard.saves"
 
 
 def socket_path() -> str:
     # Decky starts backends without the user's session environment, so
     # XDG_RUNTIME_DIR is not to be trusted here: hoardd binds under
-    # /run/user/<uid>/hoard when that directory exists.
-    uid = pwd.getpwnam(decky.DECKY_USER).pw_uid
-    return f"/run/user/{uid}/hoard/hoardd.sock"
+    # /run/user/<uid>/hoard. A Flatpak hoardd sees the same path from inside,
+    # but on the host it lives in the app's private runtime dir.
+    run = f"/run/user/{pwd.getpwnam(decky.DECKY_USER).pw_uid}"
+    native = f"{run}/hoard/hoardd.sock"
+    flatpak = f"{run}/.flatpak/{FLATPAK_ID}/xdg-run/hoard/hoardd.sock"
+    if not os.path.exists(native) and os.path.exists(flatpak):
+        return flatpak
+    return native
 
 
 async def write_frame(writer: asyncio.StreamWriter, msg: dict) -> None:
@@ -64,20 +74,33 @@ async def handshake(reader, writer) -> dict:
 
 
 async def request(op: dict, timeout: float = 10.0) -> dict:
-    """One request over its own connection; returns the reply's payload."""
+    """One request over its own connection; returns the reply's payload. The
+    whole exchange, handshake included, sits under `timeout`: a daemon that
+    accepts and never answers must not leave a button spinning forever."""
+    return await asyncio.wait_for(_request(op), timeout)
+
+
+async def _request(op: dict) -> dict:
     reader, writer = await asyncio.open_unix_connection(socket_path())
     try:
         await handshake(reader, writer)
         await write_frame(writer, {"frame": "request", "id": 1, "request": op})
         while True:
-            frame = await asyncio.wait_for(read_frame(reader), timeout)
+            frame = await read_frame(reader)
             if frame.get("frame") == "reply" and frame.get("id") == 1:
                 reply = frame["reply"]
                 if reply.get("result") != "ok":
-                    raise RuntimeError(reply.get("message") or json.dumps(reply))
+                    # IpcError travels as {"result": "error", "error": <code>, ...}
+                    # plus a human field that depends on the code.
+                    detail = reply.get("message") or reply.get("op") or reply.get("error")
+                    raise RuntimeError(str(detail or "the service refused the request"))
                 return reply
     finally:
         writer.close()
+
+
+def settings_path() -> str:
+    return os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 
 
 def plain_error(error: str) -> str:
@@ -116,6 +139,8 @@ class Plugin:
         self.slugs: dict[str, str] = {}
         self.slots: list[dict] = []
         self.recent: list[dict] = []
+        self.unnamed: set[str] = set()
+        self.epoch = ""
         self.debug_toasts = False
 
     # ---- naming
@@ -148,8 +173,7 @@ class Plugin:
         if kind == "backup_success":
             if ev.get("already_landed"):
                 return ("info", "Already up to date", name, False)
-            body = f"{name} · version {ev.get('version_num')} · {size(ev.get('total_bytes', 0))}"
-            return ("ok", "Save backed up", body, True)
+            return ("ok", "Save backed up", name, True)
         if kind == "backup_failed":
             retry = " Hoard will retry." if ev.get("will_retry") else ""
             return ("error", "Backup failed", f"{name}: {plain_error(ev.get('error', ''))}.{retry}", True)
@@ -173,8 +197,7 @@ class Plugin:
                 return ("warn", "Nothing to back up", f"{name}: the save folder may be the wrong one", True)
             return ("info", "Nothing to back up", name, False)
         if kind == "save_auto_restored":
-            body = f"{name} · version {ev.get('version_num')} · {ev.get('files_extracted')} files"
-            return ("ok", "Save restored", body, True)
+            return ("ok", "Save restored", name, True)
         if kind in ("save_auto_restore_failed", "save_auto_restore_stuck"):
             return ("error", "Restore failed", f"{name}: {plain_error(ev.get('error', ''))}", True)
         if kind == "save_auto_restore_recovered":
@@ -188,7 +211,12 @@ class Plugin:
         if kind == "game_stopped":
             return ("info", "Game closed", name, self.debug_toasts)
         if kind == "heavy_process_detected":
-            return ("info", "Heavy process running", ev.get("name", ""), False)
+            # hoardd's hint to run a detection scan now. Internal, and its
+            # "looks like a game" guess also catches system tools, so it only
+            # shows up when the user asked to see detection.
+            if not self.debug_toasts:
+                return None
+            return ("info", "Possible new game spotted", ev.get("name", ""), False)
         if kind == "backup_scheduled":
             return None
         return ("info", kind or "event", name, False)
@@ -203,23 +231,29 @@ class Plugin:
         sid = ev.get("save_id")
         if sid and ev.get("game_slug"):
             self.slugs[sid] = ev["game_slug"]
-        if sid and sid not in self.names:
+        if sid and sid not in self.names and sid not in self.unnamed:
             # A save tracked after we connected: its display name is in the
-            # service's status, not in the event.
+            # service's status, not in the event. Asked once: a backlog of saves
+            # nobody watches any more would otherwise cost a connection each.
             try:
                 await self.refresh_status()
             except Exception as e:
                 decky.logger.warning(f"status: {e}")
+            if sid not in self.names:
+                self.unnamed.add(sid)
         described = self.describe(ev)
         if described is None:
             return
         level, title, body, toast = described
-        if any(r["seq"] == entry.get("seq") for r in self.recent):
+        # The journal's seq restarts with every hoardd run, so it only identifies
+        # an event together with the run's epoch. Keyed on seq alone, a restarted
+        # daemon's first events matched old ones and were dropped in silence.
+        key = f"{self.epoch}:{entry.get('seq')}"
+        if any(r["key"] == key for r in self.recent):
             return
-        item = {"seq": entry.get("seq"), "at": entry.get("at"), "level": level,
+        item = {"key": key, "at": entry.get("at"), "level": level,
                 "title": title, "body": body, "toast": toast and not quiet}
         self.recent.insert(0, item)
-        self.recent.sort(key=lambda r: r["seq"] or 0, reverse=True)
         del self.recent[RECENT:]
         decky.logger.info(f"event {ev.get('type')}: {title} / {body}")
         await decky.emit("hoard_event", item)
@@ -257,6 +291,7 @@ class Plugin:
                     since = max(0, welcome.get("cursor", 0) - RECENT) if fresh else cursor
                     replay_until = welcome.get("cursor", 0) if fresh else 0
                     epoch = welcome.get("epoch")
+                    self.epoch = epoch or ""
                     await write_frame(writer, {"frame": "request", "id": 1,
                                                "request": {"op": "subscribe", "since": since}})
                     self.connected, self.error = True, ""
@@ -295,6 +330,23 @@ class Plugin:
                     await self.emit_state()
             await asyncio.sleep(RETRY_SECS)
 
+    async def poll_status(self):
+        # The status read on (re)connect can come before hoardd has loaded its
+        # saves ("0 saves", no server), and nothing else would correct it while
+        # the panel stays open. A local socket round trip, so cheap.
+        while True:
+            await asyncio.sleep(STATUS_POLL_SECS)
+            if not self.connected:
+                continue
+            before = (self.watched, self.server, self.slots)
+            try:
+                await self.refresh_status()
+            except Exception as e:
+                decky.logger.warning(f"status: {e}")
+                continue
+            if (self.watched, self.server, self.slots) != before:
+                await self.emit_state()
+
     # ---- callables
 
     async def get_state(self) -> dict:
@@ -322,6 +374,8 @@ class Plugin:
         # (hoardd keeps its own budget for that). The results arrive as events.
         try:
             await self.refresh_status()
+            if not self.slots:
+                return "no saves are being watched yet"
             for slot in self.slots:
                 await request({"op": "backup_now", "save_id": slot["save_id"]})
             return ""
@@ -330,14 +384,31 @@ class Plugin:
 
     async def set_debug_toasts(self, enabled: bool) -> None:
         self.debug_toasts = bool(enabled)
+        try:
+            os.makedirs(decky.DECKY_PLUGIN_SETTINGS_DIR, exist_ok=True)
+            with open(settings_path(), "w") as f:
+                json.dump({"debug_toasts": self.debug_toasts}, f)
+        except Exception as e:
+            decky.logger.warning(f"settings: {e}")
 
     # ---- lifecycle
 
     async def _main(self):
-        self.task = asyncio.get_event_loop().create_task(self.follow())
+        try:
+            with open(settings_path()) as f:
+                self.debug_toasts = bool(json.load(f).get("debug_toasts"))
+        except Exception as e:
+            # A missing or unreadable file just means the default; nothing here
+            # may keep the plugin from following hoardd.
+            if not isinstance(e, FileNotFoundError):
+                decky.logger.warning(f"settings: {e}")
+        loop = asyncio.get_event_loop()
+        self.task = loop.create_task(self.follow())
+        self.poller = loop.create_task(self.poll_status())
         decky.logger.info(f"following {socket_path()}")
 
     async def _unload(self):
-        task = getattr(self, "task", None)
-        if task:
-            task.cancel()
+        for name in ("task", "poller"):
+            task = getattr(self, name, None)
+            if task:
+                task.cancel()

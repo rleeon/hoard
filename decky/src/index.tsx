@@ -19,7 +19,7 @@ import { FaSave } from "react-icons/fa";
 type Level = "ok" | "info" | "warn" | "error";
 
 interface Item {
-  seq: number;
+  key: string;
   at: string;
   level: Level;
   title: string;
@@ -50,64 +50,79 @@ const refresh = callable<[], State>("refresh");
 const syncNow = callable<[], string>("sync_now");
 const setDebugToasts = callable<[enabled: boolean], void>("set_debug_toasts");
 
-const DOT: Record<Level, string> = {
-  ok: "#4ade80",
-  info: "#9ca3af",
-  warn: "#facc15",
-  error: "#f87171",
-};
-
 function ago(at: string): string {
   const secs = Math.max(0, (Date.now() - Date.parse(at)) / 1000);
-  if (secs < 60) return "now";
-  if (secs < 3600) return `${Math.floor(secs / 60)} min`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)} h`;
-  return `${Math.floor(secs / 86400)} d`;
+  if (secs < 60) return "just now";
+  if (secs < 3600) return `${Math.floor(secs / 60)} min ago`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)} h ago`;
+  return `${Math.floor(secs / 86400)} d ago`;
+}
+
+function host(server: string): string {
+  return server.replace(/^https?:\/\//, "").replace(/\/$/, "");
 }
 
 function Content() {
   const [state, setState] = useState<State | null>(null);
+  const [failed, setFailed] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    refresh().then(setState);
+    // A backend that failed to load rejects every call; say so instead of
+    // leaving an empty panel.
+    const load = () =>
+      refresh()
+        .then((s) => {
+          setState(s);
+          setFailed("");
+        })
+        .catch((e) => setFailed(String(e)));
+    load();
     const onState = addEventListener<[State]>("hoard_state", setState);
-    const onEvent = addEventListener<[Item]>("hoard_event", () => {
-      refresh().then(setState);
-    });
+    const onEvent = addEventListener<[Item]>("hoard_event", load);
     return () => {
       removeEventListener("hoard_state", onState);
       removeEventListener("hoard_event", onEvent);
     };
   }, []);
 
-  if (!state) return null;
+  if (!state) {
+    return (
+      <PanelSection>
+        <PanelSectionRow>
+          <Field label={failed ? "The plugin is not responding" : "Loading"} description={failed} />
+        </PanelSectionRow>
+      </PanelSection>
+    );
+  }
 
-  const running = state.slots.filter((s) => s.running);
+  const saves = `${state.watched} ${state.watched === 1 ? "save" : "saves"}`;
+  const playing = state.slots.filter((s) => s.running).map((s) => s.name);
 
   return (
     <>
-      <PanelSection title="Sync service">
+      <PanelSection>
         <PanelSectionRow>
           <Field
-            label={state.connected ? "Running" : "Not running"}
+            label={state.connected ? "Syncing" : "Sleeping"}
             description={
               state.connected
-                ? `${state.watched} ${state.watched === 1 ? "save" : "saves"} watched · hoardd ${state.daemon_version}`
+                ? [saves, host(state.server)].filter(Boolean).join(" to ")
                 : state.error
             }
           />
         </PanelSectionRow>
-        {state.connected && state.server && (
+        {playing.length > 0 && (
           <PanelSectionRow>
-            <Field label="Server" description={state.server} />
+            <Field label="Playing" description={playing.join(", ")} />
           </PanelSectionRow>
         )}
-        {running.map((s) => (
-          <PanelSectionRow key={s.path}>
-            <Field label="Playing" description={s.name} />
-          </PanelSectionRow>
-        ))}
+        <PanelSectionRow>
+          <Field
+            bottomSeparator="none"
+            description="Press here if you have a upload problem or just want do it manually before a shutdown."
+          />
+        </PanelSectionRow>
         <PanelSectionRow>
           <ButtonItem
             layout="below"
@@ -116,43 +131,32 @@ function Content() {
               setBusy(true);
               const error = await syncNow();
               setBusy(false);
-              toaster.toast({
-                title: "Hoard",
-                body: error ? `Sync failed: ${error}` : "Backing up every save that changed",
-              });
+              if (error) toaster.toast({ title: "Upload failed", body: error });
             }}
           >
-            {busy ? "Syncing..." : "Sync now"}
+            Manual Upload
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
 
       <PanelSection title="Recent">
-        {state.recent.length === 0 && (
+        {state.recent.length === 0 ? (
           <PanelSectionRow>
-            <Field label="Nothing yet" description="Uploads and restores show up here." />
+            <Field description="Nothing yet." />
           </PanelSectionRow>
+        ) : (
+          state.recent.slice(0, 8).map((item) => (
+            <PanelSectionRow key={item.key}>
+              <Field label={item.title} description={`${item.body}, ${ago(item.at)}`} />
+            </PanelSectionRow>
+          ))
         )}
-        {state.recent.slice(0, 12).map((item) => (
-          <PanelSectionRow key={item.seq}>
-            <Field
-              label={
-                <span>
-                  <span style={{ color: DOT[item.level], marginRight: 6 }}>●</span>
-                  {item.title}
-                </span>
-              }
-              description={`${item.body} · ${ago(item.at)}`}
-            />
-          </PanelSectionRow>
-        ))}
       </PanelSection>
 
-      <PanelSection title="Debug">
+      <PanelSection>
         <PanelSectionRow>
           <ToggleField
-            label="Notify when a game is detected"
-            description="Shows whether Hoard sees your game start and stop."
+            label="Notify when a game starts or stops"
             checked={state.debug_toasts}
             onChange={async (value: boolean) => {
               await setDebugToasts(value);

@@ -1,7 +1,7 @@
 {
   "name": "Hoard",
   "author": "Hoard",
-  "flags": ["debug"],
+  "flags": [],
   "api_version": 1,
   "publish": {
     "tags": ["saves", "sync", "backup"],
