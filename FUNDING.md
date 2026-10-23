@@ -10,6 +10,7 @@ Every € goes to keeping it running and improving.
 Last change **14/10/2026**.
 - Hoard-Cloud: **427 Users**
 
+THis is incorrect give me a moment to fix it, looks like a month get deleted.
 | Service | 07/2026 | 08/2026 | 09/2026 | 10/2026 |
 |---------|----------------|----------------|----------------|----------------|
 | **Fly,io** (server hosting) | -8.76$ | -6.16$ | -6.02$ | -2.27$ |
