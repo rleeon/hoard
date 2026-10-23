@@ -236,6 +236,8 @@
   "download.selfhost_note": "更想运行自己的服务器？同一个 Rust 二进制，AGPL-3.0：",
   "download.term_title": "用终端安装",
   "download.term_body": "和上面相同的下载，换成命令。选择你的系统，复制并粘贴即可。",
+  "download.decky_title": "Steam Deck 插件",
+  "download.decky_body": "游戏模式不会显示通知，所以 Hoard 提供了一个 Decky Loader 插件：存档上传、失败或恢复时都会提醒你，还有一个 Manual Upload 按钮。请先安装 Decky，然后在桌面模式下运行以下命令。",
   "download.uninstall_title": "卸载",
   "download.uninstall_body": "卸载只会移除程序，绝不会删除你的存档：磁盘上和云端的副本都原封不动。",
   "download.recommended": "推荐",

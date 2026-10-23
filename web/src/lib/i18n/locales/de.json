@@ -236,6 +236,8 @@
   "download.selfhost_note": "Lieber den eigenen Server betreiben? Dieselbe Rust-Binärdatei, AGPL-3.0:",
   "download.term_title": "Im Terminal installieren",
   "download.term_body": "Dieselben Downloads wie oben, als Befehle. System wählen, kopieren, einfügen.",
+  "download.decky_title": "Steam-Deck-Plugin",
+  "download.decky_body": "Der Spielmodus zeigt keine Benachrichtigungen an, deshalb gibt es für Hoard ein Plugin für Decky Loader: Es sagt dir, wenn ein Spielstand hochgeladen wird, fehlschlägt oder wiederhergestellt wird, und hat einen Manual-Upload-Knopf. Installiere zuerst Decky und führe das dann im Desktop-Modus aus.",
   "download.uninstall_title": "Deinstallieren",
   "download.uninstall_body": "Beim Deinstallieren verschwindet das Programm, nie deine Spielstände: die Kopien auf deiner Festplatte und in der Cloud bleiben, wo sie sind.",
   "download.recommended": "Empfohlen",

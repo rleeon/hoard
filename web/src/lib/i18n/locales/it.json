@@ -236,6 +236,8 @@
   "download.selfhost_note": "Preferisci gestire il tuo server? Stesso binario Rust, AGPL-3.0:",
   "download.term_title": "Installa dal terminale",
   "download.term_body": "Gli stessi download di sopra, come comandi. Scegli il tuo sistema, copia e incolla.",
+  "download.decky_title": "Plugin per Steam Deck",
+  "download.decky_body": "La modalità gioco non mostra notifiche, quindi Hoard ha un plugin per Decky Loader: ti avvisa quando un salvataggio viene caricato, fallisce o viene ripristinato, e ha un pulsante Manual Upload. Installa prima Decky, poi esegui questo dalla modalità desktop.",
   "download.uninstall_title": "Disinstalla",
   "download.uninstall_body": "Disinstallare toglie il programma, mai i tuoi salvataggi: le copie sul tuo disco e nel cloud restano dove sono.",
   "download.recommended": "Consigliato",

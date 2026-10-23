@@ -102,6 +102,7 @@
   // `latest/download` reaches them without asking the GitHub API: the commands
   // that matter most are in the prerendered page and survive a rate limit.
   const LATEST = `${RELEASES_LATEST}/download`;
+  const DECKY_CMD = `curl -fLO ${LATEST}/hoard-decky.tar.gz\ntar -xzf hoard-decky.tar.gz\ncd hoard-decky && ./decky-install.sh`;
   // `uname -m` says x86_64 or aarch64 on Linux, the same suffixes CI uses.
   const SETUP_LINUX = `${LATEST}/HoardSetup-$(uname -m)`;
 
@@ -401,6 +402,32 @@
     </p>
     {@render osPicker(installOs, (p) => (installOs = p))}
     {@render commandPanels(installCmds, installOs, 'install')}
+  </div>
+
+  <!-- Steam Deck: the Decky Loader plugin -->
+  <div id="decky" class="reveal mx-auto mt-16 max-w-3xl scroll-mt-24" use:reveal>
+    <h2 class="text-center text-2xl font-semibold text-ink">{$_('download.decky_title')}</h2>
+    <p class="mx-auto mt-2 max-w-xl text-center text-sm text-ink-soft">
+      {$_('download.decky_body')}
+    </p>
+    <div class="mt-6 flex items-stretch gap-2">
+      <pre
+        class="min-w-0 flex-1 overflow-x-auto rounded-lg bg-pine px-4 py-3 font-mono text-[13px] leading-relaxed text-white/90"><code
+          >{DECKY_CMD}</code
+        ></pre>
+      <button
+        type="button"
+        onclick={() => copy(DECKY_CMD, 'decky')}
+        class="glow pop-self anim-host grid w-11 flex-none place-items-center rounded-lg border border-white/10 bg-black text-ink-soft ring-focus transition-colors hover:border-white/30 hover:text-ink"
+        aria-label={$_('cli.copy')}
+      >
+        {#if copied === 'decky'}
+          <Check data-anim="pop" class="h-4 w-4 text-ink" />
+        {:else}
+          <Copy data-anim="pop" class="h-4 w-4" />
+        {/if}
+      </button>
+    </div>
   </div>
 
   <!-- uninstall -->

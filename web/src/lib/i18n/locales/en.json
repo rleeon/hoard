@@ -236,6 +236,8 @@
   "download.selfhost_note": "Prefer running your own server? Same Rust binary, AGPL-3.0:",
   "download.term_title": "Install from the terminal",
   "download.term_body": "The same downloads as above, as commands. Pick your system, copy and paste.",
+  "download.decky_title": "Steam Deck plugin",
+  "download.decky_body": "Game Mode doesn't show notifications, so Hoard has a plugin for Decky Loader: it tells you when a save is uploaded, fails or is restored, and has a Manual Upload button. Install Decky first, then run this from Desktop Mode.",
   "download.uninstall_title": "Uninstall",
   "download.uninstall_body": "Uninstalling takes the program away, never your saves: the copies on your disk and in the cloud stay where they are.",
   "download.recommended": "Recommended",

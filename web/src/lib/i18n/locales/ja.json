@@ -236,6 +236,8 @@
   "download.selfhost_note": "自分のサーバーを動かしたい？同じRustバイナリ、AGPL-3.0：",
   "download.term_title": "ターミナルからインストール",
   "download.term_body": "上と同じダウンロードをコマンドで。システムを選んで、コピーして貼り付けるだけです。",
+  "download.decky_title": "Steam Deck 用プラグイン",
+  "download.decky_body": "ゲームモードでは通知が表示されないため、Hoard には Decky Loader 用のプラグインがあります。セーブのアップロード・失敗・復元を知らせ、Manual Upload ボタンも付いています。先に Decky をインストールしてから、デスクトップモードでこれを実行してください。",
   "download.uninstall_title": "アンインストール",
   "download.uninstall_body": "アンインストールで消えるのはプログラムだけで、セーブデータは消えません。ディスク上とクラウドのコピーはそのまま残ります。",
   "download.recommended": "おすすめ",
