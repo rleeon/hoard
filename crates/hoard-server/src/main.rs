@@ -132,7 +132,8 @@ async fn main() -> Result<()> {
 
     let cfg = Config::load(&args.config)?;
 
-    init_logging(&cfg);
+    // Held to the end: dropping it is what flushes the log file's last lines.
+    let _log_file = init_logging(&cfg);
 
     if matches!(args.cmd, Some(Cmd::Migrate)) {
         match cfg.database.backend {
@@ -342,6 +343,7 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
             post(admin_routes::revoke_token),
         )
         .route("/v1/admin/logs", get(admin_routes::logs))
+        .route("/v1/admin/server-log", get(admin_routes::server_log))
         // Games
         .route("/v1/games", get(game_routes::list))
         .route("/v1/games/:slug", get(game_routes::get_one))
@@ -528,17 +530,46 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
     Ok(())
 }
 
-fn init_logging(cfg: &Config) {
+/// Stdout always. A self-hosted server also keeps a copy in `data_dir/logs`
+/// (`hoard_server::serverlog`) for Hoard-help to read back; Cloud has Fly's.
+fn init_logging(cfg: &Config) -> Option<tracing_appender::non_blocking::WorkerGuard> {
     use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
     let filter = EnvFilter::try_new(&cfg.logging.level).unwrap_or_else(|_| EnvFilter::new("info"));
+    let (writer, guard) = match cfg.database.backend {
+        DbBackend::Sqlite => match hoard_server::serverlog::appender(&cfg.storage.data_dir) {
+            Some(appender) => {
+                let (writer, guard) = tracing_appender::non_blocking(appender);
+                (Some(writer), Some(guard))
+            }
+            None => (None, None),
+        },
+        DbBackend::Postgres => (None, None),
+    };
     match cfg.logging.format {
         LogFormat::Json => tracing_subscriber::registry()
             .with(filter)
             .with(fmt::layer().json())
+            .with(
+                writer
+                    .clone()
+                    .map(|w| fmt::layer().with_ansi(false).with_writer(w)),
+            )
             .init(),
         LogFormat::Pretty => tracing_subscriber::registry()
             .with(filter)
             .with(fmt::layer().pretty())
+            .with(
+                writer
+                    .clone()
+                    .map(|w| fmt::layer().with_ansi(false).with_writer(w)),
+            )
             .init(),
     }
+    if matches!(cfg.database.backend, DbBackend::Sqlite) && guard.is_none() {
+        tracing::warn!(
+            dir = %cfg.storage.data_dir.join(hoard_server::serverlog::LOG_DIR).display(),
+            "couldn't open the log folder; the server log goes to stdout only"
+        );
+    }
+    guard
 }

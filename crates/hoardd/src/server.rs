@@ -643,6 +643,7 @@ where
     out.send(ServerFrame::Welcome(daemon.welcome()))
         .await
         .context("sending the welcome")?;
+    daemon.engine.wake_on_client();
     // A desktop from before Slice 8 runs its own automatic mode: ours stands aside
     // for as long as this connection lives.
     let _legacy = daemon.detect.note_client(&hello);

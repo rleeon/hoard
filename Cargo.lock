@@ -3971,6 +3971,7 @@ dependencies = [
  "tower-http 0.5.2",
  "tower_governor",
  "tracing",
+ "tracing-appender",
  "tracing-subscriber",
  "uuid",
  "zip",

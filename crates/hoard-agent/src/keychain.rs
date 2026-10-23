@@ -72,18 +72,47 @@ pub struct KeyringUnreadable {
     pub doing: &'static str,
 }
 
+// No advice in the text. It used to promise that signing in again "fixes it for
+// good", which is false when the keyring daemon is simply not running yet (a
+// lingering service at boot): the Bazzite reporter signed in twice and got the
+// same error on the next start. What to do depends on the fault, so the window
+// picks the sentence from [`fault`].
 impl std::fmt::Display for KeyringUnreadable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "the system keyring refused to hand over the saved session while {}. \
-             Signing in again rewrites it under the service, which fixes it for good",
+            "the system keyring didn't hand over the saved session while {}",
             self.doing
         )
     }
 }
 
 impl std::error::Error for KeyringUnreadable {}
+
+/// The user's services start at boot (`loginctl enable-linger`), before anyone
+/// logs in, and a desktop keyring only exists inside a session: the service can't
+/// rely on the keyring alone, so the session also stays in its 0600 file.
+///
+/// The Bazzite report of 22-10-2026: a sync that never ran between boot and
+/// login. It is a plain file, like `config.toml` has always been: encrypting it
+/// with a key kept on the same disk would protect it from nothing that can read it.
+pub fn lingering() -> bool {
+    if !cfg!(target_os = "linux") {
+        return false;
+    }
+    ["USER", "LOGNAME"]
+        .iter()
+        .find_map(|k| {
+            std::env::var(k)
+                .ok()
+                .filter(|v| !v.is_empty() && !v.contains('/'))
+        })
+        .is_some_and(|user| {
+            std::path::Path::new("/var/lib/systemd/linger")
+                .join(user)
+                .exists()
+        })
+}
 
 /// Which way the keyring failed, for the sentence the window shows.
 ///

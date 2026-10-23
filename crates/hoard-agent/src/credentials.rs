@@ -169,9 +169,13 @@ pub fn save(creds: &Credentials) -> Result<TokenStorage> {
 
     match store_in_keyring(creds) {
         Ok(()) => {
-            // Belt and braces: if the file had a stale token from a previous
-            // fallback run, scrub it now that the keyring took over.
-            scrub_file_token().ok();
+            if crate::keychain::lingering() {
+                keep_file_copy(creds)?;
+            } else {
+                // Belt and braces: if the file had a stale token from a previous
+                // fallback run, scrub it now that the keyring took over.
+                scrub_file_token().ok();
+            }
             Ok(TokenStorage::Keyring)
         }
         Err(err) => {
@@ -579,6 +583,25 @@ fn reset_acl_windows(path: &std::path::Path) -> bool {
     }
 }
 
+/// The 0600 file also keeps the token, next to the keyring's copy, when the
+/// service starts before the keyring exists ([`crate::keychain::lingering`]).
+/// The daemon calls it on start too, for a session saved before this existed.
+pub fn keep_file_copy(creds: &Credentials) -> Result<()> {
+    let mut session = read_session()?.unwrap_or_default();
+    if session
+        .auth
+        .as_ref()
+        .is_some_and(|a| a.token == creds.token)
+    {
+        return Ok(());
+    }
+    session.server.url.clone_from(&creds.url);
+    session.auth = Some(AuthSection {
+        token: creds.token.clone(),
+    });
+    write_session(&session)
+}
+
 fn scrub_file_token() -> Result<()> {
     let Some(mut session) = read_session()? else {
         return Ok(());
@@ -911,6 +934,46 @@ mod tests {
                     .mode();
                 assert_eq!(mode & 0o777, 0o600, "modo {:o}", mode & 0o777);
             }
+        });
+    }
+
+    /// The lingering boot (Bazzite, 22-10-2026): a session the keyring took leaves
+    /// only the URL in the file; the copy puts the token back, 0600, and a start
+    /// with no keyring at all finds it there.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_lingering_service_starts_without_the_keyring() {
+        with_isolated_config(|| {
+            let creds = Credentials {
+                url: "http://192.168.148.17:12421".to_string(),
+                token: format!("hoard_v1_{}", "b".repeat(64)),
+                user: None,
+            };
+            write_session(&Session {
+                server: ServerSection {
+                    url: creds.url.clone(),
+                },
+                user: None,
+                auth: None,
+                signed_out: false,
+            })
+            .expect("writes");
+            keep_file_copy(&creds).expect("copies");
+
+            let session = read_session().expect("reads").expect("there is a file");
+            let from_file = session.auth.map(|a| a.token);
+            let missing = anyhow::anyhow!("DBus error: The name is not activatable");
+            let got = pick_token(Err(missing), from_file)
+                .expect("the file saves the session")
+                .expect("token");
+            assert_eq!(got, (creds.token.clone(), TokenStorage::File));
+
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(session_path().unwrap())
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600, "mode {:o}", mode & 0o777);
         });
     }
 

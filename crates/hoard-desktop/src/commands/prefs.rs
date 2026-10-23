@@ -226,8 +226,11 @@ pub(crate) fn finish_older_install() {
         let health = hoardd::setup::health().await;
         let current = hoard_agent::update::current();
         let mut args = vec!["--repair".to_string()];
-        if health.needs_admin() {
-            tracing::info!(reason = %health.describe(), "an older install needs an administrator; opening Hoard Setup");
+        let why = if health.needs_admin() {
+            format!(
+                "an older install needs an administrator ({})",
+                health.describe()
+            )
         } else if health.unrecorded() {
             let Some(app) = hoardd::setup::running_app() else {
                 return;
@@ -238,18 +241,22 @@ pub(crate) fn finish_older_install() {
                     args.extend(["--app".to_string(), file.to_string()]);
                 }
             }
-            tracing::info!(app = ?app, "nothing records this install; opening Hoard Setup");
+            format!("nothing records this install ({app:?})")
         } else {
             return;
-        }
+        };
         let Ok(marker) =
             hoard_agent::config::CliConfig::state_dir().map(|d| d.join("setup-repair-asked"))
         else {
             return;
         };
+        // Logged after the marker: before, every launch said "opening Hoard
+        // Setup" and only the first one did, which read as a loop in the
+        // Bazzite report's logs.
         if marker.exists() {
             return;
         }
+        tracing::info!(reason = %why, "opening Hoard Setup");
         let _ = std::fs::write(&marker, b"");
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
         let launched = match hoardd::setup::fetch_setup(current).await {

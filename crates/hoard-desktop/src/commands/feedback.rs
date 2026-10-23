@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use base64::Engine;
-use hoard_agent::feedback::{Draft, FeedbackError};
+use hoard_agent::feedback::{Draft, FeedbackError, ServerLogError};
 use hoard_core::wire::FeedbackKind;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
@@ -19,6 +19,8 @@ pub struct FeedbackInput {
     mode: Option<String>,
     files: Vec<String>,
     attach_logs: bool,
+    #[serde(default)]
+    attach_server_logs: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -57,6 +59,13 @@ pub async fn feedback_send(app: AppHandle, input: FeedbackInput) -> Result<Strin
         .map(|c| c.server_url.clone())
         .unwrap_or_else(hoard_agent::cloud_auth::cloud_base_url);
 
+    // Read before anything goes out: a report the person asked to carry the
+    // server's log doesn't leave without it.
+    let server_logs = if input.attach_server_logs {
+        Some(server_log(&app).await?)
+    } else {
+        None
+    };
     let draft = Draft {
         kind: input.kind,
         message: input.message,
@@ -65,6 +74,7 @@ pub async fn feedback_send(app: AppHandle, input: FeedbackInput) -> Result<Strin
         mode: input.mode,
         files: input.files.into_iter().map(PathBuf::from).collect(),
         attach_logs: input.attach_logs,
+        server_logs,
     };
     let emitter = app.clone();
     let progress = Arc::new(move |sent, total| {
@@ -173,4 +183,33 @@ async fn stash_image(app: &AppHandle, name: &str, png_base64: &str) -> Result<Pi
 #[tauri::command]
 pub async fn feedback_logs_preview() -> String {
     hoard_agent::feedback::logs_excerpt().await
+}
+
+/// The same for the self-hosted server's log.
+#[tauri::command]
+pub async fn feedback_server_logs_preview(app: AppHandle) -> Result<String, String> {
+    server_log(&app).await
+}
+
+/// With the self-hosted session the service lends us: the route is the
+/// server's, not Hoard One's.
+async fn server_log(app: &AppHandle) -> Result<String, String> {
+    let creds = crate::commands::auth::server_session(app)
+        .await
+        .ok()
+        .flatten()
+        .ok_or_else(|| "i18n:help.server_logs_err_unreachable".to_string())?;
+    let client = hoard_agent::api::ApiClient::new(creds.url, creds.token)
+        .map_err(|_| "i18n:help.server_logs_err_unreachable".to_string())?;
+    hoard_agent::feedback::server_logs_excerpt(&client)
+        .await
+        .map_err(|e| {
+            tracing::warn!(error = %e, "hoard-help: no server log");
+            match e {
+                ServerLogError::NotAdmin => "i18n:help.server_logs_err_admin",
+                ServerLogError::TooOld => "i18n:help.server_logs_err_old",
+                ServerLogError::Unreachable(_) => "i18n:help.server_logs_err_unreachable",
+            }
+            .to_string()
+        })
 }

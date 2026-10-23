@@ -440,10 +440,12 @@
   /** "The keyring won't hand it over" is one reason with four different next
    *  steps, and getting that wrong sends the user after the wrong thing: a
    *  machine with no secret-service daemon has nothing to unlock, and being told
-   *  to unlock a login keyring there is a dead end. What all four share is that
-   *  signing in again works, the session then lands in Hoard's own protected
-   *  file instead, and stays there. An older service doesn't classify, and then
-   *  the general sentence is what shows, exactly as before. */
+   *  to unlock a login keyring there is a dead end. "Missing" is also a keyring
+   *  that hasn't started yet: a service that lingers starts at boot, before the
+   *  login that brings the keyring up, and the service retries when the app
+   *  connects. Signing in again only helps when there is no keyring at all, so
+   *  the sentence says both. An older service doesn't classify, and then the
+   *  general sentence is what shows, exactly as before. */
   function keyringMessageKey(fault: KeyringFault | null | undefined): string {
     switch (fault) {
       case "missing":

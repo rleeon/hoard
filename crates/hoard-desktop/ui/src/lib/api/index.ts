@@ -1635,6 +1635,7 @@ export function feedbackSend(input: {
   mode: "cloud" | "selfhosted" | "none";
   files: string[];
   attach_logs: boolean;
+  attach_server_logs: boolean;
 }): Promise<string> {
   return invoke<string>("feedback_send", { input });
 }
@@ -1650,4 +1651,11 @@ export function feedbackStashImage(name: string, pngBase64: string): Promise<Pic
 /** The logs exactly as "include logs" would attach them. */
 export function feedbackLogsPreview(): Promise<string> {
   return invoke<string>("feedback_logs_preview");
+}
+
+/** The self-hosted server's log, as it will be attached. Rejects with an
+ *  `i18n:` key when the account isn't the server's admin or the server is
+ *  too old to hand it over. */
+export function feedbackServerLogsPreview(): Promise<string> {
+  return invoke<string>("feedback_server_logs_preview");
 }

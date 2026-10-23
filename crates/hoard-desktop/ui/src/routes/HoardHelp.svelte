@@ -27,6 +27,7 @@
     feedbackDescribeFiles,
     feedbackStashImage,
     feedbackLogsPreview,
+    feedbackServerLogsPreview,
     FEEDBACK_MAX_FILE_BYTES,
     FEEDBACK_MAX_REPORT_BYTES,
     FEEDBACK_MAX_FILES,
@@ -48,6 +49,13 @@
   let logsOpen = $state(false);
   let logsText = $state<string | null>(null);
 
+  // The self-hosted server's own log. Off by default: it is everybody's
+  // activity on that server, and only its admin can read it.
+  let attachServerLogs = $state(false);
+  let serverLogsOpen = $state(false);
+  let serverLogsText = $state<string | null>(null);
+  let serverLogsError = $state<string | null>(null);
+
   let dragging = $state(false);
   let sending = $state(false);
   let progress = $state<{ sent: number; total: number } | null>(null);
@@ -58,6 +66,8 @@
   const mode = $derived(
     $cloud.account ? "cloud" : $auth.user ? "selfhosted" : "none",
   ) as "cloud" | "selfhosted" | "none";
+  const selfHosted = $derived(!!$auth.user);
+  const serverAdmin = $derived($auth.user?.is_admin ?? false);
   const totalBytes = $derived(files.reduce((a, f) => a + f.size, 0));
   const pct = $derived(
     progress && progress.total > 0
@@ -169,6 +179,34 @@
     }
   }
 
+  /** Fetched once and kept: what the preview shows is what will travel. A
+   *  refusal (not the admin, a server too old) turns the switch back off and
+   *  says why, instead of failing the send later. */
+  async function loadServerLogs(): Promise<boolean> {
+    if (serverLogsText !== null) return true;
+    try {
+      serverLogsText = await feedbackServerLogsPreview();
+      serverLogsError = null;
+      return true;
+    } catch (err) {
+      serverLogsError = formatCloudError(err);
+      return false;
+    }
+  }
+
+  async function switchServerLogs() {
+    if (attachServerLogs) {
+      attachServerLogs = false;
+      return;
+    }
+    attachServerLogs = await loadServerLogs();
+  }
+
+  async function toggleServerLogs() {
+    serverLogsOpen = !serverLogsOpen;
+    if (serverLogsOpen) await loadServerLogs();
+  }
+
   async function send() {
     if (sending) return;
     error = null;
@@ -186,6 +224,7 @@
         mode,
         files: files.map((f) => f.path),
         attach_logs: attachLogs,
+        attach_server_logs: selfHosted && serverAdmin && attachServerLogs,
       });
     } catch (err) {
       error = formatCloudError(err);
@@ -202,6 +241,10 @@
     attachLogs = true;
     logsOpen = false;
     logsText = null;
+    attachServerLogs = false;
+    serverLogsOpen = false;
+    serverLogsText = null;
+    serverLogsError = null;
     progress = null;
     error = null;
     sentId = null;
@@ -409,6 +452,58 @@
               : logsText.trim() || $_("help.logs_empty")}</pre>
         {/if}
       </div>
+
+      <!-- the self-hosted server's own log -->
+      {#if selfHosted}
+        <div class="mt-4 border-t border-white/[0.08] pt-4">
+          <div class="flex items-start gap-3">
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-zinc-100">{$_("help.server_logs_label")}</p>
+              <p class="mt-0.5 text-xs leading-relaxed text-zinc-500">
+                {#if serverAdmin}
+                  {$_("help.server_logs_hint")}
+                  <button
+                    type="button"
+                    onclick={toggleServerLogs}
+                    class="font-medium text-emerald-300 underline decoration-emerald-300/30 underline-offset-2 transition hover:decoration-emerald-300"
+                  >
+                    {serverLogsOpen ? $_("help.logs_hide") : $_("help.logs_show")}
+                  </button>
+                {:else}
+                  {$_("help.server_logs_err_admin")}
+                {/if}
+              </p>
+              {#if serverLogsError}
+                <p class="mt-1 text-xs text-red-300">{serverLogsError}</p>
+              {/if}
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={attachServerLogs}
+              aria-label={$_("help.server_logs_label")}
+              disabled={!serverAdmin || sending}
+              onclick={switchServerLogs}
+              class="mt-0.5 flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors disabled:opacity-40 {attachServerLogs
+                ? 'bg-emerald-600'
+                : 'bg-zinc-700'}"
+            >
+              <span
+                class="h-5 w-5 rounded-full bg-white transition-transform {attachServerLogs
+                  ? 'translate-x-5'
+                  : ''}"
+              ></span>
+            </button>
+          </div>
+          {#if serverLogsOpen && serverAdmin && !serverLogsError}
+            <pre
+              class="logs mt-3 max-h-72 overflow-auto rounded-xl border border-white/[0.08] bg-black p-3 font-mono text-[11px] leading-relaxed text-zinc-400">{serverLogsText ===
+              null
+                ? "…"
+                : serverLogsText.trim() || $_("help.logs_empty")}</pre>
+          {/if}
+        </div>
+      {/if}
     </div>
 
     {#if error}

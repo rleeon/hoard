@@ -252,6 +252,7 @@ pub fn run() {
             commands::feedback::feedback_describe_files,
             commands::feedback::feedback_stash_image,
             commands::feedback::feedback_logs_preview,
+            commands::feedback::feedback_server_logs_preview,
             commands::wrapple::wrapple_read_image,
             commands::wrapple::wrapple_set_avatar,
             commands::wrapple::wrapple_avatar_bytes,

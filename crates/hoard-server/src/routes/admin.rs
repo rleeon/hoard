@@ -904,6 +904,31 @@ pub async fn logs(
     ))
 }
 
+/// `GET /v1/admin/server-log`: the tail of this server's own log, as text.
+///
+/// For Hoard-help: the app attaches it to a report when the admin asks it to.
+/// Admin only, because it is everybody's activity on this server, not just the
+/// caller's.
+pub async fn server_log(
+    Extension(user): Extension<AuthUser>,
+    State(state): State<Arc<ServerState>>,
+) -> Result<([(axum::http::HeaderName, &'static str); 1], String), ApiError> {
+    require_admin(&user)?;
+    let text = crate::serverlog::tail(&state.config.storage.data_dir, crate::serverlog::TAIL_BYTES)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "admin server log failed");
+            err(StatusCode::INTERNAL_SERVER_ERROR, "internal")
+        })?;
+    Ok((
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; charset=utf-8",
+        )],
+        text,
+    ))
+}
+
 /// Size of the SQLite file and its `-wal` sidecar. The WAL is included because
 /// on a busy instance it is routinely the larger of the two, and an operator
 /// looking at "database" wants the number that explains their disk.

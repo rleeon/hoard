@@ -312,19 +312,37 @@ pub async fn resolve_borrowed(
 async fn selfhosted_owned() -> Result<Active> {
     let stored = tokio::task::spawn_blocking(credentials::load_detailed)
         .await
-        .map_err(|join| anyhow::Error::new(join).context("reading the self-hosted session"))??;
+        .map_err(|join| anyhow::Error::new(join).context("reading the self-hosted session"))?;
 
     // The token came from the 0600 file: either a client with no service left it
     // there, or the keyring was mute when it was stored. Lifting it NOW, from the
     // daemon, is what gives it ownership of the item, and on macOS ownership is
     // the difference between reading it quietly and a password dialog on every
     // engine start. Best-effort and on the blocking pool, like every keyring write.
-    if let Some((creds, credentials::TokenStorage::File)) = &stored {
+    if let Ok(Some((creds, credentials::TokenStorage::File))) = &stored {
         let creds = creds.clone();
         let _ = tokio::task::spawn_blocking(move || credentials::promote_to_keyring(&creds)).await;
     }
+    // A session saved in the keyring alone, before lingering kept a file copy:
+    // without one, the next boot starts with no keyring and no session.
+    if let Ok(Some((creds, credentials::TokenStorage::Keyring))) = &stored {
+        if crate::keychain::lingering() {
+            if let Err(e) = credentials::keep_file_copy(creds) {
+                tracing::warn!(error = %format!("{e:#}"), "credentials: couldn't keep the session for the next boot");
+            }
+        }
+    }
 
-    let creds = pick_selfhosted(stored.map(|(creds, _)| creds), config_session()?)?;
+    // Only the URL, which lives in `session.toml` and never in the keyring.
+    let session_url = credentials::load_public()
+        .ok()
+        .flatten()
+        .map(|(url, _)| url);
+    let creds = pick_selfhosted(
+        stored.map(|s| s.map(|(creds, _)| creds)),
+        session_url.as_deref(),
+        config_session()?,
+    )?;
     state::set_active_context(Some(state::selfhosted_context(&creds.url)));
     let client = ApiClient::new(creds.url.clone(), creds.token)?;
     Ok(Active {
@@ -340,13 +358,39 @@ async fn selfhosted_owned() -> Result<Active> {
 /// only looked at `config.toml`, nothing pinned it, and breaking it turned nothing
 /// red. A test compiling the order into the suite is what stops it coming back
 /// without CI noticing.
+///
+/// A keyring that fails is not the end of it either. With lingering on, the
+/// service starts at boot, before anyone logs in, and a desktop keyring
+/// (`ksecretd --pam-login`, gnome-keyring) only exists inside a session: the
+/// Bazzite report of 22-10-2026 had a valid token in `config.toml` and an engine
+/// that failed every five minutes from 21:40 to 03:35 because the `?` on the
+/// keyring read returned before `config.toml` was ever looked at. It is used
+/// only when it points at the same server as the session the app stored, or an
+/// engine started before login would sync, all session long, with whatever server
+/// an old `hoard login --token` left behind.
 fn pick_selfhosted(
-    stored: Option<Credentials>,
+    stored: Result<Option<Credentials>>,
+    session_url: Option<&str>,
     from_config: Option<Credentials>,
 ) -> Result<Credentials> {
-    stored
-        .or(from_config)
-        .ok_or_else(|| anyhow::Error::new(NoSession))
+    match stored {
+        Ok(Some(creds)) => Ok(creds),
+        Ok(None) => from_config.ok_or_else(|| anyhow::Error::new(NoSession)),
+        Err(e) => match from_config {
+            Some(creds) if session_url.is_none_or(|url| same_server(url, &creds.url)) => {
+                tracing::warn!(
+                    error = %format!("{e:#}"),
+                    "keyring unreadable; starting on the session in config.toml"
+                );
+                Ok(creds)
+            }
+            _ => Err(e),
+        },
+    }
+}
+
+fn same_server(a: &str, b: &str) -> bool {
+    a.trim().trim_end_matches('/') == b.trim().trim_end_matches('/')
 }
 
 /// The session from `config.toml`, if there is one. `None` is not an error: it is
@@ -772,7 +816,8 @@ mod tests {
     #[test]
     fn the_session_store_beats_config_toml() {
         let picked = pick_selfhosted(
-            Some(creds("https://saves.example", "hoard_v1_de-la-app")),
+            Ok(Some(creds("https://saves.example", "hoard_v1_de-la-app"))),
+            Some("https://saves.example"),
             Some(creds("http://localhost:12421", "hoard_v1_del-config")),
         )
         .expect("there is a session");
@@ -785,9 +830,58 @@ mod tests {
     /// documents) it wins. Fixing the bug could not break this.
     #[test]
     fn config_toml_still_serves_the_headless_path() {
-        let picked = pick_selfhosted(None, Some(creds("http://nas.local:12421", "hoard_v1_cli")))
-            .expect("there is a session");
+        let picked = pick_selfhosted(
+            Ok(None),
+            None,
+            Some(creds("http://nas.local:12421", "hoard_v1_cli")),
+        )
+        .expect("there is a session");
         assert_eq!(picked.token, "hoard_v1_cli");
+    }
+
+    fn keyring_missing() -> anyhow::Error {
+        anyhow::anyhow!("DBus error: The name is not activatable").context(
+            crate::keychain::KeyringUnreadable {
+                doing: "reading the self-hosted session",
+            },
+        )
+    }
+
+    /// The Bazzite report: lingering service, no keyring before login, a valid
+    /// token in `config.toml` for the same server. It starts on that one.
+    #[test]
+    fn a_keyring_with_no_daemon_falls_back_to_config_toml() {
+        let picked = pick_selfhosted(
+            Err(keyring_missing()),
+            Some("http://192.168.148.17:12421/"),
+            Some(creds("http://192.168.148.17:12421", "hoard_v1_cli")),
+        )
+        .expect("config.toml points at the same server");
+        assert_eq!(picked.token, "hoard_v1_cli");
+    }
+
+    /// A `config.toml` for another server is not a fallback, it is a different
+    /// account: the keyring's reason comes out whole, typed.
+    #[test]
+    fn config_toml_for_another_server_is_not_a_fallback() {
+        let err = pick_selfhosted(
+            Err(keyring_missing()),
+            Some("https://saves.example"),
+            Some(creds("http://old-nas.local:12421", "hoard_v1_cli")),
+        )
+        .expect_err("different server");
+        assert!(
+            err.downcast_ref::<crate::keychain::KeyringUnreadable>()
+                .is_some(),
+            "{err:#}"
+        );
+        let err = pick_selfhosted(Err(keyring_missing()), Some("https://saves.example"), None)
+            .expect_err("nothing to fall back to");
+        assert!(
+            err.downcast_ref::<crate::keychain::KeyringUnreadable>()
+                .is_some(),
+            "{err:#}"
+        );
     }
 
     /// With neither, the reason is typed: it is what the daemon classifies so the
@@ -795,7 +889,7 @@ mod tests {
     /// banner.
     #[test]
     fn no_session_anywhere_is_typed() {
-        let err = pick_selfhosted(None, None).expect_err("there is no session");
+        let err = pick_selfhosted(Ok(None), None, None).expect_err("there is no session");
         assert!(err.downcast_ref::<NoSession>().is_some(), "{err:#}");
         assert!(format!("{err:#}").contains("no session"), "{err:#}");
     }

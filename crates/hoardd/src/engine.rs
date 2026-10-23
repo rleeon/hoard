@@ -55,6 +55,8 @@ const KEEPER_TICK: Duration = Duration::from_secs(5);
 const START_BACKOFF_MIN: Duration = Duration::from_secs(5);
 const START_BACKOFF_MAX: Duration = Duration::from_secs(5 * 60);
 
+const CLIENT_WAKE_EVERY: Duration = Duration::from_secs(30);
+
 /// How often the Cloud push's tasks are checked to be alive.
 const CLOUD_LIVE_CHECK: Duration = Duration::from_secs(15);
 
@@ -125,6 +127,9 @@ struct Inner {
     /// the shortest backoff. Unlike `restart_requested` it never tears down an
     /// engine, see [`Engine::wake_if_a_session_would_help`].
     retry_now: bool,
+    /// The last time a connecting client woke the engine, see
+    /// [`Engine::wake_on_client`].
+    client_wake_at: Option<Instant>,
     /// Backups and restores started and still without an outcome.
     ///
     /// The event pump keeps it, being where all of them pass, and the updater reads
@@ -404,6 +409,39 @@ impl Engine {
             self.lock().retry_now = true;
             self.wake.notify_one();
         }
+    }
+
+    /// A client connected: on a desktop that is somebody logging in, since the app
+    /// starts with the session. Wake an engine down on a keyring that wasn't there.
+    ///
+    /// With lingering on, the service starts at boot and a desktop keyring only
+    /// exists after login. Nothing in a self-hosted login reads the session
+    /// through us (no Cloud token to lend), so the engine sat out its backoff: in
+    /// the Bazzite report of 22-10-2026 the app connected at 17:45:54 and the
+    /// engine came up at 17:46:36, on its 160 s retry. Only `Missing` and
+    /// `Locked`, the two a login changes; a keyring that refuses or holds
+    /// garbage refuses again. At most once every 30 s, because opening the app
+    /// is three or four connections.
+    pub fn wake_on_client(&self) {
+        {
+            let mut guard = self.lock();
+            if guard.status.running
+                || guard.status.reason != EngineDownReason::KeyringUnreadable
+                || !matches!(
+                    guard.status.keyring,
+                    Some(KeyringFault::Missing | KeyringFault::Locked)
+                )
+                || guard
+                    .client_wake_at
+                    .is_some_and(|at| at.elapsed() < CLIENT_WAKE_EVERY)
+            {
+                return;
+            }
+            guard.client_wake_at = Some(Instant::now());
+            guard.retry_now = true;
+        }
+        tracing::info!("hoardd: a client connected; trying the keyring again instead of waiting out the backoff");
+        self.wake.notify_one();
     }
 
     fn take_restart_request(&self) -> Option<String> {
@@ -1016,6 +1054,33 @@ mod tests {
         let engine = down_with(EngineDownReason::NoSession, true);
         engine.wake_if_a_session_would_help();
         assert!(!restart_asked(&engine));
+    }
+
+    /// A login on a lingering service: the keyring wasn't there at boot, the app
+    /// connects, and the engine tries again once, not on every connection.
+    #[test]
+    fn a_client_wakes_an_engine_down_on_a_keyring_that_wasnt_there() {
+        for fault in [KeyringFault::Missing, KeyringFault::Locked] {
+            let engine = down_with(EngineDownReason::KeyringUnreadable, false);
+            engine.lock().status.keyring = Some(fault);
+            engine.wake_on_client();
+            assert!(retry_asked(&engine), "{fault:?}");
+            engine.take_retry_now();
+            engine.wake_on_client();
+            assert!(
+                !retry_asked(&engine),
+                "{fault:?}: a second connection is throttled"
+            );
+        }
+        for fault in [KeyringFault::Refused, KeyringFault::Damaged] {
+            let engine = down_with(EngineDownReason::KeyringUnreadable, false);
+            engine.lock().status.keyring = Some(fault);
+            engine.wake_on_client();
+            assert!(!retry_asked(&engine), "{fault:?} is not fixed by a login");
+        }
+        let engine = down_with(EngineDownReason::NoSession, false);
+        engine.wake_on_client();
+        assert!(!retry_asked(&engine));
     }
 
     /// And only those. An engine that went down for something else is not fixed by

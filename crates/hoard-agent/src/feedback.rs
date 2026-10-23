@@ -8,7 +8,9 @@
 //!
 //! The logs, when asked for, are the tail of `agent.log` and `hoardd.log` with
 //! the profile folder in every path replaced the same way log shipping does it
-//! (`/home/<user>/...`). The app shows that before anything is sent.
+//! (`/home/<user>/...`). The app shows that before anything is sent. On a
+//! self-hosted install the server's admin can add that server's own log as
+//! well ([`server_logs_excerpt`]), since half of a sync bug happens there.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -30,6 +32,7 @@ use crate::config::CliConfig;
 const LOG_TAIL_BYTES: u64 = 1024 * 1024;
 
 pub const LOGS_FILE_NAME: &str = "hoard-logs.txt";
+pub const SERVER_LOGS_FILE_NAME: &str = "server-logs.txt";
 
 pub struct Draft {
     pub kind: FeedbackKind,
@@ -40,7 +43,31 @@ pub struct Draft {
     pub mode: Option<String>,
     pub files: Vec<PathBuf>,
     pub attach_logs: bool,
+    /// The self-hosted server's log, from [`server_logs_excerpt`].
+    pub server_logs: Option<String>,
 }
+
+/// Why the self-hosted server's log couldn't be read.
+#[derive(Debug)]
+pub enum ServerLogError {
+    /// The route is admin only: it is everybody's activity on that server.
+    NotAdmin,
+    /// A server from before `GET /v1/admin/server-log`.
+    TooOld,
+    Unreachable(String),
+}
+
+impl std::fmt::Display for ServerLogError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServerLogError::NotAdmin => f.write_str("only the server's admin can read its log"),
+            ServerLogError::TooOld => f.write_str("this server is too old to hand over its log"),
+            ServerLogError::Unreachable(m) => write!(f, "couldn't read the server's log: {m}"),
+        }
+    }
+}
+
+impl std::error::Error for ServerLogError {}
 
 #[derive(Debug)]
 pub enum FeedbackError {
@@ -122,18 +149,28 @@ pub async fn send(
     for path in &draft.files {
         files.push(describe(path)?);
     }
-    // The logs file lives in a temp dir that goes away with this function.
-    let logs_dir = if draft.attach_logs {
-        let dir = tempfile::tempdir().map_err(|e| FeedbackError::Network(e.to_string()))?;
-        let path = dir.path().join(LOGS_FILE_NAME);
-        tokio::fs::write(&path, logs_excerpt().await)
-            .await
-            .map_err(|_| FeedbackError::Unreadable(LOGS_FILE_NAME.into()))?;
-        files.push(describe(&path)?);
-        Some(dir)
+    // The logs files live in a temp dir that goes away with this function.
+    let logs_dir = if draft.attach_logs || draft.server_logs.is_some() {
+        Some(tempfile::tempdir().map_err(|e| FeedbackError::Network(e.to_string()))?)
     } else {
         None
     };
+    if let Some(dir) = &logs_dir {
+        let mut logs = Vec::new();
+        if draft.attach_logs {
+            logs.push((LOGS_FILE_NAME, logs_excerpt().await));
+        }
+        if let Some(text) = draft.server_logs.filter(|t| !t.is_empty()) {
+            logs.push((SERVER_LOGS_FILE_NAME, text));
+        }
+        for (name, text) in logs {
+            let path = dir.path().join(name);
+            tokio::fs::write(&path, text)
+                .await
+                .map_err(|_| FeedbackError::Unreadable(name.into()))?;
+            files.push(describe(&path)?);
+        }
+    }
     check_limits(&files)?;
 
     let http = reqwest::Client::builder()
@@ -357,6 +394,34 @@ pub async fn logs_excerpt() -> String {
         out.push('\n');
     }
     out
+}
+
+/// What "include the server's log" attaches, and shows first: the tail of the
+/// self-hosted server's own log (`GET /v1/admin/server-log`), redacted like
+/// ours. Only an admin token gets it.
+pub async fn server_logs_excerpt(client: &crate::api::ApiClient) -> Result<String, ServerLogError> {
+    use crate::api::ApiError;
+    let resp = client.http_get("/v1/admin/server-log").await.map_err(|e| {
+        match e.downcast_ref::<ApiError>() {
+            Some(ApiError::Forbidden) => ServerLogError::NotAdmin,
+            Some(ApiError::NotFound) => ServerLogError::TooOld,
+            _ => ServerLogError::Unreachable(format!("{e:#}")),
+        }
+    })?;
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| ServerLogError::Unreachable(e.to_string()))?;
+    // A server that has only just started keeping its log: nothing to attach.
+    if text.trim().is_empty() {
+        return Ok(String::new());
+    }
+    let mut out = String::from("# server log\n");
+    for line in text.lines() {
+        out.push_str(&crate::logship::redact(&strip_ansi(line)));
+        out.push('\n');
+    }
+    Ok(out)
 }
 
 /// `hoardd.log` is written by the same formatter as stderr, colours included,

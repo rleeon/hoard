@@ -11,6 +11,7 @@ pub mod patch;
 pub mod ratelimit;
 pub mod retention;
 pub mod routes;
+pub mod serverlog;
 pub mod store;
 pub mod upgrade;
 

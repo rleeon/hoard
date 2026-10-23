@@ -677,7 +677,9 @@ fn merge(mut from_keyring: AuthSection, from_file: Option<AuthSection>) -> AuthS
 /// keyring still holds is the session before that, and its refresh token has
 /// usually been rotated already. Refreshing with it trips GoTrue's reuse
 /// detection, which revokes the whole family; after a sign-out and a sign-in to
-/// another account it would quietly sync the old one.
+/// another account it would quietly sync the old one. With lingering on every
+/// write goes to the file as well ([`crate::keychain::lingering`]), so the file
+/// winning is still the newest pair winning.
 ///
 /// Swallowing the `Err` as though it were `NoEntry` fell back to the file, which
 /// with a healthy keyring carries `auth = None` (see `store_tokens`), so
@@ -731,6 +733,14 @@ pub fn store_tokens(tokens: &Tokens, server_url: &str) -> Result<()> {
         session.server_url = server_url.to_string();
     }
     match store_in_keyring(tokens) {
+        // A service that starts before the keyring exists needs the pair in the
+        // file as well; every rotation comes through here and keeps it fresh.
+        Ok(Stored::Pair) if crate::keychain::lingering() => {
+            session.auth = Some(AuthSection {
+                access_token: tokens.access.clone(),
+                refresh_token: tokens.refresh.clone(),
+            })
+        }
         Ok(Stored::Pair) => session.auth = None,
         // The refresh token is in the keyring; the file keeps the access JWT
         // alone, which is an hour of life and useless without the other half.

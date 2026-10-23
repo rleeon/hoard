@@ -81,6 +81,16 @@ pub async fn desktop(
             let package = owning_package("rpm", &["-qf", "--queryformat", "%{NAME}"], path)
                 .await
                 .unwrap_or_else(|| "hoard".to_string());
+            // The Bazzite report of 22-10-2026: the package was layered with
+            // `rpm-ostree`, and `rpm -e` against a read-only `/usr` fails after
+            // asking for the password. Only the person can take a layer off, and
+            // it needs a reboot, so they get the exact command.
+            if super::image_based() {
+                bail!(
+                    "this system is image-based: remove the old package with \
+                     `rpm-ostree uninstall {package}` and restart"
+                );
+            }
             fetch::elevated_argv(&["rpm".into(), "-e".into(), package], noninteractive).await?;
             Ok(Some(path.to_path_buf()))
         }

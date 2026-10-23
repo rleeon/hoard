@@ -168,6 +168,14 @@ pub fn running_under_flatpak() -> bool {
     std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists()
 }
 
+/// An image-based system (Fedora Atomic, Bazzite, Silverblue, Kinoite): `/usr`
+/// is read-only and a package goes on or off with `rpm-ostree`, followed by a
+/// reboot. `rpm -e` there can only fail. The marker is the one `rpm-ostree`
+/// itself and systemd's `ConditionPathExists` use.
+pub fn image_based() -> bool {
+    cfg!(target_os = "linux") && Path::new("/run/ostree-booted").exists()
+}
+
 /// Is this a machine that shows a window?
 ///
 /// The question is NOT whether there is a screen at this instant, which is why
