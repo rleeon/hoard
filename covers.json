@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "_comment": "Cover-art index for games with no Steam app id — Hoard's desktop app reads this when the Ludusavi catalog has no Steam id for a slug. Values are URLs on each publisher's own CDN: we publish the index, never the images. Keys are Ludusavi catalog slugs. Adding a game here is a web deploy, not an app release.",
+  "covers": {
+    "minecraft-java-edition": "https://store-images.s-microsoft.com/image/apps.6644.14216416494490173.9772fa78-5a01-45ce-9b9e-6ec61a10f4e2.c6cca0bc-53cc-48ec-887a-e5ab83e5bede?q=90&w=600&h=900",
+    "minecraft-bedrock-edition": "https://store-images.s-microsoft.com/image/apps.17382.13510798885735219.9735d495-578c-4a4c-b892-3eb3a780b3a0.d3792486-cf98-40c0-a2c1-d6443f0e2b70?q=90&w=600&h=900",
+    "fortnite": "https://store-images.s-microsoft.com/image/apps.64545.70702278257994163.a192b10f-e44a-4746-afb2-c8d38dd3a4a0.489a4a76-c3f0-45b4-a8d1-2d81ae516a4d?q=90&w=600&h=900",
+    "genshin-impact": "https://store-images.s-microsoft.com/image/apps.58853.14057893183113088.c7459eb1-fd61-4f8d-9636-e286ca6b3f52.1fca4e5c-8445-4fda-a44d-cf68d967866d?q=90&w=600&h=900"
+  }
+}
